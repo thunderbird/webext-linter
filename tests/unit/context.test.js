@@ -142,22 +142,20 @@ test("a check can merge the source and Experiment corpora off ctx.addon", () => 
   source.experiment = experiment;
   const env = envWith({ mode: REVIEW_MODE.SCA });
 
-  const { scaCtx } = buildScaCtxs(
-    source,
-    parsed(source),
-    { files: new Map() },
-    env
-  );
+  const { sourceCtx } = buildScaCtxs(source, parsed(source), env);
 
   // Apart: the WebExtension checks see the add-on's code and nothing privileged.
-  assert.ok(scaCtx.addon.files.has("app.js"));
-  assert.ok(!scaCtx.addon.files.has("experiment/exp.js"));
+  assert.ok(sourceCtx.addon.files.has("app.js"));
+  assert.ok(!sourceCtx.addon.files.has("experiment/exp.js"));
   // Allowlisted, so a check that needs it can reach it at all (reviewView is a whitelist -
   // an un-named field would silently read undefined here).
-  assert.equal(scaCtx.addon.experiment, experiment);
+  assert.equal(sourceCtx.addon.experiment, experiment);
 
   // Together: the corpus a what-is-this-file check reviews.
-  const merged = new Map([...scaCtx.addon.files, ...scaCtx.addon.experiment]);
+  const merged = new Map([
+    ...sourceCtx.addon.files,
+    ...sourceCtx.addon.experiment,
+  ]);
   assert.deepEqual(
     [...merged.keys()].sort(),
     ["app.js", "experiment/exp.js"],
@@ -170,24 +168,25 @@ test("a check can merge the source and Experiment corpora off ctx.addon", () => 
   const xpiOnly = buildScaCtxs(
     addonWith({ "app.js": "1;" }),
     parsed(addonWith({ "app.js": "1;" })),
-    { files: new Map() },
     env
-  ).scaCtx;
+  ).sourceCtx;
   assert.equal(xpiOnly.addon.experiment, undefined);
 });
 
-// buildScaCtxs.buildCtx routes the SCA build corpus onto ctx.addon (the input: build seam),
+// buildScaCtxs.scaCtx routes the SCA archive onto ctx.addon (the input: sca seam),
 // shares the review env, and empties the source-only jsSources/apiUsages. The corpus is
 // projected through reviewView like every other ctx.addon, so a build check can never read
 // ctx.addon.manifest against another artifact's files.
-test("buildScaCtxs.buildCtx puts the build corpus on ctx.addon and strips manifest/sources", () => {
+test("buildScaCtxs.scaCtx puts the build corpus on ctx.addon and strips manifest/sources", () => {
   const source = addonWith({ "src/app.js": "export const x = 1;" });
   const env = envWith({ mode: REVIEW_MODE.SCA, manifest: { name: "shipped" } });
-  const buildFiles = new Map([["build.sh", Buffer.from("echo hi")]]);
+  const scaCorpus = new Map([["build.sh", Buffer.from("echo hi")]]);
+  // One archive carrying BOTH corpora: `files` is the add-on code, `sca` the whole of it.
   // A full-addon shape (manifest present) must NOT leak through: reviewView allowlists.
-  // buildReview (what setup found in the build) MUST survive - the input:build checks read it.
-  const buildAddon = {
-    files: buildFiles,
+  // buildReview (what setup found in the build) MUST survive - the input:sca checks read it.
+  const archive = {
+    ...source,
+    sca: scaCorpus,
     manifest: { name: "leak" },
     nodeModules: ["node_modules"],
     archives: ["dist.zip"],
@@ -196,34 +195,33 @@ test("buildScaCtxs.buildCtx puts the build corpus on ctx.addon and strips manife
     buildReview: { unresolved: [], anchor: "package.json" },
   };
 
-  const { buildCtx } = buildScaCtxs(source, parsed(source), buildAddon, env);
-  assert.equal(buildCtx.addon.files, buildFiles); // the build corpus is the artifact
-  assert.equal(buildCtx.addon.manifest, undefined); // not allowlisted (no leak)
-  assert.deepEqual(buildCtx.addon.nodeModules, ["node_modules"]); // committed-node-modules reads it
-  assert.deepEqual(buildCtx.addon.archives, ["dist.zip"]); // committed-build-artifact reads it
+  const { scaCtx } = buildScaCtxs(archive, parsed(source), env);
+  assert.equal(scaCtx.addon.files, scaCorpus); // the sca corpus is the artifact
+  assert.equal(scaCtx.addon.manifest, undefined); // not allowlisted (no leak)
+  assert.deepEqual(scaCtx.addon.nodeModules, ["node_modules"]); // committed-node-modules reads it
+  assert.deepEqual(scaCtx.addon.archives, ["dist.zip"]); // committed-build-artifact reads it
   // sca-invalid-symlink reads it
-  assert.equal(buildCtx.addon.symlinks.length, 1);
-  assert.equal(buildCtx.addon.symlinks[0].path, "libs/out");
-  assert.equal(buildCtx.addon.symlinks[0].cause, SYMLINK_CAUSE.OUTSIDE);
+  assert.equal(scaCtx.addon.symlinks.length, 1);
+  assert.equal(scaCtx.addon.symlinks[0].path, "libs/out");
+  assert.equal(scaCtx.addon.symlinks[0].cause, SYMLINK_CAUSE.OUTSIDE);
   // the file:/link: walk a lock check runs reads it
-  assert.deepEqual(buildCtx.addon.directories, ["libs"]);
-  assert.deepEqual(buildCtx.addon.buildReview, {
+  assert.deepEqual(scaCtx.addon.directories, ["libs"]);
+  assert.deepEqual(scaCtx.addon.buildReview, {
     unresolved: [],
     anchor: "package.json",
   }); // build-review checks read it
-  assert.deepEqual(buildCtx.jsSources, []); // source-only, emptied
-  assert.equal(buildCtx.apiUsages, undefined);
-  assert.equal(buildCtx.schema, env.schema); // shared review env
-  assert.equal(buildCtx.manifest, env.manifest); // shipped manifest stays for framing
+  assert.deepEqual(scaCtx.jsSources, []); // source-only, emptied
+  assert.equal(scaCtx.apiUsages, undefined);
+  assert.equal(scaCtx.schema, env.schema); // shared review env
+  assert.equal(scaCtx.manifest, env.manifest); // shipped manifest stays for framing
 
-  // An empty build corpus is still a valid, readable ctx - an input: build check skips cleanly
+  // An empty build corpus is still a valid, readable ctx - an input: sca check skips cleanly
   // on it rather than crashing.
   const empty = buildScaCtxs(
-    source,
+    { ...source, sca: new Map() },
     parsed(source),
-    { files: new Map() },
     env
-  ).buildCtx;
+  ).scaCtx;
   assert.equal(empty.addon.files.size, 0);
 });
 
@@ -232,28 +230,28 @@ test("buildScaCtxs.buildCtx puts the build corpus on ctx.addon and strips manife
 test("buildScaCtxs throws when the source arrives with no parsed sources", () => {
   const source = addonWith({ "src/app.js": "eval('danger');" });
   assert.throws(
-    () => buildScaCtxs(source, undefined, { files: new Map() }, envWith()),
+    () => buildScaCtxs(source, undefined, envWith()),
     /no parsed sources/
   );
 });
 
 // reviewView is an ALLOWLIST: ctx.addon carries ONLY the intrinsic fields a check reads, so a
-// field on the underlying Addon (manifest, experiments, and crucially buildFiles - the SCA build
-// tree) can never leak onto the check-facing surface. And no credentials are on the
+// field on the underlying Addon (manifest, experiments, and crucially `sca` - the archive's
+// OTHER corpus) can never leak onto the check-facing surface. And no credentials are on the
 // ctx: the token stays in the pipeline (it builds the client); env carries only the review-level
 // and the check-facing options.
-test("ctx.addon allowlists intrinsic fields; no manifest/experiments/buildFiles/creds leak", () => {
+test("ctx.addon allowlists intrinsic fields; no manifest/experiments/sca/creds leak", () => {
   const xpi = addonWith({ "app.js": "export const x = 1;" });
   xpi.manifest = { name: "m" };
   xpi.experiments = { groups: [] };
-  xpi.buildFiles = { files: new Map([["build/x.sh", Buffer.from("x")]]) };
+  xpi.sca = new Map([["build/x.sh", Buffer.from("x")]]);
   const { xpiCtx } = buildXpiCtxs(
     xpi,
     parsed(xpi),
     envWith({ options: { allowExperiments: true } })
   );
-  // The build tree / shipped-authoritative fields are NOT reachable through ctx.addon.
-  assert.equal(xpiCtx.addon.buildFiles, undefined);
+  // The other corpus / shipped-authoritative fields are NOT reachable through ctx.addon.
+  assert.equal(xpiCtx.addon.sca, undefined);
   assert.equal(xpiCtx.addon.manifest, undefined);
   assert.equal(xpiCtx.addon.experiments, undefined);
   assert.ok(xpiCtx.addon.files); // the intrinsic corpus IS there

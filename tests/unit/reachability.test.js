@@ -396,6 +396,14 @@ test("unused-files: junk + orphan are findings; mentioned -> escalation", () => 
     assert.ok(!found.includes(doc) && !manual.includes(doc));
   }
   assert.ok(!found.includes("bg.js")); // reachable
+  // The add-on's own manifest is the ENTRY POINT: nothing in the add-on can reference it,
+  // so "unreferenced" says nothing about whether it is used. It reaches this check now -
+  // a built XPI's corpus holds it, where the loader used to withhold it for this one
+  // check's benefit - so the skip has to live here.
+  assert.ok(
+    !found.includes("manifest.json") && !manual.includes("manifest.json"),
+    "the add-on manifest is neither reported nor escalated"
+  );
 });
 
 // The build-manager files, in a BUILT XPI. Two of them have a reader there: the ROOT

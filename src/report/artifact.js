@@ -23,7 +23,7 @@ export const ARTIFACT_SCA = "SCA";
  * The artifact label for a finding's file, or "" when none applies.
  * @param {{file?: string, input?: string, mode?: string}} params
  *   file: the finding's file; input: the owning check's registry `input`
- *   ("xpi" | "build" | "source" | "manifest"); mode: the review mode ("sca" | "xpi").
+ *   ("xpi" | "sca" | "source" | "manifest"); mode: the review mode ("sca" | "xpi").
  * @returns {string} "XPI", "SCA", or "" (XPI review - a single artifact).
  */
 export function artifactLabel({ file, input, mode }) {
@@ -39,5 +39,5 @@ export function artifactLabel({ file, input, mode }) {
     // findings already take the branch above; this covers their fileless findings/notes.
     return ARTIFACT_XPI;
   }
-  return ARTIFACT_SCA; // input source/build -> the readable source + build files.
+  return ARTIFACT_SCA; // input source/sca -> the submitted source archive.
 }

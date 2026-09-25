@@ -45,7 +45,7 @@ test("artifactLabel keys off the check input in SCA mode", () => {
   assert.equal(
     artifactLabel({
       file: "scripts/build.sh",
-      input: "build",
+      input: "sca",
       mode: REVIEW_MODE.SCA,
     }),
     ARTIFACT_SCA

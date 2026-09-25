@@ -7,7 +7,7 @@
 // The archive paths are recorded at load (addon.archives): loadAddon walks the WHOLE
 // --sca-root before the source/build split, so an archive is caught wherever it sits - in
 // the review source, the build tree, anywhere. scaViews passes the list onto the
-// input: build addon (like nodeModules). This check turns each recorded path into a finding,
+// input: sca addon (like nodeModules). This check turns each recorded path into a finding,
 // which is its own locus - so the response names no file and the findings collapse into a
 // single entry with a locus per archive.
 //

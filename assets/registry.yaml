@@ -697,7 +697,7 @@ deterministic-phase:
   sca: true
   review-early-exit: unreproducible-build
   check: sca-package-file-missing
-  input: build
+  input: sca
   response: |-
     The submitted source archive contains no package.json, so there is no build process the shipped add-on can be reproduced from.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
@@ -717,7 +717,7 @@ deterministic-phase:
   sca: true
   review-early-exit: unreproducible-build
   check: sca-package-file-invalid
-  input: build
+  input: sca
   response: |-
     The committed package.json cannot be read, so the build it defines cannot be run. Please commit a valid package.json.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
@@ -744,7 +744,7 @@ deterministic-phase:
   sca: true
   review-early-exit: unreproducible-build
   check: sca-lock-file-missing
-  input: build
+  input: sca
   response: |-
     The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
@@ -768,7 +768,7 @@ deterministic-phase:
   sca: true
   review-early-exit: unreproducible-build
   check: sca-lock-file-invalid
-  input: build
+  input: sca
   response: |-
     The committed lock file cannot install what package.json declares, so the build cannot be reproduced from this source. Please run the install again and commit the regenerated lock file. The supported package managers are npm and pnpm.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
@@ -780,7 +780,7 @@ deterministic-phase:
 # UNDECLARED source and leaving package.json/lock a clean decoy. The value is not parsed;
 # the raw value is surfaced as {{item}}. The ARCHIVE'S OWN .npmrc is the one read - npm takes
 # its config from the directory the install runs in, and the review runs it at --sca-root -
-# and it is the one dotfile the build corpus keeps.
+# so a config deeper in the tree is never asked for.
 # review-early-exit for the same reason as the other build rejects, reached from the other
 # direction: the install would RUN, but what it fetches is not what the submission declares,
 # so reproducing it attests nothing - and it would pull code from a developer-chosen host
@@ -790,7 +790,7 @@ deterministic-phase:
   sca: true
   review-early-exit: unreproducible-build
   check: build-registry-redirect
-  input: build
+  input: sca
   response: |-
     The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
@@ -804,7 +804,7 @@ deterministic-phase:
   severity: error
   sca: true
   check: committed-node-modules
-  input: build
+  input: sca
   response: |-
     The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them.
 
@@ -816,7 +816,7 @@ deterministic-phase:
   severity: error
   sca: true
   check: committed-build-artifact
-  input: build
+  input: sca
   response: |-
     The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them.
 
@@ -832,7 +832,7 @@ deterministic-phase:
   severity: error
   sca: true
   check: sca-invalid-symlink
-  input: build
+  input: sca
   response: |-
     The following symbolic link(s) lead outside the submitted source, or to a target that does not exist. The review covers only what the submission contains, so code reached through such a link is never seen, and a build that needs it cannot be reproduced. Replace each link with the actual files, or remove it where the build does not need it. A link pointing to another location inside the submission is fine.
 
@@ -869,7 +869,7 @@ deterministic-phase:
   sca: true
   review-early-exit: unreproducible-build
   check: build-lifecycle-hook
-  input: build
+  input: sca
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
     The install lifecycle hooks below run when the dependencies are
@@ -888,7 +888,7 @@ deterministic-phase:
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # SCA only: the build review. selectBuildCorpus finds the build ONCE in setup
-# (src/build/analyze.js), storing addon.buildFiles.buildReview; this check reads it. A build
+# (src/build/analyze.js), storing addon.scaFiles.buildReview; this check reads it. A build
 # must not fetch or execute code/resources from an UNDECLARED external source (a raw URL,
 # curl|sh, a git clone of an unpinned repo, a CDN, a postinstall hook) - only installing the
 # declared dependencies (npm ci from node_modules, importing a declared package) is allowed.
@@ -900,7 +900,7 @@ deterministic-phase:
   severity: error
   sca: true
   check: undeclared-build-source
-  input: build
+  input: sca
   instructions-for-human: |-
     Confirm by hand that the shipped XPI is produced by this source: reproduce the
     build and compare the result against the submitted XPI. Confirm the build pulls

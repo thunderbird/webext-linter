@@ -1,5 +1,5 @@
 // Unit tests for analyzeBuild: the SCA build review's one look at the build, run in
-// setup and stored on addon.buildFiles.buildReview for the input:build checks to read.
+// setup and stored on addon.buildReview for the input:sca checks to read.
 // Nothing says what a build DOES, so the record it produces carries only what the
 // escalation has to name - where it anchors, and what the linter could not follow.
 

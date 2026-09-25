@@ -9,7 +9,7 @@
 // (-> xpi-packaged-symlink).
 //
 // The links are recorded at load (addon.symlinks) with the cause as a FACT - loadAddon
-// classifies, it does not judge - and scaViews passes the list onto the input: build addon.
+// classifies, it does not judge - and scaViews passes the list onto the input: sca addon.
 // The cause rides as the finding's hint, so one entry collapses every link and each locus
 // line still says which kind it was.
 //

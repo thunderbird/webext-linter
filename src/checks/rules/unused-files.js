@@ -52,9 +52,12 @@ import { TREE_LOCKS } from "../../vendor/locks.js";
 //
 // Documentation / project metadata is exempted separately by isDocMetadataFile
 // (a documentation extension settles it; a .txt or an extensionless file needs a
-// known doc name too). The add-on manifest needs no entry: it is not in the corpus (the
-// loader lifts it onto ctx), so it is never enumerated here.
+// known doc name too).
 const ALLOW = [/^_locales\//];
+
+// The add-on's own manifest. Spelled out rather than imported, as every other rule that
+// names it does - MANIFEST_FILE beside it is npm's package.json, a different file.
+const WEBEXT_MANIFEST = "manifest.json";
 
 // Definite "should not ship" by name: OS/editor junk, source maps. Archives are handled
 // separately via ARCHIVE_EXTENSIONS (shared with the loader / committed-build-artifact).
@@ -111,6 +114,11 @@ export default {
         continue;
       }
       if (
+        // The add-on manifest is the ENTRY POINT, not a referenced resource: nothing in the
+        // add-on can point at it, so "nothing references it" says nothing about whether it
+        // is used. Skipped by name here rather than withheld from the corpus, which is what
+        // the loader used to do for this one check's benefit.
+        file === WEBEXT_MANIFEST ||
         file === MANIFEST_FILE ||
         (manifestShipped && TREE_LOCKS.includes(file)) ||
         skip.has(file) ||

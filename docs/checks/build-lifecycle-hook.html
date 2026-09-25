@@ -41,7 +41,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The build files (input: build)"] --> B{"package.json present<br/>with a scripts block?"}
+  A["The build files (input: sca)"] --> B{"package.json present<br/>with a scripts block?"}
   B -- no --> OK([no escalation])
   B -- yes --> C{"Any install lifecycle hook?<br/>preinstall / install / postinstall / prepare /<br/>prepublish / prepublishOnly / prepack"}
   C -- no --> OK

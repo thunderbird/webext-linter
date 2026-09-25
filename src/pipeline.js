@@ -239,7 +239,7 @@ export const SETUP_STEPS = Object.freeze([
  *   absolute and inside scaRoot. It reaches a
  *   archive partition (scaViews), which gives it its own view; where it sits WITHIN the review
  *   source is derived at the one read that wants it (src/lib/reachability.js), in the
- *   keyspace the review addon's keys live in. Its privileged, non-WebExtension files are excluded
+ *   keyspace the review target's keys live in. Its privileged, non-WebExtension files are excluded
  *   from the WebExtension code checks (which review all of the readable source, having no
  *   reachability tree there). Optional in general, but REQUIRED when allowExperiments is
  *   set in SCA mode (the CLI enforces this) - without it, Experiment code cannot be told
@@ -300,13 +300,13 @@ export async function runPipeline(opts) {
   //   xpiAddon - the built XPI (the positional addonPath). The SHIPPED artifact,
   //     authoritative in BOTH modes for the manifest, the experiments, and the
   //     behavioral review summary (what actually runs on a user's machine).
-  //   addon    - the deterministic review target (becomes ctx.addon): the readable
-  //     code the source-level checks scan. In XPI mode it simply IS xpiAddon; in
-  //     SCA mode it is the whole submission - a synthetic addon whose
-  //     files are the archive's but whose manifest is the XPI's (scaViews), so the
-  //     checks stay mode-agnostic.
+  //   reviewTarget - whichever artifact this review is OF: the code the source-level
+  //     checks scan, and what becomes siblings.source. In XPI mode it IS xpiAddon; in
+  //     SCA mode it IS scaArchive, which scaViews gave the corpora a source review reads.
+  //     Anything that wants ONE artifact whatever the mode names that one directly, which
+  //     is what keeps the checks mode-agnostic without a mode test here.
   //
-  // So downstream: read `addon` for the code under review, `xpiAddon` for the
+  // So downstream: read `reviewTarget` for the code under review, `xpiAddon` for the
   // shipped artifact - no further mode checks. The only other mode forks are the
   // dependency resolution (--sca-root vs the XPI's VENDOR/package.json) and the
   // check gate (ctx.mode -> scaEligible). Minified code is non-authored (and rejected)
@@ -408,17 +408,16 @@ export async function runPipeline(opts) {
   // What the steps share. Each value is written by the step that owns it and read by the
   // ones after it, and the declared order is what puts them in that sequence.
 
-  /** The review target (ctx.addon): the readable source, or the shipped .xpi - whichever
+  /** The review target (it becomes ctx.addon): the readable source, or the shipped .xpi - whichever
    * of `target-source` / `target-xpi` this review runs. */
-  let addon;
+  let reviewTarget;
   /** The submitted source archive: read by `source-archive`, reused by `target-source`
    * and `build`. */
   let scaArchive;
   /** The submitted archive's files, keyed as the submission keys them - for the XPI-only
    * advice (resolveXpiOnlyAdvice), which compares their bytes against the shipped ones. */
   let sourceFiles;
-  /** The SCA archive split into its source / experiment / build views (scaViews). */
-  let scaParts;
+
   /** The review schema (indexed) and the stamps meta publishes for it. */
   let schema;
   let schemaSource;
@@ -513,7 +512,7 @@ export async function runPipeline(opts) {
     // experiment-modified flags it. With --allow-experiments the reviewer accepts
     // them, so the full review always runs.
     // Experiments are reviewed from the XPI (its shipped-artifact role; xpiAddon ===
-    // addon in XPI mode). They are privileged, non-bundled, readable code, and the
+    // reviewTarget in XPI mode). They are privileged, non-bundled, readable code, and the
     // manifest's experiment paths resolve against the XPI's own files (no
     // source-layout mismatch). The classification is the XPI's, so it is stored on
     // xpiAddon here, whose bundled classification seeds the trusted experiment files.
@@ -603,11 +602,11 @@ export async function runPipeline(opts) {
         scaArchive = loadAddon(opts.scaRoot, undefined, {
           recordInstalledTrees: true,
         });
-        scaParts = scaViews(scaArchive, {
+        scaViews(scaArchive, {
           scaRoot: opts.scaRoot,
           scaExpSource: opts.scaExpSource,
         });
-        sourceFiles = scaParts.source.files;
+        sourceFiles = scaArchive.files;
       }
 
       // An SCA submission is ALWAYS reviewed as SCA - this only decides whether to TELL the
@@ -636,18 +635,18 @@ export async function runPipeline(opts) {
 
     // The review target of a source code review: the readable source. The archive was read
     // ONCE above by `source-archive`, which also split it into its three views; the
-    // review addon is the source view carrying the XPI's manifest.
+    // review target is the source view carrying the XPI's manifest.
     "target-source": () => {
-      addon = scaParts.source;
+      reviewTarget = scaArchive;
       for (const notice of scaArchive.skipped ?? []) {
         warn(notice);
       }
-      // Mirror the XPI's experiment classification onto the review addon (the experiment
-      // checks read ctx.experiments from it; in XPI mode the two are one addon anyway).
-      addon.experiments = xpiAddon.experiments;
+      // Mirror the XPI's experiment classification onto the review target (the experiment
+      // checks read ctx.experiments from it; in XPI mode the two are one artifact anyway).
+      reviewTarget.experiments = xpiAddon.experiments;
       // Warn when --sca-exp-source matches nothing: a mis-typed path would exclude nothing
       // and flood the report with false positives on the privileged Experiment code.
-      if (opts.scaExpSource && scaParts.experiment.size === 0) {
+      if (opts.scaExpSource && scaArchive.experiment.size === 0) {
         warn(
           `--sca-exp-source "${opts.scaExpSource}" matched no files under --sca-root; ` +
             "nothing will be excluded from the WebExtension code checks."
@@ -659,7 +658,7 @@ export async function runPipeline(opts) {
     // this arm, and so does a REJECTED Experiment even with --sca-root - its rejection is
     // decided entirely from the shipped XPI, so the readable source is never read.
     "target-xpi": () => {
-      addon = xpiAddon;
+      reviewTarget = xpiAddon;
     },
 
     // What was reviewed, named by ARTIFACT rather than by role: `xpi` is the shipped add-on
@@ -687,10 +686,10 @@ export async function runPipeline(opts) {
         // what they say back when they talk about it. The folder's name where the
         // submission was already unpacked, which is the same thing said the same way.
         xpiFile: path.basename(addonPath),
-        // Named iff the readable source is what was reviewed: `scaParts` is set by
-        // `target-source`, which runs only then. meta names the artifacts this review
+        // Named iff the readable source is what was reviewed: `scaArchive` is set by
+        // `source-archive`, which runs only then. meta names the artifacts this review
         // READ, so the step that loaded one is what decides whether it appears here.
-        ...(scaParts
+        ...(scaArchive
           ? {
               scaRoot: opts.scaRoot,
               // The one input that NARROWS the review: that subtree is privileged code and is
@@ -729,8 +728,15 @@ export async function runPipeline(opts) {
       // The archive's lock IS what the reviewer installs from, so it resolves a ranged
       // spec to the exact version audited. The XPI above gets no such reading: a lock has
       // no place inside a built add-on, so one found there would only launder a range.
-      addon.vendor = resolveVendor({ addon, reviewerInstalls: true });
-      await verifyVendorDeclarations(addon, opts.vendorNet, libraryBlocks);
+      reviewTarget.vendor = resolveVendor({
+        addon: reviewTarget,
+        reviewerInstalls: true,
+      });
+      await verifyVendorDeclarations(
+        reviewTarget,
+        opts.vendorNet,
+        libraryBlocks
+      );
     },
 
     // The source's package.json declares its dependencies - audit each for popularity
@@ -739,42 +745,40 @@ export async function runPipeline(opts) {
     // declared audit) runs on it below. An unrecognized minified file the source vendors
     // stays non-authored and is rejected.
     // Classify the source's files (library hash, minified geometry, obfuscation), seeding
-    // addon.bundled and its non-authored set - AFTER the declaration audit, so the vendored
+    // reviewTarget.bundled and its non-authored set - AFTER the declaration audit, so the vendored
     // set is final (verifyScaDependencies DISCOVERS further vendored files that classifyFiles
     // reads).
     "deps-source": async () => {
-      await verifyScaDependencies(addon, opts.vendorNet, libraryBlocks);
-      classifyReview(addon, { libraryHashes });
+      await verifyScaDependencies(reviewTarget, opts.vendorNet, libraryBlocks);
+      classifyReview(reviewTarget, { libraryHashes });
     },
 
     // Identify the UNDECLARED libraries the audit cannot see (jsDelivr hash), and
     // applyUnverifiedVendor removes a readable not-popular vendored copy from the skip set;
     // this FINALIZES the authored / non-authored split, so it must precede `parse-source`.
     "cdn-source": () =>
-      identifyBundledLibraries(addon, {
+      identifyBundledLibraries(reviewTarget, {
         net: opts.vendorNet,
         cacheDir: opts.cdnLookupCache,
         cdnEnabled: opts.cdnLookup !== false,
       }),
     "audit-source": () =>
-      auditIdentifiedLibraries(addon, opts.vendorNet, libraryBlocks),
+      auditIdentifiedLibraries(reviewTarget, opts.vendorNet, libraryBlocks),
 
     // Parse the source ONCE, with the FINAL skip set (see extractReview).
     "parse-source": () => {
-      preParsedJsSources = extractReview(addon, { schema, xpiAddon });
+      preParsedJsSources = extractReview(reviewTarget, { schema, xpiAddon });
     },
 
-    // The BUILD files (archive minus the review source + Experiment source) - the build
-    // scripts/config the review otherwise drops. buildScaCtxs wraps these as the
-    // input:build check's ctx.addon; they never merge into the review addon.
-    //
-    // Look at the build ONCE here (the vendor pattern), storing what was found on
-    // addon.buildFiles.buildReview for the input:build checks to read. Nothing
-    // classifies what the build does, so it routes to the reviewer, who reproduces
-    // it from the source by hand.
+    // Look at the build ONCE here (the vendor pattern), over the archive's own `sca`
+    // corpus - everything but the Experiment, manifests included, because a build step may
+    // reference any of it. What was found is stored on reviewTarget.buildReview for the input:sca
+    // checks to read. Nothing classifies what the build DOES, so it routes to the reviewer,
+    // who reproduces it from the source by hand.
     build: () => {
-      addon.buildFiles = scaParts.build;
-      addon.buildFiles.buildReview = analyzeBuild({ build: addon.buildFiles });
+      reviewTarget.buildReview = analyzeBuild({
+        build: { files: reviewTarget.sca },
+      });
     },
   };
 
@@ -856,11 +860,11 @@ export async function runPipeline(opts) {
   // checks) and the manifest ctx (input:manifest checks, an empty corpus carrying only the
   // shipped manifest).
   const { xpiCtx, manifestCtx } = buildXpiCtxs(xpiAddon, xpiParsedSources, env);
-  // SCA only: from the readable-source analysis, the source ctx (the review target the code
-  // checks analyse) and the SCA build corpus ctx (undeclared-build-source). `mode?.sca` implies
-  // Phase 3 ran, so addon.buildFiles is loaded; both are undefined in an XPI review (no source).
-  const { scaCtx, buildCtx } = mode?.sca
-    ? buildScaCtxs(addon, preParsedJsSources, addon.buildFiles, env)
+  // SCA only, and both from the ONE archive: the source ctx (the review target the code
+  // checks analyse) and the sca ctx (undeclared-build-source and the build-policy checks).
+  // Undefined in an XPI review, which has no archive.
+  const { sourceCtx, scaCtx } = mode?.sca
+    ? buildScaCtxs(reviewTarget, preParsedJsSources, env)
     : {};
   // The sibling ctxs keyed by the `input` value that routes to each (see routeCtx). Routing is
   // total: `source` is a first-class sibling. siblings.source is the REVIEW TARGET - the readable
@@ -868,9 +872,9 @@ export async function runPipeline(opts) {
   // an XPI review). The orchestrator reads every review-level datum (the base feed note)
   // off siblings.source; a check routed to one sibling can never reach another's artifact.
   const siblings = {
-    source: mode?.sca ? scaCtx : xpiCtx,
+    source: mode?.sca ? sourceCtx : xpiCtx,
     xpi: xpiCtx,
-    build: buildCtx,
+    sca: scaCtx,
     manifest: manifestCtx,
   };
 

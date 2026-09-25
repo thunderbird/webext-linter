@@ -1255,7 +1255,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     assert.ok(
       c.input === "source" ||
         c.input === "xpi" ||
-        c.input === "build" ||
+        c.input === "sca" ||
         c.input === "manifest",
       `check "${c.id}" has an invalid input ${JSON.stringify(c.input)}`
     );
@@ -1313,15 +1313,15 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "unused-permission",
     "xpi-packaged-symlink",
   ]);
-  // input: build reads the SCA build files (archive minus source minus node_modules).
-  // The one build-review check (undeclared-build-source, which reads the setup record off
-  // ctx.addon.buildReview) plus the deterministic build-policy checks; extending this set
-  // is deliberate too.
-  const build = checks
-    .filter((c) => c.input === "build")
+  // input: sca reads the submitted source archive (minus the Experiment and a recorded
+  // node_modules). The one build-review check (undeclared-build-source, which reads the setup
+  // record off ctx.addon.buildReview) plus the deterministic build-policy checks; extending
+  // this set is deliberate too.
+  const sca = checks
+    .filter((c) => c.input === "sca")
     .map((c) => c.id)
     .sort();
-  assert.deepEqual(build, [
+  assert.deepEqual(sca, [
     "build-lifecycle-hook",
     "build-registry-redirect",
     "committed-build-artifact",
@@ -1377,7 +1377,7 @@ test("an input:xpi check escalates over its routed (XPI) addon", async () => {
 // ---- build review: undeclared-build-source (SCA; reads the setup record on
 // ctx.addon.buildReview, produced by analyzeBuild) ----
 
-const buildCtx = (review) => ({
+const scaCtx = (review) => ({
   addon: { files: new Map(), buildReview: review },
 });
 const review = (over) => ({
@@ -1391,7 +1391,7 @@ const review = (over) => ({
 // documenting no build at all is still checked against the XPI. The entry carries
 // whatever steps the linter could not follow.
 test("undeclared-build-source escalates every SCA, build documented or not", () => {
-  const out = undeclaredBuildSource.run(buildCtx(review()));
+  const out = undeclaredBuildSource.run(scaCtx(review()));
   assert.equal(out.findings.length, 0);
   assert.equal(out.escalations.length, 1);
   assert.equal(out.escalations[0].file, "package.json");
@@ -1402,7 +1402,7 @@ test("undeclared-build-source escalates every SCA, build documented or not", () 
 
   // A step the linter could not statically bound is named in the entry.
   const unresolved = undeclaredBuildSource.run(
-    buildCtx(
+    scaCtx(
       review({ unresolved: [{ kind: "network", detail: "curl evil.com" }] })
     )
   );
@@ -1413,7 +1413,7 @@ test("undeclared-build-source escalates every SCA, build documented or not", () 
 
   // No build entry point at all still escalates - but with NO locus, rather than
   // pointing the reviewer at a package.json the submission does not have.
-  const none = undeclaredBuildSource.run(buildCtx(review({ anchor: null })));
+  const none = undeclaredBuildSource.run(scaCtx(review({ anchor: null })));
   assert.equal(none.findings.length, 0);
   assert.equal(none.escalations.length, 1);
   assert.equal("file" in none.escalations[0], false);
@@ -4256,31 +4256,32 @@ test("loadChecks rejects a check with no valid input", async () => {
   }
 });
 
-// An `input: build` check reads the SCA-only build corpus, so it MUST be `sca: true` - else it
-// runs in an XPI review too, where the build sibling is undefined and routeCtx would THROW (no
-// build sibling there). loadChecks asserts the gate so the failure is a clear load-time config
-// error rather than a mid-review throw.
-test("loadChecks rejects an input:build check that is not sca:true", async () => {
+// `input` and `sca:` are different axes, and this one pairing is required: an `input: sca`
+// check reads an artifact that exists only in an SCA review, so without `sca: true` it also
+// runs in an XPI review, where that sibling is undefined and routeCtx would THROW. loadChecks
+// asserts the gate so the failure is a clear load-time config error, not a mid-review throw.
+// The reverse is deliberately free - `sca: true` may pair with any input.
+test("loadChecks rejects an input:sca check that is not sca:true", async () => {
   const tmp = path.join(
     os.tmpdir(),
     `build-nosca-registry-${process.pid}.yaml`
   );
   fs.writeFileSync(
     tmp,
-    "deterministic-phase:\n- title: Build\n  severity: error\n  check: sync-xhr.js\n  input: build\n"
+    "deterministic-phase:\n- title: Build\n  severity: error\n  check: sync-xhr.js\n  input: sca\n"
   );
   try {
     assert.throws(
       () => loadRegistry(tmp),
-      /`input: build` but not `sca: true`/
+      /reads the sca artifact .* without being gated/
     );
     // With the gate, it loads.
     fs.writeFileSync(
       tmp,
-      "deterministic-phase:\n- title: Build\n  severity: error\n  check: sync-xhr.js\n  input: build\n  sca: true\n"
+      "deterministic-phase:\n- title: Build\n  severity: error\n  check: sync-xhr.js\n  input: sca\n  sca: true\n"
     );
     const checks = allChecks(await loadChecks(loadRegistry(tmp)));
-    assert.equal(checks[0].input, "build");
+    assert.equal(checks[0].input, "sca");
   } finally {
     fs.rmSync(tmp);
   }

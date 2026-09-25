@@ -125,13 +125,13 @@ const COLLAPSE_MODES = new Set(["subject"]);
 // check runs. "source" = the REVIEW TARGET, the readable submitted code (the readable
 // --sca-root in an SCA review, the built XPI in an XPI review - the only artifact
 // there); "xpi" = ALWAYS the built XPI (the shipped artifact), for the structure checks
-// that describe what ships; "build" = the SCA build files (the archive minus the review
-// source minus node_modules), for the build review; "manifest" = the shipped manifest
+// that describe what ships; "sca" = ALWAYS the submitted source archive (the archive minus
+// the Experiment and a recorded node_modules), for the build review; "manifest" = the shipped manifest
 // ONLY, on a ctx with an EMPTY file corpus (buildXpiCtxs' manifestCtx), for pure-manifest checks
 // that read ctx.manifest and no files. Required on every check: runChecks routes each
 // check to its artifact's context, so the check reads one artifact and has no way to reach another (see
 // buildXpiCtxs / buildScaCtxs).
-const VALID_CHECK_INPUTS = new Set(["source", "xpi", "build", "manifest"]);
+const VALID_CHECK_INPUTS = new Set(["source", "xpi", "sca", "manifest"]);
 
 // The check-bearing yaml sections ARE the phases: a check's phase IS the section it
 // lives in, so the two can never disagree and no entry declares a phase of its own.
@@ -184,7 +184,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   applied to each finding's FINAL severity in runOneCheck - which is the only value a
  *   check that delegates has. Carried here because runOneCheck takes no registry.
  * @property {boolean} [sca]  The review-mode gate (scaEligible); undefined when unset.
- * @property {"source"|"xpi"|"build"|"manifest"|undefined} input  Which artifact is
+ * @property {"source"|"xpi"|"sca"|"manifest"|undefined} input  Which artifact is
  *   ctx.addon when the check runs (VALID_CHECK_INPUTS above), and what its output is
  *   labelled as ([XPI]/[SCA]). Required for every check; runChecks routes it (see
  *   buildXpiCtxs / buildScaCtxs).
@@ -426,14 +426,14 @@ export class Registry {
    * The artifact a check's OUTPUT is labelled as ([XPI]/[SCA]): the corpus it acts
    * on, which is the one it runs on, so its declared `input` is the label.
    * @param {string} ruleId
-   * @returns {"xpi"|"build"|"source"|"manifest"}
+   * @returns {"xpi"|"sca"|"source"|"manifest"}
    */
   labelInputFor(ruleId) {
     return this.checkEntry(ruleId)?.input ?? "source";
   }
 
   /**
-   * The label artifact per ruleId (a `Map<ruleId, "xpi"|"build"|"source"|"manifest">`),
+   * The label artifact per ruleId (a `Map<ruleId, "xpi"|"sca"|"source"|"manifest">`),
    * projected for the report layer so it can label a finding's file:line by
    * artifact ([XPI]/[SCA]) without touching the registry. Keyed off labelInputFor
    * (the corpus the check acts on).
@@ -1068,16 +1068,19 @@ function assertEntry(entry, at) {
           "manifest = the shipped manifest only)."
       );
     }
-    // An `input: build` check reads the SCA build corpus, which exists ONLY in an SCA review -
-    // so it MUST carry `sca: true`. Without it the check also runs in an XPI review, where the
-    // build sibling is undefined and routeCtx would THROW (no ctx for input "build"). The
-    // `sca: true` gate keeps every build check out of XPI mode; assert it at LOAD time rather
-    // than trust the yaml, so the failure is a clear config error, not a mid-review throw.
-    if (input === "build" && entry.sca !== true) {
+    // Two different axes, and this one pairing is required: `input` names the ARTIFACT a
+    // check reads, `sca:` gates which review MODE it runs in. The sca artifact exists only in
+    // an SCA review, so a check reading it must also be gated to one - otherwise it runs in an
+    // XPI review, where that sibling is undefined and routeCtx throws. Asserted at LOAD time
+    // so the failure is a clear config error rather than a mid-review throw. The reverse does
+    // NOT hold: `sca: true` is free to pair with any input, which is what leaves room for an
+    // SCA-only check over another artifact.
+    if (input === "sca" && entry.sca !== true) {
       throw new Error(
-        `${where} declares \`input: build\` but not \`sca: true\`. The build corpus ` +
-          "exists only in an SCA review; without the gate it would run in an XPI review, where " +
-          "routeCtx would throw (there is no build sibling there)."
+        `${where} reads the sca artifact (\`input: sca\`) without being gated to an SCA ` +
+          "review (`sca: true`). Those are different axes: that artifact exists only in an SCA " +
+          "review, so without the gate this would run in an XPI review, where routeCtx would " +
+          "throw (there is no sca sibling there)."
       );
     }
     assertSweepInstruction(entry, where, severity);
@@ -2054,12 +2057,12 @@ function eslintEligible(entry, inEslintMode) {
  *     -------------+----------------------------------+--------------------------
  *     source       | siblings.source = readable source| siblings.source (the XPI)
  *     xpi          | siblings.xpi = the built XPI      | siblings.xpi (the XPI)
- *     build        | siblings.build = the build files | (sca-only)
+ *     sca          | siblings.sca = the source archive | (sca-only)
  *     manifest     | siblings.manifest                | siblings.manifest
  *
  * In an XPI review there is a single artifact, so siblings.source and siblings.xpi are the
  * SAME ctx (the pipeline aliases siblings.source to xpiCtx). A declared `input` with no
- * matching sibling (e.g. a stray `input: build` in XPI mode) THROWS rather than silently
+ * matching sibling (e.g. a stray `input: sca` in XPI mode) THROWS rather than silently
  * running on the wrong artifact.
  * @param {LoadedCheck} check
  * @param {Record<string, RunContext>} siblings  Keyed by input value (source/xpi/build/manifest).
@@ -2075,7 +2078,7 @@ export function routeCtx(check, siblings) {
   if (!ctx) {
     throw new Error(
       `routeCtx: no ctx for input "${check.input}" (check ${check.id}) - a declared ` +
-        "input must have a sibling (an input:build check needs sca:true to stay out of XPI mode)."
+        "input must have a sibling (an input:sca check needs sca:true to stay out of XPI mode)."
     );
   }
   return ctx;

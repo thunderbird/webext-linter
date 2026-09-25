@@ -20,7 +20,7 @@ test("routeCtx routes each input to its own sibling, and throws on a missing one
   const source = { tag: "source" };
   const xpi = { tag: "xpi" };
   const manifest = { tag: "manifest" };
-  // No `build` key - undefined as in an XPI review, where input:build checks are sca-gated out.
+  // No `build` key - undefined as in an XPI review, where input:sca checks are sca-gated out.
   const siblings = { source, xpi, manifest };
 
   assert.equal(routeCtx({ input: "source" }, siblings), source);
@@ -29,10 +29,10 @@ test("routeCtx routes each input to its own sibling, and throws on a missing one
   // A check with no declared input falls to the source ctx. loadChecks requires an
   // input on every check, so this is the floor, not a routing rule any check uses.
   assert.equal(routeCtx({}, siblings), source);
-  // A declared input with no sibling (a stray input:build in XPI mode) throws, rather than
+  // A declared input with no sibling (a stray input:sca in XPI mode) throws, rather than
   // silently running on the review target.
   assert.throws(
-    () => routeCtx({ input: "build", id: "stray" }, siblings),
-    /no ctx for input "build"/
+    () => routeCtx({ input: "sca", id: "stray" }, siblings),
+    /no ctx for input "sca"/
   );
 });

@@ -55,7 +55,6 @@ function liftManifest(addon) {
     addon.manifestText =
       addon.files?.get?.("manifest.json")?.toString("utf8") ?? "";
   }
-  addon.files?.delete?.("manifest.json");
 }
 
 /**
