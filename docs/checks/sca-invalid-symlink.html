@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Symbolic link out of the submission</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Symbolic link out of the submission
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">sca-invalid-symlink</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A symbolic link in the submitted source that leads outside the submission,
+        or to a target that does not exist. A link is never followed and never read,
+        so whatever it names sits outside every corpus the review covers: the build
+        would compile code nobody looked at, and nobody else could reproduce it.
+      </p>
+      <p>
+        A link pointing to another location <em>inside</em> the submission is
+        ordinary tree layout and is not reported. Its target is walked and reviewed
+        under its own real path, so the code is covered wherever the link sits. That
+        is the whole difference from the add-on itself, which may carry no link at
+        all — see <a href="xpi-packaged-symlink.html">xpi-packaged-symlink</a>.
+      </p>
+      <p>
+        These are real links on disk because the source archive is unpacked by the
+        reviewer, with a tool that creates them. Each link is followed to its end
+        before the question is asked, so a chain that starts inside the submission
+        and leaves it is judged by where it actually arrives. Each rejected link
+        becomes one error finding, and its location line says which of the two it
+        was.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A symbolic link in the source root"] --> B{"Does it resolve at all?"}
+  B -- no --> ERR2([ERROR: target does not exist])
+  B -- yes --> C{"Does the target sit<br/>inside the submission?"}
+  C -- yes --> OK([no finding: reviewed at its real path])
+  C -- no --> ERR([ERROR: target outside the submission])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR,ERR2 err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told which links lead out of the submitted source or to a
+        missing target, and asked to replace each one with the actual files, or to
+        remove it where the build does not need it. A link to another location
+        inside the submission is explicitly fine.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/sca-invalid-symlink.js</code> (fed by the symlink
+        classification in <code>src/addon/load.js</code>) and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

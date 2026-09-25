@@ -286,16 +286,21 @@ function resolveLocalDir(baseDir, target) {
  * dependencies and devDependencies, fetched from the real registry like any other source.
  *
  * Two lists, because the two questions a caller asks are different. `targets`: is this
- * declaration ITSELF a real, present directory in the store - the fact that lets
- * classifyDeps drop it from `unsupported` (authored code, reviewed wherever it sits,
- * nothing to reject) whether or not that directory turns out to hold a readable manifest.
+ * declaration ITSELF a directory the submission holds - the fact that lets classifyDeps
+ * drop it from `unsupported`, because the code is right there and is reviewed like any
+ * other authored file, so there is no unverifiable source to reject. Nothing is exempted
+ * from review by this; only the DECLARATION stops being an unidentifiable one. True
+ * whether or not the directory turns out to hold a readable manifest, and whether or not
+ * it holds anything at all - what npm's own docs require of a local path is a directory
+ * ("a path to a local directory that contains a package"), so that is the question asked.
  * `manifests`: which of those directories has ITS OWN readable package.json to recurse
  * into - a directory that exists but carries no manifest (or one that fails to parse) is
  * still authored code with nothing further to check, so it contributes to `targets` alone.
  *
- * A spec that escapes the store (resolveLocalDir) or names a directory the store does not
- * actually hold anything under is left out of BOTH lists - the caller's classifyDeps still
- * buckets that spec as `unsupported`, exactly as today.
+ * A spec that escapes the submission (resolveLocalDir) or names anything that is not a
+ * directory - a local tarball, a stray file, a path that is not there - is left out of
+ * BOTH lists, and the caller's classifyDeps buckets it as `unsupported`: a source the
+ * reviewer cannot verify, which is the whole of what that check exists to say.
  *
  * The loop guard is the manifests already found, not a separate tracking structure:
  * `manifests` is recorded keyed by resolved directory as the walk proceeds, and a directory
@@ -315,20 +320,15 @@ export function resolveLocalManifests(addon) {
   if (!files || !root) {
     return { targets, manifests: [] };
   }
-  const dirHasFiles = (dir) => {
-    // The store root itself: trivially true whenever we get this far (root was just read
-    // above), and `key.startsWith("" + "/")` would never match a normal relative key, so
-    // this has to be its own case rather than falling into the loop below.
-    if (dir === "") {
-      return true;
-    }
-    for (const key of files.keys()) {
-      if (key === dir || key.startsWith(`${dir}/`)) {
-        return true;
-      }
-    }
-    return false;
-  };
+  // What the LOADER saw, which is the only thing that can answer this: the key set names
+  // files, so a path that IS a file would pass a prefix test against it just as a real
+  // directory does - and an empty directory would fail one although it is exactly what a
+  // local spec may name.
+  const directories = new Set(addon?.directories ?? []);
+  const isDirectory = (dir) =>
+    // The store root itself: trivially true whenever we get this far (its manifest was
+    // just read above), and the walk records what it ENTERS, never the root it starts at.
+    dir === "" || directories.has(dir);
   const walk = (pkg, baseDir, declaringFile, depth) => {
     if (depth > LOCAL_MANIFEST_MAX_DEPTH) {
       return;
@@ -339,8 +339,8 @@ export function resolveLocalManifests(addon) {
         continue;
       }
       const dir = resolveLocalDir(baseDir, m[1]);
-      if (dir === null || !dirHasFiles(dir)) {
-        continue; // escapes the store, or nothing there
+      if (dir === null || !isDirectory(dir)) {
+        continue; // escapes the submission, or does not name a directory in it
       }
       targets.push({ declaringFile, map, name, dir });
       if (dir === "" || manifests.has(dir)) {

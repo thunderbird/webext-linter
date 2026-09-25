@@ -11,12 +11,29 @@ import {
   declaredFiles,
 } from "../../src/vendor/resolve.js";
 
-function fakeAddon(files) {
+// The loader records every directory it walks into, so a fake addon has to carry the same
+// fact - derived here from the keys, which is what a real walk of exactly these files would
+// have recorded. A directory a Map cannot express (an empty one) is passed explicitly.
+function impliedDirectories(keys) {
+  const dirs = new Set();
+  for (const key of keys) {
+    const segs = key.split("/");
+    for (let i = 1; i < segs.length; i += 1) {
+      dirs.add(segs.slice(0, i).join("/"));
+    }
+  }
+  return [...dirs];
+}
+
+function fakeAddon(files, extraDirs = []) {
   const map = new Map();
   for (const [k, v] of Object.entries(files)) {
     map.set(k, Buffer.from(v));
   }
-  return { files: map };
+  return {
+    files: map,
+    directories: [...impliedDirectories(map.keys()), ...extraDirs],
+  };
 }
 
 // A VENDOR file in prose declares nothing: the parse is deterministic, so an entry it
@@ -572,6 +589,31 @@ test("resolveVendor accepts a file: cycle without recursing forever", async () =
   // verification - both name real, already-known directories.
   assert.deepEqual(v.unsupportedDeps, []);
   assert.deepEqual(v.packages, []);
+});
+
+// The end of the chain for a spec that names a FILE rather than a directory: it reaches
+// unsupported-dependency, where a source the reviewer cannot identify belongs. A local
+// tarball is the case with teeth - npm installs from it, and it is bytes this review never
+// unpacks - and it used to be dropped here, because a file key matched the directory test
+// exactly.
+test("resolveVendor reports a file: spec naming a tarball as an unsupported source", async () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({
+      dependencies: { payload: "file:./libs/payload.tgz", ok: "file:./helper" },
+    }),
+    "libs/payload.tgz": "\u001f\u008b binary",
+    "helper/package.json": "{}",
+    "helper/index.js": "x",
+  });
+  const v = await resolveVendor({
+    addon,
+    reviewerInstalls: true,
+    enabled: false,
+  });
+  // Named, not merely non-empty: the surviving entry has to be the tarball.
+  assert.deepEqual(v.unsupportedDeps, [
+    { name: "payload", spec: "file:./libs/payload.tgz", file: "package.json" },
+  ]);
 });
 
 // A file: spec declared by a NESTED manifest that escapes the submission (or names

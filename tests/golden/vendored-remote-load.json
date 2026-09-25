@@ -53,6 +53,7 @@
       "unsupported-dependency",
       "vendor-vulnerable",
       "banned-library",
+      "xpi-packaged-symlink",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",

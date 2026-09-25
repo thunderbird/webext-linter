@@ -39,6 +39,7 @@ import { displayLine } from "../util/text.js";
 import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
 import { extractionDestination } from "../util/dest.js";
 import { FileStore, fileView } from "./corpus.js";
+import { SYMLINK_CAUSE } from "../lib/enum.js";
 
 /**
  * @typedef {object} GeckoSettings
@@ -134,8 +135,11 @@ import { FileStore, fileView } from "./corpus.js";
  *   add-on's own subtree. Reach for it deliberately: a check asking `store` is saying it
  *   wants the submission, not the add-on.
  * @property {string[]} [nodeModules]  Posix paths of node_modules directories
- *   skipped at load (their contents are never read); empty when none. In SCA
- *   mode the committed-node-modules check rejects each. Set by loadAddon, so an
+ *   skipped at load (their contents are never read); empty when none, and always empty
+ *   unless the load asked for it (loadAddon recordInstalledTrees), which only the
+ *   submitted SOURCE ARCHIVE does. committed-node-modules rejects each, and is the only
+ *   thing in the review that knows the name: nothing else has to, because for every other
+ *   artifact such a folder is content and is loaded as content. Set by loadAddon, so an
  *   add-on assembled as a view of an archive (scaViews) carries none.
  * @property {string[]} [archives]  Posix paths of committed binary archives
  *   (.zip/.xpi/... anywhere in the submission); empty when none. In SCA mode the
@@ -144,13 +148,30 @@ import { FileStore, fileView } from "./corpus.js";
  *   loadAddon only.
  * @property {string[]} [skipped]  Ready-to-narrate notices for entries skipped at
  *   load (a non-node_modules symlink); empty when none. A DIRECTORY submission is the
- *   only source: it describes how the reviewer's tree is laid out rather than what the
- *   developer packaged, which is why it is narrated and not reported. A packed archive
- *   names nothing here either - it is extracted with no symlink of its own (extractZip
- *   writes bytes, never a link), and a name extractZip will not take refuses the whole
- *   archive instead. The loader collects them; the pipeline narrates them under
- *   "Reading add-on", so a pre-banner sizing load prints nothing before the Setup
- *   banner. Set by loadAddon only.
+ *   only source: a packed archive names nothing here, since it is extracted with no
+ *   symlink of its own (extractZip writes bytes, never a link) and a name extractZip
+ *   will not take refuses the whole archive instead. This is the FEED side of a skipped
+ *   link, saying why bytes are missing from the corpus; whether the link is also a
+ *   finding is a separate question, answered from `symlinks` by the checks. The loader
+ *   collects them; the pipeline narrates them under "Reading add-on", so a pre-banner
+ *   sizing load prints nothing before the Setup banner. Set by loadAddon only.
+ * @property {{path: string, cause: import("../lib/enum.js").SymlinkCause}[]} [symlinks]  Every symbolic link the load
+ *   met, posix path and what its target turned out to be; empty when none. The cause is
+ *   a FACT about the link, never a verdict - the two artifacts hold links to different
+ *   standards (a source archive may link within itself, an add-on may not link at all),
+ *   so the policy lives in the checks that read this and nowhere else. `internal` is a
+ *   target inside the submission root, `outside` one beyond it, `broken` one that
+ *   resolves to nothing, and `entry` a packed archive that stored the file AS a link,
+ *   which is the one cause with no link on disk: extractZip records it and writes
+ *   nothing, so the corpus never holds a file whose bytes are a path. Where an installed
+ *   tree is recorded rather than read, a link named node_modules is that tree and is not
+ *   here (see nodeModules); everywhere else every link is. Set by loadAddon only.
+ * @property {string[]} [directories]  Posix paths of every directory the walk entered;
+ *   empty when none. The file keys cannot answer this: they name files, so a directory is
+ *   visible there only as a prefix of one and an EMPTY directory not at all - which is why
+ *   a reader asking "is this path a directory in the submission" asks here. A recorded
+ *   installed tree is NOT among them: it is not walked, so nothing may resolve into it.
+ *   Set by loadAddon only.
  * @property {?Manifest} manifest  Parsed; null if missing/invalid.
  * @property {string} manifestText  Raw manifest.json text ("" if none), lifted off
  *   the corpus so checks read it here, not via files.get("manifest.json").
@@ -166,25 +187,40 @@ import { FileStore, fileView } from "./corpus.js";
  *   ignored if it is already a directory. Defaults to a fresh `<source>.extracted`
  *   (src/util/dest.js) when omitted - callers that care where it landed (the
  *   review, so it can hand the same folder to a reviewer) pass their own.
+ * @param {{recordInstalledTrees?: boolean}} [options]  `recordInstalledTrees` makes a
+ *   node_modules directory a RECORDED path instead of content: its paths land in
+ *   `nodeModules` and not one of its files is read. Only a submitted SOURCE ARCHIVE asks
+ *   for that, because there an installed tree is not part of the submission - the
+ *   reviewer installs it - so reading it would review bytes the build replaces. In an
+ *   ADD-ON, which is what users receive, a folder called node_modules is shipped content
+ *   like any other folder and is loaded and reviewed as one, which is why this is off by
+ *   default: the exception is named at the one call that needs it.
  * @returns {Addon}
  */
-export function loadAddon(source, extractTo) {
+export function loadAddon(source, extractTo, { recordInstalledTrees } = {}) {
   const resolved = path.resolve(source);
   if (!fs.existsSync(resolved)) {
     throw new Error(`Add-on not found: ${resolved}`);
   }
   const stat = fs.statSync(resolved);
-  let files, nodeModules, archives, skipped;
+  let files, nodeModules, archives, skipped, symlinks, directories;
   if (stat.isDirectory()) {
-    ({ files, nodeModules, archives, skipped } = readDir(resolved));
+    ({ files, nodeModules, archives, skipped, symlinks, directories } = readDir(
+      resolved,
+      recordInstalledTrees
+    ));
   } else {
     const dest = extractTo ?? extractionDestination(`${resolved}.extracted`);
-    // node_modules is the one thing extractZip will not put on disk, so it is the
-    // one thing the read-back below cannot rediscover there - everything else
-    // (files, archives, symlink notices) is real on disk after extraction and is
+    // A recorded installed tree and a stored link entry are what extractZip will not put
+    // on disk, so they are what the read-back below cannot rediscover there - everything
+    // else (files, archives, symlink notices) is real on disk after extraction and is
     // read the same way an already-unpacked submission's is.
-    ({ nodeModules } = extractZip(resolved, dest));
-    ({ files, archives, skipped } = readDir(dest));
+    const packed = extractZip(resolved, dest, recordInstalledTrees);
+    const unpackedDir = readDir(dest, recordInstalledTrees);
+    ({ nodeModules } = packed);
+    ({ files, archives, skipped, directories } = unpackedDir);
+    // Both halves, so which one can see a link is not a fact this line depends on.
+    symlinks = [...packed.symlinks, ...unpackedDir.symlinks];
   }
   const addon = assembleAddon(files);
   // The artifact's own root. For a built XPI the corpus IS the root, so the two are one
@@ -194,6 +230,8 @@ export function loadAddon(source, extractTo) {
   addon.nodeModules = nodeModules;
   addon.archives = archives;
   addon.skipped = skipped;
+  addon.symlinks = symlinks;
+  addon.directories = directories;
   return addon;
 }
 
@@ -341,9 +379,9 @@ export function hasParentSegment(value) {
  *               here ONCE so nothing downstream has to re-derive where it went.
  *   build       the same files again, minus dot-prefixed paths at any depth - VCS/editor/CI
  *               noise - except the archive's own `.npmrc` (the registry config
- *               build-registry-redirect reads). node_modules never reaches here: loadAddon
- *               skips it at load, and passes the directory paths through for
- *               committed-node-modules.
+ *               build-registry-redirect reads). An installed dependency tree never reaches
+ *               here: loadAddon records the directory paths for committed-node-modules and
+ *               reads none of it.
  *
  * The Experiment is disjoint from the other two. Source and build are NOT, and are not
  * meant to be: the tooling is intermingled with the code, each half feeds its own checks,
@@ -363,7 +401,8 @@ export function hasParentSegment(value) {
  * @param {{scaRoot: string, scaExpSource?: string}} where  Absolute paths, resolved by the
  *   arg-array reader (src/cli.js). scaExpSource may sit anywhere under the root.
  * @returns {{source: Addon, experiment: object, build: {files: object, store: object,
- *   nodeModules: string[], archives: string[]}}}
+ *   nodeModules: string[], archives: string[],
+ *   symlinks: {path: string, cause: object}[], directories: string[]}}}
  */
 export function scaViews(archive, { scaRoot, scaExpSource }) {
   const store = archive.files;
@@ -396,20 +435,26 @@ export function scaViews(archive, { scaRoot, scaExpSource }) {
 
   const source = assembleAddon(fileView(store, { keys: sourceKeys }), true);
   source.store = store;
+  // Beside `store`, and for the same reason: both describe the SUBMISSION rather than this
+  // view of it, and the file:/link: walk reads them together - the store to find a
+  // manifest, this to decide whether a declared path is a directory at all.
+  source.directories = archive.directories;
   const experiment = fileView(store, { keys: expKeys });
   source.experiment = experiment;
   return {
     source,
     experiment,
-    // nodeModules/archives are COPIED so the build half owns its lists: the caller shares
-    // one archive object, and an aliased array must not leak mutations back to it. Both
-    // span the whole --sca-root, so the committed-* checks catch a tree anywhere - in the
-    // review source, the build tree, or the Experiment.
+    // These lists are COPIED so the build half owns them: the caller shares one archive
+    // object, and an aliased array must not leak mutations back to it. All of them span
+    // the whole --sca-root, so the checks reading them catch one anywhere - in the review
+    // source, the build tree, or the Experiment.
     build: {
       files: fileView(store, { keys: buildKeys }),
       store,
       nodeModules: [...archive.nodeModules],
       archives: [...archive.archives],
+      symlinks: [...archive.symlinks],
+      directories: [...archive.directories],
     },
   };
 }
@@ -449,17 +494,24 @@ function unreadableArchiveError(zipPath) {
  * write. Every entry here is read with getData() and written with writeFileSync, so
  * what lands on disk is never anything other than the file it claims to be.
  *
+ * The mode is still READ, for the one claim worth recording: an entry stored as a link
+ * holds a path where a file's bytes belong, so writing it would put a file in the corpus
+ * whose whole content is the name of another one. It is recorded and dropped instead.
+ *
  * destDir is always this call's own fresh destination (the caller computed it, or
  * defaulted it, right before calling this), so a refusal removes it rather than
  * leaving a partial extraction beside the submission for a reviewer to mistake for
  * the whole thing.
  * @param {string} zipPath  Path to the .xpi/.zip archive.
  * @param {string} destDir  Where to write it. Created if missing.
- * @returns {{nodeModules: string[]}}  Node_modules directories skipped, never
- *   written - the one fact a later read of destDir cannot recover, because nothing
- *   is there to find.
+ * @param {boolean} [recordInstalledTrees]  See loadAddon: record a node_modules entry's
+ *   directory as a path instead of extracting it. Off means such an entry is extracted
+ *   like any other, which is what a shipped add-on's files are.
+ * @returns {{nodeModules: string[], symlinks: {path: string, cause: object}[]}}  What
+ *   was skipped and never written - the facts a later read of destDir cannot recover,
+ *   because nothing is there to find.
  */
-function extractZip(zipPath, destDir) {
+function extractZip(zipPath, destDir, recordInstalledTrees) {
   let zip;
   try {
     zip = new AdmZip(zipPath);
@@ -468,6 +520,7 @@ function extractZip(zipPath, destDir) {
     throw unreadableArchiveError(zipPath);
   }
   const nodeModules = new Set();
+  const symlinks = [];
   let unpacked = 0;
   // Created up front, not only by the first entry's own mkdirSync: an archive with no
   // file entries at all (only directories, or only a node_modules subtree) would
@@ -488,13 +541,24 @@ function extractZip(zipPath, destDir) {
       if (!isSafeAddonPath(name)) {
         throw unreadableArchiveError(zipPath);
       }
-      // Never decompress an installed-dependency tree: record the outer node_modules
-      // directory and skip BEFORE getData(), so its contents never enter memory or
-      // reach disk.
-      const segs = name.split("/");
-      const nm = segs.indexOf("node_modules");
-      if (nm !== -1 && nm < segs.length - 1) {
-        nodeModules.add(segs.slice(0, nm + 1).join("/"));
+      // Where an installed tree is recorded rather than read, record the outer
+      // node_modules directory and skip BEFORE getData(), so its contents never enter
+      // memory or reach disk. Otherwise the name means nothing here: an add-on's entries
+      // are its content whatever directory they sit in, and the size caps around this
+      // loop are what keep a large one bounded.
+      if (recordInstalledTrees) {
+        const segs = name.split("/");
+        const nm = segs.indexOf("node_modules");
+        if (nm !== -1 && nm < segs.length - 1) {
+          nodeModules.add(segs.slice(0, nm + 1).join("/"));
+          continue;
+        }
+      }
+      // An entry the archive stored AS a link carries a target path where a file's bytes
+      // belong. Record it and skip BEFORE getData(), so the corpus never holds a file
+      // whose entire content is the name of another one.
+      if (isStoredLink(entry)) {
+        symlinks.push({ path: name, cause: SYMLINK_CAUSE.ENTRY });
         continue;
       }
       // Bound decompression against a zip bomb: check the declared size before
@@ -524,43 +588,85 @@ function extractZip(zipPath, destDir) {
     fs.rmSync(destDir, { recursive: true, force: true });
     throw err;
   }
-  return { nodeModules: [...nodeModules] };
+  return { nodeModules: [...nodeModules], symlinks };
+}
+
+// A zip entry's external attributes carry the Unix mode in their high 16 bits, and the
+// file-type field of that mode says what the entry claims to be. 0 is what an archiver
+// that records no Unix mode at all writes, and reads as "not a link" like any other
+// non-link type.
+const UNIX_MODE_SHIFT = 16;
+const S_IFMT = 0o170000;
+const S_IFLNK = 0o120000;
+
+/**
+ * Whether the archive stored this entry as a symbolic link rather than a file.
+ * @param {{attr?: number}} entry  An AdmZip entry.
+ * @returns {boolean}
+ */
+function isStoredLink(entry) {
+  const mode = (entry.attr ?? 0) >>> UNIX_MODE_SHIFT;
+  return (mode & S_IFMT) === S_IFLNK;
 }
 
 /**
  * @param {string} dir  Root directory of the unpacked add-on.
+ * @param {boolean} [recordInstalledTrees]  See loadAddon: record a node_modules directory
+ *   as a path instead of walking it. Off means it is an ordinary folder, walked and keyed
+ *   like any other, which is what a shipped add-on's folders are.
  * @returns {{files: Map<string, Buffer>, nodeModules: string[], archives: string[],
- *   skipped: string[]}}
+ *   skipped: string[], symlinks: {path: string, cause: object}[],
+ *   directories: string[]}}
  */
-function readDir(dir) {
+function readDir(dir, recordInstalledTrees) {
   const keys = [];
   const nodeModules = [];
   const archives = [];
   const skipped = [];
+  const symlinks = [];
+  const directories = [];
   let unpacked = 0;
+  // Resolved once, and resolved at all: the classification below compares a link's
+  // realpath against this, and relativeInside resolves spellings rather than links. A
+  // root reached THROUGH a link (macOS /tmp, which the tests use) would otherwise put
+  // every one of its own files outside itself. Unguarded on purpose - a root that cannot
+  // be resolved is about to fail the readdirSync below anyway, and falling back to the
+  // unresolved path would answer every containment question wrongly in the rejecting
+  // direction.
+  const rootReal = fs.realpathSync(dir);
   /** @param {string} current  Directory to recurse into. */
   const walk = (current) => {
     for (const e of fs.readdirSync(current, { withFileTypes: true })) {
       const full = path.join(current, e.name);
       if (e.isSymbolicLink()) {
-        // A symlink named node_modules is a committed dependency tree too: record it
-        // by name (its target is never followed or read) so committed-node-modules
-        // still fires. Other symlinks are skipped rather than followed: a real .xpi
-        // has none, and following could pull in host files or loop. Collect the skip
-        // as a notice (the caller narrates it) so it is not silent.
-        if (e.name === "node_modules") {
+        // Where an installed tree is recorded rather than read, a symlink NAMED
+        // node_modules is that tree too: record it by name and let the one check that
+        // owns installed trees answer it, so nothing else in the review has to know the
+        // name at all. Every other symlink is skipped rather than followed - following
+        // could pull in host files or loop - with the skip collected as a notice (the
+        // caller narrates it) so it is not silent, and WHERE the target lands recorded
+        // as a fact, which the two artifacts' checks hold to their own standards.
+        if (recordInstalledTrees && e.name === "node_modules") {
           nodeModules.push(walkedKey(path.relative(dir, full)));
         } else {
-          skipped.push(
-            `Skipping symlink (not packaged): ${displayLine(path.relative(dir, full))}`
-          );
+          const rel = walkedKey(path.relative(dir, full));
+          symlinks.push({ path: rel, cause: linkCause(full, rootReal) });
+          skipped.push(`Skipping symlink (not packaged): ${displayLine(rel)}`);
         }
       } else if (e.isDirectory()) {
-        // Never read an installed-dependency tree: record it and do NOT recurse, so
-        // its (huge) contents never enter memory.
-        if (e.name === "node_modules") {
+        // Where an installed tree is recorded rather than read, record it and do NOT
+        // recurse, so its (huge) contents never enter memory. Otherwise the name means
+        // nothing here and the folder is walked like any other - a shipped add-on's
+        // files are its content whatever their directory is called, and the unpacked-size
+        // cap below is what keeps a large one bounded.
+        if (recordInstalledTrees && e.name === "node_modules") {
           nodeModules.push(walkedKey(path.relative(dir, full)));
         } else {
+          // Recorded as well as walked, because the key set cannot say this: it holds
+          // files, so a directory exists there only as a prefix of one, and an EMPTY
+          // directory not at all. A recorded installed tree is deliberately absent - it
+          // is not walked, so nothing may resolve into it.
+          directories.push(walkedKey(path.relative(dir, full)));
           walk(full);
         }
       } else if (e.isFile()) {
@@ -580,7 +686,39 @@ function readDir(dir) {
     }
   };
   walk(dir);
-  return { files: new FileStore(dir, keys), nodeModules, archives, skipped };
+  return {
+    files: new FileStore(dir, keys),
+    nodeModules,
+    archives,
+    skipped,
+    symlinks,
+    directories,
+  };
+}
+
+/**
+ * Where a symbolic link's target lands, relative to the root being walked: "internal",
+ * "outside", or "broken" when it resolves to nothing.
+ *
+ * realpathSync is what makes this a question about the filesystem rather than about
+ * spelling - it follows the whole chain, so a link through a link through an escape is
+ * the escape it ends at, and it throws (ENOENT, or ELOOP for a cycle) exactly when there
+ * is nothing at the end. relativeInside then answers containment, the same way every
+ * other caller asks it.
+ * @param {string} full  Absolute path OF the link itself.
+ * @param {string} rootReal  The walk root, already resolved.
+ * @returns {string}
+ */
+function linkCause(full, rootReal) {
+  let target;
+  try {
+    target = fs.realpathSync(full);
+  } catch {
+    return SYMLINK_CAUSE.BROKEN;
+  }
+  return relativeInside(target, rootReal) === null
+    ? SYMLINK_CAUSE.OUTSIDE
+    : SYMLINK_CAUSE.INTERNAL;
 }
 
 /**

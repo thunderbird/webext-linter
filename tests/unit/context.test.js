@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { buildXpiCtxs, buildScaCtxs } from "../../src/checks/context.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 import { runExtractionPass } from "../../src/checks/extract.js";
+import { SYMLINK_CAUSE } from "../../src/lib/enum.js";
 
 const addonWith = (files, nonAuthored = []) => ({
   files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
@@ -190,6 +191,8 @@ test("buildScaCtxs.buildCtx puts the build corpus on ctx.addon and strips manife
     manifest: { name: "leak" },
     nodeModules: ["node_modules"],
     archives: ["dist.zip"],
+    symlinks: [{ path: "libs/out", cause: SYMLINK_CAUSE.OUTSIDE }],
+    directories: ["libs"],
     buildReview: { unresolved: [], anchor: "package.json" },
   };
 
@@ -198,6 +201,12 @@ test("buildScaCtxs.buildCtx puts the build corpus on ctx.addon and strips manife
   assert.equal(buildCtx.addon.manifest, undefined); // not allowlisted (no leak)
   assert.deepEqual(buildCtx.addon.nodeModules, ["node_modules"]); // committed-node-modules reads it
   assert.deepEqual(buildCtx.addon.archives, ["dist.zip"]); // committed-build-artifact reads it
+  // sca-invalid-symlink reads it
+  assert.equal(buildCtx.addon.symlinks.length, 1);
+  assert.equal(buildCtx.addon.symlinks[0].path, "libs/out");
+  assert.equal(buildCtx.addon.symlinks[0].cause, SYMLINK_CAUSE.OUTSIDE);
+  // the file:/link: walk a lock check runs reads it
+  assert.deepEqual(buildCtx.addon.directories, ["libs"]);
   assert.deepEqual(buildCtx.addon.buildReview, {
     unresolved: [],
     anchor: "package.json",

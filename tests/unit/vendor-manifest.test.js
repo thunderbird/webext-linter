@@ -8,12 +8,29 @@ import assert from "node:assert/strict";
 import { resolveLocalManifests } from "../../src/vendor/manifest.js";
 import { LOCAL_MANIFEST_MAX_DEPTH } from "../../src/config.js";
 
-function fakeAddon(files) {
+// The loader records every directory it walks into, so a fake addon has to carry the same
+// fact - derived here from the keys, which is what a real walk of exactly these files would
+// have recorded. A directory a Map cannot express (an empty one) is passed explicitly.
+function impliedDirectories(keys) {
+  const dirs = new Set();
+  for (const key of keys) {
+    const segs = key.split("/");
+    for (let i = 1; i < segs.length; i += 1) {
+      dirs.add(segs.slice(0, i).join("/"));
+    }
+  }
+  return [...dirs];
+}
+
+function fakeAddon(files, extraDirs = []) {
   const map = new Map();
   for (const [k, v] of Object.entries(files)) {
     map.set(k, Buffer.from(v));
   }
-  return { files: map };
+  return {
+    files: map,
+    directories: [...impliedDirectories(map.keys()), ...extraDirs],
+  };
 }
 
 test("resolveLocalManifests: no root manifest, or no file:/link: deps, yields nothing", () => {
@@ -92,6 +109,47 @@ test("resolveLocalManifests: a file: target with no manifest is a target but not
       map: "dependencies",
       name: "assets",
       dir: "assets",
+    },
+  ]);
+  assert.deepEqual(manifests, []);
+});
+
+// npm's own docs say what a local path may name: "a path to a local directory that
+// contains a package". Anything else is a source nobody can verify - a tarball is bytes
+// this review never unpacks, and a stray file is not a package at all - so neither is a
+// target, and the caller goes on to report each as unsupported.
+test("resolveLocalManifests: a spec naming a file is not a directory target", () => {
+  for (const [spec, key] of [
+    ["file:./libs/payload.tgz", "libs/payload.tgz"],
+    ["file:./libs/helper.js", "libs/helper.js"],
+    ["file:./README.md", "README.md"],
+  ]) {
+    const addon = fakeAddon({
+      "package.json": JSON.stringify({ dependencies: { d: spec } }),
+      [key]: "x",
+    });
+    const { targets, manifests } = resolveLocalManifests(addon);
+    assert.deepEqual(targets, [], spec);
+    assert.deepEqual(manifests, [], spec);
+  }
+});
+
+// An EMPTY directory is still a directory, which is the whole question: npm will fail the
+// install for the missing package.json, but that is the developer's problem and not an
+// unverifiable source. Only the loader can report this one - a key set names files, so an
+// empty directory leaves no trace in it.
+test("resolveLocalManifests: an empty directory is a target", () => {
+  const addon = fakeAddon(
+    { "package.json": JSON.stringify({ dependencies: { d: "file:./empty" } }) },
+    ["empty"]
+  );
+  const { targets, manifests } = resolveLocalManifests(addon);
+  assert.deepEqual(targets, [
+    {
+      declaringFile: "package.json",
+      map: "dependencies",
+      name: "d",
+      dir: "empty",
     },
   ]);
   assert.deepEqual(manifests, []);

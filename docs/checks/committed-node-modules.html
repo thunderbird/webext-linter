@@ -26,12 +26,20 @@
         from an undeclared source.
       </p>
       <p>
-        node_modules is never read. When the submission is loaded, a node_modules
+        node_modules is never read. When the source archive is loaded, a node_modules
         directory is skipped and never opened; only its path is recorded, so a huge
         committed tree costs nothing and its contents can never influence the review.
         This holds anywhere in the source root, at any depth, including inside the
         Experiment implementation. Each recorded node_modules directory becomes one
         error finding.
+      </p>
+      <p>
+        That skip belongs to the submitted source and to nothing else. It is asked
+        for at load, by the one caller that reads a source archive, because there an
+        installed tree is not part of the submission — the reviewer installs it. In
+        the <strong>built add-on</strong> the name means nothing: a folder called
+        node_modules is shipped content, so it is loaded, reviewed and reported like
+        any other folder, and this check does not run against it.
       </p>
 
       <h2>Decision flow</h2>

@@ -820,6 +820,36 @@ deterministic-phase:
   response: |-
     The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them.
 
+# Deterministic (SCA only): a symbolic link in --sca-root that leads out of the submission,
+# or nowhere at all. We never unpack the source archive ourselves - the reviewer extracts it,
+# with a tool that does create links - so these are real links on the reviewer's disk. A link
+# is never followed and never read (src/addon/load.js), so whatever it names is outside the
+# corpus: the build would compile code no review covered. A link WITHIN the submission is
+# ordinary layout and is not reported, because its target is walked under its own real path.
+# The loader records each link with where its target landed; the cause rides as the locus
+# hint, so both kinds collapse into this one entry and each line still says which it was.
+- title: Symbolic link out of the submission
+  severity: error
+  sca: true
+  check: sca-invalid-symlink
+  input: build
+  response: |-
+    The following symbolic link(s) lead outside the submitted source, or to a target that does not exist. The review covers only what the submission contains, so code reached through such a link is never seen, and a build that needs it cannot be reproduced. Replace each link with the actual files, or remove it where the build does not need it. A link pointing to another location inside the submission is fine.
+
+# Deterministic: an add-on may carry no symbolic link, wherever it points. A packaged add-on
+# is the bytes a user installs, and a link is resolved by whatever machine unpacks it, so the
+# file the reviewer read need not be the file that runs. Stricter than the source archive
+# above on purpose: there a link is layout, here it is content that is not there.
+# Both arrival shapes are covered from the one recorded list - a real link when the add-on is
+# a folder, and an entry the archive stored AS a link when it is packed (that one never
+# reaches disk: extractZip records it and writes nothing, so nothing else could report it).
+- title: Symbolic link in the add-on
+  severity: error
+  check: xpi-packaged-symlink
+  input: xpi
+  response: |-
+    The following file(s) in the add-on are symbolic links. An add-on must contain regular files only, because a link is resolved wherever the package is unpacked, so what a link names is not part of what users install and is not what was reviewed. Package the real files in their place.
+
 # SCA only: a package.json install lifecycle hook (preinstall / install / postinstall /
 # prepare / prepublish) runs arbitrary code when the reviewer installs the dependencies,
 # BEFORE the build - a known supply-chain vector (a postinstall that fetches and runs

@@ -120,3 +120,79 @@ test("allowed Experiment: normal review runs, no reject", async () => {
 
   fs.rmSync(src, { recursive: true, force: true });
 });
+
+// A link named node_modules is a link like any other here. Nothing installs anything into
+// an add-on, so the name earns it no special handling - and it must not, because the check
+// that answers a committed dependency tree is sca:true and never runs over an add-on. When
+// the loader did treat the name specially, this exact submission reported NOTHING: the link
+// was filed as a dependency tree, no check claimed it, and the code it reached was neither
+// reviewed nor named.
+test("add-on: a node_modules symlink out of the package is rejected", async () => {
+  const outside = tmpAddon({ "secret/payload.js": "exfiltrate();\n" });
+  const src = tmpAddon({
+    "manifest.json": JSON.stringify({
+      manifest_version: 3,
+      name: "Linked",
+      version: "1.0",
+      background: { scripts: ["bg.js"] },
+    }),
+    "bg.js": "browser.runtime.onInstalled.addListener(() => {});\n",
+  });
+  fs.symlinkSync(
+    path.join(outside, "secret"),
+    path.join(src, "node_modules"),
+    "dir"
+  );
+
+  const { findings } = await runPipeline({ addonPath: src, ...OFFLINE });
+
+  assert.ok(
+    findings.some(
+      (f) =>
+        f.ruleId === "xpi-packaged-symlink" &&
+        f.file === "node_modules" &&
+        f.hint === "link outside the package"
+    ),
+    "the link is rejected, named as a link rather than as a dependency tree"
+  );
+  // Its target is still never followed, so nothing behind it entered the review.
+  assert.ok(
+    !findings.some((f) => /payload/.test(f.file ?? "")),
+    "the link target is not read"
+  );
+
+  [src, outside].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+});
+
+// The other half: a real node_modules DIRECTORY in an add-on is shipped content, so its
+// files are in the corpus and are reviewed at their own paths. The fixture
+// xpi-shipped-node-modules pins the reported shape; this pins the seam.
+test("add-on: a shipped node_modules folder is reviewed like any other folder", async () => {
+  const src = tmpAddon({
+    "manifest.json": JSON.stringify({
+      manifest_version: 3,
+      name: "Shipped",
+      version: "1.0",
+      background: { scripts: ["bg.js"] },
+    }),
+    "bg.js": "browser.runtime.onInstalled.addListener(() => {});\n",
+    "node_modules/dep/index.js": 'function f() { return eval("1 + 1"); }\n',
+  });
+
+  const { findings } = await runPipeline({ addonPath: src, ...OFFLINE });
+
+  assert.ok(
+    findings.some(
+      (f) => f.ruleId === "eval-call" && f.file === "node_modules/dep/index.js"
+    ),
+    "code inside the shipped folder is reviewed at its own path"
+  );
+  // committed-node-modules is sca:true: an installed tree is build output only where a
+  // reviewer installs one, so it says nothing about a packaged add-on.
+  assert.ok(
+    !findings.some((f) => f.ruleId === "committed-node-modules"),
+    "the source-submission check does not reach across to the add-on"
+  );
+
+  fs.rmSync(src, { recursive: true, force: true });
+});

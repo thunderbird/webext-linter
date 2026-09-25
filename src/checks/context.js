@@ -60,7 +60,11 @@ import { apiUsageOf } from "./extract.js";
  * `vendor`/`bundled` are the pipeline's pre-computed, reconciled classification (the lazy
  * fallbacks would recompute a less-complete one). `nodeModules`/`archives`/`buildReview` serve
  * the SCA build corpus (the build ctx is projected from addon.buildFiles itself);
- * they are undefined on the xpi/source/manifest routes, which is harmless. The lazy caches
+ * they are undefined on the xpi/source/manifest routes, which is harmless. `symlinks` rides
+ * beside them but is NOT one of them: the xpi route carries it too, because an add-on holds
+ * a link to a stricter standard than a source archive does and needs the same facts to say
+ * so, and `directories` rides with it for the file:/link: walk a lock check runs. The lazy
+ * caches
  * (locales/localizedNames/evalScan/outboundSinks/permissionAnalysis/apiResolution, and the
  * bundled fallback)
  * attach themselves on demand via `ctx.addon.X ??= …`, so they need no seeding.
@@ -82,6 +86,8 @@ function reviewView(addon) {
     bundled: addon.bundled,
     nodeModules: addon.nodeModules,
     archives: addon.archives,
+    symlinks: addon.symlinks,
+    directories: addon.directories,
     buildReview: addon.buildReview,
   };
 }

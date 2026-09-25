@@ -14,6 +14,7 @@ import {
   relativeInside,
 } from "../../src/addon/load.js";
 import { withExperiment } from "../../src/addon/corpus.js";
+import { SYMLINK_CAUSE } from "../../src/lib/enum.js";
 
 // Loading a directory keeps a real .js file but drops a symlink pointing at it,
 // preventing duplicate or out-of-tree content from entering addon.files.
@@ -31,13 +32,88 @@ test("directory load skips symlinks but keeps real files", () => {
   assert.ok(!addon.files.has("link.js"), "symlink is skipped");
   // The skip is collected as a notice (not printed) for the pipeline to narrate.
   assert.deepEqual(addon.skipped, ["Skipping symlink (not packaged): link.js"]);
+  // It is ALSO recorded with where its target landed. Inside the root here, which is what
+  // a source archive is allowed to do - so only the add-on's own check refuses this one.
+  assert.equal(addon.symlinks.length, 1);
+  assert.equal(addon.symlinks[0].path, "link.js");
+  assert.equal(addon.symlinks[0].cause, SYMLINK_CAUSE.INTERNAL);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A symlink named node_modules is still a committed dependency tree: it is recorded
-// (so committed-node-modules fires) but never followed - its target is not read.
-test("directory load records a symlinked node_modules without following it", () => {
+// Where a link LEADS is a fact the loader records and neither check computes. The three
+// answers, from one walk: inside the root, beyond it, and nowhere. The target of an
+// escaping link is deliberately real, so only its location distinguishes it from the
+// internal one.
+test("directory load records where each symlink's target lands", () => {
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-out-"));
+  fs.mkdirSync(path.join(outside, "secret"));
+  fs.writeFileSync(
+    path.join(outside, "secret", "payload.js"),
+    "exfiltrate();\n"
+  );
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-cause-"));
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  fs.mkdirSync(path.join(dir, "inner"));
+  fs.writeFileSync(path.join(dir, "inner", "real.js"), "browser.runtime.id;\n");
+  fs.symlinkSync("inner", path.join(dir, "intree"), "dir");
+  fs.symlinkSync(
+    path.join(outside, "secret"),
+    path.join(dir, "outward"),
+    "dir"
+  );
+  fs.symlinkSync(path.join(dir, "nothing-here"), path.join(dir, "dangling"));
+
+  const addon = loadAddon(dir);
+  const byPath = new Map(addon.symlinks.map((l) => [l.path, l.cause]));
+  assert.deepEqual([...byPath.keys()].sort(), [
+    "dangling",
+    "intree",
+    "outward",
+  ]);
+  assert.equal(byPath.get("intree"), SYMLINK_CAUSE.INTERNAL);
+  assert.equal(byPath.get("outward"), SYMLINK_CAUSE.OUTSIDE);
+  assert.equal(byPath.get("dangling"), SYMLINK_CAUSE.BROKEN);
+  // Recorded, still never followed: the escaping target stays out of the corpus.
+  assert.ok(
+    ![...addon.files.keys()].some((k) => k.includes("payload")),
+    "an escaping link's target is not read"
+  );
+
+  [dir, outside].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+});
+
+// A link is followed to its END before the question is asked, so a chain that starts
+// inside the root and leaves it is the escape it arrives at, not the hop it began with.
+test("directory load follows a symlink chain to where it really ends", () => {
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-chain-out-"));
+  fs.writeFileSync(path.join(outside, "target.js"), "exfiltrate();\n");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-chain-"));
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  // hop.js sits inside the root and points out of it; first.js points at hop.js, so a
+  // test of the written target alone would read the first link as internal.
+  fs.symlinkSync(path.join(outside, "target.js"), path.join(dir, "hop.js"));
+  fs.symlinkSync(path.join(dir, "hop.js"), path.join(dir, "first.js"));
+
+  const addon = loadAddon(dir);
+  const chain = new Map(addon.symlinks.map((l) => [l.path, l.cause]));
+  assert.deepEqual([...chain.keys()].sort(), ["first.js", "hop.js"]);
+  assert.equal(chain.get("hop.js"), SYMLINK_CAUSE.OUTSIDE);
+  assert.equal(chain.get("first.js"), SYMLINK_CAUSE.OUTSIDE);
+
+  [dir, outside].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+});
+
+// In a SOURCE ARCHIVE a symlink named node_modules is still a committed dependency tree:
+// it is recorded (so committed-node-modules fires) but never followed - its target is not
+// read - and it is not a symlink record, so exactly one check answers it.
+test("source-archive load records a symlinked node_modules without following it", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-nmsym-"));
   fs.writeFileSync(
     path.join(dir, "manifest.json"),
@@ -50,14 +126,192 @@ test("directory load records a symlinked node_modules without following it", () 
     "dir"
   );
 
-  const addon = loadAddon(dir);
+  const addon = loadAddon(dir, undefined, { recordInstalledTrees: true });
   assert.deepEqual(addon.nodeModules, ["node_modules"]);
-  // A node_modules symlink is a recorded dependency tree, not a skipped-entry notice.
   assert.deepEqual(addon.skipped, []);
+  assert.deepEqual(addon.symlinks, []);
   assert.ok(
     ![...addon.files.keys()].some((k) => k.startsWith("node_modules")),
     "symlink target not read"
   );
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// In an ADD-ON the name means nothing: nothing installs anything here, so a link called
+// node_modules is just a link and is answered by the one rule that judges links. It is
+// still never followed - no link ever is.
+test("add-on load treats a symlinked node_modules as an ordinary symlink", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-nmsym-xpi-"));
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  fs.symlinkSync(
+    path.join(os.tmpdir(), "wrr-nm-target"),
+    path.join(dir, "node_modules"),
+    "dir"
+  );
+
+  const addon = loadAddon(dir);
+  assert.deepEqual(addon.nodeModules, []);
+  assert.equal(addon.symlinks.length, 1);
+  assert.equal(addon.symlinks[0].path, "node_modules");
+  assert.equal(addon.symlinks[0].cause, SYMLINK_CAUSE.BROKEN);
+  assert.deepEqual(addon.skipped, [
+    "Skipping symlink (not packaged): node_modules",
+  ]);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// And a real node_modules DIRECTORY in an add-on is shipped content: walked and keyed like
+// any other folder, because that is what a user receives.
+test("add-on load reviews a node_modules directory like any other folder", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-nmdir-xpi-"));
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  fs.mkdirSync(path.join(dir, "node_modules", "dep"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "node_modules", "dep", "index.js"),
+    "module.exports = 1;\n"
+  );
+
+  const addon = loadAddon(dir);
+  assert.deepEqual(addon.nodeModules, []);
+  assert.ok(
+    addon.files.has("node_modules/dep/index.js"),
+    "it is in the corpus"
+  );
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A packed archive can store an entry AS a link, and its data is then a target path where
+// a file's bytes belong. Extraction never replays a stored mode (that is what keeps a
+// crafted archive from writing a real link), so writing it would put a file in the corpus
+// whose whole content is the name of another one. Recorded and dropped instead - and since
+// nothing lands on disk, the record is the only thing that can report it.
+test("loadAddon(file) records an entry the archive stored as a link, writing nothing", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-linkentry-"));
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+  );
+  zip.addFile("bg.js", Buffer.from("browser.runtime.id;\n"));
+  // addFile stamps S_IFREG and keeps only the permission bits, so the file TYPE is set on
+  // the entry itself - which is exactly the claim a hand-built archive would make.
+  zip.addFile("libs/jquery.js", Buffer.from("../../../../etc/passwd"));
+  zip.getEntry("libs/jquery.js").attr = (0o120777 << 16) >>> 0;
+  const file = path.join(dir, "addon.xpi");
+  zip.writeZip(file);
+
+  const dest = path.join(dir, "addon.xpi.extracted");
+  const addon = loadAddon(file, dest);
+
+  assert.equal(addon.symlinks.length, 1);
+  assert.equal(addon.symlinks[0].path, "libs/jquery.js");
+  assert.equal(addon.symlinks[0].cause, SYMLINK_CAUSE.ENTRY);
+  assert.ok(
+    !addon.files.has("libs/jquery.js"),
+    "the link entry is not a corpus file"
+  );
+  assert.ok(
+    !fs.existsSync(path.join(dest, "libs", "jquery.js")),
+    "and nothing was written for it"
+  );
+  // The rest of the archive is unaffected.
+  assert.ok(addon.files.has("bg.js"));
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// An archiver that records no Unix mode at all writes 0, which names no file type. It must
+// read as an ordinary file, or every entry of such an archive would be refused as a link.
+test("loadAddon(file) treats an entry with no recorded mode as an ordinary file", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-nomode-"));
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+  );
+  zip.addFile("bg.js", Buffer.from("browser.runtime.id;\n"));
+  zip.getEntry("bg.js").attr = 0;
+  const file = path.join(dir, "addon.xpi");
+  zip.writeZip(file);
+
+  const addon = loadAddon(file, path.join(dir, "addon.xpi.extracted"));
+  assert.deepEqual(addon.symlinks, []);
+  assert.ok(addon.files.has("bg.js"));
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The walk records every directory it enters, which is the one question the key set cannot
+// answer: a key names a file, so a directory shows up there only as a prefix of one, and an
+// empty directory not at all. A recorded installed tree is absent - it is never walked, so
+// nothing may resolve into it.
+test("directory load records every directory it walks into", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-dirs-"));
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  fs.mkdirSync(path.join(dir, "libs", "widget"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "libs", "widget", "index.js"), "1;\n");
+  fs.mkdirSync(path.join(dir, "empty"));
+  fs.mkdirSync(path.join(dir, "node_modules", "dep"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "node_modules", "dep", "i.js"), "1;\n");
+  fs.writeFileSync(path.join(dir, "libs", "payload.tgz"), "blob");
+
+  const addon = loadAddon(dir, undefined, { recordInstalledTrees: true });
+  assert.deepEqual(addon.directories.sort(), ["empty", "libs", "libs/widget"]);
+  // A file is never one, however it is spelled - the bug this list exists to close.
+  assert.ok(!addon.directories.includes("libs/payload.tgz"));
+  // And the tree recorded instead of walked contributes neither itself nor its contents.
+  assert.deepEqual(addon.nodeModules, ["node_modules"]);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Loaded as an ADD-ON, where node_modules is ordinary content, it is a directory like any
+// other - so the two halves of the loader stay consistent about what a directory is.
+test("add-on load records a node_modules folder as the directory it is", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-dirs-xpi-"));
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  fs.mkdirSync(path.join(dir, "node_modules", "dep"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "node_modules", "dep", "i.js"), "1;\n");
+
+  const addon = loadAddon(dir);
+  assert.deepEqual(addon.directories.sort(), [
+    "node_modules",
+    "node_modules/dep",
+  ]);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The packed route gets the same list, because loadAddon walks the extraction back with
+// the same readDir - nothing about directories has to be recovered from the archive.
+test("loadAddon(file) records the extracted directories", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-dirs-zip-"));
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+  );
+  zip.addFile("libs/widget/index.js", Buffer.from("1;\n"));
+  const file = path.join(dir, "addon.xpi");
+  zip.writeZip(file);
+
+  const addon = loadAddon(file, path.join(dir, "addon.xpi.extracted"));
+  assert.deepEqual(addon.directories.sort(), ["libs", "libs/widget"]);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -137,10 +391,13 @@ test("the source and experiment views merge into the add-on's whole tree", () =>
     "ChromeUtils.import('x');\n"
   );
 
-  const { source, experiment } = scaViews(loadAddon(root), {
-    scaRoot: root,
-    scaExpSource: path.join(root, "addon", "experiment"),
-  });
+  const { source, experiment } = scaViews(
+    loadAddon(root, undefined, { recordInstalledTrees: true }),
+    {
+      scaRoot: root,
+      scaExpSource: path.join(root, "addon", "experiment"),
+    }
+  );
 
   // Apart, each holds only its own - which is what keeps privileged code away from the
   // WebExtension checks.
@@ -193,10 +450,13 @@ test("a sibling Experiment is keyed like any other part of the submission", () =
   fs.writeFileSync(path.join(root, "addon", "main.js"), "1;\n");
   fs.writeFileSync(path.join(root, "experiment", "exp.js"), "1;\n");
 
-  const { source, experiment, build } = scaViews(loadAddon(root), {
-    scaRoot: root,
-    scaExpSource: path.join(root, "experiment"),
-  });
+  const { source, experiment, build } = scaViews(
+    loadAddon(root, undefined, { recordInstalledTrees: true }),
+    {
+      scaRoot: root,
+      scaExpSource: path.join(root, "experiment"),
+    }
+  );
 
   assert.deepEqual([...source.files.keys()].sort(), ["addon/main.js"]);
   assert.deepEqual([...experiment.keys()].sort(), ["experiment/exp.js"]);
@@ -230,10 +490,13 @@ test("scaViews puts every file in the right part, and the Experiment in only one
   fs.writeFileSync(path.join(root, "src", "main.js"), "1;\n");
   fs.writeFileSync(path.join(root, "src", "exp", "api.js"), "1;\n");
 
-  const { source, experiment, build } = scaViews(loadAddon(root), {
-    scaRoot: root,
-    scaExpSource: path.join(root, "src", "exp"),
-  });
+  const { source, experiment, build } = scaViews(
+    loadAddon(root, undefined, { recordInstalledTrees: true }),
+    {
+      scaRoot: root,
+      scaExpSource: path.join(root, "src", "exp"),
+    }
+  );
 
   // The Experiment belongs to neither the source nor the build: privileged code is its own
   // part, wherever the developer put it. Everything else is in BOTH, keyed against the
@@ -294,7 +557,7 @@ test("the build view holds the archive minus the Experiment and the dotfiles", (
 
   const {
     build: { files, nodeModules },
-  } = scaViews(loadAddon(root), {
+  } = scaViews(loadAddon(root, undefined, { recordInstalledTrees: true }), {
     scaRoot: root,
     scaExpSource: path.join(root, "src", "experiment"),
   });
@@ -337,7 +600,9 @@ test("the whole root stays a set of build candidates", () => {
   fs.writeFileSync(path.join(root, "background.js"), "1;\n");
   const {
     build: { files },
-  } = scaViews(loadAddon(root), { scaRoot: root });
+  } = scaViews(loadAddon(root, undefined, { recordInstalledTrees: true }), {
+    scaRoot: root,
+  });
   assert.ok(
     files.has("package.json"),
     "the root package.json is a build candidate"
@@ -614,7 +879,7 @@ test("loadAddon(file) records node_modules without writing it to disk", () => {
   zip.writeZip(file);
 
   const dest = path.join(dir, "addon.xpi.extracted");
-  const addon = loadAddon(file, dest);
+  const addon = loadAddon(file, dest, { recordInstalledTrees: true });
 
   assert.deepEqual(addon.nodeModules, ["node_modules"]);
   assert.ok(
@@ -622,6 +887,11 @@ test("loadAddon(file) records node_modules without writing it to disk", () => {
     "node_modules was written to disk"
   );
   assert.ok(!addon.files.has("node_modules/dep/index.js"));
+  // Loaded as an ADD-ON, the same archive ships those files and they are extracted and
+  // reviewed like any others.
+  const shipped = loadAddon(file, path.join(dir, "as-addon"));
+  assert.deepEqual(shipped.nodeModules, []);
+  assert.ok(shipped.files.has("node_modules/dep/index.js"));
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -662,7 +932,7 @@ test("an archive with nothing but node_modules still leaves an empty extracted f
   zip.writeZip(file);
 
   const dest = path.join(dir, "addon.xpi.extracted");
-  const addon = loadAddon(file, dest);
+  const addon = loadAddon(file, dest, { recordInstalledTrees: true });
   assert.ok(fs.existsSync(dest) && fs.statSync(dest).isDirectory());
   assert.equal(addon.files.size, 0);
 

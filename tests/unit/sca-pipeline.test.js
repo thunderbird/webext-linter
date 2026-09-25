@@ -1125,13 +1125,17 @@ test("SCA e2e: a committed build archive is rejected anywhere in --sca-root", as
   }
 });
 
-// A committed node_modules folder in --sca-root is a hard fail; its contents are never
-// read (loadAddon skips it, recording only the directory).
-test("SCA e2e: a committed node_modules folder is rejected", async () => {
+// A committed node_modules folder in --sca-root is a hard fail, and the ONLY check that
+// may act on it: its contents are never read (loadAddon records the directory and does not
+// walk it), so nothing else in the review can have an opinion about what is in there. The
+// planted eval is the probe for that - it would be reported anywhere else in the
+// submission, and here nothing may name it.
+test("SCA e2e: a committed node_modules folder is rejected, and never inspected", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({
     ...SRC_FILES,
-    "node_modules/left-pad/index.js": "module.exports = 1;\n",
+    "node_modules/left-pad/index.js":
+      'function f() { return eval("1 + 1"); }\n',
   });
   try {
     const { findings } = await runPipeline({
@@ -1144,6 +1148,123 @@ test("SCA e2e: a committed node_modules folder is rejected", async () => {
         /node_modules/.test(f.message)
       ),
       "a committed node_modules folder is flagged"
+    );
+    assert.deepEqual(
+      findings
+        .filter((f) => /node_modules/.test(f.file ?? ""))
+        .map((f) => f.ruleId),
+      ["committed-node-modules"],
+      "and nothing else in the review names anything under it"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
+// A SYMLINK named node_modules is that same committed tree, so it is answered once, on the
+// one axis that owns it. It is deliberately not a symlink record: the link check must not
+// also speak, or one committed tree would draw two findings saying different things.
+test("SCA e2e: a symlinked node_modules is answered once, as a committed tree", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const outside = tmpDir({
+    "installed/left-pad/index.js": "module.exports = 1;\n",
+  });
+  const src = tmpDir(SRC_FILES);
+  fs.symlinkSync(
+    path.join(outside, "installed"),
+    path.join(src, "node_modules"),
+    "dir"
+  );
+  try {
+    const { findings } = await runPipeline({
+      addonPath: xpi,
+      scaRoot: src,
+      ...OFFLINE,
+    });
+    assert.deepEqual(
+      findings.filter((f) => f.file === "node_modules").map((f) => f.ruleId),
+      ["committed-node-modules"],
+      "exactly one check answers it, and it is the one that owns installed trees"
+    );
+  } finally {
+    [xpi, src, outside].forEach((d) =>
+      fs.rmSync(d, { recursive: true, force: true })
+    );
+  }
+});
+
+// A symbolic link in --sca-root that leaves the submission is a hard fail: it is never
+// followed, so whatever it names is outside every corpus and the build would compile code
+// no review covered. A link WITHIN the submission stays ordinary layout - its target is
+// walked under its own real path - so it is narrated and never reported.
+test("SCA e2e: a symlink leaving --sca-root is rejected, one staying inside is not", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const outside = tmpDir({ "secret/payload.js": "exfiltrate();\n" });
+  const src = tmpDir({ ...SRC_FILES, "src/inner/real.js": "const x = 1;\n" });
+  fs.symlinkSync(
+    path.join(outside, "secret"),
+    path.join(src, "outward"),
+    "dir"
+  );
+  fs.symlinkSync("src/inner", path.join(src, "intree"), "dir");
+  try {
+    const { findings } = await runPipeline({
+      addonPath: xpi,
+      scaRoot: src,
+      ...OFFLINE,
+    });
+    assert.ok(
+      has(
+        findings,
+        "sca-invalid-symlink",
+        (f) =>
+          f.file === "outward" && f.hint === "target outside the submission"
+      ),
+      "the escaping link is flagged, and its locus says why"
+    );
+    assert.ok(
+      !has(findings, "sca-invalid-symlink", (f) => f.file === "intree"),
+      "a link inside the submission is not a finding"
+    );
+  } finally {
+    [xpi, src, outside].forEach((d) =>
+      fs.rmSync(d, { recursive: true, force: true })
+    );
+  }
+});
+
+// The add-on half of the pair, over the built XPI, in an SCA review - so the two checks
+// judge their own artifacts side by side and neither claims the other's links. The add-on
+// holds links to the stricter standard: the one INSIDE it fails here, where the same shape
+// inside --sca-root does not.
+test("SCA e2e: the add-on's own links are judged by the stricter rule", async () => {
+  const xpi = tmpDir({ ...XPI_FILES, "lib/real.js": "const y = 2;\n" });
+  fs.symlinkSync("lib/real.js", path.join(xpi, "alias.js"));
+  const src = tmpDir(SRC_FILES);
+  fs.symlinkSync("src", path.join(src, "intree"), "dir");
+  try {
+    const { findings } = await runPipeline({
+      addonPath: xpi,
+      scaRoot: src,
+      ...OFFLINE,
+    });
+    assert.ok(
+      has(
+        findings,
+        "xpi-packaged-symlink",
+        (f) => f.file === "alias.js" && f.hint === "link inside the package"
+      ),
+      "a link inside the add-on is rejected"
+    );
+    // The same shape in the source archive is ordinary layout, and neither check
+    // reaches across into the other's artifact.
+    assert.ok(
+      !has(findings, "sca-invalid-symlink"),
+      "the source archive's internal link is not a finding"
+    );
+    assert.ok(
+      !has(findings, "xpi-packaged-symlink", (f) => f.file === "intree"),
+      "and the add-on check does not see the source archive's links"
     );
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));

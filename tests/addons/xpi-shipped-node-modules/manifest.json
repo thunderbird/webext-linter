@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Shipped node_modules",
+  "version": "1.0",
+  "description": "Ships an installed dependency tree as ordinary packaged content.",
+  "background": { "scripts": ["background.js"] },
+  "icons": { "16": "icon.png" }
+}

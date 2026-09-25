@@ -596,7 +596,13 @@ export async function runPipeline(opts) {
             FEED.DETAIL
           );
         }
-        scaArchive = loadAddon(opts.scaRoot);
+        // The one artifact where an installed dependency tree is not content: the
+        // reviewer installs it from the declared manifest and lock, so a committed one is
+        // recorded and rejected rather than read. The built add-on above is loaded the
+        // ordinary way, where such a folder is shipped content like any other.
+        scaArchive = loadAddon(opts.scaRoot, undefined, {
+          recordInstalledTrees: true,
+        });
         scaParts = scaViews(scaArchive, {
           scaRoot: opts.scaRoot,
           scaExpSource: opts.scaExpSource,

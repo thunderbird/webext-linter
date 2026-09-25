@@ -12,12 +12,26 @@ import assert from "node:assert/strict";
 
 import { lockGaps, lockedVersion } from "../../src/vendor/locks.js";
 
+// The loader records every directory it walks into, so a fake addon has to carry the same
+// fact - derived here from the keys, which is what a real walk of exactly these files would
+// have recorded. A directory a Map cannot express (an empty one) is passed explicitly.
+function impliedDirectories(keys) {
+  const dirs = new Set();
+  for (const key of keys) {
+    const segs = key.split("/");
+    for (let i = 1; i < segs.length; i += 1) {
+      dirs.add(segs.slice(0, i).join("/"));
+    }
+  }
+  return [...dirs];
+}
+
 function fakeAddon(files) {
   const map = new Map();
   for (const [k, v] of Object.entries(files)) {
     map.set(k, Buffer.from(typeof v === "string" ? v : JSON.stringify(v)));
   }
-  return { files: map };
+  return { files: map, directories: impliedDirectories(map.keys()) };
 }
 
 /** Each gap as "name:reason[:recorded]", which is what the finding renders from. */
