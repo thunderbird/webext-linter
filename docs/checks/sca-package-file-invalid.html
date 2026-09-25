@@ -17,43 +17,36 @@
       <p class="lead">
         A source-code submission whose package.json cannot be used: it is not
         valid JSON, or it is valid JSON that is not an object. npm reads neither,
-        so the build the manifest defines cannot be run and the shipped add-on
+        so the build the package file defines cannot be run and the shipped add-on
         cannot be reproduced from the archive.
       </p>
       <p>
-        Two things make a manifest unusable, and both are reported here: it
+        Two things make a package file unusable, and both are reported here: it
         cannot be read at all, or it reads perfectly well and holds something
         other than a JSON object - an array, a string, a number. They are worded
         apart because a developer would check which it is: one will not open,
-        the other opens fine and simply is not a manifest. Which case failed is
+        the other opens fine and simply is not a package file. Which case failed is
         shown on the location line, so the remedy is stated once.
       </p>
       <p>
         The file is read once for the whole review, and every reader of it sees
-        the same answer: a manifest this check calls unusable is exactly the one
+        the same answer: a package file this check calls unusable is exactly the one
         the dependency checks found nothing in. A leading byte-order mark is not
-        a fault - npm reads a manifest carrying one, so this does too.
+        a fault - npm reads a package file carrying one, so this does too.
       </p>
       <p>
         A package.json that is absent rather than broken is Missing package.json,
         its sibling. Presence is decided by name and usability by reading, so
-        exactly one of the two speaks. It stays silent on the same ground as that
-        check: a build using a package manager this review does not support is
-        that tool&rsquo;s fault, reported and halted by the check whose subject the
-        tool is. And like that check it reports even where the shipped add-on
-        <em>is</em> the archive&rsquo;s own code, because a manifest npm cannot read
-        leaves nothing to reproduce the build from either way.
+        exactly one of the two speaks. Like that check it reports even where the
+        shipped add-on <em>is</em> the archive&rsquo;s own code, because a package file
+        npm cannot read leaves nothing to reproduce the build from either way.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The submitted source archive"] --> Y{"Built with an unsupported<br/>package manager?"}
-  Y -- yes --> S2([skip: the tool is the fault,<br/>and it stops the review too])
-  Y -- no --> Z{"Is the shipped add-on<br/>the archive's own code?"}
-  Z -- yes --> S([skip: not built, so the archive<br/>was simply unnecessary])
-  Z -- no --> B{"A package.json at its root?"}
+  A["The submitted source archive"] --> B{"A package.json at its root?"}
   B -- no --> S3([skip: absent, not broken<br/>-- its sibling reports that])
   B -- yes --> C{"Does it parse as JSON?"}
   C -- no --> ERR([ERROR: invalid package.json<br/>the review stops here])
@@ -66,7 +59,7 @@ flowchart TD
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   class ERR err;
   class OK ok;
-  class S,S2,S3 skip;
+  class S3 skip;
         </pre>
       </div>
 
@@ -85,7 +78,7 @@ flowchart TD
         they would have been asked, keeps the code-review sections, and the
         developer&rsquo;s text ends on the reason it is incomplete (&ldquo;A build that
         cannot be reproduced&rdquo;). Every remaining question depends on running a build
-        whose manifest cannot be read, so the work it would otherwise put to a reviewer
+        whose package file cannot be read, so the work it would otherwise put to a reviewer
         cannot change the outcome.
       </div>
 

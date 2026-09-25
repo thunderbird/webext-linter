@@ -1,8 +1,8 @@
-// Walks a submitted add-on - an .xpi/.zip archive or an already-unpacked directory - into
-// the Addon model: a file store, plus the manifest record where the caller says this
-// artifact's own manifest is the one that counts. The submission is on disk for the whole
-// review, so the store keeps keys and reads bytes when something asks (./corpus.js);
-// nothing is held twice.
+// Walks a submitted artifact - an .xpi/.zip archive or an already-unpacked directory - into
+// the Addon model: a file store, plus the manifest.json record where that artifact's own manifest.json
+// is the one that counts. One entry point per kind: loadAddon for the built add-on,
+// loadSourceArchive for the submitted source. It stays on disk for the whole review, so the
+// store keeps keys and reads bytes when something asks (./corpus.js); nothing is held twice.
 //
 // A packed archive is read exactly once, by being extracted to disk (extractZip) and then
 // walked back like any already-unpacked submission (readDir). That destination is the
@@ -15,7 +15,7 @@
 // can disagree about where a file went, and ONE frame: every corpus is keyed against the
 // submission, which is the only frame that can name all of it.
 //
-// Belongs here: walking the submission into the Addon model (store + the manifest record),
+// Belongs here: walking either artifact into the Addon model (store + the manifest.json record),
 // extracting a packed one to disk first, the SCA partition above, the Manifest and
 // ManifestRecord typedefs, and the load-time path safety guards.
 //
@@ -71,7 +71,7 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  */
 
 /**
- * The sidebar_action manifest key.
+ * The sidebar_action manifest.json key.
  * @typedef {object} SidebarAction
  * @property {string} [default_panel]  Panel document path.
  * @property {string} [default_icon]  Icon path.
@@ -79,7 +79,7 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  */
 
 /**
- * The parsed manifest.json. A WebExtension manifest is an open-ended JSON
+ * The parsed manifest.json, an open-ended JSON
  * object, so these are just the keys the review reads (others may be present).
  * @typedef {object} Manifest
  * @property {number} [manifest_version]  2 or 3.
@@ -107,15 +107,14 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
 
 /**
  * One artifact's manifest.json, read ONCE at load: the parse and everything derived from the
- * same bytes, as one value. A record or nothing, so an artifact with no manifest answer says
- * so once - four parallel fields could disagree, and three of them have an empty value that
- * reads as an answer.
+ * same bytes, as one value. A record or nothing, so an artifact with no manifest.json answer says
+ * so once - parallel fields could disagree, and an empty one reads as an answer.
  * @typedef {object} ManifestRecord
  * @property {?Manifest} json  Parsed; null when the text would not parse.
  * @property {string} text  The raw bytes as text, kept so a reader locating a token in the
  *   source does not re-read and re-parse the file.
  * @property {?string} error  The parse error message; null when `json` is the answer.
- * @property {?import("./manifest-loc.js").ManifestLoc} loc  Resolves a manifest JSON path to
+ * @property {?import("./manifest-loc.js").ManifestLoc} loc  Resolves a JSON path in manifest.json to
  *   its source line.
  */
 
@@ -134,24 +133,23 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  *   built XPI it IS the store: every file it holds is a file it ships, so there is nothing
  *   to withhold. For a source archive it is a VIEW that gives up every manifest.json
  *   (scaViews/liftManifests), because reading one back there would answer with the
- *   PRE-BUILD manifest where ctx.manifest is the shipped one.
+ *   PRE-BUILD manifest.json where ctx.manifest is the shipped one.
  *
  *   So `files.has("manifest.json")` is TRUE in an XPI review and FALSE in SCA, and a check
- *   must not read the manifest out of the corpus in either: ctx.manifest is the one answer
- *   (src/checks/context.js). In an XPI review nothing stops it any more - the corpus used to,
- *   and the only thing that relied on it was unused-files, which now skips the name itself.
+ *   must not read the manifest.json out of the corpus in either: ctx.manifest is the one answer
+ *   (src/checks/context.js). Nothing in an XPI review stops it: unused-files skips the
+ *   name itself, which is one check's exemption rather than the corpus's business.
  * @property {object} [store]  The artifact's COMPLETE corpus, keyed relative to the root the
  *   reviewer was given: everything it holds, exactly as it arrived. Nothing is ever dropped
  *   from it, so it answers what the submission CONTAINS rather than what some corpus of it
  *   reviews. For a built XPI that is the whole package, and `files` is the same object -
  *   there is nothing to withhold. For a source archive it is the whole --sca-root, the frame
- *   the build manifest and the lock are read in and the frame a reviewer resolves a reported
- *   path against, while `files` there is a view that gives up the manifests. Reach for it
+ *   the package file and the lock are read in and the frame a reviewer resolves a reported
+ *   path against, while `files` there is a view that gives up the manifest.json files. Reach for it
  *   deliberately: a reader asking `store` is saying it wants the submission entire.
  * @property {string[]} [nodeModules]  Posix paths of node_modules directories
  *   skipped at load (their contents are never read); empty when none, and always empty
- *   unless the load asked for it (loadAddon recordInstalledTrees), which only the
- *   submitted SOURCE ARCHIVE does. committed-node-modules rejects each, and is the only
+ *   unless the load asked for it, which only loadSourceArchive does. committed-node-modules rejects each, and is the only
  *   thing in the review that knows the name: nothing else has to, because for every other
  *   artifact such a folder is content and is loaded as content. Set by loadAddon, so an
  *   add-on assembled as a view of an archive (scaViews) carries none.
@@ -188,8 +186,8 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  *   Set by loadAddon only.
  * @property {?ManifestRecord} manifest  What the artifact's own manifest.json says - null
  *   when it holds none, and null for a SOURCE ARCHIVE, which is loaded without reading one
- *   at all (loadAddon's `parseWebExtManifest`). A check reads none of this: the authoritative
- *   manifest is the shipped one, exposed as ctx.manifest (src/checks/context.js).
+ *   at all (loadSourceArchive). A check reads none of this: the authoritative
+ *   manifest.json is the shipped one, exposed as ctx.manifest (src/checks/context.js).
  */
 
 /**
@@ -199,9 +197,9 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  *   ignored if it is already a directory. Defaults to a fresh `<source>.extracted`
  *   (src/util/dest.js) when omitted - callers that care where it landed (the
  *   review, so it can hand the same folder to a reviewer) pass their own.
- * @param {{recordInstalledTrees?: boolean, parseWebExtManifest?: boolean}} [options]  Both name the
- *   same exception - a submitted SOURCE ARCHIVE - and both are off the default, so the one
- *   call that loads one names them and no other caller carries them.
+ * @param {{recordInstalledTrees?: boolean, parseWebExtManifest?: boolean}} [options]  Both are
+ *   off the default, and both describe a submitted SOURCE ARCHIVE - which asks for them by
+ *   name, through loadSourceArchive below, rather than restating the pair.
  *
  *   `recordInstalledTrees` makes a node_modules directory a RECORDED path instead of
  *   content: its paths land in `nodeModules` and not one of its files is read. An installed
@@ -212,7 +210,7 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  *   `parseWebExtManifest` false leaves `manifest` null without reading one. A source archive's
  *   root manifest.json is a PRE-BUILD template: the build may rewrite it or generate it, the
  *   add-on's root may sit anywhere under the submission, and a submission need not hold one
- *   at all - so there is no artifact here whose manifest that would be. The bytes stay in
+ *   at all - so there is no artifact here whose manifest.json that would be. The bytes stay in
  *   the corpus (a build step may copy one); only the answer is not offered.
  * @returns {Addon}
  */
@@ -260,20 +258,42 @@ export function loadAddon(
   };
 }
 
-// The WebExtension manifest's filename, by which one is recognized at any depth.
+/**
+ * Load the SUBMITTED SOURCE ARCHIVE - the artifact --sca-root names.
+ *
+ * The two ways it is not an add-on, stated once so no caller restates them. An installed
+ * dependency tree is not part of a submission (the reviewer installs it from the declared
+ * package file and lock), and a root manifest.json here is a PRE-BUILD template rather than
+ * anything Thunderbird loads, so neither is read as content. Both are loadAddon options
+ * because they are the mechanism; this is the one composition of them, and a caller asking
+ * for a submission asks for it by name.
+ *
+ * No `extractTo`: --sca-root is a directory by the time anything loads it, extracted by the
+ * reviewer and settled before the review starts (src/addon/submission.js, sca-root.js).
+ * @param {string} source  Absolute path to the extracted source root.
+ * @returns {Addon}
+ */
+export function loadSourceArchive(source) {
+  return loadAddon(source, undefined, {
+    recordInstalledTrees: true,
+    parseWebExtManifest: false,
+  });
+}
+
+// The add-on's own manifest, by name - recognized at any depth.
 const MANIFEST_NAME = "manifest.json";
 
 /**
- * Drop every manifest, at any depth, from a corpus - a SOURCE archive's review corpus and
+ * Drop every manifest.json, at any depth, from a corpus - a SOURCE archive's review corpus and
  * nothing else. There the add-on's root is wherever the developer put it, a submission may
  * hold several (a Chrome port beside the Thunderbird one, a committed build output), and
- * reading one back would answer with the PRE-BUILD manifest where ctx.manifest is the
+ * reading one back would answer with the PRE-BUILD manifest.json where ctx.manifest is the
  * shipped one: two plausible answers to one question, one of them silently wrong. A built
- * XPI keeps its manifests, which are just files it ships.
+ * XPI keeps its manifest.json files, which are just files it ships.
  *
  * Only ever given a VIEW, so the store keeps what the submission contains, and no parsing:
- * the archive it belongs to carries no manifest record, and this corpus must not become the
- * one place a pre-build template can be read back as the shipped manifest.
+ * the archive it belongs to carries no manifest.json record, and this corpus must not become the
+ * one place a pre-build template can be read back as the shipped manifest.json.
  * @param {object} files  The view to lift them off.
  */
 function liftManifests(files) {
@@ -287,13 +307,13 @@ function liftManifests(files) {
 
 /**
  * Read one corpus's ROOT manifest.json (BOM-tolerant, JSON5) into the record every reader of
- * that manifest shares. The corpus is left alone - reading the manifest is not a reason to
- * take it away, and the one corpus that must give its manifests up says so itself
+ * that manifest.json shares. The corpus is left alone - reading the manifest.json is not a reason to
+ * take it away, and the one corpus that must give its manifest.json files up says so itself
  * (liftManifests, for a source archive).
  *
  * Unparsable is still a record: `error` is what the review reports and `text` is what a
  * token search anchors it in, while `loc` answers null to everything (buildManifestLoc gets
- * no tree out of text JSON5 alone will take). Only an ABSENT manifest is nothing.
+ * no tree out of text JSON5 alone will take). Only an ABSENT manifest.json is nothing.
  * @param {object} files  The corpus to read.
  * @returns {?ManifestRecord}
  */
@@ -378,7 +398,7 @@ export function relativeInside(value, scaRoot) {
  * "..", not only a leading one.
  *
  * Named once because two layers ask it of two different things - src/cli.js of the folder
- * flags it is handed (including the two that never reach the path math here), and
+ * flags it is handed (including --sca-root, which never reaches the path math here), and
  * scaRootRelative of every value it resolves, for the callers that never pass a CLI at all.
  * Asked of the written form rather than of the resolved one, so "src/../other" is refused
  * as surely as "../other": a value that names a folder by the way out of another is a
@@ -417,16 +437,16 @@ export function hasParentSegment(value) {
  * package.json (src/build/corpus.js selectBuildCorpus, via analyzeBuild). One pass, one set
  * of prefixes, so no two of them can disagree about where a file went.
  *
- * The source addon is PURE source: its own files, and no manifest of its own. The review
+ * The source addon is PURE source: its own files, and no manifest.json of its own. The review
  * corpus gives every manifest.json up (liftManifests) and the archive was loaded without a
- * parsed one (loadAddon's `parseWebExtManifest`), because a pre-build template is not what
- * Thunderbird loads. The authoritative manifest is the built XPI's, exposed separately as
+ * parsed one (loadSourceArchive), because a pre-build template is not what
+ * Thunderbird loads. The authoritative manifest.json is the built XPI's, exposed separately as
  * ctx.manifest (src/checks/context.js).
  *
  * The source and the experiment are keyed alike whenever the Experiment sits inside the
  * add-on, so a check that must review the privileged code too reads the two as one corpus
  * (`source.experiment` carries it onto the review addon for exactly that).
- * @param {Addon} archive  The scaRoot archive, loaded ONCE by the caller (loadAddon).
+ * @param {Addon} archive  The scaRoot archive, loaded ONCE (loadSourceArchive).
  * @param {{scaRoot: string, scaExpSource?: string}} where  Absolute paths, resolved by the
  *   arg-array reader (src/cli.js). scaExpSource may sit anywhere under the root.
  * @returns {Addon}  The SAME archive, now carrying its three corpora. Not a new object:
@@ -451,14 +471,14 @@ export function scaViews(archive, { scaRoot, scaExpSource }) {
   // Two views over the ONE key set, because a build may read anything the archive holds:
   // where a file sits says nothing about whether a build step reaches it, and a step the
   // trace cannot see raises no signal for the reviewer to follow. They differ only in that
-  // the review corpus gives up its manifests - a pre-build manifest must not be read as the
+  // the review corpus gives up its manifest.json files - a pre-build manifest.json must not be read as the
   // shipped one - which is a fact about that corpus, not about what the archive holds.
   archive.sca = fileView(store, { keys: sourceKeys });
   archive.experiment = fileView(store, { keys: expKeys });
   archive.files = fileView(store, { keys: sourceKeys });
-  // Lifted, never parsed: this archive carries no manifest record at all, and the review
+  // Lifted, never parsed: this archive carries no manifest.json record at all, and the review
   // corpus must not become the one place a pre-build template can be read back as the
-  // shipped manifest.
+  // shipped manifest.json.
   liftManifests(archive.files);
   return archive;
 }
@@ -488,8 +508,7 @@ function unreadableArchiveError(zipPath) {
 
 /**
  * Extract a packed archive to `destDir`, entry by entry, applying the same refusals
- * a review of it has always applied - only now the validated bytes land on disk
- * instead of in a Map.
+ * a review of it applies; the validated bytes land on disk rather than in a Map.
  *
  * Never AdmZip's own extractAllTo/extractEntryTo: those replay the archive's OWN
  * claims about each entry (its stored path, its stored Unix mode), which is exactly
@@ -767,7 +786,7 @@ function isSafeAddonPath(p) {
   }
   // Every segment must NAME something. "..", "." and "" are path SYNTAX, not names: they
   // make one file addressable by two spellings, so the key an entry lands under stops being
-  // the key the manifest's own reference resolves to (normalizeRefInDir drops both while
+  // the key the manifest.json's own reference resolves to (normalizeRefInDir drops both while
   // this loader keeps them), and ".." can additionally point outside the package.
   //
   // entryKey has already stripped a LEADING "./" by this point. That is what `zip -r ./dir`

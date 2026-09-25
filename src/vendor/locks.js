@@ -4,7 +4,7 @@
 // installed tree contain - lockedPackages, which enumerates every package the
 // lock records, declared or pulled in by another package, so the OSV audit can
 // reach the ~90% of the tree nobody declares. (3) Can the lock install what the
-// manifest declares at all - lockGaps, which is what `npm ci` and
+// package file declares at all - lockGaps, which is what `npm ci` and
 // `pnpm install --frozen-lockfile` refuse over. Reads whichever lock the
 // submission ships - npm (package-lock.json / npm-shrinkwrap.json, JSON) or pnpm
 // (pnpm-lock.yaml, YAML), the two supported package managers.
@@ -16,10 +16,10 @@
 //
 // Belongs here: lockedVersion(addon, name), lockedPackages(addon), lockGaps(addon),
 // governingLock, and the per-format readers. lockGaps is a comparison, so it needs both sides, but only this
-// one is its own: what the manifest DECLARES comes from ./manifest.js, and every lock-side
+// one is its own: what the package file DECLARES comes from ./package-file.js, and every lock-side
 // detail the comparison turns on (the npm root record, the pnpm importers, the v1/v3
 // split) is here and private. Does NOT belong here: reading or shaping package.json
-// (-> ./manifest.js), deciding pinned/unpinned (-> ./resolve.js), and the verification
+// (-> ./package-file.js), deciding pinned/unpinned (-> ./resolve.js), and the verification
 // that follows (-> ./verify.js).
 
 import YAML from "yaml";
@@ -33,12 +33,12 @@ import {
   DECLARATION_MAPS,
   aliasTarget,
   declaredDependencies,
-  readManifest,
+  readPackageFile,
   submissionFiles,
   ownValue,
-  resolveLocalManifests,
-  MANIFEST_FILE,
-} from "./manifest.js";
+  resolveLocalPackageFiles,
+  PACKAGE_FILE,
+} from "./package-file.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /**
@@ -47,11 +47,11 @@ import {
  * @property {string} name  npm package name (an npm alias resolves to the real one).
  * @property {string} version  The exact installed version.
  * @property {boolean} dev  Installed for the build only, never for production.
- * @property {boolean} direct  Declared by a manifest in this submission - the root
+ * @property {boolean} direct  Declared by a package file in this submission - the root
  *   package.json, a workspace member, or a pnpm importer - rather than reached only
  *   through another package. Read from the lock's OWN record of what was asked for,
  *   so it covers the declaration forms the root package.json parse does not
- *   (optionalDependencies, a workspace member's own manifest) and stays true when
+ *   (optionalDependencies, a workspace member's own package file) and stays true when
  *   package.json and the lock disagree about a version.
  * @property {string} file  The lock file it was read from (the finding's anchor).
  * @property {string} token  The string locating its entry in `file`.
@@ -61,7 +61,7 @@ import {
  * package.json declares.
  * @property {string} file  The finding's anchor, which is the file the failing value sits
  *   in: the LOCK for `unsatisfied` (the version it pins) and when the lock cannot be read
- *   at all, the declaring manifest for every other declaration gap - the root
+ *   at all, the declaring package file for every other declaration gap - the root
  *   package.json, or a nested one reached by a file:/link: walk (SCA mode only).
  * @property {?string} name  The declared package, or null for an unreadable lock.
  * @property {?string} spec  What package.json asks for it, or null (same).
@@ -269,8 +269,8 @@ function npmPackages(data, file) {
 function npmTreePackages(packages, file) {
   const out = [];
   const marker = "node_modules/";
-  // What the submission's own manifests ask for. An entry with no node_modules
-  // segment IS one of those manifests - the project root under "", a workspace
+  // What the submission's own package files ask for. An entry with no node_modules
+  // segment IS one of those package files - the project root under "", a workspace
   // member under its path - so its dependency maps are declarations, not installs.
   const direct = new Set();
   for (const [key, entry] of Object.entries(packages)) {
@@ -327,7 +327,7 @@ function npmTreePackages(packages, file) {
  * abort the whole review.
  *
  * v1 keeps no record of which packages the project asked for (the top level is
- * the hoisted tree, not a manifest), so nothing here is marked direct; the root
+ * the hoisted tree, not a package file), so nothing here is marked direct; the root
  * package.json names still reach the audit through resolveVendor.
  * @param {Record<string, object>|undefined} deps @param {string} file
  * @returns {LockedPackage[]}
@@ -376,7 +376,7 @@ function pnpmPackages(data, file) {
     return [];
   }
   const prod = data?.snapshots ? pnpmProdKeys(data) : null;
-  // The importers ARE the submission's manifests, restated by pnpm - so what they
+  // The importers ARE the submission's package files, restated by pnpm - so what they
   // ask for is what it declares.
   const direct = new Set();
   for (const importer of Object.values(data.importers ?? {})) {
@@ -468,7 +468,7 @@ function pnpmProdKeys(data) {
  * order. The first entry for a version wins its anchor - insertion order puts
  * the shallower, more recognizable path first - while production wins over dev
  * (a package installed for both is shipped) and declared wins over reached (one
- * manifest asking for it by name is enough to make it declared).
+ * package file asking for it by name is enough to make it declared).
  *
  * Sorted so that two runs over one lock produce the same list, which is what
  * makes a golden fixture's batch answers line up with the packages they are
@@ -517,12 +517,12 @@ function declaredName(name, spec) {
 /**
  * Every way the committed lock cannot install what the root package.json declares - what
  * `npm ci` and `pnpm install --frozen-lockfile` refuse over, decided offline from the two
- * files alone - PLUS every manifest a file:/link: chain reaches from the root
- * (resolveLocalManifests): `npm ci` installs a locally-linked package's own declared
+ * files alone - PLUS every package file a file:/link: chain reaches from the root
+ * (resolveLocalPackageFiles): `npm ci` installs a locally-linked package's own declared
  * dependencies from the same ONE governing lock, so they are held to the same question.
  * Read by the sca-lock-file-invalid check.
  *
- * Returns nothing when the manifest declares nothing this lock could pin, or when there is
+ * Returns nothing when the package file declares nothing this lock could pin, or when there is
  * no lock at all - the latter being sca-lock-file-missing's question, which also decides
  * whether one was owed. Both come first: a lock that governs no declaration is not judged,
  * whatever shape it is in, because every verdict here is about a declaration it fails.
@@ -539,9 +539,9 @@ export function lockGaps(addon) {
   if (!files) {
     return [];
   }
-  const pkg = readManifest(files);
+  const pkg = readPackageFile(files);
   if (!pkg) {
-    return []; // no readable manifest: nothing states what the lock should cover
+    return []; // no readable package file: nothing states what the lock should cover
   }
   // Not a registry spec (file:/link:/workspace:/git/GitHub). The lock records these in
   // shapes a spec comparison cannot read, and whether such a source is allowed at all is
@@ -556,17 +556,17 @@ export function lockGaps(addon) {
     !/[:/]/.test(spec) || Boolean(aliasTarget(spec));
   const declared = declaredDependencies(pkg)
     .filter(nonRegistry)
-    .map((d) => ({ ...d, manifestFile: MANIFEST_FILE, rootKey: "" }));
-  // Every manifest a file:/link: chain reaches (SCA mode only - resolveLocalManifests
+    .map((d) => ({ ...d, packageFile: PACKAGE_FILE, rootKey: "" }));
+  // Every package file a file:/link: chain reaches (SCA mode only - resolveLocalPackageFiles
   // itself is a no-op with no lock/store to read from otherwise) declares real external
   // dependencies too, `npm ci` installs them from the same ONE governing lock the root
   // does, and they are held to the same "can the lock install this" question - see the
-  // rootKey handling in npmGap/pnpmGap below for how a NESTED manifest's declaration is
+  // rootKey handling in npmGap/pnpmGap below for how a NESTED package file's declaration is
   // compared, which is not the same lookup as the root's.
-  const { manifests } = resolveLocalManifests(addon);
-  for (const m of manifests) {
+  const { packageFiles } = resolveLocalPackageFiles(addon);
+  for (const m of packageFiles) {
     for (const d of declaredDependencies(m.pkg).filter(nonRegistry)) {
-      declared.push({ ...d, manifestFile: m.file, rootKey: m.dir });
+      declared.push({ ...d, packageFile: m.file, rootKey: m.dir });
     }
   }
   const file = governingLock(addon);
@@ -575,9 +575,9 @@ export function lockGaps(addon) {
   }
   // A governing lock that does not parse is where the install stops (-> governingLock).
   //
-  // Asked BEFORE what the manifest declares, because whether the file can be read at all
+  // Asked BEFORE what the package file declares, because whether the file can be read at all
   // does not depend on there being anything to compare it against. `npm ci` opens the lock
-  // whatever the manifest holds and refuses on one it cannot parse - measured, with and
+  // whatever the package file holds and refuses on one it cannot parse - measured, with and
   // without declarations - so deciding "nothing is declared, so the shape does not matter"
   // first would clear exactly that submission, and reward committing a corrupt lock over
   // committing none, since the missing-lock check sees the file by NAME and falls silent.
@@ -586,7 +586,7 @@ export function lockGaps(addon) {
     return [lockItself(file, "unreadable")];
   }
   // Being UNREADABLE and being the wrong SHAPE part company here, which is why the two
-  // faults are not asked together. `npm ci` accepts a `{}` lock for a manifest that
+  // faults are not asked together. `npm ci` accepts a `{}` lock for a package file that
   // declares nothing (measured: "up to date") and refuses the same file the moment one
   // dependency is declared. So a shapeless lock is only a fault when something has to be
   // installed from it, while an unparseable one is a fault either way.
@@ -614,7 +614,7 @@ export function lockGaps(addon) {
     ]);
   }
   const reported = new Set();
-  for (const { map, name, spec, manifestFile, rootKey } of declared) {
+  for (const { map, name, spec, packageFile, rootKey } of declared) {
     const gap = reader.gap(
       data,
       map,
@@ -633,8 +633,8 @@ export function lockGaps(addon) {
       reported.add(name);
       // An `unsatisfied` gap is about the version the LOCK pins, so it is reported there,
       // at that entry - the way a tree vulnerability is (src/lib/vuln-findings.js). Every
-      // other reason is about the declaration, which lives in the declaring manifest.
-      const at = gap.reason === "unsatisfied" ? file : manifestFile;
+      // other reason is about the declaration, which lives in the declaring package file.
+      const at = gap.reason === "unsatisfied" ? file : packageFile;
       gaps.push({ file: at, name, spec, ...gap });
     }
   }
@@ -669,17 +669,17 @@ function satisfiesGap(installed, ranges, recorded, token, reason) {
 }
 
 /**
- * One declaration against an npm lock. lockfileVersion 2/3 restates EVERY local manifest's
+ * One declaration against an npm lock. lockfileVersion 2/3 restates EVERY local package file's
  * own declarations this way - the root under `packages[""]`, and (per the real submission
  * this was verified against) a file:/link:-linked package under `packages[<its own
- * relative path>]`, the same path resolveLocalManifests already computes for it. `rootKey`
- * says which: `""` for the root, a nested manifest's own `dir` otherwise. The installed
+ * relative path>]`, the same path resolveLocalPackageFiles already computes for it. `rootKey`
+ * says which: `""` for the root, a nested package file's own `dir` otherwise. The installed
  * entry is checked too, since a restated record naming a package that resolved to nothing
  * installs nothing.
  *
  * A restated record is expected at `rootKey` whenever this reader was chosen at all (the
  * true root's is required by recognisesNpm) - EXCEPT that this feature's own path
- * arithmetic could in principle diverge from the lock's own key for a nested manifest (an
+ * arithmetic could in principle diverge from the lock's own key for a nested package file (an
  * unverified edge case). When no record sits at `rootKey`, this falls back to the flat,
  * hoisted, name-only lookup `lockedVersion`/`npmLock` already trust for pinning: it cannot
  * distinguish a stale pin from a genuinely undeclared one (both come back "stale"/"absent"
@@ -690,7 +690,7 @@ function satisfiesGap(installed, ranges, recorded, token, reason) {
  * @param {object} data  Parsed lock. @param {string} map  The declaring dependency map.
  * @param {string} name @param {string} spec  What package.json asks for.
  * @param {string[]} ranges @param {Addon} addon  For the flat-fallback lookup.
- * @param {string} [rootKey]  `""` for the root, else a nested manifest's own `dir`.
+ * @param {string} [rootKey]  `""` for the root, else a nested package file's own `dir`.
  * @returns {?{recorded: ?string, reason: string}}
  */
 function npmGap(data, map, name, spec, ranges, addon, rootKey = "") {
@@ -718,7 +718,7 @@ function npmGap(data, map, name, spec, ranges, addon, rootKey = "") {
     return satisfiesGap(installed, ranges, installed, token, "stale");
   }
   // Across ALL the record's maps, not the declaring one: `npm ci` compares the two
-  // manifests by NAME, so moving a package between dependencies and devDependencies
+  // package files by NAME, so moving a package between dependencies and devDependencies
   // without regenerating is an install it accepts. pnpm is stricter, which is why its
   // reader keys by map.
   let recorded;
@@ -738,7 +738,7 @@ function npmGap(data, map, name, spec, ranges, addon, rootKey = "") {
     return { recorded: null, reason: "absent" };
   }
   // npm's OWN question, and the only one worth asking: does the version this lock pins
-  // satisfy the range the manifest declares? The restated record mirrors the manifest as it
+  // satisfy the range the package file declares? The restated record mirrors it as it
   // stood when the lock was written, so comparing the two SPECS answers a different
   // question and gets it wrong both ways - "3.0.1" against a recorded "^3.0.1" is the same
   // install (npm: "added 2 packages") while the strings differ, and "^3.0.0" against a
@@ -755,10 +755,10 @@ function npmGap(data, map, name, spec, ranges, addon, rootKey = "") {
 }
 
 /**
- * One declaration against a pnpm lock. The importers ARE the manifests restated - one per
+ * One declaration against a pnpm lock. The importers ARE the package files restated - one per
  * workspace-relative path, `"."` being the root's own - and the recorded specifier is what
  * `--frozen-lockfile` compares against. `rootKey` picks which: `""` (the default, mapped to
- * the `"."` importer below) for the root, a nested manifest's own `dir` otherwise. v6+
+ * the `"."` importer below) for the root, a nested package file's own `dir` otherwise. v6+
  * carries the specifier on the entry; v5 keeps a separate `specifiers` map, per importer
  * when the lock has importers and at the top level when it does not - so a string entry
  * looks in both, nearest first.
@@ -776,7 +776,7 @@ function npmGap(data, map, name, spec, ranges, addon, rootKey = "") {
  * @param {string} name @param {string} spec  What package.json asks for.
  * @param {string[]} _ranges  Unused - see the comment on the textual comparison.
  * @param {Addon} addon  For the flat-fallback lookup.
- * @param {string} [rootKey]  `""` for the root, else a nested manifest's own `dir`.
+ * @param {string} [rootKey]  `""` for the root, else a nested package file's own `dir`.
  * @returns {?{recorded: ?string, reason: string}}
  */
 function pnpmGap(data, map, name, spec, _ranges, addon, rootKey = "") {
@@ -825,7 +825,7 @@ function plainObject(value) {
  * new lock has to be given a reader or it is not recognised at all.
  *
  * `recognises` is what keeps a guess from becoming a verdict. It asks whether the file is
- * this format AND carries the restated manifest the comparison needs - npm's `packages[""]`
+ * this format AND carries the restated package file the comparison needs - npm's `packages[""]`
  * or a v1 `dependencies` tree, pnpm's `importers["."]` or its flat top level. Anything else
  * (a YAML file that is not a pnpm lock, a lock whose root record is missing) is declined
  * rather than judged through.
@@ -844,7 +844,7 @@ function recognisesNpm(data) {
   if (!plainObject(data)) {
     return false;
   }
-  // lockfileVersion 2/3 restates the root manifest under "". npm always writes it, so a
+  // lockfileVersion 2/3 restates the root package file under "". npm always writes it, so a
   // `packages` map without one is not a lock we can compare against.
   if (plainObject(data.packages)) {
     return plainObject(data.packages[""]);
@@ -861,8 +861,8 @@ function recognisesPnpm(data) {
   if (!plainObject(data)) {
     return false;
   }
-  // v6+ and every v9: the importers ARE the manifests restated, and pnpm always writes the
-  // root one. With importers present but no ".", the root manifest is not in the file.
+  // v6+ and every v9: the importers ARE the package files restated, and pnpm always writes the
+  // root one. With importers present but no ".", the root package file is not in the file.
   if (plainObject(data.importers)) {
     return plainObject(data.importers["."]);
   }

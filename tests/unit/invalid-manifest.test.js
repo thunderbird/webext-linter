@@ -1,5 +1,5 @@
 // Unit tests for the split manifest checks: the manifest-* error-level defects
-// (invalid JSON, missing manifest/key, version mismatch, unknown permission) and
+// (invalid JSON, missing manifest.json/key, version mismatch, unknown permission) and
 // the unrecognized-manifest-key / mistyped-manifest-value entries (deep ajv).
 // Severity is left unset by the rules - runChecks stamps the yaml entry type.
 
@@ -29,7 +29,7 @@ const ctx = (manifest) => ({
   schema,
 });
 
-// A minimal well-typed MV3 manifest yields zero findings from every check.
+// A minimal well-typed MV3 manifest.json yields zero findings from every check.
 test("accepts a well-typed manifest", () => {
   const m = { manifest_version: 3, name: "x", version: "1.0" };
   for (const check of [
@@ -44,10 +44,10 @@ test("accepts a well-typed manifest", () => {
 });
 
 // The two checks split one question in two, and the split is by the RECORD: no record means
-// the file is not there (manifest-missing), a record whose parse is not a manifest object
+// the file is not there (manifest-missing), a record whose parse is not a manifest.json object
 // means it is there and unusable (manifest-invalid-json). Whether the text failed to parse
 // or parsed to something that is not an object is the same verdict - the developer has no
-// manifest either way and the remedy is the same - so both land on the same check. Every row
+// manifest.json either way and the remedy is the same - so both land on the same check. Every row
 // asserts the OTHER check is silent: one defect, one finding.
 test("the two manifest checks split on presence, not on the parse", () => {
   const record = (json, error = null) => ({
@@ -66,20 +66,20 @@ test("the two manifest checks split on presence, not on the parse", () => {
 
   // No record at all: the file is absent.
   assert.deepEqual(run(null), { missing: 1, invalid: 0 });
-  // Present, and every way of holding no manifest object.
+  // Present, and every way of holding no manifest.json object.
   assert.deepEqual(run(record(null, "boom")), { missing: 0, invalid: 1 });
   assert.deepEqual(run(record(null)), { missing: 0, invalid: 1 });
   assert.deepEqual(run(record(0)), { missing: 0, invalid: 1 });
   assert.deepEqual(run(record("hello")), { missing: 0, invalid: 1 });
   // An array is refused with the primitives: Object.keys walks one and yields index keys.
   assert.deepEqual(run(record([])), { missing: 0, invalid: 1 });
-  // A real manifest: neither check has anything to say.
+  // A real manifest.json: neither check has anything to say.
   assert.deepEqual(run(record({ manifest_version: 3 })), {
     missing: 0,
     invalid: 0,
   });
 
-  // A check that needs a PARSED manifest stays silent on text that would not parse - the one
+  // A check that needs a PARSED manifest.json stays silent on text that would not parse - the one
   // case where manifest-invalid-json is the only finding.
   const broken = { addon: { manifest: record(null, "boom") }, schema };
   assert.equal(manifestMissingKey.run(withManifest(broken)).findings.length, 0);

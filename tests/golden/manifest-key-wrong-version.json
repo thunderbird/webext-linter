@@ -113,7 +113,7 @@
       },
       "item": "action.onClicked",
       "hint": "\"action\"",
-      "message": "The following APIs each need a manifest key that is not declared. Add one of the keys named for each API to manifest.json."
+      "message": "The following APIs each need a manifest.json key that is not declared. Add one of the keys named for each API to manifest.json."
     },
     {
       "ruleId": "unrecognized-manifest-key",
@@ -124,7 +124,7 @@
       },
       "item": "browser_action",
       "hint": null,
-      "message": "Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The included WebExtension manifest file (manifest.json) declares the following unknown top-level keys, which Thunderbird will ignore.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]
 }

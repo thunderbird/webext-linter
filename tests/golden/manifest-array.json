@@ -112,7 +112,7 @@
       "loc": null,
       "item": "manifest_version",
       "hint": null,
-      "message": "Invalid manifest.json: one or more required properties are missing.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The included WebExtension manifest file (manifest.json) has one or more required properties missing.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "manifest-missing-key",
@@ -121,7 +121,7 @@
       "loc": null,
       "item": "name",
       "hint": null,
-      "message": "Invalid manifest.json: one or more required properties are missing.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The included WebExtension manifest file (manifest.json) has one or more required properties missing.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "manifest-missing-key",
@@ -130,7 +130,7 @@
       "loc": null,
       "item": "version",
       "hint": null,
-      "message": "Invalid manifest.json: one or more required properties are missing.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The included WebExtension manifest file (manifest.json) has one or more required properties missing.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "manifest-invalid-json",
@@ -139,7 +139,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "Invalid manifest.json: manifest.json is not a valid JSON object.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The included manifest.json is not a valid WebExtension manifest file.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "mistyped-manifest-value",
@@ -148,7 +148,7 @@
       "loc": null,
       "item": "(root)",
       "hint": "must be object",
-      "message": "The following manifest entries have a value Thunderbird ignores or misreads.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The following manifest.json entries have a value Thunderbird ignores or misreads.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "addon-icon-missing",

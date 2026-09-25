@@ -32,7 +32,7 @@ import path from "node:path";
  * A key set over files on disk, read on demand.
  *
  * READ-ONLY, and deliberately: a store is the artifact as it arrived, so it offers no way to
- * drop a key. A corpus that reviews less than the artifact holds - the manifest lifted off,
+ * drop a key. A corpus that reviews less than the artifact holds - the manifest.json lifted off,
  * one part of a partitioned archive - is a VIEW, which owns its own key set and can.
  *
  * The cache is unbounded on purpose: a review reads most of what it enumerates (it parses,

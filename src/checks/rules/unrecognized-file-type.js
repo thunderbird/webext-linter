@@ -1,10 +1,10 @@
-// A packaged file the add-on LOADS (declared in the manifest, or via a <script src>) whose
+// A packaged file the add-on LOADS (declared in the manifest.json, or via a <script src>) whose
 // suffix is in no recognized type - the browser executes/uses it, but no check could classify
 // it, so it went unreviewed. The backstop that makes the JS-corpus suffix list safe: an
 // un-enumerated suffix stops being a silent gap and becomes a loud finding.
 //
 // Belongs here: turning reachability's precomputed unrecognizedRefs into findings. Does NOT
-// belong here: detecting the refs (that is the manifest / <script> walk in
+// belong here: detecting the refs (that is the manifest.json / <script> walk in
 // src/lib/reachability.js), the recognized-suffix set (src/util/files.js
 // RECOGNIZED_EXTS), authored wording (assets/registry.yaml), and severity (that entry).
 

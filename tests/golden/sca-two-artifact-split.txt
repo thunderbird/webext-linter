@@ -27,9 +27,9 @@ An example can be found here: https://github.com/thunderbird/webext-examples/tre
  - [XPI] manifest.json
 
 2) Unused, hidden or duplicate files or folders: Check whether anything loads
-   the files below. Nothing reaches them from a manifest entry point, but a file
-   can still be loaded by code that names it, or by a loader that builds its
-   path at run time - a dynamic import, getURL, executeScript, insertCSS,
+   the files below. Nothing reaches them from a manifest.json entry point, but a
+   file can still be loaded by code that names it, or by a loader that builds
+   its path at run time - a dynamic import, getURL, executeScript, insertCSS,
    setIcon and the like. A file nothing loads should not ship. Report the ones
    you cannot trace to a loader.
 Suggested verdict: warning

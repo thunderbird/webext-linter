@@ -1,6 +1,6 @@
 // The manifest_version disagrees with the schema set being reviewed against (an
 // MV2 add-on reviewed against the MV3 schema, or vice versa), so the submission
-// is invalid. Runs only on a parsed manifest.
+// is invalid. Runs only on a parsed manifest.json.
 //
 // Belongs here: comparing manifest_version against schema.manifestVersionMajor.
 // Does NOT belong here: the schema query (-> src/schema/index.js), authored

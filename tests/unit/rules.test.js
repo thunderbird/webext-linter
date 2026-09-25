@@ -98,7 +98,7 @@ import { loadSchemaFiles } from "../../src/schema/load.js";
 import { buildSchemaIndex, SchemaIndex } from "../../src/schema/index.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 import { runExtractionPass, apiUsageOf } from "../../src/checks/extract.js";
-import { parseVendorManifest } from "../../src/normalize/vendor.js";
+import { parseVendorEntries } from "../../src/normalize/vendor.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const schema = buildSchemaIndex(
@@ -119,7 +119,7 @@ const filesCtx = (files, { libs = [] } = {}) => {
   const addon = {
     files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
   };
-  const manifest = parseVendorManifest(addon);
+  const manifest = parseVendorEntries(addon);
   addon.vendor = { set: new Set(manifest.map((e) => e.path)), manifest };
   // `libs`: file keys whose raw hash is registered as a known library, so the
   // hash-based classifier tags them `library` (and names them).
@@ -140,7 +140,7 @@ function notesFrom(check, ctx) {
   return notes;
 }
 
-// A check that reads the manifest and finds none accounts for its silence in the feed, and
+// A check that reads the manifest.json and finds none accounts for its silence in the feed, and
 // the two reasons are not interchangeable: no manifest.json at all, versus one that is there
 // and will not parse. The reviewer reads that line to know what the submission looks like, so
 // "did not parse" about a file that does not exist describes the wrong add-on. Neither case
@@ -1289,7 +1289,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
       `check "${c.id}" has an invalid input ${JSON.stringify(c.input)}`
     );
   }
-  // input: manifest reads the shipped manifest ONLY, on a ctx with no file corpus
+  // input: manifest reads the shipped manifest.json ONLY, on a ctx with no file corpus
   // (buildXpiCtxs' manifestCtx). The pure-manifest checks; extending this set is deliberate too.
   const manifest = checks
     .filter((c) => c.input === "manifest")
@@ -1637,7 +1637,7 @@ const fileMap = (files) =>
 
 // The archive exists so the reviewer can reproduce the build. Its entry point is the root
 // package.json, so no package.json is no build.
-test("sca-package-file-missing reports an absent manifest", () => {
+test("sca-package-file-missing reports an absent package.json", () => {
   const run = (files, scaNotRequired = false) =>
     scaPackageFileMissing.run({
       addon: { files: fileMap(files) },
@@ -1650,7 +1650,7 @@ test("sca-package-file-missing reports an absent manifest", () => {
   assert.equal(noBuild[0].file, null);
   assert.equal(noBuild[0].item, null);
 
-  // A manifest is a build whatever it carries - an empty one still counts.
+  // A package file is a build whatever it carries - an empty one still counts.
   assert.deepEqual(run({ "package.json": "{}" }), []);
   assert.deepEqual(
     run({ "package.json": JSON.stringify({ scripts: { build: "x" } }) }),
@@ -1671,7 +1671,7 @@ test("sca-package-file-missing reports an absent manifest", () => {
   for (const lock of ["other.lock", "other-lock.toml"]) {
     assert.equal(run({ "manifest.json": "{}", [lock]: "x" }).length, 1, lock);
   }
-  // A package.json is present, so nothing is missing - whatever the manifest declares
+  // A package.json is present, so nothing is missing - whatever the package.json declares
   // about the tooling, which this check never reads.
   assert.deepEqual(
     run({ "package.json": JSON.stringify({ packageManager: "npm@10" }) }),
@@ -1679,11 +1679,11 @@ test("sca-package-file-missing reports an absent manifest", () => {
   );
 });
 
-// A manifest that exists but cannot be used is the sibling's subject. npm reads neither a
+// A package.json that exists but cannot be used is the sibling's subject. npm reads neither a
 // file that fails to parse nor one that parses to something other than an object, so the
 // build it defines cannot be run either way - and the two are worded apart because a
 // developer would check which it is.
-test("sca-package-file-invalid reports a manifest that cannot be used", () => {
+test("sca-package-file-invalid reports a package.json that cannot be used", () => {
   const run = (files, scaNotRequired = false) =>
     scaPackageFileInvalid.run({
       addon: { files: fileMap(files) },
@@ -1696,11 +1696,11 @@ test("sca-package-file-invalid reports a manifest that cannot be used", () => {
   };
   one(run({ "package.json": "{not json" }), "could not be read");
   one(run({ "package.json": "" }), "could not be read");
-  // Valid JSON, but not a manifest: it opens fine and is simply the wrong shape.
+  // Valid JSON, but not an object: it opens fine and is simply the wrong shape.
   one(run({ "package.json": "[]" }), "is not a JSON object");
   one(run({ "package.json": '"a string"' }), "is not a JSON object");
 
-  // A usable manifest says nothing, empty or not, and a BOM is the developer's editor
+  // A usable package.json says nothing, empty or not, and a BOM is the developer's editor
   // rather than a fault: npm reads one, so this must too.
   assert.deepEqual(run({ "package.json": "{}" }), []);
   assert.deepEqual(run({ "package.json": '\uFEFF{"name":"x"}' }), []);
@@ -1708,7 +1708,7 @@ test("sca-package-file-invalid reports a manifest that cannot be used", () => {
   assert.deepEqual(run({ "manifest.json": "{}" }), []);
 
   // The same as its sibling: the shipped XPI being the archive's own code does not excuse
-  // an unreadable manifest, and neither does what sits beside it.
+  // an unreadable package.json, and neither does what sits beside it.
   assert.equal(run({ "package.json": "{not json" }, true).length, 1);
   assert.equal(
     run({ "package.json": "{not json", "other.lock": "" }).length,
@@ -1718,10 +1718,10 @@ test("sca-package-file-invalid reports a manifest that cannot be used", () => {
 
 // ---- sca-lock-file-missing (SCA deterministic: a build that installs owes a lock) ----
 
-// In a SOURCE submission a package.json is always a build manifest, so a lock is owed - a
-// `scripts` block changes nothing, and neither does what the manifest declares. Both
+// In a SOURCE submission a package.json always defines the build, so a lock is owed - a
+// `scripts` block changes nothing, and neither does what the package.json declares. Both
 // installers refuse without a lock whatever it holds.
-test("sca-lock-file-missing fires whenever a source ships a manifest and no lock", () => {
+test("sca-lock-file-missing fires whenever a source ships a package.json and no lock", () => {
   const run = (files) =>
     scaLockFileMissing.run({ addon: { files: fileMap(files) } }).findings;
   const toolchain = {
@@ -1764,8 +1764,8 @@ test("sca-lock-file-missing fires whenever a source ships a manifest and no lock
       file
     );
   }
-  // What the manifest declares about its tooling is not read either - the lock is owed by
-  // the manifest existing, and none of the three supported names is committed here.
+  // What the package.json declares about its tooling is not read either - the lock is owed by
+  // the package.json existing, and none of the three supported names is committed here.
   assert.deepEqual(
     run({
       "package.json": JSON.stringify({
@@ -1785,9 +1785,9 @@ test("sca-lock-file-missing fires whenever a source ships a manifest and no lock
     }).map((f) => f.file),
     ["package.json"]
   );
-  // A manifest declaring nothing of its own still owes one. `npm ci` refuses without a
-  // lock whatever the manifest holds, and a root that declares nothing is a workspace root
-  // or a manifest whose declarations moved - not a submission that installs nothing.
+  // A package.json declaring nothing of its own still owes one. `npm ci` refuses without a
+  // lock whatever the package.json holds, and a root that declares nothing is a workspace root
+  // or a package.json whose declarations moved - not a submission that installs nothing.
   assert.deepEqual(
     run({ "package.json": JSON.stringify({ scripts: { build: "x" } }) }).map(
       (f) => f.file
@@ -1803,7 +1803,7 @@ test("sca-lock-file-missing fires whenever a source ships a manifest and no lock
     }).map((f) => f.file),
     ["package.json"]
   );
-  // No manifest, and no addon.
+  // No package.json, and no addon.
   assert.deepEqual(run({}), []);
   assert.deepEqual(scaLockFileMissing.run({}).findings, []);
 });
@@ -1873,7 +1873,7 @@ test("sca-lock-file-invalid anchors each gap and names what is wrong", () => {
     [["package-lock.json", null, "could not be read"]]
   );
 
-  // A lock that covers the manifest, and no addon at all.
+  // A lock that covers the package.json, and no addon at all.
   assert.deepEqual(
     scaLockFileInvalid.run({
       addon: {
@@ -1987,7 +1987,7 @@ test("manual checks have unique, doc-backed check ids distinct from rule ids", (
 
 // ---- unused-permission (producer of permissions to vet) ----
 // It always enumerates the declared NAMED permissions a reachable API call does
-// not provably require, one escalation each (anchored to the manifest line); host
+// not provably require, one escalation each (anchored to the manifest.json line); host
 // match patterns are skipped. Same-bodied cases auto-group into the one by-hand
 // reminder.
 test("unused-permission lists the unprovable declared named permissions", () => {
@@ -2020,7 +2020,7 @@ test("unused-permission lists the unprovable declared named permissions", () => 
 
 // The deterministic verdict: a permission whose linked prompt entries
 // (check.permissionTokens) declare usage tokens that appear nowhere in the LIVE
-// code (comments excluded) or manifest is unused - a finding, never an
+// code (comments excluded) or manifest.json is unused - a finding, never an
 // escalation. Everything the tokens cannot decide keeps escalating: a found
 // token, an entry without tokens (unlimitedStorage), or no entry at all.
 // Shaped exactly like production LoadedCheck.permissionTokens
@@ -2219,7 +2219,7 @@ test("unused-permission resolves dotted injection tokens via api-usage; bare tok
   );
 });
 
-// The compose_scripts manifest key requires compose (the required_permissions
+// The compose_scripts manifest.json key requires compose (the required_permissions
 // annotation the local extensionScripts.json overlay adds to the key). Declaring
 // the key grounds compose as USED, so it is dropped outright - neither a
 // deterministic-unused finding nor a manual escalation. This is the schema-driven
@@ -3251,7 +3251,7 @@ test("missing-permission ignores usages in dead (unreachable) files", () => {
   // Live: the call sits in the background script -> messagesRead flagged missing.
   const live = missingPermission.run(withManifest(ctx("bg.js"))).findings;
   assert.ok(live.some((f) => f.item === "messagesRead"));
-  // Dead: dead.js is never referenced by the manifest -> no missing finding.
+  // Dead: dead.js is never referenced by the manifest.json -> no missing finding.
   assert.equal(
     missingPermission.run(withManifest(ctx("dead.js"))).findings.length,
     0
@@ -3385,7 +3385,7 @@ test("unused-permission enumerates regardless of strict_min_version", () => {
 // arrive with a locale tag: English is decided, any other language is escalated,
 // because the allowed and forbidden readings share one surface shape ("X para
 // Thunderbird" is allowed, "X de Thunderbird" is not) and telling them apart needs
-// the meaning of a word. trademark-thunderbird-name owns a name the manifest
+// the meaning of a word. trademark-thunderbird-name owns a name the manifest.json
 // states literally, whose language nothing in the package declares.
 const tmCtx = (name, files = {}) =>
   withManifest({
@@ -3625,7 +3625,7 @@ test("trademark-thunderbird-name escalates an unlabelled name, never finds", () 
   );
 });
 
-// The finding cites the manifest line of the `name` property and the offending
+// The finding cites the manifest.json line of the `name` property and the offending
 // (resolved) name, not a bare "manifest.json".
 test("trademark-violation anchors the finding on the name line with the name", () => {
   // The record is built over the SAME manifest.json bytes the corpus carries, because the
@@ -3653,7 +3653,7 @@ test("trademark-violation anchors the finding on the name line with the name", (
   assert.equal(literal[0].loc.line, 3);
   assert.equal(literal[0].item, "Firefox Helper");
 
-  // A __MSG__ name: still anchored on the manifest `name` line, but the item is the
+  // A __MSG__ name: still anchored on the manifest.json `name` line, but the item is the
   // resolved locale string (the actual offending name).
   const localized = trademarkViolation.run(
     ctxOf("__MSG_extName__", {
@@ -3824,7 +3824,7 @@ test("non-experiment-strict-max-version flags only a non-Experiment that pins a 
   });
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "128.0"); // value surfaced for the {{item}} response
-  // The finding anchors on the strict_max_version line of the manifest text, so the record
+  // The finding anchors on the strict_max_version line of the manifest.json text, so the record
   // is built over those bytes rather than a re-serialization of the parse.
   const locatedText =
     '{\n  "browser_specific_settings": { "gecko": { "strict_max_version": "128.0" } }\n}\n';
@@ -3854,7 +3854,7 @@ test("non-experiment-strict-max-version flags only a non-Experiment that pins a 
 });
 
 // With experiments disabled (the default), an Experiment errors on the
-// experiment_apis manifest line; --allow-experiments silences it, and a
+// experiment_apis manifest.json line; --allow-experiments silences it, and a
 // non-Experiment is silent regardless.
 test("experiment-not-allowed errors on the experiment_apis line unless allowed", () => {
   const manifestText = '{\n  "experiment_apis": { "x": {} }\n}\n';
@@ -3952,7 +3952,7 @@ test("missing-library / obfuscated-code note a verdict per classified file", () 
 });
 
 // ---- Tier 2 status notes (one deterministic verdict per check) ----
-// These checks decide one thing about the manifest/submission; each reports its
+// These checks decide one thing about the manifest.json/submission; each reports its
 // outcome to the feed - pass/fail, or skipped-with-reason when it does not apply
 // (so a bare check header is never ambiguous). unsure = the deterministic
 // decision to escalate, never an answer to it.
@@ -4095,7 +4095,7 @@ test("missing-english-localization: _locales branches (pass / fail)", () => {
   );
 });
 
-// No _locales: franc over the user-facing text (HTML visible text + manifest
+// No _locales: franc over the user-facing text (HTML visible text + manifest.json
 // name/description, script/style stripped) decides. Confident non-English is a
 // finding, English passes, too little/ambiguous text escalates to manual, and
 // no user-facing text passes.
@@ -4932,7 +4932,7 @@ test("default-locale checks flag the two load-breaking directions", () => {
 // ---- addon-icon-missing ----
 // No defined add-on icon (absent `icons`, empty/blank values, or a malformed
 // non-object) gets one advisory with no location; a declared icon passes; themes
-// and dictionaries are exempt; an unparsed manifest is skipped.
+// and dictionaries are exempt; an unparsed manifest.json is skipped.
 test("addon-icon-missing flags an extension with no defined add-on icon", () => {
   const ctx = (manifest) => ({ addon: { manifest: manifestOf(manifest) } });
   const out = addonIconMissing.run(
@@ -5064,10 +5064,10 @@ test("background-module flags module syntax without type: module", () => {
 });
 
 // unrecognized-file-type: the backstop for the JS-corpus suffix list. reachability's
-// manifest walk and <script> walk record any LIVE referenced packaged file whose suffix is
+// manifest.json walk and <script> walk record any LIVE referenced packaged file whose suffix is
 // not in RECOGNIZED_EXTS (a file the browser loads but no check could classify); the check
 // reports them. input: xpi. A helper builds a routed-to-the-artifact ctx with reachability
-// inputs (files + shipped manifest + parsed sources).
+// inputs (files + shipped manifest.json + parsed sources).
 const reachCtx = (files, manifest) => {
   const manifestText = JSON.stringify(manifest);
   const addon = {

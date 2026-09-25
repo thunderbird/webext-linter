@@ -20,7 +20,7 @@ test("routeCtx routes each input to its own sibling, and throws on a missing one
   const source = { tag: "source" };
   const xpi = { tag: "xpi" };
   const manifest = { tag: "manifest" };
-  // No `build` key - undefined as in an XPI review, where input:sca checks are sca-gated out.
+  // No `sca` key - undefined as in an XPI review, where input:sca checks are sca-gated out.
   const siblings = { source, xpi, manifest };
 
   assert.equal(routeCtx({ input: "source" }, siblings), source);

@@ -53,8 +53,8 @@ export default {
     const files = addon.files;
     const text = ctx.manifest?.text;
     /**
-     * @param {string} item  The manifest token to anchor on.
-     * @returns {?{line: number}}  Its manifest line as a loc, or null.
+     * @param {string} item  The manifest.json token to anchor on.
+     * @returns {?{line: number}}  Its manifest.json line as a loc, or null.
      */
     const lineOf = (item) => {
       const line = manifestTokenLine(text, item);
@@ -66,7 +66,7 @@ export default {
     const seen = new Set();
     /**
      * Emit one finding per key. `item` is the displayed entry; `locItem` is the
-     * manifest token to anchor on, which differs from `item` when a glob pattern
+     * manifest.json token to anchor on, which differs from `item` when a glob pattern
      * exposed the file - the loc must point at the WAR pattern (e.g. "icons/*"),
      * not the file's own coincidental line elsewhere (e.g. the "icons" field).
      * @param {string} key @param {?string} item @param {?string} [locItem]

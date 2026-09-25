@@ -247,7 +247,7 @@ test("renderManualItems resolves an escalation to title + instructions + locus",
 
 // The report labels a manual item's file:line by artifact ([XPI]/[SCA]) via
 // ruleInputs.get(ruleId), so renderManualItems must carry ruleId through. Without it a
-// non-manifest manual item has no ruleId and defaults to [SCA] (the unused-files mislabel).
+// non-manifest.json manual item has no ruleId and defaults to [SCA] (the unused-files mislabel).
 test("renderManualItems carries the ruleId through for the artifact label", () => {
   const [item] = renderManualItems(
     [{ ruleId: "unused-files", file: "assets/x.png", kind: "escalation" }],

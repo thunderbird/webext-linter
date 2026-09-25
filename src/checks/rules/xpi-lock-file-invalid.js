@@ -3,11 +3,11 @@
 // states that a file bundled in this XPI was copied from that release, and verifyPackage
 // takes it literally, fetching THAT release's listing and matching the shipped bytes
 // against it. A range names no single release, so the lock beside it is what says which one
-// was bundled. This one does not say: it was written from another manifest, records the
+// was bundled. This one does not say: it came from another package file, records the
 // package under another name, or does not parse at all.
 //
 // The reading is fixed by the SUBMISSION TYPE, never by the file's contents: in an XPI a
-// package.json is a vendoring manifest whatever else it carries, `scripts` included,
+// package.json declares VENDORED libraries whatever else it carries, `scripts` included,
 // because nothing in a built add-on is installed. The mirror holds in a source archive,
 // where the same question is asked of the tree the reviewer installs
 // (-> sca-lock-file-invalid).

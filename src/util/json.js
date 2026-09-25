@@ -7,12 +7,12 @@
 // on a leading BOM while every tool that writes and reads these files does not, so a
 // perfectly good file read as absent - silently, because "absent" is each reader's empty
 // case. That defect shipped four separate times in four separate readers (an Experiment
-// schema, a build corpus manifest, an install-hook manifest, a package-manager
+// schema, a build corpus package file, an install-hook package file, a package-manager
 // fingerprint), each time invisible to a green suite. One parser cannot drift from itself.
 //
 // Belongs here: turning bytes or text into a value (parseJson), the BOM handling that needs
 // (stripBom), and deterministic JSON shaping (sortKeys, canonicalJson). Does NOT belong
-// here: what a parsed value MEANS - a package.json's declarations are src/vendor/manifest.js,
+// here: what a parsed value MEANS - a package.json's declarations are src/vendor/package-file.js,
 // a lock's are src/vendor/locks.js, a check's comparison is that check - and user-facing
 // JSON report output, which is src/report/*.
 
@@ -73,7 +73,7 @@ export function parseJson(input) {
  *
  * Not cosmetic for a submission's files: `JSON.parse` THROWS on a BOM while the
  * tools that read the same file do not (npm parses through it, editors write it),
- * so a reader that skips this treats a perfectly good manifest or lock as absent -
+ * so a reader that skips this treats a perfectly good package file or lock as absent -
  * silently, since every one of those reads falls back to "nothing declared".
  * @param {string} text @returns {string}
  */

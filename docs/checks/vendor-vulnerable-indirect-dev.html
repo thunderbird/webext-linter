@@ -47,7 +47,7 @@
 flowchart TD
   A["A package the lock file installs"] --> G{"Source-code submission<br/>with an npm or pnpm lock?"}
   G -- no --> S([skip])
-  G -- yes --> D{"Declared by one of the<br/>submission's own manifests?"}
+  G -- yes --> D{"Declared by one of the<br/>submission's own package files?"}
   D -- yes --> S2([skip: audited as a declared dependency])
   D -- no --> P{"Installed for the build only?"}
   P -- "no, it ships" --> S3([skip: the production check reports it])

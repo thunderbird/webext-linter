@@ -45,10 +45,10 @@ webext-linter <xpi|folder> [options]
 copy: edit the source and the next run picks it up.
 
 The schema review picks the matching schema **automatically** from the add-on's
-own manifest - no channel flag. Two dimensions:
+own manifest.json - no channel flag. Two dimensions:
 
 - **Manifest version**: `manifest_version` selects `mv2` vs `mv3`. An add-on that
-  omits it (or has a missing/invalid manifest) is treated as MV2.
+  omits it (or has a missing/invalid manifest.json) is treated as MV2.
 - **Channel** (`release`, `esr`, `beta`): chosen from the add-on's supported
   version range. The **upper bound** (`strict_max_version`) decides: an add-on
   capped at a channel's own Thunderbird major targets that train, so its schema is
@@ -166,9 +166,9 @@ appears in.
   we can name would leave the ones we cannot - but they need no pin, since nothing is
   vendored from one and no release is ever fetched to compare against. Which release a
   version range resolves to is the lock file's answer rather than the declaration's, so a
-  range is fine here and the lock is what must pin it. A shipped XPI carries no lock, so
-  there the declaration itself must name a bare version - the two submission types ask the
-  same question of different files.
+  range is fine here and the lock is what must pin it. In a shipped XPI the declaration
+  must name a bare version, or a committed lock must resolve it - the two submission types
+  ask the same question of different files.
 - The **rest of the installed tree** is audited too: the committed lock file
   records every package the install actually pulls in, at any depth, and almost
   all of a real submission's vulnerable packages are ones nobody declared. Those
@@ -193,16 +193,17 @@ appears in.
   so reproducing it attests nothing and it pulls code from a developer-chosen host onto the
   reviewer's machine. Beyond those, the build must not commit a `node_modules` folder or a
   built archive (`.xpi` / `.zip` - both are build output, never shipped in a source
-  submission), and any `package.json` install hook (`postinstall`, …) is flagged. The build corpus is
-  collected once in setup (over the files reached from `package.json`), and
-  `undeclared-build-source` reads it.
+  submission), and any `package.json` install hook (`postinstall`, …) escalates and stops
+  the review once reported. The build is traced once in setup, over the files reached from
+  `package.json`, and what `undeclared-build-source` reads of it is the steps that trace
+  could not follow.
   Nothing in those files says what the build **does**, so every source submission is
   escalated to Extended Manual Review: the reviewer reproduces the build and confirms
   it produces the shipped XPI from the declared dependencies alone - no raw URL,
   `curl|sh`, unpinned `git clone`, CDN or postinstall hook. Any step the linter could
   not follow statically is named in that escalation.
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
-  manifest, the experiments and the file-completeness checks (bundled /
+  manifest.json, the experiments and the file-completeness checks (bundled /
   web-accessible / unused / locales). It is analysed in full in either mode - the
   same vendor, library and parse passes - so those checks see the shipped add-on
   the same way whether or not a source archive came with it.
@@ -255,11 +256,10 @@ asked), an `instructions-for-llm` beside an `instructions-for-human` (a differen
 question for each), or an `instructions-for-human` alone. A check with wording an
 agent can be handed is screened, and its cases land under **Extended Code Review**.
 A check whose cases the code cannot answer authors only the human half, and its cases
-land under **Extended Manual Review**: `privacy-policy` (the policy is a field in the ATN listing,
-not in the package), `native-messaging` (likewise, what the listing discloses about the
-native app), `undeclared-build-source` (reproducing the build is the reviewer's own
+land under **Extended Manual Review**: `native-messaging` (what the listing discloses
+about the native app), `undeclared-build-source` (reproducing the build is the reviewer's own
 attestation that the source produces the shipped XPI), `trademark-thunderbird-name` (an
-add-on name written directly in the manifest carries no locale tag, so the language has
+add-on name written directly in the manifest.json carries no locale tag, so the language has
 to be settled before the trademark form can be judged at all), `vendored-remote-resources`
 (a remote `@import` inside a file matching a published release is that release's line,
 not the developer's, so accepting it is a judgement a person owns), and
@@ -312,16 +312,16 @@ machine.
 | Check | What it flags |
 | --- | --- |
 | `async-onmessage` | An async listener passed to the `addListener()` of an event that answers with its listener's return value (`runtime.onMessage`, `onMessageExternal`, `onUserScriptMessage`), derived from the schema. |
-| `background-module` | A background script (`background.scripts`/`service_worker`) that uses static ES module syntax (`import`/`export`) while the manifest's background is not declared `"type": "module"` - it won't load as a module (error). Background pages and content scripts are out of scope. |
-| `bundled-files` | Referenced files that aren't packaged. Both halves come from the schema, not a hardcoded list: every manifest key the schema types as an extension-relative path (scripts, pages, popups, `icons` and every `default_icon`/`theme_icons`, ruleset paths, theme images, Experiment schema and parent scripts), and packaged-file paths passed to file-loading API calls (script registration, `setIcon`, `executeScript`/`insertCSS`, `getURL`, ...) - the same schema-derived loader set that fuels the reference graph. |
+| `background-module` | A background script (`background.scripts`/`service_worker`) that uses static ES module syntax (`import`/`export`) while the manifest.json's background is not declared `"type": "module"` - it won't load as a module (error). Background pages and content scripts are out of scope. |
+| `bundled-files` | Referenced files that aren't packaged. Both halves come from the schema, not a hardcoded list: every manifest.json key the schema types as an extension-relative path (scripts, pages, popups, `icons` and every `default_icon`/`theme_icons`, ruleset paths, theme images, Experiment schema and parent scripts), and packaged-file paths passed to file-loading API calls (script registration, `setIcon`, `executeScript`/`insertCSS`, `getURL`, ...) - the same schema-derived loader set that fuels the reference graph. |
 | `cleartext-transmission` | Data transmitted to a remote host over an unencrypted scheme (`http://`/`ws://`/`ftp://`) by an overt API (`fetch`, XHR, WebSocket, `sendBeacon`) - any cleartext send, regardless of payload (error). Covert disguised channels are the `disguised-*` checks. |
 | `code-sanity` | Opt-in (only runs with `--eslint`). ESLint-based code errors: `no-redeclare`, `no-shadow`, dupe/unreachable/self-* rules, empty blocks (`no-empty`, e.g. an error-swallowing empty `catch`) (info). Style/fixable rules (e.g. `prefer-const`) are excluded - a review never rewrites the add-on's code, so "rewrite this" is not a review concern. No `no-undef` (WebExtension scripts share a global scope). |
 | `csp-unsafe-eval` | A `content_security_policy` that allows `'unsafe-eval'` - permits dynamic code execution (error). |
 | `csp-unsafe-inline` | A `content_security_policy` that allows `'unsafe-inline'` - permits dynamic code execution via inline scripts (error). |
 | `debugger-statement` | Unconditional `debugger` statements. |
-| `default-locale-missing` | A packaged `_locales/` directory but no `default_locale` manifest key - Thunderbird refuses to load the add-on (error). |
-| `default-locale-unused` | A `default_locale` manifest key but no packaged `_locales/` directory - Thunderbird refuses to load the add-on (error). |
-| `deprecated-api` | Deprecated APIs (member or namespace level), and APIs whose `version_added` is newer than the target Thunderbird. |
+| `default-locale-missing` | A packaged `_locales/` directory but no `default_locale` manifest.json key - Thunderbird refuses to load the add-on (error). |
+| `default-locale-unused` | A `default_locale` manifest.json key but no packaged `_locales/` directory - Thunderbird refuses to load the add-on (error). |
+| `deprecated-api` | Deprecated APIs (member or namespace level). An API newer than the declared range is the `strict-*-version-api` checks. |
 | `disguised-navigation` | Data smuggled out through a page navigation (`location.assign`/`replace`) built with appended runtime data (error, regardless of consent). |
 | `disguised-resource` | Data smuggled out through a resource-load URL (image/iframe/media `src`, `setAttribute`) built with appended runtime data (error, regardless of consent). |
 | `disguised-stylesheet` | Data smuggled out through a stylesheet or CSS `url()` built with appended runtime data (error, regardless of consent). |
@@ -332,18 +332,18 @@ machine.
 | `experiment-modified` | A bundled Experiment that is a recognised published Thunderbird API draft but a modified or outdated copy (error) - the submission stays on the normal review path but is rejected until the unmodified latest upstream copy is bundled. |
 | `experiment-overrides-api` | An Experiment whose declared API path overrides or grafts onto a built-in Thunderbird API instead of adding a new namespace (error). |
 | `function-constructor` | A `new Function(...)` (the Function constructor) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
-| `manifest-invalid-json` | manifest.json is present but is not valid JSON (error). |
+| `manifest-invalid-json` | manifest.json is present but is not a JSON object - unparsable, or a primitive or array (error). |
 | `manifest-missing` | No manifest.json at the add-on root (error). |
-| `manifest-missing-key` | A required top-level manifest key (`manifest_version`/`name`/`version`) is absent (error). |
+| `manifest-missing-key` | A required top-level manifest.json key (`manifest_version`/`name`/`version`) is absent (error). |
 | `manifest-unknown-permission` | A declared permission value that is neither a known permission, a data-collection permission, nor a match pattern (error). |
 | `manifest-version-mismatch` | `manifest_version` disagrees with the schema set being reviewed (error). |
 | `minimize-host-permissions` | Broad (`<all_urls>` / `*` host) permissions requested as required (info). |
-| `missing-english-localization` | User-facing text hardcoded in a non-English language while the add-on ships no English `_locales` (warning). Pre-flight: an English `_locales` directory (`en`, `en-US`, …) → pass, a `_locales` directory without one → a finding, and no `_locales` at all → language-detect the visible HTML text plus the manifest name/description with `franc`, where a confident non-English verdict is the finding. Too little text, or a near-tie with English, escalates. |
+| `missing-english-localization` | User-facing text hardcoded in a non-English language while the add-on ships no English `_locales` (warning). Pre-flight: an English `_locales` directory (`en`, `en-US`, …) → pass, a `_locales` directory without one → a finding, and no `_locales` at all → language-detect the visible HTML text plus the manifest.json name/description with `franc`, where a confident non-English verdict is the finding. Too little text, or a near-tie with English, escalates. |
 | `missing-library` | A bundled JS or CSS file (not in the VENDOR file) whose content hash matches a known third-party library release, named as `name version` (info). Identified by a fetched known-library hash database (Mozilla dispensary's `hashes.txt`), so the match is byte-exact. A file the database doesn't recognize is left to `minified-code`/`obfuscated-code` or scanned as the developer's own code. An identified library is also audited for known vulnerabilities (`vendor-vulnerable`), so an undeclared vulnerable bundle is still caught. |
-| `missing-manifest-key` | A called API needs a manifest key (e.g. `action`) that is not declared (error). The manifest-key counterpart of `missing-permission`. |
-| `missing-permission` | A permission required but not declared (error) - required by a called API, or implied by a declared script-injection manifest key (`compose_scripts` → `compose`, `message_display_scripts` → `messagesModify`). An API needing a manifest key is `missing-manifest-key`. |
+| `missing-manifest-key` | A called API needs a manifest.json key (e.g. `action`) that is not declared (error). The manifest-key counterpart of `missing-permission`. |
+| `missing-permission` | A permission required but not declared (error) - required by a called API, or implied by a declared script-injection manifest.json key (`compose_scripts` → `compose`, `message_display_scripts` → `messagesModify`). An API needing a manifest.json key is `missing-manifest-key`. |
 | `missing-vendor-file` | A VENDOR entry (file + source URL) naming a file not present in the submission (warning). |
-| `mistyped-manifest-value` | A known manifest key whose value has the wrong type, validated with ajv against a JSON Schema derived from the annotated schema (warning). Thunderbird misreads such values. |
+| `mistyped-manifest-value` | A known manifest.json key whose value has the wrong type, validated with ajv against a JSON Schema derived from the annotated schema (warning). Thunderbird misreads such values. |
 | `native-messaging` | The `nativeMessaging` permission (in `permissions` or `optional_permissions`), which lets the add-on exchange messages with a native application outside Thunderbird - routed to manual review to confirm disclosure (No Surprises). |
 | `non-experiment-strict-max-version` | A non-Experiment that pins `strict_max_version` (warning - it only blocks installs on newer Thunderbird). |
 | `minified-code` | A JS file (not a recognized library, not obfuscated) shipped minified - by minified line geometry (a very long, dense line) (error). |
@@ -352,24 +352,24 @@ machine.
 | `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, stops the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce. Whether the developer could have shipped the XPI alone is a separate question, so `sca-not-required` prints beside this rejection rather than in place of it. |
 | `sca-package-file-invalid` | A `package.json` that is present but unusable - it does not parse, or it parses to something other than a JSON object - so the build it defines cannot be run (error, stops the review). Presence is decided by name and usability by reading, so exactly one of this and the check above ever speaks. |
 | `sca-lock-file-invalid` | A committed lock file that cannot install what `package.json` declares: it cannot be read, it is not a recognisable npm or pnpm lock, it resolves nothing for a declared package, or the version it pins for one is not a version that `package.json` allows (error). `npm ci` / `pnpm install --frozen-lockfile` refuse over all four, so the build cannot be reproduced and the review stops. |
-| `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, stops the review). The lock is owed by the manifest, not by what it declares: both installers refuse without one whatever it holds. A build using a package manager the review does not install from commits no lock that counts, so it is rejected here. |
+| `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, stops the review). The lock is owed by the `package.json`, not by what it declares: both installers refuse without one whatever it holds. A build using a package manager the review does not install from commits no lock that counts, so it is rejected here. |
 | `string-timer` | A code string passed to `setTimeout`/`setInterval` (it is eval'd) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
 | `sync-xhr` | Synchronous `XMLHttpRequest` (`open(..., false)`). |
 | `trademark-violation` | Add-on name (resolved from `_locales` for a `__MSG__` name) using a Mozilla brand term - `Firefox`/`Mozilla`/`MZLA` anywhere, in any locale (error, case-insensitive). Needs no knowledge of the language, so it is always a finding, and each offending name is reported once naming every locale that states it. `Thunderbird` is the two checks below, and a name carrying a brand term is left to this one alone, since it is refused either way. The icon is checked separately, on the listing and in the package. |
 | `trademark-thunderbird-locale` | `Thunderbird` in a name resolved from `_locales`, other than as a trailing "for Thunderbird". A name from an `en*` locale is a finding - the policy is written in English - and a name decided that way is not also escalated because another locale states it. A name from any other locale escalates to code review, because the allowed and forbidden readings share one shape ("X para Thunderbird" is allowed, "X de Thunderbird" is not), word order and word boundaries both vary, and telling them apart needs the meaning of a word. Answerable from the package, since every locale file ships in it and its directory names the language. |
-| `trademark-thunderbird-name` | The same question for a name the manifest states literally. It carries no locale tag, so nothing in the package says what language it is in and the language must be settled first - not answerable from the submission, so it escalates to manual review and never rejects on its own. |
+| `trademark-thunderbird-name` | The same question for a name the manifest.json states literally. It carries no locale tag, so nothing in the package says what language it is in and the language must be settled first - not answerable from the submission, so it escalates to manual review and never rejects on its own. |
 | `unknown-api` | Unknown namespaces, unknown members (incl. methods on property types like `storage.local.x`), and APIs marked `unsupported`. |
 | `unparsable-file` | A JavaScript, TypeScript, or Vue `<script>` source that failed to parse, so its API checks were skipped (info). |
 | `unpinned-vendor-source` | A VENDOR-declared file whose (trusted-host) source is not pinned to an immutable version/tag/commit, so its bytes can't be verified (error). |
-| `unrecognized-manifest-key` | A top-level manifest key the schema does not define - Thunderbird ignores it (info). |
+| `unrecognized-manifest-key` | A top-level manifest.json key the schema does not define - Thunderbird ignores it (info). |
 | `unsafe-html` | Any write to `innerHTML`/`outerHTML`/`srcdoc`/`insertAdjacentHTML`. Only `Element.setHTML()` is sanctioned (an empty/null clear is exempt) (info). |
-| `unused-permission` | A declared named permission (required or optional) that no reachable call provably requires (warning) - host patterns are `minimize-host-permissions`' concern. A permission is dropped as justified when an API call, a `navigator.*` Web/DOM call, or a script-injection manifest key proves it in use. It is a finding when the registry's permission prompt names its justifying usages as `tokens` and not one of them occurs anywhere in the live code (comments excluded) or the manifest - decided only while the scan can see every usage. Everything else escalates, carrying the sites where its tokens occur. |
-| `update-url` | A manifest that declares an `update_url` (at `browser_specific_settings.gecko` or the deprecated `applications.gecko` alias, any manifest version). It self-hosts updates outside ATN, so the next version installs from a developer-controlled URL and bypasses review (error). |
+| `unused-permission` | A declared named permission (required or optional) that no reachable call provably requires (warning) - host patterns are `minimize-host-permissions`' concern. A permission is dropped as justified when an API call, a `navigator.*` Web/DOM call, or a script-injection manifest.json key proves it in use. It is a finding when the registry's permission prompt names its justifying usages as `tokens` and not one of them occurs anywhere in the live code (comments excluded) or the manifest.json - decided only while the scan can see every usage. Everything else escalates, carrying the sites where its tokens occur. |
+| `update-url` | A manifest.json that declares an `update_url` (at `browser_specific_settings.gecko` or the deprecated `applications.gecko` alias, any manifest version). It self-hosts updates outside ATN, so the next version installs from a developer-controlled URL and bypasses review (error). |
 | `vendor-modified` | A declared third-party file whose bytes don't match its pinned source (EOL-tolerant compare) - it appears modified from upstream (error). |
-| `multiple-vendor-files` | More than one file in the package root names itself the VENDOR manifest (`VENDOR`, `VENDOR.md`, `VENDORS`, `VENDORS.md`), so which one the review reads would depend on the archive's order (error). None of them is read while it is ambiguous. |
+| `multiple-vendor-files` | More than one file in the package root names itself the VENDOR file (`VENDOR`, `VENDOR.md`, `VENDORS`, `VENDORS.md`), so which one the review reads would depend on the archive's order (error). None of them is read while it is ambiguous. |
 | `vendor-unparseable` | A VENDOR file is present but yielded no declaration, so nothing can be verified (error). The parse is all-or-nothing: it reads only what is marked as a declaration - a path and a source URL paired by a colon, a key, or Markdown link syntax - and a fault anywhere discards the whole file. |
 | `xpi-lock-file-missing` | A dependency in a SHIPPED `package.json` declared as a range, with no lock file committed to resolve it (error). The declaration states that a bundled file was copied from that release, and the review fetches that release to compare the shipped bytes against it, so a range names nothing to compare against until a lock says which version was bundled. Any of `package-lock.json`, `npm-shrinkwrap.json` or `pnpm-lock.yaml` is accepted. XPI submissions only: a source archive answers pinning against the tree the reviewer installs. |
-| `xpi-lock-file-invalid` | The same declaration where a lock file IS committed and records no version for it (error) - regenerated from another manifest, keyed under another name, or unparseable. Kept apart from the row above because the remedy is: regenerate the lock rather than commit one. A dependency is never reported by both. |
+| `xpi-lock-file-invalid` | The same declaration where a lock file IS committed and records no version for it (error) - regenerated from another `package.json`, keyed under another name, or unparseable. Kept apart from the row above because the remedy is: regenerate the lock rather than commit one. A dependency is never reported by both. |
 
 ### Checks that escalate
 
@@ -386,7 +386,7 @@ handed a concrete `file:line` to look at rather than a verdict the tool guessed.
 | `data-exfiltration` | Pre-flight: a normal transmission (`fetch`/XHR/WebSocket/EventSource/`sendBeacon`) to a remote/dynamic host escalates, for the reviewer to judge from the file and the options page whether user data is sent without an explicit opt-in. Covert channels are the separate `disguised-*` errors. |
 | `disguised-transmission` | Pre-flight: the weak residue of the covert channels - a resource URL, a stylesheet `url()`, a `window.open()`, or a page navigation to a remote host built from a runtime value, with no user-data API call in it escalates, for the reviewer to judge whether it really smuggles user data out through that channel or is just legitimate dynamic URL building. The strong cases (a user-data call in the URL) are the deterministic `disguised-*` errors. |
 | `minimize-web-accessible-resources` | Pre-flight: over-broad exposure (a resource pattern like `*`, or MV3 `matches` of `<all_urls>`/`*://*/*`) and concrete resources no content script/page loads → a finding. An ambiguous exposed resource (dynamic loaders, or name mentioned) escalates, for the reviewer to judge whether it is needlessly exposed. |
-| `unused-files` | Pre-flight: hidden/junk by name, and files reachable from no manifest entry point (a reference graph over imports/`getURL`/HTML/CSS plus schema-derived file-loading APIs) - a clearly-unreferenced file is a finding. An ambiguous file (string-mentioned, or the add-on uses dynamic loaders) escalates, for the reviewer to follow the suspected loaders and judge whether it is unused. Documentation (any `.md`/`.rst`/`.license`, or a `.txt` or extensionless file named like a doc), dependency manifests and `_locales` are exempt. Junk by name is reported ahead of any exemption. |
+| `unused-files` | Pre-flight: hidden/junk by name, and files reachable from no manifest.json entry point (a reference graph over imports/`getURL`/HTML/CSS plus schema-derived file-loading APIs) - a clearly-unreferenced file is a finding. An ambiguous file (string-mentioned, or the add-on uses dynamic loaders) escalates, for the reviewer to follow the suspected loaders and judge whether it is unused. Documentation (any `.md`/`.rst`/`.license`, or a `.txt` or extensionless file named like a doc), `package.json`, lock files and `_locales` are exempt. Junk by name is reported ahead of any exemption. |
 
 ### Blind-spot sweeps
 

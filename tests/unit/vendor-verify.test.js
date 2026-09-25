@@ -261,7 +261,7 @@ function net({
 const store = (over = {}) => ({
   set: new Set(),
   results: [],
-  manifest: [],
+  entries: [],
   packages: [],
   unpinned: [],
   unlocked: [],
@@ -522,7 +522,7 @@ test("verifyVendor: VENDOR entry that matches a popular pinned source -> verifie
   const url = "https://unpkg.com/foo@1.0.0/a.js";
   const addon = addonWith(
     { "a.js": "BODY\n" },
-    store({ set: new Set(["a.js"]), manifest: [pinnedEntry("a.js", url)] })
+    store({ set: new Set(["a.js"]), entries: [pinnedEntry("a.js", url)] })
   );
   await verifyVendor(addon, net({ bytes: "BODY\n" }));
   assert.deepEqual(addon.vendor.results, [
@@ -534,7 +534,7 @@ test("verifyVendor: an EOL-only difference still verifies", async () => {
   const url = "https://unpkg.com/foo@1.0.0/a.js";
   const addon = addonWith(
     { "a.js": "line1\r\nline2\r\n" }, // CRLF + trailing newline
-    store({ set: new Set(["a.js"]), manifest: [pinnedEntry("a.js", url)] })
+    store({ set: new Set(["a.js"]), entries: [pinnedEntry("a.js", url)] })
   );
   await verifyVendor(addon, net({ bytes: "line1\nline2" })); // LF, no trailing
   assert.equal(addon.vendor.results[0].outcome, "verified");
@@ -545,7 +545,7 @@ test("verifyVendor: an EOL-only difference still verifies", async () => {
 const TGZ_URL = "https://registry.npmjs.org/foo/-/foo-1.0.0.tgz";
 const tgzEntry = () => ({
   set: new Set(["vendor/foo.js"]),
-  manifest: [pinnedEntry("vendor/foo.js", TGZ_URL)],
+  entries: [pinnedEntry("vendor/foo.js", TGZ_URL)],
 });
 
 test("verifyVendor: a file matching an npm-registry tarball -> verified", async () => {
@@ -601,7 +601,7 @@ test("verifyVendor: a folder verifies each file against the repo archive subpath
     },
     store({
       folders: new Set(["vendor/lib"]),
-      manifest: [
+      entries: [
         {
           path: "vendor/lib",
           sourceUrl: TREE,
@@ -632,14 +632,14 @@ test("verifyVendor: a real byte difference is modified, a niche lib not-popular"
   const url = "https://unpkg.com/foo@1.0.0/a.js";
   const modified = addonWith(
     { "a.js": "MINE" },
-    store({ set: new Set(["a.js"]), manifest: [pinnedEntry("a.js", url)] })
+    store({ set: new Set(["a.js"]), entries: [pinnedEntry("a.js", url)] })
   );
   await verifyVendor(modified, net({ bytes: "UPSTREAM" }));
   assert.equal(modified.vendor.results[0].outcome, "modified");
 
   const niche = addonWith(
     { "a.js": "BODY" },
-    store({ set: new Set(["a.js"]), manifest: [pinnedEntry("a.js", url)] })
+    store({ set: new Set(["a.js"]), entries: [pinnedEntry("a.js", url)] })
   );
   // A readable not-popular VENDOR file was skipped as vendored - prove it leaves
   // the non-authored set so the source-level checks scan it as authored code.
@@ -659,7 +659,7 @@ test("verifyVendor: an unfetchable source -> unfetchable", async () => {
   const url = "https://unpkg.com/foo@1.0.0/a.js";
   const addon = addonWith(
     { "a.js": "BODY" },
-    store({ set: new Set(["a.js"]), manifest: [pinnedEntry("a.js", url)] })
+    store({ set: new Set(["a.js"]), entries: [pinnedEntry("a.js", url)] })
   );
   await verifyVendor(addon, net({ throwOnFetch: true }));
   assert.equal(addon.vendor.results[0].outcome, "unfetchable");
@@ -673,7 +673,7 @@ test("verifyVendor: a github source from a trusted org verifies despite low star
     { "vendor/i18n.mjs": "BODY\n" },
     store({
       set: new Set(["vendor/i18n.mjs"]),
-      manifest: [pinnedEntry("vendor/i18n.mjs", url)],
+      entries: [pinnedEntry("vendor/i18n.mjs", url)],
     })
   );
   // The raw bytes match; fetchJson throws to prove the stars lookup is skipped
@@ -696,7 +696,7 @@ test("verifyVendor: a github source from a non-trusted org is still star-gated",
     { "vendor/lib.js": "BODY\n" },
     store({
       set: new Set(["vendor/lib.js"]),
-      manifest: [pinnedEntry("vendor/lib.js", url)],
+      entries: [pinnedEntry("vendor/lib.js", url)],
     })
   );
   const net = {
@@ -1199,7 +1199,7 @@ test("verifyVendor: the OSV audit records a vulnerable npm VENDOR library", asyn
     store({
       vendorFile: "VENDOR.md",
       set: new Set(["lib/lodash.js"]),
-      manifest: [
+      entries: [
         { path: "lib/lodash.js", sourceUrl: url, trusted: true, pinned: true },
       ],
     })
@@ -1293,7 +1293,7 @@ test("auditGithub: a github source whose npm twin matches by hash is OSV-audited
     store({
       vendorFile: "VENDOR.md",
       set: new Set(["lib/moment.min.js"]),
-      manifest: [pinnedEntry("lib/moment.min.js", url)],
+      entries: [pinnedEntry("lib/moment.min.js", url)],
     })
   );
   // The deterministic candidate (repo name "moment" @ "2.29.1") serves a listing
@@ -1606,7 +1606,7 @@ const goneNet = () => {
 
 test("a NetworkGoneError propagates out of every vendor entry point", async () => {
   const vendorStore = () => ({
-    manifest: [
+    entries: [
       {
         path: "lib/x.js",
         sourceUrl: "https://unpkg.com/x@1.0.0/x.js",
@@ -1675,7 +1675,7 @@ const groupAddon = (files = { "lib/a.js": "A\n", "lib/b.js": "B\n" }) =>
     files,
     store({
       set: new Set(Object.keys(files)),
-      manifest: [
+      entries: [
         pinnedEntry("lib/a.js", `${GROUP_BASE}/a.js`),
         pinnedEntry("lib/b.js", `${GROUP_BASE}/b.js`),
       ],
@@ -1818,7 +1818,7 @@ test("vendor grouping: a lone entry is fetched from its own URL, never via the p
     { "lib/a.js": "A\n" },
     store({
       set: new Set(["lib/a.js"]),
-      manifest: [pinnedEntry("lib/a.js", url)],
+      entries: [pinnedEntry("lib/a.js", url)],
     })
   );
   const n = {
@@ -1857,7 +1857,7 @@ test("vendor grouping: folder, github and unpinned entries are left alone", asyn
     { "lib/x.js": "X\n", "lib/y.js": "Y\n" },
     store({
       set: new Set(["lib/x.js", "lib/y.js"]),
-      manifest: [
+      entries: [
         pinnedEntry("lib/x.js", ghUrl),
         {
           path: "lib/y.js",
@@ -1904,7 +1904,7 @@ test("verifyFolder: a CDN directory URL resolves to that package's tarball", asy
   });
   const addon = addonWith(
     { "lib/a.js": "A\n", "lib/b.js": "B\n" },
-    store({ folders: new Set(["lib"]), manifest: [folderEntry(FOLDER_CDN)] })
+    store({ folders: new Set(["lib"]), entries: [folderEntry(FOLDER_CDN)] })
   );
   const asked = [];
   await verifyVendorDeclarations(addon, {
@@ -1931,7 +1931,7 @@ test("verifyFolder: a registry tarball directory source is fetched as given", as
   const tgz = makeTgz({ "package/dist/a.js": "A\n" });
   const addon = addonWith(
     { "lib/a.js": "A\n" },
-    store({ folders: new Set(["lib"]), manifest: [folderEntry(FOLDER_TGZ)] })
+    store({ folders: new Set(["lib"]), entries: [folderEntry(FOLDER_TGZ)] })
   );
   await verifyVendorDeclarations(addon, net({ bytes: tgz, downloads: 250000 }));
   assert.deepEqual(addon.vendor.results, [
@@ -1948,7 +1948,7 @@ test("verifyFolder: a file the declaration never names is covered too", async ()
   });
   const addon = addonWith(
     { "lib/a.js": "A\n", "lib/LICENSE.txt": "MIT\n" },
-    store({ folders: new Set(["lib"]), manifest: [folderEntry(FOLDER_CDN)] })
+    store({ folders: new Set(["lib"]), entries: [folderEntry(FOLDER_CDN)] })
   );
   await verifyVendorDeclarations(addon, net({ bytes: tgz, downloads: 250000 }));
   assert.deepEqual(
@@ -1966,7 +1966,7 @@ test("verifyFolder: a file the package does not publish is modified", async () =
   const tgz = makeTgz({ "package/dist/a.js": "A\n" });
   const addon = addonWith(
     { "lib/a.js": "A\n", "lib/mine.js": "MINE\n" },
-    store({ folders: new Set(["lib"]), manifest: [folderEntry(FOLDER_CDN)] })
+    store({ folders: new Set(["lib"]), entries: [folderEntry(FOLDER_CDN)] })
   );
   await verifyVendorDeclarations(addon, net({ bytes: tgz, downloads: 250000 }));
   assert.deepEqual(
@@ -1987,7 +1987,7 @@ test("verifyFolder: the package of a directory is asked about once", async () =>
   });
   const addon = addonWith(
     { "lib/a.js": "A\n", "lib/b.js": "B\n" },
-    store({ folders: new Set(["lib"]), manifest: [folderEntry(FOLDER_CDN)] })
+    store({ folders: new Set(["lib"]), entries: [folderEntry(FOLDER_CDN)] })
   );
   await verifyVendorDeclarations(
     addon,
@@ -2056,7 +2056,7 @@ test("verifyVendorDeclarations: a package two entries share is looked up once", 
     { "lib/a.js": "A\n", "lib/b.js": "B\n" },
     store({
       set: new Set(["lib/a.js", "lib/b.js"]),
-      manifest: [
+      entries: [
         pinnedEntry("lib/a.js", `${base}/a.js`),
         pinnedEntry("lib/b.js", `${base}/b.js`),
       ],
@@ -2083,7 +2083,7 @@ test("verifyVendorDeclarations: a below-bar reading still records not-popular", 
   const url = "https://unpkg.com/widget@1.2.3/a.js";
   const addon = addonWith(
     { "a.js": "BODY\n" },
-    store({ set: new Set(["a.js"]), manifest: [pinnedEntry("a.js", url)] })
+    store({ set: new Set(["a.js"]), entries: [pinnedEntry("a.js", url)] })
   );
   await verifyVendorDeclarations(
     addon,
@@ -2115,7 +2115,7 @@ test("an ordinary fetch failure is still swallowed, not fatal", async () => {
   const addon = addonWith(
     { "lib/x.js": "x" },
     {
-      manifest: [
+      entries: [
         {
           path: "lib/x.js",
           sourceUrl: "https://unpkg.com/x@1.0.0/x.js",

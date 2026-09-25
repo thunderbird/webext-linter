@@ -112,7 +112,7 @@
       },
       "item": "action.onClicked",
       "hint": "\"action\"",
-      "message": "The following APIs each need a manifest key that is not declared. Add one of the keys named for each API to manifest.json."
+      "message": "The following APIs each need a manifest.json key that is not declared. Add one of the keys named for each API to manifest.json."
     },
     {
       "ruleId": "missing-manifest-key",
@@ -124,7 +124,7 @@
       },
       "item": "messageDisplayScripts.register",
       "hint": "\"message_display_scripts\"",
-      "message": "The following APIs each need a manifest key that is not declared. Add one of the keys named for each API to manifest.json."
+      "message": "The following APIs each need a manifest.json key that is not declared. Add one of the keys named for each API to manifest.json."
     }
   ]
 }

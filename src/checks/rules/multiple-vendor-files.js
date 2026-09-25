@@ -1,11 +1,11 @@
 // Flags an add-on shipping more than one file whose name says it is the VENDOR
-// manifest (VENDOR, VENDOR.md, VENDORS, VENDORS.md - matched case-insensitively).
+// file (VENDOR, VENDOR.md, VENDORS, VENDORS.md - matched case-insensitively).
 // Which one the review would read is otherwise decided by the order the archive
-// lists them in, so the same submission could verify against a different manifest
+// lists them in, so the same submission could verify against a different VENDOR file
 // after a rebuild. Choosing is not ours to do: the developer says which file is the
-// manifest by shipping one.
+// VENDOR file by shipping one.
 //
-// Nothing else reads an ambiguous manifest either - readVendorFile returns null for
+// Nothing else reads an ambiguous VENDOR file either - readVendorFile returns null for
 // it (src/normalize/vendor.js), so no declaration from either file is trusted and
 // vendor-unparseable does not also fire.
 //

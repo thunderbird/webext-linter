@@ -16,14 +16,14 @@
       <h2>What it detects</h2>
       <p class="lead">
         In a source-code submission the reviewer builds the add-on from the
-        readable source, but the dependency audit only reads the root manifest
-        and lock file. A build script or config could ignore the manifest and
+        readable source, but the dependency audit only reads the root package file
+        and lock file. A build script or config could ignore the package file and
         pull code or resources from an undeclared source, leaving the declared
         dependencies a clean decoy.
       </p>
       <p>
         The build corpus is collected once, up front, by the build analysis, in
-        the setup phase over the build-relevant files (collected by following the package manifest,
+        the setup phase over the build-relevant files (collected by following the package file,
         so build output and tooling the build never runs are never sent). Nothing then says what
         that build <em>does</em>: reproducing it is the reviewer's attestation that the shipped XPI
         comes from the source they read, and no analysis substitutes for it. So this check emits no
@@ -63,7 +63,7 @@ flowchart TD
         Every source-code submission is escalated to Extended Manual Review, where a reviewer
         reproduces the build by hand and confirms that it produces the shipped XPI and pulls only
         from the declared dependencies. Where they find it does not, the add-on is told that every
-        part of the build must come only from the dependencies declared in the manifest and lock
+        part of the build must come only from the dependencies declared in the package file and lock
         file.
 
         One thing withholds it: a review that stopped early never puts this to anyone. This is

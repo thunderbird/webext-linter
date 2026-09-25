@@ -1,8 +1,8 @@
-// Translates the merged manifest type from the annotated schema (Mozilla's
+// Translates the merged manifest.json type from the annotated schema (Mozilla's
 // WebExtension schema dialect: $ref / $extend / choices / enum / properties)
-// into a draft-07 JSON Schema that ajv can compile, for deep manifest
+// into a draft-07 JSON Schema that ajv can compile, for deep manifest.json
 // validation. The translation is deliberately CONSERVATIVE so it can never
-// wrongly reject a valid manifest:
+// wrongly reject a valid manifest.json:
 //   - `choices` (multi-type) -> {} (accept anything): avoids anyOf cascades.
 //   - additionalProperties is forced true everywhere: never rejects unknown
 //     keys (the shallow manifest check handles unrecognized keys).
@@ -12,7 +12,7 @@
 // properties (string/integer/boolean/array/object/enum), plus simple bounds.
 //
 // Belongs here: JSON-Schema derivation only - buildManifestJsonSchema reads a
-// SchemaIndex's manifest types and emits the conservative draft-07 schema.
+// SchemaIndex's manifest.json types and emits the conservative draft-07 schema.
 // Does NOT belong here: building or querying the SchemaIndex
 // (src/schema/index.js), compiling or running ajv and acting on its errors,
 // which belongs to the consuming mistyped-manifest-value check under
@@ -40,8 +40,8 @@ const NUMERIC_KEYS = [
 ];
 
 /**
- * Build a JSON Schema for the manifest from a SchemaIndex, or null if the
- * manifest types are unavailable.
+ * Build a JSON Schema for the manifest.json from a SchemaIndex, or null if the
+ * manifest.json types are unavailable.
  * @param {import("./index.js").SchemaIndex} schema
  * @returns {object|null}
  */
@@ -131,7 +131,7 @@ export function buildManifestJsonSchema(schema) {
     return out;
   };
 
-  // Every root a submitted manifest can be - a static theme declares `theme`, which no
+  // Every root a submitted manifest.json can be - a static theme declares `theme`, which no
   // other root carries. Later roots win a name collision, as WebExtensionManifest already
   // did over ManifestBase.
   const merged = {};

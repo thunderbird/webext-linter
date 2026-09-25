@@ -109,7 +109,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "A _locales directory is present but the manifest declares no default_locale, so Thunderbird will refuse to load the add-on. Add a default_locale naming the fallback locale (e.g. \"en\")."
+      "message": "A _locales directory is present but manifest.json declares no default_locale, so Thunderbird will refuse to load the add-on. Add a default_locale naming the fallback locale (e.g. \"en\")."
     }
   ]
 }

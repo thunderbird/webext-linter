@@ -4,7 +4,7 @@
 //   - mergeNamespace: accumulate one namespace's functions, events,
 //     properties, permissions and annotations across the files declaring it,
 //   - mergeExtension: deep-merge a `$extend` source into a base type (this is
-//     how permission enums and manifest keys are spread across files).
+//     how permission enums and manifest.json keys are spread across files).
 //
 // The deep merge is value-generic: primitives overwrite, arrays append unique
 // items (deep equality via canonical JSON), `choices` arrays merge entry-wise

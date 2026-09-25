@@ -109,7 +109,7 @@
       "loc": null,
       "item": "description",
       "hint": "must be string",
-      "message": "The following manifest entries have a value Thunderbird ignores or misreads.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The following manifest.json entries have a value Thunderbird ignores or misreads.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "mistyped-manifest-value",
@@ -118,7 +118,7 @@
       "loc": null,
       "item": "browser_specific_settings",
       "hint": "must be object",
-      "message": "The following manifest entries have a value Thunderbird ignores or misreads.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The following manifest.json entries have a value Thunderbird ignores or misreads.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]
 }

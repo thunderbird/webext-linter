@@ -6,9 +6,9 @@
 // says which one was bundled, and with no lock the copy stays unverified.
 //
 // The reading is fixed by the SUBMISSION TYPE, never by the file's contents: in an XPI a
-// package.json is a vendoring manifest whatever else it carries, `scripts` included,
+// package.json declares VENDORED libraries whatever else it carries, `scripts` included,
 // because nothing in a built add-on is installed. The mirror holds in a source archive,
-// where it is a build manifest whatever it carries (-> sca-lock-file-missing).
+// where it defines the BUILD whatever it carries (-> sca-lock-file-missing).
 //
 // Reports only the declarations `resolveVendor` filed as having NO lock to consult. Where
 // one was committed and still resolves nothing, the remedy is a different one and so is the

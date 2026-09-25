@@ -2,17 +2,17 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) Invalid manifest.json: one or more required properties are missing.
+1) The included WebExtension manifest file (manifest.json) has one or more required properties missing.
 Read more: https://webextension-api.thunderbird.net/.
  - version
 
-2) Invalid manifest.json: one or more requested permissions are unknown.
+2) The included WebExtension manifest file (manifest.json) requests one or more unknown permissions.
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json:4 - bogusPermission
 
 We would like to share the following information with you:
 
-3) Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.
+3) The included WebExtension manifest file (manifest.json) declares the following unknown top-level keys, which Thunderbird will ignore.
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json:5 - weirdTopLevelKey
 

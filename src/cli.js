@@ -777,11 +777,11 @@ export async function main(argv) {
 
   // Every --sca-* flag names a FOLDER that is there. The root is the extracted source -
   // extracting it is the reviewer's, whatever format it came in, unlike the submitted
-  // .xpi which this tool extracts itself - and the other two name directories inside it.
+  // .xpi which this tool extracts itself - and --sca-exp-source names one inside it.
   // Asked in root-first order, so the root's own validity is settled before anything is
   // looked up inside it.
   //
-  // Asked here rather than left to the loader because only one of the three fails loudly
+  // Asked here rather than left to the loader because neither fails loudly
   // there: a --sca-exp-source that names nothing is a WARNING, and the review then reads
   // the Experiment's privileged code as WebExtension code - the thing that flag exists to
   // prevent - on a typo.
@@ -790,7 +790,7 @@ export async function main(argv) {
     if (value === undefined) {
       continue;
     }
-    // --sca-root stands on its own; the other two name folders INSIDE it, so they are
+    // --sca-root stands on its own; --sca-exp-source names a folder INSIDE it, so it is
     // asked about after being resolved against it - the same resolution the reader applies
     // a moment later. The ".." refusal before that is about the SPELLING the user chose,
     // which is the only place that is still visible.
@@ -812,7 +812,7 @@ export async function main(argv) {
     }
   }
 
-  // In SCA mode there is no manifest trace to separate Experiment code from
+  // In SCA mode there is no manifest.json trace to separate Experiment code from
   // WebExtension code (the readable source is reviewed whole), so allowing
   // Experiments REQUIRES naming their folder via --sca-exp-source. Without it the
   // privileged Experiment code would be reviewed as WebExtension code and flood the

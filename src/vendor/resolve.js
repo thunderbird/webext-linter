@@ -1,7 +1,7 @@
 // Resolves the add-on's vendored declarations ONCE, at the top of the pipeline,
-// before anything reformats or reviews files. This is the OFFLINE half: it
+// before anything reviews files. This is the OFFLINE half: it
 // parses the VENDOR file and the package.json dependency
-// manifest (pinning each via an exact spec, or against a committed lock file - either
+// declarations (pinning each via an exact spec, or against a committed lock file - either
 // artifact may carry one), enumerates what the lock file installs where the reviewer
 // installs from it, classifies each declared source, and builds the shared
 // `addon.vendor` store. The network half
@@ -10,7 +10,7 @@
 //
 // Belongs here: combining the VENDOR + package.json declarations, and the
 // committed lock file's whole package list, into the offline `addon.vendor` (set,
-// manifest, packages, unpinned, lockPackages, offline results). lockPackages is
+// entries, packages, unpinned, lockPackages, offline results). lockPackages is
 // the one field here that no check reads: it is the offline half of the tree
 // audit, handed to verify.js, which owns the network half.
 // Does NOT belong here: the network verification (-> verify.js), the
@@ -24,12 +24,12 @@ import { SCHEME_RE } from "../lib/util.js";
 import {
   declarationKey,
   declaredDependencies,
-  readManifest,
+  readPackageFile,
   submissionFiles,
-  resolveLocalManifests,
+  resolveLocalPackageFiles,
   BUILD_TIME_MAPS,
-  MANIFEST_FILE,
-} from "./manifest.js";
+  PACKAGE_FILE,
+} from "./package-file.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /** @typedef {import("../normalize/vendor.js").VendorEntry} VendorEntry */
@@ -40,11 +40,11 @@ import {
  *   file under one is vendored (a folder declaration). Use isVendored to test both.
  * @property {{path: string, source: ?string, outcome: string}[]} results
  *   Per-file outcomes (offline ones now, network ones added by verifyVendor).
- * @property {(VendorEntry & {trusted: boolean, pinned: boolean})[]} manifest
+ * @property {(VendorEntry & {trusted: boolean, pinned: boolean})[]} entries
  *   Classified VENDOR-file entries.
  * @property {{name: string, version: string, file: string}[]} packages  Pinned deps. `file`
- *   is the declaring manifest - "package.json" for the root, or a nested one reached by a
- *   file:/link: walk (SCA mode only - see resolveLocalManifests).
+ *   is the declaring package file - "package.json" for the root, or a nested one reached by a
+ *   file:/link: walk (SCA mode only - see resolveLocalPackageFiles).
  * @property {{name: string, spec: string, file: string}[]} unpinned  Ranged deps a
  *   committed lock resolves nothing for.
  * @property {{name: string, spec: string, file: string}[]} unlocked  Ranged deps with no
@@ -109,7 +109,7 @@ const EXACT = /^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/;
 /**
  * Whether a packaged file is vendored: an exact VENDOR-file entry, or a file under
  * a vendored folder declaration (prefix). The single test for "skip this file" used
- * by the normalizer-adjacent checks (bundled.js, unused-files.js) and verifyPackage.
+ * by bundled.js, unused-files.js and verifyPackage.
  * @param {?{set?: Set<string>, folders?: Set<string>}} vendor  The vendor store.
  * @param {string} file  Add-on-relative path.
  * @returns {boolean}
@@ -254,7 +254,7 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
   // holds, and what it declares that the submission does not. Taking them together
   // is why the file is read once rather than once per half.
   const { resolved, missing } = readVendorDeclarations(addon);
-  const manifest = resolved;
+  const entries = resolved;
 
   const set = new Set();
   const folders = new Set();
@@ -262,14 +262,14 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
 
   // One source URL paired with more than one bundled FILE is ambiguous: the
   // developer must give each file its own source, or declare the containing
-  // folder as a single source. Pull those entries out of the manifest (we do not
+  // folder as a single source. Pull those out of the entry list (we do not
   // verify a guessed pairing) but keep their paths vendored (skip-set), and
   // surface them via the vendor-ambiguous-source check. Folder entries are exempt
   // - a folder legitimately covers many files.
   const ambiguousSources = [];
   {
     const byUrl = new Map();
-    for (const e of manifest) {
+    for (const e of entries) {
       if (e.kind === "folder" || !e.sourceUrl) {
         continue;
       }
@@ -284,18 +284,18 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
         bad.add(source);
       }
     }
-    for (let i = manifest.length - 1; i >= 0; i--) {
-      if (manifest[i].kind !== "folder" && bad.has(manifest[i].sourceUrl)) {
-        set.add(manifest[i].path); // still vendored, just unverifiable
-        manifest.splice(i, 1);
+    for (let i = entries.length - 1; i >= 0; i--) {
+      if (entries[i].kind !== "folder" && bad.has(entries[i].sourceUrl)) {
+        set.add(entries[i].path); // still vendored, just unverifiable
+        entries.splice(i, 1);
       }
     }
   }
 
   // Folder declarations whose source cannot be fetched as an archive: reported, and
-  // taken out of the manifest so nothing tries to fetch them (see below).
+  // taken out of the entry list so nothing tries to fetch them (see below).
   const unverifiableFolders = new Set();
-  for (const entry of manifest) {
+  for (const entry of entries) {
     const src = classifySource(entry.sourceUrl);
     entry.trusted = src.trusted;
     entry.pinned = src.pinned;
@@ -346,10 +346,10 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
     }
     // Trusted + pinned entries are left for verifyVendor to fetch.
   }
-  // Removed after the walk, so the loop above reads as one pass over the manifest.
-  for (let i = manifest.length - 1; i >= 0; i--) {
-    if (unverifiableFolders.has(manifest[i].path)) {
-      manifest.splice(i, 1);
+  // Removed after the walk, so the loop above reads as one pass over the entry list.
+  for (let i = entries.length - 1; i >= 0; i--) {
+    if (unverifiableFolders.has(entries[i].path)) {
+      entries.splice(i, 1);
     }
   }
 
@@ -359,7 +359,7 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
     set,
     folders,
     results,
-    manifest,
+    entries,
     packages,
     unpinned,
     unlocked,
@@ -419,7 +419,7 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
     // nor a missing-file declaration. A parseable-but-missing VENDOR goes to the
     // missing-vendor-file check instead of a "could not be parsed" manual item.
     unparsedVendor:
-      Boolean(vendorFile) && manifest.length === 0 && missing.length === 0,
+      Boolean(vendorFile) && entries.length === 0 && missing.length === 0,
   };
 }
 
@@ -443,16 +443,16 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
  * one, or pin the spec), `unpinned` where one was and it resolves nothing for that name
  * (regenerate it, or pin the spec). Split here rather than in either check, because this is
  * the only place that knows both facts at once.
- * @param {import("./manifest.js").DeclaredDependency[]} deps  Declarations to classify,
+ * @param {import("./package-file.js").DeclaredDependency[]} deps  Declarations to classify,
  *   already normalized by declaredDependencies.
  * @param {Addon} addon  Needed to pin a range against a lock file (lockedVersion
  *   also reads the lock's devDependencies) - always the top-level addon, even when `deps`
- *   came from a nested manifest: only the ROOT lock is ever consulted by `npm ci`.
- * @param {string} file  The declaring manifest's own store-relative path - "package.json"
- *   for the root, or a nested manifest's own path. Carried on every produced item so a
+ *   came from a nested package file: only the ROOT lock is ever consulted by `npm ci`.
+ * @param {string} file  The declaring package file's own store-relative path - "package.json"
+ *   for the root, or a nested one's own path. Carried on every produced item so a
  *   finding anchors at the file that actually declared it.
- * @param {?Set<string>} resolvedLocal  Names, declared in THIS manifest, whose file:/link:
- *   spec already resolved to a real submission directory (from resolveLocalManifests).
+ * @param {?Set<string>} resolvedLocal  Names, declared in THIS package file, whose file:/link:
+ *   spec already resolved to a real submission directory (from resolveLocalPackageFiles).
  * @returns {{packages: {name: string, version: string, file: string}[],
  *   unpinned: {name: string, spec: string, file: string}[],
  *   unlocked: {name: string, spec: string, file: string}[],
@@ -512,9 +512,9 @@ function classifyDeps(deps, addon, file, resolvedLocal) {
 }
 
 /**
- * Classify one manifest's package.json `dependencies` (all buckets) and `devDependencies`
+ * Classify one package file's `dependencies` (all buckets) and `devDependencies`
  * (pinned npm only -> `devPackages`, plus its SOURCE buckets when `includeDevSource`).
- * Dev deps never ship, but whoever installs from this manifest runs them, so a pinned npm
+ * Dev deps never ship, but whoever installs from this package file runs them, so a pinned npm
  * dev dep is OSV-audited and popularity-gated like a production one (verifyScaDependencies)
  * and WHO it comes from is judged the same way. The one thing deliberately NOT kept is
  * pinning: nothing vendors from a dev dep, so no release is ever fetched to compare.
@@ -525,7 +525,7 @@ function classifyDeps(deps, addon, file, resolvedLocal) {
  *
  * `optionalDependencies` is read as a BUILD-TIME dependency, alongside
  * `devDependencies`. npm installs it when the platform allows and records it in the lock,
- * so whoever installs from this manifest runs it, which is the whole of the dev bucket's
+ * so whoever installs from this package file runs it, which is the whole of the dev bucket's
  * reasoning; and what it usually declares is a platform-specific binary rather than
  * anything the add-on ships. Reading it here is also what closes it: the lock's own
  * direct-dependency set spans every declaration map (src/vendor/locks.js), so an entry the
@@ -533,14 +533,14 @@ function classifyDeps(deps, addon, file, resolvedLocal) {
  *
  * `peerDependencies` is the one map not read at all - the host supplies those rather than
  * this build, so they are never a declaration this review acts on.
- * @param {object} pkg  A manifest from readManifest (the root's, or a nested one's).
+ * @param {object} pkg  A package file from readPackageFile (the root's, or a nested one's).
  * @param {Addon} addon  Always the TOP-LEVEL addon - only the root lock is ever consulted.
- * @param {string} file  This manifest's own store-relative path, carried on every item.
- * @param {?Set<string>} resolvedLocal  Names declared in THIS manifest whose file:/link:
+ * @param {string} file  This package file's own store-relative path, carried on every item.
+ * @param {?Set<string>} resolvedLocal  Names declared in THIS package file whose file:/link:
  *   spec already resolved (see classifyDeps).
  * @param {boolean} includeDevSource  Whether a devDependency is judged on its SOURCE
  *   (unsupported/githubDeps) as well as its pin. True for the root where the reviewer
- *   installs (see resolveVendor); always true for a nested manifest, since `npm ci`
+ *   installs (see resolveVendor); always true for a nested package file, since `npm ci`
  *   installs a file:/link:-linked package's devDependencies unconditionally, regardless of
  *   what governs the root's own dev/prod split.
  * @returns {{packages: {name: string, version: string, file: string}[],
@@ -550,7 +550,13 @@ function classifyDeps(deps, addon, file, resolvedLocal) {
  *   unsupported: {name: string, spec: string, file: string}[],
  *   devPackages: {name: string, version: string, file: string}[]}}
  */
-function classifyManifest(pkg, addon, file, resolvedLocal, includeDevSource) {
+function classifyPackageFile(
+  pkg,
+  addon,
+  file,
+  resolvedLocal,
+  includeDevSource
+) {
   const declared = declaredDependencies(pkg);
   // One name may appear in several maps, and npm defines which copy it installs for
   // each pair. Audit that copy alone, so a release is judged on the spec npm resolves
@@ -581,7 +587,7 @@ function classifyManifest(pkg, addon, file, resolvedLocal, includeDevSource) {
     // Where the reviewer installs, a dev dependency is judged on WHO it comes from
     // exactly as a production one is: `npm ci` clones and RUNS it on their machine, so an
     // unidentifiable source is equally unverifiable and an obscure repo equally unvetted.
-    // Not where nothing installs from this manifest, though - a dev entry installs and
+    // Not where nothing installs from this package file, though - a dev entry installs and
     // vendors nothing there, so rejecting it would reject a declaration that does nothing.
     unsupported: includeDevSource
       ? [...prodBuckets.unsupported, ...devBuckets.unsupported]
@@ -594,8 +600,8 @@ function classifyManifest(pkg, addon, file, resolvedLocal, includeDevSource) {
 }
 
 /**
- * Classify the submission's whole dependency graph: the root manifest, plus - in SCA mode -
- * every manifest reached by a chain of file:/link: local packages (resolveLocalManifests).
+ * Classify the submission's whole dependency graph: the root package file, plus - in SCA mode -
+ * every one reached by a chain of file:/link: local packages (resolveLocalPackageFiles).
  * A linked package's code is authored, reviewed wherever it sits (its file:/link: entry is
  * dropped from `unsupported` entirely, not reported), but ITS OWN declared dependencies are
  * real external sources `npm ci` installs, so they are classified exactly like the root's -
@@ -614,7 +620,7 @@ function classifyManifest(pkg, addon, file, resolvedLocal, includeDevSource) {
  *   devPackages: {name: string, version: string, file: string}[]}}
  */
 function resolvePackages(addon, reviewerInstalls) {
-  const pkg = readManifest(submissionFiles(addon));
+  const pkg = readPackageFile(submissionFiles(addon));
   if (!pkg) {
     return {
       packages: [],
@@ -625,13 +631,13 @@ function resolvePackages(addon, reviewerInstalls) {
       devPackages: [],
     };
   }
-  const { targets, manifests } = reviewerInstalls
-    ? resolveLocalManifests(addon)
-    : { targets: [], manifests: [] };
+  const { targets, packageFiles } = reviewerInstalls
+    ? resolveLocalPackageFiles(addon)
+    : { targets: [], packageFiles: [] };
   // Keyed by DECLARATION, never by name: one name may be written in several maps with
   // different specs, and a resolved file:/link: spec exempts the declaration that resolved
   // and no other. Keyed by name, a harmless `"x": "file:."` under devDependencies would
-  // exempt whatever else the manifest declares as `x` - and npm installs that one, since
+  // exempt whatever else the package file declares as `x` - and npm installs that one, since
   // the dependencies copy wins over devDependencies.
   const resolvedByFile = new Map();
   for (const t of targets) {
@@ -641,15 +647,15 @@ function resolvePackages(addon, reviewerInstalls) {
     resolvedByFile.get(t.declaringFile).add(declarationKey(t.map, t.name));
   }
 
-  const out = classifyManifest(
+  const out = classifyPackageFile(
     pkg,
     addon,
-    MANIFEST_FILE,
-    resolvedByFile.get(MANIFEST_FILE),
+    PACKAGE_FILE,
+    resolvedByFile.get(PACKAGE_FILE),
     reviewerInstalls
   );
-  for (const m of manifests) {
-    const nested = classifyManifest(
+  for (const m of packageFiles) {
+    const nested = classifyPackageFile(
       m.pkg,
       addon,
       m.file,

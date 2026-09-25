@@ -1,7 +1,7 @@
 // Unit tests for update-url: a self-hosted update_url is rejected in EITHER valid
 // location - the current browser_specific_settings.gecko or the deprecated MV2
 // applications.gecko alias - any manifest version. One finding per present
-// location, carrying the url and its manifest line. (The golden fixture
+// location, carrying the url and its manifest.json line. (The golden fixture
 // update-url-bss covers the bss path end-to-end; the applications alias is not in
 // the offline test schema, so its branch is exercised here.)
 
@@ -11,8 +11,8 @@ import assert from "node:assert/strict";
 
 import rule from "../../src/checks/rules/update-url.js";
 
-// A ctx whose files carry the manifest.json text, so manifestPathLine can resolve
-// the update_url line from the (pretty-printed) source.
+// A ctx whose manifest.json record carries pretty-printed bytes, so manifestPathLine can
+// resolve the update_url line.
 const ctxOf = (manifest) => ({
   addon: {
     manifest: manifestOf(manifest),
@@ -60,7 +60,7 @@ test("flags both locations independently", () => {
   ]);
 });
 
-// A manifest with no update_url (and an unrelated gecko block) is clean.
+// A manifest.json with no update_url (and an unrelated gecko block) is clean.
 test("no finding when update_url is absent", () => {
   const out = rule.run(
     withManifest(
@@ -73,7 +73,7 @@ test("no finding when update_url is absent", () => {
   assert.deepEqual(out, []);
 });
 
-// An unparsed manifest yields no findings and does not throw.
+// An unparsed manifest.json yields no findings and does not throw.
 test("no finding (no throw) when the manifest did not parse", () => {
   const out = rule.run(withManifest({ addon: { manifest: null } })).findings;
   assert.deepEqual(out, []);

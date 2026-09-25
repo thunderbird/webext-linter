@@ -5,7 +5,7 @@
 // orchestrator (escalation.js) routes it to a reviewer or to manual review.
 //
 // Belongs here: generic, dependency-light check helpers - dedupe, the
-// asArray/asObject manifest guards, isMatchPattern/isBroadHost, trunc, SCHEME_RE,
+// asArray/asObject manifest.json guards, isMatchPattern/isBroadHost, trunc, SCHEME_RE,
 // escapeRegExp/wholeWordRe, the line locators (manifestTokenLine, manifestPathLine,
 // lineContaining, declarationLine), utf8ComparisonSigns, the doc/dependency-file tests
 // (isDocMetadataFile, isDocFile, DEPENDENCY_FILE_RE), isExperiment/strictMaxVersion, the
@@ -14,7 +14,7 @@
 //
 // Does NOT belong here: anything with a heavier dependency or a single home -
 // reachability lives in reachability.js, permission analysis in permissions.js,
-// manifest ref enumeration in manifest-refs.js, library classification in
+// manifest.json ref enumeration in manifest-refs.js, library classification in
 // bundled.js. Shared utilities used across the whole repo (extname, sortKeys,
 // debug) stay in src/util/files.js, src/util/json.js, src/util/log.js. Any
 // rule's verdict logic - src/checks/rules/*.
@@ -94,7 +94,7 @@ export function isDocMetadataFile(file) {
   return DOC_EXTENSIONS.has(ext);
 }
 
-// Dependency manifests / lock files (a valid third-party-library declaration).
+// Package files / lock files (a valid third-party-library declaration).
 // Matched as EXACT filenames - the extension is part of the identity, so unlike
 // the name-based docs above there is no name-without-extension ambiguity and no
 // risk of exempting a same-named code file.
@@ -105,7 +105,7 @@ export const DEPENDENCY_FILE_RE =
 
 /**
  * Broader doc test for reachability's mention net: a named doc, a dependency
- * manifest / lock file, or ANY doc-extension file (even unnamed, e.g. data.txt) -
+ * manifest.json / lock file, or ANY doc-extension file (even unnamed, e.g. data.txt) -
  * all prose / metadata, never a runtime loader. Wider than isDocMetadataFile on
  * purpose: being an unnamed doc TYPE is reason enough to keep a file out of the
  * mention corpus, but not always reason enough to stop reporting it unused.
@@ -288,7 +288,7 @@ export function cmpVersion(a, b) {
  * strict_min_version counts as oldest: it fails any min but satisfies any max.
  * Shared by the manifest-key permission grounding, the permission-prompts filter,
  * and the unused-permission producer's token selection.
- * @param {?object} manifest
+ * @param {?object} manifest.json
  * @param {?string} min  Inclusive lower bound, or null.
  * @param {?string} max  Inclusive upper bound, or null.
  * @returns {boolean}
@@ -321,7 +321,7 @@ export function asArray(v) {
 }
 
 /**
- * The value if it is a non-null object, else {} (defensive manifest guard).
+ * The value if it is a non-null object, else {} (defensive manifest.json guard).
  * @param {unknown} v
  * @returns {Record<string, unknown>}
  */
@@ -339,7 +339,7 @@ export function isMatchPattern(p) {
 }
 
 /**
- * 1-based line of the first occurrence of `"<token>"` in the manifest text, or
+ * 1-based line of the first occurrence of `"<token>"` in the manifest.json text, or
  * null if not found. Works for any quoted JSON token - a key or a string value
  * (a permission, host pattern, or web_accessible_resources entry). Best-effort:
  * a token appearing more than once resolves to its first line.
@@ -362,12 +362,12 @@ export function manifestTokenLine(manifestText, token) {
 }
 
 /**
- * Exact 1-based source line of a manifest value addressed by its JSON path
+ * Exact 1-based source line of a manifest.json value addressed by its JSON path
  * (e.g. manifestPathLine(ctx, "host_permissions", 0)). Unlike manifestTokenLine
  * this is unambiguous for repeated values and immune to \uXXXX escaping. Returns
  * null when there is no position index or the path is absent. Prefer this over
  * manifestTokenLine for array values; the token search remains for unique top-level
- * keys. Reads ctx.manifest.loc - the SHIPPED manifest's index (see the RunContext).
+ * keys. Reads ctx.manifest.loc - the SHIPPED manifest.json's index (see the RunContext).
  * @param {?import("../checks/registry.js").RunContext} ctx
  * @param {...(string|number)} path
  * @returns {number|null}
@@ -377,10 +377,10 @@ export function manifestPathLine(ctx, ...path) {
 }
 
 /**
- * Say why a check that reads the manifest has nothing to report, and report nothing. There
+ * Say why a check that reads the manifest.json has nothing to report, and report nothing. There
  * are two reasons and the reviewer is owed the right one: the add-on ships no manifest.json,
- * or it ships one that will not parse. Neither is the caller's verdict to give - manifest-
- * missing and manifest-invalid-json are the checks for those - so this only accounts for the
+ * or it ships one that will not parse. Neither is the caller's verdict to give -
+ * manifest-missing and manifest-invalid-json are the checks for those - so this only accounts for the
  * silence, which a skipped check owes the feed so a bare check header is never ambiguous.
  *
  * The record is what tells the two apart: absent is no record, unparsable is a record

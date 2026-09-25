@@ -20,9 +20,9 @@
         absent.
       </p>
       <p>
-        A manifest that is present but unparsable is a different situation,
-        reported by the invalid-manifest-JSON check — so this check stays silent
-        in that case to avoid a duplicate finding.
+        Whatever a file that IS there turns out to hold — unparsable, or parsing
+        to something that is not an object — is the invalid-manifest-JSON check&rsquo;s
+        verdict. This one never looks inside.
       </p>
 
       <h2>Decision flow</h2>
@@ -30,15 +30,13 @@
         <pre class="mermaid">
 flowchart TD
   A["The loaded add-on"] --> B{"Is a manifest.json present<br/>at the root?"}
-  B -- "present and parsed" --> OK([no finding])
-  B -- "present but unparsable" --> OK2([no finding — reported by<br/>invalid manifest JSON])
-  B -- "absent entirely" --> ERR([ERROR: missing manifest])
+  B -- yes --> OK([no finding — what it holds is<br/>invalid manifest JSON's verdict])
+  B -- no --> ERR([ERROR: missing manifest])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   class ERR err;
   class OK ok;
-  class OK2 ok;
         </pre>
       </div>
 

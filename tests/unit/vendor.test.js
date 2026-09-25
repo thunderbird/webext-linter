@@ -1,4 +1,4 @@
-// Unit tests for the deterministic VENDOR parser (parseVendorManifest /
+// Unit tests for the deterministic VENDOR parser (parseVendorEntries /
 // missingVendorEntries): the shapes it accepts, and - just as much - the shapes it
 // refuses rather than guesses at.
 //
@@ -9,7 +9,7 @@
 //
 // The file is read whole: any fault - half a declaration, two sources, a source URL
 // no declaration claimed - discards ALL of it, so the developer is told the file is
-// unparseable instead of the review running on a manifest that is quietly missing
+// unparseable instead of the review running on a VENDOR file that is quietly missing
 // entries. The "pinned failures" section below is that half of the contract, and it
 // is the half that matters: a wrong entry that looks right is worse than none.
 
@@ -17,7 +17,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  parseVendorManifest,
+  parseVendorEntries,
   missingVendorEntries,
   vendorFileNames,
 } from "../../src/normalize/vendor.js";
@@ -30,7 +30,7 @@ function fakeAddon(files) {
   return { files: map };
 }
 const entries = (files) =>
-  parseVendorManifest(fakeAddon(files)).map((e) => [e.path, e.sourceUrl]);
+  parseVendorEntries(fakeAddon(files)).map((e) => [e.path, e.sourceUrl]);
 const missing = (files) =>
   missingVendorEntries(fakeAddon(files)).map((e) => [e.path, e.sourceUrl]);
 
@@ -504,7 +504,7 @@ test("pinned failure: a lone path below the first line is prose", () => {
 // directory - does not parse at all, and takes the whole VENDOR file with it.
 test("a bundled directory + a pinned npm URL is a folder entry", () => {
   const CDN = "https://cdn.jsdelivr.net/npm/widget@1.2.3/dist/";
-  const m = parseVendorManifest(
+  const m = parseVendorEntries(
     fakeAddon({
       "VENDOR.md": `- directory : vendor/lib\n- source : ${CDN}\n`,
       "vendor/lib/a.js": LIB,
@@ -521,7 +521,7 @@ test("a bundled directory + a pinned npm URL is a folder entry", () => {
 // the shape differs - and the packages that ship dozens of files tend to be scoped.
 test("a scoped pinned package is a directory source too", () => {
   const CDN = "https://cdn.jsdelivr.net/npm/@scope/widget@1.2.3/dist/";
-  const m = parseVendorManifest(
+  const m = parseVendorEntries(
     fakeAddon({
       "VENDOR.md": `- directory : vendor/lib\n- source : ${CDN}\n`,
       "vendor/lib/a.js": LIB,
@@ -536,7 +536,7 @@ test("a scoped pinned package is a directory source too", () => {
 // An unpinned package names something that can change under a declaration claiming
 // it did not, so it is no more a directory source than a bare repo root is.
 test("an unpinned package URL is not a directory source", () => {
-  const m = parseVendorManifest(
+  const m = parseVendorEntries(
     fakeAddon({
       "VENDOR.md":
         "- directory : vendor/lib\n" +
@@ -550,7 +550,7 @@ test("an unpinned package URL is not a directory source", () => {
 test("a bundled directory + a github tree URL is a folder entry", () => {
   const TREE =
     "https://github.com/o/r/tree/0123456789012345678901234567890123456789/dist/lib";
-  const m = parseVendorManifest(
+  const m = parseVendorEntries(
     fakeAddon({
       "VENDOR.md":
         "- bundled directory : vendor/lib\n" + `- source : ${TREE}\n`,
@@ -786,7 +786,7 @@ test("a folder resolves however its path is spelled", () => {
     "./lib/vendor/",
     "lib\\vendor\\",
   ]) {
-    const m = parseVendorManifest(
+    const m = parseVendorEntries(
       fakeAddon({
         "VENDOR.md": `- Folder: ${spelling}\n- Source: ${TREE}\n`,
         ...files,
@@ -847,7 +847,7 @@ test("nested bold decoration comes off at any depth", () => {
 //
 // Each of these is a VENDOR file the grammar refuses. Refusing is the POINT: the
 // developer is told the file could not be read, instead of the review running on a
-// manifest that is quietly missing entries or pairing the wrong two things. A test
+// VENDOR file that is quietly missing entries or pairing the wrong two things. A test
 // here failing because something now parses is not automatically progress - check
 // first that what it parsed is what the developer meant.
 
@@ -923,7 +923,7 @@ test("pinned failure: one-liners mixed with a keyed half", () => {
 
 // The load-bearing rule: a source URL the parse recognised but no declaration
 // claimed discards the WHOLE file. Without it the good declaration below would be
-// reported as the complete manifest, and the library whose declaration could not be
+// reported as the complete VENDOR file, and the library whose declaration could not be
 // read would come back to the developer as an undeclared bundle - blaming them for
 // something they did declare.
 test("pinned failure: an unclaimed source URL discards the whole file", () => {
@@ -965,7 +965,7 @@ test("a repository citation does not discard the file", () => {
 
 // ---- more than one VENDOR file ----
 
-// The manifest may be named VENDOR, VENDOR.md, VENDORS or VENDORS.md. Two of them is
+// The VENDOR file may be named VENDOR, VENDOR.md, VENDORS or VENDORS.md. Two of them is
 // a contradiction the developer must settle: which one the review reads would
 // otherwise depend on the order the archive lists its entries in. While it is
 // ambiguous NEITHER is read, so nothing from either file is trusted.

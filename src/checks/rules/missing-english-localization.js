@@ -6,7 +6,7 @@
 //   - uses _locales with an English directory (en, en-US, ...) -> pass.
 //   - uses _locales but has no English directory -> a finding.
 //   - no _locales at all -> language-detect the hardcoded user-facing text
-//     (HTML visible text + manifest name/description) with franc: confident
+//     (HTML visible text + manifest.json name/description) with franc: confident
 //     English passes, confident non-English is a finding, and too little or
 //     ambiguous text escalates as a code-review case, for a reader to settle the
 //     language from the add-on's own strings.
@@ -142,11 +142,11 @@ function detectHardcodedLanguage(ctx, addon) {
 }
 
 /**
- * The add-on's user-facing text: the manifest name and description plus the
+ * The add-on's user-facing text: the manifest.json name and description plus the
  * visible text of every packaged HTML document, whitespace-collapsed. The
  * franc input - excludes JS (string literals are noise) and binary assets.
  * @param {?import("../../addon/load.js").Manifest} manifest  The shipped
- *   manifest (ctx.manifest.json).
+ *   manifest.json (ctx.manifest.json).
  * @param {Map<string, Buffer>} files  The reviewed artifact's files.
  * @returns {string}
  */

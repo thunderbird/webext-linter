@@ -8,7 +8,7 @@
 // here guesses.
 //
 // Presence is tested by NAME, not by parse: a package.json that exists but cannot be used
-// is not MISSING, and sca-package-file-invalid reports it. Both read MANIFEST_FILE, so the
+// is not MISSING, and sca-package-file-invalid reports it. Both read PACKAGE_FILE, so the
 // two cannot disagree about which file they mean, and exactly one of them speaks.
 //
 // NOT silent when the shipped XPI happens to be the archive's own code. That the shipped
@@ -18,13 +18,13 @@
 // INDEPENDENT of this: it answers whether the developer could have shipped the XPI alone
 // next time, and prints beside this rejection rather than in place of it.
 //
-// Belongs here: asking whether the manifest is there. Does NOT belong here: whether it can
-// be used (-> sca-package-file-invalid), what it declares (-> src/vendor/manifest.js), and
+// Belongs here: asking whether the package file is there. Does NOT belong here: whether it can
+// be used (-> sca-package-file-invalid), what it declares (-> src/vendor/package-file.js), and
 // the wording (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { MANIFEST_FILE } from "../../vendor/manifest.js";
+import { PACKAGE_FILE } from "../../vendor/package-file.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -34,14 +34,14 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    if (ctx.addon?.files?.has(MANIFEST_FILE)) {
+    if (ctx.addon?.files?.has(PACKAGE_FILE)) {
       return { findings: [] };
     }
     // The FINDING names no file: its subject is something the archive does not contain, so
     // there is nothing to anchor it at. The feed note still names package.json, the file
     // whose absence is the whole point, so the reviewer reads what was looked for rather
     // than a bare verdict.
-    ctx.note?.(MANIFEST_FILE, null, "no package.json", VERDICT.FAIL);
+    ctx.note?.(PACKAGE_FILE, null, "no package.json", VERDICT.FAIL);
     return { findings: [finding({})] };
   },
 };

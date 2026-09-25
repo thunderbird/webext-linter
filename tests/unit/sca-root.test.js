@@ -1,7 +1,7 @@
 // Tests for settling WHICH folder is the source root (src/addon/sca-root.js).
 //
 // The root is named by someone who has not looked inside the archive yet, so a root holding
-// no build manifest is a near miss to be corrected rather than a submission to reject. These
+// no package.json is a near miss to be corrected rather than a submission to reject. These
 // pin how far that correction reaches, and - as much - where it stops.
 
 import { test } from "node:test";
@@ -28,7 +28,7 @@ const LOCK = '{"lockfileVersion":3}';
 
 // The overwhelmingly common case, and the one every existing fixture is: the folder named
 // holds the build files, so there is nothing to settle and nothing is touched.
-test("a root that holds a manifest is left alone", () => {
+test("a root that holds a package.json is left alone", () => {
   const root = tree({ "package.json": PKG, "sub/package.json": PKG });
   const out = settleScaRoot({ scaRoot: root });
   assert.equal(out.scaRoot, root);
@@ -38,7 +38,7 @@ test("a root that holds a manifest is left alone", () => {
 // The case this exists for: an archive that carries its contents in a directory of its own.
 // The lock is not required - a submission that forgot one is still re-rooted, so the review
 // reports the missing lock it has rather than the missing build it does not.
-test("a lone subfolder with a manifest becomes the root, lock or not", () => {
+test("a lone subfolder with a package.json becomes the root, lock or not", () => {
   for (const extra of [{}, { "wrap/package-lock.json": LOCK }]) {
     const root = tree({ "wrap/package.json": PKG, "README.md": "x", ...extra });
     const out = settleScaRoot({ scaRoot: root });
@@ -47,16 +47,16 @@ test("a lone subfolder with a manifest becomes the root, lock or not", () => {
   }
 });
 
-// Two manifests and no way to tell them apart is not a root anyone can pick, so nothing is
+// Two package.json files and no way to tell them apart is not a root anyone can pick, so nothing is
 // picked: the review reads the folder it was given and the build checks report what is there.
-test("two bare manifests leave the root alone", () => {
+test("two bare package.json files leave the root alone", () => {
   const root = tree({ "a/package.json": PKG, "b/package.json": PKG });
   assert.equal(settleScaRoot({ scaRoot: root }).movedFrom, null);
 });
 
 // The lock breaks the tie, because the root is where the install runs: a `tools/` or
-// `examples/` folder carries a manifest of its own and never a lock for the whole tree.
-test("the lock decides between several manifests", () => {
+// `examples/` folder carries a package.json of its own and never a lock for the whole tree.
+test("the lock decides between several package.json files", () => {
   const root = tree({
     "wrap/package.json": PKG,
     "wrap/pnpm-lock.yaml": "lockfileVersion: '9.0'",
@@ -75,7 +75,7 @@ test("the lock decides between several manifests", () => {
   assert.equal(settleScaRoot({ scaRoot: two }).movedFrom, null);
 });
 
-// node_modules holds a manifest per installed package - hundreds of candidates, none of them
+// node_modules holds a package.json per installed package - hundreds of candidates, none of them
 // this submission - and a dotfolder is not where a build runs.
 test("node_modules and dotfolders are not candidates", () => {
   const root = tree({
@@ -88,7 +88,7 @@ test("node_modules and dotfolders are not candidates", () => {
 // How many directories an archive wraps its contents in is an accident of how it was packed,
 // so the walk follows a chain of single folders as far as it goes. A folder holding nothing
 // but another folder is packaging, not a place a build could run.
-test("a chain of single folders is followed to the manifest", () => {
+test("a chain of single folders is followed to the package.json", () => {
   const root = tree({ "a/b/c/package.json": PKG, "a/b/c/src/main.js": "" });
   const out = settleScaRoot({ scaRoot: root });
   assert.equal(out.scaRoot, path.join(root, "a", "b", "c"));
@@ -97,19 +97,19 @@ test("a chain of single folders is followed to the manifest", () => {
 
 // The walk ends the moment it reaches one, rather than descending past it into a package the
 // build installs.
-test("a manifest on the way down ends the walk", () => {
+test("a package.json on the way down ends the walk", () => {
   const root = tree({ "a/package.json": PKG, "a/b/package.json": PKG });
   assert.equal(settleScaRoot({ scaRoot: root }).scaRoot, path.join(root, "a"));
 });
 
 // A fork is the archive's own shape - src beside docs beside tests - so the sweep reads those
-// siblings and no deeper: a manifest below one of them is a package WITHIN the build, and
+// siblings and no deeper: a package.json below one of them is a package WITHIN the build, and
 // rooting there would review a dependency as the submission.
 test("the walk stops at the first fork, and sweeps no deeper", () => {
   const root = tree({ "docs/readme.md": "x", "src/inner/package.json": PKG });
   assert.equal(settleScaRoot({ scaRoot: root }).movedFrom, null);
 
-  // At that fork the sweep is the rule already pinned above: one manifest among the siblings
+  // At that fork the sweep is the rule already pinned above: one package.json among the siblings
   // wins, wherever the fork turned up.
   const wins = tree({ "a/docs/readme.md": "x", "a/src/package.json": PKG });
   assert.equal(
@@ -119,7 +119,7 @@ test("the walk stops at the first fork, and sweeps no deeper", () => {
 });
 
 // A chain that leads nowhere leaves the root exactly as it was given.
-test("a chain with no manifest anywhere leaves the root alone", () => {
+test("a chain with no package.json anywhere leaves the root alone", () => {
   const root = tree({ "a/b/c/main.js": "" });
   assert.equal(settleScaRoot({ scaRoot: root }).movedFrom, null);
 });

@@ -1,8 +1,8 @@
-// A known manifest key whose value has the wrong type - validated with ajv
+// A known manifest.json key whose value has the wrong type - validated with ajv
 // against a JSON Schema derived from the annotated manifest schema. Thunderbird
 // misreads such values, so it is a warning. Conservative: it never throws, and a
 // compile failure disables it, so a translation gap cannot wrongly flag a valid
-// manifest.
+// manifest.json.
 //
 // Belongs here: low-noise value-type violations (the REPORTABLE ajv keywords).
 // Does NOT belong here: unknown top-level keys (->

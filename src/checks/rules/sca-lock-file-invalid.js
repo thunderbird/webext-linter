@@ -1,6 +1,6 @@
 // Rejects a source-code submission whose committed lock file cannot install what its
 // package.json declares. `npm ci` and `pnpm install --frozen-lockfile` both compare the
-// lock against the manifest before installing anything, and refuse over all four cases
+// lock against the package file before installing anything, and refuse over all four
 // reported here: a lock that does not parse, one that parses but is not a lock this
 // comparison can read, a declared package it resolves nothing for, and one whose pin the
 // declaration does not admit.

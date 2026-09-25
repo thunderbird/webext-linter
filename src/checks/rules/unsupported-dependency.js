@@ -11,12 +11,12 @@
 // can be reviewed directly. A file:/link: path that DOES resolve inside the submission
 // (SCA mode only) is exactly that already - resolveVendor drops it from
 // unsupportedDeps entirely and classifies ITS OWN declared dependencies the same way
-// (src/vendor/manifest.js resolveLocalManifests), so it never reaches this check at
+// (src/vendor/package-file.js resolveLocalPackageFiles), so it never reaches this check at
 // all; only an unresolvable one, root or nested, does.
 // An `npm:<name>@<range>` alias is NOT one of them: it installs a registry package under
 // another name, so it is classified by what it installs and the spelling decides nothing.
 // resolveVendor already classified these (src/vendor/resolve.js ->
-// addon.vendor.unsupportedDeps, each item carrying the manifest that declared it);
+// addon.vendor.unsupportedDeps, each item carrying the package file that declared it);
 // this check only reads that and emits a finding per entry. Deterministic, no network.
 //
 // Belongs here: turning each unsupported dependency into a finding (+ a feed
@@ -41,7 +41,7 @@ export default {
   run(ctx) {
     const { addon } = ctx;
     const unsupported = addon?.vendor?.unsupportedDeps ?? [];
-    // Memoized per distinct file: a nested manifest can declare several unsupported
+    // Memoized per distinct file: a nested package file can declare several unsupported
     // specs, and re-reading/re-decoding the same bytes once per one would be wasted work.
     const textByFile = new Map();
     const findings = [];

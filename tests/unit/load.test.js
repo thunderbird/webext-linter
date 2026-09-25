@@ -9,6 +9,7 @@ import AdmZip from "adm-zip";
 
 import {
   loadAddon,
+  loadSourceArchive,
   scaViews,
   scaRootRelative,
   relativeInside,
@@ -316,11 +317,11 @@ test("loadAddon(file) records the extracted directories", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// Only a SOURCE archive withholds its manifests, and only from the corpus a review reads as
+// Only a SOURCE archive withholds its manifest.json files, and only from the corpus a review reads as
 // the add-on's code: there `files.get("manifest.json")` would answer with the pre-build
-// manifest where ctx.manifest is the shipped one. A built XPI withholds nothing - every file
+// manifest.json where ctx.manifest is the shipped one. A built XPI withholds nothing - every file
 // it holds is a file it ships - so its corpus IS its store. That asymmetry is deliberate and
-// is what this pins; the rule "read the manifest through ctx.manifest" holds either way.
+// is what this pins; the rule "read the manifest.json through ctx.manifest" holds either way.
 test("only the source archive's review corpus gives up its manifests", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-lift-"));
   fs.writeFileSync(
@@ -338,12 +339,9 @@ test("only the source archive's review corpus gives up its manifests", () => {
     "parsed onto the addon all the same"
   );
 
-  // The archive: its review corpus gives every manifest up, the sca corpus keeps them so a
+  // The archive: its review corpus gives every manifest.json up, the sca corpus keeps them so a
   // build step may copy one, and the artifact itself is untouched by either.
-  const archive = scaViews(
-    loadAddon(dir, undefined, { recordInstalledTrees: true }),
-    { scaRoot: dir }
-  );
+  const archive = scaViews(loadSourceArchive(dir), { scaRoot: dir });
   assert.ok(
     !archive.files.has("manifest.json"),
     "the review source withholds it"
@@ -406,11 +404,8 @@ test("scaViews leaves the archive owning one store and three corpora", () => {
   w("exp/impl.js", "1;\n");
 
   // Loaded the way the pipeline loads a submission: an installed tree is recorded, and no
-  // manifest is read off it.
-  const loaded = loadAddon(root, undefined, {
-    recordInstalledTrees: true,
-    parseWebExtManifest: false,
-  });
+  // manifest.json is read off it.
+  const loaded = loadSourceArchive(root);
   const archive = scaViews(loaded, {
     scaRoot: root,
     scaExpSource: path.join(root, "exp"),
@@ -426,7 +421,7 @@ test("scaViews leaves the archive owning one store and three corpora", () => {
     assert.notEqual(c, archive.store, "a corpus is never the store itself");
   }
 
-  // What each holds. `files` is the add-on code, so it gives up every manifest; `sca` keeps
+  // What each holds. `files` is the add-on code, so it gives up every manifest.json; `sca` keeps
   // them, because a build step may copy one.
   assert.deepEqual([...archive.files.keys()].sort(), ["bg.js"]);
   assert.deepEqual([...archive.sca.keys()].sort(), [
@@ -443,8 +438,8 @@ test("scaViews leaves the archive owning one store and three corpora", () => {
     "sub/manifest.json",
   ]);
 
-  // And no manifest of its own: an archive is loaded without reading one, so the pre-build
-  // template cannot be mistaken for the shipped manifest. The BYTES are still there above.
+  // And no manifest.json of its own: an archive is loaded without reading one, so the pre-build
+  // template cannot be mistaken for the shipped manifest.json. The BYTES are still there above.
   assert.equal(archive.manifest, null);
 
   fs.rmSync(root, { recursive: true, force: true });
@@ -454,8 +449,8 @@ test("scaViews leaves the archive owning one store and three corpora", () => {
 // scaViews splits the archive into the parts a source review reads, as views over the one
 // store it was walked into, all keyed against the SUBMISSION. The whole archive IS the
 // review source - a build may move, rename or generate anything, so there is no subtree that
-// can be called the add-on's and no way to tell which files are used. A manifest found
-// anywhere is parsed and lifted off the corpus, so a pre-build manifest is never reviewed as
+// can be called the add-on's and no way to tell which files are used. A manifest.json found
+// anywhere is parsed and lifted off the corpus, so a pre-build manifest.json is never reviewed as
 // source; the authoritative one is the built XPI's (ctx.manifest, context.js).
 test("scaViews keys every view to the submission and reviews the whole archive", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-sca-"));
@@ -474,7 +469,7 @@ test("scaViews keys every view to the submission and reviews the whole archive",
 
   // The pipeline reads the --sca-root archive ONCE and splits it, so the tree is never
   // walked twice and no part holds a second copy of any file.
-  const source = scaViews(loadAddon(root), { scaRoot: root });
+  const source = scaViews(loadSourceArchive(root), { scaRoot: root });
 
   assert.ok(
     source.files.has("src/background.js"),
@@ -492,7 +487,7 @@ test("scaViews keys every view to the submission and reviews the whole archive",
     "browser.runtime.id;\n",
     "a view reads its bytes through the store"
   );
-  // A manifest ANYWHERE is lifted off the corpus, so a pre-build manifest is never
+  // A manifest.json ANYWHERE is lifted off the corpus, so a pre-build manifest.json is never
   // reviewed as source. Dropping it from the VIEW leaves the store untouched: the two are
   // different key sets over one set of bytes.
   assert.ok(
@@ -524,13 +519,10 @@ test("the source and experiment views merge into the add-on's whole tree", () =>
     "ChromeUtils.import('x');\n"
   );
 
-  const source = scaViews(
-    loadAddon(root, undefined, { recordInstalledTrees: true }),
-    {
-      scaRoot: root,
-      scaExpSource: path.join(root, "addon", "experiment"),
-    }
-  );
+  const source = scaViews(loadSourceArchive(root), {
+    scaRoot: root,
+    scaExpSource: path.join(root, "addon", "experiment"),
+  });
   const { experiment } = source;
 
   // Apart, each holds only its own - which is what keeps privileged code away from the
@@ -541,7 +533,7 @@ test("the source and experiment views merge into the add-on's whole tree", () =>
   ]);
   assert.deepEqual([...experiment.keys()].sort(), ["addon/experiment/exp.js"]);
 
-  // Together, they are the whole submission (minus the manifests, which liftManifests lifts
+  // Together, they are the whole submission (minus the manifest.json files, which liftManifests lifts
   // off) - no key belongs to both, and none is lost between them.
   const merged = new Map([...source.files, ...experiment]);
   assert.deepEqual(
@@ -584,13 +576,10 @@ test("a sibling Experiment is keyed like any other part of the submission", () =
   fs.writeFileSync(path.join(root, "addon", "main.js"), "1;\n");
   fs.writeFileSync(path.join(root, "experiment", "exp.js"), "1;\n");
 
-  const source = scaViews(
-    loadAddon(root, undefined, { recordInstalledTrees: true }),
-    {
-      scaRoot: root,
-      scaExpSource: path.join(root, "experiment"),
-    }
-  );
+  const source = scaViews(loadSourceArchive(root), {
+    scaRoot: root,
+    scaExpSource: path.join(root, "experiment"),
+  });
   const { experiment } = source;
   const sca = { files: source.sca };
 
@@ -626,13 +615,10 @@ test("scaViews puts every file in the right part, and the Experiment in only one
   fs.writeFileSync(path.join(root, "src", "main.js"), "1;\n");
   fs.writeFileSync(path.join(root, "src", "exp", "api.js"), "1;\n");
 
-  const source = scaViews(
-    loadAddon(root, undefined, { recordInstalledTrees: true }),
-    {
-      scaRoot: root,
-      scaExpSource: path.join(root, "src", "exp"),
-    }
-  );
+  const source = scaViews(loadSourceArchive(root), {
+    scaRoot: root,
+    scaExpSource: path.join(root, "src", "exp"),
+  });
   const { experiment } = source;
   const sca = { files: source.sca };
 
@@ -692,13 +678,10 @@ test("the build view holds the archive minus the Experiment and node_modules", (
   );
   fs.writeFileSync(path.join(root, "src", "node_modules", "pkg.js"), "1;\n");
 
-  const { sca: files, nodeModules } = scaViews(
-    loadAddon(root, undefined, { recordInstalledTrees: true }),
-    {
-      scaRoot: root,
-      scaExpSource: path.join(root, "src", "experiment"),
-    }
-  );
+  const { sca: files, nodeModules } = scaViews(loadSourceArchive(root), {
+    scaRoot: root,
+    scaExpSource: path.join(root, "src", "experiment"),
+  });
   assert.deepEqual([...files.keys()].sort(), [
     ".github/.npmrc",
     ".github/workflows/ci.yml",
@@ -743,12 +726,9 @@ test("the whole root stays a set of build candidates", () => {
     '{"scripts":{"build":"x"}}'
   );
   fs.writeFileSync(path.join(root, "background.js"), "1;\n");
-  const { sca: files } = scaViews(
-    loadAddon(root, undefined, { recordInstalledTrees: true }),
-    {
-      scaRoot: root,
-    }
-  );
+  const { sca: files } = scaViews(loadSourceArchive(root), {
+    scaRoot: root,
+  });
   assert.ok(
     files.has("package.json"),
     "the root package.json is a build candidate"
@@ -828,7 +808,7 @@ test("relativeInside places an in-source exp folder, else answers null", () => {
 
 // A ZIP entry name is taken as written - entryKey strips a leading "./" and nothing else -
 // so a name carrying path SYNTAX rather than names ("." , "" or "..") keys a file where the
-// manifest's own reference can never find it (normalizeRefInDir drops both), and two
+// manifest.json's own reference can never find it (normalizeRefInDir drops both), and two
 // spellings of one path would collide in `files`, letting entry order decide which bytes are
 // reviewed. Such an archive is refused whole, not repaired and not partly read: a file we
 // will not take is a review that would silently cover less than the submission.
@@ -961,7 +941,7 @@ test("loadAddon(file) extracts to disk and reads the same content back", () => {
   const addon = loadAddon(file, dest);
 
   // On disk: manifest.json included, and in addon.files too - only a source archive's
-  // review corpus gives its manifests up (liftManifests).
+  // review corpus gives its manifest.json files up (liftManifests).
   assert.equal(
     fs.readFileSync(path.join(dest, "manifest.json"), "utf8"),
     '{"manifest_version":3,"name":"x","version":"1"}'
@@ -1007,7 +987,7 @@ test("loadAddon(file) with no extractTo defaults beside the archive", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// node_modules is never decompressed - not into memory, and now not to disk either - so
+// node_modules is never decompressed - not into memory, not to disk - so
 // a later read of the extracted folder cannot rediscover it there. addon.nodeModules has
 // to come from the extraction step itself, or committed-node-modules would silently stop
 // firing on every zip-origin submission.

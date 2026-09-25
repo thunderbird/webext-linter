@@ -1,4 +1,4 @@
-// "Thunderbird" in an add-on name the manifest states LITERALLY, rather than
+// "Thunderbird" in an add-on name the manifest.json states LITERALLY, rather than
 // through a __MSG__ placeholder. Every such case is put to a person, and none is
 // ever a finding.
 //

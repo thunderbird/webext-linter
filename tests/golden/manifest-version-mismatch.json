@@ -110,7 +110,7 @@
       "loc": null,
       "item": "2",
       "hint": null,
-      "message": "Invalid manifest.json: manifest_version 2 does not match the schema set (Manifest V3).\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The included WebExtension manifest file (manifest.json) declares manifest_version 2, which does not match the schema set (Manifest V3).\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "mistyped-manifest-value",
@@ -119,7 +119,7 @@
       "loc": null,
       "item": "manifest_version",
       "hint": "must be equal to one of the allowed values",
-      "message": "The following manifest entries have a value Thunderbird ignores or misreads.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The following manifest.json entries have a value Thunderbird ignores or misreads.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]
 }

@@ -1,4 +1,4 @@
-// Test helper: the checks read the SHIPPED manifest record from ctx.manifest (+ siblings),
+// Test helper: the checks read the SHIPPED manifest.json record from ctx.manifest (+ siblings),
 // resolved by the ctx builders (buildXpiCtxs) in production. Unit tests build a ctx inline with a
 // single artifact, so this derives that field from ctx.addon (mutating and
 // returning the SAME ctx, so tests that inspect the ctx after a run still observe it).
@@ -15,8 +15,8 @@ import { experimentApiNamespaces } from "../../src/lib/experiments.js";
  * The add-on's JS sources, through the extraction pass - the state a check may read them in.
  * A CHECK IS A PURE READER: the accessors in src/checks/extract.js throw on a source that
  * never went through a pass, so a hand-built ctx must run it exactly as setup does (the
- * pipeline does this in Phase 3). Use this wherever a test used to hand raw
- * collectJsSources() output to a ctx.
+ * pipeline does this in Phase 3). Use this instead of handing raw collectJsSources()
+ * output to a ctx.
  * @param {object} addon
  * @param {object} [opts]
  * @param {object} [opts.schema]  The same schema the ctx carries (the loader-ref walk reads
@@ -50,11 +50,11 @@ export function parsed(jsSources, { schema, nonAuthored } = {}) {
 }
 
 /**
- * The manifest record a loaded artifact carries, built the way manifestRecord does
+ * The manifest.json record a loaded artifact carries, built the way manifestRecord does
  * (src/addon/load.js) - so a hand-built fixture hands the checks the shape production hands
  * them. Give it the parsed object; the text is derived unless a test needs particular bytes
  * (a token's line, a trailing comma, a duplicate key).
- * @param {?object} json  The parsed manifest.
+ * @param {?object} json  The parsed manifest.json.
  * @param {string} [text]  The raw manifest.json bytes, when they matter.
  * @returns {object} The record, for `addon: { manifest: manifestOf(...) }`.
  */
@@ -72,12 +72,12 @@ export function manifestOf(json, text = JSON.stringify(json, null, 2)) {
  * @returns {Record<string, object>}
  */
 export function siblingsOf(ctx) {
-  return { source: ctx, xpi: ctx, build: ctx, manifest: ctx };
+  return { source: ctx, xpi: ctx, sca: ctx, manifest: ctx };
 }
 
 /**
  * @param {object} ctx
- * @returns {object} the same ctx, carrying the shipped manifest record.
+ * @returns {object} the same ctx, carrying the shipped manifest.json record.
  */
 export function withManifest(ctx) {
   const addon = ctx?.addon ?? {};

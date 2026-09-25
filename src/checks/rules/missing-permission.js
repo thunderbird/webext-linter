@@ -1,5 +1,5 @@
-// A permission required but not declared in the manifest - required by a called
-// API, or implied by a script-injection manifest key (compose_scripts -> compose,
+// A permission required but not declared in the manifest.json - required by a called
+// API, or implied by a script-injection manifest.json key (compose_scripts -> compose,
 // message_display_scripts -> messagesModify).
 //
 // Belongs here: selecting the `missingPermissions` slice of the shared
@@ -7,7 +7,7 @@
 // manifest key" case is missing-manifest-key.js (a different remedy).
 //
 // Does NOT belong here: the analysis itself - matching API usages to required
-// permissions and manifest keys (-> getPermissionAnalysis in
+// permissions and manifest.json keys (-> getPermissionAnalysis in
 // src/lib/permissions.js, shared with missing-manifest-key.js). The
 // required-permission schema data it consumes (-> src/schema/index.js). Authored
 // wording (-> assets/registry.yaml). Severity (-> the missing-permission

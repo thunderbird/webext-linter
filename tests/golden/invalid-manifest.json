@@ -111,7 +111,7 @@
       "loc": null,
       "item": "version",
       "hint": null,
-      "message": "Invalid manifest.json: one or more required properties are missing.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The included WebExtension manifest file (manifest.json) has one or more required properties missing.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "manifest-unknown-permission",
@@ -122,7 +122,7 @@
       },
       "item": "bogusPermission",
       "hint": null,
-      "message": "Invalid manifest.json: one or more requested permissions are unknown.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The included WebExtension manifest file (manifest.json) requests one or more unknown permissions.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
       "ruleId": "unrecognized-manifest-key",
@@ -133,7 +133,7 @@
       },
       "item": "weirdTopLevelKey",
       "hint": null,
-      "message": "Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The included WebExtension manifest file (manifest.json) declares the following unknown top-level keys, which Thunderbird will ignore.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]
 }

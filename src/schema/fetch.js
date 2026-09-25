@@ -37,7 +37,7 @@ export function schemaBranch(channel, mv) {
 }
 
 /**
- * The canonical set of branches the cache must hold: every channel × manifest
+ * The canonical set of branches the cache must hold: every channel × manifest.json
  * version. The whole set is (re)fetched together, so the anchors stay mutually
  * fresh (all from the same schema train).
  * @returns {string[]}

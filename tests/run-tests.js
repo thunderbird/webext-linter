@@ -174,7 +174,7 @@ function loadFixture(dir) {
 }
 
 // A fixture is an SCA (source-code archive) review when it holds two artifacts as
-// subfolders: `xpi/` (the shipped built add-on, the authoritative manifest) and
+// subfolders: `xpi/` (the shipped built add-on, the authoritative manifest.json) and
 // `src/` (the submitted source archive). The harness then drives runPipeline in SCA
 // mode; a plain fixture folder is an ordinary XPI review. WHETHER a fixture is SCA is
 // detected by layout, so the spec needs no flag for it; where the add-on code sits

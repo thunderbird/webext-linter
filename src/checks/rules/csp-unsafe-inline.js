@@ -1,4 +1,4 @@
-// The manifest content_security_policy allows 'unsafe-inline', which permits
+// The manifest.json content_security_policy allows 'unsafe-inline', which permits
 // dynamic code execution via inline scripts - not allowed.
 //
 // Belongs here: emitting the finding when the CSP allows 'unsafe-inline'. Does

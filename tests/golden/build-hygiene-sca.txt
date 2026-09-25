@@ -14,7 +14,7 @@ Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubm
  - [SCA] node_modules
  - [SCA] tools/node_modules
 
-4) The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
+4) The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - [SCA] package.json
 

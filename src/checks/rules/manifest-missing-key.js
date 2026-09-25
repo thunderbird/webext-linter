@@ -1,5 +1,5 @@
-// A required top-level manifest key (manifest_version, name, version) is absent,
-// so the submission is invalid. Runs only on a parsed manifest.
+// A required top-level manifest.json key (manifest_version, name, version) is absent,
+// so the submission is invalid. Runs only on a parsed manifest.json.
 //
 // Belongs here: checking the required keys are present. Does NOT belong here:
 // unknown permissions / mv mismatch (-> manifest-unknown-permission.js /

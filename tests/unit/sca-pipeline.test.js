@@ -1,5 +1,5 @@
 // End-to-end test for SCA mode (source code archive): the positional XPI is the
-// SHIPPED artifact (manifest + reachability + WAR + bundled-files resolve against
+// SHIPPED artifact (manifest.json + reachability + WAR + bundled-files resolve against
 // it), while the readable --sca-root archive is the review target the code checks
 // analyze. The built layout deliberately differs from the source layout - the XPI's
 // entry scripts are named differently than the source's - which is the case that
@@ -54,10 +54,10 @@ const XPI_FILES = {
 };
 
 // The readable SOURCE: a different pre-build layout (entry file named main.js, not
-// the manifest's background.js), carrying a real WebExtension API defect.
+// the manifest.json's background.js), carrying a real WebExtension API defect.
 const SRC_FILES = {
   "package.json": JSON.stringify({ name: "sca-e2e", version: "1.0.0" }),
-  // A source submission owes a lock whatever its manifest declares, and without one the
+  // A source submission owes a lock whatever its package.json declares, and without one the
   // review stops early - which would withhold the very manual-review items these tests
   // assert on. Empty is enough: nothing here declares a dependency to cover.
   "package-lock.json": JSON.stringify({
@@ -424,9 +424,9 @@ test("SCA: the --sca-root archive is read once, not twice", async () => {
   }
 });
 
-// WHY the submission is loaded with parseWebExtManifest FALSE while the XPI is loaded with it
-// true: the two artifacts answer "what is this add-on's manifest" differently, and only one
-// of them is allowed to. The XPI's manifest is what Thunderbird loads, so it is the review's
+// WHY loadSourceArchive reads no manifest.json while the XPI is loaded with one: the two
+// artifacts answer "what is this add-on's manifest.json" differently, and only one
+// of them is allowed to. The XPI's manifest.json is what Thunderbird loads, so it is the review's
 // one authority (ctx.manifest). A source archive's root manifest.json is a PRE-BUILD
 // template - the build may rewrite it, generate it, or draw the add-on's real root from
 // somewhere else entirely, and a submission need not hold one at all - so whatever it says
@@ -434,9 +434,9 @@ test("SCA: the --sca-root archive is read once, not twice", async () => {
 // answer on the archive under the same name as the real one, for the next reader of
 // `reviewTarget.manifest` to pick up in a review mode where it is the wrong artifact.
 //
-// The BYTES stay in the corpus, because a build step may copy a manifest and the build
+// The BYTES stay in the corpus, because a build step may copy a manifest.json and the build
 // review must still see that. So what this pins is that nothing READS them: the fixture's
-// root manifest deliberately disagrees with the shipped one, and a single read here would
+// root manifest.json deliberately disagrees with the shipped one, and a single read here would
 // mean the review can answer with a name and version the add-on does not ship.
 const PREBUILD_SRC = {
   ...FLAT_SRC,
@@ -579,7 +579,7 @@ test("SCA e2e: code checks review the source; manifest/WAR resolve against the X
     const { findings } = result;
 
     // (1) Code checks review ALL the source: a fake API in main.js - a file the
-    // XPI manifest never names (so it is unreachable from the built entry points) -
+    // XPI manifest.json never names (so it is unreachable from the built entry points) -
     // is still caught, because the SCA code checks review every source file.
     assert.ok(
       hasItem(
@@ -590,7 +590,7 @@ test("SCA e2e: code checks review the source; manifest/WAR resolve against the X
       "expected unknown-api on the non-entry source file main.js"
     );
 
-    // (2) bundled-files resolves manifest refs against the XPI: background.js is a
+    // (2) bundled-files resolves manifest.json refs against the XPI: background.js is a
     // built entry present in the XPI but absent from the source tree, so it must
     // NOT be reported as "not bundled".
     assert.ok(
@@ -813,7 +813,7 @@ test("SCA e2e: background-module judges the XPI's background script, not the ESM
     background: { scripts: ["background.js"] }, // no type: module
   });
   // (a) The source uses ESM, but the build bundles it to a CLASSIC shipped script,
-  // so the manifest correctly omits type:module. Reading the source would
+  // so the manifest.json correctly omits type:module. Reading the source would
   // false-positive; reading the shipped classic script does not.
   const xpiClassic = tmpDir({
     "manifest.json": manifest,
@@ -1353,7 +1353,7 @@ test("SCA e2e: transpiled source anywhere in the archive withholds the XPI-only 
   const base = {
     "package.json": JSON.stringify({ name: "tr", version: "1.0.0" }),
     // The advice is withheld from a build that cannot be run, and a source archive owes a
-    // lock whatever its manifest declares - so without one this would test the lock rule
+    // lock whatever its package.json declares - so without one this would test the lock rule
     // rather than the transpiled-source question it is about.
     "package-lock.json": JSON.stringify({
       lockfileVersion: 3,
@@ -1415,7 +1415,7 @@ test("SCA e2e: a readable XPI that IS the source is advised to submit XPI-only, 
       scripts: { build: "cp -r node_modules/lib dist" },
     }),
     // The advice only holds for a build that can be RUN, and a source archive owes a lock
-    // whatever its manifest declares - so the advice this test is about needs one here.
+    // whatever its package.json declares - so the advice this test is about needs one here.
     "package-lock.json": JSON.stringify({
       lockfileVersion: 3,
       packages: { "": {} },

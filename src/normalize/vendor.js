@@ -1,9 +1,8 @@
 // Parses the add-on's VENDOR file (developers list every bundled third-party
 // library there so reviewers can verify it matches upstream). Those files must stay
 // identical to the release they came from - the compare tolerates end-of-line
-// differences and nothing else (src/normalize/hash.js) - so the normalizer skips any
-// path listed here, and vendor verification fetches the declared source to confirm it
-// (src/vendor/verify.js).
+// differences and nothing else (src/normalize/hash.js) - and vendor verification
+// fetches the declared source to confirm it (src/vendor/verify.js).
 //
 // The grammar is deliberately narrow, because the cost of reading too much is not a
 // parse error - it is a WRONG declaration that looks right. A file and a URL pair only
@@ -17,7 +16,7 @@
 //
 // The file is read whole and any fault discards ALL of it, so the developer is told
 // their VENDOR file is unparseable (and a reviewer fallback in src/vendor/resolve.js gets
-// the text) instead of the review proceeding on half a manifest. Half a manifest is the
+// the text) instead of the review proceeding on half a VENDOR file. Half of one is the
 // worse outcome by far: the declarations that were missed simply look undeclared, and
 // come back to the developer as "undeclared third-party library" for a library they
 // did declare, with nothing pointing at the file that says so.
@@ -28,15 +27,14 @@
 //
 // Belongs here: the deterministic VENDOR parse only - locating the file
 // (readVendorFile), the
-// {path, sourceUrl} extraction (parseVendorManifest), and the entries whose
+// {path, sourceUrl} extraction (parseVendorEntries), and the entries whose
 // declared file is absent (missingVendorEntries). It is review-free and pure.
 //
 // Does NOT belong here: a reviewer parse fallback and the canonical resolved set
 // (-> src/vendor/resolve.js). Nor any verdict about what was parsed: ONE source
 // covering several files is reported faithfully here and judged by
-// vendor-ambiguous-source. The consumers of the set: prettyprint.js skips
-// vendored files from reformatting, bundled.js skips them from scanning, and
-// unused-files exempts them. Fetching/verifying the declared source is the
+// vendor-ambiguous-source. The consumers of the set: bundled.js skips them
+// from scanning, and unused-files exempts them. Fetching/verifying the declared source is the
 // vendor verification pre-step + the vendor checks. This file makes no verdict.
 
 import { basename, dirname } from "../util/files.js";
@@ -48,7 +46,7 @@ import { basename, dirname } from "../util/files.js";
 const VENDOR_NAMES = new Set(["vendor", "vendor.md", "vendors", "vendors.md"]);
 
 /**
- * Every packaged file whose name says it is the VENDOR manifest, sorted so the answer
+ * Every packaged file whose name says it is the VENDOR file, sorted so the answer
  * does not depend on the order the archive happens to list them in. More than one is
  * a contradiction only the developer can settle - see multiple-vendor-files.
  *
@@ -71,9 +69,9 @@ export function vendorFileNames(addon) {
 
 /**
  * The add-on's VENDOR file, or null when there is none - and null when there is more
- * than one, because choosing between them would mean reviewing against a manifest the
+ * than one, because choosing between them would mean reviewing against a VENDOR file the
  * developer may not have meant. multiple-vendor-files reports that; nothing here
- * treats an ambiguous manifest as readable.
+ * treats an ambiguous VENDOR file as readable.
  * @param {Addon} addon
  * @returns {?{name: string, text: string}}
  */
@@ -717,7 +715,7 @@ export function readVendorDeclarations(addon) {
  * @param {Addon} addon
  * @returns {VendorEntry[]}
  */
-export function parseVendorManifest(addon) {
+export function parseVendorEntries(addon) {
   return readVendorDeclarations(addon).resolved;
 }
 

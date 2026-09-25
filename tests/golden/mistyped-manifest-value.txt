@@ -2,7 +2,7 @@
 
 Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
 
-1) The following manifest entries have a value Thunderbird ignores or misreads.
+1) The following manifest.json entries have a value Thunderbird ignores or misreads.
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json - description - must be string
  - manifest.json - browser_specific_settings - must be object

@@ -64,9 +64,8 @@ const SEV_COLOR = {
  * @property {string} action
  * @property {string} xpi  The shipped add-on - the artifact users install - in EVERY
  *   review, resolved. Named for the ARTIFACT, never for its role: a field meaning "the
- *   review target" names a different one in each mode, and no reader can tell which. Kept
- *   for the JSON report; neither text renderer prints it as its own row any more (see
- *   xpiRoot).
+ *   review target" names a different one in each mode, and no reader can tell which. For
+ *   the JSON report only - the text renderers print xpiFile and xpiRoot instead.
  * @property {string} xpiRoot  Where that artifact IS, readable, on disk - the folder this
  *   run extracted it into (src/addon/load.js), or the submission itself when it already
  *   was a folder. Always set, for every review: unlike summaryFile/buildFile below, this
@@ -498,8 +497,7 @@ export function scaPromptLines(prompt, submission, review) {
  *
  * Built from the same `meta` the report's own header is, so the two can never name
  * different artifacts. An XPI review names the one it has; a source code review names the
- * extracted root and the subtree inside it that IS the add-on's code - which is the only
- * way an agent can know which files are the developer's and which are build scaffolding.
+ * extracted root, and the Experiment folder when one was given.
  *
  * SCHEMA is a line, not a path: the cache holds several branches, and the one this review
  * read is the only one its verdicts mean anything against.
@@ -560,9 +558,8 @@ export function headerLines(meta) {
   // something the review has already read.
   //
   // XPI_FILE and XPI_ROOT, not one XPI path: what was submitted, said the way a reviewer
-  // says it, and where this run put it so it can be READ. A single path row answered
-  // neither question well - it named a file nothing reads any more, in a spelling nobody
-  // repeats back.
+  // says it, and where this run put it so it can be READ. One path row answers neither:
+  // it names a file nothing reads, in a spelling nobody repeats back.
   const values = [
     ["XPI_FILE", meta.xpiFile],
     ["XPI_ROOT", meta.xpiRoot],
@@ -723,7 +720,7 @@ function issuesLines(
  * wrong in both of those, and `[all_urls]` is wrong in none of them.
  *
  * NOT applied to the JSON report (which is a machine contract - `item` keeps the token the
- * manifest wrote), to a path (which the reader copies back - displayPath alters nothing), or
+ * manifest.json wrote), to a path (which the reader copies back - displayPath alters nothing), or
  * to the to-do sections (which reach a terminal and an agent, never this document).
  *
  * Also NOT the last word for a version-range spec: unsupported-dependency,

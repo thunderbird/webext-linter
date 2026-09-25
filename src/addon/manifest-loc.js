@@ -1,11 +1,11 @@
 // Position-aware lookup of a manifest.json value's source line, by its JSON
-// path (e.g. ["host_permissions", 0]). The parsed manifest object has no source
+// path (e.g. ["host_permissions", 0]). The parsed manifest.json object has no source
 // positions, and a substring search of the raw text is fragile (a character may be
 // \uXXXX-escaped, e.g. "<all_urls>") and ambiguous (the same value can appear more
 // than once), so this parses the raw text WITH positions to resolve the exact line
 // for a specific occurrence.
 //
-// Belongs here: building the position index from the raw manifest text and
+// Belongs here: building the position index from the raw manifest.json text and
 // resolving a JSON path to its 1-based line. Does NOT belong here: deciding which
 // path a finding refers to (that is each check's job, via manifestPathLine in
 // src/lib/util.js), or the substring fallback for unique keys
@@ -20,10 +20,10 @@ import { parseTree, findNodeAtLocation } from "jsonc-parser";
  */
 
 /**
- * Build a position index over the manifest source. Tolerant of comments and
+ * Build a position index over the manifest.json source. Tolerant of comments and
  * trailing commas (JSONC); on text it cannot parse into a tree (a rare
- * JSON5-only manifest) every lookup returns null, so callers degrade gracefully.
- * @param {string} text  The manifest source (BOM already stripped).
+ * JSON5-only manifest.json) every lookup returns null, so callers degrade gracefully.
+ * @param {string} text  The manifest.json source (BOM already stripped).
  * @returns {ManifestLoc}
  */
 export function buildManifestLoc(text) {

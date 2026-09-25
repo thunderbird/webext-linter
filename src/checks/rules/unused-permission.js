@@ -1,7 +1,7 @@
 // Producer of the declared permissions that warrant a closer look: every named
 // permission a reachable API call does not provably require. A permission whose
 // linked token vocabulary (check.permissionTokens) declares usage `tokens`
-// that appear nowhere in the add-on's live code (comments excluded) or manifest
+// that appear nowhere in the add-on's live code (comments excluded) or manifest.json
 // is deterministically unused - a warning finding (the deterministic path stands
 // down when the scan is blind - see enumerateUnusedPermissions). Every other such
 // permission is scheduled as a code-review escalation, carrying the sites where

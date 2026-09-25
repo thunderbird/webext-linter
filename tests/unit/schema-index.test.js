@@ -72,7 +72,7 @@ test("permissionWebApis exposes the merged web_api annotation", () => {
   assert.ok(!annotated.permissionWebApis.has("storage"));
 });
 
-// Top-level manifest keys merge the $extend addition compose_action with base
+// Top-level manifest.json keys merge the $extend addition compose_action with base
 // keys, while an undeclared key is rejected from the valid-keys set.
 test("manifest keys include $extend additions (compose_action)", () => {
   assert.ok(schema.validManifestKeys.has("compose_action"));
@@ -81,7 +81,7 @@ test("manifest keys include $extend additions (compose_action)", () => {
   assert.ok(!schema.validManifestKeys.has("weirdTopLevelKey"));
 });
 
-// A manifest key whose property carries `required_permissions` annotations
+// A manifest.json key whose property carries `required_permissions` annotations
 // requires those permissions - one entry per annotation object, each with its own
 // strict-version bound (message_display_scripts also needs scripting before 154).
 // Keys without one - including the array-typed `permissions` property - are absent.
@@ -347,7 +347,7 @@ test("derives the fixture's messageDisplayScripts.register loader", () => {
 });
 
 // ---- drift lock against the REAL schema ----
-// Which manifest keys carry a packaged-file path is the schema's answer, not a list kept
+// Which manifest.json keys carry a packaged-file path is the schema's answer, not a list kept
 // here, and that is the point (see manifestFileRefs). The cost is that coverage can narrow
 // silently: a key retyped upstream as a plain string simply stops being followed, and no
 // review would look different. Per-key detection would need a list of expected keys, which

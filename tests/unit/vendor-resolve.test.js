@@ -37,14 +37,14 @@ function fakeAddon(files, extraDirs = []) {
 }
 
 // A VENDOR file in prose declares nothing: the parse is deterministic, so an entry it
-// cannot map yields an empty manifest and an empty skip set rather than a guess.
+// cannot map yields an empty entry list and an empty skip set rather than a guess.
 test("resolveVendor maps nothing from a VENDOR file that declares nothing", async () => {
   const addon = fakeAddon({
     VENDOR: "We bundle the Foo library; see our docs for details.",
     "app.js": "x",
   });
-  const { set, manifest } = await resolveVendor({ addon });
-  assert.equal(manifest.length, 0);
+  const { set, entries } = await resolveVendor({ addon });
+  assert.equal(entries.length, 0);
   assert.equal(set.size, 0);
 });
 
@@ -56,9 +56,9 @@ test("resolveVendor maps a declared file to its source", async () => {
       "File: vendor/jszip.min.js\nSource: https://unpkg.com/jszip@3.10.1/dist/jszip.min.js\n",
     "vendor/jszip.min.js": "x",
   });
-  const { manifest } = await resolveVendor({ addon });
+  const { entries } = await resolveVendor({ addon });
   assert.deepEqual(
-    manifest.map((e) => [e.path, e.sourceUrl]),
+    entries.map((e) => [e.path, e.sourceUrl]),
     [
       [
         "vendor/jszip.min.js",
@@ -75,11 +75,11 @@ test("resolveVendor surfaces a missing declared file, not 'unparsed'", async () 
     VENDOR: "File: lib/ghost.js\nSource: https://unpkg.com/x@1.0.0/ghost.js\n",
     "bg.js": "x",
   });
-  const { manifest, missing, unparsedVendor } = await resolveVendor({
+  const { entries, missing, unparsedVendor } = await resolveVendor({
     addon,
     token: undefined,
   });
-  assert.equal(manifest.length, 0);
+  assert.equal(entries.length, 0);
   assert.deepEqual(
     missing.map((e) => e.path),
     ["lib/ghost.js"]
@@ -93,11 +93,11 @@ test("resolveVendor marks a pure-prose VENDOR as 'unparsed'", async () => {
     VENDOR: "We bundle some stuff, see our docs.",
     "bg.js": "x",
   });
-  const { manifest, missing, unparsedVendor } = await resolveVendor({
+  const { entries, missing, unparsedVendor } = await resolveVendor({
     addon,
     token: undefined,
   });
-  assert.equal(manifest.length, 0);
+  assert.equal(entries.length, 0);
   assert.equal(missing.length, 0);
   assert.equal(unparsedVendor, true);
 });
@@ -115,11 +115,11 @@ test("resolveVendor marks a library + repo-only-URL block as 'unparsed'", async 
       "- Upstream repository: https://github.com/cure53/DOMPurify\n",
     "vendor/purify.js": LIB,
   });
-  const { manifest, missing, unparsedVendor } = await resolveVendor({
+  const { entries, missing, unparsedVendor } = await resolveVendor({
     addon,
     token: undefined,
   });
-  assert.equal(manifest.length, 0);
+  assert.equal(entries.length, 0);
   assert.equal(missing.length, 0);
   assert.equal(unparsedVendor, true);
 });
@@ -132,12 +132,12 @@ test("resolveVendor trusts a declared file + source URL", async () => {
       "File: modules/own.js\nSource: https://unpkg.com/x@1.0.0/own.js\n",
     "modules/own.js": "export function f() {}\n",
   });
-  const { manifest, unparsedVendor } = await resolveVendor({
+  const { entries, unparsedVendor } = await resolveVendor({
     addon,
     token: undefined,
   });
   assert.deepEqual(
-    manifest.map((e) => [e.path, e.sourceUrl]),
+    entries.map((e) => [e.path, e.sourceUrl]),
     [["modules/own.js", "https://unpkg.com/x@1.0.0/own.js"]]
   );
   assert.equal(unparsedVendor, false);
@@ -157,11 +157,11 @@ test("resolveVendor refuses a directory source that is not an archive", async ()
     "vendor/lib/a.js": "x",
     "vendor/lib/b.js": "y",
   });
-  const { manifest, ambiguousSources, folders } = await resolveVendor({
+  const { entries, ambiguousSources, folders } = await resolveVendor({
     addon,
     token: undefined,
   });
-  assert.deepEqual(manifest, []); // never handed to the fetch
+  assert.deepEqual(entries, []); // never handed to the fetch
   assert.equal(ambiguousSources.length, 1);
   assert.equal(ambiguousSources[0].source, RAW);
   assert.deepEqual([...ambiguousSources[0].paths].sort(), [
@@ -182,13 +182,13 @@ test("resolveVendor keeps a directory source that is an archive", async () => {
       "VENDOR.md": `- directory: vendor/lib\n- source: ${source}\n`,
       "vendor/lib/a.js": "x",
     });
-    const { manifest, ambiguousSources } = await resolveVendor({
+    const { entries, ambiguousSources } = await resolveVendor({
       addon,
       token: undefined,
     });
     assert.deepEqual(ambiguousSources, [], source);
     assert.deepEqual(
-      manifest.map((e) => e.sourceUrl),
+      entries.map((e) => e.sourceUrl),
       [source],
       source
     );
@@ -196,7 +196,7 @@ test("resolveVendor keeps a directory source that is an archive", async () => {
 });
 
 // A single source URL paired with more than one bundled FILE is ambiguous:
-// resolveVendor pulls those entries out of the manifest (not verified) and records
+// resolveVendor pulls those out of the entry list (not verified) and records
 // them on ambiguousSources, while keeping their paths vendored (skip-set).
 test("resolveVendor flags >1 file per source URL as ambiguous", async () => {
   const addon = fakeAddon({
@@ -213,11 +213,11 @@ test("resolveVendor flags >1 file per source URL as ambiguous", async () => {
     "vendor/a.min.js": "x",
     "vendor/b.min.js": "x",
   });
-  const { manifest, ambiguousSources, set } = await resolveVendor({
+  const { entries, ambiguousSources, set } = await resolveVendor({
     addon,
     token: undefined,
   });
-  assert.deepEqual(manifest, []); // not verified - ambiguous pairing
+  assert.deepEqual(entries, []); // not verified - ambiguous pairing
   assert.equal(ambiguousSources.length, 1);
   assert.equal(
     ambiguousSources[0].source,
@@ -239,12 +239,12 @@ test("resolveVendor records a folder declaration", async () => {
     "VENDOR.md": `- bundled directory : vendor/lib\n- source : ${TREE}\n`,
     "vendor/lib/a.js": "x",
   });
-  const { manifest, folders, set, ambiguousSources } = await resolveVendor({
+  const { entries, folders, set, ambiguousSources } = await resolveVendor({
     addon,
     token: undefined,
   });
   assert.deepEqual(
-    manifest.map((e) => [e.path, e.kind]),
+    entries.map((e) => [e.path, e.kind]),
     [["vendor/lib", "folder"]]
   );
   assert.deepEqual([...folders], ["vendor/lib"]);
@@ -260,7 +260,7 @@ test("resolveVendor records a folder declaration", async () => {
 // npm accepts one name in several maps with different specs, and defines a precedence for
 // each pair - so a name cannot stand in for a declaration. A `file:` spec that resolves
 // exempts ITS OWN declaration from unsupported-dependency and no other: otherwise one
-// harmless line launders whatever else the manifest declares under that name, and npm
+// harmless line launders whatever else the package file declares under that name, and npm
 // installs the laundered one, since the `dependencies` copy wins over `devDependencies`.
 test("a resolved file: spec exempts its own declaration, not the name", async () => {
   const addon = fakeAddon({
@@ -363,7 +363,7 @@ test("resolveVendor classifies package.json deps by source", async () => {
 // devDependencies never ship, but the SCA reviewer builds from source, so their
 // pinned npm packages are OSV-audited too. Only the pinned-npm bucket lands in
 // An optionalDependency is a build-time declaration, classified with the dev ones: npm
-// installs it where the platform allows, so whoever installs from this manifest runs it.
+// installs it where the platform allows, so whoever installs from this package file runs it.
 // It must not fall out of the classification altogether - the lock's own direct set spans
 // every declaration map, so the whole-tree audit skips it as declared (alreadyAudited) and
 // a declared audit is the only thing left that can receive it.
@@ -517,7 +517,7 @@ test("resolveVendor treats a dep in both dependencies and devDependencies as pro
 // code, not a dependency: it never reaches unsupportedDeps. Its OWN declared dependencies
 // (both dependencies and devDependencies - npm installs a locally-linked package's
 // devDependencies unconditionally) are real external sources and classified exactly like
-// the root's, tagged with the nested manifest's own path.
+// the root's, tagged with the nested package file's own path.
 test("resolveVendor recurses into a file:-linked local package's own dependencies", async () => {
   const addon = fakeAddon({
     "package.json": JSON.stringify({
@@ -549,8 +549,8 @@ test("resolveVendor recurses into a file:-linked local package's own dependencie
 
 // A file: target that resolves to a real directory but one with no readable package.json
 // is still authored code (the bytes are right there) - dropped from unsupported, with
-// nothing further to classify, rather than rejected for lacking a manifest.
-test("resolveVendor treats a file: target with no manifest as authored code, nothing further", async () => {
+// nothing further to classify, rather than rejected for lacking a package file.
+test("resolveVendor treats a file: target with no package file as authored code, nothing further", async () => {
   const addon = fakeAddon({
     "package.json": JSON.stringify({
       dependencies: { assets: "file:./assets" },
@@ -567,7 +567,7 @@ test("resolveVendor treats a file: target with no manifest as authored code, not
   assert.deepEqual(v.devPackages, []);
 });
 
-// A file: chain that loops back on itself (a nested manifest referencing an ancestor
+// A file: chain that loops back on itself (a nested package file referencing an ancestor
 // directory, including the root) is not an error: that directory genuinely is part of the
 // submission. It is accepted like any other resolving local target - dropped from
 // unsupported - but not re-walked, which is what keeps the recursion from looping forever.
@@ -616,11 +616,11 @@ test("resolveVendor reports a file: spec naming a tarball as an unsupported sour
   ]);
 });
 
-// A file: spec declared by a NESTED manifest that escapes the submission (or names
+// A file: spec declared by a NESTED package file that escapes the submission (or names
 // nothing present) stays unsupported exactly as a root-level one does - anchored at the
-// nested manifest, not at the root package.json, so the reviewer is pointed at the file
+// nested package file, not at the root package.json, so the reviewer is pointed at the file
 // that actually declared it.
-test("resolveVendor keeps an unresolvable file: spec unsupported, anchored at the nested manifest", async () => {
+test("resolveVendor keeps an unresolvable file: spec unsupported, anchored at the nested package file", async () => {
   const addon = fakeAddon({
     "package.json": JSON.stringify({
       dependencies: { nested: "file:./nested" },

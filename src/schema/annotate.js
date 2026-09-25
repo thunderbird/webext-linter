@@ -126,7 +126,7 @@ function applyTypes(dstNs, srcNs) {
         }
       }
       // Merge a fragment property onto the matching loaded property: APPEND its
-      // `annotations` (so a manifest key's required_permissions annotation joins
+      // `annotations` (so a manifest.json key's required_permissions annotation joins
       // any existing version_added rather than replacing it), and assign any other
       // keys. This is how the overlay delivers metadata the published schema lacks
       // (e.g. compose_scripts -> a required_permissions:["compose"] annotation).
@@ -153,7 +153,7 @@ function applyTypes(dstNs, srcNs) {
 
 /**
  * The loaded types a fragment type patches: the single type matched by `id` when
- * the fragment carries one, else EVERY block matched by `$extend` (a manifest
+ * the fragment carries one, else EVERY block matched by `$extend` (a manifest.json
  * $extend block has no id, and the schema may spread one $extend target across
  * several blocks - each carrying different properties). Empty when neither
  * identifies a loaded type, so an id-less fragment cannot silently match the first

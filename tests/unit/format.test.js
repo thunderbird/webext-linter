@@ -905,7 +905,7 @@ test("Manual review caps a grouped locus list at 25 with a marker", () => {
 
 // SCA review: each finding's file:line is prefixed with the artifact it lives in -
 // [XPI] for input:xpi and input:manifest checks (and always for manifest.json, the
-// shipped manifest), [SCA] for the readable source (input:source/build) - and a legend
+// shipped manifest.json), [SCA] for the readable source (input:source/build) - and a legend
 // footer closes the Issues section. An XPI review adds neither.
 test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () => {
   const r = {
@@ -1657,7 +1657,7 @@ test("the report body squares off every angle bracket, from either source", () =
     {
       ruleId: "minimize-host-permissions",
       severity: "warning",
-      // The submission's: <all_urls> is a real permission token, written by its manifest.
+      // The submission's: <all_urls> is a real permission token, written by its manifest.json.
       item: "<all_urls>",
       listItem: true,
       file: "manifest.json",
@@ -1672,7 +1672,7 @@ test("the report body squares off every angle bracket, from either source", () =
   assert.doesNotMatch(text, /[<>]/);
 
   // The JSON is a machine contract, not a rendered document: a consumer matching on the
-  // permission keeps seeing the token the manifest wrote.
+  // permission keeps seeing the token the manifest.json wrote.
   const json = JSON.parse(formatJson(r));
   assert.equal(json.findings[0].item, "<all_urls>");
   assert.match(json.findings[0].message, /a <template>/);

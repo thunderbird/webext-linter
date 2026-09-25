@@ -1,10 +1,10 @@
 // Shared permission analysis for the missing-permission and missing-manifest-key
 // checks. Cross-checks the permissions an add-on requires - via the APIs it calls
-// AND via a manifest key that implies one (compose_scripts -> compose,
+// AND via a manifest.json key that implies one (compose_scripts -> compose,
 // message_display_scripts -> messagesModify, from the key's `required_permissions`
-// annotation) - against what its manifest declares:
+// annotation) - against what its manifest.json declares:
 //   - missingPermissions: a required permission that is not declared,
-//   - missingManifestKeys: an API that needs a manifest key not declared.
+//   - missingManifestKeys: an API that needs a manifest.json key not declared.
 // Severity comes from each owning registry entry (missing-permission /
 // missing-manifest-key), stamped by runChecks.
 //
@@ -13,7 +13,7 @@
 // of returned data (e.g. accountsRead for a message header's folder), which the
 // schema-driven scan cannot confirm - but when the registry's permission-prompts
 // entry names that permission's justifying usages as `tokens` and none of them
-// occurs anywhere in the shipped code or manifest, "unused" is sound as long as the
+// occurs anywhere in the shipped code or manifest.json, "unused" is sound as long as the
 // scan can see every usage. The check scans the SHIPPED add-on (the built XPI - the
 // bytes that actually run), so a build-time dependency is in view; what disables the
 // deterministic path is OBFUSCATED first-party code (API names built at runtime or
@@ -29,10 +29,10 @@
 // object, not arbitrary object-literal keys. A token read from a runtime data
 // file is the same class of gap. Everything undecided escalates to a reviewer.
 //
-// The schema expresses "this API needs a manifest key" via pseudo-permissions
-// of the form "manifest:<key>" (e.g. browserAction needs "manifest:action" OR
-// "manifest:browser_action"). Those are not declarable permissions - the
-// manifest must declare at least one of the named keys.
+// The schema expresses "this API needs a manifest.json key" via pseudo-permissions
+// of the form "manifest.json:<key>" (e.g. browserAction needs "manifest.json:action" OR
+// "manifest.json:browser_action"). Those are not declarable permissions - the
+// manifest.json must declare at least one of the named keys.
 //
 // Belongs here: analyzePermissions (memoized via getPermissionAnalysis), the
 // missing diff the rules consume, returning structured findings
@@ -81,14 +81,14 @@ const GATED_KINDS = new Set(["function", "event", "property", "namespace"]);
 /**
  * @typedef {object} PermissionAnalysis
  * @property {import("../report/finding.js").Finding[]} missingPermissions  A
- *   required permission (item) not declared in the manifest.
+ *   required permission (item) not declared in the manifest.json.
  * @property {import("../report/finding.js").Finding[]} missingManifestKeys
- *   An API (item) needing a manifest key (data.keys) that is not declared.
+ *   An API (item) needing a manifest.json key (data.keys) that is not declared.
  * @property {Set<string>} usedPermissions  Named permissions a reachable API
  *   call provably requires (so the add-on is definitely using them), plus the
  *   Web/DOM-API permissions grounded from navigator.* calls (see
  *   groundWebApiPermissions) that the browser.* schema cannot gate, plus a
- *   script-injection manifest key's implied permission (compose_scripts,
+ *   script-injection manifest.json key's implied permission (compose_scripts,
  *   message_display_scripts). The unused-permission check drops these from its
  *   by-hand checklist. Only ever proves a permission USED - a permission absent
  *   here may still be needed via a gated property a static scan cannot see (see
@@ -98,8 +98,8 @@ const GATED_KINDS = new Set(["function", "event", "property", "namespace"]);
  */
 
 /**
- * Cross-check the permissions/manifest keys the called APIs require against what
- * the manifest declares. Use getPermissionAnalysis (memoized) from the rules.
+ * Cross-check the permissions/manifest.json keys the called APIs require against what
+ * the manifest.json declares. Use getPermissionAnalysis (memoized) from the rules.
  * @param {RunContext} ctx  The shared check context.
  * @returns {PermissionAnalysis}
  */
@@ -129,7 +129,7 @@ function analyzePermissions(ctx) {
   const manifestKeyReqs = new Map();
 
   // Only usages in the pure WebExtension tree count: dead code and privileged
-  // Experiment/core code (which uses no manifest permissions) are outside it, so they
+  // Experiment/core code (which uses no manifest.json permissions) are outside it, so they
   // bear on neither used nor missing permissions (resolveApiUsages applies the filter).
   for (const { file, usage, res } of resolveApiUsages(ctx)) {
     if (!GATED_KINDS.has(res.kind)) {
@@ -176,13 +176,13 @@ function analyzePermissions(ctx) {
     usedPermissions.add(perm);
   }
 
-  // A manifest key can require a permission the browser.* API gate never covers
+  // A manifest.json key can require a permission the browser.* API gate never covers
   // (compose_scripts -> compose, message_display_scripts -> messagesModify [+
   // scripting before Thunderbird 154]) - the key's required_permissions annotation
   // records it as one or more entries, each with an optional strict-version bound.
   // For a declared key, an entry that is IN version bounds contributes its
   // permissions (grounded used, flagged missing when undeclared); an out-of-bounds
-  // entry is skipped. Anchored to the manifest key, not a call site.
+  // entry is skipped. Anchored to the manifest.json key, not a call site.
   for (const [key, entries] of schema.manifestKeyPermissions ?? []) {
     if (!manifestKeys.has(key)) {
       continue;
@@ -334,7 +334,7 @@ function scanIsBlindToObfuscation(ctx) {
  * line. A permission a reachable call provably requires (usedPermissions) is
  * justified and dropped. A permission whose (version-matched) permission-prompts
  * entries declare usage `tokens` that appear NOWHERE in the add-on's live code
- * (comments excluded) or manifest is deterministically unused - a finding (see the
+ * (comments excluded) or manifest.json is deterministically unused - a finding (see the
  * blindness guard below for when this path stands down). Every other permission
  * escalates as a case for a reviewer to settle. Host match patterns are
  * minimize-host-permissions' concern and are skipped. Backs the unused-permission
@@ -380,7 +380,7 @@ export function enumerateUnusedPermissions(ctx, prompts) {
     ) &&
     !scanIsBlindToObfuscation(ctx);
   const tokensFor = permissionTokens(ctx.manifest?.json, prompts);
-  // One scan over the live code + manifest for the union of every permission's
+  // One scan over the live code + manifest.json for the union of every permission's
   // tokens, recording WHERE each occurs; each permission then reads its own subset,
   // both to decide presence (no occurrence, when decidable = unused) and to hand
   // the reviewer the sites to judge.
@@ -405,7 +405,7 @@ export function enumerateUnusedPermissions(ctx, prompts) {
       }
       // Deterministically unused: the permission's prompt entries name its
       // justifying usages as tokens, and not one of them occurs anywhere in the
-      // live code or manifest - nothing the permission gates can be in use. Only
+      // live code or manifest.json - nothing the permission gates can be in use. Only
       // when the scan is decidable, so absence is trustworthy (else escalate).
       const tokens = tokensFor.get(p);
       const occurrences = permissionOccurrences(p, tokens, located);
@@ -432,7 +432,7 @@ export function enumerateUnusedPermissions(ctx, prompts) {
  * escalate - and a matched entry WITHOUT tokens (unlimitedStorage) poisons its
  * permissions to [] even when another entry contributes tokens, because that
  * entry's usages are declared token-undetectable.
- * @param {?object} manifest
+ * @param {?object} manifest.json
  * @param {?object[]} prompts  LoadedCheck.permissionTokens.
  * @returns {Map<string, string[]>}
  */
@@ -457,8 +457,8 @@ function permissionTokens(manifest, prompts) {
 }
 
 /**
- * Every occurrence of each of `tokens` in the add-on's code or manifest, keyed by
- * token: `{file, line}` per site (line null only when a manifest occurrence cannot
+ * Every occurrence of each of `tokens` in the add-on's code or manifest.json, keyed by
+ * token: `{file, line}` per site (line null only when a manifest.json occurrence cannot
  * be located). Both the presence decision (a token with no occurrences is unused)
  * and the escalation (each occurrence is a site to judge) read this.
  *
@@ -476,8 +476,8 @@ function permissionTokens(manifest, prompts) {
  * non-authored bundle has no atoms, so its raw text is scanned line by line (a
  * token in its comments only over-includes an occurrence, the safe direction).
  * String literals deliberately count (dynamic access spells the token in a string).
- * The manifest is also searched as JSON (no comments there) and a manifest occurrence
- * is located via manifestTokenLine - though the script-injection manifest keys
+ * The manifest.json is also searched as JSON (no comments there) and a manifest.json occurrence
+ * is located via manifestTokenLine - though the script-injection manifest.json keys
  * (compose_scripts / message_display_scripts) are NOT tokens: they ground their
  * permission deterministically (analyzePermissions), so they never escalate.
  *
@@ -590,7 +590,7 @@ function permissionOccurrences(permission, tokens, located) {
 }
 
 /**
- * Split declared manifest permissions into named permissions (required +
+ * Split declared manifest.json permissions into named permissions (required +
  * optional) and host match patterns, where `required` is the "permissions"
  * array only (used for the unused check). Shared with the native-messaging
  * check, which keys off whether a named permission is declared.

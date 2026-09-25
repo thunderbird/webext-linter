@@ -20,7 +20,7 @@
 // it outright, so asking a reader to weigh its Thunderbird form as well would be
 // two questions about a name that is refused either way.
 //
-// A name the manifest states literally is NOT here: it carries no locale tag, so
+// A name the manifest.json states literally is NOT here: it carries no locale tag, so
 // nothing declares its language and the question is not answerable from the
 // package at all (-> trademark-thunderbird-name.js, which puts it to a human). All
 // three checks read one shared name resolution.
@@ -50,7 +50,7 @@ export default {
    */
   run(ctx) {
     const { pairs, resolved, localized, unreadable } = localizedNames(ctx);
-    // Anchor on the manifest's `name` line: that is where the placeholder sits, and
+    // Anchor on the manifest.json's `name` line: that is where the placeholder sits, and
     // it is the line a developer edits to rename the add-on.
     const line = manifestTokenLine(ctx.manifest?.text, "name");
     const loc = line ? { line } : null;

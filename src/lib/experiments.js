@@ -1,9 +1,9 @@
 // Manifest-derived helpers for Thunderbird Experiment add-ons (experiment_apis).
-// Pure readers of the manifest, shared by the pipeline (schema registration),
+// Pure readers of the manifest.json, shared by the pipeline (schema registration),
 // the experiment verifier (src/experiments/verify.js), reachability seeding, and
 // the experiment-overrides-api check.
 //
-// Belongs here: extracting the declared API paths, the API namespaces and manifest
+// Belongs here: extracting the declared API paths, the API namespaces and manifest.json
 // keys the bundled schemas declare, the implementation file refs, and the bundle
 // subtree root from experiment_apis. Does NOT belong here:
 // detecting Experiment status (-> isExperiment in util.js), hashing/verifying
@@ -49,7 +49,7 @@ export function experimentApiPaths(manifest) {
  * The top-level API namespaces an add-on's Experiments expose, so the add-on's own
  * WebExtension code (browser|messenger|chrome.<namespace>.<method>(...)) resolves.
  * The AUTHORITATIVE source is each entry's bundled schema.json `namespace` field -
- * the manifest key and the binding `paths` are arbitrary and often differ from it
+ * the manifest.json key and the binding `paths` are arbitrary and often differ from it
  * (e.g. key "qapp" exposes "qnote"; key "ExpressionSearchTools" binds path
  * "ExpressionSearch"). Falls back to the declared paths/key when an entry has no
  * readable bundled schema (an unsupported draft / a bare declaration).
@@ -78,9 +78,9 @@ export function experimentApiNamespaces(manifest, files) {
 /**
  * The top-level namespace(s) an experiment's bundled schema.json declares. A TB
  * schema is an array of namespace objects, each with a `namespace` field; the
- * schema-only `manifest` block (which declares manifest keys, not a callable API)
+ * schema-only `manifest` block (which declares manifest.json keys, not a callable API)
  * is excluded. Empty when the schema path is missing/unreadable/unparseable, so the
- * caller falls back to the manifest paths/key.
+ * caller falls back to the manifest.json paths/key.
  * @param {unknown} schemaPath  The entry's `schema` (add-on-root-relative).
  * @param {Map<string, Buffer>} [files]
  * @returns {string[]}
@@ -114,7 +114,7 @@ function schemaNamespaces(schemaPath, files) {
 }
 
 /**
- * The top-level manifest keys an add-on's Experiments DECLARE via their bundled
+ * The top-level manifest.json keys an add-on's Experiments DECLARE via their bundled
  * schemas, so unrecognized-manifest-key must not flag them as unknown (the
  * developer's own experiment defines and reads them). Each comes from a
  * `namespace: "manifest"` block that `$extend`s WebExtensionManifest with extra
@@ -250,7 +250,7 @@ function entryRoot(refs) {
 }
 
 /**
- * Group the manifest's experiment_apis entries into distinct experiments.
+ * Group the manifest.json's experiment_apis entries into distinct experiments.
  * Entries whose files share an `experiments/<seg>/` subtree (the upstream
  * layout) are one experiment; an entry with no locatable files is its own group.
  * Each group: `{ root, name, apiNamespaces, entries: [{ key, apiPaths }] }`,

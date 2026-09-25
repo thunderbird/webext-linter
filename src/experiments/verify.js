@@ -12,7 +12,7 @@
 //
 // Belongs here: the allow-list (file hashes + API namespaces) and the per-group
 // status. Does NOT belong here: fetching the zip (src/experiments/fetch.js),
-// manifest parsing (src/lib/experiments.js), the relax/abort wiring
+// manifest.json parsing (src/lib/experiments.js), the relax/abort wiring
 // (src/pipeline.js), or the shadowing reason (experiment-not-allowed, which has
 // the schema).
 

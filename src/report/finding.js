@@ -72,7 +72,7 @@ const SEVERITY_RANK = Object.fromEntries(
  *   that added it). Use `item` for the subject (the thing identified/keyed), `hint`
  *   for extra colour about it. THE TEST: a value is an `item` only if it is the
  *   finding's UNIQUE offending identity - what dedup would key on (an API name, a
- *   remote URL, a manifest key); everything else is a `hint`. A per-site descriptor
+ *   remote URL, a manifest.json key); everything else is a `hint`. A per-site descriptor
  *   (a transmission method/channel) MUST stay `hint`: every site would otherwise
  *   carry the same `item` and collapse into one.
  * @property {Record<string, string|number>} [data]  Extra named values for

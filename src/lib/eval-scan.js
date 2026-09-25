@@ -1,6 +1,6 @@
 // Every dynamic-code-execution signal in the add-on, gathered once and shared:
 // the JS scan (eval / Function constructor / code-string timer / ambiguous
-// fetch().then(eval) hits) over authored sources, plus the manifest CSP flags.
+// fetch().then(eval) hits) over authored sources, plus the manifest.json CSP flags.
 // The eval-call / function-constructor / string-timer / csp-unsafe-* checks and
 // remote-eval all read this one result, so the AST scan runs a single time per
 // review - the same "compute once, checks read it" pattern as
@@ -8,17 +8,17 @@
 //
 // The `hits` are scoped to files OUTSIDE the pure WebExtension tree. A
 // WebExtension sandbox cannot execute eval / the Function constructor /
-// code-string timers / a fetched-then-eval'd payload UNLESS the manifest CSP
+// code-string timers / a fetched-then-eval'd payload UNLESS the manifest.json CSP
 // allows it - and that CSP condition is reported separately by csp-unsafe-eval /
 // csp-unsafe-inline. So scanning WebExtension code for these constructs is
 // redundant noise: it cannot run them, and if the CSP opens the door the CSP
 // check already flags it. The hits matter only in privileged Experiment /
 // non-WebExtension code, which has no such CSP gate. The CSP flags below are
-// independent of this scoping (they describe the manifest, not a file).
+// independent of this scoping (they describe the manifest.json, not a file).
 //
 // Belongs here: getEvalScan - reading each authored source's precomputed
 // remote-js scan (remoteJsOf) outside the pure WebExtension tree, skipping
-// non-authored code, and reading the manifest CSP, memoized on the addon.
+// non-authored code, and reading the manifest.json CSP, memoized on the addon.
 //
 // Does NOT belong here: the AST walk (-> src/parse/remote-js.js), CSP parsing
 // (-> src/scan/csp.js), the WebExtension vs Experiment partition (->
@@ -41,8 +41,8 @@ import { buildReachability } from "./reachability.js";
  *   ambiguous-fetch-eval) found in authored JS OUTSIDE the pure WebExtension
  *   tree, tagged with its file. WebExtension code is excluded: a sandbox cannot
  *   run these without a permissive CSP, which csp-unsafe-eval/-inline report.
- * @property {boolean} unsafeEval  The manifest CSP allows 'unsafe-eval'.
- * @property {boolean} unsafeInline  The manifest CSP allows 'unsafe-inline'.
+ * @property {boolean} unsafeEval  The manifest.json CSP allows 'unsafe-eval'.
+ * @property {boolean} unsafeInline  The manifest.json CSP allows 'unsafe-inline'.
  */
 
 /**

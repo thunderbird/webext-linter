@@ -22,7 +22,7 @@ const fixtureSchema = buildSchemaIndex(
   loadSchemaFiles(path.join(here, "..", "schema-fixture"))
 );
 
-// Build a review ctx from a {path: content} map + manifest object. The schema goes in HERE,
+// Build a review ctx from a {path: content} map + manifest.json object. The schema goes in HERE,
 // not onto the ctx afterwards: the extraction pass type-walks the schema-derived loaders
 // against it, and a check only ever reads what the pass already extracted.
 function ctxFrom(files, manifest, schema) {
@@ -37,7 +37,7 @@ function ctxFrom(files, manifest, schema) {
   });
 }
 
-// The graph follows manifest seeds, JS imports/getURL, and HTML/CSS references
+// The graph follows manifest.json seeds, JS imports/getURL, and HTML/CSS references
 // (resolved relative to the referencing file); an unreferenced file is not
 // reachable.
 test("reachability follows manifest + import + getURL + HTML/CSS edges", () => {
@@ -75,7 +75,7 @@ test("reachability follows manifest + import + getURL + HTML/CSS edges", () => {
   assert.equal(reach.hasDynamicLoaders, false);
 });
 
-// manifestStringRefs is the seed source: it collects EVERY string in the manifest
+// manifestStringRefs is the seed source: it collects EVERY string in the manifest.json
 // (so any file-reference key, declared or future, becomes a seed), but skips the
 // experiment_apis subtree - whose schema/script paths are privileged experiment
 // implementation that must never seed the WebExtension tree.
@@ -96,9 +96,9 @@ test("manifestStringRefs collects manifest strings but skips experiment_apis", (
   assert.ok(!strings.includes("exp/impl.js"));
 });
 
-// A file declared under a manifest key the seeder does not special-case
+// A file declared under a manifest.json key the seeder does not special-case
 // (message_display_scripts, a Thunderbird key) is still reachable: the generic
-// walk seeds every manifest string that resolves to a packaged file, so there is
+// walk seeds every manifest.json string that resolves to a packaged file, so there is
 // no per-key list to fall out of date.
 test("reachability seeds a message_display_scripts file (no per-key list)", () => {
   const manifest = {
@@ -190,7 +190,7 @@ test("pureWebExtensionReachable: webext tree + .html experiment params only", ()
 });
 
 // SCA mode: there is no usable reachability tree over the readable source - the
-// manifest's BUILT entry points (from the XPI) don't exist in the source layout,
+// manifest.json's BUILT entry points (from the XPI) don't exist in the source layout,
 // so the closure would be empty and every WebExtension code check would review
 // nothing. Instead the whole source corpus is WebExtension code - and it is already only
 // that, because the archive partition gave the Experiment implementation its own view.
@@ -261,7 +261,7 @@ test("SCA: reachability over the built XPI describes the XPI", () => {
   };
   const mk = (obj) =>
     new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)]));
-  // The built XPI: its content script (the manifest entry) loads injected.js.
+  // The built XPI: its content script (the manifest.json entry) loads injected.js.
   const xpiText = JSON.stringify(xpiManifest);
   const xpi = {
     files: mk({
@@ -397,10 +397,9 @@ test("unused-files: junk + orphan are findings; mentioned -> escalation", () => 
     assert.ok(!found.includes(doc) && !manual.includes(doc));
   }
   assert.ok(!found.includes("bg.js")); // reachable
-  // The add-on's own manifest is the ENTRY POINT: nothing in the add-on can reference it,
-  // so "unreferenced" says nothing about whether it is used. It reaches this check now -
-  // a built XPI's corpus holds it, where the loader used to withhold it for this one
-  // check's benefit - so the skip has to live here.
+  // The add-on's own manifest.json is the ENTRY POINT: nothing in the add-on can reference it,
+  // so "unreferenced" says nothing about whether it is used. A built XPI's corpus holds
+  // it, so the skip has to live here.
   assert.ok(
     !found.includes("manifest.json") && !manual.includes("manifest.json"),
     "the add-on manifest is neither reported nor escalated"
@@ -408,8 +407,8 @@ test("unused-files: junk + orphan are findings; mentioned -> escalation", () => 
 });
 
 // The build-manager files, in a BUILT XPI. Two of them have a reader there: the ROOT
-// package.json, which the XPI carries as its vendoring manifest, and the ROOT lock beside
-// it, which pins whatever that manifest declares as a range (xpi-lock-file-missing asks for
+// package.json, which an XPI uses to declare VENDORED libraries, and the ROOT lock beside
+// it, which pins whatever that package.json declares as a range (xpi-lock-file-missing asks for
 // it). The review cannot both ask for a file and report it as unused. Everything else in
 // that family is read by nothing and is what this check exists to report - a lock BELOW the
 // root included, since only the root's is consulted.
@@ -797,7 +796,7 @@ test("minimize-WAR: a resource named only by dead code is a finding", () => {
 // minimize-WAR: a match pattern (e.g. <all_urls>) is not a file and must never
 // appear in this resource-minimization finding; and a file exposed by a glob
 // anchors on the WAR pattern's line, not the file's coincidental occurrence
-// elsewhere in the manifest (here the "icons" field).
+// elsewhere in the manifest.json (here the "icons" field).
 test("minimize-WAR: no match patterns reported; globbed files anchor on the pattern line", () => {
   const manifest = {
     manifest_version: 3,

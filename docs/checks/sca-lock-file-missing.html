@@ -24,13 +24,13 @@
         Only the package.json at the root of the submission is read, because
         that is where the build starts, and one that cannot be read as a JSON
         object declares nothing this check can hold a lock file to. Whether it declares build scripts makes
-        no difference: in a source submission a package.json is always a build
-        manifest, and whatever it declares gets installed. Only an add-on
+        no difference: in a source submission a package.json always defines the
+        build, and whatever it declares gets installed. Only an add-on
         submitted as a built XPI may use one to declare the published packages
         its bundled files came from, and a source archive declares those in its
-        VENDOR file instead. The lock is owed by the manifest itself, not by what
+        VENDOR file instead. The lock is owed by the package file itself, not by what
         it happens to declare: both installers refuse to run without one whatever
-        it holds, and a root that declares nothing of its own is a manifest whose
+        it holds, and a root that declares nothing of its own is a package file whose
         declarations live elsewhere rather than a submission that installs
         nothing. npm and pnpm are
         the only supported package managers, so theirs are the only lock files
@@ -38,21 +38,13 @@
         than by reading it - one that exists but cannot be read is reported as
         an invalid lock file instead.
       </p>
-      <p>
-        A submission built with a package manager this review does not support is
-        left alone here. A disallowed tool and a missing or unusable lock are one
-        fact, so it is reported once, by the check whose subject the tool is - and
-        that check stops the review just as this one would.
-      </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The submitted source archive"] --> T{"Built with an unsupported<br/>package manager?"}
-  T -- yes --> S4([skip: the tool is the fault,<br/>and it stops the review too])
-  T -- no --> B{"A package.json at its root,<br/>readable as a JSON object?"}
-  B -- no --> S([skip: no package manager])
+  A["The submitted source archive"] --> B{"A package.json at its root,<br/>readable as a JSON object?"}
+  B -- no --> S([skip: no package file<br/>-- its own check reports that])
   B -- yes --> E{"An npm or pnpm lock<br/>file beside it?"}
   E -- yes --> OK([no finding])
   E -- no --> ERR([ERROR: missing lock file<br/>the review stops here])
@@ -62,7 +54,7 @@ flowchart TD
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   class ERR err;
   class OK ok;
-  class S,S4 skip;
+  class S skip;
         </pre>
       </div>
 

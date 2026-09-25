@@ -50,20 +50,12 @@
         declaration, when the lock resolves nothing for it - there being no entry in the
         lock to point at is the fault itself.
       </p>
-      <p>
-        A submission built with a package manager this review does not support is
-        left alone here. A disallowed tool and a missing or unusable lock are one
-        fact, so it is reported once, by the check whose subject the tool is - and
-        that check stops the review just as this one would.
-      </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The submitted source archive"] --> T{"Built with an unsupported<br/>package manager?"}
-  T -- yes --> S3([skip: the tool is the fault,<br/>and it stops the review too])
-  T -- no --> B{"An npm or pnpm lock file?"}
+  A["The submitted source archive"] --> B{"An npm or pnpm lock file?"}
   B -- no --> S([skip: nothing committed to judge])
   B -- yes --> C{"Can it be read, and is it a<br/>lock file we recognise?"}
   C -- no --> ERR([ERROR: invalid lock file])
@@ -81,7 +73,7 @@ flowchart TD
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   class ERR err;
   class OK ok;
-  class S,S2,S3 skip;
+  class S,S2 skip;
         </pre>
       </div>
 

@@ -2,12 +2,12 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) The following APIs each need a manifest key that is not declared. Add one of the keys named for each API to manifest.json.
+1) The following APIs each need a manifest.json key that is not declared. Add one of the keys named for each API to manifest.json.
  - background.js:3 - action.onClicked - "action"
 
 We would like to share the following information with you:
 
-2) Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.
+2) The included WebExtension manifest file (manifest.json) declares the following unknown top-level keys, which Thunderbird will ignore.
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json:5 - browser_action
 

@@ -116,7 +116,7 @@ export const ARCHIVE_EXTENSIONS = new Set([
 
 /** Every file extension the tool RECOGNIZES as a legitimate add-on file - code it reviews
  *  (JS/CSS/HTML/.vue) plus the ordinary web resources an add-on ships. It is the backstop
- *  for the unrecognized-file-type check: a packaged file REFERENCED by the manifest or a
+ *  for the unrecognized-file-type check: a packaged file REFERENCED by the manifest.json or a
  *  <script> tag whose suffix is NOT in here is a file the browser loads but the tool cannot
  *  classify - a silent review gap turned into a loud finding. Kept GENERIC (plain web file
  *  types) on purpose: this carries NO Thunderbird/manifest-key/schema knowledge. Widen it

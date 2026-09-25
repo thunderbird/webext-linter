@@ -246,7 +246,7 @@ function names(addon) {
   return lockedPackages(addon).map((p) => `${p.name}@${p.version}`);
 }
 
-// The whole point of the enumeration: a package no manifest mentions, reached
+// The whole point of the enumeration: a package no package.json mentions, reached
 // only through another package's node_modules, is still installed and still
 // audited. The name comes from the LAST node_modules segment, so depth does not
 // mangle it, and a scoped name survives its own slash.
@@ -602,14 +602,14 @@ function declared(addon) {
 // because the lock records declaration forms that parse misses. Getting this
 // wrong is not a missed finding but a FALSE one: the developer is told the
 // add-on does not declare a package they wrote down themselves.
-test("a package any manifest in the lock asks for is marked declared", () => {
+test("a package any package.json in the lock asks for is marked declared", () => {
   const addon = fakeAddon({
     "package-lock.json": JSON.stringify({
       packages: {
         // optionalDependencies is a declaration; the root package.json parse
         // deliberately reads only dependencies + devDependencies.
         "": { name: "root", optionalDependencies: { "opt-dep": "^2.0.0" } },
-        // A workspace member's own manifest is a declaration too.
+        // A workspace member's own package.json is a declaration too.
         "packages/app": { name: "app", dependencies: { "nth-check": "2.0.0" } },
         // The lock's version may differ from the range that asked for it.
         "node_modules/opt-dep": { version: "2.1.0" },
@@ -742,7 +742,7 @@ test("declared wins over reached when a package is installed twice", () => {
 // through one, and editors add them. `JSON.parse` throws on it, and every reader here
 // falls back to "nothing declared" - so without stripBom three bytes at the head of
 // package.json silence the whole dependency review, findings and lock checks alike.
-test("a UTF-8 BOM does not hide a manifest or a lock", () => {
+test("a UTF-8 BOM does not hide a package.json or a lock", () => {
   const BOM = "﻿";
   const pkg = JSON.stringify({
     scripts: { build: "x" },

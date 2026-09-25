@@ -1,5 +1,5 @@
 // Static reachability over an add-on's files: which packaged files are reached
-// from the manifest entry points, following references in HTML
+// from the manifest.json entry points, following references in HTML
 // (<script>/<link>/
 // <img>), CSS (@import/url()), and JS (import/require/importScripts, plus every
 // file-loading API call - getURL, executeScript/insertCSS, the register family,
@@ -21,7 +21,7 @@
 // `pureWebExtensionReachable` is the positive "this is WebExtension code" set the
 // API/permission validators (unknown-api, deprecated-api, strict-
 // min/max-version-api, permissions, core-symbol-in-webext) check against: the
-// closure from the manifest WebExtension entry points over standard edges, PLUS
+// closure from the manifest.json WebExtension entry points over standard edges, PLUS
 // any plain `.html` file passed as an Experiment-API parameter (a content page),
 // and never crossing into experiment implementation code.
 //
@@ -33,7 +33,7 @@
 // Does NOT belong here: extracting the edges themselves - HTML/CSS refs come
 // from src/scan/html.js and src/scan/css.js, JS imports from
 // src/parse/local-imports.js, loader-API paths from src/parse/loader-files.js.
-// The manifest ref enumeration - manifest-refs.js. WAR expansion -
+// The manifest.json ref enumeration - manifest-refs.js. WAR expansion -
 // web-accessible-resources.js. The library/vendored leaf set - bundled.js. The
 // unused-files and minimize-web-accessible-resources verdicts - their rules
 // under src/checks/rules/*.
@@ -109,7 +109,7 @@ const PLAIN_HTML = new Set([".html", ".htm"]);
  *   module loaders, HTML/CSS), roots included - used to gather a file's nested
  *   helper modules.
  * @property {{file: string, referrer: string, line?: number}[]} unrecognizedRefs
- *   Live packaged files referenced by the manifest or a <script> tag whose suffix is not
+ *   Live packaged files referenced by the manifest.json or a <script> tag whose suffix is not
  *   in RECOGNIZED_EXTS - the browser loads them but the tool cannot classify them. `file`
  *   is the target, `referrer` is "manifest.json" or the HTML page path (+ `line`). Deduped
  *   by target. Read by the unrecognized-file-type check.
@@ -147,10 +147,10 @@ function compute(ctx) {
   // internally consistent.
   //
   // pureWebExtensionReachable's SCA "all readable-source files" branch exists only
-  // for the review source, whose pre-build layout the manifest's built entry-point
+  // for the review source, whose pre-build layout the manifest.json's built entry-point
   // paths miss (so the closure would be empty). It is gated on the review-target ctx
   // (NOT ctx.isShippedView), so on a shipped view it falls to the closure branch -
-  // the XPI's manifest entry points resolve against its own files, giving a
+  // the XPI's manifest.json entry points resolve against its own files, giving a
   // meaningful WebExtension scope there too. (It is still read only by `input: source`
   // checks over the review target - see the consumer split the reachability tests
   // pin - so the shipped-view value is unused; the gate keeps it correct regardless.)
@@ -203,13 +203,13 @@ function compute(ctx) {
     set.add(p);
   };
 
-  // A packaged file REFERENCED (by the manifest, or a <script src>) whose suffix is not in
+  // A packaged file REFERENCED (by the manifest.json, or a <script src>) whose suffix is not in
   // `allowed` - the browser loads it but no check reviewed it. Collected here, where each ref
   // is already resolved, and filtered to LIVE targets at the return (a reference in dead code
   // never runs). Deduped by target; the first referrer wins. Read by the unrecognized-file-type
   // check via the result's `unrecognizedRefs`.
   //
-  // `allowed` differs by role, because the threshold does. The manifest walk is role-blind
+  // `allowed` differs by role, because the threshold does. The manifest.json walk is role-blind
   // (it seeds scripts, icons, themes alike), so RECOGNIZED_EXTS - any ordinary file type is
   // fine. A <script src>, though, loads its target AS CODE whatever the extension, so the bar
   // is JS_EXTENSIONS: a <script src="x.png"> / "x.txt" executes that file as JavaScript, and a
@@ -288,7 +288,7 @@ function compute(ctx) {
     }
   }
 
-  // Seeds: every string in the manifest (outside experiment_apis), resolved
+  // Seeds: every string in the manifest.json (outside experiment_apis), resolved
   // root-relative. The seed gate keeps only those that resolve to a packaged
   // file, so non-path strings drop out and every file-reference key - declared
   // (message_display_scripts, background, popups) or icon/dictionary/theme leaf -
@@ -333,7 +333,7 @@ function compute(ctx) {
     }
   }
 
-  // The general WebExtension reachable set, from the manifest entry points over
+  // The general WebExtension reachable set, from the manifest.json entry points over
   // standard edges. unused-files (non-Experiment) and isLive read this.
   const reachable = bfs(generalSeeds, outEdges);
 
@@ -373,10 +373,10 @@ function compute(ctx) {
   }
 
   // The pure WebExtension dependency tree every check validates against: the closure
-  // (standard WebExtension edges only) from the manifest entry points PLUS the `.html`
+  // (standard WebExtension edges only) from the manifest.json entry points PLUS the `.html`
   // Experiment-API parameters. It never traces into experiment implementation code.
   //
-  // The SCA REVIEW SOURCE has no usable tree: the manifest's entry points name BUILT
+  // The SCA REVIEW SOURCE has no usable tree: the manifest.json's entry points name BUILT
   // paths that don't exist in the readable source layout, so the closure would be
   // empty and every WebExtension code check would review nothing. There we instead
   // review EVERY file the source corpus holds. That corpus is already the add-on's own
@@ -479,7 +479,7 @@ function refersTo(line, tokenRe, fromFile, target, files) {
  */
 function makeMentions(files) {
   // Documentation files are not code: a README image link is not a runtime load, so
-  // it must not make a declared resource look mentioned. (The manifest is not here
+  // it must not make a declared resource look mentioned. (The manifest.json is not here
   // to exclude - the loader keeps it out of the corpus entirely, see addon/load.js.)
   /** @type {Map<string, string[]>} */
   const lines = new Map();

@@ -1,14 +1,14 @@
 // Rejects a source-code submission whose package.json cannot be used: it is not valid
 // JSON, or it is valid JSON that is not an object. npm cannot read either, so the build
-// the manifest defines cannot be run and the shipped XPI cannot be reproduced from this
+// the package file defines cannot be run and the shipped XPI cannot be reproduced from this
 // archive.
 //
 // The two cases are worded apart because a developer would check which it is: one will not
-// open at all, the other opens perfectly well and simply is not a manifest. They are the
+// open at all, the other opens perfectly well and simply is not a package file. They are the
 // same two the lock file's file-level faults carry, for the same reason.
 //
-// Decided from the one parse every reader of this file shares (src/vendor/manifest.js), so
-// a manifest this check calls unusable is exactly the one the dependency readers found
+// Decided from the one parse every reader of this file shares (src/vendor/package-file.js), so
+// a package file this check calls unusable is exactly the one the dependency readers found
 // nothing in. A second parse here would be a second set of tolerances, and the two could
 // disagree about the same bytes.
 //
@@ -17,12 +17,12 @@
 // beside this rejection.
 //
 // Belongs here: turning the fault into a finding and wording its subject. Does NOT belong
-// here: the parse and its tolerances (-> src/vendor/manifest.js), whether the manifest is
+// here: the parse and its tolerances (-> src/vendor/package-file.js), whether the file is
 // there at all (-> sca-package-file-missing), and the response (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { MANIFEST_FILE, manifestFault } from "../../vendor/manifest.js";
+import { PACKAGE_FILE, packageFileFault } from "../../vendor/package-file.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -33,17 +33,17 @@ export default {
    */
   run(ctx) {
     const files = ctx.addon?.files;
-    if (!files?.has(MANIFEST_FILE)) {
+    if (!files?.has(PACKAGE_FILE)) {
       return { findings: [] };
     }
-    const fault = manifestFault(files.get(MANIFEST_FILE));
+    const fault = packageFileFault(files.get(PACKAGE_FILE));
     if (!fault) {
       return { findings: [] };
     }
     // Which way it failed rides the location line, so the response states the rule once.
     const item =
       fault === "unreadable" ? "could not be read" : "is not a JSON object";
-    ctx.note?.(MANIFEST_FILE, null, item, VERDICT.FAIL);
-    return { findings: [finding({ file: MANIFEST_FILE, item })] };
+    ctx.note?.(PACKAGE_FILE, null, item, VERDICT.FAIL);
+    return { findings: [finding({ file: PACKAGE_FILE, item })] };
   },
 };

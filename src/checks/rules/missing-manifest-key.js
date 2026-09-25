@@ -1,6 +1,6 @@
-// A called API needs a manifest key (e.g. "action" / "browser_action") that the
-// manifest does not declare. Distinct from missing-permission (a missing
-// permission string) because the remedy is a manifest key, not a permission.
+// A called API needs a manifest.json key (e.g. "action" / "browser_action") that the
+// manifest.json does not declare. Distinct from missing-permission (a missing
+// permission string) because the remedy is a manifest.json key, not a permission.
 //
 // Belongs here: selecting the `missingManifestKeys` slice of the shared
 // permission analysis and emitting it as this check's findings.

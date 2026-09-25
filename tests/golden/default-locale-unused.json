@@ -112,7 +112,7 @@
       },
       "item": null,
       "hint": null,
-      "message": "The manifest declares default_locale but the add-on ships no _locales directory, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files, or remove default_locale."
+      "message": "manifest.json declares default_locale but the add-on ships no _locales directory, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files, or remove default_locale."
     }
   ]
 }

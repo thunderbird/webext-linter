@@ -2,7 +2,7 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) The following background code location(s) use ES module syntax (import/export), but the manifest’s background is not declared "type": "module", so Thunderbird will fail to load the background script(s). Add "type": "module" to the background entry.
+1) The following background code location(s) use ES module syntax (import/export), but the background key in manifest.json is not declared "type": "module", so Thunderbird will fail to load the background script(s). Add "type": "module" to the background entry.
  - background.js:2
 
 You can run this automated review yourself before submitting:

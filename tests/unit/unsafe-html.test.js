@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import { VERDICT } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
-import { parsed, manifestOf } from "./manifest-ctx.js";
+import { parsed } from "./manifest-ctx.js";
 
 import { scanUnsafeHtml } from "../../src/parse/unsafe-html.js";
 import unsafeHtml from "../../src/checks/rules/unsafe-html.js";
@@ -67,7 +67,6 @@ test("unsafe-html notes each sink site (verdict fail)", () => {
   const ctx = {
     addon: {
       files: new Map([["render.js", Buffer.from(code)]]),
-      manifest: manifestOf({}),
     },
     jsSources: parsed([
       { file: "render.js", code, lineOffset: 0, inline: false },

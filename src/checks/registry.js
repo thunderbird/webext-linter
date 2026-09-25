@@ -126,7 +126,7 @@ const COLLAPSE_MODES = new Set(["subject"]);
 // --sca-root in an SCA review, the built XPI in an XPI review - the only artifact
 // there); "xpi" = ALWAYS the built XPI (the shipped artifact), for the structure checks
 // that describe what ships; "sca" = ALWAYS the submitted source archive (the archive minus
-// the Experiment and a recorded node_modules), for the build review; "manifest" = the shipped manifest
+// the Experiment and a recorded node_modules), for the build review; "manifest" = the shipped manifest.json
 // ONLY, on a ctx with an EMPTY file corpus (buildXpiCtxs' manifestCtx), for pure-manifest checks
 // that read ctx.manifest and no files. Required on every check: runChecks routes each
 // check to its artifact's context, so the check reads one artifact and has no way to reach another (see
@@ -204,14 +204,14 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @typedef {object} RunContext
  * @property {object} addon  The routed artifact's INTRINSIC view (reviewView in
  *   context.js): its files plus the lazy file-derived caches (bundled, vendor,
- *   locales, ...). The manifest and experiment classification are NOT on it - they
+ *   locales, ...). The manifest.json and experiment classification are NOT on it - they
  *   are shipped-authoritative and live on ctx.manifest / ctx.experiments below - so a
- *   check cannot pair one artifact's manifest with another's files.
+ *   check cannot pair one artifact's manifest.json with another's files.
  * @property {import("../schema/index.js").SchemaIndex} schema  Resolved schema.
  * @property {object[]} jsSources  Parsed JS sources (see addon/sources.js).
  * @property {object[]} apiUsages  Per-source extracted API usage.
  * @property {?import("../addon/load.js").ManifestRecord} manifest  The authoritative,
- *   SHIPPED manifest (the built XPI's - what Thunderbird loads), read once like `schema`:
+ *   SHIPPED manifest.json (the built XPI's - what Thunderbird loads), read once like `schema`:
  *   `json` the parse, `text` the raw manifest.json (manifestTokenLine reads it), `error` the
  *   JSON parse failure, `loc` the position index (manifestPathLine reads it). Null when the
  *   shipped artifact holds no manifest.json; a file that is there but will not parse is a
@@ -219,10 +219,10 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   answers `!json` to both.
  *   Every manifest / permission / API check reads this; there is no ctx.addon.manifest
  *   (reviewView strips it), and in SCA there is nothing behind it to strip - the source
- *   archive is loaded without reading a manifest at all, because its root manifest.json is
+ *   archive is loaded without reading a manifest.json at all, because its root manifest.json is
  *   a pre-build template no check reviews.
  * @property {?object} experiments  The Experiment classification (verifyExperiments),
- *   computed from the SHIPPED XPI, shared like the manifest. Null for a non-Experiment
+ *   computed from the SHIPPED XPI, shared like the manifest.json. Null for a non-Experiment
  *   add-on.
  * @property {{allowExperiments?: boolean,
  *   libraryHashes?: Map<string, {name: string, version: string}>}} options  The only run
@@ -1065,7 +1065,7 @@ function assertEntry(entry, at) {
         `${where} is missing a valid \`input\` (got ${JSON.stringify(input)}; ` +
           `expected one of: ${[...VALID_CHECK_INPUTS].join(", ")}). ` +
           "Every check must declare which add-on artifact it reads (source = the " +
-          "review target, xpi = the built XPI, build = the SCA build files, " +
+          "review target, xpi = the built XPI, sca = the source archive, " +
           "manifest = the shipped manifest only)."
       );
     }
@@ -1962,7 +1962,7 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
       section: registry.sectionFor(id),
       // The permission-prompts token entries, like `instructions` above: registry
       // data every check carries, read by the one that scans for them. It version-filters at run time (versionInBounds) with the reviewed
-      // manifest, so every entry is handed over here.
+      // manifest.json, so every entry is handed over here.
       permissionTokens: registry.permissionTokens(),
       run,
     });
@@ -2066,7 +2066,7 @@ function eslintEligible(entry, inEslintMode) {
  * matching sibling (e.g. a stray `input: sca` in XPI mode) THROWS rather than silently
  * running on the wrong artifact.
  * @param {LoadedCheck} check
- * @param {Record<string, RunContext>} siblings  Keyed by input value (source/xpi/build/manifest).
+ * @param {Record<string, RunContext>} siblings  Keyed by input value (source/xpi/sca/manifest).
  * @returns {RunContext}
  */
 export function routeCtx(check, siblings) {
@@ -2115,8 +2115,8 @@ export function ctxForRule(registry, ruleId, siblings) {
  *   `only`/`skip`/`eslint` thread to loadChecks (the `--eslint` opt-in gates code-sanity).
  * @param {Record<string, RunContext>} siblings  The artifact contexts, keyed by the `input`
  *   that routes to each: `source` = the review target (readable source in SCA, the XPI in an
- *   XPI review), `xpi` = the shipped XPI, `build` = the SCA build files, `manifest` = the
- *   shipped manifest (no file corpus). Consumed via routeCtx (the matrix is documented there).
+ *   XPI review), `xpi` = the shipped XPI, `sca` = the source archive, `manifest` = the
+ *   shipped manifest.json (no file corpus). Consumed via routeCtx (the matrix is documented there).
  * @returns {Promise<{findings: object[],
  *   manualItems: {ruleId: string, item: ?string, section: ?string}[],
  *   checksRun: object[]}>}  The finished review: every finding and manual item, and
@@ -2156,9 +2156,9 @@ export async function runChecks(registry, opts = {}, siblings) {
   // [i/N] line above.
   // The ctx a note fires on IS its artifact (matching the input routing below), so
   // each sibling context gets a note bound to its input: the review target is the
-  // source archive (source), the shipped context the built XPI, the build context the
-  // build files. artifactLabel prepends [XPI]/[SCA] in SCA mode (and always [XPI] for
-  // manifest.json - the shipped manifest); an XPI review adds no label.
+  // source archive (source), the shipped context the built XPI, the sca context the
+  // archive. artifactLabel prepends [XPI]/[SCA] in SCA mode (and always [XPI] for
+  // manifest - the shipped manifest.json); an XPI review adds no label.
   const makeNote = (input) => (file, loc, item, verdict) => {
     try {
       const label = artifactLabel({

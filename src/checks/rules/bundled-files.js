@@ -1,6 +1,6 @@
 // Referenced files must be bundled. Flags add-on-internal files that are
 // referenced but not present in the package:
-//   - manifest entries: every key the SCHEMA types as an extension-relative path -
+//   - manifest.json entries: every key the SCHEMA types as an extension-relative path -
 //     scripts, pages, popups, icons and every default_icon/theme_icons, ruleset paths,
 //     theme images, experiment schema and parent/child scripts (manifestFileRefs),
 //   - file-loading API calls: every packaged-file path the schema-directed +
@@ -13,7 +13,7 @@
 // packaged-file candidates (relative/root-relative, no scheme), and emitting a
 // finding for each that is absent from the package.
 //
-// Does NOT belong here: extracting manifest file refs (-> src/lib/
+// Does NOT belong here: extracting manifest.json file refs (-> src/lib/
 // manifest-refs.js), extracting loader-API file refs (->
 // src/parse/loader-files.js), URL classification (-> src/scan/url.js), the
 // remote-source verdict (-> remote-resources.js), authored wording (->
@@ -51,7 +51,7 @@ export default {
     /** @param {string} p @returns {boolean} whether the file is bundled. */
     const rootOk = (p) => resolveRefStatus(addon.files, null, p).kind === "ok";
 
-    // 1. Files the manifest declares, per the SCHEMA (see manifestFileRefs). `experiments`
+    // 1. Files manifest.json declares, per the SCHEMA (see manifestFileRefs). `experiments`
     // is on: this check only asks "is the file packaged", and a missing Experiment schema
     // or parent script is reported by nothing else - it just makes the experiment's
     // namespaces fail to register, which surfaces later as unknown-api at the CALL sites
@@ -67,9 +67,9 @@ export default {
       ? manifestFileRefs(manifest, ctx.schema, { experiments: true })
       : [];
     if (manifest && !refs.length) {
-      // Either no schema (a hand-built ctx) or a schema that types no manifest path at
+      // Either no schema (a hand-built ctx) or a schema that types no manifest.json path at
       // all. Said out loud: the check cannot make its claim, and a silent empty result
-      // would read exactly like a manifest that declares nothing.
+      // would read exactly like a manifest.json that declares nothing.
       ctx.note?.(
         "manifest.json",
         null,
@@ -103,7 +103,7 @@ export default {
     // icons, ...) resolves against the calling script's HOST PAGE directory (".."
     // clamped at root); getURL/scripting.* (base:"root") are root-relative.
     //
-    // Like the manifest refs above, loader refs are a property of the built XPI:
+    // Like the manifest.json refs above, loader refs are a property of the built XPI:
     // its scripts, its load graph, and the files they must resolve to - all read
     // from ctx.addon (the XPI, per `input: xpi`), so a source submission's pre-build
     // loader paths are never matched against the readable source tree.

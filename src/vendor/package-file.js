@@ -2,28 +2,28 @@
 // dependency reader can use. Each of them asks a question of the same file - resolveVendor
 // (classifying each declaration), lockGaps (what the lock fails to cover),
 // sca-lock-file-missing (whether a lock was owed) and sca-package-file-invalid (whether the
-// manifest can be used at all) - and one parse answers for all of them. A parse per reader is a copy of these tolerances per
+// package file can be used at all) - and one parse answers for all of them. A parse per reader is a copy of these tolerances per
 // reader, and a submission shaped in a way one copy mishandles is mishandled by that one
-// alone, silently: a manifest that fails to parse reads as an absent manifest, and
+// alone, silently: a package file that fails to parse reads as an absent one, and
 // "declares nothing" is every caller's empty case. One implementation, not one call: each
 // reader still parses when it asks.
 //
-// A submission's manifest is UNTRUSTED input, not a data structure: it is whatever bytes
+// A submission's package file is UNTRUSTED input, not a data structure: it is whatever bytes
 // the developer packed. So nothing here trusts a shape. A file that is not a JSON object,
 // a dependency map that is not an object, a version spec that is not a string - each is
 // absent rather than coerced, because coercing invented findings that named `0 (l)` as a
 // package.
 //
-// Belongs here: turning those bytes into a manifest object and a normalized list of what it
+// Belongs here: turning those bytes into a package.json object and a normalized list of what it
 // declares. Does NOT belong here: what a declaration MEANS - pinned, supported, covered by
 // the lock - which is resolve.js, locks.js and the checks respectively; and the policy of
 // when a lock is owed, which is the check that asks.
 
 import { parseJson } from "../util/json.js";
-import { LOCAL_MANIFEST_MAX_DEPTH } from "../config.js";
+import { LOCAL_PACKAGE_FILE_MAX_DEPTH } from "../config.js";
 
 /**
- * @typedef {object} DeclaredDependency  One dependency a manifest declares.
+ * @typedef {object} DeclaredDependency  One dependency a package file declares.
  * @property {string} map  The map that declared it (a DECLARATION_MAPS member).
  * @property {string} name  The package name, as written.
  * @property {string} spec  Its version spec, trimmed.
@@ -32,7 +32,7 @@ import { LOCAL_MANIFEST_MAX_DEPTH } from "../config.js";
  *   `npm:` alias otherwise. Classify by this, report the written pair.
  */
 
-// The dependency maps a manifest declares, in the order they are read.
+// The dependency maps a package file declares, in the order they are read.
 // optionalDependencies is included deliberately: npm installs it, so it is in the tree and
 // the reviewer's install has to resolve it. peerDependencies is not - the host supplies
 // those, not this build.
@@ -43,7 +43,7 @@ export const DECLARATION_MAPS = [
 ];
 
 /**
- * The key that identifies one declaration within a manifest.
+ * The key that identifies one declaration within a package file.
  *
  * A name does not: npm accepts the same name in `dependencies`, `devDependencies` and
  * `optionalDependencies` with different specs, and defines a precedence for each pair. The
@@ -61,7 +61,7 @@ export function declarationKey(map, name) {
 // Of those, the ones that declare something the INSTALL runs rather than something the
 // add-on ships. An optionalDependency is one of them: npm installs it where the platform
 // allows, and what it usually names is a platform-specific binary the build uses, not a
-// library that ends up in the package. Read by classifyManifest, which judges these on
+// library that ends up in the package. Read by classifyPackageFile, which judges these on
 // what running them costs a reviewer rather than on what a bundled copy would be
 // verified against.
 export const BUILD_TIME_MAPS = ["devDependencies", "optionalDependencies"];
@@ -77,11 +77,11 @@ function plainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-// The submission's build manifest, by name. Shared so that the checks asking whether it is
+// The submission's package file, by name. Shared so that the checks asking whether it is
 // THERE and whether it can be USED cannot come to different answers about which file they
 // mean (sca-package-file-missing, sca-package-file-invalid), the way TREE_LOCKS is shared
 // for the lock file.
-export const MANIFEST_FILE = "package.json";
+export const PACKAGE_FILE = "package.json";
 
 /**
  * One package.json's bytes, parsed, alongside the fault when they cannot be used. Two
@@ -91,7 +91,7 @@ export const MANIFEST_FILE = "package.json";
  */
 function readBytes(buf) {
   // Absent, empty and malformed all arrive as null from the one parser, and all three are
-  // the same fault to a reader: there is no manifest to work from.
+  // the same fault to a reader: there is no package file to work from.
   const data = parseJson(buf);
   if (data === null) {
     return { value: null, fault: "unreadable" };
@@ -109,7 +109,7 @@ function readBytes(buf) {
  * @param {?Buffer} buf  One package.json's bytes.
  * @returns {?string}
  */
-export function manifestFault(buf) {
+export function packageFileFault(buf) {
   return readBytes(buf).fault;
 }
 
@@ -118,25 +118,24 @@ export function manifestFault(buf) {
  * JSON object.
  *
  * Parsed through src/util/json.js, the one parser in src/ - which is what makes a BOM'd
- * manifest readable here, since npm reads one perfectly well and `JSON.parse` does not.
+ * package file readable here, since npm reads one perfectly well and `JSON.parse` does not.
  *
- * Module-private: every reader wants the submission's root manifest, which readManifest
+ * Module-private: every reader wants the submission's root package file, which readPackageFile
  * below names. This is the half of it that holds the tolerances, kept apart so they are
  * stated once rather than once per caller.
  * @param {?Buffer} buf  One package.json's bytes.
  * @returns {?object}
  */
-function parseManifest(buf) {
+function parsePackageFile(buf) {
   return readBytes(buf).value;
 }
 
 /**
- * The SUBMISSION's own corpus - the frame a build manifest and a lock are written in.
+ * The SUBMISSION's own corpus - the frame a package file and a lock are written in.
  *
  * For a built XPI it is the artifact itself. For a source archive it is the whole
- * --sca-root: `addon.files` there is the add-on's own subtree, whose root is NOT where the
- * build runs, so reading a manifest from it would take a package.json the build never
- * installs from. An addon with no separate store (a hand-built file map) answers with its
+ * --sca-root: `addon.files` there is a VIEW that gives up every manifest.json, so only
+ * the store answers what the submission contains. An addon with no separate store (a hand-built file map) answers with its
  * files, which is the same thing for a single-artifact submission.
  * @param {?object} addon
  * @returns {?object}  The Map surface, or undefined.
@@ -151,17 +150,17 @@ export function submissionFiles(addon) {
  * @param {?Map<string, Buffer>} files  The artifact's files.
  * @returns {?object}
  */
-export function readManifest(files) {
-  return parseManifest(files?.get(MANIFEST_FILE));
+export function readPackageFile(files) {
+  return parsePackageFile(files?.get(PACKAGE_FILE));
 }
 
 /**
- * Everything the manifest declares, across DECLARATION_MAPS, as one flat list.
+ * Everything the package file declares, across DECLARATION_MAPS, as one flat list.
  *
  * A map that is not an object contributes nothing, and so does a spec that is not a string:
  * npm rejects both outright, so there is no install to reason about, and coercing them
  * produces findings about packages the developer never named.
- * @param {?object} pkg  A manifest from readManifest.
+ * @param {?object} pkg  A package file from readPackageFile.
  * @returns {DeclaredDependency[]}
  */
 export function declaredDependencies(pkg) {
@@ -214,7 +213,7 @@ export function aliasTarget(spec) {
  * a lock came to be reported as recording `function Object() { [native code] }`. Every
  * lookup keyed by a declared name goes through here.
  * @param {unknown} obj  The container to read, of any shape.
- * @param {string} key  A name taken from the manifest.
+ * @param {string} key  A name taken from the package file.
  * @returns {unknown}  The value, or undefined when absent or inherited.
  */
 export function ownValue(obj, key) {
@@ -223,16 +222,16 @@ export function ownValue(obj, key) {
 
 /** @typedef {object} LocalTarget  One file:/link: declaration that resolves to a real
  * directory inside the submission - whether or not that directory has its own readable
- * package.json (see LocalManifest).
+ * package.json (see LocalPackageFile).
  * @property {string} declaringFile  The package.json (store-relative) that declared it -
- *   MANIFEST_FILE for the root, a LocalManifest.file otherwise.
+ *   PACKAGE_FILE for the root, a LocalPackageFile.file otherwise.
  * @property {string} map  The declaration map it was written in (a DECLARATION_MAPS
  *   member). Carried because a NAME does not identify a declaration: npm accepts the same
  *   name in several maps with different specs, so what resolved has to say which one.
  * @property {string} name  The name it was declared under.
  * @property {string} dir  The store-relative posix directory the spec resolves to.
  */
-/** @typedef {object} LocalManifest  One nested package.json reachable by the walk.
+/** @typedef {object} LocalPackageFile  One nested package.json reachable by the walk.
  * @property {string} dir  Its store-relative posix directory ("" excluded - that's root).
  * @property {string} file  `${dir}/package.json` - what a finding built from ITS OWN
  *   declarations anchors at.
@@ -248,7 +247,7 @@ const LOCAL_SPEC = /^(?:file|link):(.*)$/i;
 
 /**
  * Resolve `target` (the text after `file:`/`link:`) against `baseDir` (the declaring
- * manifest's OWN store-relative directory, "" for the root) into a store-relative posix
+ * package file's OWN store-relative directory, "" for the root) into a store-relative posix
  * directory, or null when it steps outside the store (a leading "/" - never inside a store
  * that has no filesystem root of its own to collide with - or a ".." with nothing left to
  * pop). Pure path arithmetic: does not touch the store, so it never says whether the
@@ -279,7 +278,7 @@ function resolveLocalDir(baseDir, target) {
 }
 
 /**
- * Every file:/link: target reachable from the submission's root manifest, walked
+ * Every file:/link: target reachable from the submission's root package file, walked
  * recursively - the SCA-only case where `npm ci`/`npm install` resolves a dependency
  * entirely from a LOCAL directory already inside the submission (never the registry,
  * whatever the package name looks like) and additionally installs THAT package's own
@@ -290,11 +289,11 @@ function resolveLocalDir(baseDir, target) {
  * drop it from `unsupported`, because the code is right there and is reviewed like any
  * other authored file, so there is no unverifiable source to reject. Nothing is exempted
  * from review by this; only the DECLARATION stops being an unidentifiable one. True
- * whether or not the directory turns out to hold a readable manifest, and whether or not
+ * whether or not the directory turns out to hold a readable package file, and whether or not
  * it holds anything at all - what npm's own docs require of a local path is a directory
  * ("a path to a local directory that contains a package"), so that is the question asked.
- * `manifests`: which of those directories has ITS OWN readable package.json to recurse
- * into - a directory that exists but carries no manifest (or one that fails to parse) is
+ * `packageFiles`: which of those directories has ITS OWN readable package.json to recurse
+ * into - a directory that exists but carries no package file (or one that fails to parse) is
  * still authored code with nothing further to check, so it contributes to `targets` alone.
  *
  * A spec that escapes the submission (resolveLocalDir) or names anything that is not a
@@ -302,23 +301,23 @@ function resolveLocalDir(baseDir, target) {
  * BOTH lists, and the caller's classifyDeps buckets it as `unsupported`: a source the
  * reviewer cannot verify, which is the whole of what that check exists to say.
  *
- * The loop guard is the manifests already found, not a separate tracking structure:
- * `manifests` is recorded keyed by resolved directory as the walk proceeds, and a directory
+ * The loop guard is the package files already found, not a separate tracking structure:
+ * `packageFiles` is recorded keyed by resolved directory as the walk proceeds, and a directory
  * already present there is not walked again - still added to `targets` (the declaration is
- * honestly satisfied) but not re-entered into `manifests` or recursed into, which is what
- * breaks a cycle (A -> B -> A) and a self-reference (a manifest declaring `file:.`/`file:..`
- * back at its own directory or the root). Depth is capped at LOCAL_MANIFEST_MAX_DEPTH.
+ * honestly satisfied) but not re-entered into `packageFiles` or recursed into, which is what
+ * breaks a cycle (A -> B -> A) and a self-reference (a package file declaring `file:.`/`file:..`
+ * back at its own directory or the root). Depth is capped at LOCAL_PACKAGE_FILE_MAX_DEPTH.
  * @param {object} addon
- * @returns {{targets: LocalTarget[], manifests: LocalManifest[]}}
+ * @returns {{targets: LocalTarget[], packageFiles: LocalPackageFile[]}}
  */
-export function resolveLocalManifests(addon) {
+export function resolveLocalPackageFiles(addon) {
   const files = submissionFiles(addon);
-  const root = readManifest(files);
+  const root = readPackageFile(files);
   const targets = [];
-  /** @type {Map<string, LocalManifest>} */
-  const manifests = new Map();
+  /** @type {Map<string, LocalPackageFile>} */
+  const packageFiles = new Map();
   if (!files || !root) {
-    return { targets, manifests: [] };
+    return { targets, packageFiles: [] };
   }
   // What the LOADER saw, which is the only thing that can answer this: the key set names
   // files, so a path that IS a file would pass a prefix test against it just as a real
@@ -326,11 +325,11 @@ export function resolveLocalManifests(addon) {
   // local spec may name.
   const directories = new Set(addon?.directories ?? []);
   const isDirectory = (dir) =>
-    // The store root itself: trivially true whenever we get this far (its manifest was
+    // The store root itself: trivially true whenever we get this far (its package file was
     // just read above), and the walk records what it ENTERS, never the root it starts at.
     dir === "" || directories.has(dir);
   const walk = (pkg, baseDir, declaringFile, depth) => {
-    if (depth > LOCAL_MANIFEST_MAX_DEPTH) {
+    if (depth > LOCAL_PACKAGE_FILE_MAX_DEPTH) {
       return;
     }
     for (const { map, name, spec } of declaredDependencies(pkg)) {
@@ -343,18 +342,18 @@ export function resolveLocalManifests(addon) {
         continue; // escapes the submission, or does not name a directory in it
       }
       targets.push({ declaringFile, map, name, dir });
-      if (dir === "" || manifests.has(dir)) {
+      if (dir === "" || packageFiles.has(dir)) {
         continue; // the store root, or a directory already walked - cycle/self-reference
       }
-      const file = `${dir}/${MANIFEST_FILE}`;
-      const pkgData = parseManifest(files.get(file));
+      const file = `${dir}/${PACKAGE_FILE}`;
+      const pkgData = parsePackageFile(files.get(file));
       if (!pkgData) {
-        continue; // directory exists, no readable manifest - nothing to recurse into
+        continue; // directory exists, no readable package file - nothing to recurse into
       }
-      manifests.set(dir, { dir, file, pkg: pkgData });
+      packageFiles.set(dir, { dir, file, pkg: pkgData });
       walk(pkgData, dir, file, depth + 1);
     }
   };
-  walk(root, "", MANIFEST_FILE, 1);
-  return { targets, manifests: [...manifests.values()] };
+  walk(root, "", PACKAGE_FILE, 1);
+  return { targets, packageFiles: [...packageFiles.values()] };
 }

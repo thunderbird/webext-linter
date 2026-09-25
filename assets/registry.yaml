@@ -82,7 +82,7 @@ deterministic-phase:
   response: |-
     The add-on name uses the registered trademark “Thunderbird” in a way that is unallowable under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). “Thunderbird” is generally not allowed in the add-on name, except in the format “ADD-ON NAME for Thunderbird”, including in translations of the name.
 
-# The same question for a name the manifest states literally. It carries no locale
+# The same question for a name the manifest.json states literally. It carries no locale
 # tag, so nothing in the package says what language it is in, and the language has
 # to be settled before the form can be judged at all. That is not answerable from
 # the submission, which is why this one goes to manual review rather than code
@@ -148,51 +148,51 @@ deterministic-phase:
   check: missing-permission
   input: source
   response: |-
-    The following permissions are required at the locations listed, but are not declared in the manifest. Add them to the requested permissions.
+    The following permissions are required at the locations listed, but are not declared in manifest.json. Add them to the requested permissions.
 
-# Flags an API call that needs a manifest key (e.g. "action") not declared.
-- title: Missing manifest key
+# Flags an API call that needs a manifest.json key (e.g. "action") not declared.
+- title: Missing manifest.json key
   severity: error
   check: missing-manifest-key
   input: source
   response: |-
-    The following APIs each need a manifest key that is not declared. Add one of the keys named for each API to manifest.json.
+    The following APIs each need a manifest.json key that is not declared. Add one of the keys named for each API to manifest.json.
 
 # manifest.json is present but does not give a JSON object - it will not parse, or
 # it parses to a primitive or an array.
-- title: Invalid manifest JSON
+- title: Invalid manifest.json
   severity: error
   check: manifest-invalid-json
   input: manifest
   response: |-
-    Invalid manifest.json: manifest.json is not a valid JSON object.
+    The included manifest.json is not a valid WebExtension manifest file.
     Read more: https://webextension-api.thunderbird.net/.
 
 # No manifest.json at the add-on root.
-- title: Missing manifest
+- title: Missing manifest.json
   severity: error
   check: manifest-missing
   input: manifest
   response: |-
-    Invalid manifest.json: no manifest.json at the add-on root.
+    The submission has no WebExtension manifest file (manifest.json) at its root.
     Read more: https://webextension-api.thunderbird.net/.
 
-# A required top-level manifest key is absent.
-- title: Missing required manifest key
+# A required top-level manifest.json key is absent.
+- title: Missing required manifest.json key
   severity: error
   check: manifest-missing-key
   input: manifest
   response: |-
-    Invalid manifest.json: one or more required properties are missing.
+    The included WebExtension manifest file (manifest.json) has one or more required properties missing.
     Read more: https://webextension-api.thunderbird.net/.
 
 # manifest_version disagrees with the schema set being reviewed.
-- title: Manifest version mismatch
+- title: manifest_version mismatch in manifest.json
   severity: error
   check: manifest-version-mismatch
   input: manifest
   response: |-
-    Invalid manifest.json: manifest_version {{item}} does not match the schema set (Manifest V{{schema}}).
+    The included WebExtension manifest file (manifest.json) declares manifest_version {{item}}, which does not match the schema set (Manifest V{{schema}}).
     Read more: https://webextension-api.thunderbird.net/.
 
 # A declared permission value that is neither a known permission, a
@@ -202,7 +202,7 @@ deterministic-phase:
   check: manifest-unknown-permission
   input: manifest
   response: |-
-    Invalid manifest.json: one or more requested permissions are unknown.
+    The included WebExtension manifest file (manifest.json) requests one or more unknown permissions.
     Read more: https://webextension-api.thunderbird.net/.
 
 # A self-hosted update_url (browser_specific_settings.gecko or the legacy
@@ -215,25 +215,25 @@ deterministic-phase:
   response: |-
     This add-on sets an update_url, which directs Thunderbird to install updates from a self-hosted location instead of ATN (addons.thunderbird.net). Because those updates bypass review, an add-on using update_url cannot be listed on ATN. Remove update_url from browser_specific_settings.gecko (or applications.gecko).
 
-# An unknown top-level manifest key (Thunderbird ignores it).
-- title: Unrecognized manifest key
+# An unknown top-level manifest.json key (Thunderbird ignores it).
+- title: Unrecognized manifest.json key
   severity: info
   check: unrecognized-manifest-key
   input: xpi
   response: |-
-    Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.
+    The included WebExtension manifest file (manifest.json) declares the following unknown top-level keys, which Thunderbird will ignore.
     Read more: https://webextension-api.thunderbird.net/.
 
-# A known manifest key with a wrong-typed value (Thunderbird misreads it).
-- title: Mistyped manifest value
+# A known manifest.json key with a wrong-typed value (Thunderbird misreads it).
+- title: Mistyped manifest.json value
   severity: warning
   check: mistyped-manifest-value
   input: manifest
   response: |-
-    The following manifest entries have a value Thunderbird ignores or misreads.
+    The following manifest.json entries have a value Thunderbird ignores or misreads.
     Read more: https://webextension-api.thunderbird.net/.
 
-# Flags manifest/loader references (scripts, popups, icons, ...) to files not in
+# Flags manifest.json and loader references (scripts, popups, icons, ...) to files not in
 # the package.
 - title: Missing referenced file
   severity: error
@@ -242,7 +242,7 @@ deterministic-phase:
   response: |-
     The following referenced file(s) are not bundled with the add-on, or the path may be wrongly specified. Please include every referenced file in the package, and check that the used paths are correct.
 
-# Flags a packaged file the add-on loads (manifest reference or <script src>) whose file type
+# Flags a packaged file the add-on loads (manifest.json reference or <script src>) whose file type
 # is not recognized, so no check could review it - the backstop for the JS-corpus suffix set.
 - title: Unrecognized referenced file type
   severity: error
@@ -316,14 +316,14 @@ deterministic-phase:
   check: minimize-host-permissions
   input: manifest
   response: |-
-    The manifest requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
+    manifest.json requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
     Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
 
 # Producer of the declared permissions worth a closer look: every declared NAMED
 # permission a reachable API call does not provably require (host patterns are
 # Minimize host permissions' concern). Runs in the main loop. A permission whose
 # entries (see permission-prompts) declare usage `tokens` that appear
-# NOWHERE in the add-on's live code (comments excluded) or manifest is
+# NOWHERE in the add-on's live code (comments excluded) or manifest.json is
 # deterministically unused - a warning finding (the deterministic path stands
 # down when the scan is blind: an SCA review or unresolved dynamic API surface).
 # Every other case is scheduled as a manual-review escalation; same-bodied cases
@@ -336,7 +336,7 @@ deterministic-phase:
     One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
-    Each permission below is declared in the manifest, and no call that
+    Each permission below is declared in manifest.json, and no call that
     needs it was found. Read the add-on for a use of the API that permission
     gates, counting a call reached through an alias, a helper or a bundled
     library as a use. Clear one you can trace to a use; report one you
@@ -524,11 +524,11 @@ deterministic-phase:
     Read the schema of every Experiment this add-on ships and compare the
     API names it declares against the names the code calls. The `namespace`
     in an Experiment's schema is the only thing that names its API: a
-    mismatch leaves it undefined at run time even though the manifest
+    mismatch leaves it undefined at run time even though manifest.json
     declares it. Report this where a called name should have been declared
     and is not; clear it where the names belong to no Experiment here.
   response: |-
-    This Experiment calls WebExtension APIs that no schema defines. Where these are your own Experiment APIs, each experiment's schema must declare a `namespace` matching the name the code calls, since the namespace is authoritative and a mismatch leaves the API undefined even when the manifest declares it. Please correct the schema namespaces, or remove the calls to APIs that do not exist.
+    This Experiment calls WebExtension APIs that no schema defines. Where these are your own Experiment APIs, each experiment's schema must declare a `namespace` matching the name the code calls, since the namespace is authoritative and a mismatch leaves the API undefined even when manifest.json declares it. Please correct the schema namespaces, or remove the calls to APIs that do not exist.
 
 # Flags a non-Experiment that pins strict_max_version (only blocks newer
 # Thunderbird; the APIs are forward-compatible).
@@ -669,7 +669,7 @@ deterministic-phase:
 # build, so it runs on their machine. Same audit, same threshold; the dev/production
 # split comes from the lock file itself (npm's dev flags, or reachability from the
 # pnpm importers), as does the question of what counts as declared - the lock
-# records the optionalDependencies, workspace manifests and npm: aliases that
+# records the optionalDependencies, workspace package files and npm: aliases that
 # reading the root package.json alone would miss.
 - title: Vulnerable indirect build dependency
   severity: error
@@ -707,9 +707,10 @@ deterministic-phase:
 # parse, or it parses to something that is not a JSON object. npm reads neither, so the
 # build it defines cannot be run. The two cases are kept apart in the wording because a
 # developer would check: one will not open, the other opens fine and simply is not a
-# manifest. They are the two the lock file's file-level faults carry, for the same reason.
-# Decided from the one parse every reader of this file shares (src/vendor/manifest.js), so
-# an unusable manifest here is exactly the one the dependency readers found nothing in.
+# package file. They are the two the lock file's file-level faults carry, for the same
+# reason. Decided from the one parse every reader of this file shares
+# (src/vendor/package-file.js), so an unusable package file here is exactly the one the
+# dependency readers found nothing in.
 # Which case failed rides the location line as {{item}}, so the response states the rule
 # once. Like its sibling above, NOT silenced by the shipped XPI being the archive's own
 # code.
@@ -726,18 +727,17 @@ deterministic-phase:
 # Deterministic (SCA only): the source ships a package.json and no npm or pnpm lock.
 # `npm ci` and `pnpm install --frozen-lockfile` both refuse without one, so the
 # source cannot be shown to produce the shipped XPI. The reading is fixed by the SUBMISSION
-# TYPE, never by the file's contents: here a package.json is a build manifest whatever it
+# TYPE, never by the file's contents: here a package.json defines the BUILD whatever it
 # carries, so whatever it declares is installed. An absent `scripts` block is not a second
 # reading and not grounds for anything. The mirror holds in a built XPI, where the same
-# file is a vendoring manifest whatever it carries (xpi-lock-file-missing /
+# file declares VENDORED libraries whatever it carries (xpi-lock-file-missing /
 # xpi-lock-file-invalid). The lock is owed
-# by the manifest, never by what it happens to declare: both installers refuse without one
-# whatever it holds, and a root declaring nothing itself is a workspace root or a manifest
+# by the package.json, never by what it happens to declare: both installers refuse without one
+# whatever it holds, and a root declaring nothing itself is a workspace root or a package.json
 # whose declarations moved, not a submission that installs nothing.
-# Only the ROOT package.json is read - the build's entry point (src/build/corpus.js) -
-# unlike build-registry-redirect, which scans every depth because it detects a disallowed
-# thing rather than asserting a requirement. Nothing here goes looking
-# for a manifest or a lock deeper in the archive: they sit at the root, which is what the
+# Only the ROOT package.json is read - the build's entry point (src/build/corpus.js), and
+# the directory the install runs in. Nothing here goes looking
+# for a package.json or a lock deeper in the archive: they sit at the root, which is what the
 # root IS. WHICH folder that is was settled before any check ran (src/addon/sca-root.js),
 # because the root is named by someone who has not looked inside the archive yet.
 - title: Missing lock file
@@ -747,7 +747,7 @@ deterministic-phase:
   check: sca-lock-file-missing
   input: sca
   response: |-
-    The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
+    The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Deterministic (SCA only): a lock was submitted but cannot install what package.json
@@ -965,7 +965,7 @@ deterministic-phase:
   response: |-
     One or more files listed in "{{item}}" are not present in the submission. Add each file to the submission, or remove its entry from "{{item}}".
 
-# More than one file in the package root names itself the VENDOR manifest, so which
+# More than one file in the package root names itself the VENDOR file, so which
 # one the review reads would be decided by the archive's order rather than by the
 # developer.
 - title: More than one VENDOR file
@@ -973,10 +973,10 @@ deterministic-phase:
   check: multiple-vendor-files
   input: source
   response-for-xpi: |-
-    This add-on ships more than one file that names itself the VENDOR manifest. Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different manifest after a rebuild. Keep the one that lists your bundled third-party libraries and remove the others.
+    This add-on ships more than one file that names itself the VENDOR file. Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different file after a rebuild. Keep the one that lists your bundled third-party libraries and remove the others.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
   response-for-sca: |-
-    This add-on ships more than one file that names itself the VENDOR manifest. Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different manifest after a rebuild. Declare each in package.json instead and let the build script copy it from node_modules, rather than committing the file. Keep a single VENDOR.md file only for what that route cannot cover.
+    This add-on ships more than one file that names itself the VENDOR file. Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different file after a rebuild. Declare each in package.json instead and let the build script copy it from node_modules, rather than committing the file. Keep a single VENDOR.md file only for what that route cannot cover.
     Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
     Read more #2: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
   
@@ -1109,7 +1109,7 @@ deterministic-phase:
   instructions-for-llm: |-
     The location below sends data to a remote host this add-on names itself. Confirm
     both halves of that against the package: that the destination is fixed in the
-    shipped code or manifest rather than read from something the user entered, and
+    shipped code or manifest.json rather than read from something the user entered, and
     that anything about the user or their use of the add-on travels to it. A request
     the user addressed themselves, and one that carries nothing of theirs, are neither
     of them this case. Whether the listing discloses any of it is not visible from the
@@ -1142,7 +1142,7 @@ deterministic-phase:
   check: default-locale-missing
   input: xpi
   response: |-
-    A _locales directory is present but the manifest declares no default_locale, so Thunderbird will refuse to load the add-on. Add a default_locale naming the fallback locale (e.g. "en").
+    A _locales directory is present but manifest.json declares no default_locale, so Thunderbird will refuse to load the add-on. Add a default_locale naming the fallback locale (e.g. "en").
 
 # A default_locale key requires a packaged _locales directory, or Thunderbird
 # will not load the add-on.
@@ -1151,7 +1151,7 @@ deterministic-phase:
   check: default-locale-unused
   input: xpi
   response: |-
-    The manifest declares default_locale but the add-on ships no _locales directory, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files, or remove default_locale.
+    manifest.json declares default_locale but the add-on ships no _locales directory, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files, or remove default_locale.
 
 # An extension with no top-level `icons` key ships no defined add-on icon, so
 # Thunderbird shows the generic puzzle-piece placeholder in the Add-ons Manager.
@@ -1171,7 +1171,7 @@ deterministic-phase:
   check: background-module
   input: xpi
   response: |-
-    The following background code location(s) use ES module syntax (import/export), but the manifest’s background is not declared "type": "module", so Thunderbird will fail to load the background script(s). Add "type": "module" to the background entry.
+    The following background code location(s) use ES module syntax (import/export), but the background key in manifest.json is not declared "type": "module", so Thunderbird will fail to load the background script(s). Add "type": "module" to the background entry.
 
 # A background PAGE (background.page HTML) whose <script src> loads module-syntax
 # JS but is not declared type="module" - the page fails to load that script.
@@ -1227,7 +1227,7 @@ deterministic-phase:
 
 # Deterministic check: user-facing text hardcoded in a non-English language when
 # the add-on ships no English _locales. franc detects the language over the HTML
-# visible text and the manifest name/description (see the check). A confident
+# visible text and the manifest.json name/description (see the check). A confident
 # non-English result is the finding. Too little or ambiguous text routes to
 # manual review via `instructions`.
 - title: Missing English localization
@@ -1305,7 +1305,7 @@ deterministic-phase:
   input: xpi
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
-    The files below are reachable from no manifest entry point. Decide
+    The files below are reachable from no manifest.json entry point. Decide
     whether anything loads them at run time: a site naming the file
     literally, or a loader that builds its path at run time - a dynamic
     import, getURL, executeScript, insertCSS, setIcon and the like - and so
@@ -1313,7 +1313,7 @@ deterministic-phase:
     report one nothing loads.
   instructions-for-human: |-
     Check whether anything loads the files below. Nothing reaches them from
-    a manifest entry point, but a file can still be loaded by code that
+    a manifest.json entry point, but a file can still be loaded by code that
     names it, or by a loader that builds its path at run time - a dynamic
     import, getURL, executeScript, insertCSS, setIcon and the like. A file
     nothing loads should not ship. Report the ones you cannot trace to a
@@ -1551,9 +1551,9 @@ deterministic-phase:
 # bound; the tabs/activeTab version pivot instead lives in the `tabs.query`
 # schema-annotation notes - before Thunderbird 154, filtering tabs.query by url/title
 # needs "tabs" even for the add-on's own pages; at/after 154 it does not.
-# An entry declares `tokens`: the code-level spellings (API property names, manifest
+# An entry declares `tokens`: the code-level spellings (API property names, manifest.json
 # keys, literal strings) of every usage that justifies the permission.
-# unused-permission scans the add-on's live code (comments excluded) and manifest for
+# unused-permission scans the add-on's live code (comments excluded) and manifest.json for
 # them and records WHERE each occurs: a permission whose version-matched entries
 # declare tokens and whose tokens ALL appear nowhere is deterministically unused - a
 # warning finding. When a token DOES occur, the permission escalates with each
@@ -1562,7 +1562,7 @@ deterministic-phase:
 # use is not token-detectable) has no site to point at, so its permissions escalate
 # with nothing to anchor on.
 # Token matching is CASE-SENSITIVE and on WORD BOUNDARIES (\btoken\b) over each
-# source's code atoms and the manifest serialized as JSON (key names and values,
+# source's code atoms and the manifest.json serialized as JSON (key names and values,
 # including the permissions array itself - a test enforces that no token matches
 # its own entry's permission declaration, or the declaration would self-ground and
 # the entry would be silently inert). A token must therefore be a whole
@@ -1634,7 +1634,7 @@ permission-prompts:
     # The injection tokens are namespace-qualified (dotted): resolved against the
     # api-usage analysis, so only real tabs.*/scripting.* calls count. `attachments` is a
     # bare property token (a menus OnClickData/OnShowData read). The compose_scripts
-    # manifest key is NOT a token here: it grounds compose deterministically (its
+    # manifest.json key is NOT a token here: it grounds compose deterministically (its
     # required_permissions annotation), so it is never escalated.
     tokens:
       - tabs.executeScript
@@ -1656,7 +1656,7 @@ permission-prompts:
   # level (the scripting schema namespace declares permissions: ["scripting"]), so ANY
   # scripting.* call grounds it deterministically in analyzePermissions - there is no
   # ambiguous case to escalate. It is also grounded by the message_display_scripts
-  # manifest key (before Thunderbird 154). A declared-but-unused scripting therefore has
+  # manifest.json key (before Thunderbird 154). A declared-but-unused scripting therefore has
   # no entry here and escalates, like any other permission the tokens cannot settle.
 
 

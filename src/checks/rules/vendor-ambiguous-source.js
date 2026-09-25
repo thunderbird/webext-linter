@@ -4,7 +4,7 @@
 // ambiguous), and a DIRECTORY declared against something that is not an archive of
 // the release - a single file's URL, or a CDN's directory listing page, which is
 // fetchable enough that the request succeeds and only the unpacking fails. Either
-// way the entry is pulled out of the manifest (never verified, never fetched) and
+// way the entry is pulled out of the VENDOR file (never verified, never fetched) and
 // recorded on `vendor.ambiguousSources`; this rule just turns each into a finding.
 //
 // Belongs here: turning the resolveVendor `ambiguousSources` list into findings.

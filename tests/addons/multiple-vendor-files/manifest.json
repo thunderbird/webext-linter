@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Multiple vendor files",
   "version": "1.0",
-  "description": "Ships two files that both name themselves the VENDOR manifest.",
+  "description": "Ships two files that both name themselves the VENDOR file.",
   "permissions": [
     "messagesRead",
     "accountsRead",

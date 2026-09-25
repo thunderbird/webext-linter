@@ -1,10 +1,10 @@
 // A background script that uses ES module syntax (static import/export) only
-// loads when the manifest declares the background "type": "module". Without it
+// loads when the manifest.json declares the background "type": "module". Without it
 // Thunderbird loads the script as a classic script and the module syntax fails.
 // Errors on each background script that has module syntax while the background
 // is not declared a module.
 //
-// Scoped to the manifest's background scripts (background.scripts /
+// Scoped to the manifest.json's background scripts (background.scripts /
 // service_worker). A background page (HTML) declares module-ness on its own
 // <script type="module"> tag instead - that case is the sibling check
 // background-page-module.js. Content scripts cannot be modules at all. Dynamic
@@ -33,9 +33,9 @@ export default {
   run(ctx) {
     // Registry `input: xpi`: ctx.addon is the built XPI. Module-ness is a runtime-
     // loading property of what ships - Thunderbird loads the XPI's background script
-    // against the XPI's manifest, and the build can transform it (an ESM source
+    // against the XPI's manifest.json, and the build can transform it (an ESM source
     // bundled to a classic script needs no "type": "module"). So this reads the XPI's
-    // manifest and its background scripts, not a source submission's readable source.
+    // manifest.json and its background scripts, not a source submission's readable source.
     const bg = ctx.manifest?.json?.background;
     if (!bg || typeof bg !== "object") {
       return { findings: [] };

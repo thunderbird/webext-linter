@@ -1,4 +1,4 @@
-// Unit tests for position-aware manifest line attribution (buildManifestLoc) and its
+// Unit tests for position-aware manifest.json line attribution (buildManifestLoc) and its
 // use by a check. A path lookup survives the two cases a text search for the value
 // cannot: \uXXXX escaping, and a value that appears more than once.
 
@@ -10,7 +10,7 @@ import { buildManifestLoc } from "../../src/addon/manifest-loc.js";
 import { manifestTokenLine } from "../../src/lib/util.js";
 import minimizeHostPermissions from "../../src/checks/rules/minimize-host-permissions.js";
 
-// A manifest where "<all_urls>" is JSON-escaped AND appears twice: once in a
+// A manifest.json where "<all_urls>" is JSON-escaped AND appears twice: once in a
 // web_accessible_resources match (line 4) and once in host_permissions (line 6).
 const TEXT = [
   /* 1 */ "{",
@@ -32,7 +32,7 @@ test("buildManifestLoc resolves the exact line for an escaped, repeated value", 
   assert.equal(manifestTokenLine(TEXT, "<all_urls>"), null);
 });
 
-// An absent path and an unparseable manifest both degrade to null, never throw.
+// An absent path and an unparseable manifest.json both degrade to null, never throw.
 test("buildManifestLoc returns null for missing paths and unparseable text", () => {
   const loc = buildManifestLoc(TEXT);
   assert.equal(loc.lineAt(["nope"]), null);

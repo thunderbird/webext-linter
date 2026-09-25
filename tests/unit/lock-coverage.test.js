@@ -40,14 +40,14 @@ const gapsOf = (addon) =>
     g.recorded ? `${g.name}:${g.reason}:${g.recorded}` : `${g.name}:${g.reason}`
   );
 
-/** An npm lockfileVersion 3 lock: a restated root manifest plus installed entries. */
+/** An npm lockfileVersion 3 lock: a restated root package.json plus installed entries. */
 const npm3 = (root, installed = {}) => ({
   lockfileVersion: 3,
   packages: { "": root, ...installed },
 });
 
 // ---- npm lockfileVersion 2/3 ----------------------------------------------------------
-// `packages[""]` restates the root manifest, and that restatement is what `npm ci`
+// `packages[""]` restates the root package.json, and that restatement is what `npm ci`
 // compares package.json against.
 
 test("npm v3: a declared package the root record omits is absent", () => {
@@ -64,7 +64,7 @@ test("npm v3: a declared package the root record omits is absent", () => {
   assert.deepEqual(gapsOf(addon), ["web-ext:absent"]);
 });
 
-// npm's own question: does the version the lock PINS satisfy the range the manifest
+// npm's own question: does the version the lock PINS satisfy the range the package.json
 // declares. Comparing the two SPECS instead answers a different question and gets it wrong
 // both ways - measured against real npm, an exact "6.0.0" against a recorded ">=2.0.0" is
 // "added 2 packages" while the strings differ, and a declared "^3.0.0" against a recorded
@@ -100,7 +100,7 @@ test("npm v3: a pinned version outside the declared range is unsatisfied", () =>
   assert.deepEqual(gaps("latest", "^7.0.0", "7.9.0"), []);
 });
 
-// npm resolves ONE node per name and lets a second declaration win. Measured: a manifest
+// npm resolves ONE node per name and lets a second declaration win. Measured: a package.json
 // declaring `dependencies: is-odd ^3.0.1` beside `devDependencies: is-odd ^2.0.0` makes npm
 // install 2.0.0 - satisfying only the second - and `npm ci` then accepts its own lock. So
 // the pin has to answer the NAME, not each declaration in turn, or we reject a lock npm is
@@ -135,13 +135,13 @@ test("npm v3: a package declared in two maps answers as one node", () => {
 test("npm v3: a root record entry that resolved to nothing is absent", () => {
   const addon = fakeAddon({
     "package.json": { dependencies: { "web-ext": "^8.0.0" } },
-    // The manifest is restated faithfully, but nothing was installed for it.
+    // The package.json is restated faithfully, but nothing was installed for it.
     "package-lock.json": npm3({ dependencies: { "web-ext": "^8.0.0" } }),
   });
   assert.deepEqual(gapsOf(addon), ["web-ext:absent"]);
 });
 
-test("npm v3: a lock that covers the manifest yields no gap", () => {
+test("npm v3: a lock that covers the package.json yields no gap", () => {
   const addon = fakeAddon({
     "package.json": {
       dependencies: { "web-ext": "^8.0.0" },
@@ -162,7 +162,7 @@ test("npm v3: a lock that covers the manifest yields no gap", () => {
 });
 
 // ---- npm lockfileVersion 1 -------------------------------------------------------------
-// v1's top level is the hoisted tree, not a restated manifest, so there is nothing to
+// v1's top level is the hoisted tree, not a restated package.json, so there is nothing to
 // compare a spec against - only whether the name is there at all.
 
 test("npm v1 checks presence only, and never guesses stale", () => {
@@ -188,7 +188,7 @@ test("npm v1 checks presence only, and never guesses stale", () => {
 });
 
 // ---- pnpm --------------------------------------------------------------------------------
-// The importers ARE the manifests restated. v6+ carries each specifier on the entry; v5
+// The importers ARE the package.json files restated. v6+ carries each specifier on the entry; v5
 // keeps a `specifiers` map, per importer when the lock has importers and at the top level
 // when it does not.
 
@@ -333,7 +333,7 @@ test("npm v3: an aliased declaration is compared like any other", () => {
     ["@typescript/lib-dom:absent"]
   );
   // A root record restating an older alias range says nothing on its own: the pin still
-  // satisfies what the manifest asks for, so npm installs it and this is silent.
+  // satisfies what the package.json asks for, so npm installs it and this is silent.
   const olderRoot = {
     devDependencies: { "@typescript/lib-dom": "npm:@types/web@^0.0.1" },
   };
@@ -436,13 +436,13 @@ test("a present-but-unreadable lock stops there, with a valid one beside it", ()
 
 // A lock that cannot be PARSED and one that is merely the wrong SHAPE part company, so the
 // two file-level faults are not decided together. Measured against npm itself: `npm ci`
-// refuses an unparseable lock whatever the manifest declares, and accepts a `{}` one ("up
+// refuses an unparseable lock whatever the package.json declares, and accepts a `{}` one ("up
 // to date") until a single dependency is declared, at which point it refuses that too.
 //
 // Deciding both behind "is anything declared?" left the hole this pins: the missing-lock
 // check sees the file by NAME and falls silent, so committing a corrupt lock beat
 // committing none - a submission `npm ci` refuses, cleared by both checks.
-test("an unparseable lock is a fault whatever the manifest declares", () => {
+test("an unparseable lock is a fault whatever the package.json declares", () => {
   const gaps = (pkg, lock) =>
     gapsOf(fakeAddon({ "package.json": pkg, "package-lock.json": lock }));
   const declares = { dependencies: { "is-odd": "^3.0.1" } };
@@ -460,7 +460,7 @@ test("an unparseable lock is a fault whatever the manifest declares", () => {
   }
 
   // The wrong shape is only a fault when something has to be installed from it: npm
-  // accepts `{}` for a manifest declaring nothing, and refuses it once one dep appears.
+  // accepts `{}` for a package.json declaring nothing, and refuses it once one dep appears.
   assert.deepEqual(gaps(declares, "{}"), ["null:unrecognised"]);
   assert.deepEqual(gaps(nothing, "{}"), []);
   assert.deepEqual(gaps(localOnly, "{}"), []);
@@ -480,11 +480,11 @@ test("no lock at all is sca-lock-file-missing's question, not this one", () => {
   assert.deepEqual(lockGaps(addon), []);
 });
 
-// ---- the manifest is untrusted input ------------------------------------------------------
+// ---- the package.json is untrusted input ------------------------------------------------------
 // None of these shapes may become a finding about a package the developer never named,
 // and none may hide a real gap.
 
-test("lockGaps hardens the manifest it reads", () => {
+test("lockGaps hardens the package.json it reads", () => {
   // `constructor` and `toString` ARE real npm packages. Read off the prototype chain they
   // resolve to Object.prototype's members, which reported the lock as recording
   // "function Object() { [native code] }".
@@ -524,7 +524,7 @@ test("lockGaps hardens the manifest it reads", () => {
     assert.deepEqual(lockGaps(odd), [], `dependencies: ${deps}`);
   }
 
-  // A manifest that is not a JSON object at all states nothing to cover.
+  // A package.json that is not a JSON object at all states nothing to cover.
   for (const text of ["[1,2,3]", '"nope"', "null", "{not json"]) {
     const bad = fakeAddon({
       "package.json": text,
@@ -545,7 +545,7 @@ test("a lock whose shape is not recognisable is reported as itself", () => {
     // Parses, but is not an object at all.
     ["package-lock.json", "[1,2,3]"],
     ['package-lock.json ("x")', '"x"'],
-    // An npm lock whose root record - the restated manifest npm ci compares against - is
+    // An npm lock whose root record - the restated package.json npm ci compares against - is
     // not there, so there is nothing to compare with.
     [
       "package-lock.json (no root record)",
@@ -576,8 +576,8 @@ test("a lock whose shape is not recognisable is reported as itself", () => {
 });
 
 test("a READABLE lock that governs no declaration is not judged", () => {
-  // A manifest that declares nothing to install. There is no comparison to make, so the
-  // lock's shape cannot be a finding - npm accepts a `{}` lock for such a manifest. An
+  // A package.json that declares nothing to install. There is no comparison to make, so the
+  // lock's shape cannot be a finding - npm accepts a `{}` lock for such a package.json. An
   // unparseable one is different and IS reported, whatever is declared: npm cannot open it
   // either. That split is pinned above.
   for (const text of ["[1,2,3]", "{}"]) {
@@ -604,7 +604,7 @@ test("a READABLE lock that governs no declaration is not judged", () => {
   );
 });
 
-// npm compares the two manifests by NAME: moving a package between dependencies and
+// npm compares the two package.json files by NAME: moving a package between dependencies and
 // devDependencies without regenerating is an install `npm ci` accepts. pnpm is stricter,
 // and its reader keys by map, which is why only the npm side looks across the union.
 test("npm accepts a dependency moved between the declaration maps", () => {
@@ -719,13 +719,13 @@ test("a declaration this check passes is one lockedVersion can pin", () => {
 // never a lockGaps subject (the non-registry filter drops it, same as any file:/link:
 // spec) - but its OWN declared dependencies are real external sources `npm ci` installs
 // from the SAME governing lock, and are held to the same question. npm's lockfileVersion
-// 2/3 restates a locally-linked package's own manifest under ITS OWN relative-path key,
+// 2/3 restates a locally-linked package's own package.json under ITS OWN relative-path key,
 // exactly the way it restates the root's under "" - verified against a real submission
 // (markdown-here-revival's package-lock.json carries `packages["mailext-options-sync"]`,
 // restating that linked package's devDependencies, alongside the usual
 // `packages["node_modules/@jfx2006/mailext-options-sync"]` link entry pointing at it).
 
-test("lockGaps: a nested manifest's restated record is compared exactly like the root's", () => {
+test("lockGaps: a nested package.json's restated record is compared exactly like the root's", () => {
   const addon = fakeAddon({
     "package.json": { dependencies: { helper: "file:./helper" } },
     "helper/package.json": { dependencies: { ms: "^2.1.3" } },
@@ -746,7 +746,7 @@ test("lockGaps: a nested manifest's restated record is compared exactly like the
   );
 });
 
-test("lockGaps: a name absent from the nested manifest's restated record is absent, anchored there", () => {
+test("lockGaps: a name absent from the nested package.json's restated record is absent, anchored there", () => {
   const addon = fakeAddon({
     "package.json": { dependencies: { helper: "file:./helper" } },
     "helper/package.json": {
@@ -769,7 +769,7 @@ test("lockGaps: a name absent from the nested manifest's restated record is abse
   );
 });
 
-// The precise path above depends on the lock restating the nested manifest under its own
+// The precise path above depends on the lock restating the nested package.json under its own
 // relative-path key. If it does not (an unverified edge case for a file:/link: target that
 // is not a genuine npm-recorded local package), this falls back to the same flat, hoisted,
 // name-only lookup pinning already trusts (lockedVersion) - catching a real problem rather
@@ -785,7 +785,7 @@ test("lockGaps: with no restated record at the nested path, falls back to the fl
         packages: {
           "": { dependencies: { helper: "file:./helper" } },
           "node_modules/helper": { resolved: "helper", link: true },
-          // No "helper" key at all - nothing restates the nested manifest.
+          // No "helper" key at all - nothing restates the nested package.json.
           ...installed,
         },
       },

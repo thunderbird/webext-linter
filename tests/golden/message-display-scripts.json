@@ -112,7 +112,7 @@
       },
       "item": "messagesModify",
       "hint": null,
-      "message": "The following permissions are required at the locations listed, but are not declared in the manifest. Add them to the requested permissions."
+      "message": "The following permissions are required at the locations listed, but are not declared in manifest.json. Add them to the requested permissions."
     },
     {
       "ruleId": "missing-permission",
@@ -123,7 +123,7 @@
       },
       "item": "scripting",
       "hint": null,
-      "message": "The following permissions are required at the locations listed, but are not declared in the manifest. Add them to the requested permissions."
+      "message": "The following permissions are required at the locations listed, but are not declared in manifest.json. Add them to the requested permissions."
     },
     {
       "ruleId": "unused-files",

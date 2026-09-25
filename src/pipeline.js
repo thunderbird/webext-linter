@@ -40,7 +40,7 @@ import {
   loadSchemaAnnotations,
   applySchemaAnnotations,
 } from "./schema/annotate.js";
-import { loadAddon, scaViews } from "./addon/load.js";
+import { loadAddon, loadSourceArchive, scaViews } from "./addon/load.js";
 import { settleScaRoot } from "./addon/sca-root.js";
 import { isTranspiledSource } from "./util/files.js";
 import { runChecks, loadRegistry } from "./checks/registry.js";
@@ -211,8 +211,7 @@ export const SETUP_STEPS = Object.freeze([
 /**
  * Every path opt is ABSOLUTE. The arg-array reader resolves them (pipelineOptsFromValues,
  * src/cli.js), which is the one layer that knows what each flag was written relative to -
- * the working directory for --sca-root, and --sca-root itself for the two naming a folder
- * inside it. Nothing here re-resolves one, and a caller handing in a relative path gets
+ * the working directory for --sca-root, and --sca-root itself for --sca-exp-source. Nothing here re-resolves one, and a caller handing in a relative path gets
  * whatever the working directory makes of it.
  * @typedef {object} PipelineOpts
  * @property {string} addonPath  The shipped add-on, absolute.
@@ -232,7 +231,7 @@ export const SETUP_STEPS = Object.freeze([
  *   folder holding package.json/lock. Setting it switches the
  *   review to SCA mode - the whole archive is reviewed as the readable source and its
  *   declared dependencies are audited; the positional XPI is the shipped artifact against which
- *   the manifest, experiments and file-completeness (`input: xpi`) checks all run (a
+ *   the manifest.json, experiments and file-completeness (`input: xpi`) checks all run (a
  *   separate shipped context the orchestrator routes them to - see buildXpiCtxs in
  *   src/checks/context.js).
  * @property {string} [scaExpSource]  SCA mode: the Experiment implementation folder,
@@ -298,7 +297,7 @@ export async function runPipeline(opts) {
   // ROLE each, resolved here ONCE so nothing downstream re-branches on the mode:
   //
   //   xpiAddon - the built XPI (the positional addonPath). The SHIPPED artifact,
-  //     authoritative in BOTH modes for the manifest, the experiments, and the
+  //     authoritative in BOTH modes for the manifest.json, the experiments, and the
   //     behavioral review summary (what actually runs on a user's machine).
   //   reviewTarget - whichever artifact this review is OF: the code the source-level
   //     checks scan, and what becomes siblings.source. In XPI mode it IS xpiAddon; in
@@ -470,7 +469,7 @@ export async function runPipeline(opts) {
     },
 
     // The review schema: fetched, annotated, indexed. It is resolved from the SHIPPED
-    // XPI's manifest alone (manifest_version + strict_max_version pick the channel), so it
+    // XPI's manifest.json alone (manifest_version + strict_max_version pick the channel), so it
     // depends on neither the Experiment classification nor the review mode - which is why it
     // runs before both, as the one piece of setup EVERY path needs. The extraction pass reads
     // its web_api / loader signatures and the review runs against it; a rejected Experiment
@@ -513,7 +512,7 @@ export async function runPipeline(opts) {
     // them, so the full review always runs.
     // Experiments are reviewed from the XPI (its shipped-artifact role; xpiAddon ===
     // reviewTarget in XPI mode). They are privileged, non-bundled, readable code, and the
-    // manifest's experiment paths resolve against the XPI's own files (no
+    // manifest.json's experiment paths resolve against the XPI's own files (no
     // source-layout mismatch). The classification is the XPI's, so it is stored on
     // xpiAddon here, whose bundled classification seeds the trusted experiment files.
     experiments: async () => {
@@ -526,7 +525,7 @@ export async function runPipeline(opts) {
     // A valid Experiment's declared APIs are part of its platform: register their base
     // namespaces so the developer's calls into them (e.g. browser.calendar.*) resolve
     // instead of tripping unknown-api. Registered from the XPI (in SCA the experiment
-    // schema/scripts live in the built XPI, so the manifest's paths resolve there).
+    // schema/scripts live in the built XPI, so the manifest.json's paths resolve there).
     "experiment-schema": () => {
       schema.registerExperimentNamespaces(
         experimentApiNamespaces(xpiAddon.manifest?.json, xpiAddon.files)
@@ -591,21 +590,18 @@ export async function runPipeline(opts) {
         // reviewer has to be able to see which folder their verdicts are about.
         if (scaMove.movedFrom) {
           progress(
-            `Source root: ${opts.scaRoot} (${scaMove.movedFrom} holds no build manifest)`,
+            `Source root: ${opts.scaRoot} (${scaMove.movedFrom} holds no package.json)`,
             FEED.DETAIL
           );
         }
         // The two ways a submitted source archive is not an add-on. An installed
         // dependency tree is not content: the reviewer installs it from the declared
-        // manifest and lock, so a committed one is recorded and rejected rather than read.
+        // package file and lock, so a committed one is recorded and rejected rather than read.
         // And a root manifest.json here is a PRE-BUILD template, not what Thunderbird
         // loads, so none is read - ctx.manifest is the shipped one and must be the only
         // answer. The built add-on above is loaded the ordinary way, where a node_modules
-        // folder is shipped content like any other and the manifest IS the artifact's.
-        scaArchive = loadAddon(opts.scaRoot, undefined, {
-          recordInstalledTrees: true,
-          parseWebExtManifest: false,
-        });
+        // folder is shipped content like any other and the manifest.json IS the artifact's.
+        scaArchive = loadSourceArchive(opts.scaRoot);
         scaViews(scaArchive, {
           scaRoot: opts.scaRoot,
           scaExpSource: opts.scaExpSource,
@@ -620,8 +616,7 @@ export async function runPipeline(opts) {
       // Independent of whether the build is REPRODUCIBLE. A submission can be rejected for
       // a build that cannot be run and still be told it never needed the archive: the two
       // answer different questions, and the advice is only ever about the NEXT submission.
-      // Since a review is no longer downgraded, the advice cannot be read as narrowing this
-      // one, so a rejection beside it takes nothing back.
+      // The advice never narrows THIS review, so a rejection beside it takes nothing back.
       scaNotRequired = resolveXpiOnlyAdvice(
         opts,
         xpiAddon.bundled,
@@ -639,7 +634,7 @@ export async function runPipeline(opts) {
 
     // The review target of a source code review: the readable source. The archive was read
     // ONCE above by `source-archive`, which also split it into its three views; the
-    // review target is that archive, which carries no manifest of its own.
+    // review target is that archive, which carries no manifest.json of its own.
     "target-source": () => {
       reviewTarget = scaArchive;
       for (const notice of scaArchive.skipped ?? []) {
@@ -718,7 +713,7 @@ export async function runPipeline(opts) {
     // the XPI got in Phase 2 (declared-dependency audit, classify, identify, parse), plus the
     // build corpus.
 
-    // Resolve the source's dependency manifest ONCE (package.json deps + any VENDOR
+    // Resolve the source's dependency declarations ONCE (package.json deps + any VENDOR
     // declarations), so the review's checks share one immutable store.
     // A source archive may carry a VENDOR file of its own, and a declaration there
     // must EARN its exemption exactly as one in a shipped XPI does: each declared path is
@@ -775,7 +770,7 @@ export async function runPipeline(opts) {
     },
 
     // Look at the build ONCE here (the vendor pattern), over the archive's own `sca`
-    // corpus - everything but the Experiment, manifests included, because a build step may
+    // corpus - everything but the Experiment, manifest.json files included, because a build step may
     // reference any of it. What was found is stored on reviewTarget.buildReview for the input:sca
     // checks to read. Nothing classifies what the build DOES, so it routes to the reviewer,
     // who reproduces it from the source by hand.
@@ -844,7 +839,7 @@ export async function runPipeline(opts) {
   const mode = setupFacts.mode;
 
   // The shared review env every sibling ctx projects (buildXpiCtxs / buildScaCtxs). The
-  // manifest/experiments are the SHIPPED artifact's - authoritative like the schema, so no
+  // manifest.json and experiments are the SHIPPED artifact's - authoritative like the schema, so no
   // artifact's own template can shadow them. Only what a check reads goes on `options`.
   const env = {
     schema,
@@ -859,7 +854,7 @@ export async function runPipeline(opts) {
 
   // From the built XPI's analysis, which every reviewable path runs: the shipped ctx (siblings.xpi - the input:xpi structure
   // checks) and the manifest ctx (input:manifest checks, an empty corpus carrying only the
-  // shipped manifest).
+  // shipped manifest.json).
   const { xpiCtx, manifestCtx } = buildXpiCtxs(xpiAddon, xpiParsedSources, env);
   // SCA only, and both from the ONE archive: the source ctx (the review target the code
   // checks analyse) and the sca ctx (undeclared-build-source and the build-policy checks).
@@ -1247,13 +1242,13 @@ export function peekBranchMajor(cacheDir, branch) {
 /**
  * Resolve which schema to review against, downloading if needed. The channel is
  * auto-detected from the add-on's version range (see selectSchemaChannel): the
- * cache is first brought to the full canonical set (all channels × both manifest
+ * cache is first brought to the full canonical set (all channels × both manifest.json
  * versions, re-downloading a missing OR corrupt branch), then the add-on's
  * manifest_version + strict_max_version pick the branch to load.
  *
  * @param {object} params
  * @param {string} params.cacheDir      Schema cache directory.
- * @param {import("./addon/load.js").Manifest} params.manifest  Shipped manifest.
+ * @param {import("./addon/load.js").Manifest} params.manifest  Shipped manifest.json.
  * @param {(label: string) => void} [params.setupStep]  Setup-feed narrator.
  * @returns {Promise<{zipPath: string, source: string, branch: string, channel: string}>}
  */
@@ -1528,10 +1523,10 @@ export function resolveXpiOnlyAdvice(opts, bundled, addon, sourceFiles) {
 }
 
 /**
- * Detect the manifest_version from the add-on manifest. A missing or invalid
+ * Detect the manifest_version from the add-on manifest.json. A missing or invalid
  * manifest_version defaults to 2 (an add-on that omits it is Manifest V2).
  *
- * @param {object|null|undefined} manifest
+ * @param {object|null|undefined} manifest.json
  * @returns {{version: number, detected: boolean}}
  */
 export function detectManifestVersion(manifest) {

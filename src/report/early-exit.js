@@ -129,9 +129,9 @@ function earlyExitReasons(ordered, answers, registry) {
  * What a stopped review carries, or null when it did not stop: the authored line and the
  * reasons it lists, each with the id that named it.
  *
- * ONE producer for that value. Both renderers used to assemble it themselves from two
- * registry reads, which put the shape - and the null-vs-empty convention its consumers
- * branch on - in two places that could answer differently.
+ * ONE producer for that value. Assembled per renderer, the shape - and the null-vs-empty
+ * convention its consumers branch on - would live in two places that could answer
+ * differently.
  *
  * The ids travel beside the texts because the JSON report is read by machines: a wording
  * edit changes the text, and a consumer matching on English silently stops recognising

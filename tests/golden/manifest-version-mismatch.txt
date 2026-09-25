@@ -2,13 +2,13 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) Invalid manifest.json: manifest_version 2 does not match the schema set (Manifest V3).
+1) The included WebExtension manifest file (manifest.json) declares manifest_version 2, which does not match the schema set (Manifest V3).
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json
 
 We kindly ask you to resolve the following issues with your next release:
 
-2) The following manifest entries have a value Thunderbird ignores or misreads.
+2) The following manifest.json entries have a value Thunderbird ignores or misreads.
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json - manifest_version - must be equal to one of the allowed values
 

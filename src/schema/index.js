@@ -5,16 +5,16 @@
 //     properties, permissions}) so we can resolve a browser.* / messenger.*
 //     / chrome.* usage,
 //   - a global type registry keyed "<namespace>.<id>" with all `$extend`
-//     additions merged in (this is how permission enums and manifest keys
+//     additions merged in (this is how permission enums and manifest.json keys
 //     are spread across files),
 //   - the flattened set of valid permission strings and valid top-level
-//     manifest keys,
+//     manifest.json keys,
 //   - the target Thunderbird applicationVersion for version_added
 //     comparisons.
 //
 // The structural merging itself lives in merge.js. The model mirrors
 // thunderbird/webext-docs-generator (global types keyed "<namespace>.<id>",
-// $extend targeting "manifest.<type>", version_added inside annotations[]).
+// $extend targeting "manifest.json.<type>", version_added inside annotations[]).
 //
 // Belongs here: the SchemaIndex query API the rest of the app consults -
 // resolveApi/resolveRef, requiredPermissions, validPermissions,
@@ -50,12 +50,12 @@ const DATA_COLLECTION_TYPES = [
   "CommonDataCollectionPermission",
 ];
 
-// The manifest's ROOT types - every shape a submitted manifest.json can take. A static
+// The manifest.json's ROOT types - every shape a submitted manifest.json can take. A static
 // theme's keys live on ThemeManifest, not WebExtensionManifest, so a list of the latter two
 // alone reports `theme` as an unrecognized key on every theme it reviews. Exported because
 // three readers need the same set: the valid-key collection and the key-permission
 // collection below, buildManifestJsonSchema (src/schema/json-schema.js), and the
-// manifest file-path walk (src/lib/manifest-refs.js).
+// manifest.json file-path walk (src/lib/manifest-refs.js).
 export const MANIFEST_ROOT_TYPES = [
   "ManifestBase",
   "WebExtensionManifest",
@@ -252,9 +252,9 @@ export class SchemaIndex {
   }
 
   /**
-   * Recursively collect every enum string reachable from the named manifest
+   * Recursively collect every enum string reachable from the named manifest.json
    * types.
-   * @param {string[]} typeNames  Names of manifest types to start from.
+   * @param {string[]} typeNames  Names of manifest.json types to start from.
    * @returns {Set<string>} All reachable enum string values.
    */
   _collectEnumStrings(typeNames) {

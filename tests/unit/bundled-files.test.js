@@ -1,4 +1,4 @@
-// Unit tests for bundled-files: malformed-manifest robustness and the
+// Unit tests for bundled-files: malformed-manifest.json robustness and the
 // schema-directed / bridge "referenced file not bundled" detection.
 
 import { test } from "node:test";
@@ -31,7 +31,7 @@ function ctxWith(manifest, files = {}) {
   });
 }
 
-// The manifest half of this check asks the SCHEMA which keys carry a file path, so a ctx
+// The manifest.json half of this check asks the SCHEMA which keys carry a file path, so a ctx
 // without one makes it a no-op. Kept separate from ctxWith because the loader half reads
 // the schema too, and handing one to a loader test changes which calls are extracted.
 function manifestCtx(manifest, files = {}) {
@@ -58,7 +58,7 @@ function ctxWithJs(code, files = {}) {
   return ctx;
 }
 
-// Defensively handles manifests that violate the schema (non-array
+// Defensively handles manifest.json files that violate the schema (non-array
 // content_scripts, null entries, string js, string background) without
 // crashing the rule.
 test("does not throw on malformed content_scripts shapes", () => {
@@ -97,7 +97,7 @@ test("flags a genuinely missing content script, not a present one", () => {
 });
 
 // The schema is the only thing that says which keys carry a path, and `icons` is the key a
-// hand-written list forgets - so a manifest pointing at an icon the add-on does not
+// hand-written list forgets - so a manifest.json pointing at an icon the add-on does not
 // package is caught. Its size map is also where the walk needs three guards
 // that the AST twin (walkType) deliberately lacks, so they are pinned together here.
 test("icons are walked, and the three shape guards hold", () => {
@@ -175,7 +175,7 @@ test("a missing experiment script is reported", () => {
   );
 });
 
-// A missing manifest reference anchors at the manifest.json line that cites it
+// A missing manifest.json reference anchors at the manifest.json line that cites it
 // (located by the quoted path), not just the file with no location.
 test("anchors a missing manifest reference at its manifest.json line", () => {
   const manifestText = [
@@ -201,7 +201,7 @@ test("anchors a missing manifest reference at its manifest.json line", () => {
   assert.equal(out[0].loc.line, 4); // the line citing the path
 });
 
-// When the manifest text does not carry the path - a minified or rewritten manifest, say -
+// When the manifest.json text does not carry the path - a minified or rewritten manifest.json, say -
 // the finding names the file and carries no line: degraded, never dropped.
 test("missing manifest reference falls back to no line when the text lacks the path", () => {
   const ctx = manifestCtx({ content_scripts: [{ js: ["missing.js"] }] });
@@ -419,7 +419,7 @@ test("tabs.create {url} with a leading .. clamps at root", () => {
 test("loader refs in a non-live (orphan) script are skipped", () => {
   const call = `browser.tabs.create({ url: "missing.html" });`;
 
-  // Orphan: no manifest entry and no page loads it -> not live -> skipped.
+  // Orphan: no manifest.json entry and no page loads it -> not live -> skipped.
   const orphan = ctxWith({ manifest_version: 2 }, { "orphan.js": call });
   orphan.jsSources = parsed(
     [{ file: "orphan.js", code: call, lineOffset: 0 }],

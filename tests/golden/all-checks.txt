@@ -2,18 +2,18 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) The following permissions are required at the locations listed, but are not declared in the manifest. Add them to the requested permissions.
+1) The following permissions are required at the locations listed, but are not declared in manifest.json. Add them to the requested permissions.
  - background.js:9 - messagesRead
  - background.js:15 - accountsRead
  - background.js:16 - messagesMove
 
-2) The following APIs each need a manifest key that is not declared. Add one of the keys named for each API to manifest.json.
+2) The following APIs each need a manifest.json key that is not declared. Add one of the keys named for each API to manifest.json.
  - background.js:19 - action.onClicked - "action"
 
 3) The add-on makes a synchronous XMLHttpRequest, which can lock up the user interface. Please use an asynchronous request instead.
  - background.js:26
 
-4) Invalid manifest.json: one or more requested permissions are unknown.
+4) The included WebExtension manifest file (manifest.json) requests one or more unknown permissions.
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json:5 - bogusPermission
 
@@ -54,11 +54,11 @@ Read more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html
 Read more: https://developer.thunderbird.net/add-ons/mailextensions/supported-manifest-keys#icons
  - manifest.json
 
-13) The manifest requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
+13) manifest.json requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
 Read more: https://thunderbird.topicbox.com/groups/addons/Tafa58394231a18f8-M3e565a75287313ea4395ff5f/prefer-to-use-optionalhostpermissions-to-get-around-cors-issues-with-fetch
  - manifest.json:6 - [all_urls]
 
-14) Invalid manifest.json: the following top-level keys are unknown and will be ignored by Thunderbird.
+14) The included WebExtension manifest file (manifest.json) declares the following unknown top-level keys, which Thunderbird will ignore.
 Read more: https://webextension-api.thunderbird.net/.
  - manifest.json:11 - weirdTopLevelKey
 

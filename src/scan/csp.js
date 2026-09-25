@@ -1,16 +1,16 @@
-// Parses a manifest content_security_policy (string in MV2, object of named
+// Parses a manifest.json content_security_policy (string in MV2, object of named
 // policies in MV3) and reports the two risk categories the remote-code checks
 // care about: dynamic-code keywords ('unsafe-eval' / 'unsafe-inline') and
 // remote script-source hosts. CSP has no ubiquitous parser to depend on, so
 // directives are split on semicolons and whitespace, hosts detected by pattern.
 //
-// Belongs here: parsing the manifest CSP string/object and extracting its raw
+// Belongs here: parsing the manifest.json CSP string/object and extracting its raw
 // facts (unsafe-eval, unsafe-inline, remote script-src hosts).
 //
 // Does NOT belong here: deciding whether those facts are a problem and the
 // reviewer-facing wording - that lives in the checks (src/checks/rules/*) and
 // the registry (assets/registry.yaml). Classifying arbitrary URL strings
-// as remote/local belongs to src/scan/url.js. Reading the manifest off disk
+// as remote/local belongs to src/scan/url.js. Reading the manifest.json off disk
 // belongs to src/addon/load.js.
 
 /** @typedef {import("../addon/load.js").Manifest} Manifest */

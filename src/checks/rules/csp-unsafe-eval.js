@@ -1,4 +1,4 @@
-// The manifest content_security_policy allows 'unsafe-eval', which permits
+// The manifest.json content_security_policy allows 'unsafe-eval', which permits
 // dynamic code execution - not allowed.
 //
 // Belongs here: emitting the finding when the CSP allows 'unsafe-eval'. Does NOT

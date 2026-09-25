@@ -108,7 +108,7 @@ export function scanLoaderRefs(
       // Derive the resolution base from the method name, independent of which
       // extraction branch (schema-directed or bridge) handles the call. A
       // root-relative loader (getURL, scripting.*) resolves its path against the
-      // extension ROOT (".." clamped), like a manifest path; EVERY other loader
+      // extension ROOT (".." clamped), like a manifest.json path; EVERY other loader
       // resolves against the CALLING DOCUMENT - the host page - so a relative
       // path there is page-relative (base:"page"), which the resolver walks
       // against the script's host-page directories. (A leading-"/" path is still

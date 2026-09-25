@@ -1,6 +1,6 @@
 // A declared permission value is neither a known permission, a data-collection
 // permission, nor a match pattern, so the submission is invalid. Runs only on a
-// parsed manifest, over permissions and optional_permissions.
+// parsed manifest.json, over permissions and optional_permissions.
 //
 // Belongs here: validating each declared permission value against the schema.
 // Does NOT belong here: the schema's permission sets (-> src/schema/index.js),

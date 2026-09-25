@@ -20,8 +20,8 @@
 // number of directories an archive wraps its contents in is an accident of how it was packed -
 // the walk follows a chain of single folders as far as it goes and stops at the first fork.
 //
-// Belongs here: which folder the review treats as --sca-root, and the two flags that must
-// keep sitting inside it. Does NOT belong here: what is read once it is settled (the build
+// Belongs here: which folder the review treats as --sca-root, and keeping
+// --sca-exp-source inside it. Does NOT belong here: what is read once it is settled (the build
 // corpus, the lock), the keyspace the source view is built in (scaViews in ./load.js), or
 // how the root is reported (src/report/format.js).
 
@@ -29,16 +29,16 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { relativeInside } from "./load.js";
-import { MANIFEST_FILE } from "../vendor/manifest.js";
+import { PACKAGE_FILE } from "../vendor/package-file.js";
 import { TREE_LOCKS } from "../vendor/locks.js";
 
 /**
- * Whether `dir` holds a build manifest at its top level.
+ * Whether `dir` holds a package file at its top level.
  * @param {string} dir
  * @returns {boolean}
  */
-function hasManifest(dir) {
-  return fs.existsSync(path.join(dir, MANIFEST_FILE));
+function hasPackageFile(dir) {
+  return fs.existsSync(path.join(dir, PACKAGE_FILE));
 }
 
 /**
@@ -54,7 +54,7 @@ function hasLock(dir) {
  * The folders directly inside `dir` that could hold a build.
  *
  * `node_modules` is left out because it is an installed tree rather than part of the source -
- * it is also the one folder that would offer hundreds of manifests - and a dotfolder because
+ * it is also the one folder that would offer hundreds of package files - and a dotfolder because
  * a build does not run from one. A symlink is not a folder here: `isDirectory()` and
  * `isSymbolicLink()` are exclusive (src/addon/load.js walks them as separate branches, and
  * says why following one could loop), which is also what keeps the walk below finite.
@@ -67,7 +67,7 @@ function subfolders(dir) {
     entries = fs.readdirSync(dir, { withFileTypes: true });
   } catch {
     // Unreadable is not this function's error to raise: the run already validated the folder
-    // (src/cli.js folderProblem), and loadAddon is about to read it and say so properly.
+    // (src/cli.js folderProblem), and the loader is about to read it and say so properly.
     return [];
   }
   return entries
@@ -84,16 +84,16 @@ function subfolders(dir) {
  * Walks DOWN while there is exactly one way down, because a folder that holds nothing but
  * another folder is not a place a build could run - it is packaging, and how many layers of it
  * an archive carries is an accident of how it was made rather than anything about the
- * submission. A manifest reached on the way ends the walk: that folder is the root.
+ * submission. A package file reached on the way ends the walk: that folder is the root.
  *
  * At the first fork the walk stops and sweeps THOSE siblings, and no deeper. A fork is the
- * archive's own shape - src beside docs beside tests - so a manifest below one of them is a
+ * archive's own shape - src beside docs beside tests - so a package file below one of them is a
  * package within the build rather than the build, and rooting there would review a dependency
  * as the submission.
  *
  * Finite by construction: every pass moves strictly deeper into a finite tree, and symlinks are
  * not folders here, so there is no cycle to fall into and no depth limit to invent.
- * @param {string} root  Absolute, and known not to hold a manifest itself.
+ * @param {string} root  Absolute, and known not to hold a package file itself.
  * @returns {?string}
  */
 function buildRootBelow(root) {
@@ -101,16 +101,16 @@ function buildRootBelow(root) {
   for (;;) {
     const subs = subfolders(dir);
     if (subs.length !== 1) {
-      // A fork, or nowhere left to go. One manifest among them is the root, several are
+      // A fork, or nowhere left to go. One package file among them is the root, several are
       // decided by the lock beside it - that is the pair an install reads, and what tells a
-      // wrapper from a `tools/` or `examples/` folder carrying a manifest of its own. Anything
+      // wrapper from a `tools/` or `examples/` folder carrying a package file of its own. Anything
       // still ambiguous is not guessed at.
-      const found = subs.filter(hasManifest);
+      const found = subs.filter(hasPackageFile);
       const narrowed = found.length > 1 ? found.filter(hasLock) : found;
       return narrowed.length === 1 ? narrowed[0] : null;
     }
     dir = subs[0];
-    if (hasManifest(dir)) {
+    if (hasPackageFile(dir)) {
       return dir;
     }
   }
@@ -123,7 +123,7 @@ function buildRootBelow(root) {
  * reading the flags again, so `scaRoot` and `scaExpSource` can never be read from two
  * different answers.
  *
- * The root moves only when it holds no manifest itself AND exactly one folder below it can be
+ * The root moves only when it holds no package file itself AND exactly one folder below it can be
  * meant (buildRootBelow walks that down). A lock is never required for the move, only ever
  * used to choose between several: a submission that forgot one is still re-rooted, so the
  * review reports the missing lock it has rather than the missing build it does not.
@@ -146,7 +146,7 @@ export function settleScaRoot(opts) {
     scaExpSource: opts.scaExpSource,
     movedFrom: null,
   };
-  if (!opts.scaRoot || hasManifest(opts.scaRoot)) {
+  if (!opts.scaRoot || hasPackageFile(opts.scaRoot)) {
     return given;
   }
   const scaRoot = buildRootBelow(opts.scaRoot);

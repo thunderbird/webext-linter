@@ -19,11 +19,11 @@ Read more: https://webextension-api.thunderbird.net/.
 2) Experiment with unrecognized API usage: Read the schema of every Experiment
    this add-on ships and compare the API names it declares against the names the
    code calls. The `namespace` in an Experiment's schema is the only thing that
-   names its API: a mismatch leaves it undefined at run time even though the
-   manifest declares it. Report this where a called name should have been
+   names its API: a mismatch leaves it undefined at run time even though
+   manifest.json declares it. Report this where a called name should have been
    declared and is not; clear it where the names belong to no Experiment here.
 Suggested verdict: error
-Suggested response: This Experiment calls WebExtension APIs that no schema defines. Where these are your own Experiment APIs, each experiment's schema must declare a `namespace` matching the name the code calls, since the namespace is authoritative and a mismatch leaves the API undefined even when the manifest declares it. Please correct the schema namespaces, or remove the calls to APIs that do not exist.
+Suggested response: This Experiment calls WebExtension APIs that no schema defines. Where these are your own Experiment APIs, each experiment's schema must declare a `namespace` matching the name the code calls, since the namespace is authoritative and a mismatch leaves the API undefined even when manifest.json declares it. Please correct the schema namespaces, or remove the calls to APIs that do not exist.
 
 3) Missing English localization: Read the strings this add-on shows the user. It
    ships no English localization, so that text may be hardcoded in another

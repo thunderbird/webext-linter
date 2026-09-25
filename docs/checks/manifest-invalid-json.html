@@ -15,22 +15,25 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        A manifest.json is present at the add-on root but is not valid JSON, so
-        the submission cannot be read. This is the single finding in that case —
-        every other manifest check needs a parsed manifest, so they stay silent.
+        A manifest.json is present at the add-on root but does not give a JSON
+        object, so the submission cannot be read. Two ways to fail: the text will
+        not parse, or it parses to a primitive or an array.
       </p>
       <p>
-        The actual parsing happens when the add-on is loaded; this check simply
-        reports the recorded parse error.
+        Where the text will not parse this is the single finding — every other
+        manifest check needs a parsed manifest. A truthy non-object is still read
+        as a manifest downstream, so their findings arrive beside this one.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["manifest.json at the add-on root"] --> B{"Did it fail to parse as JSON?"}
-  B -- no --> OK([no finding — handled by<br/>the other manifest checks])
-  B -- yes --> ERR([ERROR: invalid manifest JSON])
+  A["manifest.json at the add-on root"] --> B{"Did it parse as JSON?"}
+  B -- no --> ERR([ERROR: invalid manifest JSON])
+  B -- yes --> C{"Is what it holds<br/>a JSON object?"}
+  C -- no --> ERR
+  C -- yes --> OK([no finding — handled by<br/>the other manifest checks])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -41,8 +44,8 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told manifest.json is not valid JSON, with a link to the
-        WebExtension API documentation.
+        The add-on is told manifest.json is not a valid JSON object, with a link
+        to the WebExtension API documentation.
       </div>
 
       <p class="source-note">

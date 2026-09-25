@@ -271,7 +271,7 @@ test("--sca-root must point at a folder (exit 2)", () => {
 // An .xpi the loader will not take ends the run before a review exists - the tool-failure
 // channel, exit 2, no report - rather than reviewing whatever part of it could be read. Here
 // the archive holds an entry whose name carries a "." segment, so the key it would land under
-// is not the key the manifest's own reference resolves to (tests/unit/load.test.js covers
+// is not the key the manifest.json's own reference resolves to (tests/unit/load.test.js covers
 // each refused shape). Driven through the CLI for the one thing only this layer shows: that
 // the refusal reaches stderr as the linter's own sentence, and that nothing from inside the
 // archive rides along with it.

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "SCA two VENDOR manifests",
+  "name": "SCA two VENDOR files",
   "version": "1.0",
-  "description": "Ships two VENDOR manifests in the source archive.",
+  "description": "Ships two VENDOR files in the source archive.",
   "permissions": [
     "messagesRead",
     "accountsRead"

@@ -172,7 +172,7 @@ test("JS scan flags eval / Function / string timers", () => {
 });
 
 // getEvalScan reports dynamic-execution hits only for code OUTSIDE the pure
-// WebExtension tree. A WebExtension file (here the manifest's background entry)
+// WebExtension tree. A WebExtension file (here the manifest.json's background entry)
 // cannot run eval & friends without a permissive CSP - reported separately by
 // csp-unsafe-* - so its hits are dropped; a non-WebExtension file (here an
 // unreferenced privileged-style file, outside the tree) keeps all four hit types,
@@ -503,7 +503,7 @@ test("HTML scan flags remote module/script preload links", () => {
   assert.equal(remote.filter((r) => r.kind.script).length, 2);
 });
 
-// ---- check + manifest CSP ----
+// ---- check + manifest.json CSP ----
 function fakeCtx(files, manifest, vendor, bundled) {
   const map = new Map();
   for (const [k, v] of Object.entries(files)) {
@@ -522,7 +522,7 @@ function fakeCtx(files, manifest, vendor, bundled) {
   };
 }
 
-// A manifest CSP with 'unsafe-eval' and 'unsafe-inline' yields two findings
+// A manifest.json CSP with 'unsafe-eval' and 'unsafe-inline' yields two findings
 // (severity left to the registry stamp), whereas 'wasm-unsafe-eval' is
 // permitted and produces none.
 test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval", () => {
@@ -544,7 +544,7 @@ test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval",
   assert.equal(cspUnsafeEval.run(withManifest(ok)).findings.length, 0);
   assert.equal(cspUnsafeInline.run(withManifest(ok)).findings.length, 0);
 
-  // Both findings anchor on the content_security_policy line of the manifest text, so the
+  // Both findings anchor on the content_security_policy line of the manifest.json text, so the
   // record is built over THOSE bytes - the line the reviewer opens is a fact about the
   // file as submitted, not about a re-serialization of the parse.
   const locatedText =

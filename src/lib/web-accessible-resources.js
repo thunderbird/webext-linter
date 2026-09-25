@@ -1,4 +1,4 @@
-// web_accessible_resources manifest semantics: normalizing the MV2/MV3 entry
+// web_accessible_resources manifest.json semantics: normalizing the MV2/MV3 entry
 // shapes, expanding a resource pattern to concrete packaged files, and spotting
 // patterns that expose the whole package. Shared by the minimize-web-
 // accessible-resources check and the reachability graph (exposed resources are

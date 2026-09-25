@@ -7,7 +7,7 @@
 // artifact, so there is no label.
 //
 // The rule keys off the check's routed `input` (the ONE place artifact selection is
-// made - see runChecks), with a single cross-over: the shipped manifest is exposed to
+// made - see runChecks), with a single cross-over: the shipped manifest.json is exposed to
 // EVERY check regardless of input (ctx.manifest is the built XPI's), so a
 // manifest.json finding is always about the XPI even from an `input: source` check.
 //
@@ -34,8 +34,8 @@ export function artifactLabel({ file, input, mode }) {
     return ARTIFACT_XPI; // the shipped manifest is authoritative for every check.
   }
   if (input === "xpi" || input === "manifest") {
-    // xpi = bundled-files, unused-files, minimize-WAR, locales, ...; manifest = the
-    // pure-manifest checks (the manifest IS the shipped XPI's). Their manifest.json
+    // xpi = bundled-files, unused-files, minimize-WAR, locales, ...; manifest.json = the
+    // pure-manifest checks (the manifest.json IS the shipped XPI's). Their manifest.json
     // findings already take the branch above; this covers their fileless findings/notes.
     return ARTIFACT_XPI;
   }

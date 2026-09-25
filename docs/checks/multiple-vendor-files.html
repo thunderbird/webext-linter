@@ -18,7 +18,7 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        The VENDOR manifest may be named <code>VENDOR</code>, <code>VENDOR.md</code>,
+        The VENDOR file may be named <code>VENDOR</code>, <code>VENDOR.md</code>,
         <code>VENDORS</code> or <code>VENDORS.md</code>, matched without regard to
         case, and it lives in the package root. This check fires when more than one
         of them is present.
@@ -26,9 +26,9 @@
       <p>
         Which of them the review would read is otherwise decided by the order the
         archive lists its entries in — so the same submission could be checked
-        against a different manifest after nothing more than a rebuild. Choosing
+        against a different VENDOR file after nothing more than a rebuild. Choosing
         between them is not the tool's call: the developer says which file is the
-        manifest by shipping one. While it is ambiguous, neither file is read, so no
+        VENDOR file by shipping one. While it is ambiguous, neither file is read, so no
         declaration from either is trusted and <em>unparseable VENDOR file</em> does
         not also fire.
       </p>
@@ -36,7 +36,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Files in the package root"] --> B{"How many name themselves<br/>the VENDOR manifest?"}
+  A["Files in the package root"] --> B{"How many name themselves<br/>the VENDOR file?"}
   B -- none --> S([skip — no VENDOR file])
   B -- one --> OK([no finding — it is read<br/>by the other vendor checks])
   B -- "more than one" --> ERR([ERROR: more than one<br/>VENDOR file])

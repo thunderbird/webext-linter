@@ -107,7 +107,7 @@ function extractLoadGraph(
  * @param {object} [opts]
  * @param {import("../schema/index.js").SchemaIndex} [opts.schema]  For the web_api
  *   signatures (the pass scans against ALL of them; the permission grounding
- *   intersects with what the manifest declares) and the loader-ref schema walk.
+ *   intersects with what the manifest.json declares) and the loader-ref schema walk.
  * @param {Set<string>} [opts.nonAuthored]  Files a content scanner would skip
  *   (vendored / library / minified / obfuscated / experiment-trusted) -
  *   addon.bundled.nonAuthored, the same Set the consumers read.

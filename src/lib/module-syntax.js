@@ -1,7 +1,7 @@
 // Shared ES module-syntax detection: the location of the first static import /
 // export in a parsed JS AST. Run by the extraction pass and stored as each source's
 // moduleSyntaxLoc (read via moduleSyntaxOf); background-module and background-page-module
-// use it to know whether a script needs declaring as a module to load (manifest
+// use it to know whether a script needs declaring as a module to load (manifest.json
 // "type": "module" for the former, <script type="module"> for the latter).
 //
 // Belongs here: the AST-level module-syntax query only. Does NOT belong here:

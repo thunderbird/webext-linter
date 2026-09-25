@@ -1,4 +1,4 @@
-// Unit tests for the allowed-Experiments machinery: manifest helpers, the
+// Unit tests for the allowed-Experiments machinery: manifest.json helpers, the
 // content-hash verifier, the schema experiment-namespace registration, and the
 // experiment-overrides-api check.
 
@@ -37,7 +37,7 @@ const schema = buildSchemaIndex(
 const IMPL_DIR = path.join(EXPERIMENTS_FIXTURE, "demo/experiments/demo");
 const fixtureBytes = (rel) => fs.readFileSync(path.join(IMPL_DIR, rel));
 
-// The manifest a bundled "demo" experiment declares (the verify tests build the
+// The manifest.json a bundled "demo" experiment declares (the verify tests build the
 // add-on file map around it).
 const DEMO_MANIFEST = {
   experiment_apis: {
@@ -62,7 +62,7 @@ const demoFiles = () =>
     ],
   ]);
 
-// ---- manifest helpers ----
+// ---- manifest.json helpers ----
 test("experiment helpers read paths, file refs and the subtree root", () => {
   assert.deepEqual(experimentApiPaths(DEMO_MANIFEST), ["demo"]);
   // A multi-segment path joins with dots; an entry without paths falls back to key.
@@ -78,7 +78,7 @@ test("experiment helpers read paths, file refs and the subtree root", () => {
 });
 
 // experimentApiNamespaces reads the exposed namespace from each entry's bundled
-// schema.json `namespace` (the manifest key and the binding path are arbitrary and
+// schema.json `namespace` (the manifest.json key and the binding path are arbitrary and
 // often differ), excluding the schema-only `manifest` block. Falls back to the
 // declared paths/key only when no schema file is readable.
 test("experimentApiNamespaces reads the schema.json namespace, not the key/path", () => {
@@ -143,7 +143,7 @@ test("experimentApiNamespaces falls back to paths/key without a readable schema"
   ]); // schema not in the file map -> still falls back
 });
 
-// experimentManifestKeys reads the manifest keys an experiment's schema DECLARES
+// experimentManifestKeys reads the manifest.json keys an experiment's schema DECLARES
 // via a `manifest` $extend block (the calendar-tools shape: calendar_item_action),
 // so unrecognized-manifest-key does not flag the developer's own keys.
 test("experimentManifestKeys reads $extend-declared manifest keys from the schema", () => {
@@ -180,7 +180,7 @@ test("experimentManifestKeys reads $extend-declared manifest keys from the schem
   ]);
 });
 
-// No experiment / no files / a schema without a manifest $extend block -> no keys.
+// No experiment / no files / a schema without a manifest.json $extend block -> no keys.
 test("experimentManifestKeys is empty without a manifest $extend block", () => {
   assert.deepEqual([...experimentManifestKeys({}, new Map())], []);
   const absent = { experiment_apis: { x: { schema: "missing.json" } } };

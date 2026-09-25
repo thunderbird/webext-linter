@@ -57,7 +57,7 @@ test("artifactLabel keys off the check input in SCA mode", () => {
   );
 });
 
-// The one cross-over: the shipped manifest is authoritative for EVERY check, so a
+// The one cross-over: the shipped manifest.json is authoritative for EVERY check, so a
 // manifest.json finding is [XPI] even from an input:source check.
 test("artifactLabel labels manifest.json as XPI regardless of input", () => {
   assert.equal(
@@ -78,7 +78,7 @@ test("artifactLabel labels manifest.json as XPI regardless of input", () => {
   );
 });
 
-// input: manifest checks read the shipped manifest, so their output is [XPI] - both
+// input: manifest checks read the shipped manifest.json, so their output is [XPI] - both
 // the manifest.json findings (via the cross-over above) and the FILELESS ones
 // (manifest-missing / manifest-missing-key), which don't hit the manifest.json branch.
 test("artifactLabel labels input:manifest as XPI (incl. fileless findings)", () => {

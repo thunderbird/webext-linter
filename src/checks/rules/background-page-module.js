@@ -1,11 +1,11 @@
-// A background PAGE (manifest background.page, an HTML file) loads its scripts
+// A background PAGE (manifest.json background.page, an HTML file) loads its scripts
 // via <script> tags. A <script src="x.js"> whose target uses ES module syntax
 // (static import/export) only works when the tag is declared type="module";
 // without it Thunderbird loads x.js as a classic script and the module syntax
 // fails. Errors on each such <script src> tag in the background page.
 //
 // The sibling check background-module.js covers the background.scripts /
-// service_worker forms (module-ness declared by the manifest "type": "module").
+// service_worker forms (module-ness declared by the manifest.json "type": "module").
 // Inline <script> blocks are out of scope here - only external <script src>.
 //
 // Belongs here: reading background.page, walking its <script src> tags, and

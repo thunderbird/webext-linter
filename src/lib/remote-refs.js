@@ -1,6 +1,6 @@
 // Every remote-load site in the add-on, gathered once and shared: the refs in HTML,
 // the url()/@import in CSS (in a .css file and inside a page), the import() /
-// importScripts() / injected-<script> hits in JS, and the manifest CSP's remote script
+// importScripts() / injected-<script> hits in JS, and the manifest.json CSP's remote script
 // hosts. Two checks read this one result - remote-resources (what the developer ships)
 // and vendored-remote-resources (what an upstream release ships) - so the walk happens
 // once per review, the same "compute once, checks read it" pattern as
@@ -48,7 +48,7 @@ import { extname, HTML_EXTENSIONS } from "../util/files.js";
  *   published upstream release, so the line is that release's, not the developer's.
  * @property {RemoteSite[]} cleared  A bundled script/frame load - benign, but narrated:
  *   it is on the trail of "what runs".
- * @property {string[]} cspHosts  Remote script hosts the manifest CSP permits.
+ * @property {string[]} cspHosts  Remote script hosts the manifest.json CSP permits.
  */
 
 /**

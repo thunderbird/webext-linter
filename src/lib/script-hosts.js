@@ -174,7 +174,7 @@ function compute(ctx) {
   // just the HTML files that include it - the real structural signal, covering
   // manifest-declared pages (background.page, popups, options, sidebar) AND ones
   // opened at runtime (tabs.create/windows.create/window.open) or embedded as an
-  // <iframe src> uniformly, with no manifest allowlist to keep in sync.
+  // <iframe src> uniformly, with no manifest.json allowlist to keep in sync.
   for (const file of files.keys()) {
     if (HTML_EXTENSIONS.has(extname(file))) {
       visitPage(file);

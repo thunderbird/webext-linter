@@ -1,5 +1,5 @@
-// A top-level manifest key the schema does not define - Thunderbird ignores it.
-// Info, since the manifest still loads (unlike the manifest-* errors).
+// A top-level manifest.json key the schema does not define - Thunderbird ignores it.
+// Info, since manifest.json still loads (unlike the manifest-* errors).
 //
 // Belongs here: detecting unknown top-level keys against schema.validManifestKeys,
 // plus the exception for experiment-owned keys: a key that names an experiment_apis
@@ -7,7 +7,7 @@
 // a `manifest` $extend block (e.g. the calendar experiment's calendar_item_action) -
 // both are config the add-on's own experiment defines and reads, so the developer
 // owns them. Does NOT belong here: deep value-type validation (->
-// mistyped-manifest-value.js), defects that invalidate the manifest (-> the
+// mistyped-manifest-value.js), defects that invalidate manifest.json (-> the
 // manifest-* error checks), authored wording (-> assets/registry.yaml), and
 // severity (-> that registry entry).
 

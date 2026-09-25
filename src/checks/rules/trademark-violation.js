@@ -1,6 +1,6 @@
 // Deterministic trademark check on the add-on NAME, for the brand terms that are
 // never allowed in it: "Firefox", "Mozilla" and "MZLA". Case-insensitive, and
-// applied to EVERY name the package states - the literal manifest name, or each
+// applied to EVERY name the package states - the literal manifest.json name, or each
 // locale's resolution of a __MSG__ placeholder, which a deterministic check can
 // read even though a reviewer would not.
 //
@@ -46,7 +46,7 @@ export default {
       ctx.note?.("manifest.json", null, "no add-on name", VERDICT.SKIPPED);
       return { findings: [] };
     }
-    // Anchor every note/finding on the manifest's `name` property line.
+    // Anchor every note/finding on the manifest.json's `name` property line.
     const line = manifestTokenLine(ctx.manifest?.text, "name");
     const loc = line ? { line } : null;
     const { pairs, resolved, unreadable } = localizedNames(ctx);

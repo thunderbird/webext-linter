@@ -68,7 +68,7 @@ function scan(ctx) {
  * The name each locale states, scanned once and memoized on the addon so every
  * trademark check shares the result.
  *
- * A literal manifest name yields ONE pair carrying `locale: null` - the package
+ * A literal manifest.json name yields ONE pair carrying `locale: null` - the package
  * says nothing about its language. A `__MSG_key__` name yields one pair per
  * _locales/<locale>/messages.json that defines the key, each tagged with that
  * directory. That null-vs-tagged split is what lets one check judge a name

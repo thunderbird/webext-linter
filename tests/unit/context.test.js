@@ -34,7 +34,7 @@ const envWith = (over = {}) => ({
   ...over,
 });
 
-// The shipped manifest as the artifact carries it: one record, which is what the env holds
+// The shipped manifest.json as the artifact carries it: one record, which is what the env holds
 // and every sibling ctx is handed by reference.
 const shippedRecord = {
   json: { name: "shipped" },
@@ -65,7 +65,7 @@ test("buildXpiCtxs assembles the sources it is handed, and parses nothing itself
 });
 
 test("buildXpiCtxs has no sources when the pipeline parsed none (a rejected Experiment)", () => {
-  // The single reject check reads the manifest, the experiment classification and the schema -
+  // The single reject check reads the manifest.json, the experiment classification and the schema -
   // never a line of code - so the pipeline hands no sources over. The XPI's files are NOT
   // parsed as a fallback.
   const xpi = addonWith({ "app.js": "export const x = 1;" });
@@ -102,7 +102,7 @@ test("buildXpiCtxs carries the XPI's own sources; isShippedView only in SCA", ()
     xpiParsed,
     envWith({ mode: REVIEW_MODE.SCA })
   ).xpiCtx;
-  // ctx.addon is a reviewView (a shallow copy without manifest/experiments); it carries the
+  // ctx.addon is a reviewView (a shallow copy without manifest.json/experiments); it carries the
   // XPI's files Map by reference, not the XPI object.
   assert.equal(inSca.addon.files, xpi.files);
   assert.equal(inSca.jsSources, xpiParsed);
@@ -191,7 +191,7 @@ test("buildScaCtxs.scaCtx puts the build corpus on ctx.addon and strips manifest
   });
   const scaCorpus = new Map([["build.sh", Buffer.from("echo hi")]]);
   // One archive carrying BOTH corpora: `files` is the add-on code, `sca` the whole of it.
-  // A full-addon shape (manifest present) must NOT leak through: reviewView allowlists.
+  // A full-addon shape (manifest.json present) must NOT leak through: reviewView allowlists.
   // buildReview (what setup found in the build) MUST survive - the input:sca checks read it.
   const archive = {
     ...source,
@@ -245,7 +245,7 @@ test("buildScaCtxs throws when the source arrives with no parsed sources", () =>
 });
 
 // reviewView is an ALLOWLIST: ctx.addon carries ONLY the intrinsic fields a check reads, so a
-// field on the underlying Addon (manifest, experiments, and crucially `sca` - the archive's
+// field on the underlying Addon (manifest.json, experiments, and crucially `sca` - the archive's
 // OTHER corpus) can never leak onto the check-facing surface. And no credentials are on the
 // ctx: the token stays in the pipeline (it builds the client); env carries only the review-level
 // and the check-facing options.
@@ -269,9 +269,9 @@ test("ctx.addon allowlists intrinsic fields; no manifest/experiments/sca/creds l
   assert.equal(xpiCtx.options.allowExperiments, true); // a real option stays
 });
 
-// buildXpiCtxs.manifestCtx gives an input: manifest check the shipped manifest but NO file
+// buildXpiCtxs.manifestCtx gives an input: manifest check the shipped manifest.json but NO file
 // corpus - ctx.addon.files is empty, so it is impossible to reach a file artifact, while the
-// shipped manifest/schema come from the review env.
+// shipped manifest.json/schema come from the review env.
 test("buildXpiCtxs.manifestCtx has an empty file corpus and keeps the shipped manifest", () => {
   const xpi = addonWith({ "app.js": "export const x = 1;" });
   const env = envWith({ manifest: shippedRecord });
@@ -285,7 +285,7 @@ test("buildXpiCtxs.manifestCtx has an empty file corpus and keeps the shipped ma
 });
 
 // End-to-end: an input: manifest check runs on the empty-corpus manifestCtx and yields the SAME
-// result as on the full xpiCtx - it reads only the shipped manifest, so the missing file corpus
+// result as on the full xpiCtx - it reads only the shipped manifest.json, so the missing file corpus
 // cannot change its verdict (and it does not crash reading an empty ctx.addon).
 test("an input: manifest check reads only the manifest (same result on the no-corpus ctx)", async () => {
   const xpi = addonWith({ "a.js": "export const x = 1;" });

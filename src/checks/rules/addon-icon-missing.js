@@ -2,10 +2,10 @@
 // icon, so Thunderbird shows the generic puzzle-piece placeholder in the Add-ons
 // Manager. An advisory (info): defining an icon improves user acceptance. Static
 // themes and dictionaries are not represented by an add-on icon, so they are
-// exempt. Fires when the manifest parses, is not a theme/dictionary, and
+// exempt. Fires when the manifest.json parses, is not a theme/dictionary, and
 // declares no usable `icons` entry.
 //
-// Belongs here: the present-manifest / not-a-theme / absent-icons verdict,
+// Belongs here: the present-manifest.json / not-a-theme / absent-icons verdict,
 // treating an empty or value-less `icons` object as "no icon defined". Does NOT
 // belong here: whether a referenced icon file is actually bundled (->
 // bundled-files.js, which walks the schema's icon paths), authored wording (->

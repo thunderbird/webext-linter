@@ -1,4 +1,4 @@
-// Finds calls to the Web/DOM APIs that consume a manifest permission the
+// Finds calls to the Web/DOM APIs that consume a manifest.json permission the
 // annotated schema cannot gate through a browser.* member - navigator.* calls
 // like navigator.clipboard.readText() (clipboardRead) or
 // navigator.geolocation.getCurrentPosition() (geolocation). The schema names the
@@ -23,14 +23,14 @@ import { parseJs, traverse, memberPropName, isMemberLike } from "./ast.js";
 /**
  * A Web/DOM-API signature that grounds a permission.
  * @typedef {object} WebApiSignature
- * @property {string} permission  The manifest permission it grounds.
+ * @property {string} permission  The manifest.json permission it grounds.
  * @property {string} receiver  Dotted global access path, e.g. "navigator.clipboard".
  * @property {string[]} methods  Method names on the receiver that count.
  */
 
 /**
  * Flatten the schema's per-permission web_api annotations into scanWebApiCalls
- * signatures. With `declaredNamed`, keep only permissions the manifest declares
+ * signatures. With `declaredNamed`, keep only permissions the manifest.json declares
  * (the grounding scope). Without it, every web_api permission: the extraction pass
  * scans against all of them and the consumer intersects with what is declared.
  * @param {import("../schema/index.js").SchemaIndex} [schema]

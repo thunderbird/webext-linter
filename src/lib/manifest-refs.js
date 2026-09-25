@@ -1,8 +1,8 @@
-// Manifest file references: reading the packaged-file paths a manifest declares,
+// Manifest file references: reading the packaged-file paths a manifest.json declares,
 // normalizing a raw reference to an add-on-relative key, and resolving a
 // reference (directory-aware) against the packaged file set. Two readers of
 // deliberately different scope, because their consumers ask opposite questions:
-//   - manifestFileRefs: the paths the SCHEMA declares, walked from the manifest's root
+//   - manifestFileRefs: the paths the SCHEMA declares, walked from the manifest.json's root
 //     types, each with the JSON path to its slot. bundled-files uses it to warn a
 //     referenced file is MISSING - which needs "this string is a file path" to hold
 //     independent of the file existing, so existence cannot be the filter here.
@@ -10,14 +10,14 @@
 //     followed, and one it types loosely (l10n_resources) or not at all is not. Noticing
 //     that a single key lost its format would need a list of the keys to expect - do not
 //     add one.
-//   - manifestStringRefs: EVERY string in the manifest (outside experiment_apis).
+//   - manifestStringRefs: EVERY string in the manifest.json (outside experiment_apis).
 //     reachability seeds from it, keeping only those that resolve to a packaged
 //     file - so existence is the filter, and there is no per-key list to keep.
 // Shared by the bundled-files check, the reachability graph, and the
 // background-page-module check (a <script src> in the background page, via
 // resolveRef).
 //
-// Belongs here: manifestFileRefs and manifestStringRefs (manifest -> paths),
+// Belongs here: manifestFileRefs and manifestStringRefs (manifest.json -> paths),
 // normalizeRef (raw path -> relative key, purely lexical), resolveRef (raw path +
 // referrer -> packaged key, directory-aware), resolveInDir (raw path + explicit base
 // directory -> packaged key; the page-relative variant resolveRef delegates to), and
@@ -35,14 +35,14 @@ import { MANIFEST_ROOT_TYPES, REL_URL_FORMATS } from "../schema/index.js";
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
 
 /**
- * Enumerate add-on-internal file paths the manifest declares, by walking the parsed
- * manifest against its SCHEMA TYPE and taking every leaf the schema marks as an
+ * Enumerate add-on-internal file paths the manifest.json declares, by walking the parsed
+ * manifest.json against its SCHEMA TYPE and taking every leaf the schema marks as an
  * extension-relative path (a `format` in REL_URL_FORMATS, reached through $ref to
  * ExtensionURL / ExtensionFileUrl / IconPath / ImageDataOrExtensionURL / ThemeIcons).
  *
  * The schema is the authority on which keys carry a path, so there is no list to maintain
  * and no key to forget. A hand-written list silently omits keys - miss `icons` and a
- * shipped add-on whose manifest points at an icon it does not package is reported by
+ * shipped add-on whose manifest.json points at an icon it does not package is reported by
  * nothing.
  *
  * `where` is the JSON path to the leaf (["icons","48"]), not a label: one file named in
@@ -93,9 +93,9 @@ export function manifestFileRefs(manifest, schema, opts = {}) {
 }
 
 /**
- * Walk one manifest VALUE against its schema type, pushing `{path, where}` at each
+ * Walk one manifest.json VALUE against its schema type, pushing `{path, where}` at each
  * extension-relative leaf. The cycle guard is per descent path, as in walkType.
- * @param {unknown} value  The manifest value at this position.
+ * @param {unknown} value  The manifest.json value at this position.
  * @param {object|undefined} type  Its schema type.
  * @param {import("../schema/index.js").SchemaIndex} schema
  * @param {(string|number)[]} where  JSON path to this position.
@@ -154,7 +154,7 @@ function walkValue(value, type, schema, where, out, seen) {
       walkValue(child, extra, schema, at, out, seen);
     }
     // The key must MATCH its pattern. walkType applies every pattern type to every
-    // unmatched key because an AST key may be computed and unknowable; a manifest key is
+    // unmatched key because an AST key may be computed and unknowable; a manifest.json key is
     // known. `icons` is patternProperties {"^[1-9]\d*$"} with additionalProperties:false,
     // and Gecko ignores a key like "32x32" - taking it would report a file the runtime
     // never loads as missing.
@@ -167,7 +167,7 @@ function walkValue(value, type, schema, where, out, seen) {
 }
 
 /**
- * Every string value anywhere in the manifest, EXCEPT under experiment_apis
+ * Every string value anywhere in the manifest.json, EXCEPT under experiment_apis
  * (privileged Experiment implementation paths, which must never enter the
  * WebExtension reachability tree). Unlike manifestFileRefs, this makes no
  * assumption about which keys carry file paths - it is the reachability seed
@@ -181,7 +181,7 @@ function walkValue(value, type, schema, where, out, seen) {
  */
 export function manifestStringRefs(manifest) {
   const out = [];
-  // Iterative walk over an explicit stack: a submitted manifest is untrusted, so
+  // Iterative walk over an explicit stack: a submitted manifest.json is untrusted, so
   // recursion could overflow the call stack on a pathologically nested one. Seed
   // order does not matter (the caller dedups into a Set).
   const stack = [manifest];
@@ -204,7 +204,7 @@ export function manifestStringRefs(manifest) {
 }
 
 /**
- * Normalize a manifest/JS file reference to an add-on-relative key.
+ * Normalize a manifest.json/JS file reference to an add-on-relative key.
  *
  * A backslash is NOT folded to a slash. These paths are resolved by the platform as URLs
  * under moz-extension:, where a backslash separates nothing - so "icons\\16.png" does not
@@ -223,7 +223,7 @@ export function normalizeRef(p) {
 
 /**
  * Resolve a reference to an add-on-relative key, or null if it is not a packaged
- * file. `fromFile` null (manifest/getURL/injected) or a leading "/" means
+ * file. `fromFile` null (manifest.json/getURL/injected) or a leading "/" means
  * extension-root-relative. Otherwise it is relative to `fromFile`'s directory.
  * @param {Map<string, Buffer>} files
  * @param {string|null} fromFile
@@ -277,7 +277,7 @@ function normalizeRefInDir(dir, raw) {
 
 /**
  * Resolve a reference against an explicit base DIRECTORY, or null if it is not a
- * packaged file. `dir` null means extension-root-relative (as for the manifest /
+ * packaged file. `dir` null means extension-root-relative (as for the manifest.json /
  * getURL); `dir === ""` is the add-on root; any other value is that directory. A
  * leading "/" in `raw` is always root-relative. Used (via script-hosts.js) to
  * resolve a page-relative loader path against the calling script's HOST PAGE

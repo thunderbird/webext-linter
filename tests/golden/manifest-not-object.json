@@ -109,7 +109,7 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "Invalid manifest.json: manifest.json is not a valid JSON object.\nRead more: https://webextension-api.thunderbird.net/."
+      "message": "The included manifest.json is not a valid WebExtension manifest file.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]
 }

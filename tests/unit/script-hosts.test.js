@@ -13,7 +13,7 @@ import {
 } from "../../src/lib/script-hosts.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 
-// Build a review ctx from a {path: content} map + manifest object.
+// Build a review ctx from a {path: content} map + manifest.json object.
 function ctxFrom(files, manifest) {
   const addon = {
     files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
@@ -117,7 +117,7 @@ test("an action popup page hosts its script at the popup dir", () => {
   assert.deepEqual(dirs(hd, "ui/popup.js"), ["ui"]);
 });
 
-// A page that is NOT in any manifest key - here opened at runtime via
+// A page that is NOT in any manifest.json key - here opened at runtime via
 // tabs.create - is still a host context, because being included by an HTML page
 // (not how the page is opened) is what lets a script run in it. So its script's
 // page-relative executeScript path resolves under the page dir, not root.

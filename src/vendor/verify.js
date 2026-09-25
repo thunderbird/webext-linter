@@ -211,12 +211,12 @@ export async function verifyVendorDeclarations(
   }
   // Which entries name one npm package@version, so it is fetched and audited once
   // however many files it covers. Computed up front, but each group is RESOLVED
-  // lazily, at the first entry that needs it - so the walk stays in manifest order
+  // lazily, at the first entry that needs it - so the walk stays in entry order
   // and vendor.results, vendor.vulnerabilities and the feed all keep the order they
   // had when every entry stood alone.
-  const groups = groupNpmSources(vendor.manifest);
+  const groups = groupNpmSources(vendor.entries);
   // VENDOR entries known trusted + pinned (the rest were settled offline).
-  for (const entry of vendor.manifest) {
+  for (const entry of vendor.entries) {
     if (!entry.trusted || !entry.pinned) {
       continue;
     }
@@ -477,7 +477,7 @@ async function auditLockedPackages(vendor, net) {
  * this add-on does not declare" would be false. Directness is read from the lock
  * itself (LockedPackage.direct), because the root package.json parse misses the
  * forms a lock still records: an optionalDependency, a workspace member's own
- * manifest, and a version the two files disagree about. Separately,
+ * package file, and a version the two files disagree about. Separately,
  * an exact name@version any earlier audit already recorded - an npm-sourced VENDOR
  * entry, a policy-blocked library - would simply be reported twice.
  * @param {VendorStore} vendor
@@ -1004,7 +1004,7 @@ function worseSeverity(a, b) {
  * @typedef {object} NpmGroup  The trusted+pinned VENDOR file entries whose declared
  *   sources all resolve to one npm package@version.
  * @property {string} pkg @property {string} version
- * @property {object[]} entries  In manifest order.
+ * @property {object[]} entries  In entry order.
  * @property {?{byPath: Map<string, string>}} state  The package's per-path hashes,
  *   or null for "verify these one file at a time".
  * @property {boolean} resolved  resolveGroup runs exactly once per group.
@@ -1015,12 +1015,12 @@ function worseSeverity(a, b) {
  * once. Only FILE entries on a trusted, pinned, non-tarball npm source: a folder
  * declaration is verified as a folder, a declared .tgz already fetches the package
  * whole, and a github source has no package to group by.
- * @param {object[]} manifest  vendor.manifest.
+ * @param {object[]} entries  vendor.entries.
  * @returns {Map<string, NpmGroup>}  Keyed `<pkg>@<version>`.
  */
-function groupNpmSources(manifest) {
+function groupNpmSources(entries) {
   const groups = new Map();
-  for (const entry of manifest) {
+  for (const entry of entries) {
     const key = groupKey(entry);
     if (!key) {
       continue;
@@ -1041,7 +1041,7 @@ function groupNpmSources(manifest) {
 
 /**
  * The group an entry belongs to, or null when it is verified on its own terms.
- * @param {object} entry  A vendor.manifest entry.
+ * @param {object} entry  A vendor.entries entry.
  * @returns {?string}
  */
 function groupKey(entry) {

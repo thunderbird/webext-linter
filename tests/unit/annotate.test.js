@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 
 import { applySchemaAnnotations } from "../../src/schema/annotate.js";
 
-// A schema type whose enum values live in a choice (like manifest.OptionalPermission):
+// A schema type whose enum values live in a choice (like manifest.json.OptionalPermission):
 // a $ref choice plus a string-enum choice.
 const files = () => ({
   "manifest.json": [
