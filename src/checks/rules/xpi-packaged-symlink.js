@@ -8,7 +8,7 @@
 // Both shapes an add-on can arrive in are covered, because loadAddon records both
 // (addon.symlinks): a real link on disk when the add-on is handed over as a folder, and an
 // entry the archive STORED as a link when it is packed. The packed one never reaches disk -
-// extractZip records it and writes nothing, so the corpus holds no file whose bytes are a
+// extractZip records it and writes nothing, so the store holds no file whose bytes are a
 // path - which is exactly why the record is the only thing left to report it by.
 //
 // The cause rides as the finding's hint, so one entry collapses every link and each locus

@@ -131,7 +131,7 @@ function parsePackageFile(buf) {
 }
 
 /**
- * The SUBMISSION's own corpus - the frame a package file and a lock are written in.
+ * The SUBMISSION's own files - the frame a package file and a lock are written in.
  *
  * For a built XPI it is the artifact itself. For a source archive it is the whole
  * --sca-root: `addon.files` there is a VIEW that gives up every manifest.json, so only

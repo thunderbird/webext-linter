@@ -44,7 +44,7 @@ const shippedRecord = {
 };
 
 // The builders never parse: a REVIEWABLE add-on's sources must arrive already through the
-// extraction pass, or the builder throws (an empty corpus would mean "no code" and pass every
+// extraction pass, or the builder throws (no files would mean "no code" and pass every
 // code check vacuously). The pipeline parses in Phase 2/3; a test not about the sources
 // satisfies the contract with this.
 const parsed = (addon) => {
@@ -78,7 +78,7 @@ test("buildXpiCtx has no sources when the pipeline parsed none (a rejected Exper
   assert.deepEqual(xpiCtx.apiUsages, []);
 });
 
-// The fail-open this closes: an empty corpus MEANS "this add-on has no code", so every code
+// The fail-open this closes: no files MEANS "this add-on has no code", so every code
 // check would pass vacuously and the review would report a clean add-on whose JavaScript it
 // never read - exit 1, no crash, no warning. Only a rejected Experiment may have no sources.
 test("buildXpiCtx throws when a reviewable built XPI arrives with no parsed sources", () => {
@@ -108,7 +108,7 @@ test("buildXpiCtx carries the XPI's own sources; isShippedView only in SCA", () 
   // The two SCA paths reach a check AS GIVEN, absolute - never a prefix derived from them.
   // The --sca-* paths are NOT on the ctx: where the source and the Experiment sit is
   // settled once, when the archive is split into views (src/addon/load.js scaViews), and a
-  // check reads the corpus it was routed rather than a path on disk. They stay on `meta`,
+  // check reads the files it was routed rather than a path on disk. They stay on `meta`,
   // for the report.
   const withPaths = buildXpiCtx(
     xpi,
@@ -128,10 +128,10 @@ test("buildXpiCtx carries the XPI's own sources; isShippedView only in SCA", () 
 // so the WebExtension API/permission/eval checks never false-positive on Services or
 // ChromeUtils - but a check that reviews a file for what it IS (minified, obfuscated, a
 // known library) must still see it: privileged code shipped unreadable is worse, not
-// better. Such a check reads ctx.artifact.files and ctx.artifact.experiment as one corpus, which
+// better. Such a check reads ctx.artifact.files and ctx.artifact.experiment as one set of files, us, which
 // is only possible because both are allowlisted and, for an Experiment inside the add-on,
 // keyed in the same frame.
-test("a check can merge the source and Experiment corpora off ctx.artifact", () => {
+test("a check can merge the source and Experiment views off ctx.artifact", () => {
   const source = addonWith({ "app.js": "export const x = 1;" });
   const experiment = new Map([
     ["experiment/exp.js", Buffer.from("ChromeUtils.import('x');")],
@@ -144,10 +144,10 @@ test("a check can merge the source and Experiment corpora off ctx.artifact", () 
   // Apart: the WebExtension checks see the add-on's code and nothing privileged.
   assert.ok(sourceCtx.artifact.files.has("app.js"));
   assert.ok(!sourceCtx.artifact.files.has("experiment/exp.js"));
-  // Reachable by identity, so a check that needs the privileged corpus reads the real one.
+  // Reachable by identity, so a check that needs the privileged files reads the real one.
   assert.equal(sourceCtx.artifact.experiment, experiment);
 
-  // Together: the corpus a what-is-this-file check reviews.
+  // Together: the files a what-is-this-file check reviews.
   const merged = new Map([
     ...sourceCtx.artifact.files,
     ...sourceCtx.artifact.experiment,
@@ -155,7 +155,7 @@ test("a check can merge the source and Experiment corpora off ctx.artifact", () 
   assert.deepEqual(
     [...merged.keys()].sort(),
     ["app.js", "experiment/exp.js"],
-    "both artifacts' files, one corpus"
+    "both artifacts' files, read as one"
   );
   assert.match(merged.get("experiment/exp.js").toString("utf8"), /ChromeUtils/);
 
@@ -170,7 +170,7 @@ test("a check can merge the source and Experiment corpora off ctx.artifact", () 
 });
 
 // buildScaCtxs.scaCtx routes the SCA archive onto ctx.artifact (the input: sca seam),
-// shares the review env, and empties the source-only jsSources/apiUsages. The corpus is
+// shares the review env, and empties the source-only jsSources/apiUsages. The artifact is
 // linked like every other ctx.artifact, so a build check can never read
 // ctx.artifact.manifest against another artifact's files.
 test("buildScaCtxs.scaCtx puts the archive on ctx.artifact, without its sources", () => {
@@ -213,7 +213,7 @@ test("buildScaCtxs.scaCtx puts the archive on ctx.artifact, without its sources"
   assert.equal(scaCtx.schema, env.schema); // shared review env
   assert.equal(scaCtx.manifest, env.manifest); // shipped manifest stays for framing
 
-  // An empty corpus is still a valid, readable ctx - an input: sca check skips cleanly on it
+  // An artifact with no files is still a valid, readable ctx - an input: sca check skips cleanly on it
   // rather than crashing.
   const empty = buildScaCtxs(
     { ...source, files: new Map() },
@@ -224,7 +224,7 @@ test("buildScaCtxs.scaCtx puts the archive on ctx.artifact, without its sources"
 });
 
 // Symmetric to buildXpiCtx: the readable source MUST arrive parsed (the pipeline parses it in
-// Phase 3). An empty corpus would review a clean add-on whose source was never read.
+// Phase 3). No files would review a clean add-on whose source was never read.
 test("buildScaCtxs throws when the source arrives with no parsed sources", () => {
   const source = addonWith({ "src/app.js": "eval('danger');" });
   assert.throws(
@@ -257,11 +257,11 @@ test("ctx.artifact is the loaded artifact itself; the shipped answers come from 
   assert.equal(xpiCtx.options.allowExperiments, true); // a real option stays
 });
 
-// A manifest.json check's verdict comes from the RECORD, not from the corpus it is routed to:
+// A manifest.json check's verdict comes from the RECORD, not from the files it is routed to:
 // ctx.manifest is the shipped answer, projected from the review env, so the check reads the
-// same thing whichever artifact the review target is. That is why these checks need no corpus
+// same thing whichever artifact the review target is. That is why these checks need no files
 // of their own - they ask ctx.manifest and nothing else.
-test("a manifest.json check reads the record, not the routed corpus", async () => {
+test("a manifest.json check reads the record, not the routed files", async () => {
   const xpi = addonWith({ "a.js": "export const x = 1;" });
   const env = envWith({ manifest: null }); // a missing manifest is what manifest-missing flags
   const xpiCtx = buildXpiCtx(xpi, parsed(xpi), env);
@@ -271,7 +271,7 @@ test("a manifest.json check reads the record, not the routed corpus", async () =
   );
   const check = (await import("../../src/checks/rules/manifest-missing.js"))
     .default;
-  // The corpus is non-empty and holds no manifest.json either way: the finding comes from
+  // The artifact has files and holds no manifest.json either way: the finding comes from
   // ctx.manifest being null, which is the shipped artifact's answer.
   assert.ok(check.run(xpiCtx).findings.length > 0);
 });

@@ -81,13 +81,13 @@ export function siblingsOf(ctx) {
  */
 export function withManifest(ctx) {
   const addon = ctx?.artifact ?? {};
-  // A loaded artifact's record is read FROM the corpus, so its text IS those bytes and a
+  // A loaded artifact's record is read FROM its files, so its text IS those bytes and a
   // line a finding carries is a line of the file the reviewer opens. A fixture that lets
   // the two drift asserts a line the submission does not have, and passes by coincidence.
   const bytes = addon.files?.get?.("manifest.json")?.toString("utf8");
   if (bytes !== undefined && addon.manifest && addon.manifest.text !== bytes) {
     throw new Error(
-      "manifest record text differs from the corpus manifest.json - pass those bytes " +
+      "manifest record text differs from the artifact's manifest.json - pass those bytes " +
         "as manifestOf()'s second argument"
     );
   }

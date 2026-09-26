@@ -7,7 +7,7 @@
 // on a leading BOM while every tool that writes and reads these files does not, so a
 // perfectly good file read as absent - silently, because "absent" is each reader's empty
 // case. That defect shipped four separate times in four separate readers (an Experiment
-// schema, a build corpus package file, an install-hook package file, a package-manager
+// schema, a build package file, an install-hook package file, a package-manager
 // fingerprint), each time invisible to a green suite. One parser cannot drift from itself.
 //
 // Belongs here: turning bytes or text into a value (parseJson), the BOM handling that needs

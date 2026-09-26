@@ -14,7 +14,7 @@
 // asked for: this reads the one root key and never scans for others.
 //
 // Belongs here: flagging .npmrc registry settings. Does NOT belong here: which files are
-// in the corpus (-> src/addon/load.js scaViews) or the wording (-> the registry).
+// in the source view (-> src/addon/load.js scaViews) or the wording (-> the registry).
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";

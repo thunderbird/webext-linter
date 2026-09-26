@@ -1,6 +1,6 @@
 // A packaged file the add-on LOADS (declared in the manifest.json, or via a <script src>) whose
 // suffix is in no recognized type - the browser executes/uses it, but no check could classify
-// it, so it went unreviewed. The backstop that makes the JS-corpus suffix list safe: an
+// it, so it went unreviewed. The backstop that makes the JS suffix list safe: an
 // un-enumerated suffix stops being a silent gap and becomes a loud finding.
 //
 // Belongs here: turning reachability's precomputed unrecognizedRefs into findings. Does NOT

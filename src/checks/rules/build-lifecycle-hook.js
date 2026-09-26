@@ -12,7 +12,7 @@
 //
 // Belongs here: reading the install-hook scripts and escalating each. Does NOT
 // belong here: parsing package.json for anything else (build "scripts" reachability is
-// src/build/corpus.js), or the wording (-> assets/registry.yaml).
+// src/build/collect.js), or the wording (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
 import { manifestTokenLine } from "../../lib/util.js";

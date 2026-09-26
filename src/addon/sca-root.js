@@ -2,7 +2,7 @@
 //
 // A source archive's root is the folder the build runs in: the one holding package.json and
 // the lock the reviewer installs from. Everything downstream reads those from the TOP LEVEL
-// of --sca-root and nowhere else (src/build/corpus.js, src/vendor/locks.js), which is what
+// of --sca-root and nowhere else (src/build/collect.js, src/vendor/locks.js), which is what
 // makes "the root" mean something. This decides which folder that is. It does not soften
 // that rule - it runs before it.
 //
@@ -22,7 +22,7 @@
 //
 // Belongs here: which folder the review treats as --sca-root, and keeping
 // --sca-exp-source inside it. Does NOT belong here: what is read once it is settled (the build
-// corpus, the lock), the keyspace the source view is built in (scaViews in ./load.js), or
+// files, the lock), the keyspace the source view is built in (scaViews in ./load.js), or
 // how the root is reported (src/report/format.js).
 
 import fs from "node:fs";

@@ -189,7 +189,7 @@ export function renderManualItems(refs, registry, mode) {
       // rather than from the already-rendered prose.
       data: ref.data ?? null,
       // Carried so the text report can label the item's file:line by artifact
-      // ([XPI]/[SCA]) via ruleInputs - the corpus the owning check acts on. Without
+      // ([XPI]/[SCA]) via ruleInputs - the files the owning check acts on. Without
       // it a non-manifest.json manual item has no ruleId and defaults to [SCA].
       ruleId: ref.ruleId,
       // Which of the two extended sections this is listed under, from the reader the

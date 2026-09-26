@@ -8,20 +8,33 @@
 // A VIEW is a store plus the keys it holds. It carries no bytes and no entries of its own,
 // and it does not re-key: every view spells a file the way the SUBMISSION does, because that
 // is the one frame in which every part of a submission can be named. A file beside the
-// add-on has no add-on-relative spelling, so a corpus keyed against the add-on could never
+// add-on has no add-on-relative spelling, so a key set written against the add-on could never
 // hold one.
+//
+// So there are three ways to hold a set of the submission's files, and which one a reader is
+// given says what it can do with them:
+//
+//   FileStore  every key the artifact has, and the bytes behind them, read on demand.
+//   FileView   a subset of one store's keys, reading its bytes through that store.
+//   PathList   paths and nothing else - an ANSWER about files rather than a store of them.
+//
+// A PathList needs no construct of its own: an array of paths already cannot read bytes, so
+// the type is the whole of it. It is deliberately not called a FileList - it holds no file
+// content, and its members may name directories (a recorded node_modules) as readily as
+// files.
 //
 // A path written INSIDE a declaration - a VENDOR entry naming the file it covers - is
 // relative to the file that declares it, so it is joined at the READ, against that file's
-// own directory. Never baked into the keys, which is what keeps the corpus able to name the
+// own directory. Never baked into the keys, which is what keeps a key set able to name the
 // whole submission.
 //
-// Both present the read side of the Map surface the review uses (`get`/`has`/`keys`/`size`
-// and iteration), so a corpus, a view and a plain Map are interchangeable to a reader - which
-// is why the unit tests can still hand a check a hand-built Map.
+// The store and the view both present the read side of the Map surface the review uses
+// (`get`/`has`/`keys`/`size` and iteration), so a store, a view and a plain Map are
+// interchangeable to a reader - which is why the unit tests can still hand a check a
+// hand-built Map.
 //
-// Belongs here: the store, the view, the lazy read behind both, and withExperiment - the
-// one place that says what "everything the add-on ships" means. Does NOT belong here:
+// Belongs here: the store, the view, the lazy read behind both, the PathList type, and
+// withExperiment - the one place that says what "everything the add-on ships" means. Does NOT belong here:
 // which files exist (-> ./load.js walks the tree), how an archive is split into views
 // (-> ./load.js scaViews), or what any of them MEAN to a check (-> src/checks/*).
 
@@ -29,11 +42,20 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
+ * Posix paths into the SUBMISSION, and no bytes: what a load RECORDED without reading (a
+ * node_modules it refused to walk, a committed archive, every directory it entered) or what
+ * an analysis COLLECTED (the files a build reaches). The submission's frame, like every
+ * key set here - a list of absolute paths is something else and says so
+ * (src/addon/sca-root.js).
+ * @typedef {string[]} PathList
+ */
+
+/**
  * A key set over files on disk, read on demand.
  *
- * READ-ONLY, like every corpus: a store is the artifact as it arrived. A corpus that reviews
- * less than the artifact holds - one part of a partitioned archive - is a VIEW, which is
- * given the key set it holds when it is built.
+ * READ-ONLY, like every key set here: a store is the artifact as it arrived. A set of the
+ * submission's files that reviews less than the artifact holds - one part of a partitioned
+ * archive - is a VIEW, which is given the keys it holds when it is built.
  *
  * The cache is unbounded on purpose: a review reads most of what it enumerates (it parses,
  * hashes and classifies), so evicting would mean reading the same file twice for no saving.
@@ -149,12 +171,12 @@ export function fileView(store, { keys }) {
  * asking about every file the add-on ships, and privileged code shipped unreadable is worse
  * than ordinary code shipped unreadable, not exempt. Those passes read this.
  *
- * Merging is always safe because the two corpora are disjoint by construction: the archive
+ * Merging is always safe because the two views are disjoint by construction: the archive
  * partition put every file in exactly one of them (src/addon/load.js scaViews), so nothing
  * is shadowed and nothing is counted twice. Where the developer PUT the Experiment folder -
  * inside the add-on or beside it - changes only how its files are spelled, never whether
  * they are reviewed. A built XPI has no separate Experiment view at all (it ships its
- * implementation like any other file), so this is its own corpus, unchanged.
+ * implementation like any other file), so this hands back its files unchanged.
  * @param {object} addon
  * @returns {object}  The Map surface over both.
  */

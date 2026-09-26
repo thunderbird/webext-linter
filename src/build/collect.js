@@ -131,7 +131,7 @@ const SCRIPT_RUNNERS = new Set([
 ]);
 
 /** Opaque, non-npm build orchestrators the linter cannot follow: their presence in a
- *  script means the build corpus is incomplete -> human review. */
+ *  script means the trace is incomplete -> human review. */
 const OPAQUE_TOOLS = new Set([
   "make",
   "gmake",
@@ -179,15 +179,17 @@ const PM_SUBCOMMANDS = new Set([
 ]);
 
 /**
- * @param {{files: Map<string, Buffer>}} build  The build files (ctx.artifact in build ctx).
- * @returns {{corpus: string[], resolved: string[], unresolved: {kind: string, detail: string}[]}}
- *   corpus = the collected build file paths; resolved = recognized build-tool names;
- *   unresolved = build steps the linter could not statically bound (force human review).
+ * @param {{files: object}} build  The submission's files, as the view a review reads them
+ *   through (src/addon/store.js). Only the paths reached from the root package.json come
+ *   back, so this narrows a FileView into a PathList.
+ * @returns {{buildFiles: import("../addon/store.js").PathList,
+ *   unresolved: {kind: string, detail: string}[]}}  buildFiles = the paths the build
+ *   reaches; unresolved = build steps the linter could not statically bound (force human
+ *   review).
  */
-export function selectBuildCorpus(build) {
+export function collectBuildFiles(build) {
   const files = build?.files ?? new Map();
   const keep = new Set();
-  const resolved = new Set();
   const unresolved = [];
   const seenUnresolved = new Set();
   const flag = (kind, detail) => {
@@ -308,7 +310,6 @@ export function selectBuildCorpus(build) {
       return;
     }
     if (BUILD_TOOLS.has(cmd)) {
-      resolved.add(cmd);
       for (const config of BUILD_TOOLS.get(cmd)) {
         if (files.has(config)) {
           keep.add(config);
@@ -329,7 +330,7 @@ export function selectBuildCorpus(build) {
       return;
     }
     // An opaque, non-npm build orchestrator (make/gradle/...) cannot be followed, so the
-    // build corpus is incomplete -> flag. Any OTHER unrecognized command (an npm CLI, a
+    // trace is incomplete -> flag. Any OTHER unrecognized command (an npm CLI, a
     // custom bin from a declared dependency) is left alone: it runs from the declared
     // dependencies, and the invoking script is in package.json either way.
     if (OPAQUE_TOOLS.has(cmd)) {
@@ -365,11 +366,7 @@ export function selectBuildCorpus(build) {
     runScript(name, 0);
   }
 
-  return {
-    corpus: [...keep],
-    resolved: [...resolved],
-    unresolved,
-  };
+  return { buildFiles: [...keep], unresolved };
 }
 
 /** Split a script command on shell control operators (a shallow tokenizer, not a

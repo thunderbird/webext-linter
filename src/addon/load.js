@@ -1,8 +1,8 @@
 // Walks a submitted artifact - an .xpi/.zip archive or an already-unpacked directory - into
-// the Addon model: a file store, plus the corpora a review reads it through. One entry point
+// the Addon model: a file store, plus the views a review reads it through. One entry point
 // per kind: loadAddon for the built add-on, loadSourceArchive for the submitted source. It
 // stays on disk for the whole review, so the store keeps keys and reads bytes when something
-// asks (./corpus.js); nothing is held twice. What the add-on DECLARES is a separate question,
+// asks (./store.js); nothing is held twice. What the add-on DECLARES is a separate question,
 // asked once for the shipped artifact (readWebExtManifest).
 //
 // A packed archive is read exactly once, by being extracted to disk (extractZip) and then
@@ -10,10 +10,10 @@
 // caller's to choose (loadAddon's `extractTo`): the review names it once, in meta.xpiRoot,
 // and hands the SAME folder to the reviewer and to this loader.
 //
-// It also PARTITIONS a submitted SCA archive into the two corpora a source review reads - the
+// It also PARTITIONS a submitted SCA archive into the two views a source review reads - the
 // add-on code and the Experiment implementation - as views over that one store (scaViews). One
 // pass and one set of prefixes, so no two of them can disagree about where a file went, and ONE
-// frame: every corpus is keyed against the submission, which is the only frame that can name
+// frame: every view is keyed against the submission, which is the only frame that can name
 // all of it.
 //
 // Belongs here: walking either artifact into the Addon model, extracting a packed one to disk
@@ -22,8 +22,8 @@
 //
 // Does NOT belong here: reviewing the add-on - all verdicts live in the checks
 // (src/checks/*). Which of the build candidates the build actually RUNS is a
-// collection policy, seeded from package.json (-> src/build/corpus.js
-// selectBuildCorpus). Enumerating which JS sources to scan is src/addon/sources.js.
+// collection policy, seeded from package.json (-> src/build/collect.js
+// collectBuildFiles). Enumerating which JS sources to scan is src/addon/sources.js.
 // Parsing CSS/HTML/CSP content is src/scan/*. Schema files load via
 // src/schema/load.js. Choosing a non-colliding destination is
 // src/util/dest.js, shared with the SCA source archive.
@@ -38,7 +38,7 @@ import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
 import { displayLine } from "../util/text.js";
 import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
 import { extractionDestination } from "../util/dest.js";
-import { FileStore, fileView } from "./corpus.js";
+import { FileStore, fileView } from "./store.js";
 import { SYMLINK_CAUSE } from "../lib/enum.js";
 
 /**
@@ -128,23 +128,23 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  * honest value for a source review, whose files are a SUBTREE of an archive: no single path
  * names that, and for a zip root none exists.
  * @typedef {object} Addon
- * @property {object} files  The artifact's own corpus - what this artifact's review READS -
+ * @property {FileView} files  The artifact's own files - what its review READS -
  *   keyed by a path relative to the SUBMISSION root (posix "/"). One frame for every part,
- *   because a file beside the add-on has no add-on-relative spelling and a corpus keyed there
- *   could not hold one. Always a VIEW (./corpus.js fileView), whatever the artifact: for a
+ *   because a file beside the add-on has no add-on-relative spelling and a key set written there
+ *   could not hold one. Always a VIEW (./store.js fileView), whatever the artifact: for a
  *   built XPI it holds every key the store has, because every file it holds is a file it
  *   ships; for a source archive it holds everything but the Experiment implementation, which
- *   is its own corpus (scaViews). One shape either way, so a reader never has to know which
+ *   is its own view (scaViews). One shape either way, so a reader never has to know which
  *   kind of artifact produced it.
  *
- *   A manifest.json is a file the submission contains and is in this corpus like any other.
+ *   A manifest.json is a file the submission contains and is held here like any other.
  *   It is not an ANSWER: what the add-on's manifest.json says is ctx.manifest, the shipped
  *   record (src/checks/context.js), which is null in SCA because a source archive is loaded
  *   without reading one (loadSourceArchive). So a check asks ctx.manifest and never the
- *   corpus, in either mode.
- * @property {object} [store]  The artifact's COMPLETE corpus - what the submission CONTAINS -
+ *   files, in either mode.
+ * @property {FileStore} [store]  Everything the artifact holds - what the submission CONTAINS -
  *   keyed relative to the root the reviewer was given: everything it holds, exactly as it
- *   arrived, and the FileStore every view resolves its bytes through (./corpus.js). For a
+ *   arrived, and the FileStore every view resolves its bytes through (./store.js). For a
  *   built XPI that is the whole package, which `files` reviews entire. For a source archive it
  *   is the whole --sca-root, the frame the package file and the lock are read in and the frame
  *   a reviewer resolves a reported path against, while `files` there gives up the Experiment
@@ -166,7 +166,7 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  *   only source: a packed archive names nothing here, since it is extracted with no
  *   symlink of its own (extractZip writes bytes, never a link) and a name extractZip
  *   will not take refuses the whole archive instead. This is the FEED side of a skipped
- *   link, saying why bytes are missing from the corpus; whether the link is also a
+ *   link, saying why bytes are missing from the store; whether the link is also a
  *   finding is a separate question, answered from `symlinks` by the checks. The loader
  *   collects them; the pipeline narrates them under "Reading add-on", so a pre-banner
  *   sizing load prints nothing before the Setup banner. Set by loadAddon only.
@@ -178,7 +178,7 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  *   target inside the submission root, `outside` one beyond it, `broken` one that
  *   resolves to nothing, and `entry` a packed archive that stored the file AS a link,
  *   which is the one cause with no link on disk: extractZip records it and writes
- *   nothing, so the corpus never holds a file whose bytes are a path. Where an installed
+ *   nothing, so the store never holds a file whose bytes are a path. Where an installed
  *   tree is recorded rather than read, a link named node_modules is that tree and is not
  *   here (see nodeModules); everywhere else every link is. Set by loadAddon only.
  * @property {string[]} [directories]  Posix paths of every directory the walk entered;
@@ -232,7 +232,7 @@ export function loadAddon(source, extractTo, { recordInstalledTrees } = {}) {
     symlinks = [...packed.symlinks, ...unpackedDir.symlinks];
   }
   // An artifact loaded on its own has nothing to hold back - every file it holds is a file
-  // it ships - so its corpus is a view over every key the store has. It says that by
+  // it ships - so its `files` is a view over every key the store has. It says that by
   // HOLDING all of them rather than by being the store: one shape for every artifact, so a
   // reader of `files` never has to know which kind produced it. A SOURCE archive narrows
   // the same field later (scaViews).
@@ -379,15 +379,15 @@ export function hasParentSegment(value) {
 
 /**
  * PARTITION a source code archive into the two parts a source review reads, as views
- * over the one store the archive was walked into (./corpus.js). Every file is held once,
+ * over the one store the archive was walked into (./store.js). Every file is held once,
  * by the store; a view adds the key set it holds. Neither view re-keys: both spell a file
  * the way the submission does.
  *
  *   source      everything the archive holds, MINUS the Experiment subtree. The whole of
  *               it, because a build script may put any file anywhere: nothing in the
- *               archive can be assumed unused, so the archive IS the review corpus and
+ *               archive can be assumed unused, so the archive IS what the review reads and
  *               there is no narrower add-on subtree to carve out of it. It is also what
- *               the build trace runs over (src/build/corpus.js selectBuildCorpus, via
+ *               the build trace runs over (src/build/collect.js collectBuildFiles, via
  *               analyzeBuild), which narrows it to the files reached from the root
  *               package.json. An installed dependency tree is in neither: loadAddon records
  *               the directory paths for committed-node-modules and reads none of it.
@@ -395,7 +395,7 @@ export function hasParentSegment(value) {
  *               the source or beside it. Privileged, non-WebExtension code: it is recorded
  *               here ONCE so nothing downstream has to re-derive where it went.
  *
- * The two are disjoint, and the source corpus serves both the code review and the build
+ * The two are disjoint, and the source view serves both the code review and the build
  * trace: the tooling is intermingled with the code, so there is no line to draw between
  * them. One pass, one set of prefixes, so no two readers can disagree about where a file
  * went.
@@ -407,12 +407,12 @@ export function hasParentSegment(value) {
  * Withholding the FILE would say instead that the submission does not contain it.
  *
  * The source and the experiment are keyed alike whenever the Experiment sits inside the
- * add-on, so a check that must review the privileged code too reads the two as one corpus
+ * add-on, so a check that must review the privileged code too reads the two as one set of files
  * (`source.experiment` carries it onto the review addon for exactly that).
  * @param {Addon} archive  The scaRoot archive, loaded ONCE (loadSourceArchive).
  * @param {{scaRoot: string, scaExpSource?: string}} where  Absolute paths, resolved by the
  *   arg-array reader (src/cli.js). scaExpSource may sit anywhere under the root.
- * @returns {Addon}  The SAME archive, now carrying its two corpora. Not a new object:
+ * @returns {Addon}  The SAME archive, now carrying its two views. Not a new object:
  *   the store and the recorded path lists already describe this submission, and copying
  *   them onto parts is how they came to disagree.
  */
@@ -471,7 +471,7 @@ function unreadableArchiveError(zipPath) {
  * what lands on disk is never anything other than the file it claims to be.
  *
  * The mode is still READ, for the one claim worth recording: an entry stored as a link
- * holds a path where a file's bytes belong, so writing it would put a file in the corpus
+ * holds a path where a file's bytes belong, so writing it would put a file in the store
  * whose whole content is the name of another one. It is recorded and dropped instead.
  *
  * destDir is always this call's own fresh destination (the caller computed it, or
@@ -531,7 +531,7 @@ function extractZip(zipPath, destDir, recordInstalledTrees) {
         }
       }
       // An entry the archive stored AS a link carries a target path where a file's bytes
-      // belong. Record it and skip BEFORE getData(), so the corpus never holds a file
+      // belong. Record it and skip BEFORE getData(), so the store never holds a file
       // whose entire content is the name of another one.
       if (isStoredLink(entry)) {
         symlinks.push({ path: name, cause: SYMLINK_CAUSE.ENTRY });
@@ -593,7 +593,7 @@ function isStoredLink(entry) {
  * @returns {{store: FileStore, nodeModules: string[], archives: string[],
  *   skipped: string[], symlinks: {path: string, cause: object}[],
  *   directories: string[]}}  The walk's one store, plus the paths it recorded without
- *   reading. A corpus over it is the caller's to build (loadAddon, scaViews).
+ *   reading. A view over it is the caller's to build (loadAddon, scaViews).
  */
 function readDir(dir, recordInstalledTrees) {
   const keys = [];
@@ -653,7 +653,7 @@ function readDir(dir, recordInstalledTrees) {
         }
         // Bound the total unpacked size, matching the archive path's zip-bomb cap. The
         // size is the file's own, read from the directory entry: the bytes stay on disk
-        // and the store reads them if something asks (./corpus.js).
+        // and the store reads them if something asks (./store.js).
         unpacked += fs.statSync(full).size;
         if (unpacked > ADDON_MAX_UNPACKED_BYTES) {
           throw addonTooLargeError();

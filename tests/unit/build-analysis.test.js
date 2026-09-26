@@ -26,14 +26,14 @@ test("analyzeBuild anchors at package.json when the submission ships one", () =>
   assert.equal(out.anchor, "package.json");
 });
 
-// No entry point to follow means no corpus and no file to point at, so the record
+// No entry point to follow means no build files and none to point at, so the record
 // anchors nowhere - which is what makes the escalation carry no locus.
 test("analyzeBuild anchors nowhere when there is no entry point", () => {
   assert.equal(analyzeBuild({ build: build({}) }).anchor, null);
   assert.equal(analyzeBuild({ build: undefined }).anchor, null);
 });
 
-// The deterministic signals selectBuildCorpus could not follow ride along, so the
+// The deterministic signals collectBuildFiles could not follow ride along, so the
 // escalation can name them. They are the only detail the record carries.
 test("analyzeBuild carries the unresolved build steps through", () => {
   const out = analyzeBuild({

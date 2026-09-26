@@ -379,7 +379,7 @@ function compute(ctx) {
   // The SCA REVIEW SOURCE has no usable tree: the manifest.json's entry points name BUILT
   // paths that don't exist in the readable source layout, so the closure would be
   // empty and every WebExtension code check would review nothing. There we instead
-  // review EVERY file the source corpus holds. That corpus is already the add-on's own
+  // review EVERY file the source view holds. That view is already the add-on's own
   // code and nothing else: the archive partition put the Experiment implementation
   // (--sca-exp-source) in its own view, wherever the developer placed it, so privileged
   // Services/ChromeUtils code never reaches these checks and there is no subtree left to
@@ -480,7 +480,7 @@ function refersTo(line, tokenRe, fromFile, target, files) {
 function makeMentions(files) {
   // Documentation files are not code: a README image link is not a runtime load, so
   // it must not make a declared resource look mentioned. (The manifest.json is not here
-  // to exclude - the loader keeps it out of the corpus entirely, see addon/load.js.)
+  // to exclude - the loader keeps it out of the store entirely, see addon/load.js.)
   /** @type {Map<string, string[]>} */
   const lines = new Map();
   for (const [file, buf] of files) {

@@ -46,7 +46,7 @@ export default {
 
     // The page's external scripts are .js files the pass already parsed; read the
     // precomputed module-syntax verdict (moduleSyntaxOf). A CHECK NEVER PARSES: a <script src>
-    // target NOT in the corpus is a non-JS suffix executed as code - unrecognized-file-type
+    // target NOT among the files is a non-JS suffix executed as code - unrecognized-file-type
     // reports that (more usefully than a module-syntax nuance), so here it is simply not a
     // classic .js script to flag.
     const sources = new Map((ctx.jsSources ?? []).map((s) => [s.file, s]));

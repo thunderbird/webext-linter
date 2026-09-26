@@ -108,7 +108,7 @@ export const DEPENDENCY_FILE_RE =
  * manifest.json / lock file, or ANY doc-extension file (even unnamed, e.g. data.txt) -
  * all prose / metadata, never a runtime loader. Wider than isDocMetadataFile on
  * purpose: being an unnamed doc TYPE is reason enough to keep a file out of the
- * mention corpus, but not always reason enough to stop reporting it unused.
+ * mention scan set, but not always reason enough to stop reporting it unused.
  * @param {string} file
  * @returns {boolean}
  */
@@ -402,7 +402,7 @@ export function skipWithoutManifest(ctx) {
  * A record names the file that DECLARED it, and the two kinds of declaration live in
  * different parts of a source submission: a VENDOR entry is the add-on's own file, while a
  * package.json dependency is the build's, at the archive root the add-on sits inside. The
- * add-on's corpus is asked first and the submission's after, so each is read where it
+ * add-on's files are asked first and the submission's store after, so each is read where it
  * really is. In a built XPI the two are one artifact, so the first answer is the only one.
  *
  * Absent reads as empty, which costs the finding its line and nothing else - the same

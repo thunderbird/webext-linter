@@ -689,7 +689,7 @@ export function readVendorDeclarations(addon) {
   for (const r of scanVendorRecords(addon)) {
     // A declaration is written relative to the file that MAKES it, so the token is joined
     // to the VENDOR file's own directory - once, at the only place the parse output meets
-    // the submission. Every consumer downstream reads a corpus key, and a finding anchors
+    // the submission. Every consumer downstream reads a key in the submission's files, and a finding anchors
     // at the path the reviewer will look for in the archive they were given.
     const token = normalizeToken(r.token);
     const path = at ? `${at}/${token}` : token;

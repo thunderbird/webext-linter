@@ -7,13 +7,13 @@
 // source they just read. That attestation is what the SCA review rests on - reviewing
 // readable source is only worth anything if the shipped bytes come from it, so a
 // submission documenting no build at all still has to be checked against the XPI. The
-// deterministic `unresolved` signals from selectBuildCorpus (a network fetch, an
+// deterministic `unresolved` signals from collectBuildFiles (a network fetch, an
 // orchestrator the linter could not follow) ride along, so the entry names what could
 // not be followed.
 //
 // Belongs here: raising the escalation and the detail it carries. Does NOT
-// belong here: the analysis (-> src/build/analyze.js), the corpus policy
-// (-> src/build/corpus.js), or the wording (-> assets/registry.yaml).
+// belong here: the analysis (-> src/build/analyze.js), the collection policy
+// (-> src/build/collect.js), or the wording (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
 
@@ -67,5 +67,13 @@ function formatUnresolved(unresolved) {
         ? `a network fetch in ${u.detail}`
         : u.detail
   );
-  return `The linter could not statically analyze part of the build (${parts.join("; ")}), so the build corpus may be incomplete - reproduce the build by hand.`;
+  // An ordinary English list: the reviewer reads this mid-sentence, where a semicolon would
+  // sit wrong however many steps there are.
+  const listed =
+    parts.length > 1
+      ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`
+      : parts[0];
+  // NOT "reproduce the build": the instruction this lands in opens by asking for exactly
+  // that, so what this adds is WHICH steps went unaccounted for.
+  return `The linter could not statically analyze part of the build (${listed}), so what it found may be incomplete - check those steps yourself.`;
 }

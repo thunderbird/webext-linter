@@ -116,7 +116,7 @@ export default {
       if (
         // The add-on manifest.json is the ENTRY POINT, not a referenced resource: nothing in the
         // add-on can point at it, so "nothing references it" says nothing about whether it
-        // is used. Skipped by name here, not withheld from the corpus: one check's
+        // is used. Skipped by name here, not withheld from the files: one check's
         // exemption is not a reason to hide a file from every other reader.
         file === WEBEXT_MANIFEST ||
         file === PACKAGE_FILE ||

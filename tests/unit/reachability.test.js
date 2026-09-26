@@ -192,9 +192,9 @@ test("pureWebExtensionReachable: webext tree + .html experiment params only", ()
 // SCA mode: there is no usable reachability tree over the readable source - the
 // manifest.json's BUILT entry points (from the XPI) don't exist in the source layout,
 // so the closure would be empty and every WebExtension code check would review
-// nothing. Instead the whole source corpus is WebExtension code - and it is already only
+// nothing. Instead the whole source view is WebExtension code - and it is already only
 // that, because the archive partition gave the Experiment implementation its own view.
-test("SCA mode: pureWebExtensionReachable is every file the source corpus holds", () => {
+test("SCA mode: pureWebExtensionReachable is every file the source view holds", () => {
   // A built entry the readable source layout does not contain (the SCA mismatch).
   const manifest = {
     manifest_version: 3,
@@ -222,9 +222,9 @@ test("SCA mode: pureWebExtensionReachable is every file the source corpus holds"
   assert.ok(sca.pureWebExtensionReachable.has("experiments/exp.js"));
 
   // The Experiment subtree is not excluded HERE: the archive partition already gave it its
-  // own view, so the source corpus this reads never holds it (src/addon/load.js scaViews).
-  // What this module answers is only "every file the source corpus has" - which is why a
-  // corpus WITHOUT the Experiment leaves nothing of it to find, in any layout.
+  // own view, so the source view this reads never holds it (src/addon/load.js scaViews).
+  // What this module answers is only "every file the source view has" - which is why a
+  // view WITHOUT the Experiment leaves nothing of it to find, in any layout.
   const files2 = Object.fromEntries(
     Object.entries(files).filter(([f]) => !f.startsWith("experiments/"))
   );
@@ -398,7 +398,7 @@ test("unused-files: junk + orphan are findings; mentioned -> escalation", () => 
   }
   assert.ok(!found.includes("bg.js")); // reachable
   // The add-on's own manifest.json is the ENTRY POINT: nothing in the add-on can reference it,
-  // so "unreferenced" says nothing about whether it is used. A built XPI's corpus holds
+  // so "unreferenced" says nothing about whether it is used. A built XPI's filpus holds
   // it, so the skip has to live here.
   assert.ok(
     !found.includes("manifest.json") && !manual.includes("manifest.json"),

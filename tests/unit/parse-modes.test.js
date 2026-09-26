@@ -39,7 +39,7 @@ test(".mjs and .js enable JSX (React authored in .js)", () => {
 
 // .cts / .mts are TypeScript (its explicit CJS / ESM variants), so they must get the
 // typescript plugin exactly like .ts - they are in JS_EXTENSIONS, so a real one enters the
-// corpus, and without the plugin a type annotation would parse-error, mis-flag the file
+// source set, and without the plugin a type annotation would parse-error, mis-flag the file
 // unparsable, and leave its content unscanned.
 test(".cts and .mts parse TypeScript type syntax", () => {
   clean(

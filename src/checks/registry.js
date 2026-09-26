@@ -203,8 +203,8 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @typedef {object} RunContext
  * @property {import("../addon/load.js").Addon} artifact  The artifact this check was ROUTED
  *   to (its declared `input`), linked by reference: ctx.artifact IS the object the loader
- *   produced, so a reader can see which artifact a corpus belongs to. It carries what that
- *   artifact was LOADED with - its corpora, the recorded path lists - plus the classification
+ *   produced, so a reader can see which artifact a set of files belongs to. It carries what
+ *   that artifact was LOADED with - its views, the recorded path lists - plus the classification
  *   the pipeline resolved for it (vendor/bundled). Nothing shipped-authoritative is on it:
  *   the manifest.json record and the experiment classification are asked of the built XPI
  *   once and shared, as ctx.manifest / ctx.experiments below, so a check cannot pair one
@@ -431,8 +431,8 @@ export class Registry {
   }
 
   /**
-   * The artifact a check's OUTPUT is labelled as ([XPI]/[SCA]): the corpus it acts
-   * on, which is the one it runs on, so its declared `input` is the label.
+   * The artifact a check's OUTPUT is labelled as ([XPI]/[SCA]): the files it acts
+   * on, which are the ones it runs on, so its declared `input` is the label.
    * @param {string} ruleId
    * @returns {"xpi"|"sca"|"source"}
    */
@@ -444,7 +444,7 @@ export class Registry {
    * The label artifact per ruleId (a `Map<ruleId, "xpi"|"sca"|"source">`),
    * projected for the report layer so it can label a finding's file:line by
    * artifact ([XPI]/[SCA]) without touching the registry. Keyed off labelInputFor
-   * (the corpus the check acts on).
+   * (the files the check acts on).
    * @returns {Map<string, string>}
    */
   checkInputs() {
@@ -2092,7 +2092,7 @@ export function routeCtx(check, siblings) {
 }
 
 /**
- * The ctx whose artifact a RULE'S OUTPUT belongs to - the corpus its findings' file paths
+ * The ctx whose artifact a RULE'S OUTPUT belongs to - the files its findings' paths
  * live in. It resolves through `registry.labelInputFor`, the same resolution the report's
  * [XPI]/[SCA] labelling uses, so the two can never disagree about a finding.
  *

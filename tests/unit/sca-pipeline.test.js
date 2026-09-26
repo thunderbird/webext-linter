@@ -120,7 +120,7 @@ test("SCA e2e: a flat layout is accepted and fully reviewed", async () => {
         ),
         "the root source file is reviewed by the code checks"
       );
-      // The build review works flat: selectScaBuildFiles fed the corpus off the root
+      // The build review works flat: collectBuildFiles traced the build off the root
       // package.json, which ships no lock, so the lock requirement rejects.
       assert.ok(
         has(findings, "sca-lock-file-missing"),
@@ -395,9 +395,9 @@ test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-au
   }
 });
 
-// The --sca-root tree is read ONCE and the archive is shared by the review loader
-// (loadScaAddon) and the build-corpus loader (selectScaBuildFiles), so it is not walked
-// (nor its symlinks warned) twice - a loadAddon(scaRoot) per loader would read the root
+// The --sca-root tree is read ONCE and the archive is shared by the review and the build
+// trace (loadSourceArchive, then collectBuildFiles over the same view), so it is not walked
+// (nor its symlinks warned) twice - a loadAddon(scaRoot) per reader would read the root
 // twice.
 test("SCA: the --sca-root archive is read once, not twice", async () => {
   const xpi = tmpDir(XPI_FILES);
@@ -431,7 +431,7 @@ test("SCA: the --sca-root archive is read once, not twice", async () => {
 // the add-on's real root from somewhere else, and a submission need not hold one at all - so
 // whatever it says is at best unconfirmed and at worst a different add-on.
 //
-// The FILE is in the archive's corpus, like every other file the submission contains. What
+// The FILE is among the archive's files, like every other file the submission contains. What
 // keeps the two apart is the RECORD: ctx.manifest is projected from the XPI by name
 // (src/pipeline.js), and no artifact carries a record of its own at all
 // (src/checks/context.js), so the archive's own record is unreachable from a check even if
@@ -912,8 +912,8 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
 
 // The build files (the archive's tooling) are reviewed by the setup
 // build analysis (analyzeBuild) + the deterministic undeclared-build-source check. This proves
-// the pipeline wires selectScaBuildFiles -> addon.buildReview -> scaCtx (ctx.artifact) ->
-// the check: analyzeBuild stores the corpus signals and the anchor, and the check escalates
+// the pipeline wires collectBuildFiles -> addon.buildReview -> scaCtx (ctx.artifact) ->
+// the check: analyzeBuild stores the unresolved signals and the anchor, and the check escalates
 // the build to Extended Manual Review, which every source-code submission reaches.
 test("SCA e2e: a build script outside the source is reviewed by undeclared-build-source", async () => {
   const xpi = tmpDir(XPI_FILES);
@@ -934,7 +934,7 @@ test("SCA e2e: a build script outside the source is reviewed by undeclared-build
     );
     // ...and with no token the whole-build review escalated to Extended manual
     // review (anchored at package.json; the review source's files under src/ are
-    // never part of the build corpus).
+    // never traced as build files).
     assert.ok(
       meta.manualReview.some(
         (m) => m.extended && m.title === "Build process review"
@@ -1209,7 +1209,7 @@ test("SCA e2e: a symlinked node_modules is answered once, as a committed tree", 
 });
 
 // A symbolic link in --sca-root that leaves the submission is a hard fail: it is never
-// followed, so whatever it names is outside every corpus and the build would compile code
+// followed, so whatever it names is outside everything the review reads and the build would compile code
 // no review covered. A link WITHIN the submission stays ordinary layout - its target is
 // walked under its own real path - so it is narrated and never reported.
 test("SCA e2e: a symlink leaving --sca-root is rejected, one staying inside is not", async () => {

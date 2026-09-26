@@ -1,6 +1,6 @@
 // Rejects a source-code submission whose tree holds a symbolic link the review cannot
 // follow: one resolving OUTSIDE --sca-root, or one resolving to nothing at all. Either way
-// the build installs or compiles something no corpus holds, so the readable source the
+// the build installs or compiles something the submission does not hold, so the readable source the
 // reviewer was promised is not the whole of what the add-on is built from.
 //
 // A link pointing WITHIN the submission is fine and is not reported: its target is walked

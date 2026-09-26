@@ -91,7 +91,7 @@ test("npm v3: a pinned version outside the declared range is unsatisfied", () =>
   assert.deepEqual(gaps(">=7.0.0", "^7.0.0", "7.9.0"), []);
   assert.deepEqual(gaps("*", "^7.0.0", "7.9.0"), []);
   // Caret on a 0.0.x release admits only that patch - the rule a hand-rolled comparison
-  // gets wrong, and a form the review corpus actually contains.
+  // gets wrong, and a form real submissions actually contain.
   assert.deepEqual(gaps("^0.0.353", "^0.0.353", "0.0.353"), []);
   assert.deepEqual(gaps("^0.0.353", "^0.0.353", "0.0.354"), [
     "web-ext:unsatisfied:^0.0.353",

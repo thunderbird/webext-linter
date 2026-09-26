@@ -16,7 +16,7 @@
 // (extname, JS_EXTENSIONS) are src/util/files.js.
 
 import { eachElement } from "../scan/html-parse.js";
-import { withExperiment } from "./corpus.js";
+import { withExperiment } from "./store.js";
 import { extractVueSfc } from "../scan/vue-sfc.js";
 import {
   extname,

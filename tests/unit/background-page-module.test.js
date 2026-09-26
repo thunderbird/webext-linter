@@ -17,7 +17,7 @@ const addon = (files, manifest) => ({
 
 // Run the rule as production does: the extraction pass parses every JS source and stores its
 // module-syntax loc, which the check reads via moduleSyntaxOf. A check never parses, so a
-// <script src> target absent from the corpus (a non-JS suffix) is simply not a classic .js
+// <script src> target absent from the artifact's files (a non-JS suffix) is simply not a classic .js
 // script here - unrecognized-file-type reports it instead.
 const run = (files, manifest) => {
   const a = addon(files, manifest);

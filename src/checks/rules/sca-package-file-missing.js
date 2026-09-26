@@ -1,6 +1,6 @@
 // Rejects a source-code submission that carries no package.json. The archive exists so a
 // reviewer can reproduce the build that produced the shipped XPI, and the build's entry
-// point is the root package.json (src/build/corpus.js seeds the corpus from it), so its
+// point is the root package.json (src/build/collect.js seeds the trace from it), so its
 // absence is the absence of a build: there is nothing to reproduce.
 //
 // Reported as the bare fact. Whether the developer forgot it, packed the wrong folder, or

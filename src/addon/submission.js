@@ -31,7 +31,7 @@ const ADDON_EXTENSION = ".xpi";
 /**
  * What counts as the SOURCE archive beside it. This module's own list, not the loader's
  * ARCHIVE_EXTENSIONS: that one answers "is this file, inside a submission, a committed
- * binary artifact" for committed-build-artifact and the build corpus, and it is scoped to
+ * binary artifact" for committed-build-artifact and the build trace, and it is scoped to
  * what those checks care about. The question here is different - which of two files is the
  * source a reader is being sent to extract - and the answer includes formats this tool
  * never opens, because the reader's `tar` does.

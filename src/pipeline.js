@@ -306,7 +306,7 @@ export async function runPipeline(opts) {
   //     behavioral review summary (what actually runs on a user's machine).
   //   reviewTarget - whichever artifact this review is OF: the code the source-level
   //     checks scan, and what becomes siblings.source. In XPI mode it IS xpiAddon; in
-  //     SCA mode it IS scaArchive, which scaViews gave the corpora a source review reads.
+  //     SCA mode it IS scaArchive, which scaViews gave the views a source review reads.
   //     Anything that wants ONE artifact whatever the mode names that one directly, which
   //     is what keeps the checks mode-agnostic without a mode test here.
   //
@@ -316,9 +316,9 @@ export async function runPipeline(opts) {
   // check gate (ctx.mode -> scaEligible). Minified code is non-authored (and rejected)
   // in both modes: a source-code submission's promise is readable source, so a minified
   // file in the archive is rejected like one in an XPI, not scanned as authored.
-  // The source corpus holds every file but the Experiment, and selectBuildCorpus traces the
-  // build over it off the root package.json - the code and the tooling are one corpus, which
-  // is what the build checks want.
+  // The source view holds every file but the Experiment, and collectBuildFiles traces the
+  // build over it off the root package.json - the code and the tooling are one set of files,
+  // which is what the build checks want.
   //
   // The review mode is DERIVED from the two facts below and assigned nowhere, so it cannot
   // drift from the steps that ran: --sca-root makes it a source code review, and a REJECTED
@@ -798,7 +798,7 @@ export async function runPipeline(opts) {
       });
     },
 
-    // Look at the build ONCE here (the vendor pattern), over the source corpus - everything
+    // Look at the build ONCE here (the vendor pattern), over the source view - everything
     // but the Experiment - because a build step may reference any of it, and a step the trace
     // cannot see raises no signal for the reviewer to follow. What was found is stored on
     // reviewTarget.buildReview for the input:sca checks to read. Nothing classifies what the

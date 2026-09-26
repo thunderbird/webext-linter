@@ -27,7 +27,7 @@ import { apiUsageOf } from "./extract.js";
  *   shipped manifest.json and experiments, the review mode (+ scaNotRequired) and the
  *   invalid-Experiment flag. Where the source and the Experiment sit on disk is NOT here: it
  *   is settled once, when the archive is split into views (src/addon/load.js scaViews), and a
- *   check reads the corpus it was routed rather than a path.
+ *   check reads the files it was routed rather than a path.
  * @property {import("../schema/index.js").SchemaIndex} schema
  * @property {{allowExperiments?: boolean, libraryHashes?: Map<string, object>}} options
  * @property {object} mode  The REVIEW_MODE enum member (XPI/SCA); read as `mode?.sca`.
@@ -126,7 +126,7 @@ function projectCtx(
  * The XPI goes through the SAME full extraction pass in both modes, so it carries the
  * XPI's OWN per-source api-usage and an `input: xpi` check sees the identical artifact whether
  * the run is an XPI review or an SCA review. A reviewable XPI MUST arrive parsed; only a rejected
- * Experiment (env.invalidExperiment) may have no sources, and it reviews with an empty corpus
+ * Experiment (env.invalidExperiment) may have no sources, and it reviews with no files
  * (its one check reads no code).
  * @param {import("../addon/load.js").Addon} xpiAddon  The built XPI.
  * @param {import("../addon/sources.js").JsSource[]|undefined} xpiParsedSources  Its sources,
@@ -165,7 +165,7 @@ export function buildXpiCtx(xpiAddon, xpiParsedSources, env) {
  * (so no artifact's manifest.json leaks against another's files, and the review-level singletons stay
  * single-instance). The source MUST arrive parsed.
  * @param {import("../addon/load.js").Addon} archive  The submitted archive, carrying its
- *   corpora (scaViews): `files` is everything but the Experiment implementation.
+ *   views (scaViews): `files` is everything but the Experiment implementation.
  * @param {import("../addon/sources.js").JsSource[]} sourceParsedSources  Its parsed sources.
  * @param {ReviewEnv} env
  * @returns {{sourceCtx: RunContext, scaCtx: RunContext}}

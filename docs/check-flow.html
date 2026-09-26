@@ -194,7 +194,7 @@ flowchart TB
     SV --> SC["classifyReview(source)<br/>library hash · minified · obfuscation · vendored"]
     SC --> SI["identifyBundledLibraries(source) → auditIdentifiedLibraries(source)<br/>CDN + not-popular-vendor, then the OSV audit - FINALIZES the split"]
     SI --> SE["Parsing source → extractReview(source)<br/>content extraction + api-usage on the authored remainder<br/>→ preParsedJsSources (the review target's sources)"]
-    SE --> SB["Analyzing the build → analyzeBuild()<br/>over the source corpus, narrowed to what the build reaches"]
+    SE --> SB["Analyzing the build → analyzeBuild()<br/>over the source view, narrowed to what the build reaches"]
     HP1(( ))
     HP2(( ))
     HP3(( ))
@@ -210,11 +210,11 @@ flowchart TB
 
   subgraph P4 ["runPipeline() · Phase 4 - build the shared review env, then the sibling ctxs"]
     ENV["build the review env ONCE - the schema, the shipped manifest and<br/>experiments, the mode: the singletons every sibling shares"] --> XB
-    XB["buildXpiCtxs(xpiAddon, xpiParsedSources, env) → { xpiCtx, manifestCtx }<br/>ALWAYS - xpiCtx is siblings.xpi; empty sources for a rejected Experiment"] --> SM{{"mode?"}}
+    XB["buildXpiCtx(xpiAddon, xpiParsedSources, env) → xpiCtx<br/>ALWAYS - it is siblings.xpi; empty sources for a rejected Experiment"] --> SM{{"mode?"}}
     SM -- sca --> SB2["buildScaCtxs(archive, sourceParsedSources, env)<br/>→ { sourceCtx, scaCtx }"]
     SB2 --> SIB
     SM -- "xpi · invalidExperiment" --> SIB
-    SIB["siblings = { source: sourceCtx (SCA) / xpiCtx (else),<br/>xpi: xpiCtx · sca: scaCtx · manifest: manifestCtx }"] --> SIBS["siblings = { source, xpi, sca, manifest }"]
+    SIB["siblings = { source: sourceCtx (SCA) / xpiCtx (else),<br/>xpi: xpiCtx · sca: scaCtx }"] --> SIBS["siblings = { source, xpi, sca }"]
   end
 
   subgraph P5 ["runPipeline() · Phase 5 - run the review, then render the findings"]
@@ -542,7 +542,7 @@ flowchart LR
         sibling like the rest, there is no default artifact to fall through to,
         and a declared <code>input</code> with no sibling (a stray
         <code>input: sca</code> in an XPI review) throws rather than silently
-        running on the wrong corpus. A check reads exactly one artifact and
+        running on the wrong one. A check reads exactly one artifact and
         cannot reach another's. What the <code>input</code> resolves to depends
         on the review mode:
       </p>
@@ -569,11 +569,6 @@ flowchart LR
             <td><code>sca</code></td>
             <td>the submitted source archive (<code>siblings.sca</code>)</td>
             <td>&mdash; (SCA-only)</td>
-          </tr>
-          <tr>
-            <td><code>manifest</code></td>
-            <td>the shipped manifest (no file corpus)</td>
-            <td>the shipped manifest</td>
           </tr>
         </tbody>
       </table>

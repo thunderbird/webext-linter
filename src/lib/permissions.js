@@ -310,14 +310,14 @@ function groundWebApiPermissions(ctx, declaredNamed) {
  * deterministic unused-permission finding. Obfuscation can build an API name at runtime or mangle
  * a property read, hiding a gated call from both the api-usage walker and the token scan, so a
  * permission whose token is found nowhere may still be used. Defensive: returns false when the
- * artifact carries no classifiable file corpus (a hand-built ctx / an empty-corpus sibling), so it
+ * artifact carries no classifiable files (a hand-built ctx / a sibling with none), so it
  * never throws inside the unconditional `decidable` computation.
  * @param {RunContext} ctx
  * @returns {boolean}
  */
 function scanIsBlindToObfuscation(ctx) {
   const artifact = ctx.artifact;
-  // Nothing classifiable (a hand-built ctx / an empty-corpus sibling with no pre-classification):
+  // Nothing classifiable (a hand-built ctx / a sibling with no files and no pre-classification):
   // not blind. A pre-set artifact.bundled is used as-is; otherwise a files Map is classified (an
   // empty Map classifies to nothing). Only a MISSING files map with no bundle is skipped, so
   // getBundled never iterates undefined.
@@ -558,7 +558,7 @@ function locateTokens(ctx, tokens) {
  * `file:line` (two tokens on the same line collapse to one site), each stamped with
  * an id naming the site (<permission>#<n>), so a verdict can be echoed back
  * against. Empty when the permission has no tokens (a token-less permission) or when
- * none of its tokens occur in the reviewed corpus - the escalation then names the
+ * none of its tokens occur in the reviewed files - the escalation then names the
  * permission with no site to point at.
  * @param {string} permission
  * @param {?string[]} tokens  The permission's usage tokens.

@@ -28,7 +28,7 @@ import {
   CSS_EXTENSIONS,
   CODE_EXTENSIONS,
 } from "../util/files.js";
-import { withExperiment } from "../addon/corpus.js";
+import { withExperiment } from "../addon/store.js";
 import { isVendored } from "../vendor/resolve.js";
 import { collectJsSources } from "../addon/sources.js";
 import { rawSha256 } from "../normalize/hash.js";

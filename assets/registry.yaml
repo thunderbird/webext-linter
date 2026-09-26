@@ -243,7 +243,7 @@ deterministic-phase:
     The following referenced file(s) are not bundled with the add-on, or the path may be wrongly specified. Please include every referenced file in the package, and check that the used paths are correct.
 
 # Flags a packaged file the add-on loads (manifest.json reference or <script src>) whose file type
-# is not recognized, so no check could review it - the backstop for the JS-corpus suffix set.
+# is not recognized, so no check could review it - the backstop for the JS suffix set.
 - title: Unrecognized referenced file type
   severity: error
   check: unrecognized-file-type
@@ -682,7 +682,7 @@ deterministic-phase:
 
 # Deterministic (SCA only): the source archive has no package.json, so there is no build to
 # reproduce the shipped XPI from. The build's entry point is the root package.json
-# (src/build/corpus.js seeds from it), so its absence is the absence of a build. Reported as
+# (src/build/collect.js seeds from it), so its absence is the absence of a build. Reported as
 # the bare fact: nothing here says WHY it is missing, and nothing in the archive could.
 # Presence is tested by NAME, not by parse - one that exists but cannot be used is not
 # MISSING, and sca-package-file-invalid reports it. The pair mirrors sca-lock-file-missing /
@@ -735,7 +735,7 @@ deterministic-phase:
 # by the package.json, never by what it happens to declare: both installers refuse without one
 # whatever it holds, and a root declaring nothing itself is a workspace root or a package.json
 # whose declarations moved, not a submission that installs nothing.
-# Only the ROOT package.json is read - the build's entry point (src/build/corpus.js), and
+# Only the ROOT package.json is read - the build's entry point (src/build/collect.js), and
 # the directory the install runs in. Nothing here goes looking
 # for a package.json or a lock deeper in the archive: they sit at the root, which is what the
 # root IS. WHICH folder that is was settled before any check ran (src/addon/sca-root.js),
@@ -824,8 +824,8 @@ deterministic-phase:
 # Deterministic (SCA only): a symbolic link in --sca-root that leads out of the submission,
 # or nowhere at all. We never unpack the source archive ourselves - the reviewer extracts it,
 # with a tool that does create links - so these are real links on the reviewer's disk. A link
-# is never followed and never read (src/addon/load.js), so whatever it names is outside the
-# corpus: the build would compile code no review covered. A link WITHIN the submission is
+# is never followed and never read (src/addon/load.js), so whatever it names is outside
+# everything the review reads: the build would compile code no review covered. A link WITHIN the submission is
 # ordinary layout and is not reported, because its target is walked under its own real path.
 # The loader records each link with where its target landed; the cause rides as the locus
 # hint, so both kinds collapse into this one entry and each line still says which it was.
@@ -888,8 +888,8 @@ deterministic-phase:
     The package.json declares an npm install lifecycle hook that fetches or executes remote code when the dependencies are installed. Every part of the build must come only from the dependencies declared in package.json/lock. Please remove the remote fetch or execution from the hook.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# SCA only: the build review. selectBuildCorpus finds the build ONCE in setup
-# (src/build/analyze.js), storing addon.scaFiles.buildReview; this check reads it. A build
+# SCA only: the build review. analyzeBuild traces the build ONCE in setup
+# (src/build/analyze.js), storing addon.buildReview; this check reads it. A build
 # must not fetch or execute code/resources from an UNDECLARED external source (a raw URL,
 # curl|sh, a git clone of an unpinned repo, a CDN, a postinstall hook) - only installing the
 # declared dependencies (npm ci from node_modules, importing a declared package) is allowed.

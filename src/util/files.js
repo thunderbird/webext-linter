@@ -14,7 +14,7 @@
  *  background.scripts entry by PATH, so a .cjs script is executable code and must be
  *  parsed and content-scanned like any .js), plus the TypeScript and JSX authored source
  *  a source code archive ships (the parser strips types; see src/parse/ast.js). This set is
- *  the corpus filter (collectJsSources), so a suffix missing here means the file is never
+ *  the source filter (collectJsSources), so a suffix missing here means the file is never
  *  parsed by ANY check - be inclusive: an over-inclusive guess costs one parse, an
  *  under-inclusive one silently skips review. A compiled XPI contains few of these. */
 export const JS_EXTENSIONS = new Set([
@@ -102,7 +102,7 @@ export const CODE_EXTENSIONS = new Set([
 /** Binary archive extensions. A committed archive in a source submission is build
  *  output / a decoy, never authored source; the committed-build-artifact check rejects
  *  one anywhere in --sca-root, unused-files flags one shipped in the XPI, and the build
- *  corpus never collects one (binary, not build input). */
+ *  build trace never collects one (binary, not build input). */
 export const ARCHIVE_EXTENSIONS = new Set([
   ".zip",
   ".xpi",

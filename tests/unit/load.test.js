@@ -15,7 +15,7 @@ import {
   scaRootRelative,
   relativeInside,
 } from "../../src/addon/load.js";
-import { withExperiment } from "../../src/addon/corpus.js";
+import { withExperiment } from "../../src/addon/store.js";
 import { SYMLINK_CAUSE } from "../../src/lib/enum.js";
 
 // Loading a directory keeps a real .js file but drops a symlink pointing at it,
@@ -79,7 +79,7 @@ test("directory load records where each symlink's target lands", () => {
   assert.equal(byPath.get("intree"), SYMLINK_CAUSE.INTERNAL);
   assert.equal(byPath.get("outward"), SYMLINK_CAUSE.OUTSIDE);
   assert.equal(byPath.get("dangling"), SYMLINK_CAUSE.BROKEN);
-  // Recorded, still never followed: the escaping target stays out of the corpus.
+  // Recorded, still never followed: the escaping target stays out of the store.
   assert.ok(
     ![...addon.files.keys()].some((k) => k.includes("payload")),
     "an escaping link's target is not read"
@@ -183,17 +183,14 @@ test("add-on load reviews a node_modules directory like any other folder", () =>
 
   const addon = loadAddon(dir);
   assert.deepEqual(addon.nodeModules, []);
-  assert.ok(
-    addon.files.has("node_modules/dep/index.js"),
-    "it is in the corpus"
-  );
+  assert.ok(addon.files.has("node_modules/dep/index.js"), "it is in the store");
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // A packed archive can store an entry AS a link, and its data is then a target path where
 // a file's bytes belong. Extraction never replays a stored mode (that is what keeps a
-// crafted archive from writing a real link), so writing it would put a file in the corpus
+// crafted archive from writing a real link), so writing it would put a file in the store
 // whose whole content is the name of another one. Recorded and dropped instead - and since
 // nothing lands on disk, the record is the only thing that can report it.
 test("loadAddon(file) records an entry the archive stored as a link, writing nothing", () => {
@@ -219,7 +216,7 @@ test("loadAddon(file) records an entry the archive stored as a link, writing not
   assert.equal(addon.symlinks[0].cause, SYMLINK_CAUSE.ENTRY);
   assert.ok(
     !addon.files.has("libs/jquery.js"),
-    "the link entry is not a corpus file"
+    "the link entry is not a stored file"
   );
   assert.ok(
     !fs.existsSync(path.join(dest, "libs", "jquery.js")),
@@ -334,7 +331,7 @@ test("files is a view over the store, for an add-on as much as an archive", () =
   fs.writeFileSync(path.join(dir, "lib", "dep.js"), "2;\n");
 
   const addon = loadAddon(dir);
-  assert.notEqual(addon.files, addon.store, "a corpus is never the store");
+  assert.notEqual(addon.files, addon.store, "a view is never the store");
   assert.deepEqual(
     [...addon.files.keys()].sort(),
     [...addon.store.keys()].sort(),
@@ -350,16 +347,13 @@ test("files is a view over the store, for an add-on as much as an archive", () =
     scaExpSource: path.join(dir, "lib"),
   });
   assert.notEqual(archive.files, archive.store);
-  assert.ok(
-    !archive.files.has("lib/dep.js"),
-    "the Experiment is its own corpus"
-  );
+  assert.ok(!archive.files.has("lib/dep.js"), "the Experiment is its own view");
   assert.ok(archive.store.has("lib/dep.js"), "the submission still holds it");
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A manifest.json is a FILE in an artifact's corpus, like any other file the submission
+// A manifest.json is a FILE an artifact holds, like any other file the submission
 // contains. What the add-on DECLARES is a separate question with one answer, asked of one
 // artifact: readWebExtManifest reads the record off a store, and the review asks it of the
 // shipped XPI only (src/pipeline.js). Loading never derives it, so no artifact carries a
@@ -376,7 +370,7 @@ test("loading holds the file; the record is asked for, not derived", () => {
     loadAddon(dir),
     scaViews(loadSourceArchive(dir), { scaRoot: dir }),
   ]) {
-    assert.ok(artifact.files.has("manifest.json"), "the corpus holds the file");
+    assert.ok(artifact.files.has("manifest.json"), "its files hold it");
     assert.equal(artifact.manifest, undefined, "and answers nothing itself");
   }
 
@@ -387,7 +381,7 @@ test("loading holds the file; the record is asked for, not derived", () => {
   assert.equal(record.error, null);
   assert.ok(record.loc, "and can anchor a finding at a line");
 
-  // A corpus holding no manifest.json is the one case that is nothing at all.
+  // An artifact holding no manifest.json is the one case that is nothing at all.
   fs.rmSync(path.join(dir, "manifest.json"));
   assert.equal(readWebExtManifest(loadAddon(dir).store), null);
 
@@ -395,9 +389,9 @@ test("loading holds the file; the record is asked for, not derived", () => {
 });
 
 // The archive is ONE object: it owns the store and the recorded path lists, and carries its
-// two corpora as views over that store. Copying those onto parts is how two views of one
+// two views over that store. Copying those onto parts is how two views of one
 // archive came to disagree about what it holds, so the shape itself is worth pinning.
-test("scaViews leaves the archive owning one store and two corpora", () => {
+test("scaViews leaves the archive owning one store and two views", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-oneobj-"));
   const w = (p, c) => {
     fs.mkdirSync(path.dirname(path.join(root, p)), { recursive: true });
@@ -420,10 +414,10 @@ test("scaViews leaves the archive owning one store and two corpora", () => {
   assert.equal(archive, loaded);
 
   // Two distinct views over the ONE store.
-  const corpora = [archive.files, archive.experiment];
-  assert.equal(new Set(corpora).size, 2, "two distinct corpora");
-  for (const c of corpora) {
-    assert.notEqual(c, archive.store, "a corpus is never the store itself");
+  const views = [archive.files, archive.experiment];
+  assert.equal(new Set(views).size, 2, "two distinct views");
+  for (const v of views) {
+    assert.notEqual(v, archive.store, "a view is never the store itself");
   }
 
   // What each holds: the partition puts every file in exactly one of them, and a
@@ -434,7 +428,7 @@ test("scaViews leaves the archive owning one store and two corpora", () => {
     "sub/manifest.json",
   ]);
   assert.deepEqual([...archive.experiment.keys()].sort(), ["exp/impl.js"]);
-  // And the artifact still holds all of it, corpora notwithstanding.
+  // And the artifact still holds all of it, the views notwithstanding.
   assert.deepEqual([...archive.store.keys()].sort(), [
     "bg.js",
     "exp/impl.js",
@@ -454,7 +448,7 @@ test("scaViews leaves the archive owning one store and two corpora", () => {
 // store it was walked into, all keyed against the SUBMISSION. The whole archive IS the
 // review source - a build may move, rename or generate anything, so there is no subtree that
 // can be called the add-on's and no way to tell which files are used. A manifest.json found
-// anywhere is parsed and lifted off the corpus, so a pre-build manifest.json is never reviewed as
+// anywhere is parsed and lifted off the view, so a pre-build manifest.json is never reviewed as
 // source; the authoritative one is the built XPI's (ctx.manifest, context.js).
 test("scaViews keys every view to the submission and reviews the whole archive", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-sca-"));
@@ -491,7 +485,7 @@ test("scaViews keys every view to the submission and reviews the whole archive",
     "browser.runtime.id;\n",
     "a view reads its bytes through the store"
   );
-  // A manifest.json ANYWHERE is in the corpus, at its real path: the add-on's root may sit
+  // A manifest.json ANYWHERE is in the view, at its real path: the add-on's root may sit
   // under any subtree, so there is no root manifest.json to single out, and what the shipped
   // one SAYS is ctx.manifest rather than anything read from here.
   assert.ok(
@@ -553,10 +547,10 @@ test("the source and experiment views merge into the add-on's whole tree", () =>
   assert.match(
     merged.get("addon/experiment/exp.js").toString("utf8"),
     /ChromeUtils/,
-    "the merged corpus reads the Experiment's bytes"
+    "the merged files read the Experiment's bytes"
   );
 
-  // The same corpus a check is handed: `experiment` rides on the review addon, so a check
+  // The same files a check is handed: `experiment` rides on the review addon, so a check
   // needing both never has to know where the folder was named.
   assert.deepEqual([...source.experiment.keys()].sort(), [
     "addon/experiment/exp.js",
@@ -577,7 +571,7 @@ test("the source and experiment views merge into the add-on's whole tree", () =>
 
 // An Experiment BESIDE the add-on is keyed exactly as one inside it would be - against the
 // submission - so where the developer put the folder changes the path and nothing else. The
-// corpus is present in both layouts and merges in both, so a check that reviews privileged
+// view is present in both layouts and merges in both, so a check that reviews privileged
 // code for what it IS covers it either way, and the source view excludes it either way,
 // which is what keeps the WebExtension checks layout-independent.
 test("a sibling Experiment is keyed like any other part of the submission", () => {
@@ -599,7 +593,7 @@ test("a sibling Experiment is keyed like any other part of the submission", () =
     "addon/manifest.json",
   ]);
   assert.deepEqual([...experiment.keys()].sort(), ["experiment/exp.js"]);
-  // The corpus is there either way: where the folder was PUT changes how its files are
+  // The view is there either way: where the folder was PUT changes how its files are
   // spelled, never whether they are reviewed. A check merging the two gets the same
   // Experiment here as it does when the folder sits inside the add-on.
   assert.equal(source.experiment, experiment);
@@ -612,7 +606,7 @@ test("a sibling Experiment is keyed like any other part of the submission", () =
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// The two views account for the archive: the Experiment is disjoint from the source corpus,
+// The two views account for the archive: the Experiment is disjoint from the source view,
 // including in a NESTED layout, where the folder sits inside the add-on. Nothing may fall
 // into both, and nothing the review needs may fall into neither.
 test("scaViews puts every file in the right part, and the Experiment in only one", () => {
@@ -631,7 +625,7 @@ test("scaViews puts every file in the right part, and the Experiment in only one
   const { experiment } = source;
 
   // The Experiment is its own part, wherever the developer put it - here inside the add-on.
-  // Everything else is the source corpus, keyed against the submission.
+  // Everything else is the source view, keyed against the submission.
   assert.deepEqual([...source.files.keys()].sort(), [
     "build.js",
     "package.json",
@@ -643,11 +637,11 @@ test("scaViews puts every file in the right part, and the Experiment in only one
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// The source corpus is the archive minus the Experiment source (scaExpSource) and minus a
+// The source view is the archive minus the Experiment source (scaExpSource) and minus a
 // recorded node_modules. Nothing else is withheld, which is what lets the build trace run
 // over it: a build may read anything the archive carries, and where a file sits says nothing
 // about whether a build step reaches it.
-test("the source corpus holds the archive minus the Experiment and node_modules", () => {
+test("the source view holds the archive minus the Experiment and node_modules", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scab-"));
   fs.mkdirSync(path.join(root, "src", "experiment"), { recursive: true });
   fs.mkdirSync(path.join(root, "scripts"));
@@ -701,14 +695,14 @@ test("the source corpus holds the archive minus the Experiment and node_modules"
   assert.ok(files.has("src/background.js"));
   // A dot-path is held like any other. Whether a nested .npmrc is READ is the reading
   // check's own business - build-registry-redirect asks for the root key and no other -
-  // and not something the corpus decides by hiding the file.
+  // and not something the view decides by hiding the file.
   assert.ok(files.has("scripts/.npmrc"));
   assert.ok(files.has(".github/workflows/ci.yml"));
   // The two that stay out, and why they are different: the Experiment is partitioned into
   // its own view, and a recorded installed tree was never walked, so it has no keys at all.
   assert.ok(!files.has("src/experiment/exp.js"));
   assert.ok(!files.has("sub/node_modules/dep/webpack.config.js"));
-  // node_modules is never read (no node_modules file in the corpus) but IS reported for
+  // node_modules is never read (no node_modules file among them) but IS reported for
   // the committed-node-modules check - anywhere, including inside the review source.
   assert.deepEqual(nodeModules.sort(), [
     "src/node_modules",
@@ -719,7 +713,7 @@ test("the source corpus holds the archive minus the Experiment and node_modules"
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// Every file is a build candidate, and selectBuildCorpus (called by analyzeBuild) still
+// Every file is a build candidate, and collectBuildFiles (called by analyzeBuild) still
 // traces the build off the root package.json.
 test("the whole root stays a set of build candidates", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scab0-"));
@@ -956,7 +950,7 @@ test("loadAddon(file) extracts to disk and reads the same content back", () => {
   );
 
   // Read back the same way a directory submission is: readable as the record, and still in
-  // the corpus with everything else, keyed the same as the packed entries were.
+  // the store with everything else, keyed the same as the packed entries were.
   assert.equal(readWebExtManifest(addon.store).json.name, "x");
   assert.ok(addon.files.has("manifest.json"));
   assert.equal(

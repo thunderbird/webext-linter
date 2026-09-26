@@ -1297,7 +1297,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
   // shipped-icon-trademark-imitation, which scan nothing themselves but must be able to reach
   // everything the package ships for what its sweep finds, and the manifest.json checks -
   // the shipped manifest.json is this artifact's, and they read it off ctx.manifest rather
-  // than any corpus. Extending this set is deliberate - update the check AND this pin
+  // than any of the artifact's files. Extending this set is deliberate - update the check AND this pin
   // together.
   assert.deepEqual(xpi, [
     "addon-icon-missing",
@@ -1360,7 +1360,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
 // through. An `input: xpi` check raises its cases over the XPI, and runOneCheck
 // -> the check must read the XPI's files (via the routed ctx.artifact), not
 // a captured review source. unused-files emits a candidate for an ambiguous file (a
-// live dynamic loader names it), so this exercises the real corpus path with a stub
+// live dynamic loader names it), so this exercises the real lookup path with a stub
 // ctx that records the addon it was given.
 test("an input:xpi check escalates over its routed (XPI) addon", async () => {
   const mk = (obj) =>
@@ -1441,6 +1441,54 @@ test("undeclared-build-source escalates every SCA, build documented or not", () 
   assert.equal("file" in none.escalations[0], false);
 });
 
+// The sentence a REVIEWER reads, so it is pinned as prose rather than as a shape. Two things
+// it must not do: restate the instruction it lands in, which already opens by asking them to
+// reproduce the build - what this adds is WHICH steps went unaccounted for - and punctuate a
+// list with semicolons, whatever the number of steps.
+test("the unresolved steps read as an English list, and add to the instruction", () => {
+  const steps = (...unresolved) =>
+    undeclaredBuildSource.run(scaCtx(review({ unresolved }))).escalations[0]
+      .data.unresolvedBuildSteps;
+
+  const one = steps({ kind: "network", detail: "b.sh" });
+  assert.match(one, /\(a network fetch in b\.sh\)/);
+  assert.match(
+    one,
+    /so what it found may be incomplete - check those steps yourself\.$/
+  );
+  assert.doesNotMatch(
+    one,
+    /reproduce the build/,
+    "the instruction already says that"
+  );
+
+  assert.match(
+    steps(
+      { kind: "tool", detail: "make" },
+      { kind: "network", detail: "b.sh" }
+    ),
+    /\(an unrecognized build tool \(`make`\) and a network fetch in b\.sh\)/
+  );
+  assert.match(
+    steps(
+      { kind: "tool", detail: "make" },
+      { kind: "network", detail: "b.sh" },
+      { kind: "tool", detail: "gradle" }
+    ),
+    /\(an unrecognized build tool \(`make`\), a network fetch in b\.sh and an unrecognized build tool \(`gradle`\)\)/
+  );
+
+  for (const n of [1, 2, 3]) {
+    const many = steps(
+      ...Array.from({ length: n }, (_, i) => ({
+        kind: "tool",
+        detail: `t${i}`,
+      }))
+    );
+    assert.doesNotMatch(many, /;/, `no semicolon with ${n} step(s)`);
+  }
+});
+
 // ---- build-registry-redirect (SCA deterministic: .npmrc registry) ----
 
 // ANY registry= / @scope:registry= in .npmrc is a hard reject (a legit build never sets
@@ -1486,7 +1534,7 @@ test("build-registry-redirect rejects any registry setting in .npmrc", () => {
 // Only the ARCHIVE'S OWN .npmrc is read: npm takes its config from the directory the
 // install runs in, and the review runs it at --sca-root. A config deeper in the tree
 // belongs to a directory this review never installs from, so it is not read - and the build
-// trace does not collect it either (src/build/corpus.js seeds the root one only).
+// trace does not collect it either (src/build/collect.js seeds the root one only).
 test("build-registry-redirect reads the root .npmrc and ignores a nested one", () => {
   const at = (path, npmrc) =>
     buildRegistryRedirect.run({
@@ -3622,7 +3670,7 @@ test("trademark-thunderbird-name escalates an unlabelled name, never finds", () 
 // The finding cites the manifest.json line of the `name` property and the offending
 // (resolved) name, not a bare "manifest.json".
 test("trademark-violation anchors the finding on the name line with the name", () => {
-  // The record is built over the SAME manifest.json bytes the corpus carries, because the
+  // The record is built over the SAME manifest.json bytes the artifact carries, because the
   // line the finding anchors on is a fact about the file as submitted.
   const ctxOf = (name, files) =>
     withManifest({
@@ -5059,7 +5107,7 @@ test("background-module flags module syntax without type: module", () => {
   assert.equal(n('import x from "./y.js";', { scripts: ["other.js"] }), 0);
 });
 
-// unrecognized-file-type: the backstop for the JS-corpus suffix list. reachability's
+// unrecognized-file-type: the backstop for the JS suffix list. reachability's
 // manifest.json walk and <script> walk record any LIVE referenced packaged file whose suffix is
 // not in RECOGNIZED_EXTS (a file the browser loads but no check could classify); the check
 // reports them. input: xpi. A helper builds a routed-to-the-artifact ctx with reachability

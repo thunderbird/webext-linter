@@ -165,7 +165,7 @@ test("add-on: a node_modules symlink out of the package is rejected", async () =
 });
 
 // The other half: a real node_modules DIRECTORY in an add-on is shipped content, so its
-// files are in the corpus and are reviewed at their own paths. The fixture
+// files are held like any other and are reviewed at their own paths. The fixture
 // xpi-shipped-node-modules pins the reported shape; this pins the seam.
 test("add-on: a shipped node_modules folder is reviewed like any other folder", async () => {
   const src = tmpAddon({
