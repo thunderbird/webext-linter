@@ -165,15 +165,16 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
  * the linter itself writes there (src/addon/load.js), before this is ever called, and its
  * path follows the submitted file's own name rather than this shared stem - see
  * src/pipeline.js.
- * @param {import("../addon/load.js").Addon} addon  The shipped add-on - read for the name
- *   it lends all five (its id and version).
+ * @param {?import("../addon/load.js").WebExtManifestRecord} webExtManifestRecord  What the
+ *   shipped add-on
+ *   declares - read for the name it lends all five (its id and version).
  * @param {string} xpiPath  Where that add-on IS, absolute. An Addon carries no path of its
  *   own, so the caller passes the one the run was given (src/pipeline.js), which resolved
  *   it - nothing re-resolves it here.
  * @returns {{summary: string, build: string, report: string, state: string, review: string}}
  */
-export function reviewFilePaths(addon, xpiPath) {
-  const base = reviewFileBase(addon);
+export function reviewFilePaths(webExtManifestRecord, xpiPath) {
+  const base = reviewFileBase(webExtManifestRecord);
   // Beside the .xpi, which is the folder a reviewer downloaded it into. For an unpacked
   // submission that is the folder holding it, for the same reason: not inside what is being
   // reviewed. Taken once, so the three cannot land in different folders.
@@ -197,11 +198,11 @@ export function reviewFilePaths(addon, xpiPath) {
  * The add-on's own id: its declared gecko id, or its name, or "addon" when it names
  * neither. Raw - a display value, not sanitized or truncated for a filename (see
  * reviewFileBase, which clamps and escapes this same chain for that purpose).
- * @param {import("../addon/load.js").Addon} addon
+ * @param {?import("../addon/load.js").WebExtManifestRecord} webExtManifestRecord
  * @returns {string}
  */
-function addonIdOf(addon) {
-  const m = addon?.manifest?.json;
+function addonIdOf(webExtManifestRecord) {
+  const m = webExtManifestRecord?.json;
   return (
     m?.browser_specific_settings?.gecko?.id ??
     m?.applications?.gecko?.id ??
@@ -212,12 +213,12 @@ function addonIdOf(addon) {
 
 /**
  * The shared name: the add-on, its version, and the moment - made safe to put in a path.
- * @param {import("../addon/load.js").Addon} addon
+ * @param {?import("../addon/load.js").WebExtManifestRecord} webExtManifestRecord
  * @returns {string}
  */
-function reviewFileBase(addon) {
-  const m = addon?.manifest?.json;
-  const id = addonIdOf(addon);
+function reviewFileBase(webExtManifestRecord) {
+  const m = webExtManifestRecord?.json;
+  const id = addonIdOf(webExtManifestRecord);
   const at = new Date().toISOString().replace(/[:.]/g, "-");
   // The id is the submission's, and an add-on with no gecko id lends its NAME - which has
   // no length limit of its own, while the name this composes does (255 bytes on ext4, and

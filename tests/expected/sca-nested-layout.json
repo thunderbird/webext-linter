@@ -4,12 +4,7 @@
     "expSource": "addon/experiment"
   },
   "expect": {
-    "untrusted-library": [
-      "addon/lib/widget.js"
-    ],
-    "unsafe-html": [
-      "addon/experiment/exp.js:7",
-      "addon/lib/widget.js:3"
-    ]
+    "untrusted-library": ["addon/lib/widget.js"],
+    "unsafe-html": ["addon/experiment/exp.js:7", "addon/lib/widget.js:3"]
   }
 }

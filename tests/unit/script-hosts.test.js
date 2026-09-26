@@ -19,7 +19,7 @@ function ctxFrom(files, manifest) {
     files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
     manifest: manifestOf(manifest, files["manifest.json"]),
   };
-  return withManifest({ addon, jsSources: parsedSources(addon) });
+  return withManifest({ artifact: addon, jsSources: parsedSources(addon) });
 }
 
 const dirs = (map, file) => [...(map.get(file) ?? [])];
@@ -46,7 +46,7 @@ test("background.page in a subdir hosts its scripts (and imports) at the page di
   assert.deepEqual(dirs(hd, "src/helper.js"), ["src"]); // imported module inherits the page dir
   assert.equal(
     resolvePageRelative(
-      ctx.addon.files,
+      ctx.artifact.files,
       hd,
       "src/background.js",
       "message-unescape.js"
@@ -72,7 +72,7 @@ test("background.scripts get the generated root page's base", () => {
   };
   const ctx = ctxFrom(files, manifest);
   const hd = scriptHostDirs(ctx);
-  const f = ctx.addon.files;
+  const f = ctx.artifact.files;
   assert.deepEqual(dirs(hd, "src/bg.js"), [""]); // root
   assert.equal(
     resolvePageRelative(f, hd, "src/bg.js", "inject.js"),
@@ -93,7 +93,7 @@ test("a script with no declared host page falls back to root-relative", () => {
   };
   const ctx = ctxFrom(files, manifest);
   const hd = scriptHostDirs(ctx);
-  const f = ctx.addon.files;
+  const f = ctx.artifact.files;
   assert.equal(hd.get("lib/util.js"), undefined); // no host page
   assert.equal(resolvePageRelative(f, hd, "lib/util.js", "x.js"), "x.js"); // root
   assert.equal(
@@ -134,7 +134,12 @@ test("a dynamically-opened page (no manifest key) still hosts its script", () =>
   const hd = scriptHostDirs(ctx);
   assert.deepEqual(dirs(hd, "dash/dashboard.js"), ["dash"]);
   assert.equal(
-    resolvePageRelative(ctx.addon.files, hd, "dash/dashboard.js", "inject.js"),
+    resolvePageRelative(
+      ctx.artifact.files,
+      hd,
+      "dash/dashboard.js",
+      "inject.js"
+    ),
     "dash/inject.js"
   );
 });
@@ -158,7 +163,7 @@ test("a leading .. clamps at root for a root-hosted (background.scripts) module"
   };
   const ctx = ctxFrom(files, manifest);
   const hd = scriptHostDirs(ctx);
-  const f = ctx.addon.files;
+  const f = ctx.artifact.files;
   assert.deepEqual(dirs(hd, "modules/menu.mjs"), [""]); // inherits the root base
   // "../skin/x.svg" from root clamps to "skin/x.svg" (does not escape).
   assert.equal(
@@ -188,7 +193,7 @@ test(".. walks out of a subdir host page then clamps at root", () => {
   };
   const ctx = ctxFrom(files, manifest);
   const hd = scriptHostDirs(ctx);
-  const f = ctx.addon.files;
+  const f = ctx.artifact.files;
   assert.deepEqual(dirs(hd, "nested/menu.js"), ["nested"]);
   // base nested/: bare path stays under nested/.
   assert.equal(

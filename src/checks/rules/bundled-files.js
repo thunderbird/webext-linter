@@ -36,12 +36,12 @@ import { manifestPathLine, SCHEME_RE } from "../../lib/util.js";
 
 export default {
   run(ctx) {
-    // Registry `input: xpi`: ctx.addon is the built XPI. File-completeness is a
+    // Registry `input: xpi`: ctx.artifact is the built XPI. File-completeness is a
     // property of what actually ships - declared paths resolve against the XPI's OWN
     // files. In a source submission the built layout legitimately renames/relocates
     // entry scripts, so resolving these refs against the readable source would
     // falsely report every built path as "not bundled".
-    const { addon } = ctx;
+    const { artifact } = ctx;
     const out = [];
     // Manifest paths are root-relative: satisfied only when the path resolves
     // WITHIN the package root to a bundled file ("ok"). "missing" (no such file)
@@ -49,7 +49,8 @@ export default {
     // fail. (Loader-API refs below clamp ".." instead, matching Gecko's URL
     // resolution, so they never "escape".)
     /** @param {string} p @returns {boolean} whether the file is bundled. */
-    const rootOk = (p) => resolveRefStatus(addon.files, null, p).kind === "ok";
+    const rootOk = (p) =>
+      resolveRefStatus(artifact.files, null, p).kind === "ok";
 
     // 1. Files manifest.json declares, per the SCHEMA (see manifestFileRefs). `experiments`
     // is on: this check only asks "is the file packaged", and a missing Experiment schema
@@ -105,7 +106,7 @@ export default {
     //
     // Like the manifest.json refs above, loader refs are a property of the built XPI:
     // its scripts, its load graph, and the files they must resolve to - all read
-    // from ctx.addon (the XPI, per `input: xpi`), so a source submission's pre-build
+    // from ctx.artifact (the XPI, per `input: xpi`), so a source submission's pre-build
     // loader paths are never matched against the readable source tree.
     //
     // Only LIVE scripts are checked: a script reached from no entry point never
@@ -133,9 +134,13 @@ export default {
         const loc = { line: ref.line, column: ref.column };
         const present =
           ref.base === "page"
-            ? resolvePageRelative(addon.files, hostDirs, src.file, ref.path) !=
-              null
-            : resolveRef(addon.files, null, ref.path) != null;
+            ? resolvePageRelative(
+                artifact.files,
+                hostDirs,
+                src.file,
+                ref.path
+              ) != null
+            : resolveRef(artifact.files, null, ref.path) != null;
         ctx.note?.(
           src.file,
           loc,

@@ -112,7 +112,7 @@ test("resolveLibraryBlocks reads the shipped default asset", async () => {
 test("banned-library: banned -> error, unadvised -> warning, anchored at the declaration line", () => {
   const pkg = '{\n  "dependencies": {\n    "jquery": "2.2.4"\n  }\n}';
   const ctx = {
-    addon: {
+    artifact: {
       files: new Map([["package.json", Buffer.from(pkg)]]),
       vendor: {
         blocked: [
@@ -158,12 +158,13 @@ test("banned-library: banned -> error, unadvised -> warning, anchored at the dec
 
 test("banned-library: no recorded hits -> no findings", () => {
   assert.deepEqual(
-    bannedLibrary.run({ addon: { files: new Map(), vendor: { blocked: [] } } })
-      .findings,
+    bannedLibrary.run({
+      artifact: { files: new Map(), vendor: { blocked: [] } },
+    }).findings,
     []
   );
   assert.deepEqual(
-    bannedLibrary.run({ addon: { files: new Map(), vendor: {} } }).findings,
+    bannedLibrary.run({ artifact: { files: new Map(), vendor: {} } }).findings,
     []
   );
 });

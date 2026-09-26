@@ -30,7 +30,7 @@ import { trunc } from "./util.js";
  * @returns {FileSink[]}
  */
 export function getOutboundSinks(ctx) {
-  return (ctx.addon.outboundSinks ??= scanAll(ctx));
+  return ((ctx.cache ??= {}).outboundSinks ??= scanAll(ctx));
 }
 
 /**

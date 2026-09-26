@@ -141,7 +141,7 @@ test("a hit promotes the bundle into the vendored family (library + libraryId + 
   assert.ok(addon.bundled.nonAuthored.has("app/fuse.min.js"));
 
   // find-lib-on-cdn reports it; minified-code and missing-library do NOT.
-  const ctx = { addon };
+  const ctx = { artifact: addon };
   assert.deepEqual(
     findLibOnCdn.run(ctx).findings.map((f) => [f.file, f.item, f.hint]),
     [
@@ -201,7 +201,7 @@ test("a NOT-popular hit is identified but untrusted (authored code), not the ven
   ]);
   assert.deepEqual(addon.vendor.results, []);
 
-  const ctx = { addon };
+  const ctx = { artifact: addon };
   // find-lib-on-cdn + minified-code stay silent; untrusted-minified-library rejects
   // it; untrusted-library stays silent because it reports only READABLE ones.
   assert.equal(findLibOnCdn.run(ctx).findings.length, 0);
@@ -248,7 +248,7 @@ test("a NOT-popular hit whose package name does not match the file is discarded"
   assert.notEqual(tag.untrusted, true);
   assert.deepEqual(addon.bundled.untrusted, []);
 
-  const ctx = { addon };
+  const ctx = { artifact: addon };
   assert.equal(untrustedMinifiedLibrary.run(ctx).findings.length, 0);
   assert.equal(untrustedLibrary.run(ctx).findings.length, 0);
   assert.equal(findLibOnCdn.run(ctx).findings.length, 0);
@@ -345,7 +345,7 @@ test("a gh-type hit uses GitHub stars for the popularity bar; a popular hit adds
   assert.equal(tag.cdn.type, "gh");
   assert.equal(tag.cdn.popular, true);
   // Popular -> the "declare it" finding fires and nothing is escalated.
-  assert.equal(findLibOnCdn.run({ addon }).findings.length, 1);
+  assert.equal(findLibOnCdn.run({ artifact: addon }).findings.length, 1);
   assert.deepEqual(addon.vendor.results, []);
   // The popularity lookup queried the GitHub stars API for the repo.
   assert.ok(
@@ -386,7 +386,7 @@ test("a minified bundle is identified as a known library on the CDN", async () =
   assert.equal(tag.library, true);
   assert.equal(tag.cdn.type, "npm");
   assert.ok(addon.bundled.nonAuthored.has("app/fuse.min.js"));
-  assert.equal(findLibOnCdn.run({ addon }).findings.length, 1);
+  assert.equal(findLibOnCdn.run({ artifact: addon }).findings.length, 1);
 });
 
 // A library shipped UN-minified (e.g. pdf.mjs) - readable, so the Mozilla hash DB
@@ -427,7 +427,7 @@ test("a large readable file is CDN-identified as a library (not scanned as autho
     addon.bundled.nonAuthored.has("libs/pdf.mjs"),
     "excluded from content analysis"
   );
-  assert.equal(findLibOnCdn.run({ addon }).findings.length, 1);
+  assert.equal(findLibOnCdn.run({ artifact: addon }).findings.length, 1);
 });
 
 // A small readable file is the developer's own source, not a bundled library: below the
@@ -530,7 +530,7 @@ test("a NOT-popular readable hit is untrusted and reviewed as authored (info)", 
   assert.equal(addon.bundled.nonAuthored.has("libs/obscure.js"), false);
   assert.equal(addon.bundled.untrusted[0].unreadable, false);
 
-  const ctx = { addon };
+  const ctx = { artifact: addon };
   assert.equal(
     untrustedLibrary.run(ctx).findings.length,
     1,
@@ -557,7 +557,7 @@ test("a miss leaves the bundle minified (falls through to minified-code)", async
   const tag = addon.bundled.classified.find((c) => c.file === "app/blob.js");
   assert.equal(tag.library, false);
   assert.equal(tag.cdn, undefined);
-  const ctx = { addon };
+  const ctx = { artifact: addon };
   assert.equal(findLibOnCdn.run(ctx).findings.length, 0);
   assert.deepEqual(
     minifiedCode.run(ctx).findings.map((f) => f.file),

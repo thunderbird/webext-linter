@@ -16,7 +16,7 @@
 // An `npm:<name>@<range>` alias is NOT one of them: it installs a registry package under
 // another name, so it is classified by what it installs and the spelling decides nothing.
 // resolveVendor already classified these (src/vendor/resolve.js ->
-// addon.vendor.unsupportedDeps, each item carrying the package file that declared it);
+// artifact.vendor.unsupportedDeps, each item carrying the package file that declared it);
 // this check only reads that and emits a finding per entry. Deterministic, no network.
 //
 // Belongs here: turning each unsupported dependency into a finding (+ a feed
@@ -39,8 +39,8 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const { addon } = ctx;
-    const unsupported = addon?.vendor?.unsupportedDeps ?? [];
+    const { artifact } = ctx;
+    const unsupported = artifact?.vendor?.unsupportedDeps ?? [];
     // Memoized per distinct file: a nested package file can declare several unsupported
     // specs, and re-reading/re-decoding the same bytes once per one would be wasted work.
     const textByFile = new Map();
@@ -49,7 +49,7 @@ export default {
       const at = file ?? "package.json";
       let text = textByFile.get(at);
       if (text === undefined) {
-        text = anchorText(addon, at);
+        text = anchorText(artifact, at);
         textByFile.set(at, text);
       }
       const line = manifestTokenLine(text, name);

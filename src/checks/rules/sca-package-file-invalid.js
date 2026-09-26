@@ -32,7 +32,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const files = ctx.addon?.files;
+    const files = ctx.artifact?.files;
     if (!files?.has(PACKAGE_FILE)) {
       return { findings: [] };
     }

@@ -22,7 +22,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const results = ctx.addon?.vendor?.results ?? [];
+    const results = ctx.artifact?.vendor?.results ?? [];
     const findings = [];
     for (const { path, source, outcome } of results) {
       if (outcome === "verified") {

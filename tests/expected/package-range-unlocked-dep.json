@@ -1,8 +1,6 @@
 {
   "_comment": "package.json declares lodash as a range and commits a lock, but the lock records nothing for lodash - it was written from another manifest. The range resolves to no release, so xpi-lock-file-invalid asks for the lock to be regenerated. xpi-lock-file-missing must stay silent: the submission has a lock, and telling it to commit one would be the wrong remedy. The two are mutually exclusive by construction (resolveVendor classifyDeps).",
   "expect": {
-    "xpi-lock-file-invalid": [
-      "package.json:5"
-    ]
+    "xpi-lock-file-invalid": ["package.json:5"]
   }
 }

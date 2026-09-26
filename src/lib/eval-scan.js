@@ -52,7 +52,7 @@ import { buildReachability } from "./reachability.js";
  * @returns {EvalScan}
  */
 export function getEvalScan(ctx) {
-  return (ctx.addon.evalScan ??= scan(ctx));
+  return ((ctx.cache ??= {}).evalScan ??= scan(ctx));
 }
 
 /**

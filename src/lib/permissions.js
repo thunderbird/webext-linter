@@ -256,13 +256,13 @@ function analyzePermissions(ctx) {
 }
 
 /**
- * The permission analysis, computed once and memoized on the addon so the
+ * The permission analysis, computed once and memoized on the artifact so the
  * missing-permission and missing-manifest-key checks share one pass.
  * @param {RunContext} ctx
  * @returns {PermissionAnalysis}
  */
 export function getPermissionAnalysis(ctx) {
-  return (ctx.addon.permissionAnalysis ??= analyzePermissions(ctx));
+  return ((ctx.cache ??= {}).permissionAnalysis ??= analyzePermissions(ctx));
 }
 
 /**
@@ -316,12 +316,12 @@ function groundWebApiPermissions(ctx, declaredNamed) {
  * @returns {boolean}
  */
 function scanIsBlindToObfuscation(ctx) {
-  const addon = ctx.addon;
+  const artifact = ctx.artifact;
   // Nothing classifiable (a hand-built ctx / an empty-corpus sibling with no pre-classification):
-  // not blind. A pre-set addon.bundled is used as-is; otherwise a files Map is classified (an
+  // not blind. A pre-set artifact.bundled is used as-is; otherwise a files Map is classified (an
   // empty Map classifies to nothing). Only a MISSING files map with no bundle is skipped, so
   // getBundled never iterates undefined.
-  if (!addon || (!addon.bundled && !addon.files)) {
+  if (!artifact || (!artifact.bundled && !artifact.files)) {
     return false;
   }
   const classified = classifyAddonJs(ctx);

@@ -75,24 +75,24 @@ export default {
    *   escalations?: import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
-    // Registry `input: xpi`: ctx.addon is the built XPI. A file bundled but reached
+    // Registry `input: xpi`: ctx.artifact is the built XPI. A file bundled but reached
     // from no entry point is dead weight in what actually ships, so this runs over
     // the XPI - over a source submission it would instead flag every unreferenced
     // config / test / doc in the repo (all noise), while the XPI surfaces the build's
     // own dead files. (The reachability graph is the same XPI's.)
-    const { addon } = ctx;
-    if (!addon?.files) {
+    const { artifact } = ctx;
+    if (!artifact?.files) {
       return { findings: [] };
     }
     const reach = buildReachability(ctx);
     // Recognized third-party files are not the developer's authored code, so an
     // unreached one is not the developer's unused file - exempt it. The set
     // (hash-identified libraries, minified bundles, obfuscated code, vendored files)
-    // is the XPI's own classification (getBundled over ctx.addon), intrinsic to the
+    // is the XPI's own classification (getBundled over ctx.artifact), intrinsic to the
     // artifact under review, so it needs no cross-artifact review-target metadata.
     const skip = new Set(nonAuthoredJs(ctx));
     // The lock's exemption is the package file's: see the header. Read once, not per file.
-    const packageFileShipped = addon.files.has(PACKAGE_FILE);
+    const packageFileShipped = artifact.files.has(PACKAGE_FILE);
     // An Experiment loads its files by mechanisms static analysis can't trace, so
     // "not reachable" is unreliable there - we'd mostly flag working experiment code.
     // Report only unambiguous junk; a separate "review the whole Experiment" check
@@ -101,7 +101,7 @@ export default {
     const findings = [];
     const escalations = [];
 
-    for (const file of addon.files.keys()) {
+    for (const file of artifact.files.keys()) {
       // Junk outranks every exemption: a leaked .git/ or .vscode/ is debris
       // whatever it holds, and a document or a vendored library inside one is
       // no reason to ship the directory.

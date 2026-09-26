@@ -14,7 +14,7 @@ import rule from "../../src/checks/rules/update-url.js";
 // A ctx whose manifest.json record carries pretty-printed bytes, so manifestPathLine can
 // resolve the update_url line.
 const ctxOf = (manifest) => ({
-  addon: {
+  artifact: {
     manifest: manifestOf(manifest),
     files: new Map([
       ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -75,6 +75,6 @@ test("no finding when update_url is absent", () => {
 
 // An unparsed manifest.json yields no findings and does not throw.
 test("no finding (no throw) when the manifest did not parse", () => {
-  const out = rule.run(withManifest({ addon: { manifest: null } })).findings;
+  const out = rule.run(withManifest({ artifact: { manifest: null } })).findings;
   assert.deepEqual(out, []);
 });

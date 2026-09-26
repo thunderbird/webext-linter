@@ -65,7 +65,7 @@ test("flags computed access, srcdoc, and dynamic ternary arms", () => {
 test("unsafe-html notes each sink site (verdict fail)", () => {
   const code = "el.innerHTML = userInput;";
   const ctx = {
-    addon: {
+    artifact: {
       files: new Map([["render.js", Buffer.from(code)]]),
     },
     jsSources: parsed([

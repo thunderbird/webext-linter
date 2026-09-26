@@ -10,7 +10,7 @@ import untrustedLibrary from "../../src/checks/rules/untrusted-library.js";
 import untrustedMinified from "../../src/checks/rules/untrusted-minified-library.js";
 
 const ctxWith = (untrusted) => ({
-  addon: { bundled: { classified: [], nonAuthored: new Set(), untrusted } },
+  artifact: { bundled: { classified: [], nonAuthored: new Set(), untrusted } },
 });
 
 // A readable untrusted lib is the info check's; the reject check stays silent.

@@ -24,74 +24,18 @@ import { apiUsageOf } from "./extract.js";
  * @typedef {object} ReviewEnv  The review-level state shared by every sibling ctx, built ONCE
  *   by the pipeline (src/pipeline.js) and handed to both ctx builders. It carries only what is
  *   the SAME across artifacts, so a sibling can never drift from another: the schema, the
- *   shipped manifest.json and experiments, the review mode (+ the two SCA paths/scaNotRequired)
- *   and the invalid-Experiment flag.
+ *   shipped manifest.json and experiments, the review mode (+ scaNotRequired) and the
+ *   invalid-Experiment flag. Where the source and the Experiment sit on disk is NOT here: it
+ *   is settled once, when the archive is split into views (src/addon/load.js scaViews), and a
+ *   check reads the corpus it was routed rather than a path.
  * @property {import("../schema/index.js").SchemaIndex} schema
  * @property {{allowExperiments?: boolean, libraryHashes?: Map<string, object>}} options
  * @property {object} mode  The REVIEW_MODE enum member (XPI/SCA); read as `mode?.sca`.
  * @property {boolean} scaNotRequired
  * @property {boolean} invalidExperiment
- * @property {?import("../addon/load.js").ManifestRecord} manifest
+ * @property {?import("../addon/load.js").WebExtManifestRecord} manifest
  * @property {?object} experiments
  */
-
-/**
- * The check-facing artifact: the routed add-on projected to only its INTRINSIC data - the
- * fields a check legitimately reads off ctx.addon. An ALLOWLIST, not a strip: a field not
- * named here CANNOT reach a check, so a new Addon field can never leak onto the check surface
- * by omission (a blocklist would leak until someone remembered to delete it - all it takes
- * for a field like `skipped` to put load-time narration in front of a check). If this list is
- * ever INCOMPLETE, a check reads undefined and the tests fail loudly - the safe failure
- * direction.
- *
- * `files` is the addon's own corpus (referenced, not cloned), so a check reads the real
- * bytes. `store` is the SUBMISSION's, which in a source review is the whole --sca-root while
- * `files` gives up the Experiment subtree: the frame the package file and the lock are
- * written in. It is named here because a dependency finding anchors at that file and has
- * to find it to report a line; a check reaching for `store` is saying it wants the
- * submission rather than the add-on, which is a different question, not a wider one. In an
- * XPI review `files` reviews every key the store has. `experiment` is the privileged Experiment
- * implementation (--sca-exp-source), which `files` deliberately excludes so the
- * WebExtension checks never see Services/ChromeUtils code: a check that reviews a file for
- * what it IS rather than for which API it calls - minified, obfuscated, a known library -
- * reads both, and when the Experiment sits inside the add-on the two share a keyspace so
- * the union is the add-on's whole tree.
- * `vendor`/`bundled` are the pipeline's pre-computed, reconciled classification (the lazy
- * fallbacks would recompute a less-complete one). `nodeModules`/`archives`/`buildReview` serve
- * the SCA archive, which the sca ctx projects; they are undefined on the xpi/source/manifest
- * routes, which is harmless. `symlinks` rides
- * beside them but is NOT one of them: the xpi route carries it too, because an add-on holds
- * a link to a stricter standard than a source archive does and needs the same facts to say
- * so, and `directories` rides with it for the file:/link: walk a lock check runs. The lazy
- * caches
- * (locales/localizedNames/evalScan/outboundSinks/permissionAnalysis/apiResolution, and the
- * bundled fallback)
- * attach themselves on demand via `ctx.addon.X ??= …`, so they need no seeding.
- *
- * DELIBERATELY ABSENT: manifest.json and experiments are shipped-authoritative and exposed as
- * ctx.manifest / ctx.experiments (so a check cannot read one artifact's manifest.json against
- * another's files). For the archive there is also nothing to withhold: it is loaded without
- * reading a manifest.json (src/addon/load.js), so its `manifest` is null and the record this
- * would strip exists only on the built XPI. skipped is read by no check. An Addon carries no
- * path of its own to withhold (src/addon/load.js) - a check addresses files by the keys of
- * this `files` Map.
- * @param {import("../addon/load.js").Addon} addon  The routed add-on.
- * @returns {object} The intrinsic-only view.
- */
-function reviewView(addon) {
-  return {
-    files: addon.files,
-    store: addon.store,
-    experiment: addon.experiment,
-    vendor: addon.vendor,
-    bundled: addon.bundled,
-    nodeModules: addon.nodeModules,
-    archives: addon.archives,
-    symlinks: addon.symlinks,
-    directories: addon.directories,
-    buildReview: addon.buildReview,
-  };
-}
 
 /**
  * Per-source api-usage in the ctx.apiUsages shape (file + inline + the extracted usage),
@@ -109,29 +53,39 @@ function deriveApiUsages(jsSources) {
 
 /**
  * Project one sibling RunContext from the shared review `env` onto a single artifact. Every
- * review-level field (schema, the shipped manifest.json and experiments, mode, the
- * two SCA paths) is copied from `env`, so all siblings share them
- * by reference and cannot drift; only the per-artifact `addon` (via reviewView), its parsed
- * `jsSources`/`apiUsages`, and the shipped-view flag differ. The manifest.json and experiments are
- * shipped-authoritative (read off `env`, never off `addon`), so a check cannot read one
- * artifact's manifest.json against another's files - reviewView strips them from ctx.addon.
+ * review-level field (schema, the shipped manifest.json and experiments, mode) is copied from
+ * `env`, so all siblings share them by reference and cannot drift; only the artifact itself,
+ * its parsed `jsSources`/`apiUsages`, and the shipped-view flag differ. The manifest.json and
+ * experiments are shipped-authoritative - read off `env`, which asked the built XPI once - so
+ * a check cannot read one artifact's manifest.json against another's files.
  * @param {ReviewEnv} env
- * @param {object} artifact
- * @param {import("../addon/load.js").Addon} artifact.addon  The routed artifact (or corpus).
- * @param {import("../addon/sources.js").JsSource[]} artifact.jsSources
- * @param {object[]|undefined} artifact.apiUsages  Per-source usage, or undefined for a corpus
- *   with no reviewable sources (the manifest / sca ctxs).
- * @param {boolean} [artifact.isShippedView]  Mark the built-XPI view for reachability (SCA
+ * @param {object} routed
+ * @param {import("../addon/load.js").Addon} routed.artifact  The routed artifact, linked by
+ *   reference: ctx.artifact IS the object the loader produced.
+ * @param {import("../addon/sources.js").JsSource[]} routed.jsSources
+ * @param {object[]|undefined} routed.apiUsages  Per-source usage, or undefined for a route
+ *   with no reviewable sources (the sca ctx).
+ * @param {boolean} [routed.isShippedView]  Mark the built-XPI view for reachability (SCA
  *   only - in an XPI review the XPI IS the review target, so it is NOT a distinct shipped view).
  * @returns {RunContext}
  */
 function projectCtx(
   env,
-  { addon, jsSources, apiUsages, isShippedView = false }
+  { artifact, jsSources, apiUsages, isShippedView = false }
 ) {
   /** @type {RunContext} */
   const ctx = {
-    addon: reviewView(addon),
+    // The loaded artifact ITSELF, by reference - not a copy of some of its fields. A reader
+    // of ctx.artifact.files can see which artifact those files are, and nothing on it was
+    // put there by a check: what a review derives goes on ctx.cache, and the shipped answers
+    // (the manifest.json record, the Experiment verdict) are asked of the XPI once and shared
+    // below. What stops a check reaching the artifact it was NOT routed to is the routing -
+    // its declared `input` - so there is nothing here to withhold.
+    artifact,
+    // Per-ctx scratch for the memoized derivations (see the lazy accessors in src/lib/*),
+    // each computed once on first ask. Its own field, so nothing derived is mistaken for
+    // something the artifact was loaded with.
+    cache: {},
     schema: env.schema,
     jsSources,
     apiUsages,
@@ -144,12 +98,12 @@ function projectCtx(
     // have been enough. The sca-not-required check reads this to say so. Advice only - this
     // review is a full SCA review either way.
     scaNotRequired: env.scaNotRequired,
-    // The authoritative manifest.json and experiments are the SHIPPED artifact's (the built XPI) - what
-    // Thunderbird actually loads. Explicit shared context like `schema`, so the manifest.json /
-    // permission / API / experiment checks read them here, never off ctx.addon (reviewView
-    // strips the record, and in SCA the archive was loaded without one anyway). The record
-    // passes through whole: the parse, the bytes, the parse error and the line index are one
-    // artifact's one answer, and splitting one answer is how its parts drift apart.
+    // The authoritative manifest.json and experiments are the SHIPPED artifact's (the built
+    // XPI) - what Thunderbird actually loads. Explicit shared context like `schema`, so the
+    // manifest.json / permission / API / experiment checks read them here and no artifact
+    // carries an answer of its own to be read instead. The record passes through whole: the
+    // parse, the bytes, the parse error and the line index are one artifact's one answer, and
+    // splitting one answer is how its parts drift apart.
     manifest: env.manifest,
     experiments: env.experiments,
   };
@@ -189,7 +143,7 @@ export function buildXpiCtx(xpiAddon, xpiParsedSources, env) {
   }
   const jsSources = xpiParsedSources ?? [];
   return projectCtx(env, {
-    addon: xpiAddon,
+    artifact: xpiAddon,
     jsSources,
     apiUsages: deriveApiUsages(jsSources),
     // A distinct shipped view ONLY in SCA. In an XPI review xpiCtx IS siblings.source (the
@@ -205,7 +159,7 @@ export function buildXpiCtx(xpiAddon, xpiParsedSources, env) {
  *                 target, so it becomes siblings.source. (In an XPI review that same slot
  *                 holds the XPI: `source` names the target, never an artifact.)
  *   - `scaCtx`  the same archive with no parsed source, for the `input: sca` checks, read
- *                 off ctx.addon via the same one-place `input` routing, no separate field.
+ *                 off ctx.artifact via the same one-place `input` routing, no separate field.
  *                 A build check reads files and the recorded lists, never code.
  * Both project the shipped manifest.json and experiments from `env`
  * (so no artifact's manifest.json leaks against another's files, and the review-level singletons stay
@@ -224,7 +178,7 @@ export function buildScaCtxs(archive, sourceParsedSources, env) {
     );
   }
   const sourceCtx = projectCtx(env, {
-    addon: archive,
+    artifact: archive,
     jsSources: sourceParsedSources,
     apiUsages: deriveApiUsages(sourceParsedSources),
   });
@@ -232,7 +186,7 @@ export function buildScaCtxs(archive, sourceParsedSources, env) {
   // never code. One owner, projected per route, is what keeps two views of one archive from
   // disagreeing about what it holds.
   const scaCtx = projectCtx(env, {
-    addon: archive,
+    artifact: archive,
     jsSources: [],
     apiUsages: undefined,
   });

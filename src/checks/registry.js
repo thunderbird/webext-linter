@@ -121,7 +121,7 @@ function bandUnder(severity, warningsAsErrors) {
 // asked, or what a verdict can settle.
 const COLLAPSE_MODES = new Set(["subject"]);
 
-// The `input` a check entry declares - which add-on artifact is ctx.addon when the
+// The `input` a check entry declares - which add-on artifact is ctx.artifact when the
 // check runs. "source" = the REVIEW TARGET, the readable submitted code (the readable
 // --sca-root in an SCA review, the built XPI in an XPI review - the only artifact
 // there); "xpi" = ALWAYS the built XPI (the shipped artifact), for the structure checks
@@ -184,7 +184,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   check that delegates has. Carried here because runOneCheck takes no registry.
  * @property {boolean} [sca]  The review-mode gate (scaEligible); undefined when unset.
  * @property {"source"|"xpi"|"sca"|undefined} input  Which artifact is
- *   ctx.addon when the check runs (VALID_CHECK_INPUTS above), and what its output is
+ *   ctx.artifact when the check runs (VALID_CHECK_INPUTS above), and what its output is
  *   labelled as ([XPI]/[SCA]). Required for every check; runChecks routes it (see
  *   buildXpiCtx / buildScaCtxs).
  * @property {?string} section  Which to-do section its escalations are listed under
@@ -201,25 +201,33 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * The shared context passed to every check's run(ctx, check). Built once per
  * review (built in runPipeline Phase 4) and read by the rule modules.
  * @typedef {object} RunContext
- * @property {object} addon  The routed artifact's INTRINSIC view (reviewView in
- *   context.js): its files plus the lazy file-derived caches (bundled, vendor,
- *   locales, ...). The manifest.json and experiment classification are NOT on it - they
- *   are shipped-authoritative and live on ctx.manifest / ctx.experiments below - so a
- *   check cannot pair one artifact's manifest.json with another's files.
+ * @property {import("../addon/load.js").Addon} artifact  The artifact this check was ROUTED
+ *   to (its declared `input`), linked by reference: ctx.artifact IS the object the loader
+ *   produced, so a reader can see which artifact a corpus belongs to. It carries what that
+ *   artifact was LOADED with - its corpora, the recorded path lists - plus the classification
+ *   the pipeline resolved for it (vendor/bundled). Nothing shipped-authoritative is on it:
+ *   the manifest.json record and the experiment classification are asked of the built XPI
+ *   once and shared, as ctx.manifest / ctx.experiments below, so a check cannot pair one
+ *   artifact's manifest.json with another's files.
+ * @property {object} cache  What this review DERIVES from that artifact, memoized per ctx and
+ *   computed once on first ask: the locale scan, the eval scan, the outbound sinks, the
+ *   permission analysis, the api resolution, the remote refs, and a bundled classification
+ *   when no setup step pre-computed one. Every slot is reached through its accessor in
+ *   src/lib/*, never read directly, so a check asks a question rather than a field.
  * @property {import("../schema/index.js").SchemaIndex} schema  Resolved schema.
  * @property {object[]} jsSources  Parsed JS sources (see addon/sources.js).
  * @property {object[]} apiUsages  Per-source extracted API usage.
- * @property {?import("../addon/load.js").ManifestRecord} manifest  The authoritative,
+ * @property {?import("../addon/load.js").WebExtManifestRecord} manifest  The authoritative,
  *   SHIPPED manifest.json (the built XPI's - what Thunderbird loads), read once like `schema`:
  *   `json` the parse, `text` the raw manifest.json (manifestTokenLine reads it), `error` the
  *   JSON parse failure, `loc` the position index (manifestPathLine reads it). Null when the
  *   shipped artifact holds no manifest.json; a file that is there but will not parse is a
  *   record carrying `error`, so the two are separable here even where a reader still
  *   answers `!json` to both.
- *   Every manifest / permission / API check reads this; there is no ctx.addon.manifest
- *   (reviewView strips it), and in SCA there is nothing behind it to strip - the source
- *   archive is loaded without reading a manifest.json at all, because its root manifest.json is
- *   a pre-build template no check reviews.
+ *   Every manifest / permission / API check reads this; no artifact carries a record of its
+ *   own, because loading derives none - it is read off the shipped store when the review asks
+ *   (readWebExtManifest), and a source archive is never asked, its root manifest.json being a
+ *   pre-build template no check reviews.
  * @property {?object} experiments  The Experiment classification (verifyExperiments),
  *   computed from the SHIPPED XPI, shared like the manifest.json. Null for a non-Experiment
  *   add-on.
@@ -2050,7 +2058,7 @@ function eslintEligible(entry, inEslintMode) {
  * explicit: there is no default artifact to fall through to - `source` is a first-class
  * sibling like the rest.
  *
- * A check declares an `input` and reads ONLY its routed ctx.addon - it has no way to
+ * A check declares an `input` and reads ONLY its routed ctx.artifact - it has no way to
  * reach another artifact. What `input` resolves to, per review mode:
  *
  *     input \ mode | SCA (readable source + built XPI) | XPI review (one artifact)
@@ -2089,7 +2097,7 @@ export function routeCtx(check, siblings) {
  * [XPI]/[SCA] labelling uses, so the two can never disagree about a finding.
  *
  * Anything post-processing a check's OUTPUT (the pipeline's folder collapse, the report's
- * labels) must resolve its artifact through here, never through `ctx.addon`: once findings
+ * labels) must resolve its artifact through here, never through `ctx.artifact`: once findings
  * come back as a flat list carrying only a ruleId, the check -> artifact binding routeCtx
  * enforced is gone, and this is the only way to recover it.
  * @param {Registry} registry
@@ -2199,7 +2207,7 @@ export async function runChecks(registry, opts = {}, siblings) {
   for (const [i, check] of checks.entries()) {
     // Route the check to its declared input artifact - the ONE place the choice is
     // made (routeCtx, also asked directly by the routing tests). The check reads
-    // only its ctx.addon and has no way to reach another artifact.
+    // only its ctx.artifact and has no way to reach another artifact.
     const checkCtx = routeCtx(check, siblings);
     const out = await runOneCheck(checkCtx, check, `[${i + 1}/${total}]`);
     findings.push(...out.findings);
@@ -2214,7 +2222,7 @@ export async function runChecks(registry, opts = {}, siblings) {
   // artifact a rule's OUTPUT describes (the same resolution the report's [XPI]/[SCA] label
   // uses), so nothing here picks an artifact and none can be picked wrongly.
   const filesOfRule = (ruleId) => [
-    ...ctxForRule(registry, ruleId, siblings).addon.files.keys(),
+    ...ctxForRule(registry, ruleId, siblings).artifact.files.keys(),
   ];
   collapseUnusedFolders(findings, filesOfRule);
   collapseUnusedFolders(manualItems, filesOfRule);

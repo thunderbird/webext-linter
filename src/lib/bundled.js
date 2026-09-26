@@ -94,8 +94,11 @@ import { isMinified, isMinifiedJs } from "./minified.js";
  *   recognized.
  * @returns {Bundled}
  */
-export function classifyBundled(addon, { libraryHashes = new Map() } = {}) {
-  return assembleBundled(classifyFiles(addon, { libraryHashes }));
+export function classifyBundled(
+  addon,
+  { libraryHashes = new Map(), trustedFiles } = {}
+) {
+  return assembleBundled(classifyFiles(addon, { libraryHashes, trustedFiles }));
 }
 
 // Below this, the LIBRARY and OBFUSCATION questions are not worth asking: too small to
@@ -111,19 +114,22 @@ export const MIN_CLASSIFY_BYTES = 1024;
  * library / minified / obfuscated non-authored seed. `tag.obfuscation` is the final
  * verdict here - the detector is structural, so there is no later AST correction.
  * @param {Addon} addon
- * @param {{libraryHashes?: Map<string, LibraryId>}} [opts]
+ * @param {{libraryHashes?: Map<string, LibraryId>, trustedFiles?: Set<string>}} [opts]
+ *   `trustedFiles` are the files of a recognised allowed Experiment (pristine or modified):
+ *   upstream-derived, not the developer's - the byte-match IS their review, so the
+ *   source-level scanners skip them like a vendored library, regardless of
+ *   --allow-experiments. Passed in rather than read off the artifact, because the
+ *   classification is the SHIPPED add-on's answer whichever artifact is being classified.
+ *   Absent means nothing is trusted, which is also what an unsupported experiment (not a
+ *   known upstream draft) yields - then all of it stays linted.
  * @returns {{classified: BundleTag[], nonAuthored: Set<string>}}
  */
-export function classifyFiles(addon, { libraryHashes = new Map() } = {}) {
+export function classifyFiles(
+  addon,
+  { libraryHashes = new Map(), trustedFiles } = {}
+) {
   const classified = [];
-  // Files of a recognised allowed Experiment (pristine or modified) are
-  // upstream-derived, not the developer's - the byte-match IS their review, so
-  // the source-level scanners skip them like a vendored library, regardless of
-  // --allow-experiments. trustedFiles is empty only when some experiment is
-  // unsupported (not a known upstream draft): then nothing is trusted and all of
-  // it stays linted.
-  const trusted = addon.experiments?.trustedFiles ?? new Set();
-  const nonAuthored = new Set([...trusted]);
+  const nonAuthored = new Set(trustedFiles ?? []);
   for (const [file, buf] of withExperiment(addon)) {
     const ext = extname(file);
     // A vendored file (an exact VENDOR entry OR a file under a vendored folder) is
@@ -272,17 +278,22 @@ export function applyUnverifiedVendor(addon) {
 
 /**
  * The bundled classification for this review: the addon.bundled the pipeline computed in
- * setup, or a lazy compute for a caller that ran no setup step (unit tests). Memoized on
- * the addon so the ~8 consumers share it.
+ * setup, or a lazy compute for a caller that ran no setup step (unit tests). Memoized so the
+ * ~8 consumers share one answer.
  * @param {RunContext} ctx
  * @returns {Bundled}
  */
 function getBundled(ctx) {
-  // In SCA the pipeline pre-classifies the built XPI too; in XPI mode they are one
-  // artifact. The fallback fires only for a rejected Experiment or a direct unit ctx.
-  return (ctx.addon.bundled ??= classifyBundled(ctx.addon, {
-    libraryHashes: ctx.options?.libraryHashes,
-  }));
+  // The ARTIFACT's answer wins: the pipeline reconciles it against the vendor audit, which a
+  // lazy recompute cannot see. In SCA it pre-classifies the built XPI too; in XPI mode they
+  // are one artifact. The fallback fires only for a rejected Experiment or a direct unit ctx,
+  // and is memoized on the ctx rather than stapled to the artifact.
+  return (
+    ctx.artifact.bundled ??
+    ((ctx.cache ??= {}).bundled ??= classifyBundled(ctx.artifact, {
+      libraryHashes: ctx.options?.libraryHashes,
+    }))
+  );
 }
 
 /**

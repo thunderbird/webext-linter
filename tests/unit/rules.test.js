@@ -107,7 +107,7 @@ const schema = buildSchemaIndex(
 
 const jsCtx = (code, manifest = {}) => ({
   jsSources: parsed([{ file: "f.js", code, lineOffset: 0, inline: false }]),
-  addon: { files: new Map(), manifest: manifestOf(manifest) },
+  artifact: { files: new Map(), manifest: manifestOf(manifest) },
   schema,
   options: {},
 });
@@ -129,7 +129,7 @@ const filesCtx = (files, { libs = [] } = {}) => {
       { name: "demolib", version: "1.0.0" },
     ])
   );
-  return { addon, options: { libraryHashes } };
+  return { artifact: addon, options: { libraryHashes } };
 };
 
 // Run a check with a fake ctx.note collector and return the recorded activity.
@@ -148,7 +148,7 @@ function notesFrom(check, ctx) {
 // is why it stays a SKIPPED note and produces no finding.
 test("a manifest-reading check names WHY there is no manifest, absent vs unparsable", () => {
   const reasons = (manifest) =>
-    notesFrom(addonIconMissing, { addon: { manifest } }).map((n) => n.item);
+    notesFrom(addonIconMissing, { artifact: { manifest } }).map((n) => n.item);
 
   assert.deepEqual(reasons(null), ["no manifest.json"]);
   assert.deepEqual(
@@ -157,7 +157,8 @@ test("a manifest-reading check names WHY there is no manifest, absent vs unparsa
   );
   // Silence either way: the verdict belongs to the dedicated checks.
   assert.deepEqual(
-    addonIconMissing.run(withManifest({ addon: { manifest: null } })).findings,
+    addonIconMissing.run(withManifest({ artifact: { manifest: null } }))
+      .findings,
     []
   );
 });
@@ -290,7 +291,7 @@ test("sync-xhr / debugger / async-onmessage skip non-authored code", () => {
   const code = body + "var a = 1;\n".repeat(200); // >1KB so it is classified
   const ctxFor = (file, lib = false) => ({
     jsSources: parsed([{ file, code, lineOffset: 0 }]),
-    addon: {
+    artifact: {
       files: new Map([[file, Buffer.from(code)]]),
       manifest: manifestOf({}),
     },
@@ -371,7 +372,7 @@ test("code-sanity skips non-authored code, lints authored code", () => {
   const redecl = "var a = 1;\n".repeat(200); // ~2KB, trips no-redeclare, short lines
   const ctxFor = (file, lib = false) => ({
     jsSources: parsed([{ file, code: redecl, lineOffset: 0 }]),
-    addon: {
+    artifact: {
       files: new Map([[file, Buffer.from(redecl)]]),
       manifest: manifestOf({}),
     },
@@ -553,7 +554,7 @@ test("obfuscated-code ignores a match no pinned family made", () => {
 test("vendor-vulnerable surfaces an identified-library vulnerability, file-anchored", () => {
   const file = "vendor/jquery.min.js";
   const ctx = {
-    addon: {
+    artifact: {
       files: new Map([
         // The path appears in a sourcemap comment - an empty token must still
         // yield no line (the guard must not fall back to a substring match).
@@ -587,7 +588,7 @@ test("vendor-vulnerable surfaces an identified-library vulnerability, file-ancho
 // finding, band-driven severity and all. A package.json dep anchors at its name.
 test("vendor-vulnerable-dev surfaces a dev-dependency vulnerability", () => {
   const ctx = {
-    addon: {
+    artifact: {
       files: new Map([
         [
           "package.json",
@@ -621,7 +622,7 @@ test("vendor-vulnerable-dev surfaces a dev-dependency vulnerability", () => {
 // empty dev set yields nothing.
 test("vendor-vulnerable-dev yields nothing when devVulnerabilities is empty", () => {
   const ctx = {
-    addon: { files: new Map(), vendor: { devVulnerabilities: [] } },
+    artifact: { files: new Map(), vendor: { devVulnerabilities: [] } },
   };
   assert.deepEqual(vendorVulnerableDev.run(withManifest(ctx)).findings, []);
 });
@@ -1269,7 +1270,7 @@ test("a response worded per review mode is all-or-nothing, and never beside a ba
 
 // The shipped-vs-review-target artifact is chosen in ONE place - runChecks routes
 // each check to its artifact's context on the registry `input` (source = the review
-// target, xpi = the built XPI). A check reads only ctx.addon and the orchestrator
+// target, xpi = the built XPI). A check reads only ctx.artifact and the orchestrator
 // hands it the correct one; no ctx field or helper exposes the other artifact, so
 // the guarantee is structural (not a source scan). These tests pin the dangerous
 // set and prove the routing reaches the escalation too.
@@ -1335,7 +1336,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
   ]);
   // input: sca reads the submitted source archive (minus the Experiment and a recorded
   // node_modules). The one build-review check (undeclared-build-source, which reads the setup
-  // record off ctx.addon.buildReview) plus the deterministic build-policy checks; extending
+  // record off ctx.artifact.buildReview) plus the deterministic build-policy checks; extending
   // this set is deliberate too.
   const sca = checks
     .filter((c) => c.input === "sca")
@@ -1357,7 +1358,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
 
 // The routing reaches the escalation too - the seam that finding B slipped
 // through. An `input: xpi` check raises its cases over the XPI, and runOneCheck
-// -> the check must read the XPI's files (via the routed ctx.addon), not
+// -> the check must read the XPI's files (via the routed ctx.artifact), not
 // a captured review source. unused-files emits a candidate for an ambiguous file (a
 // live dynamic loader names it), so this exercises the real corpus path with a stub
 // ctx that records the addon it was given.
@@ -1382,7 +1383,7 @@ test("an input:xpi check escalates over its routed (XPI) addon", async () => {
   // The orchestrator routes an `input: xpi` check to a ctx whose addon is the XPI,
   // so the case it raises names a file from THAT addon.
   const ctx = {
-    addon: xpi,
+    artifact: xpi,
     jsSources: parsedSources(xpi, { schema }),
     schema,
     mode: REVIEW_MODE.SCA,
@@ -1396,10 +1397,10 @@ test("an input:xpi check escalates over its routed (XPI) addon", async () => {
 });
 
 // ---- build review: undeclared-build-source (SCA; reads the setup record on
-// ctx.addon.buildReview, produced by analyzeBuild) ----
+// ctx.artifact.buildReview, produced by analyzeBuild) ----
 
 const scaCtx = (review) => ({
-  addon: { files: new Map(), buildReview: review },
+  artifact: { files: new Map(), buildReview: review },
 });
 const review = (over) => ({
   unresolved: [],
@@ -1448,7 +1449,7 @@ test("undeclared-build-source escalates every SCA, build documented or not", () 
 test("build-registry-redirect rejects any registry setting in .npmrc", () => {
   const run = (npmrc) =>
     buildRegistryRedirect.run({
-      addon: { files: new Map([[".npmrc", Buffer.from(npmrc)]]) },
+      artifact: { files: new Map([[".npmrc", Buffer.from(npmrc)]]) },
     }).findings;
   const one = (out, item) => {
     assert.equal(out.length, 1);
@@ -1477,7 +1478,7 @@ test("build-registry-redirect rejects any registry setting in .npmrc", () => {
   assert.deepEqual(run("# registry=https://evil/"), []);
   assert.deepEqual(run("save-exact=true"), []);
   assert.deepEqual(
-    buildRegistryRedirect.run({ addon: { files: new Map() } }).findings,
+    buildRegistryRedirect.run({ artifact: { files: new Map() } }).findings,
     []
   );
 });
@@ -1489,7 +1490,7 @@ test("build-registry-redirect rejects any registry setting in .npmrc", () => {
 test("build-registry-redirect reads the root .npmrc and ignores a nested one", () => {
   const at = (path, npmrc) =>
     buildRegistryRedirect.run({
-      addon: { files: new Map([[path, Buffer.from(npmrc)]]) },
+      artifact: { files: new Map([[path, Buffer.from(npmrc)]]) },
     }).findings;
   assert.deepEqual(at("frontend/.npmrc", "registry=https://evil.example/"), []);
   const root = at(".npmrc", "registry=https://evil.example/");
@@ -1508,7 +1509,7 @@ test("build-registry-redirect reads the root .npmrc and ignores a nested one", (
 // anchored at that directory; none recorded -> no finding.
 test("committed-node-modules flags each recorded node_modules directory", () => {
   const run = (nodeModules) =>
-    committedNodeModules.run({ addon: { nodeModules } }).findings;
+    committedNodeModules.run({ artifact: { nodeModules } }).findings;
   const out = run(["node_modules", "packages/a/node_modules"]);
   assert.equal(out.length, 2);
   // The directory travels as the locus only. It carries no item, so the response
@@ -1541,7 +1542,7 @@ const ALL_LINKS = [
 // real path, so only a link leading out of the submission or to nothing is a finding.
 test("sca-invalid-symlink rejects the escaping and broken links, not the internal one", () => {
   const out = scaInvalidSymlink.run({
-    addon: { symlinks: ALL_LINKS },
+    artifact: { symlinks: ALL_LINKS },
   }).findings;
   // Everything but the internal one, which is the only link a source archive may carry.
   // The entry cause cannot arise for a --sca-root (we never unpack it ourselves), and is
@@ -1569,13 +1570,13 @@ test("sca-invalid-symlink rejects the escaping and broken links, not the interna
   // not be able to fall silent because it met a value it does not list.
   assert.deepEqual(
     scaInvalidSymlink
-      .run({ addon: { symlinks: [{ path: "odd", cause: "not-a-member" }] } })
+      .run({ artifact: { symlinks: [{ path: "odd", cause: "not-a-member" }] } })
       .findings.map((f) => [f.file, f.hint]),
     [["odd", "target cannot be followed"]]
   );
   // None recorded, or no addon -> no finding.
   assert.deepEqual(
-    scaInvalidSymlink.run({ addon: { symlinks: [] } }).findings,
+    scaInvalidSymlink.run({ artifact: { symlinks: [] } }).findings,
     []
   );
   assert.deepEqual(scaInvalidSymlink.run({}).findings, []);
@@ -1585,7 +1586,7 @@ test("sca-invalid-symlink rejects the escaping and broken links, not the interna
 // one the source archive tolerates, and the entry one that never reached disk.
 test("xpi-packaged-symlink rejects every recorded link, whatever its target", () => {
   const out = xpiPackagedSymlink.run({
-    addon: { symlinks: ALL_LINKS },
+    artifact: { symlinks: ALL_LINKS },
   }).findings;
   assert.deepEqual(
     out.map((f) => f.file),
@@ -1607,18 +1608,20 @@ test("xpi-packaged-symlink rejects every recorded link, whatever its target", ()
   // A value this check has no wording for is still a link, and still refused.
   assert.deepEqual(
     xpiPackagedSymlink
-      .run({ addon: { symlinks: [{ path: "odd.js", cause: "not-a-member" }] } })
+      .run({
+        artifact: { symlinks: [{ path: "odd.js", cause: "not-a-member" }] },
+      })
       .findings.map((f) => [f.file, f.hint]),
     [["odd.js", "symbolic link"]]
   );
   assert.deepEqual(
-    xpiPackagedSymlink.run({ addon: { symlinks: [] } }).findings,
+    xpiPackagedSymlink.run({ artifact: { symlinks: [] } }).findings,
     []
   );
   assert.deepEqual(xpiPackagedSymlink.run({}).findings, []);
 });
 
-// The two lock checks read only ctx.addon.files, so a plain map of the submission's
+// The two lock checks read only ctx.artifact.files, so a plain map of the submission's
 // dependency files is the whole context they need.
 const fileMap = (files) =>
   new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)]));
@@ -1631,7 +1634,7 @@ const fileMap = (files) =>
 test("sca-package-file-missing reports an absent package.json", () => {
   const run = (files, scaNotRequired = false) =>
     scaPackageFileMissing.run({
-      addon: { files: fileMap(files) },
+      artifact: { files: fileMap(files) },
       scaNotRequired,
     }).findings;
 
@@ -1677,7 +1680,7 @@ test("sca-package-file-missing reports an absent package.json", () => {
 test("sca-package-file-invalid reports a package.json that cannot be used", () => {
   const run = (files, scaNotRequired = false) =>
     scaPackageFileInvalid.run({
-      addon: { files: fileMap(files) },
+      artifact: { files: fileMap(files) },
       scaNotRequired,
     }).findings;
   const one = (out, item) => {
@@ -1714,7 +1717,7 @@ test("sca-package-file-invalid reports a package.json that cannot be used", () =
 // installers refuse without a lock whatever it holds.
 test("sca-lock-file-missing fires whenever a source ships a package.json and no lock", () => {
   const run = (files) =>
-    scaLockFileMissing.run({ addon: { files: fileMap(files) } }).findings;
+    scaLockFileMissing.run({ artifact: { files: fileMap(files) } }).findings;
   const toolchain = {
     "package.json": JSON.stringify({
       scripts: { build: "webpack" },
@@ -1805,7 +1808,7 @@ test("sca-lock-file-missing fires whenever a source ships a package.json and no 
 // each gap into a finding, anchors it, and words its subject.
 test("sca-lock-file-invalid anchors each gap and names what is wrong", () => {
   const out = scaLockFileInvalid.run({
-    addon: {
+    artifact: {
       files: fileMap({
         "package.json": JSON.stringify(
           {
@@ -1852,7 +1855,7 @@ test("sca-lock-file-invalid anchors each gap and names what is wrong", () => {
 
   // An unreadable lock is the subject itself: anchored at the lock, with no line.
   const unreadable = scaLockFileInvalid.run({
-    addon: {
+    artifact: {
       files: fileMap({
         "package.json": JSON.stringify({ dependencies: { x: "^1.0.0" } }),
         "package-lock.json": "{not json",
@@ -1867,7 +1870,7 @@ test("sca-lock-file-invalid anchors each gap and names what is wrong", () => {
   // A lock that covers the package.json, and no addon at all.
   assert.deepEqual(
     scaLockFileInvalid.run({
-      addon: {
+      artifact: {
         files: fileMap({
           "package.json": JSON.stringify({ dependencies: { x: "1.0.0" } }),
           "package-lock.json": JSON.stringify({
@@ -1890,7 +1893,7 @@ test("sca-lock-file-invalid anchors each gap and names what is wrong", () => {
   assert.deepEqual(
     scaLockFileInvalid
       .run({
-        addon: {
+        artifact: {
           files: fileMap({
             "package.json": JSON.stringify({ dependencies: { x: "^2.0.0" } }),
             "package-lock.json": JSON.stringify({
@@ -1913,7 +1916,7 @@ test("sca-lock-file-invalid anchors each gap and names what is wrong", () => {
 // brackets - see utf8ComparisonSigns (src/lib/util.js).
 test("sca-lock-file-invalid keeps a comparison-sign spec readable in the item", () => {
   const out = scaLockFileInvalid.run({
-    addon: {
+    artifact: {
       files: fileMap({
         "package.json": JSON.stringify({
           dependencies: { drifted: ">=2.0.0 <3.0.0" },
@@ -1990,7 +1993,7 @@ test("unused-permission lists the unprovable declared named permissions", () => 
   };
   const ctx = {
     schema,
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -2061,7 +2064,7 @@ test("unused-permission decides token-absent permissions deterministically", () 
   runExtractionPass(jsSources, { schema });
   const ctx = {
     schema,
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -2112,7 +2115,7 @@ test("unused-permission locates a bare token in a non-authored bundle (raw scan)
     schema,
     jsSources,
     apiUsages: [],
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -2158,7 +2161,7 @@ test("unused-permission resolves dotted injection tokens via api-usage; bare tok
     schema,
     jsSources,
     apiUsages: [{ file: "bg.js", ...apiUsageOf(jsSources[0]) }],
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -2223,7 +2226,7 @@ test("unused-permission grounds compose from the compose_scripts manifest key", 
   };
   const ctx = {
     schema,
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -2252,7 +2255,7 @@ test("message_display_scripts version-filters scripting on the 154 boundary", ()
     };
     const ctx = withManifest({
       schema,
-      addon: {
+      artifact: {
         manifest: manifestOf(manifest),
         files: new Map([
           ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -2284,7 +2287,7 @@ test("unused-permission escalates instead of deciding when the scan is blind", (
   };
   const base = () => ({
     schema,
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -2332,7 +2335,7 @@ test("unused-permission escalates instead of deciding when the scan is blind", (
   // OBFUSCATED first-party code -> the shipped scan can't be trusted -> escalate. (Pre-seed the
   // classification so classifyAddonJs sees an obfuscated tag without needing a real bundle.)
   const obfuscated = base();
-  obfuscated.addon.bundled = {
+  obfuscated.artifact.bundled = {
     classified: [
       {
         file: "bg.js",
@@ -2375,7 +2378,7 @@ test("unused-permission: a version-excluded token-less entry does not poison", (
   };
   const ctx = {
     schema,
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -2407,7 +2410,7 @@ test("unused-permission: a token-less entry poisons its permissions", () => {
   const manifest = { manifest_version: 2, permissions: ["compose"] };
   const ctx = {
     schema,
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -2454,7 +2457,7 @@ test("unused-permission selects token lists by strict_min_version", () => {
     };
     const ctx = {
       schema,
-      addon: {
+      artifact: {
         manifest: manifestOf(manifest),
         files: new Map([
           ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -2493,7 +2496,7 @@ test("unused-permission drops permissions proved used by static analysis", () =>
   const ctx = {
     schema,
     note: (file, loc, item, verdict) => notes.push({ item, verdict }),
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -2533,7 +2536,7 @@ test("unused-permission credits function-level permissions (archive/delete)", ()
   };
   const ctx = withManifest({
     schema,
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -2574,7 +2577,7 @@ test("unused-permission escalates unlimitedStorage (gates no API)", () => {
   const ctx = {
     schema,
     note: (file, loc, item, verdict) => notes.push({ item, verdict }),
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -2605,7 +2608,7 @@ test("unused-permission escalates unlimitedStorage (gates no API)", () => {
 test("deprecated-api hint is the schema deprecation message, not a doc link", () => {
   const ctx = {
     schema,
-    addon: {
+    artifact: {
       manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
       files: new Map([["bg.js", Buffer.from("")]]),
     },
@@ -2652,7 +2655,7 @@ test("unknown-api flags version_added:false as unsupported", () => {
   );
   const ctx = {
     schema: local,
-    addon: {
+    artifact: {
       manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
       files: new Map([["bg.js", Buffer.from("")]]),
     },
@@ -2700,7 +2703,7 @@ test("unknown-api escalates every unavailable reference", () => {
   });
   const ctx = withManifest({
     schema: local,
-    addon: {
+    artifact: {
       manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
       files: new Map([["bg.js", Buffer.from("")]]),
     },
@@ -2746,7 +2749,7 @@ test("unknown-api escalates a shim rather than settling it", () => {
   const out = unknownApi.run(
     withManifest({
       schema, // `messages` is a real namespace; `nope`/`alsoNope` are not
-      addon: {
+      artifact: {
         manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
         files: new Map([["bg.js", Buffer.from("")]]),
       },
@@ -2779,7 +2782,7 @@ test("unknown-api: every shape around an absent namespace escalates, none reject
     const out = unknownApi.run(
       withManifest({
         schema, // `messages` is a real namespace; `nope` is not
-        addon: {
+        artifact: {
           manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
           files: new Map([["bg.js", Buffer.from(src)]]),
         },
@@ -2843,7 +2846,7 @@ test("unknown-api: an aliased unknown member is listed at each site", () => {
   const out = unknownApi.run(
     withManifest({
       schema, // messages is a known namespace; messages.nope is an unknown member
-      addon: {
+      artifact: {
         manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
         files: new Map([["bg.js", Buffer.from(src)]]),
       },
@@ -2873,7 +2876,7 @@ test("resolveApiUsages resolves reachable usages once; unknownApis is the unreco
   });
   const ctx = withManifest({
     schema: local,
-    addon: {
+    artifact: {
       manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
       files: new Map([
         ["bg.js", Buffer.from("")],
@@ -2913,7 +2916,7 @@ test("resolveApiUsages resolves reachable usages once; unknownApis is the unreco
 // the API. Major-granularity compare (strict_max is conventionally "N.*").
 const maxCtx = (max, usages) => ({
   schema,
-  addon: {
+  artifact: {
     // bg.js must be in the pure WebExtension tree for the validators to check it.
     files: new Map([["bg.js", Buffer.from("")]]),
     manifest: manifestOf({
@@ -2990,7 +2993,7 @@ test("strict-max-version-api is skipped without strict_max_version", () => {
 // end of the supported range lack the API. Tuple compare (minor/patch matter).
 const minCtx = (min, usages) => ({
   schema,
-  addon: {
+  artifact: {
     // bg.js must be in the pure WebExtension tree for the validators to check it.
     files: new Map([["bg.js", Buffer.from("")]]),
     manifest: manifestOf({
@@ -3082,7 +3085,7 @@ test("strict-min-version-api compares minor/patch components", () => {
     strictMinVersionApi.run(
       withManifest({
         schema: local,
-        addon: {
+        artifact: {
           files: new Map([["bg.js", Buffer.from("")]]),
           manifest: manifestOf({
             background: { scripts: ["bg.js"] },
@@ -3141,7 +3144,7 @@ test("strict-min-version-api: an aliased too-new API resolves and is listed", ()
   const out = strictMinVersionApi.run(
     withManifest({
       schema,
-      addon: {
+      artifact: {
         files: new Map([["bg.js", Buffer.from(src)]]),
         manifest: manifestOf({
           background: { scripts: ["bg.js"] },
@@ -3206,7 +3209,7 @@ test("a non-existent namespace: strict-min ignores it, unknown-api raises it", (
   const raised = unknownApi.run(
     withManifest({
       schema,
-      addon: {
+      artifact: {
         manifest: manifestOf({ background: { scripts: ["bg.js"] } }),
         files: new Map([["bg.js", Buffer.from("")]]),
       },
@@ -3227,7 +3230,7 @@ const GET_USAGE = [{ segments: ["messages", "get"], line: 3, column: 0 }];
 test("missing-permission ignores usages in dead (unreachable) files", () => {
   const ctx = (file) => ({
     schema,
-    addon: {
+    artifact: {
       manifest: manifestOf({
         permissions: [],
         background: { scripts: ["bg.js"] },
@@ -3259,7 +3262,7 @@ test("missing-permission fires for a permission reached only via a namespace ali
   const out = missingPermission.run(
     withManifest({
       schema,
-      addon: {
+      artifact: {
         manifest: manifestOf({
           permissions: [],
           background: { scripts: ["bg.js"] },
@@ -3279,7 +3282,7 @@ test("missing-permission fires for a permission reached only via a namespace ali
 test("usedPermissions tracks reachable requirements, not dead-file ones", () => {
   const ctx = (file) => ({
     schema,
-    addon: {
+    artifact: {
       manifest: manifestOf({
         permissions: ["messagesRead"],
         background: { scripts: ["bg.js"] },
@@ -3313,7 +3316,7 @@ test("unused-permission omits permissions a reachable call requires", () => {
   };
   const ctx = {
     schema,
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -3347,7 +3350,7 @@ const permProducerCtx = (strictMin) => {
   };
   return {
     schema,
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest),
       files: new Map([
         ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -3380,7 +3383,7 @@ test("unused-permission enumerates regardless of strict_min_version", () => {
 // states literally, whose language nothing in the package declares.
 const tmCtx = (name, files = {}) =>
   withManifest({
-    addon: {
+    artifact: {
       manifest: manifestOf({ manifest_version: 3, name, version: "1" }),
       files: new Map(
         Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
@@ -3515,7 +3518,7 @@ test("offFormThunderbird anchors the allowed form at the end", () => {
 test("an unreadable or unresolvable localized name is a skip, never a pass", () => {
   const ctxOf = (files) =>
     withManifest({
-      addon: {
+      artifact: {
         manifest: manifestOf({
           manifest_version: 3,
           name: "__MSG_extName__",
@@ -3555,7 +3558,7 @@ test("an unreadable or unresolvable localized name is a skip, never a pass", () 
 test("the trademark checks name every locale and never double-report", () => {
   const ctxOf = (locales) =>
     withManifest({
-      addon: {
+      artifact: {
         manifest: manifestOf({
           manifest_version: 3,
           name: "__MSG_extName__",
@@ -3623,7 +3626,7 @@ test("trademark-violation anchors the finding on the name line with the name", (
   // line the finding anchors on is a fact about the file as submitted.
   const ctxOf = (name, files) =>
     withManifest({
-      addon: {
+      artifact: {
         manifest: manifestOf(
           { manifest_version: 3, name, version: "1" },
           files["manifest.json"]
@@ -3672,7 +3675,7 @@ test("core-symbol-in-webext flags global core symbols, not locals/imports/proper
     coreSymbolInWebext.run(
       withManifest({
         jsSources: parsed([{ file: "bg.js", code, lineOffset: 0 }]),
-        addon: {
+        artifact: {
           manifest: manifestOf({
             manifest_version: 3,
             background: { scripts: ["bg.js"] },
@@ -3708,7 +3711,7 @@ test("experiment-missing-strict-max-version flags an allowed Experiment lacking 
   const run = (manifest) =>
     experimentMissingMax.run(
       withManifest({
-        addon: { manifest: manifestOf(manifest) },
+        artifact: { manifest: manifestOf(manifest) },
         options: { allowExperiments: true },
       })
     ).findings;
@@ -3728,7 +3731,7 @@ test("experiment-missing-strict-max-version flags an allowed Experiment lacking 
   assert.equal(
     experimentMissingMax.run(
       withManifest({
-        addon: { manifest: manifestOf({ experiment_apis: { a: {} } }) },
+        artifact: { manifest: manifestOf({ experiment_apis: { a: {} } }) },
         options: {},
       })
     ).findings.length,
@@ -3741,7 +3744,7 @@ test("experiment-missing-strict-max-version flags an allowed Experiment lacking 
 test("experiment-manual-review escalates one reminder for an Experiment only", () => {
   const run = (manifest) =>
     experimentManualReview.run(
-      withManifest({ addon: { manifest: manifestOf(manifest) } })
+      withManifest({ artifact: { manifest: manifestOf(manifest) } })
     );
   const exp = run({ experiment_apis: { a: {} } });
   assert.deepEqual(exp.findings, []);
@@ -3767,7 +3770,7 @@ test("experiment-unknown-api escalates only for an Experiment with unrecognized 
   const ctxFor = (manifest, seg) =>
     withManifest({
       schema: local,
-      addon: {
+      artifact: {
         manifest: manifestOf({
           ...manifest,
           background: { scripts: ["bg.js"] },
@@ -3808,7 +3811,7 @@ test("experiment-unknown-api escalates only for an Experiment with unrecognized 
 test("non-experiment-strict-max-version flags only a non-Experiment that pins a max", () => {
   const run = (manifest) =>
     nonExperimentMax.run(
-      withManifest({ addon: { manifest: manifestOf(manifest) } })
+      withManifest({ artifact: { manifest: manifestOf(manifest) } })
     ).findings;
   const out = run({
     browser_specific_settings: { gecko: { strict_max_version: "128.0" } },
@@ -3821,7 +3824,7 @@ test("non-experiment-strict-max-version flags only a non-Experiment that pins a 
     '{\n  "browser_specific_settings": { "gecko": { "strict_max_version": "128.0" } }\n}\n';
   const located = nonExperimentMax.run(
     withManifest({
-      addon: {
+      artifact: {
         manifest: manifestOf(JSON.parse(locatedText), locatedText),
         files: new Map([["manifest.json", Buffer.from(locatedText)]]),
       },
@@ -3850,7 +3853,7 @@ test("non-experiment-strict-max-version flags only a non-Experiment that pins a 
 test("experiment-not-allowed errors on the experiment_apis line unless allowed", () => {
   const manifestText = '{\n  "experiment_apis": { "x": {} }\n}\n';
   const ctx = (manifest, allowExperiments) => ({
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest, manifestText),
       files: new Map([["manifest.json", Buffer.from(manifestText)]]),
     },
@@ -3950,7 +3953,7 @@ test("missing-library / obfuscated-code note a verdict per classified file", () 
 test("experiment-not-allowed notes pass / fail / skipped", () => {
   const manifestText = '{\n  "experiment_apis": {}\n}\n';
   const ctxFor = (manifest, allowExperiments) => ({
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest, manifestText),
       files: new Map([["manifest.json", Buffer.from(manifestText)]]),
     },
@@ -3971,7 +3974,7 @@ test("experiment-not-allowed notes pass / fail / skipped", () => {
 test("experiment-missing-strict-max-version notes pass / fail / skipped", () => {
   const v = (manifest) =>
     notesFrom(experimentMissingMax, {
-      addon: { manifest: manifestOf(manifest) },
+      artifact: { manifest: manifestOf(manifest) },
       options: { allowExperiments: true },
     });
   assert.equal(v({ experiment_apis: { a: {} } })[0].verdict, VERDICT.FAIL); // no max
@@ -3987,7 +3990,9 @@ test("experiment-missing-strict-max-version notes pass / fail / skipped", () => 
 
 test("non-experiment-strict-max-version notes pass / fail / skipped", () => {
   const v = (manifest) =>
-    notesFrom(nonExperimentMax, { addon: { manifest: manifestOf(manifest) } });
+    notesFrom(nonExperimentMax, {
+      artifact: { manifest: manifestOf(manifest) },
+    });
   assert.equal(v({ name: "x" })[0].verdict, VERDICT.PASS); // no max
   assert.equal(
     v({
@@ -4006,7 +4011,7 @@ test("non-experiment-strict-max-version notes pass / fail / skipped", () => {
 
 test("trademark-violation notes pass / fail / skipped", () => {
   const ctxFor = (name) => ({
-    addon: {
+    artifact: {
       manifest: manifestOf(name == null ? {} : { name }),
       files: new Map(),
     },
@@ -4025,7 +4030,7 @@ test("trademark-violation notes pass / fail / skipped", () => {
 // is the other one's business.
 test("the trademark-thunderbird checks note fail / unsure / skipped", () => {
   const localeCtx = (locales) => ({
-    addon: {
+    artifact: {
       manifest: manifestOf({ name: "__MSG_extName__" }),
       files: new Map(
         Object.entries(locales).map(([loc, name]) => [
@@ -4045,7 +4050,7 @@ test("the trademark-thunderbird checks note fail / unsure / skipped", () => {
   assert.equal(loc({ en: "Tool for Thunderbird" })[0].verdict, VERDICT.PASS);
 
   const literalCtx = (name) => ({
-    addon: {
+    artifact: {
       manifest: manifestOf(name == null ? {} : { name }),
       files: new Map(),
     },
@@ -4070,7 +4075,7 @@ test("the trademark-thunderbird checks note fail / unsure / skipped", () => {
 test("missing-english-localization: _locales branches (pass / fail)", () => {
   const v = (files) =>
     notesFrom(missingEnglish, {
-      addon: {
+      artifact: {
         files: new Map(
           Object.entries(files).map(([k, val]) => [k, Buffer.from(val)])
         ),
@@ -4100,7 +4105,7 @@ test("missing-english-localization: franc over hardcoded text", () => {
   const run = (files, manifest) =>
     missingEnglish.run(
       withManifest({
-        addon: {
+        artifact: {
           manifest: manifestOf(manifest),
           files: new Map(
             Object.entries(files).map(([k, val]) => [k, Buffer.from(val)])
@@ -4859,7 +4864,7 @@ test("privacy-policy escalates one case per transmission site", () => {
 test("native-messaging escalates on the declared permission", () => {
   const esc = (manifest) =>
     nativeMessaging.run(
-      withManifest({ addon: { manifest: manifestOf(manifest) } })
+      withManifest({ artifact: { manifest: manifestOf(manifest) } })
     ).escalations;
   const declared = esc({ permissions: ["nativeMessaging"] });
   assert.equal(declared.length, 1);
@@ -4869,7 +4874,7 @@ test("native-messaging escalates on the declared permission", () => {
   assert.equal(esc({ permissions: ["storage"] }).length, 0);
   assert.equal(esc({}).length, 0);
   assert.equal(
-    nativeMessaging.run(withManifest({ addon: {} })).escalations.length,
+    nativeMessaging.run(withManifest({ artifact: {} })).escalations.length,
     0
   );
 });
@@ -4879,7 +4884,7 @@ test("native-messaging escalates on the declared permission", () => {
 // alone breaks loading. The two checks split the two directions.
 test("default-locale checks flag the two load-breaking directions", () => {
   const ctx = (files, manifest) => ({
-    addon: {
+    artifact: {
       files: new Map(
         Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
       ),
@@ -4925,7 +4930,7 @@ test("default-locale checks flag the two load-breaking directions", () => {
 // non-object) gets one advisory with no location; a declared icon passes; themes
 // and dictionaries are exempt; an unparsed manifest.json is skipped.
 test("addon-icon-missing flags an extension with no defined add-on icon", () => {
-  const ctx = (manifest) => ({ addon: { manifest: manifestOf(manifest) } });
+  const ctx = (manifest) => ({ artifact: { manifest: manifestOf(manifest) } });
   const out = addonIconMissing.run(
     withManifest(ctx({ manifest_version: 3, name: "x" }))
   ).findings;
@@ -4962,8 +4967,8 @@ test("addon-icon-missing flags an extension with no defined add-on icon", () => 
     0
   );
   assert.equal(
-    addonIconMissing.run(withManifest({ addon: { manifest: null } })).findings
-      .length,
+    addonIconMissing.run(withManifest({ artifact: { manifest: null } }))
+      .findings.length,
     0
   );
 });
@@ -4975,7 +4980,7 @@ test("unrecognized-manifest-key accepts experiment-owned keys", () => {
   const run = (manifest) =>
     unrecognizedManifestKey.run(
       withManifest({
-        addon: {
+        artifact: {
           manifest: manifestOf(manifest),
           files: new Map([
             ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -4997,7 +5002,7 @@ test("unrecognized-manifest-key accepts experiment-owned keys", () => {
 
 // The other experiment-owned exemption: a key an experiment's bundled SCHEMA declares
 // (a `manifest` namespace $extend of WebExtensionManifest). The schema PATH resolves
-// against ctx.addon.files - the built XPI for this `input: xpi` check, where the built
+// against ctx.artifact.files - the built XPI for this `input: xpi` check, where the built
 // path exists. That pairing is the point: as `input: source` the check would run over the
 // readable source, where the built schema path is absent, so the exemption would silently
 // return nothing and a legitimate experiment key (e.g. calendar_item_action) would be
@@ -5022,7 +5027,7 @@ test("unrecognized-manifest-key accepts a key declared by an experiment's bundle
   ];
   const out = unrecognizedManifestKey.run(
     withManifest({
-      addon: {
+      artifact: {
         manifest: manifestOf(manifest),
         files: new Map([
           ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
@@ -5071,7 +5076,7 @@ const reachCtx = (files, manifest) => {
     manifest: manifestOf(manifest, manifestText),
   };
   return withManifest({
-    addon,
+    artifact: addon,
     jsSources: parsedSources(addon),
     mode: REVIEW_MODE.XPI,
     options: {},

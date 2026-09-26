@@ -243,14 +243,17 @@ test("loadAllowList collects file hashes and upstream API namespaces", () => {
 });
 
 // ---- verifyExperiments ----
-const addon = (files) => ({ manifest: manifestOf(DEMO_MANIFEST), files });
+// The artifact carries content; what the add-on DECLARES is the record, passed beside it -
+// the same split production makes (src/pipeline.js reads it once off the shipped XPI).
+const addon = (files) => ({ files });
+const demoRecord = manifestOf(DEMO_MANIFEST);
 // The allow-list read from a pre-seeded cache (built from the experiments fixture),
 // so verifyExperiments resolves it offline.
 const opts = { experimentsCache: seedFixtureCache() };
 const status0 = (res) => res.groups[0]?.status;
 
 test("verifyExperiments: pristine bundle is recognised and fully matched", async () => {
-  const res = await verifyExperiments(addon(demoFiles()), opts);
+  const res = await verifyExperiments(addon(demoFiles()), demoRecord, opts);
   assert.equal(res.pristine, true);
   assert.equal(res.trustedFiles.size, 3);
   assert.equal(res.groups[0].name, "demo");
@@ -263,7 +266,7 @@ test("verifyExperiments: recognised but modified -> modified (not aborted)", asy
     "experiments/demo/parent/ext-demo.js",
     Buffer.concat([fixtureBytes("parent/ext-demo.js"), Buffer.from("\nx;\n")])
   );
-  const res = await verifyExperiments(addon(files), opts);
+  const res = await verifyExperiments(addon(files), demoRecord, opts);
   assert.equal(res.pristine, false);
   assert.equal(status0(res), "modified");
   assert.equal(res.trustedFiles.size, 3); // modified files are still trusted (continue path)
@@ -273,7 +276,7 @@ test("verifyExperiments: an extra file in the subtree -> modified", async () => 
   const files = demoFiles();
   files.set("experiments/demo/sneaky.js", Buffer.from("evil();\n"));
   assert.equal(
-    status0(await verifyExperiments(addon(files), opts)),
+    status0(await verifyExperiments(addon(files), demoRecord, opts)),
     "modified"
   );
 });
@@ -282,7 +285,7 @@ test("verifyExperiments: a missing referenced file -> modified", async () => {
   const files = demoFiles();
   files.delete("experiments/demo/schema/demo.json");
   assert.equal(
-    status0(await verifyExperiments(addon(files), opts)),
+    status0(await verifyExperiments(addon(files), demoRecord, opts)),
     "modified"
   );
 });
@@ -306,10 +309,7 @@ test("verifyExperiments: an unknown API name -> unsupported", async () => {
     ],
     ["experiments/weather/parent/w.js", Buffer.from('"use strict";\n')],
   ]);
-  const res = await verifyExperiments(
-    { manifest: manifestOf(manifest), files },
-    opts
-  );
+  const res = await verifyExperiments({ files }, manifestOf(manifest), opts);
   assert.equal(res.pristine, false);
   assert.equal(res.groups[0].name, "weather");
   assert.equal(status0(res), "unsupported");
@@ -336,10 +336,8 @@ test("verifyExperiments: no locatable experiment files -> not pristine, allow-li
   // throw here if it were, so a plain pristine=false proves the short-circuit.
   await withoutNetwork(async (experimentsCache) => {
     const res = await verifyExperiments(
-      {
-        manifest: manifestOf({ experiment_apis: { myapi: {} } }),
-        files: new Map(),
-      },
+      { files: new Map() },
+      manifestOf({ experiment_apis: { myapi: {} } }),
       { experimentsCache }
     );
     assert.equal(res.groups.length, 1); // the group IS declared - it has no files to verify
@@ -352,7 +350,8 @@ test("verifyExperiments: an unfetchable allow-list is a hard fail (throws)", asy
   // download fails, and verifyExperiments propagates it (never a review verdict).
   await withoutNetwork((experimentsCache) =>
     assert.rejects(
-      () => verifyExperiments(addon(demoFiles()), { experimentsCache }),
+      () =>
+        verifyExperiments(addon(demoFiles()), demoRecord, { experimentsCache }),
       /network attempted|Failed to download/
     )
   );
@@ -388,7 +387,7 @@ test("experiment-overrides-api flags a path that grafts onto a built-in", () => 
   s.registerExperimentNamespaces(experimentApiPaths(manifest));
   const ctx = {
     schema: s,
-    addon: {
+    artifact: {
       manifest: manifestOf(manifest, '{\n  "experiment_apis": {}\n}\n'),
       files: new Map([
         ["manifest.json", Buffer.from('{\n  "experiment_apis": {}\n}\n')],
@@ -406,7 +405,7 @@ test("experiment-not-allowed reports shadowing vs unsupported per unsupported gr
   const ctx = {
     schema,
     options: {},
-    addon: {
+    artifact: {
       manifest: manifestOf({ experiment_apis: { a: {} } }, "{}\n"),
       experiments: {
         groups: [
@@ -439,7 +438,7 @@ test("experiment-not-allowed reports shadowing vs unsupported per unsupported gr
 // ---- experiment-modified: continue-path flag ----
 test("experiment-modified flags only modified groups", () => {
   const ctx = {
-    addon: {
+    artifact: {
       manifest: manifestOf({ experiment_apis: { a: {} } }, "{}\n"),
       experiments: {
         groups: [

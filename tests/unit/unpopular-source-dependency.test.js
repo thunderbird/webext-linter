@@ -16,7 +16,7 @@ const PKG_JSON = `{
 }`;
 
 const ctxWith = (unpopularDeps, pkgJson = PKG_JSON) => ({
-  addon: {
+  artifact: {
     files: new Map([["package.json", Buffer.from(pkgJson)]]),
     vendor: { unpopularDeps },
   },

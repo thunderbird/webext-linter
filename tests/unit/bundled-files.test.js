@@ -26,7 +26,7 @@ function ctxWith(manifest, files = {}) {
     map.set(k, Buffer.from(v));
   }
   return withManifest({
-    addon: { files: map, manifest: manifestOf(manifest) },
+    artifact: { files: map, manifest: manifestOf(manifest) },
     jsSources: [],
   });
 }
@@ -34,7 +34,7 @@ function ctxWith(manifest, files = {}) {
 // The manifest.json half of this check asks the SCHEMA which keys carry a file path, so a ctx
 // without one makes it a no-op. Kept separate from ctxWith because the loader half reads
 // the schema too, and handing one to a loader test changes which calls are extracted.
-function manifestCtx(manifest, files = {}) {
+function schemaCtx(manifest, files = {}) {
   const ctx = ctxWith(manifest, files);
   ctx.schema = fixtureSchema;
   return ctx;
@@ -69,7 +69,7 @@ test("does not throw on malformed content_scripts shapes", () => {
     { content_scripts: [{ js: "content.js" }] },
     { background: "oops.js" },
   ]) {
-    assert.doesNotThrow(() => bundledFiles.run(manifestCtx(manifest)).findings);
+    assert.doesNotThrow(() => bundledFiles.run(schemaCtx(manifest)).findings);
   }
 });
 
@@ -78,7 +78,7 @@ test("does not throw on malformed content_scripts shapes", () => {
 test("a string-typed `js` does not produce per-character findings", () => {
   // Malformed: js is a string, not an array. Must not iterate characters.
   const out = bundledFiles.run(
-    manifestCtx({ content_scripts: [{ js: "x.js" }] })
+    schemaCtx({ content_scripts: [{ js: "x.js" }] })
   ).findings;
   assert.equal(out.length, 0);
 });
@@ -87,7 +87,7 @@ test("a string-typed `js` does not produce per-character findings", () => {
 // produced and it names the missing file, confirming present files are skipped.
 test("flags a genuinely missing content script, not a present one", () => {
   const out = bundledFiles.run(
-    manifestCtx(
+    schemaCtx(
       { content_scripts: [{ js: ["present.js", "missing.js"] }] },
       { "present.js": "" }
     )
@@ -102,7 +102,7 @@ test("flags a genuinely missing content script, not a present one", () => {
 // that the AST twin (walkType) deliberately lacks, so they are pinned together here.
 test("icons are walked, and the three shape guards hold", () => {
   const run = (manifest, files) =>
-    bundledFiles.run(manifestCtx(manifest, files)).findings.map((f) => f.item);
+    bundledFiles.run(schemaCtx(manifest, files)).findings.map((f) => f.item);
 
   // The plain case: declared, not packaged.
   assert.deepEqual(run({ icons: { 48: "gone.png" } }, {}), ["gone.png"]);
@@ -143,7 +143,7 @@ test("each slot anchors at its own line", () => {
     "}",
   ].join("\n");
   const out = bundledFiles.run(
-    manifestCtx(
+    schemaCtx(
       { manifest_version: 3, icons: { 16: "icon.png", 48: "icon.png" } },
       { "manifest.json": manifestText }
     )
@@ -169,7 +169,7 @@ test("a missing experiment script is reported", () => {
   };
   assert.deepEqual(
     bundledFiles
-      .run(manifestCtx(manifest, { "exp/schema.json": "[]" }))
+      .run(schemaCtx(manifest, { "exp/schema.json": "[]" }))
       .findings.map((f) => f.item),
     ["exp/impl.js"]
   );
@@ -187,7 +187,7 @@ test("anchors a missing manifest reference at its manifest.json line", () => {
     "}",
   ].join("\n");
   const out = bundledFiles.run(
-    manifestCtx(
+    schemaCtx(
       {
         manifest_version: 3,
         background: { page: "chrome/content/dummy.html" },
@@ -204,7 +204,7 @@ test("anchors a missing manifest reference at its manifest.json line", () => {
 // When the manifest.json text does not carry the path - a minified or rewritten manifest.json, say -
 // the finding names the file and carries no line: degraded, never dropped.
 test("missing manifest reference falls back to no line when the text lacks the path", () => {
-  const ctx = manifestCtx({ content_scripts: [{ js: ["missing.js"] }] });
+  const ctx = schemaCtx({ content_scripts: [{ js: ["missing.js"] }] });
   ctx.manifest = manifestOf(ctx.manifest.json, "{}");
   const out = bundledFiles.run(ctx).findings;
   assert.equal(out.length, 1);
@@ -386,7 +386,7 @@ test("tabs.create {url} with a leading .. clamps at root", () => {
     [
       {
         file: "bg.js",
-        code: present.addon.files.get("bg.js").toString(),
+        code: present.artifact.files.get("bg.js").toString(),
         lineOffset: 0,
       },
     ],
@@ -401,7 +401,7 @@ test("tabs.create {url} with a leading .. clamps at root", () => {
     [
       {
         file: "bg.js",
-        code: missing.addon.files.get("bg.js").toString(),
+        code: missing.artifact.files.get("bg.js").toString(),
         lineOffset: 0,
       },
     ],

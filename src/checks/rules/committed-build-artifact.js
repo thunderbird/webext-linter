@@ -27,7 +27,7 @@ export default {
    */
   run(ctx) {
     const findings = [];
-    for (const file of ctx.addon?.archives ?? []) {
+    for (const file of ctx.artifact?.archives ?? []) {
       ctx.note?.(file, null, "committed build artifact", VERDICT.FAIL);
       findings.push(finding({ file }));
     }

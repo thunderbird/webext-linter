@@ -31,7 +31,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    // Registry `input: xpi`: ctx.addon is the built XPI. Module-ness is a runtime-
+    // Registry `input: xpi`: ctx.artifact is the built XPI. Module-ness is a runtime-
     // loading property of what ships - Thunderbird loads the XPI's background script
     // against the XPI's manifest.json, and the build can transform it (an ESM source
     // bundled to a classic script needs no "type": "module"). So this reads the XPI's

@@ -4,7 +4,7 @@
 // hosts. Two checks read this one result - remote-resources (what the developer ships)
 // and vendored-remote-resources (what an upstream release ships) - so the walk happens
 // once per review, the same "compute once, checks read it" pattern as
-// addon.evalScan / addon.outboundSinks.
+// artifact.evalScan / artifact.outboundSinks.
 //
 // The scan CLASSIFIES and records; it does not report. Each site carries the text the
 // Activity feed narrates it with, and the owning check emits the note - so the feed
@@ -52,12 +52,12 @@ import { extname, HTML_EXTENSIONS } from "../util/files.js";
  */
 
 /**
- * The shared scan, computed once per addon.
+ * The shared scan, computed once per artifact.
  * @param {RunContext} ctx
  * @returns {RemoteRefs}
  */
 export function getRemoteRefs(ctx) {
-  return (ctx.addon.remoteRefs ??= scan(ctx));
+  return ((ctx.cache ??= {}).remoteRefs ??= scan(ctx));
 }
 
 /**
@@ -65,7 +65,7 @@ export function getRemoteRefs(ctx) {
  * @returns {RemoteRefs}
  */
 function scan(ctx) {
-  const { addon } = ctx;
+  const { artifact } = ctx;
   const out = {
     definite: [],
     undecidable: [],
@@ -74,13 +74,13 @@ function scan(ctx) {
     cspHosts: [],
   };
 
-  for (const [file, buf] of addon.files) {
+  for (const [file, buf] of artifact.files) {
     const ext = extname(file);
     if (HTML_EXTENSIONS.has(ext)) {
       // Resolved once per file, not per ref: every ref below is judged against the
       // same answer, so a file cannot be upstream's for one ref and the developer's
       // for the next.
-      const release = verifiedVendorSource(addon, file);
+      const release = verifiedVendorSource(artifact, file);
       const html = buf.toString("utf8");
       for (const ref of scanHtmlRemoteRefs(html)) {
         sortHtml(out, file, ref, release);
@@ -91,7 +91,7 @@ function scan(ctx) {
         sortCss(out, file, ref, release);
       }
     } else if (ext === ".css") {
-      const release = verifiedVendorSource(addon, file);
+      const release = verifiedVendorSource(artifact, file);
       for (const ref of scanCssRemoteRefs(buf.toString("utf8"))) {
         sortCss(out, file, ref, release);
       }

@@ -35,9 +35,9 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const { addon } = ctx;
-    const unlocked = addon?.vendor?.unlocked ?? [];
-    const text = anchorText(addon, "package.json");
+    const { artifact } = ctx;
+    const unlocked = artifact?.vendor?.unlocked ?? [];
+    const text = anchorText(artifact, "package.json");
     const findings = [];
     for (const { name, spec } of unlocked) {
       const line = manifestTokenLine(text, name);

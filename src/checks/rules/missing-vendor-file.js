@@ -3,7 +3,7 @@
 // dependency whose file is absent is intentionally ignored (dependencies are
 // installed/bundled at build time and the submission may predate the build - see
 // verifyPackage in src/vendor/verify.js). resolveVendor recorded these on
-// addon.vendor.missing; this check only reads them. Deterministic, no network.
+// artifact.vendor.missing; this check only reads them. Deterministic, no network.
 //
 // Belongs here: turning each missing VENDOR entry into a finding and a note.
 // Does NOT belong here: the VENDOR parse (-> src/normalize/vendor.js) and the
@@ -21,14 +21,14 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const { addon } = ctx;
-    const missing = addon?.vendor?.missing ?? [];
+    const { artifact } = ctx;
+    const missing = artifact?.vendor?.missing ?? [];
     if (!missing.length) {
       return { findings: [] };
     }
     // The missing path is the location (listed under the entry); the VENDOR file
     // name fills the message's {{item}}. The source URL rides on the feed note.
-    const vendorName = readVendorFile(addon)?.name ?? "VENDOR";
+    const vendorName = readVendorFile(artifact)?.name ?? "VENDOR";
     const findings = [];
     for (const { path, sourceUrl } of missing) {
       ctx.note?.(

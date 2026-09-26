@@ -1,8 +1,6 @@
 {
   "_comment": "A static theme, whose keys live on the schema's ThemeManifest root rather than WebExtensionManifest. Two things depend on the walk reading every root: `theme` is a recognized key here (a list of ManifestBase and WebExtensionManifest alone reports it as unrecognized on every theme it reviews), and theme.images.theme_frame is a packaged path, so naming an image the theme does not ship is a finding. The icons key is declared by BOTH roots, so the roots merge into one property map with the later root winning - safe only because assets/schema-annotations/theme.json retypes ThemeManifest's copy as a path, making the two agree.",
   "expect": {
-    "bundled-files": [
-      "manifest.json:15"
-    ]
+    "bundled-files": ["manifest.json:15"]
   }
 }

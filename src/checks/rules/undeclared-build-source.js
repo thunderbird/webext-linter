@@ -26,7 +26,7 @@ export default {
    * @returns {{findings: [], escalations?: Escalation[]}}
    */
   run(ctx) {
-    const review = ctx.addon?.buildReview;
+    const review = ctx.artifact?.buildReview;
     if (!review) {
       return { findings: [] };
     }

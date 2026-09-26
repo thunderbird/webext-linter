@@ -2,7 +2,7 @@
 // (banned -> error) or discouraged (unadvised -> warning) - the curated policy in
 // assets/library-blocks.yaml. The vendor audit (src/vendor/verify.js) matched each
 // identified/declared (name, version) against the policy BEFORE its OSV query,
-// recording hits on addon.vendor.blocked (a banned one also skipped the OSV request);
+// recording hits on artifact.vendor.blocked (a banned one also skipped the OSV request);
 // this check maps that set to findings, anchored at the declaration line. Deterministic,
 // no network.
 //
@@ -27,8 +27,8 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const { addon } = ctx;
-    const blocked = addon?.vendor?.blocked ?? [];
+    const { artifact } = ctx;
+    const blocked = artifact?.vendor?.blocked ?? [];
     const textByFile = new Map();
     /**
      * Read a packaged file's text, memoizing it per path.
@@ -37,7 +37,7 @@ export default {
      */
     const fileText = (file) => {
       if (!textByFile.has(file)) {
-        textByFile.set(file, anchorText(addon, file));
+        textByFile.set(file, anchorText(artifact, file));
       }
       return textByFile.get(file);
     };

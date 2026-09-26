@@ -10,6 +10,7 @@ import AdmZip from "adm-zip";
 import {
   loadAddon,
   loadSourceArchive,
+  readWebExtManifest,
   scaViews,
   scaRootRelative,
   relativeInside,
@@ -358,67 +359,37 @@ test("files is a view over the store, for an add-on as much as an archive", () =
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A manifest.json is a FILE in either artifact's corpus, and an ANSWER in only one of them.
-// The boundary is the record: an XPI is parsed, so `addon.manifest` says what the add-on
-// ships, while a source archive is loaded without reading one, so it answers null - a
-// pre-build template is not what Thunderbird loads. Withholding the file instead would say
-// the submission does not contain it, which is a different claim and a false one. So what
-// this pins is that the archive holds the file and offers no answer.
-test("a manifest.json is a file in both corpora, an answer in one", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-lift-"));
+// A manifest.json is a FILE in an artifact's corpus, like any other file the submission
+// contains. What the add-on DECLARES is a separate question with one answer, asked of one
+// artifact: readWebExtManifest reads the record off a store, and the review asks it of the
+// shipped XPI only (src/pipeline.js). Loading never derives it, so no artifact carries a
+// second answer for a reader to pick up by mistake.
+test("loading holds the file; the record is asked for, not derived", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-record-"));
   fs.writeFileSync(
     path.join(dir, "manifest.json"),
     '{"manifest_version":3,"name":"x","version":"1"}'
   );
   fs.writeFileSync(path.join(dir, "bg.js"), "1;\n");
 
-  const addon = loadAddon(dir);
-  assert.ok(addon.files.has("manifest.json"), "the corpus holds the manifest");
-  assert.equal(
-    addon.manifest.json.name,
-    "x",
-    "parsed onto the addon all the same"
-  );
+  for (const artifact of [
+    loadAddon(dir),
+    scaViews(loadSourceArchive(dir), { scaRoot: dir }),
+  ]) {
+    assert.ok(artifact.files.has("manifest.json"), "the corpus holds the file");
+    assert.equal(artifact.manifest, undefined, "and answers nothing itself");
+  }
 
-  // The archive: the same file, in the corpus and in the store, and no record at all.
-  const archive = scaViews(loadSourceArchive(dir), { scaRoot: dir });
-  assert.ok(archive.files.has("manifest.json"), "the corpus holds the file");
-  assert.ok(archive.store.has("manifest.json"), "so does the archive");
-  assert.equal(archive.manifest, null, "but it answers nothing");
+  // Asked of the store, the record is the whole answer: the parse, and a line index a
+  // finding can anchor in.
+  const record = readWebExtManifest(loadAddon(dir).store);
+  assert.equal(record.json.name, "x");
+  assert.equal(record.error, null);
+  assert.ok(record.loc, "and can anchor a finding at a line");
 
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
-// `parseWebExtManifest` is the whole of what a source archive withholds: the bytes stay in the
-// corpus, and only the parsed answer is not offered. Pinned on the loader itself, because
-// the archive path reaches it through scaViews and would not say which half did what.
-test("loadAddon(dir) reads a manifest unless told not to, and keeps the bytes either way", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-nomf-"));
-  fs.writeFileSync(
-    path.join(dir, "manifest.json"),
-    '{"manifest_version":3,"name":"x","version":"1"}'
-  );
-
-  const parsed = loadAddon(dir);
-  assert.equal(parsed.manifest.json.name, "x", "the default reads it");
-  assert.equal(parsed.manifest.error, null);
-  assert.ok(parsed.manifest.loc, "and can anchor a finding at a line");
-
-  const unread = loadAddon(dir, undefined, { parseWebExtManifest: false });
-  assert.equal(
-    unread.manifest,
-    null,
-    "asked not to, it offers no answer at all"
-  );
-  assert.ok(
-    unread.files.has("manifest.json"),
-    "the bytes are still there - a build step may copy one"
-  );
-  assert.deepEqual(
-    unread.files.get("manifest.json"),
-    parsed.files.get("manifest.json"),
-    "the same bytes, read or not"
-  );
+  // A corpus holding no manifest.json is the one case that is nothing at all.
+  fs.rmSync(path.join(dir, "manifest.json"));
+  assert.equal(readWebExtManifest(loadAddon(dir).store), null);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -471,9 +442,9 @@ test("scaViews leaves the archive owning one store and two corpora", () => {
     "sub/manifest.json",
   ]);
 
-  // And no manifest.json RECORD: an archive is loaded without reading one, so the pre-build
-  // template cannot be mistaken for the shipped manifest.json. The files are still there above.
-  assert.equal(archive.manifest, null);
+  // And no record of its own: loading derives none, so the pre-build template cannot be
+  // mistaken for the shipped manifest.json. The files are still there above.
+  assert.equal(archive.manifest, undefined);
 
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -527,7 +498,7 @@ test("scaViews keys every view to the submission and reviews the whole archive",
     source.files.has("src/manifest.json"),
     "a manifest below the root is held at its real path"
   );
-  assert.equal(source.manifest, null, "and the archive answers nothing");
+  assert.equal(source.manifest, undefined, "and the archive answers nothing");
 
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -903,7 +874,7 @@ test("a leading ./ on a zip entry is repaired, not refused", () => {
 
   const addon = loadAddon(file);
   assert.ok(addon.files.has("a/b.js"), "keyed without the leading ./");
-  assert.equal(addon.manifest.json.name, "x");
+  assert.equal(readWebExtManifest(addon.store).json.name, "x");
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -984,9 +955,9 @@ test("loadAddon(file) extracts to disk and reads the same content back", () => {
     "nested();\n"
   );
 
-  // Read back the same way a directory submission is: parsed onto the addon, and still in
+  // Read back the same way a directory submission is: readable as the record, and still in
   // the corpus with everything else, keyed the same as the packed entries were.
-  assert.equal(addon.manifest.json.name, "x");
+  assert.equal(readWebExtManifest(addon.store).json.name, "x");
   assert.ok(addon.files.has("manifest.json"));
   assert.equal(
     addon.files.get("bg.js").toString("utf8"),

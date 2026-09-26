@@ -25,7 +25,7 @@ const schema = buildSchemaIndex(
 );
 
 const ctx = (manifest) => ({
-  addon: { manifest: manifestOf(manifest) },
+  artifact: { manifest: manifestOf(manifest) },
   schema,
 });
 
@@ -57,10 +57,11 @@ test("the two manifest checks split on presence, not on the parse", () => {
     loc: null,
   });
   const run = (manifest) => ({
-    missing: manifestMissing.run(withManifest({ addon: { manifest }, schema }))
-      .findings.length,
+    missing: manifestMissing.run(
+      withManifest({ artifact: { manifest }, schema })
+    ).findings.length,
     invalid: manifestInvalidJson.run(
-      withManifest({ addon: { manifest }, schema })
+      withManifest({ artifact: { manifest }, schema })
     ).findings.length,
   });
 
@@ -81,7 +82,7 @@ test("the two manifest checks split on presence, not on the parse", () => {
 
   // A check that needs a PARSED manifest.json stays silent on text that would not parse - the one
   // case where manifest-invalid-json is the only finding.
-  const broken = { addon: { manifest: record(null, "boom") }, schema };
+  const broken = { artifact: { manifest: record(null, "boom") }, schema };
   assert.equal(manifestMissingKey.run(withManifest(broken)).findings.length, 0);
 });
 

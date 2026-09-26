@@ -33,12 +33,12 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const files = ctx.addon?.files;
+    const files = ctx.artifact?.files;
     if (!files) {
       return { findings: [] };
     }
     const findings = [];
-    for (const gap of lockGaps(ctx.addon)) {
+    for (const gap of lockGaps(ctx.artifact)) {
       // Each gap anchors in the file its failing value sits in (LockGap.file), so the line
       // is located in THAT file: the pinned entry inside the lock for `unsatisfied`, the
       // declaration in package.json otherwise. An unreadable lock is the subject itself and

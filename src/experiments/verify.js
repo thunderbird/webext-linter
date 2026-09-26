@@ -156,13 +156,21 @@ function walkDir(root) {
  * Classify the add-on's bundled experiment(s) against the upstream allow-list.
  * Fetches the allow-list only when some group has files to verify (may throw on
  * a network failure - the caller turns that into a hard exit, never a verdict).
- * @param {import("../addon/load.js").Addon} addon
+ * @param {import("../addon/load.js").Addon} addon  The shipped add-on, for the files each
+ *   experiment folder is hashed from.
+ * @param {?import("../addon/load.js").WebExtManifestRecord} webExtManifestRecord  What it
+ *   declares: the
+ *   experiment_apis entries, and the text a group's line is anchored in.
  * @param {VerifyExperimentsOpts} [opts]
  * @returns {Promise<ExperimentVerification>}
  */
-export async function verifyExperiments(addon, opts = {}) {
-  const manifest = addon.manifest?.json || {};
-  const text = addon.manifest?.text ?? "";
+export async function verifyExperiments(
+  addon,
+  webExtManifestRecord,
+  opts = {}
+) {
+  const manifest = webExtManifestRecord?.json || {};
+  const text = webExtManifestRecord?.text ?? "";
   const groups = experimentGroups(manifest).map((g) => ({
     ...g,
     line: manifestTokenLine(text, g.entries[0]?.key) ?? null,

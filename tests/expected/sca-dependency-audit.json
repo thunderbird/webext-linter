@@ -20,15 +20,8 @@
     }
   },
   "expect": {
-    "unpopular-source-dependency": [
-      "package.json:5"
-    ],
-    "vendor-vulnerable": [
-      "package.json:5"
-    ],
-    "vendor-vulnerable-dev": [
-      "package.json:8",
-      "package.json:11"
-    ]
+    "unpopular-source-dependency": ["package.json:5"],
+    "vendor-vulnerable": ["package.json:5"],
+    "vendor-vulnerable-dev": ["package.json:8", "package.json:11"]
   }
 }

@@ -1,11 +1,7 @@
 {
   "_comment": "The sca-not-required submission with one thing changed: its package.json declares a dependency and no lock file is committed. Both answers stand together, which is what this fixture pins: the build cannot be reproduced, so sca-lock-file-missing rejects it and halts the review - AND the shipped XPI is still byte-identical to the source, so sca-not-required still tells the developer they can submit the XPI alone next time. The two are independent questions. A review is never downgraded, so the advice cannot be read as narrowing this one; it is only ever about the next submission, which the developer has to make either way.",
   "expect": {
-    "sca-lock-file-missing": [
-      "package.json"
-    ],
-    "sca-not-required": [
-      "(add-on)"
-    ]
+    "sca-lock-file-missing": ["package.json"],
+    "sca-not-required": ["(add-on)"]
   }
 }

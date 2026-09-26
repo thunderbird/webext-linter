@@ -22,7 +22,7 @@ const addon = (files, manifest) => ({
 const run = (files, manifest) => {
   const a = addon(files, manifest);
   return rule
-    .run(withManifest({ addon: a, jsSources: parsedSources(a) }))
+    .run(withManifest({ artifact: a, jsSources: parsedSources(a) }))
     .findings.map((f) => `${f.file}:${f.loc?.line}`);
 };
 

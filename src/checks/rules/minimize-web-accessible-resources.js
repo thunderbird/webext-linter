@@ -39,18 +39,18 @@ export default {
    *   escalations?: import("../escalation.js").Escalation[]}}
    */
   run(ctx) {
-    // Registry `input: xpi`: ctx.addon is the built XPI. web_accessible_resources -
+    // Registry `input: xpi`: ctx.artifact is the built XPI. web_accessible_resources -
     // the resources, the files they expand to, and the reachability graph of what
     // loads them - is a property of what actually ships, so the exposure is judged
     // against the XPI, not a source submission's pre-build layout (which would
     // mislabel loaded resources).
-    const { addon } = ctx;
+    const { artifact } = ctx;
     const entries = warResourceList(ctx.manifest?.json || {});
     if (!entries.length) {
       return { findings: [] }; // nothing to minimize
     }
     const reach = buildReachability(ctx);
-    const files = addon.files;
+    const files = artifact.files;
     const text = ctx.manifest?.text;
     /**
      * @param {string} item  The manifest.json token to anchor on.

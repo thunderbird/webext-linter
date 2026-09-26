@@ -45,7 +45,7 @@ export default {
    */
   run(ctx) {
     const findings = [];
-    for (const link of ctx.addon?.symlinks ?? []) {
+    for (const link of ctx.artifact?.symlinks ?? []) {
       if (TOLERATED.has(link.cause)) {
         continue;
       }

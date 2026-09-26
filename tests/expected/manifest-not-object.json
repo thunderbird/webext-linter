@@ -1,8 +1,6 @@
 {
   "_comment": "manifest.json is valid JSON but holds `null`, so the file yields no manifest object. The file IS there, so manifest-missing stays silent and manifest-invalid-json owns the verdict. A falsy parse: every other manifest check already skips on it, so this is the only finding.",
   "expect": {
-    "manifest-invalid-json": [
-      "manifest.json"
-    ]
+    "manifest-invalid-json": ["manifest.json"]
   }
 }

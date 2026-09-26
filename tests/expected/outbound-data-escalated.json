@@ -1,8 +1,6 @@
 {
   "_comment": "Three hardcoded outbound sinks - the outbound-data fixture's two plus one more. cleartext-transmission is the deterministic finding (background.js:4 is http). Whether any of the three sends user data without an opt-in is a judgement the scan cannot make, so all three escalate to a person.",
   "expect": {
-    "cleartext-transmission": [
-      "background.js:4"
-    ]
+    "cleartext-transmission": ["background.js:4"]
   }
 }

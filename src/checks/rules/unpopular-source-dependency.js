@@ -8,7 +8,7 @@
 // held to the same bar for the reason they are OSV-audited - the reviewer installs and
 // RUNS them - so the pre-step (src/vendor/verify.js verifyScaDependencies) looks up the
 // popularity of every declared dependency, production and build alike, and records the
-// ones below the trust bar on addon.vendor.unpopularDeps.
+// ones below the trust bar on artifact.vendor.unpopularDeps.
 // This check only reads that and emits one error finding per such dependency,
 // anchored at its package.json declaration line. Deterministic, no network.
 //
@@ -33,11 +33,11 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const { addon } = ctx;
-    const deps = addon?.vendor?.unpopularDeps ?? [];
+    const { artifact } = ctx;
+    const deps = artifact?.vendor?.unpopularDeps ?? [];
     const findings = [];
     for (const { name, version, file, token } of deps) {
-      const text = anchorText(addon, file);
+      const text = anchorText(artifact, file);
       // Anchor at the dependency's declaration line (a quoted JSON key in
       // package.json); fall back to a plain substring, then to no line.
       const line = token ? declarationLine(text, token) : null;

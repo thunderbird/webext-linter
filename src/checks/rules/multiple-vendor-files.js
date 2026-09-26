@@ -25,7 +25,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const names = vendorFileNames(ctx.addon);
+    const names = vendorFileNames(ctx.artifact);
     if (names.length < 2) {
       return { findings: [] };
     }

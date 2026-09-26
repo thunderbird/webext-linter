@@ -516,7 +516,7 @@ function fakeCtx(files, manifest, vendor, bundled) {
     }
   }
   return {
-    addon: { files: map, manifest: manifestOf(manifest), vendor, bundled },
+    artifact: { files: map, manifest: manifestOf(manifest), vendor, bundled },
     jsSources: parsed(jsSources),
     options: {},
   };
@@ -551,7 +551,7 @@ test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval",
     '{\n  "manifest_version": 3,\n' +
     "  \"content_security_policy\": { \"extension_pages\": \"script-src 'self' 'unsafe-eval' 'unsafe-inline'\" }\n}\n";
   const located = {
-    addon: {
+    artifact: {
       files: new Map([["manifest.json", Buffer.from(locatedText)]]),
       manifest: manifestOf(JSON.parse(locatedText), locatedText),
     },

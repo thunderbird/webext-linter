@@ -179,7 +179,7 @@ const PM_SUBCOMMANDS = new Set([
 ]);
 
 /**
- * @param {{files: Map<string, Buffer>}} build  The build files (ctx.addon in build ctx).
+ * @param {{files: Map<string, Buffer>}} build  The build files (ctx.artifact in build ctx).
  * @returns {{corpus: string[], resolved: string[], unresolved: {kind: string, detail: string}[]}}
  *   corpus = the collected build file paths; resolved = recognized build-tool names;
  *   unresolved = build steps the linter could not statically bound (force human review).

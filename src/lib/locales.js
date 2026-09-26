@@ -44,7 +44,7 @@ export function isEnglishLocale(tag) {
  * @returns {{dirs: Set<string>, hasLocales: boolean}}
  */
 export function getLocales(ctx) {
-  return (ctx.addon.locales ??= scan(ctx));
+  return ((ctx.cache ??= {}).locales ??= scan(ctx));
 }
 
 /**
@@ -53,7 +53,7 @@ export function getLocales(ctx) {
  */
 function scan(ctx) {
   const dirs = new Set();
-  for (const p of ctx.addon?.files?.keys() ?? []) {
+  for (const p of ctx.artifact?.files?.keys() ?? []) {
     if (p.startsWith("_locales/")) {
       const lang = p.split("/")[1];
       if (lang) {
@@ -84,7 +84,7 @@ function scan(ctx) {
  * drops these is all that stands between such a name and no review at all.
  *
  * The name comes from ctx.manifest.json (always the shipped one) and the locale files
- * from ctx.addon.files (the routed artifact), so this is only meaningful for a
+ * from ctx.artifact.files (the routed artifact), so this is only meaningful for a
  * check declaring `input: xpi`: a source-input caller would resolve the shipped
  * placeholder against the source tree's locale files.
  * @param {RunContext} ctx
@@ -92,7 +92,7 @@ function scan(ctx) {
  *   unreadable: string[]}}
  */
 export function localizedNames(ctx) {
-  return (ctx.addon.localizedNames ??= scanNames(ctx));
+  return ((ctx.cache ??= {}).localizedNames ??= scanNames(ctx));
 }
 
 /**
@@ -116,7 +116,7 @@ function scanNames(ctx) {
   }
   const pairs = [];
   const unreadable = [];
-  for (const [path, buf] of ctx.addon?.files ?? []) {
+  for (const [path, buf] of ctx.artifact?.files ?? []) {
     const locale = /^_locales\/([^/]+)\/messages\.json$/.exec(path)?.[1];
     if (!locale) {
       continue;

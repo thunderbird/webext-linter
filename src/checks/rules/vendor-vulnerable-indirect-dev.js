@@ -25,7 +25,7 @@ export default {
     return {
       findings: vulnFindings(
         ctx,
-        ctx.addon?.vendor?.treeDevVulnerabilities ?? []
+        ctx.artifact?.vendor?.treeDevVulnerabilities ?? []
       ),
     };
   },

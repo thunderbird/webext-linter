@@ -1,8 +1,8 @@
 // Shared vulnerability->finding mapping for the four dependency-vulnerability
 // checks, one per (declared vs pulled in) x (shipped vs build-time only):
-// vendor-vulnerable (prod deps + vendored libs, addon.vendor.vulnerabilities),
-// vendor-vulnerable-dev (SCA dev deps, addon.vendor.devVulnerabilities), and the
-// two indirect ones reading the lock-file tree (addon.vendor.treeVulnerabilities /
+// vendor-vulnerable (prod deps + vendored libs, artifact.vendor.vulnerabilities),
+// vendor-vulnerable-dev (SCA dev deps, artifact.vendor.devVulnerabilities), and the
+// two indirect ones reading the lock-file tree (artifact.vendor.treeVulnerabilities /
 // treeDevVulnerabilities). The OSV audit ran once in the network pre-step
 // (src/vendor/verify.js), which recorded each vulnerable package with the file +
 // token to anchor it; this maps each recorded vulnerability to a finding, anchored
@@ -58,7 +58,7 @@ function severityForBand(band) {
  * @returns {import("../report/finding.js").Finding[]}
  */
 export function vulnFindings(ctx, vulns) {
-  const { addon } = ctx;
+  const { artifact } = ctx;
   const textByFile = new Map();
   /**
    * Read a packaged file's text, memoizing it per path.
@@ -67,7 +67,7 @@ export function vulnFindings(ctx, vulns) {
    */
   const fileText = (file) => {
     if (!textByFile.has(file)) {
-      textByFile.set(file, anchorText(addon, file));
+      textByFile.set(file, anchorText(artifact, file));
     }
     return textByFile.get(file);
   };

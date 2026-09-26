@@ -40,7 +40,7 @@ export default {
    */
   run(ctx) {
     const none = { findings: [], escalations: [] };
-    const text = ctx.addon?.files?.get("package.json")?.toString("utf8");
+    const text = ctx.artifact?.files?.get("package.json")?.toString("utf8");
     if (!text) {
       return none;
     }

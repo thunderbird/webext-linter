@@ -656,7 +656,7 @@ test("verifiedVendorSource answers only for a verified content match", () => {
     verifiedVendorSource(yes, "a.css"),
     "https://cdn.example/x@1.0.0/x.css"
   );
-  // A different file, no store, no results, no addon: all null, never a throw.
+  // A different file, no store, no results, no artifact: all null, never a throw.
   assert.equal(verifiedVendorSource(yes, "b.css"), null);
   assert.equal(verifiedVendorSource({ vendor: {} }, "a.css"), null);
   assert.equal(verifiedVendorSource({}, "a.css"), null);

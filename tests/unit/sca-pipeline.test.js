@@ -433,7 +433,7 @@ test("SCA: the --sca-root archive is read once, not twice", async () => {
 //
 // The FILE is in the archive's corpus, like every other file the submission contains. What
 // keeps the two apart is the RECORD: ctx.manifest is projected from the XPI by name
-// (src/pipeline.js), and reviewView does not allowlist addon.manifest at all
+// (src/pipeline.js), and no artifact carries a record of its own at all
 // (src/checks/context.js), so the archive's own record is unreachable from a check even if
 // one existed. Both halves are pinned in tests/unit/context.test.js, where a deliberately
 // leaking record has to come back undefined - there is nothing left for a pipeline-level
@@ -912,7 +912,7 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
 
 // The build files (the archive's tooling) are reviewed by the setup
 // build analysis (analyzeBuild) + the deterministic undeclared-build-source check. This proves
-// the pipeline wires selectScaBuildFiles -> addon.buildReview -> scaCtx (ctx.addon) ->
+// the pipeline wires selectScaBuildFiles -> addon.buildReview -> scaCtx (ctx.artifact) ->
 // the check: analyzeBuild stores the corpus signals and the anchor, and the check escalates
 // the build to Extended Manual Review, which every source-code submission reaches.
 test("SCA e2e: a build script outside the source is reviewed by undeclared-build-source", async () => {

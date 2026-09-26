@@ -1,8 +1,9 @@
 // Walks a submitted artifact - an .xpi/.zip archive or an already-unpacked directory - into
-// the Addon model: a file store, plus the manifest.json record where that artifact's own manifest.json
-// is the one that counts. One entry point per kind: loadAddon for the built add-on,
-// loadSourceArchive for the submitted source. It stays on disk for the whole review, so the
-// store keeps keys and reads bytes when something asks (./corpus.js); nothing is held twice.
+// the Addon model: a file store, plus the corpora a review reads it through. One entry point
+// per kind: loadAddon for the built add-on, loadSourceArchive for the submitted source. It
+// stays on disk for the whole review, so the store keeps keys and reads bytes when something
+// asks (./corpus.js); nothing is held twice. What the add-on DECLARES is a separate question,
+// asked once for the shipped artifact (readWebExtManifest).
 //
 // A packed archive is read exactly once, by being extracted to disk (extractZip) and then
 // walked back like any already-unpacked submission (readDir). That destination is the
@@ -15,9 +16,9 @@
 // frame: every corpus is keyed against the submission, which is the only frame that can name
 // all of it.
 //
-// Belongs here: walking either artifact into the Addon model (store + the manifest.json record),
-// extracting a packed one to disk first, the SCA partition above, the Manifest and
-// ManifestRecord typedefs, and the load-time path safety guards.
+// Belongs here: walking either artifact into the Addon model, extracting a packed one to disk
+// first, the SCA partition above, reading one artifact's manifest.json into the record every
+// reader shares, the Manifest and WebExtManifestRecord typedefs, and the load-time path guards.
 //
 // Does NOT belong here: reviewing the add-on - all verdicts live in the checks
 // (src/checks/*). Which of the build candidates the build actually RUNS is a
@@ -109,7 +110,7 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  * One artifact's manifest.json, read ONCE at load: the parse and everything derived from the
  * same bytes, as one value. A record or nothing, so an artifact with no manifest.json answer says
  * so once - parallel fields could disagree, and an empty one reads as an answer.
- * @typedef {object} ManifestRecord
+ * @typedef {object} WebExtManifestRecord
  * @property {?Manifest} json  Parsed; null when the text would not parse.
  * @property {string} text  The raw bytes as text, kept so a reader locating a token in the
  *   source does not re-read and re-parse the file.
@@ -186,10 +187,6 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  *   a reader asking "is this path a directory in the submission" asks here. A recorded
  *   installed tree is NOT among them: it is not walked, so nothing may resolve into it.
  *   Set by loadAddon only.
- * @property {?ManifestRecord} manifest  What the artifact's own manifest.json says - null
- *   when it holds none, and null for a SOURCE ARCHIVE, which is loaded without reading one
- *   at all (loadSourceArchive). A check reads none of this: the authoritative
- *   manifest.json is the shipped one, exposed as ctx.manifest (src/checks/context.js).
  */
 
 /**
@@ -199,28 +196,17 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  *   ignored if it is already a directory. Defaults to a fresh `<source>.extracted`
  *   (src/util/dest.js) when omitted - callers that care where it landed (the
  *   review, so it can hand the same folder to a reviewer) pass their own.
- * @param {{recordInstalledTrees?: boolean, parseWebExtManifest?: boolean}} [options]  Both are
- *   off the default, and both describe a submitted SOURCE ARCHIVE - which asks for them by
- *   name, through loadSourceArchive below, rather than restating the pair.
+ * @param {{recordInstalledTrees?: boolean}} [options]  Off by default, and describing a
+ *   submitted SOURCE ARCHIVE - which asks for it by name, through loadSourceArchive below.
  *
  *   `recordInstalledTrees` makes a node_modules directory a RECORDED path instead of
  *   content: its paths land in `nodeModules` and not one of its files is read. An installed
  *   tree is not part of a submission - the reviewer installs it - so reading it would review
  *   bytes the build replaces. In an ADD-ON, which is what users receive, a folder called
  *   node_modules is shipped content like any other folder and is loaded and reviewed as one.
- *
- *   `parseWebExtManifest` false leaves `manifest` null without reading one. A source archive's
- *   root manifest.json is a PRE-BUILD template: the build may rewrite it or generate it, the
- *   add-on's root may sit anywhere under the submission, and a submission need not hold one
- *   at all - so there is no artifact here whose manifest.json that would be. The file stays
- *   in the corpus, as a file the submission contains; only the ANSWER is not offered.
  * @returns {Addon}
  */
-export function loadAddon(
-  source,
-  extractTo,
-  { recordInstalledTrees, parseWebExtManifest = true } = {}
-) {
+export function loadAddon(source, extractTo, { recordInstalledTrees } = {}) {
   const resolved = path.resolve(source);
   if (!fs.existsSync(resolved)) {
     throw new Error(`Add-on not found: ${resolved}`);
@@ -253,7 +239,6 @@ export function loadAddon(
   return {
     files: fileView(store, { keys: store.keys() }),
     store,
-    manifest: parseWebExtManifest ? manifestRecord(store) : null,
     nodeModules,
     archives,
     skipped,
@@ -265,12 +250,10 @@ export function loadAddon(
 /**
  * Load the SUBMITTED SOURCE ARCHIVE - the artifact --sca-root names.
  *
- * The two ways it is not an add-on, stated once so no caller restates them. An installed
+ * The one way it is not an add-on, stated here so no caller restates it: an installed
  * dependency tree is not part of a submission (the reviewer installs it from the declared
- * package file and lock), and a root manifest.json here is a PRE-BUILD template rather than
- * anything Thunderbird loads, so neither is read as content. Both are loadAddon options
- * because they are the mechanism; this is the one composition of them, and a caller asking
- * for a submission asks for it by name.
+ * package file and lock), so it is recorded rather than read as content. A caller asking for
+ * a submission asks for it by name.
  *
  * No `extractTo`: --sca-root is a directory by the time anything loads it, extracted by the
  * reviewer and settled before the review starts (src/addon/submission.js, sca-root.js).
@@ -278,10 +261,7 @@ export function loadAddon(
  * @returns {Addon}
  */
 export function loadSourceArchive(source) {
-  return loadAddon(source, undefined, {
-    recordInstalledTrees: true,
-    parseWebExtManifest: false,
-  });
+  return loadAddon(source, undefined, { recordInstalledTrees: true });
 }
 
 // The add-on's own manifest, by name - recognized at any depth.
@@ -289,16 +269,20 @@ const MANIFEST_NAME = "manifest.json";
 
 /**
  * Read the artifact's ROOT manifest.json (BOM-tolerant, JSON5) into the record every reader of
- * that manifest.json shares. The store is left alone - reading a file is not a reason to take
- * it away, and a store answers what the submission holds, not what was read out of it.
+ * that manifest.json shares. Asked for, never derived at load: the record is the SHIPPED
+ * answer to "what does this add-on declare", so the review reads it once off the built XPI
+ * and shares it (src/pipeline.js -> ctx.manifest). A source archive is never asked - its root
+ * manifest.json is a PRE-BUILD template, which the build may rewrite or generate, whose
+ * add-on root may sit anywhere under the submission, and which a submission need not hold at
+ * all. The store is left alone either way: reading a file is not a reason to take it away.
  *
  * Unparsable is still a record: `error` is what the review reports and `text` is what a
  * token search anchors it in, while `loc` answers null to everything (buildManifestLoc gets
  * no tree out of text JSON5 alone will take). Only an ABSENT manifest.json is nothing.
  * @param {FileStore} store  The artifact's store, to read it from.
- * @returns {?ManifestRecord}
+ * @returns {?WebExtManifestRecord}
  */
-function manifestRecord(store) {
+export function readWebExtManifest(store) {
   const manifestBuf = store.get(MANIFEST_NAME);
   if (!manifestBuf) {
     return null;

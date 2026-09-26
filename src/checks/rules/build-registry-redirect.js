@@ -7,7 +7,7 @@
 // (no host/quote/case handling to slip past); the mere presence of the key is the
 // reject. Deterministic, no network.
 //
-// input: sca - reads the submitted source archive off ctx.addon. The ARCHIVE'S OWN .npmrc is the
+// input: sca - reads the submitted source archive off ctx.artifact. The ARCHIVE'S OWN .npmrc is the
 // one read: npm takes its config from the directory the install runs in, and the review
 // runs it at --sca-root, so that is the file whose settings reach the install. A config
 // deeper in the tree belongs to a directory this review never installs from, so it is never
@@ -27,7 +27,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const files = ctx.addon?.files;
+    const files = ctx.artifact?.files;
     if (!files) {
       return { findings: [] };
     }

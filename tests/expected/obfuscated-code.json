@@ -1,1 +1,4 @@
-{ "_comment": "Ships an array-replacement obfuscated background script; obfuscated-code rejects it.", "expect": { "obfuscated-code": ["obf.js"] } }
+{
+  "_comment": "Ships an array-replacement obfuscated background script; obfuscated-code rejects it.",
+  "expect": { "obfuscated-code": ["obf.js"] }
+}

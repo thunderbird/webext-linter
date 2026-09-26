@@ -21,7 +21,10 @@ export default {
    */
   run(ctx) {
     return {
-      findings: vulnFindings(ctx, ctx.addon?.vendor?.devVulnerabilities ?? []),
+      findings: vulnFindings(
+        ctx,
+        ctx.artifact?.vendor?.devVulnerabilities ?? []
+      ),
     };
   },
 };

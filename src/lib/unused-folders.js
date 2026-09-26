@@ -92,7 +92,7 @@ export function collapseUnused(unusedFiles, allFiles) {
  * a ruleId, so it is artifact-specific by definition - "every packaged file under this folder
  * is unused" is only true of the artifact whose paths the findings carry. Hand it a list and
  * the caller must pick that artifact, which is a choice it can get wrong: unused-files is
- * `input: xpi`, so its paths are the built XPI's, while the orchestrator's own `ctx.addon` is the
+ * `input: xpi`, so its paths are the built XPI's, while the orchestrator's own `ctx.artifact` is the
  * REVIEW TARGET - the readable source in SCA, a different tree entirely, against which "all
  * files under this folder are unused" goes vacuously true and the report tells the developer
  * to delete a folder the shipped add-on still imports from. Asking for the files OF THE RULE

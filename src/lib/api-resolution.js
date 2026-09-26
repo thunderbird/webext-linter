@@ -33,7 +33,7 @@ import { SchemaIndex } from "../schema/index.js";
  * @returns {ResolvedUsage[]}
  */
 export function resolveApiUsages(ctx) {
-  return (ctx.addon.apiResolution ??= resolve(ctx));
+  return ((ctx.cache ??= {}).apiResolution ??= resolve(ctx));
 }
 
 /**

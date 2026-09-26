@@ -1,6 +1,6 @@
 // Test helper: the checks read the SHIPPED manifest.json record from ctx.manifest (+ siblings),
 // resolved by the ctx builders (buildXpiCtx) in production. Unit tests build a ctx inline with a
-// single artifact, so this derives that field from ctx.addon (mutating and
+// single artifact, so this derives that field from ctx.artifact (mutating and
 // returning the SAME ctx, so tests that inspect the ctx after a run still observe it).
 
 import JSON5 from "json5";
@@ -56,7 +56,7 @@ export function parsed(jsSources, { schema, nonAuthored } = {}) {
  * (a token's line, a trailing comma, a duplicate key).
  * @param {?object} json  The parsed manifest.json.
  * @param {string} [text]  The raw manifest.json bytes, when they matter.
- * @returns {object} The record, for `addon: { manifest: manifestOf(...) }`.
+ * @returns {object} The record, for `artifact: { manifest: manifestOf(...) }`.
  */
 export function manifestOf(json, text = JSON.stringify(json, null, 2)) {
   return { json, text, error: null, loc: buildManifestLoc(text) };
@@ -80,7 +80,7 @@ export function siblingsOf(ctx) {
  * @returns {object} the same ctx, carrying the shipped manifest.json record.
  */
 export function withManifest(ctx) {
-  const addon = ctx?.addon ?? {};
+  const addon = ctx?.artifact ?? {};
   // A loaded artifact's record is read FROM the corpus, so its text IS those bytes and a
   // line a finding carries is a line of the file the reviewer opens. A fixture that lets
   // the two drift asserts a line the submission does not have, and passes by coincidence.

@@ -85,7 +85,7 @@ export function resolvePageRelative(files, hostDirs, fromScript, raw) {
  * @returns {Map<string, Set<string>>}
  */
 function compute(ctx) {
-  const files = ctx.addon?.files ?? new Map();
+  const files = ctx.artifact?.files ?? new Map();
   const manifest = ctx.manifest?.json || {};
   /** @type {Map<string, Set<string>>} */
   const map = new Map();

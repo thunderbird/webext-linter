@@ -139,11 +139,11 @@ export function buildReachability(ctx) {
  * @returns {Reachability}
  */
 function compute(ctx) {
-  // Reachability describes whatever artifact the orchestrator routed into ctx.addon:
+  // Reachability describes whatever artifact the orchestrator routed into ctx.artifact:
   // the built XPI for the structure checks (registry `input: xpi` - bundled-files,
   // unused-files, minimize-web-accessible-resources), the review target for the
   // WebExtension-code checks (`input: source` - the API/permission validators). Every
-  // `addon`/`files`/`jsSources` below is that one artifact's, so the graph is always
+  // `artifact`/`files`/`jsSources` below is that one artifact's, so the graph is always
   // internally consistent.
   //
   // pureWebExtensionReachable's SCA "all readable-source files" branch exists only
@@ -154,8 +154,8 @@ function compute(ctx) {
   // meaningful WebExtension scope there too. (It is still read only by `input: source`
   // checks over the review target - see the consumer split the reachability tests
   // pin - so the shipped-view value is unused; the gate keeps it correct regardless.)
-  const addon = ctx.addon;
-  const files = addon?.files;
+  const artifact = ctx.artifact;
+  const files = artifact?.files;
   // A context with no files (degenerate / unit harness) has nothing reachable;
   // return an inert graph so every consumer (incl. the API checks) is a no-op.
   if (!files) {

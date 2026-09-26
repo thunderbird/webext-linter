@@ -40,7 +40,12 @@ import {
   loadSchemaAnnotations,
   applySchemaAnnotations,
 } from "./schema/annotate.js";
-import { loadAddon, loadSourceArchive, scaViews } from "./addon/load.js";
+import {
+  loadAddon,
+  loadSourceArchive,
+  readWebExtManifest,
+  scaViews,
+} from "./addon/load.js";
 import { settleScaRoot } from "./addon/sca-root.js";
 import { isTranspiledSource } from "./util/files.js";
 import { runChecks, loadRegistry } from "./checks/registry.js";
@@ -358,11 +363,21 @@ export async function runPipeline(opts) {
     ? null
     : extractionDestination(`${addonPath}.extracted`);
   const xpiAddon = loadAddon(addonPath, extractTo ?? undefined);
+  // What the SHIPPED add-on declares, read ONCE here and the review's only record: it is
+  // asked of the built XPI by name rather than derived by whatever loads an artifact (a
+  // source archive's root manifest.json is a pre-build template, and nothing asks it). One
+  // record, so the name needs no artifact to tell it from another.
+  const webExtManifestRecord = readWebExtManifest(xpiAddon.store);
+  // The Experiment verdict, likewise the SHIPPED add-on's and likewise shared rather than
+  // stapled to an artifact: it reaches the checks as ctx.experiments, and the classifier as
+  // the set of files whose byte-match IS their review. Named for its type
+  // (ExperimentVerification) rather than for the artifact, because there is only ever one.
+  let experimentVerification = null;
   const xpiRootBase = addonIsDir ? addonPath : extractTo;
   const xpiRoot = xpiRootBase.endsWith(path.sep)
     ? xpiRootBase
     : `${xpiRootBase}${path.sep}`;
-  const isExp = isExperiment(xpiAddon.manifest?.json);
+  const isExp = isExperiment(webExtManifestRecord?.json);
 
   // The facts each step's `when` is asked of, from what the fast .xpi read already gives
   // us: the mode, and whether this is an Experiment.
@@ -408,7 +423,7 @@ export async function runPipeline(opts) {
   // What the steps share. Each value is written by the step that owns it and read by the
   // ones after it, and the declared order is what puts them in that sequence.
 
-  /** The review target (it becomes ctx.addon): the readable source, or the shipped .xpi - whichever
+  /** The review target (it becomes ctx.artifact): the readable source, or the shipped .xpi - whichever
    * of `target-source` / `target-xpi` this review runs. */
   let reviewTarget;
   /** The submitted source archive: read by `source-archive`, reused by `target-source`
@@ -482,7 +497,7 @@ export async function runPipeline(opts) {
     schema: async (say) => {
       const resolved = await resolveReviewSchema({
         cacheDir: opts.schemaCache ?? DEFAULT_CACHE,
-        manifest: xpiAddon.manifest?.json ?? null,
+        manifest: webExtManifestRecord?.json ?? null,
         setupStep: say,
       });
       schemaSource = resolved.source;
@@ -517,10 +532,14 @@ export async function runPipeline(opts) {
     // source-layout mismatch). The classification is the XPI's, so it is stored on
     // xpiAddon here, whose bundled classification seeds the trusted experiment files.
     experiments: async () => {
-      xpiAddon.experiments = await verifyExperiments(xpiAddon, opts);
+      experimentVerification = await verifyExperiments(
+        xpiAddon,
+        webExtManifestRecord,
+        opts
+      );
       invalidExperiment =
         !opts.allowExperiments &&
-        xpiAddon.experiments.groups.some((g) => g.status === "unsupported");
+        experimentVerification.groups.some((g) => g.status === "unsupported");
     },
 
     // A valid Experiment's declared APIs are part of its platform: register their base
@@ -529,7 +548,7 @@ export async function runPipeline(opts) {
     // schema/scripts live in the built XPI, so the manifest.json's paths resolve there).
     "experiment-schema": () => {
       schema.registerExperimentNamespaces(
-        experimentApiNamespaces(xpiAddon.manifest?.json, xpiAddon.files)
+        experimentApiNamespaces(webExtManifestRecord?.json, xpiAddon.files)
       );
     },
 
@@ -565,7 +584,10 @@ export async function runPipeline(opts) {
     "vendor-xpi": async () => {
       xpiAddon.vendor = resolveVendor({ addon: xpiAddon });
       await verifyVendor(xpiAddon, opts.vendorNet, libraryBlocks);
-      classifyReview(xpiAddon, { libraryHashes });
+      classifyReview(xpiAddon, {
+        libraryHashes,
+        trustedFiles: experimentVerification?.trustedFiles,
+      });
     },
     "cdn-bundled": () =>
       identifyBundledLibraries(xpiAddon, {
@@ -576,7 +598,10 @@ export async function runPipeline(opts) {
     "audit-bundled": () =>
       auditIdentifiedLibraries(xpiAddon, opts.vendorNet, libraryBlocks),
     "parse-xpi": () => {
-      xpiParsedSources = extractReview(xpiAddon, { schema, xpiAddon });
+      xpiParsedSources = extractReview(xpiAddon, {
+        schema,
+        webExtManifestRecord,
+      });
     },
 
     // The submitted source archive, walked ONCE and split here into the two views every
@@ -641,9 +666,6 @@ export async function runPipeline(opts) {
       for (const notice of scaArchive.skipped ?? []) {
         warn(notice);
       }
-      // Mirror the XPI's experiment classification onto the review target (the experiment
-      // checks read ctx.experiments from it; in XPI mode the two are one artifact anyway).
-      reviewTarget.experiments = xpiAddon.experiments;
       // Warn when --sca-exp-source matches nothing: a mis-typed path would exclude nothing
       // and flood the report with false positives on the privileged Experiment code.
       if (opts.scaExpSource && scaArchive.experiment.size === 0) {
@@ -750,7 +772,10 @@ export async function runPipeline(opts) {
     // reads).
     "deps-source": async () => {
       await verifyScaDependencies(reviewTarget, opts.vendorNet, libraryBlocks);
-      classifyReview(reviewTarget, { libraryHashes });
+      classifyReview(reviewTarget, {
+        libraryHashes,
+        trustedFiles: experimentVerification?.trustedFiles,
+      });
     },
 
     // Identify the UNDECLARED libraries the audit cannot see (jsDelivr hash), and
@@ -767,7 +792,10 @@ export async function runPipeline(opts) {
 
     // Parse the source ONCE, with the FINAL skip set (see extractReview).
     "parse-source": () => {
-      preParsedJsSources = extractReview(reviewTarget, { schema, xpiAddon });
+      preParsedJsSources = extractReview(reviewTarget, {
+        schema,
+        webExtManifestRecord,
+      });
     },
 
     // Look at the build ONCE here (the vendor pattern), over the source corpus - everything
@@ -846,11 +874,10 @@ export async function runPipeline(opts) {
     schema,
     options: { allowExperiments: opts.allowExperiments, libraryHashes },
     mode,
-    scaExpSource: opts.scaExpSource,
     scaNotRequired,
     invalidExperiment,
-    manifest: xpiAddon.manifest,
-    experiments: xpiAddon.experiments ?? null,
+    manifest: webExtManifestRecord,
+    experiments: experimentVerification ?? null,
   };
 
   // From the built XPI's analysis, which every reviewable path runs: the shipped ctx, for the
@@ -906,7 +933,7 @@ export async function runPipeline(opts) {
     schemaBranch,
     schemaChannel,
     applicationVersion: schema.applicationVersion,
-    manifestVersion: xpiAddon.manifest?.json?.manifest_version ?? null,
+    manifestVersion: webExtManifestRecord?.json?.manifest_version ?? null,
     checksRun: checksRun.map((c) => c.id),
     // The three to-do origins as ONE list, each carrying its own `default-note` where the
     // check authors one: a case a check escalated and a by-hand manual check are the same
@@ -970,7 +997,7 @@ export async function runPipeline(opts) {
     // some file happens to have been named: this run HANDS OUT A PHASE, so its whole
     // output is that prompt and the report is not printed beside it.
     meta.prompting = true;
-    const files = reviewFilePaths(xpiAddon, addonPath);
+    const files = reviewFilePaths(webExtManifestRecord, addonPath);
     summaryPath = skip.includes("summary") ? null : files.summary;
     buildPath = mode?.sca ? files.build : null;
     // Ungated, unlike the two above: every review has a report, and this one is written by
@@ -1158,13 +1185,16 @@ export async function runPipeline(opts) {
  * It runs before identifyBundledLibraries, which reads its tags (tag.obfuscation) and refines
  * the result.
  * @param {import("./addon/load.js").Addon} addon
- * @param {{libraryHashes: Map<string, {name: string, version: string}>}} deps
+ * @param {{libraryHashes: Map<string, {name: string, version: string}>,
+ *   trustedFiles?: Set<string>}} deps  `trustedFiles` is the shipped add-on's Experiment
+ *   verdict, which applies to whichever artifact is being classified.
  */
-function classifyReview(addon, { libraryHashes }) {
+function classifyReview(addon, { libraryHashes, trustedFiles }) {
   // Reuse the classification when the caller already has one (the SHIPPED XPI carries its own,
   // computed in Phase 2 by `vendor-xpi`); otherwise classify now.
   addon.bundled =
-    addon.bundled ?? assembleBundled(classifyFiles(addon, { libraryHashes }));
+    addon.bundled ??
+    assembleBundled(classifyFiles(addon, { libraryHashes, trustedFiles }));
 }
 
 /**
@@ -1185,13 +1215,15 @@ function classifyReview(addon, { libraryHashes }) {
  * which are two steps of the setup list under one label (SETUP_STEPS).
  * @param {import("./addon/load.js").Addon} addon  The artifact to extract, already classified.
  * @param {{schema: object,
- *   xpiAddon: import("./addon/load.js").Addon}} deps
+ *   webExtManifestRecord: ?import("./addon/load.js").WebExtManifestRecord}} deps  What the SHIPPED add-on
+ *   declares: whether this is an Experiment, and which namespaces its APIs own, are its
+ *   answers even when the artifact being extracted is the source.
  * @returns {import("./addon/sources.js").JsSource[]}  The parsed review sources.
  */
-function extractReview(addon, { schema, xpiAddon }) {
+function extractReview(addon, { schema, webExtManifestRecord }) {
   const jsSources = collectJsSources(addon);
-  const experimentNamespaces = isExperiment(xpiAddon.manifest?.json)
-    ? experimentApiNamespaces(xpiAddon.manifest?.json, addon.files)
+  const experimentNamespaces = isExperiment(webExtManifestRecord?.json)
+    ? experimentApiNamespaces(webExtManifestRecord?.json, addon.files)
     : null;
   runExtractionPass(jsSources, {
     schema,

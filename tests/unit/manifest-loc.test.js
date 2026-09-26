@@ -50,7 +50,9 @@ test("minimize-host-permissions anchors <all_urls> on its host_permissions line"
     manifest: manifestOf(JSON.parse(TEXT), TEXT), // decodes the escapes to "<all_urls>"
     files: new Map([["manifest.json", Buffer.from(TEXT)]]),
   };
-  const out = minimizeHostPermissions.run(withManifest({ addon })).findings;
+  const out = minimizeHostPermissions.run(
+    withManifest({ artifact: addon })
+  ).findings;
   const f = out.find((x) => x.item === "<all_urls>");
   assert.ok(f, "expected an <all_urls> finding");
   assert.equal(f.loc?.line, 6);

@@ -21,7 +21,7 @@ const schema = buildSchemaIndex(
 // A ctx whose files include the manifest.json text (for token-line lookup) plus
 // any extra files (e.g. an experiment schema).
 const ctxOf = (manifest, extra = {}) => ({
-  addon: {
+  artifact: {
     manifest: manifestOf(manifest),
     files: new Map(
       Object.entries({

@@ -1,8 +1,6 @@
 {
   "_comment": "A source archive whose package.json is truncated mid-object, so it does not parse. The file is THERE, so sca-package-file-missing stays silent and sca-package-file-invalid reports it instead - the split this pair exists for, pinned end to end. It anchors at package.json and the location line says which of the two faults it is, where the missing check carries no locus at all. The shipped background.js is packed and so is not the archive's code, which keeps this fixture to one subject: neither check is silenced by a readable shipped XPI, and what that does to the XPI-only advice is pinned by sca-not-required-broken-build.",
   "expect": {
-    "sca-package-file-invalid": [
-      "package.json"
-    ]
+    "sca-package-file-invalid": ["package.json"]
   }
 }

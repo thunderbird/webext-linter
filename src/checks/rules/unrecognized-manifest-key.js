@@ -18,7 +18,7 @@ import { experimentManifestKeys } from "../../lib/experiments.js";
 
 export default {
   run(ctx) {
-    const { addon, schema } = ctx;
+    const { artifact, schema } = ctx;
     if (ctx.manifest?.error || !ctx.manifest?.json) {
       return { findings: [] }; // a missing/unparsable manifest is the manifest-* checks' job
     }
@@ -32,7 +32,7 @@ export default {
     );
     const expManifestKeys = experimentManifestKeys(
       ctx.manifest.json,
-      addon.files
+      artifact.files
     );
     const out = [];
     for (const key of Object.keys(ctx.manifest.json)) {

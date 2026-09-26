@@ -28,18 +28,18 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    // Registry `input: xpi`: ctx.addon is the built XPI. Module-ness is a runtime-
+    // Registry `input: xpi`: ctx.artifact is the built XPI. Module-ness is a runtime-
     // loading property of what ships (Thunderbird loads the XPI's page and its
     // scripts), and the build can transform it. So the page, its <script src>
     // targets, and their bytes all come from the XPI, not a source submission's
     // readable source.
-    const { addon } = ctx;
+    const { artifact } = ctx;
     const page = ctx.manifest?.json?.background?.page;
     if (typeof page !== "string") {
       return { findings: [] };
     }
     const pageFile = normalizeRef(page);
-    const buf = addon.files.get(pageFile);
+    const buf = artifact.files.get(pageFile);
     if (!buf) {
       return { findings: [] }; // a declared-but-absent page is bundled-files' concern
     }
@@ -62,7 +62,7 @@ export default {
       if (el.attr("type")?.trim().toLowerCase() === "module") {
         return; // correctly declared a module
       }
-      const target = resolveRef(addon.files, pageFile, src);
+      const target = resolveRef(artifact.files, pageFile, src);
       if (!target) {
         return; // remote or unresolved src - not our concern
       }

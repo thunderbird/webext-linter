@@ -4,12 +4,8 @@
     "--cdn-lib-lookup": "true"
   },
   "expect": {
-    "missing-library": [
-      "vendor/bootstrap/bootstrap.min.css"
-    ],
-    "find-lib-on-cdn": [
-      "lib/undeclared.min.js"
-    ]
+    "missing-library": ["vendor/bootstrap/bootstrap.min.css"],
+    "find-lib-on-cdn": ["lib/undeclared.min.js"]
   },
   "network": {
     "https://data.jsdelivr.com/v1/lookup/hash/39a5201912ac4d780838ca4e37180327bbaf2ad103bb10f24d321f4b831048af": {

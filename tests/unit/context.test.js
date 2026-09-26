@@ -98,9 +98,8 @@ test("buildXpiCtx carries the XPI's own sources; isShippedView only in SCA", () 
   const xpiParsed = parsed(xpi);
 
   const inSca = buildXpiCtx(xpi, xpiParsed, envWith({ mode: REVIEW_MODE.SCA }));
-  // ctx.addon is a reviewView (a shallow copy without manifest.json/experiments); it carries the
-  // XPI's files Map by reference, not the XPI object.
-  assert.equal(inSca.addon.files, xpi.files);
+  // ctx.artifact IS the XPI, so its files Map is the XPI's by identity.
+  assert.equal(inSca.artifact.files, xpi.files);
   assert.equal(inSca.jsSources, xpiParsed);
   assert.equal(inSca.apiUsages.length, xpiParsed.length); // the XPI's OWN api-usage
   assert.equal(inSca.apiUsages[0].file, "app.js");
@@ -125,14 +124,14 @@ test("buildXpiCtx carries the XPI's own sources; isShippedView only in SCA", () 
   assert.equal(inXpi.isShippedView, undefined); // one artifact - not a distinct shipped view
 });
 
-// The Experiment implementation reaches a check. ctx.addon.files deliberately EXCLUDES it,
+// The Experiment implementation reaches a check. ctx.artifact.files deliberately EXCLUDES it,
 // so the WebExtension API/permission/eval checks never false-positive on Services or
 // ChromeUtils - but a check that reviews a file for what it IS (minified, obfuscated, a
 // known library) must still see it: privileged code shipped unreadable is worse, not
-// better. Such a check reads ctx.addon.files and ctx.addon.experiment as one corpus, which
+// better. Such a check reads ctx.artifact.files and ctx.artifact.experiment as one corpus, which
 // is only possible because both are allowlisted and, for an Experiment inside the add-on,
 // keyed in the same frame.
-test("a check can merge the source and Experiment corpora off ctx.addon", () => {
+test("a check can merge the source and Experiment corpora off ctx.artifact", () => {
   const source = addonWith({ "app.js": "export const x = 1;" });
   const experiment = new Map([
     ["experiment/exp.js", Buffer.from("ChromeUtils.import('x');")],
@@ -143,16 +142,15 @@ test("a check can merge the source and Experiment corpora off ctx.addon", () => 
   const { sourceCtx } = buildScaCtxs(source, parsed(source), env);
 
   // Apart: the WebExtension checks see the add-on's code and nothing privileged.
-  assert.ok(sourceCtx.addon.files.has("app.js"));
-  assert.ok(!sourceCtx.addon.files.has("experiment/exp.js"));
-  // Allowlisted, so a check that needs it can reach it at all (reviewView is a whitelist -
-  // an un-named field would silently read undefined here).
-  assert.equal(sourceCtx.addon.experiment, experiment);
+  assert.ok(sourceCtx.artifact.files.has("app.js"));
+  assert.ok(!sourceCtx.artifact.files.has("experiment/exp.js"));
+  // Reachable by identity, so a check that needs the privileged corpus reads the real one.
+  assert.equal(sourceCtx.artifact.experiment, experiment);
 
   // Together: the corpus a what-is-this-file check reviews.
   const merged = new Map([
-    ...sourceCtx.addon.files,
-    ...sourceCtx.addon.experiment,
+    ...sourceCtx.artifact.files,
+    ...sourceCtx.artifact.experiment,
   ]);
   assert.deepEqual(
     [...merged.keys()].sort(),
@@ -168,26 +166,25 @@ test("a check can merge the source and Experiment corpora off ctx.addon", () => 
     parsed(addonWith({ "app.js": "1;" })),
     env
   ).sourceCtx;
-  assert.equal(xpiOnly.addon.experiment, undefined);
+  assert.equal(xpiOnly.artifact.experiment, undefined);
 });
 
-// buildScaCtxs.scaCtx routes the SCA archive onto ctx.addon (the input: sca seam),
+// buildScaCtxs.scaCtx routes the SCA archive onto ctx.artifact (the input: sca seam),
 // shares the review env, and empties the source-only jsSources/apiUsages. The corpus is
-// projected through reviewView like every other ctx.addon, so a build check can never read
-// ctx.addon.manifest against another artifact's files.
-test("buildScaCtxs.scaCtx puts the archive on ctx.addon and strips manifest/sources", () => {
+// linked like every other ctx.artifact, so a build check can never read
+// ctx.artifact.manifest against another artifact's files.
+test("buildScaCtxs.scaCtx puts the archive on ctx.artifact, without its sources", () => {
   const source = addonWith({ "src/app.js": "export const x = 1;" });
   const env = envWith({
     mode: REVIEW_MODE.SCA,
     manifest: shippedRecord,
   });
-  // The source ctx and the build ctx are over the ONE corpus the archive carries, so what
-  // distinguishes them is the parsed source, not the files. A full-addon shape (manifest.json
-  // present) must NOT leak through: reviewView allowlists. buildReview (what setup found in
-  // the build) MUST survive - the input:sca checks read it.
+  // The source ctx and the build ctx are over the ONE archive, linked by pointer, so what
+  // distinguishes them is the parsed source rather than the files. Everything the archive
+  // carries is reachable, buildReview (what setup found in the build) included - the
+  // input:sca checks read it.
   const archive = {
     ...source,
-    manifest: { json: { name: "leak" }, text: "{}", error: null, loc: null },
     nodeModules: ["node_modules"],
     archives: ["dist.zip"],
     symlinks: [{ path: "libs/out", cause: SYMLINK_CAUSE.OUTSIDE }],
@@ -196,18 +193,18 @@ test("buildScaCtxs.scaCtx puts the archive on ctx.addon and strips manifest/sour
   };
 
   const { sourceCtx, scaCtx } = buildScaCtxs(archive, parsed(source), env);
-  assert.equal(scaCtx.addon.files, archive.files); // the archive's one corpus
-  assert.equal(scaCtx.addon.files, sourceCtx.addon.files); // the same one both routes read
-  assert.equal(scaCtx.addon.manifest, undefined); // not allowlisted (no leak)
-  assert.deepEqual(scaCtx.addon.nodeModules, ["node_modules"]); // committed-node-modules reads it
-  assert.deepEqual(scaCtx.addon.archives, ["dist.zip"]); // committed-build-artifact reads it
+  // The artifact IS the archive - one object, not a projection of some of its fields.
+  assert.equal(scaCtx.artifact, archive);
+  assert.equal(scaCtx.artifact, sourceCtx.artifact); // the same one both routes read
+  assert.deepEqual(scaCtx.artifact.nodeModules, ["node_modules"]); // committed-node-modules reads it
+  assert.deepEqual(scaCtx.artifact.archives, ["dist.zip"]); // committed-build-artifact reads it
   // sca-invalid-symlink reads it
-  assert.equal(scaCtx.addon.symlinks.length, 1);
-  assert.equal(scaCtx.addon.symlinks[0].path, "libs/out");
-  assert.equal(scaCtx.addon.symlinks[0].cause, SYMLINK_CAUSE.OUTSIDE);
+  assert.equal(scaCtx.artifact.symlinks.length, 1);
+  assert.equal(scaCtx.artifact.symlinks[0].path, "libs/out");
+  assert.equal(scaCtx.artifact.symlinks[0].cause, SYMLINK_CAUSE.OUTSIDE);
   // the file:/link: walk a lock check runs reads it
-  assert.deepEqual(scaCtx.addon.directories, ["libs"]);
-  assert.deepEqual(scaCtx.addon.buildReview, {
+  assert.deepEqual(scaCtx.artifact.directories, ["libs"]);
+  assert.deepEqual(scaCtx.artifact.buildReview, {
     unresolved: [],
     anchor: "package.json",
   }); // build-review checks read it
@@ -223,7 +220,7 @@ test("buildScaCtxs.scaCtx puts the archive on ctx.addon and strips manifest/sour
     parsed(source),
     env
   ).scaCtx;
-  assert.equal(empty.addon.files.size, 0);
+  assert.equal(empty.artifact.files.size, 0);
 });
 
 // Symmetric to buildXpiCtx: the readable source MUST arrive parsed (the pipeline parses it in
@@ -236,26 +233,25 @@ test("buildScaCtxs throws when the source arrives with no parsed sources", () =>
   );
 });
 
-// reviewView is an ALLOWLIST: ctx.addon carries ONLY the intrinsic fields a check reads, so a
-// field on the underlying Addon (manifest.json, experiments, and `skipped` - load-time
-// narration no check answers) can never leak onto the check-facing surface. And no credentials
-// are on the ctx: the token stays in the pipeline (it builds the client); env carries only the
-// review-level and the check-facing options.
-test("ctx.addon allowlists intrinsic fields; no manifest/experiments/skipped/creds leak", () => {
+// ctx.artifact IS the loaded artifact, linked by pointer - not a copy of some of its fields.
+// That is what makes provenance readable: ctx.artifact.files are demonstrably THAT artifact's
+// files. What keeps a check away from the artifact it was not routed to is the routing, not a
+// projection. The shipped answers still arrive from the env rather than off the artifact, and
+// no credentials are on the ctx: the token stays in the pipeline (it builds the client).
+test("ctx.artifact is the loaded artifact itself; the shipped answers come from env", () => {
   const xpi = addonWith({ "app.js": "export const x = 1;" });
-  xpi.manifest = { name: "m" };
-  xpi.experiments = { groups: [] };
-  xpi.skipped = ["Skipping symlink (not packaged): link.js"];
-  const xpiCtx = buildXpiCtx(
-    xpi,
-    parsed(xpi),
-    envWith({ options: { allowExperiments: true } })
-  );
-  // The load-narration / shipped-authoritative fields are NOT reachable through ctx.addon.
-  assert.equal(xpiCtx.addon.skipped, undefined);
-  assert.equal(xpiCtx.addon.manifest, undefined);
-  assert.equal(xpiCtx.addon.experiments, undefined);
-  assert.ok(xpiCtx.addon.files); // the intrinsic corpus IS there
+  const env = envWith({
+    options: { allowExperiments: true },
+    manifest: shippedRecord,
+  });
+  const xpiCtx = buildXpiCtx(xpi, parsed(xpi), env);
+  assert.equal(xpiCtx.artifact, xpi, "the same object the loader produced");
+  // The two shipped-authoritative answers are asked of the XPI once and shared, so they sit
+  // on the ctx rather than on whichever artifact a check was routed to.
+  assert.equal(xpiCtx.manifest, env.manifest);
+  assert.equal(xpiCtx.experiments, env.experiments);
+  // And what a review DERIVES has its own home, empty until something asks.
+  assert.deepEqual(xpiCtx.cache, {});
   // No secret token anywhere on the check-facing ctx (the builder never receives one).
   assert.equal("apiKey" in xpiCtx.options, false);
   assert.equal(xpiCtx.options.allowExperiments, true); // a real option stays
@@ -269,7 +265,10 @@ test("a manifest.json check reads the record, not the routed corpus", async () =
   const xpi = addonWith({ "a.js": "export const x = 1;" });
   const env = envWith({ manifest: null }); // a missing manifest is what manifest-missing flags
   const xpiCtx = buildXpiCtx(xpi, parsed(xpi), env);
-  assert.ok(xpiCtx.addon.files.size > 0, "the routed artifact does have files");
+  assert.ok(
+    xpiCtx.artifact.files.size > 0,
+    "the routed artifact does have files"
+  );
   const check = (await import("../../src/checks/rules/manifest-missing.js"))
     .default;
   // The corpus is non-empty and holds no manifest.json either way: the finding comes from
