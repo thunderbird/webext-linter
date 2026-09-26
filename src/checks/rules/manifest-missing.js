@@ -4,8 +4,8 @@
 //
 // `ctx.manifest` is that answer already: the loader builds a record for a manifest.json it
 // finds and returns null when the corpus holds no such key (src/addon/load.js
-// manifestRecord), so the record's existence IS the file's. This check cannot ask the corpus
-// itself - it is input: manifest, routed to a ctx whose file corpus is deliberately empty.
+// manifestRecord), so the record's existence IS the file's. It is read there rather than off
+// the corpus because the record is the SHIPPED answer, whichever artifact this review routes.
 //
 // Belongs here: the absent-manifest.json verdict. Does NOT belong here: loading the
 // add-on (-> src/addon/load.js), authored wording (-> assets/registry.yaml), and

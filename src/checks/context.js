@@ -1,5 +1,6 @@
 // Builds the sibling RunContexts every check runs against. Each artifact the orchestrator may
-// route a check to - the built XPI, the readable source, the SCA build corpus, and the shipped
+// route a check to - the built XPI, the readable source, that source without its parsed code
+// (the build route), and the shipped
 // manifest.json - gets its own ctx, and all of them project ONE shared review env: the schema, the
 // shipped manifest.json and experiments, and the mode. The pipeline
 // (pipeline.js) resolves the schema, parses the sources, and builds that shared env;
@@ -39,17 +40,17 @@ import { apiUsageOf } from "./extract.js";
  * fields a check legitimately reads off ctx.addon. An ALLOWLIST, not a strip: a field not
  * named here CANNOT reach a check, so a new Addon field can never leak onto the check surface
  * by omission (a blocklist would leak until someone remembered to delete it - all it takes
- * for a field like `sca` to put the archive's other corpus in front of an input:source check). If this list is ever
- * INCOMPLETE, a check reads undefined and the tests fail loudly - the safe failure direction.
+ * for a field like `skipped` to put load-time narration in front of a check). If this list is
+ * ever INCOMPLETE, a check reads undefined and the tests fail loudly - the safe failure
+ * direction.
  *
  * `files` is the addon's own corpus (referenced, not cloned), so a check reads the real
  * bytes. `store` is the SUBMISSION's, which in a source review is the whole --sca-root while
- * `files` gives up its manifest.json files: the frame the package file and the lock are
+ * `files` gives up the Experiment subtree: the frame the package file and the lock are
  * written in. It is named here because a dependency finding anchors at that file and has
  * to find it to report a line; a check reaching for `store` is saying it wants the
  * submission rather than the add-on, which is a different question, not a wider one. In an
- * XPI review they are the same keys but for the manifest.json, which `files` withholds and the
- * artifact still contains. `experiment` is the privileged Experiment
+ * XPI review `files` reviews every key the store has. `experiment` is the privileged Experiment
  * implementation (--sca-exp-source), which `files` deliberately excludes so the
  * WebExtension checks never see Services/ChromeUtils code: a check that reviews a file for
  * what it IS rather than for which API it calls - minified, obfuscated, a known library -
@@ -57,8 +58,8 @@ import { apiUsageOf } from "./extract.js";
  * the union is the add-on's whole tree.
  * `vendor`/`bundled` are the pipeline's pre-computed, reconciled classification (the lazy
  * fallbacks would recompute a less-complete one). `nodeModules`/`archives`/`buildReview` serve
- * the SCA archive (the sca ctx is projected from the archive's own `sca` corpus);
- * they are undefined on the xpi/source/manifest routes, which is harmless. `symlinks` rides
+ * the SCA archive, which the sca ctx projects; they are undefined on the xpi/source/manifest
+ * routes, which is harmless. `symlinks` rides
  * beside them but is NOT one of them: the xpi route carries it too, because an add-on holds
  * a link to a stricter standard than a source archive does and needs the same facts to say
  * so, and `directories` rides with it for the file:/link: walk a lock check runs. The lazy
@@ -71,10 +72,10 @@ import { apiUsageOf } from "./extract.js";
  * ctx.manifest / ctx.experiments (so a check cannot read one artifact's manifest.json against
  * another's files). For the archive there is also nothing to withhold: it is loaded without
  * reading a manifest.json (src/addon/load.js), so its `manifest` is null and the record this
- * would strip exists only on the built XPI. The archive's other corpus is the wrong one for
- * a review check; skipped is read by no check. An Addon carries no path of its own to withhold
- * (src/addon/load.js) - a check addresses files by the keys of this `files` Map.
- * @param {import("../addon/load.js").Addon} addon  The routed add-on (or the build corpus).
+ * would strip exists only on the built XPI. skipped is read by no check. An Addon carries no
+ * path of its own to withhold (src/addon/load.js) - a check addresses files by the keys of
+ * this `files` Map.
+ * @param {import("../addon/load.js").Addon} addon  The routed add-on.
  * @returns {object} The intrinsic-only view.
  */
 function reviewView(addon) {
@@ -163,15 +164,12 @@ function projectCtx(
 }
 
 /**
- * The sibling ctxs derived from the BUILT XPI - always analysed, in both review modes:
- *   - `xpiCtx`       the shipped artifact itself, for the `input: xpi` structure checks
- *                    (bundled-files, minimize-web-accessible-resources, ...), the diff +
- *                    packaging summaries, and - in an XPI review - the whole review (it IS
- *                    siblings.source, the review target).
- *   - `manifestCtx`  an EMPTY file corpus carrying only the shipped manifest.json, for the
- *                    `input: manifest` checks (they read ctx.manifest and reach no files, so a
- *                    stray lookup finds nothing rather than another artifact's bytes).
- * The XPI goes through the SAME full extraction pass in both modes, so `xpiCtx` carries the
+ * The ctx over the BUILT XPI - always analysed, in both review modes. It serves the
+ * `input: xpi` checks: the structure checks (bundled-files,
+ * minimize-web-accessible-resources, ...), the manifest.json checks (the shipped manifest.json
+ * IS this artifact's), the diff + packaging summaries, and - in an XPI review - the whole
+ * review, since it IS siblings.source, the review target.
+ * The XPI goes through the SAME full extraction pass in both modes, so it carries the
  * XPI's OWN per-source api-usage and an `input: xpi` check sees the identical artifact whether
  * the run is an XPI review or an SCA review. A reviewable XPI MUST arrive parsed; only a rejected
  * Experiment (env.invalidExperiment) may have no sources, and it reviews with an empty corpus
@@ -180,17 +178,17 @@ function projectCtx(
  * @param {import("../addon/sources.js").JsSource[]|undefined} xpiParsedSources  Its sources,
  *   already through the full extraction pass (Phase 2). Absent only for a rejected Experiment.
  * @param {ReviewEnv} env  The shared review-level state (see projectCtx).
- * @returns {{xpiCtx: RunContext, manifestCtx: RunContext}}
+ * @returns {RunContext}
  */
-export function buildXpiCtxs(xpiAddon, xpiParsedSources, env) {
+export function buildXpiCtx(xpiAddon, xpiParsedSources, env) {
   if (!env.invalidExperiment && !xpiParsedSources) {
     throw new Error(
-      "buildXpiCtxs: a reviewable built XPI arrived with no parsed sources " +
+      "buildXpiCtx: a reviewable built XPI arrived with no parsed sources " +
         "(the extraction pass must run and hand them over)"
     );
   }
   const jsSources = xpiParsedSources ?? [];
-  const xpiCtx = projectCtx(env, {
+  return projectCtx(env, {
     addon: xpiAddon,
     jsSources,
     apiUsages: deriveApiUsages(jsSources),
@@ -198,12 +196,6 @@ export function buildXpiCtxs(xpiAddon, xpiParsedSources, env) {
     // review target), so it must NOT flag the shipped-view reachability branch.
     isShippedView: Boolean(env.mode?.sca),
   });
-  const manifestCtx = projectCtx(env, {
-    addon: { files: new Map() },
-    jsSources: [],
-    apiUsages: undefined,
-  });
-  return { xpiCtx, manifestCtx };
 }
 
 /**
@@ -212,14 +204,14 @@ export function buildXpiCtxs(xpiAddon, xpiParsedSources, env) {
  *   - `sourceCtx` over the archive's add-on code, which in an SCA review is the review
  *                 target, so it becomes siblings.source. (In an XPI review that same slot
  *                 holds the XPI: `source` names the target, never an artifact.)
- *   - `scaCtx`  over the archive as the build sees it - everything but the Experiment and
- *                 a recorded node_modules - for the `input: sca` checks, read off
- *                 ctx.addon via the same one-place `input` routing, no separate field.
+ *   - `scaCtx`  the same archive with no parsed source, for the `input: sca` checks, read
+ *                 off ctx.addon via the same one-place `input` routing, no separate field.
+ *                 A build check reads files and the recorded lists, never code.
  * Both project the shipped manifest.json and experiments from `env`
  * (so no artifact's manifest.json leaks against another's files, and the review-level singletons stay
  * single-instance). The source MUST arrive parsed.
- * @param {import("../addon/load.js").Addon} archive  The submitted archive, carrying both
- *   corpora (scaViews): `files` is the add-on code, `sca` the whole of it.
+ * @param {import("../addon/load.js").Addon} archive  The submitted archive, carrying its
+ *   corpora (scaViews): `files` is everything but the Experiment implementation.
  * @param {import("../addon/sources.js").JsSource[]} sourceParsedSources  Its parsed sources.
  * @param {ReviewEnv} env
  * @returns {{sourceCtx: RunContext, scaCtx: RunContext}}
@@ -236,12 +228,11 @@ export function buildScaCtxs(archive, sourceParsedSources, env) {
     jsSources: sourceParsedSources,
     apiUsages: deriveApiUsages(sourceParsedSources),
   });
-  // The same archive read through its other corpus. Spelled out rather than carried on a
-  // second object, because the store and the recorded lists describe the SUBMISSION: one
-  // owner, projected per route, is what keeps two views of one archive from disagreeing
-  // about what it holds.
+  // The same archive, with no parsed source: a build check reads files and recorded lists,
+  // never code. One owner, projected per route, is what keeps two views of one archive from
+  // disagreeing about what it holds.
   const scaCtx = projectCtx(env, {
-    addon: { ...archive, files: archive.sca },
+    addon: archive,
     jsSources: [],
     apiUsages: undefined,
   });

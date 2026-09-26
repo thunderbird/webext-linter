@@ -1,5 +1,5 @@
 // Test helper: the checks read the SHIPPED manifest.json record from ctx.manifest (+ siblings),
-// resolved by the ctx builders (buildXpiCtxs) in production. Unit tests build a ctx inline with a
+// resolved by the ctx builders (buildXpiCtx) in production. Unit tests build a ctx inline with a
 // single artifact, so this derives that field from ctx.addon (mutating and
 // returning the SAME ctx, so tests that inspect the ctx after a run still observe it).
 

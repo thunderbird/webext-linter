@@ -78,20 +78,12 @@ test("artifactLabel labels manifest.json as XPI regardless of input", () => {
   );
 });
 
-// input: manifest checks read the shipped manifest.json, so their output is [XPI] - both
-// the manifest.json findings (via the cross-over above) and the FILELESS ones
-// (manifest-missing / manifest-missing-key), which don't hit the manifest.json branch.
-test("artifactLabel labels input:manifest as XPI (incl. fileless findings)", () => {
+// A FILELESS finding from an input:xpi check is [XPI] too - it never reaches the
+// manifest.json branch above, so the input alone has to answer. The manifest.json checks
+// (manifest-missing / manifest-missing-key) are the ones that report without a file.
+test("artifactLabel labels a fileless input:xpi finding as XPI", () => {
   assert.equal(
-    artifactLabel({
-      file: "manifest.json",
-      input: "manifest",
-      mode: REVIEW_MODE.SCA,
-    }),
-    ARTIFACT_XPI
-  );
-  assert.equal(
-    artifactLabel({ file: null, input: "manifest", mode: REVIEW_MODE.SCA }),
+    artifactLabel({ file: null, input: "xpi", mode: REVIEW_MODE.SCA }),
     ARTIFACT_XPI
   );
 });

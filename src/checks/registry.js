@@ -125,13 +125,12 @@ const COLLAPSE_MODES = new Set(["subject"]);
 // check runs. "source" = the REVIEW TARGET, the readable submitted code (the readable
 // --sca-root in an SCA review, the built XPI in an XPI review - the only artifact
 // there); "xpi" = ALWAYS the built XPI (the shipped artifact), for the structure checks
-// that describe what ships; "sca" = ALWAYS the submitted source archive (the archive minus
-// the Experiment and a recorded node_modules), for the build review; "manifest" = the shipped manifest.json
-// ONLY, on a ctx with an EMPTY file corpus (buildXpiCtxs' manifestCtx), for pure-manifest checks
-// that read ctx.manifest and no files. Required on every check: runChecks routes each
-// check to its artifact's context, so the check reads one artifact and has no way to reach another (see
-// buildXpiCtxs / buildScaCtxs).
-const VALID_CHECK_INPUTS = new Set(["source", "xpi", "sca", "manifest"]);
+// that describe what ships AND the manifest.json checks, since the shipped manifest.json is
+// that artifact's; "sca" = the submitted source archive with no parsed source, for the build
+// review - the checks there read files and the recorded lists, never code. Required on every
+// check: runChecks routes each check to its artifact's context, so the check reads one artifact
+// and has no way to reach another (see buildXpiCtx / buildScaCtxs).
+const VALID_CHECK_INPUTS = new Set(["source", "xpi", "sca"]);
 
 // The check-bearing yaml sections ARE the phases: a check's phase IS the section it
 // lives in, so the two can never disagree and no entry declares a phase of its own.
@@ -184,10 +183,10 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   applied to each finding's FINAL severity in runOneCheck - which is the only value a
  *   check that delegates has. Carried here because runOneCheck takes no registry.
  * @property {boolean} [sca]  The review-mode gate (scaEligible); undefined when unset.
- * @property {"source"|"xpi"|"sca"|"manifest"|undefined} input  Which artifact is
+ * @property {"source"|"xpi"|"sca"|undefined} input  Which artifact is
  *   ctx.addon when the check runs (VALID_CHECK_INPUTS above), and what its output is
  *   labelled as ([XPI]/[SCA]). Required for every check; runChecks routes it (see
- *   buildXpiCtxs / buildScaCtxs).
+ *   buildXpiCtx / buildScaCtxs).
  * @property {?string} section  Which to-do section its escalations are listed under
  *   (SECTION in src/report/finding.js), derived by sectionFor from the reader this check
  *   authored wording for; null when it never escalates. The wording itself is NOT carried
@@ -232,15 +231,15 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *
  *   The SHIPPED artifact (the built XPI) is deliberately NOT a ctx field: a check
  *   has no way to reach the artifact it was not routed to. The orchestrator builds a
- *   separate shipped context (buildXpiCtxs, src/checks/context.js) and routes each
+ *   separate shipped context (buildXpiCtx, src/checks/context.js) and routes each
  *   `input: xpi` check to it - see runChecks / runOneCheck.
- * @property {boolean} [isShippedView]  Set by buildXpiCtxs on the shipped
+ * @property {boolean} [isShippedView]  Set by buildXpiCtx on the shipped
  *   context (never the review target). buildReachability reads it so the SCA
  *   "all readable-source files" pureWebExtensionReachable fallback applies only to
  *   the review source, not the built XPI (whose entry points resolve).
  * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
  *   --allow-experiments is off: the review short-circuits to the reject check
- *   only (see runChecks and buildXpiCtxs).
+ *   only (see runChecks and buildXpiCtx).
  * @property {boolean} [scaNotRequired]  The shipped XPI of a submitted SCA (--sca-root)
  *   turned out to BE its source, so an XPI-only submission would have been enough; the
  *   sca-not-required check reads this to say so. Pure advice - the review is not re-routed.
@@ -427,14 +426,14 @@ export class Registry {
    * The artifact a check's OUTPUT is labelled as ([XPI]/[SCA]): the corpus it acts
    * on, which is the one it runs on, so its declared `input` is the label.
    * @param {string} ruleId
-   * @returns {"xpi"|"sca"|"source"|"manifest"}
+   * @returns {"xpi"|"sca"|"source"}
    */
   labelInputFor(ruleId) {
     return this.checkEntry(ruleId)?.input ?? "source";
   }
 
   /**
-   * The label artifact per ruleId (a `Map<ruleId, "xpi"|"sca"|"source"|"manifest">`),
+   * The label artifact per ruleId (a `Map<ruleId, "xpi"|"sca"|"source">`),
    * projected for the report layer so it can label a finding's file:line by
    * artifact ([XPI]/[SCA]) without touching the registry. Keyed off labelInputFor
    * (the corpus the check acts on).
@@ -2059,14 +2058,13 @@ function eslintEligible(entry, inEslintMode) {
  *     source       | siblings.source = readable source| siblings.source (the XPI)
  *     xpi          | siblings.xpi = the built XPI      | siblings.xpi (the XPI)
  *     sca          | siblings.sca = the source archive | (sca-only)
- *     manifest     | siblings.manifest                | siblings.manifest
  *
  * In an XPI review there is a single artifact, so siblings.source and siblings.xpi are the
  * SAME ctx (the pipeline aliases siblings.source to xpiCtx). A declared `input` with no
  * matching sibling (e.g. a stray `input: sca` in XPI mode) THROWS rather than silently
  * running on the wrong artifact.
  * @param {LoadedCheck} check
- * @param {Record<string, RunContext>} siblings  Keyed by input value (source/xpi/sca/manifest).
+ * @param {Record<string, RunContext>} siblings  Keyed by input value (source/xpi/sca).
  * @returns {RunContext}
  */
 export function routeCtx(check, siblings) {
@@ -2115,8 +2113,8 @@ export function ctxForRule(registry, ruleId, siblings) {
  *   `only`/`skip`/`eslint` thread to loadChecks (the `--eslint` opt-in gates code-sanity).
  * @param {Record<string, RunContext>} siblings  The artifact contexts, keyed by the `input`
  *   that routes to each: `source` = the review target (readable source in SCA, the XPI in an
- *   XPI review), `xpi` = the shipped XPI, `sca` = the source archive, `manifest` = the
- *   shipped manifest.json (no file corpus). Consumed via routeCtx (the matrix is documented there).
+ *   XPI review), `xpi` = the shipped XPI, `sca` = the source archive. Consumed via routeCtx
+ *   (the matrix is documented there).
  * @returns {Promise<{findings: object[],
  *   manualItems: {ruleId: string, item: ?string, section: ?string}[],
  *   checksRun: object[]}>}  The finished review: every finding and manual item, and

@@ -904,8 +904,8 @@ test("Manual review caps a grouped locus list at 25 with a marker", () => {
 });
 
 // SCA review: each finding's file:line is prefixed with the artifact it lives in -
-// [XPI] for input:xpi and input:manifest checks (and always for manifest.json, the
-// shipped manifest.json), [SCA] for the readable source (input:source/build) - and a legend
+// [XPI] for input:xpi checks (and always for manifest.json, the shipped
+// manifest.json), [SCA] for the readable source (input:source/build) - and a legend
 // footer closes the Issues section. An XPI review adds neither.
 test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () => {
   const r = {
@@ -913,7 +913,7 @@ test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () =
     ruleInputs: new Map([
       ["unused-files", "xpi"],
       ["unknown-api", "source"],
-      ["manifest-unknown-permission", "manifest"],
+      ["manifest-unknown-permission", "xpi"],
     ]),
     findings: [
       {

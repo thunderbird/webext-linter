@@ -34,7 +34,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The build corpus"] --> B{"Is there an .npmrc<br/>at the archive root?"}
+  A["The submitted source archive"] --> B{"Is there an .npmrc<br/>at the archive root?"}
   B -- no --> S([skip — no root .npmrc])
   B -- yes --> C{"A line sets a package<br/>registry (default or per-scope)?"}
   C -- no --> OK([no finding — comments,<br/>auth, or other keys])

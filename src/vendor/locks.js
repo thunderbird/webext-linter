@@ -531,7 +531,7 @@ function declaredName(name, spec) {
  * work. When that lock does not parse it is reported alone: a lock that cannot be read
  * refuses the install as flatly as one missing an entry, and nothing falls through to
  * another sitting beside it.
- * @param {Addon} addon  The SCA build corpus (the root package.json and its locks).
+ * @param {Addon} addon  The SCA archive (the root package.json and its locks).
  * @returns {LockGap[]}
  */
 export function lockGaps(addon) {

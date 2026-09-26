@@ -196,8 +196,7 @@ test("a build step in a dot-directory is collected and flagged", () => {
   w("tools/plain.sh", "echo hi\n");
 
   const archive = scaViews(loadSourceArchive(root), { scaRoot: root });
-  const view = { files: archive.sca };
-  const { corpus, unresolved } = selectBuildCorpus(view);
+  const { corpus, unresolved } = selectBuildCorpus({ files: archive.files });
 
   assert.deepEqual(corpus.sort(), [
     ".scripts/helper.sh",
@@ -212,9 +211,9 @@ test("a build step in a dot-directory is collected and flagged", () => {
 });
 
 // The manifest.json is a build input like any other - a pack step copies it into the output -
-// and the build half has to be able to reach it. It is withheld from the REVIEW SOURCE,
-// where a pre-build manifest.json must not be read as the shipped one, and that is a fact about
-// that corpus rather than about the archive.
+// so the trace has to be able to reach it. Nothing is withheld from the corpus the build is
+// traced over: a step the trace cannot see raises no signal for the reviewer to follow, and
+// a file the build names is a file the build names whatever it is called.
 test("a build step that copies the manifest collects it", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-packmf-"));
   const w = (p, c) => {
@@ -234,9 +233,8 @@ test("a build step that copies the manifest collects it", () => {
   w("icons/logo.png", "png");
 
   const archive = scaViews(loadSourceArchive(root), { scaRoot: root });
-  const view = { files: archive.sca };
 
-  assert.deepEqual(selectBuildCorpus(view).corpus.sort(), [
+  assert.deepEqual(selectBuildCorpus({ files: archive.files }).corpus.sort(), [
     "icons/logo.png",
     "manifest.json",
     "package.json",

@@ -45,7 +45,7 @@ import { settleScaRoot } from "./addon/sca-root.js";
 import { isTranspiledSource } from "./util/files.js";
 import { runChecks, loadRegistry } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
-import { buildXpiCtxs, buildScaCtxs } from "./checks/context.js";
+import { buildXpiCtx, buildScaCtxs } from "./checks/context.js";
 import {
   renderFindings,
   renderManualItems,
@@ -311,8 +311,9 @@ export async function runPipeline(opts) {
   // check gate (ctx.mode -> scaEligible). Minified code is non-authored (and rejected)
   // in both modes: a source-code submission's promise is readable source, so a minified
   // file in the archive is rejected like one in an XPI, not scanned as authored.
-  // The source view holds every file, and selectBuildCorpus traces the build off the root
-  // package.json - the two halves overlap, which is what the build checks want.
+  // The source corpus holds every file but the Experiment, and selectBuildCorpus traces the
+  // build over it off the root package.json - the code and the tooling are one corpus, which
+  // is what the build checks want.
   //
   // The review mode is DERIVED from the two facts below and assigned nowhere, so it cannot
   // drift from the steps that ran: --sca-root makes it a source code review, and a REJECTED
@@ -578,7 +579,7 @@ export async function runPipeline(opts) {
       xpiParsedSources = extractReview(xpiAddon, { schema, xpiAddon });
     },
 
-    // The submitted source archive, walked ONCE and split here into the three views every
+    // The submitted source archive, walked ONCE and split here into the two views every
     // later reader takes its part from (src/addon/load.js scaViews). It is done here
     // because the XPI-only ADVICE below asks both what KIND of source the archive carries
     // and whether the shipped scripts ARE that source - which needs bytes, not just names.
@@ -633,8 +634,8 @@ export async function runPipeline(opts) {
     },
 
     // The review target of a source code review: the readable source. The archive was read
-    // ONCE above by `source-archive`, which also split it into its three views; the
-    // review target is that archive, which carries no manifest.json of its own.
+    // ONCE above by `source-archive`, which also split it into its two views; the review
+    // target is that archive, which carries no manifest.json RECORD of its own.
     "target-source": () => {
       reviewTarget = scaArchive;
       for (const notice of scaArchive.skipped ?? []) {
@@ -711,7 +712,7 @@ export async function runPipeline(opts) {
 
     // Phase 3: SCA only - analyse the readable SOURCE (the review target) with the same chain
     // the XPI got in Phase 2 (declared-dependency audit, classify, identify, parse), plus the
-    // build corpus.
+    // build trace.
 
     // Resolve the source's dependency declarations ONCE (package.json deps + any VENDOR
     // declarations), so the review's checks share one immutable store.
@@ -769,14 +770,14 @@ export async function runPipeline(opts) {
       preParsedJsSources = extractReview(reviewTarget, { schema, xpiAddon });
     },
 
-    // Look at the build ONCE here (the vendor pattern), over the archive's own `sca`
-    // corpus - everything but the Experiment, manifest.json files included, because a build step may
-    // reference any of it. What was found is stored on reviewTarget.buildReview for the input:sca
-    // checks to read. Nothing classifies what the build DOES, so it routes to the reviewer,
-    // who reproduces it from the source by hand.
+    // Look at the build ONCE here (the vendor pattern), over the source corpus - everything
+    // but the Experiment - because a build step may reference any of it, and a step the trace
+    // cannot see raises no signal for the reviewer to follow. What was found is stored on
+    // reviewTarget.buildReview for the input:sca checks to read. Nothing classifies what the
+    // build DOES, so it routes to the reviewer, who reproduces it from the source by hand.
     build: () => {
       reviewTarget.buildReview = analyzeBuild({
-        build: { files: reviewTarget.sca },
+        build: { files: reviewTarget.files },
       });
     },
   };
@@ -852,10 +853,10 @@ export async function runPipeline(opts) {
     experiments: xpiAddon.experiments ?? null,
   };
 
-  // From the built XPI's analysis, which every reviewable path runs: the shipped ctx (siblings.xpi - the input:xpi structure
-  // checks) and the manifest ctx (input:manifest checks, an empty corpus carrying only the
-  // shipped manifest.json).
-  const { xpiCtx, manifestCtx } = buildXpiCtxs(xpiAddon, xpiParsedSources, env);
+  // From the built XPI's analysis, which every reviewable path runs: the shipped ctx, for the
+  // input:xpi checks - the structure checks and the manifest.json checks alike, since the
+  // shipped manifest.json is this artifact's.
+  const xpiCtx = buildXpiCtx(xpiAddon, xpiParsedSources, env);
   // SCA only, and both from the ONE archive: the source ctx (the review target the code
   // checks analyse) and the sca ctx (undeclared-build-source and the build-policy checks).
   // Undefined in an XPI review, which has no archive.
@@ -871,7 +872,6 @@ export async function runPipeline(opts) {
     source: mode?.sca ? sourceCtx : xpiCtx,
     xpi: xpiCtx,
     sca: scaCtx,
-    manifest: manifestCtx,
   };
 
   // Phase 5: run the review, then finalize. runChecks runs the phase this review calls

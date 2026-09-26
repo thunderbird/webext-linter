@@ -23,7 +23,7 @@ export const ARTIFACT_SCA = "SCA";
  * The artifact label for a finding's file, or "" when none applies.
  * @param {{file?: string, input?: string, mode?: string}} params
  *   file: the finding's file; input: the owning check's registry `input`
- *   ("xpi" | "sca" | "source" | "manifest"); mode: the review mode ("sca" | "xpi").
+ *   ("xpi" | "sca" | "source"); mode: the review mode ("sca" | "xpi").
  * @returns {string} "XPI", "SCA", or "" (XPI review - a single artifact).
  */
 export function artifactLabel({ file, input, mode }) {
@@ -33,10 +33,10 @@ export function artifactLabel({ file, input, mode }) {
   if (file === "manifest.json") {
     return ARTIFACT_XPI; // the shipped manifest is authoritative for every check.
   }
-  if (input === "xpi" || input === "manifest") {
-    // xpi = bundled-files, unused-files, minimize-WAR, locales, ...; manifest.json = the
-    // pure-manifest checks (the manifest.json IS the shipped XPI's). Their manifest.json
-    // findings already take the branch above; this covers their fileless findings/notes.
+  if (input === "xpi") {
+    // bundled-files, unused-files, minimize-WAR, locales, and the manifest.json checks - the
+    // shipped manifest.json is this artifact's. Their manifest.json findings already take the
+    // branch above; this covers their fileless findings and notes.
     return ARTIFACT_XPI;
   }
   return ARTIFACT_SCA; // input source/sca -> the submitted source archive.

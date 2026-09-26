@@ -9,11 +9,11 @@
 // caller's to choose (loadAddon's `extractTo`): the review names it once, in meta.xpiRoot,
 // and hands the SAME folder to the reviewer and to this loader.
 //
-// It also PARTITIONS a submitted SCA archive into the corpora a source review reads - the
-// add-on code, the Experiment implementation, and the whole of it the build may reach - as
-// views over that one store (scaViews). One pass and one set of prefixes, so no two of them
-// can disagree about where a file went, and ONE frame: every corpus is keyed against the
-// submission, which is the only frame that can name all of it.
+// It also PARTITIONS a submitted SCA archive into the two corpora a source review reads - the
+// add-on code and the Experiment implementation - as views over that one store (scaViews). One
+// pass and one set of prefixes, so no two of them can disagree about where a file went, and ONE
+// frame: every corpus is keyed against the submission, which is the only frame that can name
+// all of it.
 //
 // Belongs here: walking either artifact into the Addon model (store + the manifest.json record),
 // extracting a packed one to disk first, the SCA partition above, the Manifest and
@@ -127,26 +127,28 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  * honest value for a source review, whose files are a SUBTREE of an archive: no single path
  * names that, and for a zip root none exists.
  * @typedef {object} Addon
- * @property {object} files  The artifact's own corpus, keyed by a path relative to the
- *   SUBMISSION root (posix "/"). One frame for every part, because a file beside the add-on
- *   has no add-on-relative spelling and a corpus keyed there could not hold one. For a
- *   built XPI it IS the store: every file it holds is a file it ships, so there is nothing
- *   to withhold. For a source archive it is a VIEW that gives up every manifest.json
- *   (scaViews/liftManifests), because reading one back there would answer with the
- *   PRE-BUILD manifest.json where ctx.manifest is the shipped one.
+ * @property {object} files  The artifact's own corpus - what this artifact's review READS -
+ *   keyed by a path relative to the SUBMISSION root (posix "/"). One frame for every part,
+ *   because a file beside the add-on has no add-on-relative spelling and a corpus keyed there
+ *   could not hold one. Always a VIEW (./corpus.js fileView), whatever the artifact: for a
+ *   built XPI it holds every key the store has, because every file it holds is a file it
+ *   ships; for a source archive it holds everything but the Experiment implementation, which
+ *   is its own corpus (scaViews). One shape either way, so a reader never has to know which
+ *   kind of artifact produced it.
  *
- *   So `files.has("manifest.json")` is TRUE in an XPI review and FALSE in SCA, and a check
- *   must not read the manifest.json out of the corpus in either: ctx.manifest is the one answer
- *   (src/checks/context.js). Nothing in an XPI review stops it: unused-files skips the
- *   name itself, which is one check's exemption rather than the corpus's business.
- * @property {object} [store]  The artifact's COMPLETE corpus, keyed relative to the root the
- *   reviewer was given: everything it holds, exactly as it arrived. Nothing is ever dropped
- *   from it, so it answers what the submission CONTAINS rather than what some corpus of it
- *   reviews. For a built XPI that is the whole package, and `files` is the same object -
- *   there is nothing to withhold. For a source archive it is the whole --sca-root, the frame
- *   the package file and the lock are read in and the frame a reviewer resolves a reported
- *   path against, while `files` there is a view that gives up the manifest.json files. Reach for it
- *   deliberately: a reader asking `store` is saying it wants the submission entire.
+ *   A manifest.json is a file the submission contains and is in this corpus like any other.
+ *   It is not an ANSWER: what the add-on's manifest.json says is ctx.manifest, the shipped
+ *   record (src/checks/context.js), which is null in SCA because a source archive is loaded
+ *   without reading one (loadSourceArchive). So a check asks ctx.manifest and never the
+ *   corpus, in either mode.
+ * @property {object} [store]  The artifact's COMPLETE corpus - what the submission CONTAINS -
+ *   keyed relative to the root the reviewer was given: everything it holds, exactly as it
+ *   arrived, and the FileStore every view resolves its bytes through (./corpus.js). For a
+ *   built XPI that is the whole package, which `files` reviews entire. For a source archive it
+ *   is the whole --sca-root, the frame the package file and the lock are read in and the frame
+ *   a reviewer resolves a reported path against, while `files` there gives up the Experiment
+ *   subtree. Reach for it deliberately: a reader asking `store` is saying it wants the
+ *   submission entire.
  * @property {string[]} [nodeModules]  Posix paths of node_modules directories
  *   skipped at load (their contents are never read); empty when none, and always empty
  *   unless the load asked for it, which only loadSourceArchive does. committed-node-modules rejects each, and is the only
@@ -210,8 +212,8 @@ import { SYMLINK_CAUSE } from "../lib/enum.js";
  *   `parseWebExtManifest` false leaves `manifest` null without reading one. A source archive's
  *   root manifest.json is a PRE-BUILD template: the build may rewrite it or generate it, the
  *   add-on's root may sit anywhere under the submission, and a submission need not hold one
- *   at all - so there is no artifact here whose manifest.json that would be. The bytes stay in
- *   the corpus (a build step may copy one); only the answer is not offered.
+ *   at all - so there is no artifact here whose manifest.json that would be. The file stays
+ *   in the corpus, as a file the submission contains; only the ANSWER is not offered.
  * @returns {Addon}
  */
 export function loadAddon(
@@ -224,9 +226,9 @@ export function loadAddon(
     throw new Error(`Add-on not found: ${resolved}`);
   }
   const stat = fs.statSync(resolved);
-  let files, nodeModules, archives, skipped, symlinks, directories;
+  let store, nodeModules, archives, skipped, symlinks, directories;
   if (stat.isDirectory()) {
-    ({ files, nodeModules, archives, skipped, symlinks, directories } = readDir(
+    ({ store, nodeModules, archives, skipped, symlinks, directories } = readDir(
       resolved,
       recordInstalledTrees
     ));
@@ -239,17 +241,19 @@ export function loadAddon(
     const packed = extractZip(resolved, dest, recordInstalledTrees);
     const unpackedDir = readDir(dest, recordInstalledTrees);
     ({ nodeModules } = packed);
-    ({ files, archives, skipped, directories } = unpackedDir);
+    ({ store, archives, skipped, directories } = unpackedDir);
     // Both halves, so which one can see a link is not a fact this line depends on.
     symlinks = [...packed.symlinks, ...unpackedDir.symlinks];
   }
-  // One corpus, because an artifact loaded on its own has nothing to hold back: every file
-  // it holds is a file it ships. A SOURCE archive is the exception and says so later
-  // (scaViews), which is the only place `files` and `store` come apart.
+  // An artifact loaded on its own has nothing to hold back - every file it holds is a file
+  // it ships - so its corpus is a view over every key the store has. It says that by
+  // HOLDING all of them rather than by being the store: one shape for every artifact, so a
+  // reader of `files` never has to know which kind produced it. A SOURCE archive narrows
+  // the same field later (scaViews).
   return {
-    files,
-    store: files,
-    manifest: parseWebExtManifest ? manifestRecord(files) : null,
+    files: fileView(store, { keys: store.keys() }),
+    store,
+    manifest: parseWebExtManifest ? manifestRecord(store) : null,
     nodeModules,
     archives,
     skipped,
@@ -284,41 +288,18 @@ export function loadSourceArchive(source) {
 const MANIFEST_NAME = "manifest.json";
 
 /**
- * Drop every manifest.json, at any depth, from a corpus - a SOURCE archive's review corpus and
- * nothing else. There the add-on's root is wherever the developer put it, a submission may
- * hold several (a Chrome port beside the Thunderbird one, a committed build output), and
- * reading one back would answer with the PRE-BUILD manifest.json where ctx.manifest is the
- * shipped one: two plausible answers to one question, one of them silently wrong. A built
- * XPI keeps its manifest.json files, which are just files it ships.
- *
- * Only ever given a VIEW, so the store keeps what the submission contains, and no parsing:
- * the archive it belongs to carries no manifest.json record, and this corpus must not become the
- * one place a pre-build template can be read back as the shipped manifest.json.
- * @param {object} files  The view to lift them off.
- */
-function liftManifests(files) {
-  const manifests = [...files.keys()].filter(
-    (key) => key === MANIFEST_NAME || key.endsWith(`/${MANIFEST_NAME}`)
-  );
-  for (const key of manifests) {
-    files.delete(key);
-  }
-}
-
-/**
- * Read one corpus's ROOT manifest.json (BOM-tolerant, JSON5) into the record every reader of
- * that manifest.json shares. The corpus is left alone - reading the manifest.json is not a reason to
- * take it away, and the one corpus that must give its manifest.json files up says so itself
- * (liftManifests, for a source archive).
+ * Read the artifact's ROOT manifest.json (BOM-tolerant, JSON5) into the record every reader of
+ * that manifest.json shares. The store is left alone - reading a file is not a reason to take
+ * it away, and a store answers what the submission holds, not what was read out of it.
  *
  * Unparsable is still a record: `error` is what the review reports and `text` is what a
  * token search anchors it in, while `loc` answers null to everything (buildManifestLoc gets
  * no tree out of text JSON5 alone will take). Only an ABSENT manifest.json is nothing.
- * @param {object} files  The corpus to read.
+ * @param {FileStore} store  The artifact's store, to read it from.
  * @returns {?ManifestRecord}
  */
-function manifestRecord(files) {
-  const manifestBuf = files.get(MANIFEST_NAME);
+function manifestRecord(store) {
+  const manifestBuf = store.get(MANIFEST_NAME);
   if (!manifestBuf) {
     return null;
   }
@@ -413,35 +394,33 @@ export function hasParentSegment(value) {
 }
 
 /**
- * PARTITION a source code archive into the three parts a source review reads, as views
+ * PARTITION a source code archive into the two parts a source review reads, as views
  * over the one store the archive was walked into (./corpus.js). Every file is held once,
- * by the store; a view adds the key set it holds. No view re-keys: all three spell a file
+ * by the store; a view adds the key set it holds. Neither view re-keys: both spell a file
  * the way the submission does.
  *
  *   source      everything the archive holds, MINUS the Experiment subtree. The whole of
  *               it, because a build script may put any file anywhere: nothing in the
  *               archive can be assumed unused, so the archive IS the review corpus and
- *               there is no narrower add-on subtree to carve out of it.
+ *               there is no narrower add-on subtree to carve out of it. It is also what
+ *               the build trace runs over (src/build/corpus.js selectBuildCorpus, via
+ *               analyzeBuild), which narrows it to the files reached from the root
+ *               package.json. An installed dependency tree is in neither: loadAddon records
+ *               the directory paths for committed-node-modules and reads none of it.
  *   experiment  the Experiment implementation at `scaExpSource`, wherever it sits - inside
  *               the source or beside it. Privileged, non-WebExtension code: it is recorded
  *               here ONCE so nothing downstream has to re-derive where it went.
- *   sca         the same files, as a second view. A build may read anything the archive
- *               holds - where a file sits says nothing about whether a step reaches it -
- *               so nothing is withheld from the half that traces the build. An installed
- *               dependency tree never reaches here: loadAddon records the directory paths
- *               for committed-node-modules and reads none of it.
  *
- * The Experiment is disjoint from the other two. Source and build are NOT, and are not
- * meant to be: the tooling is intermingled with the code, each half feeds its own checks,
- * and which of those files the build actually RUNS is narrowed later, off the root
- * package.json (src/build/corpus.js selectBuildCorpus, via analyzeBuild). One pass, one set
- * of prefixes, so no two of them can disagree about where a file went.
+ * The two are disjoint, and the source corpus serves both the code review and the build
+ * trace: the tooling is intermingled with the code, so there is no line to draw between
+ * them. One pass, one set of prefixes, so no two readers can disagree about where a file
+ * went.
  *
- * The source addon is PURE source: its own files, and no manifest.json of its own. The review
- * corpus gives every manifest.json up (liftManifests) and the archive was loaded without a
- * parsed one (loadSourceArchive), because a pre-build template is not what
- * Thunderbird loads. The authoritative manifest.json is the built XPI's, exposed separately as
- * ctx.manifest (src/checks/context.js).
+ * A manifest.json here is a file like any other. The archive is loaded without reading one
+ * into a record (loadSourceArchive), because a pre-build template is not what Thunderbird
+ * loads - so the question "what does the add-on's manifest.json say" has exactly one answer,
+ * the built XPI's, exposed as ctx.manifest (src/checks/context.js), and it is null in SCA.
+ * Withholding the FILE would say instead that the submission does not contain it.
  *
  * The source and the experiment are keyed alike whenever the Experiment sits inside the
  * add-on, so a check that must review the privileged code too reads the two as one corpus
@@ -449,7 +428,7 @@ export function hasParentSegment(value) {
  * @param {Addon} archive  The scaRoot archive, loaded ONCE (loadSourceArchive).
  * @param {{scaRoot: string, scaExpSource?: string}} where  Absolute paths, resolved by the
  *   arg-array reader (src/cli.js). scaExpSource may sit anywhere under the root.
- * @returns {Addon}  The SAME archive, now carrying its three corpora. Not a new object:
+ * @returns {Addon}  The SAME archive, now carrying its two corpora. Not a new object:
  *   the store and the recorded path lists already describe this submission, and copying
  *   them onto parts is how they came to disagree.
  */
@@ -468,18 +447,8 @@ export function scaViews(archive, { scaRoot, scaExpSource }) {
     (under(key, exp) ? expKeys : sourceKeys).push(key);
   }
 
-  // Two views over the ONE key set, because a build may read anything the archive holds:
-  // where a file sits says nothing about whether a build step reaches it, and a step the
-  // trace cannot see raises no signal for the reviewer to follow. They differ only in that
-  // the review corpus gives up its manifest.json files - a pre-build manifest.json must not be read as the
-  // shipped one - which is a fact about that corpus, not about what the archive holds.
-  archive.sca = fileView(store, { keys: sourceKeys });
   archive.experiment = fileView(store, { keys: expKeys });
   archive.files = fileView(store, { keys: sourceKeys });
-  // Lifted, never parsed: this archive carries no manifest.json record at all, and the review
-  // corpus must not become the one place a pre-build template can be read back as the
-  // shipped manifest.json.
-  liftManifests(archive.files);
   return archive;
 }
 
@@ -637,9 +606,10 @@ function isStoredLink(entry) {
  * @param {boolean} [recordInstalledTrees]  See loadAddon: record a node_modules directory
  *   as a path instead of walking it. Off means it is an ordinary folder, walked and keyed
  *   like any other, which is what a shipped add-on's folders are.
- * @returns {{files: Map<string, Buffer>, nodeModules: string[], archives: string[],
+ * @returns {{store: FileStore, nodeModules: string[], archives: string[],
  *   skipped: string[], symlinks: {path: string, cause: object}[],
- *   directories: string[]}}
+ *   directories: string[]}}  The walk's one store, plus the paths it recorded without
+ *   reading. A corpus over it is the caller's to build (loadAddon, scaViews).
  */
 function readDir(dir, recordInstalledTrees) {
   const keys = [];
@@ -710,7 +680,7 @@ function readDir(dir, recordInstalledTrees) {
   };
   walk(dir);
   return {
-    files: new FileStore(dir, keys),
+    store: new FileStore(dir, keys),
     nodeModules,
     archives,
     skipped,

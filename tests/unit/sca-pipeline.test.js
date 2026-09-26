@@ -425,61 +425,19 @@ test("SCA: the --sca-root archive is read once, not twice", async () => {
 });
 
 // WHY loadSourceArchive reads no manifest.json while the XPI is loaded with one: the two
-// artifacts answer "what is this add-on's manifest.json" differently, and only one
-// of them is allowed to. The XPI's manifest.json is what Thunderbird loads, so it is the review's
-// one authority (ctx.manifest). A source archive's root manifest.json is a PRE-BUILD
-// template - the build may rewrite it, generate it, or draw the add-on's real root from
-// somewhere else entirely, and a submission need not hold one at all - so whatever it says
-// is at best unconfirmed and at worst a different add-on. Parsing it would put that second
-// answer on the archive under the same name as the real one, for the next reader of
-// `reviewTarget.manifest` to pick up in a review mode where it is the wrong artifact.
+// artifacts answer "what is this add-on's manifest.json" differently, and only one of them is
+// allowed to. The XPI's is what Thunderbird loads, so it is the review's one authority. A
+// source archive's is a PRE-BUILD template - the build may rewrite it, generate it, or draw
+// the add-on's real root from somewhere else, and a submission need not hold one at all - so
+// whatever it says is at best unconfirmed and at worst a different add-on.
 //
-// The BYTES stay in the corpus, because a build step may copy a manifest.json and the build
-// review must still see that. So what this pins is that nothing READS them: the fixture's
-// root manifest.json deliberately disagrees with the shipped one, and a single read here would
-// mean the review can answer with a name and version the add-on does not ship.
-const PREBUILD_SRC = {
-  ...FLAT_SRC,
-  "manifest.json": JSON.stringify({
-    manifest_version: 3,
-    name: "Pre-build template",
-    version: "9.9",
-    background: { scripts: ["app.js"] },
-  }),
-};
-
-test("SCA: the submission's own manifest.json is never read", async () => {
-  const xpi = tmpDir(XPI_FILES);
-  const src = tmpDir(PREBUILD_SRC);
-  const realRead = fs.readFileSync;
-  let manifestReads = 0;
-  mock.method(fs, "readFileSync", (p, ...rest) => {
-    if (
-      typeof p === "string" &&
-      path.resolve(p) === path.join(src, "manifest.json")
-    ) {
-      manifestReads += 1;
-    }
-    return realRead(p, ...rest);
-  });
-  try {
-    const { meta } = await runPipeline({
-      addonPath: xpi,
-      scaRoot: src,
-      ...OFFLINE,
-    });
-    assert.equal(meta.reviewed, true, "the submission is reviewed");
-    assert.equal(
-      manifestReads,
-      0,
-      "the submission's own manifest is never read"
-    );
-  } finally {
-    mock.restoreAll();
-    fs.rmSync(xpi, { recursive: true, force: true });
-    fs.rmSync(src, { recursive: true, force: true });
-  }
-});
+// The FILE is in the archive's corpus, like every other file the submission contains. What
+// keeps the two apart is the RECORD: ctx.manifest is projected from the XPI by name
+// (src/pipeline.js), and reviewView does not allowlist addon.manifest at all
+// (src/checks/context.js), so the archive's own record is unreachable from a check even if
+// one existed. Both halves are pinned in tests/unit/context.test.js, where a deliberately
+// leaking record has to come back undefined - there is nothing left for a pipeline-level
+// test to distinguish, since no run can put that template in front of a check.
 
 // What the report and the machine-readable document SAY was reviewed: the shipped add-on,
 // and separately the two values the run was given. Named by ARTIFACT rather than by role,

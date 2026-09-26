@@ -16,9 +16,9 @@
 // own directory. Never baked into the keys, which is what keeps the corpus able to name the
 // whole submission.
 //
-// Both present the Map surface the review already uses (`get`/`has`/`keys`/`size`/`delete`
-// and iteration), so a corpus, a view and a plain Map are interchangeable - which is why the
-// unit tests can still hand a check a hand-built Map.
+// Both present the read side of the Map surface the review uses (`get`/`has`/`keys`/`size`
+// and iteration), so a corpus, a view and a plain Map are interchangeable to a reader - which
+// is why the unit tests can still hand a check a hand-built Map.
 //
 // Belongs here: the store, the view, the lazy read behind both, and withExperiment - the
 // one place that says what "everything the add-on ships" means. Does NOT belong here:
@@ -31,9 +31,9 @@ import path from "node:path";
 /**
  * A key set over files on disk, read on demand.
  *
- * READ-ONLY, and deliberately: a store is the artifact as it arrived, so it offers no way to
- * drop a key. A corpus that reviews less than the artifact holds - the manifest.json lifted off,
- * one part of a partitioned archive - is a VIEW, which owns its own key set and can.
+ * READ-ONLY, like every corpus: a store is the artifact as it arrived. A corpus that reviews
+ * less than the artifact holds - one part of a partitioned archive - is a VIEW, which is
+ * given the key set it holds when it is built.
  *
  * The cache is unbounded on purpose: a review reads most of what it enumerates (it parses,
  * hashes and classifies), so evicting would mean reading the same file twice for no saving.
@@ -109,9 +109,10 @@ export class FileStore {
  * A view of `store` restricted to the keys it names, in the STORE's frame.
  *
  * `keys` are listed rather than derived from a prefix, because a view may exclude a subtree
- * that sits inside it (the add-on source excludes the Experiment implementation). Nothing is
- * re-keyed: every view spells a file the way the submission does, which is the only frame
- * that can name the whole of it.
+ * that sits inside it (the add-on source excludes the Experiment implementation). What it holds
+ * is settled when it is built - like the store, a view offers no way to drop a key afterwards.
+ * Nothing is re-keyed: every view spells a file the way the submission does, which is the only
+ * frame that can name the whole of it.
  * @param {FileStore|Map<string, Buffer>} store
  * @param {{keys: Iterable<string>}} args
  * @returns {object}  The Map surface, over store keys.
@@ -126,8 +127,6 @@ export function fileView(store, { keys }) {
     has: (key) => held.has(key),
     /** @param {string} key */
     get: (key) => (held.has(key) ? store.get(key) : undefined),
-    /** @param {string} key */
-    delete: (key) => held.delete(key),
     *keys() {
       yield* held;
     },

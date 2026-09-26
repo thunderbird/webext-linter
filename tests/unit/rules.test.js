@@ -1282,23 +1282,31 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
   const checks = allChecks(byPhase);
   for (const c of checks) {
     assert.ok(
-      c.input === "source" ||
-        c.input === "xpi" ||
-        c.input === "sca" ||
-        c.input === "manifest",
+      c.input === "source" || c.input === "xpi" || c.input === "sca",
       `check "${c.id}" has an invalid input ${JSON.stringify(c.input)}`
     );
   }
-  // input: manifest reads the shipped manifest.json ONLY, on a ctx with no file corpus
-  // (buildXpiCtxs' manifestCtx). The pure-manifest checks; extending this set is deliberate too.
-  const manifest = checks
-    .filter((c) => c.input === "manifest")
+  const xpi = checks
+    .filter((c) => c.input === "xpi")
     .map((c) => c.id)
     .sort();
-  assert.deepEqual(manifest, [
+  // The ONLY checks that read the built XPI instead of the review target: the file /
+  // _locales / reachability-structure checks, unused-permission (it judges whether a
+  // declared permission is exercised in the SHIPPED bytes), unacceptable-package-content and
+  // shipped-icon-trademark-imitation, which scan nothing themselves but must be able to reach
+  // everything the package ships for what its sweep finds, and the manifest.json checks -
+  // the shipped manifest.json is this artifact's, and they read it off ctx.manifest rather
+  // than any corpus. Extending this set is deliberate - update the check AND this pin
+  // together.
+  assert.deepEqual(xpi, [
     "addon-icon-missing",
+    "background-module",
+    "background-page-module",
+    "bundled-files",
     "csp-unsafe-eval",
     "csp-unsafe-inline",
+    "default-locale-missing",
+    "default-locale-unused",
     "experiment-manual-review",
     "experiment-missing-strict-max-version",
     "experiment-overrides-api",
@@ -1308,29 +1316,11 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "manifest-unknown-permission",
     "manifest-version-mismatch",
     "minimize-host-permissions",
+    "minimize-web-accessible-resources",
+    "missing-english-localization",
     "mistyped-manifest-value",
     "native-messaging",
     "non-experiment-strict-max-version",
-    "update-url",
-  ]);
-  const xpi = checks
-    .filter((c) => c.input === "xpi")
-    .map((c) => c.id)
-    .sort();
-  // The ONLY checks that read the built XPI instead of the review target: the file /
-  // _locales / reachability-structure checks, unused-permission (it judges whether a
-  // declared permission is exercised in the SHIPPED bytes), and
-  // unacceptable-package-content and shipped-icon-trademark-imitation, which scan nothing themselves but must be able to reach
-  // everything the package ships for what its sweep finds. Extending this set is
-  // deliberate - update the check AND this pin together.
-  assert.deepEqual(xpi, [
-    "background-module",
-    "background-page-module",
-    "bundled-files",
-    "default-locale-missing",
-    "default-locale-unused",
-    "minimize-web-accessible-resources",
-    "missing-english-localization",
     "shipped-icon-trademark-imitation",
     "trademark-thunderbird-locale",
     "trademark-thunderbird-name",
@@ -1340,6 +1330,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "unrecognized-manifest-key",
     "unused-files",
     "unused-permission",
+    "update-url",
     "xpi-packaged-symlink",
   ]);
   // input: sca reads the submitted source archive (minus the Experiment and a recorded
@@ -1493,8 +1484,8 @@ test("build-registry-redirect rejects any registry setting in .npmrc", () => {
 
 // Only the ARCHIVE'S OWN .npmrc is read: npm takes its config from the directory the
 // install runs in, and the review runs it at --sca-root. A config deeper in the tree
-// belongs to a directory this review never installs from, so it is not read - and the
-// build corpus does not carry it either (src/addon/load.js scaViews).
+// belongs to a directory this review never installs from, so it is not read - and the build
+// trace does not collect it either (src/build/corpus.js seeds the root one only).
 test("build-registry-redirect reads the root .npmrc and ignores a nested one", () => {
   const at = (path, npmrc) =>
     buildRegistryRedirect.run({
