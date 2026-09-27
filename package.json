@@ -29,6 +29,7 @@
     "src",
     "verify.js",
     "assets/registry.yaml",
+    "assets/registry-schema.yaml",
     "assets/library-blocks.yaml",
     "assets/webext-facts.yaml",
     "assets/schema-annotations",

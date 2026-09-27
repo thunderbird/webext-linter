@@ -17,7 +17,8 @@ import { orderReview, hasLocus } from "../../src/report/order.js";
 import { renderManualItems } from "../../src/report/responses.js";
 import {
   assertChoices,
-  assertProse,
+  assertEntries,
+  assertRequiredSections,
   assertScaPrompt,
   loadRegistry,
 } from "../../src/checks/registry.js";
@@ -51,6 +52,13 @@ function review() {
 // needing a person to act or to own the decision), then Standard (the always-by-hand
 // manual-checks) - each with its "continue manual review" intro and enumerated
 // "N) title: instructions" entries.
+// Production asks the SHAPE first (registry-schema.js, via assertEntries) and then the one
+// rule a shape cannot ask - whether a step's `run:` names something this prompt evaluates.
+const checkScaPrompt = (registry) => {
+  assertEntries(registry, "t.yaml");
+  assertScaPrompt(registry, "t.yaml");
+};
+
 test("manual review splits into code, manual, then standard sections", () => {
   const r = {
     findings: [],
@@ -1245,13 +1253,12 @@ test("the manual review answers come from the registry and are whole", () => {
     }
   }
 
-  const missing = loadRegistry();
-  delete missing.doc["llm-manual-review-choices"];
-  assert.throws(() => assertChoices(missing, "t.yaml"), /authors no answers/);
-
+  // That the section is there at all, and not empty, is its SHAPE - so the schema answers
+  // it (registry-schema.js), and assertChoices is left with the one question a shape
+  // cannot ask: whether the verdict names a verb that settles.
   const empty = loadRegistry();
   empty.doc["llm-manual-review-choices"] = [];
-  assert.throws(() => assertChoices(empty, "t.yaml"), /authors no answers/);
+  assert.throws(() => assertEntries(empty, "t.yaml"), /authors no answers/);
 
   // One test per field, because each is a different thing the reviewer loses: the answer
   // they pick, the verdict it settles the item with, and what it means.
@@ -1263,8 +1270,10 @@ test("the manual review answers come from the registry and are whole", () => {
     const broken = loadRegistry();
     delete broken.doc["llm-manual-review-choices"][i][key];
     assert.throws(
-      () => assertChoices(broken, "t.yaml"),
-      new RegExp(`answer ${i + 1} authors no \\\`${key}\\\``),
+      () => assertEntries(broken, "t.yaml"),
+      new RegExp(
+        `llm-manual-review-choices entry ${i + 1} .* authors no \\\`${key}\\\``
+      ),
       key
     );
   }
@@ -1293,21 +1302,21 @@ test("the report's authored prose is required, by the names that index it", () =
   const bad = (mutate, re) => {
     const registry = loadRegistry();
     mutate(registry.doc);
-    assert.throws(() => assertProse(registry, "t.yaml"), re);
+    assert.throws(() => assertEntries(registry, "t.yaml"), re);
   };
   // One heading per severity the report can group by, one preamble per verdict it can
   // reach: the code indexes these maps by those names, so every one must be authored.
   for (const severity of Object.values(SEVERITY)) {
     bad(
       (doc) => delete doc["issue-headings"][severity],
-      new RegExp(`\`issue-headings\` authors no \`${severity}\``),
+      new RegExp(`issue-headings authors no \`${severity}\``),
       severity
     );
   }
   for (const key of VERDICT_KEYS) {
     bad(
       (doc) => delete doc["verdict-intros"][key],
-      new RegExp(`\`verdict-intros\` authors no \`${key}\``),
+      new RegExp(`verdict-intros authors no \`${key}\``),
       key
     );
   }
@@ -1323,15 +1332,15 @@ test("the report's authored prose is required, by the names that index it", () =
   // new one is missing.
   bad(
     (doc) => (doc["verdict-intros"].someday = "later"),
-    /`verdict-intros` authors `someday`, which no report can reach/
+    /verdict-intros authors `someday`, which no report can reach/
   );
   bad(
     (doc) => (doc["issue-headings"].fatal = "Fatal"),
-    /`issue-headings` authors `fatal`, which no report can reach/
+    /issue-headings authors `fatal`, which no report can reach/
   );
   // `messages` is open - message() is a lookup by whatever key a caller names - so an extra
   // template is fine, and only its prose is asked about.
-  assertProse(
+  assertEntries(
     (() => {
       const r = loadRegistry();
       r.doc.messages["some-other-notice"] = "Text.";
@@ -1340,11 +1349,18 @@ test("the report's authored prose is required, by the names that index it", () =
     "t.yaml"
   );
   bad((doc) => (doc.messages["some-other-notice"] = "  "), /is not prose/);
-  // A missing map at all.
-  bad((doc) => delete doc["verdict-intros"], /authors no `verdict-intros` map/);
-  bad((doc) => (doc.messages = []), /authors no `messages` map/);
+  // A map that is there but unusable is its shape's answer; a map that is GONE is asked
+  // once, of a whole registry (assertRequiredSections) - a partial one is a fragment on
+  // purpose, so the shape pass says nothing about a section nobody authored.
+  bad((doc) => (doc.messages = []), /messages authors no prose/);
+  const gone = loadRegistry();
+  delete gone.doc["verdict-intros"];
+  assert.throws(
+    () => assertRequiredSections(gone.doc, "t.yaml"),
+    /the section "verdict-intros" is missing/
+  );
   // The shipped registry authors all of it.
-  assertProse(loadRegistry(), "assets/registry.yaml");
+  assertEntries(loadRegistry(), "assets/registry.yaml");
 });
 
 // The SCA prompt is the whole output of its own flag - no review runs beside it - so a
@@ -1363,24 +1379,18 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   assert.equal(prompt.outcome.filter((s) => s.run === "experiments").length, 1);
   const noIntro = loadRegistry();
   delete noIntro.doc["llm-sca-review-prompt"].intro;
-  assert.throws(() => assertScaPrompt(noIntro, "t.yaml"), /authors no `intro`/);
+  assert.throws(() => checkScaPrompt(noIntro), /authors no `intro`/);
 
   const noSteps = loadRegistry();
   noSteps.doc["llm-sca-review-prompt"].outcome = [];
-  assert.throws(
-    () => assertScaPrompt(noSteps, "t.yaml"),
-    /authors no `outcome` steps/
-  );
+  assert.throws(() => checkScaPrompt(noSteps), /authors no `outcome` steps/);
 
   const blankStep = loadRegistry();
   blankStep.doc["llm-sca-review-prompt"].outcome = [
     { text: "fine" },
     { text: "" },
   ];
-  assert.throws(
-    () => assertScaPrompt(blankStep, "t.yaml"),
-    /step 2 authors no `text`/
-  );
+  assert.throws(() => checkScaPrompt(blankStep), /step 2 authors no `text`/);
 
   // The marker decides whether the Experiment step prints at all, so a condition this
   // prompt cannot evaluate - a plausible near-miss included - is refused by name rather
@@ -1388,17 +1398,14 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   const badMarker = loadRegistry();
   badMarker.doc["llm-sca-review-prompt"].outcome[0].run = "experiment";
   assert.throws(
-    () => assertScaPrompt(badMarker, "t.yaml"),
+    () => checkScaPrompt(badMarker),
     /step 1 has `run: experiment`, which this prompt cannot evaluate \(expected one of: experiments\)/
   );
 
   // And the shared step rule: both prompts are numbered by the renderer.
   const selfNumbered = loadRegistry();
   selfNumbered.doc["llm-sca-review-prompt"].outcome[0].text = "1. Do it.";
-  assert.throws(
-    () => assertScaPrompt(selfNumbered, "t.yaml"),
-    /step 1 numbers itself/
-  );
+  assert.throws(() => checkScaPrompt(selfNumbered), /step 1 numbers itself/);
 
   // The mirror of the review prompt's rule: this one acts on `run` and nothing else, so
   // the other prompt's marker - which reads as plausible here, and does nothing - is
@@ -1406,15 +1413,12 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   const wrongMarker = loadRegistry();
   wrongMarker.doc["llm-sca-review-prompt"].outcome[1].skip = "manual";
   assert.throws(
-    () => assertScaPrompt(wrongMarker, "t.yaml"),
+    () => checkScaPrompt(wrongMarker),
     /step 2 authors `skip`, which this prompt cannot act on \(expected `run`\)/
   );
   const typo = loadRegistry();
   typo.doc["llm-sca-review-prompt"].outcome[2].experiments = true;
-  assert.throws(
-    () => assertScaPrompt(typo, "t.yaml"),
-    /step 3 authors `experiments`/
-  );
+  assert.throws(() => checkScaPrompt(typo), /step 3 authors `experiments`/);
 });
 
 // A step may carry a literal example, whose authored line breaks ARE the layout: a step is

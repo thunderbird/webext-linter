@@ -38,7 +38,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import YAML from "yaml";
 import { displayLine } from "../util/text.js";
 
-import { finding, SECTION, SEVERITY, VERDICT_KEYS } from "../report/finding.js";
+import { finding, SECTION, SEVERITY } from "../report/finding.js";
 import { MAX_NOTE, PROMPT_SKIPS } from "../config.js";
 import { artifactLabel } from "../report/artifact.js";
 import { VERB, VERB_NAMES, verbNamed } from "../report/verbs.js";
@@ -46,41 +46,25 @@ import { progress, debug, FEED } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
 import { manualEscalations } from "./escalation.js";
 import { VERDICT } from "../lib/enum.js";
+import { SECTIONS, assertSection } from "./registry-schema.js";
+import {
+  SCA_ONLY_INPUTS,
+  MODE_RESPONSES,
+  AUTO_SEVERITY,
+  NO_SEVERITY,
+  HOLD_OR_ERROR,
+  CONCRETE_SEVERITIES,
+  PHASE_TEXTS,
+  FINAL_SLOTS,
+  LOOP_VERBS,
+  SCA_PROMPT_RUNS,
+  REVIEW_PROMPT_RUNS,
+} from "./registry-vocabulary.js";
 import { rethrowIfFatal, wiringError } from "../lib/errors.js";
 import { verdictLabel } from "../report/verdict-label.js";
 import { collapseUnusedFolders } from "../lib/unused-folders.js";
 
 /** @typedef {import("../report/finding.js").Severity} Severity */
-
-// The severity token a check entry may declare. error/warning/info are stamped
-// onto every finding the check emits. "auto" instead delegates the per-finding
-// severity to the check itself (it sets f.severity, defaulting to error if it
-// sets none or an invalid value) - see runOneCheck. "auto" is a config-only
-// token: a finding never carries it.
-const AUTO_SEVERITY = "auto";
-// A check that emits no findings at all: it only ever escalates, so there is no band to
-// report at. Declaring `error` there was a value nobody chose - inert (nothing is stamped)
-// but pre-armed to auto-reject on the JSON upload filter the day the check gained a finding
-// path. Saying `none` states the truth AND makes that day loud: runOneCheck refuses a
-// finding from such a check rather than stamping one.
-const NO_SEVERITY = "none";
-// A check whose findings block the review but do not reject the add-on, UNLESS the
-// review already rejects it for something else - then they are one more item on that
-// list. Which of the two it is depends on what every OTHER check found, so it cannot be
-// decided here: like "auto" this is a config-only token, and resolveHolds settles each
-// finding once, after the run (src/report/finding.js).
-const HOLD_OR_ERROR = "hold-or-error";
-const CONCRETE_SEVERITIES = new Set([
-  SEVERITY.ERROR,
-  SEVERITY.WARNING,
-  SEVERITY.INFO,
-]);
-const VALID_CHECK_SEVERITIES = new Set([
-  ...CONCRETE_SEVERITIES,
-  AUTO_SEVERITY,
-  HOLD_OR_ERROR,
-  NO_SEVERITY,
-]);
 
 /**
  * The band a `warning` is published at under a run's policy: an error when the run was
@@ -106,50 +90,6 @@ function bandUnder(severity, warningsAsErrors) {
     : severity;
 }
 
-// How an entry's repeated cases are LISTED, when listing every one of them says the same
-// thing several times. Omitted is the default every entry has today: one line per case.
-//
-// "subject" is for a check whose cases repeat one SUBJECT in several places - the same
-// remote host reached from three files. The first place keeps its line and counts the rest
-// onto it; the rest are numbered and settled like any other case, they just do not print
-// (src/report/order.js, the same mechanism as the display cap).
-//
-// Two cases fold together only when their lines would have said the SAME THING apart from
-// where they are - the subject, its detail, and any note a reviewer wrote. A differing
-// note is a person's own words about one case, and folding it away would lose them.
-//
-// A display decision, never a review one: nothing here changes what is found, what is
-// asked, or what a verdict can settle.
-const COLLAPSE_MODES = new Set(["subject"]);
-
-// The `input` a check entry declares - which add-on artifact is ctx.artifact when the
-// check runs, and, where the answer can only exist in one review mode, WHICH MODE it runs
-// in. "source" = the REVIEW TARGET, the readable submitted code (the readable
-// --sca-root in an SCA review, the built XPI in an XPI review - the only artifact
-// there); "xpi" = ALWAYS the built XPI (the shipped artifact), analysed in both modes;
-// "sca" = the submitted source archive with no parsed source, for the build and
-// dependency checks; "both" = the two artifacts together, named ctx.xpi and ctx.sca and
-// with no ctx.artifact, for a check whose subject is the SUBMISSION rather than either
-// artifact in it. "both" is the only route that sees more than one, so a cross-artifact
-// comparison is a thing the registry declares rather than something setup does invisibly
-// and hands down as a flag.
-//
-// The archive exists only in an SCA review, so `input: sca` says "an SCA review" as well
-// as "that artifact" - the mode is DERIVED from the route (SCA_ONLY_INPUTS, modeEligible)
-// rather than declared a second time beside it. An entry that had to say both could get
-// one of them wrong; an entry that says one cannot.
-//
-// A check reads only the artifact its route names, and has no way to reach another (see
-// buildXpiCtx / buildScaCtxs). Since the ctxs are sealed (src/lib/errors.js), reading a
-// field the routed artifact never produced throws rather than answering nothing.
-const VALID_CHECK_INPUTS = new Set(["source", "xpi", "sca", "both"]);
-
-/** The routes whose artifact exists only in a source-code-archive review, so declaring one
- *  IS declaring the mode (modeEligible). buildScaCtxs builds these siblings; an XPI review
- *  has neither, and routeCtx would throw. Beside the set above because they are one axis:
- *  which artifact a check reads, and - where only one kind of review has it - which review. */
-const SCA_ONLY_INPUTS = new Set(["sca", "both"]);
-
 // The check-bearing yaml sections ARE the phases: a check's phase IS the section it
 // lives in, so the two can never disagree and no entry declares a phase of its own.
 // This is a CLOSED SET - the orchestrator (runChecks) looks up the phases it wants, in
@@ -160,21 +100,6 @@ const SCA_ONLY_INPUTS = new Set(["sca", "both"]);
 const PHASE_SECTIONS = Object.freeze({
   "invalid-experiment": "invalid-experiment-phase",
   deterministic: "deterministic-phase",
-});
-
-// The per-review-mode response keys, keyed by the REVIEW_MODE fact that selects them
-// (`mode?.sca`). An entry words its response ONCE for both modes (`response`) or ONCE PER
-// mode (both keys, and no `response`) - never a mix; assertResponse enforces that, and
-// responseOf is the only reader. These keys change what is PRINTED and nothing else: no
-// check runs differently, no verdict or routing moves, so the mode reaches the text
-// producers (findings, manual items, sweep entries) and stops there.
-//
-// The mode is DERIVED, not the flag: a rejected Experiment takes an --sca-root run back
-// to REVIEW_MODE.XPI (src/pipeline.js), so an invalid-experiment-phase check that words
-// itself per mode prints its XPI text for a source-code submission.
-const MODE_RESPONSES = Object.freeze({
-  sca: "response-for-sca",
-  xpi: "response-for-xpi",
 });
 
 /**
@@ -939,18 +864,13 @@ export class Registry {
  * @param {Record<string, unknown>} doc  The parsed registry document.
  * @param {string} registryPath  For the error message.
  */
-export function assertRequiredPhaseSections(doc, registryPath) {
-  // `manual-checks` is asked for beside the phases because it is the same failure: it is
-  // the ONLY source of the Standard Manual Review questions, it is listed in every review
-  // that ran to the end (an early exit withholds them - src/report/early-exit.js),
-  // and an absent one reads as "this review has no questions" rather than as a typo.
-  for (const section of [...Object.values(PHASE_SECTIONS), "manual-checks"]) {
-    const list = doc[section];
-    if (!Array.isArray(list) || list.length === 0) {
+export function assertRequiredSections(doc, registryPath) {
+  for (const section of Object.keys(SECTIONS)) {
+    if (doc[section] === undefined) {
       throw new Error(
-        `Registry ${registryPath}: the section "${section}" is missing or empty. ` +
-          "Every section the review reads must declare its entries - an absent one would " +
-          "silently drop that whole list from every review."
+        `Registry ${registryPath}: the section "${section}" is missing. Every section the ` +
+          "review reads must be declared - an absent one would silently drop that whole " +
+          "list from every review."
       );
     }
   }
@@ -971,53 +891,11 @@ function assertEntry(entry, at) {
   const where = entry.manualCheck
     ? `Registry ${at}: the manual-checks entry "${id}"`
     : `rules/${id}.js`;
-  if (typeof entry.title !== "string" || entry.title === "") {
-    throw new Error(
-      `${where} authors no \`title\` - it is how the entry is named wherever it is listed` +
-        (entry.manualCheck
-          ? ", and an untitled one is dropped from the review"
-          : "")
-    );
-  }
   // Declared, never defaulted: a check's impact is configuration, so an entry that
   // omits it is a registry mistake rather than a request for the strictest value.
   // An escalate-only check declares one too - it says what a finding from it would
   // mean, should the check ever gain one.
   const severity = entry.severity;
-  if (!VALID_CHECK_SEVERITIES.has(severity)) {
-    throw new Error(
-      `${where} has a missing or invalid severity ${JSON.stringify(severity)} ` +
-        `(expected one of: ${[...VALID_CHECK_SEVERITIES].join(", ")})`
-    );
-  }
-  for (const flag of ["skip-in-sca-review", "eslint"]) {
-    if (entry[flag] !== undefined && typeof entry[flag] !== "boolean") {
-      throw new Error(
-        `${where} has a non-boolean \`${flag}\` ${JSON.stringify(entry[flag])} - it is a ` +
-          "gate, and anything else silently reads as false"
-      );
-    }
-    // Absence already says false, so writing it says nothing twice - and reading
-    // `skip-in-sca-review: false` back is a double negative the two-state form exists to
-    // avoid. Refused rather than accepted, like every other declaration that means nothing.
-    if (entry[flag] === false) {
-      throw new Error(
-        `${where} declares \`${flag}: false\`, which is what leaving it out already means. ` +
-          "Remove it"
-      );
-    }
-  }
-  if (
-    entry["review-early-exit"] !== undefined &&
-    (typeof entry["review-early-exit"] !== "string" ||
-      entry["review-early-exit"] === "")
-  ) {
-    throw new Error(
-      `${where} has a non-string \`review-early-exit\` ` +
-        `${JSON.stringify(entry["review-early-exit"])} - it names the reason the report ` +
-        "gives for stopping, and a reason with no name cannot be looked up"
-    );
-  }
   // Whether the entry authors wording a PERSON could be asked - `instructions-for-human`,
   // or an `instructions` that serves either reader. Both branches below are about that
   // reader: a manual check is only ever put to one, and an escalation must be answerable
@@ -1034,36 +912,12 @@ function assertEntry(entry, at) {
         `${where} authors no \`instructions\` - the question a reviewer answers IS the entry`
       );
     }
-    for (const key of [
-      "escalation",
-      "input",
-      "sweep-instruction",
-      "settle-verbs",
-      // A static entry emits no finding, and an early exit is triggered by one - so
-      // declaring a reason here would name a halt nothing can reach.
-      "review-early-exit",
-    ]) {
-      if (entry[key] !== undefined) {
-        throw new Error(
-          `${where} authors \`${key}\`, which only a check that RUNS can carry - a ` +
-            "manual-checks entry lists its case unconditionally and reads no artifact"
-        );
-      }
-    }
   } else {
     // A check does not declare where its cases are listed. It declares WHO its question
     // is for, by which wording it authors, and the section follows from that (sectionFor).
     // So an `escalation` here is a declaration nothing reads, and is refused rather than
     // ignored: an entry that means something other than what it says is worse than one
     // that fails to load.
-    if (entry.escalation !== undefined) {
-      throw new Error(
-        `${where} declares \`escalation\`, which nothing reads - a check names its ` +
-          "READER instead, by authoring `instructions` (one text, either reader), " +
-          "`instructions-for-llm` beside `instructions-for-human` (one question each), " +
-          "or `instructions-for-human` alone"
-      );
-    }
     // The three shapes, and the fourth that is refused. Both failures below would
     // otherwise surface only when a case first reached them, which may be never.
     if (authored("instructions") && (forLlm || forHuman)) {
@@ -1086,25 +940,8 @@ function assertEntry(entry, at) {
     assertSettleVerbs(entry, where, authored("instructions") || forLlm);
     // Optional, and a typo would otherwise read as "the default" - silently listing every
     // case where the entry asked for one line per subject.
-    const collapse = entry.collapse;
-    if (collapse !== undefined && !COLLAPSE_MODES.has(collapse)) {
-      throw new Error(
-        `${where} has an invalid \`collapse\` ${JSON.stringify(collapse)} ` +
-          `(expected one of: ${[...COLLAPSE_MODES].join(", ")})`
-      );
-    }
     // Every check must declare a valid `input`, which drives runOneCheck's artifact
     // routing (routing is total - there is no default artifact to fall through to).
-    const input = entry.input;
-    if (!VALID_CHECK_INPUTS.has(input)) {
-      throw new Error(
-        `${where} is missing a valid \`input\` (got ${JSON.stringify(input)}; ` +
-          `expected one of: ${[...VALID_CHECK_INPUTS].join(", ")}). ` +
-          "Every check must declare which add-on artifact it reads (source = the " +
-          "review target, xpi = the built XPI, sca = the source archive, " +
-          "manifest = the shipped manifest only)."
-      );
-    }
     assertSweepInstruction(entry, where, severity);
   }
   // Outside the manual/rule branch: a manual-checks entry carries a response too, and
@@ -1227,28 +1064,6 @@ function assertSettleVerbs(entry, where, screened) {
  */
 function assertResponse(entry, where) {
   const named = Object.values(MODE_RESPONSES);
-  const stray = Object.keys(entry).find(
-    (key) => key.startsWith("response-for-") && !named.includes(key)
-  );
-  if (stray) {
-    throw new Error(
-      `${where} authors \`${stray}\`, which nothing reads (expected ` +
-        `${named.map((key) => `\`${key}\``).join(" or ")}) - every review would word ` +
-        "this check from another key, and this one would never print"
-    );
-  }
-  for (const key of named) {
-    const text = entry[key];
-    if (
-      text !== undefined &&
-      (typeof text !== "string" || text.trim() === "")
-    ) {
-      throw new Error(
-        `${where} has an invalid \`${key}\` ${JSON.stringify(text)} ` +
-          "(expected a non-empty string)"
-      );
-    }
-  }
   const worded = named.filter((key) => typeof entry[key] === "string");
   if (worded.length === 0) {
     return;
@@ -1385,23 +1200,31 @@ export function assertEntries(registry, at) {
   // `check`, so asking this of its result asks it only of the entries that already passed.
   // An entry with no id is a check that never runs - or, in manual-checks, a to-do printed
   // in every review that no verdict can name and no reviewer can settle into anything.
-  for (const [section, list] of [
-    ...Object.values(PHASE_SECTIONS).map((name) => [name, registry.doc[name]]),
-    ["manual-checks", registry.doc["manual-checks"]],
-  ]) {
-    for (const [i, entry] of (list ?? []).entries()) {
-      const nth = `Registry ${at}: ${section} entry ${i + 1}`;
-      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-        throw new Error(`${nth} is not a mapping`);
-      }
-      if (typeof entry.check !== "string" || entry.check.trim() === "") {
-        throw new Error(
-          `${nth} ("${entry.title ?? "untitled"}") authors no \`check\` - it is the id ` +
-            "everything else addresses the entry by"
-        );
-      }
+  // The registry's SHAPE, declared once (src/checks/registry-schema.js): which sections
+  // exist, which keys each accepts, what each key holds, what it requires, and what it
+  // recognizes only to refuse. Asked FIRST - an undeclared key is dropped by everything
+  // downstream, so nothing later could notice it, and no semantic rule below should read a
+  // field of the wrong type.
+  //
+  // The section list is the vocabulary too: a name not declared there is not one the review
+  // reads, so a misspelt section would drop its whole list from every review in silence.
+  for (const name of Object.keys(registry.doc)) {
+    if (!SECTIONS[name]) {
+      throw new Error(
+        `Registry ${at}: the section \`${name}\` is not one this review reads, so ` +
+          "everything in it would be ignored. The registry's sections are: " +
+          `${Object.keys(SECTIONS).sort().join(", ")}`
+      );
     }
   }
+  // Shape, of every section this registry HAS. Whether it has them all is asked once, of a
+  // whole registry (assertRequiredSections) - a partial load is a fragment on purpose.
+  for (const [name, kind] of Object.entries(SECTIONS)) {
+    if (registry.doc[name] !== undefined) {
+      assertSection(registry.doc[name], kind, `Registry ${at}: ${name}`, name);
+    }
+  }
+
   const seen = new Set();
   for (const entry of registry.allEntries()) {
     const id = stem(entry.check);
@@ -1471,37 +1294,6 @@ function assertStep(step, i, where, markers) {
   }
 }
 
-/** What `run:` can name in each prompt: the things about a run that decide whether a step
- *  of it is printed. No flag spells these - unlike PROMPT_SKIPS, which the CLI offers - so
- *  they live here, beside the messages that name them. */
-const REVIEW_PROMPT_RUNS = ["sca", "sweep"];
-
-/**
- * The loop texts the LINTER owns, and the placeholder each one exists to carry. An empty
- * slot means the text names no value - it is the same words every pass.
- */
-const PHASE_TEXTS = {
-  preamble: "",
-  frame: "{{review}}",
-  handover: "{{command}}",
-  refused: "{{problem}}",
-  final: "",
-  // The hand-over for a review that STOPPED. Required like the rest, because which of
-  // the two is printed is decided at the end of the loop and a missing one would be
-  // found only by the review that needed it.
-  "final-early-exit": "",
-};
-
-/** What the last prompt hands the reviewer, whichever of the two texts carries it. */
-const FINAL_SLOTS = ["{{details}}", "{{tally}}"];
-
-/**
- * Every verdict the loop knows. A PHASE accepts a subset of these, declared beside its
- * steps - `verify` takes `reported`/`withdrawn`, `settle` takes `reported`/`cleared`/`ask` -
- * because what an answer may be is a property of the phase, never of the file's shape.
- */
-const LOOP_VERBS = VERB_NAMES;
-
 /** What one entry of a phase is answered WITH, which decides the shape the entry is handed
  *  over in and what the linter accepts back: `hints` is what a sweep found, a list per
  *  check; `verdict` is one of the phase's own verbs; `words` is a person's answer, theirs
@@ -1512,12 +1304,6 @@ const LOOP_VERBS = VERB_NAMES;
 // Named here because two things need it and neither should spell it - the subset check
 // below, and nothing else in this file.
 const SETTLE_PHASE = "settle";
-
-const ANSWER_KINDS = ["hints", "verdict", "words"];
-
-/** The one condition the SCA prompt can evaluate: whether this review allows
- *  Experiments, which decides whether it asks its reader for --sca-exp-source. */
-const SCA_PROMPT_RUNS = ["experiments"];
 
 /**
  * The REVIEW LOOP's texts, checked at load: the five the linter owns, and every phase's
@@ -1537,13 +1323,9 @@ const SCA_PROMPT_RUNS = ["experiments"];
 export function assertPhases(registry, at) {
   const doc = registry.doc["llm-phases"];
   const where = `llm-phases (${at})`;
-  if (!doc || typeof doc !== "object") {
-    throw new Error(`${where} authors no loop prompts`);
-  }
+  // Each linter-owned text must CARRY the placeholder it exists for - the linter fills it
+  // there, and nothing else names that value.
   for (const [key, slot] of Object.entries(PHASE_TEXTS)) {
-    if (typeof doc[key] !== "string" || doc[key] === "") {
-      throw new Error(`${where} authors no \`${key}\``);
-    }
     if (slot && !doc[key].includes(slot)) {
       throw new Error(
         `${where} \`${key}\` carries no ${slot} - the linter fills it there, and nothing ` +
@@ -1577,43 +1359,20 @@ export function assertPhases(registry, at) {
         "they hand the same document to the same reader, so only the first line may differ"
     );
   }
-  const phases = doc.phases;
-  if (!Array.isArray(phases) || phases.length === 0) {
-    throw new Error(`${where} authors no \`phases\``);
-  }
   const seen = new Set();
-  for (const phase of phases) {
-    const name = phase?.name;
-    if (typeof name !== "string" || name === "") {
-      throw new Error(`${where} authors a phase with no \`name\``);
-    }
+  for (const phase of doc.phases) {
+    const name = phase.name;
     if (seen.has(name)) {
       throw new Error(`${where} authors \`${name}\` twice`);
     }
     seen.add(name);
     const at2 = `${where} phase \`${name}\``;
-    if (typeof phase.intro !== "string") {
-      throw new Error(
-        `${at2} authors no \`intro\` (empty string when it needs none)`
-      );
-    }
-    if (!ANSWER_KINDS.includes(phase.answer)) {
-      throw new Error(
-        `${at2} authors \`answer: ${phase.answer}\`, which is not a kind of answer this ` +
-          `review knows (expected one of: ${ANSWER_KINDS.join(", ")})`
-      );
-    }
     // A verdict phase states its vocabulary; the other two take no verb, and a verb
     // authored beside them would never be offered to anyone.
-    if ((phase.answer === "verdict") !== phase.verbs?.length > 0) {
+    if ((phase.answer === "verdict") !== phase.verbs.length > 0) {
       throw new Error(
-        `${at2} answers with \`${phase.answer}\` but accepts \`${(phase.verbs ?? []).join(", ")}\` - ` +
+        `${at2} answers with \`${phase.answer}\` but accepts \`${phase.verbs.join(", ")}\` - ` +
           "only a `verdict` phase names verbs, and it must name at least one"
-      );
-    }
-    if (!Array.isArray(phase.verbs)) {
-      throw new Error(
-        `${at2} authors no \`verbs\` (empty list when it takes none)`
       );
     }
     for (const verb of phase.verbs) {
@@ -1623,9 +1382,6 @@ export function assertPhases(registry, at) {
             `(expected one of: ${LOOP_VERBS.join(", ")})`
         );
       }
-    }
-    if (!Array.isArray(phase.steps) || phase.steps.length === 0) {
-      throw new Error(`${at2} authors no \`steps\``);
     }
     phase.steps.forEach((step, i) => {
       assertStep(step, i, `llm-phases phase \`${name}\``, ["skip", "run"]);
@@ -1647,8 +1403,7 @@ export function assertPhases(registry, at) {
     // is told, and an unworded verb is one it is offered with nothing to choose on.
     const prose = phase["verb-prose"] ?? {};
     for (const verb of phase.verbs) {
-      const says = prose[verb]?.says;
-      if (typeof says !== "string" || says.trim() === "") {
+      if (prose[verb] === undefined) {
         throw new Error(
           `${at2} accepts \`${verb}\` but its \`verb-prose\` says nothing about it, so ` +
             "an entry would offer it with no wording for when it applies"
@@ -1660,16 +1415,6 @@ export function assertPhases(registry, at) {
         throw new Error(
           `${at2} words \`${verb}\` in its \`verb-prose\` but does not accept it, so the ` +
             "agent would be refused for doing what it was told"
-        );
-      }
-      const lastResort = prose[verb]["says-when-last-resort"];
-      if (
-        lastResort !== undefined &&
-        (typeof lastResort !== "string" || lastResort.trim() === "")
-      ) {
-        throw new Error(
-          `${at2} has an invalid \`says-when-last-resort\` for \`${verb}\` ` +
-            `${JSON.stringify(lastResort)} (expected a non-empty string)`
         );
       }
     }
@@ -1685,19 +1430,7 @@ export function assertPhases(registry, at) {
  * @param {string} at
  */
 export function assertScaPrompt(registry, at) {
-  const sca = registry.doc["llm-sca-review-prompt"];
-  const scaAt = `llm-sca-review-prompt (${at})`;
-  if (!sca || typeof sca !== "object") {
-    throw new Error(`${scaAt} authors no prompt`);
-  }
-  if (typeof sca.intro !== "string" || sca.intro === "") {
-    throw new Error(`${scaAt} authors no \`intro\``);
-  }
-  const scaSteps = sca.outcome;
-  if (!Array.isArray(scaSteps) || scaSteps.length === 0) {
-    throw new Error(`${scaAt} authors no \`outcome\` steps`);
-  }
-  scaSteps.forEach((step, i) => {
+  registry.doc["llm-sca-review-prompt"].outcome.forEach((step, i) => {
     assertStep(step, i, "llm-sca-review-prompt", ["run"]);
     // Checked against what this prompt can EVALUATE, the way `skip` is checked against the
     // flags that give it: the marker decides whether the step is printed at all, so a
@@ -1721,18 +1454,7 @@ export function assertScaPrompt(registry, at) {
  * @param {string} at  The registry path, for the message.
  */
 export function assertChoices(registry, at) {
-  const choices = registry.doc["llm-manual-review-choices"];
-  if (!Array.isArray(choices) || choices.length === 0) {
-    throw new Error(`llm-manual-review-choices authors no answers (${at})`);
-  }
-  choices.forEach((c, i) => {
-    for (const key of ["label", "verdict", "description"]) {
-      if (!c || typeof c[key] !== "string" || c[key] === "") {
-        throw new Error(
-          `llm-manual-review-choices answer ${i + 1} authors no \`${key}\` (${at})`
-        );
-      }
-    }
+  registry.doc["llm-manual-review-choices"].forEach((c, i) => {
     // The verdict must NAME one, and one that settles. A word that spells no verb reaches
     // the apply step as nothing at all, where every branch declines it and the case is
     // dropped with no finding - a reviewer's "Report" silently clearing the thing they
@@ -1747,59 +1469,6 @@ export function assertChoices(registry, at) {
       );
     }
   });
-}
-
-/**
- * Assert the report's own authored prose: the per-severity Issues headings, the section
- * preamble for each verdict the report can reach, the system-notice templates, and the two
- * sweep introductions.
- *
- * Every one of these is read through an accessor that returns {} or null when it is
- * missing, so a mistyped key does not fail - it prints a section with no heading, a report
- * with no preamble, or a finding with no response.
- *
- * Two of the maps are indexed by a CLOSED vocabulary - a heading per severity, a preamble
- * per verdict the report can reach - so they are asserted against it in both directions: a
- * name the report will look up must be authored, and a name it can never look up is dead
- * yaml, which is how a rename hides (the old key still reads as prose, the new one is
- * missing). `messages` is open, because message() is a lookup by whatever key a caller
- * names, so only the one the report itself reaches is required.
- * @param {Registry} registry
- * @param {string} at  The registry path, for the message.
- */
-export function assertProse(registry, at) {
-  const maps = [
-    ["issue-headings", Object.values(SEVERITY), true],
-    ["verdict-intros", VERDICT_KEYS, true],
-    ["messages", ["check-failed"], false],
-  ];
-  for (const [key, required, closed] of maps) {
-    const map = registry.doc[key];
-    if (!map || typeof map !== "object" || Array.isArray(map)) {
-      throw new Error(`registry authors no \`${key}\` map (${at})`);
-    }
-    for (const name of required) {
-      if (typeof map[name] !== "string" || map[name].trim() === "") {
-        throw new Error(
-          `\`${key}\` authors no \`${name}\` - the report reaches that case and would ` +
-            `print nothing for it (${at})`
-        );
-      }
-    }
-    for (const [name, text] of Object.entries(map)) {
-      if (closed && !required.includes(name)) {
-        throw new Error(
-          `\`${key}\` authors \`${name}\`, which no report can reach ` +
-            `(expected one of: ${required.join(", ")}) (${at})`
-        );
-      }
-      if (typeof text !== "string" || text.trim() === "") {
-        throw new Error(
-          `\`${key}.${name}\` is not prose ${JSON.stringify(text)} (${at})`
-        );
-      }
-    }
-  }
 }
 
 /**
@@ -1825,12 +1494,11 @@ function assertRegistry(registry, at, { partial = false } = {}) {
   if (partial) {
     return;
   }
-  assertRequiredPhaseSections(registry.doc, at);
+  assertRequiredSections(registry.doc, at);
   assertPhases(registry, at);
   assertPhaseVerbSubsets(registry, at);
   assertScaPrompt(registry, at);
   assertChoices(registry, at);
-  assertProse(registry, at);
   assertEarlyExit(registry, at);
 }
 
@@ -1847,30 +1515,8 @@ function assertRegistry(registry, at, { partial = false } = {}) {
  * @returns {void}
  */
 export function assertEarlyExit(registry, at) {
-  const block = registry.doc["review-early-exit"];
-  if (!block || typeof block !== "object" || Array.isArray(block)) {
-    throw new Error(
-      `registry authors no \`review-early-exit\` section (${at})`
-    );
-  }
-  const { intro, reasons } = registry.earlyExitProse();
-  if (!intro) {
-    throw new Error(
-      "`review-early-exit` authors no `intro` - the list it introduces " +
-        `would be printed with nothing saying what it is (${at})`
-    );
-  }
+  const { reasons } = registry.earlyExitProse();
   const ids = Object.keys(reasons);
-  if (!ids.length) {
-    throw new Error(`\`review-early-exit\` authors no \`reasons\` (${at})`);
-  }
-  for (const id of ids) {
-    if (typeof reasons[id] !== "string" || reasons[id] === "") {
-      throw new Error(
-        `\`review-early-exit\` reason \`${id}\` has no text (${at})`
-      );
-    }
-  }
   const named = new Set();
   for (const entry of registry.allEntries()) {
     const reason = entry["review-early-exit"];

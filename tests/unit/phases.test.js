@@ -7,9 +7,21 @@
 // looks finished. Each rule below is one way that can happen.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { loadRegistry, assertPhases } from "../../src/checks/registry.js";
+import {
+  loadRegistry,
+  assertPhases,
+  assertEntries,
+  assertRequiredSections,
+} from "../../src/checks/registry.js";
 
 const fresh = () => loadRegistry();
+// Production asks the SHAPE first (registry-schema.js, via assertEntries) and then the
+// rules that read one value against another (assertPhases). Ask both here, in that order,
+// so a case lands wherever it belongs without this file having to know which.
+const check = (registry) => {
+  assertEntries(registry, "t.yaml");
+  assertPhases(registry, "t.yaml");
+};
 const phaseNamed = (registry, name) =>
   registry.doc["llm-phases"].phases.find((p) => p.name === name);
 
@@ -51,7 +63,7 @@ test("a linter-owned text that loses its placeholder is refused", () => {
     assert.ok(doc[key].includes(slot), `${key} carries ${slot} as shipped`);
     doc[key] = doc[key].replace(slot, "somewhere");
     assert.throws(
-      () => assertPhases(registry, "t.yaml"),
+      () => check(registry),
       new RegExp(`\`${key}\` carries no `),
       key
     );
@@ -63,7 +75,7 @@ test("a missing linter-owned text is refused by name", () => {
     const registry = fresh();
     delete registry.doc["llm-phases"][key];
     assert.throws(
-      () => assertPhases(registry, "t.yaml"),
+      () => check(registry),
       new RegExp(`authors no \`${key}\``),
       key
     );
@@ -78,7 +90,7 @@ test("a phase's verbs are checked against its own wordings, both ways", () => {
   const unworded = fresh();
   phaseNamed(unworded, "verify").verbs.push("cleared");
   assert.throws(
-    () => assertPhases(unworded, "t.yaml"),
+    () => check(unworded),
     /accepts `cleared` but its `verb-prose` says nothing about it/
   );
 
@@ -86,7 +98,7 @@ test("a phase's verbs are checked against its own wordings, both ways", () => {
   const settle = phaseNamed(unaccepted, "settle");
   settle.verbs = settle.verbs.filter((v) => v !== "ask");
   assert.throws(
-    () => assertPhases(unaccepted, "t.yaml"),
+    () => check(unaccepted),
     /words `ask` in its `verb-prose` but does not accept it/
   );
 
@@ -94,45 +106,36 @@ test("a phase's verbs are checked against its own wordings, both ways", () => {
   const blank = fresh();
   phaseNamed(blank, "settle")["verb-prose"].reported["says-when-last-resort"] =
     "  ";
-  assert.throws(
-    () => assertPhases(blank, "t.yaml"),
-    /invalid `says-when-last-resort`/
-  );
+  assert.throws(() => check(blank), /missing or empty `says-when-last-resort`/);
 });
 
 test("a verb no verdict knows is refused", () => {
   const registry = fresh();
   phaseNamed(registry, "verify").verbs.push("maybe");
-  assert.throws(
-    () => assertPhases(registry, "t.yaml"),
-    /not a verdict this review knows/
-  );
+  assert.throws(() => check(registry), /not a verdict this review knows/);
 });
 
 test("a phase missing its own parts is refused by name", () => {
   const noName = fresh();
   delete phaseNamed(noName, "verify").name;
-  assert.throws(
-    () => assertPhases(noName, "t.yaml"),
-    /authors a phase with no `name`/
-  );
+  assert.throws(() => check(noName), /phases` entry 2 .* authors no `name`/);
 
   const twice = fresh();
   phaseNamed(twice, "settle").name = "verify";
-  assert.throws(() => assertPhases(twice, "t.yaml"), /authors `verify` twice/);
+  assert.throws(() => check(twice), /authors `verify` twice/);
 
   // Empty is how a phase says it needs none; ABSENT is an author who forgot to decide.
   const noIntro = fresh();
   delete phaseNamed(noIntro, "spawn").intro;
-  assert.throws(() => assertPhases(noIntro, "t.yaml"), /authors no `intro`/);
+  assert.throws(() => check(noIntro), /authors no `intro`/);
 
   const noVerbs = fresh();
   delete phaseNamed(noVerbs, "ask").verbs;
-  assert.throws(() => assertPhases(noVerbs, "t.yaml"), /authors no `verbs`/);
+  assert.throws(() => check(noVerbs), /authors no `verbs`/);
 
   const noSteps = fresh();
   phaseNamed(noSteps, "verify").steps = [];
-  assert.throws(() => assertPhases(noSteps, "t.yaml"), /authors no `steps`/);
+  assert.throws(() => check(noSteps), /authors no `steps`/);
 });
 
 // The prompt numbers what survives its markers, so an authored number renders twice - and
@@ -140,30 +143,36 @@ test("a phase missing its own parts is refused by name", () => {
 test("a step that numbers itself, or carries a marker nothing answers, is refused", () => {
   const numbered = fresh();
   phaseNamed(numbered, "verify").steps[0].text = "1. Verify every entry.";
-  assert.throws(() => assertPhases(numbered, "t.yaml"), /numbers itself/);
+  assert.throws(() => check(numbered), /numbers itself/);
 
   const badSkip = fresh();
   phaseNamed(badSkip, "ask").steps[0].skip = "nonsense";
-  assert.throws(() => assertPhases(badSkip, "t.yaml"), /which no flag gives/);
+  assert.throws(() => check(badSkip), /which no flag gives/);
 
   const badRun = fresh();
   // Found by its marker, not by position: a step added to the phase should not decide
   // which one this mutates.
   phaseNamed(badRun, "spawn").steps.find((x) => x.run).run = "nonsense";
-  assert.throws(() => assertPhases(badRun, "t.yaml"), /cannot evaluate/);
+  assert.throws(() => check(badRun), /cannot evaluate/);
 });
 
 test("the loop's phases are refused outright when absent", () => {
-  const registry = fresh();
-  delete registry.doc["llm-phases"];
+  // Present but unusable is its shape's answer; GONE is presence, asked once of a whole
+  // registry - the shape pass says nothing about a section nobody authored.
+  const unusable = fresh();
+  unusable.doc["llm-phases"] = "prose, not a mapping";
+  assert.throws(() => check(unusable), /authors no loop prompts/);
+
+  const gone = fresh();
+  delete gone.doc["llm-phases"];
   assert.throws(
-    () => assertPhases(registry, "t.yaml"),
-    /authors no loop prompts/
+    () => assertRequiredSections(gone.doc, "t.yaml"),
+    /the section "llm-phases" is missing/
   );
 
   const noPhases = fresh();
   delete noPhases.doc["llm-phases"].phases;
-  assert.throws(() => assertPhases(noPhases, "t.yaml"), /authors no `phases`/);
+  assert.throws(() => check(noPhases), /authors no `phases`/);
 });
 
 // A phase declares what one of its entries is answered WITH, beside the vocabulary that
@@ -226,16 +235,14 @@ test("a phase declares the kind of answer its entries take", () => {
 
   const missing = fresh();
   delete phaseNamed(missing, "verify").answer;
-  assert.throws(
-    () => assertPhases(missing, "t.yaml"),
-    /authors `answer: undefined`, which is not a kind of answer/
-  );
+  assert.throws(() => check(missing), /authors no `answer`/);
 
+  // A NAMED kind that is not one: the closed set is what says so, and it says which.
   const unknown = fresh();
   phaseNamed(unknown, "verify").answer = "verdicts";
   assert.throws(
-    () => assertPhases(unknown, "t.yaml"),
-    /authors `answer: verdicts`/
+    () => check(unknown),
+    /invalid `answer` "verdicts" \(expected one of: hints, verdict, words\)/
   );
 
   // A verdict phase with nothing to say back, and a phase that names a verb nobody will
@@ -243,7 +250,7 @@ test("a phase declares the kind of answer its entries take", () => {
   const noVocabulary = fresh();
   phaseNamed(noVocabulary, "verify").verbs = [];
   assert.throws(
-    () => assertPhases(noVocabulary, "t.yaml"),
+    () => check(noVocabulary),
     /answers with `verdict` but accepts `` - only a `verdict` phase names verbs/
   );
 
@@ -251,7 +258,7 @@ test("a phase declares the kind of answer its entries take", () => {
     const stray = fresh();
     phaseNamed(stray, name).verbs = ["reported"];
     assert.throws(
-      () => assertPhases(stray, "t.yaml"),
+      () => check(stray),
       /but accepts `reported` - only a `verdict` phase names verbs/,
       name
     );
@@ -271,7 +278,7 @@ test("a final that loses one of the hand-over slots is refused", () => {
       assert.ok(doc[key].includes(slot), `${key} carries ${slot} as shipped`);
       doc[key] = doc[key].replace(slot, "somewhere");
       assert.throws(
-        () => assertPhases(registry, "t.yaml"),
+        () => check(registry),
         new RegExp(`\`${key}\` carries no `),
         `${key} without ${slot}`
       );
@@ -282,10 +289,7 @@ test("a final that loses one of the hand-over slots is refused", () => {
 test("a registry with no final-early-exit is refused", () => {
   const registry = fresh();
   delete registry.doc["llm-phases"]["final-early-exit"];
-  assert.throws(
-    () => assertPhases(registry, "t.yaml"),
-    /authors no `final-early-exit`/
-  );
+  assert.throws(() => check(registry), /authors no `final-early-exit`/);
 });
 
 // The two finals describe the same document to the same reader and differ only in how
@@ -296,8 +300,5 @@ test("the two finals may differ only in their opening line", () => {
   const lines = doc["final-early-exit"].split("\n");
   lines[3] = `${lines[3]} ...and one more thing.`;
   doc["final-early-exit"] = lines.join("\n");
-  assert.throws(
-    () => assertPhases(registry, "t.yaml"),
-    /differ below their opening line/
-  );
+  assert.throws(() => check(registry), /differ below their opening line/);
 });

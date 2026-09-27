@@ -1,0 +1,323 @@
+# THE SHAPE OF registry.yaml, beside the file it describes.
+#
+# Which sections exist, which keys each accepts, what each key holds, which are required,
+# and which are recognized only to be refused. Everything else is unknown, and an unknown
+# key is the failure this file exists for: nothing read it, so it was dropped, and the entry
+# meant something other than what it said for as long as nobody looked. A misspelt SECTION
+# name is the same failure one level up - it drops that whole list from every review.
+#
+# This is asserted on every run, before the command line is even parsed (src/cli.js), so a
+# registry that does not match its shape means the tool does not start.
+#
+# Each field carries its own `why`, which is the second half of every message raised from
+# it: a refusal says what the key would have COST, not what type it wanted, because the
+# person reading it is authoring a review rule rather than debugging a value.
+#
+# `kind` is one of:
+#   text      a string; `allow-empty` where an empty one is an authored answer
+#   one-of    a member of a closed set, named in `values` (resolved in registry-schema.js)
+#   gate      true only - absence already says false, so writing it says nothing twice
+#   list      a list of non-empty strings; `of: mapping` for a list of mappings whose own
+#             keys another rule closes; `allow-empty` as above
+#   version   a Thunderbird version bound, string or bare number
+#   refused   known, and refused: the `why` says what reading it would have meant
+#   entries   a list of mappings, each against `shape`
+#   object    a mapping whose key set is exactly its `fields`
+#   prose-map a mapping of key -> prose; `closed` refuses a key no reader looks up
+#   map-of    a mapping of key -> mapping, each against `shape`
+#
+# Belongs here: the vocabulary, and the reason each rule exists. Does NOT belong here:
+# anything that reads what the prose SAYS, anything needing more than one entry, and
+# anything about a value measured against another value - those stay in the assert*
+# functions in src/checks/registry.js, which run after this and keep their own messages.
+
+# Field groups, spread into the shapes that share them by `include`.
+groups:
+  # What every check entry shares: the id, the name, and the band.
+  identity:
+    check:
+      kind: text
+      required: true
+      why: >-
+        it is the id everything else addresses the entry by - its module, its findings, its
+        response and its severity all resolve through it
+    title:
+      kind: text
+      required: true
+      why: >-
+        it is how the entry is named wherever it is listed, and an untitled one has no name
+        for a report to print
+    severity:
+      kind: one-of
+      values: VALID_CHECK_SEVERITIES
+      required: true
+      why: >-
+        a check's impact is configuration, so an entry that omits it is a registry mistake
+        rather than a request for the strictest value. An escalate-only check declares one
+        too - it says what a finding from it would mean, should it ever gain one
+
+  # The wording an entry may author, for either reader.
+  wording:
+    response:
+      kind: text
+      why: it is the text a report prints for a case this check found
+    response-for-xpi:
+      kind: text
+      why: the wording an XPI review prints for this check
+    response-for-sca:
+      kind: text
+      why: the wording a source review prints for this check
+    instructions:
+      kind: text
+      why: the question put to either reader, agent or person
+    instructions-for-human:
+      kind: text
+      why: the question a person is asked
+    instructions-for-llm:
+      kind: text
+      why: the question an agent is asked
+    default-note:
+      kind: text
+      why: >-
+        the marker that stands in this check's list when the reviewer reported the case
+        without writing a note
+
+shapes:
+  # A check that RUNS, so it routes and it can escalate.
+  rule-entry:
+    include: [identity, wording]
+    input:
+      kind: one-of
+      values: VALID_CHECK_INPUTS
+      required: true
+      why: >-
+        every check declares which add-on artifact it reads, because routing is total -
+        there is no default artifact to fall through to. source = the review target,
+        xpi = the built XPI, sca = the submitted source archive, both = the two together
+        for a check whose subject is the submission rather than either artifact in it
+    skip-in-sca-review:
+      kind: gate
+      why: >-
+        it keeps a check that judges the shipped XPI out of a source review - the one thing
+        a route cannot say, since `input: source` names the review target without saying
+        which artifact that is
+    eslint:
+      kind: gate
+      why: >-
+        it makes the check opt-in, run only under --eslint; leaving it out runs it always
+    collapse:
+      kind: one-of
+      values: COLLAPSE_MODES
+      why: >-
+        it asks for one line per subject instead of one per finding, and a typo would
+        otherwise read as the default
+    settle-verbs:
+      kind: list
+      why: >-
+        the verbs a reviewer may settle this check's cases with, drawn from its phase's set
+    sweep-instruction:
+      kind: text
+      why: >-
+        what a reviewer is asked to sweep for where this check is blind to its own gap
+    review-early-exit:
+      kind: text
+      why: >-
+        it names the reason the report gives for stopping, and a reason with no name cannot
+        be looked up
+    escalation:
+      kind: refused
+      why: >-
+        which nothing reads - a check names its READER instead, by authoring `instructions`
+        (one text, either reader), `instructions-for-llm` beside `instructions-for-human`
+        (one question each), or `instructions-for-human` alone
+
+  # A to-do item printed in every review, not a check that runs - so it reads no artifact
+  # and lists its case unconditionally.
+  manual-entry:
+    include: [identity, wording]
+    escalation: &only-a-check-that-runs
+      kind: refused
+      why: >-
+        which only a check that RUNS can carry - a manual-checks entry lists its case
+        unconditionally and reads no artifact
+    input: *only-a-check-that-runs
+    sweep-instruction: *only-a-check-that-runs
+    settle-verbs: *only-a-check-that-runs
+    review-early-exit: *only-a-check-that-runs
+
+  # The token vocabulary that can justify a permission. The two version bounds are
+  # snake_case where every other field is kebab - deliberately, because they echo the
+  # manifest.json key they are compared against (strict_min_version).
+  prompt-entry:
+    permissions:
+      kind: text
+      required: true
+      why: >-
+        the comma-separated permissions this entry speaks for; an entry naming none is read
+        by nothing and would sit in the file doing nothing
+    tokens:
+      kind: list
+      why: >-
+        the code-level spellings that justify the permission. An entry with none is
+        deliberate and means the permission cannot be decided deterministically, so
+        unused-permission always escalates it
+    min_strict_version:
+      kind: version
+      why: the lowest Thunderbird this entry's tokens apply to, inclusive
+    max_strict_version:
+      kind: version
+      why: the highest Thunderbird this entry's tokens apply to, inclusive
+
+  # One answer a reviewer may give an escalated case.
+  choice-entry:
+    label:
+      kind: text
+      required: true
+      why: what the answer is called where it is offered
+    verdict:
+      kind: text
+      required: true
+      why: the verdict this answer settles the case with
+    description:
+      kind: text
+      required: true
+      why: what choosing it means, so the reader can choose
+
+  # What one verb is worded as, on the pass that accepts it.
+  verb-prose-entry:
+    says:
+      kind: text
+      required: true
+      why: >-
+        when this verdict applies, so an entry offering it says what to choose on
+    says-when-last-resort:
+      kind: text
+      why: >-
+        the extra wording for the verb a reader falls back to, when there is one
+
+  # One pass of the review loop: what it asks, what it accepts back, and its steps.
+  loop-phase-entry:
+    name:
+      kind: text
+      required: true
+      why: the pass's name, which the loop addresses it by
+    intro:
+      kind: text
+      required: true
+      allow-empty: true
+      why: what the pass tells its reader before its steps
+    answer:
+      kind: one-of
+      values: ANSWER_KINDS
+      required: true
+      why: >-
+        what one entry of this pass is answered WITH, which decides the shape it is handed
+        over in and what the linter accepts back
+    verbs:
+      kind: list
+      required: true
+      allow-empty: true
+      why: the verdicts this pass accepts - empty for a pass that takes none
+    steps:
+      kind: list
+      of: mapping
+      required: true
+      why: what the pass tells its reader to do, in order
+    verb-prose:
+      kind: map-of
+      shape: verb-prose-entry
+      why: what each verdict this pass accepts means, worded per verb
+
+sections:
+  deterministic-phase:
+    kind: entries
+    shape: rule-entry
+  invalid-experiment-phase:
+    kind: entries
+    shape: rule-entry
+  manual-checks:
+    kind: entries
+    shape: manual-entry
+  permission-prompts:
+    kind: entries
+    shape: prompt-entry
+  llm-manual-review-choices:
+    kind: entries
+    shape: choice-entry
+    name-key: label
+    noun: answers
+
+  # The two CLOSED prose maps: a report looks their keys up, so a key it cannot reach is
+  # prose nobody will ever read.
+  issue-headings:
+    kind: prose-map
+    required: SEVERITY_BANDS
+    closed: true
+    noun: prose
+    why: what the report says above each band's findings
+  verdict-intros:
+    kind: prose-map
+    required: VERDICT_KEYS
+    closed: true
+    noun: prose
+    why: how the report opens, per verdict
+  # Open: the linter names the notices it prints, and one it does not print yet is not a
+  # mistake to refuse.
+  messages:
+    kind: prose-map
+    required: [check-failed]
+    noun: prose
+    why: a system notice the report may print
+
+  review-early-exit:
+    kind: object
+    noun: "`review-early-exit` section"
+    fields:
+      intro:
+        kind: text
+        required: true
+        why: >-
+          what introduces the list of reasons, which would otherwise print with nothing
+          saying what it is
+      reasons:
+        kind: prose-map
+        required: []
+        must-exist: true
+        why: >-
+          what the report calls each reason a review can stop for - the ids a check names in
+          `review-early-exit`
+
+  llm-sca-review-prompt:
+    kind: object
+    noun: prompt
+    fields:
+      intro:
+        kind: text
+        required: true
+        why: what the prompt tells its reader first
+      outcome:
+        kind: list
+        of: mapping
+        required: true
+        noun: "`outcome` steps"
+        why: the steps the prompt asks for, in order
+
+  llm-phases:
+    kind: object
+    noun: loop prompts
+    fields:
+      preamble: &loop-text
+        kind: text
+        required: true
+        why: a loop text the linter fills and prints
+      frame: *loop-text
+      handover: *loop-text
+      refused: *loop-text
+      final: *loop-text
+      final-early-exit: *loop-text
+      phases:
+        kind: entries
+        shape: loop-phase-entry
+        name-key: name
+        required: true
+        why: the passes the loop runs, in order

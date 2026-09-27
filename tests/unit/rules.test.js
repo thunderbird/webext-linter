@@ -14,6 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { SECTIONS } from "../../src/checks/registry-schema.js";
 import { ERROR_CLASS } from "../../src/lib/enum.js";
 import { LinterError, sealArtifact } from "../../src/lib/errors.js";
 import syncXhr from "../../src/checks/rules/sync-xhr.js";
@@ -84,7 +85,7 @@ import {
   assertEarlyExit,
   runOneCheck,
   runChecks,
-  assertRequiredPhaseSections,
+  assertRequiredSections,
   Registry,
   modeEligible,
 } from "../../src/checks/registry.js";
@@ -150,6 +151,13 @@ function notesFrom(check, ctx) {
 // "did not parse" about a file that does not exist describes the wrong add-on. Neither case
 // is this check's verdict - manifest-missing and manifest-invalid-json report those - which
 // is why it stays a SKIPPED note and produces no finding.
+// Production asks the SHAPE first (registry-schema.js, via assertEntries) and then the
+// rules that read across entries - which check names which reason, and at what band.
+const checkEarlyExit = (registry) => {
+  assertEntries(registry, "t.yaml");
+  assertEarlyExit(registry, "t.yaml");
+};
+
 test("a manifest-reading check names WHY there is no manifest, absent vs unparsable", () => {
   const reasons = (manifest) =>
     notesFrom(addonIconMissing, { artifact: { manifest } }).map((n) => n.item);
@@ -939,10 +947,7 @@ test("a check entry with no severity is refused", () => {
   const reg = new Registry({
     "deterministic-phase": [{ title: "X", check: "sync-xhr", input: "source" }],
   });
-  assert.throws(
-    () => assertEntries(reg, "t.yaml"),
-    /missing or invalid severity/
-  );
+  assert.throws(() => assertEntries(reg, "t.yaml"), /authors no `severity`/);
 });
 
 // A check authors a `sweep-instruction` for a blind spot it cannot close by naming more
@@ -1001,7 +1006,7 @@ test("an entry that authors no check id is refused", () => {
     bad(
       (doc) =>
         doc[section].push({ title: "Blank", check: "  ", severity: "error" }),
-      /authors no `check`/
+      /missing or empty `check`/
     );
     bad((doc) => doc[section].push("nope"), /is not a mapping/);
   }
@@ -1043,11 +1048,11 @@ test("a default-note must be prose, in either list", () => {
           rule({ "instructions-for-human": "i", "default-note": note }),
         ],
       },
-      /invalid `default-note`/
+      /missing or empty `default-note`/
     );
     bad(
       { "manual-checks": [manual({ "default-note": note })] },
-      /invalid `default-note`/
+      /missing or empty `default-note`/
     );
   }
 
@@ -1070,6 +1075,176 @@ test("a default-note must be prose, in either list", () => {
       "manual-checks": [manual({ "default-note": "- ..." })],
     }),
     "t.yaml"
+  );
+});
+
+// Every vocabulary in the registry, not just the entry sections': a typo'd key inside a
+// prompt drops that one instruction, and a typo'd SECTION name drops the whole list from
+// every review. Asked of the real file, mutated, because a synthetic registry cannot show
+// that the shape describes what actually ships.
+test("the shape pass closes every vocabulary the registry has", () => {
+  const bad = (mutate, re, label) => {
+    const r = loadRegistry();
+    mutate(r.doc);
+    assert.throws(() => assertEntries(r, "t.yaml"), re, label);
+  };
+  const phase = (doc, name) =>
+    doc["llm-phases"].phases.find((p) => p.name === name);
+
+  bad(
+    (d) => (d["llm-manual-review-choices"][0].bogus = 1),
+    /authors `bogus`, which nothing reads/,
+    "a review-choice entry"
+  );
+  bad(
+    (d) => (d["llm-phases"].bogus = "x"),
+    /llm-phases authors `bogus`/,
+    "llm-phases top level"
+  );
+  bad(
+    (d) => (phase(d, "verify").bogus = 1),
+    /phases` entry 2 .* authors `bogus`/,
+    "a phase"
+  );
+  bad(
+    (d) => (phase(d, "settle")["verb-prose"].reported.bogus = 1),
+    /`verb-prose` `reported` authors `bogus`/,
+    "a verb-prose entry"
+  );
+  bad(
+    (d) => (d["llm-sca-review-prompt"].bogus = "x"),
+    /llm-sca-review-prompt authors `bogus`/,
+    "the SCA prompt"
+  );
+  bad(
+    (d) => (d["review-early-exit"].bogus = "x"),
+    /review-early-exit authors `bogus`/,
+    "the early-exit block"
+  );
+  // The near miss is named wherever the key was authored, not only in an entry section.
+  bad(
+    (d) => (d["llm-phases"].preamle = "x"),
+    /did you mean `preamble`\?/,
+    "a near miss in a prompt"
+  );
+
+  // A section nobody declared: everything in it would be ignored, so the whole list is
+  // dropped from every review and nothing else could ever notice.
+  const stray = loadRegistry();
+  stray.doc["llm-phase"] = {};
+  assert.throws(
+    () => assertEntries(stray, "t.yaml"),
+    /the section `llm-phase` is not one this review reads/
+  );
+});
+
+// What the real file proves and a synthetic one would not: an EMPTY value is an authored
+// answer in three places, so a shape that refused it would refuse the registry it
+// describes.
+test("the shape pass accepts the emptiness the registry authors", () => {
+  const ok = (mutate, label) => {
+    const r = loadRegistry();
+    mutate(r.doc);
+    assert.doesNotThrow(() => assertEntries(r, "t.yaml"), label);
+  };
+  const phase = (doc, name) =>
+    doc["llm-phases"].phases.find((p) => p.name === name);
+  // The shipped registry authors all three already; these say so out loud.
+  assert.equal(phase(loadRegistry().doc, "spawn").intro, "");
+  assert.deepEqual(phase(loadRegistry().doc, "spawn").verbs, []);
+  assert.equal(phase(loadRegistry().doc, "spawn")["verb-prose"], undefined);
+  // And a pass that words no verdict needs no verb-prose at all.
+  ok((d) => delete phase(d, "ask")["verb-prose"], "a pass with no verb-prose");
+  // `messages` is open, so a notice the report does not print yet is not a mistake.
+  ok((d) => (d.messages["some-later-notice"] = "Text."), "an extra message");
+});
+
+// The SHAPE pass (src/checks/registry-schema.js): which keys each section accepts, what
+// each holds, what it requires. The failure it exists for is the one nothing else could
+// notice - an undeclared key is dropped downstream, so the entry reads as though it never
+// asked, for as long as nobody looks.
+test("the shape pass refuses a key no section declares, and names the near miss", () => {
+  const rule = (extra) => ({
+    title: "X",
+    check: "sync-xhr",
+    severity: "error",
+    input: "source",
+    response: "r",
+    ...extra,
+  });
+  const manual = {
+    title: "Y",
+    check: "testing-information",
+    severity: "error",
+    instructions: "answer it",
+    response: "r",
+  };
+  const bad = (doc, re) =>
+    assert.throws(
+      () => assertEntries(new Registry(doc), "t.yaml"),
+      re,
+      JSON.stringify(doc)
+    );
+  const withRule = (extra) => ({
+    "deterministic-phase": [rule(extra)],
+    "manual-checks": [manual],
+  });
+
+  // Unknown, and the separator/case slips a yaml typo actually takes.
+  bad(withRule({ bogus: 1 }), /authors `bogus`, which nothing reads\./);
+  bad(
+    withRule({ skip_in_sca_review: true }),
+    /did you mean `skip-in-sca-review`\?/
+  );
+  bad(
+    withRule({ "INSTRUCTIONS-FOR-LLM": "x" }),
+    /did you mean `instructions-for-llm`\?/
+  );
+  // An edit away, not just a separator away - the typo the old code could not catch,
+  // because a missing `severity` and a misspelt one read the same to it.
+  bad(withRule({ sevrity: "error" }), /did you mean `severity`\?/);
+  // The message lists what the section does accept, so the author can see the vocabulary.
+  bad(withRule({ bogus: 1 }), /This section accepts: .*\bskip-in-sca-review\b/);
+
+  // A key valid on a check, refused on a to-do item that runs nothing.
+  bad(
+    {
+      "deterministic-phase": [rule({})],
+      "manual-checks": [{ ...manual, input: "source" }],
+    },
+    /authors `input`, which only a check that RUNS can carry/
+  );
+
+  // permission-prompts was reached by no assertion at all: an entry naming no
+  // permissions was dropped from the token vocabulary in silence.
+  bad(
+    {
+      "deterministic-phase": [rule({})],
+      "manual-checks": [manual],
+      "permission-prompts": [{ tokens: ["folder"] }],
+    },
+    /authors no `permissions`/
+  );
+  bad(
+    {
+      "deterministic-phase": [rule({})],
+      "manual-checks": [manual],
+      "permission-prompts": [{ permissions: "accountsRead", token: ["x"] }],
+    },
+    /did you mean `tokens`\?/
+  );
+  // A bare YAML number is a legitimate version bound - the loader coerces it.
+  assert.doesNotThrow(() =>
+    assertEntries(
+      new Registry({
+        "deterministic-phase": [rule({})],
+        "manual-checks": [manual],
+        "permission-prompts": [
+          { permissions: "accountsRead", min_strict_version: 154 },
+        ],
+      }),
+      "t.yaml"
+    )
   );
 });
 
@@ -1106,15 +1281,23 @@ test("a screened check says which answers its cases accept", () => {
     /authors `settle-verbs` but no wording an agent can be handed/
   );
 
-  // Shape.
-  for (const verbs of [
-    "reported",
-    [],
-    ["reported", ""],
-    ["reported", "reported"],
-  ]) {
-    bad({ instructions: "i", "settle-verbs": verbs }, /invalid `settle-verbs`/);
-  }
+  // Shape, which the schema owns - and it tells the three apart: not a list at all, none
+  // authored, or one of them blank.
+  bad(
+    { instructions: "i", "settle-verbs": "reported" },
+    /non-list `settle-verbs`/
+  );
+  bad({ instructions: "i", "settle-verbs": [] }, /authors no `settle-verbs`/);
+  bad(
+    { instructions: "i", "settle-verbs": ["reported", ""] },
+    /an empty-valued `settle-verbs`/
+  );
+  // A repeat is the one the schema cannot see - two of one verb is still a list of
+  // non-empty strings, so it takes reading the list against itself.
+  bad(
+    { instructions: "i", "settle-verbs": ["reported", "reported"] },
+    /invalid `settle-verbs`/
+  );
 
   // One answer is not a judgement.
   bad(
@@ -1150,7 +1333,7 @@ test("a sweep-instruction no finding could be filed for is refused", () => {
     assert.throws(() => assertEntries(new Registry(doc), "t.yaml"), re);
   bad(
     { "deterministic-phase": [entry({ "sweep-instruction": "  " })] },
-    /invalid `sweep-instruction`/
+    /missing or empty `sweep-instruction`/
   );
   // `auto` leaves the band to each finding and `none` says the check emits none, so
   // neither has one to stamp an addition with.
@@ -1236,7 +1419,7 @@ test("a response worded per review mode is all-or-nothing, and never beside a ba
   // An entry takes any key without complaint, so a misspelling is caught by name.
   bad(
     { "deterministic-phase": [rule({ "response-for-sac": "s" })] },
-    /authors `response-for-sac`, which nothing reads/
+    /authors `response-for-sac`, which nothing reads - did you mean `response-for-sca`\?/
   );
 
   // Prose, like every other authored text.
@@ -1247,7 +1430,7 @@ test("a response worded per review mode is all-or-nothing, and never beside a ba
           rule({ "response-for-xpi": text, "response-for-sca": "s" }),
         ],
       },
-      /invalid `response-for-xpi`/
+      /missing or empty `response-for-xpi`/
     );
   }
 
@@ -4405,33 +4588,21 @@ test("every phase of the shipped registry is declared and populated", async () =
   }
 });
 
-// The guard behind the above: a required phase section that is missing or empty in the yaml
-// (a rename, a bad edit) is a defect that would silently drop that whole phase from every
-// review. assertRequiredPhaseSections turns it into a loud abort. Tested directly, because in
-// loadRegistry it runs for the SHIPPED registry only (a partial test yaml must not trip it).
-test("assertRequiredPhaseSections rejects a missing or empty required section", () => {
-  const full = {
-    "invalid-experiment-phase": [{ check: "experiment-not-allowed" }],
-    "deterministic-phase": [{ check: "sync-xhr" }],
-    "manual-checks": [{ check: "testing-information" }],
-  };
-  // The complete set is accepted.
-  assert.doesNotThrow(() => assertRequiredPhaseSections(full, "ok.yaml"));
-  // Each one removed entirely (a rename) throws, naming the missing one - manual-checks
-  // among them: it is the only source of the Standard Manual Review questions, so an
-  // absent one reads as "this review asks nothing" rather than as a typo.
+// The guard behind the above: a section missing from the yaml (a rename, a bad edit) would
+// silently drop that whole list from every review. assertRequiredSections turns it into a
+// loud abort. Presence only - whether a section that IS there is empty or malformed is its
+// shape's answer (registry-schema.js). Tested directly, because in loadRegistry it runs for
+// the SHIPPED registry only, so a partial test yaml must not trip it.
+test("assertRequiredSections rejects a section missing from the registry", () => {
+  // Presence is all this asks, so a stub per declared section is the whole fixture.
+  const full = Object.fromEntries(Object.keys(SECTIONS).map((k) => [k, {}]));
+  assert.doesNotThrow(() => assertRequiredSections(full, "ok.yaml"));
   for (const section of Object.keys(full)) {
     const { [section]: _dropped, ...missing } = full;
     assert.throws(
-      () => assertRequiredPhaseSections(missing, "x.yaml"),
-      new RegExp(`the section "${section}" is missing or empty`),
+      () => assertRequiredSections(missing, "x.yaml"),
+      new RegExp(`the section "${section}" is missing`),
       section
-    );
-    // Present but empty throws too.
-    assert.throws(
-      () => assertRequiredPhaseSections({ ...full, [section]: [] }, "x.yaml"),
-      new RegExp(`the section "${section}" is missing or empty`),
-      `${section} (empty)`
     );
   }
 });
@@ -4458,19 +4629,19 @@ test("loadChecks accepts severity: auto", async () => {
 // (no default to silently fall through to).
 test("loadChecks rejects a check with no valid input", async () => {
   const tmp = path.join(os.tmpdir(), `bad-input-registry-${process.pid}.yaml`);
-  // Valid severity so the input check (which runs after severity) is what fires.
+  // Valid severity so the input rule is what fires, not the severity one.
   fs.writeFileSync(
     tmp,
     "deterministic-phase:\n- title: NoInput\n  severity: error\n  check: sync-xhr.js\n"
   );
   try {
-    assert.throws(() => loadRegistry(tmp), /missing a valid `input`/);
+    assert.throws(() => loadRegistry(tmp), /authors no `input`/);
     // An out-of-set value is rejected too.
     fs.writeFileSync(
       tmp,
       "deterministic-phase:\n- title: BadInput\n  severity: error\n  check: sync-xhr.js\n  input: bogus\n"
     );
-    assert.throws(() => loadRegistry(tmp), /missing a valid `input`/);
+    assert.throws(() => loadRegistry(tmp), /invalid `input` "bogus"/);
   } finally {
     fs.rmSync(tmp);
   }
@@ -4509,7 +4680,7 @@ test("loadChecks rejects an invalid severity token", async () => {
     "deterministic-phase:\n- title: Bad\n  severity: nope\n  check: sync-xhr.js\n"
   );
   try {
-    assert.throws(() => loadRegistry(tmp), /invalid severity "nope"/);
+    assert.throws(() => loadRegistry(tmp), /invalid `severity` "nope"/);
   } finally {
     fs.rmSync(tmp);
   }
@@ -4798,7 +4969,7 @@ test("a wording shape that names no reader is refused", () => {
   mutate(
     "remote-eval",
     (e) => (e.escalation = "code-review"),
-    /declares `escalation`, which nothing reads/,
+    /authors `escalation`, which nothing reads/,
     "a declared section"
   );
 
@@ -5443,7 +5614,7 @@ test("a check naming a reason the registry does not define is refused", () => {
   registry.doc["deterministic-phase"][0]["review-early-exit"] =
     "no-such-reason";
   assert.throws(
-    () => assertEarlyExit(registry, "t.yaml"),
+    () => checkEarlyExit(registry),
     /which `review-early-exit` does not define/
   );
 });
@@ -5453,32 +5624,35 @@ test("a check naming a reason the registry does not define is refused", () => {
 test("a reason no check names is refused", () => {
   const registry = loadRegistry();
   registry.doc["review-early-exit"].reasons["nobody-names-me"] = "Orphaned";
-  assert.throws(
-    () => assertEarlyExit(registry, "t.yaml"),
-    /which no check names/
-  );
+  assert.throws(() => checkEarlyExit(registry), /which no check names/);
 });
 
 test("an early exit with no intro, no reasons, or an empty one is refused", () => {
   const noIntro = loadRegistry();
   delete noIntro.doc["review-early-exit"].intro;
-  assert.throws(() => assertEarlyExit(noIntro, "t.yaml"), /authors no `intro`/);
+  assert.throws(() => checkEarlyExit(noIntro), /authors no `intro`/);
 
   const noReasons = loadRegistry();
   noReasons.doc["review-early-exit"].reasons = {};
-  assert.throws(
-    () => assertEarlyExit(noReasons, "t.yaml"),
-    /authors no `reasons`/
-  );
+  assert.throws(() => checkEarlyExit(noReasons), /authors no `reasons`/);
 
   const blank = loadRegistry();
   blank.doc["review-early-exit"].reasons["known-vulnerabilities"] = "";
-  assert.throws(() => assertEarlyExit(blank, "t.yaml"), /has no text/);
+  assert.throws(() => checkEarlyExit(blank), /is not prose/);
 
   const gone = loadRegistry();
   delete gone.doc["review-early-exit"];
+  // GONE is presence, asked once of a whole registry - the shape pass says nothing about a
+  // section nobody authored, because a partial registry is a fragment on purpose.
   assert.throws(
-    () => assertEarlyExit(gone, "t.yaml"),
+    () => assertRequiredSections(gone.doc, "t.yaml"),
+    /the section "review-early-exit" is missing/
+  );
+  // Present but not a mapping IS its shape's answer.
+  const unusable = loadRegistry();
+  unusable.doc["review-early-exit"] = [];
+  assert.throws(
+    () => checkEarlyExit(unusable),
     /authors no `review-early-exit` section/
   );
 });
@@ -5512,7 +5686,10 @@ test("a non-string early-exit reference is refused", () => {
       "  check: sync-xhr\n  review-early-exit: true\n  response: x\n"
   );
   try {
-    assert.throws(() => loadRegistry(tmp), /non-string `review-early-exit`/);
+    assert.throws(
+      () => loadRegistry(tmp),
+      /missing or empty `review-early-exit`/
+    );
   } finally {
     fs.rmSync(tmp);
   }
@@ -5535,7 +5712,7 @@ test("a check that cannot reach error on its own may not stop the review", () =>
       }
     }
     assert.throws(
-      () => assertEarlyExit(registry, "t.yaml"),
+      () => checkEarlyExit(registry),
       new RegExp(`stops the review but is severity \`${band}\``),
       `${id} (${band}) should not be allowed to stop the review`
     );
