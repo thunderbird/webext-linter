@@ -229,6 +229,37 @@ test("an unknown --report-format is refused on every path (exit 2)", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// The other flag whose value is a closed set. It reads as a boolean but arrives as a
+// string, and the derivation disables the lookup on the exact lowercase "false" alone - so
+// every near miss used to leave it ON, silently, while sending content hashes of the
+// submission to a third party. "False" is the case worth naming: the plausible mistake, not
+// a nonsense string.
+test("an unknown --cdn-lib-lookup is refused (exit 2)", () => {
+  for (const value of ["False", "no", "0", "flase", ""]) {
+    const r = run(["some.xpi", "--cdn-lib-lookup", value]);
+    assert.equal(r.code, 2, value);
+    assert.match(
+      r.stderr,
+      new RegExp(`Invalid --cdn-lib-lookup "${value}"`),
+      value
+    );
+    assert.match(r.stderr, /expected true or false/, value);
+  }
+  // The two it does take, and its absence, get past the guard - they fail later on the
+  // add-on that is not there, which is a different exit and the point of the assertion.
+  for (const args of [
+    ["some.xpi"],
+    ["some.xpi", "--cdn-lib-lookup", "true"],
+    ["some.xpi", "--cdn-lib-lookup", "false"],
+  ]) {
+    assert.doesNotMatch(
+      run(args).stderr,
+      /Invalid --cdn-lib-lookup/,
+      args.join(" ")
+    );
+  }
+});
+
 // --sca-root is the EXTRACTED source, and the guard asks one question: does the path
 // point at a folder? A packed root is the case that motivates it: the loader reads .xpi
 // archives and nothing else, so a .tar.gz reaches it as a file it cannot open - and the

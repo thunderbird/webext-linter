@@ -545,6 +545,24 @@ export async function main(argv) {
     return 2;
   }
 
+  // The other flag whose value is a closed set, asked the same way. It reads as a boolean
+  // but arrives as a string, and the derivation below disables the lookup on the exact
+  // lowercase "false" alone - so "False", "no" and "flase" would all leave it ON. The
+  // lookup sends content hashes of the submission to a third party, which is the thing a
+  // reviewer turning it off for a sensitive submission, or to work offline, asked it not to
+  // do. There is no reading of a misspelt value that is safe to guess.
+  const cdnLookup = values["cdn-lib-lookup"];
+  if (
+    cdnLookup !== undefined &&
+    cdnLookup !== "true" &&
+    cdnLookup !== "false"
+  ) {
+    process.stderr.write(
+      `Invalid --cdn-lib-lookup "${cdnLookup}" (expected true or false).\n`
+    );
+    return 2;
+  }
+
   // A flag given with no value names something and says nothing, so it is refused before
   // any branch reads one. Asked HERE, once, for every option that takes a value: what a
   // value MEANS is each reader's question - a report format is checked where the format is
@@ -917,7 +935,8 @@ function pipelineOptsFromValues(values) {
     libraryHashesCache: values["cache-hash-db-dir"] || LIBRARY_HASHES_CACHE,
     cdnLookupCache: values["cache-cdn-lookup-dir"] || CDN_LOOKUP_CACHE,
     experimentsCache: values["cache-experiments-dir"] || EXPERIMENTS_CACHE,
-    // --cdn-lib-lookup true|false (default true); only an explicit "false" disables.
+    // --cdn-lib-lookup true|false, default true. Only those two values reach here (main
+    // refuses the rest), so this is the default-when-absent expression and nothing more.
     cdnLookup: values["cdn-lib-lookup"] !== "false",
     checksOnly: splitList(values["checks-only"]),
     checksSkip: splitList(values["checks-skip"]),
