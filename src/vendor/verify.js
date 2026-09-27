@@ -65,11 +65,8 @@ import { isVendored, declaredFiles } from "./resolve.js";
 import { npmNameForLibrary } from "../lib/library-hashes.js";
 import { matchLibraryBlock } from "../lib/library-blocks.js";
 import { normalizedSha256, eolNormalize } from "../normalize/hash.js";
-import {
-  fetchWithTimeout,
-  rethrowIfNetworkGone,
-  httpError,
-} from "../util/net.js";
+import { fetchWithTimeout, httpError } from "../util/net.js";
+import { rethrowIfFatal } from "../lib/errors.js";
 import { debug } from "../util/log.js";
 import { parseJson } from "../util/json.js";
 
@@ -432,7 +429,7 @@ async function auditLockedPackages(vendor, net) {
       });
       results = Array.isArray(res?.results) ? res.results : [];
     } catch (err) {
-      rethrowIfNetworkGone(err);
+      rethrowIfFatal(err);
       return; // offline / no postJson / OSV unreachable - abandon the scan
     }
     // The endpoint answers positionally, one result per query, and says nothing
@@ -551,7 +548,7 @@ async function hydrateAdvisory(id, cache, net) {
   try {
     record = await net.fetchJson(`${VENDOR_OSV_VULN_API}${id}`);
   } catch (err) {
-    rethrowIfNetworkGone(err);
+    rethrowIfFatal(err);
   }
   cache.set(id, record);
   return record;
@@ -579,7 +576,7 @@ async function githubPopular(repo, net) {
     const n = Number(j?.stargazers_count);
     return Number.isFinite(n) ? n >= VENDOR_GITHUB_MIN_STARS : null;
   } catch (err) {
-    rethrowIfNetworkGone(err);
+    rethrowIfFatal(err);
     return null;
   }
 }
@@ -601,7 +598,7 @@ async function npmDownloads(name, net) {
     const n = Number(j?.downloads);
     return Number.isFinite(n) ? n : null;
   } catch (err) {
-    rethrowIfNetworkGone(err);
+    rethrowIfFatal(err);
     return null;
   }
 }
@@ -662,7 +659,7 @@ async function auditNpm(name, version, file, token, vendor, net, into, blocks) {
     });
     vulns = Array.isArray(res?.vulns) ? res.vulns : [];
   } catch (err) {
-    rethrowIfNetworkGone(err);
+    rethrowIfFatal(err);
     return; // offline / no postJson / OSV unreachable - skip silently
   }
   const record = vulnRecord(name, version, vulns, file, token);
@@ -863,7 +860,7 @@ async function npmHashMatches(name, version, bytes, net) {
   try {
     listing = await net.fetchJson(`https://unpkg.com/${name}@${version}/?meta`);
   } catch (err) {
-    rethrowIfNetworkGone(err);
+    rethrowIfFatal(err);
     return false;
   }
   const byHash = indexBySri(listing);
@@ -1092,7 +1089,8 @@ function inPackagePath(src, sourceUrl) {
   let segs;
   try {
     segs = new URL(sourceUrl).pathname.split("/").filter(Boolean);
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     return null;
   }
   if (segs[0] === "npm") {
@@ -1141,7 +1139,7 @@ async function resolveGroup(group, vendor, net, blocks) {
   try {
     group.state = { byPath: tarballFileHashes(await net.fetchBytes(url)) };
   } catch (err) {
-    rethrowIfNetworkGone(err);
+    rethrowIfFatal(err);
     // The package could not be had - absent, too large, or not a tarball. Each entry
     // then verifies against its own URL, which is what it would have done anyway, so
     // a failed grouping costs the old number of requests and nothing else.
@@ -1193,7 +1191,7 @@ async function verifyUrl(entry, addon, vendor, net) {
   try {
     fetched = await net.fetchBytes(src.rawUrl);
   } catch (err) {
-    rethrowIfNetworkGone(err);
+    rethrowIfFatal(err);
     return "unfetchable";
   }
   if (!eolEqual(mine, fetched)) {
@@ -1222,7 +1220,7 @@ async function verifyTarball(entry, addon, vendor, net) {
   try {
     hashes = tarballHashes(await net.fetchBytes(src.rawUrl));
   } catch (err) {
-    rethrowIfNetworkGone(err);
+    rethrowIfFatal(err);
     return "unfetchable";
   }
   if (!hashes.has(normalizedSha256(mine))) {
@@ -1286,7 +1284,7 @@ async function verifyFolder(entry, addon, vendor, net) {
   try {
     hashes = await folderHashes(src, net);
   } catch (err) {
-    rethrowIfNetworkGone(err);
+    rethrowIfFatal(err);
     // One row per covered file, like the success path below - a row naming the
     // DIRECTORY would reach markUntrusted, which cannot withdraw an exemption from
     // a path that is not a packaged file (see declaredFiles).
@@ -1339,7 +1337,7 @@ async function verifyFolder(entry, addon, vendor, net) {
  * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
  * @returns {Promise<boolean>}  Whether any packaged file is this release's. A listing
  *   that cannot be read answers no: a 404 says there is no such published release, and a
- *   route that is actually gone never gets this far (rethrowIfNetworkGone -> exit 2).
+ *   route that is actually gone never gets this far (rethrowIfFatal -> exit 2).
  */
 async function verifyPackage(pkg, addon, vendor, net) {
   const base = `https://unpkg.com/${pkg.name}@${pkg.version}`;
@@ -1347,7 +1345,7 @@ async function verifyPackage(pkg, addon, vendor, net) {
   try {
     listing = await net.fetchJson(`${base}/?meta`);
   } catch (err) {
-    rethrowIfNetworkGone(err);
+    rethrowIfFatal(err);
     return false; // no listing, so nothing is shown to have come from it
   }
   const byHash = indexBySri(listing);

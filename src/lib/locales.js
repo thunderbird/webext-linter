@@ -17,6 +17,7 @@
 // assets/registry.yaml).
 
 import { parseJson } from "../util/json.js";
+import { rethrowIfFatal } from "./errors.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {{locale: string|null, name: string}} LocalizedName */
@@ -127,7 +128,8 @@ function scanNames(ctx) {
       // BOM-prefixed file states a name it DISPLAYS. Parsing it strictly would
       // turn a common packaging accident into a name no check ever sees.
       json = parseJson(buf);
-    } catch {
+    } catch (err) {
+      rethrowIfFatal(err);
       unreadable.push(locale);
       continue;
     }

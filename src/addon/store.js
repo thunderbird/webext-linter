@@ -40,6 +40,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { rethrowIfFatal } from "../lib/errors.js";
 
 /**
  * Posix paths into the SUBMISSION, and no bytes: what a load RECORDED without reading (a
@@ -101,7 +102,8 @@ export class FileStore {
       let buf;
       try {
         buf = fs.readFileSync(full);
-      } catch {
+      } catch (err) {
+        rethrowIfFatal(err);
         buf = Buffer.alloc(0);
       }
       this.#cache.set(key, buf);

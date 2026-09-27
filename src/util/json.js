@@ -16,6 +16,8 @@
 // a lock's are src/vendor/locks.js, a check's comparison is that check - and user-facing
 // JSON report output, which is src/report/*.
 
+import { rethrowIfFatal } from "../lib/errors.js";
+
 /**
  * Recursively sort object keys (array order is preserved). The result
  * serializes byte-identically for deeply-equal inputs.
@@ -63,7 +65,8 @@ export function parseJson(input) {
   }
   try {
     return JSON.parse(stripBom(text));
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     return null;
   }
 }

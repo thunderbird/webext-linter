@@ -38,6 +38,7 @@
 // vendor verification pre-step + the vendor checks. This file makes no verdict.
 
 import { basename, dirname } from "../util/files.js";
+import { rethrowIfFatal } from "../lib/errors.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /** @typedef {{path: string, sourceUrl: ?string, kind?: string}} VendorEntry */
@@ -143,7 +144,8 @@ function pointsToFile(url) {
   let u;
   try {
     u = new URL(url);
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     return false;
   }
   const segs = u.pathname.split("/").filter(Boolean);
@@ -174,7 +176,8 @@ function isDirSource(url) {
   let u;
   try {
     u = new URL(url);
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     return false;
   }
   const host = u.hostname.toLowerCase();

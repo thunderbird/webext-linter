@@ -40,6 +40,7 @@ import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
 import { extractionDestination } from "../util/dest.js";
 import { FileStore, fileView } from "./store.js";
 import { SYMLINK_CAUSE } from "../lib/enum.js";
+import { rethrowIfFatal } from "../lib/errors.js";
 
 /**
  * @typedef {object} GeckoSettings
@@ -491,7 +492,8 @@ function extractZip(zipPath, destDir, recordInstalledTrees) {
   let zip;
   try {
     zip = new AdmZip(zipPath);
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     // The container itself: truncated, or not a zip at all.
     throw unreadableArchiveError(zipPath);
   }
@@ -546,7 +548,8 @@ function extractZip(zipPath, destDir, recordInstalledTrees) {
       let data;
       try {
         data = entry.getData();
-      } catch {
+      } catch (err) {
+        rethrowIfFatal(err);
         // The container opened and the name was fine, but this entry does not inflate: a
         // failed CRC, a damaged stream. The bytes are part of the submission, so a review
         // without them is not a review of it.
@@ -690,7 +693,8 @@ function linkCause(full, rootReal) {
   let target;
   try {
     target = fs.realpathSync(full);
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     return SYMLINK_CAUSE.BROKEN;
   }
   return relativeInside(target, rootReal) === null

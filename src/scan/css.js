@@ -16,6 +16,7 @@ import postcss from "postcss";
 import valueParser from "postcss-value-parser";
 import { classifyUrl } from "./url.js";
 import { REF_KIND } from "../lib/enum.js";
+import { rethrowIfFatal } from "../lib/errors.js";
 
 /**
  * @typedef {object} CssRef
@@ -34,7 +35,8 @@ export function scanCssRemoteRefs(css) {
   let root;
   try {
     root = postcss.parse(css);
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     return refs; // tolerate malformed CSS rather than throwing
   }
 

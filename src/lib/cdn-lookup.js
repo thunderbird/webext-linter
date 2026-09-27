@@ -47,7 +47,7 @@ import { debug } from "../util/log.js";
 import { writeFileAtomic } from "../util/atomic.js";
 import { rawSha256 } from "../normalize/hash.js";
 import { defaultNet, isPopular } from "../vendor/verify.js";
-import { rethrowIfNetworkGone } from "../util/net.js";
+import { rethrowIfFatal } from "./errors.js";
 import { markUntrusted, MIN_CLASSIFY_BYTES } from "./bundled.js";
 import { parseJson } from "../util/json.js";
 
@@ -302,7 +302,7 @@ async function lookupHash(net, hash) {
     debug(`CDN lookup unexpected response for ${hash}`);
     return { state: "miss" };
   } catch (err) {
-    rethrowIfNetworkGone(err);
+    rethrowIfFatal(err);
     const miss = /\b404\b/.test(err.message);
     debug(`CDN lookup ${miss ? "miss" : "error"} for ${hash}: ${err.message}`);
     return { state: miss ? "miss" : "error" };
@@ -322,7 +322,8 @@ function cacheFile(cacheDir) {
 function loadCache(cacheDir) {
   try {
     return parseJson(fs.readFileSync(cacheFile(cacheDir), "utf8"));
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     return {};
   }
 }

@@ -28,6 +28,7 @@ import { manifestTokenLine } from "../lib/util.js";
 import { experimentGroups } from "../lib/experiments.js";
 import { resolveExperimentsZip } from "./fetch.js";
 import { normalizedSha256 } from "../normalize/hash.js";
+import { rethrowIfFatal } from "../lib/errors.js";
 
 // The EOL-tolerant content hash lives in a shared module (the vendor tarball matcher
 // reuses it); re-exported so this module's existing importers keep working.
@@ -88,7 +89,8 @@ function collectNamespaces(buf, set) {
   let data;
   try {
     data = JSON5.parse(stripBom(buf.toString("utf8")));
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     return;
   }
   if (!Array.isArray(data)) {

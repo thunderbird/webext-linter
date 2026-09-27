@@ -58,6 +58,7 @@ import {
 import { setColor, red } from "./util/color.js";
 import { wrapText } from "./util/text.js";
 import { parseJson } from "./util/json.js";
+import { rethrowIfFatal } from "./lib/errors.js";
 
 /** @typedef {import("./pipeline.js").PipelineOpts} PipelineOpts */
 
@@ -402,7 +403,8 @@ function listOf(items) {
 function pointsAtFolder(p) {
   try {
     return fs.statSync(path.resolve(p)).isDirectory();
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     return false;
   }
 }

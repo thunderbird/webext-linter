@@ -46,15 +46,18 @@ import {
   NETWORK_ANNOUNCE_WAIT_MS,
   NETWORK_MAX_WAIT_MS,
 } from "../config.js";
+import { ERROR_CLASS } from "../lib/enum.js";
+import { LinterError, rethrowIfFatal } from "../lib/errors.js";
 import { debug, progress } from "./log.js";
 import { displayLine } from "./text.js";
 
 /**
  * Thrown when the network itself is gone, as opposed to one load failing. Its own
  * type so main() can word the exit for it and no caller mistakes it for a fetch
- * error it should carry on from.
+ * error it should carry on from, and a LinterError so every swallowing catch
+ * re-throws it through rethrowIfFatal without naming this class.
  */
-export class NetworkGoneError extends Error {
+export class NetworkGoneError extends LinterError {
   /**
    * @param {string} url  The request that revealed it.
    * @param {boolean} viaControl  Whether the control point was probed and failed
@@ -62,29 +65,12 @@ export class NetworkGoneError extends Error {
    */
   constructor(url, viaControl) {
     super(
+      ERROR_CLASS.NETWORK_GONE,
       viaControl
         ? `no network: ${url} could not be reached, and neither could the host this review had already reached. A review cannot run without network access.`
         : `no network: ${url} could not be reached. A review cannot run without network access.`
     );
     this.name = "NetworkGoneError";
-  }
-}
-
-/**
- * Re-throw when the network itself is gone, and return otherwise. Called at the top of
- * every catch that swallows a fetch failure into a benign value ("not popular", "no CDN
- * match", "unfetchable"): those fallbacks are right for ONE load failing and wrong for a
- * dead route, where they would silently reclassify a popular library as the developer's
- * own code. The distinction is not the caller's to make - assertNetwork already made it
- * with a control-point probe - so each swallow site only has to not eat the answer.
- *
- * A 404 or a timeout is NOT this: something answered, and the benign fallback stands.
- * @param {unknown} err  The caught error.
- * @returns {void}
- */
-export function rethrowIfNetworkGone(err) {
-  if (err instanceof NetworkGoneError) {
-    throw err;
   }
 }
 
@@ -180,7 +166,8 @@ function delay(ms) {
 function meteredHost(url) {
   try {
     return new URL(url).hostname.toLowerCase();
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     return String(url);
   }
 }
@@ -284,7 +271,7 @@ function refusedToAnswer(err) {
  * EVERY request in the tool comes through here, which is the point: the gate is not
  * something a caller opts into, so no endpoint can be added later that forgets it.
  *
- * `rethrowIfNetworkGone` runs first on every failure, so a dead route still stops the
+ * `rethrowIfFatal` runs first on every failure, so a dead route still stops the
  * review promptly - we retry a refusal, not an absence of network. Anything that is not
  * a refusal is re-thrown untouched on the first try, leaving each caller's existing
  * fallback to mean exactly what it always meant.
@@ -323,7 +310,7 @@ export async function fetchWithTimeout(
     try {
       return await issue(url, consume, timeoutMs, init);
     } catch (err) {
-      rethrowIfNetworkGone(err);
+      rethrowIfFatal(err);
       if (obeyed || !refusedToAnswer(err)) {
         throw err;
       }

@@ -14,6 +14,7 @@ import { VERDICT } from "../../lib/enum.js";
 import Ajv from "ajv";
 import { finding } from "../../report/finding.js";
 import { buildManifestJsonSchema } from "../../schema/json-schema.js";
+import { rethrowIfFatal } from "../../lib/errors.js";
 
 // Keywords whose violations are concrete and low-noise. anyOf/oneOf/required/
 // additionalProperties errors are deliberately ignored (cascade noise / not
@@ -45,7 +46,8 @@ export default {
       if (validate(ctx.manifest.json)) {
         return { findings: [] };
       }
-    } catch {
+    } catch (err) {
+      rethrowIfFatal(err);
       return { findings: [] };
     }
 

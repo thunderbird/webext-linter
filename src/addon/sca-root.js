@@ -31,6 +31,7 @@ import path from "node:path";
 import { relativeInside } from "./load.js";
 import { PACKAGE_FILE } from "../vendor/package-file.js";
 import { TREE_LOCKS } from "../vendor/locks.js";
+import { rethrowIfFatal } from "../lib/errors.js";
 
 /**
  * Whether `dir` holds a package file at its top level.
@@ -65,7 +66,8 @@ function subfolders(dir) {
   let entries;
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     // Unreadable is not this function's error to raise: the run already validated the folder
     // (src/cli.js folderProblem), and the loader is about to read it and say so properly.
     return [];

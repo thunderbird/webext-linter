@@ -93,6 +93,7 @@ import { experimentApiNamespaces } from "./lib/experiments.js";
 import { verifyExperiments } from "./experiments/verify.js";
 import { debug, progress, report, warn, FEED } from "./util/log.js";
 import { DEFAULT_CACHE } from "./config.js";
+import { rethrowIfFatal } from "./lib/errors.js";
 
 /** @typedef {import("./report/finding.js").Finding} Finding */
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
@@ -576,11 +577,16 @@ export async function runPipeline(opts) {
     // runs on its review target - resolveVendor -> verifyVendor -> classifyReview ->
     // identifyBundledLibraries -> audit -> extractReview - so siblings.xpi is built ONE way
     // regardless of which mode this review turns out to be. The vendor-aware classification
-    // it produces (xpiAddon.bundled) is exactly what the XPI-only advice reads: verifyVendor
-    // DISCOVERS vendored files that classifyReview then marks non-authored, so a minified
-    // vendored library is not miscounted as unreviewable first-party code. In a native XPI
-    // review the XPI IS the review target, so this is that review's own analysis, and
-    // `xpi-sources` hands those parsed sources on rather than parsing again.
+    // it produces (xpiAddon.bundled) is what keeps a vendored library from being read as
+    // the developer's code: verifyVendor DISCOVERS vendored files, and classifyReview marks
+    // them non-authored AND leaves them out of `classified` altogether - so a minified
+    // vendored library is counted as unreviewable first-party code by neither unused-files
+    // nor the question behind the XPI-only advice (hasUnreviewableCode). What that advice
+    // does not take from this is an exemption by DECLARATION: resolveXpiOnlyAdvice builds
+    // its own exempt set from content-hash library matches alone, so a declaration cannot
+    // buy it. In a native XPI review the XPI IS the review target, so this is that review's
+    // own analysis, and `xpi-sources` hands those parsed sources on rather than parsing
+    // again.
     "vendor-xpi": async () => {
       xpiAddon.vendor = resolveVendor({ addon: xpiAddon });
       await verifyVendor(xpiAddon, opts.vendorNet, libraryBlocks);
@@ -1266,7 +1272,8 @@ export function peekBranchMajor(cacheDir, branch) {
         peekApplicationVersion(cachedZipPath(cacheDir, branch))
       )?.[0] ?? null
     );
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     return null;
   }
 }
@@ -1426,7 +1433,8 @@ function schemaCacheAgeDays(cacheDir, candidates) {
   const times = candidates.map((c) => {
     try {
       return fs.statSync(cachedZipPath(cacheDir, c.branch)).mtimeMs;
-    } catch {
+    } catch (err) {
+      rethrowIfFatal(err);
       return null;
     }
   });

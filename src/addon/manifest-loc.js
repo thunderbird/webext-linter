@@ -12,6 +12,7 @@
 // (manifestTokenLine).
 
 import { parseTree, findNodeAtLocation } from "jsonc-parser";
+import { rethrowIfFatal } from "../lib/errors.js";
 
 /**
  * @typedef {object} ManifestLoc
@@ -30,7 +31,8 @@ export function buildManifestLoc(text) {
   let tree = null;
   try {
     tree = parseTree(text, [], { allowTrailingComma: true });
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     tree = null;
   }
   // 1-based line for any offset, via the sorted offsets of each line start.

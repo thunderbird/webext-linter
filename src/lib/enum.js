@@ -1,7 +1,7 @@
 // The home for the codebase's guarded enums. `guarded` is the single home for the
 // "guarded singleton" policy; `makeEnum` builds a whole enum from it; each enum the
 // review needs is declared and exported here (VERDICT, URL_CLASS, OVERTNESS, REF_KIND,
-// SYMLINK_CAUSE, REVIEW_MODE).
+// SYMLINK_CAUSE, REVIEW_MODE, ERROR_CLASS).
 //
 // Belongs here: the guard primitive, the enum factory, and the enums themselves.
 // Does NOT belong here: how an enum value is decided (the detectors and checks), how
@@ -172,3 +172,18 @@ export const SYMLINK_CAUSE = makeEnum(
  * @type {{SCA: ReviewMode, XPI: ReviewMode}}
  */
 export const REVIEW_MODE = makeEnum(["sca", "xpi"], "review_mode");
+
+/** @typedef {{network_gone: boolean, wiring: boolean}} ErrorClass  An opaque guarded
+ *   singleton; only its two LOWERCASE booleans are readable (any other access throws).
+ *   Compare by reference (c === ERROR_CLASS.WIRING) or boolean (c.wiring). */
+
+/**
+ * Why the review cannot continue, carried by a LinterError (src/lib/errors.js) so each
+ * catch can tell a local failure it may swallow from one it must re-throw:
+ * NETWORK_GONE (the route to the internet is down, not one load failing) or WIRING (a
+ * check reached for data that was never generated for the artifact it was routed to).
+ * Both are fatal today; the class is what a catch reads to decide, and what the exit
+ * names.
+ * @type {{NETWORK_GONE: ErrorClass, WIRING: ErrorClass}}
+ */
+export const ERROR_CLASS = makeEnum(["network_gone", "wiring"], "error_class");

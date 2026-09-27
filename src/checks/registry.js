@@ -46,6 +46,7 @@ import { progress, debug, FEED } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
 import { manualEscalations } from "./escalation.js";
 import { VERDICT } from "../lib/enum.js";
+import { rethrowIfFatal, wiringError } from "../lib/errors.js";
 import { verdictLabel } from "../report/verdict-label.js";
 import { collapseUnusedFolders } from "../lib/unused-folders.js";
 
@@ -2246,69 +2247,22 @@ export async function runOneCheck(ctx, check, label) {
   progress(`${label} ${check.id}`, FEED.STEP);
   const findings = [];
   const manualItems = [];
+  let result;
+  // The try wraps the CHECK'S OWN BODY and nothing else. A rule can crash on input
+  // nobody anticipated, and the rest of the review should still run - that is what
+  // check-failed is for. Everything below the catch is the linter keeping its own
+  // contracts (the return shape, the declared severity), and a break there is not a
+  // check crashing: it is this file being wrong, so it throws past here to exit 2
+  // rather than being laundered into a finding that looks like a review result.
   try {
-    // ONE return shape: { findings, escalations? }. A bare array is refused rather
-    // than read as findings, because that shorthand made the two lanes look optional:
-    // a rule that grew an escalation path and kept returning its findings array lost
-    // every escalation silently, with nothing to catch it - `expect` cannot assert an
-    // escalation, so only a golden covering that fixture would have noticed.
-    const result = await check.run(ctx, check);
-    if (
-      Array.isArray(result) ||
-      (result != null && typeof result !== "object")
-    ) {
-      throw new Error(
-        `${check.id} returned ${Array.isArray(result) ? "an array" : typeof result} - ` +
-          "a check returns { findings, escalations }"
-      );
-    }
-    const produced = [...(result?.findings ?? [])];
-    const escalations = result?.escalations ?? [];
-    if (escalations.length) {
-      // Cases a person must inspect, straight to manual review.
-      manualItems.push(...manualEscalations(check, escalations).manualItems);
-    }
-    if (check.severity === NO_SEVERITY && produced.length) {
-      // The entry says this check emits no findings, so there is no band to stamp. A
-      // finding here would otherwise be published at an invented severity - the exact
-      // silent auto-reject the declaration exists to prevent. Fail loudly instead.
-      throw new Error(
-        `${check.id} is severity:none but emitted ${produced.length} finding(s) - ` +
-          "give the entry a concrete severity, or return only escalations"
-      );
-    }
-    const auto = check.severity === AUTO_SEVERITY;
-    // Provisional: hold is what this check knows on its own. resolveHolds settles it
-    // against the rest of the review once every check has run.
-    const stamp =
-      check.severity === HOLD_OR_ERROR ? SEVERITY.HOLD : check.severity;
-    for (const f of produced) {
-      f.ruleId = check.id;
-      if (!auto) {
-        // Fixed severity: the entry is the sole authority. Whatever the check
-        // may have set on f.severity is ignored (overwritten) here.
-        f.severity = stamp;
-      } else if (!isConcreteSeverity(f.severity)) {
-        // The severity:auto case - the check owns each finding's severity, but
-        // it must produce a concrete one. A missing/invalid value is a check
-        // bug. Fail safe to error (the report consumers all assume a concrete
-        // severity).
-        debug(
-          `[registry] ${check.id} is severity:auto but emitted ${JSON.stringify(
-            f.severity
-          )} - defaulting to error`
-        );
-        f.severity = SEVERITY.ERROR;
-      }
-      // The other of the two moments a band is handed out (bandUnder). HERE rather than on
-      // the stamp above, because that is the only point both branches have reached their
-      // final value: a `severity: auto` check owns each finding's band - a moderate advisory
-      // is a warning of the check's own making (src/lib/vuln-findings.js) - and the entry
-      // says nothing about it.
-      f.severity = bandUnder(f.severity, check.warningsAsErrors);
-      findings.push(f);
-    }
-  } catch {
+    result = await check.run(ctx, check);
+  } catch (err) {
+    // Not ours to swallow: a dead network route or a check reading data that was
+    // never generated for its artifact invalidates the review, not just this check.
+    rethrowIfFatal(err);
+    // The message, at least once: without it a crashed check is an anonymous
+    // check-failed finding and cannot be diagnosed at all, even with --debug.
+    debug(`[registry] ${check.id} threw: ${err?.stack ?? err?.message ?? err}`);
     findings.push(
       finding({
         ruleId: "check-failed",
@@ -2316,6 +2270,64 @@ export async function runOneCheck(ctx, check, label) {
         item: check.id,
       })
     );
+    return { findings, manualItems };
+  }
+  // ONE return shape: { findings, escalations? }. A bare array is refused rather
+  // than read as findings, because that shorthand made the two lanes look optional:
+  // a rule that grew an escalation path and kept returning its findings array lost
+  // every escalation silently, with nothing to catch it - `expect` cannot assert an
+  // escalation, so only a golden covering that fixture would have noticed.
+  if (Array.isArray(result) || (result != null && typeof result !== "object")) {
+    throw wiringError(
+      `${check.id} returned ${Array.isArray(result) ? "an array" : typeof result} - ` +
+        "a check returns { findings, escalations }"
+    );
+  }
+  const produced = [...(result?.findings ?? [])];
+  const escalations = result?.escalations ?? [];
+  if (escalations.length) {
+    // Cases a person must inspect, straight to manual review.
+    manualItems.push(...manualEscalations(check, escalations).manualItems);
+  }
+  if (check.severity === NO_SEVERITY && produced.length) {
+    // The entry says this check emits no findings, so there is no band to stamp. A
+    // finding here would otherwise be published at an invented severity - the exact
+    // silent auto-reject the declaration exists to prevent. Fail loudly instead.
+    throw wiringError(
+      `${check.id} is severity:none but emitted ${produced.length} finding(s) - ` +
+        "give the entry a concrete severity, or return only escalations"
+    );
+  }
+  const auto = check.severity === AUTO_SEVERITY;
+  // Provisional: hold is what this check knows on its own. resolveHolds settles it
+  // against the rest of the review once every check has run.
+  const stamp =
+    check.severity === HOLD_OR_ERROR ? SEVERITY.HOLD : check.severity;
+  for (const f of produced) {
+    f.ruleId = check.id;
+    if (!auto) {
+      // Fixed severity: the entry is the sole authority. Whatever the check
+      // may have set on f.severity is ignored (overwritten) here.
+      f.severity = stamp;
+    } else if (!isConcreteSeverity(f.severity)) {
+      // The severity:auto case - the check owns each finding's severity, but
+      // it must produce a concrete one. A missing/invalid value is a check
+      // bug. Fail safe to error (the report consumers all assume a concrete
+      // severity).
+      debug(
+        `[registry] ${check.id} is severity:auto but emitted ${JSON.stringify(
+          f.severity
+        )} - defaulting to error`
+      );
+      f.severity = SEVERITY.ERROR;
+    }
+    // The other of the two moments a band is handed out (bandUnder). HERE rather than on
+    // the stamp above, because that is the only point both branches have reached their
+    // final value: a `severity: auto` check owns each finding's band - a moderate advisory
+    // is a warning of the check's own making (src/lib/vuln-findings.js) - and the entry
+    // says nothing about it.
+    f.severity = bandUnder(f.severity, check.warningsAsErrors);
+    findings.push(f);
   }
   return { findings, manualItems };
 }

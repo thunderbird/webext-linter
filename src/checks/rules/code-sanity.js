@@ -21,6 +21,7 @@ import { VERDICT } from "../../lib/enum.js";
 import { Linter } from "eslint";
 import { finding } from "../../report/finding.js";
 import { nonAuthoredJs } from "../../lib/bundled.js";
+import { rethrowIfFatal } from "../../lib/errors.js";
 
 const linter = new Linter({ configType: "flat" });
 
@@ -139,7 +140,8 @@ function lint(code, filename, rules) {
       messages = linter.verify(code, configFor(sourceType, rules), {
         filename,
       });
-    } catch {
+    } catch (err) {
+      rethrowIfFatal(err);
       return [];
     }
     if (!messages.some((m) => m.fatal)) {

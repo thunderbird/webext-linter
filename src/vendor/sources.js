@@ -12,6 +12,7 @@
 // the finding/manual routing (-> the check).
 
 import { VENDOR_TRUSTED_HOSTS } from "../config.js";
+import { rethrowIfFatal } from "../lib/errors.js";
 
 /**
  * @typedef {object} VendorSource
@@ -143,7 +144,8 @@ export function classifySource(url) {
   let u;
   try {
     u = new URL(String(url));
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     return UNTRUSTED;
   }
   if (u.protocol !== "https:") {

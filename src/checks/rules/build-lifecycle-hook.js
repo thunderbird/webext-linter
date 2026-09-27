@@ -17,6 +17,7 @@
 import { VERDICT } from "../../lib/enum.js";
 import { manifestTokenLine } from "../../lib/util.js";
 import { parseJson } from "../../util/json.js";
+import { rethrowIfFatal } from "../../lib/errors.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -47,7 +48,8 @@ export default {
     let scripts;
     try {
       scripts = parseJson(text)?.scripts;
-    } catch {
+    } catch (err) {
+      rethrowIfFatal(err);
       return none;
     }
     if (!scripts || typeof scripts !== "object") {

@@ -39,6 +39,7 @@ import {
   resolveLocalPackageFiles,
   PACKAGE_FILE,
 } from "./package-file.js";
+import { rethrowIfFatal } from "../lib/errors.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /**
@@ -156,7 +157,8 @@ function parsedLock(addon, file) {
       const clean = stripBom(text);
       data = file.endsWith(".json") ? parseJson(clean) : YAML.parse(clean);
     }
-  } catch {
+  } catch (err) {
+    rethrowIfFatal(err);
     data = null;
   }
   byFile.set(file, data);

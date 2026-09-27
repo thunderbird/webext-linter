@@ -14,6 +14,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { ERROR_CLASS } from "../../src/lib/enum.js";
+import { LinterError } from "../../src/lib/errors.js";
 import syncXhr from "../../src/checks/rules/sync-xhr.js";
 import debuggerStatement from "../../src/checks/rules/debugger-statement.js";
 import asyncOnMessage from "../../src/checks/rules/async-onmessage.js";
@@ -4520,27 +4522,84 @@ test("--warnings-as-errors moves the suggested verdict with it", () => {
 // that grew an escalation path and kept returning its findings array dropped every
 // escalation with nothing to catch it (`expect` cannot assert an escalation).
 test("a check that returns a bare array is refused, not read as findings", async () => {
-  const arr = await runOneCheck(
-    {},
-    { id: "arr", severity: "warning", run: () => [finding({ item: "x" })] },
-    "[1/1]"
+  // A broken return shape is the LINTER being wrong, not a check crashing on input
+  // nobody anticipated: it throws a WIRING LinterError past runOneCheck and out to
+  // exit 2, rather than becoming a check-failed finding that reads like a result.
+  await assert.rejects(
+    () =>
+      runOneCheck(
+        {},
+        { id: "arr", severity: "warning", run: () => [finding({ item: "x" })] },
+        "[1/1]"
+      ),
+    (err) => {
+      assert.ok(err instanceof LinterError);
+      assert.equal(err.class, ERROR_CLASS.WIRING);
+      assert.match(err.message, /arr returned an array/);
+      return true;
+    }
   );
-  assert.equal(arr.findings.length, 1);
-  assert.equal(arr.findings[0].ruleId, "check-failed"); // not published as "arr"
-  assert.equal(arr.findings[0].item, "arr");
   // A non-object primitive is refused the same way; an absent return is fine.
-  const prim = await runOneCheck(
-    {},
-    { id: "prim", severity: "warning", run: () => 42 },
-    "[1/1]"
+  await assert.rejects(
+    () =>
+      runOneCheck(
+        {},
+        { id: "prim", severity: "warning", run: () => 42 },
+        "[1/1]"
+      ),
+    LinterError
   );
-  assert.equal(prim.findings[0].ruleId, "check-failed");
   const none = await runOneCheck(
     {},
     { id: "none", severity: "warning", run: () => undefined },
     "[1/1]"
   );
   assert.deepEqual(none.findings, []);
+});
+
+// The two lanes out of a check body, kept apart: a rule that crashes is contained so the
+// rest of the review still runs, and a fatal error is not containable at all.
+test("runOneCheck contains a crashing check but not a fatal error", async () => {
+  const crashed = await runOneCheck(
+    {},
+    {
+      id: "boom",
+      severity: "warning",
+      run: () => {
+        throw new TypeError("x is not a function");
+      },
+    },
+    "[1/1]"
+  );
+  assert.equal(crashed.findings.length, 1);
+  assert.equal(crashed.findings[0].ruleId, "check-failed");
+  assert.equal(crashed.findings[0].item, "boom");
+
+  // A classed error means the review itself cannot be trusted to continue - a dead
+  // network route, or a check reading data never generated for its artifact - so the
+  // swallow does not apply to it.
+  await assert.rejects(
+    () =>
+      runOneCheck(
+        {},
+        {
+          id: "fatal",
+          severity: "warning",
+          run: () => {
+            throw new LinterError(
+              ERROR_CLASS.WIRING,
+              "reached the wrong artifact"
+            );
+          },
+        },
+        "[1/1]"
+      ),
+    (err) => {
+      assert.ok(err instanceof LinterError);
+      assert.equal(err.class, ERROR_CLASS.WIRING);
+      return true;
+    }
+  );
 });
 
 // severity:none says the check emits no findings, so there is no band to stamp. A finding
@@ -4601,15 +4660,22 @@ test("a wording shape that names no reader is refused", () => {
 test("severity:none refuses a finding, and accepts every empty shape", async () => {
   const escalating = (run) => ({ id: "esc", severity: "none", run });
 
-  const bad = await runOneCheck(
-    {},
-    escalating(() => ({ findings: [finding({ item: "x" })] })),
-    "[1/1]"
+  // Publishing a finding at an invented severity is the silent auto-reject the
+  // declaration exists to prevent, so it throws rather than being turned into one.
+  await assert.rejects(
+    () =>
+      runOneCheck(
+        {},
+        escalating(() => ({ findings: [finding({ item: "x" })] })),
+        "[1/1]"
+      ),
+    (err) => {
+      assert.ok(err instanceof LinterError);
+      assert.equal(err.class, ERROR_CLASS.WIRING);
+      assert.match(err.message, /esc is severity:none but emitted 1 finding/);
+      return true;
+    }
   );
-  assert.equal(bad.findings.length, 1);
-  assert.equal(bad.findings[0].ruleId, "check-failed"); // not published as "esc"
-  assert.equal(bad.findings[0].item, "esc");
-  assert.equal(bad.findings[0].severity, "error");
 
   for (const empty of [undefined, {}, { findings: [] }]) {
     const out = await runOneCheck(
