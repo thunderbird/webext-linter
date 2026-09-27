@@ -210,6 +210,10 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   the manifest.json record and the experiment classification are asked of the built XPI
  *   once and shared, as ctx.manifest / ctx.experiments below, so a check cannot pair one
  *   artifact's manifest.json with another's files.
+ *   Sealed before any check runs (src/lib/errors.js sealArtifact), so reading a field this
+ *   artifact never produced throws a WIRING LinterError and the run exits 2 instead of the
+ *   check finding nothing. Read its fields directly: `ctx.artifact?.x` guards against a
+ *   routing bug, which must fail, not read as an empty review.
  * @property {object} cache  What this review DERIVES from that artifact, memoized per ctx and
  *   computed once on first ask: the locale scan, the eval scan, the outbound sinks, the
  *   permission analysis, the api resolution, the remote refs, and a bundled classification

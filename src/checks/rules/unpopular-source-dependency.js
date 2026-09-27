@@ -34,7 +34,7 @@ export default {
    */
   run(ctx) {
     const { artifact } = ctx;
-    const deps = artifact?.vendor?.unpopularDeps ?? [];
+    const deps = artifact.vendor.unpopularDeps ?? [];
     const findings = [];
     for (const { name, version, file, token } of deps) {
       const text = anchorText(artifact, file);

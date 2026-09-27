@@ -63,3 +63,50 @@ export function rethrowIfFatal(err) {
 export function wiringError(message) {
   return new LinterError(ERROR_CLASS.WIRING, message);
 }
+
+/**
+ * What each artifact-conditional field is produced BY, for the message a wrongly-routed
+ * check gets. These are the fields only some artifacts carry: the built XPI has no build
+ * to trace, and an artifact whose vendor declarations were never read has no `vendor`.
+ * Every other field a loaded artifact carries is set for all of them (src/addon/load.js
+ * loadAddon), so absence there is a bug, not a route.
+ */
+const PRODUCED_BY = {
+  vendor: "resolveVendor, in the phase that prepares that artifact",
+  buildReview: "analyzeBuild, in the phase that prepares the source archive",
+};
+
+/**
+ * Close an artifact against reads of what was never computed for it. A field only some
+ * artifacts carry is answered with `undefined` otherwise, and a check reading `undefined`
+ * finds nothing - which reads as a clean submission. After this, that read throws instead.
+ *
+ * Called once per artifact when the setup steps are done, so "absent" is settled: a field
+ * still missing here is one no step produced, whether because this artifact never needed it
+ * or because the step that should have run did not. Both are wiring errors and both should
+ * be loud. The accessor is non-enumerable so a spread or a serializer cannot trip it - only
+ * a real read can.
+ * @param {object} addon  The loaded artifact.
+ * @param {string} label  What to call it in the message ("built XPI", "source archive").
+ * @returns {object} The same artifact.
+ */
+export function sealArtifact(addon, label) {
+  for (const [field, producer] of Object.entries(PRODUCED_BY)) {
+    if (addon[field] !== undefined) {
+      continue;
+    }
+    Object.defineProperty(addon, field, {
+      enumerable: false,
+      configurable: true,
+      get() {
+        throw wiringError(
+          `a check read \`${field}\` on the ${label}, which never produced it ` +
+            `(${producer}). A check reads only the artifact its \`input\` routes it ` +
+            "to, so this is a routing error: either the route is wrong, or the field " +
+            "has to be produced for that artifact too."
+        );
+      },
+    });
+  }
+  return addon;
+}

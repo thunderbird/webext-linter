@@ -26,10 +26,7 @@ export default {
    * @returns {{findings: [], escalations?: Escalation[]}}
    */
   run(ctx) {
-    const review = ctx.artifact?.buildReview;
-    if (!review) {
-      return { findings: [] };
-    }
+    const review = ctx.artifact.buildReview;
     const { unresolved } = review;
     // Null when the source documents no build at all: the entry then carries no locus
     // rather than pointing the reviewer at a package.json the submission lacks.

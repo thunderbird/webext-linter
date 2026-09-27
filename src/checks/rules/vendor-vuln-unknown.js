@@ -28,11 +28,11 @@ export default {
    */
   run(ctx) {
     const { artifact } = ctx;
-    const vendor = artifact?.vendor;
+    const vendor = artifact.vendor;
     const unaudited = vendor?.unaudited ?? [];
     const vendorName = vendor?.vendorFile ?? null;
     const vendorText = vendorName
-      ? (artifact.files?.get(vendorName)?.toString("utf8") ?? "")
+      ? (artifact.files.get(vendorName)?.toString("utf8") ?? "")
       : "";
     const findings = [];
     for (const { path, source } of unaudited) {

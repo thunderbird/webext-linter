@@ -40,7 +40,7 @@ export default {
    */
   run(ctx) {
     const { artifact } = ctx;
-    const unsupported = artifact?.vendor?.unsupportedDeps ?? [];
+    const unsupported = artifact.vendor.unsupportedDeps ?? [];
     // Memoized per distinct file: a nested package file can declare several unsupported
     // specs, and re-reading/re-decoding the same bytes once per one would be wasted work.
     const textByFile = new Map();

@@ -27,10 +27,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const files = ctx.artifact?.files;
-    if (!files) {
-      return { findings: [] };
-    }
+    const files = ctx.artifact.files;
     const buf = files.get(".npmrc");
     if (!buf) {
       return { findings: [] };

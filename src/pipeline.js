@@ -93,7 +93,7 @@ import { experimentApiNamespaces } from "./lib/experiments.js";
 import { verifyExperiments } from "./experiments/verify.js";
 import { debug, progress, report, warn, FEED } from "./util/log.js";
 import { DEFAULT_CACHE } from "./config.js";
-import { rethrowIfFatal } from "./lib/errors.js";
+import { rethrowIfFatal, sealArtifact } from "./lib/errors.js";
 
 /** @typedef {import("./report/finding.js").Finding} Finding */
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
@@ -863,6 +863,17 @@ export async function runPipeline(opts) {
     if (!said) {
       throw new Error(`setup step "${step.key}" never printed its line`);
     }
+  }
+
+  // The step list is done, so what each artifact carries is settled. Close them against
+  // reads of what was never computed for them: a field only some artifacts have - a vendor
+  // reading, a build trace - answers `undefined` otherwise, and a check that reads
+  // `undefined` finds nothing, which reads as a clean submission. From here such a read
+  // throws, so a wrongly-routed check is a wiring error that reaches the exit instead of a
+  // silent pass.
+  sealArtifact(xpiAddon, "built XPI");
+  if (scaArchive && scaArchive !== xpiAddon) {
+    sealArtifact(scaArchive, "source archive");
   }
 
   // Phase 4: build the sibling RunContexts the checks read, once the step list has run. The

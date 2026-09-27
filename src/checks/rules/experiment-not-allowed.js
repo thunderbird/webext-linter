@@ -38,7 +38,7 @@ export default {
       ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.PASS);
       return { findings: [] };
     }
-    if (ctx.options?.allowExperiments) {
+    if (ctx.options.allowExperiments) {
       ctx.note?.(
         "manifest.json",
         null,

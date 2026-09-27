@@ -291,7 +291,7 @@ function getBundled(ctx) {
   return (
     ctx.artifact.bundled ??
     ((ctx.cache ??= {}).bundled ??= classifyBundled(ctx.artifact, {
-      libraryHashes: ctx.options?.libraryHashes,
+      libraryHashes: ctx.options.libraryHashes,
     }))
   );
 }

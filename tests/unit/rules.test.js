@@ -15,7 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { ERROR_CLASS } from "../../src/lib/enum.js";
-import { LinterError } from "../../src/lib/errors.js";
+import { LinterError, sealArtifact } from "../../src/lib/errors.js";
 import syncXhr from "../../src/checks/rules/sync-xhr.js";
 import debuggerStatement from "../../src/checks/rules/debugger-statement.js";
 import asyncOnMessage from "../../src/checks/rules/async-onmessage.js";
@@ -1572,9 +1572,8 @@ test("committed-node-modules flags each recorded node_modules directory", () => 
     out.map((f) => f.item),
     [null, null]
   );
-  // None recorded, or no addon -> no finding.
+  // None recorded -> no finding.
   assert.deepEqual(run([]), []);
-  assert.deepEqual(committedNodeModules.run({}).findings, []);
 });
 
 // ---- the symlink pair (one recorded list, two policies) ----
@@ -1629,7 +1628,6 @@ test("sca-invalid-symlink rejects the escaping and broken links, not the interna
     scaInvalidSymlink.run({ artifact: { symlinks: [] } }).findings,
     []
   );
-  assert.deepEqual(scaInvalidSymlink.run({}).findings, []);
 });
 
 // An add-on may carry no link at all, so every cause is a finding - including the internal
@@ -1668,7 +1666,6 @@ test("xpi-packaged-symlink rejects every recorded link, whatever its target", ()
     xpiPackagedSymlink.run({ artifact: { symlinks: [] } }).findings,
     []
   );
-  assert.deepEqual(xpiPackagedSymlink.run({}).findings, []);
 });
 
 // The two lock checks read only ctx.artifact.files, so a plain map of the submission's
@@ -1847,9 +1844,8 @@ test("sca-lock-file-missing fires whenever a source ships a package.json and no 
     }).map((f) => f.file),
     ["package.json"]
   );
-  // No package.json, and no addon.
+  // No package.json -> nothing to pin.
   assert.deepEqual(run({}), []);
-  assert.deepEqual(scaLockFileMissing.run({}).findings, []);
 });
 
 // ---- sca-lock-file-invalid (SCA deterministic: the lock must install what is declared) ----
@@ -1935,7 +1931,6 @@ test("sca-lock-file-invalid anchors each gap and names what is wrong", () => {
     }).findings,
     []
   );
-  assert.deepEqual(scaLockFileInvalid.run({}).findings, []);
 
   // The governing lock is chosen by name from the three the review installs from, so a
   // file in another format sitting beside them changes nothing: the stale npm lock is
@@ -4555,6 +4550,50 @@ test("a check that returns a bare array is refused, not read as findings", async
     "[1/1]"
   );
   assert.deepEqual(none.findings, []);
+});
+
+// A field only some artifacts carry used to answer `undefined` on the others, so a check
+// routed to the wrong one found nothing - which reads as a clean submission. Sealing makes
+// that read throw, and runOneCheck does not contain it: the run exits 2.
+test("reading a field an artifact never produced is a wiring error, not an empty result", async () => {
+  const withVendor = sealArtifact(
+    { files: new Map(), vendor: { results: [] } },
+    "x"
+  );
+  assert.deepEqual(withVendor.vendor.results, []); // produced: reads normally
+
+  const sealed = sealArtifact({ files: new Map() }, "built XPI");
+  assert.throws(
+    () => sealed.vendor,
+    (err) => {
+      assert.ok(err instanceof LinterError);
+      assert.equal(err.class, ERROR_CLASS.WIRING);
+      assert.match(err.message, /read `vendor` on the built XPI/);
+      return true;
+    }
+  );
+  // Non-enumerable, so nothing trips it by accident - only a real read does.
+  assert.deepEqual({ ...sealed }, { files: new Map() });
+  assert.deepEqual(Object.keys(sealed), ["files"]);
+
+  // And a check that does it is not turned into a check-failed finding.
+  await assert.rejects(
+    () =>
+      runOneCheck(
+        { artifact: sealed },
+        {
+          id: "reads-vendor",
+          severity: "warning",
+          run: (ctx) => ({ findings: [], items: ctx.artifact.vendor.results }),
+        },
+        "[1/1]"
+      ),
+    (err) => {
+      assert.ok(err instanceof LinterError);
+      assert.equal(err.class, ERROR_CLASS.WIRING);
+      return true;
+    }
+  );
 });
 
 // The two lanes out of a check body, kept apart: a rule that crashes is contained so the

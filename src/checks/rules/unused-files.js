@@ -81,9 +81,6 @@ export default {
     // config / test / doc in the repo (all noise), while the XPI surfaces the build's
     // own dead files. (The reachability graph is the same XPI's.)
     const { artifact } = ctx;
-    if (!artifact?.files) {
-      return { findings: [] };
-    }
     const reach = buildReachability(ctx);
     // Recognized third-party files are not the developer's authored code, so an
     // unreached one is not the developer's unused file - exempt it. The set

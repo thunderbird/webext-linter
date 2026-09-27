@@ -71,6 +71,7 @@ test("unsafe-html notes each sink site (verdict fail)", () => {
     jsSources: parsed([
       { file: "render.js", code, lineOffset: 0, inline: false },
     ]),
+    options: {},
   };
   const notes = [];
   ctx.note = (file, loc, item, verdict) => notes.push({ file, item, verdict });

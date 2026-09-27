@@ -36,7 +36,7 @@ export default {
    */
   run(ctx) {
     const { artifact } = ctx;
-    const unlocked = artifact?.vendor?.unlocked ?? [];
+    const unlocked = artifact.vendor.unlocked ?? [];
     const text = anchorText(artifact, "package.json");
     const findings = [];
     for (const { name, spec } of unlocked) {

@@ -28,7 +28,7 @@ export default {
    */
   run(ctx) {
     const { artifact } = ctx;
-    const blocked = artifact?.vendor?.blocked ?? [];
+    const blocked = artifact.vendor.blocked ?? [];
     const textByFile = new Map();
     /**
      * Read a packaged file's text, memoizing it per path.

@@ -22,7 +22,7 @@ export default {
    */
   run(ctx) {
     const { artifact } = ctx;
-    const missing = artifact?.vendor?.missing ?? [];
+    const missing = artifact.vendor.missing ?? [];
     if (!missing.length) {
       return { findings: [] };
     }

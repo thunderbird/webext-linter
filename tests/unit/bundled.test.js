@@ -153,7 +153,10 @@ test("a minified non-library is non-authored and rejected; identified libraries 
 
   // The bundled checks read the tags: minified-code REJECTS the unidentified bundle,
   // the identified library drives missing-library, and obfuscated-code fires.
-  const ctx = { artifact: { ...addon, bundled: { classified, nonAuthored } } };
+  const ctx = {
+    artifact: { ...addon, bundled: { classified, nonAuthored } },
+    options: {},
+  };
   assert.deepEqual(
     minifiedCode.run(ctx).findings.map((f) => f.file),
     ["blob.js"]
@@ -188,7 +191,8 @@ test("a file only an unpinned family matches is ordinary authored code", () => {
     "an unpinned match does not force a source review"
   );
   assert.deepEqual(
-    obfuscatedCode.run({ artifact: { ...addon, bundled } }).findings,
+    obfuscatedCode.run({ artifact: { ...addon, bundled }, options: {} })
+      .findings,
     []
   );
 });
@@ -201,7 +205,7 @@ test("classification done before normalize survives reformatting", () => {
   addon.files.set("lib/blob.js", Buffer.from(PRETTY));
   // The check reads the pre-step store, so the minified file is still flagged.
   const flagged = minifiedCode
-    .run({ artifact: addon })
+    .run({ artifact: addon, options: {} })
     .findings.map((f) => f.file);
   assert.deepEqual(flagged, ["lib/blob.js"]);
 });
@@ -210,13 +214,13 @@ test("without the pre-step, classifying the reformatted bytes misses it", () => 
   // No addon.bundled: the reader recomputes over the already-pretty bytes, which
   // do not look minified - the build/lint false negative the pre-step fixes.
   const flagged = minifiedCode
-    .run({ artifact: addonWith({ "lib/blob.js": PRETTY }) })
+    .run({ artifact: addonWith({ "lib/blob.js": PRETTY }), options: {} })
     .findings.map((f) => f.file);
   assert.deepEqual(flagged, []);
 });
 
 test("the classification is memoized: readers share one computation", () => {
-  const ctx = { artifact: addonWith({ "lib/blob.js": MINIFIED }) };
+  const ctx = { artifact: addonWith({ "lib/blob.js": MINIFIED }), options: {} };
   assert.strictEqual(classifyAddonJs(ctx), classifyAddonJs(ctx));
 });
 
@@ -250,7 +254,10 @@ test("missing-library reports an undeclared vendored CSS file", () => {
   addon.bundled = classifyBundled(addon, {
     libraryHashes: libHashes(addon, file),
   });
-  const findings = missingLibrary.run({ artifact: addon }).findings;
+  const findings = missingLibrary.run({
+    artifact: addon,
+    options: {},
+  }).findings;
   assert.deepEqual(
     findings.map((f) => f.file),
     [file]
@@ -379,6 +386,7 @@ test("hasUnreviewableCode: minified/obfuscated first-party -> true; library/read
 // them, where an inline body carries the HTML path and inline: true.
 const inlineCtx = (code, file = "page.html", extra = {}) => ({
   artifact: { files: new Map(), ...extra.artifact },
+  options: {},
   jsSources: [
     { file, code, lineOffset: 4, inline: true, declaredJs: true, ...extra.src },
   ],
@@ -464,7 +472,11 @@ test("a short stylesheet keeps the floor, a short script does not", () => {
 // bodies reach here, and a page with none yields nothing.
 test("classifyInlineScripts yields nothing for a page with no inline body", () => {
   assert.deepEqual(
-    classifyInlineScripts({ artifact: { files: new Map() }, jsSources: [] }),
+    classifyInlineScripts({
+      artifact: { files: new Map() },
+      jsSources: [],
+      options: {},
+    }),
     []
   );
 });
@@ -547,7 +559,11 @@ test("an inline obfuscation finding names its site, not just its page", async ()
     { file: "p.html", code: OBFUSCATED, lineOffset: 1, inline: true },
     { file: "p.html", code: OBFUSCATED, lineOffset: 40, inline: true },
   ];
-  const out = obfuscated.run({ artifact: { files: new Map() }, jsSources });
+  const out = obfuscated.run({
+    artifact: { files: new Map() },
+    jsSources,
+    options: {},
+  });
   assert.deepEqual(
     out.findings.map((f) => `${f.file}:${f.loc.line}`),
     ["p.html:2", "p.html:41"]

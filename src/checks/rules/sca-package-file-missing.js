@@ -34,7 +34,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    if (ctx.artifact?.files?.has(PACKAGE_FILE)) {
+    if (ctx.artifact.files.has(PACKAGE_FILE)) {
       return { findings: [] };
     }
     // The FINDING names no file: its subject is something the archive does not contain, so

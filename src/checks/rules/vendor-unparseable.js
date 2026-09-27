@@ -22,8 +22,8 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const vendor = ctx.artifact?.vendor;
-    if (!vendor?.unparsedVendor) {
+    const vendor = ctx.artifact.vendor;
+    if (!vendor.unparsedVendor) {
       return { findings: [] };
     }
     const file = vendor.vendorFile ?? "VENDOR";

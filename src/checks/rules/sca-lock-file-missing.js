@@ -34,10 +34,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const files = ctx.artifact?.files;
-    if (!files) {
-      return { findings: [] };
-    }
+    const files = ctx.artifact.files;
     const pkg = readPackageFile(files);
     if (!pkg) {
       return { findings: [] }; // no readable package file: no declared install to lock

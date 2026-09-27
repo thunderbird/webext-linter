@@ -98,5 +98,12 @@ export function withManifest(ctx) {
   if (ctx.experiments === undefined) {
     ctx.experiments = addon.experiments ?? null;
   }
+  // projectCtx puts the review options on every sibling, so they are never absent when a
+  // check runs. A hand-built ctx that omitted them used to work only because the readers
+  // guarded the field's existence; they no longer do, because a check cannot legitimately
+  // be missing one.
+  if (ctx.options === undefined) {
+    ctx.options = {};
+  }
   return ctx;
 }

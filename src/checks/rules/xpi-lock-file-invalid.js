@@ -38,7 +38,7 @@ export default {
    */
   run(ctx) {
     const { artifact } = ctx;
-    const unpinned = artifact?.vendor?.unpinned ?? [];
+    const unpinned = artifact.vendor.unpinned ?? [];
     const text = anchorText(artifact, "package.json");
     const findings = [];
     for (const { name, spec } of unpinned) {

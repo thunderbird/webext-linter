@@ -33,10 +33,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const files = ctx.artifact?.files;
-    if (!files) {
-      return { findings: [] };
-    }
+    const files = ctx.artifact.files;
     const findings = [];
     for (const gap of lockGaps(ctx.artifact)) {
       // Each gap anchors in the file its failing value sits in (LockGap.file), so the line

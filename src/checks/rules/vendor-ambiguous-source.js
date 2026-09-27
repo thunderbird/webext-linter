@@ -22,7 +22,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const vendor = ctx.artifact?.vendor;
+    const vendor = ctx.artifact.vendor;
     const file = vendor?.vendorFile ?? "VENDOR";
     const out = [];
     for (const { source, paths } of vendor?.ambiguousSources ?? []) {

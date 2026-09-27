@@ -47,11 +47,7 @@ export default {
     // ctx.artifact is the built XPI (`input: xpi`) - what users install: its _locales
     // and its user-facing text, like its siblings default-locale-missing / -unused.
     const { artifact } = ctx;
-    const files = artifact?.files;
-    if (!files) {
-      ctx.note?.("manifest.json", null, "no files", VERDICT.SKIPPED);
-      return { findings: [], escalations: [] };
-    }
+    const files = artifact.files;
     const localeDirs = new Set(
       [...files.keys()]
         .filter((p) => p.startsWith("_locales/"))

@@ -151,18 +151,18 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   a reviewer resolves a reported path against, while `files` there gives up the Experiment
  *   subtree. Reach for it deliberately: a reader asking `store` is saying it wants the
  *   submission entire.
- * @property {string[]} [nodeModules]  Posix paths of node_modules directories
+ * @property {string[]} nodeModules  Posix paths of node_modules directories
  *   skipped at load (their contents are never read); empty when none, and always empty
  *   unless the load asked for it, which only loadSourceArchive does. committed-node-modules rejects each, and is the only
  *   thing in the review that knows the name: nothing else has to, because for every other
  *   artifact such a folder is content and is loaded as content. Set by loadAddon, so an
  *   add-on assembled as a view of an archive (scaViews) carries none.
- * @property {string[]} [archives]  Posix paths of committed binary archives
+ * @property {string[]} archives  Posix paths of committed binary archives
  *   (.zip/.xpi/... anywhere in the submission); empty when none. In SCA mode the
  *   committed-build-artifact check rejects each. Recorded at load, spanning the whole
  *   --sca-root (before the source/build split), so one is caught wherever it sits. Set by
  *   loadAddon only.
- * @property {string[]} [skipped]  Ready-to-narrate notices for entries skipped at
+ * @property {string[]} skipped  Ready-to-narrate notices for entries skipped at
  *   load (a non-node_modules symlink); empty when none. A DIRECTORY submission is the
  *   only source: a packed archive names nothing here, since it is extracted with no
  *   symlink of its own (extractZip writes bytes, never a link) and a name extractZip
@@ -171,7 +171,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   finding is a separate question, answered from `symlinks` by the checks. The loader
  *   collects them; the pipeline narrates them under "Reading add-on", so a pre-banner
  *   sizing load prints nothing before the Setup banner. Set by loadAddon only.
- * @property {{path: string, cause: import("../lib/enum.js").SymlinkCause}[]} [symlinks]  Every symbolic link the load
+ * @property {{path: string, cause: import("../lib/enum.js").SymlinkCause}[]} symlinks  Every symbolic link the load
  *   met, posix path and what its target turned out to be; empty when none. The cause is
  *   a FACT about the link, never a verdict - the two artifacts hold links to different
  *   standards (a source archive may link within itself, an add-on may not link at all),
@@ -182,7 +182,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   nothing, so the store never holds a file whose bytes are a path. Where an installed
  *   tree is recorded rather than read, a link named node_modules is that tree and is not
  *   here (see nodeModules); everywhere else every link is. Set by loadAddon only.
- * @property {string[]} [directories]  Posix paths of every directory the walk entered;
+ * @property {string[]} directories  Posix paths of every directory the walk entered;
  *   empty when none. The file keys cannot answer this: they name files, so a directory is
  *   visible there only as a prefix of one and an EMPTY directory not at all - which is why
  *   a reader asking "is this path a directory in the submission" asks here. A recorded

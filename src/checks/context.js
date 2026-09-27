@@ -61,7 +61,13 @@ function deriveApiUsages(jsSources) {
  * @param {ReviewEnv} env
  * @param {object} routed
  * @param {import("../addon/load.js").Addon} routed.artifact  The routed artifact, linked by
- *   reference: ctx.artifact IS the object the loader produced.
+ *   reference: ctx.artifact IS the object the loader produced. By the time a check sees it,
+ *   the artifact is sealed (src/lib/errors.js sealArtifact): a field only some artifacts
+ *   carry throws when read off one that never produced it, so a check has no reason to ask
+ *   whether a field EXISTS - the only way it cannot is that the check declared the wrong
+ *   `input`. A field whose VALUE is null is the other thing entirely: `manifest` below is a
+ *   record or null, and null is that artifact's answer (it ships no manifest.json), so
+ *   reading it through `?.` is right where guarding a field's existence is not.
  * @param {import("../addon/sources.js").JsSource[]} routed.jsSources
  * @param {object[]|undefined} routed.apiUsages  Per-source usage, or undefined for a route
  *   with no reviewable sources (the sca ctx).

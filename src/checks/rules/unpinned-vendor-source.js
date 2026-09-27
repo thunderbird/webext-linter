@@ -22,7 +22,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const vendor = ctx.artifact?.vendor;
+    const vendor = ctx.artifact.vendor;
     // Anchor on the VENDOR declaration (file + the line citing the source), with
     // the URL on the locus line - mirrors vendor-vuln-unknown. The vendored file
     // rides on `item`, which the response does not consume, so every unpinned
@@ -30,7 +30,7 @@ export default {
     // a locus per file.
     const vendorName = vendor?.vendorFile ?? null;
     const vendorText = vendorName
-      ? (ctx.artifact.files?.get(vendorName)?.toString("utf8") ?? "")
+      ? (ctx.artifact.files.get(vendorName)?.toString("utf8") ?? "")
       : "";
     const findings = [];
     for (const { path, source } of (vendor?.results ?? []).filter(

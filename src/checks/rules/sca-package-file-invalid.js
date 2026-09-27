@@ -32,8 +32,8 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const files = ctx.artifact?.files;
-    if (!files?.has(PACKAGE_FILE)) {
+    const files = ctx.artifact.files;
+    if (!files.has(PACKAGE_FILE)) {
       return { findings: [] };
     }
     const fault = packageFileFault(files.get(PACKAGE_FILE));
