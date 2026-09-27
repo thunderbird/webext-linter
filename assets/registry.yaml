@@ -418,7 +418,8 @@ deterministic-phase:
   response: |-
     The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies and are reviewed as authored code, so a finding may be reported against library code.
 
-# SCA mode (source code archive, sca: true): a declared dependency that is not a confirmed
+# A source-code review (declared by `input: sca` - the archive exists in no other kind of
+# review): a declared dependency that is not a confirmed
 # widely-used library cannot be reviewed - its code is pulled in at build, absent from the
 # readable source and mangled in the built XPI - so a SHIPPED one must be included readable
 # in the archive. BUILD dependencies are held to the same bar, for the reason they are
@@ -432,9 +433,8 @@ deterministic-phase:
 # verifyScaDependencies records both (vendor.unpopularDeps).
 - title: Unreviewable build dependency
   severity: error
-  sca: true
   check: unpopular-source-dependency
-  input: source
+  input: sca
   response: |-
     The following dependencies could not be confirmed to be widely-used. Such dependencies must instead be included non-minified in the source so they can be reviewed directly. A build dependency cannot be included that way. Please replace it with a widely-used equivalent, or remove it from the submitted source archive if it is not strictly needed to reproduce the shipped add-on. Reviewers should only be asked to install tools the wider community has vetted.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
@@ -563,13 +563,15 @@ deterministic-phase:
 # and a lock was but it resolves nothing for that name. resolveVendor decides which
 # (classifyDeps), so a dependency is never reported by both.
 #
-# sca: false on both - the XPI type's half of the pinnability question. A source archive
-# asks it of the tree it installs instead (sca-lock-file-missing / sca-lock-file-invalid).
+# skip-in-sca-review on both - the XPI type's half of the pinnability question. It is the one
+# thing a route cannot say: `input: source` names the review target without saying which
+# artifact that is, and these two need it to BE the XPI. A source archive asks the question of
+# the tree it installs instead (sca-lock-file-missing / sca-lock-file-invalid).
 # Whether the SOURCE a declaration names is supported is a separate axis
 # (unsupported-dependency), which applies to both types.
 - title: Missing lock file for a ranged dependency
   severity: error
-  sca: false
+  skip-in-sca-review: true
   check: xpi-lock-file-missing
   input: source
   response: |-
@@ -581,7 +583,7 @@ deterministic-phase:
 # thing that would settle it.
 - title: Dependency the lock file does not pin
   severity: error
-  sca: false
+  skip-in-sca-review: true
   check: xpi-lock-file-invalid
   input: source
   response: |-
@@ -639,10 +641,9 @@ deterministic-phase:
 # nobody declares are vendor-vulnerable-indirect-dev below.
 - title: Vulnerable build dependency
   severity: auto
-  sca: true
   review-early-exit: known-vulnerabilities
   check: vendor-vulnerable-dev
-  input: source
+  input: sca
   response: |-
     A build dependency this add-on declares has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update {{item}} to {{fixed}} or later.
 
@@ -657,10 +658,9 @@ deterministic-phase:
 # fills the {{severity}} slot. sca:true - a lock only exists in a source submission.
 - title: Vulnerable indirect dependency
   severity: error
-  sca: true
   review-early-exit: known-vulnerabilities
   check: vendor-vulnerable-indirect
-  input: source
+  input: sca
   response: |-
     A package this add-on does not declare, but that one of its dependencies pulls in, has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It ends up in the code you ship. Update the declared dependency that pulls it in, which usually resolves this because a newer release often already depends on a fixed version ({{fixed}} or later for {{item}}). If no update resolves it, consider moving to a different or simpler build chain.
 
@@ -673,10 +673,9 @@ deterministic-phase:
 # reading the root package.json alone would miss.
 - title: Vulnerable indirect build dependency
   severity: error
-  sca: true
   review-early-exit: known-vulnerabilities
   check: vendor-vulnerable-indirect-dev
-  input: source
+  input: sca
   response: |-
     A package this add-on does not declare, but that one of its build dependencies pulls in, has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update the declared build dependency that pulls it in, which usually resolves this because a newer release often already depends on a fixed version ({{fixed}} or later for {{item}}). If no update resolves it, consider moving to a different or simpler build chain.
 
@@ -692,10 +691,8 @@ deterministic-phase:
 # reproducing the build establishes, and with no build there is nothing to reproduce. The
 # XPI-only advice (sca-not-required) is a separate question - could this developer have
 # shipped the XPI alone next time - and prints beside this rejection rather than in place of
-# it. No check reads ctx.scaNotRequired: it stays an advice flag that nothing routes on.
 - title: Missing package.json
   severity: error
-  sca: true
   review-early-exit: unreproducible-build
   check: sca-package-file-missing
   input: sca
@@ -716,7 +713,6 @@ deterministic-phase:
 # code.
 - title: Invalid package.json
   severity: error
-  sca: true
   review-early-exit: unreproducible-build
   check: sca-package-file-invalid
   input: sca
@@ -742,7 +738,6 @@ deterministic-phase:
 # because the root is named by someone who has not looked inside the archive yet.
 - title: Missing lock file
   severity: error
-  sca: true
   review-early-exit: unreproducible-build
   check: sca-lock-file-missing
   input: sca
@@ -766,7 +761,6 @@ deterministic-phase:
 # for a declaration.
 - title: Invalid lock file
   severity: error
-  sca: true
   review-early-exit: unreproducible-build
   check: sca-lock-file-invalid
   input: sca
@@ -788,7 +782,6 @@ deterministic-phase:
 # onto the reviewer's own machine. Asking them to build is uninformative and unsafe at once.
 - title: Build registry override
   severity: error
-  sca: true
   review-early-exit: unreproducible-build
   check: build-registry-redirect
   input: sca
@@ -803,7 +796,6 @@ deterministic-phase:
 # skips it at load and records only the directory paths, surfaced here as {{item}}.
 - title: Committed node_modules folder
   severity: error
-  sca: true
   check: committed-node-modules
   input: sca
   response: |-
@@ -815,7 +807,6 @@ deterministic-phase:
 # build produces). Recorded at load, spanning the whole submission, and surfaced as {{item}}.
 - title: Committed build artifact
   severity: error
-  sca: true
   check: committed-build-artifact
   input: sca
   response: |-
@@ -831,7 +822,6 @@ deterministic-phase:
 # hint, so both kinds collapse into this one entry and each line still says which it was.
 - title: Symbolic link out of the submission
   severity: error
-  sca: true
   check: sca-invalid-symlink
   input: sca
   response: |-
@@ -867,7 +857,6 @@ deterministic-phase:
 # their machine. It is settled in the `settle` phase, before `ask` is ever issued.
 - title: Build install hook
   severity: error
-  sca: true
   review-early-exit: unreproducible-build
   check: build-lifecycle-hook
   input: sca
@@ -899,7 +888,6 @@ deterministic-phase:
 # instructions.
 - title: Build process review
   severity: error
-  sca: true
   check: undeclared-build-source
   input: sca
   instructions-for-human: |-
@@ -911,24 +899,27 @@ deterministic-phase:
   response: |-
     The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 
-# Deterministic: a submitted source-code archive (--sca-root) was unnecessary because the shipped
-# XPI IS the source - readable, not generated, and byte-for-byte what the archive holds. The
-# pipeline asks all three (resolveXpiOnlyAdvice): hasUnreviewableCode over xpiAddon.bundled
-# answers whether the shipped bytes can be read; the archive's source KINDS answer whether a
-# build ran at all, since a transpiler's output reads perfectly and is still generated (and it
-# is what catches a non-JS build - .scss -> .css - that the third question cannot see); and
-# untwinnedShippedJs answers whether every shipped script exists, identical, in the archive.
-# Only when all three say the XPI stands on its own is ctx.scaNotRequired set, which this check
-# reports. ADVICE ONLY - the review is never re-routed: an SCA submission is always reviewed as
-# SCA, so a wrong answer here costs a wrong suggestion, not a narrowed review. `sca: true`
-# because it can only ever fire in an SCA review.
+# A source-code submission the built XPI alone would have covered, told to the developer so
+# their next one skips the longer review. Two ways the submission says so (src/checks/rules/
+# sca-not-required.js): the XPI carries vendoring information of its own - a VENDOR file, a
+# package.json, a lock file - which in a source submission belongs in the ARCHIVE, the copy
+# the reviewer reads and the build installs from; or every file the XPI ships is
+# byte-identical to a file in the archive, so nothing was built and the shipped bytes ARE
+# the submitted source. One remedy either way, so one entry.
+#
+# `input: both` is the only route carrying two artifacts, which is what a comparison between
+# them needs; it also says the mode, since a review with one artifact has no comparison to
+# make. ADVICE about the NEXT submission - this one is always reviewed as a source
+# submission, so a wrong answer here costs a wrong suggestion, not a narrowed review. At
+# warning severity --warnings-as-errors lets a new submission be refused at intake, while an
+# update that switched to a source archive by accident only gets told to go back. The finding
+# names no file: its subject is the submission, not anything in it.
 - title: Source archive not required
-  severity: info
+  severity: warning
   check: sca-not-required
-  input: source
-  sca: true
+  input: both
   response: |-
-    The shipped add-on (the built XPI) is the same code as your source archive: nothing in it is minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A source archive is only needed once the shipped code is built, so please submit the XPI on its own next time. Source-code submissions also take considerably longer to review.
+    This add-on was submitted as a source-code archive, but the shipped add-on (the built XPI) did not need one: either it carries its own vendoring information - a VENDOR file, a package.json or a lock file, which belong in the source archive rather than in the XPI - or every file it ships is byte-identical to a file in the archive, so nothing was built from it. Please submit the XPI on its own next time. Source-code submissions also take considerably longer to review.
 
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the repo-name candidate and proves it by content hash);

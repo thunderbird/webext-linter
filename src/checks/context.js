@@ -24,14 +24,13 @@ import { apiUsageOf } from "./extract.js";
  * @typedef {object} ReviewEnv  The review-level state shared by every sibling ctx, built ONCE
  *   by the pipeline (src/pipeline.js) and handed to both ctx builders. It carries only what is
  *   the SAME across artifacts, so a sibling can never drift from another: the schema, the
- *   shipped manifest.json and experiments, the review mode (+ scaNotRequired) and the
+ *   shipped manifest.json and experiments, the review mode and the
  *   invalid-Experiment flag. Where the source and the Experiment sit on disk is NOT here: it
  *   is settled once, when the archive is split into views (src/addon/load.js scaViews), and a
  *   check reads the files it was routed rather than a path.
  * @property {import("../schema/index.js").SchemaIndex} schema
  * @property {{allowExperiments?: boolean, libraryHashes?: Map<string, object>}} options
  * @property {object} mode  The REVIEW_MODE enum member (XPI/SCA); read as `mode?.sca`.
- * @property {boolean} scaNotRequired
  * @property {boolean} invalidExperiment
  * @property {?import("../addon/load.js").WebExtManifestRecord} manifest
  * @property {?object} experiments
@@ -60,8 +59,9 @@ function deriveApiUsages(jsSources) {
  * a check cannot read one artifact's manifest.json against another's files.
  * @param {ReviewEnv} env
  * @param {object} routed
- * @param {import("../addon/load.js").Addon} routed.artifact  The routed artifact, linked by
- *   reference: ctx.artifact IS the object the loader produced. By the time a check sees it,
+ * @param {import("../addon/load.js").Addon} [routed.artifact]  The routed artifact, linked
+ *   by reference: ctx.artifact IS the object the loader produced. Absent for the ONE route
+ *   that is about two artifacts rather than one (buildScaCtxs bothCtx), which names them. By the time a check sees it,
  *   the artifact is sealed (src/lib/errors.js sealArtifact): a field only some artifacts
  *   carry throws when read off one that never produced it, so a check has no reason to ask
  *   whether a field EXISTS - the only way it cannot is that the check declared the wrong
@@ -81,13 +81,6 @@ function projectCtx(
 ) {
   /** @type {RunContext} */
   const ctx = {
-    // The loaded artifact ITSELF, by reference - not a copy of some of its fields. A reader
-    // of ctx.artifact.files can see which artifact those files are, and nothing on it was
-    // put there by a check: what a review derives goes on ctx.cache, and the shipped answers
-    // (the manifest.json record, the Experiment verdict) are asked of the XPI once and shared
-    // below. What stops a check reaching the artifact it was NOT routed to is the routing -
-    // its declared `input` - so there is nothing here to withhold.
-    artifact,
     // Per-ctx scratch for the memoized derivations (see the lazy accessors in src/lib/*),
     // each computed once on first ask. Its own field, so nothing derived is mistaken for
     // something the artifact was loaded with.
@@ -98,12 +91,8 @@ function projectCtx(
     options: env.options,
     invalidExperiment: env.invalidExperiment,
     // "xpi" (a built add-on) or "sca" (a source-code archive review, --sca-root). Gates checks
-    // via scaEligible.
+    // via modeEligible.
     mode: env.mode,
-    // The shipped XPI turned out to BE the submitted source, so an XPI-only submission would
-    // have been enough. The sca-not-required check reads this to say so. Advice only - this
-    // review is a full SCA review either way.
-    scaNotRequired: env.scaNotRequired,
     // The authoritative manifest.json and experiments are the SHIPPED artifact's (the built
     // XPI) - what Thunderbird actually loads. Explicit shared context like `schema`, so the
     // manifest.json / permission / API / experiment checks read them here and no artifact
@@ -113,6 +102,19 @@ function projectCtx(
     manifest: env.manifest,
     experiments: env.experiments,
   };
+  if (artifact !== undefined) {
+    // The loaded artifact ITSELF, by reference - not a copy of some of its fields. A reader
+    // of ctx.artifact.files can see which artifact those files are, and nothing on it was
+    // put there by a check: what a review derives goes on ctx.cache, and the shipped answers
+    // (the manifest.json record, the Experiment verdict) are asked of the XPI once and
+    // shared above. What stops a check reaching the artifact it was NOT routed to is the
+    // routing - its declared `input` - so there is nothing here to withhold.
+    //
+    // Set only when there IS one artifact. The cross-artifact route has two and names them;
+    // leaving the field off there means anything written for the one-artifact shape fails
+    // on it rather than silently reading whichever side happened to be here.
+    ctx.artifact = artifact;
+  }
   if (isShippedView) {
     // The built XPI's manifest.json entry points resolve against its OWN files, so
     // pureWebExtensionReachable takes the closure branch - not the SCA "all readable-source
@@ -159,7 +161,7 @@ export function buildXpiCtx(xpiAddon, xpiParsedSources, env) {
 }
 
 /**
- * The two sibling ctxs an SCA review adds, named for the ARTIFACT each is over, never for
+ * The sibling ctxs an SCA review adds, named for the ARTIFACT each is over, never for
  * the mode that produced them:
  *   - `sourceCtx` over the archive's add-on code, which in an SCA review is the review
  *                 target, so it becomes siblings.source. (In an XPI review that same slot
@@ -167,16 +169,23 @@ export function buildXpiCtx(xpiAddon, xpiParsedSources, env) {
  *   - `scaCtx`  the same archive with no parsed source, for the `input: sca` checks, read
  *                 off ctx.artifact via the same one-place `input` routing, no separate field.
  *                 A build check reads files and the recorded lists, never code.
+ *   - `bothCtx`  the ONE route that sees two artifacts, for a check whose subject is the
+ *                 SUBMISSION rather than either artifact in it - "is what was shipped
+ *                 already readable in what was submitted?" has no answer from one side.
+ *                 It carries `xpi` and `sca` and NO `artifact`, so nothing written for the
+ *                 ordinary one-artifact shape can be handed it and quietly read one side:
+ *                 a check that wants both has to name which of them each read is about.
  * Both project the shipped manifest.json and experiments from `env`
  * (so no artifact's manifest.json leaks against another's files, and the review-level singletons stay
  * single-instance). The source MUST arrive parsed.
  * @param {import("../addon/load.js").Addon} archive  The submitted archive, carrying its
  *   views (scaViews): `files` is everything but the Experiment implementation.
  * @param {import("../addon/sources.js").JsSource[]} sourceParsedSources  Its parsed sources.
+ * @param {import("../addon/load.js").Addon} xpiAddon  The built XPI, for the `both` route.
  * @param {ReviewEnv} env
- * @returns {{sourceCtx: RunContext, scaCtx: RunContext}}
+ * @returns {{sourceCtx: RunContext, scaCtx: RunContext, bothCtx: RunContext}}
  */
-export function buildScaCtxs(archive, sourceParsedSources, env) {
+export function buildScaCtxs(archive, sourceParsedSources, xpiAddon, env) {
   if (!sourceParsedSources) {
     throw new Error(
       "buildScaCtxs: the readable source arrived with no parsed sources " +
@@ -196,5 +205,12 @@ export function buildScaCtxs(archive, sourceParsedSources, env) {
     jsSources: [],
     apiUsages: undefined,
   });
-  return { sourceCtx, scaCtx };
+  // The cross-artifact route. It gets the review-level state every sibling shares, and then
+  // the two artifacts BY NAME instead of one as `artifact`: a comparison has to say which
+  // side each read is about, and the shape makes saying it the only option. Both are the
+  // same objects the other siblings hold, so no third reading of either can exist.
+  const bothCtx = projectCtx(env, { jsSources: [], apiUsages: undefined });
+  bothCtx.xpi = xpiAddon;
+  bothCtx.sca = archive;
+  return { sourceCtx, scaCtx, bothCtx };
 }

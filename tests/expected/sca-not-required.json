@@ -1,6 +1,8 @@
 {
-  "_comment": "An SCA submission (src/ + xpi/) whose shipped XPI IS the submitted source: readable and non-minified (hasUnreviewableCode false), no transpiled source kind, and its one script byte-identical to src/background.js. All three questions in resolveXpiOnlyAdvice (src/pipeline.js) therefore pass and sca-not-required fires (info) to tell the developer an XPI-only submission would have done. The review is NOT re-routed - this stays a full SCA review, so the src/ tree IS reviewed and the build checks DO run; that is why src/ carries a package.json. Complements the unit-level coverage in sca-pipeline.test.js with end-to-end report rendering. The finding names NO file - its subject is the submission as a whole - so the harness records it as (add-on) and the report prints the entry with no locus line at all.",
+  "_comment": "An SCA submission (src/ + xpi/) whose shipped XPI is byte-for-byte what the archive holds: every file it ships - script, manifest.json and icon - is identical to a file in src/, so nothing was built and the XPI on its own would have been a complete review target. sca-not-required therefore warns (src/checks/rules/sca-not-required.js, input: both - the comparison needs both artifacts). The review is NOT re-routed: this stays a full SCA review, so the src/ tree IS reviewed and the build checks DO run, which is why src/ carries a package.json. The XPI carries no vendoring information of its own, so the other half of the check is silent and this fixture exercises the twin half alone. The finding names NO file - its subject is the submission as a whole - so the harness records it as (add-on) and the report prints the entry with no locus line at all.",
   "expect": {
-    "sca-not-required": ["(add-on)"]
+    "sca-not-required": [
+      "(add-on)"
+    ]
   }
 }

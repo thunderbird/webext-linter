@@ -6,6 +6,10 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - [SCA] lib/widget.min.js - https://unpkg.com/widget@1.2.3/dist/widget.min.js
 
+We kindly ask you to resolve the following issues with your next release:
+
+2) This add-on was submitted as a source-code archive, but the shipped add-on (the built XPI) did not need one: either it carries its own vendoring information - a VENDOR file, a package.json or a lock file, which belong in the source archive rather than in the XPI - or every file it ships is byte-identical to a file in the archive, so nothing was built from it. Please submit the XPI on its own next time. Source-code submissions also take considerably longer to review.
+
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
 
@@ -197,6 +201,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 hold, 0 warning(s), 0 info,
+1 error(s), 0 hold, 1 warning(s), 0 info,
 1 extended code review item(s), 1 extended manual review item(s),
 10 standard code review item(s), 10 standard manual review item(s)

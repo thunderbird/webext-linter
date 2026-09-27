@@ -104,15 +104,14 @@
         parsed - the pipeline's first job, and it does every expensive thing
         exactly once. The amber boxes are the ones that matter: they
         <strong>resolve the review state</strong> -
-        <code>invalidExperiment</code>, the submitted source archive (plus the
-        advisory <code>scaNotRequired</code>) and the
+        <code>invalidExperiment</code>, the submitted source archive and the
         <strong>review target</strong> - and everything after them, every check,
         keys off those. The <code>mode</code> is not one of them: it is DERIVED
         from <code>--sca-root</code> and the Experiment verdict, so it cannot
         disagree with the steps that ran. Their order is not the order the
         statements sit in either - it is declared in <code>SETUP_STEPS</code>
         and walked by one loop, which is also where the feed's
-        <code>[n/total]</code> comes from. After Phase&nbsp;4, Phase&nbsp;5 runs the review (a
+        <code>[n/total]</code> comes from. After Phase&nbsp;5, Phase&nbsp;6 runs the review (a
         single <code>runChecks()</code> call, detailed in
         <em>The orchestrator</em>) then finalizes the <code>Review</code> for
         the report.
@@ -174,50 +173,50 @@ flowchart TB
 
   subgraph P2 ["runPipeline() · Phase 2 - analyse the BUILT XPI (always) → xpiAddon.bundled + its parsed sources, then read the submitted source archive"]
     XV["resolveVendor(XPI) → verifyVendor()<br/>the committed copies (VENDOR.md)"] --> XC["classifyReview(XPI)<br/>classifyFiles + assembleBundled<br/>library hash · minified geometry · obfuscation · vendored<br/>→ xpiAddon.bundled"]
-    XC --> XI["identifyBundledLibraries(XPI) → auditIdentifiedLibraries(XPI)<br/>applyUnverifiedVendor() · resolveCdnLibraries(), then the OSV audit<br/>FINALIZES the authored / non-authored split - ADDS + REMOVES"]
-    XI --> XE["Parsing the built add-on → extractReview(XPI)<br/>content extraction + api-usage on the authored remainder<br/>parse each source ONCE, drop the AST<br/>→ xpiParsedSources (Phase 4 hands them to buildXpiCtxs)"]
+    XC --> XI["identifyBundledLibraries(XPI)<br/>applyUnverifiedVendor() · resolveCdnLibraries()<br/>FINALIZES the authored / non-authored split - ADDS + REMOVES"]
+    XI --> XE["Parsing the built add-on → extractReview(XPI)<br/>content extraction + api-usage on the authored remainder<br/>parse each source ONCE, drop the AST<br/>→ xpiParsedSources (Phase 5 hands them to buildXpiCtx)"]
     XE --> MODEQ{{"--sca-root given?<br/>(the review is NEVER re-routed by what the XPI looks like)"}}
     MODEQ -- "no" --> MX2["an XPI review<br/>(mode derives to xpi)"]
     MODEQ -- "yes" --> KEEP["a source code review<br/>(mode derives to sca)"]
-    KEEP --> ADVQ{{"resolveXpiOnlyAdvice(xpiAddon.bundled, sourceFiles)<br/>readable? · no transpiled source kind?<br/>· every shipped script byte-identical in the archive?"}}
-    ADVQ -- "all three yes" --> DOWN["scaNotRequired = true<br/>(advice only - still a source code review)"]
     SETINV["invalidExperiment = true<br/>→ mode derives to xpi · reads no code"]
   end
 
   KEEP --> LSRC
   IQ -- yes --> SETINV
 
-  subgraph P3 ["runPipeline() · Phase 3 - SCA only: analyse the readable SOURCE → its parsed sources + the build trace"]
+  subgraph P3 ["runPipeline() · Phase 3 - SCA only: the SOURCE ARCHIVE's own preparation → its parsed sources + the build trace"]
     LSRC["the review target, from the archive Phase 2 read → scaViews()<br/>reviewTarget.experiments = xpiAddon.experiments"] --> LSQ{{"--sca-exp-source resolves within --sca-root?"}}
     LSQ -- no --> P3F((("THROW<br/>exit 2")))
     LSQ -- yes --> SV["resolveVendor(source) → verifyScaDependencies()<br/>the source's package.json"]
     SV --> SC["classifyReview(source)<br/>library hash · minified · obfuscation · vendored"]
-    SC --> SI["identifyBundledLibraries(source) → auditIdentifiedLibraries(source)<br/>CDN + not-popular-vendor, then the OSV audit - FINALIZES the split"]
+    SC --> SI["identifyBundledLibraries(source)<br/>CDN + not-popular-vendor - FINALIZES the split"]
     SI --> SE["Parsing source → extractReview(source)<br/>content extraction + api-usage on the authored remainder<br/>→ preParsedJsSources (the review target's sources)"]
     SE --> SB["Analyzing the build → analyzeBuild()<br/>over the source view, narrowed to what the build reaches"]
     HP1(( ))
-    HP2(( ))
     HP3(( ))
   end
 
   MX2 --- HP1
-  HP1 --> ENV
-  DOWN --- HP2
-  HP2 --> ENV
+  HP1 --> AUD
   SETINV --- HP3
-  HP3 --> ENV
-  SB --> ENV
+  HP3 --> AUD
+  SB --> AUD
+  AUD --> ENV
 
-  subgraph P4 ["runPipeline() · Phase 4 - build the shared review env, then the sibling ctxs"]
-    ENV["build the review env ONCE - the schema, the shipped manifest and<br/>experiments, the mode: the singletons every sibling shares"] --> XB
-    XB["buildXpiCtx(xpiAddon, xpiParsedSources, env) → xpiCtx<br/>ALWAYS - it is siblings.xpi; empty sources for a rejected Experiment"] --> SM{{"mode?"}}
-    SM -- sca --> SB2["buildScaCtxs(archive, sourceParsedSources, env)<br/>→ { sourceCtx, scaCtx }"]
-    SB2 --> SIB
-    SM -- "xpi · invalidExperiment" --> SIB
-    SIB["siblings = { source: sourceCtx (SCA) / xpiCtx (else),<br/>xpi: xpiCtx · sca: scaCtx }"] --> SIBS["siblings = { source, xpi, sca }"]
+  subgraph P4 ["runPipeline() · Phase 4 - the REVIEW TARGET: auditIdentifiedLibraries(reviewTarget) → its vendor.vulnerabilities + vendor.blocked"]
+    AUD["one audit, over whichever artifact this review is about<br/>recorded on that artifact, so the input:source / input:sca readers find it in both modes"]
   end
 
-  subgraph P5 ["runPipeline() · Phase 5 - run the review, then render the findings"]
+  subgraph P5 ["runPipeline() · Phase 5 - build the shared review env, then the sibling ctxs"]
+    ENV["build the review env ONCE - the schema, the shipped manifest and<br/>experiments, the mode: the singletons every sibling shares"] --> XB
+    XB["buildXpiCtx(xpiAddon, xpiParsedSources, env) → xpiCtx<br/>ALWAYS - it is siblings.xpi; empty sources for a rejected Experiment"] --> SM{{"mode?"}}
+    SM -- sca --> SB2["buildScaCtxs(archive, sourceParsedSources, xpiAddon, env)<br/>→ { sourceCtx, scaCtx, bothCtx }"]
+    SB2 --> SIB
+    SM -- "xpi · invalidExperiment" --> SIB
+    SIB["siblings = { source: sourceCtx (SCA) / xpiCtx (else),<br/>xpi: xpiCtx · sca: scaCtx · both: bothCtx }"] --> SIBS["siblings = { source, xpi, sca, both }"]
+  end
+
+  subgraph P6 ["runPipeline() · Phase 6 - run the review, then render the findings"]
     RCBOX[["runChecks()<br/>detailed under The orchestrator below"]] --> META["merge findings + assemble meta<br/>manual-review list = invalidExperiment ? [ ]<br/>: renderManualItems(manualItems) + registry.manualChecks() (every review)"]
     META --> RFIND["renderFindings()<br/>fill each finding's message from its registry response"]
   end
@@ -240,10 +239,10 @@ flowchart TB
   classDef pass fill:#e9f7ec,stroke:#2e8b57,color:#1c5334;
   classDef producer fill:#fce4ec,stroke:#ad1457,color:#7a1338;
   classDef hidden fill:transparent,stroke:transparent,color:transparent;
-  class HP1,HP2,HP3 hidden;
+  class HP1,HP3 hidden;
   class LOAD,EXP,XNS,HASH,BLK,LSRC,SB,ENV,XB,SB2,SIB,META,RFIND setup;
   class SCH,XV,XC,XI,XE,SV,SC,SI,SE producer;
-  class SETINV,MX2,DOWN,KEEP,SIBS state;
+  class SETINV,MX2,KEEP,SIBS state;
   class P1F,P3F,EXIT1 fail;
   class SUB,FMT,WRITE,SAVE orch;
   class EXIT0 pass;
@@ -255,19 +254,19 @@ flowchart TB
         <strong>The built XPI is analysed first, and always.</strong>
         Phase&nbsp;2 runs the full XPI analysis - vendor, classify, identify,
         parse - in <em>both</em> modes, yielding
-        <code>xpiAddon.bundled</code> and the XPI's parsed sources; Phase&nbsp;4
+        <code>xpiAddon.bundled</code> and the XPI's parsed sources; Phase&nbsp;5
         then projects those into the
         <strong>shipped ctx</strong> (<code>siblings.xpi</code>) that every
         <code>input: xpi</code> check reads. Because the XPI is analysed the
         same way in both modes, an <code>input: xpi</code> check sees the
-        identical artifact whether the run is SCA or XPI. One classification pass
-        serves everything: the <strong>XPI-only advice</strong> reads that same
-        <code>xpiAddon.bundled</code>. That advice is all it is -
-        <code>--sca-root</code> alone decides the mode, and an SCA submission is
-        <strong>always</strong> reviewed as SCA. <code>resolveXpiOnlyAdvice()</code>
-        asks only whether the developer could have skipped the archive; all three
-        answers yes and <code>sca-not-required</code> (info) says so for next time.
-        Routing on that answer would be a bypass: a committed, unminified
+        identical artifact whether the run is SCA or XPI.
+        <code>--sca-root</code> alone decides the mode, and a source submission is
+        <strong>always</strong> reviewed as one. Whether it NEEDED to be is a
+        separate question, asked by a check rather than by setup:
+        <code>sca-not-required</code> (<code>input: both</code>, the one route
+        carrying two artifacts) warns when the XPI carries vendoring information of
+        its own, or when every file it ships is byte-identical to a file in the
+        archive. Routing on that answer would be a bypass: a committed, unminified
         <code>dist/</code> in the archive is its own twin under
         any content test, so a build could be dressed up as source and shrink its
         own review. In SCA the readable source is
@@ -570,6 +569,15 @@ flowchart LR
             <td>the submitted source archive (<code>siblings.sca</code>)</td>
             <td>&mdash; (SCA-only)</td>
           </tr>
+          <tr>
+            <td><code>both</code></td>
+            <td>
+              BOTH, as <code>ctx.xpi</code> + <code>ctx.sca</code> and no
+              <code>ctx.artifact</code> (<code>siblings.both</code>) - for a check
+              whose subject is the SUBMISSION rather than either artifact in it
+            </td>
+            <td>&mdash; (SCA-only)</td>
+          </tr>
         </tbody>
       </table>
       <p>
@@ -630,7 +638,7 @@ flowchart LR
 title: runChecks()
 ---
 flowchart TB
-  IN(["called by runPipeline() · Phase 5 with<br/>registry · opts (only · skip · eslint) · siblings"]) --> LC["loadChecks()<br/>one list per phase section · the --eslint gate drops code-sanity before import (eslintEligible)"]
+  IN(["called by runPipeline() · Phase 6 with<br/>registry · opts (only · skip · eslint) · siblings"]) --> LC["loadChecks()<br/>one list per phase section · the --eslint gate drops code-sanity before import (eslintEligible)"]
   LC --> GATE["select each phase's eligible checks<br/>the sca gate reads ctx.mode; the --eslint gate ran in loadChecks"]
   GATE --> QIE{{"ctx.invalidExperiment?"}}
 
@@ -640,7 +648,7 @@ flowchart TB
   RIE --> COLL1
   RDET --> COLL1
   COLL1["collapseUnusedFolders(findings)<br/>src/lib/unused-folders.js"] --> COLL2["collapseUnusedFolders(manualItems)<br/>src/lib/unused-folders.js"]
-  COLL2 --> RET(["return findings · manualItems · checksRun<br/>→ runPipeline() · Phase 5"])
+  COLL2 --> RET(["return findings · manualItems · checksRun<br/>→ runPipeline() · Phase 6"])
 
   classDef work fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
   classDef term fill:#eef2f8,stroke:#5b6b8c,color:#2a3550;
@@ -763,7 +771,7 @@ flowchart TB
         the token sites),
         <code>src/lib/unused-folders.js</code>
         (<code>collapseUnusedFolders</code>),
-        <code>src/pipeline.js</code> (<code>runPipeline</code> - Phase&nbsp;5
+        <code>src/pipeline.js</code> (<code>runPipeline</code> - Phase&nbsp;6
         calls <code>runChecks</code> and assembles the <code>Review</code>), and
         the phase sections of <code>assets/registry.yaml</code>.
       </p>

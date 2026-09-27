@@ -1,4 +1,5 @@
-// SCA mode (sca: true). Rejects a declared dependency that is not a confirmed
+// A source-code review, said by `input: sca` - the archive it reads exists in no other
+// kind. Rejects a declared dependency that is not a confirmed
 // widely-used library. In a source-code submission the dependency code is not in
 // the readable source (it is pulled in at build) and is mangled in the built XPI,
 // so a non-popular one cannot be reviewed. The remedy differs by what it is for: a

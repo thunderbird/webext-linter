@@ -25,7 +25,6 @@ const envWith = (over = {}) => ({
   options: {},
   mode: REVIEW_MODE.XPI,
   scaExpSource: undefined,
-  scaNotRequired: false,
   invalidExperiment: false,
   manifest: null,
   experiments: null,
@@ -139,7 +138,12 @@ test("a check can merge the source and Experiment views off ctx.artifact", () =>
   source.experiment = experiment;
   const env = envWith({ mode: REVIEW_MODE.SCA });
 
-  const { sourceCtx } = buildScaCtxs(source, parsed(source), env);
+  const { sourceCtx } = buildScaCtxs(
+    source,
+    parsed(source),
+    addonWith({}),
+    env
+  );
 
   // Apart: the WebExtension checks see the add-on's code and nothing privileged.
   assert.ok(sourceCtx.artifact.files.has("app.js"));
@@ -164,6 +168,7 @@ test("a check can merge the source and Experiment views off ctx.artifact", () =>
   const xpiOnly = buildScaCtxs(
     addonWith({ "app.js": "1;" }),
     parsed(addonWith({ "app.js": "1;" })),
+    addonWith({}),
     env
   ).sourceCtx;
   assert.equal(xpiOnly.artifact.experiment, undefined);
@@ -192,7 +197,12 @@ test("buildScaCtxs.scaCtx puts the archive on ctx.artifact, without its sources"
     buildReview: { unresolved: [], anchor: "package.json" },
   };
 
-  const { sourceCtx, scaCtx } = buildScaCtxs(archive, parsed(source), env);
+  const { sourceCtx, scaCtx } = buildScaCtxs(
+    archive,
+    parsed(source),
+    addonWith({}),
+    env
+  );
   // The artifact IS the archive - one object, not a projection of some of its fields.
   assert.equal(scaCtx.artifact, archive);
   assert.equal(scaCtx.artifact, sourceCtx.artifact); // the same one both routes read
@@ -218,6 +228,7 @@ test("buildScaCtxs.scaCtx puts the archive on ctx.artifact, without its sources"
   const empty = buildScaCtxs(
     { ...source, files: new Map() },
     parsed(source),
+    addonWith({}),
     env
   ).scaCtx;
   assert.equal(empty.artifact.files.size, 0);
@@ -228,7 +239,7 @@ test("buildScaCtxs.scaCtx puts the archive on ctx.artifact, without its sources"
 test("buildScaCtxs throws when the source arrives with no parsed sources", () => {
   const source = addonWith({ "src/app.js": "eval('danger');" });
   assert.throws(
-    () => buildScaCtxs(source, undefined, envWith()),
+    () => buildScaCtxs(source, undefined, addonWith({}), envWith()),
     /no parsed sources/
   );
 });

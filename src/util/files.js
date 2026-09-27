@@ -3,10 +3,9 @@
 // One neutral home (importable from every layer) so the extension sets cannot
 // drift between the source collector, the normalizer, and the checks.
 //
-// Belongs here: pure path/extension string helpers (extname, basename, dirname), the
-// extension sets (JS / CSS / HTML / SFC / CODE / ARCHIVE / RECOGNIZED), and the
-// transpiled-source test built on them. No filesystem IO and no
-// dependencies. Does NOT belong here: reading files off disk or out of an
+// Belongs here: pure path/extension string helpers (extname, basename, dirname) and the
+// extension sets built on them (JS / CSS / HTML / SFC / CODE / ARCHIVE / RECOGNIZED). No
+// filesystem IO and no dependencies. Does NOT belong here: reading files off disk or out of an
 // archive - that is src/addon/load.js for the add-on and src/schema/load.js for
 // schemas.
 
@@ -41,49 +40,6 @@ export const HTML_EXTENSIONS = new Set([".html", ".htm", ".xhtml"]);
  *  split by its own parser (src/scan/vue-sfc.js extractVueSfc). Named rather than
  *  spelled inline so the suffix lives in exactly one place, like every other type. */
 export const SFC_EXTENSIONS = new Set([".vue"]);
-
-/** Source kinds that CANNOT ship as they are: a build step compiles them to the JS or
- *  CSS a browser loads, so the shipped file is generated and the archive is the only real
- *  source. Their presence is what withholds the XPI-only advice (resolveXpiOnlyAdvice) -
- *  the readable-shipped-bytes test cannot see the difference, since a transpiler's output
- *  is perfectly readable. Still needed alongside the shipped-bytes test, which is JS-only:
- *  a .scss -> .css build with every script copied verbatim is invisible to that one and
- *  visible here. Deliberately by extension only, and scanned over the whole archive: the
- *  question is what KIND of source the archive carries, and no file content or build
- *  config is consulted to answer it. */
-const TRANSPILED_SOURCE_EXTENSIONS = new Set([
-  ".ts",
-  ".tsx",
-  ".mts",
-  ".cts", // TypeScript
-  ".vue",
-  ".svelte",
-  ".astro", // component single-file formats
-  ".jsx", // JSX
-  ".scss",
-  ".sass",
-  ".less",
-  ".styl", // style preprocessors
-  ".coffee",
-  ".elm",
-  ".res",
-  ".purs", // the long tail
-]);
-
-/**
- * Does this path name a source kind that must be compiled before it can ship?
- * A `.d.ts` never does: it declares types and emits nothing, and plain-JS projects
- * carry them - so it is excluded HERE rather than by extension, because extname()
- * reads `.ts` from `foo.d.ts` and would otherwise veto exactly those projects.
- * @param {string} file
- * @returns {boolean}
- */
-export function isTranspiledSource(file) {
-  if (basename(file).toLowerCase().endsWith(".d.ts")) {
-    return false;
-  }
-  return TRANSPILED_SOURCE_EXTENSIONS.has(extname(file));
-}
 
 /** The file types whose CONTENT this tool reviews: everything a scanner reads, parses,
  *  or extracts sources from. The union is the DEFINITION - consumers spread from it

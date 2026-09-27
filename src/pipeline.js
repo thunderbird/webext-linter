@@ -9,7 +9,7 @@
 // unpacked tree rather than the tool holding a second one of its own.
 //
 // Belongs here: the declared setup plan (SETUP_STEPS), the stage orchestration
-// (runPipeline), the XPI-only submission advice (resolveXpiOnlyAdvice) and the
+// (runPipeline) and the
 // pipeline-level schema-selection helpers (resolveReviewSchema,
 // selectSchemaChannel, detectManifestVersion).
 //
@@ -47,7 +47,6 @@ import {
   scaViews,
 } from "./addon/load.js";
 import { settleScaRoot } from "./addon/sca-root.js";
-import { isTranspiledSource } from "./util/files.js";
 import { runChecks, loadRegistry } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
 import { buildXpiCtx, buildScaCtxs } from "./checks/context.js";
@@ -74,9 +73,7 @@ import {
   classifyFiles,
   assembleBundled,
   applyUnverifiedVendor,
-  hasUnreviewableCode,
 } from "./lib/bundled.js";
-import { untwinnedShippedJs } from "./lib/source-twins.js";
 import { collectJsSources } from "./addon/sources.js";
 import { runExtractionPass } from "./checks/extract.js";
 import { resolveCdnLibraries } from "./lib/cdn-lookup.js";
@@ -124,7 +121,22 @@ import { rethrowIfFatal, sealArtifact } from "./lib/errors.js";
  * @type {{key: string, label?: ?string,
  *   when: (facts: {sca: boolean, isExp: boolean, invalidExperiment: boolean}) => boolean}[]}
  */
+// One predicate per PHASE, not per step. Every step inside a phase acts on the same
+// artifact, so every one of them runs exactly when that artifact is there to act on -
+// written once here rather than decided again, identically, by each step.
+/** A reviewable add-on: everything but the one reject check a rejected Experiment gets. */
+const REVIEWED = (f) => !f.invalidExperiment;
+/** There IS a source archive: the phase that prepares it, and nothing else, needs this. */
+const ARCHIVE = (f) => f.sca && !f.invalidExperiment;
+
 export const SETUP_STEPS = Object.freeze([
+  // PHASE 1 - the REVIEW-LEVEL answers, and the one gate they decide. Each of these
+  // produces something the whole review shares rather than something an artifact owns:
+  // the loaded artifact and its manifest.json record, the schema, the Experiment verdict
+  // (+ invalidExperiment, which gates every phase below). That is why the Experiment
+  // steps are here even though they read the XPI - their product is projected through
+  // `env` to every sibling, never stapled to an artifact. Phases 2-4 are the opposite:
+  // each produces state that belongs to ONE artifact, one phase per artifact.
   { key: "read", label: "Reading add-on", when: () => true },
   // The one piece of setup EVERY path needs, a rejected Experiment included.
   { key: "schema", label: null, when: () => true },
@@ -136,82 +148,52 @@ export const SETUP_STEPS = Object.freeze([
   // Everything below serves a REVIEWABLE add-on, so a rejected Experiment drops it: its
   // review runs the one reject check against the shipped XPI and nothing else. The
   // exceptions are the two steps that name what was reviewed, which its report still needs.
-  {
-    key: "experiment-schema",
-    when: (f) => f.isExp && !f.invalidExperiment,
-  },
-  // The built XPI's own analysis, which a source review runs too: the shipped artifact is
-  // analysed the same way in both modes.
-  {
-    key: "hashes",
-    label: "Fetching library hashes",
-    when: (f) => !f.invalidExperiment,
-  },
-  {
-    key: "vendor-xpi",
-    label: "Verifying vendored libraries",
-    when: (f) => !f.invalidExperiment,
-  },
+  { key: "experiment-schema", when: (f) => f.isExp && REVIEWED(f) },
+  // PHASE 2 - the SHIPPED XPI. Both modes run all of it: the artifact users install is
+  // analysed the same way whether or not a source archive came with it.
+  { key: "hashes", label: "Fetching library hashes", when: REVIEWED },
+  { key: "vendor-xpi", label: "Verifying vendored libraries", when: REVIEWED },
   {
     key: "cdn-bundled",
     label: "Identifying bundled libraries on a CDN",
-    when: (f) => !f.invalidExperiment,
-  },
-  {
-    key: "audit-bundled",
-    label: "Auditing bundled libraries",
-    when: (f) => !f.invalidExperiment,
+    when: REVIEWED,
   },
   // The two parses - the shipped artifact's and, in a source review, the readable source's
   // - are separate steps under one label.
-  {
-    key: "parse-xpi",
-    label: "Parsing add-on sources",
-    when: (f) => !f.invalidExperiment,
-  },
+  { key: "parse-xpi", label: "Parsing add-on sources", when: REVIEWED },
   // What the submission IS, and what this review makes of it: the submitted source archive,
   // the review target, and the record of what was reviewed. The target is two entries rather
   // than one arm each side of an `if`, so the list - not a branch inside a step - holds the
   // pin that a REJECTED Experiment is reviewed as its shipped XPI even with --sca-root,
   // and `meta` is reached on every path.
-  { key: "source-archive", when: (f) => !f.invalidExperiment },
-  { key: "target-source", when: (f) => f.sca && !f.invalidExperiment },
+  { key: "source-archive", when: REVIEWED },
+  { key: "target-source", when: ARCHIVE },
   { key: "target-xpi", when: (f) => !f.sca || f.invalidExperiment },
   { key: "meta", when: () => true },
   // An XPI review's target IS the built XPI, parsed above; there is nothing left to do but
   // hand those sources on.
-  { key: "xpi-sources", when: (f) => !f.sca && !f.invalidExperiment },
-  // The readable source's own passes, and the build the reviewer reproduces.
+  { key: "xpi-sources", when: (f) => !f.sca && REVIEWED(f) },
+  // PHASE 3 - the SOURCE ARCHIVE's own preparation, and the build the reviewer reproduces.
+  // Only an archive has any of this: dependencies it installs rather than ships, a build to
+  // trace, readable source to parse. An XPI review reaches none of it.
   {
     key: "vendor-source",
     label: "Verifying vendored source libraries",
-    when: (f) => f.sca && !f.invalidExperiment,
+    when: ARCHIVE,
   },
-  {
-    key: "deps-source",
-    label: "Auditing source dependencies",
-    when: (f) => f.sca && !f.invalidExperiment,
-  },
+  { key: "deps-source", label: "Auditing source dependencies", when: ARCHIVE },
   {
     key: "cdn-source",
     label: "Identifying source libraries on a CDN",
-    when: (f) => f.sca && !f.invalidExperiment,
+    when: ARCHIVE,
   },
-  {
-    key: "audit-source",
-    label: "Auditing source libraries",
-    when: (f) => f.sca && !f.invalidExperiment,
-  },
-  {
-    key: "parse-source",
-    label: "Parsing add-on sources",
-    when: (f) => f.sca && !f.invalidExperiment,
-  },
-  {
-    key: "build",
-    label: "Analyzing the build",
-    when: (f) => f.sca && !f.invalidExperiment,
-  },
+  { key: "parse-source", label: "Parsing add-on sources", when: ARCHIVE },
+  { key: "build", label: "Analyzing the build", when: ARCHIVE },
+  // PHASE 4 - the REVIEW TARGET. One audit, over whichever artifact this review is about,
+  // recorded on that artifact - so the checks reading it find it in both modes without any
+  // of them naming an artifact. Last, because it needs the target's libraries identified
+  // first: phase 2 does that for an XPI review, phase 3 for a source review.
+  { key: "audit", label: "Auditing libraries", when: REVIEWED },
 ]);
 
 /**
@@ -314,7 +296,7 @@ export async function runPipeline(opts) {
   // So downstream: read `reviewTarget` for the code under review, `xpiAddon` for the
   // shipped artifact - no further mode checks. The only other mode forks are the
   // dependency resolution (--sca-root vs the XPI's VENDOR/package.json) and the
-  // check gate (ctx.mode -> scaEligible). Minified code is non-authored (and rejected)
+  // check gate (ctx.mode -> modeEligible). Minified code is non-authored (and rejected)
   // in both modes: a source-code submission's promise is readable source, so a minified
   // file in the archive is rejected like one in an XPI, not scanned as authored.
   // The source view holds every file but the Experiment, and collectBuildFiles traces the
@@ -430,34 +412,27 @@ export async function runPipeline(opts) {
   /** The submitted source archive: read by `source-archive`, reused by `target-source`
    * and `build`. */
   let scaArchive;
-  /** The submitted archive's files, keyed as the submission keys them - for the XPI-only
-   * advice (resolveXpiOnlyAdvice), which compares their bytes against the shipped ones. */
-  let sourceFiles;
-
   /** The review schema (indexed) and the stamps meta publishes for it. */
   let schema;
   let schemaSource;
   let schemaBranch;
   let schemaChannel;
-  // Set by `source-archive` when the shipped XPI turns out to BE the source, so an XPI-only
-  // submission would have been enough. Pure advice - it changes nothing about this review. Read by the
-  // sca-not-required check via ctx.
-  let scaNotRequired = false;
   // The known-library hash DB the bundled classifier matches files against. An empty Map
   // recognizes nothing.
   let libraryHashes = new Map();
-  // The parse-first REVIEW-TARGET sources handed to the ctx builders (Phase 4), which never
+  // The parse-first REVIEW-TARGET sources handed to the ctx builders (Phase 5), which never
   // parses for itself. In an XPI review the review target IS the built XPI, so these ARE
   // xpiParsedSources; in SCA they are the readable source's, parsed in Phase 3. Stays
   // unset for a rejected Experiment (its one check reads no code - an empty ctx.jsSources).
   let preParsedJsSources;
   // The BUILT XPI's sources, from the FULL extractReview run on it in Phase 2 (always, unless a
-  // rejected Experiment). buildXpiCtxs (Phase 4) hands them to the input:xpi checks, so the
+  // rejected Experiment). buildXpiCtx (Phase 5) hands them to the input:xpi checks, so the
   // shipped ctx is built ONE way regardless of mode; in an XPI review they ALSO ARE
   // preParsedJsSources (the XPI is the review target).
   let xpiParsedSources;
   // The banned-library list (assets/library-blocks.yaml), resolved once in Phase 2 and shared
-  // by BOTH artifact analyses (the XPI in Phase 2, the SCA source in Phase 3).
+  // by every artifact's analysis (the XPI in Phase 2, the archive in Phase 3) and by the
+  // review target's audit in Phase 4.
   let libraryBlocks;
   // What was reviewed, built by the `meta` step and extended once the review has run.
   let meta;
@@ -570,7 +545,7 @@ export async function runPipeline(opts) {
       libraryBlocks = parseLibraryBlocks(libraryBlocksText);
     },
 
-    // Phase 2: the SHIPPED artifact's analysis, and what this review makes of the
+    // Phase 2: the SHIPPED XPI's analysis, and what this review makes of the
     // submission. Both modes run all of it - the XPI is analysed the same way either way.
 
     // Analyse the BUILT XPI FIRST, with the SAME full chain an XPI review
@@ -579,17 +554,28 @@ export async function runPipeline(opts) {
     // regardless of which mode this review turns out to be. The vendor-aware classification
     // it produces (xpiAddon.bundled) is what keeps a vendored library from being read as
     // the developer's code: verifyVendor DISCOVERS vendored files, and classifyReview marks
-    // them non-authored AND leaves them out of `classified` altogether - so a minified
-    // vendored library is counted as unreviewable first-party code by neither unused-files
-    // nor the question behind the XPI-only advice (hasUnreviewableCode). What that advice
-    // does not take from this is an exemption by DECLARATION: resolveXpiOnlyAdvice builds
-    // its own exempt set from content-hash library matches alone, so a declaration cannot
-    // buy it. In a native XPI review the XPI IS the review target, so this is that review's
-    // own analysis, and `xpi-sources` hands those parsed sources on rather than parsing
-    // again.
+    // them non-authored AND leaves them out of `classified` altogether, so a minified
+    // vendored library is not counted against the developer by unused-files. In a native XPI
+    // review the XPI IS the review target, so this is that review's own analysis, and
+    // `xpi-sources` hands those parsed sources on rather than parsing again.
     "vendor-xpi": async () => {
-      xpiAddon.vendor = resolveVendor({ addon: xpiAddon });
-      await verifyVendor(xpiAddon, opts.vendorNet, libraryBlocks);
+      // A VENDOR file or a package.json is read from the artifact that IS the review
+      // target. In a source review that is the archive: the declarations there are the
+      // ones the reviewer reads and the build installs from, and a copy shipped inside the
+      // XPI is a second, unverified answer to the same question - which the source review
+      // has no use for, and sca-not-required reports as the mistake it usually is. So the
+      // XPI gets a vendor reading only when it is the review target.
+      //
+      // The condition is the MODE, not an identity test against reviewTarget: that does not
+      // exist yet here - `target-xpi` settles it later in the list - and other step bodies
+      // read setupFacts.sca the same way.
+      if (!setupFacts.sca) {
+        xpiAddon.vendor = resolveVendor({ addon: xpiAddon });
+        await verifyVendor(xpiAddon, opts.vendorNet, libraryBlocks);
+      }
+      // Classification runs on the XPI in BOTH modes: what its bytes ARE - a known library,
+      // minified, obfuscated - is a fact about the artifact, not about the review, and the
+      // input:xpi checks read it either way.
       classifyReview(xpiAddon, {
         libraryHashes,
         trustedFiles: experimentVerification?.trustedFiles,
@@ -601,8 +587,6 @@ export async function runPipeline(opts) {
         cacheDir: opts.cdnLookupCache,
         cdnEnabled: opts.cdnLookup !== false,
       }),
-    "audit-bundled": () =>
-      auditIdentifiedLibraries(xpiAddon, opts.vendorNet, libraryBlocks),
     "parse-xpi": () => {
       xpiParsedSources = extractReview(xpiAddon, {
         schema,
@@ -638,35 +622,9 @@ export async function runPipeline(opts) {
           scaRoot: opts.scaRoot,
           scaExpSource: opts.scaExpSource,
         });
-        sourceFiles = scaArchive.files;
-      }
-
-      // An SCA submission is ALWAYS reviewed as SCA - this only decides whether to TELL the
-      // developer an XPI-only submission would have done, so their next one skips the longer
-      // review. See resolveXpiOnlyAdvice for why nothing routes on it.
-      //
-      // Independent of whether the build is REPRODUCIBLE. A submission can be rejected for
-      // a build that cannot be run and still be told it never needed the archive: the two
-      // answer different questions, and the advice is only ever about the NEXT submission.
-      // The advice never narrows THIS review, so a rejection beside it takes nothing back.
-      scaNotRequired = resolveXpiOnlyAdvice(
-        opts,
-        xpiAddon.bundled,
-        xpiAddon,
-        sourceFiles
-      );
-      if (scaNotRequired) {
-        // Advice only - the source review runs either way. The sca-not-required check
-        // emits the formal finding; this feed line says it as it is decided.
-        warn(
-          "Shipped XPI is the submitted source; an XPI-only submission would have been enough."
-        );
       }
     },
 
-    // The review target of a source code review: the readable source. The archive was read
-    // ONCE above by `source-archive`, which also split it into its two views; the review
-    // target is that archive, which carries no manifest.json RECORD of its own.
     "target-source": () => {
       reviewTarget = scaArchive;
       for (const notice of scaArchive.skipped ?? []) {
@@ -738,7 +696,7 @@ export async function runPipeline(opts) {
       preParsedJsSources = xpiParsedSources;
     },
 
-    // Phase 3: SCA only - analyse the readable SOURCE (the review target) with the same chain
+    // Phase 3: the SOURCE ARCHIVE's own preparation - the same chain
     // the XPI got in Phase 2 (declared-dependency audit, classify, identify, parse), plus the
     // build trace.
 
@@ -793,8 +751,6 @@ export async function runPipeline(opts) {
         cacheDir: opts.cdnLookupCache,
         cdnEnabled: opts.cdnLookup !== false,
       }),
-    "audit-source": () =>
-      auditIdentifiedLibraries(reviewTarget, opts.vendorNet, libraryBlocks),
 
     // Parse the source ONCE, with the FINAL skip set (see extractReview).
     "parse-source": () => {
@@ -814,6 +770,17 @@ export async function runPipeline(opts) {
         build: { files: reviewTarget.files },
       });
     },
+
+    // Phase 4: the REVIEW TARGET. Last, because it needs the target's libraries identified
+    // first - Phase 2 does that for an XPI review, Phase 3 for a source review.
+
+    // ONE audit, over the REVIEW TARGET, recorded on the review target. The checks that
+    // read it - a published advisory, a policy-blocked release, a library nothing could be
+    // asked about - are routed to the target too, so they find it in both modes and none of
+    // them names an artifact. Auditing the shipped XPI as well, in a review whose target is
+    // the archive, wrote an answer nothing was routed to read.
+    audit: () =>
+      auditIdentifiedLibraries(reviewTarget, opts.vendorNet, libraryBlocks),
   };
 
   // Every action answers to a declared step, so a body cannot be added to setup without an
@@ -876,7 +843,7 @@ export async function runPipeline(opts) {
     sealArtifact(scaArchive, "source archive");
   }
 
-  // Phase 4: build the sibling RunContexts the checks read, once the step list has run. The
+  // Phase 5: build the sibling RunContexts the checks read, once the step list has run. The
   // review-level singletons are built ONCE here and shared by every sibling ctx, so they can
   // never drift between artifacts or double-cost. Nothing is parsed here: Phase 2/3 parsed
   // each artifact's sources.
@@ -891,7 +858,6 @@ export async function runPipeline(opts) {
     schema,
     options: { allowExperiments: opts.allowExperiments, libraryHashes },
     mode,
-    scaNotRequired,
     invalidExperiment,
     manifest: webExtManifestRecord,
     experiments: experimentVerification ?? null,
@@ -904,8 +870,8 @@ export async function runPipeline(opts) {
   // SCA only, and both from the ONE archive: the source ctx (the review target the code
   // checks analyse) and the sca ctx (undeclared-build-source and the build-policy checks).
   // Undefined in an XPI review, which has no archive.
-  const { sourceCtx, scaCtx } = mode?.sca
-    ? buildScaCtxs(reviewTarget, preParsedJsSources, env)
+  const { sourceCtx, scaCtx, bothCtx } = mode?.sca
+    ? buildScaCtxs(reviewTarget, preParsedJsSources, xpiAddon, env)
     : {};
   // The sibling ctxs keyed by the `input` value that routes to each (see routeCtx). Routing is
   // total: `source` is a first-class sibling. siblings.source is the REVIEW TARGET - the readable
@@ -916,9 +882,13 @@ export async function runPipeline(opts) {
     source: mode?.sca ? sourceCtx : xpiCtx,
     xpi: xpiCtx,
     sca: scaCtx,
+    // Only a source review has two artifacts to compare, so only a source review has this
+    // sibling - which is what keeps an `input: both` check out of an XPI review without
+    // anything having to declare it (modeEligible).
+    both: bothCtx,
   };
 
-  // Phase 5: run the review, then finalize. runChecks runs the phase this review calls
+  // Phase 6: run the review, then finalize. runChecks runs the phase this review calls
   // for - invalid-experiment for a rejected Experiment, deterministic otherwise - and
   // returns the finished findings, manual items and the checks that ran. Each throwing
   // check is isolated so one failure can't abort all.
@@ -1216,7 +1186,7 @@ function classifyReview(addon, { libraryHashes, trustedFiles }) {
 
 /**
  * The single extraction pass over the REVIEW TARGET: parse each source ONCE, extract every
- * per-file result the checks read, drop the AST. Returns the parsed sources for Phase 4.
+ * per-file result the checks read, drop the AST. Returns the parsed sources for Phase 5.
  *
  * It runs AFTER identifyBundledLibraries, and that ORDER IS THE POINT: that step FINALIZES
  * addon.bundled.nonAuthored - the skip set this pass gates content extraction on - and it moves
@@ -1496,81 +1466,6 @@ export function selectSchemaChannel({ candidates, strictMax }) {
     branch: def.branch,
     reason: `${why} → ${def.channel} (Thunderbird ${def.major})`,
   };
-}
-
-/**
- * Would an XPI-only submission have been enough? A source-code archive (--sca-root) puts
- * the add-on into the longer source review; when the shipped XPI IS the source, the
- * developer can skip that next time. This answers only that ADVICE (sca-not-required,
- * info) - it never re-routes the review, which is the whole point:
- *
- * an SCA submission is ALWAYS reviewed as SCA. Routing on this would let a wrong answer
- * silently narrow the review, and no content test can be trusted with that: a committed,
- * unminified `dist/` in the archive is its own twin under any of them, so a build can
- * always be dressed up as source. As advice, a wrong answer is only wrong advice.
- *
- * Three questions, all of which must say yes:
- *
- *  - can the shipped bytes be READ? (hasUnreviewableCode - minified, obfuscated, or an
- *    unreadable untrusted library, on the XPI's own vendor-aware classification)
- *  - is the shipped KIND the source kind? (isTranspiledSource over the archive's paths -
- *    a transpiler's output is perfectly readable and is still not the source). It scans the
- *    WHOLE archive, build tooling included, because nothing in a source archive says which
- *    files the build uses - so a typed build config withholds the advice too. That is the
- *    conservative direction: this only ever tells a developer they could have submitted
- *    LESS. It is what catches a NON-JS build - .scss -> .css with every script
- *    copied verbatim - which the third question, being JS-only, cannot see.
- *  - are the shipped bytes THE SOURCE? (untwinnedShippedJs - every shipped script must
- *    exist, byte-identical, in the archive). Without it the first two answer "is the
- *    XPI readable?" and call it "is the XPI the source?", and every real bundler
- *    submission - webpack, Vite, a build that copies from submodules - is told its
- *    archive is unnecessary.
- *
- * Neither of the first two is redundant once the third exists. A minified file COMMITTED
- * to the archive has a twin, and only the first question objects; inline <script> bodies
- * live in HTML, which the third never opens.
- *
- * The archive is unverified - nobody has vouched for it yet - so it may only ever ADD
- * scrutiny, i.e. WITHHOLD this advice. Reading its bytes is fine; consulting a CLAIM is
- * not. Nothing here may read a VENDOR declaration: verification happens later (Phase 3),
- * and a claim that could shrink the review before it is checked is a bypass - which is why
- * `exempt` below is the content-hash-identified libraries and nothing else. Not called for
- * a rejected Experiment (its review reads no source at all).
- *
- * @param {object} opts  Pipeline opts; only `opts.scaRoot` is read here.
- * @param {?import("./lib/bundled.js").Bundled} bundled  The built XPI's vendor-aware
- *   classification (xpiAddon.bundled from the Phase 2 classifyReview).
- * @param {import("./addon/load.js").Addon} [addon]  The built XPI itself, so the
- *   question also sees code shipped inside a page (hasUnreviewableCode).
- * @param {Map<string, Buffer>} [sourceFiles]  The submitted archive's files, keyed
- *   keyed as the submission keys them. Omitted means none were read, which withholds the
- *   advice.
- * @returns {boolean}  True only when all three say the XPI stands on its own.
- */
-export function resolveXpiOnlyAdvice(opts, bundled, addon, sourceFiles) {
-  if (!opts.scaRoot) {
-    return false;
-  }
-  if (hasUnreviewableCode(bundled, addon)) {
-    return false;
-  }
-  for (const path of sourceFiles?.keys() ?? []) {
-    if (isTranspiledSource(path)) {
-      return false;
-    }
-  }
-  // ONLY a true content-hash match against the known-library DB (bundled.js sets
-  // tag.library there and nowhere else). NOT bundled.nonAuthored: that mixes in
-  // VENDOR.md-declared files, and a declaration must not be able to buy this advice
-  // before Phase 3 has verified it. A VENDOR-declared file therefore still needs a twin.
-  const exempt = new Set(
-    (bundled?.classified ?? []).filter((t) => t.library).map((t) => t.file)
-  );
-  return (
-    untwinnedShippedJs(addon?.files ?? new Map(), sourceFiles ?? new Map(), {
-      exempt,
-    }).length === 0
-  );
 }
 
 /**

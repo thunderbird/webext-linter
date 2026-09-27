@@ -118,8 +118,8 @@
   "summary": {
     "error": 1,
     "hold": 0,
-    "warning": 0,
-    "info": 1,
+    "warning": 1,
+    "info": 0,
     "byRule": {
       "sca-lock-file-missing": 1,
       "sca-not-required": 1
@@ -128,12 +128,12 @@
   "findings": [
     {
       "ruleId": "sca-not-required",
-      "severity": "info",
+      "severity": "warning",
       "file": null,
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "The shipped add-on (the built XPI) is the same code as your source archive: nothing in it is minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A source archive is only needed once the shipped code is built, so please submit the XPI on its own next time. Source-code submissions also take considerably longer to review."
+      "message": "This add-on was submitted as a source-code archive, but the shipped add-on (the built XPI) did not need one: either it carries its own vendoring information - a VENDOR file, a package.json or a lock file, which belong in the source archive rather than in the XPI - or every file it ships is byte-identical to a file in the archive, so nothing was built from it. Please submit the XPI on its own next time. Source-code submissions also take considerably longer to review."
     },
     {
       "ruleId": "sca-lock-file-missing",

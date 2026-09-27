@@ -1,6 +1,11 @@
 {
-  "_comment": "A prose-only VENDOR file in a source archive: no block pairs a library file with a file source URL, so nothing parses. The XPI branch teaches the block syntax, because an XPI has already shipped the file and can only declare it. The archive is told where the library belongs instead - package.json, copied out of node_modules by the build - so this pins that the two submissions are answered differently, not just linked differently.",
+  "_comment": "A prose-only VENDOR file in a source archive: no block pairs a library file with a file source URL, so nothing parses. The XPI branch teaches the block syntax, because an XPI has already shipped the file and can only declare it. The archive is told where the library belongs instead - package.json, copied out of node_modules by the build - so this pins that the two submissions are answered differently, not just linked differently. The XPI here also ships a VENDOR.md of its own, which in a source-code submission belongs in the archive - the copy the reviewer reads and the build installs from - so sca-not-required warns that this did not need to be a source submission. It is advice about the NEXT one and narrows nothing here.",
   "expect": {
-    "vendor-unparseable": ["VENDOR.md"]
+    "vendor-unparseable": [
+      "VENDOR.md"
+    ],
+    "sca-not-required": [
+      "(add-on)"
+    ]
   }
 }

@@ -59,6 +59,7 @@ import scaInvalidSymlink from "../../src/checks/rules/sca-invalid-symlink.js";
 import xpiPackagedSymlink from "../../src/checks/rules/xpi-packaged-symlink.js";
 import { SYMLINK_CAUSE } from "../../src/lib/enum.js";
 import scaPackageFileMissing from "../../src/checks/rules/sca-package-file-missing.js";
+import scaNotRequired from "../../src/checks/rules/sca-not-required.js";
 import scaPackageFileInvalid from "../../src/checks/rules/sca-package-file-invalid.js";
 import scaLockFileMissing from "../../src/checks/rules/sca-lock-file-missing.js";
 import scaLockFileInvalid from "../../src/checks/rules/sca-lock-file-invalid.js";
@@ -85,6 +86,7 @@ import {
   runChecks,
   assertRequiredPhaseSections,
   Registry,
+  modeEligible,
 } from "../../src/checks/registry.js";
 import { finding, SEVERITY } from "../../src/report/finding.js";
 
@@ -669,54 +671,78 @@ test("code-sanity is gated by the --eslint flag", async () => {
 // review SOURCE under them. Exactly one is sca:false, and the gate is there for a check
 // that genuinely cannot run on a source archive - never to exempt a source archive's
 // declared files from review, which a declaration nothing verified cannot buy.
-test("checks carry the sca mode tag (true=SCA-only, false=XPI-only, undefined=both)", async () => {
+test("where a check runs: the route says it, or the flag says what a route cannot", async () => {
   const checks = allChecks(await loadChecks(loadRegistry()));
-  const sca = (id) => checks.find((x) => x.id === id)?.sca;
-  // The pinnability requirement is worded per submission type, so its XPI half must NOT
-  // run on a source archive, which asks the same question of the tree it installs instead
-  // (the two sca:true checks below). Two checks, because a range with no lock and a range
-  // the committed lock does not cover have different remedies.
+  const by = (id) => checks.find((x) => x.id === id);
+  // Read the ANSWER, not one field: an input whose artifact exists only in a source
+  // review already says "SCA only", and nothing is declared beside it to disagree with.
+  const runsIn = (id) => {
+    const c = by(id);
+    return [modeEligible(c, true), modeEligible(c, false)];
+  };
+  const SCA_ONLY = [true, false];
+  const XPI_ONLY = [false, true];
+  const BOTH = [true, true];
+
+  // Said by the ROUTE: the archive is the artifact these read, and an XPI review has none.
+  for (const id of [
+    "undeclared-build-source",
+    "build-registry-redirect",
+    "build-lifecycle-hook",
+    "committed-node-modules",
+    "committed-build-artifact",
+    "sca-invalid-symlink",
+    "sca-package-file-missing",
+    "sca-package-file-invalid",
+    "sca-lock-file-missing",
+    "sca-lock-file-invalid",
+    "unpopular-source-dependency",
+    "vendor-vulnerable-dev",
+    "vendor-vulnerable-indirect",
+    "vendor-vulnerable-indirect-dev",
+  ]) {
+    assert.equal(by(id).input, "sca", `${id} reads the archive`);
+    assert.equal(
+      by(id).sca,
+      undefined,
+      `${id} declares no gate beside its route`
+    );
+    assert.deepEqual(runsIn(id), SCA_ONLY, id);
+  }
+
+  // Said by the FLAG, because `input: source` names the review target without saying which
+  // artifact that is. The pinnability requirement is worded per submission type, so its
+  // XPI half must NOT run on a source archive, which asks the same question of the tree it
+  // installs instead. Two checks, because a range with no lock and a range the committed
+  // lock does not cover have different remedies.
   assert.deepEqual(
-    checks.filter((c) => c.sca === false).map((c) => c.id),
+    checks.filter((c) => c["skip-in-sca-review"]).map((c) => c.id),
     ["xpi-lock-file-missing", "xpi-lock-file-invalid"]
   );
-  // minified-code runs in BOTH modes: a minified file is non-authored and rejected
-  // whether it ships in a built XPI or sits in a source-code submission's source.
-  assert.equal(sca("minified-code"), undefined);
-  // The vendor/library family runs in both too: a source archive may carry its own
-  // VENDOR file, verified the same way (verifyVendorDeclarations), and the CDN/hash
-  // identification runs on the source as well (the cdn-source / audit-source steps).
-  assert.equal(sca("untrusted-minified-library"), undefined);
-  assert.equal(sca("untrusted-library"), undefined);
-  assert.equal(sca("vendor-modified"), undefined);
-  assert.equal(sca("unpinned-vendor-source"), undefined);
-  // unused-files runs in BOTH modes: it describes the shipped XPI (dead files the
-  // build ships), like bundled-files / minimize-WAR - all registered `input: xpi`.
-  assert.equal(sca("unused-files"), undefined);
-  assert.equal(sca("unpopular-source-dependency"), true); // SCA-only dep audit
-  // The lock-tree audit is SCA-only for the same reason: a shipped XPI carries no
-  // lock file, so there is no tree to enumerate.
-  assert.equal(sca("vendor-vulnerable-indirect"), true);
-  assert.equal(sca("vendor-vulnerable-indirect-dev"), true);
-  assert.equal(sca("undeclared-build-source"), true); // SCA-only build review
-  assert.equal(sca("build-registry-redirect"), true); // SCA-only build policy
-  assert.equal(sca("committed-node-modules"), true); // SCA-only build policy
-  assert.equal(sca("sca-package-file-missing"), true); // SCA-only build policy
-  assert.equal(sca("sca-package-file-invalid"), true); // its sibling, same axis
-  assert.equal(sca("sca-lock-file-missing"), true); // SCA-only lock policy
-  assert.equal(sca("sca-lock-file-invalid"), true); // SCA-only lock policy
-  // The symlink pair is the one policy split across BOTH artifacts: a source archive may
-  // link within itself, an add-on may not link at all, so the add-on half stays untagged
-  // and judges the built XPI in either mode.
-  assert.equal(sca("sca-invalid-symlink"), true);
-  assert.equal(sca("xpi-packaged-symlink"), undefined);
-  // Its SCA counterparts are the two above; the source-trust axis beside it is untagged,
-  // because where a package comes from matters in either submission type.
-  assert.equal(sca("xpi-lock-file-missing"), false);
-  assert.equal(sca("xpi-lock-file-invalid"), false);
-  assert.equal(sca("unsupported-dependency"), undefined);
-  assert.equal(sca("eval-call"), undefined); // a code check: both modes
-  assert.equal(sca("unknown-api"), undefined);
+  assert.deepEqual(runsIn("xpi-lock-file-missing"), XPI_ONLY);
+  assert.deepEqual(runsIn("xpi-lock-file-invalid"), XPI_ONLY);
+
+  // Neither: these run in both modes. minified-code because a minified file is
+  // non-authored and rejected whether it ships in a built XPI or sits in a source
+  // submission's source; the vendor/library family because a source archive may carry its
+  // own VENDOR file, verified the same way (verifyVendorDeclarations), and the CDN/hash
+  // identification runs on the source too; unused-files because it describes the shipped
+  // XPI (dead files the build ships), like bundled-files / minimize-WAR.
+  for (const id of [
+    "minified-code",
+    "untrusted-minified-library",
+    "untrusted-library",
+    "vendor-modified",
+    "unpinned-vendor-source",
+    "unused-files",
+    "unsupported-dependency",
+    "xpi-packaged-symlink",
+    "eval-call",
+    "unknown-api",
+  ]) {
+    assert.equal(by(id)["skip-in-sca-review"], undefined, id);
+    assert.deepEqual(runsIn(id), BOTH, id);
+  }
 });
 
 // A check's section is DERIVED from who it wrote its question for, so this pins both ends
@@ -882,6 +908,7 @@ test("every check's severity is pinned to its band", async () => {
       "missing-vendor-file",
       "mistyped-manifest-value",
       "non-experiment-strict-max-version",
+      "sca-not-required",
       "unused-files",
       "unused-permission",
     ],
@@ -892,7 +919,6 @@ test("every check's severity is pinned to its band", async () => {
       "find-lib-on-cdn",
       "minimize-host-permissions",
       "missing-library",
-      "sca-not-required",
       "unparsable-file",
       "unrecognized-manifest-key",
       "unsafe-html",
@@ -1225,15 +1251,37 @@ test("a response worded per review mode is all-or-nothing, and never beside a ba
     );
   }
 
-  // `sca: true` keeps the check out of an XPI review entirely (scaEligible), so a
-  // per-mode pair there authors a text nothing can print.
+  // Absence already says false, so writing it says nothing twice.
+  bad(
+    { "deterministic-phase": [rule({ "skip-in-sca-review": false })] },
+    /which is what leaving it out already means/
+  );
+
+  // A check that runs in ONE mode has no use for the other's wording. Both directions: the
+  // route says one (the archive exists in no XPI review), the flag says the other.
   bad(
     {
       "deterministic-phase": [
-        rule({ sca: true, "response-for-xpi": "x", "response-for-sca": "s" }),
+        rule({
+          input: "sca",
+          "response-for-xpi": "x",
+          "response-for-sca": "s",
+        }),
       ],
     },
-    /runs only in a source code review/
+    /exists only in a source code review/
+  );
+  bad(
+    {
+      "deterministic-phase": [
+        rule({
+          "skip-in-sca-review": true,
+          "response-for-xpi": "x",
+          "response-for-sca": "s",
+        }),
+      ],
+    },
+    /runs only in an XPI review/
   );
 
   // A swept case carries no item, so neither wording may take a placeholder.
@@ -1285,10 +1333,23 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
   const checks = allChecks(byPhase);
   for (const c of checks) {
     assert.ok(
-      c.input === "source" || c.input === "xpi" || c.input === "sca",
+      c.input === "source" ||
+        c.input === "xpi" ||
+        c.input === "sca" ||
+        c.input === "both",
       `check "${c.id}" has an invalid input ${JSON.stringify(c.input)}`
     );
   }
+  // The cross-artifact route, pinned exhaustively for the same reason as input:xpi - it is
+  // the ONE route that hands a check two artifacts, so a check joining it is a deliberate
+  // decision, and `source` stays pinned by complement only while this set is complete.
+  assert.deepEqual(
+    checks
+      .filter((c) => c.input === "both")
+      .map((c) => c.id)
+      .sort(),
+    ["sca-not-required"]
+  );
   const xpi = checks
     .filter((c) => c.input === "xpi")
     .map((c) => c.id)
@@ -1344,6 +1405,9 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     .filter((c) => c.input === "sca")
     .map((c) => c.id)
     .sort();
+  // Reading the archive is also how a check says it runs only in a source review, so this
+  // set is both "what they read" and "where they run" - the dependency-tree audits belong
+  // to it for the second reason: what they read is prepared for the archive alone.
   assert.deepEqual(sca, [
     "build-lifecycle-hook",
     "build-registry-redirect",
@@ -1355,6 +1419,10 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "sca-package-file-invalid",
     "sca-package-file-missing",
     "undeclared-build-source",
+    "unpopular-source-dependency",
+    "vendor-vulnerable-dev",
+    "vendor-vulnerable-indirect",
+    "vendor-vulnerable-indirect-dev",
   ]);
 });
 
@@ -1673,16 +1741,81 @@ test("xpi-packaged-symlink rejects every recorded link, whatever its target", ()
 const fileMap = (files) =>
   new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)]));
 
+// ---- sca-not-required (input: both - the one route carrying two artifacts) ----
+
+// Both sides read `.store`, so an artifact here is one: the check compares everything the
+// XPI ships against everything the archive holds, not the narrowed `files` view.
+const artifactOf = (files) => {
+  const map = fileMap(files);
+  return { files: map, store: map };
+};
+const bothCtx = (xpi, sca) => ({
+  xpi: artifactOf(xpi),
+  sca: artifactOf(sca),
+});
+const fired = (xpi, sca) => scaNotRequired.run(bothCtx(xpi, sca)).findings;
+
+test("sca-not-required: vendoring information in the XPI warns on its own", () => {
+  // Built output with no twin in the archive, so only the first question can fire.
+  const built = { "background.js": "console.log('built');" };
+  const archive = { "src/background.js": "console.log('source');" };
+  assert.deepEqual(fired(built, archive), [], "neither question: silent");
+
+  for (const name of [
+    "VENDOR.md",
+    "VENDORS.md",
+    "vendor",
+    "package.json",
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    "pnpm-lock.yaml",
+    "lib/deep/package.json",
+  ]) {
+    const out = fired({ ...built, [name]: "{}" }, archive);
+    assert.equal(out.length, 1, `${name} in the XPI warns`);
+    // The subject is the submission, so the finding names no file.
+    assert.equal(out[0].file, null);
+  }
+
+  // A DIRECTORY called vendor is not a vendoring file - only files are read.
+  assert.deepEqual(fired({ ...built, "vendor/dep.js": "1;" }, archive), []);
+});
+
+test("sca-not-required: every shipped byte present in the archive warns", () => {
+  const code = "console.log('unbuilt');";
+  // A twin may sit at ANY path: a build that only relocates files still leaves every
+  // shipped byte readable, which is what the question is about.
+  assert.equal(
+    fired({ "background.js": code }, { "src/background.js": code }).length,
+    1
+  );
+
+  // One shipped file with no twin is enough to withhold it - here an icon the archive
+  // never had, which is a file the build added.
+  assert.deepEqual(
+    fired(
+      { "background.js": code, "icon.png": "\u0089PNG-ish" },
+      { "src/background.js": code }
+    ),
+    []
+  );
+
+  // Same SIZE, different bytes: the size bucket finds a candidate and the hash rejects it.
+  assert.deepEqual(fired({ "a.js": "aaaa" }, { "b.js": "bbbb" }), []);
+
+  // An empty XPI ships nothing unreadable, vacuously.
+  assert.equal(fired({}, { "src/background.js": code }).length, 1);
+});
+
 // ---- sca-package-file-missing / -invalid (SCA: the archive must carry a usable
 // package.json, the pair shaped like sca-lock-file-missing / -invalid) ----
 
 // The archive exists so the reviewer can reproduce the build. Its entry point is the root
 // package.json, so no package.json is no build.
 test("sca-package-file-missing reports an absent package.json", () => {
-  const run = (files, scaNotRequired = false) =>
+  const run = (files) =>
     scaPackageFileMissing.run({
       artifact: { files: fileMap(files) },
-      scaNotRequired,
     }).findings;
 
   const noBuild = run({ "manifest.json": "{}" });
@@ -1725,10 +1858,9 @@ test("sca-package-file-missing reports an absent package.json", () => {
 // build it defines cannot be run either way - and the two are worded apart because a
 // developer would check which it is.
 test("sca-package-file-invalid reports a package.json that cannot be used", () => {
-  const run = (files, scaNotRequired = false) =>
+  const run = (files) =>
     scaPackageFileInvalid.run({
       artifact: { files: fileMap(files) },
-      scaNotRequired,
     }).findings;
   const one = (out, item) => {
     assert.equal(out.length, 1);
@@ -4344,12 +4476,11 @@ test("loadChecks rejects a check with no valid input", async () => {
   }
 });
 
-// `input` and `sca:` are different axes, and this one pairing is required: an `input: sca`
-// check reads an artifact that exists only in an SCA review, so without `sca: true` it also
-// runs in an XPI review, where that sibling is undefined and routeCtx would THROW. loadChecks
-// asserts the gate so the failure is a clear load-time config error, not a mid-review throw.
-// The reverse is deliberately free - `sca: true` may pair with any input.
-test("loadChecks rejects an input:sca check that is not sca:true", async () => {
+// An `input: sca` check reads an artifact that exists only in a source review, so its
+// route already says which mode it runs in. Nothing has to be declared beside it, and
+// nothing can be declared that disagrees with it - which is what the pairing assertion
+// this replaces was guarding against.
+test("an input:sca check needs no mode gate: its route is the gate", async () => {
   const tmp = path.join(
     os.tmpdir(),
     `build-nosca-registry-${process.pid}.yaml`
@@ -4359,17 +4490,13 @@ test("loadChecks rejects an input:sca check that is not sca:true", async () => {
     "deterministic-phase:\n- title: Build\n  severity: error\n  check: sync-xhr.js\n  input: sca\n"
   );
   try {
-    assert.throws(
-      () => loadRegistry(tmp),
-      /reads the sca artifact .* without being gated/
-    );
-    // With the gate, it loads.
-    fs.writeFileSync(
-      tmp,
-      "deterministic-phase:\n- title: Build\n  severity: error\n  check: sync-xhr.js\n  input: sca\n  sca: true\n"
-    );
     const checks = allChecks(await loadChecks(loadRegistry(tmp)));
     assert.equal(checks[0].input, "sca");
+    assert.equal(checks[0].sca, undefined);
+    // Runs in a source review, and is kept out of an XPI review - where routeCtx would
+    // have no sca sibling to hand it.
+    assert.equal(modeEligible(checks[0], true), true);
+    assert.equal(modeEligible(checks[0], false), false);
   } finally {
     fs.rmSync(tmp);
   }

@@ -86,12 +86,9 @@ flowchart TD
 
       <p class="source-note">
         Source of truth:
-        <code>src/checks/rules/sca-not-required.js</code> (fed by
-        <code>resolveXpiOnlyAdvice</code> in <code>src/pipeline.js</code>, which combines
-        <code>hasUnreviewableCode</code> in <code>src/lib/bundled.js</code>,
-        <code>isTranspiledSource</code> in <code>src/util/files.js</code> and
-        <code>untwinnedShippedJs</code> in <code>src/lib/source-twins.js</code>) and its entry in
-        <code>assets/registry.yaml</code>.
+        <code>src/checks/rules/sca-not-required.js</code> (which asks both questions
+        itself, over the two artifacts its <code>input: both</code> route carries) and its
+        entry in <code>assets/registry.yaml</code>.
       </p>
     </main>
 

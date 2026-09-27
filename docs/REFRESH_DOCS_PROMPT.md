@@ -76,11 +76,10 @@ that no longer exist.
    (`check-flow.html`). Read the stage order OFF THE CODE rather than from this
    list - and read it off `SETUP_STEPS`, the declared list one loop walks, not off the
    order the statements happen to sit in. The whole shipped-XPI chain (resolveVendor
-   → verifyVendor → classifyReview → identifyBundledLibraries →
-   auditIdentifiedLibraries → extractReview) runs in BOTH modes and before the
-   source is read: the shipped artifact is analysed the same way either way, and
-   `resolveXpiOnlyAdvice` reads the classification it produces. Getting this backwards
-   inverts the diagram. The review mode is DERIVED (`--sca-root`, minus a rejected
+   → verifyVendor → classifyReview → identifyBundledLibraries → extractReview) runs
+   in BOTH modes and before the source is read: the shipped artifact is analysed the
+   same way either way. The vulnerability audit is NOT part of it - it follows the
+   review target, in its own later phase. Getting this backwards inverts the diagram. The review mode is DERIVED (`--sca-root`, minus a rejected
    Experiment) and assigned nowhere. The file also shows the `mode?.sca` forks (the
    source / dependency / build / shipped-XPI / shipped-manifest split, routed via
    `routeCtx` over the sibling ctxs built by `buildXpiCtxs` / `buildScaCtxs`).

@@ -1301,61 +1301,67 @@ const READABLE_XPI = {
   "background.js": `console.log("readable shipped code");`,
 };
 
-// The transpiled question, end to end. The scan sees the WHOLE archive, because nothing in a
-// source archive can say which files the build uses - so TypeScript anywhere withholds the
-// advice, build tooling included. That is the conservative direction: the advice only ever
-// tells a developer they could have submitted LESS, so withholding it costs them a second
-// archive and nothing else. Neither run changes the MODE: an SCA submission is always SCA.
-test("SCA e2e: transpiled source anywhere in the archive withholds the XPI-only advice", async () => {
+// The two ways a submission says it did not need to be one, end to end. Neither changes the
+// MODE: a source submission is always reviewed as a source submission, and the warning is
+// only ever about the NEXT one.
+test("SCA e2e: shipped bytes already in the archive, or vendoring info in the XPI, warns", async () => {
   const xpi = tmpDir(READABLE_XPI);
   const base = {
     "package.json": JSON.stringify({ name: "tr", version: "1.0.0" }),
-    // The advice is withheld from a build that cannot be run, and a source archive owes a
-    // lock whatever its package.json declares - so without one this would test the lock rule
-    // rather than the transpiled-source question it is about.
+    // A source archive owes a lock whatever its package.json declares - without one this
+    // would test the lock rule rather than the question it is about.
     "package-lock.json": JSON.stringify({
       lockfileVersion: 3,
       packages: { "": {} },
     }),
-    "vite.config.ts": `export default {};\n`, // build tooling, beside the add-on code
-    "src/manifest.json": JSON.stringify(
-      READABLE_XPI["manifest.json"]
-        ? JSON.parse(READABLE_XPI["manifest.json"])
-        : { manifest_version: 3, name: "tr", version: "1.0" }
-    ),
-    // Byte-identical to the shipped script, so the shipped-bytes question passes and this
-    // test isolates the transpiled one. A lookalike literal would silently fail it.
+    "src/manifest.json": READABLE_XPI["manifest.json"],
+    // Byte-identical to the shipped script. A lookalike literal would silently fail this.
     "src/background.js": READABLE_XPI["background.js"],
   };
-  const outside = tmpDir(base);
-  const inside = tmpDir({
+  const twinned = tmpDir(base);
+  // The same archive, except the shipped script was BUILT from something else: nothing in
+  // the archive matches its bytes, so the comparison finds no twin.
+  const built = tmpDir({
     ...base,
-    "src/app.ts": `export const x: number = 1;\n`,
+    "src/background.js": `console.log("pre-build source");`,
+  });
+  // Built bytes again, but this time the XPI carries a package.json of its own - which in a
+  // source submission belongs in the archive. That alone warns, twin or no twin.
+  const xpiWithDeclaration = tmpDir({
+    ...READABLE_XPI,
+    "background.js": `console.log("built output");`,
+    "package.json": JSON.stringify({ name: "shipped", version: "1.0.0" }),
   });
   try {
     const a = await runPipeline({
       addonPath: xpi,
-      scaRoot: outside,
+      scaRoot: twinned,
       ...OFFLINE,
     });
     assert.equal(a.mode, REVIEW_MODE.SCA, "the review is never re-routed");
     assert.ok(
-      !has(a.findings, "sca-not-required"),
-      "a typed build config withholds the advice, like any other typed file"
+      has(a.findings, "sca-not-required"),
+      "every shipped byte is readable in the archive"
     );
 
-    const b = await runPipeline({
-      addonPath: xpi,
-      scaRoot: inside,
-      ...OFFLINE,
-    });
-    assert.equal(b.mode, REVIEW_MODE.SCA, "still SCA, as always");
+    const b = await runPipeline({ addonPath: xpi, scaRoot: built, ...OFFLINE });
+    assert.equal(b.mode, REVIEW_MODE.SCA, "still a source review, as always");
     assert.ok(
       !has(b.findings, "sca-not-required"),
-      "an authored .ts withholds it too"
+      "a shipped file that was built has no twin, and the archive is needed"
+    );
+
+    const c = await runPipeline({
+      addonPath: xpiWithDeclaration,
+      scaRoot: built,
+      ...OFFLINE,
+    });
+    assert.ok(
+      has(c.findings, "sca-not-required"),
+      "vendoring information in the XPI warns on its own"
     );
   } finally {
-    [xpi, outside, inside].forEach((d) =>
+    [xpi, twinned, built, xpiWithDeclaration].forEach((d) =>
       fs.rmSync(d, { recursive: true, force: true })
     );
   }
@@ -1449,50 +1455,6 @@ test("SCA e2e: a minified-XPI submission stays in SCA mode (a legitimate SCA)", 
     assert.ok(
       !has(findings, "sca-not-required"),
       "no XPI-only advice for a legitimate SCA"
-    );
-  } finally {
-    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
-  }
-});
-
-// The anti-bypass invariant, end to end: a VENDOR-declared file is a CLAIM Phase 3 has not
-// verified when the advice is decided, so it must NOT be exempt from the shipped-bytes
-// question. Here lib/widget.js is declared but absent from the archive, and that alone
-// withholds the advice - otherwise a developer could buy it by writing a VENDOR.md entry.
-test("SCA e2e: a VENDOR-declared file still needs a source twin (a declaration cannot buy the advice)", async () => {
-  const xpi = tmpDir({
-    "manifest.json": JSON.stringify({
-      manifest_version: 3,
-      name: "Vendor Downgrade",
-      version: "1.0",
-      background: { scripts: ["background.js"] },
-    }),
-    "background.js": `console.log("readable first-party");`, // readable: question 1 passes
-    "VENDOR.md":
-      "File: lib/widget.js\nSource: https://unpkg.com/widget@1.0.0/widget.js\n",
-    "lib/widget.js": `browser.totallyFakeNamespace.doThing();\n`, // scanned-as-authored -> unknown-api
-  });
-  const src = tmpDir({
-    "package.json": JSON.stringify({ name: "d", version: "1.0.0" }),
-  });
-  try {
-    const { findings, mode, meta } = await runPipeline({
-      addonPath: xpi,
-      scaRoot: src,
-      ...OFFLINE,
-    });
-    assert.equal(
-      mode,
-      REVIEW_MODE.SCA,
-      "an SCA submission is always reviewed as SCA"
-    );
-    assert.ok(
-      !has(findings, "sca-not-required"),
-      "the declared-but-untwinned library withholds the advice"
-    );
-    assert.ok(
-      !hasItem(meta, "unknown-api", (m) => /widget\.js/.test(m.file ?? "")),
-      "the VENDOR-declared library is still excluded from content review (vendor-aware classify)"
     );
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));

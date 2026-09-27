@@ -123,15 +123,32 @@ function bandUnder(severity, warningsAsErrors) {
 const COLLAPSE_MODES = new Set(["subject"]);
 
 // The `input` a check entry declares - which add-on artifact is ctx.artifact when the
-// check runs. "source" = the REVIEW TARGET, the readable submitted code (the readable
+// check runs, and, where the answer can only exist in one review mode, WHICH MODE it runs
+// in. "source" = the REVIEW TARGET, the readable submitted code (the readable
 // --sca-root in an SCA review, the built XPI in an XPI review - the only artifact
-// there); "xpi" = ALWAYS the built XPI (the shipped artifact), for the structure checks
-// that describe what ships AND the manifest.json checks, since the shipped manifest.json is
-// that artifact's; "sca" = the submitted source archive with no parsed source, for the build
-// review - the checks there read files and the recorded lists, never code. Required on every
-// check: runChecks routes each check to its artifact's context, so the check reads one artifact
-// and has no way to reach another (see buildXpiCtx / buildScaCtxs).
-const VALID_CHECK_INPUTS = new Set(["source", "xpi", "sca"]);
+// there); "xpi" = ALWAYS the built XPI (the shipped artifact), analysed in both modes;
+// "sca" = the submitted source archive with no parsed source, for the build and
+// dependency checks; "both" = the two artifacts together, named ctx.xpi and ctx.sca and
+// with no ctx.artifact, for a check whose subject is the SUBMISSION rather than either
+// artifact in it. "both" is the only route that sees more than one, so a cross-artifact
+// comparison is a thing the registry declares rather than something setup does invisibly
+// and hands down as a flag.
+//
+// The archive exists only in an SCA review, so `input: sca` says "an SCA review" as well
+// as "that artifact" - the mode is DERIVED from the route (SCA_ONLY_INPUTS, modeEligible)
+// rather than declared a second time beside it. An entry that had to say both could get
+// one of them wrong; an entry that says one cannot.
+//
+// A check reads only the artifact its route names, and has no way to reach another (see
+// buildXpiCtx / buildScaCtxs). Since the ctxs are sealed (src/lib/errors.js), reading a
+// field the routed artifact never produced throws rather than answering nothing.
+const VALID_CHECK_INPUTS = new Set(["source", "xpi", "sca", "both"]);
+
+/** The routes whose artifact exists only in a source-code-archive review, so declaring one
+ *  IS declaring the mode (modeEligible). buildScaCtxs builds these siblings; an XPI review
+ *  has neither, and routeCtx would throw. Beside the set above because they are one axis:
+ *  which artifact a check reads, and - where only one kind of review has it - which review. */
+const SCA_ONLY_INPUTS = new Set(["sca", "both"]);
 
 // The check-bearing yaml sections ARE the phases: a check's phase IS the section it
 // lives in, so the two can never disagree and no entry declares a phase of its own.
@@ -183,8 +200,9 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {boolean} [warningsAsErrors]  The run's band policy (--warnings-as-errors),
  *   applied to each finding's FINAL severity in runOneCheck - which is the only value a
  *   check that delegates has. Carried here because runOneCheck takes no registry.
- * @property {boolean} [sca]  The review-mode gate (scaEligible); undefined when unset.
- * @property {"source"|"xpi"|"sca"|undefined} input  Which artifact is
+ * @property {boolean} ["skip-in-sca-review"]  Keeps a check that judges the shipped XPI out
+ *   of a source review (modeEligible); absent means it runs in both.
+ * @property {"source"|"xpi"|"sca"|"both"|undefined} input  Which artifact is
  *   ctx.artifact when the check runs (VALID_CHECK_INPUTS above), and what its output is
  *   labelled as ([XPI]/[SCA]). Required for every check; runChecks routes it (see
  *   buildXpiCtx / buildScaCtxs).
@@ -240,7 +258,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   libraryHashes?: Map<string, {name: string, version: string}>}} options  The only run
  *   options a check reads (experiment-not-allowed, the lazy bundled classifier).
  * @property {import("../lib/enum.js").ReviewMode} [mode]  Review mode: "xpi" (a built add-on, default) or
- *   "sca" (a source code archive). Gates checks via scaEligible.
+ *   "sca" (a source code archive). Gates checks via modeEligible.
  *
  *   The SHIPPED artifact (the built XPI) is deliberately NOT a ctx field: a check
  *   has no way to reach the artifact it was not routed to. The orchestrator builds a
@@ -253,9 +271,6 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
  *   --allow-experiments is off: the review short-circuits to the reject check
  *   only (see runChecks and buildXpiCtx).
- * @property {boolean} [scaNotRequired]  The shipped XPI of a submitted SCA (--sca-root)
- *   turned out to BE its source, so an XPI-only submission would have been enough; the
- *   sca-not-required check reads this to say so. Pure advice - the review is not re-routed.
  * @property {Function} [note]  Narrate a file:line investigation note to the
  *   feed: (file, loc, item, verdict) -> void. Set by runChecks, absent in tests.
  */
@@ -439,14 +454,14 @@ export class Registry {
    * The artifact a check's OUTPUT is labelled as ([XPI]/[SCA]): the files it acts
    * on, which are the ones it runs on, so its declared `input` is the label.
    * @param {string} ruleId
-   * @returns {"xpi"|"sca"|"source"}
+   * @returns {"xpi"|"sca"|"source"|"both"}
    */
   labelInputFor(ruleId) {
     return this.checkEntry(ruleId)?.input ?? "source";
   }
 
   /**
-   * The label artifact per ruleId (a `Map<ruleId, "xpi"|"sca"|"source">`),
+   * The label artifact per ruleId (a `Map<ruleId, "xpi"|"sca"|"source"|"both">`),
    * projected for the report layer so it can label a finding's file:line by
    * artifact ([XPI]/[SCA]) without touching the registry. Keyed off labelInputFor
    * (the files the check acts on).
@@ -975,11 +990,20 @@ function assertEntry(entry, at) {
         `(expected one of: ${[...VALID_CHECK_SEVERITIES].join(", ")})`
     );
   }
-  for (const flag of ["sca", "eslint"]) {
+  for (const flag of ["skip-in-sca-review", "eslint"]) {
     if (entry[flag] !== undefined && typeof entry[flag] !== "boolean") {
       throw new Error(
         `${where} has a non-boolean \`${flag}\` ${JSON.stringify(entry[flag])} - it is a ` +
           "gate, and anything else silently reads as false"
+      );
+    }
+    // Absence already says false, so writing it says nothing twice - and reading
+    // `skip-in-sca-review: false` back is a double negative the two-state form exists to
+    // avoid. Refused rather than accepted, like every other declaration that means nothing.
+    if (entry[flag] === false) {
+      throw new Error(
+        `${where} declares \`${flag}: false\`, which is what leaving it out already means. ` +
+          "Remove it"
       );
     }
   }
@@ -1079,21 +1103,6 @@ function assertEntry(entry, at) {
           "Every check must declare which add-on artifact it reads (source = the " +
           "review target, xpi = the built XPI, sca = the source archive, " +
           "manifest = the shipped manifest only)."
-      );
-    }
-    // Two different axes, and this one pairing is required: `input` names the ARTIFACT a
-    // check reads, `sca:` gates which review MODE it runs in. The sca artifact exists only in
-    // an SCA review, so a check reading it must also be gated to one - otherwise it runs in an
-    // XPI review, where that sibling is undefined and routeCtx throws. Asserted at LOAD time
-    // so the failure is a clear config error rather than a mid-review throw. The reverse does
-    // NOT hold: `sca: true` is free to pair with any input, which is what leaves room for an
-    // SCA-only check over another artifact.
-    if (input === "sca" && entry.sca !== true) {
-      throw new Error(
-        `${where} reads the sca artifact (\`input: sca\`) without being gated to an SCA ` +
-          "review (`sca: true`). Those are different axes: that artifact exists only in an SCA " +
-          "review, so without the gate this would run in an XPI review, where routeCtx would " +
-          "throw (there is no sca sibling there)."
       );
     }
     assertSweepInstruction(entry, where, severity);
@@ -1267,10 +1276,20 @@ function assertResponse(entry, where) {
         "with none. Word the other mode too, or word one `response` for both"
     );
   }
-  if (entry.sca === true) {
+  // A check that runs in ONE mode has no use for the other mode's wording, and authoring it
+  // would leave text nothing can print. Both directions, because the reasons differ: one is
+  // read off the route, the other is declared.
+  if (SCA_ONLY_INPUTS.has(entry.input)) {
     throw new Error(
-      `${where} declares \`sca: true\` but words its response per review mode - the ` +
-        `check runs only in a source code review, so \`${MODE_RESPONSES.xpi}\` is text ` +
+      `${where} reads the source archive (\`input: ${entry.input}\`) but words its ` +
+        "response per review mode - the archive exists only in a source code review, so " +
+        `\`${MODE_RESPONSES.xpi}\` is text nothing can print. Word one \`response\` instead`
+    );
+  }
+  if (entry["skip-in-sca-review"]) {
+    throw new Error(
+      `${where} declares \`skip-in-sca-review\` but words its response per review mode - ` +
+        `the check runs only in an XPI review, so \`${MODE_RESPONSES.sca}\` is text ` +
         "nothing can print. Word one `response` instead"
     );
   }
@@ -1970,7 +1989,8 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
       // its own, so the declared value above cannot answer for it.
       warningsAsErrors: registry.warningsAsErrors,
       input: entry.input,
-      sca: typeof entry.sca === "boolean" ? entry.sca : undefined,
+      "skip-in-sca-review":
+        entry["skip-in-sca-review"] === true ? true : undefined,
       section: registry.sectionFor(id),
       // The permission-prompts token entries, like `instructions` above: registry
       // data every check carries, read by the one that scans for them. It version-filters at run time (versionInBounds) with the reviewed
@@ -2017,25 +2037,37 @@ export function formatNote(file, loc, item, verdict, label = "") {
 }
 
 /**
- * Whether a registry entry runs in the current review REVIEW_MODE, per its `sca` field:
- * `sca: true` only in SCA mode (a source code archive,
- * triggered by `--sca-root`), `sca: false` only in XPI mode (reviewing a built
- * add-on), an omitted `sca` in both. The `--sca-root` build and dependency checks are
- * `sca: true`. Two checks are `sca: false`: xpi-lock-file-missing and
- * xpi-lock-file-invalid, which ask what pins a shipped vendored copy - a question a
- * source archive answers differently, because it ships no copy and installs at build
- * time. The gate is for a check that genuinely cannot run on a source archive, never a
- * way to exempt a source archive's declared files from review: a declaration nothing
- * verified exempts nothing, and here the question does not disappear, it moves to the
- * two sca:true lock checks.
- * @param {{sca?: boolean}} entry @param {boolean} inScaMode
+ * Whether a registry entry runs in the current review REVIEW_MODE.
+ *
+ * Read from the ROUTE first: an `input` in SCA_ONLY_INPUTS names an artifact that exists
+ * only in a source-code-archive review (--sca-root), so such a check runs there and nowhere
+ * else. Nothing is declared for that case, so nothing can be declared wrongly.
+ *
+ * `skip-in-sca-review` says the one thing a route cannot: that the review TARGET must be the
+ * built XPI. `input: source` names the target without saying which artifact that is, and two
+ * checks need it to be the XPI - xpi-lock-file-missing and xpi-lock-file-invalid ask what pins
+ * a shipped vendored copy. That is not the question their sca-side counterparts ask: a source
+ * archive ships no copy and installs at build time, so its lock pins what will be INSTALLED
+ * rather than what was shipped. `input: xpi` would not serve them either, because the built
+ * XPI is analysed in BOTH modes.
+ *
+ * It is for a check that genuinely cannot run on a source archive, never a way to exempt a
+ * source archive's declared files from review: a declaration nothing verified exempts
+ * nothing, and here the question does not disappear, it moves to the two sca lock checks.
+ *
+ * Named for the AXIS rather than for one side of it, like eslintEligible beside it: the flag
+ * is deliberately one-sided, so the function that weighs it against the route must not be.
+ * Exported because it IS the answer, not a step towards one: the pin that says where each
+ * check runs has to ask the rule the review asks, or it pins a copy of the rule instead.
+ * @param {{input?: string, "skip-in-sca-review"?: boolean}} entry
+ * @param {boolean} inScaMode
  * @returns {boolean}
  */
-function scaEligible(entry, inScaMode) {
-  if (entry.sca === true) {
+export function modeEligible(entry, inScaMode) {
+  if (SCA_ONLY_INPUTS.has(entry.input)) {
     return inScaMode;
   }
-  if (entry.sca === false) {
+  if (entry["skip-in-sca-review"]) {
     return !inScaMode;
   }
   return true;
@@ -2145,14 +2177,14 @@ export async function runChecks(registry, opts = {}, siblings) {
     );
   }
   const byPhase = await loadChecks(registry, opts);
-  // The `sca` gate (scaEligible) keys off the review mode. A gated-out check never runs
+  // The mode gate (modeEligible) reads the route, then the flag. A gated-out check never runs
   // and never appears in the feed or meta.checksRun.
   const inScaMode = sourceCtx.mode?.sca;
   // An invalid Experiment short-circuits the whole review to the reject phase and
   // nothing else; a normal review runs the deterministic phase. The gates apply within
   // each phase.
   const inPhase = (phase) =>
-    (byPhase.get(phase) ?? []).filter((c) => scaEligible(c, inScaMode));
+    (byPhase.get(phase) ?? []).filter((c) => modeEligible(c, inScaMode));
   const checks = sourceCtx.invalidExperiment
     ? inPhase("invalid-experiment")
     : inPhase("deterministic");

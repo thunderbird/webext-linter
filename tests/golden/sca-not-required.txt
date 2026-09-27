@@ -1,8 +1,8 @@
 ── Found Issues ──
 
-Thank you for your contribution, it will be approved shortly. We would like to share the following information with you:
+Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
 
-1) The shipped add-on (the built XPI) is the same code as your source archive: nothing in it is minified, obfuscated or transpiled, and every script it ships is identical to one in the archive. A source archive is only needed once the shipped code is built, so please submit the XPI on its own next time. Source-code submissions also take considerably longer to review.
+1) This add-on was submitted as a source-code archive, but the shipped add-on (the built XPI) did not need one: either it carries its own vendoring information - a VENDOR file, a package.json or a lock file, which belong in the source archive rather than in the XPI - or every file it ships is byte-identical to a file in the archive, so nothing was built from it. Please submit the XPI on its own next time. Source-code submissions also take considerably longer to review.
 
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
@@ -181,6 +181,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-0 error(s), 0 hold, 0 warning(s), 1 info,
+0 error(s), 0 hold, 1 warning(s), 0 info,
 0 extended code review item(s), 1 extended manual review item(s),
 10 standard code review item(s), 10 standard manual review item(s)

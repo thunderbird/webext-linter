@@ -87,9 +87,9 @@ test("the narrated count per run is the total the feed shows", () => {
     ...over,
   });
   assert.equal(narrated(facts()), 7, "an XPI review");
-  assert.equal(narrated(facts({ sca: true })), 13, "a source code review");
+  assert.equal(narrated(facts({ sca: true })), 12, "a source code review");
   assert.equal(narrated(facts({ isExp: true })), 8, "an Experiment review");
-  assert.equal(narrated(facts({ sca: true, isExp: true })), 14, "both");
+  assert.equal(narrated(facts({ sca: true, isExp: true })), 13, "both");
   // The rejection is decided by the third step, and the total is sized BEFORE the run: the
   // same conditions asked with it already decided say three, and the feed still counts
   // towards eight. That gap IS "the counter stops short".
@@ -105,8 +105,8 @@ test("the setup feed of an XPI review", () => {
     "[3/7] Fetching library hashes",
     "[4/7] Verifying vendored libraries",
     "[5/7] Identifying bundled libraries on a CDN",
-    "[6/7] Auditing bundled libraries",
-    "[7/7] Parsing add-on sources",
+    "[6/7] Parsing add-on sources",
+    "[7/7] Auditing libraries",
   ]);
 });
 
@@ -122,19 +122,18 @@ test("the setup feed of a source code review", () => {
       path.join(addon("build-hygiene-sca"), "src"),
     ]),
     [
-      "[1/13] Reading add-on",
-      "[2/13] Fetching review schemas (release-mv3)",
-      "[3/13] Fetching library hashes",
-      "[4/13] Verifying vendored libraries",
-      "[5/13] Identifying bundled libraries on a CDN",
-      "[6/13] Auditing bundled libraries",
-      "[7/13] Parsing add-on sources",
-      "[8/13] Verifying vendored source libraries",
-      "[9/13] Auditing source dependencies",
-      "[10/13] Identifying source libraries on a CDN",
-      "[11/13] Auditing source libraries",
-      "[12/13] Parsing add-on sources",
-      "[13/13] Analyzing the build",
+      "[1/12] Reading add-on",
+      "[2/12] Fetching review schemas (release-mv3)",
+      "[3/12] Fetching library hashes",
+      "[4/12] Verifying vendored libraries",
+      "[5/12] Identifying bundled libraries on a CDN",
+      "[6/12] Parsing add-on sources",
+      "[7/12] Verifying vendored source libraries",
+      "[8/12] Auditing source dependencies",
+      "[9/12] Identifying source libraries on a CDN",
+      "[10/12] Parsing add-on sources",
+      "[11/12] Analyzing the build",
+      "[12/12] Auditing libraries",
     ]
   );
 });
@@ -151,8 +150,8 @@ test("the setup feed of an accepted Experiment review", () => {
       "[4/8] Fetching library hashes",
       "[5/8] Verifying vendored libraries",
       "[6/8] Identifying bundled libraries on a CDN",
-      "[7/8] Auditing bundled libraries",
-      "[8/8] Parsing add-on sources",
+      "[7/8] Parsing add-on sources",
+      "[8/8] Auditing libraries",
     ]
   );
 });
@@ -190,9 +189,9 @@ test("a rejected Experiment submitted as source stops at three of a source revie
   assert.deepEqual(
     setupFeed([path.join(dir, "xpi"), "--sca-root", path.join(dir, "src")]),
     [
-      "[1/14] Reading add-on",
-      "[2/14] Fetching review schemas (release-mv3)",
-      "[3/14] Verifying bundled experiments",
+      "[1/13] Reading add-on",
+      "[2/13] Fetching review schemas (release-mv3)",
+      "[3/13] Verifying bundled experiments",
     ]
   );
 });

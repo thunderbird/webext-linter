@@ -11,6 +11,11 @@
 // EVERY check regardless of input (ctx.manifest is the built XPI's), so a
 // manifest.json finding is always about the XPI even from an `input: source` check.
 //
+// `input: both` reads two artifacts, so no label could name the one a finding is about -
+// and none has to: such a check's subject is the SUBMISSION, and it files a finding with no
+// file at all. It takes the SCA branch below, which is also the truthful one - the label
+// only appears in a source review, and that is the only kind of review it runs in.
+//
 // Belongs here: the label strings and the pure determination rule. Does NOT belong
 // here: threading `mode`/the ruleId->input map to the renderers (-> src/pipeline.js +
 // src/checks/registry.js checkInputs), or prepending the label to a rendered line
@@ -23,7 +28,7 @@ export const ARTIFACT_SCA = "SCA";
  * The artifact label for a finding's file, or "" when none applies.
  * @param {{file?: string, input?: string, mode?: string}} params
  *   file: the finding's file; input: the owning check's registry `input`
- *   ("xpi" | "sca" | "source"); mode: the review mode ("sca" | "xpi").
+ *   ("xpi" | "sca" | "source" | "both"); mode: the review mode ("sca" | "xpi").
  * @returns {string} "XPI", "SCA", or "" (XPI review - a single artifact).
  */
 export function artifactLabel({ file, input, mode }) {
@@ -39,5 +44,5 @@ export function artifactLabel({ file, input, mode }) {
     // branch above; this covers their fileless findings and notes.
     return ARTIFACT_XPI;
   }
-  return ARTIFACT_SCA; // input source/sca -> the submitted source archive.
+  return ARTIFACT_SCA; // input source/sca/both -> the submitted source archive.
 }

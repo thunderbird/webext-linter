@@ -1,6 +1,11 @@
 {
-  "_comment": "The SCA twin of unverified-vendor-source: the same unfetchable VENDOR declaration over the same minified file, carried in the source archive. Nothing about the diagnosis changes - an unfetchable declaration buys no exemption, and a minified file cannot be reviewed - but the archive is where the readable build has to land, so this pins the SCA branch of untrusted-minified-library and the source-code-submission link that goes with it.",
+  "_comment": "The SCA twin of unverified-vendor-source: the same unfetchable VENDOR declaration over the same minified file, carried in the source archive. Nothing about the diagnosis changes - an unfetchable declaration buys no exemption, and a minified file cannot be reviewed - but the archive is where the readable build has to land, so this pins the SCA branch of untrusted-minified-library and the source-code-submission link that goes with it. The XPI here also ships a VENDORS.md of its own, which in a source-code submission belongs in the archive - the copy the reviewer reads and the build installs from - so sca-not-required warns that this did not need to be a source submission. It is advice about the NEXT one and narrows nothing here.",
   "expect": {
-    "untrusted-minified-library": ["lib/widget.min.js"]
+    "untrusted-minified-library": [
+      "lib/widget.min.js"
+    ],
+    "sca-not-required": [
+      "(add-on)"
+    ]
   }
 }

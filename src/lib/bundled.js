@@ -30,7 +30,6 @@ import {
 } from "../util/files.js";
 import { withExperiment } from "../addon/store.js";
 import { isVendored } from "../vendor/resolve.js";
-import { collectJsSources } from "../addon/sources.js";
 import { rawSha256 } from "../normalize/hash.js";
 import { obfuscationVerdict } from "./obfuscation.js";
 import { VERDICT } from "./enum.js";
@@ -404,57 +403,15 @@ export function isMinifiedFirstParty(c) {
 
 /**
  * An obfuscated first-party file: the FAIL verdict, on the developer's own code (not a
- * recognized library, not an identified-but-untrusted match). Read by hasUnreviewableCode
- * to decide whether the shipped XPI carries developer-authored obfuscated code, so the
- * source-archive review is kept: a recognized library is reviewable by its identity, and
- * an untrusted match is counted by its own branch there.
+ * recognized library, not an identified-but-untrusted match). Read by the permission scan
+ * (src/lib/permissions.js) to tell when a token search cannot see what it is searching, so
+ * the answer is escalated rather than decided: a recognized library is reviewable by its
+ * identity, and an untrusted match is counted by its own branch.
  * @param {BundleTag} c
  * @returns {boolean}
  */
 export function isObfuscatedFirstParty(c) {
   return Boolean(c.obfuscation.fail && !c.library && !c.untrusted);
-}
-
-/**
- * Whether the add-on ships code that cannot be reviewed as-is: minified or obfuscated
- * first-party code, or an identified-but-untrusted library that is unreadable. The union
- * of what minified-code / obfuscated-code / untrusted-minified-library flag, so the
- * pipeline's "is the shipped XPI directly reviewable?" question and those checks share one
- * definition. Note WHEN the pipeline reads this: applyUnverifiedVendor runs inside
- * identifyBundledLibraries, which precedes resolveXpiOnlyAdvice, so the untrusted list is
- * already filled. An unverifiable, unreadable vendored file therefore counts as
- * unreviewable code and withholds the XPI-only advice - which is the point: if we could
- * neither read nor check that file, the source archive is exactly what the reviewer needs.
- * Not subsumed by the shipped-bytes test that runs beside it: a minified file COMMITTED to
- * the archive has a twin there, and only this question objects to it.
- * @param {?Bundled} bundled  A classifyBundled result.
- * @param {import("../addon/load.js").Addon} [addon]  The artifact those tags describe,
- *   for the inline scripts its pages carry - a page's own <script> is unreviewable code
- *   too, and no file-level tag covers it. Omitted asks the file-level question alone.
- * @returns {boolean}
- */
-export function hasUnreviewableCode(bundled, addon) {
-  if (!bundled) {
-    return false;
-  }
-  const classified = bundled.classified ?? [];
-  if (
-    classified.some(isMinifiedFirstParty) ||
-    classified.some(isObfuscatedFirstParty) ||
-    (bundled.untrusted ?? []).some((lib) => lib.unreadable)
-  ) {
-    return true;
-  }
-  // Code shipped INSIDE a page counts too - and this is the other half no shipped-bytes
-  // comparison can reach, since that one only compares script FILES: a byte-identical
-  // .html twin still carries an unreviewable inline <script>. Without this the report
-  // contradicts itself, minified-code telling the developer to send the readable original
-  // while sca-not-required tells them the archive was unnecessary.
-  return addon
-    ? classifyInlineSources(collectJsSources(addon), bundled.nonAuthored).some(
-        (site) => site.minified || site.obfuscation.fail
-      )
-    : false;
 }
 
 /**

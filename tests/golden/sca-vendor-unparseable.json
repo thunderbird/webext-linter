@@ -109,13 +109,23 @@
   "summary": {
     "error": 1,
     "hold": 0,
-    "warning": 0,
+    "warning": 1,
     "info": 0,
     "byRule": {
+      "sca-not-required": 1,
       "vendor-unparseable": 1
     }
   },
   "findings": [
+    {
+      "ruleId": "sca-not-required",
+      "severity": "warning",
+      "file": null,
+      "loc": null,
+      "item": null,
+      "hint": null,
+      "message": "This add-on was submitted as a source-code archive, but the shipped add-on (the built XPI) did not need one: either it carries its own vendoring information - a VENDOR file, a package.json or a lock file, which belong in the source archive rather than in the XPI - or every file it ships is byte-identical to a file in the archive, so nothing was built from it. Please submit the XPI on its own next time. Source-code submissions also take considerably longer to review."
+    },
     {
       "ruleId": "vendor-unparseable",
       "severity": "error",
