@@ -38,6 +38,7 @@
 // (src/pipeline.js).
 
 import os from "node:os";
+import { pathStamp, submissionLeaf } from "../util/dest.js";
 import path from "node:path";
 
 import { orderReview } from "./order.js";
@@ -152,9 +153,9 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
  * them; for the other two it says where they go and nothing more, so a name cannot drift
  * from the review it belongs to.
  *
- * One base for all five: a name and a version do not identify a review - two submissions can
- * share both (a fork, a resubmission, an add-on reviewed twice in a session) - so the run's
- * own moment separates them, and a later run does not open what an earlier one left
+ * One base for all five: the submission's name does not identify a review - the same file can
+ * be reviewed twice in a session, and a fork carries the name of what it forked - so the
+ * run's own moment separates them, and a later run does not open what an earlier one left
  * behind. Millisecond resolution, which separates reviews a person runs; two started in
  * the same millisecond would still collide, and nothing here pretends otherwise.
  * A review is named ONCE, by the run that builds it. Every pass after that is handed the
@@ -162,19 +163,18 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
  * it does not have.
  *
  * Where the shipped package is unpacked (XPI_ROOT) is NOT one of these: unlike these five,
- * the linter itself writes there (src/addon/load.js), before this is ever called, and its
- * path follows the submitted file's own name rather than this shared stem - see
- * src/pipeline.js.
- * @param {?import("../addon/load.js").WebExtManifestRecord} webExtManifestRecord  What the
- *   shipped add-on
- *   declares - read for the name it lends all five (its id and version).
- * @param {string} xpiPath  Where that add-on IS, absolute. An Addon carries no path of its
+ * the linter itself writes there (src/addon/load.js), before this is ever called, and it
+ * keeps the suffix this stem drops - see src/util/dest.js.
+ *
+ * Nothing the SUBMISSION declares reaches this. The stem is read off the path instead, which
+ * is what a reviewer recognises and, unlike a manifest value, is a string because argv is.
+ * @param {string} xpiPath  Where the add-on IS, absolute. An Addon carries no path of its
  *   own, so the caller passes the one the run was given (src/pipeline.js), which resolved
  *   it - nothing re-resolves it here.
  * @returns {{summary: string, build: string, report: string, state: string, review: string}}
  */
-export function reviewFilePaths(webExtManifestRecord, xpiPath) {
-  const base = reviewFileBase(webExtManifestRecord);
+export function reviewFilePaths(xpiPath) {
+  const base = reviewFileBase(xpiPath);
   // Beside the .xpi, which is the folder a reviewer downloaded it into. For an unpacked
   // submission that is the folder holding it, for the same reason: not inside what is being
   // reviewed. Taken once, so the three cannot land in different folders.
@@ -195,38 +195,23 @@ export function reviewFilePaths(webExtManifestRecord, xpiPath) {
 }
 
 /**
- * The add-on's own id: its declared gecko id, or its name, or "addon" when it names
- * neither. Raw - a display value, not sanitized or truncated for a filename (see
- * reviewFileBase, which clamps and escapes this same chain for that purpose).
- * @param {?import("../addon/load.js").WebExtManifestRecord} webExtManifestRecord
+ * The shared name: what the submission is called, and the moment - made safe to put in a
+ * path.
+ *
+ * Taken from the PATH this run was given, not from the manifest. The manifest's name is
+ * submission data of any shape, and the one thing this stem is for is being recognised by
+ * whoever opens the file - which the name of the thing they downloaded does better anyway.
+ * The path came from argv, so it is a string by construction and there is no type left to
+ * ask about.
+ *
+ * Still escaped: a leaf cannot contain a separator, so nothing here can escape a directory,
+ * but `My Add-on 1.0.xpi` is an ordinary name and anything outside [A-Za-z0-9._@-] can
+ * still upset a shell.
+ * @param {string} xpiPath  Where the submission is, as the run was given it.
  * @returns {string}
  */
-function addonIdOf(webExtManifestRecord) {
-  const m = webExtManifestRecord?.json;
-  return (
-    m?.browser_specific_settings?.gecko?.id ??
-    m?.applications?.gecko?.id ??
-    m?.name ??
-    "addon"
-  );
-}
-
-/**
- * The shared name: the add-on, its version, and the moment - made safe to put in a path.
- * @param {?import("../addon/load.js").WebExtManifestRecord} webExtManifestRecord
- * @returns {string}
- */
-function reviewFileBase(webExtManifestRecord) {
-  const m = webExtManifestRecord?.json;
-  const id = addonIdOf(webExtManifestRecord);
-  const at = new Date().toISOString().replace(/[:.]/g, "-");
-  // The id is the submission's, and an add-on with no gecko id lends its NAME - which has
-  // no length limit of its own, while the name this composes does (255 bytes on ext4, and
-  // the timestamp and the suffix take 30 of them). Clamped rather than hashed: what the
-  // first 80 characters name is still recognisable to whoever opens the file.
-  // Anything outside [A-Za-z0-9._@-] could escape the directory or upset a shell, and
-  // the id comes from the submission.
-  return `webext-linter-${id.slice(0, 80)}-${m?.version ?? "0"}-${at}`.replace(
+function reviewFileBase(xpiPath) {
+  return `${submissionLeaf(xpiPath)}-${pathStamp()}`.replace(
     /[^A-Za-z0-9._@-]/g,
     "_"
   );

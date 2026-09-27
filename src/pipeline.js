@@ -24,7 +24,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { extractionDestination } from "./util/dest.js";
+import { extractionDestination, EXTRACTED_SUFFIX } from "./util/dest.js";
 import {
   resolveSchemaZip,
   refreshAllSchemas,
@@ -344,7 +344,7 @@ export async function runPipeline(opts) {
   const addonIsDir = fs.statSync(path.resolve(addonPath)).isDirectory();
   const extractTo = addonIsDir
     ? null
-    : extractionDestination(`${addonPath}.extracted`);
+    : extractionDestination(`${addonPath}${EXTRACTED_SUFFIX}`);
   const xpiAddon = loadAddon(addonPath, extractTo ?? undefined);
   // What the SHIPPED add-on declares, read ONCE here and the review's only record: it is
   // asked of the built XPI by name rather than derived by whatever loads an artifact (a
@@ -984,7 +984,7 @@ export async function runPipeline(opts) {
     // some file happens to have been named: this run HANDS OUT A PHASE, so its whole
     // output is that prompt and the report is not printed beside it.
     meta.prompting = true;
-    const files = reviewFilePaths(webExtManifestRecord, addonPath);
+    const files = reviewFilePaths(addonPath);
     summaryPath = skip.includes("summary") ? null : files.summary;
     buildPath = mode?.sca ? files.build : null;
     // Ungated, unlike the two above: every review has a report, and this one is written by
@@ -1000,11 +1000,28 @@ export async function runPipeline(opts) {
     meta.summaryFile = summaryPath ?? undefined;
     meta.buildFile = buildPath ?? undefined;
     meta.reportFile = reportPath;
-    // Claimed empty, so a directory this run cannot write to fails before the review is
-    // built rather than when the finished review is written to it.
-    fs.writeFileSync(files.state, "");
-    // The REVIEW LOOP's two files, claimed before the review is built for the reason
-    // a directory this run cannot write to has to fail before the review is built.
+    // The three above land BESIDE the submission, and this run writes none of them: the
+    // description and the build report are written by the agents this prompt hands out, and
+    // the report by a later pass. So a folder that cannot be written to has to be refused
+    // HERE - otherwise it surfaces after the review is over, and under --llm-review after
+    // an agent has been paid to produce a description it cannot save.
+    //
+    // The directory, not the files: writeFileAtomic writes a sibling .tmp and renames over
+    // the target (src/util/atomic.js), so what those writes need is permission on the
+    // folder. Asked once, because all three are in it.
+    const beside = path.dirname(addonPath);
+    if (!canWriteDir(beside)) {
+      throw new Error(
+        `The review's files land beside the submission, in "${beside}", and this run ` +
+          "cannot write there. The description and the build report are written by the " +
+          "agents this prompt hands out, and the report by a later pass, so nothing would " +
+          "have failed until the review was already finished. Point the review at a " +
+          "submission in a folder you can write to."
+      );
+    }
+    // The REVIEW LOOP's pair, named here for the passes that read them back. Not checked
+    // like the folder above: they live in the system temp directory, writeState creates
+    // into it (src/report/state.js), and nothing a reviewer keeps is written there.
     meta.stateFile = files.state;
     meta.reviewFile = files.review;
   }
@@ -1164,6 +1181,29 @@ export async function runPipeline(opts) {
     issueHeadings: registry.issueHeadings(),
     verdictIntros: registry.verdictIntros(),
   };
+}
+
+/**
+ * Whether a directory can be written to, without writing anything to it.
+ *
+ * The question the review's output folder has to answer before the review is built. Asked
+ * of the DIRECTORY because that is what the later writes need: writeFileAtomic creates a
+ * sibling .tmp and renames over the target, so both steps want permission on the folder
+ * rather than on a file that does not exist yet.
+ *
+ * A probe that CREATED something would answer the same question and leave litter in a
+ * reviewer's folder for a run that may then fail, which is not ours to put there.
+ * @param {string} dir
+ * @returns {boolean}
+ */
+function canWriteDir(dir) {
+  try {
+    fs.accessSync(dir, fs.constants.W_OK);
+    return true;
+  } catch (err) {
+    rethrowIfFatal(err);
+    return false;
+  }
 }
 
 /**

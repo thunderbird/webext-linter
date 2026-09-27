@@ -37,7 +37,7 @@ import { buildManifestLoc } from "./manifest-loc.js";
 import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
 import { displayLine } from "../util/text.js";
 import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
-import { extractionDestination } from "../util/dest.js";
+import { extractionDestination, EXTRACTED_SUFFIX } from "../util/dest.js";
 import { FileStore, fileView } from "./store.js";
 import { SYMLINK_CAUSE } from "../lib/enum.js";
 import { rethrowIfFatal } from "../lib/errors.js";
@@ -220,7 +220,8 @@ export function loadAddon(source, extractTo, { recordInstalledTrees } = {}) {
       recordInstalledTrees
     ));
   } else {
-    const dest = extractTo ?? extractionDestination(`${resolved}.extracted`);
+    const dest =
+      extractTo ?? extractionDestination(`${resolved}${EXTRACTED_SUFFIX}`);
     // A recorded installed tree and a stored link entry are what extractZip will not put
     // on disk, so they are what the read-back below cannot rediscover there - everything
     // else (files, archives, symlink notices) is real on disk after extraction and is

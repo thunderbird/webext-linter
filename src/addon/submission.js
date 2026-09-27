@@ -23,7 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { extname } from "../util/files.js";
-import { extractionDestination } from "../util/dest.js";
+import { extractionDestination, EXTRACTED_SUFFIX } from "../util/dest.js";
 
 /** The built add-on's extension - the one archive in the folder that is not the source. */
 const ADDON_EXTENSION = ".xpi";
@@ -104,6 +104,6 @@ export function scaSubmission(folder) {
     // Where the reader is asked to extract `source` - named on the same terms as the XPI
     // side (src/util/dest.js), so a submission reviewed twice gets a fresh folder rather
     // than a second extraction silently landing in the first one's.
-    extracted: `${extractionDestination(`${source}.extracted`)}${path.sep}`,
+    extracted: `${extractionDestination(`${source}${EXTRACTED_SUFFIX}`)}${path.sep}`,
   };
 }

@@ -16,6 +16,8 @@ import { runPipeline } from "../../src/pipeline.js";
 import { formatText } from "../../src/report/format.js";
 import { loadRegistry } from "../../src/checks/registry.js";
 import { fixtureCacheOpts } from "../seed-caches.js";
+import { reviewFilePaths } from "../../src/report/items.js";
+import { pathStamp, submissionLeaf } from "../../src/util/dest.js";
 
 // A cache pre-seeded from the fixtures so the schema / experiments / library-hash
 // fetches all hit disk - these runs stay offline.
@@ -1458,5 +1460,155 @@ test("SCA e2e: a minified-XPI submission stays in SCA mode (a legitimate SCA)", 
     );
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
+// The review's three reviewer-facing files land BESIDE the submission, and this run writes
+// none of them - the description and build report are the agents', the report a later
+// pass's. So the folder is refused before the review is built, or the failure lands after
+// it is finished. What was there before probed the temp directory instead: the one place
+// that cannot fail, and not where any of the three goes.
+//
+// `access(W_OK)` is bypassed for root, so as root these assert nothing rather than
+// something wrong.
+const asRoot = process.getuid?.() === 0;
+
+/** An add-on in a SUBFOLDER, so its parent is a folder the test can make unwritable.
+ *  tmpDir puts its directory straight under os.tmpdir(), which is not ours to chmod. */
+function nestedAddon() {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-ro-"));
+  const addon = path.join(parent, "addon");
+  fs.mkdirSync(addon);
+  for (const [name, content] of Object.entries(XPI_FILES)) {
+    const dest = path.join(addon, name);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, content);
+  }
+  return { parent, addon };
+}
+
+test(
+  "a review that names files beside the submission refuses an unwritable folder",
+  {
+    skip: asRoot ? "access(W_OK) is bypassed for root" : false,
+  },
+  async () => {
+    const { parent, addon } = nestedAddon();
+    try {
+      fs.chmodSync(parent, 0o500);
+      await assert.rejects(
+        () => runPipeline({ addonPath: addon, llmReview: true, ...OFFLINE }),
+        (err) => {
+          assert.match(err.message, /cannot write there/);
+          assert.ok(err.message.includes(parent), "names the folder");
+          return true;
+        }
+      );
+    } finally {
+      // Before the cleanup, or it cannot remove what it made.
+      fs.chmodSync(parent, 0o700);
+      fs.rmSync(parent, { recursive: true, force: true });
+    }
+  }
+);
+
+// The other half, and the one that says the check did not over-reach: an ordinary review
+// prints its report and writes nothing beside the submission, so an unwritable folder is
+// none of its business.
+test(
+  "an ordinary review still runs in a folder it cannot write to",
+  {
+    skip: asRoot ? "access(W_OK) is bypassed for root" : false,
+  },
+  async () => {
+    const { parent, addon } = nestedAddon();
+    try {
+      fs.chmodSync(parent, 0o500);
+      const { meta, findings } = await runPipeline({
+        addonPath: addon,
+        ...OFFLINE,
+      });
+      assert.equal(meta.prompting, undefined);
+      assert.equal(meta.reportFile, undefined); // nothing named, so nothing to write
+      assert.ok(Array.isArray(findings), "the review completed");
+    } finally {
+      fs.chmodSync(parent, 0o700);
+      fs.rmSync(parent, { recursive: true, force: true });
+    }
+  }
+);
+
+// The five files a review names share one stem, and it is read off the PATH the run was
+// given - never off the manifest. The manifest's name is submission data of any shape, and
+// the one thing the stem is for is being recognised by whoever opens the file, which the
+// name of the thing they downloaded does anyway.
+test("the review's files are named after the submission, whatever it was given", () => {
+  const stem = (p) => path.basename(reviewFilePaths(p).report, ".report.md");
+  // A packed submission, and the folder an earlier run unpacked it into - both spellings,
+  // because a reviewer re-reviewing points the linter at one of those and still expects to
+  // recognise the name. The unpacked-from-the-start case has no suffix to lose.
+  const shapes = [
+    "/dl/foo.xpi",
+    "/dl/foo",
+    `/dl/foo.xpi.extracted`,
+    `/dl/foo.xpi.extracted-${pathStamp()}`,
+  ];
+  for (const p of shapes) {
+    assert.match(stem(p), /^foo-\d{4}-\d{2}-\d{2}T[\d-]+Z$/, p);
+  }
+  // A stamp is matched by its shape, so a folder somebody named that way keeps its name.
+  assert.equal(
+    submissionLeaf("/dl/foo.xpi.extracted-notes"),
+    "foo.xpi.extracted-notes"
+  );
+  // Escaped, not because a leaf could escape a directory - it cannot - but because an
+  // ordinary name like this one would otherwise upset a shell.
+  assert.match(stem("/dl/My Add-on 1.0.xpi"), /^My_Add-on_1\.0-/);
+  // One stem for all five, which is what a later pass checks rather than trusts.
+  const files = reviewFilePaths("/dl/foo.xpi");
+  const base = path.basename(files.review, ".review.json");
+  for (const [key, suffix] of [
+    ["summary", ".summary.md"],
+    ["build", ".build.md"],
+    ["report", ".report.md"],
+  ]) {
+    assert.equal(path.basename(files[key]), `${base}${suffix}`, key);
+  }
+});
+
+// The regression this replaced a crash with. The stem used to come from the manifest, so a
+// `name` of the wrong type threw while the files were being named - after the review had
+// finished, and after mistyped-manifest-value had already found the bad value. The review
+// and the finding that explains it were both discarded.
+test("a manifest whose name and version are not strings still reviews", async () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-badname-"));
+  const addon = path.join(parent, "brokenname");
+  fs.mkdirSync(addon);
+  fs.writeFileSync(
+    path.join(addon, "manifest.json"),
+    JSON.stringify({
+      manifest_version: 3,
+      name: { "en-US": "authored as a map by mistake" },
+      version: { a: 1 },
+      background: { scripts: ["bg.js"] },
+    })
+  );
+  fs.writeFileSync(path.join(addon, "bg.js"), "1;\n");
+  try {
+    const { meta, findings } = await runPipeline({
+      addonPath: addon,
+      llmReview: true,
+      ...OFFLINE,
+    });
+    // Named from the folder, so neither value was ever read for it.
+    assert.match(path.basename(meta.reportFile), /^brokenname-/);
+    // And the findings survive - which is the whole point: they existed before too, and
+    // were thrown away with the crash.
+    assert.ok(
+      findings.some((f) => f.ruleId === "mistyped-manifest-value"),
+      "the bad values are reported to the developer"
+    );
+  } finally {
+    fs.rmSync(parent, { recursive: true, force: true });
   }
 });

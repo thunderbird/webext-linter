@@ -740,7 +740,8 @@ test("both ends of the review loop refuse --report-format json", () => {
 // The review file is the linter's to name, so the flag takes no value at all - which is
 // what lets it sit anywhere on the command line, including before the add-on, where a flag
 // with an optional value would have swallowed the path and left nothing to review. The name
-// carries the moment as well as the add-on, so no second run can open the file a reader is
+// carries the moment as well as the SUBMISSION - the leaf of the path this run was given,
+// which is what the reviewer recognises - so no second run can open the file a reader is
 // still working from.
 test("--llm-review names its own review file and swallows no argument", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
@@ -755,9 +756,10 @@ test("--llm-review names its own review file and swallows no argument", () => {
   for (const file of written) {
     assert.ok(file && fs.existsSync(file), `${file} was written`);
     assert.ok(Array.isArray(JSON.parse(fs.readFileSync(file, "utf8")).entries));
+    // `clean` is the folder that was reviewed, not the "Clean" its manifest declares.
     assert.match(
       path.basename(file),
-      /^webext-linter-Clean-1\.0-.*\.review\.json$/
+      /^clean-\d{4}-\d{2}-\d{2}T[\d-]+Z\.review\.json$/
     );
   }
   assert.equal(
