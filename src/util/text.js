@@ -91,8 +91,9 @@ export function humanSize(bytes) {
  *
  * The single definition of that rule. Everything the review shows a user passes
  * through here: the substituted {{slot}} values (src/report/responses.js), the locus
- * line and the machine-readable report (src/report/format.js), the per-check feed
- * notes (src/checks/registry.js) and a reviewer verdict narration
+ * line and the machine-readable report, the report's own header - its value rows and the
+ * schema sentence, which carries the submission's manifest_version (src/report/format.js) -
+ * the per-check feed notes (src/checks/registry.js) and a reviewer verdict narration
  * (src/checks/escalation.js). Guarding those sinks rather than the hundreds of places
  * a check composes a finding is what makes a check added later inherit it.
  *

@@ -518,14 +518,11 @@ export function packageLines(meta, schemaCache) {
   if (schemaCache) {
     values.push(["SCHEMA_CACHE", schemaCache]);
   }
-  values.push([
-    "SCHEMA",
-    `${meta.schemaBranch} · Thunderbird ${meta.applicationVersion ?? "?"}` +
-      (meta.manifestVersion != null
-        ? ` · manifest_version ${meta.manifestVersion}`
-        : ""),
-  ]);
-  return values.map(([name, value]) => `${name} ${value}`);
+  values.push(["SCHEMA", schemaSentence(meta)]);
+  // Guarded by the RENDERER, the way valueLines guards the rows it lays out: several of
+  // these are paths the reviewer gave and one is read from the submission, and a row added
+  // later should not have to remember.
+  return values.map(([name, value]) => `${name} ${displayPath(value)}`);
 }
 
 /**
@@ -596,16 +593,31 @@ export function headerLines(meta) {
   ];
 }
 
-/** What the review's verdicts mean anything against, in one line. Shared by the two
- *  renderers below and above it, because it is the same sentence either way - only the
- *  paths differ between a terminal and a chat. */
-function schemaLine(meta) {
-  return (
-    `schema ${meta.schemaBranch} · Thunderbird ${meta.applicationVersion ?? "?"}` +
-    (meta.manifestVersion != null
-      ? ` · manifest_version ${meta.manifestVersion}`
-      : "")
+/**
+ * What the review's verdicts mean anything against, as one sentence - the THREE renderers
+ * that name it read it from here: the terminal header and the chat header below, and the
+ * package values a reading phase is given (packageLines).
+ *
+ * Guarded here, which is the point of it being one place: `manifestVersion` is the raw
+ * submission value, and a manifest_version carrying an ESC sequence erases the line above
+ * it - which is the line manifest-version-mismatch uses to report the bad type. One
+ * sentence, one guard, and a renderer added later inherits it.
+ * @param {ReviewMeta} meta
+ * @returns {string}
+ */
+function schemaSentence(meta) {
+  return displayLine(
+    `${meta.schemaBranch} · Thunderbird ${meta.applicationVersion ?? "?"}` +
+      (meta.manifestVersion != null
+        ? ` · manifest_version ${meta.manifestVersion}`
+        : "")
   );
+}
+
+/** The same sentence, labelled, for the two renderers that print it as a line of prose
+ *  rather than as a named value. */
+function schemaLine(meta) {
+  return `schema ${schemaSentence(meta)}`;
 }
 
 /**
@@ -1156,7 +1168,18 @@ export function formatJson(review) {
   // about the add-on, so it says nothing this document is for. What a sweep finds does
   // reach here - as a finding of the check that owns it, indistinguishable from one the
   // scan made itself, which is the point.
-  const { manualReview: _omitted, preSweep: _sweeps, ...meta } = review.meta;
+  const { manualReview: _omitted, preSweep: _sweeps, ...rawMeta } = review.meta;
+  // Guarded like the findings below, and for the reason stated there: a consumer may PRINT
+  // any of this. Every string here is a value a reader copies back - a path, a branch, a
+  // version - and one of them, manifestVersion, is read straight from the submission. The
+  // type test IS the rule: a number cannot carry a control character, and the case this
+  // exists for is a manifest whose manifest_version is a string.
+  const meta = Object.fromEntries(
+    Object.entries(rawMeta).map(([key, value]) => [
+      key,
+      typeof value === "string" ? displayPath(value) : value,
+    ])
+  );
   const issues = review.findings;
   // `data` (template-resolution input, baked into `message`), `listItem` and `collapse`
   // (text-layout flags) are internal, so they are dropped from the machine output.

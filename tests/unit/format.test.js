@@ -9,6 +9,7 @@ import {
   loopPromptLines,
   formatJson,
   headerLines,
+  packageLines,
   detailLinkLines,
   locusLabeler,
   locationLine,
@@ -1689,4 +1690,80 @@ test("a report with no findings is squared off too", () => {
   r.meta.reviewed = true;
   r.verdictIntros = { none: "Nothing found. Read <template> for more." };
   assert.match(formatText(r), /Nothing found\. Read \[template\] for more\./);
+});
+
+// The report's own HEADER is a sink for submission text, which is the one place it was not
+// guarded. `manifest_version` reaches it as the raw submission value, and an ESC sequence
+// there erases the line above - the line manifest-version-mismatch uses to report the bad
+// type, so a submission could erase the finding about itself. Asserted both ways: the
+// control character is gone AND the value a reader needs is still there, because a guard
+// that ate the value would pass the first test alone.
+test("the report header strips control characters from submission text", () => {
+  const ESC = "3\u001b[2K\u001b[1A";
+  const meta = {
+    xpi: "/tmp/a\u001b[2K.xpi",
+    xpiFile: "a.xpi",
+    xpiRoot: "/tmp/root",
+    schemaBranch: "release-mv3",
+    applicationVersion: "140",
+    manifestVersion: ESC,
+  };
+
+  for (const [name, out] of [
+    ["packageLines", packageLines(meta, "/tmp/cache").join("\n")],
+    ["headerLines", headerLines(meta).join("\n")],
+  ]) {
+    assert.ok(!/\u001b/.test(out), `${name} passes no ESC through`);
+    assert.match(out, /manifest_version 3/, `${name} keeps the value`);
+    assert.match(out, /release-mv3/, `${name} keeps the branch`);
+  }
+  // The path rows too, not only the schema sentence: the renderer guards what it writes.
+  assert.ok(!/\u001b/.test(packageLines(meta, null).join("\n")));
+  assert.match(packageLines(meta, null).join("\n"), /XPI \/tmp\/a/);
+});
+
+// The machine-readable report already guarded its findings on the stated grounds that a
+// consumer may PRINT them. `meta` is read by the same consumer and was spread raw.
+test("the JSON report guards meta as it guards findings", () => {
+  const out = JSON.parse(
+    formatJson({
+      meta: {
+        manifestVersion: "3\u001b[2K",
+        xpiRoot: "/tmp/r\u001b[1A",
+        checksRun: ["sync-xhr"],
+        reviewed: true,
+      },
+      findings: [],
+    })
+  );
+  assert.ok(!/\u001b/.test(out.meta.manifestVersion));
+  assert.match(out.meta.manifestVersion, /^3/); // the value survives
+  assert.ok(!/\u001b/.test(out.meta.xpiRoot));
+  assert.match(out.meta.xpiRoot, /^\/tmp\/r/);
+  // Only strings are touched - a number or a list cannot carry one, and rewriting them
+  // would change what the document MEANS rather than how it prints.
+  assert.deepEqual(out.meta.checksRun, ["sync-xhr"]);
+  assert.equal(out.meta.reviewed, true);
+});
+
+// One sentence, three renderers. They agreed by copy before; now they agree by
+// construction, and this says so - a fourth copy would show up here.
+test("the schema sentence is the same in every renderer that names it", () => {
+  const meta = {
+    xpi: "/tmp/a.xpi",
+    xpiFile: "a.xpi",
+    xpiRoot: "/tmp/root",
+    schemaBranch: "release-mv3",
+    applicationVersion: "140",
+    manifestVersion: 3,
+  };
+  const sentence = "release-mv3 · Thunderbird 140 · manifest_version 3";
+  assert.ok(
+    packageLines(meta, null).includes(`SCHEMA ${sentence}`),
+    "the SCHEMA row is the sentence, unlabelled"
+  );
+  assert.ok(
+    headerLines(meta).includes(`schema ${sentence}`),
+    "the header labels the same sentence"
+  );
 });
