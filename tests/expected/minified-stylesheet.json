@@ -1,0 +1,8 @@
+{
+  "_comment": "The CSS half of minified-code, which nothing else covered: every other fixture reporting it names a .js or an inline <script> (background.js, packed.html, disguised.html), so the stylesheet path went years without being read against a real case - which is how its response came to talk about JavaScript and to tell the developer to rename a correctly named file. packed.css is shaped like a real PostCSS build output: packed utility rules on one line, no data: URI. Both of those matter. It is over the 1024-byte floor, which CSS KEEPS and JS does not (src/lib/bundled.js MIN_CLASSIFY_BYTES) because the CSS test is pure geometry and a small generated stylesheet reads as packed; and its long line survives stripCssPayloads, which is the whole CSS rule - a stylesheet long only because of one embedded font would collapse below the gate and not be reported. The stylesheet is linked from popup.html, and popup.html is the action's default_popup, so both are REACHED: unlinked, unused-files would report them too and this fixture would be about two things. A packed stylesheet is an error and rejects the submission, exactly as packed JavaScript does, and the golden records that.",
+  "expect": {
+    "minified-code": [
+      "packed.css"
+    ]
+  }
+}

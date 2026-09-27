@@ -5,28 +5,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) The following script(s) or stylesheet(s) cannot be reviewed in this form: they are minified, machine-generated, or not parsable. If a file is a third-party library, declare it and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice. If it is your own code, ship the original, readable source instead - the add-on need not be minified. Where a build step produces it, supply the build's sources and the instructions to reproduce the shipped XPI, using the source code upload field at submission or on the version page. Note that this route slows review down: the build must be verified by hand. If a file is not code at all - data carrying a .js or .css name - give it an extension that matches its content.
 Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
 Read more #2: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
- - disguised.html:2
- - packed.html:1
-
-2) The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
-Please read the instructions: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
- - hidden.html:1
-
-We kindly ask you to resolve the following issues with your next release:
-
-3) The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included.
- - disguised.html
- - readable.html
- - template.html
-
-We would like to share the following information with you:
-
-4) Adding an add-on icon in manifest.json improves user acceptance.
-Read more: https://developer.thunderbird.net/add-ons/mailextensions/supported-manifest-keys#icons
- - manifest.json
-
-5) Limited static-analysis coverage: could not be parsed, so API checks were skipped (This experimental syntax requires enabling one of the following parser plugin(s): "jsx", "flow", "typescript". (2:0))
- - template.html
+ - packed.css
 
 You can run this automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
@@ -203,6 +182,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-3 error(s), 0 hold, 3 warning(s), 2 info,
+1 error(s), 0 hold, 0 warning(s), 0 info,
 1 extended code review item(s), 0 extended manual review item(s),
 10 standard code review item(s), 10 standard manual review item(s)

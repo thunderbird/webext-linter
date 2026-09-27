@@ -1,10 +1,9 @@
 {
   "meta": {
     "action": "review",
-    "xpi": "<root>/tests/addons/sca-minified-source/xpi",
-    "xpiRoot": "<root>/tests/addons/sca-minified-source/xpi/",
-    "xpiFile": "xpi",
-    "scaRoot": "<root>/tests/addons/sca-minified-source/src",
+    "xpi": "<root>/tests/addons/minified-stylesheet",
+    "xpiRoot": "<root>/tests/addons/minified-stylesheet/",
+    "xpiFile": "minified-stylesheet",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
@@ -42,7 +41,6 @@
       "minified-code",
       "untrusted-minified-library",
       "untrusted-library",
-      "unpopular-source-dependency",
       "unparsable-file",
       "experiment-modified",
       "experiment-missing-strict-max-version",
@@ -50,24 +48,12 @@
       "experiment-manual-review",
       "experiment-unknown-api",
       "non-experiment-strict-max-version",
+      "xpi-lock-file-missing",
+      "xpi-lock-file-invalid",
       "unsupported-dependency",
       "vendor-vulnerable",
       "banned-library",
-      "vendor-vulnerable-dev",
-      "vendor-vulnerable-indirect",
-      "vendor-vulnerable-indirect-dev",
-      "sca-package-file-missing",
-      "sca-package-file-invalid",
-      "sca-lock-file-missing",
-      "sca-lock-file-invalid",
-      "build-registry-redirect",
-      "committed-node-modules",
-      "committed-build-artifact",
-      "sca-invalid-symlink",
       "xpi-packaged-symlink",
-      "build-lifecycle-hook",
-      "undeclared-build-source",
-      "sca-not-required",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",
@@ -119,11 +105,11 @@
     {
       "ruleId": "minified-code",
       "severity": "error",
-      "file": "background.js",
+      "file": "packed.css",
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "The following script(s) or stylesheet(s) cannot be reviewed in this form: they are minified, machine-generated, or - for a script - not parsable as JavaScript. Dependencies should come in through the build process, from package.json and node_modules. Your own code belongs in the archive readable - the build may still minify what the XPI ships. If a file's extension does not match its content - data carrying a .js or .css name, say - give it one that does.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+      "message": "The following script(s) or stylesheet(s) cannot be reviewed in this form: they are minified, machine-generated, or not parsable. If a file is a third-party library, declare it and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice. If it is your own code, ship the original, readable source instead - the add-on need not be minified. Where a build step produces it, supply the build's sources and the instructions to reproduce the shipped XPI, using the source code upload field at submission or on the version page. Note that this route slows review down: the build must be verified by hand. If a file is not code at all - data carrying a .js or .css name - give it an extension that matches its content.\nRead more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.\nRead more #2: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]
 }

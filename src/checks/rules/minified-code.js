@@ -1,6 +1,7 @@
 // Heuristic: the developer's own code shipped minified - mechanically unreadable
 // (not obfuscated to hide behavior, just stripped of whitespace/names), which
-// cannot be reviewed as-is. Flags such a JS file - that is NOT a recognized
+// cannot be reviewed as-is. Flags such a file, a script or a stylesheet alike - that
+// is NOT a recognized
 // third-party library (those are missing-library's job) - so the reviewer can
 // require the original source. Detects minified line geometry (a very long,
 // dense line). A file that is also obfuscated is obfuscated-code's job (the

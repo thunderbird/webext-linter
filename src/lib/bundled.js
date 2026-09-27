@@ -296,7 +296,9 @@ function getBundled(ctx) {
 }
 
 /**
- * Per-file library/minified/obfuscated tags for the add-on's JS (see classifyBundled).
+ * Per-file library/minified/obfuscated tags for the add-on's JS AND CSS - classifyFiles
+ * classifies both, so a packed stylesheet is in here beside a packed script (see
+ * classifyBundled).
  * @param {RunContext} ctx
  * @returns {BundleTag[]}
  */
