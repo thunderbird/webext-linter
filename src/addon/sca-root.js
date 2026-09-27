@@ -149,17 +149,55 @@ export function settleScaRoot(opts) {
     movedFrom: null,
   };
   if (!opts.scaRoot || hasPackageFile(opts.scaRoot)) {
-    return given;
+    return settled(given);
   }
   const scaRoot = buildRootBelow(opts.scaRoot);
   if (!scaRoot) {
-    return given;
+    return settled(given);
   }
   if (
     opts.scaExpSource &&
     relativeInside(opts.scaExpSource, scaRoot) === null
   ) {
-    return given;
+    return settled(given);
   }
-  return { ...given, scaRoot, movedFrom: opts.scaRoot };
+  return settled({ ...given, scaRoot, movedFrom: opts.scaRoot });
+}
+
+/**
+ * The pair, once nothing else can change it: --sca-exp-source must name a folder INSIDE
+ * --sca-root, and so may not BE it.
+ *
+ * Naming the root excludes nothing - `scaViews` partitions on a prefix, and the prefix for
+ * a root equal to the root is the empty string, which is under nothing - so the Experiment's
+ * privileged code is reviewed as WebExtension code and the report fills with
+ * Services/ChromeUtils errors against a submission that did nothing wrong. That is the one
+ * thing the flag exists to prevent, so it ends the run rather than warning.
+ *
+ * Asked HERE because this is where the pair stops moving. The CLI already refuses a value
+ * that escapes the root, points at no folder, or spells its way out with "..", and it cannot
+ * ask this one: the root it validated against may not be the root that is used, since the
+ * move below it can land the root on the very folder the reviewer named.
+ * @param {{scaRoot?: string, scaExpSource?: string, movedFrom: ?string}} pair
+ * @returns {{scaRoot?: string, scaExpSource?: string, movedFrom: ?string}} The same pair.
+ */
+function settled(pair) {
+  if (
+    !pair.scaExpSource ||
+    relativeInside(pair.scaExpSource, pair.scaRoot) !== ""
+  ) {
+    return pair;
+  }
+  // Named separately when the root MOVED, because the reviewer never typed the one it
+  // collides with - saying only "they are the same folder" would describe a command they
+  // did not write.
+  const because = pair.movedFrom
+    ? `--sca-root "${pair.movedFrom}" holds no package file, so the source root settles on ` +
+      `"${pair.scaRoot}" - which is the folder --sca-exp-source names`
+    : `--sca-exp-source "${pair.scaExpSource}" is --sca-root itself`;
+  throw new Error(
+    `${because}. It names the Experiment implementation INSIDE the source root, so it ` +
+      "cannot be the root: nothing would be excluded, and the Experiment's privileged " +
+      "code would be reviewed as WebExtension code. Name the subfolder holding it."
+  );
 }

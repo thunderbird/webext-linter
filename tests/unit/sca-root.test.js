@@ -156,19 +156,28 @@ test("the move is abandoned where the Experiment folder would fall outside", () 
   assert.equal(inside.scaRoot, wrap);
   assert.equal(inside.scaExpSource, path.join(wrap, "addon"));
 
-  // The candidate ITSELF: the root contains itself.
-  assert.equal(
-    settleScaRoot({ scaRoot: root, scaExpSource: wrap }).scaRoot,
-    wrap
+  // The candidate ITSELF is not contained by it: containment here means strictly UNDER,
+  // because that is what the view partition can act on. Moving onto the folder the flag
+  // names would exclude nothing, so it ends the run instead.
+  assert.throws(
+    () => settleScaRoot({ scaRoot: root, scaExpSource: wrap }),
+    /cannot be the root/
   );
 
-  // A sibling of the candidate, and the old root itself: both outside, so neither moves.
-  for (const scaExpSource of [path.join(root, "other"), root]) {
-    assert.equal(
-      settleScaRoot({ scaRoot: root, scaExpSource }).movedFrom,
-      null
-    );
-  }
+  // A sibling of the candidate is genuinely outside it, so the move is abandoned and the
+  // root given stands.
+  assert.equal(
+    settleScaRoot({ scaRoot: root, scaExpSource: path.join(root, "other") })
+      .movedFrom,
+    null
+  );
+
+  // The old root itself is the same refusal from the other side: abandoning the move
+  // leaves --sca-exp-source naming the root that is used.
+  assert.throws(
+    () => settleScaRoot({ scaRoot: root, scaExpSource: root }),
+    /cannot be the root/
+  );
 
   // Nothing to contain: the move stands on the root alone.
   assert.equal(settleScaRoot({ scaRoot: root }).scaRoot, wrap);
@@ -181,4 +190,59 @@ test("no --sca-root is nothing to settle", () => {
     scaExpSource: undefined,
     movedFrom: null,
   });
+});
+
+// --sca-exp-source names the Experiment implementation INSIDE the source root, so it cannot
+// BE the root: scaViews partitions on a prefix, the prefix for a root equal to the root is
+// the empty string, and nothing is under nothing - so the privileged code would be reviewed
+// as WebExtension code, which is the one thing the flag exists to prevent. Asked here
+// because this is where the pair stops moving.
+test("an --sca-exp-source that IS the source root ends the run", () => {
+  const root = tree({ "package.json": PKG, "exp/api.js": "1;" });
+  // As typed. The CLI cannot catch this one: the value escapes nothing, spells no "..",
+  // and does point at a folder.
+  assert.throws(
+    () => settleScaRoot({ scaRoot: root, scaExpSource: root }),
+    /is --sca-root itself.*cannot be the root/s
+  );
+  // Written with a trailing separator, which resolves to the same folder - the test is on
+  // the resolved path, so a second spelling cannot answer differently.
+  assert.throws(
+    () => settleScaRoot({ scaRoot: root, scaExpSource: root + path.sep }),
+    /cannot be the root/
+  );
+  // A real subfolder is what the flag is for, and still settles.
+  const ok = settleScaRoot({
+    scaRoot: root,
+    scaExpSource: path.join(root, "exp"),
+  });
+  assert.equal(ok.scaRoot, root);
+  assert.equal(ok.movedFrom, null);
+});
+
+// The case no CLI guard can see, and the reason the rule lives here: the reviewer names a
+// root that holds no package file and an Experiment folder strictly inside it, so the CLI
+// accepts the pair - and then the root MOVES onto the very folder they named.
+test("an --sca-exp-source the root MOVES onto ends the run, naming both", () => {
+  const root = tree({ "inner/package.json": PKG, "inner/lock.json": LOCK });
+  const inner = path.join(root, "inner");
+  assert.throws(
+    () => settleScaRoot({ scaRoot: root, scaExpSource: inner }),
+    // Both roots, because the reviewer never typed the one it collides with.
+    (err) => {
+      assert.match(err.message, /holds no package file/);
+      assert.match(err.message, /which is the folder --sca-exp-source names/);
+      assert.ok(err.message.includes(root), "names the root as given");
+      assert.ok(err.message.includes(inner), "names the root it settled on");
+      return true;
+    }
+  );
+  // The move itself is untouched: an exp source that FITS the new root still moves with it.
+  const fits = tree({ "inner/package.json": PKG, "inner/exp/api.js": "1;" });
+  const out = settleScaRoot({
+    scaRoot: fits,
+    scaExpSource: path.join(fits, "inner/exp"),
+  });
+  assert.equal(out.scaRoot, path.join(fits, "inner"));
+  assert.equal(out.movedFrom, fits);
 });
