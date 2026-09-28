@@ -1,9 +1,9 @@
 // Flags deprecated APIs (an advisory - info severity). Reads the shared resolution
-// and reports a
-// deprecated function/event/property once. Unlike unknown-api / strict-min-version-api
-// this is a FINDING and not a question for a reader: a deprecated API still exists and
-// still runs, so no construction around the call makes the migration note moot. There is
-// nothing here for anyone to judge, which is what a deterministic finding requires.
+// and reports a deprecated function/event/property once. Unlike unknown-api /
+// strict-min-version-api this is a FINDING and not a question for a reader: a
+// deprecated API still exists and still runs, so no construction around the call
+// makes the migration note moot. There is nothing here for anyone to judge, which is
+// what a deterministic finding requires.
 //
 // Belongs here: deciding that a resolved function/event/property is deprecated,
 // and dedup of repeated hits. A deprecated finding carries the schema's own

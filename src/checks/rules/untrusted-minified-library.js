@@ -7,8 +7,7 @@
 // the trust signal - so it never becomes untrusted.) Such a file is both untrusted
 // (it does not earn the review exemption) and unreviewable (machine-generated), so
 // the dev must ship a readable build. The trust verdict + the untrusted tagging
-// happen earlier
-// (src/lib/cdn-lookup.js, src/vendor/verify.js -> markUntrusted); this
+// happen earlier (src/lib/cdn-lookup.js, src/vendor/verify.js -> markUntrusted); this
 // check just reports the unreadable ones. Identity is still OSV-audited.
 //
 // Belongs here: selecting the untrusted entries that are unreadable and emitting

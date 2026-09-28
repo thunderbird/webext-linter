@@ -79,12 +79,13 @@ that no longer exist.
    → verifyVendor → classifyReview → identifyBundledLibraries → extractReview) runs
    in BOTH modes and before the source is read: the shipped artifact is analysed the
    same way either way. The vulnerability audit is NOT part of it - it follows the
-   review target, in its own later phase. Getting this backwards inverts the diagram. The review mode is DERIVED (`--sca-root`, minus a rejected
-   Experiment) and assigned nowhere. The file also shows the `mode?.sca` forks (the
-   source / dependency / build / shipped-XPI / shipped-manifest split, routed via
-   `routeCtx` over the sibling ctxs built by `buildXpiCtxs` / `buildScaCtxs`).
+   review target, in its own later phase. Getting this backwards inverts the diagram.
+   The review mode is DERIVED (`--sca-root`, minus a rejected Experiment) and assigned
+   nowhere. The file also shows the `mode?.sca` forks, and the four routes a check can
+   declare (`source` / `xpi` / `sca` / `both`) dispatched by `routeCtx` over the sibling
+   ctxs built by `buildXpiCtx` / `buildScaCtxs`.
 5. `src/checks/registry.js` - the orchestrator (`runChecks`), which runs the whole
-   review inside that single Phase-5 call: the phase's checks in its main loop, then
+   review inside that single Phase-6 call: the phase's checks in its main loop, then
    the unused-folder collapse. The pipeline only calls `runChecks` and assembles the
    `Review` from what it returns.
 

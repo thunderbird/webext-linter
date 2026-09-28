@@ -134,10 +134,10 @@ export function withDefaultNotes(items, registry) {
 
 /**
  * Resolve manual-review refs to ManualItems: the owning entry's title plus its
- * `instructions`, filled with the case
- * item and any `data` slots (e.g. a reason). The ref's locus (file/loc/item) is
- * carried through, and `listItem` is set exactly as for findings - so the report
- * can list "file:line - item" under an item-free instructions message.
+ * `instructions`, filled with the case item and any `data` slots (e.g. a reason).
+ * The ref's locus (file/loc/item) is carried through, and `listItem` is set
+ * exactly as for findings - so the report can list "file:line - item" under an
+ * item-free instructions message.
  * @param {{ruleId: string, item: ?string, file?: ?string, loc?: object|null,
  *   section?: ?string, hint?: ?string,
  *   data?: Record<string, string|number>|null}[]} refs

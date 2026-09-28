@@ -4,8 +4,8 @@
 // cross-case accesses (VERDICT.fail, v.FAIL) throw; and - the load-bearing one - a
 // verdict can NEVER be string-compared (`v == "fail"`, String(v), `${v}` all throw),
 // so code cannot silently regress to string checks. Also covers the container's
-// strictness and the console.log debug rendering
-// (string -> VERDICT, hostile input -> UNSURE).
+// strictness and the console.log debug rendering (string -> VERDICT, hostile input
+// -> UNSURE).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

@@ -1,11 +1,10 @@
-// Builds the sibling RunContexts every check runs against. Each artifact the orchestrator may
-// route a check to - the built XPI, the readable source, that source without its parsed code
-// (the build route), and the shipped
-// manifest.json - gets its own ctx, and all of them project ONE shared review env: the schema, the
-// shipped manifest.json and experiments, and the mode. The pipeline
-// (pipeline.js) resolves the schema, parses the sources, and builds that shared env;
-// this module only derives ctx.apiUsages from the already-parsed sources and swaps the
-// per-artifact fields for each sibling.
+// Builds the sibling RunContexts every check runs against. Each route a check may declare -
+// the built XPI, the readable source, that source without its parsed code (the build route),
+// and the one route carrying both artifacts at once - gets its own ctx, and all of them
+// project ONE shared review env: the schema, the shipped manifest.json and experiments, and
+// the mode. The pipeline (pipeline.js) resolves the schema, parses the sources, and builds
+// that shared env; this module only derives ctx.apiUsages from the already-parsed sources and
+// swaps the per-artifact fields for each sibling.
 //
 // Belongs here: assembling the per-artifact sibling ctxs from the shared review env -
 // projecting the already-parsed JsSources into the RunContext shape registry.js documents.

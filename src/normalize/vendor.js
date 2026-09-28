@@ -26,9 +26,9 @@
 // unparseable finding quotes the accepted shapes (assets/registry.yaml).
 //
 // Belongs here: the deterministic VENDOR parse only - locating the file
-// (readVendorFile), the
-// {path, sourceUrl} extraction (parseVendorEntries), and the entries whose
-// declared file is absent (missingVendorEntries). It is review-free and pure.
+// (readVendorFile), the {path, sourceUrl} extraction (parseVendorEntries), and the
+// entries whose declared file is absent (missingVendorEntries). It is review-free
+// and pure.
 //
 // Does NOT belong here: a reviewer parse fallback and the canonical resolved set
 // (-> src/vendor/resolve.js). Nor any verdict about what was parsed: ONE source

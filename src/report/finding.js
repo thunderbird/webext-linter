@@ -61,9 +61,9 @@ const SEVERITY_RANK = Object.fromEntries(
  * @property {string} [item]  The finding's SUBJECT: the offending token
  *   (API / permission / manifest-key / host / symbol). It is machine-meaningful -
  *   it fills the response's `{{item}}` slot and is the dedup key (lib/util.js
- *   dedupe). For DISPLAY
- *   it is surfaced on the location line only when the message did not already name
- *   it (the response/instructions has no `{{item}}`; see `listItem`).
+ *   dedupe). For DISPLAY it is surfaced on the location line only when the message
+ *   did not already name it (the response/instructions has no `{{item}}`; see
+ *   `listItem`).
  * @property {string} [hint]  A supplementary per-location DETAIL, ALWAYS appended
  *   after the locus ("file:line - hint"): an MDN URL, a Thunderbird version, a
  *   transmission method, a remote/source URL, a reason. Display only - no dedup or

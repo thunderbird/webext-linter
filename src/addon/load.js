@@ -81,8 +81,8 @@ import { rethrowIfFatal } from "../lib/errors.js";
  */
 
 /**
- * The parsed manifest.json, an open-ended JSON
- * object, so these are just the keys the review reads (others may be present).
+ * The parsed manifest.json, an open-ended JSON object, so these are just the keys
+ * the review reads (others may be present).
  * @typedef {object} Manifest
  * @property {number} [manifest_version]  2 or 3.
  * @property {string} [name]  Add-on name.

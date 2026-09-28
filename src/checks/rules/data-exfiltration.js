@@ -1,11 +1,10 @@
 // Normal data transmission (fetch, XMLHttpRequest, WebSocket, EventSource,
 // navigator.sendBeacon, an HTML form submission) to a remote host is allowed only if
-// the user actively
-// enabled it - by entering the destination URL/credentials on an options page
-// that lists what is transmitted, or via an explicit off-by-default opt-in for a
-// hard-coded URL. Thunderbird has no built-in data-collection prompt. Whether a
-// valid opt-in exists is a judgement the source does not settle, so each overt
-// sink to a remote/dynamic destination escalates to a reviewer.
+// the user actively enabled it - by entering the destination URL/credentials on an
+// options page that lists what is transmitted, or via an explicit off-by-default opt-in
+// for a hard-coded URL. Thunderbird has no built-in data-collection prompt. Whether a
+// valid opt-in exists is a judgement the source does not settle, so each overt sink to
+// a remote/dynamic destination escalates to a reviewer.
 //
 // Disguising transmission as a resource load is a separate, always-error
 // concern (-> the disguised-* checks); this check is only the overt channels.

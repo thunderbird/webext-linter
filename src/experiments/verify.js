@@ -161,8 +161,7 @@ function walkDir(root) {
  * @param {import("../addon/load.js").Addon} addon  The shipped add-on, for the files each
  *   experiment folder is hashed from.
  * @param {?import("../addon/load.js").WebExtManifestRecord} webExtManifestRecord  What it
- *   declares: the
- *   experiment_apis entries, and the text a group's line is anchored in.
+ *   declares: the experiment_apis entries, and the text a group's line is anchored in.
  * @param {VerifyExperimentsOpts} [opts]
  * @returns {Promise<ExperimentVerification>}
  */

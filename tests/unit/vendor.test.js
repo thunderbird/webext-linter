@@ -253,10 +253,10 @@ test("an unindented list with no blank lines pairs each file with its own url", 
   ]);
 });
 
-// Some declarations name a file the library
-// heuristic does NOT recognize (a small readable .mjs). We TRUST the declaration, so
-// that file is its own entry with its own source - and, crucially, it does not leak
-// its URL onto the NEXT file (the off-by-one). Every declared file keeps its own URL.
+// Some declarations name a file the library heuristic does NOT recognize (a small
+// readable .mjs). We TRUST the declaration, so that file is its own entry with its own
+// source - and, crucially, it does not leak its URL onto the NEXT file (the off-by-one).
+// Every declared file keeps its own URL.
 test("every declared file is an entry with its own url (no shift)", () => {
   const files = {
     "VENDOR.md":

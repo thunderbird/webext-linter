@@ -736,9 +736,9 @@ test("the whole root stays a set of build candidates", () => {
 // Both SCA source flags name a folder WITHIN --sca-root, and relativeInside is the ONE
 // function that says WHERE inside - src/cli.js asks it before the filesystem, the loader
 // asks it through scaRootRelative for the archive key, so the folder the guard finds is
-// the folder the review reads. Both paths are
-// absolute by now (the arg-array reader resolved them), so this asks about the filesystem
-// rather than about spelling: a dot in a NAME survives because nothing here strips prefixes.
+// the folder the review reads. Both paths are absolute by now (the arg-array reader
+// resolved them), so this asks about the filesystem rather than about spelling: a dot in a
+// NAME survives because nothing here strips prefixes.
 test("scaRootRelative keys a path inside the root, and refuses one outside", () => {
   const root = "/tmp/wrr-root";
   for (const [given, key] of [

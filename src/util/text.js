@@ -80,11 +80,11 @@ export function humanSize(bytes) {
 }
 
 /**
- * Text from the submission, made safe to put in front
- * of a person. Control and format characters go: an escape sequence can repaint the
- * terminal around a finding, erasing what sits above it, and a bidi override can make
- * a path read as something it is not. Tab, carriage return and newline stay: they are
- * ordinary text, and removing them would flatten prose that is meant to have shape.
+ * Text from the submission, made safe to put in front of a person. Control and format
+ * characters go: an escape sequence can repaint the terminal around a finding, erasing
+ * what sits above it, and a bidi override can make a path read as something it is not.
+ * Tab, carriage return and newline stay: they are ordinary text, and removing them would
+ * flatten prose that is meant to have shape.
  *
  * Each one becomes a SPACE rather than nothing, so the characters either side stay
  * apart - deleting would let "htt<ESC>ps://evil" fuse into a working URL.

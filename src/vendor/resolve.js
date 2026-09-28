@@ -4,9 +4,9 @@
 // declarations (pinning each via an exact spec, or against a committed lock file - either
 // artifact may carry one), enumerates what the lock file installs where the reviewer
 // installs from it, classifies each declared source, and builds the shared
-// `addon.vendor` store. The network half
-// (fetch + compare + popularity) is verifyVendor (src/vendor/verify.js), which
-// fills in the per-file results. The review-phase checks only read the store.
+// `addon.vendor` store. The network half (fetch + compare + popularity) is verifyVendor
+// (src/vendor/verify.js), which fills in the per-file results. The review-phase checks only
+// read the store.
 //
 // Belongs here: combining the VENDOR + package.json declarations, and the
 // committed lock file's whole package list, into the offline `addon.vendor` (set,

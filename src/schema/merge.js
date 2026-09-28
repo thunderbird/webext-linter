@@ -45,8 +45,7 @@ function isEqual(a, b) {
 }
 
 /**
- * Merge namespace object `b` into accumulator `a`
- * (functions/events/properties/etc.).
+ * Merge namespace object `b` into accumulator `a` (functions/events/properties/etc.).
  * @param {SchemaNode} a  Accumulator namespace object (mutated in place).
  * @param {SchemaNode} b  Source namespace object to merge from.
  */

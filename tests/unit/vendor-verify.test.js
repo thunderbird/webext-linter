@@ -175,9 +175,9 @@ function addonWith(files, vendor) {
 // An injectable transport. `bytes` answers every fetchBytes (the VENDOR case);
 // `files` answers per-URL (the package case, a missing URL is a 404); `listing`
 // answers the "?meta" tree, and `throwOnListing` makes that lookup fail instead;
-// `downloads` drives the npm popularity lookup; `osv`
-// answers the OSV audit postJson (an object, or a function of the request body),
-// and `throwOnPost` makes the audit POST fail (the offline case).
+// `downloads` drives the npm popularity lookup; `osv` answers the OSV audit
+// postJson (an object, or a function of the request body), and `throwOnPost` makes
+// the audit POST fail (the offline case).
 function net({
   bytes,
   files,

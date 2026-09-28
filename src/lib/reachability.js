@@ -1,22 +1,20 @@
 // Static reachability over an add-on's files: which packaged files are reached
 // from the manifest.json entry points, following references in HTML
-// (<script>/<link>/
-// <img>), CSS (@import/url()), and JS (import/require/importScripts, plus every
-// file-loading API call - getURL, executeScript/insertCSS, the register family,
-// setIcon, tabs.create, ... - extracted by loader-files.js). Two checks share
-// this: unused-files (files reachable from ANY entry point) and minimize-web-
-// accessible-resources (resources reachable from a WEB-FACING entry point, i.e.
-// a content script). Whether library/minified/vendored JS is parsed for edges
-// is the REACHABILITY_SKIPS_NON_AUTHORED toggle in src/config.js - off by
-// default, so the graph follows edges everywhere (skipping them would hide a
-// loader and wrongly orphan what it loads). `hasDynamicLoaders` is set when a
-// LIVE (reachable) file builds a load path at runtime (dynamic import/getURL)
-// that static analysis can't follow - a loader in dead code never runs, so it
-// is dropped. `isLive` says whether a file is reached from any entry point. A
-// `mentionsOf` string-find net catches references the structured parsers miss
-// (custom loaders, odd strings); it is path-aware, so a reference to a
-// same-basename file elsewhere (a library's own button.js) does not make an
-// unrelated file look mentioned.
+// (<script>/<link>/<img>), CSS (@import/url()), and JS (import/require/importScripts,
+// plus every file-loading API call - getURL, executeScript/insertCSS, the register
+// family, setIcon, tabs.create, ... - extracted by loader-files.js). Two checks share
+// this: unused-files (files reachable from ANY entry point) and
+// minimize-web-accessible-resources (resources reachable from a WEB-FACING entry point,
+// i.e. a content script). Whether library/minified/vendored JS is parsed for edges is
+// the REACHABILITY_SKIPS_NON_AUTHORED toggle in src/config.js - off by default, so the
+// graph follows edges everywhere (skipping them would hide a loader and wrongly orphan
+// what it loads). `hasDynamicLoaders` is set when a LIVE (reachable) file builds a load
+// path at runtime (dynamic import/getURL) that static analysis can't follow - a loader
+// in dead code never runs, so it is dropped. `isLive` says whether a file is reached
+// from any entry point. A `mentionsOf` string-find net catches references the structured
+// parsers miss (custom loaders, odd strings); it is path-aware, so a reference to a
+// same-basename file elsewhere (a library's own button.js) does not make an unrelated
+// file look mentioned.
 //
 // `pureWebExtensionReachable` is the positive "this is WebExtension code" set the
 // API/permission validators (unknown-api, deprecated-api, strict-
