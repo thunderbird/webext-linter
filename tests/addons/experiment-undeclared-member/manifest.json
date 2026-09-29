@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Widget Toolkit",
+  "version": "1.0",
+  "background": { "scripts": ["background.js"] },
+  "browser_specific_settings": { "gecko": { "strict_max_version": "140.*" } },
+  "experiment_apis": {
+    "widgetTools": {
+      "schema": "experiments/toolkit/schema/tools.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "experiments/toolkit/parent/ext-tools.js",
+        "paths": [["widgetTools"]]
+      }
+    },
+    "widgetToolsPanels": {
+      "schema": "experiments/toolkit/schema/panels.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "experiments/toolkit/parent/ext-tools.js",
+        "paths": [["widgetTools", "panels"]]
+      }
+    }
+  },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

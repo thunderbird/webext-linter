@@ -362,7 +362,11 @@ test("resolveApi marks a registered new prefix as experiment; real APIs still wi
   const s = buildSchemaIndex(
     loadSchemaFiles(path.join(here, "..", "schema-fixture"))
   );
-  s.registerExperimentNamespaces(["demo", "calendar.items", "messages.evil"]);
+  s.registerExperimentApis([
+    ["demo", null],
+    ["calendar.items", null],
+    ["messages.evil", null],
+  ]);
   assert.equal(s.resolveApi(["demo", "doThing"]).kind, "experiment");
   assert.equal(
     s.resolveApi(["calendar", "items", "create"]).kind,
@@ -384,7 +388,7 @@ test("experiment-overrides-api flags a path that grafts onto a built-in", () => 
       bad: { parent: { paths: [["messages", "evil"]] } },
     },
   };
-  s.registerExperimentNamespaces(experimentApiPaths(manifest));
+  s.registerExperimentApis(experimentApiPaths(manifest).map((p) => [p, null]));
   const ctx = {
     schema: s,
     artifact: {

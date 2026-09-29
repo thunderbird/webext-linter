@@ -86,7 +86,10 @@ import {
   parseLibraryBlocks,
 } from "./lib/library-blocks.js";
 import { isExperiment, parseVersion, strictMaxVersion } from "./lib/util.js";
-import { experimentApiNamespaces } from "./lib/experiments.js";
+import {
+  experimentApiMembers,
+  experimentApiNamespaces,
+} from "./lib/experiments.js";
 import { verifyExperiments } from "./experiments/verify.js";
 import { debug, progress, report, warn, FEED } from "./util/log.js";
 import { DEFAULT_CACHE } from "./config.js";
@@ -519,13 +522,16 @@ export async function runPipeline(opts) {
         experimentVerification.groups.some((g) => g.status === "unsupported");
     },
 
-    // A valid Experiment's declared APIs are part of its platform: register their base
-    // namespaces so the developer's calls into them (e.g. browser.calendar.*) resolve
-    // instead of tripping unknown-api. Registered from the XPI (in SCA the experiment
-    // schema/scripts live in the built XPI, so the manifest.json's paths resolve there).
+    // A valid Experiment's declared APIs are part of its platform: register each
+    // namespace it adds, with the members its own schema declares, so the developer's
+    // calls into them (e.g. browser.calendar.*) resolve instead of tripping unknown-api
+    // - and a call to a member the schema does NOT declare still does, because it
+    // reaches nothing at run time. A namespace whose schema could not be read registers
+    // opaque. From the XPI (in SCA the experiment schema/scripts live in the built XPI,
+    // so the manifest.json's paths resolve there).
     "experiment-schema": () => {
-      schema.registerExperimentNamespaces(
-        experimentApiNamespaces(webExtManifestRecord?.json, xpiAddon.files)
+      schema.registerExperimentApis(
+        experimentApiMembers(webExtManifestRecord?.json, xpiAddon.files)
       );
     },
 

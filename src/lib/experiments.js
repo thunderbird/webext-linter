@@ -76,6 +76,122 @@ export function experimentApiNamespaces(manifest, files) {
 }
 
 /**
+ * What each namespace a valid Experiment adds DECLARES, for src/schema/index.js
+ * registerExperimentApis: the dotted namespace name mapped to its member names, or to
+ * null where no schema could be read.
+ *
+ * Null is not "no members" - it is "this schema did not tell us", and it leaves the
+ * namespace opaque so every path under it stays known. That is the answer for an entry
+ * whose `schema` is absent, points at no packaged file, or does not parse, and it is
+ * what keeps a malformed developer file from becoming a wave of unknown-member reports.
+ *
+ * The DOTTED name is kept, unlike experimentApiNamespaces below, which takes the first
+ * segment because its readers ask "is this an experiment namespace". A sub-namespace
+ * declares its own members (`calendar.items` has none of `calendar`'s), and resolveApi
+ * matches the longest prefix, so flattening them here would check a member against the
+ * wrong set.
+ * @param {?Manifest} manifest  The shipped manifest.json's parse.
+ * @param {Map<string, Buffer>} [files]  The artifact holding the schema files.
+ * @returns {Map<string, ?Set<string>>}
+ */
+export function experimentApiMembers(manifest, files) {
+  const out = new Map();
+  for (const [key, def] of Object.entries(
+    asObject(manifest?.experiment_apis)
+  )) {
+    const declared = schemaMembers(asObject(def).schema, files);
+    if (declared) {
+      for (const [ns, members] of declared) {
+        // UNION, never replace: one namespace may be declared across several schema
+        // files - an add-on splits `convContacts` over a contacts schema and a gloda
+        // one - and what it declares is all of them together. Overwriting would leave
+        // the members of whichever file lost the race reported as undeclared.
+        const known = out.get(ns);
+        out.set(ns, known ? new Set([...known, ...members]) : members);
+      }
+      continue;
+    }
+    // No readable schema: every namespace this entry names is opaque.
+    for (const path of entryApiPaths(key, def)) {
+      if (path) {
+        out.set(path, null);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The members each namespace of one bundled schema.json declares, or null when the
+ * schema could not be read (the caller then registers the entry opaque).
+ *
+ * `functions`, `events` AND `properties`, because a call site reaches all three the same
+ * way: `ns.doThing()`, `ns.onThing.addListener()`, `ns.SOME_CONSTANT`. Reading fewer
+ * reports the others as undeclared - measured over a real corpus, functions alone
+ * misreports hundreds of event handlers and constants. A namespace's `types` are NOT
+ * members: they name shapes, and nothing calls them.
+ * @param {unknown} schemaPath  The entry's `schema` (add-on-root-relative).
+ * @param {Map<string, Buffer>} [files]
+ * @returns {?Map<string, Set<string>>}
+ */
+function schemaMembers(schemaPath, files) {
+  if (typeof schemaPath !== "string" || !schemaPath || !files) {
+    return null;
+  }
+  // Raw lookup, as the experiment verifier resolves its refs (src/experiments/
+  // verify.js uses addon.files.has(ref)); a path that doesn't match is left to the
+  // paths/key fallback.
+  const buf = files.get(schemaPath);
+  if (!buf) {
+    return null;
+  }
+  const parsed = parseJson(buf);
+  if (parsed === null) {
+    return null;
+  }
+  const out = new Map();
+  for (const entry of asArray(parsed)) {
+    const ns = asObject(entry);
+    const name = ns.namespace;
+    // The schema-only `manifest` block declares manifest.json keys, not a callable API.
+    if (
+      typeof name !== "string" ||
+      !name ||
+      name.split(".")[0] === "manifest"
+    ) {
+      continue;
+    }
+    const members = out.get(name) ?? new Set();
+    for (const kind of ["functions", "events", "properties"]) {
+      for (const member of memberNames(ns[kind])) {
+        members.add(member);
+      }
+    }
+    out.set(name, members);
+  }
+  return out.size ? out : null;
+}
+
+/**
+ * The names in one member block, which a schema writes either way: a LIST of objects
+ * carrying `name` (how the published schemas write functions and events) or an OBJECT
+ * keyed by name (how they write properties).
+ * @param {unknown} block
+ * @returns {string[]}
+ */
+function memberNames(block) {
+  if (Array.isArray(block)) {
+    return block
+      .map((m) => asObject(m).name)
+      .filter((n) => typeof n === "string" && n);
+  }
+  if (block && typeof block === "object") {
+    return Object.keys(block);
+  }
+  return [];
+}
+
+/**
  * The top-level namespace(s) an experiment's bundled schema.json declares. A TB
  * schema is an array of namespace objects, each with a `namespace` field; the
  * schema-only `manifest` block (which declares manifest.json keys, not a callable API)

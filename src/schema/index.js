@@ -136,11 +136,15 @@ export class SchemaIndex {
     this.globalTypes = new Map();
     /** @type {Set<string>} "<namespace>.<method>" of file-loading functions */
     this.fileLoaderMethods = new Set();
-    /** @type {Set<string>} base API namespaces a valid Experiment adds (e.g.
-     * "calendar"); filled by registerExperimentNamespaces, consulted by
-     * resolveApi (via longest-prefix match) to mark the namespace and everything
-     * under it as known. */
-    this.experimentNamespaces = new Set();
+    /** @type {Map<string, ?Set<string>>} the API namespaces a valid Experiment adds
+     * (e.g. "calendar", "calendar.items"), each mapped to the members its own schema
+     * declares - or null where no schema could be read, which leaves the namespace
+     * OPAQUE and everything under it known. Filled by registerExperimentApis,
+     * consulted by resolveApi via longest-prefix match. Deliberately NOT `namespaces`:
+     * that map is searched first and a hit there would make an Experiment's own
+     * declared path resolve as a built-in, which is what experiment-overrides-api
+     * reports. */
+    this.experimentApis = new Map();
     this.applicationVersion = null;
 
     this._build();
@@ -505,27 +509,60 @@ export class SchemaIndex {
         return this._resolveMembers(ns, nsName, pathSegments, n);
       }
     }
-    // No real namespace matched: a path under a registered experiment prefix is
-    // a genuinely-new experiment API - known, not unknown.
+    // No real namespace matched: the path may be under an Experiment's own namespace.
     const exp = this._matchExperiment(pathSegments);
     if (exp) {
-      return { kind: "experiment", namespace: exp };
+      return this._resolveExperimentMember(exp, pathSegments);
     }
     return { kind: "unknown-namespace", namespace: pathSegments[0] };
   }
 
   /**
-   * Register the dotted API prefixes a valid Experiment declares (e.g.
-   * "calendar.items"), so resolveApi treats genuinely-new experiment APIs as
-   * known rather than unknown.
-   * @param {string[]} prefixes
+   * Register what a valid Experiment adds: each namespace it declares (dotted, e.g.
+   * "calendar.items"), mapped to the members its own schema declares.
+   *
+   * A null member set leaves the namespace OPAQUE - the namespace and everything under
+   * it resolve as known, which is all this could do before an Experiment's schema was
+   * read. That is the answer wherever the schema is absent, unreadable or unparsable,
+   * and a malformed developer file must not turn into a wave of unknown-member reports.
+   * @param {Map<string, ?Set<string>>|Iterable<[string, ?Set<string>]>} apis
    */
-  registerExperimentNamespaces(prefixes) {
-    for (const p of prefixes) {
-      if (p) {
-        this.experimentNamespaces.add(p);
+  registerExperimentApis(apis) {
+    for (const [name, members] of apis) {
+      if (!name) {
+        continue;
       }
+      // Two registrations for one namespace UNION, for the same reason the reader does
+      // (src/lib/experiments.js experimentApiMembers): a namespace declared twice
+      // declares the sum. A null is "no schema said", so it never erases what one did.
+      const known = this.experimentApis.get(name);
+      const merged =
+        members && known
+          ? new Set([...known, ...members])
+          : (members ?? known ?? null);
+      this.experimentApis.set(name, merged);
     }
+  }
+
+  /**
+   * A path under an Experiment's own namespace: known, unless its schema says otherwise.
+   *
+   * The namespace ITSELF always resolves as the experiment (no member to check), which
+   * is what experiment-overrides-api and experiment-not-allowed ask about when they
+   * resolve a manifest-declared path.
+   * @param {string} nsName  The matched namespace, dotted.
+   * @param {string[]} segments
+   * @returns {object}
+   */
+  _resolveExperimentMember(nsName, segments) {
+    const members = this.experimentApis.get(nsName);
+    const rest = segments.slice(nsName.split(".").length);
+    if (!members || rest.length === 0 || members.has(rest[0])) {
+      return { kind: "experiment", namespace: nsName };
+    }
+    // The schema names this namespace's members and this is not one of them, so the
+    // call reaches nothing at run time - the same answer a real namespace gives.
+    return { kind: "unknown-member", namespace: nsName, member: rest[0] };
   }
 
   /**
@@ -535,12 +572,12 @@ export class SchemaIndex {
    * @returns {?string}
    */
   _matchExperiment(segments) {
-    if (this.experimentNamespaces.size === 0) {
+    if (this.experimentApis.size === 0) {
       return null;
     }
     for (let n = segments.length; n >= 1; n--) {
       const name = segments.slice(0, n).join(".");
-      if (this.experimentNamespaces.has(name)) {
+      if (this.experimentApis.has(name)) {
         return name;
       }
     }

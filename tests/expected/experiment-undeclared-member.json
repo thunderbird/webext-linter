@@ -1,0 +1,5 @@
+{
+  "_comment": "An Experiment whose own schema says which members it declares. The three DECLARED members are each reached a different way - a function (build), an event (onBuilt.addListener) and a property (MAX_WIDGETS) - and none is flagged, which is what pins that the reader covers all three member blocks and not just `functions`. A sub-namespace declares its own member (widgetTools.panels.open), so the longest registered prefix decides whose member list applies. Only widgetTools.teardown, declared nowhere, is reported: it resolves to nothing at run time. unknown-api escalates rather than finds, so `expect` is empty and the evidence is in the .txt golden.",
+  "options": { "--allow-experiments": true },
+  "expect": {}
+}

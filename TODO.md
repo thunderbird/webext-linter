@@ -25,41 +25,6 @@ In the schema generator, give every property whose `description` carries
 linter change: the existing resolver plus the `assets/schema-annotations` overlay grounds
 them once the field is there.
 
-## Scan every non-vendored file for eval
-
-`getEvalScan` (`src/lib/eval-scan.js`) skips two sets: `nonAuthoredJs` and
-`pureWebExtensionReachable`. Drop the second one. Every file the add-on authored is scanned,
-vendored and library files are not, and nothing else gates it.
-
-- Remove the `webext.has(src.file)` condition from the scan loop, and with it the
-  `buildReachability` call if nothing else in the module needs it.
-- Rewrite the module header: it currently explains the WebExtension skip as deliberate, and
-  that reasoning is gone. State what it does now - authored files in, vendored files out.
-- `eval-call`, `function-constructor`, `string-timer` and `remote-eval` all read
-  `getEvalScan(ctx).hits`, so all four widen together. No check changes.
-- Expect new findings: 12 real add-ons have an eval construct in non-privileged
-  non-vendored JS, most of them bundled libraries sitting at paths `nonAuthoredJs` does not
-  recognise (`background/jszip.min.js`, `notes/pouchdb-7.2.1.js`). Check those against the
-  vendored classification rather than re-narrowing the scan.
-- Regenerate the goldens this moves, and keep `tests/addons/eval-non-webext` reporting.
-
-## Register an Experiment schema's members, not only its namespace
-
-`registerExperimentNamespaces` (`src/schema/index.js`) adds only the namespace NAME, and
-`resolveApi` then treats everything under it as known by longest-prefix match. So
-`browser.myTools.getBarrr()` passes even when the add-on's own schema declares only `getFoo`,
-and at runtime it is undefined.
-
-- Register the parsed schema's types alongside its name, as a second mutator beside
-  `registerExperimentNamespaces`. The index is built before the Experiment is classified, so
-  this is not a `buildSchemaIndex` change. An Experiment schema is the same annotated format
-  the published schemas use, so it needs no second code path.
-- Keep today's opaque prefix wherever `experimentApiNamespaces` (`src/lib/experiments.js`)
-  falls back to the manifest because the schema is missing, unreadable or unparseable - a
-  malformed developer file must not turn into a wave of unknown-member reports.
-- Check against a real Experiment add-on that declares many members (`phoenity_icons-3.19`,
-  the SmartTemplates versions) - it must gain no finding for an API its schema does declare.
-
 ## Check whether the excluded Experiment subtree escapes the vendor checks
 
 With `--sca-exp-source`, `scaViews` splits that subtree out of `files` into its own view, and
@@ -102,3 +67,39 @@ How do we currently review the XPI of an SCA?
 - we do not allow obfuscated code
 -  we *can* review minified code, right? so we basically do a full review of the XPI?
 - the problem is probably eval() or innerHtml usage from a lib (allowed) not being excluded from the review, as it cannot be detected?
+
+## Report an unused or over-vendored library, and keep the unused-files exemption
+
+`unused-files` skips every non-authored file (`nonAuthoredJs`: VENDOR declarations,
+hash-matched libraries, minified, obfuscated). A new pair of checks should own exactly
+those files, but at LIBRARY granularity rather than per file.
+
+The exemption stays. Deleting it was implemented and swept over the review corpus, and it
+false-positives: a library loads its own parts by paths no static read produces (webpack
+chunks by computed id, TinyMCE plugins by an injected `script.src`). Partial use of a
+vendored distribution is normal and statically undecidable, which is the reason the
+exemption is right - and the skip itself could say so, which it does not today. While
+there: `new Set(nonAuthoredJs(ctx))` copies a Set that `nonAuthoredJs` already returns.
+
+The shape worth reporting is not a dead file but an over-vendored package. Measured:
+thunderpen ships 197 TinyMCE files, its `signature/editor.js` configures 12 of the 28
+plugins it ships, and it uses one skin out of 44 skin files. The library is genuinely
+used, most of what ships is not, and nothing static can tell which parts the config
+activates.
+
+The library is identifiable, so the unit exists: with `--cdn-lib-lookup` (default true)
+each file hash-matches jsDelivr as `tinymce`, carrying the upstream path on `cdn.url`. The
+Mozilla hash DB has no TinyMCE entries at all, so the CDN route is what identifies it.
+Group by `libraryId.name` ONLY - that one tree resolves to 8.4.0, 8.5.0 and 8.6.0, because
+unchanged files share hashes across releases.
+
+Two checks, reading one shared computation, since a registry entry carries one response:
+one for a library where nothing at all is loaded (definite - remove it), one for a library
+where the bulk has no traceable load (info - vendor only the parts you use). The second
+must never word its count as "unused": those 12 plugins and that skin really are loaded.
+It reports per library, never per file, which is what keeps it free of wrong line items.
+
+Trap for the implementation: a VENDOR-declared file gets no `BundleTag` at all -
+`classifyFiles` adds it to `nonAuthored` and continues before hashing - so a tag-only
+design would cover undeclared libraries and skip declared ones, which is backwards.
+Declarations have to come in as their own unit source, via `declaredFiles`.

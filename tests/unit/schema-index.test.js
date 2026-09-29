@@ -192,12 +192,86 @@ test("a registered experiment base namespace covers its sub-paths", () => {
     loadSchemaFiles(path.join(here, "..", "schema-fixture"))
   );
   assert.equal(idx.resolveApi(["calendar"]).kind, "unknown-namespace");
-  idx.registerExperimentNamespaces(["calendar"]);
+  // Registered with NO members: the schema could not be read, so the namespace stays
+  // opaque and everything under it is known.
+  idx.registerExperimentApis([["calendar", null]]);
   assert.equal(idx.resolveApi(["calendar"]).kind, "experiment");
   assert.equal(idx.resolveApi(["calendar", "items"]).kind, "experiment");
   assert.equal(idx.resolveApi(["calendar", "items", "get"]).kind, "experiment");
   // An unrelated namespace is still unknown.
   assert.equal(idx.resolveApi(["weatherWidget"]).kind, "unknown-namespace");
+});
+
+// Where the Experiment's own schema COULD be read, it says which members exist, and a
+// call to one it does not declare reaches nothing at run time - so it is reported like
+// any other unknown member. The namespace itself still resolves as the experiment,
+// which is what experiment-overrides-api and experiment-not-allowed ask about when they
+// resolve a manifest-declared path.
+test("a registered experiment's schema decides which of its members exist", () => {
+  const idx = buildSchemaIndex(
+    loadSchemaFiles(path.join(here, "..", "schema-fixture"))
+  );
+  idx.registerExperimentApis([["widgetTools", new Set(["build", "onBuilt"])]]);
+
+  assert.equal(idx.resolveApi(["widgetTools"]).kind, "experiment");
+  assert.equal(idx.resolveApi(["widgetTools", "build"]).kind, "experiment");
+  assert.equal(idx.resolveApi(["widgetTools", "onBuilt"]).kind, "experiment");
+  // A trailing segment on a declared member is the member's own business.
+  assert.equal(
+    idx.resolveApi(["widgetTools", "onBuilt", "addListener"]).kind,
+    "experiment"
+  );
+
+  const res = idx.resolveApi(["widgetTools", "teardown"]);
+  assert.equal(res.kind, "unknown-member");
+  assert.equal(res.namespace, "widgetTools");
+  assert.equal(res.member, "teardown");
+});
+
+// A sub-namespace declares its own members. resolveApi matches the LONGEST registered
+// prefix, so the member is checked against that one's list and not the parent's.
+test("a sub-namespace's members are its own, not its parent's", () => {
+  const idx = buildSchemaIndex(
+    loadSchemaFiles(path.join(here, "..", "schema-fixture"))
+  );
+  idx.registerExperimentApis([
+    ["widgetTools", new Set(["build"])],
+    ["widgetTools.panels", new Set(["open"])],
+  ]);
+  assert.equal(
+    idx.resolveApi(["widgetTools", "panels", "open"]).kind,
+    "experiment"
+  );
+  const res = idx.resolveApi(["widgetTools", "panels", "close"]);
+  assert.equal(res.kind, "unknown-member");
+  assert.equal(res.namespace, "widgetTools.panels");
+  assert.equal(res.member, "close");
+  // The parent's member list does not answer for the child: `build` is the parent's.
+  assert.equal(
+    idx.resolveApi(["widgetTools", "panels", "build"]).kind,
+    "unknown-member"
+  );
+});
+
+// One namespace may be declared across several schema files - an add-on splits its
+// contacts API over two - and what it declares is the union. Registering twice must not
+// let the second registration erase the first, and a later "no schema" must not erase
+// what a schema said.
+test("two registrations of one namespace union their members", () => {
+  const idx = buildSchemaIndex(
+    loadSchemaFiles(path.join(here, "..", "schema-fixture"))
+  );
+  idx.registerExperimentApis([["widgetTools", new Set(["build"])]]);
+  idx.registerExperimentApis([["widgetTools", new Set(["onBuilt"])]]);
+  assert.equal(idx.resolveApi(["widgetTools", "build"]).kind, "experiment");
+  assert.equal(idx.resolveApi(["widgetTools", "onBuilt"]).kind, "experiment");
+
+  idx.registerExperimentApis([["widgetTools", null]]);
+  assert.equal(
+    idx.resolveApi(["widgetTools", "teardown"]).kind,
+    "unknown-member",
+    "a null registration says nothing, so it cannot re-open a namespace a schema closed"
+  );
 });
 
 // A function's required permissions combine its own with the namespace-level
