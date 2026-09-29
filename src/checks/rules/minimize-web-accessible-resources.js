@@ -18,11 +18,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import {
-  referrerSupported,
-  loaderTrace,
-  manifestTokenLine,
-} from "../../lib/util.js";
+import { referrerSupported, loaderTrace } from "../../lib/util.js";
 import { buildReachability } from "../../lib/reachability.js";
 import {
   warResourceList,
@@ -51,15 +47,6 @@ export default {
     }
     const reach = buildReachability(ctx);
     const files = artifact.files;
-    const text = ctx.manifest?.text;
-    /**
-     * @param {string} item  The manifest.json token to anchor on.
-     * @returns {?{line: number}}  Its manifest.json line as a loc, or null.
-     */
-    const lineOf = (item) => {
-      const line = manifestTokenLine(text, item);
-      return line ? { line } : null;
-    };
     const findings = [];
     /** @type {import("../escalation.js").Escalation[]} one per unresolved WAR file. */
     const escalations = [];
@@ -69,13 +56,17 @@ export default {
      * manifest.json token to anchor on, which differs from `item` when a glob pattern
      * exposed the file - the loc must point at the WAR pattern (e.g. "icons/*"),
      * not the file's own coincidental line elsewhere (e.g. the "icons" field).
-     * @param {string} key @param {?string} item @param {?string} [locItem]
+     * @param {string} key @param {?string} item @param {object} at  Where the pattern
+     *   that exposed it was declared, from the record (warResourceList paths).
      */
-    const once = (key, item, locItem = item) => {
+    const once = (key, item, at) => {
       if (!seen.has(key)) {
         seen.add(key);
         findings.push(
-          finding({ file: "manifest.json", loc: lineOf(locItem), item })
+          finding({
+            ...at,
+            item,
+          })
         );
       }
     };
@@ -83,20 +74,16 @@ export default {
     for (const entry of entries) {
       // (a) over-broad resource patterns. A match like <all_urls> is not a file
       // and does not belong in this resource-minimization finding.
-      for (const pat of entry.resources) {
+      for (const [j, pat] of entry.resources.entries()) {
         if (isOverBroadResource(pat)) {
-          ctx.note?.(
-            "manifest.json",
-            null,
-            `${pat} (over-broad)`,
-            VERDICT.FAIL
-          );
-          once(`res:${pat}`, pat);
+          ctx.note?.(ctx.manifest.locus(), `${pat} (over-broad)`, VERDICT.FAIL);
+          once(`res:${pat}`, pat, ctx.manifest.locus(...entry.paths[j]));
         }
       }
 
       // (b) concrete resources that nothing web-facing in the add-on loads.
-      for (const pat of entry.resources) {
+      for (const [j, pat] of entry.resources.entries()) {
+        const at = ctx.manifest.locus(...entry.paths[j]);
         if (isOverBroadResource(pat)) {
           continue; // already covered by (a)
         }
@@ -107,8 +94,7 @@ export default {
           seen.add(`res-file:${file}`);
           if (reach.webReachable.has(file)) {
             ctx.note?.(
-              "manifest.json",
-              null,
+              ctx.manifest.locus(),
               `${file} reachable by a web context`,
               VERDICT.PASS
             );
@@ -123,15 +109,14 @@ export default {
           // live dynamic loader) -> the reviewer decides whether one really does.
           // Named only by dead code with no live loader -> plainly needless.
           if (supported || reach.hasDynamicLoaders) {
-            ctx.note?.("manifest.json", null, trace, VERDICT.UNSURE);
+            ctx.note?.(ctx.manifest.locus(), trace, VERDICT.UNSURE);
             escalations.push({
-              file: "manifest.json",
-              loc: lineOf(pat),
+              ...at,
               item: file,
             });
           } else {
-            ctx.note?.("manifest.json", null, trace, VERDICT.FAIL);
-            once(`unused-finding:${file}`, file, pat);
+            ctx.note?.(ctx.manifest.locus(), trace, VERDICT.FAIL);
+            once(`unused-finding:${file}`, file, at);
           }
         }
       }

@@ -31,28 +31,21 @@ export default {
     }
     if (!getLocales(ctx).hasLocales) {
       ctx.note?.(
-        "manifest.json",
-        null,
+        ctx.manifest.locus(),
         "no _locales directory",
         VERDICT.SKIPPED
       );
       return { findings: [] };
     }
     if (manifest.default_locale) {
-      ctx.note?.(
-        "manifest.json",
-        null,
-        "default_locale declared",
-        VERDICT.PASS
-      );
+      ctx.note?.(ctx.manifest.locus(), "default_locale declared", VERDICT.PASS);
       return { findings: [] };
     }
     ctx.note?.(
-      "manifest.json",
-      null,
+      ctx.manifest.locus(),
       "_locales without default_locale",
       VERDICT.FAIL
     );
-    return { findings: [finding({ file: "manifest.json" })] };
+    return { findings: [finding({ ...ctx.manifest.locus() })] };
   },
 };

@@ -35,13 +35,12 @@ export default {
       return { findings: [], escalations: [] };
     }
     ctx.note?.(
-      "manifest.json",
-      null,
+      ctx.manifest.locus(),
       `'${NATIVE_MESSAGING}' permission`,
       VERDICT.UNSURE
     );
     // A single whole-add-on reminder: no item/locus to list (the instructions
     // name the permission), so it renders as the wrapped message alone.
-    return { findings: [], escalations: [{}] };
+    return { findings: [], escalations: [ctx.artifact.at()] };
   },
 };

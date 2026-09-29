@@ -1,0 +1,6 @@
+{
+  "_comment": "An SCA submission (src/ + xpi/) whose shipped XPI is byte-for-byte what the archive holds: every file it ships - script, manifest.json and icon - is identical to a file in src/, so either nothing was built or the build output was committed beside the source. sca-xpi-fully-included-in-archive therefore warns (input: both - the comparison needs both artifacts). The review is NOT re-routed: this stays a full SCA review, so the src/ tree IS reviewed and the build checks DO run, which is why src/ carries a package.json. The XPI carries no vendoring information of its own, so sca-xpi-declares-vendoring is silent and this fixture exercises the archive rule alone. The finding names NO file - every shipped file is its subject - so the harness records it as (add-on) and the report prints the entry with no locus line at all.",
+  "expect": {
+    "sca-xpi-fully-included-in-archive": ["(add-on)"]
+  }
+}

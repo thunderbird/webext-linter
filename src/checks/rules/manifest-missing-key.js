@@ -21,15 +21,14 @@ export default {
     for (const key of REQUIRED_KEYS) {
       if (m[key] === undefined) {
         ctx.note?.(
-          "manifest.json",
-          null,
+          ctx.manifest.locus(),
           `missing required key "${key}"`,
           VERDICT.FAIL
         );
         // No file/line: the key is absent, so it has no location. The item (the
         // missing key) is listed on its own, and the message names
         // manifest.json.
-        out.push(finding({ item: key }));
+        out.push(finding({ ...ctx.artifact.at(), item: key }));
       }
     }
     return { findings: out };

@@ -32,7 +32,7 @@ import {
   resolveRefStatus,
 } from "../../lib/manifest-refs.js";
 import { scriptHostDirs, resolvePageRelative } from "../../lib/script-hosts.js";
-import { manifestPathLine, SCHEME_RE } from "../../lib/util.js";
+import { SCHEME_RE } from "../../lib/util.js";
 
 export default {
   run(ctx) {
@@ -72,8 +72,7 @@ export default {
       // all. Said out loud: the check cannot make its claim, and a silent empty result
       // would read exactly like a manifest.json that declares nothing.
       ctx.note?.(
-        "manifest.json",
-        null,
+        ctx.manifest.locus(),
         "no schema-declared file paths",
         VERDICT.SKIPPED
       );
@@ -85,17 +84,11 @@ export default {
         continue;
       }
       seenSlot.add(slot);
-      const line = manifestPathLine(ctx, ...where);
-      const loc = line ? { line } : null;
+      const at = ctx.manifest.locus(...where);
       const present = rootOk(path);
-      ctx.note?.(
-        "manifest.json",
-        loc,
-        path,
-        present ? VERDICT.PASS : VERDICT.FAIL
-      );
+      ctx.note?.(at, path, present ? VERDICT.PASS : VERDICT.FAIL);
       if (!present) {
-        out.push(finding({ file: "manifest.json", loc, item: path }));
+        out.push(finding({ ...at, item: path }));
       }
     }
 
@@ -142,13 +135,14 @@ export default {
               ) != null
             : resolveRef(artifact.files, null, ref.path) != null;
         ctx.note?.(
-          src.file,
-          loc,
+          ctx.artifact.at(src.file, loc),
           ref.path,
           present ? VERDICT.PASS : VERDICT.FAIL
         );
         if (!present) {
-          out.push(finding({ file: src.file, loc, item: ref.path }));
+          out.push(
+            finding({ ...ctx.artifact.at(src.file, loc), item: ref.path })
+          );
         }
       }
     }

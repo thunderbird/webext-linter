@@ -9,7 +9,7 @@ import {
   loopPromptLines,
   formatJson,
   headerLines,
-  packageLines,
+  schemaLines,
   detailLinkLines,
   locusLabeler,
   locationLine,
@@ -574,10 +574,10 @@ test("Issues group findings by identical message into one entry", () => {
 
 // A location line is printed only when there is something to put on it: a file, a
 // surfaced item, or a hint. A finding whose subject is the submission as a whole
-// (sca-not-required, manifest-missing) carries none of the three, and its message
-// already says everything - so it is listed with no location line rather than one
-// naming nothing. A hint with no file still prints, on its own, because finding.js
-// promises a hint is ALWAYS shown.
+// (sca-xpi-fully-included-in-archive, manifest-missing) carries none of the three,
+// and its message already says everything - so it is listed with no location line
+// rather than one naming nothing. A hint with no file still prints, on its own,
+// because finding.js promises a hint is ALWAYS shown.
 test("Issues print a location line only when it carries something", () => {
   const mk = (extra) => ({
     ruleId: "r",
@@ -912,24 +912,21 @@ test("Manual review caps a grouped locus list at 25 with a marker", () => {
   assert.match(standard, /Spam check: Inspect it\./);
 });
 
-// SCA review: each finding's file:line is prefixed with the artifact it lives in -
-// [XPI] for input:xpi checks (and always for manifest.json, the shipped
-// manifest.json), [SCA] for the readable source (input:source/build) - and a legend
-// footer closes the Issues section. An XPI review adds neither.
+// SCA review: each finding's file:line is prefixed with the artifact it lives in, read
+// off the finding rather than worked out from the check's route - and a legend footer
+// closes the Issues section. An XPI review adds neither.
 test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () => {
   const r = {
     mode: REVIEW_MODE.SCA,
-    ruleInputs: new Map([
-      ["unused-files", "xpi"],
-      ["unknown-api", "source"],
-      ["manifest-unknown-permission", "xpi"],
-    ]),
+    // Each finding carries the artifact it is about, as its holder minted it
+    // (src/checks/registry.js runOneCheck). The renderer reads it and works nothing out.
     findings: [
       {
         ruleId: "unused-files",
         severity: "error",
         file: "orphan.js",
         loc: { line: 2 },
+        artifact: "XPI",
         message: "Unused file in the built add-on.",
       },
       {
@@ -937,6 +934,7 @@ test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () =
         severity: "error",
         file: "app.js",
         loc: { line: 5 },
+        artifact: "SCA",
         message: "Unknown API in the source.",
       },
       {
@@ -944,15 +942,16 @@ test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () =
         severity: "error",
         file: "manifest.json",
         loc: { line: 3 },
+        artifact: "XPI",
         message: "Unknown permission.",
       },
     ],
     meta: { action: "review", xpi: "x", reviewed: false },
   };
   const out = formatText(r);
-  assert.match(out, /\[XPI\] orphan\.js:2/); // input:xpi -> XPI
-  assert.match(out, /\[SCA\] app\.js:5/); // input:source -> SCA
-  assert.match(out, /\[XPI\] manifest\.json:3/); // manifest cross-over -> XPI
+  assert.match(out, /\[XPI\] orphan\.js:2/);
+  assert.match(out, /\[SCA\] app\.js:5/);
+  assert.match(out, /\[XPI\] manifest\.json:3/);
   // The artifact-label legend footer.
   assert.match(out, /\[XPI\] = source file in the submitted XPI/);
   assert.match(
@@ -1122,10 +1121,9 @@ test("the enumeration is exactly the order the report prints", () => {
 
 // Why the numbering is ONE sequence. A finding with no locus joining the entry of findings
 // that DO have one contributes no line: an item in the sequence the page never shows,
-// silently pushing every later number out of
-// step with what a reader counts. Locus status is part of the entry key, so such a
-// finding is its own entry and IS printed - as its message alone, which is how a
-// whole-add-on finding has always rendered.
+// silently pushing every later number out of step with what a reader counts. Locus status is
+// part of the entry key, so such a finding is its own entry and IS printed - as its message
+// alone, which is how a whole-add-on finding has always rendered.
 test("a locus-less finding is its own entry, so every item is on the page", () => {
   const registry = loadRegistry();
   const f = (message, file) => ({
@@ -1710,7 +1708,7 @@ test("the report header strips control characters from submission text", () => {
   };
 
   for (const [name, out] of [
-    ["packageLines", packageLines(meta, "/tmp/cache").join("\n")],
+    ["schemaLines", schemaLines(meta, "/tmp/cache").join("\n")],
     ["headerLines", headerLines(meta).join("\n")],
   ]) {
     assert.ok(!/\u001b/.test(out), `${name} passes no ESC through`);
@@ -1718,8 +1716,10 @@ test("the report header strips control characters from submission text", () => {
     assert.match(out, /release-mv3/, `${name} keeps the branch`);
   }
   // The path rows too, not only the schema sentence: the renderer guards what it writes.
-  assert.ok(!/\u001b/.test(packageLines(meta, null).join("\n")));
-  assert.match(packageLines(meta, null).join("\n"), /XPI \/tmp\/a/);
+  // headerLines is where the paths are - schemaLines names no artifact, because an agent
+  // is given each path on the entry it is about.
+  assert.ok(!/\u001b/.test(headerLines(meta).join("\n")));
+  assert.match(headerLines(meta).join("\n"), /XPI_ROOT\s+\/tmp\/root/);
 });
 
 // The machine-readable report already guarded its findings on the stated grounds that a
@@ -1759,7 +1759,7 @@ test("the schema sentence is the same in every renderer that names it", () => {
   };
   const sentence = "release-mv3 · Thunderbird 140 · manifest_version 3";
   assert.ok(
-    packageLines(meta, null).includes(`SCHEMA ${sentence}`),
+    schemaLines(meta, null).includes(`SCHEMA ${sentence}`),
     "the SCHEMA row is the sentence, unlabelled"
   );
   assert.ok(

@@ -51,17 +51,14 @@ export default {
       const loc = line ? { line } : undefined;
       const statusText = status === "banned" ? "disallowed" : "discouraged";
       ctx.note?.(
-        file,
-        loc,
+        ctx.artifact.at(file, loc),
         `${name}@${version} is ${statusText} by Mozilla add-on policy`,
         VERDICT.FAIL
       );
       findings.push(
         finding({
-          file,
-          loc,
-          item: name,
-          // severity:auto - a banned version is rejected (error); an unadvised one
+          ...ctx.artifact.at(file, loc),
+          item: name, // severity:auto - a banned version is rejected (error); an unadvised one
           // is a warning. The human status word fills the {{status}} response slot.
           severity: status === "banned" ? SEVERITY.ERROR : SEVERITY.WARNING,
           data: { version, reason, status: statusText },

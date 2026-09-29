@@ -7,14 +7,14 @@
 // Belongs here: the declared-default_locale / absent-_locales verdict and
 // locating the default_locale line. Does NOT belong here: the _locales scan (->
 // getLocales in src/lib/locales.js, memoized and shared with
-// default-locale-missing), finding a manifest.json key's line (-> manifestTokenLine
+// default-locale-missing), finding a manifest.json key's line (-> tokenLine
 // in src/lib/util.js), authored wording (-> assets/registry.yaml), and
 // severity (-> that registry entry).
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { getLocales } from "../../lib/locales.js";
-import { manifestTokenLine, skipWithoutManifest } from "../../lib/util.js";
+import { skipWithoutManifest } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -33,27 +33,21 @@ export default {
       return skipWithoutManifest(ctx);
     }
     if (!manifest.default_locale) {
-      ctx.note?.("manifest.json", null, "no default_locale", VERDICT.SKIPPED);
+      ctx.note?.(ctx.manifest.locus(), "no default_locale", VERDICT.SKIPPED);
       return { findings: [] };
     }
     if (getLocales(ctx).hasLocales) {
       ctx.note?.(
-        "manifest.json",
-        null,
+        ctx.manifest.locus(),
         "_locales directory present",
         VERDICT.PASS
       );
       return { findings: [] };
     }
-    const text = ctx.manifest?.text;
-    const line = manifestTokenLine(text, "default_locale");
-    const loc = line ? { line, column: 0 } : null;
-    ctx.note?.(
-      "manifest.json",
-      loc,
-      "default_locale without _locales",
-      VERDICT.FAIL
-    );
-    return { findings: [finding({ file: "manifest.json", loc })] };
+    const at = ctx.manifest.locus("default_locale");
+    ctx.note?.(at, "default_locale without _locales", VERDICT.FAIL);
+    return {
+      findings: [finding({ ...at })],
+    };
   },
 };

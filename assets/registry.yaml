@@ -374,12 +374,12 @@ deterministic-phase:
     The following bundled files were recognized as third-party libraries (via a jsDelivr CDN hash lookup) but are not declared as such. An archive holds your authored code, not its dependencies - those should come in through the build process. Declare each in package.json and let the build script copy it from node_modules, rather than committing the file.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# Flags a JS file that cannot be reviewed as shipped - minified, machine-generated, or
-# not parsable as JavaScript (maxLineStatements cannot count what it could not parse, so
-# an unparsable file with a long line reads as packed) - and is not a recognized library;
-# asks for the readable original. Runs in both XPI and source-code submission reviews (no sca gate) - a
-# source submission's promise is readable source, so a minified file there is
-# rejected just like one in a built XPI.
+# Flags a script or stylesheet that cannot be reviewed as shipped - minified,
+# machine-generated, or - for a script - not parsable as JavaScript (maxLineStatements
+# cannot count what it could not parse, so an unparsable file with a long line reads as
+# packed) - and is not a recognized library; asks for the readable original. Runs in both
+# XPI and source-code submission reviews (no mode gate) - a source submission's promise is
+# readable source, so a minified file there is rejected just like one in a built XPI.
 - title: Minified code cannot be reviewed
   severity: error
   check: minified-code
@@ -418,19 +418,18 @@ deterministic-phase:
   response: |-
     The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies and are reviewed as authored code, so a finding may be reported against library code.
 
-# A source-code review (declared by `input: sca` - the archive exists in no other kind of
-# review): a declared dependency that is not a confirmed
-# widely-used library cannot be reviewed - its code is pulled in at build, absent from the
-# readable source and mangled in the built XPI - so a SHIPPED one must be included readable
-# in the archive. BUILD dependencies are held to the same bar, for the reason they are
-# OSV-audited: the reviewer installs and runs them, so an obscure build tool is code we ask
-# them to execute on nobody's word, and refusing only the vulnerabilities we can name would
-# protect them from the named risk alone. They cannot be shipped readable, so the remedy is
-# a widely-used equivalent - or none, where the package is not needed to reproduce the XPI
-# at all: an archive is submitted so the build can be REPRODUCED, and a dependency no step
-# of that needs is one the reviewer is asked to install for nothing. That is the only route
-# open to a package with no popular counterpart, such as a types-only package.
-# verifyScaDependencies records both (vendor.unpopularDeps).
+# A source-code review (`input: sca` - the archive exists in no other kind of review): a
+# declared dependency that is not a confirmed widely-used library cannot be reviewed - its
+# code is pulled in at build, absent from the readable source and mangled in the built XPI -
+# so a SHIPPED one must be included readable in the archive. BUILD dependencies are held to
+# the same bar, for the reason they are OSV-audited: the reviewer installs and runs them, so
+# an obscure build tool is code we ask them to execute on nobody's word, and refusing only
+# the vulnerabilities we can name would protect them from the named risk alone. They cannot
+# be shipped readable, so the remedy is a widely-used equivalent - or none, where the
+# package is not needed to reproduce the XPI at all: an archive is submitted so the build
+# can be REPRODUCED, and a dependency no step of that needs is one the reviewer is asked to
+# install for nothing. That is the only route open to a package with no popular counterpart,
+# such as a types-only package. verifyScaDependencies records both (vendor.unpopularDeps).
 - title: Unreviewable build dependency
   severity: error
   check: unpopular-source-dependency
@@ -637,7 +636,7 @@ deterministic-phase:
 # verifyScaDependencies): the reviewer builds the add-on from source, so a
 # vulnerable build-time dependency runs on the reviewer's machine even though it is
 # never shipped. Mirrors vendor-vulnerable (same severity:auto band mapping) for the
-# dev set; sca:true - dev deps only exist in an SCA review. The build-time packages
+# dev set; `input: sca` - dev deps only exist in a source review. The build-time packages
 # nobody declares are vendor-vulnerable-indirect-dev below.
 - title: Vulnerable build dependency
   severity: auto
@@ -655,7 +654,7 @@ deterministic-phase:
 # nobody chose is worth reporting when it fails the review, not when it merely
 # appears - plus any advisory saying the package IS malicious, which states no
 # severity at all. So the severity is flat rather than auto. The raw band still
-# fills the {{severity}} slot. sca:true - a lock only exists in a source submission.
+# fills the {{severity}} slot. `input: sca` - a lock only exists in a source submission.
 - title: Vulnerable indirect dependency
   severity: error
   review-early-exit: known-vulnerabilities
@@ -689,8 +688,9 @@ deterministic-phase:
 # NOT silent when the shipped XPI IS the archive's own code: that the shipped
 # bytes are readable says nothing about whether this source produces them, which is what
 # reproducing the build establishes, and with no build there is nothing to reproduce. The
-# XPI-only advice (sca-not-required) is a separate question - could this developer have
-# shipped the XPI alone next time - and prints beside this rejection rather than in place of
+# question of whether the archive held the whole XPI is a separate one
+# (sca-xpi-fully-included-in-archive), and prints beside this rejection rather than in
+# place of it.
 - title: Missing package.json
   severity: error
   review-early-exit: unreproducible-build
@@ -727,12 +727,11 @@ deterministic-phase:
 # carries, so whatever it declares is installed. An absent `scripts` block is not a second
 # reading and not grounds for anything. The mirror holds in a built XPI, where the same
 # file declares VENDORED libraries whatever it carries (xpi-lock-file-missing /
-# xpi-lock-file-invalid). The lock is owed
-# by the package.json, never by what it happens to declare: both installers refuse without one
-# whatever it holds, and a root declaring nothing itself is a workspace root or a package.json
-# whose declarations moved, not a submission that installs nothing.
-# Only the ROOT package.json is read - the build's entry point (src/build/collect.js), and
-# the directory the install runs in. Nothing here goes looking
+# xpi-lock-file-invalid). The lock is owed by the package.json, never by what it happens to
+# declare: both installers refuse without one whatever it holds, and a root declaring nothing
+# itself is a workspace root or a package.json whose declarations moved, not a submission
+# that installs nothing. Only the ROOT package.json is read - the build's entry point
+# (src/build/collect.js), and the directory the install runs in. Nothing here goes looking
 # for a package.json or a lock deeper in the archive: they sit at the root, which is what the
 # root IS. WHICH folder that is was settled before any check ran (src/addon/sca-root.js),
 # because the root is named by someone who has not looked inside the archive yet.
@@ -899,27 +898,45 @@ deterministic-phase:
   response: |-
     The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 
-# A source-code submission the built XPI alone would have covered, told to the developer so
-# their next one skips the longer review. Two ways the submission says so (src/checks/rules/
-# sca-not-required.js): the XPI carries vendoring information of its own - a VENDOR file, a
-# package.json, a lock file - which in a source submission belongs in the ARCHIVE, the copy
-# the reviewer reads and the build installs from; or every file the XPI ships is
-# byte-identical to a file in the archive, so nothing was built and the shipped bytes ARE
-# the submitted source. One remedy either way, so one entry.
+# Two rules about the SHAPE of a source-code submission, one per entry below. They were one
+# check while both said "you did not need to submit source", and they are two now because
+# each has its own remedy and the shared wording could state neither plainly.
 #
-# `input: both` is the only route carrying two artifacts, which is what a comparison between
-# them needs; it also says the mode, since a review with one artifact has no comparison to
-# make. ADVICE about the NEXT submission - this one is always reviewed as a source
-# submission, so a wrong answer here costs a wrong suggestion, not a narrowed review. At
-# warning severity --warnings-as-errors lets a new submission be refused at intake, while an
-# update that switched to a source archive by accident only gets told to go back. The finding
-# names no file: its subject is the submission, not anything in it.
-- title: Source archive not required
+# Both take `input: both`, the only route carrying two artifacts, which is also what says
+# the mode: a review with one artifact has neither rule to break. Neither narrows THIS
+# review - it stays a full source review whatever they answer, because no content test can
+# be trusted to route (a committed unminified build is its own twin under any of them, so
+# routing would let a build be dressed up as source). At warning severity
+# --warnings-as-errors lets a new submission be refused at intake, while an update that got
+# its packaging wrong only gets told what to change.
+
+# RULE 1: the built XPI must not carry vendoring information. Those files are the archive's
+# - the copy the reviewer reads and the build installs from - so a shipped one says the
+# submission type was misread, or that an XPI-only submission was meant all along.
+#
+# The one check here that names files. It mints each locus from `ctx.xpi` - the side those
+# files are in - because a route carrying two artifacts names neither, and asking the holder
+# is how a finding says which it means. The response names none of them, so they collapse
+# into one entry listing the files once.
+- title: The built XPI declares its own vendoring
   severity: warning
-  check: sca-not-required
+  check: sca-xpi-declares-vendoring
   input: both
   response: |-
-    This add-on was submitted as a source-code archive, but the shipped add-on (the built XPI) did not need one: either it carries its own vendoring information - a VENDOR file, a package.json or a lock file, which belong in the source archive rather than in the XPI - or every file it ships is byte-identical to a file in the archive, so nothing was built from it. Please submit the XPI on its own next time. Source-code submissions also take considerably longer to review.
+    This add-on was submitted as a source-code archive, but the built XPI carries vendoring information of its own. In a source-code submission a VENDOR file, a package.json and a lock file belong in the archive - the copy the reviewer reads and the build installs from - not in the package you ship. Remove the file(s) below from the XPI and declare the dependencies in the archive instead. If the add-on needs no archive behind it, submit just the XPI.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
+# RULE 2: the archive must not hold the built XPI entire. Two submissions look like this and
+# the check cannot tell them apart - nothing was built, or the build's OUTPUT was committed
+# beside the real source - so the response gives a remedy for each rather than assuming one.
+# The finding names no file: every shipped file is the subject, so listing them lists the XPI.
+- title: The built XPI is fully included in the source archive
+  severity: warning
+  check: sca-xpi-fully-included-in-archive
+  input: both
+  response: |-
+    This add-on was submitted as a source-code archive, but the archive contains the built XPI in full: every file the XPI ships is already in the archive byte for byte. A source archive is the readable source a build turns into the shipped package, not a copy of that package. If the XPI does not need to be built, submit just the XPI - source-code submissions take considerably longer to review. If it does, remove the build output from the archive and submit only the source the build runs on.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the repo-name candidate and proves it by content hash);
@@ -1655,6 +1672,7 @@ manual-checks:
 # Manual: limited/non-public audience (better self-hosted than publicly listed).
 - title: Check suitability for listing
   check: suitability-for-listing
+  input: none
   severity: error
   instructions: |-
     Judge whether the add-on targets a limited or non-public audience (for
@@ -1667,6 +1685,7 @@ manual-checks:
 # fix is an edit on addons.thunderbird.net and no new version is needed.
 - title: Check the listing for unacceptable content
   check: unacceptable-listing-content
+  input: none
   severity: hold-or-error
   instructions: |-
     Inspect the add-on listing page on ATN: its summary, description and
@@ -1681,6 +1700,7 @@ manual-checks:
 # Manual: the ATN listing page lacks usage details/entry points or screenshots.
 - title: Missing ATN description or details
   check: missing-atn-description
+  input: none
   severity: hold-or-error
   instructions: |-
     Verify that the add-on listing page on ATN includes detailed instructions on
@@ -1692,6 +1712,7 @@ manual-checks:
 # Manual: the ATN listing page should have an English version.
 - title: Missing English ATN localization
   check: missing-english-atn-localization
+  input: none
   severity: info
   instructions: |-
     Verify that the ATN listing page also has an English version.
@@ -1701,6 +1722,7 @@ manual-checks:
 # Manual: icon imitating the Thunderbird/Firefox/Mozilla logo (an image checks can’t see).
 - title: Check the icon for trademark or logo imitation
   check: icon-trademark-imitation
+  input: none
   severity: error
   instructions: |-
     Inspect the add-on’s icon as it is shown on the add-on listing page on ATN. Decide whether it imitates or incorporates the Thunderbird, Firefox or Mozilla logo.
@@ -1716,6 +1738,7 @@ manual-checks:
 # words. The default-note stands in when they reported it without any.
 - title: Test the add-on
   check: add-on-functionality
+  input: none
   severity: info
   instructions: |-
     Install the add-on in a separate test profile and spend about 5 minutes
@@ -1737,6 +1760,7 @@ manual-checks:
 # else, which is why what a reviewer OBSERVES while testing is reported by the check above.
 - title: Request testing information if needed
   check: testing-information
+  input: none
   severity: hold-or-error
   instructions: |-
     Check whether reviewing this add-on needs anything the submission does not
@@ -1749,6 +1773,7 @@ manual-checks:
 # Manual: behavior not documented on the ATN listing (inspect the version diff).
 - title: Check for "No Surprises" policy violations
   check: no-surprises-policy
+  input: none
   severity: error
   instructions: |-
     Test the add-on’s functionality in a test profile and inspect the code for
@@ -1766,6 +1791,7 @@ manual-checks:
 # Manual: payment is required but the ATN "needs payment" flag is off.
 - title: Check for a missing payment disclosure
   check: missing-payment-disclosure
+  input: none
   severity: hold-or-error
   instructions: |-
     Test the add-on’s functionality in a test profile. Verify whether the
@@ -1778,6 +1804,7 @@ manual-checks:
 # original?
 - title: Forked add-on
   check: forked-add-on
+  input: none
   severity: error
   instructions: |-
     Check if the submission is a fork of an existing add-on. Such forks are only
@@ -1919,9 +1946,8 @@ llm-sca-review-prompt:
 #   PREAMBLE     once, on the first --llm-review run: what is about to happen, and nothing
 #                else. NO PATH is named - a block headed "what is being reviewed" reads as
 #                an assignment and invites the agent to go and read it before a step asks.
-#                The phase that reads the add-on names what to read ({{package}}), which is
-#                the same rule everywhere here: a path is printed by the thing that needs
-#                it.
+#                Every path is printed on the ENTRY it is about instead, which is the same
+#                rule everywhere here: a path is printed by the thing that needs it.
 #   FRAME        every pass: the file, and that it changed. The linter's, so it cannot drift.
 #   INTRO        per phase, and EMPTY unless the steps alone would let the agent act wrongly.
 #   STEPS        per phase, numbered over what survives `skip:`/`run:`, exactly as
@@ -1940,8 +1966,9 @@ llm-sca-review-prompt:
 #
 # Placeholders the linter fills: {{review}} the review file, {{command}} the hand-back,
 # {{description}} and {{build}} the two files an agent writes, {{scaRoot}} the source root,
-# and {{package}} - the block naming what is being reviewed and the schema it is judged
-# against, printed by the phases that READ the add-on and by no other. A path is printed by
+# and {{schema}} - what a verdict is judged against, printed by the phases that judge and
+# by no other. The artifacts are NOT named here: each entry carries its own resolved paths
+# (src/report/handback.js), so nothing is left for the agent to join. A path is printed by
 # the thing that needs it, which is why the preamble names none of them: it is too early,
 # and a value with no step behind it reads as an assignment.
 llm-phases:
@@ -2112,9 +2139,7 @@ llm-phases:
         - text: |-
             Verify every entry in ONE pass. Answer with the "label" of one of the answers that entry lists under "answers", and with nothing else - each answer's "description" says when it applies. Judge only whether each entry is right, never whether it matters, and never put any of them to the reviewer.
 
-            What you are reading, and what to read it against:
-
-            {{package}}
+            {{schema}}
 
             Judge every API, permission and method against SCHEMA, never against what you remember: a name the schema does not have is not a name this add-on can use, whatever another version of Thunderbird offers.
 
@@ -2143,9 +2168,7 @@ llm-phases:
         - text: |-
             Settle each entry yourself, following that entry's "instructions". Answer with the "label" of one of the answers that entry lists under "answers", and with nothing else - each answer's "description" says when it applies, and entries do not all offer the same ones.
 
-            What you are reading, and what to read it against:
-
-            {{package}}
+            {{schema}}
 
             Judge every API, permission and method against SCHEMA, never against what you remember: a name the schema does not have is not a name this add-on can use, whatever another version of Thunderbird offers.
 

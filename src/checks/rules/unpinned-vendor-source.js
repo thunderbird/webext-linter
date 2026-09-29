@@ -39,15 +39,13 @@ export default {
       const line = lineContaining(vendorText, source);
       const loc = line ? { line } : undefined;
       ctx.note?.(
-        vendorName ?? path,
-        loc,
+        ctx.artifact.at(vendorName ?? path, loc),
         `non-pinned source: ${source}`,
         VERDICT.FAIL
       );
       findings.push(
         finding({
-          file: vendorName ?? path,
-          loc,
+          ...ctx.artifact.at(vendorName ?? path, loc),
           item: path,
           hint: source,
         })

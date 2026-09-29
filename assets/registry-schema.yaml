@@ -140,7 +140,15 @@ shapes:
       why: >-
         which only a check that RUNS can carry - a manual-checks entry lists its case
         unconditionally and reads no artifact
-    input: *only-a-check-that-runs
+    input:
+      kind: one-of
+      values: MANUAL_ENTRY_INPUTS
+      required: true
+      why: >-
+        a by-hand entry reads no artifact - it is settled by looking at the add-on
+        listing page, or by installing the add-on and using it - and says so rather
+        than leaving an absent `input` to be read as a default. `none` is the whole
+        vocabulary here, and a check that RUNS cannot declare it
     sweep-instruction: *only-a-check-that-runs
     settle-verbs: *only-a-check-that-runs
     review-early-exit: *only-a-check-that-runs

@@ -28,8 +28,12 @@ export default {
   run(ctx) {
     const findings = [];
     for (const file of ctx.artifact.archives) {
-      ctx.note?.(file, null, "committed build artifact", VERDICT.FAIL);
-      findings.push(finding({ file }));
+      ctx.note?.(
+        ctx.artifact.at(file),
+        "committed build artifact",
+        VERDICT.FAIL
+      );
+      findings.push(finding({ ...ctx.artifact.at(file) }));
     }
     return { findings };
   },

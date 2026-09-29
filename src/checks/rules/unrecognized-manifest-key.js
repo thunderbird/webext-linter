@@ -13,7 +13,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { asObject, manifestTokenLine } from "../../lib/util.js";
+import { asObject } from "../../lib/util.js";
 import { experimentManifestKeys } from "../../lib/experiments.js";
 
 export default {
@@ -25,7 +25,6 @@ export default {
     if (schema.validManifestKeys.size === 0) {
       return { findings: [] };
     }
-    const text = ctx.manifest.text;
     // The experiment-owned keys the header names: the add-on's own config.
     const expKeys = new Set(
       Object.keys(asObject(ctx.manifest.json.experiment_apis))
@@ -41,17 +40,14 @@ export default {
         expKeys.has(key) ||
         expManifestKeys.has(key);
       ctx.note?.(
-        "manifest.json",
-        null,
+        ctx.manifest.locus(),
         key,
         known ? VERDICT.PASS : VERDICT.FAIL
       );
       if (!known) {
-        const line = manifestTokenLine(text, key);
         out.push(
           finding({
-            file: "manifest.json",
-            loc: line ? { line } : null,
+            ...ctx.manifest.locus(key),
             item: key,
           })
         );

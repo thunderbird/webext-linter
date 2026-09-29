@@ -2,7 +2,8 @@
 
 Thank you for your contribution, it will be approved shortly. We kindly ask you to resolve the following issues with your next release:
 
-1) This add-on was submitted as a source-code archive, but the shipped add-on (the built XPI) did not need one: either it carries its own vendoring information - a VENDOR file, a package.json or a lock file, which belong in the source archive rather than in the XPI - or every file it ships is byte-identical to a file in the archive, so nothing was built from it. Please submit the XPI on its own next time. Source-code submissions also take considerably longer to review.
+1) This add-on was submitted as a source-code archive, but the archive contains the built XPI in full: every file the XPI ships is already in the archive byte for byte. A source archive is the readable source a build turns into the shipped package, not a copy of that package. If the XPI does not need to be built, submit just the XPI - source-code submissions take considerably longer to review. If it does, remove the build output from the archive and submit only the source the build runs on.
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive

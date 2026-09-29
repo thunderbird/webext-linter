@@ -90,6 +90,11 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
       loc: t.loc ?? null,
       item: t.item ?? null,
       hint: t.hint ?? null,
+      // WHICH artifact `file` is in, carried from the finding or the escalated case.
+      // The path stays relative here, as the report prints it; what an agent is handed
+      // is resolved against this when the entry is rendered (handback.js entriesFor),
+      // because only there is a path being given to something that will open it.
+      artifact: t.artifact ?? null,
     };
     // The section the report lists it under, by the name it prints - not the internal
     // key. A finding's own band is already on `severity`.

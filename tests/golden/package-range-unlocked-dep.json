@@ -111,6 +111,7 @@
       },
       "item": "lodash (^4.17.21)",
       "hint": null,
+      "artifact": "XPI",
       "message": "The following dependencies are declared as a version range, and the lock file the add-on ships records no version for them. A range names no single release, so there is nothing to verify the bundled copy against. Regenerate the lock file so it records what was bundled, or pin each dependency in package.json to a bare version like \"4.17.21\"."
     }
   ]

@@ -1559,3 +1559,43 @@ test("an answer too long for settle() to apply fails cleanly, not as a crash", (
   assert.match(out.stderr, /verify failed/);
   assert.doesNotMatch(out.stderr, /at settleAnswer|at applyVerdicts|at Object/);
 });
+
+// The live feed and the report are two renderings of one review, so they must not
+// disagree about which artifact a path is in. They reach the label by different routes -
+// the feed settles it per note as a check runs, the report reads what was stamped on the
+// finding - and a signature change once left the feed calling the label rule with a route
+// where it expects an artifact, which silently blanked every label in it. Nothing caught
+// that, because the feed is stdout and no unit test reads it.
+test("the activity feed labels a locus the same way the report does", () => {
+  const fx = "tests/addons/sca-multiple-vendor-files";
+  const r = run([
+    `${fx}/xpi`,
+    "--sca-root",
+    `${fx}/src`,
+    "--verbose",
+    "--cdn-lib-lookup",
+    "false",
+    ...OFFLINE_FLAGS,
+  ]);
+  const feed = r.stdout
+    .split("\n")
+    .filter((l) => l.trimStart().startsWith("•"));
+  assert.ok(feed.length > 0, "the run narrated something");
+
+  // Every note that names a file says which artifact it is in. An unlabelled one in a
+  // source review is the failure: two artifacts, and the line says neither.
+  const unlabelled = feed.filter(
+    (l) => /\s-\s/.test(l) && !/\[(XPI|SCA)\]/.test(l)
+  );
+  assert.deepEqual(unlabelled, [], "no note names a file without its artifact");
+
+  // And the labels are not all one value: this fixture has both artifacts in play, which
+  // is what makes the agreement worth asserting.
+  assert.ok(feed.some((l) => l.includes("[XPI]")));
+  assert.ok(feed.some((l) => l.includes("[SCA]")));
+
+  // The same file, labelled the same way in both places. VENDOR.md exists in BOTH
+  // artifacts here, so this is the case a wrong label would be invisible in.
+  assert.match(r.stdout, /• .*\[XPI\] VENDOR\.md - vendoring information/);
+  assert.match(r.stdout, /^ - \[XPI\] VENDOR\.md$/m);
+});

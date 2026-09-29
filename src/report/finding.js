@@ -1,10 +1,12 @@
 // A Finding is the single unit of output produced by every check. It is a pure
 // verdict record: where the check fired and the structured data to fill the
 // registry text - never prose. A check authors no user-facing string; it calls
-// finding({ file, loc, item, hint }) only. The orchestrator stamps `ruleId` and
-// `severity` (from the registry), and the report resolver fills `message` from
-// the registry response. Keeping one shape lets the reporter, pipeline and test
-// harness treat findings uniformly.
+// finding({ ...ctx.artifact.at(file, loc), item, hint }) only - the locus comes from
+// whatever holds the file, and is refused if it cannot say which artifact that is
+// (src/lib/artifacts.js assertLocus). The orchestrator stamps `ruleId` and `severity`
+// (from the registry), and the report resolver fills `message` from the registry
+// response. Keeping one shape lets the reporter, pipeline and test harness treat
+// findings uniformly.
 //
 // Belongs here: the Finding/FindingOpts/ManualItem typedefs and the small
 // data-only helpers over a finding set - the finding() factory, hasErrors,
@@ -16,6 +18,8 @@
 // and JSON shaping live in src/report/format.js. Which severity a rule gets, and
 // verdict/escalation decisions, live in the registry and
 // src/checks/escalation.js - not here.
+
+import { assertLocus } from "../lib/artifacts.js";
 
 /** The two sections an escalated case is listed under, and the ONE spelling of each.
  *  A check does not declare which: it declares who its question is for, and the section
@@ -64,6 +68,13 @@ const SEVERITY_RANK = Object.fromEntries(
  *   dedupe). For DISPLAY it is surfaced on the location line only when the message
  *   did not already name it (the response/instructions has no `{{item}}`; see
  *   `listItem`).
+ * @property {string} artifact  WHERE this finding's subject is - "XPI", "SCA", or "NONE"
+ *   (src/lib/artifacts.js). Answered by the HOLDER of the file and never worked out from
+ *   the route: the artifact the check was routed to (src/addon/load.js `at`), the shipped
+ *   manifest.json record, or one named side of the `both` route. REQUIRED, with a file or
+ *   without - the claims that name no file are the ones that most need the tree, and an
+ *   entry with no artifact is handed over with no root at all (src/report/handback.js).
+ *   Shown only in a source review, the only kind with two to tell apart.
  * @property {string} [hint]  A supplementary per-location DETAIL, ALWAYS appended
  *   after the locus ("file:line - hint"): an MDN URL, a Thunderbird version, a
  *   transmission method, a remote/source URL, a reason. Display only - no dedup or
@@ -119,8 +130,17 @@ const SEVERITY_RANK = Object.fromEntries(
  * @param {FindingOpts} opts
  * @returns {Finding}
  */
-export function finding({ ruleId, severity, file, loc, item, hint, data }) {
-  return {
+export function finding({
+  ruleId,
+  severity,
+  file,
+  loc,
+  item,
+  hint,
+  data,
+  artifact,
+}) {
+  const f = {
     ruleId: ruleId ?? null,
     severity: severity ?? null,
     file: file ?? null,
@@ -128,10 +148,13 @@ export function finding({ ruleId, severity, file, loc, item, hint, data }) {
     item: item ?? null,
     hint: hint ?? null,
     data: data ?? null,
+    artifact: artifact ?? null,
     message: null,
     listItem: false,
     note: null,
   };
+  assertLocus(f, `finding(${f.ruleId ? `"${f.ruleId}"` : "..."})`);
+  return f;
 }
 
 /**
@@ -231,9 +254,12 @@ export function sortFindings(findings) {
  *   locus mirrors a Finding so escalated items list "file:line - item" beneath
  *   the message, grouped like Issues; standalone reminders carry none.
  * @property {string} title
- * @property {string} [ruleId]  The owning check's id (as a Finding's), so the report
- *   can label the locus by artifact ([XPI]/[SCA]) via ruleInputs. Absent for a
- *   standalone registry manual-checks reminder (which carries no locus).
+ * @property {string} [ruleId]  The owning check's id (as a Finding's), so a reported case
+ *   can be resolved back to a finding of that check. A standalone registry manual-checks
+ *   reminder carries one too.
+ * @property {string} [artifact]  WHERE the item's subject is, as a Finding's - from the
+ *   locus the check minted (src/checks/escalation.js manualRef refuses a case without
+ *   one), or NONE for a by-hand reminder, which is about neither artifact.
  * @property {string} [instructions]  The wording a PERSON reads: the report's own entry
  *   body, and the question a reviewer is asked.
  * @property {string|null} [llmInstructions]  The wording an AGENT is handed, or null for

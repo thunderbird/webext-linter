@@ -5,6 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { withManifest } from "./manifest-ctx.js";
 
 import unpopularSourceDependency from "../../src/checks/rules/unpopular-source-dependency.js";
 
@@ -32,7 +33,7 @@ test("reports one finding per dep, anchored at its package.json line", () => {
       token: "@louis.jln/extract-time",
     },
   ]);
-  const out = unpopularSourceDependency.run(ctx).findings;
+  const out = unpopularSourceDependency.run(withManifest(ctx)).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "package.json");
   // The response is collapsible (no {{item}}), so item carries the subject AND
@@ -51,7 +52,7 @@ test("a missing token anchors at the file with no line", () => {
   const ctx = ctxWith([
     { name: "niche", version: "1.0.0", file: "package.json", token: "" },
   ]);
-  const out = unpopularSourceDependency.run(ctx).findings;
+  const out = unpopularSourceDependency.run(withManifest(ctx)).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].loc, null);
 });

@@ -60,16 +60,19 @@ export default {
         continue; // a classic background script - fine without "type": "module"
       }
       if (isModule) {
-        ctx.note?.(src.file, loc, "module syntax (type: module)", VERDICT.PASS);
+        ctx.note?.(
+          ctx.artifact.at(src.file, loc),
+          "module syntax (type: module)",
+          VERDICT.PASS
+        );
         continue;
       }
       ctx.note?.(
-        src.file,
-        loc,
+        ctx.artifact.at(src.file, loc),
         "module syntax without type: module",
         VERDICT.FAIL
       );
-      out.push(finding({ file: src.file, loc }));
+      out.push(finding({ ...ctx.artifact.at(src.file, loc) }));
     }
     return { findings: out };
   },

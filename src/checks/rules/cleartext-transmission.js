@@ -41,8 +41,8 @@ export default {
       // assembled at run time (`http://${server}/api`), while the line the developer
       // wrote is always showable.
       const label = sinkLabel(sink, "cleartext send");
-      out.push(finding({ file: sink.file, loc, hint: label }));
-      ctx.note?.(sink.file, loc, label, VERDICT.FAIL);
+      out.push(finding({ ...ctx.artifact.at(sink.file, loc), hint: label }));
+      ctx.note?.(ctx.artifact.at(sink.file, loc), label, VERDICT.FAIL);
     }
     return { findings: out };
   },

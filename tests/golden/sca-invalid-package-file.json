@@ -67,7 +67,8 @@
       "xpi-packaged-symlink",
       "build-lifecycle-hook",
       "undeclared-build-source",
-      "sca-not-required",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",
@@ -132,6 +133,7 @@
       "loc": null,
       "item": "could not be read",
       "hint": null,
+      "artifact": "SCA",
       "message": "The committed package.json cannot be read, so the build it defines cannot be run. Please commit a valid package.json.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]

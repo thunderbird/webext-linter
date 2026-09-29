@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import { VERDICT } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
-import { parsed } from "./manifest-ctx.js";
+import { parsed, withManifest } from "./manifest-ctx.js";
 
 import { scanUnsafeHtml } from "../../src/parse/unsafe-html.js";
 import unsafeHtml from "../../src/checks/rules/unsafe-html.js";
@@ -74,8 +74,9 @@ test("unsafe-html notes each sink site (verdict fail)", () => {
     options: {},
   };
   const notes = [];
-  ctx.note = (file, loc, item, verdict) => notes.push({ file, item, verdict });
-  const out = unsafeHtml.run(ctx).findings;
+  ctx.note = (at, item, verdict) =>
+    notes.push({ file: at.file, item, verdict });
+  const out = unsafeHtml.run(withManifest(ctx)).findings;
   assert.equal(out.length, 1); // still one finding
   assert.deepEqual(notes, [
     { file: "render.js", item: ".innerHTML", verdict: VERDICT.FAIL },

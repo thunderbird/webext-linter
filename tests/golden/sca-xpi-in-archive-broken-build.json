@@ -1,10 +1,10 @@
 {
   "meta": {
     "action": "review",
-    "xpi": "<root>/tests/addons/sca-not-required/xpi",
-    "xpiRoot": "<root>/tests/addons/sca-not-required/xpi/",
+    "xpi": "<root>/tests/addons/sca-xpi-in-archive-broken-build/xpi",
+    "xpiRoot": "<root>/tests/addons/sca-xpi-in-archive-broken-build/xpi/",
     "xpiFile": "xpi",
-    "scaRoot": "<root>/tests/addons/sca-not-required/src",
+    "scaRoot": "<root>/tests/addons/sca-xpi-in-archive-broken-build/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
@@ -67,7 +67,8 @@
       "xpi-packaged-symlink",
       "build-lifecycle-hook",
       "undeclared-build-source",
-      "sca-not-required",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",
@@ -104,26 +105,47 @@
       "disguised-transmission",
       "unacceptable-package-content",
       "shipped-icon-trademark-imitation"
-    ]
+    ],
+    "earlyExit": {
+      "intro": "The review was not completed and the report is incomplete due to the following issues:",
+      "reasons": [
+        {
+          "id": "unreproducible-build",
+          "text": "Build process issues"
+        }
+      ]
+    }
   },
   "summary": {
-    "error": 0,
+    "error": 1,
     "hold": 0,
     "warning": 1,
     "info": 0,
     "byRule": {
-      "sca-not-required": 1
+      "sca-lock-file-missing": 1,
+      "sca-xpi-fully-included-in-archive": 1
     }
   },
   "findings": [
     {
-      "ruleId": "sca-not-required",
+      "ruleId": "sca-xpi-fully-included-in-archive",
       "severity": "warning",
       "file": null,
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "This add-on was submitted as a source-code archive, but the shipped add-on (the built XPI) did not need one: either it carries its own vendoring information - a VENDOR file, a package.json or a lock file, which belong in the source archive rather than in the XPI - or every file it ships is byte-identical to a file in the archive, so nothing was built from it. Please submit the XPI on its own next time. Source-code submissions also take considerably longer to review."
+      "artifact": "SCA",
+      "message": "This add-on was submitted as a source-code archive, but the archive contains the built XPI in full: every file the XPI ships is already in the archive byte for byte. A source archive is the readable source a build turns into the shipped package, not a copy of that package. If the XPI does not need to be built, submit just the XPI - source-code submissions take considerably longer to review. If it does, remove the build output from the archive and submit only the source the build runs on.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+    },
+    {
+      "ruleId": "sca-lock-file-missing",
+      "severity": "error",
+      "file": "package.json",
+      "loc": null,
+      "item": null,
+      "hint": null,
+      "artifact": "SCA",
+      "message": "The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]
 }

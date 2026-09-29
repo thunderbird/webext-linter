@@ -313,6 +313,9 @@ function asFinding(item, index, registry, note = null) {
     item: item.item ?? undefined,
     hint: item.hint ?? undefined,
     data: item.data ?? undefined,
+    // Carried over, not recomputed: the case already knows which artifact its locus is
+    // in, and a reported case is the same locus said as a finding.
+    artifact: item.artifact ?? undefined,
   });
   f.ruleId = item.ruleId;
   f.severity = severity;

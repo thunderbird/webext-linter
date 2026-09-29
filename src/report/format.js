@@ -55,8 +55,6 @@ const SEV_COLOR = {
  * @property {import("../lib/enum.js").ReviewMode} [mode]  The review mode. In SCA each finding's
  *   file:line is labelled by artifact ([XPI]/[SCA]) and the Found Issues section gets a
  *   legend footer; XPI reviews add neither. See src/report/artifact.js.
- * @property {Map<string, string>} [ruleInputs]  ruleId -> routed input
- *   ("xpi"|"sca"|"source"|"both"), from registry.checkInputs(); the artifact label reads it.
  */
 
 /**
@@ -179,18 +177,11 @@ export function formatText(review) {
  * @returns {string[]}
  */
 function reviewBodyLines(review) {
-  const {
-    findings: issues,
-    meta,
-    issueHeadings,
-    verdictIntros,
-    mode,
-    ruleInputs,
-  } = review;
+  const { findings: issues, meta, issueHeadings, verdictIntros, mode } = review;
   const ordered = orderReview(issues, meta.manualReview ?? []);
   const todo = (section) =>
     ordered.filter((x) => x.kind === "todo" && x.section === section);
-  const labelOf = locusLabeler(mode, ruleInputs);
+  const labelOf = locusLabeler(mode);
   return [
     ...issuesLines(
       ordered.filter((x) => x.kind === "finding"),
@@ -284,15 +275,16 @@ function stepLines(n, text, blocks = []) {
  * @param {{name: string, intro: string}} phase
  * @param {{text: string}[]} steps  Already filtered by src/report/phases.js stepsOf.
  * @param {Object<string, string>} values  What the texts and steps name: review, command,
- *   schemaCache, description, build, scaRoot.
+ *   schemaCache, description, build, scaRoot, schema, details. The last two are laid out
+ *   as blocks rather than substituted into prose (BLOCK_VALUES).
  * @param {boolean} [first]  Print the preamble, which one run does and the rest do not.
  * @returns {string[]}
  */
 /** The prompt values that are handed to a step as a BLOCK rather than substituted into
- *  its prose: printed line for line, never re-wrapped. Both are tables of paths, and a
- *  wrapped path is one nobody can copy - the package block because its reader looks values
+ *  its prose: printed line for line, never re-wrapped. Both are tables of named values, and
+ *  a wrapped path is one nobody can copy - the schema block because its reader looks values
  *  up in it, the Review Details block because the reviewer is given it as it stands. */
-const BLOCK_VALUES = new Set(["package", "details"]);
+const BLOCK_VALUES = new Set(["schema", "details"]);
 
 export function loopPromptLines(texts, phase, steps, values, first = false) {
   // Everything BUT the value blocks, which stepLines lays out unwrapped below.
@@ -492,12 +484,12 @@ export function scaPromptLines(prompt, submission, review) {
 }
 
 /**
- * What a phase that READS the add-on is told: which artifact is under review, and the
- * schema snapshot it is judged against.
+ * The schema a phase's verdicts are judged against.
  *
- * Built from the same `meta` the report's own header is, so the two can never name
- * different artifacts. An XPI review names the one it has; a source code review names the
- * extracted root, and the Experiment folder when one was given.
+ * NOT the artifacts: every path an agent is given is given per entry, resolved against
+ * the artifact that entry is about (src/report/handback.js entriesFor). A root printed
+ * once, above a list of relative paths, would leave the agent to join them - and in a
+ * source review to pick which root first, which is a step it can get wrong in silence.
  *
  * SCHEMA is a line, not a path: the cache holds several branches, and the one this review
  * read is the only one its verdicts mean anything against.
@@ -505,32 +497,24 @@ export function scaPromptLines(prompt, submission, review) {
  * @param {?string} schemaCache  Where the snapshots live.
  * @returns {string[]}
  */
-export function packageLines(meta, schemaCache) {
+export function schemaLines(meta, schemaCache) {
   const values = [];
-  if (meta.scaRoot) {
-    values.push(["SCA_ROOT", meta.scaRoot]);
-    if (meta.scaExpSource) {
-      values.push(["SCA_EXP_SOURCE", meta.scaExpSource]);
-    }
-  } else {
-    values.push(["XPI", meta.xpi]);
-  }
   if (schemaCache) {
     values.push(["SCHEMA_CACHE", schemaCache]);
   }
   values.push(["SCHEMA", schemaSentence(meta)]);
-  // Guarded by the RENDERER, the way valueLines guards the rows it lays out: several of
-  // these are paths the reviewer gave and one is read from the submission, and a row added
-  // later should not have to remember.
+  // Guarded by the RENDERER, the way valueLines guards the rows it lays out: one of these
+  // is a path the reviewer gave and one is read from the submission, and a row added later
+  // should not have to remember.
   return values.map(([name, value]) => `${name} ${displayPath(value)}`);
 }
 
 /**
  * Review Details: what was reviewed, and against which schema.
  *
- * Printed with the REPORT, and never beside a prompt: a phase that reads the add-on prints
- * the values it needs itself (packageLines), and a name printed with no step behind it is
- * an instruction with nothing to do.
+ * Printed with the REPORT, and never beside a prompt: an agent is given each path on the
+ * entry it is about (src/report/handback.js entriesFor), and a name printed with no step
+ * behind it is an instruction with nothing to do.
  *
  * The paths are a block of NAMED values (valueLines), the shape the --llm-sca-review
  * prompt uses for its own Submission block. Named, because the --llm-review prompt's steps
@@ -596,7 +580,7 @@ export function headerLines(meta) {
 /**
  * What the review's verdicts mean anything against, as one sentence - the THREE renderers
  * that name it read it from here: the terminal header and the chat header below, and the
- * package values a reading phase is given (packageLines).
+ * block a judging phase is given (schemaLines).
  *
  * Guarded here, which is the point of it being one place: `manifestVersion` is the raw
  * submission value, and a manifest_version carrying an ESC sequence erases the line above
@@ -1191,6 +1175,11 @@ export function formatJson(review) {
       ...(f.file == null ? {} : { file: displayLine(f.file) }),
       ...(f.item == null ? {} : { item: displayLine(f.item) }),
       ...(f.hint == null ? {} : { hint: displayLine(f.hint) }),
+      // `artifact` rides the spread above, and finding() refuses one without it, so it is
+      // always present - which is the contract for a machine reader: two findings on the
+      // same relative path have no other way to be told apart, and a key that comes and
+      // goes is one the consumer has to special-case. The text report shows it only where
+      // there are two artifacts to confuse; a machine has no such luxury.
       // A reviewer's note only when there is one: every other finding's document is
       // the shape it always was.
       ...(note == null ? {} : { note: displayLine(note) }),
@@ -1211,13 +1200,15 @@ export function formatJson(review) {
  * The artifact label ([XPI]/[SCA]) for one finding/manual item's file:line - "" in an
  * XPI review (one artifact). Applied wherever locationLine renders a locus, and by the
  * verdict enumeration, so an item's reference string is the line the report printed.
+ *
+ * It READS the artifact the item carries rather than working one out: that was settled
+ * when the holder minted its locus (src/addon/load.js `at`), and a second answer here
+ * could differ from it.
  * @param {import("../lib/enum.js").ReviewMode} [mode]
- * @param {Map<string, string>} [ruleInputs]
  * @returns {(x: object) => string}
  */
-export function locusLabeler(mode, ruleInputs) {
-  return (f) =>
-    artifactLabel({ file: f.file, input: ruleInputs?.get(f.ruleId), mode });
+export function locusLabeler(mode) {
+  return (f) => artifactLabel({ artifact: f.artifact, mode });
 }
 
 /**

@@ -141,11 +141,12 @@ A source archive is always reviewed as one - the review is never re-routed to th
 the strength of what the XPI looks like. SCA is what you need when the shipped XPI is not
 the code you wrote: minified, obfuscated, transpiled, or bundled.
 
-When the shipped XPI turns out to BE the submitted source - readable, no transpiled source
-kind, and every script it ships byte-identical to one in the archive - the review reports
-`sca-not-required` (info) to say an XPI-only submission would have done, and would have
-been reviewed faster. That is advice for next time. It does not change the review it
-appears in.
+Two rules govern the shape of such a submission, and each is its own check (both warning,
+neither narrowing the review it appears in). `sca-xpi-declares-vendoring` - the built XPI
+must not carry a VENDOR file, a `package.json` or a lock file, because those are the
+archive's, the copy the reviewer reads and the build installs from. It names the offending
+files. `sca-xpi-fully-included-in-archive` - the archive must not hold the built XPI entire,
+which means either nothing was built or the build output was committed beside the source.
 
 - `--sca-root` is the **extracted** source archive that holds `package.json` /
   the lock file. Setting it switches on SCA mode. It must be a folder: unlike the
@@ -207,11 +208,11 @@ appears in.
   web-accessible / unused / locales). It is analysed in full in either mode - the
   same vendor, library and parse passes - so those checks see the shipped add-on
   the same way whether or not a source archive came with it.
-- `--sca-exp-source` names an Experiment implementation folder - anywhere within
-  `--sca-root`, relative to it or absolute inside it (e.g.
-  `addon/experiment-api`, or a sibling of the source like `experiment`) - so its
-  privileged, non-WebExtension code is excluded from the WebExtension checks
-  (required when `--allow-experiments` is used in SCA mode).
+- `--sca-exp-source` names an Experiment implementation folder - anywhere under
+  `--sca-root`, relative to it or absolute inside it (e.g. `addon/experiment-api`),
+  but never the root itself, which would exclude nothing - so its privileged,
+  non-WebExtension code is excluded from the WebExtension checks (required when
+  `--allow-experiments` is used in SCA mode).
 - Because a review spans two artifacts, each finding's `file:line` is prefixed with the
   artifact it lives in - `[XPI]` (the built XPI) or `[SCA]` (the readable source code
   archive) - so a reviewer knows which one to open. The Found Issues section closes with a
@@ -230,8 +231,8 @@ in order. A section it never asks for is inert.
   phase runs ALONE - no other check, no manual reminders.
 - **`deterministic-phase`** - every check. Each case is decided in code, offline apart
   from the one-time vendor source fetch, and becomes either a finding or an escalation
-  of a case the code cannot settle. A few checks are gated by review mode
-  (`sca: true` - a check only a source code submission can answer).
+  of a case the code cannot settle. A check's `input` mostly settles where it runs, and
+  `skip-in-sca-review: true` keeps the few that judge the shipped XPI out of a source review.
 - **`manual-checks`** - checks the tool can't make itself, surfaced as a todo list. Not
   a phase: the orchestrator never asks for this section.
 
@@ -346,10 +347,10 @@ machine.
 | `mistyped-manifest-value` | A known manifest.json key whose value has the wrong type, validated with ajv against a JSON Schema derived from the annotated schema (warning). Thunderbird misreads such values. |
 | `native-messaging` | The `nativeMessaging` permission (in `permissions` or `optional_permissions`), which lets the add-on exchange messages with a native application outside Thunderbird - routed to manual review to confirm disclosure (No Surprises). |
 | `non-experiment-strict-max-version` | A non-Experiment that pins `strict_max_version` (warning - it only blocks installs on newer Thunderbird). |
-| `minified-code` | A JS file (not a recognized library, not obfuscated) shipped minified - by minified line geometry (a very long, dense line) (error). |
+| `minified-code` | A script or stylesheet (not a recognized library, not obfuscated) shipped minified - by minified line geometry (a very long, dense line) (error). A script that will not parse at all counts as minified, since nothing there can be reviewed either. |
 | `obfuscated-code` | A JS file (not a recognized library) shipped obfuscated - recognized by the AST structure of a known obfuscator family via the `obfuscation-detector` library. The families a match is drawn from are pinned, so a family the library gains later decides nothing and a match needs no second opinion. High precision, partial recall - some obfuscators evade it. |
 | `privacy-policy` | Data transmitted by an overt API to a remote host the developer chose (fixed in the add-on, not entered by the user) - one case per transmission site, naming its host. A host the add-on assembles while it runs is reported too, marked rather than named, since dropping it would hide the site the tool can say least about. Routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
-| `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, stops the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce. Whether the developer could have shipped the XPI alone is a separate question, so `sca-not-required` prints beside this rejection rather than in place of it. |
+| `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, stops the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce. Whether the archive held the whole XPI is a separate question, so `sca-xpi-fully-included-in-archive` prints beside this rejection rather than in place of it. |
 | `sca-package-file-invalid` | A `package.json` that is present but unusable - it does not parse, or it parses to something other than a JSON object - so the build it defines cannot be run (error, stops the review). Presence is decided by name and usability by reading, so exactly one of this and the check above ever speaks. |
 | `sca-lock-file-invalid` | A committed lock file that cannot install what `package.json` declares: it cannot be read, it is not a recognisable npm or pnpm lock, it resolves nothing for a declared package, or the version it pins for one is not a version that `package.json` allows (error). `npm ci` / `pnpm install --frozen-lockfile` refuse over all four, so the build cannot be reproduced and the review stops. |
 | `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, stops the review). The lock is owed by the `package.json`, not by what it declares: both installers refuse without one whatever it holds. A build using a package manager the review does not install from commits no lock that counts, so it is rejected here. |

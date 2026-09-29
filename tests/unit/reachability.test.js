@@ -603,7 +603,8 @@ test("unused-files notes the loaders it examined per candidate", () => {
   };
   const ctx = ctxFrom(files, manifest);
   const notes = [];
-  ctx.note = (file, loc, item, verdict) => notes.push({ file, item, verdict });
+  ctx.note = (at, item, verdict) =>
+    notes.push({ file: at.file, item, verdict });
   unusedFiles.run(ctx);
 
   const maybe = notes.find((n) => n.file === "maybe.js");

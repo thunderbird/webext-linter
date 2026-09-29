@@ -12,9 +12,10 @@ import { buildXpiCtx, buildScaCtxs } from "../../src/checks/context.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 import { runExtractionPass } from "../../src/checks/extract.js";
 import { SYMLINK_CAUSE } from "../../src/lib/enum.js";
+import { addonOf, noManifest } from "./manifest-ctx.js";
 
 const addonWith = (files, nonAuthored = []) => ({
-  files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
+  ...addonOf(files),
   bundled: { nonAuthored: new Set(nonAuthored), classified: [] },
 });
 
@@ -26,7 +27,7 @@ const envWith = (over = {}) => ({
   mode: REVIEW_MODE.XPI,
   scaExpSource: undefined,
   invalidExperiment: false,
-  manifest: null,
+  manifest: noManifest(),
   experiments: null,
   previous: null,
   nonce: "0123456789abcdef",
@@ -274,7 +275,8 @@ test("ctx.artifact is the loaded artifact itself; the shipped answers come from 
 // of their own - they ask ctx.manifest and nothing else.
 test("a manifest.json check reads the record, not the routed files", async () => {
   const xpi = addonWith({ "a.js": "export const x = 1;" });
-  const env = envWith({ manifest: null }); // a missing manifest is what manifest-missing flags
+  // An artifact that ships no manifest.json still carries a record; `present` says so.
+  const env = envWith({ manifest: noManifest() });
   const xpiCtx = buildXpiCtx(xpi, parsed(xpi), env);
   assert.ok(
     xpiCtx.artifact.files.size > 0,
@@ -283,6 +285,6 @@ test("a manifest.json check reads the record, not the routed files", async () =>
   const check = (await import("../../src/checks/rules/manifest-missing.js"))
     .default;
   // The artifact has files and holds no manifest.json either way: the finding comes from
-  // ctx.manifest being null, which is the shipped artifact's answer.
+  // the record saying it is not present, which is the shipped artifact's answer.
   assert.ok(check.run(xpiCtx).findings.length > 0);
 });

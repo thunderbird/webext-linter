@@ -1,12 +1,7 @@
 {
-  "_comment": "Two VENDOR files inside a source archive, each naming the same file with a different source. An XPI can only be told to keep one of them. An archive is told not to carry the library at all - declare it in package.json and let the build copy it - which makes the ambiguity moot, so this pins a remedy that differs in substance from its XPI twin. The XPI here also ships two VENDOR files of its own, which in a source-code submission belongs in the archive - the copy the reviewer reads and the build installs from - so sca-not-required warns that this did not need to be a source submission. It is advice about the NEXT one and narrows nothing here.",
+  "_comment": "Two VENDOR files inside a source archive, each naming the same file with a different source. An XPI can only be told to keep one of them. An archive is told not to carry the library at all - declare it in package.json and let the build copy it - which makes the ambiguity moot, so this pins a remedy that differs in substance from its XPI twin. The XPI here also ships two VENDOR files of its own, which in a source-code submission belongs in the archive - the copy the reviewer reads and the build installs from - so sca-xpi-declares-vendoring reports it, naming the file(s) on the finding. It narrows nothing here - the archive is still reviewed in full.",
   "expect": {
-    "multiple-vendor-files": [
-      "VENDOR.md",
-      "VENDORS.md"
-    ],
-    "sca-not-required": [
-      "(add-on)"
-    ]
+    "multiple-vendor-files": ["VENDOR.md", "VENDORS.md"],
+    "sca-xpi-declares-vendoring": ["VENDOR.md", "VENDORS.md"]
   }
 }

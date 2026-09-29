@@ -14,7 +14,7 @@ import path from "node:path";
 import { loadRegistry } from "../../src/checks/registry.js";
 import { REVIEW_MODE } from "../../src/lib/enum.js";
 import { renderFindings } from "../../src/report/responses.js";
-import { STATE_VERSION } from "../../src/report/state.js";
+import { STATE_VERSION, readState } from "../../src/report/state.js";
 import { writeReportFile } from "../../src/report/report-file.js";
 import {
   issue,
@@ -40,6 +40,10 @@ function review(
     severity: "error",
     file: `f${i}.js`,
     loc: { line: i },
+    // Every finding carries the artifact its path is in, as its holder minted it
+    // (src/checks/registry.js runOneCheck). A v6 state without it is not one the loop
+    // can hand out: entriesFor has no root to resolve the path against.
+    artifact: "XPI",
     message: `finding ${i}`,
   });
   // `bucketOf` (src/report/order.js) reads `extended` and the ESCALATION, not a section
@@ -53,8 +57,12 @@ function review(
     extended,
     section,
     verdict: "error",
+    // A case names no file here, but it still names the artifact it is about - every
+    // one does, whether it came from a check, a sweep or the by-hand list, because
+    // that is what gives whoever settles it a tree to look in.
     file: null,
     loc: null,
+    artifact: "XPI",
     ...extra,
   });
   return {
@@ -98,8 +106,12 @@ function review(
       preSweep: sweep
         ? {
             items: [
-              { check: "privacy-policy", instruction: "i1" },
-              { check: "data-exfiltration", instruction: "i2" },
+              { check: "privacy-policy", instruction: "i1", artifact: "XPI" },
+              {
+                check: "data-exfiltration",
+                instruction: "i2",
+                artifact: "XPI",
+              },
             ],
           }
         : null,
@@ -108,6 +120,10 @@ function review(
         description: `${base}.summary.md`,
         build: null,
         report: `${base}.report.md`,
+        // The roots an entry's paths are resolved against (handback.js entriesFor). A v6
+        // state carries both; without xpiRoot the loop would hand out relative paths.
+        xpiRoot: "/tmp/pkg.xpi.extracted/",
+        scaRoot: null,
       },
       answers: {},
       route: {},
@@ -1097,12 +1113,16 @@ test("settle words a per-mode response from the state's review mode", () => {
         questions: false,
       });
       state.report.sca = sca;
+      // A source review has both roots, and every finding says which one its path is in
+      // - the loop resolves the path for the agent from exactly that pair.
+      state.paths.scaRoot = sca ? "/tmp/src/" : null;
       state.report.findings = [
         {
           ruleId: "untrusted-library",
           severity: "info",
           file: "lib/widget.js",
           loc: { line: 1 },
+          artifact: sca ? "SCA" : "XPI",
           message: null,
         },
       ];
@@ -1116,5 +1136,30 @@ test("settle words a per-mode response from the state's review mode", () => {
     const live = { ruleId: "untrusted-library", item: null, message: null };
     renderFindings([live], reg, REVIEW_MODE.SCA);
     assert.equal(worded(true), live.message);
+  }
+});
+
+// A review in flight does not survive an upgrade, and the state file is where that is
+// caught. Bumping STATE_VERSION is only half a change: without this, a state written by
+// an older build would be read as if it carried what the new loop needs - and what it
+// needs now (an `artifact` on every finding, `paths.xpiRoot`) is absent rather than
+// wrong, so the loop would hand out unlabelled loci and relative paths instead of failing.
+test("a state file from another version of the tool is refused, not read", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "state-"));
+  const file = path.join(dir, "r.state.json");
+  try {
+    for (const version of [STATE_VERSION - 1, STATE_VERSION + 1, undefined]) {
+      fs.writeFileSync(file, JSON.stringify({ version, review: {} }));
+      assert.throws(
+        () => readState(file),
+        /written by another version of this tool/,
+        `version ${version}`
+      );
+    }
+    // The current one reads back.
+    fs.writeFileSync(file, JSON.stringify({ version: STATE_VERSION, ok: 1 }));
+    assert.equal(readState(file).ok, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

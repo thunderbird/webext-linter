@@ -111,6 +111,7 @@
       },
       "item": "helper (file:../shared/helper)",
       "hint": null,
+      "artifact": "XPI",
       "message": "The following dependencies are declared from a source the review cannot identify or verify. Only npm packages pinned to an exact version and GitHub URLs are supported. Re-declare each as a pinned npm package or a GitHub source, or bundle the non-minified library with the add-on so it can be reviewed directly.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
     }
   ]

@@ -31,7 +31,6 @@
 import { VERDICT } from "../../lib/enum.js";
 import { localizedNames } from "../../lib/locales.js";
 import { brandTerm, offFormThunderbird } from "../../lib/trademark.js";
-import { manifestTokenLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../escalation.js").Escalation} Escalation */
@@ -47,24 +46,23 @@ export default {
       // A __MSG_ name produces no untagged pair, so there is nothing here to ask
       // about: its locales are the sibling's business. Saying so keeps the two
       // checks' silence distinguishable in the Activity feed.
-      ctx.note?.("manifest.json", null, "name is localized", VERDICT.SKIPPED);
+      ctx.note?.(ctx.manifest.locus(), "name is localized", VERDICT.SKIPPED);
       return { findings: [], escalations: [] };
     }
     const literal = pairs.find((p) => p.locale === null);
     if (!literal) {
-      ctx.note?.("manifest.json", null, "no add-on name", VERDICT.SKIPPED);
+      ctx.note?.(ctx.manifest.locus(), "no add-on name", VERDICT.SKIPPED);
       return { findings: [], escalations: [] };
     }
-    const line = manifestTokenLine(ctx.manifest?.text, "name");
-    const loc = line ? { line } : null;
+    const at = ctx.manifest.locus("name");
     if (!offFormThunderbird(literal.name) || brandTerm(literal.name)) {
-      ctx.note?.("manifest.json", loc, `name "${literal.name}"`, VERDICT.PASS);
+      ctx.note?.(at, `name "${literal.name}"`, VERDICT.PASS);
       return { findings: [], escalations: [] };
     }
-    ctx.note?.("manifest.json", loc, literal.name, VERDICT.UNSURE);
+    ctx.note?.(at, literal.name, VERDICT.UNSURE);
     return {
       findings: [],
-      escalations: [{ file: "manifest.json", loc, item: literal.name }],
+      escalations: [{ ...at, item: literal.name }],
     };
   },
 };

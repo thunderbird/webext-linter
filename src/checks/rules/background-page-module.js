@@ -70,8 +70,12 @@ export default {
         return; // a classic script - fine without type="module"
       }
       const loc = { line: el.line };
-      ctx.note?.(pageFile, loc, `${src} needs type="module"`, VERDICT.FAIL);
-      out.push(finding({ file: pageFile, loc }));
+      ctx.note?.(
+        ctx.artifact.at(pageFile, loc),
+        `${src} needs type="module"`,
+        VERDICT.FAIL
+      );
+      out.push(finding({ ...ctx.artifact.at(pageFile, loc) }));
     });
     return { findings: out };
   },

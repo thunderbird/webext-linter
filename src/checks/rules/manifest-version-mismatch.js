@@ -20,15 +20,14 @@ export default {
       return { findings: [] };
     }
     ctx.note?.(
-      "manifest.json",
-      null,
+      ctx.manifest.locus(),
       `manifest_version ${m.manifest_version} (schema set is ${major})`,
       VERDICT.FAIL
     );
     return {
       findings: [
         finding({
-          file: "manifest.json",
+          ...ctx.manifest.locus(),
           item: String(m.manifest_version),
           data: { schema: major },
         }),

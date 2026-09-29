@@ -112,6 +112,7 @@
       },
       "item": "messagesModify",
       "hint": null,
+      "artifact": "XPI",
       "message": "The following permissions are required at the locations listed, but are not declared in manifest.json. Add them to the requested permissions."
     },
     {
@@ -123,6 +124,7 @@
       },
       "item": "scripting",
       "hint": null,
+      "artifact": "XPI",
       "message": "The following permissions are required at the locations listed, but are not declared in manifest.json. Add them to the requested permissions."
     },
     {
@@ -132,6 +134,7 @@
       "loc": null,
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     }
   ]

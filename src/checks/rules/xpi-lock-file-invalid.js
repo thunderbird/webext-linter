@@ -23,11 +23,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import {
-  anchorText,
-  manifestTokenLine,
-  utf8ComparisonSigns,
-} from "../../lib/util.js";
+import { anchorText, tokenLine, utf8ComparisonSigns } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -42,11 +38,10 @@ export default {
     const text = anchorText(artifact, "package.json");
     const findings = [];
     for (const { name, spec } of unpinned) {
-      const line = manifestTokenLine(text, name);
+      const line = tokenLine(text, name);
       const loc = line ? { line } : undefined;
       ctx.note?.(
-        "package.json",
-        loc,
+        ctx.artifact.at("package.json", loc),
         `${name} ("${spec}") is a range the committed lock file does not pin`,
         VERDICT.FAIL
       );
@@ -56,8 +51,7 @@ export default {
       // its own doc comment (src/lib/util.js).
       findings.push(
         finding({
-          file: "package.json",
-          loc,
+          ...ctx.artifact.at("package.json", loc),
           item: utf8ComparisonSigns(`${name} (${spec})`),
         })
       );

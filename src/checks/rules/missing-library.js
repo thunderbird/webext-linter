@@ -40,13 +40,14 @@ export default {
       // it here so it is not reported twice. Only Mozilla hash-DB matches remain.
       const mozillaLib = c.library && !c.cdn;
       ctx.note?.(
-        c.file,
-        null,
+        ctx.artifact.at(c.file),
         mozillaLib ? (id ?? "bundled library") : "not a library",
         mozillaLib ? VERDICT.FAIL : VERDICT.PASS
       );
       if (mozillaLib) {
-        findings.push(finding({ file: c.file, item: id ?? undefined }));
+        findings.push(
+          finding({ ...ctx.artifact.at(c.file), item: id ?? undefined })
+        );
       }
     }
     return { findings };

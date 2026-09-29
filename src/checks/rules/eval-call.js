@@ -18,8 +18,8 @@ export default {
         continue;
       }
       const loc = { line: hit.line, column: hit.column };
-      out.push(finding({ file: hit.file, loc }));
-      ctx.note?.(hit.file, loc, "eval()", VERDICT.FAIL);
+      out.push(finding({ ...ctx.artifact.at(hit.file, loc) }));
+      ctx.note?.(ctx.artifact.at(hit.file, loc), "eval()", VERDICT.FAIL);
     }
     return { findings: dedupe(out) };
   },

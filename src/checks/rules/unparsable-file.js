@@ -19,7 +19,10 @@ export default {
     for (const src of ctx.apiUsages || []) {
       if (src.parseError) {
         findings.push(
-          finding({ file: src.file, data: { detail: src.parseError } })
+          finding({
+            ...ctx.artifact.at(src.file),
+            data: { detail: src.parseError },
+          })
         );
       }
     }

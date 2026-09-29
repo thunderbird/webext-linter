@@ -11,6 +11,7 @@
 // the returned file costs nothing, because nothing reads them.
 import fs from "node:fs";
 import path from "node:path";
+import { hasParentSegment } from "../addon/load.js";
 import { checkedResult } from "./sweep.js";
 import { VERB, verbOf } from "./verbs.js";
 import { displayLine } from "../util/text.js";
@@ -222,9 +223,47 @@ export function answersOf(handed, asked, phase, keyOf) {
  *   of its entries is answered WITH, and so which of the two wordings an entry carries -
  *   read as data, never off the phase's name, so a phase's shape is authored beside its
  *   verbs rather than spelled again here.
+ * @param {{XPI: ?string, SCA: ?string}} [roots]  Where each artifact is on disk, keyed by
+ *   the value a finding's `artifact` carries. An entry's paths are resolved against the
+ *   one its own artifact names, so nothing the agent is handed has to be joined by hand.
  * @returns {object[]}
  */
-export function entriesFor(items, phase) {
+/**
+ * One entry's file, as a path the agent can open.
+ *
+ * Two things can go wrong here and neither may pass quietly. A root missing from a table
+ * that was GIVEN is WIRING: the state carries both roots from v6 (src/report/state.js), so
+ * its absence means the table was built wrongly, and handing out a relative path instead
+ * would leave the agent resolving it against its own directory. A caller that passes no
+ * table is not resolving at all, which is a different thing and is left alone.
+ * A file that escapes its root is UNTRUSTED INPUT that got past its door - only a sweep row
+ * authors a path, and checkedResult refuses one that steps out (src/report/sweep.js) - so
+ * reaching here means that door failed, and composing the path anyway would publish a
+ * location outside the submission as the linter's own claim.
+ * @param {?string} root @param {string} file @param {string} ruleId
+ * @param {boolean} resolving  Whether a roots table was given at all.
+ * @returns {string}
+ */
+function resolvedIn(root, file, ruleId, resolving) {
+  if (!root) {
+    if (!resolving) {
+      return file; // no table at all: this caller is not resolving paths.
+    }
+    throw new Error(
+      `${ruleId} names "${file}" but this review has no root for the artifact it is in - an entry cannot hand over a path the agent would resolve against its own directory`
+    );
+  }
+  const at = path.resolve(root, file);
+  const inside = path.relative(path.resolve(root), at);
+  if (inside === "" || path.isAbsolute(inside) || hasParentSegment(inside)) {
+    throw new Error(
+      `${ruleId} names "${file}", which resolves outside the artifact it claims to be in (${root})`
+    );
+  }
+  return at;
+}
+
+export function entriesFor(items, phase, roots) {
   return items.map((item, i) => {
     const base = { index: item.index };
     if (phase.answer === "words") {
@@ -244,10 +283,25 @@ export function entriesFor(items, phase) {
     // A finding is judged against the package, so it carries where it is and what it
     // claims. A case a check could not settle carries its own instruction too - the one
     // addressed to the agent, not the one a reviewer would read.
+    // The paths this entry is about, RESOLVED. A relative path is one the agent has to
+    // join to a root, and in a source review it would have to pick the right root first -
+    // a step it can get wrong silently, and the artifact label is not a path.
+    //
+    // `root` rides along whenever the ARTIFACT is known, with or without a file: it is
+    // the scope a claim about ABSENCE is checked in, and the strongest such claim has no
+    // file by definition - `manifest-missing` says a file is not there, and the agent
+    // needs the tree to see that for itself. An entry names no root only when its subject
+    // is in neither artifact - a by-hand reminder settled by reading the add-on's listing
+    // page, or by installing it - and then there is no tree to open, which is the answer.
+    const root = roots?.[item.artifact] ?? null;
+    const at = item.file
+      ? resolvedIn(root, item.file, item.ruleId, Boolean(roots))
+      : null;
     return {
       ...base,
       ruleId: item.ruleId,
-      ...(item.file ? { file: item.file } : {}),
+      ...(at ? { file: at } : {}),
+      ...(root ? { root } : {}),
       ...(item.loc?.line ? { line: item.loc.line } : {}),
       ...(item.item ? { item: item.item } : {}),
       ...(item.hint ? { hint: item.hint } : {}),

@@ -112,6 +112,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
+      "artifact": "XPI",
       "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a template element, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
@@ -124,6 +125,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
+      "artifact": "XPI",
       "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a template element, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
@@ -136,6 +138,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
+      "artifact": "XPI",
       "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a template element, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
@@ -148,6 +151,7 @@
       },
       "item": ".outerHTML",
       "hint": null,
+      "artifact": "XPI",
       "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a template element, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
@@ -160,6 +164,7 @@
       },
       "item": "insertAdjacentHTML()",
       "hint": null,
+      "artifact": "XPI",
       "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a template element, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     }
   ]

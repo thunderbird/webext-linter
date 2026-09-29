@@ -7,17 +7,17 @@
 //
 // Belongs here: building the position index from the raw manifest.json text and
 // resolving a JSON path to its 1-based line. Does NOT belong here: deciding which
-// path a finding refers to (that is each check's job, via manifestPathLine in
-// src/lib/util.js), or the substring fallback for unique keys
-// (manifestTokenLine).
+// path a finding refers to - that is each check's job, by asking the record for a locus
+// (src/addon/load.js `locus`, the one way into the shipped manifest.json).
 
 import { parseTree, findNodeAtLocation } from "jsonc-parser";
 import { rethrowIfFatal } from "../lib/errors.js";
 
 /**
  * @typedef {object} ManifestLoc
- * @property {(path: (string|number)[]) => (number|null)} lineAt  1-based source
- *   line of the value at the given JSON path, or null if absent/unresolvable.
+ * @property {(path: (string|number)[]) => (number|null)} lineAt  1-based source line of
+ *   the value at the given JSON path, or null if absent, unresolvable, or asked for with
+ *   no path - the document as a whole sits on no single line.
  */
 
 /**
@@ -59,7 +59,12 @@ export function buildManifestLoc(text) {
 
   return {
     lineAt(path) {
-      if (!tree || !Array.isArray(path)) {
+      // An EMPTY path names no value, so it has no line. findNodeAtLocation would answer
+      // the root node, whose offset is 0 and whose line is therefore 1 - which reads as
+      // "the first line of the file" and is wrong wherever a caller is talking about the
+      // manifest.json as a whole, or about a key that is not in it (the two reasons to
+      // ask with no path at all).
+      if (!tree || !Array.isArray(path) || path.length === 0) {
         return null;
       }
       const node = findNodeAtLocation(tree, path);

@@ -1052,7 +1052,7 @@ async function runLoopPass(file, base) {
       build: state.paths.build ?? "",
       details: reviewDetails(state),
       scaRoot: state.paths.scaRoot ?? "",
-      package: state.paths.package,
+      schema: state.paths.schema,
     })) {
       process.stdout.write(`${line}\n`);
     }

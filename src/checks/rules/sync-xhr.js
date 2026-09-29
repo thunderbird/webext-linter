@@ -25,13 +25,12 @@ export default {
       for (const hit of hits) {
         const loc = { line: hit.line, column: hit.column };
         ctx.note?.(
-          src.file,
-          loc,
+          ctx.artifact.at(src.file, loc),
           `.open(..., async=${hit.async})`,
           hit.async ? VERDICT.PASS : VERDICT.FAIL
         );
         if (!hit.async) {
-          out.push(finding({ file: src.file, loc }));
+          out.push(finding({ ...ctx.artifact.at(src.file, loc) }));
         }
       }
     }

@@ -112,6 +112,7 @@
       },
       "item": null,
       "hint": "cleartext send \"http://api.example.com/collect\"",
+      "artifact": "XPI",
       "message": "Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://."
     }
   ]

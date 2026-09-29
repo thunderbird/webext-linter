@@ -47,12 +47,11 @@ export default {
       // location line as "package.json:<line> - <name> (<version>)".
       const item = `${name} (${version})`;
       ctx.note?.(
-        file,
-        loc,
+        ctx.artifact.at(file, loc),
         `${item} - unreviewable build dependency`,
         VERDICT.FAIL
       );
-      findings.push(finding({ file, loc, item }));
+      findings.push(finding({ ...ctx.artifact.at(file, loc), item }));
     }
     return { findings };
   },

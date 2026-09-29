@@ -188,10 +188,12 @@ export function renderManualItems(refs, registry, mode) {
       // can be re-resolved as a finding from the same inputs (src/report/verdicts.js)
       // rather than from the already-rendered prose.
       data: ref.data ?? null,
-      // Carried so the text report can label the item's file:line by artifact
-      // ([XPI]/[SCA]) via ruleInputs - the files the owning check acts on. Without
-      // it a non-manifest.json manual item has no ruleId and defaults to [SCA].
+      // Kept so a REPORTED case can be resolved back to a finding of the same check.
       ruleId: ref.ruleId,
+      // WHICH artifact this item's file:line is in, settled when the case was raised
+      // (src/checks/escalation.js manualRef) and carried through because this builds a
+      // new object. The report labels the locus from it, and nothing re-derives it.
+      artifact: ref.artifact ?? null,
       // Which of the two extended sections this is listed under, from the reader the
       // owning check authored wording for. The report groups on this.
       section: ref.section ?? null,

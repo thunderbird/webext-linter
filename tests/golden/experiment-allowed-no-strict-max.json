@@ -109,6 +109,7 @@
       "loc": null,
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "This add-on uses Experiment APIs but declares no strict_max_version. Experiments rely on internal APIs that change between major Thunderbird versions, so they must set browser_specific_settings.gecko.strict_max_version."
     }
   ]

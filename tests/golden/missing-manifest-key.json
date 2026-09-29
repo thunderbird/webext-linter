@@ -112,6 +112,7 @@
       },
       "item": "action.onClicked",
       "hint": "\"action\"",
+      "artifact": "XPI",
       "message": "The following APIs each need a manifest.json key that is not declared. Add one of the keys named for each API to manifest.json."
     },
     {
@@ -124,6 +125,7 @@
       },
       "item": "messageDisplayScripts.register",
       "hint": "\"message_display_scripts\"",
+      "artifact": "XPI",
       "message": "The following APIs each need a manifest.json key that is not declared. Add one of the keys named for each API to manifest.json."
     }
   ]

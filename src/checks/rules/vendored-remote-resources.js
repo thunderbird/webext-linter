@@ -38,18 +38,15 @@ export default {
     const escalations = [];
     for (const site of getRemoteRefs(ctx).upstream) {
       escalations.push({
-        // The whole destination: it is the fact the judgement turns on.
-        item: site.url,
-        file: site.file,
-        loc: site.loc,
-        // The matched release goes in the HINT, not a wording slot: it is per-locus
+        ...ctx.artifact.at(site.file, site.loc), // The whole destination: it is the fact the judgement turns on.
+        item: site.url, // The matched release goes in the HINT, not a wording slot: it is per-locus
         // detail, so every site stays in ONE group and each line still says which
         // release it was matched against.
         hint: site.upstream,
       });
       // INFO, not UNSURE: nothing here is uncertain in the way an undecidable site is -
       // the scan reached a verdict and is recording it rather than acting on it.
-      ctx.note?.(site.file, site.loc, site.note, VERDICT.INFO);
+      ctx.note?.(ctx.artifact.at(site.file, site.loc), site.note, VERDICT.INFO);
     }
     // The scanners can report one site twice (see dedupe), and a reviewer should be
     // asked once.

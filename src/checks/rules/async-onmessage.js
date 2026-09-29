@@ -43,13 +43,14 @@ export default {
         // same whichever root spelling the add-on reached it through.
         const site = `${hit.event}.addListener`;
         ctx.note?.(
-          src.file,
-          loc,
+          ctx.artifact.at(src.file, loc),
           hit.async ? `${site} (async)` : site,
           hit.async ? VERDICT.FAIL : VERDICT.PASS
         );
         if (hit.async) {
-          out.push(finding({ file: src.file, loc, item: hit.event }));
+          out.push(
+            finding({ ...ctx.artifact.at(src.file, loc), item: hit.event })
+          );
         }
       }
     }

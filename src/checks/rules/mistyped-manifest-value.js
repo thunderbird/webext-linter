@@ -66,8 +66,7 @@ export default {
       }
       seen.add(key);
       ctx.note?.(
-        "manifest.json",
-        null,
+        ctx.manifest.locus(),
         `${where} (${err.keyword})`,
         VERDICT.FAIL
       );
@@ -76,7 +75,7 @@ export default {
       // listing "<entry> - <what is wrong>" per line.
       out.push(
         finding({
-          file: "manifest.json",
+          ...ctx.manifest.locus(),
           item: where,
           hint: err.message,
         })

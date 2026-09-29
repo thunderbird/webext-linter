@@ -31,8 +31,12 @@ export default {
       // The hit's own file and line ARE the locus, so neither the instructions nor the
       // suggested response names them and every hit collapses into a single entry with
       // a locus per site.
-      escalations.push({ file: hit.file, loc });
-      ctx.note?.(hit.file, loc, "fetch().then(eval)", VERDICT.UNSURE);
+      escalations.push({ ...ctx.artifact.at(hit.file, loc) });
+      ctx.note?.(
+        ctx.artifact.at(hit.file, loc),
+        "fetch().then(eval)",
+        VERDICT.UNSURE
+      );
     }
     return { findings: [], escalations };
   },

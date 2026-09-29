@@ -15,7 +15,7 @@
 // src/build/collect.js), or the wording (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
-import { manifestTokenLine } from "../../lib/util.js";
+import { tokenLine } from "../../lib/util.js";
 import { parseJson } from "../../util/json.js";
 import { rethrowIfFatal } from "../../lib/errors.js";
 
@@ -61,11 +61,15 @@ export default {
       if (typeof cmd !== "string" || cmd.trim() === "") {
         continue;
       }
-      const line = manifestTokenLine(text, hook);
+      const line = tokenLine(text, hook);
       const loc = line ? { line } : undefined;
       const item = `${hook}: ${cmd}`;
-      ctx.note?.("package.json", loc, `runs a ${hook} hook`, VERDICT.UNSURE);
-      escalations.push({ file: "package.json", loc, item });
+      ctx.note?.(
+        ctx.artifact.at("package.json", loc),
+        `runs a ${hook} hook`,
+        VERDICT.UNSURE
+      );
+      escalations.push({ ...ctx.artifact.at("package.json", loc), item });
     }
     return { findings: [], escalations };
   },

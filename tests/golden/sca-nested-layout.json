@@ -68,7 +68,8 @@
       "xpi-packaged-symlink",
       "build-lifecycle-hook",
       "undeclared-build-source",
-      "sca-not-required",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",
@@ -128,6 +129,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
+      "artifact": "SCA",
       "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a template element, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     },
     {
@@ -137,6 +139,7 @@
       "loc": null,
       "item": "addon/lib/widget.js",
       "hint": "https://unpkg.com/widget@1.0.0/dist/widget.js",
+      "artifact": "SCA",
       "message": "The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies and are reviewed as authored code, so a finding may be reported against library code."
     },
     {
@@ -149,6 +152,7 @@
       },
       "item": ".innerHTML",
       "hint": null,
+      "artifact": "SCA",
       "message": "Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a template element, or CSS to show and hide existing elements).\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/innerHTML.html."
     }
   ]

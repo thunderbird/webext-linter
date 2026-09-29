@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The built XPI declares its own vendoring</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          The built XPI declares its own vendoring
+          <span class="badge warning">warning</span>
+        </h1>
+        <div class="check-id">sca-xpi-declares-vendoring</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission whose <strong>built XPI</strong> carries vendoring
+        information of its own: a VENDOR file, a <code>package.json</code>, or a lock file.
+        In a source-code submission those belong in the archive &mdash; that is the copy the
+        reviewer reads and the build installs from &mdash; not in the package you ship.
+      </p>
+      <p>
+        <strong>This does not re-route the review.</strong> A source archive is always
+        reviewed as one, and this finding changes nothing about the review it appears in.
+        Routing on it would be a bypass: a committed, unminified <code>dist/</code> in the
+        archive is its own twin under any content test, so a build could be dressed up as
+        source and shrink its own review. At warning severity
+        <code>--warnings-as-errors</code> can still refuse a submission at intake, while an
+        update that got its packaging wrong is simply told what to change.
+      </p>
+      <p>
+        All three file kinds count, matched by name at <em>any</em> depth in the package,
+        because a declaration is a declaration wherever the packaging put it. A shipped one
+        means one of two things and the remedy differs: the submission type was misread, and
+        the declarations belong in the archive; or an XPI-only submission was meant all
+        along, and no archive was needed. The response offers both.
+      </p>
+      <p>
+        <strong>It names the files.</strong> Every match is a locus, and the response names
+        none of them, so the findings collapse into one entry listing the offending paths
+        once. Each is minted by <code>ctx.xpi</code> &mdash; the side those files are in.
+        This check&rsquo;s route carries two artifacts and so names neither, and asking the
+        holder is how a finding says which one it means.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["--sca-root submitted"] --> S["a source code review — the source IS reviewed,<br/>whatever the answer below"]
+  S --> V{"Does the built XPI carry a VENDOR file,<br/>a package.json, or a lock file?"}
+  V -- no --> OK([no finding])
+  V -- yes --> WARN([WARNING: one locus per file found])
+
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef step fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
+  class WARN warn;
+  class OK ok;
+  class S step;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The built XPI ships at least one VENDOR file, <code>package.json</code> or lock
+        file. The developer is asked to remove them from the XPI and declare the
+        dependencies in the archive instead, or to submit just the XPI if it needs no
+        archive behind it. This review itself is unaffected: it is a full source review
+        either way.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/sca-xpi-declares-vendoring.js</code> (which reads only the
+        XPI, of the two artifacts its <code>input: both</code> route carries) and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

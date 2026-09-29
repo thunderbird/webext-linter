@@ -5,6 +5,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { ARTIFACT_SCA, ARTIFACT_XPI } from "../../src/lib/artifacts.js";
+import { finding } from "../../src/report/finding.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -42,6 +44,10 @@ function mkFinding(ruleId, severity, message, file, line) {
     item: null,
     hint: null,
     listItem: false,
+    // Every finding and every escalated case names the artifact its locus is in - the
+    // holder minted it (src/addon/load.js `at`), and a fixture without one models
+    // nothing the orchestrator can produce.
+    artifact: ARTIFACT_XPI,
   };
 }
 
@@ -62,6 +68,7 @@ function mkItem(ruleId, title, file, line, item) {
     item: item ?? null,
     listItem: Boolean(item),
     hint: null,
+    artifact: ARTIFACT_XPI,
   };
 }
 
@@ -539,6 +546,144 @@ test("each phase hands over what settling it needs, and no more", () => {
   );
 });
 
+// What an agent is handed names a path it can OPEN. A finding's `file` is relative to
+// the artifact it is in, and there are two of those in a source review, so a relative
+// path there is unusable twice over: the agent would have to join it, and first pick
+// which root to join it to. `root` comes with it because a claim about ABSENCE -
+// unused-files, an options page that is not there - is checked against a tree, not a file.
+test("an entry names the full path of its own artifact, and the root that scopes it", () => {
+  const roots = { XPI: "/tmp/sub.xpi.extracted/", SCA: "/tmp/src/" };
+  const findings = [
+    {
+      ruleId: "unused-files",
+      severity: "error",
+      file: "lib/orphan.js",
+      artifact: "XPI",
+      message: "Unused.",
+    },
+    {
+      ruleId: "unknown-api",
+      severity: "error",
+      file: "app.js",
+      artifact: "SCA",
+      message: "Unknown API.",
+    },
+  ];
+  const items = reviewItems({ findings, manual: [], choices });
+  const out = entriesFor(items, phase("verify"), roots);
+
+  const byRule = Object.fromEntries(out.map((e) => [e.ruleId, e]));
+  assert.deepEqual(
+    [byRule["unused-files"].file, byRule["unused-files"].root],
+    ["/tmp/sub.xpi.extracted/lib/orphan.js", "/tmp/sub.xpi.extracted/"],
+    "an XPI finding resolves against the extracted package"
+  );
+  assert.deepEqual(
+    [byRule["unknown-api"].file, byRule["unknown-api"].root],
+    ["/tmp/src/app.js", "/tmp/src/"],
+    "and a source finding against the archive - not one shared root"
+  );
+
+  // The ITEM is untouched: the report prints a relative path, and a reported case is
+  // resolved back to a finding from `file` (src/report/verdicts.js asFinding).
+  assert.deepEqual(items.map((i) => i.file).sort(), [
+    "app.js",
+    "lib/orphan.js",
+  ]);
+
+  // No table at all means this caller is not resolving paths, which is a different thing
+  // from a table that is missing one: the entry renders relative and says no root.
+  const bare = entriesFor(items, phase("verify"));
+  assert.deepEqual(bare.map((e) => e.file).sort(), ["app.js", "lib/orphan.js"]);
+  assert.ok(bare.every((e) => e.root === undefined));
+
+  // A table that HAS been given and lacks the artifact a finding was stamped with is
+  // wiring - the state carries both roots from v6. Handing over a relative path there
+  // would leave the agent resolving it against its own directory, so it is refused.
+  assert.throws(
+    () => entriesFor(items, phase("verify"), { XPI: roots.XPI, SCA: null }),
+    /no root for the artifact it is in/
+  );
+
+  // An item whose subject is in NEITHER artifact gets no root, because there is no tree
+  // to open - a by-hand reminder settled by reading the add-on's listing page. Contrast
+  // manifest-missing below, which names no file either but is about the XPI, and so does
+  // get a tree to check the absence in.
+  const whole = reviewItems({
+    findings: [
+      {
+        ruleId: "sca-xpi-fully-included-in-archive",
+        severity: "warning",
+        file: null,
+        artifact: null,
+        message: "the archive holds the whole XPI",
+      },
+    ],
+    manual: [],
+    choices,
+  });
+  const [entry] = entriesFor(whole, phase("verify"), roots);
+  assert.equal(entry.file, undefined);
+  assert.equal(entry.root, undefined);
+
+  // Fileless but KNOWN: the claim is that a file is not there, so the agent is given the
+  // tree to see that in. A root without a file is the strongest form of an absence claim,
+  // not a missing locus.
+  const absent = reviewItems({
+    findings: [
+      {
+        ruleId: "manifest-missing",
+        severity: "error",
+        file: null,
+        artifact: "XPI",
+        message: "no manifest.json",
+      },
+    ],
+    manual: [],
+    choices,
+  });
+  const [gone] = entriesFor(absent, phase("verify"), roots);
+  assert.equal(gone.file, undefined);
+  assert.equal(gone.root, roots.XPI);
+});
+
+// A path that steps out of the artifact it claims to be in must never be composed and
+// handed over: the entry would state a location outside the submission as the linter's
+// own claim. Only a sweep row authors a path - every other one is read off disk - and
+// checkedResult refuses these at that door, so reaching here means the door failed.
+test("an entry refuses to compose a path that escapes its artifact", () => {
+  const roots = { XPI: "/tmp/pkg.xpi.extracted/", SCA: null };
+  const escaping = (file) => {
+    const items = reviewItems({
+      findings: [
+        {
+          ruleId: "unused-files",
+          severity: "error",
+          file,
+          artifact: "XPI",
+          message: "m",
+        },
+      ],
+      manual: [],
+      choices,
+    });
+    return () => entriesFor(items, phase("verify"), roots);
+  };
+  // Out through the top, out through the middle, and the root itself.
+  assert.throws(
+    escaping("../../../etc/passwd"),
+    /resolves outside the artifact/
+  );
+  assert.throws(
+    escaping("lib/../../escape.js"),
+    /resolves outside the artifact/
+  );
+  assert.throws(escaping("."), /resolves outside the artifact/);
+  // An absolute path is re-parented by a plain join, which silently names a DIFFERENT
+  // file - so it is refused rather than quietly rewritten.
+  assert.throws(escaping("/etc/hostname"), /resolves outside the artifact/);
+});
+
 // The registry's order IS the order a reviewer sees, and nothing else has a say: a rule
 // living anywhere but that list would have to be kept in step with it by hand. Flipping
 // the authoring flips what the question offers AND what the first position settles, so a
@@ -991,5 +1136,64 @@ test("`asking` decides the vocabulary, not the item's section", () => {
         registry,
       }),
     /asking is not a function/
+  );
+});
+
+// A REPORTED case becomes a finding, and it must not lose which artifact it is in on the
+// way. The case already knows - it was stamped when it was raised - so asFinding carries
+// the answer over rather than working out a second one, which could differ from the first.
+test("a reported case becomes a finding that kept its artifact", () => {
+  const cases = [
+    {
+      ...mkItem("unused-permission", "Perms", "manifest.json", 3, "compose"),
+      artifact: "XPI",
+    },
+    { ...mkItem("privacy-policy", "Policy", "b.js", 4), artifact: "SCA" },
+  ];
+  const findings = [];
+  applyVerdicts({
+    asking: isQuestion,
+    findings,
+    manual: cases,
+    verdicts: verdicts({ 1: "reported", 2: "reported" }),
+    registry,
+  });
+  assert.deepEqual(
+    findings.map((f) => [f.ruleId, f.artifact]),
+    [
+      ["unused-permission", "XPI"],
+      ["privacy-policy", "SCA"],
+    ],
+    "each reported case is filed against the artifact it was raised in"
+  );
+});
+
+// A finding says WHICH artifact it is about, always - with a file or without one. The
+// strongest claims have no file by definition (a manifest.json that is not there, a
+// package the archive should not contain) and the reader still needs the tree to check
+// them in, which handback gives an entry from this field alone. So there is no default
+// and nothing fills it in later: the holder that minted the locus answered, or the check
+// never decided what it was claiming.
+test("a finding cannot be built without saying which artifact it is about", () => {
+  for (const bad of [
+    {},
+    { file: "a.js" },
+    { file: "a.js", artifact: null },
+    { file: "a.js", artifact: "source" }, // a route, not an artifact
+    { artifact: "" },
+  ]) {
+    assert.throws(
+      () => finding(bad),
+      /needs a locus minted by whatever holds the file/,
+      `expected ${JSON.stringify(bad)} to be refused`
+    );
+  }
+  // What a holder mints, spread in - with a file and without.
+  const at = { file: "a.js", loc: { line: 2 }, artifact: ARTIFACT_SCA };
+  assert.equal(finding({ ...at, item: "x" }).artifact, ARTIFACT_SCA);
+  assert.equal(finding({ ...at, item: "x" }).loc.line, 2);
+  assert.equal(
+    finding({ file: null, loc: null, artifact: ARTIFACT_XPI }).artifact,
+    ARTIFACT_XPI
   );
 });

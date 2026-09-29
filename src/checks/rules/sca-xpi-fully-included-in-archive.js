@@ -1,20 +1,13 @@
-// A source-code archive was submitted where the built XPI alone would have done. Two ways
-// the submission says so, and one remedy for both, which is why they are one check:
+// A source-code submission whose archive holds the built XPI entire: every file the XPI
+// ships is byte-identical to a file the archive carries, wherever it sits.
 //
-//   1. The XPI carries VENDORING INFORMATION - a VENDOR file, a package.json, a lock file.
-//      In a source-code submission those belong in the ARCHIVE: that is the copy the
-//      reviewer reads and the build installs from. A shipped one either means the process
-//      was misread, or that this was meant to be an XPI-only submission all along.
-//   2. Every file the XPI ships is byte-identical to a file in the archive. Then nothing
-//      was built - the shipped bytes ARE the submitted source, readable as they stand, and
-//      the XPI on its own is a complete review target.
-//
-// ADVICE about the NEXT submission, at warning severity. THIS review stays a full source
-// review either way and nothing is narrowed by it - no content test can be trusted to
-// route, because a committed unminified build is its own twin under any of them, and
-// routing on that would let a build be dressed up as source. Under
-// --warnings-as-errors a new submission can be refused at intake, while an update that
-// switched to a source archive by accident is only told to go back.
+// TWO submissions look like this and the check cannot tell them apart, which is why the
+// response offers two remedies rather than assuming one. Either nothing was built, and the
+// shipped bytes ARE the submitted source - then the XPI on its own is a complete review
+// target and the archive bought a slower review for nothing. Or a build ran and its OUTPUT
+// was committed beside the real source - then the archive is right to exist and the build
+// output is what does not belong in it. Both leave every shipped file readable in the
+// archive, which is the only thing asked here.
 //
 // The comparison is CONTENT, anywhere in the archive: a build that merely relocates files
 // still leaves every shipped byte readable, which is what the question is about. It runs
@@ -23,38 +16,17 @@
 // what lets it: the one route that carries two artifacts, because "is what was shipped
 // already readable in what was submitted?" has no answer from one side.
 //
-// Belongs here: the two questions and the comparison. Does NOT belong here: the wording
+// Nothing is narrowed by this: THIS review stays a full source review whatever the answer.
+// No content test can be trusted to route, because a committed unminified build is its own
+// twin under any of them, and routing on that would let a build be dressed up as source.
+//
+// Belongs here: the comparison. Does NOT belong here: the wording
 // (-> assets/registry.yaml) or the severity (-> that entry).
 
 import { finding } from "../../report/finding.js";
 import { rawSha256 } from "../../normalize/hash.js";
-import { vendorFileNames } from "../../normalize/vendor.js";
-import { PACKAGE_FILE } from "../../vendor/package-file.js";
-import { TREE_LOCKS } from "../../vendor/locks.js";
-import { basename } from "../../util/files.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
-
-/** What the review reads a dependency DECLARATION from, by basename. A VENDOR file is
- *  asked for separately, because what counts as one is that module's answer. */
-const DECLARATION_FILES = new Set([PACKAGE_FILE, ...TREE_LOCKS]);
-
-/**
- * Whether the built XPI carries vendoring information of its own.
- * @param {import("../../addon/load.js").Addon} xpi
- * @returns {boolean}
- */
-function carriesVendoringInfo(xpi) {
-  if (vendorFileNames(xpi).length > 0) {
-    return true;
-  }
-  for (const key of xpi.store.keys()) {
-    if (DECLARATION_FILES.has(basename(key))) {
-      return true;
-    }
-  }
-  return false;
-}
 
 /**
  * Whether every byte the XPI ships is readable in the archive: each shipped file is
@@ -70,6 +42,13 @@ function carriesVendoringInfo(xpi) {
  * Both sides read `.store`, not `.files`: the archive's `files` view leaves out the
  * Experiment implementation (scaViews), and a twin there is still a twin - reading the view
  * would report a difference the submission does not have.
+ *
+ * The two stores are not symmetric, which bounds what this can answer. A source archive is
+ * loaded with its installed trees recorded rather than read (loadSourceArchive), so nothing
+ * under node_modules reaches `sca.store`, while an XPI that ships such a folder has every
+ * byte of it in `xpi.store`. A submission shipping node_modules therefore looks unmatched
+ * here and stays silent - which costs nothing today, because committed-node-modules already
+ * rejects it as an error, and that is the finding its developer has to act on.
  * @param {import("../../addon/load.js").Addon} xpi
  * @param {import("../../addon/load.js").Addon} sca
  * @returns {boolean}
@@ -108,14 +87,14 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const { xpi, sca } = ctx;
-    if (
-      !carriesVendoringInfo(xpi) &&
-      !everyShippedByteIsInTheArchive(xpi, sca)
-    ) {
+    if (!everyShippedByteIsInTheArchive(ctx.xpi, ctx.sca)) {
       return { findings: [] };
     }
-    // No locus: the subject is the submission as a whole, not a file in it.
-    return { findings: [finding({})] };
+    // No FILE: every shipped file is the subject, so naming them lists the whole XPI.
+    // The artifact is the archive all the same - `input: both` says this check READS two,
+    // and what it accuses is the one holding what should not be in it, which the response
+    // says too ("remove the build output from the archive"). The XPI is the comparand.
+    // So the locus is minted from ctx.sca: a claim about a package, not a file in one.
+    return { findings: [finding(ctx.sca.at())] };
   },
 };

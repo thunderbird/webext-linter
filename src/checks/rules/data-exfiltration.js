@@ -53,8 +53,8 @@ export default {
       // method and where it sends) rides along and is shown on the locus. `item`
       // stays absent, so every site groups under the one manual entry.
       const label = sinkLabel(sink, method);
-      escalations.push({ file: sink.file, loc, hint: label });
-      ctx.note?.(sink.file, loc, label, VERDICT.UNSURE);
+      escalations.push({ ...ctx.artifact.at(sink.file, loc), hint: label });
+      ctx.note?.(ctx.artifact.at(sink.file, loc), label, VERDICT.UNSURE);
     }
     return { findings: [], escalations };
   },

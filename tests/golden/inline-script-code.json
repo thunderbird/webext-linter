@@ -113,6 +113,7 @@
       "loc": null,
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },
     {
@@ -125,6 +126,7 @@
       },
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "The following script(s) or stylesheet(s) cannot be reviewed in this form: they are minified, machine-generated, or not parsable. If a file is a third-party library, declare it and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice. If it is your own code, ship the original, readable source instead - the add-on need not be minified. Where a build step produces it, supply the build's sources and the instructions to reproduce the shipped XPI, using the source code upload field at submission or on the version page. Note that this route slows review down: the build must be verified by hand. If a file is not code at all - data carrying a .js or .css name - give it an extension that matches its content.\nRead more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.\nRead more #2: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     },
     {
@@ -137,6 +139,7 @@
       },
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.\nPlease read the instructions: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     },
     {
@@ -146,6 +149,7 @@
       "loc": null,
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "Adding an add-on icon in manifest.json improves user acceptance.\nRead more: https://developer.thunderbird.net/add-ons/mailextensions/supported-manifest-keys#icons"
     },
     {
@@ -158,6 +162,7 @@
       },
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "The following script(s) or stylesheet(s) cannot be reviewed in this form: they are minified, machine-generated, or not parsable. If a file is a third-party library, declare it and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice. If it is your own code, ship the original, readable source instead - the add-on need not be minified. Where a build step produces it, supply the build's sources and the instructions to reproduce the shipped XPI, using the source code upload field at submission or on the version page. Note that this route slows review down: the build must be verified by hand. If a file is not code at all - data carrying a .js or .css name - give it an extension that matches its content.\nRead more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.\nRead more #2: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     },
     {
@@ -167,6 +172,7 @@
       "loc": null,
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },
     {
@@ -176,6 +182,7 @@
       "loc": null,
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },
     {
@@ -185,6 +192,7 @@
       "loc": null,
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "Limited static-analysis coverage: could not be parsed, so API checks were skipped (This experimental syntax requires enabling one of the following parser plugin(s): \"jsx\", \"flow\", \"typescript\". (2:0))"
     }
   ]

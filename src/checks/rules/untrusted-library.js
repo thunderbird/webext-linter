@@ -36,8 +36,10 @@ export default {
         continue; // a minified/obfuscated one is untrusted-minified-library's (reject) concern
       }
       const item = lib.name || lib.file;
-      ctx.note?.(lib.file, null, item, VERDICT.INFO);
-      findings.push(finding({ file: lib.file, item, hint: lib.source }));
+      ctx.note?.(ctx.artifact.at(lib.file), item, VERDICT.INFO);
+      findings.push(
+        finding({ ...ctx.artifact.at(lib.file), item, hint: lib.source })
+      );
     }
     return { findings };
   },

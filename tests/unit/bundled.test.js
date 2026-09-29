@@ -5,6 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { withManifest } from "./manifest-ctx.js";
 
 import {
   classifyBundled,
@@ -102,12 +103,14 @@ test("a long-line file that is a single data literal is not minified", () => {
     assert.ok(!nonAuthored.has(name), `${name} must stay authored (scanned)`);
     assert.deepEqual(
       minifiedCode
-        .run({
-          artifact: {
-            ...addonWith({ [name]: body }),
-            bundled: { classified, nonAuthored },
-          },
-        })
+        .run(
+          withManifest({
+            artifact: {
+              ...addonWith({ [name]: body }),
+              bundled: { classified, nonAuthored },
+            },
+          })
+        )
         .findings.map((f) => f.file),
       [],
       `${name} must not be reported as minified-code`
@@ -157,15 +160,15 @@ test("a minified non-library is non-authored and rejected; identified libraries 
     options: {},
   };
   assert.deepEqual(
-    minifiedCode.run(ctx).findings.map((f) => f.file),
+    minifiedCode.run(withManifest(ctx)).findings.map((f) => f.file),
     ["blob.js"]
   );
   assert.deepEqual(
-    missingLibrary.run(ctx).findings.map((f) => f.file),
+    missingLibrary.run(withManifest(ctx)).findings.map((f) => f.file),
     ["jquery.min.js"]
   );
   assert.deepEqual(
-    obfuscatedCode.run(ctx).findings.map((f) => f.file),
+    obfuscatedCode.run(withManifest(ctx)).findings.map((f) => f.file),
     ["packed.js"]
   );
 });
@@ -185,8 +188,9 @@ test("a file only an unpinned family matches is ordinary authored code", () => {
   );
   assert.ok(!bundled.nonAuthored.has(file), "stays authored (scanned)");
   assert.deepEqual(
-    obfuscatedCode.run({ artifact: { ...addon, bundled }, options: {} })
-      .findings,
+    obfuscatedCode.run(
+      withManifest({ artifact: { ...addon, bundled }, options: {} })
+    ).findings,
     []
   );
 });
@@ -199,7 +203,7 @@ test("classification done before normalize survives reformatting", () => {
   addon.files.set("lib/blob.js", Buffer.from(PRETTY));
   // The check reads the pre-step store, so the minified file is still flagged.
   const flagged = minifiedCode
-    .run({ artifact: addon, options: {} })
+    .run(withManifest({ artifact: addon, options: {} }))
     .findings.map((f) => f.file);
   assert.deepEqual(flagged, ["lib/blob.js"]);
 });
@@ -208,7 +212,12 @@ test("without the pre-step, classifying the reformatted bytes misses it", () => 
   // No addon.bundled: the reader recomputes over the already-pretty bytes, which
   // do not look minified - the build/lint false negative the pre-step fixes.
   const flagged = minifiedCode
-    .run({ artifact: addonWith({ "lib/blob.js": PRETTY }), options: {} })
+    .run(
+      withManifest({
+        artifact: addonWith({ "lib/blob.js": PRETTY }),
+        options: {},
+      })
+    )
     .findings.map((f) => f.file);
   assert.deepEqual(flagged, []);
 });
@@ -248,10 +257,12 @@ test("missing-library reports an undeclared vendored CSS file", () => {
   addon.bundled = classifyBundled(addon, {
     libraryHashes: libHashes(addon, file),
   });
-  const findings = missingLibrary.run({
-    artifact: addon,
-    options: {},
-  }).findings;
+  const findings = missingLibrary.run(
+    withManifest({
+      artifact: addon,
+      options: {},
+    })
+  ).findings;
   assert.deepEqual(
     findings.map((f) => f.file),
     [file]
@@ -473,11 +484,13 @@ test("an inline obfuscation finding names its site, not just its page", async ()
     { file: "p.html", code: OBFUSCATED, lineOffset: 1, inline: true },
     { file: "p.html", code: OBFUSCATED, lineOffset: 40, inline: true },
   ];
-  const out = obfuscated.run({
-    artifact: { files: new Map() },
-    jsSources,
-    options: {},
-  });
+  const out = obfuscated.run(
+    withManifest({
+      artifact: { files: new Map() },
+      jsSources,
+      options: {},
+    })
+  );
   assert.deepEqual(
     out.findings.map((f) => `${f.file}:${f.loc.line}`),
     ["p.html:2", "p.html:41"]

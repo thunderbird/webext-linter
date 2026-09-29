@@ -67,7 +67,8 @@
       "xpi-packaged-symlink",
       "build-lifecycle-hook",
       "undeclared-build-source",
-      "sca-not-required",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",
@@ -134,6 +135,7 @@
       },
       "item": "web-ext (^8.0.0) - not recorded in the lock file",
       "hint": null,
+      "artifact": "SCA",
       "message": "The committed lock file cannot install what package.json declares, so the build cannot be reproduced from this source. Please run the install again and commit the regenerated lock file. The supported package managers are npm and pnpm.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]

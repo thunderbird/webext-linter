@@ -67,7 +67,8 @@
       "xpi-packaged-symlink",
       "build-lifecycle-hook",
       "undeclared-build-source",
-      "sca-not-required",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",
@@ -123,7 +124,8 @@
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "The following script(s) or stylesheet(s) cannot be reviewed in this form: they are minified, machine-generated, or - for a script - not parsable as JavaScript. Dependencies should come in through the build process, from package.json and node_modules. Your own code belongs in the archive readable - the build may still minify what the XPI ships. If a file's extension does not match its content - data carrying a .js or .css name, say - give it one that does.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+      "artifact": "SCA",
+      "message": "The following script(s) or stylesheet(s) cannot be reviewed in this form: they are minified, machine-generated, or not parsable. Dependencies should come in through the build process, from package.json and node_modules. Your own code belongs in the archive readable - the build may still minify what the XPI ships. If a file is not code at all - data carrying a .js or .css name - give it an extension that matches its content.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]
 }

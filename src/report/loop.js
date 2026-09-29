@@ -26,6 +26,7 @@ import { writeReportFile } from "./report-file.js";
 import { reviewItems } from "./items.js";
 import { mergeSweepResults } from "./sweep.js";
 import { resolveHolds } from "./finding.js";
+import { ARTIFACT_XPI, ARTIFACT_SCA } from "../lib/artifacts.js";
 import {
   detailLinkLines,
   earlyExitLines,
@@ -229,12 +230,19 @@ function phaseEntries(state, registry, phase, run) {
       findings: state.report.findings,
       manual: state.manual,
       choices: registry.manualReviewChoices(),
-      labelOf: locusLabeler(mode, registry.checkInputs()),
+      labelOf: locusLabeler(mode),
     }).map((item) => [item.index, item])
   );
   return entriesFor(
     open.map((x) => rendered.get(x.index)).filter(Boolean),
-    phase
+    phase,
+    // Keyed by the artifact a finding carries, so resolving a path is a lookup rather
+    // than a branch on the review mode. The keys are the module's own constants: a
+    // second spelling of them here is one that can drift from what is stamped.
+    {
+      [ARTIFACT_XPI]: state.paths.xpiRoot,
+      [ARTIFACT_SCA]: state.paths.scaRoot,
+    }
   );
 }
 
@@ -290,11 +298,10 @@ export function reviewDetails(state) {
  *   tally: string, report: string}}
  */
 export function settle(state, registry) {
-  const ruleInputs = registry.checkInputs();
   // `mode` is an enum Proxy that refuses an unknown property, so it never reaches the
   // state - artifactLabel reads one fact off it, and that is what was stored.
   const mode = { sca: state.report.sca };
-  const labelOf = locusLabeler(mode, ruleInputs);
+  const labelOf = locusLabeler(mode);
   const { findings } = state.report;
   const { applied } = applyVerdicts({
     findings,
@@ -363,7 +370,6 @@ export function settle(state, registry) {
       mode,
       // The registry's, recomputed rather than stored: a copy in the state would outlive
       // an edit to the registry and word this review from a version nobody is running.
-      ruleInputs,
       issueHeadings: registry.issueHeadings(),
       verdictIntros: registry.verdictIntros(),
     },

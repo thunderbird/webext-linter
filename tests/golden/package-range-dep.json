@@ -111,6 +111,7 @@
       },
       "item": "lodash (^4.17.21)",
       "hint": null,
+      "artifact": "XPI",
       "message": "The following dependencies are declared as a version range, and the add-on ships no lock file to resolve them. A range names no single release, so there is nothing to verify the bundled copy against. Commit the lock file your package manager wrote alongside package.json - package-lock.json, npm-shrinkwrap.json or pnpm-lock.yaml - which records the exact version that was bundled. Pinning each dependency in package.json to a bare version like \"4.17.21\" instead also works."
     }
   ]

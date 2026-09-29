@@ -39,16 +39,13 @@ export default {
       const line = source ? lineContaining(vendorText, source) : null;
       const loc = line ? { line } : undefined;
       ctx.note?.(
-        vendorName,
-        loc,
+        ctx.artifact.at(vendorName, loc),
         `${path} (source ${source}) could not be checked for known vulnerabilities`,
         VERDICT.SKIPPED
       );
       findings.push(
         finding({
-          file: vendorName,
-          loc,
-          // The generic message has no {{item}} slot, so `item` surfaces on the
+          ...ctx.artifact.at(vendorName, loc), // The generic message has no {{item}} slot, so `item` surfaces on the
           // location line: show the unauditable CDN source URL (the actionable
           // thing), not the local vendored path.
           item: source,

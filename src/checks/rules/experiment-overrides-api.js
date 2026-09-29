@@ -14,7 +14,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { isExperiment, manifestTokenLine } from "../../lib/util.js";
+import { isExperiment } from "../../lib/util.js";
 import { experimentApiPaths } from "../../lib/experiments.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -26,13 +26,11 @@ export default {
   run(ctx) {
     const m = ctx.manifest?.json;
     if (!m || !isExperiment(m)) {
-      ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
+      ctx.note?.(ctx.manifest.locus(), "not an Experiment", VERDICT.SKIPPED);
       return { findings: [] };
     }
     const { schema } = ctx;
-    const text = ctx.manifest?.text ?? "";
-    const line = manifestTokenLine(text, "experiment_apis");
-    const loc = line ? { line, column: 0 } : null;
+    const at = ctx.manifest.locus("experiment_apis");
 
     const findings = [];
     for (const apiPath of experimentApiPaths(m)) {
@@ -40,16 +38,11 @@ export default {
       // Genuinely new (adds an API) -> fine. Anything else resolves to / grafts
       // onto a built-in -> the experiment overrides a built-in API.
       if (kind === "experiment" || kind === "unknown-namespace") {
-        ctx.note?.("manifest.json", loc, apiPath, VERDICT.PASS);
+        ctx.note?.(at, apiPath, VERDICT.PASS);
         continue;
       }
-      ctx.note?.(
-        "manifest.json",
-        loc,
-        `${apiPath} (overrides built-in)`,
-        VERDICT.FAIL
-      );
-      findings.push(finding({ file: "manifest.json", loc, item: apiPath }));
+      ctx.note?.(at, `${apiPath} (overrides built-in)`, VERDICT.FAIL);
+      findings.push(finding({ ...at, item: apiPath }));
     }
     return { findings };
   },

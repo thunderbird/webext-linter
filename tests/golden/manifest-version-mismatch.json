@@ -110,6 +110,7 @@
       "loc": null,
       "item": "2",
       "hint": null,
+      "artifact": "XPI",
       "message": "The included WebExtension manifest file (manifest.json) declares manifest_version 2, which does not match the schema set (Manifest V3).\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
@@ -119,6 +120,7 @@
       "loc": null,
       "item": "manifest_version",
       "hint": "must be equal to one of the allowed values",
+      "artifact": "XPI",
       "message": "The following manifest.json entries have a value Thunderbird ignores or misreads.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]

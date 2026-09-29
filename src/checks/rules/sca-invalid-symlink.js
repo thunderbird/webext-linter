@@ -50,8 +50,8 @@ export default {
         continue;
       }
       const hint = HINTS.get(link.cause) ?? "target cannot be followed";
-      ctx.note?.(link.path, null, hint, VERDICT.FAIL);
-      findings.push(finding({ file: link.path, hint }));
+      ctx.note?.(ctx.artifact.at(link.path), hint, VERDICT.FAIL);
+      findings.push(finding({ ...ctx.artifact.at(link.path), hint }));
     }
     return { findings };
   },

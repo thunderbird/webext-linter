@@ -39,13 +39,12 @@ export default {
       // A merely-minified (not obfuscated) file is minified-code's finding; here
       // it notes a pass. Only an obfuscated file is flagged.
       ctx.note?.(
-        c.file,
-        null,
+        ctx.artifact.at(c.file),
         c.obfuscation.fail ? "obfuscated" : "readable",
         c.obfuscation
       );
       if (c.obfuscation.fail) {
-        findings.push(finding({ file: c.file }));
+        findings.push(finding({ ...ctx.artifact.at(c.file) }));
       }
     }
     // The same question, asked of an inline <script>: its body ships and runs
@@ -57,13 +56,12 @@ export default {
       // bodies render as the same subject and the reader cannot tell which one the
       // finding means.
       ctx.note?.(
-        site.file,
-        site.loc,
+        ctx.artifact.at(site.file, site.loc),
         site.obfuscation.fail ? "obfuscated" : "readable",
         site.obfuscation
       );
       if (site.obfuscation.fail) {
-        findings.push(finding({ file: site.file, loc: site.loc }));
+        findings.push(finding({ ...ctx.artifact.at(site.file, site.loc) }));
       }
     }
     return { findings };

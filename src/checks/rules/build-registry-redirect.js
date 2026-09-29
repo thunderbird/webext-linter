@@ -38,8 +38,14 @@ export default {
       const value = registrySetting(lines[i]);
       if (value !== null) {
         const loc = { line: i + 1 };
-        ctx.note?.(".npmrc", loc, "sets a package registry", VERDICT.FAIL);
-        findings.push(finding({ file: ".npmrc", loc, item: value }));
+        ctx.note?.(
+          ctx.artifact.at(".npmrc", loc),
+          "sets a package registry",
+          VERDICT.FAIL
+        );
+        findings.push(
+          finding({ ...ctx.artifact.at(".npmrc", loc), item: value })
+        );
       }
     }
     return { findings };

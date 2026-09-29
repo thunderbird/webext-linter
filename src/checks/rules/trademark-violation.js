@@ -26,7 +26,6 @@ import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { localizedNames } from "../../lib/locales.js";
 import { brandTerm } from "../../lib/trademark.js";
-import { manifestTokenLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -43,20 +42,14 @@ export default {
     // the XPI's own files.
     const name = ctx.manifest?.json?.name;
     if (typeof name !== "string") {
-      ctx.note?.("manifest.json", null, "no add-on name", VERDICT.SKIPPED);
+      ctx.note?.(ctx.manifest.locus(), "no add-on name", VERDICT.SKIPPED);
       return { findings: [] };
     }
     // Anchor every note/finding on the manifest.json's `name` property line.
-    const line = manifestTokenLine(ctx.manifest?.text, "name");
-    const loc = line ? { line } : null;
+    const at = ctx.manifest.locus("name");
     const { pairs, resolved, unreadable } = localizedNames(ctx);
     if (!resolved) {
-      ctx.note?.(
-        "manifest.json",
-        loc,
-        `${name} not resolvable`,
-        VERDICT.SKIPPED
-      );
+      ctx.note?.(at, `${name} not resolvable`, VERDICT.SKIPPED);
       return { findings: [] };
     }
     // Group by the offending name and list every locale that states it. Reporting
@@ -78,16 +71,10 @@ export default {
     for (const [candidate, locales] of byName) {
       const term = brandTerm(candidate);
       const where = locales.length ? ` (${locales.join(", ")})` : "";
-      ctx.note?.(
-        "manifest.json",
-        loc,
-        `name uses "${term}"${where}`,
-        VERDICT.FAIL
-      );
+      ctx.note?.(at, `name uses "${term}"${where}`, VERDICT.FAIL);
       findings.push(
         finding({
-          file: "manifest.json",
-          loc,
+          ...at,
           item: candidate,
           hint: locales.join(", ") || null,
         })
@@ -95,14 +82,13 @@ export default {
     }
     for (const locale of unreadable) {
       ctx.note?.(
-        "manifest.json",
-        loc,
+        at,
         `${locale} messages.json could not be read`,
         VERDICT.SKIPPED
       );
     }
     if (!findings.length) {
-      ctx.note?.("manifest.json", loc, `name "${name}"`, VERDICT.PASS);
+      ctx.note?.(at, `name "${name}"`, VERDICT.PASS);
     }
     return { findings };
   },

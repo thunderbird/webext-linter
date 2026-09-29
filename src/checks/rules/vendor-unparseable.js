@@ -27,7 +27,7 @@ export default {
       return { findings: [] };
     }
     const file = vendor.vendorFile ?? "VENDOR";
-    ctx.note?.(file, null, "could not be parsed", VERDICT.FAIL);
-    return { findings: [finding({ file })] };
+    ctx.note?.(ctx.artifact.at(file), "could not be parsed", VERDICT.FAIL);
+    return { findings: [finding({ ...ctx.artifact.at(file) })] };
   },
 };

@@ -67,7 +67,8 @@
       "xpi-packaged-symlink",
       "build-lifecycle-hook",
       "undeclared-build-source",
-      "sca-not-required",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",
@@ -113,18 +114,19 @@
     "info": 0,
     "byRule": {
       "untrusted-minified-library": 1,
-      "sca-not-required": 1
+      "sca-xpi-declares-vendoring": 1
     }
   },
   "findings": [
     {
-      "ruleId": "sca-not-required",
+      "ruleId": "sca-xpi-declares-vendoring",
       "severity": "warning",
-      "file": null,
+      "file": "VENDORS.md",
       "loc": null,
       "item": null,
       "hint": null,
-      "message": "This add-on was submitted as a source-code archive, but the shipped add-on (the built XPI) did not need one: either it carries its own vendoring information - a VENDOR file, a package.json or a lock file, which belong in the source archive rather than in the XPI - or every file it ships is byte-identical to a file in the archive, so nothing was built from it. Please submit the XPI on its own next time. Source-code submissions also take considerably longer to review."
+      "artifact": "XPI",
+      "message": "This add-on was submitted as a source-code archive, but the built XPI carries vendoring information of its own. In a source-code submission a VENDOR file, a package.json and a lock file belong in the archive - the copy the reviewer reads and the build installs from - not in the package you ship. Remove the file(s) below from the XPI and declare the dependencies in the archive instead. If the add-on needs no archive behind it, submit just the XPI.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     },
     {
       "ruleId": "untrusted-minified-library",
@@ -133,6 +135,7 @@
       "loc": null,
       "item": "lib/widget.min.js",
       "hint": "https://unpkg.com/widget@1.2.3/dist/widget.min.js",
+      "artifact": "SCA",
       "message": "The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies, and they are minified or otherwise machine-generated, so they cannot be reviewed in this form. Include the library's readable build in the archive instead. It is then reviewed as authored code, so a finding may be reported against library code.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]

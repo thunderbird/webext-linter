@@ -43,7 +43,7 @@ export default {
     // Which way it failed rides the location line, so the response states the rule once.
     const item =
       fault === "unreadable" ? "could not be read" : "is not a JSON object";
-    ctx.note?.(PACKAGE_FILE, null, item, VERDICT.FAIL);
-    return { findings: [finding({ file: PACKAGE_FILE, item })] };
+    ctx.note?.(ctx.artifact.at(PACKAGE_FILE), item, VERDICT.FAIL);
+    return { findings: [finding({ ...ctx.artifact.at(PACKAGE_FILE), item })] };
   },
 };

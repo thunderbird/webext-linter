@@ -17,11 +17,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import {
-  isExperiment,
-  manifestTokenLine,
-  skipWithoutManifest,
-} from "../../lib/util.js";
+import { isExperiment, skipWithoutManifest } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {
@@ -35,32 +31,25 @@ export default {
       return skipWithoutManifest(ctx);
     }
     if (!isExperiment(m)) {
-      ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.PASS);
+      ctx.note?.(ctx.manifest.locus(), "not an Experiment", VERDICT.PASS);
       return { findings: [] };
     }
     if (ctx.options.allowExperiments) {
       ctx.note?.(
-        "manifest.json",
-        null,
+        ctx.manifest.locus(),
         "experiments allowed (--allow-experiments)",
         VERDICT.SKIPPED
       );
       return { findings: [] };
     }
-
-    const text = ctx.manifest?.text ?? "";
     const groups = ctx.experiments?.groups;
     if (!Array.isArray(groups) || groups.length === 0) {
       // Defensive: the pipeline populates groups before short-circuiting here.
-      const line = manifestTokenLine(text, "experiment_apis");
-      const loc = line ? { line, column: 0 } : null;
-      ctx.note?.(
-        "manifest.json",
-        loc,
-        "experiment_apis declared",
-        VERDICT.FAIL
-      );
-      return { findings: [finding({ file: "manifest.json", loc })] };
+      const at = ctx.manifest.locus("experiment_apis");
+      ctx.note?.(at, "experiment_apis declared", VERDICT.FAIL);
+      return {
+        findings: [finding({ ...at })],
+      };
     }
 
     const findings = [];
@@ -68,18 +57,19 @@ export default {
       if (g.status !== "unsupported") {
         continue; // pristine / modified don't abort the review
       }
-      const loc = g.line ? { line: g.line, column: 0 } : null;
+      // The group's OWN declaration, not the experiment_apis block it sits in: a manifest
+      // may declare several, and the reviewer needs the one being refused.
+      const at = ctx.manifest.locus("experiment_apis", g.key);
       const shadow = firstShadow(ctx.schema, g.apiPaths);
       const reason = shadow
         ? `the ${shadow.path} API shadows the built-in ${shadow.builtin} API`
         : `the ${g.name} API is not a published Thunderbird API draft`;
       ctx.note?.(
-        "manifest.json",
-        loc,
+        at,
         `${g.name} (${shadow ? "shadows built-in" : "unsupported"})`,
         VERDICT.FAIL
       );
-      findings.push(finding({ file: "manifest.json", loc, hint: reason }));
+      findings.push(finding({ ...at, hint: reason }));
     }
     return { findings };
   },

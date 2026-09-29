@@ -42,10 +42,12 @@ export default {
       }
       // A cdn tag always carries the matched release (cdn-lookup sets both).
       const id = `${c.libraryId.name} ${c.libraryId.version}`;
-      ctx.note?.(c.file, null, id, VERDICT.FAIL);
+      ctx.note?.(ctx.artifact.at(c.file), id, VERDICT.FAIL);
       // hint = the jsDelivr source URL: with the file path (the location) it IS the
       // `file:`/`source:` VENDOR entry to add.
-      findings.push(finding({ file: c.file, item: id, hint: c.cdn.url }));
+      findings.push(
+        finding({ ...ctx.artifact.at(c.file), item: id, hint: c.cdn.url })
+      );
     }
     return { findings };
   },

@@ -37,25 +37,34 @@ export default {
     const findings = [];
     for (const site of refs.definite) {
       findings.push(
-        finding({ file: site.file, loc: site.loc, item: site.url })
+        finding({ ...ctx.artifact.at(site.file, site.loc), item: site.url })
       );
-      ctx.note?.(site.file, site.loc, site.note, VERDICT.FAIL);
+      ctx.note?.(ctx.artifact.at(site.file, site.loc), site.note, VERDICT.FAIL);
     }
     // A bundled script/frame load - cleared, but narrated: it is on the trail of
     // "what runs".
     for (const site of refs.cleared) {
-      ctx.note?.(site.file, site.loc, site.note, VERDICT.PASS);
+      ctx.note?.(ctx.artifact.at(site.file, site.loc), site.note, VERDICT.PASS);
     }
     // Each undecidable site carries only its locus: it has no resolvable URL, so the
     // authored wording is generic (no {{item}} slot).
     const escalations = [];
     for (const site of refs.undecidable) {
-      escalations.push({ file: site.file, loc: site.loc });
-      ctx.note?.(site.file, site.loc, site.note, VERDICT.UNSURE);
+      escalations.push({ ...ctx.artifact.at(site.file, site.loc) });
+      ctx.note?.(
+        ctx.artifact.at(site.file, site.loc),
+        site.note,
+        VERDICT.UNSURE
+      );
     }
+    // Minted by the manifest, not by this check's route: the CSP was read out of the
+    // SHIPPED manifest.json (ctx.manifest), which in a source review is a different
+    // artifact from the code this check is routed to. The mint also carries the line,
+    // which a hand-written locus here never had.
+    const csp = ctx.manifest.locus("content_security_policy");
     for (const host of refs.cspHosts) {
-      findings.push(finding({ file: "manifest.json", item: host }));
-      ctx.note?.("manifest.json", null, `CSP script-src ${host}`, VERDICT.FAIL);
+      findings.push(finding({ ...csp, item: host }));
+      ctx.note?.(csp, `CSP script-src ${host}`, VERDICT.FAIL);
     }
     return { findings: dedupe(findings), escalations };
   },

@@ -28,8 +28,8 @@ export default {
       const { hits } = debuggerStmtOf(src);
       for (const hit of hits) {
         const loc = { line: hit.line, column: hit.column };
-        ctx.note?.(src.file, loc, "debugger", VERDICT.UNSURE);
-        escalations.push({ file: src.file, loc });
+        ctx.note?.(ctx.artifact.at(src.file, loc), "debugger", VERDICT.UNSURE);
+        escalations.push({ ...ctx.artifact.at(src.file, loc) });
       }
     }
     return { findings: [], escalations };

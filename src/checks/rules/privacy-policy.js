@@ -44,8 +44,7 @@ export default {
         continue;
       }
       ctx.note?.(
-        sink.file,
-        { line: sink.line, column: sink.column },
+        ctx.artifact.at(sink.file, { line: sink.line, column: sink.column }),
         `transmits to ${sink.host ?? "a remote server"}`,
         VERDICT.UNSURE
       );
@@ -74,9 +73,8 @@ export default {
       // manualReview: the privacy policy lives in the ATN listing field, not the
       // package, so reading the code cannot settle this - a person must look it up.
       escalations.push({
+        ...ctx.artifact.at(sink.file, { line: sink.line, column: sink.column }),
         item: host,
-        file: sink.file,
-        loc: { line: sink.line, column: sink.column },
         ...(sink.host ? {} : { hint: "host assembled at run time" }),
       });
     }

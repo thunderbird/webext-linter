@@ -32,8 +32,7 @@ export default {
     // add-on icon, so the advisory does not apply to them.
     if (manifest.theme || manifest.dictionaries) {
       ctx.note?.(
-        "manifest.json",
-        null,
+        ctx.manifest.locus(),
         "theme or dictionary add-on",
         VERDICT.SKIPPED
       );
@@ -46,10 +45,10 @@ export default {
       (p) => typeof p === "string" && p.trim() !== ""
     );
     if (hasIcon) {
-      ctx.note?.("manifest.json", null, "icons declared", VERDICT.PASS);
+      ctx.note?.(ctx.manifest.locus(), "icons declared", VERDICT.PASS);
       return { findings: [] };
     }
-    ctx.note?.("manifest.json", null, "no add-on icon defined", VERDICT.FAIL);
-    return { findings: [finding({ file: "manifest.json" })] };
+    ctx.note?.(ctx.manifest.locus(), "no add-on icon defined", VERDICT.FAIL);
+    return { findings: [finding({ ...ctx.manifest.locus() })] };
   },
 };

@@ -34,8 +34,8 @@ export default {
             ? "insertAdjacentHTML()"
             : `.${hit.sink}`;
         const loc = { line: hit.line, column: hit.column };
-        out.push(finding({ file: src.file, loc, item: how }));
-        ctx.note?.(src.file, loc, how, VERDICT.FAIL);
+        out.push(finding({ ...ctx.artifact.at(src.file, loc), item: how }));
+        ctx.note?.(ctx.artifact.at(src.file, loc), how, VERDICT.FAIL);
       }
     }
     return { findings: out };

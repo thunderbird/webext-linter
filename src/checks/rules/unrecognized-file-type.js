@@ -23,7 +23,7 @@ export default {
     for (const ref of buildReachability(ctx).unrecognizedRefs) {
       findings.push(
         finding({
-          file: ref.file,
+          ...ctx.artifact.at(ref.file),
           data: {
             referrer:
               ref.line != null ? `${ref.referrer}:${ref.line}` : ref.referrer,

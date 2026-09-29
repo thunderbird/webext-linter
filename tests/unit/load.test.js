@@ -11,12 +11,17 @@ import {
   loadAddon,
   loadSourceArchive,
   readWebExtManifest,
+  manifestRecord,
   scaViews,
   scaRootRelative,
   relativeInside,
 } from "../../src/addon/load.js";
 import { withExperiment } from "../../src/addon/store.js";
 import { SYMLINK_CAUSE } from "../../src/lib/enum.js";
+import { ARTIFACT_SCA, ARTIFACT_XPI } from "../../src/lib/artifacts.js";
+
+// Every load here is of a built add-on; loadSourceArchive has its own tests.
+const XPI = { kind: ARTIFACT_XPI };
 
 // Loading a directory keeps a real .js file but drops a symlink pointing at it,
 // preventing duplicate or out-of-tree content from entering addon.files.
@@ -29,7 +34,7 @@ test("directory load skips symlinks but keeps real files", () => {
   fs.writeFileSync(path.join(dir, "real.js"), "browser.runtime.id;\n");
   fs.symlinkSync(path.join(dir, "real.js"), path.join(dir, "link.js"));
 
-  const addon = loadAddon(dir);
+  const addon = loadAddon(dir, undefined, XPI);
   assert.ok(addon.files.has("real.js"), "real file is loaded");
   assert.ok(!addon.files.has("link.js"), "symlink is skipped");
   // The skip is collected as a notice (not printed) for the pipeline to narrate.
@@ -69,7 +74,7 @@ test("directory load records where each symlink's target lands", () => {
   );
   fs.symlinkSync(path.join(dir, "nothing-here"), path.join(dir, "dangling"));
 
-  const addon = loadAddon(dir);
+  const addon = loadAddon(dir, undefined, XPI);
   const byPath = new Map(addon.symlinks.map((l) => [l.path, l.cause]));
   assert.deepEqual([...byPath.keys()].sort(), [
     "dangling",
@@ -103,7 +108,7 @@ test("directory load follows a symlink chain to where it really ends", () => {
   fs.symlinkSync(path.join(outside, "target.js"), path.join(dir, "hop.js"));
   fs.symlinkSync(path.join(dir, "hop.js"), path.join(dir, "first.js"));
 
-  const addon = loadAddon(dir);
+  const addon = loadAddon(dir, undefined, XPI);
   const chain = new Map(addon.symlinks.map((l) => [l.path, l.cause]));
   assert.deepEqual([...chain.keys()].sort(), ["first.js", "hop.js"]);
   assert.equal(chain.get("hop.js"), SYMLINK_CAUSE.OUTSIDE);
@@ -128,7 +133,10 @@ test("source-archive load records a symlinked node_modules without following it"
     "dir"
   );
 
-  const addon = loadAddon(dir, undefined, { recordInstalledTrees: true });
+  const addon = loadAddon(dir, undefined, {
+    ...XPI,
+    recordInstalledTrees: true,
+  });
   assert.deepEqual(addon.nodeModules, ["node_modules"]);
   assert.deepEqual(addon.skipped, []);
   assert.deepEqual(addon.symlinks, []);
@@ -155,7 +163,7 @@ test("add-on load treats a symlinked node_modules as an ordinary symlink", () =>
     "dir"
   );
 
-  const addon = loadAddon(dir);
+  const addon = loadAddon(dir, undefined, XPI);
   assert.deepEqual(addon.nodeModules, []);
   assert.equal(addon.symlinks.length, 1);
   assert.equal(addon.symlinks[0].path, "node_modules");
@@ -181,7 +189,7 @@ test("add-on load reviews a node_modules directory like any other folder", () =>
     "module.exports = 1;\n"
   );
 
-  const addon = loadAddon(dir);
+  const addon = loadAddon(dir, undefined, XPI);
   assert.deepEqual(addon.nodeModules, []);
   assert.ok(addon.files.has("node_modules/dep/index.js"), "it is in the store");
 
@@ -209,7 +217,7 @@ test("loadAddon(file) records an entry the archive stored as a link, writing not
   zip.writeZip(file);
 
   const dest = path.join(dir, "addon.xpi.extracted");
-  const addon = loadAddon(file, dest);
+  const addon = loadAddon(file, dest, XPI);
 
   assert.equal(addon.symlinks.length, 1);
   assert.equal(addon.symlinks[0].path, "libs/jquery.js");
@@ -242,7 +250,7 @@ test("loadAddon(file) treats an entry with no recorded mode as an ordinary file"
   const file = path.join(dir, "addon.xpi");
   zip.writeZip(file);
 
-  const addon = loadAddon(file, path.join(dir, "addon.xpi.extracted"));
+  const addon = loadAddon(file, path.join(dir, "addon.xpi.extracted"), XPI);
   assert.deepEqual(addon.symlinks, []);
   assert.ok(addon.files.has("bg.js"));
 
@@ -266,7 +274,10 @@ test("directory load records every directory it walks into", () => {
   fs.writeFileSync(path.join(dir, "node_modules", "dep", "i.js"), "1;\n");
   fs.writeFileSync(path.join(dir, "libs", "payload.tgz"), "blob");
 
-  const addon = loadAddon(dir, undefined, { recordInstalledTrees: true });
+  const addon = loadAddon(dir, undefined, {
+    ...XPI,
+    recordInstalledTrees: true,
+  });
   assert.deepEqual(addon.directories.sort(), ["empty", "libs", "libs/widget"]);
   // A file is never one, however it is spelled - the bug this list exists to close.
   assert.ok(!addon.directories.includes("libs/payload.tgz"));
@@ -287,7 +298,7 @@ test("add-on load records a node_modules folder as the directory it is", () => {
   fs.mkdirSync(path.join(dir, "node_modules", "dep"), { recursive: true });
   fs.writeFileSync(path.join(dir, "node_modules", "dep", "i.js"), "1;\n");
 
-  const addon = loadAddon(dir);
+  const addon = loadAddon(dir, undefined, XPI);
   assert.deepEqual(addon.directories.sort(), [
     "node_modules",
     "node_modules/dep",
@@ -309,7 +320,7 @@ test("loadAddon(file) records the extracted directories", () => {
   const file = path.join(dir, "addon.xpi");
   zip.writeZip(file);
 
-  const addon = loadAddon(file, path.join(dir, "addon.xpi.extracted"));
+  const addon = loadAddon(file, path.join(dir, "addon.xpi.extracted"), XPI);
   assert.deepEqual(addon.directories.sort(), ["libs", "libs/widget"]);
 
   fs.rmSync(dir, { recursive: true, force: true });
@@ -330,7 +341,7 @@ test("files is a view over the store, for an add-on as much as an archive", () =
   fs.writeFileSync(path.join(dir, "bg.js"), "1;\n");
   fs.writeFileSync(path.join(dir, "lib", "dep.js"), "2;\n");
 
-  const addon = loadAddon(dir);
+  const addon = loadAddon(dir, undefined, XPI);
   assert.notEqual(addon.files, addon.store, "a view is never the store");
   assert.deepEqual(
     [...addon.files.keys()].sort(),
@@ -367,7 +378,7 @@ test("loading holds the file; the record is asked for, not derived", () => {
   fs.writeFileSync(path.join(dir, "bg.js"), "1;\n");
 
   for (const artifact of [
-    loadAddon(dir),
+    loadAddon(dir, undefined, XPI),
     scaViews(loadSourceArchive(dir), { scaRoot: dir }),
   ]) {
     assert.ok(artifact.files.has("manifest.json"), "its files hold it");
@@ -376,14 +387,19 @@ test("loading holds the file; the record is asked for, not derived", () => {
 
   // Asked of the store, the record is the whole answer: the parse, and a line index a
   // finding can anchor in.
-  const record = readWebExtManifest(loadAddon(dir).store);
+  const record = readWebExtManifest(loadAddon(dir, undefined, XPI).store);
   assert.equal(record.json.name, "x");
   assert.equal(record.error, null);
   assert.ok(record.loc, "and can anchor a finding at a line");
 
   // An artifact holding no manifest.json is the one case that is nothing at all.
   fs.rmSync(path.join(dir, "manifest.json"));
-  assert.equal(readWebExtManifest(loadAddon(dir).store), null);
+  // A record either way: `present` is the answer, not the record's existence.
+  const absent = readWebExtManifest(loadAddon(dir, undefined, XPI).store);
+  assert.equal(absent.present, false);
+  assert.equal(absent.json, null);
+  assert.equal(absent.error, null, "absent is not a parse failure");
+  assert.equal(absent.locus().artifact, ARTIFACT_XPI, "and it still mints");
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -836,7 +852,7 @@ test("a zip entry name that is not a plain path refuses the whole archive", () =
   refused.forEach((entryName, n) => {
     const file = packed(entryName, n);
     assert.throws(
-      () => loadAddon(file),
+      () => loadAddon(file, undefined, XPI),
       (err) => {
         // Exactly one sentence, naming the archive. The entry name is the submission's
         // own text and stays out of it - a refusal is not a place to escape user data.
@@ -866,7 +882,7 @@ test("a leading ./ on a zip entry is repaired, not refused", () => {
   const file = path.join(dir, "leading-dot.xpi");
   zip.writeZip(file);
 
-  const addon = loadAddon(file);
+  const addon = loadAddon(file, undefined, XPI);
   assert.ok(addon.files.has("a/b.js"), "keyed without the leading ./");
   assert.equal(readWebExtManifest(addon.store).json.name, "x");
 
@@ -882,7 +898,7 @@ test("an unreadable archive is refused in our own words", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-zipbad-"));
   const refuses = (file) =>
     assert.throws(
-      () => loadAddon(file),
+      () => loadAddon(file, undefined, XPI),
       (err) => {
         assert.equal(err.message, `Could not read archive: ${file}`);
         assert.doesNotMatch(err.message, /ADM-ZIP|END header|CRC32|SECRET/i);
@@ -933,7 +949,7 @@ test("loadAddon(file) extracts to disk and reads the same content back", () => {
   zip.writeZip(file);
 
   const dest = path.join(dir, "addon.xpi.extracted");
-  const addon = loadAddon(file, dest);
+  const addon = loadAddon(file, dest, XPI);
 
   // On disk: manifest.json included, and in addon.files too.
   assert.equal(
@@ -973,7 +989,7 @@ test("loadAddon(file) with no extractTo defaults beside the archive", () => {
   const file = path.join(dir, "addon.xpi");
   zip.writeZip(file);
 
-  loadAddon(file);
+  loadAddon(file, undefined, XPI);
   assert.ok(
     fs.existsSync(path.join(dir, "addon.xpi.extracted", "manifest.json"))
   );
@@ -1000,7 +1016,7 @@ test("loadAddon(file) records node_modules without writing it to disk", () => {
   zip.writeZip(file);
 
   const dest = path.join(dir, "addon.xpi.extracted");
-  const addon = loadAddon(file, dest, { recordInstalledTrees: true });
+  const addon = loadAddon(file, dest, { ...XPI, recordInstalledTrees: true });
 
   assert.deepEqual(addon.nodeModules, ["node_modules"]);
   assert.ok(
@@ -1010,7 +1026,7 @@ test("loadAddon(file) records node_modules without writing it to disk", () => {
   assert.ok(!addon.files.has("node_modules/dep/index.js"));
   // Loaded as an ADD-ON, the same archive ships those files and they are extracted and
   // reviewed like any others.
-  const shipped = loadAddon(file, path.join(dir, "as-addon"));
+  const shipped = loadAddon(file, path.join(dir, "as-addon"), XPI);
   assert.deepEqual(shipped.nodeModules, []);
   assert.ok(shipped.files.has("node_modules/dep/index.js"));
 
@@ -1033,7 +1049,7 @@ test("a refused archive leaves no partial extraction on disk", () => {
   zip.writeZip(file);
 
   const dest = path.join(dir, "bad.xpi.extracted");
-  assert.throws(() => loadAddon(file, dest));
+  assert.throws(() => loadAddon(file, dest, XPI));
   assert.ok(!fs.existsSync(dest), "a partial extraction was left behind");
 
   fs.rmSync(dir, { recursive: true, force: true });
@@ -1053,9 +1069,89 @@ test("an archive with nothing but node_modules still leaves an empty extracted f
   zip.writeZip(file);
 
   const dest = path.join(dir, "addon.xpi.extracted");
-  const addon = loadAddon(file, dest, { recordInstalledTrees: true });
+  const addon = loadAddon(file, dest, { ...XPI, recordInstalledTrees: true });
   assert.ok(fs.existsSync(dest) && fs.statSync(dest).isDirectory());
   assert.equal(addon.files.size, 0);
 
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Which artifact a locus is in comes from the thing holding the file, so the loader has to
+// name what it built and the Addon has to be able to mint one. These four tests are that
+// contract: without them every downstream label is derived again from the route it was
+// reached by, which is what src/lib/artifacts.js exists to replace.
+test("each loader names the artifact it built, and the Addon mints loci in it", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-kind-"));
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  fs.writeFileSync(path.join(dir, "bg.js"), "1;\n");
+
+  assert.equal(loadAddon(dir, undefined, XPI).kind, ARTIFACT_XPI);
+  assert.equal(loadSourceArchive(dir).kind, ARTIFACT_SCA);
+  // And the narrowed views are the same object, so they answer the same.
+  assert.equal(
+    scaViews(loadSourceArchive(dir), { scaRoot: dir }).kind,
+    ARTIFACT_SCA
+  );
+
+  // at() stamps its own kind onto the locus, with the loc it was handed or null.
+  assert.deepEqual(loadAddon(dir, undefined, XPI).at("bg.js", { line: 1 }), {
+    file: "bg.js",
+    loc: { line: 1 },
+    artifact: ARTIFACT_XPI,
+  });
+  assert.deepEqual(loadSourceArchive(dir).at("bg.js"), {
+    file: "bg.js",
+    loc: null,
+    artifact: ARTIFACT_SCA,
+  });
+});
+
+test("loadAddon refuses to build an artifact that cannot say which one it is", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-nokind-"));
+  fs.writeFileSync(path.join(dir, "bg.js"), "1;\n");
+  for (const opts of [undefined, {}, { kind: "source" }]) {
+    assert.throws(() => loadAddon(dir, undefined, opts), /kind must be/);
+  }
+});
+
+test("the shipped manifest.json record mints XPI loci whatever read it", () => {
+  const record = manifestRecord(
+    '{\n  "manifest_version": 3,\n  "permissions": ["tabs"]\n}'
+  );
+  // The JSON path resolves to the line the value is on, and the artifact is the XPI's by
+  // construction: the record IS the shipped declaration, so there is no second answer.
+  assert.deepEqual(record.locus("permissions"), {
+    file: "manifest.json",
+    loc: { line: 3 },
+    artifact: ARTIFACT_XPI,
+  });
+  // A path the file does not have still mints - the finding is about the ABSENT key, and
+  // "nowhere in manifest.json" is a locus a reader can act on.
+  assert.deepEqual(record.locus("browser_specific_settings", "gecko"), {
+    file: "manifest.json",
+    loc: null,
+    artifact: ARTIFACT_XPI,
+  });
+  // NO path at all: the locus is the manifest.json itself, which sits on no single line.
+  // The JSON tree would answer its root node here, whose offset is 0 and whose line is
+  // therefore 1 - a line the reader would open and find nothing at, since every caller
+  // asking with no path is talking about the file as a whole or about an ABSENT key.
+  assert.deepEqual(record.locus(), {
+    file: "manifest.json",
+    loc: null,
+    artifact: ARTIFACT_XPI,
+  });
+});
+
+test("an unparsable manifest.json still mints, with no line", () => {
+  const record = manifestRecord("{ not json");
+  assert.ok(record.error);
+  assert.deepEqual(record.locus("permissions"), {
+    file: "manifest.json",
+    loc: null,
+    artifact: ARTIFACT_XPI,
+  });
 });

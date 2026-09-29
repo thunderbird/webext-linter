@@ -1,5 +1,5 @@
 {
-  "_comment": "An add-on that ships a node_modules folder. The name buys it nothing here: an add-on is the bytes a user installs, so the folder is walked, keyed and reviewed like any other - the eval inside it is reported at its own path, and the folder is reported unused like any other unreferenced folder. committed-node-modules is deliberately ABSENT: that check is sca:true, because an installed tree is build output only in a SOURCE submission, where the reviewer installs it from the declared manifest and lock. This is the XPI half of that rule; build-hygiene-sca is the source half.",
+  "_comment": "An add-on that ships a node_modules folder. The name buys it nothing here: an add-on is the bytes a user installs, so the folder is walked, keyed and reviewed like any other - the eval inside it is reported at its own path, and the folder is reported unused like any other unreferenced folder. committed-node-modules is deliberately ABSENT: that check is `input: sca`, because an installed tree is build output only in a SOURCE submission, where the reviewer installs it from the declared manifest and lock. This is the XPI half of that rule; build-hygiene-sca is the source half.",
   "expect": {
     "eval-call": ["node_modules/left-pad/index.js:5"],
     "unused-files": ["node_modules/"]

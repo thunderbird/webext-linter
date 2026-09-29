@@ -45,31 +45,34 @@ export default {
 
       // Classify: what (if anything) makes this API unavailable, and the finding it
       // would produce. reason === null means the API is available (a pass).
+      // One locus for this reference, in the artifact this check was routed to, used by
+      // the note and the case alike so neither can name it differently.
+      const at = ctx.artifact.at(file, loc);
       let reason = null;
-      let args = null;
+      let item = null;
       if (res.kind === "unknown-namespace") {
         reason = "unknown namespace";
-        args = { file, loc, item: `${usage.root}.${usage.segments[0]}` };
+        item = `${usage.root}.${usage.segments[0]}`;
       } else if (res.kind === "unknown-member") {
         reason = "unknown member";
-        args = { file, loc, item: full };
+        item = full;
       } else if (
         SchemaIndex.isUnsupported(res.def) ||
         SchemaIndex.isUnsupported(res.namespaceDef)
       ) {
         reason = "unsupported";
-        args = { file, loc, item: full };
+        item = full;
       }
 
       if (!reason) {
-        ctx.note?.(file, loc, full, VERDICT.PASS);
+        ctx.note?.(at, full, VERDICT.PASS);
         continue;
       }
       // The hint is the REASON, uniformly: it names what the reader has to settle about
       // this reference, and that is the same question in all three shapes. The
       // developer-facing docs link lives in the entry's response, not here.
-      ctx.note?.(file, loc, `${full} (${reason})`, VERDICT.UNSURE);
-      escalations.push({ ...args, hint: reason });
+      ctx.note?.(at, `${full} (${reason})`, VERDICT.UNSURE);
+      escalations.push({ ...at, item, hint: reason });
     }
     return { findings: [], escalations };
   },

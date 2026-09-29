@@ -47,7 +47,7 @@ import { MANIFEST_ROOT_TYPES, REL_URL_FORMATS } from "../schema/index.js";
  *
  * `where` is the JSON path to the leaf (["icons","48"]), not a label: one file named in
  * several slots is the norm rather than the exception, so the caller anchors each finding
- * with manifestPathLine rather than searching the text for the value, and dedupes by SLOT
+ * with the record's `locus` rather than searching the text for the value, and dedupes by SLOT
  * so `icons.16` and `icons.48` stay two defect sites at two lines.
  *
  * The twin of this walk is walkType in src/parse/loader-files.js, which does the same

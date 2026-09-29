@@ -1,11 +1,7 @@
 {
-  "_comment": "A source archive whose package.json declares a ranged dependency and no `scripts`, and commits no lock. In a SOURCE submission a package.json is always a build manifest - only an XPI-only submission may use one to declare vendored libraries - so the absent `scripts` block buys nothing and sca-lock-file-missing rejects it. The two XPI lock checks stay silent: both are sca:false, because a range is legitimate here and the lock is what must pin it. sca-lock-file-invalid has no lock to read. The shipped background.js is packed so the archive is not redundant. The XPI here also ships a package.json of its own, which in a source-code submission belongs in the archive - the copy the reviewer reads and the build installs from - so sca-not-required warns that this did not need to be a source submission. It is advice about the NEXT one and narrows nothing here.",
+  "_comment": "A source archive whose package.json declares a ranged dependency and no `scripts`, and commits no lock. In a SOURCE submission a package.json is always a build manifest - only an XPI-only submission may use one to declare vendored libraries - so the absent `scripts` block buys nothing and sca-lock-file-missing rejects it. The two XPI lock checks stay silent: both declare `skip-in-sca-review`, because a range is legitimate here and the lock is what must pin it. sca-lock-file-invalid has no lock to read. The shipped background.js is packed so the archive is not redundant. The XPI here also ships a package.json of its own, which in a source-code submission belongs in the archive - the copy the reviewer reads and the build installs from - so sca-xpi-declares-vendoring reports it, naming the file(s) on the finding. It narrows nothing here - the archive is still reviewed in full.",
   "expect": {
-    "sca-lock-file-missing": [
-      "package.json"
-    ],
-    "sca-not-required": [
-      "(add-on)"
-    ]
+    "sca-lock-file-missing": ["package.json"],
+    "sca-xpi-declares-vendoring": ["package.json"]
   }
 }

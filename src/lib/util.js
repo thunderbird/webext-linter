@@ -6,8 +6,8 @@
 //
 // Belongs here: generic, dependency-light check helpers - dedupe, the
 // asArray/asObject manifest.json guards, isMatchPattern/isBroadHost, trunc, SCHEME_RE,
-// escapeRegExp/wholeWordRe, the line locators (manifestTokenLine, manifestPathLine,
-// lineContaining, declarationLine), utf8ComparisonSigns, the doc/dependency-file tests
+// escapeRegExp/wholeWordRe, the line locators (tokenLine, lineContaining,
+// declarationLine), utf8ComparisonSigns, the doc/dependency-file tests
 // (isDocMetadataFile, isDocFile, DEPENDENCY_FILE_RE), isExperiment/strictMaxVersion, the
 // version family (strictMinVersion, parseVersion, cmpVersion, versionInBounds), the
 // suspected-loader helper referrerSupported, and the feed-note builder loaderTrace.
@@ -214,10 +214,26 @@ export function isExperiment(manifest) {
  * @returns {string|undefined}
  */
 export function strictMaxVersion(manifest) {
-  return (
-    manifest?.browser_specific_settings?.gecko?.strict_max_version ??
-    manifest?.applications?.gecko?.strict_max_version
-  );
+  const path = strictMaxVersionPath(manifest);
+  return path ? manifest[path[0]].gecko.strict_max_version : undefined;
+}
+
+/**
+ * WHERE the cap was declared, as a JSON path - for a finding that has to point at it.
+ *
+ * Beside the reader above and spelling the two keys ONCE for both: `browser_specific_settings`
+ * is current and `applications` the deprecated MV2 alias, and a second list of them is a
+ * list that goes out of step. Null when no cap is declared.
+ * @param {?Manifest} manifest
+ * @returns {?(string[])}
+ */
+export function strictMaxVersionPath(manifest) {
+  for (const key of ["browser_specific_settings", "applications"]) {
+    if (manifest?.[key]?.gecko?.strict_max_version !== undefined) {
+      return [key, "gecko", "strict_max_version"];
+    }
+  }
+  return null;
 }
 
 /**
@@ -339,20 +355,24 @@ export function isMatchPattern(p) {
 }
 
 /**
- * 1-based line of the first occurrence of `"<token>"` in the manifest.json text, or
- * null if not found. Works for any quoted JSON token - a key or a string value
- * (a permission, host pattern, or web_accessible_resources entry). Best-effort:
- * a token appearing more than once resolves to its first line.
- * @param {?string} manifestText
+ * 1-based line of the first occurrence of `"<token>"` in some JSON text, or null if it is
+ * not there. Any quoted token - a key or a string value - in ANY JSON file: package.json's
+ * lifecycle hooks and a lock file's entries as much as a manifest.json key, which is why it
+ * names neither. Best-effort: a token appearing more than once resolves to its first line.
+ *
+ * NOT for pointing into the shipped manifest.json. That file has one holder and one way in
+ * (src/addon/load.js, the record's `locus`), which resolves a JSON path rather than
+ * searching for text and cannot be asked about the wrong copy.
+ * @param {?string} text  The JSON source to search.
  * @param {string} token  The bare key/value, without surrounding quotes.
  * @returns {number|null}
  */
-export function manifestTokenLine(manifestText, token) {
-  if (!manifestText) {
+export function tokenLine(text, token) {
+  if (!text) {
     return null;
   }
   const needle = `"${token}"`;
-  const lines = manifestText.split(/\r?\n/);
+  const lines = text.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].includes(needle)) {
       return i + 1;
@@ -362,37 +382,24 @@ export function manifestTokenLine(manifestText, token) {
 }
 
 /**
- * Exact 1-based source line of a manifest.json value addressed by its JSON path
- * (e.g. manifestPathLine(ctx, "host_permissions", 0)). Unlike manifestTokenLine
- * this is unambiguous for repeated values and immune to \uXXXX escaping. Returns
- * null when there is no position index or the path is absent. Prefer this over
- * manifestTokenLine for array values; the token search remains for unique top-level
- * keys. Reads ctx.manifest.loc - the SHIPPED manifest.json's index (see the RunContext).
- * @param {?import("../checks/registry.js").RunContext} ctx
- * @param {...(string|number)} path
- * @returns {number|null}
- */
-export function manifestPathLine(ctx, ...path) {
-  return ctx?.manifest?.loc?.lineAt(path) ?? null;
-}
-
-/**
  * Say why a check that reads the manifest.json has nothing to report, and report nothing. There
  * are two reasons and the reviewer is owed the right one: the add-on ships no manifest.json,
  * or it ships one that will not parse. Neither is the caller's verdict to give -
  * manifest-missing and manifest-invalid-json are the checks for those - so this only accounts for the
  * silence, which a skipped check owes the feed so a bare check header is never ambiguous.
  *
- * The record is what tells the two apart: absent is no record, unparsable is a record
- * carrying `error`. A manifest.json that parses to something that is not an object is
- * described as unparsable here, which is not exact - it is the same conflation
+ * The record tells the two apart with `present`: there is always a record, and it says
+ * whether there was a file. A manifest.json that parses to something that is not an object
+ * is described as unparsable here, which is not exact - it is the same conflation
  * manifest-missing makes, and belongs with that one rather than half-fixed here.
  * @param {RunContext} ctx
  * @returns {{findings: []}}
  */
 export function skipWithoutManifest(ctx) {
-  const reason = ctx.manifest ? "manifest did not parse" : "no manifest.json";
-  ctx.note?.("manifest.json", null, reason, VERDICT.SKIPPED);
+  const reason = ctx.manifest.present
+    ? "manifest did not parse"
+    : "no manifest.json";
+  ctx.note?.(ctx.manifest.locus(), reason, VERDICT.SKIPPED);
   return { findings: [] };
 }
 
@@ -437,7 +444,7 @@ export function declarationLine(text, token) {
     return null;
   }
   return (
-    manifestTokenLine(text, token) ??
+    tokenLine(text, token) ??
     yamlKeyLine(text, token) ??
     lineContaining(text, token)
   );
@@ -499,7 +506,7 @@ export function utf8ComparisonSigns(text) {
 
 /**
  * 1-based line of the first line containing `needle` as a plain substring, or
- * null. Unlike manifestTokenLine (which matches a quoted JSON token), this suits
+ * null. Unlike tokenLine (which matches a quoted JSON token), this suits
  * free-form text such as a VENDOR file, where a finding anchors on the verbatim
  * source URL rather than a quoted key.
  * @param {string} text

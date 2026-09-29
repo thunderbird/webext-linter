@@ -107,11 +107,11 @@
       "severity": "error",
       "file": "manifest.json",
       "loc": {
-        "line": 8,
-        "column": 0
+        "line": 8
       },
       "item": "demo",
       "hint": null,
+      "artifact": "XPI",
       "message": "The following Experiment API(s) are published Thunderbird API drafts, but this add-on bundles a modified or outdated copy of each. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments."
     }
   ]

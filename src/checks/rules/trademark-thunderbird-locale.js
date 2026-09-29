@@ -37,7 +37,6 @@ import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { isEnglishLocale, localizedNames } from "../../lib/locales.js";
 import { brandTerm, offFormThunderbird } from "../../lib/trademark.js";
-import { manifestTokenLine } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 /** @typedef {import("../escalation.js").Escalation} Escalation */
@@ -52,15 +51,9 @@ export default {
     const { pairs, resolved, localized, unreadable } = localizedNames(ctx);
     // Anchor on the manifest.json's `name` line: that is where the placeholder sits, and
     // it is the line a developer edits to rename the add-on.
-    const line = manifestTokenLine(ctx.manifest?.text, "name");
-    const loc = line ? { line } : null;
+    const at = ctx.manifest.locus("name");
     if (!localized) {
-      ctx.note?.(
-        "manifest.json",
-        loc,
-        "name is not localized",
-        VERDICT.SKIPPED
-      );
+      ctx.note?.(at, "name is not localized", VERDICT.SKIPPED);
       return { findings: [], escalations: [] };
     }
     // Every locale that could not be read is said out loud. Nothing else in the
@@ -68,8 +61,7 @@ export default {
     // leave a name that Thunderbird displays reviewed by nobody.
     for (const locale of unreadable) {
       ctx.note?.(
-        "manifest.json",
-        loc,
+        at,
         `${locale} messages.json could not be read`,
         VERDICT.SKIPPED
       );
@@ -78,8 +70,7 @@ export default {
       // The name is a placeholder no locale file defines. That is not a pass: no
       // name was examined, and saying PASS would read as "verified clean".
       ctx.note?.(
-        "manifest.json",
-        loc,
+        at,
         `${ctx.manifest?.json?.name} not resolvable`,
         VERDICT.SKIPPED
       );
@@ -109,23 +100,25 @@ export default {
       const target = english ? findings : escalations;
       target.push(
         english
-          ? finding({ file: "manifest.json", loc, item: name, hint: where })
-          : { file: "manifest.json", loc, item: name, hint: where }
+          ? finding({
+              ...at,
+              item: name,
+              hint: where,
+            })
+          : {
+              ...at,
+              item: name,
+              hint: where,
+            }
       );
       ctx.note?.(
-        "manifest.json",
-        loc,
+        at,
         `${where}: ${name}`,
         english ? VERDICT.FAIL : VERDICT.UNSURE
       );
     }
     if (!findings.length && !escalations.length) {
-      ctx.note?.(
-        "manifest.json",
-        loc,
-        `${pairs.length} localized name(s)`,
-        VERDICT.PASS
-      );
+      ctx.note?.(at, `${pairs.length} localized name(s)`, VERDICT.PASS);
     }
     return { findings, escalations };
   },

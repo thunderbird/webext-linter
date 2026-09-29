@@ -25,7 +25,7 @@
 //
 // Belongs here: the Registry class (the queried view of registry.yaml), loading
 // and filtering rule modules, the RunContext type, and runChecks - the loop
-// that runs checks, resolves escalations, and stamps id + severity. Does NOT
+// that runs checks, resolves escalations, and stamps id and severity. Does NOT
 // belong here: building the ctx, which is src/checks/context.js. The per-case
 // escalation policy - src/checks/escalation.js. Any check's detection logic - a
 // module under src/checks/rules/* (shared analysis in src/lib/*).
@@ -41,6 +41,7 @@ import { displayLine } from "../util/text.js";
 import { finding, SECTION, SEVERITY } from "../report/finding.js";
 import { MAX_NOTE, PROMPT_SKIPS } from "../config.js";
 import { artifactLabel } from "../report/artifact.js";
+import { ARTIFACT_NONE, assertLocus } from "../lib/artifacts.js";
 import { VERB, VERB_NAMES, verbNamed } from "../report/verbs.js";
 import { progress, debug, FEED } from "../util/log.js";
 import { red, green, blue } from "../util/color.js";
@@ -128,9 +129,9 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {boolean} ["skip-in-sca-review"]  Keeps a check that judges the shipped XPI out
  *   of a source review (modeEligible); absent means it runs in both.
  * @property {"source"|"xpi"|"sca"|"both"|undefined} input  Which artifact is
- *   ctx.artifact when the check runs (VALID_CHECK_INPUTS above), and what its output is
- *   labelled as ([XPI]/[SCA]). Required for every check; runChecks routes it (see
- *   buildXpiCtx / buildScaCtxs).
+ *   ctx.artifact when the check runs (VALID_CHECK_INPUTS above). NOT what its findings
+ *   are about - a locus answers that, from the holder that minted it. Required for every
+ *   check; runChecks routes it (see buildXpiCtx / buildScaCtxs).
  * @property {?string} section  Which to-do section its escalations are listed under
  *   (SECTION in src/report/finding.js), derived by sectionFor from the reader this check
  *   authored wording for; null when it never escalates. The wording itself is NOT carried
@@ -167,11 +168,10 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {object[]} apiUsages  Per-source extracted API usage.
  * @property {?import("../addon/load.js").WebExtManifestRecord} manifest  The authoritative,
  *   SHIPPED manifest.json (the built XPI's - what Thunderbird loads), read once like `schema`:
- *   `json` the parse, `text` the raw manifest.json (manifestTokenLine reads it), `error` the
- *   JSON parse failure, `loc` the position index (manifestPathLine reads it). Null when the
- *   shipped artifact holds no manifest.json; a file that is there but will not parse is a
- *   record carrying `error`, so the two are separable here even where a reader still
- *   answers `!json` to both.
+ *   `json` the parse, `text` the raw manifest.json (tokenLine reads it), `error` the
+ *   JSON parse failure, `loc` the position index (the record's `locus` reads it). ALWAYS a
+ *   record: `present` says whether the artifact ships the file at all, so absent and
+ *   unparsable stay separable even where a reader answers `!json` to both.
  *   Every manifest / permission / API check reads this; no artifact carries a record of its
  *   own, because loading derives none - it is read off the shipped store when the review asks
  *   (readWebExtManifest), and a source archive is never asked, its root manifest.json being a
@@ -196,8 +196,10 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
  *   --allow-experiments is off: the review short-circuits to the reject check
  *   only (see runChecks and buildXpiCtx).
- * @property {Function} [note]  Narrate a file:line investigation note to the
- *   feed: (file, loc, item, verdict) -> void. Set by runChecks, absent in tests.
+ * @property {Function} [note]  Narrate an investigation note to the feed:
+ *   (locus, item, verdict) -> void, where the locus is the one a holder minted
+ *   (ctx.artifact.at(file, loc)) and is refused if it cannot say which artifact it is
+ *   in. Set by runChecks, absent in tests.
  */
 
 /**
@@ -376,29 +378,17 @@ export class Registry {
   }
 
   /**
-   * The artifact a check's OUTPUT is labelled as ([XPI]/[SCA]): the files it acts
-   * on, which are the ones it runs on, so its declared `input` is the label.
+   * A check's declared `input` - which sibling it ran on.
+   *
+   * NOT what its findings are about: a finding carries the artifact it is in, from the
+   * holder that minted its locus (src/addon/load.js `at`, and the shipped manifest.json
+   * record). Those are two questions, and this answers only the first, which is why it
+   * is no longer named for the other one.
    * @param {string} ruleId
    * @returns {"xpi"|"sca"|"source"|"both"}
    */
-  labelInputFor(ruleId) {
+  inputFor(ruleId) {
     return this.checkEntry(ruleId)?.input ?? "source";
-  }
-
-  /**
-   * The label artifact per ruleId (a `Map<ruleId, "xpi"|"sca"|"source"|"both">`),
-   * projected for the report layer so it can label a finding's file:line by
-   * artifact ([XPI]/[SCA]) without touching the registry. Keyed off labelInputFor
-   * (the files the check acts on).
-   * @returns {Map<string, string>}
-   */
-  checkInputs() {
-    return new Map(
-      this.checkEntries().map((e) => {
-        const id = stem(e.check);
-        return [id, this.labelInputFor(id)];
-      })
-    );
   }
 
   /**
@@ -409,7 +399,8 @@ export class Registry {
    * @param {{sca?: boolean}} [mode]  The review mode, for an entry that words its
    *   response per mode (responseOf).
    * @returns {{title: string, instructions?: string, response: ?string, ruleId: string,
-   *   verdict: ?string}[]}
+   *   verdict: ?string, file: null, loc: null, artifact: string}[]}  Each carries a
+   *   locus like any other item, naming no file and no artifact of the submission.
    */
   manualChecks(mode) {
     return this.allEntries()
@@ -418,11 +409,19 @@ export class Registry {
         title: e.title,
         instructions: e.instructions,
         response: responseOf(e, mode),
-        // The same two fields a rendered escalation carries, so the three to-do
-        // sections are one kind of item with three origins: settling any of them
-        // shows the band it lands in, and a verdict can report or clear it.
+        // The same fields a rendered escalation carries, so the three to-do sections are
+        // one kind of item with three origins: settling any of them shows the band it
+        // lands in, and a verdict can report or clear it.
         ruleId: e.check,
         verdict: this.suggestedVerdict(e.check),
+        // A by-hand reminder comes from the registry, not from reading an artifact, so no
+        // holder minted it and it names no file. Its subject is what the entry declares -
+        // `input: none`, the only value the schema admits here, because these are settled
+        // by looking at the add-on listing page or by installing the add-on and using it.
+        // So the hand-back gives them no tree, which is the answer rather than a gap.
+        file: null,
+        loc: null,
+        artifact: ARTIFACT_NONE,
       }));
   }
 
@@ -443,7 +442,7 @@ export class Registry {
   /**
    * The heading shown above each severity group in the Found Issues section, as a
    * severity -> string map. Every severity has one and no other key is authored:
-   * assertProse asks the registry for exactly that closed set when it is read.
+   * the registry schema declares it as a closed `prose-map`.
    * @returns {Record<string, string>}
    */
   issueHeadings() {
@@ -455,7 +454,7 @@ export class Registry {
    * The customer-facing verdict preamble for the Found Issues section, as a VERDICT_KEYS
    * -> string map: `none` when there are no findings, `rejected` when any is an error,
    * `hold` when one is a hold and none is an error, `feedback` otherwise. All four are
-   * authored and no other key is: assertProse asks for that closed set at load.
+   * authored and no other key is: the schema declares a closed `prose-map`.
    * @returns {Record<string, string>}
    */
   verdictIntros() {
@@ -938,10 +937,6 @@ function assertEntry(entry, at) {
       );
     }
     assertSettleVerbs(entry, where, authored("instructions") || forLlm);
-    // Optional, and a typo would otherwise read as "the default" - silently listing every
-    // case where the entry asked for one line per subject.
-    // Every check must declare a valid `input`, which drives runOneCheck's artifact
-    // routing (routing is total - there is no default artifact to fall through to).
     assertSweepInstruction(entry, where, severity);
   }
   // Outside the manual/rule branch: a manual-checks entry carries a response too, and
@@ -982,6 +977,19 @@ function assertSweepInstruction(entry, where, severity) {
     throw new Error(
       `${where} authors a \`sweep-instruction\` but its severity ` +
         `${JSON.stringify(severity)} gives a reported case no band to carry`
+    );
+  }
+  // A swept row NAMES A FILE, and on the one route that carries two artifacts the same
+  // relative path exists in both - so nothing could say which one the row is in. Not the
+  // merge, which runs from a serialized state with no artifact left to ask; not the pre-
+  // sweep list, which records one answer per check and this route has two; and not the
+  // sweeping reader, who was told to search a submission rather than a tree. Every other
+  // route names the single artifact its check reads, which is that answer for every row.
+  if (entry.input === "both") {
+    throw new Error(
+      `${where} authors a \`sweep-instruction\` beside \`input: both\` - a swept row ` +
+        "names a file, and a route carrying two artifacts cannot say which of them it " +
+        "is in. Route the check at the artifact its cases are in, or drop the sweep"
     );
   }
   // A swept case carries no `item` and no `data`, so a placeholder in the response
@@ -1509,8 +1517,8 @@ function assertRegistry(registry, at, { partial = false } = {}) {
  * Both directions matter, and they fail differently. A reference nothing defines would
  * stop a review and then print a bullet with nothing in it - the report would say the
  * submission could not be reviewed without saying why. A reason nothing references is
- * wording no report can reach, which is the same dead-prose failure assertProse refuses
- * for the closed maps.
+ * wording no report can reach, which is the same dead-prose failure a closed `prose-map`
+ * refuses in the schema.
  * @param {Registry} registry @param {string} at
  * @returns {void}
  */
@@ -1579,7 +1587,7 @@ export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
  * phase is which list it lands in (its registry section), so no LoadedCheck carries one.
  * Every phase in PHASE_SECTIONS gets a list (loadRegistry has already asserted that none of
  * their sections is missing or empty; a list can still come out empty here once the
- * sca gate and --checks-only/--checks-skip have been applied). A `check:` that names a missing
+ * mode gate and --checks-only/--checks-skip have been applied). A `check:` that names a missing
  * module, or a module without a `run` export, throws hard - a broken registry should abort
  * the review, not silently drop a check.
  * @param {Registry} registry
@@ -1603,7 +1611,7 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
     if (skipSet && skipSet.has(id)) {
       continue;
     }
-    // The `--eslint` opt-in gate, applied HERE (unlike the sca gate, which gates in runChecks
+    // The `--eslint` opt-in gate, applied HERE (unlike the mode gate, which gates in runChecks
     // after the import): code-sanity top-level imports the eslint dependency, so skipping it
     // before the import below avoids loading eslint when it will not run.
     if (!eslintEligible(entry, Boolean(eslint))) {
@@ -1650,8 +1658,7 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
 
 // Tag column width, sized to the widest "[label]" so the file column aligns. The
 // note vocabulary is every VERDICT (fail/pass/unsure judgments + the note-only
-// skipped/info); a check's own judgement is only ever
-// fail/pass/unsure.
+// skipped/info); a check's own judgement is only ever fail/pass/unsure.
 const TAG_WIDTH = Math.max(
   ...Object.values(VERDICT).map((v) => verdictLabel(v).length + 2)
 );
@@ -1665,7 +1672,7 @@ const VERDICT_COLOR = { fail: red, pass: green, unsure: blue };
  * Format one investigation note for the feed (unindented - the printer applies
  * the DETAIL indent): a padded `[label]` tag then the site (`file:line` when a
  * line is known, else `file`) and the optional item.
- * @param {string} file
+ * @param {?string} file  Null for a locus about the artifact rather than a file in it.
  * @param {?{line?: number}} loc
  * @param {?string} item
  * @param {import("../lib/enum.js").Verdict} verdict  A shared VERDICT; its
@@ -1722,7 +1729,7 @@ export function modeEligible(entry, inScaMode) {
 /**
  * Whether a registry entry runs given the `--eslint` flag, per its `eslint` field:
  * `eslint: true` is opt-in - it runs only with `--eslint` - and an
- * omitted `eslint` runs always. Unlike the sca gate this is applied in loadChecks
+ * omitted `eslint` runs always. Unlike the mode gate this is applied in loadChecks
  * (BEFORE the module import), because the sole `eslint: true` check (code-sanity) top-level
  * imports the heavy `eslint` dependency: gating it here skips that import when it will not run.
  * @param {{eslint?: boolean}} entry @param {boolean} inEslintMode
@@ -1775,21 +1782,35 @@ export function routeCtx(check, siblings) {
 }
 
 /**
- * The ctx whose artifact a RULE'S OUTPUT belongs to - the files its findings' paths
- * live in. It resolves through `registry.labelInputFor`, the same resolution the report's
- * [XPI]/[SCA] labelling uses, so the two can never disagree about a finding.
+ * The ctx a rule RAN on, recovered from its id.
  *
- * Anything post-processing a check's OUTPUT (the pipeline's folder collapse, the report's
- * labels) must resolve its artifact through here, never through `ctx.artifact`: once findings
- * come back as a flat list carrying only a ruleId, the check -> artifact binding routeCtx
- * enforced is gone, and this is the only way to recover it.
+ * For a post-pass that needs the artifact's FILE LIST - the folder collapse, and the
+ * pipeline recording what a sweep will be about - because once findings come back as a
+ * flat list carrying only a ruleId, the check -> ctx binding routeCtx enforced is gone.
+ *
+ * NOT for labelling a finding. A finding carries the artifact it is in, answered by the
+ * holder that minted its locus, which is not always the artifact the check ran on: a
+ * check reporting into the shipped manifest.json reports into one it was not routed to.
+ * Asking here instead would give the route's answer and overrule the true one.
  * @param {Registry} registry
  * @param {string} ruleId
  * @param {Record<string, RunContext>} siblings
  * @returns {RunContext}
  */
 export function ctxForRule(registry, ruleId, siblings) {
-  return siblings[registry.labelInputFor(ruleId)];
+  const input = registry.inputFor(ruleId);
+  const ctx = siblings[input];
+  if (!ctx) {
+    // A by-hand entry declares `input: none` and runs nothing, so it never has a ctx to
+    // recover; a check that ran always does, because routing is total. Either way an
+    // undefined here would be read as "no files" by the caller and quietly change what a
+    // post-pass sees.
+    throw wiringError(
+      `ctxForRule("${ruleId}") has input "${input}", which no sibling answers - only a ` +
+        "check that RAN has a ctx to recover, and a by-hand entry is not one"
+    );
+  }
+  return ctx;
 }
 
 /**
@@ -1843,25 +1864,31 @@ export async function runChecks(registry, opts = {}, siblings) {
   // a trail regardless of the finding. The format is owned here (formatNote);
   // checks emit only {file, loc, item, verdict}. Lines nest under the check's
   // [i/N] line above.
-  // The ctx a note fires on IS its artifact (matching the input routing below), so
-  // each sibling context gets a note bound to its input: the review target is the
-  // source archive (source), the shipped context the built XPI, the sca context the
-  // archive. artifactLabel prepends [XPI]/[SCA] in SCA mode (and always [XPI] for
-  // manifest - the shipped manifest.json); an XPI review adds no label.
-  const makeNote = (input) => (file, loc, item, verdict) => {
+  // A note carries the same locus a finding does, so the feed and the report below it
+  // cannot disagree about a path or about which artifact it is in. artifactLabel prepends
+  // [XPI]/[SCA] in a source review only; one artifact needs no telling apart.
+  const note = (at, item, verdict) => {
+    // A LOCUS, always - the one a finding would carry, minted by whatever holds the file
+    // (src/addon/load.js `at`, and the shipped manifest.json record). Checked before the
+    // try below, and thrown past it: a bad locus is this file's contract broken, not a
+    // cosmetic feed problem, and swallowing it is how a note claiming the wrong line
+    // reached 119 fixtures unnoticed.
+    assertLocus(at, "ctx.note");
     try {
       const label = artifactLabel({
-        file,
-        input,
+        artifact: at.artifact,
         mode: sourceCtx.mode,
       });
-      // The note is composed by ~140 call sites out of paths and submission
+      // The note is composed by ~145 call sites out of paths and submission
       // text. Made safe here, once, rather than at each of them - and on the
       // PARTS, so the feed's own colouring downstream is untouched.
       progress(
         formatNote(
-          displayLine(file),
-          loc,
+          // Through displayLine whatever it is: a locus with no file is about the
+          // artifact as a whole and renders as no site at all, which is what displayText
+          // makes of it - skipping the call puts the word "null" on the line.
+          displayLine(at.file),
+          at.loc,
           item == null ? item : displayLine(item),
           verdict,
           label
@@ -1874,14 +1901,6 @@ export async function runChecks(registry, opts = {}, siblings) {
       debug(`feed note skipped: ${err.message}`);
     }
   };
-  // The loop skips any sibling that aliases the source ctx (in an XPI review
-  // siblings.xpi IS the source ctx), which is why source is set explicitly first.
-  sourceCtx.note = makeNote("source");
-  for (const [input, sib] of Object.entries(siblings)) {
-    if (sib && sib !== sourceCtx) {
-      sib.note = makeNote(input);
-    }
-  }
   // Heading for the live activity feed, matching the report's section style. A
   // no-op when progress is off (JSON, the golden harness), so goldens are
   // unaffected.
@@ -1892,6 +1911,9 @@ export async function runChecks(registry, opts = {}, siblings) {
     // made (routeCtx, also asked directly by the routing tests). The check reads
     // only its ctx.artifact and has no way to reach another artifact.
     const checkCtx = routeCtx(check, siblings);
+    // One note for every check: it takes a locus and reads the artifact off it, so there
+    // is nothing per-check to bind it to.
+    checkCtx.note = note;
     const out = await runOneCheck(checkCtx, check, `[${i + 1}/${total}]`);
     findings.push(...out.findings);
     manualItems.push(...out.manualItems);
@@ -1901,9 +1923,9 @@ export async function runChecks(registry, opts = {}, siblings) {
   // Condense the unused-files report: when every packaged file under a folder is unused,
   // collapse it to the top-most such folder. Output-only, after every check has scanned every
   // file. Applied separately to findings and manual escalations so certainty is not mixed. It
-  // is handed a RESOLVER (filesOfRule), not a file list: ctxForRule is the one answer to which
-  // artifact a rule's OUTPUT describes (the same resolution the report's [XPI]/[SCA] label
-  // uses), so nothing here picks an artifact and none can be picked wrongly.
+  // is handed a RESOLVER (filesOfRule), not a file list: ctxForRule is the one answer to
+  // which artifact a rule RAN on, so nothing here picks one and none can be picked wrongly.
+  // It is not where the label comes from - a finding carries what its holder minted.
   const filesOfRule = (ruleId) => [
     ...ctxForRule(registry, ruleId, siblings).artifact.files.keys(),
   ];
@@ -1950,6 +1972,12 @@ export async function runOneCheck(ctx, check, label) {
         ruleId: "check-failed",
         severity: SEVERITY.ERROR,
         item: check.id,
+        // Minted here rather than by the check, which never got far enough to say
+        // anything: the ctx it was handed knows what it was reading, and that is known
+        // whether or not the check produced a thing. On the `both` route there is no
+        // single artifact and the crash belongs to neither, so it names the built XPI -
+        // the one artifact every review has, in both modes.
+        ...(ctx.artifact ?? ctx.xpi).at(),
       })
     );
     return { findings, manualItems };

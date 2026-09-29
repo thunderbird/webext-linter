@@ -106,8 +106,8 @@ export default {
         JUNK.some((re) => re.test(file)) ||
         ARCHIVE_EXTENSIONS.has(extname(file))
       ) {
-        ctx.note?.(file, null, "hidden/junk file", VERDICT.FAIL);
-        findings.push(finding({ file }));
+        ctx.note?.(ctx.artifact.at(file), "hidden/junk file", VERDICT.FAIL);
+        findings.push(finding({ ...ctx.artifact.at(file) }));
         continue;
       }
       if (
@@ -137,18 +137,17 @@ export default {
       const supported = mentions.some((m) => referrerSupported(reach, m.file));
       const orphan = !supported && !reach.hasDynamicLoaders;
       ctx.note?.(
-        file,
-        null,
+        ctx.artifact.at(file),
         loaderTrace(reach, mentions, supported),
         orphan ? VERDICT.FAIL : VERDICT.UNSURE
       );
       if (orphan) {
-        findings.push(finding({ file }));
+        findings.push(finding({ ...ctx.artifact.at(file) }));
         continue;
       }
       // The entry names `file` as its locus; the suspected loader sites reached it
       // and are narrated to the feed above, so the reviewer has where to look.
-      escalations.push({ file });
+      escalations.push({ ...ctx.artifact.at(file) });
     }
 
     return { findings, escalations };

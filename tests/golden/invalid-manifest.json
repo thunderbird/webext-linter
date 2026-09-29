@@ -111,6 +111,7 @@
       "loc": null,
       "item": "version",
       "hint": null,
+      "artifact": "XPI",
       "message": "The included WebExtension manifest file (manifest.json) has one or more required properties missing.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
@@ -122,6 +123,7 @@
       },
       "item": "bogusPermission",
       "hint": null,
+      "artifact": "XPI",
       "message": "The included WebExtension manifest file (manifest.json) requests one or more unknown permissions.\nRead more: https://webextension-api.thunderbird.net/."
     },
     {
@@ -133,6 +135,7 @@
       },
       "item": "weirdTopLevelKey",
       "hint": null,
+      "artifact": "XPI",
       "message": "The included WebExtension manifest file (manifest.json) declares the following unknown top-level keys, which Thunderbird will ignore.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]

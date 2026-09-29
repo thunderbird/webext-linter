@@ -112,6 +112,7 @@
       },
       "item": "messages.oldOne",
       "hint": "Use list() instead.",
+      "artifact": "XPI",
       "message": "The following APIs are deprecated in the targeted Thunderbird version. Please migrate to supported APIs.\nRead more: https://webextension-api.thunderbird.net/."
     }
   ]

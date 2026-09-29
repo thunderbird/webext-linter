@@ -33,6 +33,7 @@
       },
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "The following background page code location(s) load a script that uses ES module syntax (import/export), but the script tag is not declared type=\"module\", so Thunderbird will fail to load the background page. Add type=\"module\" to the script tag."
     }
   ]

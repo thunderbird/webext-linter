@@ -112,6 +112,7 @@
       },
       "item": "messagesRead",
       "hint": null,
+      "artifact": "XPI",
       "message": "The following permissions are required at the locations listed, but are not declared in manifest.json. Add them to the requested permissions."
     }
   ]

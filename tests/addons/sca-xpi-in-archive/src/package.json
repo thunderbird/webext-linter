@@ -1,5 +1,5 @@
 {
-  "name": "sca-not-required",
+  "name": "sca-xpi-in-archive",
   "version": "1.0.0",
   "private": true,
   "dependencies": {}

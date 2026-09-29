@@ -261,13 +261,14 @@ flowchart TB
         same way in both modes, an <code>input: xpi</code> check sees the
         identical artifact whether the run is SCA or XPI.
         <code>--sca-root</code> alone decides the mode, and a source submission is
-        <strong>always</strong> reviewed as one. Whether it NEEDED to be is a
-        separate question, asked by a check rather than by setup:
-        <code>sca-not-required</code> (<code>input: both</code>, the one route
-        carrying two artifacts) warns when the XPI carries vendoring information of
-        its own, or when every file it ships is byte-identical to a file in the
-        archive. Routing on that answer would be a bypass: a committed, unminified
-        <code>dist/</code> in the archive is its own twin under
+        <strong>always</strong> reviewed as one. Whether it is SHAPED like one is a
+        separate question, asked by two checks rather than by setup, both on
+        <code>input: both</code> - the one route carrying two artifacts:
+        <code>sca-xpi-declares-vendoring</code> warns when the XPI carries vendoring
+        information that belongs in the archive, naming the files, and
+        <code>sca-xpi-fully-included-in-archive</code> warns when every file the XPI
+        ships is already in the archive. Routing on either answer would be a bypass: a
+        committed, unminified <code>dist/</code> in the archive is its own twin under
         any content test, so a build could be dressed up as source and shrink its
         own review. In SCA the readable source is
         then analysed on its own in Phase&nbsp;3 (<code>siblings.source</code>);
@@ -542,8 +543,10 @@ flowchart LR
         and a declared <code>input</code> with no sibling (a stray
         <code>input: sca</code> in an XPI review) throws rather than silently
         running on the wrong one. A check reads exactly one artifact and
-        cannot reach another's. What the <code>input</code> resolves to depends
-        on the review mode:
+        cannot reach another's. (A by-hand <code>manual-checks</code> entry runs
+        nothing and reads no artifact, so it declares <code>input: none</code>,
+        which is not one of these routes and has no sibling.) What the
+        <code>input</code> resolves to depends on the review mode:
       </p>
       <table class="phases">
         <thead>
@@ -581,11 +584,16 @@ flowchart LR
         </tbody>
       </table>
       <p>
-        An <code>input</code> is also the artifact a check&rsquo;s output is
-        labelled as -
-        <code>ctxForRule</code> recovers the latter for the report&rsquo;s
-        [XPI]/[SCA] labels and the folder-collapse, once findings come back as a
-        flat list carrying only a rule id.
+        An <code>input</code> says what a check READS. What its findings are ABOUT
+        is answered separately, by whatever holds the file: each <code>Addon</code>
+        carries its own <code>kind</code> and mints loci with <code>at</code>, the
+        shipped manifest.json record does the same with <code>locus</code>, and every
+        finding, escalated case and feed note carries one that a holder minted.
+        Nothing fills it in afterwards &mdash; <code>assertLocus</code> refuses a
+        locus that cannot say which artifact it is in.
+        <code>ctxForRule</code> recovers the sibling a check ran on, for the
+        folder-collapse and for recording which artifact a swept case will be in;
+        both need the artifact itself rather than a label.
       </p>
 
       <h2>The orchestrator</h2>
@@ -639,7 +647,7 @@ title: runChecks()
 ---
 flowchart TB
   IN(["called by runPipeline() · Phase 6 with<br/>registry · opts (only · skip · eslint) · siblings"]) --> LC["loadChecks()<br/>one list per phase section · the --eslint gate drops code-sanity before import (eslintEligible)"]
-  LC --> GATE["select each phase's eligible checks<br/>the sca gate reads ctx.mode; the --eslint gate ran in loadChecks"]
+  LC --> GATE["select each phase's eligible checks<br/>the mode gate reads ctx.mode; the --eslint gate ran in loadChecks"]
   GATE --> QIE{{"ctx.invalidExperiment?"}}
 
   QIE -- yes --> RIE[["run the invalid-experiment-phase"]]

@@ -11,7 +11,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { manifestPathLine, skipWithoutManifest } from "../../lib/util.js";
+import { skipWithoutManifest } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {
@@ -32,18 +32,12 @@ export default {
       if (url == null) {
         continue;
       }
-      const line = manifestPathLine(ctx, key, "gecko", "update_url");
-      const loc = line ? { line } : null;
-      ctx.note?.(
-        "manifest.json",
-        loc,
-        `update_url in ${key}.gecko`,
-        VERDICT.FAIL
-      );
-      findings.push(finding({ file: "manifest.json", loc, item: url }));
+      const at = ctx.manifest.locus(key, "gecko", "update_url");
+      ctx.note?.(at, `update_url in ${key}.gecko`, VERDICT.FAIL);
+      findings.push(finding({ ...at, item: url }));
     }
     if (!findings.length) {
-      ctx.note?.("manifest.json", null, "no update_url", VERDICT.PASS);
+      ctx.note?.(ctx.manifest.locus(), "no update_url", VERDICT.PASS);
     }
     return { findings };
   },

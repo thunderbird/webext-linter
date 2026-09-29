@@ -110,6 +110,7 @@
       "loc": null,
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },
     {
@@ -122,6 +123,7 @@
       },
       "item": "https://cdn.example.com/lib.js",
       "hint": null,
+      "artifact": "XPI",
       "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed."
     },
     {
@@ -134,6 +136,7 @@
       },
       "item": "https://cdn.example.com/fonts.css",
       "hint": null,
+      "artifact": "XPI",
       "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed."
     },
     {
@@ -146,6 +149,7 @@
       },
       "item": "https://cdn.example.com/bg.png",
       "hint": null,
+      "artifact": "XPI",
       "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed."
     },
     {
@@ -155,6 +159,7 @@
       "loc": null,
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "The following file(s) or folder(s) appear to be unused or hidden. Such files complicate the review, may leak information about the system the XPI was built on, or needlessly increase the size of the add-on. Please correct your packaging process so they are not included."
     },
     {
@@ -167,6 +172,7 @@
       },
       "item": "https://cdn.example.com/theme.css",
       "hint": null,
+      "artifact": "XPI",
       "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed."
     }
   ]

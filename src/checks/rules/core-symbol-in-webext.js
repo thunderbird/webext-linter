@@ -35,11 +35,13 @@ export default {
       const { hits } = coreSymbolsOf(src);
       for (const hit of hits) {
         const loc = { line: hit.line, column: hit.column };
-        ctx.note?.(src.file, loc, hit.name, VERDICT.FAIL);
+        ctx.note?.(ctx.artifact.at(src.file, loc), hit.name, VERDICT.FAIL);
         // The registry response carries no {{item}}, so the resolver collapses
         // these into one grouped entry and surfaces `item` (the symbol) on each
         // locus line ("file:line - Services") - see report/responses.js + format.js.
-        out.push(finding({ file: src.file, loc, item: hit.name }));
+        out.push(
+          finding({ ...ctx.artifact.at(src.file, loc), item: hit.name })
+        );
       }
     }
     return { findings: out };

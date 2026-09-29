@@ -24,7 +24,6 @@ import JSON5 from "json5";
 import { debug } from "../util/log.js";
 import { stripBom } from "../util/json.js";
 import { EXPERIMENTS_CACHE } from "../config.js";
-import { manifestTokenLine } from "../lib/util.js";
 import { experimentGroups } from "../lib/experiments.js";
 import { resolveExperimentsZip } from "./fetch.js";
 import { normalizedSha256 } from "../normalize/hash.js";
@@ -134,7 +133,8 @@ function walkDir(root) {
  * @typedef {object} ExperimentGroupStatus
  * @property {string} name  Display name (top-level API namespace, e.g.
  *   "calendar").
- * @property {?number} line  Manifest line of the group's first entry, or null.
+ * @property {?string} key  The experiment_apis key this group was declared under, so a
+ *   reader can ask the manifest.json record where that is. Null when it has none.
  * @property {"pristine"|"modified"|"unsupported"} status
  * @property {string[]} apiPaths  All API paths the group declares (for the
  *   shadowing reason).
@@ -161,7 +161,7 @@ function walkDir(root) {
  * @param {import("../addon/load.js").Addon} addon  The shipped add-on, for the files each
  *   experiment folder is hashed from.
  * @param {?import("../addon/load.js").WebExtManifestRecord} webExtManifestRecord  What it
- *   declares: the experiment_apis entries, and the text a group's line is anchored in.
+ *   declares: the experiment_apis entries, read from the built XPI.
  * @param {VerifyExperimentsOpts} [opts]
  * @returns {Promise<ExperimentVerification>}
  */
@@ -171,10 +171,8 @@ export async function verifyExperiments(
   opts = {}
 ) {
   const manifest = webExtManifestRecord?.json || {};
-  const text = webExtManifestRecord?.text ?? "";
   const groups = experimentGroups(manifest).map((g) => ({
     ...g,
-    line: manifestTokenLine(text, g.entries[0]?.key) ?? null,
     files: g.root ? filesUnder(addon, g.root) : [],
   }));
 
@@ -222,7 +220,10 @@ export async function verifyExperiments(
     trustedFiles,
     groups: groups.map((g) => ({
       name: g.name,
-      line: g.line,
+      // The experiment_apis key this group was declared under, so a check can ask the
+      // record where that is. A LINE here would be a position in a file this module does
+      // not own, travelling as a number nothing can check.
+      key: g.entries[0]?.key ?? null,
       status: g.status,
       apiPaths: g.entries.flatMap((e) => e.apiPaths),
     })),

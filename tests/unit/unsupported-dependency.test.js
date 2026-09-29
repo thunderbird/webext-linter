@@ -5,6 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { withManifest } from "./manifest-ctx.js";
 
 import unsupportedDependency from "../../src/checks/rules/unsupported-dependency.js";
 
@@ -15,13 +16,14 @@ const PKG_JSON = `{
   }
 }`;
 
-const ctxWith = (unsupportedDeps, pkgJson = PKG_JSON) => ({
-  artifact: {
-    files: new Map([["package.json", Buffer.from(pkgJson)]]),
-    vendor: { unsupportedDeps },
-  },
-  note() {},
-});
+const ctxWith = (unsupportedDeps, pkgJson = PKG_JSON) =>
+  withManifest({
+    artifact: {
+      files: new Map([["package.json", Buffer.from(pkgJson)]]),
+      vendor: { unsupportedDeps },
+    },
+    note() {},
+  });
 
 test("reports one finding per dep, anchored at its package.json line", () => {
   const out = unsupportedDependency.run(

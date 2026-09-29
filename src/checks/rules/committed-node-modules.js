@@ -27,8 +27,8 @@ export default {
   run(ctx) {
     const findings = [];
     for (const dir of ctx.artifact.nodeModules) {
-      ctx.note?.(dir, null, "committed node_modules", VERDICT.FAIL);
-      findings.push(finding({ file: dir }));
+      ctx.note?.(ctx.artifact.at(dir), "committed node_modules", VERDICT.FAIL);
+      findings.push(finding({ ...ctx.artifact.at(dir) }));
     }
     return { findings };
   },

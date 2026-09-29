@@ -67,7 +67,8 @@
       "xpi-packaged-symlink",
       "build-lifecycle-hook",
       "undeclared-build-source",
-      "sca-not-required",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",
@@ -126,6 +127,7 @@
       },
       "item": "tiny-obscure-helper (1.0.0)",
       "hint": null,
+      "artifact": "SCA",
       "message": "The following dependencies could not be confirmed to be widely-used. Such dependencies must instead be included non-minified in the source so they can be reviewed directly. A build dependency cannot be included that way. Please replace it with a widely-used equivalent, or remove it from the submitted source archive if it is not strictly needed to reproduce the shipped add-on. Reviewers should only be asked to install tools the wider community has vetted.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     },
     {
@@ -137,6 +139,7 @@
       },
       "item": "tiny-obscure-tool (1.0.0)",
       "hint": null,
+      "artifact": "SCA",
       "message": "The following dependencies could not be confirmed to be widely-used. Such dependencies must instead be included non-minified in the source so they can be reviewed directly. A build dependency cannot be included that way. Please replace it with a widely-used equivalent, or remove it from the submitted source archive if it is not strictly needed to reproduce the shipped add-on. Reviewers should only be asked to install tools the wider community has vetted.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     },
     {
@@ -148,6 +151,7 @@
       },
       "item": "escape (file:../../outside)",
       "hint": null,
+      "artifact": "SCA",
       "message": "The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     },
     {
@@ -159,6 +163,7 @@
       },
       "item": "laundered (https://attacker.example/evil.tgz)",
       "hint": null,
+      "artifact": "SCA",
       "message": "The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]

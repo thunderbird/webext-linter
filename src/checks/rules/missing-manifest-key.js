@@ -16,7 +16,7 @@ export default {
   run(ctx) {
     const { missingManifestKeys, notes } = getPermissionAnalysis(ctx);
     for (const n of notes.manifestKeys) {
-      ctx.note?.(n.file, n.loc, n.item, n.verdict);
+      ctx.note?.(n.at, n.item, n.verdict);
     }
     return { findings: missingManifestKeys };
   },

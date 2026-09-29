@@ -114,6 +114,7 @@
       },
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "Dynamic code execution via \"eval()\" is not allowed."
     },
     {
@@ -126,6 +127,7 @@
       },
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "Dynamic code execution via \"the Function constructor\" is not allowed."
     },
     {
@@ -138,6 +140,7 @@
       },
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "Dynamic code execution via \"a code string passed to setTimeout/setInterval\" is not allowed."
     }
   ]

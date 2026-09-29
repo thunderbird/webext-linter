@@ -25,11 +25,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import {
-  anchorText,
-  manifestTokenLine,
-  utf8ComparisonSigns,
-} from "../../lib/util.js";
+import { anchorText, tokenLine, utf8ComparisonSigns } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -52,11 +48,10 @@ export default {
         text = anchorText(artifact, at);
         textByFile.set(at, text);
       }
-      const line = manifestTokenLine(text, name);
+      const line = tokenLine(text, name);
       const loc = line ? { line } : undefined;
       ctx.note?.(
-        at,
-        loc,
+        ctx.artifact.at(at, loc),
         `${name} ("${spec}") is from an unsupported source`,
         VERDICT.FAIL
       );
@@ -66,8 +61,7 @@ export default {
       // its own doc comment (src/lib/util.js).
       findings.push(
         finding({
-          file: at,
-          loc,
+          ...ctx.artifact.at(at, loc),
           item: utf8ComparisonSigns(`${name} (${spec})`),
         })
       );

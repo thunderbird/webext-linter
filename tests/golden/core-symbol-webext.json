@@ -112,6 +112,7 @@
       },
       "item": "Services",
       "hint": null,
+      "artifact": "XPI",
       "message": "This add-on is using privileged Thunderbird internals in a WebExtension context, where they are not available: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage."
     },
     {
@@ -124,6 +125,7 @@
       },
       "item": "ChromeUtils",
       "hint": null,
+      "artifact": "XPI",
       "message": "This add-on is using privileged Thunderbird internals in a WebExtension context, where they are not available: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage."
     }
   ]

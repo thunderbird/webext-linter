@@ -113,11 +113,11 @@ export default {
       for (const m of messages) {
         const loc = { line: m.line + src.lineOffset, column: m.column };
         const item = `${m.ruleId || "syntax"}: ${m.message}`;
-        out.push(finding({ file: src.file, loc, item }));
-        ctx.note?.(src.file, loc, item, VERDICT.FAIL);
+        out.push(finding({ ...ctx.artifact.at(src.file, loc), item }));
+        ctx.note?.(ctx.artifact.at(src.file, loc), item, VERDICT.FAIL);
       }
       if (!messages.length) {
-        ctx.note?.(src.file, null, "no lint issues", VERDICT.PASS);
+        ctx.note?.(ctx.artifact.at(src.file), "no lint issues", VERDICT.PASS);
       }
     }
     return { findings: out };

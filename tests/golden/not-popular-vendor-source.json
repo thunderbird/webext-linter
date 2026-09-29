@@ -109,6 +109,7 @@
       "loc": null,
       "item": "lib/widget.min.js",
       "hint": "https://unpkg.com/widget@1.2.3/dist/widget.min.js",
+      "artifact": "XPI",
       "message": "The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies, and they are minified or otherwise machine-generated, so they cannot be reviewed in this form. Vendor the library's readable build instead. It is then reviewed as authored code, so a finding may be reported against library code.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
     }
   ]

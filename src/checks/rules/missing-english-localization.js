@@ -63,21 +63,19 @@ export default {
     const english = [...localeDirs].find((d) => isEnglishLocale(d));
     if (english) {
       ctx.note?.(
-        "manifest.json",
-        null,
+        ctx.manifest.locus(),
         `English locale present (_locales/${english})`,
         VERDICT.PASS
       );
       return { findings: [], escalations: [] };
     }
     ctx.note?.(
-      "manifest.json",
-      null,
+      ctx.manifest.locus(),
       "_locales has no English directory",
       VERDICT.FAIL
     );
     return {
-      findings: [finding({ file: "manifest.json" })],
+      findings: [finding({ ...ctx.manifest.locus() })],
       escalations: [],
     };
   },
@@ -99,8 +97,7 @@ function detectHardcodedLanguage(ctx, artifact) {
    * @param {import("../../lib/enum.js").Verdict} verdict  The note verdict.
    * @returns {void}
    */
-  const note = (msg, verdict) =>
-    ctx.note?.("manifest.json", null, msg, verdict);
+  const note = (msg, verdict) => ctx.note?.(ctx.manifest.locus(), msg, verdict);
   if (!text) {
     note("no user-facing text to localize", VERDICT.PASS);
     return { findings: [], escalations: [] };
@@ -113,7 +110,10 @@ function detectHardcodedLanguage(ctx, artifact) {
   // Too little text, or franc cannot tell - a human decides (manual review).
   if (text.length < MIN_CONFIDENT || topLang === "und") {
     note("too little user-facing text to detect a language", VERDICT.UNSURE);
-    return { findings: [], escalations: [{ file: "manifest.json" }] };
+    return {
+      findings: [],
+      escalations: [ctx.manifest.locus()],
+    };
   }
   if (topLang === "eng") {
     note("user-facing text is English", VERDICT.PASS);
@@ -127,11 +127,14 @@ function detectHardcodedLanguage(ctx, artifact) {
     );
     // Anchored to manifest.json, matching the confident finding below, so both
     // outcomes point the reviewer at the same place.
-    return { findings: [], escalations: [{ file: "manifest.json" }] };
+    return {
+      findings: [],
+      escalations: [ctx.manifest.locus()],
+    };
   }
   note(`non-English user-facing text (${topLang})`, VERDICT.FAIL);
   return {
-    findings: [finding({ file: "manifest.json" })],
+    findings: [finding({ ...ctx.manifest.locus() })],
     escalations: [],
   };
 }

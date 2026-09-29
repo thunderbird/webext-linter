@@ -55,8 +55,7 @@ import { finding } from "../report/finding.js";
 import {
   asArray,
   isMatchPattern,
-  manifestPathLine,
-  manifestTokenLine,
+  tokenLine,
   versionInBounds,
   wholeWordRe,
 } from "./util.js";
@@ -73,9 +72,12 @@ const MANIFEST_PREFIX = "manifest:";
 const GATED_KINDS = new Set(["function", "event", "property", "namespace"]);
 
 /**
- * @typedef {{file: string, loc: ?{line: number, column: number}, item: string,
- *   verdict: import("./enum.js").Verdict}} PermNote  A feed-activity record
- *   (emitted by the owning rule, so each appears once under the right check group).
+ * @typedef {{at: {file: ?string, loc: ?object, artifact: string}, item: string,
+ *   verdict: import("./enum.js").Verdict}} PermNote  A feed-activity record, emitted by
+ *   the owning rule so each appears once under the right check group. `at` is the locus
+ *   its holder minted, which is what ctx.note takes - ONE shape, whichever artifact it
+ *   points into: a permission a manifest KEY needs is in the shipped manifest.json, a
+ *   different artifact from the code that was read, and the locus says so itself.
  */
 
 /**
@@ -155,14 +157,16 @@ function analyzePermissions(ctx) {
       usedPermissions.add(perm);
       const declaredHere = declared.named.has(perm);
       requirements.push({
-        file,
-        loc,
+        // The code that was read is in the artifact this check was routed to.
+        at: ctx.artifact.at(file, loc),
         item: `${res.namespace}.${member} needs '${perm}'`,
         verdict: declaredHere ? VERDICT.PASS : VERDICT.FAIL,
       });
       if (!declaredHere && !missingReported.has(perm)) {
         missingReported.add(perm);
-        missingPermissions.push(finding({ file, loc, item: perm }));
+        missingPermissions.push(
+          finding({ ...ctx.artifact.at(file, loc), item: perm })
+        );
       }
     }
   }
@@ -187,8 +191,12 @@ function analyzePermissions(ctx) {
     if (!manifestKeys.has(key)) {
       continue;
     }
-    const line = manifestPathLine(ctx, key);
-    const loc = line ? { line } : null;
+    // Minted by the MANIFEST, not by the artifact this check was routed to. The API call
+    // above is in the code under review; a permission a manifest KEY needs is in the
+    // shipped manifest.json - so in a source review one check reports into two artifacts,
+    // and each locus has to say which. Nothing else can: the route describes what a check
+    // READS, and this is about where it reports.
+    const at = ctx.manifest.locus(key);
     for (const entry of entries) {
       if (
         !versionInBounds(
@@ -203,16 +211,15 @@ function analyzePermissions(ctx) {
         usedPermissions.add(perm);
         const declaredHere = declared.named.has(perm);
         requirements.push({
-          file: "manifest.json",
-          loc,
+          // The shipped manifest.json, whatever artifact this check was routed to - in
+          // the note exactly as in the finding below.
+          at,
           item: `manifest key "${key}" needs '${perm}'`,
           verdict: declaredHere ? VERDICT.PASS : VERDICT.FAIL,
         });
         if (!declaredHere && !missingReported.has(perm)) {
           missingReported.add(perm);
-          missingPermissions.push(
-            finding({ file: "manifest.json", loc, item: perm })
-          );
+          missingPermissions.push(finding({ ...at, item: perm }));
         }
       }
     }
@@ -232,8 +239,7 @@ function analyzePermissions(ctx) {
     const satisfied = altsToCheck.some((k) => manifestKeys.has(topLevel(k)));
     const alts = altsToCheck.join('", "');
     manifestKeyNotes.push({
-      file: rec.file,
-      loc: rec.loc,
+      at: ctx.artifact.at(rec.file, rec.loc),
       item: `${rec.example} needs manifest key "${alts}"`,
       verdict: satisfied ? VERDICT.PASS : VERDICT.FAIL,
     });
@@ -243,8 +249,7 @@ function analyzePermissions(ctx) {
         // so every API missing a key shares one message and they collapse into a
         // single entry listing "<api> - <keys>" per line.
         finding({
-          file: rec.file,
-          loc: rec.loc,
+          ...ctx.artifact.at(rec.file, rec.loc),
           item: rec.example,
           hint: `"${alts}"`,
         })
@@ -395,12 +400,14 @@ export function enumerateUnusedPermissions(ctx, prompts) {
         return;
       }
       seen.add(p);
-      const line = manifestPathLine(ctx, key, i);
-      const loc = line ? { line } : null;
+      // The declaration itself, from the record that holds it - the same way the
+      // manifest-key requirements above are located, rather than a line looked up here
+      // and a file named by hand.
+      const at = ctx.manifest.locus(key, i);
       if (used.has(p)) {
         // A reachable call provably requires it, so it is justified - not a manual
         // case. Every other declared permission is judged below.
-        ctx.note?.("manifest.json", loc, p, VERDICT.PASS);
+        ctx.note?.(at, p, VERDICT.PASS);
         return;
       }
       // Deterministically unused: the permission's prompt entries name its
@@ -410,16 +417,20 @@ export function enumerateUnusedPermissions(ctx, prompts) {
       const tokens = tokensFor.get(p);
       const occurrences = permissionOccurrences(p, tokens, located);
       if (decidable && tokens?.length && !occurrences.length) {
-        ctx.note?.("manifest.json", loc, p, VERDICT.FAIL);
-        findings.push(finding({ item: p, file: "manifest.json", loc }));
+        ctx.note?.(at, p, VERDICT.FAIL);
+        findings.push(finding({ ...at, item: p }));
         return;
       }
       // Everything else escalates (a token was found, the entry declares no tokens,
       // the scan was not decidable, or the permission has no prompt entry). The token
       // sites ride along on the escalation, empty for a token-less permission or when
       // no token is visible.
-      ctx.note?.("manifest.json", loc, p, VERDICT.UNSURE);
-      escalations.push({ item: p, file: "manifest.json", loc, occurrences });
+      ctx.note?.(at, p, VERDICT.UNSURE);
+      escalations.push({
+        ...at,
+        item: p,
+        occurrences,
+      });
     });
   }
   return { findings, escalations };
@@ -477,7 +488,7 @@ function permissionTokens(manifest, prompts) {
  * token in its comments only over-includes an occurrence, the safe direction).
  * String literals deliberately count (dynamic access spells the token in a string).
  * The manifest.json is also searched as JSON (no comments there) and a manifest.json occurrence
- * is located via manifestTokenLine - though the script-injection manifest.json keys
+ * is located via tokenLine - though the script-injection manifest.json keys
  * (compose_scripts / message_display_scripts) are NOT tokens: they ground their
  * permission deterministically (analyzePermissions), so they never escalate.
  *
@@ -522,7 +533,7 @@ function locateTokens(ctx, tokens) {
       if (re.test(manifestJson)) {
         located.get(t).push({
           file: "manifest.json",
-          line: manifestTokenLine(ctx.manifest?.text, t),
+          line: tokenLine(ctx.manifest?.text, t),
         });
       }
     }

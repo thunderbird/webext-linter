@@ -16,9 +16,15 @@
 // frame: every view is keyed against the submission, which is the only frame that can name
 // all of it.
 //
+// Loading is also where an artifact is NAMED: each entry point says which kind it built
+// (`kind`), and the Addon mints loci in itself (`at`). Here because the loader is the only
+// place that knows without being told - after this an Addon is a bag of files, and every
+// reader that needed the answer would be inferring it from how it got there.
+//
 // Belongs here: walking either artifact into the Addon model, extracting a packed one to disk
-// first, the SCA partition above, reading one artifact's manifest.json into the record every
-// reader shares, the Manifest and WebExtManifestRecord typedefs, and the load-time path guards.
+// first, the SCA partition above, naming the artifact and minting loci in it, reading one
+// artifact's manifest.json into the record every reader shares, the Manifest and
+// WebExtManifestRecord typedefs, and the load-time path guards.
 //
 // Does NOT belong here: reviewing the add-on - all verdicts live in the checks
 // (src/checks/*). Which of the build candidates the build actually RUNS is a
@@ -28,6 +34,8 @@
 // src/schema/load.js. Choosing a non-colliding destination is
 // src/util/dest.js, shared with the SCA source archive.
 
+import { ARTIFACT_SCA, ARTIFACT_XPI, isArtifact } from "../lib/artifacts.js";
+import { wiringError } from "../lib/errors.js";
 import fs from "node:fs";
 import path from "node:path";
 import AdmZip from "adm-zip";
@@ -112,23 +120,45 @@ import { rethrowIfFatal } from "../lib/errors.js";
  * same bytes, as one value. A record or nothing, so an artifact with no manifest.json answer says
  * so once - parallel fields could disagree, and an empty one reads as an answer.
  * @typedef {object} WebExtManifestRecord
- * @property {?Manifest} json  Parsed; null when the text would not parse.
+ * @property {boolean} present  Whether the artifact ships a manifest.json at all. The ONE
+ *   field that tells absent from unparsable, which `json` cannot: it is null for both, and
+ *   the two are different findings (manifest-missing, manifest-invalid-json) owed different
+ *   words.
+ * @property {?Manifest} json  Parsed; null when the text would not parse, and null when
+ *   there was no text.
  * @property {string} text  The raw bytes as text, kept so a reader locating a token in the
  *   source does not re-read and re-parse the file.
  * @property {?string} error  The parse error message; null when `json` is the answer.
  * @property {?import("./manifest-loc.js").ManifestLoc} loc  Resolves a JSON path in manifest.json to
  *   its source line.
+ * @property {(...path: (string|number)[]) => {file: string, loc: ?object,
+ *   artifact: string}} locus  WHERE in this manifest.json, by the JSON path of the value
+ *   it is about, and the only way to point into it - an Addon refuses to mint one. Always
+ *   the XPI's, the shipped declaration being read off the built package, so a check
+ *   reporting against a manifest value says where it is even when the code it read is in
+ *   the other artifact, which no route can describe.
  */
 
 /**
  * An Addon is the CONTENT of one loaded artifact and carries no path of its own. Where it
  * came from is the caller's: the options named it, and the review's `meta` records it
  * (src/pipeline.js). Nothing here resolves a path, derives a lookup from one, or reads it
- * back - the checks cannot even see one (the ctx allowlist, src/checks/context.js) - so a
- * path stapled on at load could only drift from the one the run was given. It also has no
+ * back - a check is handed no path at all (src/checks/context.js projectCtx builds the
+ * whole ctx, and none of its fields is one) - so a path stapled on at load could only
+ * drift from the one the run was given. It also has no
  * honest value for a source review, whose files are a SUBTREE of an archive: no single path
  * names that, and for a zip root none exists.
  * @typedef {object} Addon
+ * @property {string} kind  WHICH artifact this is - the built XPI, or the submitted
+ *   source code archive (src/lib/artifacts.js). Set where it is loaded, because the
+ *   loader is the only place that knows without being told, and required there. It
+ *   reaches a finding through `at` below rather than being read off this field.
+ * @property {(file?: ?string, loc?: ?object) => object} at  Mint a locus IN this artifact:
+ *   `{file, loc, artifact}`. Every finding, escalated case and feed note carries one, so
+ *   a check calls this for each - nothing fills the artifact in afterwards. With no file
+ *   the locus is the ARTIFACT, which is what a claim about the package rather than about
+ *   something in it points at. Refuses manifest.json: that one belongs to the record
+ *   (locusMinter says why).
  * @property {FileView} files  The artifact's own files - what its review READS -
  *   keyed by a path relative to the SUBMISSION root (posix "/"). One frame for every part,
  *   because a file beside the add-on has no add-on-relative spelling and a key set written there
@@ -140,9 +170,10 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *
  *   A manifest.json is a file the submission contains and is held here like any other.
  *   It is not an ANSWER: what the add-on's manifest.json says is ctx.manifest, the shipped
- *   record (src/checks/context.js), which is null in SCA because a source archive is loaded
- *   without reading one (loadSourceArchive). So a check asks ctx.manifest and never the
- *   files, in either mode.
+ *   record every ctx carries (src/checks/context.js), read off the built XPI in either
+ *   review - a source archive is loaded without reading one (loadSourceArchive), because
+ *   its root manifest.json is a pre-build template. So a check asks ctx.manifest and never
+ *   the files, in either mode.
  * @property {FileStore} [store]  Everything the artifact holds - what the submission CONTAINS -
  *   keyed relative to the root the reviewer was given: everything it holds, exactly as it
  *   arrived, and the FileStore every view resolves its bytes through (./store.js). For a
@@ -197,17 +228,33 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   ignored if it is already a directory. Defaults to a fresh `<source>.extracted`
  *   (src/util/dest.js) when omitted - callers that care where it landed (the
  *   review, so it can hand the same folder to a reviewer) pass their own.
- * @param {{recordInstalledTrees?: boolean}} [options]  Off by default, and describing a
- *   submitted SOURCE ARCHIVE - which asks for it by name, through loadSourceArchive below.
+ * @param {{kind: string, recordInstalledTrees?: boolean}} options
+ *   `kind` says WHICH artifact is being loaded (src/lib/artifacts.js). REQUIRED, and not
+ *   defaulted: the loader is the one place that knows without being told, and an Addon that
+ *   cannot say what it is silently un-labels every finding reported against it. The two
+ *   production callers are the two answers - the pipeline's XPI, and loadSourceArchive's
+ *   source archive below.
  *
- *   `recordInstalledTrees` makes a node_modules directory a RECORDED path instead of
+ *   `recordInstalledTrees` is off by default and describes a submitted SOURCE ARCHIVE,
+ *   which asks for it by name. It makes a node_modules directory a RECORDED path instead of
  *   content: its paths land in `nodeModules` and not one of its files is read. An installed
  *   tree is not part of a submission - the reviewer installs it - so reading it would review
  *   bytes the build replaces. In an ADD-ON, which is what users receive, a folder called
  *   node_modules is shipped content like any other folder and is loaded and reviewed as one.
  * @returns {Addon}
  */
-export function loadAddon(source, extractTo, { recordInstalledTrees } = {}) {
+export function loadAddon(
+  source,
+  extractTo,
+  { recordInstalledTrees, kind } = {}
+) {
+  if (!isArtifact(kind)) {
+    throw new Error(
+      `loadAddon: kind must be "${ARTIFACT_XPI}" or "${ARTIFACT_SCA}", got ` +
+        `${JSON.stringify(kind)} - an artifact says which one it is, and nothing ` +
+        "downstream can work it out afterwards."
+    );
+  }
   const resolved = path.resolve(source);
   if (!fs.existsSync(resolved)) {
     throw new Error(`Add-on not found: ${resolved}`);
@@ -239,6 +286,13 @@ export function loadAddon(source, extractTo, { recordInstalledTrees } = {}) {
   // reader of `files` never has to know which kind produced it. A SOURCE archive narrows
   // the same field later (scaViews).
   return {
+    // WHICH artifact this is, said by the thing that IS it - rather than worked back out
+    // from the route it was reached by and the mode the review is in.
+    kind,
+    // Mint a locus IN this artifact. Every finding, escalated case and feed note carries
+    // one, so a check calls this for each: the holder answers, and neither the report nor
+    // the agent has to work out which artifact a path is in.
+    at: locusMinter(kind),
     files: fileView(store, { keys: store.keys() }),
     store,
     nodeModules,
@@ -263,10 +317,15 @@ export function loadAddon(source, extractTo, { recordInstalledTrees } = {}) {
  * @returns {Addon}
  */
 export function loadSourceArchive(source) {
-  return loadAddon(source, undefined, { recordInstalledTrees: true });
+  return loadAddon(source, undefined, {
+    recordInstalledTrees: true,
+    kind: ARTIFACT_SCA,
+  });
 }
 
 // The add-on's own manifest, by name - recognized at any depth.
+/** The one filename a WebExtension manifest has. Module-private: the record mints its own
+ *  loci (`at` below), so nothing outside has to spell the name to point into it. */
 const MANIFEST_NAME = "manifest.json";
 
 /**
@@ -278,33 +337,95 @@ const MANIFEST_NAME = "manifest.json";
  * add-on root may sit anywhere under the submission, and which a submission need not hold at
  * all. The store is left alone either way: reading a file is not a reason to take it away.
  *
- * Unparsable is still a record: `error` is what the review reports and `text` is what a
- * token search anchors it in, while `loc` answers null to everything (buildManifestLoc gets
- * no tree out of text JSON5 alone will take). Only an ABSENT manifest.json is nothing.
+ * ALWAYS a record, absent manifest.json or not: a reader asking what the add-on declares
+ * gets the same shape either way, and says which case it is by reading `present`. Unparsable
+ * is a record too - `error` is what the review reports and `text` is what a token search
+ * anchors it in, while `loc` answers null to everything (buildManifestLoc gets no tree out
+ * of text JSON5 alone will take).
  * @param {FileStore} store  The artifact's store, to read it from.
- * @returns {?WebExtManifestRecord}
+ * @returns {WebExtManifestRecord}
  */
 export function readWebExtManifest(store) {
   const manifestBuf = store.get(MANIFEST_NAME);
-  if (!manifestBuf) {
-    return null;
-  }
-  const raw = manifestBuf.toString("utf8");
-  const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+  return manifestRecord(manifestBuf ? manifestBuf.toString("utf8") : null);
+}
+
+/**
+ * The record itself, from the raw bytes. Separate from the read so the shape has ONE
+ * owner: a second hand-built copy of it is a copy that goes out of step the next time it
+ * gains a field, which is how a locus once reached a reader with no artifact on it.
+ * @param {?string} raw  The manifest.json bytes as text, BOM and all, or null when the
+ *   artifact ships none - which is a record like any other, saying so with `present`.
+ * @returns {WebExtManifestRecord}
+ */
+export function manifestRecord(raw) {
+  const present = raw !== null;
+  const bytes = present ? raw : "";
+  const text = bytes.charCodeAt(0) === 0xfeff ? bytes.slice(1) : bytes;
   const record = {
+    present,
     json: null,
     // The bytes AS SUBMITTED, BOM and all - what a finding quotes is the file the developer
-    // sent. The parse and the line index take the stripped copy, which neither can read past.
-    text: raw,
+    // sent, and the empty string where there is no file to quote. The parse and the line
+    // index take the stripped copy, which neither can read past.
+    text: bytes,
     error: null,
     loc: buildManifestLoc(text),
+    // WHERE in the shipped manifest.json, by the JSON path of the value it is about - and
+    // the ONLY way to point into it. Not `at`, which is an artifact's question ("which
+    // file, in me"); this one answers "where inside the one file I am", so it names the
+    // file itself and no caller spells it.
+    //
+    // ALWAYS the XPI's: the record is the shipped declaration, read once off the built
+    // package (the read above says why a source archive is never asked), so there is no
+    // second answer to take as an argument. That is what lets a check reporting against a
+    // manifest value say where it is even when the code it read is in the other artifact -
+    // the case no route can describe (missing-permission: an API call in the source, the
+    // declaration it needs in the shipped manifest.json).
+    locus(...jsonPath) {
+      const line = record.loc?.lineAt(jsonPath) ?? null;
+      return {
+        file: MANIFEST_NAME,
+        loc: line ? { line } : null,
+        artifact: ARTIFACT_XPI,
+      };
+    },
   };
-  try {
-    record.json = JSON5.parse(text);
-  } catch (err) {
-    record.error = err.message;
+  if (present) {
+    try {
+      record.json = JSON5.parse(text);
+    } catch (err) {
+      record.error = err.message;
+    }
   }
   return record;
+}
+
+/**
+ * The `at` an artifact of this kind mints with - built here, and by the test helper that
+ * stands in for a loaded artifact, so a fixture cannot be more permissive than the real
+ * thing.
+ *
+ * It refuses the shipped manifest.json. That file is the one whose authoritative copy is
+ * fixed regardless of route - always the built XPI's - while a source archive holds a file
+ * of the same name that is a DIFFERENT file, a pre-build template. A path spelled here
+ * would therefore mean one or the other depending on which route the check happened to be
+ * on, which is what every version of this bug has been. The record has one answer, so the
+ * record is asked.
+ * @param {string} kind  Which artifact is minting (src/lib/artifacts.js).
+ * @returns {(file?: ?string, loc?: ?object) => object}
+ */
+export function locusMinter(kind) {
+  return (file = null, loc = null) => {
+    if (file === MANIFEST_NAME) {
+      throw wiringError(
+        `an artifact was asked to mint a locus in "${MANIFEST_NAME}" - the shipped ` +
+          "declaration is the record's to point into, whatever artifact you are on: " +
+          "ctx.manifest.locus(...jsonPath)"
+      );
+    }
+    return { file, loc, artifact: kind };
+  };
 }
 
 /**
@@ -405,7 +526,7 @@ export function hasParentSegment(value) {
  * A manifest.json here is a file like any other. The archive is loaded without reading one
  * into a record (loadSourceArchive), because a pre-build template is not what Thunderbird
  * loads - so the question "what does the add-on's manifest.json say" has exactly one answer,
- * the built XPI's, exposed as ctx.manifest (src/checks/context.js), and it is null in SCA.
+ * the built XPI's, which every ctx carries as ctx.manifest (src/checks/context.js).
  * Withholding the FILE would say instead that the submission does not contain it.
  *
  * The source and the experiment are keyed alike whenever the Experiment sits inside the

@@ -1,5 +1,5 @@
 {
-  "_comment": "The build installs dependencies (a `build` script and two ranged devDependencies) but no lock file is committed, so `npm ci` would refuse and the source cannot be shown to produce the shipped XPI: sca-lock-file-missing rejects it. That check names review-early-exit, so this golden is also where the halt is observable end to end - the ask sections are withheld and the report closes with the new reason. The shipped background.js is packed so the archive is not redundant (sca-not-required stays silent). Decided offline, no fetch.",
+  "_comment": "The build installs dependencies (a `build` script and two ranged devDependencies) but no lock file is committed, so `npm ci` would refuse and the source cannot be shown to produce the shipped XPI: sca-lock-file-missing rejects it. That check names review-early-exit, so this golden is also where the halt is observable end to end - the ask sections are withheld and the report closes with the new reason. The shipped background.js is packed so the archive does not hold it (sca-xpi-fully-included-in-archive stays silent). Decided offline, no fetch.",
   "expect": {
     "sca-lock-file-missing": ["package.json"]
   }

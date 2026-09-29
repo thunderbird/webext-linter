@@ -5,6 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { withManifest } from "./manifest-ctx.js";
 import { createHash } from "node:crypto";
 import AdmZip from "adm-zip";
 
@@ -310,7 +311,7 @@ test("missing-vendor-file: one warning per missing entry, listing the path", () 
       },
     },
   };
-  const out = missingVendorFile.run(ctx).findings;
+  const out = missingVendorFile.run(withManifest(ctx)).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "lib/gone.js");
   assert.equal(out[0].item, "VENDORS.md");
@@ -319,7 +320,7 @@ test("missing-vendor-file: one warning per missing entry, listing the path", () 
 // Nothing declared missing is silence, not an empty finding.
 test("missing-vendor-file: says nothing when every declared file is shipped", () => {
   const ctx = { artifact: { files: new Map(), vendor: { missing: [] } } };
-  assert.deepEqual(missingVendorFile.run(ctx).findings, []);
+  assert.deepEqual(missingVendorFile.run(withManifest(ctx)).findings, []);
 });
 
 // ---- verifyScaDependencies (SCA mode dependency audit) ----
@@ -623,7 +624,7 @@ test("verifyVendor: a folder verifies each file against the repo archive subpath
   // the modified file becomes a vendor-modified finding
   assert.ok(
     vendorModified
-      .run({ artifact: addon })
+      .run(withManifest({ artifact: addon }))
       .findings.some((f) => f.file === "vendor/lib/b.js")
   );
 });
@@ -1341,7 +1342,7 @@ test("vendor-vulnerable: a recorded vulnerability becomes a finding at the packa
       }),
     },
   };
-  const out = vendorVulnerable.run(ctx).findings;
+  const out = vendorVulnerable.run(withManifest(ctx)).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "package.json");
   assert.equal(out[0].loc.line, 3);
@@ -1379,7 +1380,7 @@ test("vendor-vulnerable: maps the OSV band to the finding severity", () => {
         }),
       },
     };
-    const out = vendorVulnerable.run(ctx).findings;
+    const out = vendorVulnerable.run(withManifest(ctx)).findings;
     assert.equal(out.length, 1); // reported, never dropped
     return out[0].severity;
   };
@@ -1395,7 +1396,7 @@ test("vendor-vulnerable: no recorded vulnerabilities -> no findings", () => {
   const ctx = {
     artifact: { files: new Map(), vendor: store() },
   };
-  assert.deepEqual(vendorVulnerable.run(ctx).findings, []);
+  assert.deepEqual(vendorVulnerable.run(withManifest(ctx)).findings, []);
 });
 
 // vendor-vuln-unknown is a pure reader of vendor.unaudited (verify.js does
@@ -1415,7 +1416,7 @@ test("vendor-vuln-unknown: one info per unaudited entry, at its VENDOR source li
       }),
     },
   };
-  const out = vendorVulnUnknown.run(ctx).findings;
+  const out = vendorVulnUnknown.run(withManifest(ctx)).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].item, ghUrl); // the source URL surfaces on the locus line
   assert.equal(out[0].file, "VENDOR.md");
@@ -1424,7 +1425,7 @@ test("vendor-vuln-unknown: one info per unaudited entry, at its VENDOR source li
 
 test("vendor-vuln-unknown: no unaudited entries -> no findings", () => {
   const ctx = { artifact: { files: new Map(), vendor: store() } };
-  assert.deepEqual(vendorVulnUnknown.run(ctx).findings, []);
+  assert.deepEqual(vendorVulnUnknown.run(withManifest(ctx)).findings, []);
 });
 
 // A range resolves through the lock beside it, so the two ways that fails are two checks
@@ -1442,7 +1443,9 @@ test("the two ranged-dependency checks read their own list, anchored in package.
   const dep = [{ name: "lodash", spec: "^4.17.21" }];
 
   // No lock committed at all.
-  const missing = xpiLockFileMissing.run(ctxWith({ unlocked: dep })).findings;
+  const missing = xpiLockFileMissing.run(
+    withManifest(ctxWith({ unlocked: dep }))
+  ).findings;
   assert.equal(missing.length, 1);
   assert.equal(missing[0].file, "package.json");
   assert.equal(missing[0].loc.line, 3);
@@ -1450,18 +1453,20 @@ test("the two ranged-dependency checks read their own list, anchored in package.
   assert.equal(missing[0].item, "lodash (^4.17.21)");
 
   // A lock, and it resolves nothing for the name.
-  const invalid = xpiLockFileInvalid.run(ctxWith({ unpinned: dep })).findings;
+  const invalid = xpiLockFileInvalid.run(
+    withManifest(ctxWith({ unpinned: dep }))
+  ).findings;
   assert.equal(invalid.length, 1);
   assert.equal(invalid[0].loc.line, 3);
   assert.equal(invalid[0].item, "lodash (^4.17.21)");
 
   // Neither reads the other's list.
   assert.deepEqual(
-    xpiLockFileMissing.run(ctxWith({ unpinned: dep })).findings,
+    xpiLockFileMissing.run(withManifest(ctxWith({ unpinned: dep }))).findings,
     []
   );
   assert.deepEqual(
-    xpiLockFileInvalid.run(ctxWith({ unlocked: dep })).findings,
+    xpiLockFileInvalid.run(withManifest(ctxWith({ unlocked: dep }))).findings,
     []
   );
 });
@@ -1478,10 +1483,14 @@ test("both ranged-dependency checks keep a comparison-sign spec readable", () =>
   });
   const dep = [{ name: "lodash", spec: ">=4.17.0 <5.0.0" }];
 
-  const missing = xpiLockFileMissing.run(ctxWith({ unlocked: dep })).findings;
+  const missing = xpiLockFileMissing.run(
+    withManifest(ctxWith({ unlocked: dep }))
+  ).findings;
   assert.equal(missing[0].item, "lodash (≥4.17.0 ＜5.0.0)");
 
-  const invalid = xpiLockFileInvalid.run(ctxWith({ unpinned: dep })).findings;
+  const invalid = xpiLockFileInvalid.run(
+    withManifest(ctxWith({ unpinned: dep }))
+  ).findings;
   assert.equal(invalid[0].item, "lodash (≥4.17.0 ＜5.0.0)");
 });
 
@@ -1498,7 +1507,7 @@ test("unpinned-vendor-source: anchored on the VENDOR line, URL as the hint", () 
       }),
     },
   };
-  const out = unpinnedVendorSource.run(ctx).findings;
+  const out = unpinnedVendorSource.run(withManifest(ctx)).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "VENDOR"); // anchored on the VENDOR declaration
   assert.equal(out[0].loc.line, 2); // the line citing the source
@@ -1517,7 +1526,7 @@ test("vendor-modified: a modified result is a finding; verified passes silently"
       }),
     },
   };
-  const out = vendorModified.run(ctx).findings;
+  const out = vendorModified.run(withManifest(ctx)).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "b.js");
   assert.equal(out[0].item, "b.js");
@@ -1525,19 +1534,26 @@ test("vendor-modified: a modified result is a finding; verified passes silently"
 });
 
 test("vendor-unparseable: an unparsable VENDOR file is an error finding", () => {
-  const out = vendorUnparseable.run({
-    artifact: {
-      files: new Map([["VENDOR", Buffer.from("we bundle stuff, see docs")]]),
-      vendor: store({ unparsedVendor: true, vendorFile: "VENDOR" }),
-    },
-  }).findings;
+  const out = vendorUnparseable.run(
+    withManifest({
+      artifact: {
+        files: new Map([["VENDOR", Buffer.from("we bundle stuff, see docs")]]),
+        vendor: store({ unparsedVendor: true, vendorFile: "VENDOR" }),
+      },
+    })
+  ).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "VENDOR");
   // No finding when the VENDOR parsed (or is absent).
   assert.equal(
-    vendorUnparseable.run({
-      artifact: { files: new Map(), vendor: store({ unparsedVendor: false }) },
-    }).findings.length,
+    vendorUnparseable.run(
+      withManifest({
+        artifact: {
+          files: new Map(),
+          vendor: store({ unparsedVendor: false }),
+        },
+      })
+    ).findings.length,
     0
   );
 });

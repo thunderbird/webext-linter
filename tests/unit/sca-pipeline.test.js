@@ -37,8 +37,8 @@ function tmpDir(files) {
 // web-accessible resource. This is a self-consistent built add-on. background.js ships
 // MINIFIED (first-party, one dense line) so the XPI is not directly reviewable - which is
 // what makes an SCA submission legitimate. An XPI whose first-party code is readable is
-// still reviewed as SCA and merely collects the advisory sca-not-required finding, so
-// these SCA-mode tests ship an unreviewable one.
+// still reviewed as SCA. Minified here also keeps the shipped bytes unlike the archive's,
+// so sca-xpi-fully-included-in-archive stays out of these tests.
 const XPI_FILES = {
   "manifest.json": JSON.stringify({
     manifest_version: 3,
@@ -136,8 +136,9 @@ test("SCA e2e: a flat layout is accepted and fully reviewed", async () => {
 });
 
 // The rendered SCA report labels each finding's file:line by artifact and closes the
-// Issues section with the legend footer - proving runPipeline threads `mode` +
-// `ruleInputs` into the report. An XPI review has neither.
+// Issues section with the legend footer - proving every finding runPipeline produces
+// names the artifact it is about, and that `mode` is threaded into the report. An XPI
+// review has neither.
 test("SCA e2e: the rendered report carries [XPI]/[SCA] labels + the footer", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({
@@ -161,9 +162,26 @@ test("SCA e2e: the rendered report carries [XPI]/[SCA] labels + the footer", asy
       /\[XPI\] = source file in the submitted XPI/,
       "the Issues section closes with the artifact legend"
     );
-    // The pipeline exposes the mode + rule inputs for the report layer.
+    // The pipeline exposes the mode, and every finding carries the artifact it is
+    // about - the fact the label above was rendered from, not re-derived.
     assert.equal(result.mode, REVIEW_MODE.SCA);
-    assert.equal(result.ruleInputs.get("unused-files"), "xpi");
+    // The label above was rendered from a field on the finding, not worked out by the
+    // renderer. The constructor refuses a finding that cannot say where its subject is,
+    // so this pins which artifact each one named rather than that it named any.
+    const stamped = result.findings.map((f) => f.artifact);
+    assert.ok(
+      stamped.every((a) => a === "XPI" || a === "SCA"),
+      "every finding carries one of the two artifacts"
+    );
+    // The [SCA] app.js line above is an ESCALATED case, not a finding, so this also
+    // pins the other half of the stamp: a manual item carries the artifact too, set
+    // where the case was raised (src/checks/escalation.js manualRef).
+    const manual = result.meta.manualReview ?? [];
+    assert.equal(
+      manual.find((m) => m.file === "app.js").artifact,
+      "SCA",
+      "the source case the report labelled [SCA] carries SCA"
+    );
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
   }
@@ -192,12 +210,15 @@ test("SCA e2e: the built XPI's input:xpi findings match a standalone XPI review 
       "the minified XPI keeps the review in SCA mode"
     );
 
-    // The findings from input:xpi rules only (ruleInputs is the static registry map, the same
-    // in both runs). In the standalone XPI review the source IS the XPI, so its input:source
-    // checks also run - filtering to input:xpi isolates the shipped-artifact analysis.
+    // The findings from input:xpi rules only. Asked of the REGISTRY, which answers the
+    // same in both runs - a finding's own `artifact` cannot serve here, because in a
+    // standalone XPI review there is one artifact and every finding carries it. In that
+    // review the source IS the XPI, so its input:source checks also run, and filtering to
+    // the input:xpi route is what isolates the shipped-artifact analysis.
+    const registry = loadRegistry();
     const xpiFindings = (r) =>
       r.findings
-        .filter((f) => r.ruleInputs.get(f.ruleId) === "xpi")
+        .filter((f) => registry.inputFor(f.ruleId) === "xpi")
         .map((f) => `${f.ruleId}|${f.file}|${f.item ?? f.loc ?? ""}`)
         .sort();
 
@@ -1290,9 +1311,9 @@ test("SCA e2e: the add-on's own links are judged by the stricter rule", async ()
 
 // A readable built XPI (no minified/obfuscated first-party code) makes a --sca-root
 // submission a false SCA: the shipped add-on can be reviewed directly, so its source
-// archive adds nothing. The review stays an SCA review and says so with the advisory
-// sca-not-required finding, which asks two further questions of the archive: is it a
-// transpiled source, and does every shipped script have a byte-identical twin in it.
+// archive adds nothing. The review stays an SCA review, and the submission-shape checks
+// say so: sca-xpi-fully-included-in-archive when the archive holds every shipped byte,
+// sca-xpi-declares-vendoring when the XPI ships a declaration that belongs in the archive.
 const READABLE_XPI = {
   "manifest.json": JSON.stringify({
     manifest_version: 3,
@@ -1306,7 +1327,7 @@ const READABLE_XPI = {
 // The two ways a submission says it did not need to be one, end to end. Neither changes the
 // MODE: a source submission is always reviewed as a source submission, and the warning is
 // only ever about the NEXT one.
-test("SCA e2e: shipped bytes already in the archive, or vendoring info in the XPI, warns", async () => {
+test("SCA e2e: the two submission-shape checks fire independently", async () => {
   const xpi = tmpDir(READABLE_XPI);
   const base = {
     "package.json": JSON.stringify({ name: "tr", version: "1.0.0" }),
@@ -1342,14 +1363,18 @@ test("SCA e2e: shipped bytes already in the archive, or vendoring info in the XP
     });
     assert.equal(a.mode, REVIEW_MODE.SCA, "the review is never re-routed");
     assert.ok(
-      has(a.findings, "sca-not-required"),
+      has(a.findings, "sca-xpi-fully-included-in-archive"),
       "every shipped byte is readable in the archive"
+    );
+    assert.ok(
+      !has(a.findings, "sca-xpi-declares-vendoring"),
+      "the declarations are in the ARCHIVE, which is where they belong"
     );
 
     const b = await runPipeline({ addonPath: xpi, scaRoot: built, ...OFFLINE });
     assert.equal(b.mode, REVIEW_MODE.SCA, "still a source review, as always");
     assert.ok(
-      !has(b.findings, "sca-not-required"),
+      !has(b.findings, "sca-xpi-fully-included-in-archive"),
       "a shipped file that was built has no twin, and the archive is needed"
     );
 
@@ -1359,8 +1384,12 @@ test("SCA e2e: shipped bytes already in the archive, or vendoring info in the XP
       ...OFFLINE,
     });
     assert.ok(
-      has(c.findings, "sca-not-required"),
+      has(c.findings, "sca-xpi-declares-vendoring"),
       "vendoring information in the XPI warns on its own"
+    );
+    assert.ok(
+      !has(c.findings, "sca-xpi-fully-included-in-archive"),
+      "its shipped script was built, so the archive does not hold the XPI"
     );
   } finally {
     [xpi, twinned, built, xpiWithDeclaration].forEach((d) =>
@@ -1369,19 +1398,19 @@ test("SCA e2e: shipped bytes already in the archive, or vendoring info in the XP
   }
 });
 
-test("SCA e2e: a readable XPI that IS the source is advised to submit XPI-only, and is still reviewed as SCA", async () => {
+test("SCA e2e: an archive holding the whole XPI is reported, and is still reviewed as SCA", async () => {
   const xpi = tmpDir(READABLE_XPI);
-  // Every shipped script is byte-identical here, so all three questions pass and the advice
-  // fires. The source ALSO carries a fake API in a file the XPI lacks: unknown-api catching it
-  // is what proves the source was reviewed anyway - the advice does not narrow the review.
+  // Every shipped file is byte-identical here, so the archive holds the whole XPI and the
+  // check fires. The source ALSO carries a fake API in a file the XPI lacks: unknown-api
+  // catching it is what proves the source was reviewed anyway - this does not narrow it.
   const src = tmpDir({
     "package.json": JSON.stringify({
       name: "dg",
       version: "1.0.0",
       scripts: { build: "cp -r node_modules/lib dist" },
     }),
-    // The advice only holds for a build that can be RUN, and a source archive owes a lock
-    // whatever its package.json declares - so the advice this test is about needs one here.
+    // A source archive owes a lock whatever its package.json declares - without one this
+    // would report the lock rule instead of the rule the test is about.
     "package-lock.json": JSON.stringify({
       lockfileVersion: 3,
       packages: { "": {} },
@@ -1400,11 +1429,11 @@ test("SCA e2e: a readable XPI that IS the source is advised to submit XPI-only, 
     assert.equal(
       mode,
       REVIEW_MODE.SCA,
-      "the advice never re-routes the review - an SCA submission stays SCA"
+      "this never re-routes the review - an SCA submission stays SCA"
     );
     assert.ok(
-      has(findings, "sca-not-required"),
-      "the redundant source submission is reported"
+      has(findings, "sca-xpi-fully-included-in-archive"),
+      "the archive holding every shipped byte is reported"
     );
     assert.ok(
       hasItem(result.meta, "unknown-api", (m) =>
@@ -1413,25 +1442,28 @@ test("SCA e2e: a readable XPI that IS the source is advised to submit XPI-only, 
       "and the source IS still reviewed - that is the point of not downgrading"
     );
     // Lock the rendered entry: it must explain the cost of the source-archive route,
-    // and it must carry NO locus line - the subject is the submission as a whole, so
-    // naming a file there would be noise.
+    // and it must carry NO locus line - every shipped file is the subject, so naming one
+    // would name the whole XPI.
     const body = formatText(result);
     // Located by the REGISTRY's own text, not by a phrase copied here: the wording is the
     // registry's to change, and a copy of it only ever breaks. What this pins is that the
     // entry renders at all, and that it still presses the case - not how it is worded.
     const advice = loadRegistry()
-      .checkEntry("sca-not-required")
+      .checkEntry("sca-xpi-fully-included-in-archive")
       .response.trim();
+    // The response is more than one line (it ends in a Read more:), and each of its lines
+    // renders as one, so the locus would sit after the LAST of them.
+    const adviceLines = advice.split("\n");
     assert.match(
       advice,
       /longer/i,
       "the advice presses the case: the source-archive route costs time"
     );
     const lines = body.split("\n");
-    const entry = lines.findIndex((l) => l.includes(advice));
-    assert.ok(entry >= 0, "the sca-not-required entry is rendered");
+    const entry = lines.findIndex((l) => l.includes(adviceLines[0]));
+    assert.ok(entry >= 0, "the entry is rendered");
     assert.equal(
-      lines[entry + 1].trim(),
+      lines[entry + adviceLines.length].trim(),
       "",
       "the entry is followed by a blank line, not a locus"
     );
@@ -1455,7 +1487,7 @@ test("SCA e2e: a minified-XPI submission stays in SCA mode (a legitimate SCA)", 
       "a minified XPI keeps the source-code-archive review"
     );
     assert.ok(
-      !has(findings, "sca-not-required"),
+      !has(findings, "sca-xpi-fully-included-in-archive"),
       "no XPI-only advice for a legitimate SCA"
     );
   } finally {

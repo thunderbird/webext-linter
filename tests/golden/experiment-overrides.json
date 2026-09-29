@@ -107,11 +107,11 @@
       "severity": "error",
       "file": "manifest.json",
       "loc": {
-        "line": 7,
-        "column": 0
+        "line": 7
       },
       "item": "messages.evil",
       "hint": null,
+      "artifact": "XPI",
       "message": "The following Experiment API(s) override or extend a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under new, distinct API namespaces."
     },
     {
@@ -119,11 +119,11 @@
       "severity": "error",
       "file": "manifest.json",
       "loc": {
-        "line": 7,
-        "column": 0
+        "line": 7
       },
       "item": "messages.sneaky",
       "hint": null,
+      "artifact": "XPI",
       "message": "The following Experiment API(s) override or extend a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under new, distinct API namespaces."
     }
   ]

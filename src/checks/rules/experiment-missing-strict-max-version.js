@@ -35,25 +35,23 @@ export default {
       return skipWithoutManifest(ctx);
     }
     if (!isExperiment(m)) {
-      ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
+      ctx.note?.(ctx.manifest.locus(), "not an Experiment", VERDICT.SKIPPED);
       return { findings: [] };
     }
     const max = strictMaxVersion(m);
     if (max != null) {
       ctx.note?.(
-        "manifest.json",
-        null,
+        ctx.manifest.locus(),
         `Experiment pins strict_max_version ${max}`,
         VERDICT.PASS
       );
       return { findings: [] };
     }
     ctx.note?.(
-      "manifest.json",
-      null,
+      ctx.manifest.locus(),
       "Experiment lacks strict_max_version",
       VERDICT.FAIL
     );
-    return { findings: [finding({ file: "manifest.json" })] };
+    return { findings: [finding({ ...ctx.manifest.locus() })] };
   },
 };

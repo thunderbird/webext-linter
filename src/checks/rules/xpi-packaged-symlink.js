@@ -42,8 +42,8 @@ export default {
     const findings = [];
     for (const link of ctx.artifact.symlinks) {
       const hint = HINTS.get(link.cause) ?? "symbolic link";
-      ctx.note?.(link.path, null, hint, VERDICT.FAIL);
-      findings.push(finding({ file: link.path, hint }));
+      ctx.note?.(ctx.artifact.at(link.path), hint, VERDICT.FAIL);
+      findings.push(finding({ ...ctx.artifact.at(link.path), hint }));
     }
     return { findings };
   },

@@ -111,6 +111,7 @@
       },
       "item": "lib/widget.min.js",
       "hint": "https://unpkg.com/widget/dist/widget.min.js",
+      "artifact": "XPI",
       "message": "The following vendored file(s) cite a source that is not pinned to an immutable version. Each is linked to a branch or unversioned URL rather than a specific release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from."
     },
     {
@@ -122,6 +123,7 @@
       },
       "item": "lib/helper.min.js",
       "hint": "https://unpkg.com/helper/dist/helper.min.js",
+      "artifact": "XPI",
       "message": "The following vendored file(s) cite a source that is not pinned to an immutable version. Each is linked to a branch or unversioned URL rather than a specific release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from."
     }
   ]

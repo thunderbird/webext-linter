@@ -32,12 +32,11 @@ export default {
     const findings = [];
     for (const { path, sourceUrl } of missing) {
       ctx.note?.(
-        vendorName,
-        null,
+        ctx.artifact.at(vendorName),
         `${path} declared (source ${sourceUrl}) but not in the submission`,
         VERDICT.FAIL
       );
-      findings.push(finding({ file: path, item: vendorName }));
+      findings.push(finding({ ...ctx.artifact.at(path), item: vendorName }));
     }
     return { findings };
   },

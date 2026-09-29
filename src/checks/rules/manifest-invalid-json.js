@@ -36,10 +36,10 @@ function isManifestObject(json) {
 export default {
   run(ctx) {
     const record = ctx.manifest;
-    if (!record || isManifestObject(record.json)) {
+    if (!record.present || isManifestObject(record.json)) {
       return { findings: [] };
     }
-    ctx.note?.("manifest.json", null, "unusable manifest.json", VERDICT.FAIL);
-    return { findings: [finding({ file: "manifest.json" })] };
+    ctx.note?.(ctx.manifest.locus(), "unusable manifest.json", VERDICT.FAIL);
+    return { findings: [finding({ ...ctx.manifest.locus() })] };
   },
 };

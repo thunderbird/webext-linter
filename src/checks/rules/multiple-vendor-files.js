@@ -33,8 +33,10 @@ export default {
     // opening the submission - and the response names none of them, so the findings
     // collapse into a single entry listing the colliding files once.
     for (const name of names) {
-      ctx.note?.(name, null, "candidate VENDOR file", VERDICT.FAIL);
+      ctx.note?.(ctx.artifact.at(name), "candidate VENDOR file", VERDICT.FAIL);
     }
-    return { findings: names.map((name) => finding({ file: name })) };
+    return {
+      findings: names.map((name) => finding({ ...ctx.artifact.at(name) })),
+    };
   },
 };

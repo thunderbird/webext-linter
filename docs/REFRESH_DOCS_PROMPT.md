@@ -51,7 +51,8 @@ that no longer exist.
    each), or `instructions-for-human` alone - and often a leading comment block describing
    intent. EVERY entry declares a
    `severity`, the `manual-checks` ones included - the loader refuses one that does not.
-   Entries may also carry `input`, `sca`, `eslint`, `sweep-instruction`
+   EVERY entry declares an `input` too - a route for a check that runs, `none` for a
+by-hand one. Entries may also carry `sca`, `eslint`, `sweep-instruction`
    (the class of code the check cannot see, listed in the report's Standard Code Review
    section), `default-note` (the marker a reported case carries when the reviewer wrote
    nothing) or `review-early-exit` (the id of a reason in the top-level

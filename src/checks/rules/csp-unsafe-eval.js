@@ -9,19 +9,18 @@
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { getEvalScan } from "../../lib/eval-scan.js";
-import { manifestTokenLine } from "../../lib/util.js";
 
 export default {
   run(ctx) {
     if (!getEvalScan(ctx).unsafeEval) {
       return { findings: [] };
     }
-    ctx.note?.("manifest.json", null, "CSP 'unsafe-eval'", VERDICT.FAIL);
-    const text = ctx.manifest?.text;
-    const line = manifestTokenLine(text, "content_security_policy");
+    ctx.note?.(ctx.manifest.locus(), "CSP 'unsafe-eval'", VERDICT.FAIL);
     return {
       findings: [
-        finding({ file: "manifest.json", loc: line ? { line } : null }),
+        finding({
+          ...ctx.manifest.locus("content_security_policy"),
+        }),
       ],
     };
   },

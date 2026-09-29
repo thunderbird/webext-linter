@@ -1,12 +1,8 @@
 {
-  "_comment": "vendor-vuln-unknown says one thing to either submission - the VENDOR entry is already there, and its SOURCE is what has to change - so its two responses differ only in the page they send the developer to. This fixture is what pins that: the same finding as its XPI twin, reported in a source code review, carrying the source-code-submission link instead of the vendoring guide. The XPI here also ships a VENDORS.md of its own, which in a source-code submission belongs in the archive - the copy the reviewer reads and the build installs from - so sca-not-required warns that this did not need to be a source submission. It is advice about the NEXT one and narrows nothing here.",
+  "_comment": "vendor-vuln-unknown says one thing to either submission - the VENDOR entry is already there, and its SOURCE is what has to change - so its two responses differ only in the page they send the developer to. This fixture is what pins that: the same finding as its XPI twin, reported in a source code review, carrying the source-code-submission link instead of the vendoring guide. The XPI here also ships a VENDORS.md of its own, which in a source-code submission belongs in the archive - the copy the reviewer reads and the build installs from - so sca-xpi-declares-vendoring reports it, naming the file(s) on the finding. It narrows nothing here - the archive is still reviewed in full.",
   "expect": {
-    "vendor-vuln-unknown": [
-      "VENDORS.md:2"
-    ],
-    "sca-not-required": [
-      "(add-on)"
-    ]
+    "vendor-vuln-unknown": ["VENDORS.md:2"],
+    "sca-xpi-declares-vendoring": ["VENDORS.md"]
   },
   "network": {
     "https://raw.githubusercontent.com/someone/thing-lib/1.4.2/dist/thing.js": {

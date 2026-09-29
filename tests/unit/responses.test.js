@@ -245,15 +245,33 @@ test("renderManualItems resolves an escalation to title + instructions + locus",
   assert.ok(!item.instructions.includes("{{item}}"));
 });
 
-// The report labels a manual item's file:line by artifact ([XPI]/[SCA]) via
-// ruleInputs.get(ruleId), so renderManualItems must carry ruleId through. Without it a
-// non-manifest.json manual item has no ruleId and defaults to [SCA] (the unused-files mislabel).
-test("renderManualItems carries the ruleId through for the artifact label", () => {
+// renderManualItems builds a NEW object from the ref, so anything the ref carries has to
+// be copied across deliberately. `ruleId` is what resolves a reported case back to a
+// finding of its check; `artifact` is which of the two submitted artifacts its locus is
+// in, without which the report labels nothing and the agent is handed a path it cannot
+// resolve. A field the ref sets and this drops is a field that vanishes silently.
+test("renderManualItems carries the ruleId and artifact through", () => {
   const [item] = renderManualItems(
-    [{ ruleId: "unused-files", file: "assets/x.png", kind: "escalation" }],
+    [
+      {
+        ruleId: "unused-files",
+        file: "assets/x.png",
+        kind: "escalation",
+        artifact: "XPI",
+      },
+    ],
     registry
   );
   assert.equal(item.ruleId, "unused-files");
+  assert.equal(item.artifact, "XPI");
+
+  // A ref with none - which production no longer builds - reads as null
+  // rather than as some default artifact.
+  const [bare] = renderManualItems(
+    [{ ruleId: "unused-files", kind: "escalation" }],
+    registry
+  );
+  assert.equal(bare.artifact, null);
 });
 
 // A manual-review escalation can carry extra `data` slots, filled into the

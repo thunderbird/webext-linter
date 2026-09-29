@@ -1,89 +1,47 @@
-// Unit tests for the per-finding artifact label rule ([XPI]/[SCA]).
+// Unit tests for the artifact LABEL - how a locus's artifact is shown.
+//
+// There is no rule here to test any more. WHICH artifact a locus is in is settled by the
+// thing that holds the file (src/addon/load.js `kind` and `at`), so this file only covers
+// the presentation: a source review tells two artifacts apart, an XPI review has one and
+// says nothing.
 
 import { test } from "node:test";
 import { REVIEW_MODE } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 
-import {
-  artifactLabel,
-  ARTIFACT_XPI,
-  ARTIFACT_SCA,
-} from "../../src/report/artifact.js";
+import { artifactLabel } from "../../src/report/artifact.js";
+import { ARTIFACT_XPI, ARTIFACT_SCA } from "../../src/lib/artifacts.js";
 
-// In an XPI review there is one artifact, so nothing is labelled - regardless of
-// the check's input or the file.
-test("artifactLabel returns '' in XPI mode", () => {
+test("the label shows the stamped artifact, and only in a source review", () => {
   assert.equal(
-    artifactLabel({
-      file: "manifest.json",
-      input: "xpi",
-      mode: REVIEW_MODE.XPI,
-    }),
-    ""
-  );
-  assert.equal(
-    artifactLabel({ file: "app.js", input: "source", mode: REVIEW_MODE.XPI }),
-    ""
-  );
-  assert.equal(
-    artifactLabel({ file: "app.js", input: "source", mode: undefined }),
-    ""
-  );
-});
-
-// In an SCA review the routed input decides the artifact: xpi-input checks report
-// against the built XPI, source/build against the readable source archive.
-test("artifactLabel keys off the check input in SCA mode", () => {
-  assert.equal(
-    artifactLabel({ file: "app.js", input: "xpi", mode: REVIEW_MODE.SCA }),
+    artifactLabel({ artifact: ARTIFACT_XPI, mode: REVIEW_MODE.SCA }),
     ARTIFACT_XPI
   );
   assert.equal(
-    artifactLabel({ file: "app.js", input: "source", mode: REVIEW_MODE.SCA }),
+    artifactLabel({ artifact: ARTIFACT_SCA, mode: REVIEW_MODE.SCA }),
     ARTIFACT_SCA
   );
-  assert.equal(
-    artifactLabel({
-      file: "scripts/build.sh",
-      input: "sca",
-      mode: REVIEW_MODE.SCA,
-    }),
-    ARTIFACT_SCA
-  );
-  // An unknown/undefined input falls to the source archive (the review target).
-  assert.equal(
-    artifactLabel({ file: "app.js", input: undefined, mode: REVIEW_MODE.SCA }),
-    ARTIFACT_SCA
-  );
+  // One artifact: nothing to tell apart, so nothing is said.
+  for (const mode of [REVIEW_MODE.XPI, undefined]) {
+    assert.equal(artifactLabel({ artifact: ARTIFACT_XPI, mode }), "");
+    assert.equal(artifactLabel({ artifact: ARTIFACT_SCA, mode }), "");
+  }
 });
 
-// The one cross-over: the shipped manifest.json is authoritative for EVERY check, so a
-// manifest.json finding is [XPI] even from an input:source check.
-test("artifactLabel labels manifest.json as XPI regardless of input", () => {
-  assert.equal(
-    artifactLabel({
-      file: "manifest.json",
-      input: "source",
-      mode: REVIEW_MODE.SCA,
-    }),
-    ARTIFACT_XPI
-  );
-  assert.equal(
-    artifactLabel({
-      file: "manifest.json",
-      input: "xpi",
-      mode: REVIEW_MODE.SCA,
-    }),
-    ARTIFACT_XPI
-  );
+// Asked to show no artifact, this shows nothing rather than guessing one. A finding can
+// no longer reach it that way - the constructor refuses a locus without one - so this
+// pins the renderer's own floor, which every caller relies on and none should test around.
+test("no artifact is labelled with nothing, not with a default", () => {
+  assert.equal(artifactLabel({ mode: REVIEW_MODE.SCA }), "");
+  assert.equal(artifactLabel({ artifact: null, mode: REVIEW_MODE.SCA }), "");
 });
 
-// A FILELESS finding from an input:xpi check is [XPI] too - it never reaches the
-// manifest.json branch above, so the input alone has to answer. The manifest.json checks
-// (manifest-missing / manifest-missing-key) are the ones that report without a file.
-test("artifactLabel labels a fileless input:xpi finding as XPI", () => {
-  assert.equal(
-    artifactLabel({ file: null, input: "xpi", mode: REVIEW_MODE.SCA }),
-    ARTIFACT_XPI
-  );
+// The two constants are PLAIN STRINGS and must stay so: they ride on every finding into
+// the JSON report, the loop state and the file an agent hands back, and an enum member
+// here would be a strict Proxy that throws on JSON.stringify.
+test("the artifact names survive JSON", () => {
+  for (const a of [ARTIFACT_XPI, ARTIFACT_SCA]) {
+    assert.equal(typeof a, "string");
+    assert.equal(JSON.parse(JSON.stringify({ a })).a, a);
+  }
 });

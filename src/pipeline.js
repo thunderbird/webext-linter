@@ -9,9 +9,8 @@
 // unpacked tree rather than the tool holding a second one of its own.
 //
 // Belongs here: the declared setup plan (SETUP_STEPS), the stage orchestration
-// (runPipeline) and the
-// pipeline-level schema-selection helpers (resolveReviewSchema,
-// selectSchemaChannel, detectManifestVersion).
+// (runPipeline) and the pipeline-level schema-selection helpers
+// (resolveReviewSchema, selectSchemaChannel, detectManifestVersion).
 //
 // Does NOT belong here: the cache defaults and behavior toggles -
 // src/config.js. The schema channel set + branch names - src/schema/fetch.js.
@@ -22,6 +21,7 @@
 // (src/checks/registry.js and src/checks/context.js), and all user-facing text
 // (src/checks/registry.js plus src/report/responses.js).
 
+import { ARTIFACT_XPI } from "./lib/artifacts.js";
 import fs from "node:fs";
 import path from "node:path";
 import { extractionDestination, EXTRACTED_SUFFIX } from "./util/dest.js";
@@ -47,7 +47,7 @@ import {
   scaViews,
 } from "./addon/load.js";
 import { settleScaRoot } from "./addon/sca-root.js";
-import { runChecks, loadRegistry } from "./checks/registry.js";
+import { runChecks, loadRegistry, ctxForRule } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
 import { buildXpiCtx, buildScaCtxs } from "./checks/context.js";
 import {
@@ -60,7 +60,7 @@ import { orderReview } from "./report/order.js";
 import { earlyExitOf, withoutQuestions } from "./report/early-exit.js";
 import { STATE_VERSION } from "./report/state.js";
 import { issue, reviewDetails } from "./report/loop.js";
-import { headerLines, loopPromptLines, packageLines } from "./report/format.js";
+import { headerLines, loopPromptLines, schemaLines } from "./report/format.js";
 import { reviewFilePaths } from "./report/items.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import {
@@ -220,17 +220,17 @@ export const SETUP_STEPS = Object.freeze([
  *   review to SCA mode - the whole archive is reviewed as the readable source and its
  *   declared dependencies are audited; the positional XPI is the shipped artifact against which
  *   the manifest.json, experiments and file-completeness (`input: xpi`) checks all run (a
- *   separate shipped context the orchestrator routes them to - see buildXpiCtxs in
+ *   separate shipped context the orchestrator routes them to - see buildXpiCtx in
  *   src/checks/context.js).
  * @property {string} [scaExpSource]  SCA mode: the Experiment implementation folder,
- *   absolute and inside scaRoot. It reaches a
- *   archive partition (scaViews), which gives it its own view; where it sits WITHIN the review
+ *   absolute and inside scaRoot, never scaRoot itself. It reaches the review as an archive
+ *   partition (scaViews), which gives it its own view; where it sits WITHIN the review
  *   source is derived at the one read that wants it (src/lib/reachability.js), in the
- *   keyspace the review target's keys live in. Its privileged, non-WebExtension files are excluded
- *   from the WebExtension code checks (which review all of the readable source, having no
- *   reachability tree there). Optional in general, but REQUIRED when allowExperiments is
- *   set in SCA mode (the CLI enforces this) - without it, Experiment code cannot be told
- *   apart from WebExtension code.
+ *   keyspace the review target's keys live in. Its privileged, non-WebExtension files are
+ *   excluded from the WebExtension code checks (which review all of the readable source,
+ *   having no reachability tree there). Optional in general, but REQUIRED when
+ *   allowExperiments is set in SCA mode (the CLI enforces this) - without it, Experiment
+ *   code cannot be told apart from WebExtension code.
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
  * @property {boolean} [cdnLookup]  Identify an unrecognized bundled library (minified,
  *   or a large readable file) by a jsDelivr content-hash lookup (on by default;
@@ -263,7 +263,6 @@ export const SETUP_STEPS = Object.freeze([
  * @property {Finding[]} findings
  * @property {ReviewMeta} meta
  * @property {import("./lib/enum.js").ReviewMode} mode  For the artifact labels.
- * @property {Map<string, string>} ruleInputs  Each ruleId's input artifact.
  * @property {Record<string, string>} [issueHeadings]
  * @property {Record<string, string>} [verdictIntros]
  */
@@ -345,7 +344,9 @@ export async function runPipeline(opts) {
   const extractTo = addonIsDir
     ? null
     : extractionDestination(`${addonPath}${EXTRACTED_SUFFIX}`);
-  const xpiAddon = loadAddon(addonPath, extractTo ?? undefined);
+  const xpiAddon = loadAddon(addonPath, extractTo ?? undefined, {
+    kind: ARTIFACT_XPI,
+  });
   // What the SHIPPED add-on declares, read ONCE here and the review's only record: it is
   // asked of the built XPI by name rather than derived by whatever loads an artifact (a
   // source archive's root manifest.json is a pre-build template, and nothing asks it). One
@@ -563,7 +564,7 @@ export async function runPipeline(opts) {
       // target. In a source review that is the archive: the declarations there are the
       // ones the reviewer reads and the build installs from, and a copy shipped inside the
       // XPI is a second, unverified answer to the same question - which the source review
-      // has no use for, and sca-not-required reports as the mistake it usually is. So the
+      // has no use for, and sca-xpi-declares-vendoring reports as the mistake it is. So the
       // XPI gets a vendor reading only when it is the review target.
       //
       // The condition is the MODE, not an identity test against reviewTarget: that does not
@@ -851,7 +852,7 @@ export async function runPipeline(opts) {
   // Both facts are settled - the loop has run - so the review mode follows from them.
   const mode = setupFacts.mode;
 
-  // The shared review env every sibling ctx projects (buildXpiCtxs / buildScaCtxs). The
+  // The shared review env every sibling ctx projects (buildXpiCtx / buildScaCtxs). The
   // manifest.json and experiments are the SHIPPED artifact's - authoritative like the schema, so no
   // artifact's own template can shadow them. Only what a check reads goes on `options`.
   const env = {
@@ -876,8 +877,7 @@ export async function runPipeline(opts) {
   // The sibling ctxs keyed by the `input` value that routes to each (see routeCtx). Routing is
   // total: `source` is a first-class sibling. siblings.source is the REVIEW TARGET - the readable
   // source in SCA, else the built XPI (xpiCtx doubles as both siblings.xpi and siblings.source in
-  // an XPI review). The orchestrator reads every review-level datum (the base feed note)
-  // off siblings.source; a check routed to one sibling can never reach another's artifact.
+  // an XPI review). A check routed to one sibling can never reach another's artifact.
   const siblings = {
     source: mode?.sca ? sourceCtx : xpiCtx,
     xpi: xpiCtx,
@@ -950,7 +950,9 @@ export async function runPipeline(opts) {
     // not happen asks a reader to cover for nothing, and this is what makes
     // --checks-only/--checks-skip carry through. An Experiment reject carries none, for
     // the same reason it carries no manual review.
-    preSweep: invalidExperiment ? null : preSweepOf(registry, ranIds, mode),
+    preSweep: invalidExperiment
+      ? null
+      : preSweepOf(registry, ranIds, mode, siblings),
   });
 
   // What this run was told to leave out (--llm-skip-summary / --llm-skip-manual). Read
@@ -1042,8 +1044,8 @@ export async function runPipeline(opts) {
   if (prompting) {
     // The REVIEW LOOP's state: the review itself, so no later pass has to rebuild it.
     // Everything formatText reads that the registry cannot recompute goes in here -
-    // ruleInputs, issueHeadings and verdictIntros are the registry's, and a copy here
-    // would outlive an edit to it.
+    // issueHeadings and verdictIntros are the registry's, and a copy here would
+    // outlive an edit to it.
     loopState = {
       version: STATE_VERSION,
       review: meta.reviewFile,
@@ -1072,11 +1074,15 @@ export async function runPipeline(opts) {
         build: buildPath,
         report: reportPath,
         schemaCache: opts.schemaCache,
+        // The two roots every reported path is relative to, so a later pass can resolve
+        // one without the review it came from. A packed submission was extracted in
+        // setup, and `--sca-root` is extracted before the run, so both are readable
+        // directories by the time anything is handed out.
         scaRoot: opts.scaRoot ?? null,
-        // The block a phase that READS the add-on prints: which artifact, and the schema
-        // snapshot its verdicts mean anything against. Built once, from the same meta the
-        // report's header is built from.
-        package: packageLines(meta, opts.schemaCache).join("\n"),
+        xpiRoot: meta.xpiRoot,
+        // The schema block a judging phase prints - the snapshot its verdicts mean
+        // anything against. Built once, from the same meta the report's header is.
+        schema: schemaLines(meta, opts.schemaCache).join("\n"),
       },
       answers: {},
       route: {},
@@ -1139,7 +1145,7 @@ export async function runPipeline(opts) {
           description: summaryPath ?? "",
           build: buildPath ?? "",
           scaRoot: state.paths.scaRoot ?? "",
-          package: state.paths.package,
+          schema: state.paths.schema,
           // Named because `ask` can be the FIRST phase issued - a review with no findings
           // and nothing to settle opens there - and that is the phase that hands the
           // block over. A run whose first phase does not name it passes it unused.
@@ -1175,7 +1181,6 @@ export async function runPipeline(opts) {
     // each finding's file:line by artifact ([XPI]/[SCA]) in an SCA review (a no-op in
     // XPI mode). See src/report/artifact.js.
     mode,
-    ruleInputs: registry.checkInputs(),
     // Severity-group headings + the verdict preamble for the text Issues
     // section.
     issueHeadings: registry.issueHeadings(),
@@ -1422,10 +1427,19 @@ export async function resolveReviewSchema({
  * @returns {?{items: object[]}}
  */
 
-function preSweepOf(registry, ranIds, mode) {
+function preSweepOf(registry, ranIds, mode, siblings) {
   const items = registry
     .sweepInstructions(mode)
-    .filter((s) => ranIds.has(s.check));
+    .filter((s) => ranIds.has(s.check))
+    // WHICH artifact a swept case will be in, recorded HERE because here is where a
+    // holder still exists. The sweep is merged in the loop phase, long after the ctxs
+    // are gone and the state is JSON, so the answer cannot be asked for then - and
+    // re-deriving it from the route and the mode is the reconstruction this whole
+    // arrangement exists to avoid.
+    .map((s) => ({
+      ...s,
+      artifact: ctxForRule(registry, s.check, siblings).artifact?.kind ?? null,
+    }));
   return items.length ? { items } : null;
 }
 

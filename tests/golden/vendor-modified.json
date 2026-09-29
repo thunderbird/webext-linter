@@ -109,6 +109,7 @@
       "loc": null,
       "item": "lib/widget.min.js",
       "hint": null,
+      "artifact": "XPI",
       "message": "A bundled third-party file does not match its declared source: lib/widget.min.js does not match the bytes its declared source (https://unpkg.com/widget@1.2.3/dist/widget.min.js) serves, so it appears to have been modified from the upstream release. Ship the file exactly as the source publishes it, or correct the declared source to the release the file actually came from."
     }
   ]

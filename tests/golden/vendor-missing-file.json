@@ -109,6 +109,7 @@
       "loc": null,
       "item": "VENDORS.md",
       "hint": null,
+      "artifact": "XPI",
       "message": "One or more files listed in \"VENDORS.md\" are not present in the submission. Add each file to the submission, or remove its entry from \"VENDORS.md\"."
     },
     {
@@ -118,6 +119,7 @@
       "loc": null,
       "item": "VENDORS.md",
       "hint": null,
+      "artifact": "XPI",
       "message": "One or more files listed in \"VENDORS.md\" are not present in the submission. Add each file to the submission, or remove its entry from \"VENDORS.md\"."
     }
   ]

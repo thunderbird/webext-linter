@@ -32,12 +32,18 @@ export default {
     // rather than pointing the reviewer at a package.json the submission lacks.
     const anchor = review.anchor;
 
-    ctx.note?.(anchor, null, "the build configuration", VERDICT.UNSURE);
+    ctx.note?.(
+      ctx.artifact.at(anchor),
+      "the build configuration",
+      VERDICT.UNSURE
+    );
     return {
       findings: [],
       escalations: [
         {
-          ...(anchor ? { file: anchor } : {}),
+          // `anchor` is null when the source documents no build at all, which the locus
+          // says by naming the artifact and no file in it.
+          ...ctx.artifact.at(anchor),
           data: {
             unresolvedBuildSteps: formatUnresolved(unresolved),
           },

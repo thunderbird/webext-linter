@@ -1,48 +1,31 @@
-// The per-finding artifact label shown before a `file:line` in a source code
-// archive (SCA) review, so a reviewer knows WHICH submitted artifact a path lives in:
+// How an artifact is SHOWN before a `file:line`:
 //   [XPI] = a file in the submitted built XPI
 //   [SCA] = a file in the submitted source code archive
-// A submission has both, and the same relative path (background.js, manifest.json)
-// can exist in each, so the label disambiguates. In an XPI review there is one
-// artifact, so there is no label.
+// A source submission has both, and the same relative path (background.js, manifest.json)
+// can exist in each, so a reviewer needs telling which one a finding means. An XPI review
+// has one artifact and labels nothing.
 //
-// The rule keys off the check's routed `input` (the ONE place artifact selection is
-// made - see runChecks), with a single cross-over: the shipped manifest.json is exposed to
-// EVERY check regardless of input (ctx.manifest is the built XPI's), so a
-// manifest.json finding is always about the XPI even from an `input: source` check.
+// Presentation only. WHICH artifact a locus is in is settled long before this, by the
+// thing that holds the file: an Addon carries its `kind` and mints loci with `at`
+// (src/addon/load.js), the shipped manifest.json record does the same for a value inside
+// it, and every finding, escalated case and feed note carries the locus it minted. So this
+// takes the answer and never works one out - there is no rule here to disagree with the
+// one upstream.
 //
-// `input: both` reads two artifacts, so no label could name the one a finding is about -
-// and none has to: such a check's subject is the SUBMISSION, and it files a finding with no
-// file at all. It takes the SCA branch below, which is also the truthful one - the label
-// only appears in a source review, and that is the only kind of review it runs in.
-//
-// Belongs here: the label strings and the pure determination rule. Does NOT belong
-// here: threading `mode`/the ruleId->input map to the renderers (-> src/pipeline.js +
-// src/checks/registry.js checkInputs), or prepending the label to a rendered line
-// (-> src/report/format.js locationLine, src/checks/registry.js formatNote).
-
-export const ARTIFACT_XPI = "XPI";
-export const ARTIFACT_SCA = "SCA";
+// Belongs here: the label. Does NOT belong here: deciding which artifact a locus is in
+// (the holder answers), the artifact names themselves (-> src/lib/artifacts.js), or
+// prepending the label to a rendered line (-> src/report/format.js locationLine,
+// src/checks/registry.js formatNote).
 
 /**
- * The artifact label for a finding's file, or "" when none applies.
- * @param {{file?: string, input?: string, mode?: string}} params
- *   file: the finding's file; input: the owning check's registry `input`
- *   ("xpi" | "sca" | "source" | "both"); mode: the review mode ("sca" | "xpi").
- * @returns {string} "XPI", "SCA", or "" (XPI review - a single artifact).
+ * How that artifact is SHOWN before a `file:line`, or "" when it needs no saying.
+ *
+ * Only a source review has two artifacts to tell apart, so only a source review labels
+ * anything. Presentation over the fact above, which is why it takes the answer rather than
+ * working it out again.
+ * @param {{artifact?: string, mode?: object}} params
+ * @returns {string} "XPI", "SCA", or "" (an XPI review - a single artifact).
  */
-export function artifactLabel({ file, input, mode }) {
-  if (!mode?.sca) {
-    return ""; // an XPI review has one artifact - nothing to disambiguate.
-  }
-  if (file === "manifest.json") {
-    return ARTIFACT_XPI; // the shipped manifest is authoritative for every check.
-  }
-  if (input === "xpi") {
-    // bundled-files, unused-files, minimize-WAR, locales, and the manifest.json checks - the
-    // shipped manifest.json is this artifact's. Their manifest.json findings already take the
-    // branch above; this covers their fileless findings and notes.
-    return ARTIFACT_XPI;
-  }
-  return ARTIFACT_SCA; // input source/sca/both -> the submitted source archive.
+export function artifactLabel({ artifact, mode }) {
+  return mode?.sca ? (artifact ?? "") : "";
 }

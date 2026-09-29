@@ -1,11 +1,11 @@
-// Heuristic: the developer's own code shipped minified - mechanically unreadable
-// (not obfuscated to hide behavior, just stripped of whitespace/names), which
-// cannot be reviewed as-is. Flags such a file, a script or a stylesheet alike - that
-// is NOT a recognized
-// third-party library (those are missing-library's job) - so the reviewer can
-// require the original source. Detects minified line geometry (a very long,
-// dense line). A file that is also obfuscated is obfuscated-code's job (the
-// stronger signal), so it is excluded here.
+// Heuristic: the developer's own code shipped minified - mechanically
+// unreadable (not obfuscated to hide behavior, just stripped of
+// whitespace/names), which cannot be reviewed as-is. Flags such a file, a
+// script or a stylesheet alike - that is NOT a recognized third-party library
+// (those are missing-library's job) - so the reviewer can require the original
+// source. Detects minified line geometry (a very long, dense line). A file
+// that is also obfuscated is obfuscated-code's job (the stronger signal), so
+// it is excluded here.
 //
 // Belongs here: selecting the classifier verdicts that are minified (and not
 // obfuscated) AND not a library, and emitting one finding per such file.
@@ -41,13 +41,12 @@ export default {
         continue;
       }
       ctx.note?.(
-        c.file,
-        null,
+        ctx.artifact.at(c.file),
         c.minified ? "minified" : "readable",
         c.minified ? VERDICT.FAIL : VERDICT.PASS
       );
       if (isMinifiedFirstParty(c)) {
-        findings.push(finding({ file: c.file }));
+        findings.push(finding({ ...ctx.artifact.at(c.file) }));
       }
     }
     // The same question, asked of code that ships INSIDE a page rather than beside it.
@@ -59,13 +58,12 @@ export default {
         continue;
       }
       ctx.note?.(
-        site.file,
-        site.loc,
+        ctx.artifact.at(site.file, site.loc),
         site.minified ? "minified inline script" : "readable inline script",
         site.minified ? VERDICT.FAIL : VERDICT.PASS
       );
       if (site.minified) {
-        findings.push(finding({ file: site.file, loc: site.loc }));
+        findings.push(finding({ ...ctx.artifact.at(site.file, site.loc) }));
       }
     }
     return { findings };

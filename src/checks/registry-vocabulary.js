@@ -80,6 +80,13 @@ export const COLLAPSE_MODES = new Set(["subject"]);
 // field the routed artifact never produced throws rather than answering nothing.
 export const VALID_CHECK_INPUTS = new Set(["source", "xpi", "sca", "both"]);
 
+/** What a BY-HAND entry declares instead. It runs no code and reads no artifact - it is
+ *  settled by looking at the add-on listing page, or by installing the add-on and using
+ *  it - so `none` is the whole vocabulary, and declaring it is what stops the absence of
+ *  an `input` from being a default. A runnable check cannot say it: the set above does not
+ *  hold it, and the schema gives each shape its own field. */
+export const MANUAL_ENTRY_INPUTS = new Set(["none"]);
+
 /** The routes whose artifact exists only in a source-code-archive review, so declaring one
  *  IS declaring the mode (modeEligible). buildScaCtxs builds these siblings; an XPI review
  *  has neither, and routeCtx would throw. Beside the set above because they are one axis:

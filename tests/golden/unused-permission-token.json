@@ -111,6 +111,7 @@
       },
       "item": "compose",
       "hint": null,
+      "artifact": "XPI",
       "message": "One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it."
     }
   ]

@@ -26,6 +26,9 @@
 // wording of either (-> assets/registry.yaml), or running the sweep, which the linter
 // never does - an agent does, and hands what it found back in the spawn phase's slots.
 
+import path from "node:path";
+import { hasParentSegment } from "../addon/load.js";
+import { manualEscalations } from "../checks/escalation.js";
 import { renderManualItems } from "./responses.js";
 import { finding } from "./finding.js";
 
@@ -77,6 +80,17 @@ export function checkedResult(where, raw) {
       `${at} names no "file" - a result must say where it was found, e.g. ${RESULT_SHAPE}`
     );
   }
+  // A result's path is AUTHORED by the agent, and it is the only path in the review that
+  // is. Downstream it is resolved against the artifact's root and handed back as a file to
+  // open (src/report/handback.js entriesFor), so a value that steps out of the artifact
+  // would have the linter publish a path outside the submission as its own claim. Refused
+  // in the same terms the reviewer's own folder flags are (src/addon/load.js
+  // hasParentSegment): a path names a file in the add-on, never a way out of it.
+  if (path.isAbsolute(raw.file) || hasParentSegment(raw.file)) {
+    throw new Error(
+      `${at} has file ${JSON.stringify(raw.file)} - a result names a file INSIDE the add-on, relative to its root, never an absolute path or a way out of one`
+    );
+  }
   if (raw.line !== undefined && (!Number.isInteger(raw.line) || raw.line < 1)) {
     throw new Error(
       `${at} has line ${JSON.stringify(raw.line)} (expected a whole number from 1)`
@@ -119,7 +133,10 @@ export function checkedResult(where, raw) {
  * @param {{check: string, file: string, line: ?number, hint: ?string}[]} args.results
  * @param {object[]} args.manual  The rendered to-do list so far (meta.manualReview).
  * @param {object[]} args.findings  The findings so far, for dedup and for the new ones.
- * @param {?{items: {check: string}[]}} args.preSweep  What this run asked to be swept.
+ * @param {?{items: {check: string, artifact: ?string}[]}} args.preSweep  What this run
+ *   asked to be swept, and for each check WHICH artifact its cases are in - recorded
+ *   during the review (src/pipeline.js preSweepOf), because by the time a result comes
+ *   back the artifact that would have answered is gone.
  * @param {Registry} args.registry
  * @param {string} args.file  The path, for messages.
  * @param {{sca?: boolean}} [args.mode]  The review mode, for a check that words its
@@ -135,7 +152,16 @@ export function mergeSweepResults({
   file,
   mode,
 }) {
-  const asked = new Set((preSweep?.items ?? []).map((s) => s.check));
+  // check -> the artifact its swept cases are in, as the REVIEW recorded it
+  // (src/pipeline.js preSweepOf). This merge runs from a serialized state, long after the
+  // artifacts are gone, so there is no holder here left to ask. The same map answers
+  // whether a check was asked at all: a result for one that is not in it is refused below.
+  // Every swept check has one artifact: the registry refuses a `sweep-instruction` on the
+  // one route that carries two (src/checks/registry.js assertSweepInstruction), so the
+  // recorded value is always a name and never absent.
+  const asked = new Map(
+    (preSweep?.items ?? []).map((s) => [s.check, s.artifact])
+  );
   const seen = new Set();
   const refs = [];
   const found = [];
@@ -167,16 +193,22 @@ export function mergeSweepResults({
       // An escalation of that check, in the section that check's own wording puts it in.
       // renderManualItems words it from that check's instructions, so a swept case and a
       // detected one put the same question to the same reader.
-      refs.push({
-        ruleId: r.check,
-        item: null,
-        hint: r.hint,
-        file: r.file,
-        loc: r.line == null ? null : { line: r.line },
-        section,
-        data: null,
-        occurrences: null,
-      });
+      //
+      // Built by the SHAPE'S OWNER rather than spelled again here. A hand copy of the ref
+      // is a copy that goes out of step the next time the shape gains a field, which is
+      // exactly how a swept case once reached a reader with no artifact on it. The check
+      // is synthesized from what the registry answers for this id, because a sweep result
+      // names a check rather than carrying one.
+      refs.push(
+        ...manualEscalations({ id: r.check, section }, [
+          {
+            hint: r.hint,
+            file: r.file,
+            loc: r.line == null ? null : { line: r.line },
+            artifact: asked.get(r.check),
+          },
+        ]).manualItems
+      );
       applied.push(`${where} -> ${section}`);
     } else {
       // No escalation: this check settles its cases as findings, so a swept one is a
@@ -190,6 +222,7 @@ export function mergeSweepResults({
           file: r.file,
           loc: r.line == null ? null : { line: r.line },
           hint: r.hint,
+          artifact: asked.get(r.check),
         })
       );
       applied.push(`${where} -> finding`);

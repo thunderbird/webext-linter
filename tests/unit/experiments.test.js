@@ -397,8 +397,18 @@ test("experiment-overrides-api flags a path that grafts onto a built-in", () => 
   const out = experimentOverridesApi.run(withManifest(ctx)).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "messages.evil");
-  assert.deepEqual(out[0].loc, { line: 2, column: 0 });
+  assert.deepEqual(out[0].loc, { line: 2 });
 });
+
+// One key per group, each on its own line, so a locus can tell them apart.
+const EXP_MANIFEST_TEXT = `{
+  "experiment_apis": {
+    "weather": {},
+    "messages": {},
+    "demo": {}
+  }
+}
+`;
 
 // ---- experiment-not-allowed: per-group abort reasons ----
 test("experiment-not-allowed reports shadowing vs unsupported per unsupported group", () => {
@@ -406,56 +416,74 @@ test("experiment-not-allowed reports shadowing vs unsupported per unsupported gr
     schema,
     options: {},
     artifact: {
-      manifest: manifestOf({ experiment_apis: { a: {} } }, "{}\n"),
+      // Real bytes, so each group's locus resolves to the line its own key sits on -
+      // which is what the per-group anchoring below is checking.
+      manifest: manifestOf(
+        { experiment_apis: { weather: {}, messages: {}, demo: {} } },
+        EXP_MANIFEST_TEXT
+      ),
       experiments: {
         groups: [
           {
             name: "weather",
-            line: 5,
+            key: "weather",
             status: "unsupported",
             apiPaths: ["weather"],
           },
           {
             name: "messages",
-            line: 6,
+            key: "messages",
             status: "unsupported",
             apiPaths: ["messages.evil"],
           },
-          { name: "demo", line: 7, status: "modified", apiPaths: ["demo"] },
+          { name: "demo", key: "demo", status: "modified", apiPaths: ["demo"] },
         ],
       },
-      files: new Map([["manifest.json", Buffer.from("{}\n")]]),
+      files: new Map([["manifest.json", Buffer.from(EXP_MANIFEST_TEXT)]]),
     },
   };
   const out = experimentNotAllowed.run(withManifest(ctx)).findings;
   assert.equal(out.length, 2); // only the two unsupported groups (not the modified one)
-  const weather = out.find((f) => f.loc.line === 5);
+  // Each finding anchors on its OWN experiment_apis key, not on the block they share.
+  const weather = out.find((f) => f.loc.line === 3);
   assert.match(weather.hint, /not a published Thunderbird API draft/);
-  const msgs = out.find((f) => f.loc.line === 6);
+  const msgs = out.find((f) => f.loc.line === 4);
   assert.match(msgs.hint, /shadows the built-in messages API/);
 });
+
+const MODIFIED_MANIFEST_TEXT = `{
+  "experiment_apis": {
+    "calendar": {},
+    "demo": {}
+  }
+}
+`;
 
 // ---- experiment-modified: continue-path flag ----
 test("experiment-modified flags only modified groups", () => {
   const ctx = {
     artifact: {
-      manifest: manifestOf({ experiment_apis: { a: {} } }, "{}\n"),
+      manifest: manifestOf(
+        { experiment_apis: { calendar: {}, demo: {} } },
+        MODIFIED_MANIFEST_TEXT
+      ),
       experiments: {
         groups: [
           {
             name: "calendar",
-            line: 8,
+            key: "calendar",
             status: "modified",
             apiPaths: ["calendar.items"],
           },
-          { name: "demo", line: 12, status: "pristine", apiPaths: ["demo"] },
+          { name: "demo", key: "demo", status: "pristine", apiPaths: ["demo"] },
         ],
       },
-      files: new Map(),
+      files: new Map([["manifest.json", Buffer.from(MODIFIED_MANIFEST_TEXT)]]),
     },
   };
   const out = experimentModified.run(withManifest(ctx)).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].item, "calendar");
-  assert.deepEqual(out[0].loc, { line: 8, column: 0 });
+  // The group's own key, not the block it sits in.
+  assert.deepEqual(out[0].loc, { line: 3 });
 });

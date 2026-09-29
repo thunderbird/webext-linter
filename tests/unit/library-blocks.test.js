@@ -6,6 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { withManifest } from "./manifest-ctx.js";
 
 import {
   resolveLibraryBlocks,
@@ -136,7 +137,7 @@ test("banned-library: banned -> error, unadvised -> warning, anchored at the dec
       },
     },
   };
-  const out = bannedLibrary.run(ctx).findings;
+  const out = bannedLibrary.run(withManifest(ctx)).findings;
   assert.equal(out.length, 2);
 
   const jq = out.find((f) => f.item === "jquery");
@@ -158,13 +159,17 @@ test("banned-library: banned -> error, unadvised -> warning, anchored at the dec
 
 test("banned-library: no recorded hits -> no findings", () => {
   assert.deepEqual(
-    bannedLibrary.run({
-      artifact: { files: new Map(), vendor: { blocked: [] } },
-    }).findings,
+    bannedLibrary.run(
+      withManifest({
+        artifact: { files: new Map(), vendor: { blocked: [] } },
+      })
+    ).findings,
     []
   );
   assert.deepEqual(
-    bannedLibrary.run({ artifact: { files: new Map(), vendor: {} } }).findings,
+    bannedLibrary.run(
+      withManifest({ artifact: { files: new Map(), vendor: {} } })
+    ).findings,
     []
   );
 });

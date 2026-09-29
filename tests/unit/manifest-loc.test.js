@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildManifestLoc } from "../../src/addon/manifest-loc.js";
-import { manifestTokenLine } from "../../src/lib/util.js";
+import { tokenLine } from "../../src/lib/util.js";
 import minimizeHostPermissions from "../../src/checks/rules/minimize-host-permissions.js";
 
 // A manifest.json where "<all_urls>" is JSON-escaped AND appears twice: once in a
@@ -29,7 +29,7 @@ test("buildManifestLoc resolves the exact line for an escaped, repeated value", 
   assert.equal(loc.lineAt(["web_accessible_resources", 0, "matches", 0]), 4);
   // A quoted-token search misses entirely here (the value is \u-escaped) - which is
   // why the line comes from a path lookup.
-  assert.equal(manifestTokenLine(TEXT, "<all_urls>"), null);
+  assert.equal(tokenLine(TEXT, "<all_urls>"), null);
 });
 
 // An absent path and an unparseable manifest.json both degrade to null, never throw.
@@ -39,6 +39,15 @@ test("buildManifestLoc returns null for missing paths and unparseable text", () 
   assert.equal(loc.lineAt(["host_permissions", 9]), null);
   const broken = buildManifestLoc("{ this is : not json");
   assert.equal(broken.lineAt(["anything"]), null);
+});
+
+// A path is how a caller names the value it means. With none named there is no value, so
+// there is no line - the alternative is the JSON root, which sits at offset 0 and would
+// answer line 1 for any manifest.json at all.
+test("no path resolves to no line, not to the first line of the file", () => {
+  const loc = buildManifestLoc('{\n  "name": "x"\n}');
+  assert.equal(loc.lineAt(["name"]), 2, "a named value still resolves");
+  assert.equal(loc.lineAt([]), null);
 });
 
 // End-to-end: the minimize-host-permissions finding for <all_urls> carries the

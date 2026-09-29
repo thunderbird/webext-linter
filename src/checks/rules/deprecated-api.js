@@ -45,8 +45,7 @@ export default {
       // Narrate every resolved API site (the unit this check examines), with
       // its verdict - so the feed shows what was vetted, not only the hits.
       ctx.note?.(
-        file,
-        loc,
+        ctx.artifact.at(file, loc),
         dep ? `${full} (deprecated)` : full,
         dep ? VERDICT.FAIL : VERDICT.PASS
       );
@@ -54,9 +53,7 @@ export default {
       if (dep && add(seen, full)) {
         findings.push(
           finding({
-            file,
-            loc,
-            // A bare `deprecated: true` carries no message, so no hint.
+            ...ctx.artifact.at(file, loc), // A bare `deprecated: true` carries no message, so no hint.
             hint: typeof dep === "string" ? dep : null,
             item: full,
           })

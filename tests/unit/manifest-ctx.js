@@ -5,7 +5,8 @@
 
 import JSON5 from "json5";
 
-import { buildManifestLoc } from "../../src/addon/manifest-loc.js";
+import { locusMinter, manifestRecord } from "../../src/addon/load.js";
+import { ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 import { runExtractionPass } from "../../src/checks/extract.js";
 import { isExperiment } from "../../src/lib/util.js";
@@ -59,7 +60,46 @@ export function parsed(jsSources, { schema, nonAuthored } = {}) {
  * @returns {object} The record, for `artifact: { manifest: manifestOf(...) }`.
  */
 export function manifestOf(json, text = JSON.stringify(json, null, 2)) {
-  return { json, text, error: null, loc: buildManifestLoc(text) };
+  // The shape comes from the PRODUCTION builder, so a test record cannot go out of step
+  // with the real one the next time it gains a field - it now carries `at`, which mints
+  // a locus inside the shipped manifest.json. The parsed `json` is then overridden,
+  // because a test may deliberately pair an object with text that does not match it (a
+  // fixed text for line lookups, a varying object for the case under test).
+  return { ...manifestRecord(text), json };
+}
+
+/**
+ * The record an artifact that ships NO manifest.json carries. There is always a record -
+ * `present` is what says there was no file (src/addon/load.js) - so a test standing in for
+ * that case builds one here rather than passing null, which is a shape production never
+ * produces and no check is written against.
+ * @returns {object}
+ */
+export function noManifest() {
+  return manifestRecord(null);
+}
+
+/**
+ * An ADDON-shaped object for a test that builds its files in memory rather than on disk.
+ *
+ * Built here rather than inline so a test artifact has the shape production gives one -
+ * it carries its `kind` and mints loci with `at`, which is how a finding says which
+ * artifact its path is in (src/addon/load.js). A hand-built literal missing those reads
+ * as an artifact that does not know what it is, which no real one is.
+ * @param {Record<string, string>} files  path -> contents.
+ * @param {string} [kind]  Which artifact this stands for (src/lib/artifacts.js).
+ * @returns {object}
+ */
+export function addonOf(files, kind = ARTIFACT_XPI) {
+  const map = new Map(
+    Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
+  );
+  return {
+    kind,
+    at: locusMinter(kind),
+    files: map,
+    store: map,
+  };
 }
 
 /**
@@ -91,7 +131,19 @@ export function withManifest(ctx) {
         "as manifestOf()'s second argument"
     );
   }
-  ctx.manifest = addon.manifest ?? null;
+  ctx.manifest = addon.manifest ?? noManifest();
+  // Every routed ctx carries an artifact, and every artifact knows which one it is and
+  // mints loci in itself (src/addon/load.js) - which is where a finding's and a note's
+  // artifact comes from. A fixture that named no artifact, or built one as a bare bag of
+  // files, models no ctx a check can be handed, so fill in what production guarantees:
+  // the XPI, unless the test said otherwise. (The `both` route carries no `artifact` and
+  // is not built here - a check on it names ctx.xpi or ctx.sca.)
+  ctx.artifact ??= { files: new Map() };
+  if (typeof ctx.artifact.at !== "function") {
+    const kind = ctx.artifact.kind ?? ARTIFACT_XPI;
+    ctx.artifact.kind = kind;
+    ctx.artifact.at = locusMinter(kind);
+  }
   // The other shipped-authoritative field the pipeline attaches to the review addon and
   // the ctx builders hoist onto ctx: the Experiment classification. Mirror that hoist here
   // for a hand-built ctx (don't clobber a value a test set directly on ctx).

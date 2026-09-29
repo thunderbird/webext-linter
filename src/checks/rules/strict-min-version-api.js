@@ -27,7 +27,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { SchemaIndex } from "../../schema/index.js";
-import { strictMinVersion, parseVersion, cmpVersion } from "../../lib/util.js";
+import { cmpVersion, parseVersion, strictMinVersion } from "../../lib/util.js";
 import { resolveApiUsages } from "../../lib/api-resolution.js";
 
 export default {
@@ -42,8 +42,7 @@ export default {
     const min = parseVersion(minStr);
     if (!min) {
       ctx.note?.(
-        "manifest.json",
-        null,
+        ctx.manifest.locus(),
         "no parsable strict_min_version",
         VERDICT.SKIPPED
       );
@@ -81,14 +80,12 @@ export default {
     const escalations = [];
     for (const e of sites) {
       ctx.note?.(
-        e.file,
-        e.loc,
+        ctx.artifact.at(e.file, e.loc),
         `${e.display} (added in TB ${e.va})`,
         VERDICT.UNSURE
       );
       escalations.push({
-        file: e.file,
-        loc: e.loc,
+        ...ctx.artifact.at(e.file, e.loc),
         item: e.display,
         hint: `added in Thunderbird ${e.va}`,
         data: { min: String(minStr) },

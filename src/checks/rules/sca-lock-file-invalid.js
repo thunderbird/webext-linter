@@ -21,7 +21,7 @@ import { finding } from "../../report/finding.js";
 import { lockGaps } from "../../vendor/locks.js";
 import {
   declarationLine,
-  manifestTokenLine,
+  tokenLine,
   utf8ComparisonSigns,
 } from "../../lib/util.js";
 
@@ -44,16 +44,19 @@ export default {
       const line = gap.token
         ? declarationLine(text, gap.token)
         : gap.name
-          ? manifestTokenLine(text, gap.name)
+          ? tokenLine(text, gap.name)
           : null;
       const loc = line ? { line } : undefined;
       const item = subject(gap);
-      ctx.note?.(gap.file, loc, item, VERDICT.FAIL);
+      ctx.note?.(ctx.artifact.at(gap.file, loc), item, VERDICT.FAIL);
       // utf8ComparisonSigns: a spec's comparison signs must stay readable/copyable,
       // unlike free prose - see its own doc comment (src/lib/util.js). Applied only to
       // the report's item, not the feed note above, matching the other three checks.
       findings.push(
-        finding({ file: gap.file, loc, item: utf8ComparisonSigns(item) })
+        finding({
+          ...ctx.artifact.at(gap.file, loc),
+          item: utf8ComparisonSigns(item),
+        })
       );
     }
     return { findings };

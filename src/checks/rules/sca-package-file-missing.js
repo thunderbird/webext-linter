@@ -14,9 +14,9 @@
 // NOT silent when the shipped XPI happens to be the archive's own code. That the shipped
 // bytes are readable says nothing about whether this source produces them, which is what a
 // reviewer reproduces the build to establish - and with no build there is nothing to
-// reproduce, so the review stops here either way. The XPI-only advice (sca-not-required) is
-// INDEPENDENT of this: it answers whether the developer could have shipped the XPI alone
-// next time, and prints beside this rejection rather than in place of it.
+// reproduce, so the review stops here either way. Whether the archive held the whole XPI
+// is INDEPENDENT of this (sca-xpi-fully-included-in-archive): that asks what the archive
+// contains, and prints beside this rejection rather than in place of it.
 //
 // Belongs here: asking whether the package file is there. Does NOT belong here: whether it can
 // be used (-> sca-package-file-invalid), what it declares (-> src/vendor/package-file.js), and
@@ -41,7 +41,7 @@ export default {
     // there is nothing to anchor it at. The feed note still names package.json, the file
     // whose absence is the whole point, so the reviewer reads what was looked for rather
     // than a bare verdict.
-    ctx.note?.(PACKAGE_FILE, null, "no package.json", VERDICT.FAIL);
-    return { findings: [finding({})] };
+    ctx.note?.(ctx.artifact.at(PACKAGE_FILE), "no package.json", VERDICT.FAIL);
+    return { findings: [finding({ ...ctx.artifact.at() })] };
   },
 };

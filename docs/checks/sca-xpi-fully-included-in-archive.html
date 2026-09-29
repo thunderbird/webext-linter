@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The built XPI is fully included in the source archive</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          The built XPI is fully included in the source archive
+          <span class="badge warning">warning</span>
+        </h1>
+        <div class="check-id">sca-xpi-fully-included-in-archive</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission whose archive holds the <strong>built XPI entire</strong>:
+        every file the XPI ships is byte-identical to a file the archive carries, wherever
+        that file sits. A source archive is the readable source a build turns into the
+        shipped package, not a copy of that package.
+      </p>
+      <p>
+        <strong>This does not re-route the review.</strong> A source archive is always
+        reviewed as one, and this finding changes nothing about the review it appears in.
+        Routing on it would be a bypass: a committed, unminified <code>dist/</code> in the
+        archive is its own twin under any content test, so a build could be dressed up as
+        source and shrink its own review. At warning severity
+        <code>--warnings-as-errors</code> can still refuse a submission at intake, while an
+        update that got its packaging wrong is simply told what to change.
+      </p>
+      <p>
+        <strong>Two submissions look like this, and the check cannot tell them apart</strong>
+        &mdash; which is why the response gives a remedy for each rather than assuming one.
+        Either nothing was built, the shipped bytes ARE the submitted source, and the XPI on
+        its own is a complete review target. Or a build ran and its <em>output</em> was
+        committed beside the real source, in which case the archive is right to exist and
+        the build output is what does not belong in it.
+      </p>
+      <p>
+        The comparison is content anywhere in the archive rather than name for name, so a
+        build that merely relocates files is still recognized for leaving every shipped byte
+        readable. Bytes are compared exactly, with no line-ending normalization: a file a
+        build rewrote line endings in is a file the build touched. The finding names no file,
+        since every shipped file is its subject, so the entry carries no location line.
+      </p>
+      <p>
+        Nothing about the build enters into it. A submission can be rejected for a build
+        that cannot be reproduced &mdash; a missing <code>package.json</code>, an unusable
+        lock &mdash; and still be told its archive holds the whole XPI: the two answer
+        different questions, and a rejection printed beside this takes nothing back.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["--sca-root submitted"] --> S["a source code review — the source IS reviewed,<br/>whatever the answer below"]
+  S --> X{"Is every file the XPI ships byte-identical<br/>to some file in the archive?"}
+  X -- "no (something was built)" --> OK([no finding — the archive was needed])
+  X -- yes --> WARN([WARNING: nothing built, or the build output was committed])
+
+  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef step fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
+  class WARN warn;
+  class OK ok;
+  class S step;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The archive already holds every byte the XPI ships. The developer is asked to
+        submit just the XPI if it does not need to be built &mdash; source submissions take
+        considerably longer to review &mdash; or, if it does, to remove the build output from
+        the archive and submit only the source the build runs on. This review itself is
+        unaffected: it is a full source review either way.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/sca-xpi-fully-included-in-archive.js</code> (which compares
+        the two artifacts its <code>input: both</code> route carries) and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

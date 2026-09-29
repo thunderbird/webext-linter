@@ -53,11 +53,10 @@ export default {
       return { findings: [] };
     }
     ctx.note?.(
-      "package.json",
-      null,
+      ctx.artifact.at("package.json"),
       "no npm or pnpm lock file committed",
       VERDICT.FAIL
     );
-    return { findings: [finding({ file: "package.json" })] };
+    return { findings: [finding({ ...ctx.artifact.at("package.json") })] };
   },
 };

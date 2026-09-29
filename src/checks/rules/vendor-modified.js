@@ -26,12 +26,20 @@ export default {
     const findings = [];
     for (const { path, source, outcome } of results) {
       if (outcome === "verified") {
-        ctx.note?.(path, null, `verified against ${source}`, VERDICT.PASS);
+        ctx.note?.(
+          ctx.artifact.at(path),
+          `verified against ${source}`,
+          VERDICT.PASS
+        );
       } else if (outcome === "modified") {
-        ctx.note?.(path, null, `does not match ${source}`, VERDICT.FAIL);
+        ctx.note?.(
+          ctx.artifact.at(path),
+          `does not match ${source}`,
+          VERDICT.FAIL
+        );
         findings.push(
           finding({
-            file: path,
+            ...ctx.artifact.at(path),
             item: path,
             data: { url: source },
           })

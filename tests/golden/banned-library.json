@@ -120,6 +120,7 @@
       },
       "item": "jquery",
       "hint": null,
+      "artifact": "XPI",
       "message": "A bundled library version is disallowed by Mozilla's add-on policy: jquery (2.2.4) - jQuery before 3.0 is unsupported and carries known security issues. Update to the latest 3.x. Update to a permitted version."
     },
     {
@@ -131,6 +132,7 @@
       },
       "item": "angular",
       "hint": null,
+      "artifact": "XPI",
       "message": "A bundled library version is disallowed by Mozilla's add-on policy: angular (1.5.0) - AngularJS before 1.5.9 is affected by a Content-Security-Policy bypass. Update to the latest 1.x. Update to a permitted version."
     }
   ]

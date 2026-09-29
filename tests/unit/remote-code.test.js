@@ -613,7 +613,8 @@ test("eval checks note each dynamic-code site and the CSP, with verdicts", () =>
     }
   );
   const notes = [];
-  ctx.note = (file, loc, item, verdict) => notes.push({ file, item, verdict });
+  ctx.note = (at, item, verdict) =>
+    notes.push({ file: at.file, item, verdict });
   evalCall.run(withManifest(ctx)).findings;
   remoteEval.run(withManifest(ctx));
   cspUnsafeEval.run(withManifest(ctx)).findings;
@@ -638,7 +639,7 @@ test("remote-resources notes remote (fail), local code (pass) and ambiguous (uns
     { manifest_version: 3, name: "x", version: "1" }
   );
   const notes = [];
-  ctx.note = (file, loc, item, verdict) => notes.push({ item, verdict });
+  ctx.note = (at, item, verdict) => notes.push({ item, verdict });
   remoteScript.run(withManifest(ctx));
   assert.ok(
     notes.some((n) => /cdn/.test(n.item) && n.verdict === VERDICT.FAIL)

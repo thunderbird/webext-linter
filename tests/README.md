@@ -82,7 +82,7 @@ listing the `file:line` locations you expect per rule. (Tip: run the harness onc
 a mismatch prints the actual `got [...]` list to copy from.)
 
 **SCA fixtures:** a fixture that instead holds two subfolders - `xpi/` (the
-shipped built add-on, the authoritative manifest) and `src/` (the readable source
+shipped built add-on, the authoritative manifest.json) and `src/` (the readable source
 tree, e.g. a Vue `.vue`) - is run in **SCA** mode (source-code archive) rather than
 XPI mode. The layout is auto-detected (no flag needed), and its spec sits in
 `expected/` like every other. Use one when a check depends on the source/shipped split
@@ -100,7 +100,7 @@ A selection, not the catalogue - every folder under `addons/` is a fixture:
 | `missing-permission` | `missing-permission`: a called API needs permissions that aren't declared. |
 | `storage-permission` | `missing-permission` for the namespace-level `storage` permission. |
 | `optional-permission` | An optional (runtime-granted) permission is not flagged as unused. |
-| `manifest-key-ok` | A required manifest key (`action`) is declared - no false positive, and `manifest:action` is not reported as a missing permission. |
+| `manifest-key-ok` | A required manifest.json key (`action`) is declared - no false positive, and `manifest:action` is not reported as a missing permission. |
 | `manifest-key-wrong-version` | A wrong-MV manifest key (`browser_action` on MV3) → `missing-permission` + `unrecognized-manifest-key`. |
 | `invalid-manifest` | `manifest-missing-key` (a missing required key) + `manifest-unknown-permission` (a bad permission value) + `unrecognized-manifest-key` (an unknown top-level key). |
 | `bundled-files` | `bundled-files`: a referenced file (`content_scripts`) isn't packaged. |

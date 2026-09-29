@@ -24,17 +24,16 @@ export default {
   run(ctx) {
     const m = ctx.manifest?.json;
     if (!m || !isExperiment(m)) {
-      ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
+      ctx.note?.(ctx.manifest.locus(), "not an Experiment", VERDICT.SKIPPED);
       return { findings: [], escalations: [] };
     }
     ctx.note?.(
-      "manifest.json",
-      null,
+      ctx.manifest.locus(),
       "Experiment - manual review",
       VERDICT.UNSURE
     );
     // A whole-add-on reminder: no locus, so it renders as the instruction +
     // suggested response alone under Extended Manual Review.
-    return { findings: [], escalations: [{}] };
+    return { findings: [], escalations: [ctx.artifact.at()] };
   },
 };

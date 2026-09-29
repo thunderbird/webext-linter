@@ -112,6 +112,7 @@
       },
       "item": "browser.messages.tags.list()",
       "hint": "added in Thunderbird 121",
+      "artifact": "XPI",
       "message": "The add-on is setting strict_max_version to 110.* but uses functions or events added in a later Thunderbird. Raise strict_max_version, or stop using these APIs."
     }
   ]

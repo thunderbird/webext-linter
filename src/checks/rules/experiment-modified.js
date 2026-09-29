@@ -24,14 +24,13 @@ export default {
   run(ctx) {
     const m = ctx.manifest?.json;
     if (!m || !isExperiment(m)) {
-      ctx.note?.("manifest.json", null, "not an Experiment", VERDICT.SKIPPED);
+      ctx.note?.(ctx.manifest.locus(), "not an Experiment", VERDICT.SKIPPED);
       return { findings: [] };
     }
     const groups = ctx.experiments?.groups;
     if (!Array.isArray(groups)) {
       ctx.note?.(
-        "manifest.json",
-        null,
+        ctx.manifest.locus(),
         "no experiment classification",
         VERDICT.SKIPPED
       );
@@ -39,23 +38,17 @@ export default {
     }
     const findings = [];
     for (const g of groups) {
-      const loc = g.line ? { line: g.line, column: 0 } : null;
+      const at = ctx.manifest.locus("experiment_apis", g.key);
       if (g.status === "modified") {
-        ctx.note?.(
-          "manifest.json",
-          loc,
-          `${g.name} (modified draft)`,
-          VERDICT.FAIL
-        );
-        findings.push(finding({ file: "manifest.json", loc, item: g.name }));
+        ctx.note?.(at, `${g.name} (modified draft)`, VERDICT.FAIL);
+        findings.push(finding({ ...at, item: g.name }));
       } else if (g.status === "pristine") {
-        ctx.note?.("manifest.json", loc, g.name, VERDICT.PASS);
+        ctx.note?.(at, g.name, VERDICT.PASS);
       } else {
         // unsupported: not a known upstream draft, so there is nothing to
         // compare against - this check has no say (experiment-not-allowed does).
         ctx.note?.(
-          "manifest.json",
-          loc,
+          at,
           `${g.name} (not a known upstream draft)`,
           VERDICT.SKIPPED
         );

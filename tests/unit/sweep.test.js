@@ -4,6 +4,7 @@
 // front of whoever cannot settle it - which is the defect this path was built to end.
 
 import { test } from "node:test";
+import { ARTIFACT_XPI, ARTIFACT_SCA } from "../../src/lib/artifacts.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -14,12 +15,14 @@ import { loadRegistry } from "../../src/checks/registry.js";
 
 const registry = loadRegistry();
 
-/** What this run asked to be swept, as preSweepOf builds it. */
+/** What this run asked to be swept, as preSweepOf builds it - including the artifact
+ *  each check's cases will be in, recorded during the review because this merge runs
+ *  from a serialized state with no artifact left to ask. */
 const asked = {
   items: [
-    { check: "privacy-policy" },
-    { check: "data-exfiltration" },
-    { check: "cleartext-transmission" },
+    { check: "privacy-policy", artifact: ARTIFACT_SCA },
+    { check: "data-exfiltration", artifact: ARTIFACT_SCA },
+    { check: "cleartext-transmission", artifact: ARTIFACT_SCA },
   ],
 };
 
@@ -28,7 +31,7 @@ function result(check, file, line, hint = null) {
   return { check, file, line, hint };
 }
 
-function merge(results, manual = [], findings = []) {
+function merge(results, manual = [], findings = [], mode = undefined) {
   return mergeSweepResults({
     results,
     manual,
@@ -36,6 +39,7 @@ function merge(results, manual = [], findings = []) {
     preSweep: asked,
     registry,
     file: "/s.json",
+    mode,
   });
 }
 
@@ -199,4 +203,73 @@ test("a location already covered for that check is merged once", () => {
   );
   assert.equal(elsewhere.applied.length, 1);
   assert.equal(elsewhere.findings.length, 2);
+});
+
+// A swept case reaches a reader with a locus, so it has to say which artifact that locus
+// is in - the same fact every other finding and case carries. BOTH branches here: a check
+// that escalates routes the result to a manual case, one that does not turns it into a
+// finding, and the artifact is not the branch's to decide differently.
+//
+// Stamped here rather than inherited, because this runs long after runChecks. The route
+// is the registry's answer for that check, which is the answer the orchestrator would
+// have used had the check found the case itself.
+test("a swept result says which artifact it is in, whichever branch it takes", () => {
+  // cleartext-transmission settles its own cases (a finding); data-exfiltration escalates.
+  // Both take the artifact the REVIEW recorded for that check, not one worked out here.
+  const out = merge([
+    result("data-exfiltration", "app.js", 3, "fetch()"),
+    result("cleartext-transmission", "app.js", 9, "http://"),
+  ]);
+  assert.deepEqual(
+    out.manual.map((m) => [m.ruleId, m.artifact]),
+    [["data-exfiltration", ARTIFACT_SCA]],
+    "the escalated branch carries it"
+  );
+  assert.deepEqual(
+    out.findings.map((f) => [f.ruleId, f.artifact]),
+    [["cleartext-transmission", ARTIFACT_SCA]],
+    "and so does the finding branch"
+  );
+
+  // A row for a check the review recorded as the XPI's lands there instead - the answer
+  // travels with the pre-sweep list, so this merge never re-derives one.
+  const xpiAsked = {
+    items: [{ check: "data-exfiltration", artifact: ARTIFACT_XPI }],
+  };
+  const xpi = mergeSweepResults({
+    results: [result("data-exfiltration", "app.js", 3, "fetch()")],
+    manual: [],
+    findings: [],
+    preSweep: xpiAsked,
+    registry,
+    file: "/s.json",
+  });
+  assert.equal(xpi.manual[0].artifact, ARTIFACT_XPI);
+});
+
+// A sweep row is the ONLY path in a review the agent authors - every other one is read
+// off disk. Downstream it is resolved against the artifact's root and handed back as a
+// file to open, so a value that steps out of the add-on would have the linter publish a
+// location outside the submission as its own claim. Refused at this door, in the same
+// terms the reviewer's own folder flags are.
+test("a sweep result naming a path outside the add-on is refused", () => {
+  const refused = (file, what) =>
+    assert.throws(
+      () => checkedResult("r[0]", { check: "privacy-policy", file, line: 1 }),
+      /names a file INSIDE the add-on/,
+      what
+    );
+  refused("../../../etc/passwd", "out through the top");
+  refused("lib/../../escape.js", "out through the middle");
+  refused("/etc/hostname", "absolute, which a plain join would re-parent");
+
+  // An ordinary nested path is still fine - the guard is about escaping, not depth.
+  assert.equal(
+    checkedResult("r[0]", {
+      check: "privacy-policy",
+      file: "lib/deep/widget.js",
+      line: 2,
+    }).file,
+    "lib/deep/widget.js"
+  );
 });

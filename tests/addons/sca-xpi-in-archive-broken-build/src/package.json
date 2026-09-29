@@ -1,5 +1,5 @@
 {
-  "name": "sca-not-required-broken-build",
+  "name": "sca-xpi-in-archive-broken-build",
   "version": "1.0.0",
   "private": true,
   "devDependencies": {

@@ -12,12 +12,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import {
-  asArray,
-  isBroadHost,
-  isMatchPattern,
-  manifestPathLine,
-} from "../../lib/util.js";
+import { asArray, isBroadHost, isMatchPattern } from "../../lib/util.js";
 
 export default {
   run(ctx) {
@@ -37,17 +32,14 @@ export default {
         seen.add(p);
         const broad = isBroadHost(p);
         ctx.note?.(
-          "manifest.json",
-          null,
+          ctx.manifest.locus(),
           p,
           broad ? VERDICT.FAIL : VERDICT.PASS
         );
         if (broad) {
-          const line = manifestPathLine(ctx, key, i);
           out.push(
             finding({
-              file: "manifest.json",
-              loc: line ? { line } : null,
+              ...ctx.manifest.locus(key, i),
               item: p,
             })
           );

@@ -656,7 +656,8 @@ function lock2() {
 //
 // The direction that matters is the silent one. A declaration this check passes but
 // lockedVersion cannot pin lands in `vendor.unpinned`, whose only reader is
-// xpi-lock-file-invalid - and that check is `sca: false`, so in a source review nothing
+// xpi-lock-file-invalid - and that check declares `skip-in-sca-review`, so in a
+// source review nothing
 // reads the bucket at all. Such a dependency is then reported by nobody, and never reaches
 // the OSV audit, the blocklist or the popularity gate either, because it never enters
 // `packages`. Nothing about the report would look wrong.

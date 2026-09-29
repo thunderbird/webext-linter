@@ -9,7 +9,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { asArray, isMatchPattern, manifestPathLine } from "../../lib/util.js";
+import { asArray, isMatchPattern } from "../../lib/util.js";
 
 export default {
   run(ctx) {
@@ -29,20 +29,17 @@ export default {
           schema.validPermissions.has(p) ||
           schema.dataCollectionPermissions.has(p)
         ) {
-          ctx.note?.("manifest.json", null, `'${p}'`, VERDICT.PASS);
+          ctx.note?.(ctx.manifest.locus(), `'${p}'`, VERDICT.PASS);
           return;
         }
         ctx.note?.(
-          "manifest.json",
-          null,
+          ctx.manifest.locus(),
           `'${p}' (unknown permission)`,
           VERDICT.FAIL
         );
-        const line = manifestPathLine(ctx, field, i);
         out.push(
           finding({
-            file: "manifest.json",
-            loc: line ? { line } : null,
+            ...ctx.manifest.locus(field, i),
             item: p,
           })
         );

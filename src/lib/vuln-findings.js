@@ -80,16 +80,17 @@ export function vulnFindings(ctx, vulns) {
     // the finding anchors at the file with no line.
     const line = token ? declarationLine(text, token) : null;
     const loc = line ? { line } : undefined;
+    // One locus, in the artifact this check was routed to, for both the note and the
+    // finding - so the feed and the report cannot name the declaration differently.
+    const at = ctx.artifact.at(file, loc);
     ctx.note?.(
-      file,
-      loc,
+      at,
       `${name}@${version} has known vulnerabilities (${ids.join(", ")})`,
       VERDICT.FAIL
     );
     findings.push(
       finding({
-        file,
-        loc,
+        ...at,
         item: name,
         // The advisory's band, mapped to a finding severity for the two
         // severity:auto entries. The two indirect ones declare a flat error,

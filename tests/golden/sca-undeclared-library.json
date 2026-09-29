@@ -67,7 +67,8 @@
       "xpi-packaged-symlink",
       "build-lifecycle-hook",
       "undeclared-build-source",
-      "sca-not-required",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",
@@ -124,6 +125,7 @@
       "loc": null,
       "item": "tinybundle 3.2.1",
       "hint": "https://cdn.jsdelivr.net/npm/tinybundle@3.2.1/dist/tinybundle.min.js",
+      "artifact": "SCA",
       "message": "The following bundled files were recognized as third-party libraries (via a jsDelivr CDN hash lookup) but are not declared as such. An archive holds your authored code, not its dependencies - those should come in through the build process. Declare each in package.json and let the build script copy it from node_modules, rather than committing the file.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     },
     {
@@ -133,6 +135,7 @@
       "loc": null,
       "item": "bootstrap 5.3.0",
       "hint": null,
+      "artifact": "SCA",
       "message": "The following bundled files were recognized as third-party libraries (via the Mozilla library hash database) but are not declared as such. An archive holds your authored code, not its dependencies - those should come in through the build process. Declare each in package.json and let the build script copy it from node_modules, rather than committing the file.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]

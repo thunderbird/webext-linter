@@ -107,11 +107,11 @@
       "severity": "error",
       "file": "manifest.json",
       "loc": {
-        "line": 5,
-        "column": 0
+        "line": 5
       },
       "item": null,
       "hint": null,
+      "artifact": "XPI",
       "message": "manifest.json declares default_locale but the add-on ships no _locales directory, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files, or remove default_locale."
     }
   ]

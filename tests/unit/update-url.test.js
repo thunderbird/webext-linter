@@ -5,14 +5,14 @@
 // update-url-bss covers the bss path end-to-end; the applications alias is not in
 // the offline test schema, so its branch is exercised here.)
 
-import { withManifest, manifestOf } from "./manifest-ctx.js";
+import { withManifest, manifestOf, noManifest } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import rule from "../../src/checks/rules/update-url.js";
 
-// A ctx whose manifest.json record carries pretty-printed bytes, so manifestPathLine can
-// resolve the update_url line.
+// A ctx whose manifest.json record carries pretty-printed bytes, so the record can resolve
+// the update_url line.
 const ctxOf = (manifest) => ({
   artifact: {
     manifest: manifestOf(manifest),
@@ -75,6 +75,8 @@ test("no finding when update_url is absent", () => {
 
 // An unparsed manifest.json yields no findings and does not throw.
 test("no finding (no throw) when the manifest did not parse", () => {
-  const out = rule.run(withManifest({ artifact: { manifest: null } })).findings;
+  const out = rule.run(
+    withManifest({ artifact: { manifest: noManifest() } })
+  ).findings;
   assert.deepEqual(out, []);
 });

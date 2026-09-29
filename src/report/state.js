@@ -30,7 +30,7 @@ export const REVIEW_SUFFIX = ".review.json";
  * @property {string} review  Where the agent's file goes. Stored, because the name carries
  *   the moment the review began and no later pass can recompute one.
  * @property {object} report  Everything formatText needs that the registry cannot
- *   recompute: findings, meta, mode, experiments, flags. NOT ruleInputs / issueHeadings /
+ *   recompute: findings, meta, mode, experiments, flags. NOT issueHeadings /
  *   verdictIntros - those are the registry's, and a stale copy here would outlive an edit
  *   to it.
  * @property {object[]} manual  The to-do items, kept beside the findings because
@@ -43,7 +43,8 @@ export const REVIEW_SUFFIX = ".review.json";
  *   record, read by everything that asks: a step prints by it, the routing drops entries by
  *   it, the registry is read under it, and both legs of a hand-over ask it the same question.
  * @property {object} paths  The values a step names: description, build, report,
- *   schemaCache, scaRoot. Held here because a later pass prints them and cannot re-derive
+ *   schemaCache, schema, and the two artifact roots (scaRoot, xpiRoot) an entry's paths
+ *   are resolved against. Held here because a later pass prints them and cannot re-derive
  *   a moment - and `report` is also where a later pass WRITES, so losing it would leave the
  *   reviewer holding a link to a file nothing refreshes.
  * @property {?string} phase  The phase in flight - what went out last, and so what the
@@ -99,7 +100,9 @@ export function readState(file) {
 
 /** Bumped when the shape, or what the loop DOES with it, changes in a way an older file
  *  cannot satisfy. A review in flight does not survive the upgrade, and saying so beats
- *  reading it wrongly. Version 5 adds the band policy to `run`: a v4 file states no policy,
- *  and a pass reading it as "off" would settle a case in a band the review it belongs to
- *  does not publish. */
-export const STATE_VERSION = 5;
+ *  reading it wrongly. Version 7 needs an `artifact` on every finding, case and pre-swept
+ *  check, plus `paths.xpiRoot`. A v6 file has the first two but not the third: the sweep
+ *  merge reads the artifact off the pre-sweep row now, because it runs from the state with
+ *  no artifact left to ask, and a row without one would land a swept case unlabelled and
+ *  unresolvable. */
+export const STATE_VERSION = 7;

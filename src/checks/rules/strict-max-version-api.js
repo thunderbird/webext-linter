@@ -33,8 +33,7 @@ export default {
     const maxMajor = maxStr ? parseInt(maxStr, 10) : NaN;
     if (!Number.isInteger(maxMajor)) {
       ctx.note?.(
-        "manifest.json",
-        null,
+        ctx.manifest.locus(),
         "no strict_max_version",
         VERDICT.SKIPPED
       );
@@ -66,11 +65,14 @@ export default {
         `${usage.root ?? "browser"}.${usage.segments.join(".")}` +
         (res.kind === "function" ? "()" : "");
       const loc = { line: usage.line, column: usage.column };
-      ctx.note?.(file, loc, `${display} (added in TB ${va})`, VERDICT.FAIL);
+      ctx.note?.(
+        ctx.artifact.at(file, loc),
+        `${display} (added in TB ${va})`,
+        VERDICT.FAIL
+      );
       findings.push(
         finding({
-          file,
-          loc,
+          ...ctx.artifact.at(file, loc),
           item: display,
           hint: `added in Thunderbird ${va}`,
           data: { max: String(maxStr) },

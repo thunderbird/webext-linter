@@ -3,7 +3,7 @@
 // the unrecognized-manifest-key / mistyped-manifest-value entries (deep ajv).
 // Severity is left unset by the rules - runChecks stamps the yaml entry type.
 
-import { withManifest, manifestOf } from "./manifest-ctx.js";
+import { withManifest, manifestOf, noManifest } from "./manifest-ctx.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -50,12 +50,10 @@ test("accepts a well-typed manifest", () => {
 // manifest.json either way and the remedy is the same - so both land on the same check. Every row
 // asserts the OTHER check is silent: one defect, one finding.
 test("the two manifest checks split on presence, not on the parse", () => {
-  const record = (json, error = null) => ({
-    json,
-    text: error ? "{ oops" : JSON.stringify(json),
-    error,
-    loc: null,
-  });
+  // Built the production way: a hand-rolled record goes out of step the next time the
+  // shape gains a field, which is how one reached a reader with no way to point into it.
+  const record = (json, error = null) =>
+    manifestOf(json, error ? "{ oops" : JSON.stringify(json));
   const run = (manifest) => ({
     missing: manifestMissing.run(
       withManifest({ artifact: { manifest }, schema })
@@ -65,8 +63,8 @@ test("the two manifest checks split on presence, not on the parse", () => {
     ).findings.length,
   });
 
-  // No record at all: the file is absent.
-  assert.deepEqual(run(null), { missing: 1, invalid: 0 });
+  // A record saying there was no file.
+  assert.deepEqual(run(noManifest()), { missing: 1, invalid: 0 });
   // Present, and every way of holding no manifest.json object.
   assert.deepEqual(run(record(null, "boom")), { missing: 0, invalid: 1 });
   assert.deepEqual(run(record(null)), { missing: 0, invalid: 1 });

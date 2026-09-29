@@ -16,7 +16,7 @@ import { finding } from "../../report/finding.js";
 import {
   isExperiment,
   strictMaxVersion,
-  manifestTokenLine,
+  strictMaxVersionPath,
   skipWithoutManifest,
 } from "../../lib/util.js";
 
@@ -32,27 +32,23 @@ export default {
       return skipWithoutManifest(ctx);
     }
     if (isExperiment(m)) {
-      ctx.note?.("manifest.json", null, "is an Experiment", VERDICT.SKIPPED);
+      ctx.note?.(ctx.manifest.locus(), "is an Experiment", VERDICT.SKIPPED);
       return { findings: [] };
     }
     const max = strictMaxVersion(m);
     if (max == null) {
-      ctx.note?.("manifest.json", null, "no strict_max_version", VERDICT.PASS);
+      ctx.note?.(ctx.manifest.locus(), "no strict_max_version", VERDICT.PASS);
       return { findings: [] };
     }
     ctx.note?.(
-      "manifest.json",
-      null,
+      ctx.manifest.locus(),
       `strict_max_version ${max} on a non-Experiment`,
       VERDICT.FAIL
     );
-    const text = ctx.manifest?.text;
-    const line = manifestTokenLine(text, "strict_max_version");
     return {
       findings: [
         finding({
-          file: "manifest.json",
-          loc: line ? { line } : null,
+          ...ctx.manifest.locus(...(strictMaxVersionPath(m) ?? [])),
           item: String(max),
         }),
       ],
