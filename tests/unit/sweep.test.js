@@ -273,3 +273,22 @@ test("a sweep result naming a path outside the add-on is refused", () => {
     "lib/deep/widget.js"
   );
 });
+
+// "." and "./" walk nowhere: neither is absolute and neither holds a `..`, so they used
+// to reach the resolver, which normalises them to the root and refuses them there - past
+// the point the agent can be told about and before the state advances, so every retry
+// re-threw and the review was dead. The door that exists for agent-authored paths is the
+// one that has to say no.
+test("a result naming the add-on root is refused, not resolved later", () => {
+  for (const file of [".", "./", "sub/.."]) {
+    assert.throws(
+      () => checkedResult("row", { file }),
+      /never an absolute path, a way out of one, or the root itself/,
+      `expected ${JSON.stringify(file)} to be refused`
+    );
+  }
+  // A path INSIDE the add-on still passes, including one that dips through a directory.
+  for (const file of ["a.js", "sub/a.js", "sub/./a.js"]) {
+    assert.equal(checkedResult("row", { file }).file, file);
+  }
+});

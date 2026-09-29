@@ -1684,9 +1684,17 @@ const VERDICT_COLOR = { fail: red, pass: green, unsure: blue };
 export function formatNote(file, loc, item, verdict, label = "") {
   const status = verdictLabel(verdict); // throws if not a VERDICT
   const at = loc?.line != null ? `${file}:${loc.line}` : file;
-  const site = label ? `[${label}] ${at}` : at;
-  const line = `• ${`[${status}]`.padEnd(TAG_WIDTH)} ${site}${item ? ` - ${item}` : ""}`;
-  return (VERDICT_COLOR[status] ?? ((s) => s))(line);
+  // The dash JOINS a site to an item, so it is written only when there are two things to
+  // join. A locus about the artifact rather than a file in it has no site, and the item is
+  // then the whole note - not a dash with nothing on its left. The label prefixes whatever
+  // is left, because it says which artifact the note is about, not where in one.
+  const body = [at, item].filter(
+    (x) => x !== null && x !== undefined && x !== ""
+  );
+  const line =
+    `• ${`[${status}]`.padEnd(TAG_WIDTH)} ` +
+    `${label ? `[${label}] ` : ""}${body.join(" - ")}`;
+  return (VERDICT_COLOR[status] ?? ((s) => s))(line.trimEnd());
 }
 
 /**
@@ -1888,7 +1896,7 @@ export async function runChecks(registry, opts = {}, siblings) {
           // artifact as a whole and renders as no site at all, which is what displayText
           // makes of it - skipping the call puts the word "null" on the line.
           displayLine(at.file),
-          at.loc,
+          at.file === null ? null : at.loc,
           item == null ? item : displayLine(item),
           verdict,
           label

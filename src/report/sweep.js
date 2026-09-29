@@ -86,9 +86,22 @@ export function checkedResult(where, raw) {
   // would have the linter publish a path outside the submission as its own claim. Refused
   // in the same terms the reviewer's own folder flags are (src/addon/load.js
   // hasParentSegment): a path names a file in the add-on, never a way out of it.
-  if (path.isAbsolute(raw.file) || hasParentSegment(raw.file)) {
+  // "." and "./" are the two that walk nowhere: neither is absolute and neither holds a
+  // `..`, so they reach the resolver, which normalises them to the root and refuses them
+  // there - from a point the agent cannot be told about and before the review's state
+  // advances, so every retry re-throws and the review is dead. Refused here instead, where
+  // the caller turns this into a hand-back the agent can correct (src/report/handback.js).
+  // normalize keeps a trailing separator ("./" stays "./"), so strip it before asking -
+  // the resolver compares a RESOLVED path and would catch both.
+  const within = path.normalize(raw.file).replace(/[\\/]+$/, "");
+  if (
+    path.isAbsolute(raw.file) ||
+    hasParentSegment(raw.file) ||
+    within === "" ||
+    within === "."
+  ) {
     throw new Error(
-      `${at} has file ${JSON.stringify(raw.file)} - a result names a file INSIDE the add-on, relative to its root, never an absolute path or a way out of one`
+      `${at} has file ${JSON.stringify(raw.file)} - a result names a file INSIDE the add-on, relative to its root, never an absolute path, a way out of one, or the root itself`
     );
   }
   if (raw.line !== undefined && (!Number.isInteger(raw.line) || raw.line < 1)) {
