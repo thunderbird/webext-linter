@@ -54,6 +54,8 @@
       "vendor-vulnerable",
       "banned-library",
       "xpi-packaged-symlink",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",
@@ -110,7 +112,7 @@
       "item": null,
       "hint": null,
       "artifact": "XPI",
-      "message": "The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.\nPlease read the instructions: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+      "message": "The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked."
     }
   ]
 }

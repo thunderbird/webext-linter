@@ -1,0 +1,4 @@
+{
+  "_comment": "An SCA submission whose ARCHIVE is clean and whose shipped background.js carries a debugger statement the build did not strip. debugger-statement is asked of every artifact (input: all), so it raises the shipped one and says which side it is in. This is the case an archive cannot show by construction: the archive holds what the developer wrote, and the question is about what the build emitted. It escalates rather than rejecting, because whether a debugger is reachable for an ordinary user needs a person to read the enclosing condition. Route the check back to the review target and this submission passes clean, which is what the fixture prevents.",
+  "expect": {}
+}

@@ -5,6 +5,10 @@
 // checks (eval-call, function-constructor, string-timer, csp-unsafe-eval,
 // csp-unsafe-inline).
 //
+// Asked of EVERY artifact the review has (`input: all`, via perArtifact): code assembled
+// at run time is a question about the code that runs, and a build can introduce the
+// pattern the archive does not show.
+//
 // Belongs here: one escalation per ambiguous fetch().then(eval) hit. Does NOT
 // belong here: the scan (-> getEvalScan in src/lib/eval-scan.js), the
 // deterministic->manual routing (-> src/checks/registry.js +
@@ -13,6 +17,7 @@
 import { VERDICT } from "../../lib/enum.js";
 import { getEvalScan } from "../../lib/eval-scan.js";
 
+import { perArtifact } from "../each-artifact.js";
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
 export default {
@@ -21,7 +26,7 @@ export default {
    * @returns {{findings: [], escalations:
    *   import("../escalation.js").Escalation[]}}
    */
-  run(ctx) {
+  run: perArtifact((ctx) => {
     const escalations = [];
     for (const hit of getEvalScan(ctx).hits) {
       if (hit.type !== "ambiguous-fetch-eval") {
@@ -39,5 +44,5 @@ export default {
       );
     }
     return { findings: [], escalations };
-  },
+  }),
 };

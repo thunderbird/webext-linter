@@ -77,7 +77,8 @@ flowchart TD
       <p class="source-note">
         Source of truth:
         <code>src/checks/rules/sca-xpi-declares-vendoring.js</code> (which reads only the
-        XPI, of the two artifacts its <code>input: both</code> route carries) and its
+        XPI, of the artifacts its <code>input: all</code> route carries, and is silent when
+        a review has no archive) and its
         entry in <code>assets/registry.yaml</code>.
       </p>
     </main>

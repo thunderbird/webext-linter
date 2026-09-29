@@ -84,7 +84,7 @@ by-hand one. Entries may also carry `sca`, `eslint`, `sweep-instruction`
    The review mode is DERIVED (`--sca-root`, minus a rejected Experiment) and assigned
    nowhere. The file also shows the `mode?.sca` forks, and the four routes a check can
    declare (`source` / `xpi` / `sca` / `both`) dispatched by `routeCtx` over the sibling
-   ctxs built by `buildXpiCtx` / `buildScaCtxs`.
+   ctxs built by `buildXpiCtx` / `buildScaCtx`.
 5. `src/checks/registry.js` - the orchestrator (`runChecks`), which runs the whole
    review inside that single Phase-6 call: the phase's checks in its main loop, then
    the unused-folder collapse. The pipeline only calls `runChecks` and assembles the

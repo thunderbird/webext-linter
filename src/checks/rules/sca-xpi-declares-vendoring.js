@@ -67,8 +67,16 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const files = vendoringFilesIn(ctx.xpi);
-    const loci = files.map((file) => ctx.xpi.at(file));
+    // An archive has to exist for this to be a question: vendoring information in an XPI
+    // is only misplaced when there was somewhere else to put it. The archive is never read
+    // below, so without this the check would report against a submission that was only
+    // ever one artifact.
+    if (!ctx.sca) {
+      ctx.note?.(ctx.xpi.artifact.at(), "no source archive", VERDICT.SKIPPED);
+      return { findings: [] };
+    }
+    const files = vendoringFilesIn(ctx.xpi.artifact);
+    const loci = files.map((file) => ctx.xpi.artifact.at(file));
     for (const at of loci) {
       ctx.note?.(at, "vendoring information in the XPI", VERDICT.FAIL);
     }

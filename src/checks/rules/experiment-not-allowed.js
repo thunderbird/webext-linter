@@ -14,6 +14,10 @@
 // (isExperiment), classifying the files (src/experiments/verify.js), authored
 // heading wording (assets/registry.yaml), or severity (that registry entry,
 // stamped by src/checks/registry.js).
+//
+// Reads no artifact: the records it asks are the built XPI's whatever the review mode,
+// which is why the registry entry declares `input: xpi` (see VALID_CHECK_INPUTS in
+// src/checks/registry-vocabulary.js).
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";

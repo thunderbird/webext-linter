@@ -128,10 +128,10 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   check that delegates has. Carried here because runOneCheck takes no registry.
  * @property {boolean} ["skip-in-sca-review"]  Keeps a check that judges the shipped XPI out
  *   of a source review (modeEligible); absent means it runs in both.
- * @property {"source"|"xpi"|"sca"|"both"|undefined} input  Which artifact is
+ * @property {"source"|"xpi"|"sca"|"all"|undefined} input  Which artifact is
  *   ctx.artifact when the check runs (VALID_CHECK_INPUTS above). NOT what its findings
  *   are about - a locus answers that, from the holder that minted it. Required for every
- *   check; runChecks routes it (see buildXpiCtx / buildScaCtxs).
+ *   check; runChecks routes it (see buildXpiCtx / buildScaCtx).
  * @property {?string} section  Which to-do section its escalations are listed under
  *   (SECTION in src/report/finding.js), derived by sectionFor from the reader this check
  *   authored wording for; null when it never escalates. The wording itself is NOT carried
@@ -158,6 +158,15 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   artifact never produced throws a WIRING LinterError and the run exits 2 instead of the
  *   check finding nothing. Read its fields directly: `ctx.artifact?.x` guards against a
  *   routing bug, which must fail, not read as an empty review.
+ *   ABSENT on the `all` route, which names no single artifact - see `xpi` / `sca` below.
+ * @property {RunContext} [xpi]  On the `all` route only: the built XPI's own ctx - the same
+ *   object siblings.xpi holds, so the analyses are memoized once and a locus is minted by
+ *   the artifact it is actually in. The Addon under it is `ctx.xpi.artifact`.
+ * @property {?RunContext} [sca]  On the `all` route only: the submitted archive's ctx, or
+ *   null in an XPI review. Null rather than absent, so "this review has no archive" is a
+ *   value a check can test. A check asking both sides the same question is written for ONE
+ *   artifact and wrapped in perArtifact (src/checks/each-artifact.js); a check comparing
+ *   them reads these two by name and says which side every read is about.
  * @property {object} cache  What this review DERIVES from that artifact, memoized per ctx and
  *   computed once on first ask: the locale scan, the eval scan, the outbound sinks, the
  *   permission analysis, the api resolution, the remote refs, and a bundled classification
@@ -385,7 +394,7 @@ export class Registry {
    * record). Those are two questions, and this answers only the first, which is why it
    * is no longer named for the other one.
    * @param {string} ruleId
-   * @returns {"xpi"|"sca"|"source"|"both"}
+   * @returns {"xpi"|"sca"|"source"|"all"}
    */
   inputFor(ruleId) {
     return this.checkEntry(ruleId)?.input ?? "source";
@@ -985,10 +994,10 @@ function assertSweepInstruction(entry, where, severity) {
   // sweep list, which records one answer per check and this route has two; and not the
   // sweeping reader, who was told to search a submission rather than a tree. Every other
   // route names the single artifact its check reads, which is that answer for every row.
-  if (entry.input === "both") {
+  if (entry.input === "all") {
     throw new Error(
-      `${where} authors a \`sweep-instruction\` beside \`input: both\` - a swept row ` +
-        "names a file, and a route carrying two artifacts cannot say which of them it " +
+      `${where} authors a \`sweep-instruction\` beside \`input: all\` - a swept row ` +
+        "names a file, and a route carrying every artifact cannot say which of them it " +
         "is in. Route the check at the artifact its cases are in, or drop the sweep"
     );
   }
@@ -1764,6 +1773,7 @@ function eslintEligible(entry, inEslintMode) {
  *     source       | siblings.source = readable source| siblings.source (the XPI)
  *     xpi          | siblings.xpi = the built XPI      | siblings.xpi (the XPI)
  *     sca          | siblings.sca = the source archive | (sca-only)
+ *     all          | siblings.all = xpi + sca          | siblings.all = xpi, sca null
  *
  * In an XPI review there is a single artifact, so siblings.source and siblings.xpi are the
  * SAME ctx (the pipeline aliases siblings.source to xpiCtx). A declared `input` with no
@@ -1842,11 +1852,12 @@ export function ctxForRule(registry, ruleId, siblings) {
  */
 export async function runChecks(registry, opts = {}, siblings) {
   // `siblings` is the whole set of routing ctxs, keyed by input value; there is no separate
-  // review-target argument. The review-level state (the base feed note) lives on the source
-  // ctx, so name it once here. `source` is required - routing is
-  // total, so a siblings map without it is a caller bug, not a run to default around.
-  const sourceCtx = siblings?.source;
-  if (!sourceCtx) {
+  // review-target argument. The review-level state (the base feed note) is the same on
+  // every sibling, so read it off the review TARGET and name it once here. `source` is
+  // required - routing is total, so a siblings map without it is a caller bug, not a run
+  // to default around.
+  const targetCtx = siblings?.source;
+  if (!targetCtx) {
     throw new Error(
       "runChecks: siblings.source is required (the review-target ctx)."
     );
@@ -1854,13 +1865,13 @@ export async function runChecks(registry, opts = {}, siblings) {
   const byPhase = await loadChecks(registry, opts);
   // The mode gate (modeEligible) reads the route, then the flag. A gated-out check never runs
   // and never appears in the feed or meta.checksRun.
-  const inScaMode = sourceCtx.mode?.sca;
+  const inScaMode = targetCtx.mode?.sca;
   // An invalid Experiment short-circuits the whole review to the reject phase and
   // nothing else; a normal review runs the deterministic phase. The gates apply within
   // each phase.
   const inPhase = (phase) =>
     (byPhase.get(phase) ?? []).filter((c) => modeEligible(c, inScaMode));
-  const checks = sourceCtx.invalidExperiment
+  const checks = targetCtx.invalidExperiment
     ? inPhase("invalid-experiment")
     : inPhase("deterministic");
   // The whole-review count, for the [i/total] feed counter.
@@ -1885,7 +1896,7 @@ export async function runChecks(registry, opts = {}, siblings) {
     try {
       const label = artifactLabel({
         artifact: at.artifact,
-        mode: sourceCtx.mode,
+        mode: targetCtx.mode,
       });
       // The note is composed by ~145 call sites out of paths and submission
       // text. Made safe here, once, rather than at each of them - and on the
@@ -1982,10 +1993,10 @@ export async function runOneCheck(ctx, check, label) {
         item: check.id,
         // Minted here rather than by the check, which never got far enough to say
         // anything: the ctx it was handed knows what it was reading, and that is known
-        // whether or not the check produced a thing. On the `both` route there is no
-        // single artifact and the crash belongs to neither, so it names the built XPI -
+        // whether or not the check produced a thing. On the `all` route there is no
+        // single artifact and the crash belongs to none of them, so it names the built XPI -
         // the one artifact every review has, in both modes.
-        ...(ctx.artifact ?? ctx.xpi).at(),
+        ...(ctx.artifact ?? ctx.xpi.artifact).at(),
       })
     );
     return { findings, manualItems };

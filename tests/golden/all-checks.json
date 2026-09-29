@@ -55,6 +55,8 @@
       "vendor-vulnerable",
       "banned-library",
       "xpi-packaged-symlink",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",

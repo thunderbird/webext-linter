@@ -8,16 +8,16 @@
 // and the module-syntax loc are extracted on EVERY source - because a permission is USED,
 // and a file IS loaded, whoever wrote the code (a vendored library's navigator.clipboard
 // call grounds clipboardWrite too). The CONTENT results (remote-js, network-sinks, unsafe-
-// HTML, ...) run only on the developer's own code - a vendored / library / minified /
-// obfuscated bundle is non-authored (addon.bundled.nonAuthored), so those scanners skip it
-// and it is never scanned for the reviewer-facing content findings. The pass and those
-// consumers read that same nonAuthored Set: the pass to decide what to precompute, each
-// consumer to decide what to read, so the two never disagree.
+// HTML, ...) are extracted for every source too. WHETHER a non-authored file's hits reach
+// the report is a separate question, and the answer is each consumer's: a vendored /
+// library / minified / obfuscated bundle is non-authored (addon.bundled.nonAuthored) and
+// every content consumer skips it. The policy is stated once, where it is applied, rather
+// than also deciding what gets computed - so a consumer can never read a field the pass
+// declined to produce.
 //
 // runExtractionPass is the single full pass, run once per artifact: the review target, and
-// - in an SCA review - the built XPI too (both get the same load graph + api-usage + the
-// authored-only content scans), so an input:xpi check sees the XPI analysed the same way in
-// either mode.
+// - in an SCA review - the built XPI too (both get the same load graph, api-usage and
+// content scans), so an input:xpi check sees the XPI analysed the same way in either mode.
 //
 // The `xOf(src)` accessors are the ONE seam a consumer uses to read a result, and they
 // are PURE READS - parsing inside one would put an AST in the check's call stack and
@@ -108,9 +108,11 @@ function extractLoadGraph(
  * @param {import("../schema/index.js").SchemaIndex} [opts.schema]  For the web_api
  *   signatures (the pass scans against ALL of them; the permission grounding
  *   intersects with what the manifest.json declares) and the loader-ref schema walk.
- * @param {Set<string>} [opts.nonAuthored]  Files a content scanner would skip
+ * @param {Set<string>} [opts.nonAuthored]  Files that are not the developer's own
  *   (vendored / library / minified / obfuscated / experiment-trusted) -
- *   addon.bundled.nonAuthored, the same Set the consumers read.
+ *   addon.bundled.nonAuthored, the same Set the consumers read. Used here for
+ *   `codeAtoms` alone, whose absence routes the token scan to its raw-text path;
+ *   every other result is extracted whether or not a file is in it.
  * @param {Set<string>} [opts.experimentNamespaces]  The add-on's Experiment API
  *   namespaces (null for a non-Experiment); present -> extract the injected file
  *   refs on every source, so reachability reads them instead of re-parsing.
@@ -135,31 +137,31 @@ export function runExtractionPass(
     // Scanned against ALL web_api signatures; groundWebApiPermissions keeps the declared.
     extracted.apiUsage = parseApiUsage(src.code, src.lineOffset, parsed);
     extracted.webApiPerms = scanWebApiCalls(src.code, webApiSigs, parsed);
-    // Content extractors: only the developer's own code. A bundle / library /
-    // obfuscated file is non-authored (obfuscated files are added to nonAuthored by
-    // classifyFiles, which runs before this pass), so every content consumer
-    // skips it (nonAuthoredJs).
+    // Content extractors: EVERY source, whoever wrote it. Whether a non-authored file's
+    // hits are reported is the consumer's call, and each one makes it for itself against
+    // the same nonAuthored Set. Producing the result either way is what stops the two
+    // from disagreeing: a scanner that skipped here left the field undefined, so a
+    // consumer that forgot to skip did not read "nothing found" - it read `undefined` and
+    // threw, taking every check sharing that scan down with it.
+    extracted.remoteJs = scanRemoteJs(src.code, src.lineOffset, parsed);
+    extracted.networkSinks = scanNetworkSinks(src.code, src.lineOffset, parsed);
+    extracted.unsafeHtml = scanUnsafeHtml(src.code, src.lineOffset, parsed);
+    extracted.coreSymbols = scanCoreSymbols(src.code, src.lineOffset, parsed);
+    extracted.syncXhr = scanSyncXhr(src.code, src.lineOffset, parsed);
+    extracted.debuggerStmt = scanDebugger(src.code, src.lineOffset, parsed);
+    extracted.asyncOnMessage = scanAsyncOnMessage(
+      src.code,
+      src.lineOffset,
+      parsed
+    );
+    // The one exception, and not for cost: the code-text atoms (identifiers/strings/
+    // templates, comments excluded) with their source lines, which the unused-permission
+    // token scan reads to test presence AND point the reviewer at each occurrence. Their
+    // ABSENCE is what selects the other path - a non-authored bundle is searched raw
+    // instead (permissions.js reads `if (atoms)`), where including comments only pushes
+    // toward escalation, the safe direction. Producing them here would quietly move that
+    // scan off the conservative branch.
     if (!nonAuthored?.has(src.file)) {
-      extracted.remoteJs = scanRemoteJs(src.code, src.lineOffset, parsed);
-      extracted.networkSinks = scanNetworkSinks(
-        src.code,
-        src.lineOffset,
-        parsed
-      );
-      extracted.unsafeHtml = scanUnsafeHtml(src.code, src.lineOffset, parsed);
-      extracted.coreSymbols = scanCoreSymbols(src.code, src.lineOffset, parsed);
-      extracted.syncXhr = scanSyncXhr(src.code, src.lineOffset, parsed);
-      extracted.debuggerStmt = scanDebugger(src.code, src.lineOffset, parsed);
-      extracted.asyncOnMessage = scanAsyncOnMessage(
-        src.code,
-        src.lineOffset,
-        parsed
-      );
-      // The code-text atoms (identifiers/strings/templates, comments excluded)
-      // with their source lines - the unused-permission token scan tests presence
-      // AND points the reviewer at each occurrence. Authored only: a non-authored
-      // bundle is searched raw (see permissions.js), where including comments only
-      // pushes toward escalation, the safe direction.
       extracted.codeAtoms = scanCodeText(
         src.code,
         src.lineOffset,
@@ -177,9 +179,9 @@ export function runExtractionPass(
  * never parses, so a source that reaches a check without having been through a pass is a
  * wiring bug in setup, not something to paper over by parsing here. Fail loudly instead.
  *
- * A field being ABSENT is a different thing, and legitimate: the content fields exist only
- * for AUTHORED sources (a consumer skips the non-authored ones first); the load graph and
- * api-usage are on every source.
+ * A field being ABSENT is a different thing, and legitimate, but it is now only ever
+ * `codeAtoms`: everything else - the load graph, api-usage and every content result - is
+ * extracted for every source, so a consumer reads a real answer rather than `undefined`.
  * @param {JsSource} src
  * @returns {object}
  */

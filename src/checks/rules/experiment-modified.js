@@ -10,6 +10,10 @@
 // `modified` experiment. Does NOT belong here: classifying the files
 // (src/experiments/verify.js), authored wording (assets/registry.yaml), or
 // severity (that registry entry).
+//
+// Reads no artifact: the classification is the built XPI's whatever the review mode,
+// which is why the registry entry declares `input: xpi` (see VALID_CHECK_INPUTS in
+// src/checks/registry-vocabulary.js).
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";

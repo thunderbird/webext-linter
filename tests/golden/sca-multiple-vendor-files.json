@@ -119,16 +119,6 @@
   },
   "findings": [
     {
-      "ruleId": "multiple-vendor-files",
-      "severity": "error",
-      "file": "VENDOR.md",
-      "loc": null,
-      "item": null,
-      "hint": null,
-      "artifact": "SCA",
-      "message": "This add-on ships more than one file that names itself the VENDOR file. Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different file after a rebuild. Declare each in package.json instead and let the build script copy it from node_modules, rather than committing the file. Keep a single VENDOR.md file only for what that route cannot cover.\nRead more #1: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html\nRead more #2: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
-    },
-    {
       "ruleId": "sca-xpi-declares-vendoring",
       "severity": "warning",
       "file": "VENDOR.md",
@@ -139,16 +129,6 @@
       "message": "This add-on was submitted as a source-code archive, but the built XPI carries vendoring information of its own. In a source-code submission a VENDOR file, a package.json and a lock file belong in the archive - the copy the reviewer reads and the build installs from - not in the package you ship. Remove the file(s) below from the XPI and declare the dependencies in the archive instead. If the add-on needs no archive behind it, submit just the XPI.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     },
     {
-      "ruleId": "multiple-vendor-files",
-      "severity": "error",
-      "file": "VENDORS.md",
-      "loc": null,
-      "item": null,
-      "hint": null,
-      "artifact": "SCA",
-      "message": "This add-on ships more than one file that names itself the VENDOR file. Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different file after a rebuild. Declare each in package.json instead and let the build script copy it from node_modules, rather than committing the file. Keep a single VENDOR.md file only for what that route cannot cover.\nRead more #1: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html\nRead more #2: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
-    },
-    {
       "ruleId": "sca-xpi-declares-vendoring",
       "severity": "warning",
       "file": "VENDORS.md",
@@ -157,6 +137,26 @@
       "hint": null,
       "artifact": "XPI",
       "message": "This add-on was submitted as a source-code archive, but the built XPI carries vendoring information of its own. In a source-code submission a VENDOR file, a package.json and a lock file belong in the archive - the copy the reviewer reads and the build installs from - not in the package you ship. Remove the file(s) below from the XPI and declare the dependencies in the archive instead. If the add-on needs no archive behind it, submit just the XPI.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+    },
+    {
+      "ruleId": "multiple-vendor-files",
+      "severity": "error",
+      "file": "VENDOR.md",
+      "loc": null,
+      "item": null,
+      "hint": null,
+      "artifact": "SCA",
+      "message": "This add-on ships more than one file that names itself the VENDOR file. Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different file after a rebuild. Declare each in package.json instead and let the build script copy it from node_modules, rather than committing the file. Keep a single VENDOR.md file only for what that route cannot cover.\nRead more #1: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html\nRead more #2: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
+    },
+    {
+      "ruleId": "multiple-vendor-files",
+      "severity": "error",
+      "file": "VENDORS.md",
+      "loc": null,
+      "item": null,
+      "hint": null,
+      "artifact": "SCA",
+      "message": "This add-on ships more than one file that names itself the VENDOR file. Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different file after a rebuild. Declare each in package.json instead and let the build script copy it from node_modules, rather than committing the file. Keep a single VENDOR.md file only for what that route cannot cover.\nRead more #1: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html\nRead more #2: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html."
     }
   ]
 }

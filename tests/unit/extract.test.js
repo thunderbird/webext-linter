@@ -45,18 +45,33 @@ test("populates src.extracted with results equal to a direct scanner call", () =
   assert.ok(!("ast" in extracted));
 });
 
-test("skips content extraction for a non-authored file", () => {
+// A non-authored file is extracted like any other. Whether its hits are REPORTED is the
+// consumer's call - every content check skips it against the same nonAuthored Set - and
+// keeping that decision out of the pass is what makes it impossible for a consumer to read
+// a field the pass declined to produce. That shape used to throw a bare TypeError from
+// inside the scan, taking every check sharing it down as an anonymous check-failed.
+test("extracts content for a non-authored file too, except its atoms", () => {
   const sources = [src("vendor/lib.js", RICH)];
   runExtractionPass(sources, { nonAuthored: new Set(["vendor/lib.js"]) });
   const { extracted } = sources[0];
-  assert.equal(
-    extracted.remoteJs,
-    undefined,
-    "no content scan on a non-authored file"
-  );
-  assert.equal(extracted.networkSinks, undefined);
+  for (const field of [
+    "remoteJs",
+    "networkSinks",
+    "unsafeHtml",
+    "coreSymbols",
+    "syncXhr",
+    "debuggerStmt",
+    "asyncOnMessage",
+  ]) {
+    assert.ok(extracted[field], `${field} is extracted whoever wrote the file`);
+  }
   assert.ok(extracted.apiUsage, "api-usage still runs on every file");
   assert.ok(extracted.localImports, "load-graph refs run on every file");
+  // The one field the skip still governs: its absence is what sends the permission token
+  // scan to the raw text instead (src/lib/permissions.js reads `if (atoms)`), which counts
+  // comments and so leans toward escalation - the safe direction for a file nobody vouches
+  // for. Producing atoms here would move that scan off the conservative branch.
+  assert.equal(extracted.codeAtoms, undefined, "atoms stay authored-only");
 });
 
 test("results still match a direct scan for pathological input", () => {

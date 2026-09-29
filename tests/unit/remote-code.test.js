@@ -1,6 +1,6 @@
 // Unit tests for the remote-code scanners and check.
 
-import { withManifest, parsed, manifestOf } from "./manifest-ctx.js";
+import { withManifest, parsed, manifestOf, allOf } from "./manifest-ctx.js";
 import { VERDICT } from "../../src/lib/enum.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -593,8 +593,8 @@ test("remote-resources + eval checks: no findings for a clean bundled add-on", (
   assert.equal(remoteScript.run(withManifest(ctx)).findings.length, 0);
   // no undecidable sites -> nothing escalated either
   assert.deepEqual(remoteScript.run(withManifest(ctx)).escalations, []);
-  assert.equal(evalCall.run(withManifest(ctx)).findings.length, 0);
-  const re = remoteEval.run(withManifest(ctx));
+  assert.equal(evalCall.run(allOf(withManifest(ctx))).findings.length, 0);
+  const re = remoteEval.run(allOf(withManifest(ctx)));
   assert.equal(re.findings.length, 0);
   assert.deepEqual(re.escalations, []);
 });
@@ -615,8 +615,8 @@ test("eval checks note each dynamic-code site and the CSP, with verdicts", () =>
   const notes = [];
   ctx.note = (at, item, verdict) =>
     notes.push({ file: at.file, item, verdict });
-  evalCall.run(withManifest(ctx)).findings;
-  remoteEval.run(withManifest(ctx));
+  evalCall.run(allOf(withManifest(ctx), ctx.note)).findings;
+  remoteEval.run(allOf(withManifest(ctx), ctx.note));
   cspUnsafeEval.run(withManifest(ctx)).findings;
   assert.ok(
     notes.some((n) => n.item === "eval()" && n.verdict === VERDICT.FAIL)

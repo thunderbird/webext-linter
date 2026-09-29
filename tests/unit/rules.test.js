@@ -8,6 +8,7 @@ import {
   manifestOf,
   addonOf,
   noManifest,
+  allOf,
 } from "./manifest-ctx.js";
 import {
   ARTIFACT_XPI,
@@ -155,7 +156,11 @@ function notesFrom(check, ctx) {
   // flattens it the way the feed reads it, and a test asserting on `file` still does.
   ctx.note = (at, item, verdict) =>
     notes.push({ file: at.file, item, verdict });
-  check.run(withManifest(ctx));
+  const one = withManifest(ctx);
+  // Serves both check shapes at once: a one-artifact check reads the fields directly, and
+  // a check on `input: all` reads ctx.xpi - here this same ctx, the review having one
+  // artifact. The note rides on both, since perArtifact copies the outer's onto it.
+  check.run({ ...one, xpi: one, sca: null });
   return notes;
 }
 
@@ -193,17 +198,18 @@ test("a manifest-reading check names WHY there is no manifest, absent vs unparsa
 // async=true and an omitted third arg (defaults to async) must not flag.
 test("sync-xhr flags open(..., false), not async/omitted", () => {
   assert.equal(
-    syncXhr.run(withManifest(jsCtx(`x.open("GET", "/u", false);`))).findings
-      .length,
+    syncXhr.run(allOf(withManifest(jsCtx(`x.open("GET", "/u", false);`))))
+      .findings.length,
     1
   );
   assert.equal(
-    syncXhr.run(withManifest(jsCtx(`x.open("GET", "/u", true);`))).findings
-      .length,
+    syncXhr.run(allOf(withManifest(jsCtx(`x.open("GET", "/u", true);`))))
+      .findings.length,
     0
   );
   assert.equal(
-    syncXhr.run(withManifest(jsCtx(`x.open("GET", "/u");`))).findings.length,
+    syncXhr.run(allOf(withManifest(jsCtx(`x.open("GET", "/u");`)))).findings
+      .length,
     0
   );
 });
@@ -215,7 +221,7 @@ test("sync-xhr flags open(..., false), not async/omitted", () => {
 // which halts Thunderbird for any user who receives such a message - was reported to
 // nobody. An enclosing `if` is a shape, not evidence about who can reach the statement.
 test("debugger-statement raises every statement, conditional or not", () => {
-  const run = (code) => debuggerStatement.run(withManifest(jsCtx(code)));
+  const run = (code) => debuggerStatement.run(allOf(withManifest(jsCtx(code))));
   for (const code of [
     `debugger;`,
     `function f() { doStuff(); debugger; }`,
@@ -332,13 +338,19 @@ test("sync-xhr / debugger / async-onmessage skip non-authored code", () => {
   // A hash-identified library -> non-authored -> all three checks skip it. debugger
   // escalates rather than rejecting, so its silence is measured on the other array.
   const lib = ctxFor("vendor/lib.min.js", true);
-  assert.equal(syncXhr.run(withManifest(lib)).findings.length, 0);
-  assert.equal(debuggerStatement.run(withManifest(lib)).escalations.length, 0);
+  assert.equal(syncXhr.run(allOf(withManifest(lib))).findings.length, 0);
+  assert.equal(
+    debuggerStatement.run(allOf(withManifest(lib))).escalations.length,
+    0
+  );
   assert.equal(asyncOnMessage.run(withManifest(lib)).findings.length, 0);
   // The same code, not a known library, is still reported by each.
   const app = ctxFor("src/app.js");
-  assert.equal(syncXhr.run(withManifest(app)).findings.length, 1);
-  assert.equal(debuggerStatement.run(withManifest(app)).escalations.length, 1);
+  assert.equal(syncXhr.run(allOf(withManifest(app))).findings.length, 1);
+  assert.equal(
+    debuggerStatement.run(allOf(withManifest(app))).escalations.length,
+    1
+  );
   assert.equal(asyncOnMessage.run(withManifest(app)).findings.length, 1);
 });
 
@@ -511,7 +523,8 @@ test("obfuscated-code flags obfuscated JS; minified-only routes elsewhere", () =
       "\n"
     );
   assert.equal(
-    obfuscatedCode.run(withManifest(filesCtx({ "o.js": obf }))).findings.length,
+    obfuscatedCode.run(allOf(withManifest(filesCtx({ "o.js": obf })))).findings
+      .length,
     1
   );
   assert.equal(
@@ -521,8 +534,8 @@ test("obfuscated-code flags obfuscated JS; minified-only routes elsewhere", () =
   // A merely-minified file is NOT obfuscated-code's concern.
   const minified = "var a=1;b=2;c=3;d=4;".repeat(100) + "\n";
   assert.equal(
-    obfuscatedCode.run(withManifest(filesCtx({ "m.js": minified }))).findings
-      .length,
+    obfuscatedCode.run(allOf(withManifest(filesCtx({ "m.js": minified }))))
+      .findings.length,
     0
   );
   // The same obfuscation collapsed onto one dense line -> minified geometry AND
@@ -532,7 +545,7 @@ test("obfuscated-code flags obfuscated JS; minified-only routes elsewhere", () =
     "function _0xg(i){return _0xa[i];}" +
     Array.from({ length: 80 }, (_, i) => `console.log(_0xg(${i}));`).join("");
   assert.equal(
-    obfuscatedCode.run(withManifest(filesCtx({ "b.js": both }))).findings
+    obfuscatedCode.run(allOf(withManifest(filesCtx({ "b.js": both })))).findings
       .length,
     1
   );
@@ -565,10 +578,13 @@ test("obfuscated-code ignores a match no pinned family made", () => {
   const unpinned = `const Helper = (() => {\n${methods}  return { ${returns} };\n})();\n${calls}\n`;
 
   const step = obfuscatedCode.run(
-    withManifest(filesCtx({ "app.js": unpinned }))
+    allOf(withManifest(filesCtx({ "app.js": unpinned })))
   );
   assert.equal(step.findings.length, 0);
-  assert.equal(step.escalations, undefined);
+  // Nothing escalated either. perArtifact returns both lanes on every path, so this is an
+  // empty one rather than an absent one - the same thing to the orchestrator, which reads
+  // `result?.escalations ?? []`.
+  assert.deepEqual(step.escalations, []);
 });
 
 // vendor-vulnerable surfaces a vulnerability the OSV audit recorded for a
@@ -1237,7 +1253,7 @@ test("the shape pass refuses a key no section declares, and names the near miss"
       "deterministic-phase": [rule({ input: "none" })],
       "manual-checks": [manual],
     },
-    /has an invalid `input` .*expected one of: source, xpi, sca, both/
+    /has an invalid `input` .*expected one of: source, xpi, sca, all/
   );
 
   // permission-prompts was reached by no assertion at all: an entry naming no
@@ -1384,7 +1400,7 @@ test("a sweep-instruction no finding could be filed for is refused", () => {
     },
     /carries a {{placeholder}}/
   );
-  // A swept row names a FILE, and `input: both` carries two artifacts holding the same
+  // A swept row names a FILE, and `input: all` can carry two artifacts holding the same
   // relative paths - so nothing downstream could say which tree the row is in: not the
   // merge (it runs from a serialized state with no artifact left to ask), not the
   // pre-sweep list (one answer per check, and this route has two), and not the reader
@@ -1394,12 +1410,12 @@ test("a sweep-instruction no finding could be filed for is refused", () => {
       "deterministic-phase": [
         entry({
           check: "sca-xpi-declares-vendoring",
-          input: "both",
+          input: "all",
           "sweep-instruction": "look for X",
         }),
       ],
     },
-    /a route carrying two artifacts cannot say which of them it is in/
+    /a route carrying every artifact cannot say which of them it is in/
   );
 });
 
@@ -1562,19 +1578,31 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
       c.input === "source" ||
         c.input === "xpi" ||
         c.input === "sca" ||
-        c.input === "both",
+        c.input === "all",
       `check "${c.id}" has an invalid input ${JSON.stringify(c.input)}`
     );
   }
   // The cross-artifact route, pinned exhaustively for the same reason as input:xpi - it is
-  // the ONE route that hands a check two artifacts, so a check joining it is a deliberate
-  // decision, and `source` stays pinned by complement only while this set is complete.
+  // the ONE route that hands a check every artifact the review has, so a check joining it
+  // is a deliberate decision, and `source` stays pinned by complement only while this set
+  // is complete. Two kinds sit here: the submission-shape pair, which compares the
+  // artifacts against each other, and a scan asked of each of them in turn (perArtifact).
   assert.deepEqual(
     checks
-      .filter((c) => c.input === "both")
+      .filter((c) => c.input === "all")
       .map((c) => c.id)
       .sort(),
-    ["sca-xpi-declares-vendoring", "sca-xpi-fully-included-in-archive"]
+    [
+      "core-symbol-in-webext",
+      "debugger-statement",
+      "eval-call",
+      "obfuscated-code",
+      "remote-eval",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
+      "string-timer",
+      "sync-xhr",
+    ]
   );
   const xpi = checks
     .filter((c) => c.input === "xpi")
@@ -1584,10 +1612,10 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
   // _locales / reachability-structure checks, unused-permission (it judges whether a
   // declared permission is exercised in the SHIPPED bytes), unacceptable-package-content and
   // shipped-icon-trademark-imitation, which scan nothing themselves but must be able to
-  // reach everything the package ships for what its sweep finds. A check that reads the
-  // shipped manifest.json and nothing else is NOT here: it declares what it reads, and the
-  // record it asks for a locus answers for the XPI whatever the route. Extending this set is
-  // deliberate - update the check AND this pin together.
+  // reach everything the package ships for what its sweep finds. Also here: the checks that
+  // read NO artifact, only the shared records (ctx.manifest, ctx.experiments) - both are the
+  // built XPI's, so the route is inert and xpi is the artifact they judge. Extending this set
+  // is deliberate - update the check AND this pin together.
   assert.deepEqual(xpi, [
     "addon-icon-missing",
     "background-module",
@@ -1599,6 +1627,8 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "default-locale-unused",
     "experiment-manual-review",
     "experiment-missing-strict-max-version",
+    "experiment-modified",
+    "experiment-not-allowed",
     "experiment-overrides-api",
     "manifest-invalid-json",
     "manifest-missing",
@@ -1993,19 +2023,21 @@ test("xpi-packaged-symlink rejects every recorded link, whatever its target", ()
 const fileMap = (files) =>
   new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)]));
 
-// ---- the two submission-SHAPE checks (input: both - the one route carrying two
-// artifacts) ----
+// ---- the two submission-SHAPE checks (input: all - the one route carrying every
+// artifact the review has) ----
 
 // Both read `.store`, so an artifact here is one: the questions are about everything the
 // XPI ships and everything the archive holds, not the narrowed `files` view.
-const bothCtx = (xpi, sca) => ({
-  xpi: addonOf(xpi, ARTIFACT_XPI),
-  sca: addonOf(sca, ARTIFACT_SCA),
+// The `all` route names the per-artifact CTXS, and a comparison check reads the Addon
+// under each (ctx.xpi.artifact), so a fixture has to wrap its artifacts the same way.
+const allCtx = (xpi, sca) => ({
+  xpi: { artifact: addonOf(xpi, ARTIFACT_XPI) },
+  sca: sca === null ? null : { artifact: addonOf(sca, ARTIFACT_SCA) },
 });
 const declares = (xpi, sca) =>
-  scaXpiDeclaresVendoring.run(withManifest(bothCtx(xpi, sca))).findings;
+  scaXpiDeclaresVendoring.run(withManifest(allCtx(xpi, sca))).findings;
 const included = (xpi, sca) =>
-  scaXpiFullyIncluded.run(withManifest(bothCtx(xpi, sca))).findings;
+  scaXpiFullyIncluded.run(withManifest(allCtx(xpi, sca))).findings;
 
 test("sca-xpi-declares-vendoring: names every vendoring file the XPI ships", () => {
   // Built output with no twin in the archive, so the other check cannot confuse this one.
@@ -2085,6 +2117,19 @@ test("sca-xpi-fully-included-in-archive: every shipped byte present in the archi
     included({ "package.json": "{}" }, { "src/background.js": code }),
     []
   );
+});
+
+// `input: all` hands over whatever the review holds, which in an XPI review is the XPI
+// alone. Both of these ask after something submitted, so one artifact is not enough and
+// each says nothing rather than reporting against a submission that was never two.
+test("the two submission-shape rules are silent when there is no archive", () => {
+  const code = "console.log('shipped');";
+  // Would be the loudest case if the guard were missing: vendoring information in the XPI
+  // AND no archive to have held it. declares-vendoring never reads ctx.sca, so without the
+  // guard it would report here and nothing would crash to say so.
+  assert.deepEqual(declares({ "package.json": "{}", "a.js": code }, null), []);
+  // And the comparison has no form at all without the side it compares against.
+  assert.deepEqual(included({ "a.js": code }, null), []);
 });
 
 // The premise of the split, from the one side neither check can show alone: the two rules
@@ -4174,17 +4219,19 @@ test("core-symbol-in-webext flags global core symbols, not locals/imports/proper
   // pureWebExtensionReachable, not "every authored file").
   const run = (code) =>
     coreSymbolInWebext.run(
-      withManifest({
-        jsSources: parsed([{ file: "bg.js", code, lineOffset: 0 }]),
-        artifact: {
-          manifest: manifestOf({
-            manifest_version: 3,
-            background: { scripts: ["bg.js"] },
-          }),
-          files: new Map([["bg.js", Buffer.from(code)]]),
-        },
-        options: {},
-      })
+      allOf(
+        withManifest({
+          jsSources: parsed([{ file: "bg.js", code, lineOffset: 0 }]),
+          artifact: {
+            manifest: manifestOf({
+              manifest_version: 3,
+              background: { scripts: ["bg.js"] },
+            }),
+            files: new Map([["bg.js", Buffer.from(code)]]),
+          },
+          options: {},
+        })
+      )
     ).findings;
   // A bare global core reference is flagged (the root, not the property). The symbol
   // rides on `item`; the resolver surfaces it on the collapsed locus line (golden).
@@ -5259,12 +5306,12 @@ test("a check that crashes still says which artifact it was reading", async () =
   // got far enough to read anything.
   assert.equal(await artifactOfCrash(ARTIFACT_XPI), ARTIFACT_XPI);
   assert.equal(await artifactOfCrash(ARTIFACT_SCA), ARTIFACT_SCA);
-  // The `both` route hands it two and the crash belongs to neither, so it names the
+  // The `all` route hands it every artifact and the crash belongs to none, so it names the
   // built XPI - the one artifact every review has. NOT null: an entry with no artifact
   // is handed to the agent with no tree to look in (src/report/handback.js).
   const both = {
-    xpi: addonOf({}, ARTIFACT_XPI),
-    sca: addonOf({}, ARTIFACT_SCA),
+    xpi: { artifact: addonOf({}, ARTIFACT_XPI) },
+    sca: { artifact: addonOf({}, ARTIFACT_SCA) },
     options: {},
   };
   assert.equal(
@@ -6039,7 +6086,7 @@ test("a locus must be one a holder minted, whoever is building it", () => {
   }
 });
 
-// `input: both` says what a check READS, never what its finding is ABOUT. This one reads
+// `input: all` says what a check READS, never what its finding is ABOUT. This one reads
 // the XPI and the archive to answer one question, and what it accuses is the archive:
 // its own response asks for the build output to be removed from there, and the XPI is
 // only the comparand. So it mints from ctx.sca - and the artifact is the reason the
@@ -6053,8 +6100,10 @@ test("the cross-artifact check names the side it accuses, not neither", async ()
   const shipped = { "manifest.json": "{}", "bg.js": "1;\n" };
   const out = await runOneCheck(
     {
-      xpi: addonOf(shipped, ARTIFACT_XPI),
-      sca: addonOf({ ...shipped, "src/bg.ts": "1;\n" }, ARTIFACT_SCA),
+      xpi: { artifact: addonOf(shipped, ARTIFACT_XPI) },
+      sca: {
+        artifact: addonOf({ ...shipped, "src/bg.ts": "1;\n" }, ARTIFACT_SCA),
+      },
       options: {},
     },
     check,

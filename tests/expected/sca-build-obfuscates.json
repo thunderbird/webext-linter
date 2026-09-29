@@ -1,0 +1,6 @@
+{
+  "_comment": "An SCA submission whose ARCHIVE is readable throughout and whose shipped helper.js is machine-obfuscated: the build, not the developer's editor, is where the hiding happens. Obfuscation is the one question in the sink family a shipped file answers on its own terms - it is a property of the bytes, so a bundle of somebody else's readable code says nothing here and an obfuscated file is a violation whoever produced it. That is why obfuscated-code is asked of every artifact (input: all) while its neighbours are not: they skip library code, and a bundle cannot be classified either way, so asking them of a built XPI is noise. Route this check back to the review target and the submission passes clean, which is what the fixture is here to prevent.",
+  "expect": {
+    "obfuscated-code": ["helper.js"]
+  }
+}

@@ -24,7 +24,7 @@
 //                         reporting against a manifest value is reporting into an artifact
 //                         it may not have been routed to, so it asks the record - there is
 //                         no route that could describe this.
-//   ctx.xpi / ctx.sca     the two sides of the `both` route, which names neither. A check
+//   ctx.xpi / ctx.sca     the sides of the `all` route, which names none of them. A check
 //                         there mints from the side it means.
 //
 // NOTHING MAY NAME A PATH WITHOUT ITS HOLDER. A finding, an escalated case and a feed note
@@ -88,7 +88,7 @@ export function assertLocus(at, who) {
       `${who} needs a locus minted by whatever holds the file - {file, loc, artifact} - ` +
         `got ${JSON.stringify({ file: at?.file, artifact: at?.artifact })}. Ask ` +
         "ctx.artifact.at(file, loc), or the holder it is really in: the shipped " +
-        "manifest.json record, or the side of the `both` route you mean."
+        "manifest.json record, or the side of the `all` route you mean."
     );
   }
 }

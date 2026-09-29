@@ -1,7 +1,7 @@
-// Builds the sibling RunContexts every check runs against. Each route a check may declare -
-// the built XPI, the readable source, that source without its parsed code (the build route),
-// and the one route carrying both artifacts at once - gets its own ctx, and all of them
-// project ONE shared review env: the schema, the shipped manifest.json and experiments, and
+// Builds the sibling RunContexts every check runs against. There is ONE ctx per artifact -
+// the built XPI, and in a source review the submitted archive - plus the route that carries
+// every artifact at once. `source` gets no ctx of its own: it points at whichever artifact
+// the review mode makes the target. They all project ONE shared review env: the schema, the shipped manifest.json and experiments, and
 // the mode. The pipeline (pipeline.js) resolves the schema, parses the sources, and builds
 // that shared env; this module only derives ctx.apiUsages from the already-parsed sources and
 // swaps the per-artifact fields for each sibling.
@@ -60,7 +60,8 @@ function deriveApiUsages(jsSources) {
  * @param {object} routed
  * @param {import("../addon/load.js").Addon} [routed.artifact]  The routed artifact, linked
  *   by reference: ctx.artifact IS the object the loader produced. Absent for the ONE route
- *   that is about two artifacts rather than one (buildScaCtxs bothCtx), which names them. By the time a check sees it,
+ *   that can be about more than one artifact (the `all` ctx), which names them instead.
+ *   By the time a check sees it,
  *   the artifact is sealed (src/lib/errors.js sealArtifact): a field only some artifacts
  *   carry throws when read off one that never produced it, so a check has no reason to ask
  *   whether a field EXISTS - the only way it cannot is that the check declared the wrong
@@ -68,8 +69,8 @@ function deriveApiUsages(jsSources) {
  *   is a verdict or null, and null is that artifact's answer (it declares none), so
  *   reading it through `?.` is right where guarding a field's existence is not.
  * @param {import("../addon/sources.js").JsSource[]} routed.jsSources
- * @param {object[]|undefined} routed.apiUsages  Per-source usage, or undefined for a route
- *   with no reviewable sources (the sca ctx).
+ * @param {object[]|undefined} routed.apiUsages  Per-source usage, or undefined for a ctx
+ *   over no artifact (the `all` route, which names its artifacts instead).
  * @param {boolean} [routed.isShippedView]  Mark the built-XPI view for reachability (SCA
  *   only - in an XPI review the XPI IS the review target, so it is NOT a distinct shipped view).
  * @returns {RunContext}
@@ -160,56 +161,63 @@ export function buildXpiCtx(xpiAddon, xpiParsedSources, env) {
 }
 
 /**
- * The sibling ctxs an SCA review adds, named for the ARTIFACT each is over, never for
- * the mode that produced them:
- *   - `sourceCtx` over the archive's add-on code, which in an SCA review is the review
- *                 target, so it becomes siblings.source. (In an XPI review that same slot
- *                 holds the XPI: `source` names the target, never an artifact.)
- *   - `scaCtx`  the same archive with no parsed source, for the `input: sca` checks, read
- *                 off ctx.artifact via the same one-place `input` routing, no separate field.
- *                 A build check reads files and the recorded lists, never code.
- *   - `bothCtx`  the ONE route that sees two artifacts, for a check whose subject is the
- *                 SUBMISSION rather than either artifact in it - "is what was shipped
- *                 already readable in what was submitted?" has no answer from one side.
- *                 It carries `xpi` and `sca` and NO `artifact`, so nothing written for the
- *                 ordinary one-artifact shape can be handed it and quietly read one side:
- *                 a check that wants both has to name which of them each read is about.
- * Both project the shipped manifest.json and experiments from `env`
- * (so no artifact's manifest.json leaks against another's files, and the review-level singletons stay
- * single-instance). The source MUST arrive parsed.
+ * The ctx for the submitted archive, which only a source review has. It is ONE ctx over one
+ * artifact: `siblings.sca` routes the build and dependency checks to it, and `siblings.source`
+ * points at this same object, because in a source review the archive IS the review target.
+ * (In an XPI review that slot points at the XPI instead - `source` names the target, never
+ * an artifact, and carries no ctx of its own.)
+ *
+ * It projects the shipped manifest.json and experiments from `env`, so no artifact's
+ * manifest.json is read against another's files and the review-level singletons stay
+ * single-instance. The source MUST arrive parsed.
  * @param {import("../addon/load.js").Addon} archive  The submitted archive, carrying its
  *   views (scaViews): `files` is everything but the Experiment implementation.
- * @param {import("../addon/sources.js").JsSource[]} sourceParsedSources  Its parsed sources.
- * @param {import("../addon/load.js").Addon} xpiAddon  The built XPI, for the `both` route.
+ * @param {import("../addon/sources.js").JsSource[]} parsedSources  Its parsed sources.
  * @param {ReviewEnv} env
- * @returns {{sourceCtx: RunContext, scaCtx: RunContext, bothCtx: RunContext}}
+ * @returns {RunContext}
  */
-export function buildScaCtxs(archive, sourceParsedSources, xpiAddon, env) {
-  if (!sourceParsedSources) {
+export function buildScaCtx(archive, parsedSources, env) {
+  if (!parsedSources) {
     throw new Error(
-      "buildScaCtxs: the readable source arrived with no parsed sources " +
+      "buildScaCtx: the readable source arrived with no parsed sources " +
         "(the extraction pass must run and hand them over)"
     );
   }
-  const sourceCtx = projectCtx(env, {
+  return projectCtx(env, {
     artifact: archive,
-    jsSources: sourceParsedSources,
-    apiUsages: deriveApiUsages(sourceParsedSources),
+    jsSources: parsedSources,
+    apiUsages: deriveApiUsages(parsedSources),
   });
-  // The same archive, with no parsed source: a build check reads files and recorded lists,
-  // never code. One owner, projected per route, is what keeps two views of one archive from
-  // disagreeing about what it holds.
-  const scaCtx = projectCtx(env, {
-    artifact: archive,
-    jsSources: [],
-    apiUsages: undefined,
-  });
-  // The cross-artifact route. It gets the review-level state every sibling shares, and then
-  // the two artifacts BY NAME instead of one as `artifact`: a comparison has to say which
-  // side each read is about, and the shape makes saying it the only option. Both are the
-  // same objects the other siblings hold, so no third reading of either can exist.
-  const bothCtx = projectCtx(env, { jsSources: [], apiUsages: undefined });
-  bothCtx.xpi = xpiAddon;
-  bothCtx.sca = archive;
-  return { sourceCtx, scaCtx, bothCtx };
+}
+
+/**
+ * The `input: all` sibling: every artifact this review has, by name, and no `artifact` of
+ * its own. Built for BOTH review modes, because the route says "whatever is here", not
+ * "two" - so an XPI review has this sibling too, with the archive absent. routeCtx refuses
+ * a missing sibling outright (it would abort the review rather than fail one check), so the
+ * route always has to answer with a real ctx.
+ *
+ * `xpi` and `sca` are the per-artifact CTXS, the same objects the other siblings hold. A
+ * ctx is what the analyses take and memoize against (getOutboundSinks, buildReachability,
+ * nonAuthoredJs), so a check written for one artifact runs over either of these unchanged -
+ * see perArtifact in src/checks/each-artifact.js - and nothing is analysed twice. A check
+ * that compares the two reads the Addon under each, `ctx.xpi.artifact`.
+ *
+ * Naming them is the point. This route has no `ctx.artifact`, so a comparison has to say
+ * which side every read is about, and there is no slot that would let it avoid saying.
+ *
+ * The archive is an explicit `null` rather than left off. A ctx is a plain object, so an
+ * absent field reads as `undefined` and a check would walk into it; `null` makes "this
+ * review has no archive" a value the check can test, the same way `experiments` is a
+ * verdict or null. What a check does with one artifact is its own call - the two comparison
+ * checks need two and return early without it.
+ * @param {ReviewEnv} env
+ * @param {{xpi: RunContext, sca?: ?RunContext}} ctxs  The per-artifact siblings.
+ * @returns {RunContext}
+ */
+export function buildAllCtx(env, { xpi, sca = null }) {
+  const ctx = projectCtx(env, { jsSources: [], apiUsages: undefined });
+  ctx.xpi = xpi;
+  ctx.sca = sca;
+  return ctx;
 }

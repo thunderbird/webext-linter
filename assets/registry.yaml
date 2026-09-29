@@ -26,7 +26,7 @@ invalid-experiment-phase:
 - title: Experiment APIs not accepted
   severity: error
   check: experiment-not-allowed
-  input: source
+  input: xpi
   response: |-
     We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). This ends the review, so no other check ran and this report says nothing about the rest of the add-on. A resubmission without them is reviewed in full. The following cannot be accepted:
     Read more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews
@@ -38,7 +38,7 @@ deterministic-phase:
 - title: Privileged core symbol in WebExtension code
   severity: error
   check: core-symbol-in-webext
-  input: source
+  input: all
   response: |-
     This add-on is using privileged Thunderbird internals in a WebExtension context, where they are not available: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage.
 
@@ -255,7 +255,7 @@ deterministic-phase:
 - title: Synchronous XMLHttpRequests
   severity: error
   check: sync-xhr
-  input: source
+  input: all
   response: |-
     The add-on makes a synchronous XMLHttpRequest, which can lock up the user interface. Please use an asynchronous request instead.
 
@@ -273,7 +273,7 @@ deterministic-phase:
 - title: Debugger statement
   severity: error
   check: debugger-statement
-  input: source
+  input: all
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
     A debugger statement is acceptable only where a build flag, a
@@ -450,7 +450,7 @@ deterministic-phase:
 - title: Modified or outdated Experiment draft
   severity: error
   check: experiment-modified
-  input: source
+  input: xpi
   response: |-
     The following Experiment API(s) are published Thunderbird API drafts, but this add-on bundles a modified or outdated copy of each. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments.
 
@@ -902,8 +902,9 @@ deterministic-phase:
 # check while both said "you did not need to submit source", and they are two now because
 # each has its own remedy and the shared wording could state neither plainly.
 #
-# Both take `input: both`, the only route carrying two artifacts, which is also what says
-# the mode: a review with one artifact has neither rule to break. Neither narrows THIS
+# Both take `input: all`, the only route carrying more than one artifact. Each asks after
+# the archive it needs and returns early without it: a review with one artifact has neither
+# rule to break, and the route says what is there rather than how much. Neither narrows THIS
 # review - it stays a full source review whatever they answer, because no content test can
 # be trusted to route (a committed unminified build is its own twin under any of them, so
 # routing would let a build be dressed up as source). At warning severity
@@ -921,7 +922,7 @@ deterministic-phase:
 - title: The built XPI declares its own vendoring
   severity: warning
   check: sca-xpi-declares-vendoring
-  input: both
+  input: all
   response: |-
     This add-on was submitted as a source-code archive, but the built XPI carries vendoring information of its own. In a source-code submission a VENDOR file, a package.json and a lock file belong in the archive - the copy the reviewer reads and the build installs from - not in the package you ship. Remove the file(s) below from the XPI and declare the dependencies in the archive instead. If the add-on needs no archive behind it, submit just the XPI.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
@@ -933,7 +934,7 @@ deterministic-phase:
 - title: The built XPI is fully included in the source archive
   severity: warning
   check: sca-xpi-fully-included-in-archive
-  input: both
+  input: all
   response: |-
     This add-on was submitted as a source-code archive, but the archive contains the built XPI in full: every file the XPI ships is already in the archive byte for byte. A source archive is the readable source a build turns into the shipped package, not a copy of that package. If the XPI does not need to be built, submit just the XPI - source-code submissions take considerably longer to review. If it does, remove the build output from the archive and submit only the source the build runs on.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
@@ -1200,7 +1201,7 @@ deterministic-phase:
 - title: eval() usage
   severity: error
   check: eval-call
-  input: source
+  input: all
   response: |-
     Dynamic code execution via "eval()" is not allowed.
 
@@ -1214,7 +1215,7 @@ deterministic-phase:
 - title: Code-string timer
   severity: error
   check: string-timer
-  input: source
+  input: all
   response: |-
     Dynamic code execution via "a code string passed to setTimeout/setInterval" is not allowed.
 
@@ -1267,10 +1268,9 @@ deterministic-phase:
 - title: Obfuscated code is not permitted
   severity: error
   check: obfuscated-code
-  input: source
+  input: all
   response-for-xpi: |-
     The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
-    Please read the instructions: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
   response-for-sca: |-
     The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked. The archive must carry these files readable. A build may minify what the XPI ships, but obfuscated code is not permitted in either.
 
@@ -1408,7 +1408,7 @@ deterministic-phase:
 - title: Remote eval
   severity: error
   check: remote-eval
-  input: source
+  input: all
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
     The locations below execute code assembled at run time, such as

@@ -3,6 +3,7 @@
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
 1) The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked. The archive must carry these files readable. A build may minify what the XPI ships, but obfuscated code is not permitted in either.
+ - [XPI] obf.js
  - [SCA] obf.js
 
 [XPI] = source file in the submitted XPI
@@ -182,6 +183,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 hold, 0 warning(s), 0 info,
+2 error(s), 0 hold, 0 warning(s), 0 info,
 0 extended code review item(s), 1 extended manual review item(s),
 10 standard code review item(s), 10 standard manual review item(s)

@@ -12,9 +12,10 @@
 // The comparison is CONTENT, anywhere in the archive: a build that merely relocates files
 // still leaves every shipped byte readable, which is what the question is about. It runs
 // here, in the check that reports it, rather than in setup - the answer has one reader, and
-// a check that reads a flag it cannot verify cannot explain it either. `input: both` is
-// what lets it: the one route that carries two artifacts, because "is what was shipped
-// already readable in what was submitted?" has no answer from one side.
+// a check that reads a flag it cannot verify cannot explain it either. `input: all` is
+// what lets it: the one route that can carry more than one artifact, because "is what was
+// shipped already readable in what was submitted?" has no answer from one side - and no
+// question at all in a review that has only the one, where this returns early.
 //
 // Nothing is narrowed by this: THIS review stays a full source review whatever the answer.
 // No content test can be trusted to route, because a committed unminified build is its own
@@ -23,6 +24,7 @@
 // Belongs here: the comparison. Does NOT belong here: the wording
 // (-> assets/registry.yaml) or the severity (-> that entry).
 
+import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { rawSha256 } from "../../normalize/hash.js";
 
@@ -87,14 +89,21 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    if (!everyShippedByteIsInTheArchive(ctx.xpi, ctx.sca)) {
+    // "Is what was shipped already readable in what was submitted?" has no form without
+    // something submitted to compare against, so one artifact is not enough for this one.
+    if (!ctx.sca) {
+      ctx.note?.(ctx.xpi.artifact.at(), "no source archive", VERDICT.SKIPPED);
+      return { findings: [] };
+    }
+    if (!everyShippedByteIsInTheArchive(ctx.xpi.artifact, ctx.sca.artifact)) {
       return { findings: [] };
     }
     // No FILE: every shipped file is the subject, so naming them lists the whole XPI.
-    // The artifact is the archive all the same - `input: both` says this check READS two,
-    // and what it accuses is the one holding what should not be in it, which the response
-    // says too ("remove the build output from the archive"). The XPI is the comparand.
+    // The artifact is the archive all the same - `input: all` says this check READS what
+    // the review has, and what it accuses is the one holding what should not be in it,
+    // which the response says too ("remove the build output from the archive"). The XPI
+    // is the comparand.
     // So the locus is minted from ctx.sca: a claim about a package, not a file in one.
-    return { findings: [finding(ctx.sca.at())] };
+    return { findings: [finding(ctx.sca.artifact.at())] };
   },
 };

@@ -63,22 +63,38 @@ export const COLLAPSE_MODES = new Set(["subject"]);
 // in. "source" = the REVIEW TARGET, the readable submitted code (the readable
 // --sca-root in an SCA review, the built XPI in an XPI review - the only artifact
 // there); "xpi" = ALWAYS the built XPI (the shipped artifact), analysed in both modes;
-// "sca" = the submitted source archive with no parsed source, for the build and
-// dependency checks; "both" = the two artifacts together, named ctx.xpi and ctx.sca and
-// with no ctx.artifact, for a check whose subject is the SUBMISSION rather than either
-// artifact in it. "both" is the only route that sees more than one, so a cross-artifact
-// comparison is a thing the registry declares rather than something setup does invisibly
-// and hands down as a flag.
+// "sca" = the submitted source archive, which the build and dependency checks read
+// (and which `source` points at in a source review, being the target there); "all" = EVERY artifact this review has, named ctx.xpi and ctx.sca and
+// with no ctx.artifact - two of them in an SCA review, and in an XPI review just the one,
+// with ctx.sca null. "all" is the only route that can see more than one, so a
+// cross-artifact comparison is a thing the registry declares rather than something setup
+// does invisibly and hands down as a flag. What a route hands over is not a promise that
+// it is there: a check on "all" tests for the artifact it needs before reading it, and
+// decides for itself whether one is enough.
+//
+// Two kinds of check take "all". One COMPARES the artifacts, reading each by name and the
+// Addon under it. The other asks every side the SAME question - is there a sink in this
+// code - and runs the ordinary one-artifact body once per side, through perArtifact
+// (src/checks/each-artifact.js), so each finding is minted by the artifact it is in. Both
+// read the same two fields; what differs is what they do with them.
 //
 // The archive exists only in an SCA review, so `input: sca` says "an SCA review" as well
 // as "that artifact" - the mode is DERIVED from the route (SCA_ONLY_INPUTS, modeEligible)
 // rather than declared a second time beside it. An entry that had to say both could get
-// one of them wrong; an entry that says one cannot.
+// one of them wrong; an entry that says one cannot. "all" names no single artifact, so it
+// pins no mode and runs in either.
 //
 // A check reads only the artifact its route names, and has no way to reach another (see
-// buildXpiCtx / buildScaCtxs). Since the ctxs are sealed (src/lib/errors.js), reading a
-// field the routed artifact never produced throws rather than answering nothing.
-export const VALID_CHECK_INPUTS = new Set(["source", "xpi", "sca", "both"]);
+// buildXpiCtx / buildScaCtx). The artifacts themselves are sealed (sealArtifact,
+// src/lib/errors.js), so reading a field the routed artifact never produced throws rather
+// than answering nothing.
+//
+// A few checks read no artifact at all - only the shared records, ctx.manifest and
+// ctx.experiments, which belong to no route because both are the built XPI's (see the
+// RunContext in registry.js). Those declare "xpi": the route is inert for them, and the
+// XPI is the artifact they are judging, reached through the record instead of through
+// ctx.artifact. Routing is total, so there is still a value to declare; this says which.
+export const VALID_CHECK_INPUTS = new Set(["source", "xpi", "sca", "all"]);
 
 /** What a BY-HAND entry declares instead. It runs no code and reads no artifact - it is
  *  settled by looking at the add-on listing page, or by installing the add-on and using
@@ -88,10 +104,13 @@ export const VALID_CHECK_INPUTS = new Set(["source", "xpi", "sca", "both"]);
 export const MANUAL_ENTRY_INPUTS = new Set(["none"]);
 
 /** The routes whose artifact exists only in a source-code-archive review, so declaring one
- *  IS declaring the mode (modeEligible). buildScaCtxs builds these siblings; an XPI review
- *  has neither, and routeCtx would throw. Beside the set above because they are one axis:
- *  which artifact a check reads, and - where only one kind of review has it - which review. */
-export const SCA_ONLY_INPUTS = new Set(["sca", "both"]);
+ *  IS declaring the mode (modeEligible), and per-mode response wording is refused because
+ *  the other mode's text could never print (assertResponse). buildScaCtx builds this
+ *  sibling; an XPI review has none, and routeCtx would throw. Beside the set above because
+ *  they are one axis: which artifact a check reads, and - where only one kind of review has
+ *  it - which review. A route naming no single artifact is not here: "all" is whatever the
+ *  review holds, so it pins no mode and may word itself per mode. */
+export const SCA_ONLY_INPUTS = new Set(["sca"]);
 
 // The per-review-mode response keys, keyed by the REVIEW_MODE fact that selects them
 // (`mode?.sca`). An entry words its response ONCE for both modes (`response`) or ONCE PER

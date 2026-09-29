@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { REVIEW_MODE } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 
-import { buildXpiCtx, buildScaCtxs } from "../../src/checks/context.js";
+import { buildXpiCtx, buildScaCtx } from "../../src/checks/context.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 import { runExtractionPass } from "../../src/checks/extract.js";
 import { SYMLINK_CAUSE } from "../../src/lib/enum.js";
@@ -139,23 +139,18 @@ test("a check can merge the source and Experiment views off ctx.artifact", () =>
   source.experiment = experiment;
   const env = envWith({ mode: REVIEW_MODE.SCA });
 
-  const { sourceCtx } = buildScaCtxs(
-    source,
-    parsed(source),
-    addonWith({}),
-    env
-  );
+  const scaCtx = buildScaCtx(source, parsed(source), env);
 
   // Apart: the WebExtension checks see the add-on's code and nothing privileged.
-  assert.ok(sourceCtx.artifact.files.has("app.js"));
-  assert.ok(!sourceCtx.artifact.files.has("experiment/exp.js"));
+  assert.ok(scaCtx.artifact.files.has("app.js"));
+  assert.ok(!scaCtx.artifact.files.has("experiment/exp.js"));
   // Reachable by identity, so a check that needs the privileged files reads the real one.
-  assert.equal(sourceCtx.artifact.experiment, experiment);
+  assert.equal(scaCtx.artifact.experiment, experiment);
 
   // Together: the files a what-is-this-file check reviews.
   const merged = new Map([
-    ...sourceCtx.artifact.files,
-    ...sourceCtx.artifact.experiment,
+    ...scaCtx.artifact.files,
+    ...scaCtx.artifact.experiment,
   ]);
   assert.deepEqual(
     [...merged.keys()].sort(),
@@ -166,29 +161,28 @@ test("a check can merge the source and Experiment views off ctx.artifact", () =>
 
   // In an XPI review there is no Experiment view to merge - the shipped artifact carries
   // its experiment code like any other file, so the field is simply absent.
-  const xpiOnly = buildScaCtxs(
+  const xpiOnly = buildScaCtx(
     addonWith({ "app.js": "1;" }),
     parsed(addonWith({ "app.js": "1;" })),
-    addonWith({}),
     env
-  ).sourceCtx;
+  );
   assert.equal(xpiOnly.artifact.experiment, undefined);
 });
 
-// buildScaCtxs.scaCtx routes the SCA archive onto ctx.artifact (the input: sca seam),
-// shares the review env, and empties the source-only jsSources/apiUsages. The artifact is
-// linked like every other ctx.artifact, so a build check can never read
+// buildScaCtx routes the archive onto ctx.artifact - the seam both the input: sca checks
+// and, as the review target, the input: source ones read - and shares the review env. The
+// artifact is linked like every other ctx.artifact, so a build check can never read
 // ctx.artifact.manifest against another artifact's files.
-test("buildScaCtxs.scaCtx puts the archive on ctx.artifact, without its sources", () => {
+test("buildScaCtx puts the archive on ctx.artifact, with its sources", () => {
   const source = addonWith({ "src/app.js": "export const x = 1;" });
   const env = envWith({
     mode: REVIEW_MODE.SCA,
     manifest: shippedRecord,
   });
-  // The source ctx and the build ctx are over the ONE archive, linked by pointer, so what
-  // distinguishes them is the parsed source rather than the files. Everything the archive
-  // carries is reachable, buildReview (what setup found in the build) included - the
-  // input:sca checks read it.
+  // ONE ctx over the archive: the build checks and the code checks read the same object,
+  // and what separates them is the route each declared. Everything the archive carries is
+  // reachable, buildReview (what setup found in the build) included - the input:sca checks
+  // read it.
   const archive = {
     ...source,
     nodeModules: ["node_modules"],
@@ -198,15 +192,9 @@ test("buildScaCtxs.scaCtx puts the archive on ctx.artifact, without its sources"
     buildReview: { unresolved: [], anchor: "package.json" },
   };
 
-  const { sourceCtx, scaCtx } = buildScaCtxs(
-    archive,
-    parsed(source),
-    addonWith({}),
-    env
-  );
+  const scaCtx = buildScaCtx(archive, parsed(source), env);
   // The artifact IS the archive - one object, not a projection of some of its fields.
   assert.equal(scaCtx.artifact, archive);
-  assert.equal(scaCtx.artifact, sourceCtx.artifact); // the same one both routes read
   assert.deepEqual(scaCtx.artifact.nodeModules, ["node_modules"]); // committed-node-modules reads it
   assert.deepEqual(scaCtx.artifact.archives, ["dist.zip"]); // committed-build-artifact reads it
   // sca-invalid-symlink reads it
@@ -219,28 +207,29 @@ test("buildScaCtxs.scaCtx puts the archive on ctx.artifact, without its sources"
     unresolved: [],
     anchor: "package.json",
   }); // build-review checks read it
-  assert.deepEqual(scaCtx.jsSources, []); // source-only, emptied
-  assert.equal(scaCtx.apiUsages, undefined);
+  // And it carries the parsed source: one ctx serves both routes, so the build checks and
+  // the code checks cannot disagree about what the archive holds.
+  assert.equal(scaCtx.jsSources.length, 1);
+  assert.ok(scaCtx.apiUsages);
   assert.equal(scaCtx.schema, env.schema); // shared review env
   assert.equal(scaCtx.manifest, env.manifest); // shipped manifest stays for framing
 
   // An artifact with no files is still a valid, readable ctx - an input: sca check skips cleanly on it
   // rather than crashing.
-  const empty = buildScaCtxs(
+  const empty = buildScaCtx(
     { ...source, files: new Map() },
     parsed(source),
-    addonWith({}),
     env
-  ).scaCtx;
+  );
   assert.equal(empty.artifact.files.size, 0);
 });
 
 // Symmetric to buildXpiCtx: the readable source MUST arrive parsed (the pipeline parses it in
 // Phase 3). No files would review a clean add-on whose source was never read.
-test("buildScaCtxs throws when the source arrives with no parsed sources", () => {
+test("buildScaCtx throws when the source arrives with no parsed sources", () => {
   const source = addonWith({ "src/app.js": "eval('danger');" });
   assert.throws(
-    () => buildScaCtxs(source, undefined, addonWith({}), envWith()),
+    () => buildScaCtx(source, undefined, envWith()),
     /no parsed sources/
   );
 });

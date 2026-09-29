@@ -5,6 +5,10 @@
 // treating any `if` as a licence silently passes a statement that halts a real user's
 // Thunderbird. Reading which kind of condition it is means reading the file.
 //
+// Asked of EVERY artifact the review has (`input: all`, via perArtifact): a debugger
+// statement is left behind by a build as readily as by an editor, and the shipped code is
+// what halts the user's Thunderbird. A source archive cannot show what its build emits.
+//
 // Belongs here: skipping non-authored code, then raising each debugger site.
 //
 // Does NOT belong here: locating DebuggerStatement nodes (->
@@ -17,8 +21,9 @@ import { VERDICT } from "../../lib/enum.js";
 import { debuggerStmtOf } from "../extract.js";
 import { nonAuthoredJs } from "../../lib/bundled.js";
 
+import { perArtifact } from "../each-artifact.js";
 export default {
-  run(ctx) {
+  run: perArtifact((ctx) => {
     const escalations = [];
     const skip = nonAuthoredJs(ctx); // a debugger left in a library is not the dev's
     for (const src of ctx.jsSources) {
@@ -33,5 +38,5 @@ export default {
       }
     }
     return { findings: [], escalations };
-  },
+  }),
 };

@@ -9,18 +9,27 @@
 // log. A file that is merely minified (not obfuscated) is minified-code's job; a file
 // that is both is reported here, since obfuscation is the stronger signal.
 //
+// Asked of EVERY artifact the review has (`input: all`, via perArtifact). Obfuscation is
+// a property of the BYTES, not of who wrote them, so this is the one question in its
+// family that a shipped file answers on its own terms: a readable bundle of somebody
+// else's code says nothing here, while an obfuscated file is a violation whoever produced
+// it. That is what makes the shipped artifact worth reading - a build that obfuscates what
+// the archive shows readable is invisible to a review that only looks at the archive.
+//
 // Belongs here: selecting the classifier verdicts that are obfuscated AND not a
 // library, and emitting one finding per such file.
 //
 // Does NOT belong here: the classification heuristics themselves (->
 // src/lib/bundled.js, classifyAddonJs), the library-signal verdict and
 // its finding (-> missing-library.js), the minified-only verdict (->
-// minified-code.js), authored wording (-> assets/registry.yaml), severity (-> that
+// minified-code.js), working through the artifacts (-> src/checks/each-artifact.js),
+// authored wording (-> assets/registry.yaml), severity (-> that
 // registry entry, stamped by src/checks/registry.js), and report formatting (->
 // src/report/format.js).
 
 import { finding } from "../../report/finding.js";
 import { classifyAddonJs, classifyInlineScripts } from "../../lib/bundled.js";
+import { perArtifact } from "../each-artifact.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 export default {
@@ -28,7 +37,7 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  run: perArtifact((ctx) => {
     const findings = [];
     for (const c of classifyAddonJs(ctx)) {
       if (c.library || c.untrusted) {
@@ -65,5 +74,5 @@ export default {
       }
     }
     return { findings };
-  },
+  }),
 };

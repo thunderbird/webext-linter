@@ -9,7 +9,6 @@ Read more #2: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeS
  - packed.html:1
 
 2) The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
-Please read the instructions: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - hidden.html:1
 
 We kindly ask you to resolve the following issues with your next release:

@@ -136,7 +136,7 @@ export function withManifest(ctx) {
   // mints loci in itself (src/addon/load.js) - which is where a finding's and a note's
   // artifact comes from. A fixture that named no artifact, or built one as a bare bag of
   // files, models no ctx a check can be handed, so fill in what production guarantees:
-  // the XPI, unless the test said otherwise. (The `both` route carries no `artifact` and
+  // the XPI, unless the test said otherwise. (The `all` route carries no `artifact` and
   // is not built here - a check on it names ctx.xpi or ctx.sca.)
   ctx.artifact ??= { files: new Map() };
   if (typeof ctx.artifact.at !== "function") {
@@ -158,4 +158,19 @@ export function withManifest(ctx) {
     ctx.options = {};
   }
   return ctx;
+}
+
+/**
+ * The `input: all` shape over single-artifact ctxs: the two named, as buildAllCtx names
+ * them. The note goes on the OUTER ctx, which is where runChecks binds it in a real
+ * review - perArtifact copies it onto each artifact ctx, so a note set on an inner one
+ * would be overwritten.
+ *
+ * @param {object|object[]} ctxs  The XPI's ctx, or both as [xpi, sca].
+ * @param {Function} [note]  The feed note, if the test asserts on it.
+ * @returns {object} an `all` ctx naming them.
+ */
+export function allOf(ctxs, note) {
+  const [xpi, sca = null] = [].concat(ctxs);
+  return { xpi, sca, note };
 }

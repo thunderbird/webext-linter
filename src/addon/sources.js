@@ -53,9 +53,10 @@ import {
 
 /**
  * @typedef {object} ExtractedResults  The per-source results the full extraction pass
- *   hangs on src.extracted (having dropped the AST). Whether a source is AUTHORED
- *   is visible in the shape: the every-source fields are always present; the
- *   content fields only when authored (a non-authored bundle / library is skipped).
+ *   hangs on src.extracted (having dropped the AST). Every field is present for every
+ *   source, authored or not - whether a non-authored file's hits are REPORTED is each
+ *   consumer's call, not something the shape decides. The one exception is codeAtoms,
+ *   whose absence routes the permission token scan to its raw-text path.
  *   The light shipped pass sets only the load-graph subset (see JsSource.extracted).
  * @property {import("../parse/api-usage.js").ApiUsageResult} apiUsage  WebExtension
  *   API usage (ctx.apiUsages is derived from it; its parseError feeds unparsable-file)

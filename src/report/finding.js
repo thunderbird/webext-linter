@@ -19,7 +19,12 @@
 // verdict/escalation decisions, live in the registry and
 // src/checks/escalation.js - not here.
 
-import { assertLocus } from "../lib/artifacts.js";
+import {
+  assertLocus,
+  ARTIFACT_XPI,
+  ARTIFACT_SCA,
+  ARTIFACT_NONE,
+} from "../lib/artifacts.js";
 
 /** The two sections an escalated case is listed under, and the ONE spelling of each.
  *  A check does not declare which: it declares who its question is for, and the section
@@ -71,7 +76,7 @@ const SEVERITY_RANK = Object.fromEntries(
  * @property {string} artifact  WHERE this finding's subject is - "XPI", "SCA", or "NONE"
  *   (src/lib/artifacts.js). Answered by the HOLDER of the file and never worked out from
  *   the route: the artifact the check was routed to (src/addon/load.js `at`), the shipped
- *   manifest.json record, or one named side of the `both` route. REQUIRED, with a file or
+ *   manifest.json record, or one named side of the `all` route. REQUIRED, with a file or
  *   without - the claims that name no file are the ones that most need the tree, and an
  *   entry with no artifact is handed over with no root at all (src/report/handback.js).
  *   Shown only in a source review, the only kind with two to tell apart.
@@ -220,14 +225,34 @@ export function verdictKey(findings) {
     : "feedback";
 }
 
+/** Which artifact's findings come first. The shipped XPI leads because it is what runs;
+ *  a claim about neither artifact is last, having no tree to sit in. */
+const ARTIFACT_RANK = {
+  [ARTIFACT_XPI]: 0,
+  [ARTIFACT_SCA]: 1,
+  [ARTIFACT_NONE]: 2,
+};
+
 /**
- * Stable sort: by file, then line, then column, then severity.
+ * Stable sort: by artifact, then file, then line, then column, then severity.
+ *
+ * Artifact leads so that a check asked of every artifact (`input: all`) reads as one
+ * block per tree instead of two interleaved ones. The same relative path can exist in
+ * both, and the same sink can be in both, so file-first would scatter each tree's hits
+ * through the other's and leave a reader tracking the [XPI]/[SCA] label line by line.
+ * Nothing pairs the two copies - a build can move or rewrite a file, so there is no way
+ * to know that two hits are the same one, which is exactly why both are reported.
  *
  * @param {Finding[]} findings
  * @returns {Finding[]}
  */
 export function sortFindings(findings) {
   return [...findings].sort((a, b) => {
+    const ra = ARTIFACT_RANK[a.artifact] ?? ARTIFACT_RANK[ARTIFACT_NONE];
+    const rb = ARTIFACT_RANK[b.artifact] ?? ARTIFACT_RANK[ARTIFACT_NONE];
+    if (ra !== rb) {
+      return ra - rb;
+    }
     const fa = a.file ?? "";
     const fb = b.file ?? "";
     if (fa !== fb) {

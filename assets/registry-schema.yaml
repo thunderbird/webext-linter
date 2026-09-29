@@ -93,8 +93,14 @@ shapes:
       why: >-
         every check declares which add-on artifact it reads, because routing is total -
         there is no default artifact to fall through to. source = the review target,
-        xpi = the built XPI, sca = the submitted source archive, both = the two together
-        for a check whose subject is the submission rather than either artifact in it
+        xpi = the built XPI, sca = the submitted source archive, all = every artifact this
+        review has, with no ctx.artifact - two of them in a source review, one in an XPI
+        review, so a check on it tests for what it needs first. A check comparing the
+        artifacts reads them by name as ctx.xpi and ctx.sca; one asking each of them the
+        same question reads ctx.artifacts, via perArtifact.
+        A check that reads NO artifact - only the shared records, ctx.manifest and
+        ctx.experiments - declares xpi, because both of those are the built XPI's:
+        the route is then inert, and xpi is the artifact such a check is judging
     skip-in-sca-review:
       kind: gate
       why: >-

@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { withManifest } from "./manifest-ctx.js";
+import { withManifest, allOf } from "./manifest-ctx.js";
 
 import {
   classifyBundled,
@@ -168,7 +168,7 @@ test("a minified non-library is non-authored and rejected; identified libraries 
     ["jquery.min.js"]
   );
   assert.deepEqual(
-    obfuscatedCode.run(withManifest(ctx)).findings.map((f) => f.file),
+    obfuscatedCode.run(allOf(withManifest(ctx))).findings.map((f) => f.file),
     ["packed.js"]
   );
 });
@@ -189,7 +189,7 @@ test("a file only an unpinned family matches is ordinary authored code", () => {
   assert.ok(!bundled.nonAuthored.has(file), "stays authored (scanned)");
   assert.deepEqual(
     obfuscatedCode.run(
-      withManifest({ artifact: { ...addon, bundled }, options: {} })
+      allOf(withManifest({ artifact: { ...addon, bundled }, options: {} }))
     ).findings,
     []
   );
@@ -485,11 +485,13 @@ test("an inline obfuscation finding names its site, not just its page", async ()
     { file: "p.html", code: OBFUSCATED, lineOffset: 40, inline: true },
   ];
   const out = obfuscated.run(
-    withManifest({
-      artifact: { files: new Map() },
-      jsSources,
-      options: {},
-    })
+    allOf(
+      withManifest({
+        artifact: { files: new Map() },
+        jsSources,
+        options: {},
+      })
+    )
   );
   assert.deepEqual(
     out.findings.map((f) => `${f.file}:${f.loc.line}`),

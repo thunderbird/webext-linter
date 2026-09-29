@@ -49,7 +49,7 @@ import {
 import { settleScaRoot } from "./addon/sca-root.js";
 import { runChecks, loadRegistry, ctxForRule } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
-import { buildXpiCtx, buildScaCtxs } from "./checks/context.js";
+import { buildXpiCtx, buildScaCtx, buildAllCtx } from "./checks/context.js";
 import {
   renderFindings,
   renderManualItems,
@@ -858,7 +858,7 @@ export async function runPipeline(opts) {
   // Both facts are settled - the loop has run - so the review mode follows from them.
   const mode = setupFacts.mode;
 
-  // The shared review env every sibling ctx projects (buildXpiCtx / buildScaCtxs). The
+  // The shared review env every sibling ctx projects (buildXpiCtx / buildScaCtx). The
   // manifest.json and experiments are the SHIPPED artifact's - authoritative like the schema, so no
   // artifact's own template can shadow them. Only what a check reads goes on `options`.
   const env = {
@@ -874,24 +874,27 @@ export async function runPipeline(opts) {
   // input:xpi checks - the structure checks and the manifest.json checks alike, since the
   // shipped manifest.json is this artifact's.
   const xpiCtx = buildXpiCtx(xpiAddon, xpiParsedSources, env);
-  // SCA only, and both from the ONE archive: the source ctx (the review target the code
-  // checks analyse) and the sca ctx (undeclared-build-source and the build-policy checks).
-  // Undefined in an XPI review, which has no archive.
-  const { sourceCtx, scaCtx, bothCtx } = mode?.sca
-    ? buildScaCtxs(reviewTarget, preParsedJsSources, xpiAddon, env)
-    : {};
-  // The sibling ctxs keyed by the `input` value that routes to each (see routeCtx). Routing is
-  // total: `source` is a first-class sibling. siblings.source is the REVIEW TARGET - the readable
-  // source in SCA, else the built XPI (xpiCtx doubles as both siblings.xpi and siblings.source in
-  // an XPI review). A check routed to one sibling can never reach another's artifact.
+  // The submitted archive, which only a source review has. One ctx over one artifact: the
+  // build checks and the code checks read the same object, and what separates them is the
+  // route each declared, not a second narrowed projection.
+  const scaCtx = mode?.sca
+    ? buildScaCtx(reviewTarget, preParsedJsSources, env)
+    : null;
+  // The sibling ctxs keyed by the `input` value that routes to each (see routeCtx). Routing
+  // is total: `source` is a first-class key, but it is a POINTER and not a ctx of its own -
+  // it names the REVIEW TARGET, which is the archive in a source review and the XPI
+  // otherwise, so it is always one of the two beside it. A check routed to one sibling can
+  // never reach another's artifact.
   const siblings = {
-    source: mode?.sca ? sourceCtx : xpiCtx,
+    source: scaCtx ?? xpiCtx,
     xpi: xpiCtx,
     sca: scaCtx,
-    // Only a source review has two artifacts to compare, so only a source review has this
-    // sibling - which is what keeps an `input: both` check out of an XPI review without
-    // anything having to declare it (modeEligible).
-    both: bothCtx,
+    // Every artifact this review has, named: two in a source review, one otherwise. The
+    // sibling always exists, because the route says "whatever is here" rather than "two" -
+    // so an `input: all` check runs in either mode and tests for what it needs. Built from
+    // the per-artifact ctxs, never from `source` above: that one ALIASES, so reading it
+    // here would hand an XPI review the same artifact twice.
+    all: buildAllCtx(env, { xpi: xpiCtx, sca: scaCtx }),
   };
 
   // Phase 6: run the review, then finalize. runChecks runs the phase this review calls

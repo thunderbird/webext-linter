@@ -210,10 +210,10 @@ flowchart TB
   subgraph P5 ["runPipeline() · Phase 5 - build the shared review env, then the sibling ctxs"]
     ENV["build the review env ONCE - the schema, the shipped manifest and<br/>experiments, the mode: the singletons every sibling shares"] --> XB
     XB["buildXpiCtx(xpiAddon, xpiParsedSources, env) → xpiCtx<br/>ALWAYS - it is siblings.xpi; empty sources for a rejected Experiment"] --> SM{{"mode?"}}
-    SM -- sca --> SB2["buildScaCtxs(archive, sourceParsedSources, xpiAddon, env)<br/>→ { sourceCtx, scaCtx, bothCtx }"]
+    SM -- sca --> SB2["buildScaCtx(archive, parsedSources, env)<br/>→ the archive's ctx"]
     SB2 --> SIB
     SM -- "xpi · invalidExperiment" --> SIB
-    SIB["siblings = { source: sourceCtx (SCA) / xpiCtx (else),<br/>xpi: xpiCtx · sca: scaCtx · both: bothCtx }"] --> SIBS["siblings = { source, xpi, sca, both }"]
+    SIB["siblings = { source: scaCtx ?? xpiCtx (a pointer),<br/>xpi: xpiCtx · sca: scaCtx · all: buildAllCtx(xpi, sca) }"] --> SIBS["siblings = { source, xpi, sca, all }"]
   end
 
   subgraph P6 ["runPipeline() · Phase 6 - run the review, then render the findings"]
@@ -263,7 +263,8 @@ flowchart TB
         <code>--sca-root</code> alone decides the mode, and a source submission is
         <strong>always</strong> reviewed as one. Whether it is SHAPED like one is a
         separate question, asked by two checks rather than by setup, both on
-        <code>input: both</code> - the one route carrying two artifacts:
+        <code>input: all</code> - the one route that can carry more than one
+        artifact, and which each of them leaves early without an archive:
         <code>sca-xpi-declares-vendoring</code> warns when the XPI carries vendoring
         information that belongs in the archive, naming the files, and
         <code>sca-xpi-fully-included-in-archive</code> warns when every file the XPI
@@ -542,11 +543,15 @@ flowchart LR
         sibling like the rest, there is no default artifact to fall through to,
         and a declared <code>input</code> with no sibling (a stray
         <code>input: sca</code> in an XPI review) throws rather than silently
-        running on the wrong one. A check reads exactly one artifact and
-        cannot reach another's. (A by-hand <code>manual-checks</code> entry runs
-        nothing and reads no artifact, so it declares <code>input: none</code>,
-        which is not one of these routes and has no sibling.) What the
-        <code>input</code> resolves to depends on the review mode:
+        running on the wrong one. A check reads at most the one artifact its
+        route names, and cannot reach another's. (A by-hand
+        <code>manual-checks</code> entry runs nothing and reads no artifact, so
+        it declares <code>input: none</code>, which is not one of these routes
+        and has no sibling. A handful of checks that <em>do</em> run also read
+        no artifact - only the shared records, <code>ctx.manifest</code> and
+        <code>ctx.experiments</code> - and declare <code>xpi</code>, because
+        both of those are the built XPI's.) What the <code>input</code>
+        resolves to depends on the review mode:
       </p>
       <table class="phases">
         <thead>
@@ -559,8 +564,12 @@ flowchart LR
         <tbody>
           <tr>
             <td><code>source</code></td>
-            <td>the readable source (<code>siblings.source</code>)</td>
-            <td>the built add-on (<code>siblings.source</code>)</td>
+            <td>
+              the submitted archive &mdash; <code>siblings.source</code> is a
+              POINTER at whichever artifact is the review target, so here it is
+              the very same ctx as <code>siblings.sca</code>
+            </td>
+            <td>the built add-on &mdash; the same ctx as <code>siblings.xpi</code></td>
           </tr>
           <tr>
             <td><code>xpi</code></td>
@@ -573,13 +582,17 @@ flowchart LR
             <td>&mdash; (SCA-only)</td>
           </tr>
           <tr>
-            <td><code>both</code></td>
+            <td><code>all</code></td>
             <td>
               BOTH, as <code>ctx.xpi</code> + <code>ctx.sca</code> and no
-              <code>ctx.artifact</code> (<code>siblings.both</code>) - for a check
-              whose subject is the SUBMISSION rather than either artifact in it
+              <code>ctx.artifact</code> (<code>siblings.all</code>) - the only route
+              that can see more than one
             </td>
-            <td>&mdash; (SCA-only)</td>
+            <td>
+              the built add-on as <code>ctx.xpi</code>, with
+              <code>ctx.sca</code> <code>null</code> - the route says what the
+              review holds, so a check on it tests before it reads
+            </td>
           </tr>
         </tbody>
       </table>

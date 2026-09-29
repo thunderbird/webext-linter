@@ -8,6 +8,13 @@
 // API. This positively excludes experiment implementation code and dead code, so an
 // untraceable privileged loader cannot cause a false positive.
 //
+// Asked of EVERY artifact the review has (`input: all`, via perArtifact), and the exclusion
+// above is what makes that safe. A source archive has its Experiment split out by
+// --sca-exp-source, so the check never meets privileged code there; the shipped XPI carries
+// that code like any other file, and the closure is what keeps it out of the answer. What
+// the shipped side adds is the case an archive cannot show: a build that lands a privileged
+// symbol in a file a WebExtension entry point actually reaches.
+//
 // Belongs here: restricting to the pure WebExtension tree and emitting one finding
 // per core-symbol hit. Does NOT belong here: the core-symbol list and the global-
 // reference AST match (-> src/parse/core-symbols.js), the WebExtension vs Experiment
@@ -21,8 +28,9 @@ import { coreSymbolsOf } from "../extract.js";
 import { nonAuthoredJs } from "../../lib/bundled.js";
 import { buildReachability } from "../../lib/reachability.js";
 
+import { perArtifact } from "../each-artifact.js";
 export default {
-  run(ctx) {
+  run: perArtifact((ctx) => {
     const out = [];
     const skip = nonAuthoredJs(ctx); // a core symbol in a bundled library is not the dev's
     // The pure WebExtension tree only (see the header); the mixed/"unsure" files
@@ -45,5 +53,5 @@ export default {
       }
     }
     return { findings: out };
-  },
+  }),
 };
