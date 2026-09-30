@@ -62,6 +62,7 @@ import { classifySource } from "./sources.js";
 import { tarballHashes, tarballFileHashes } from "./tarball.js";
 import { zipHashesUnder } from "./archive.js";
 import { isVendored, declaredFiles } from "./resolve.js";
+import { fileIn, withExperiment } from "../addon/store.js";
 import { npmNameForLibrary } from "../lib/library-hashes.js";
 import { matchLibraryBlock } from "../lib/library-blocks.js";
 import { normalizedSha256, eolNormalize } from "../normalize/hash.js";
@@ -808,7 +809,7 @@ async function auditGithub(entry, src, addon, vendor, net, blocks) {
     // banned upstream). The same boundary the OSV audit already draws.
     return;
   }
-  const bundled = addon.files.get(entry.path) ?? Buffer.alloc(0);
+  const bundled = fileIn(addon, entry.path) ?? Buffer.alloc(0);
   const version = String(src.ref ?? "").replace(/^v/i, "");
 
   // (a) Deterministic: the npm package usually shares the repo name.
@@ -1169,7 +1170,7 @@ async function verifyGrouped(entry, group, addon, vendor, net) {
     // reject a file over the shape of its URL.
     return verifyUrl(entry, addon, vendor, net);
   }
-  const mine = addon.files?.get(entry.path) ?? Buffer.alloc(0);
+  const mine = fileIn(addon, entry.path) ?? Buffer.alloc(0);
   if (published !== normalizedSha256(mine)) {
     return "modified";
   }
@@ -1186,7 +1187,7 @@ async function verifyGrouped(entry, group, addon, vendor, net) {
  */
 async function verifyUrl(entry, addon, vendor, net) {
   const src = classifySource(entry.sourceUrl);
-  const mine = addon.files.get(entry.path) ?? Buffer.alloc(0);
+  const mine = fileIn(addon, entry.path) ?? Buffer.alloc(0);
   let fetched;
   try {
     fetched = await net.fetchBytes(src.rawUrl);
@@ -1215,7 +1216,7 @@ async function verifyUrl(entry, addon, vendor, net) {
  */
 async function verifyTarball(entry, addon, vendor, net) {
   const src = classifySource(entry.sourceUrl);
-  const mine = addon.files.get(entry.path) ?? Buffer.alloc(0);
+  const mine = fileIn(addon, entry.path) ?? Buffer.alloc(0);
   let hashes;
   try {
     hashes = tarballHashes(await net.fetchBytes(src.rawUrl));
@@ -1299,7 +1300,7 @@ async function verifyFolder(entry, addon, vendor, net) {
   }
   let popular = null; // looked up once, lazily, only if a file actually matches
   for (const addonPath of declaredFiles(addon, entry)) {
-    const mine = addon.files.get(addonPath);
+    const mine = fileIn(addon, addonPath);
     if (!hashes.has(normalizedSha256(mine))) {
       vendor.results.push({
         path: addonPath,
@@ -1352,7 +1353,7 @@ async function verifyPackage(pkg, addon, vendor, net) {
   const algos = [...new Set([...byHash.keys()].map((k) => k.split("-")[0]))];
   let popular = null; // looked up once, lazily, only if a file is recorded
   let carried = false;
-  for (const [addonPath, mine] of addon.files) {
+  for (const [addonPath, mine] of withExperiment(addon)) {
     // A packaged file is vendored when its exact content hash matches a
     // published file (basename-independent - a renamed verbatim copy still
     // matches). A file that does not hash-match is left alone (it may be the

@@ -18,6 +18,7 @@
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { lineContaining } from "../../lib/util.js";
+import { fileIn } from "../../addon/store.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -32,7 +33,7 @@ export default {
     const unaudited = vendor?.unaudited ?? [];
     const vendorName = vendor?.vendorFile ?? null;
     const vendorText = vendorName
-      ? (artifact.files.get(vendorName)?.toString("utf8") ?? "")
+      ? (fileIn(artifact, vendorName)?.toString("utf8") ?? "")
       : "";
     const findings = [];
     for (const { path, source } of unaudited) {

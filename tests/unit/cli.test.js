@@ -1409,6 +1409,24 @@ test("--llm-sca-review prints the flags the review is run with", () => {
   ]);
   assert.doesNotMatch(plain.stdout, /SCA_EXP_SOURCE|Experiment/);
   assert.match(plain.stdout, /\n4\. That review prints a prompt of its own/);
+
+  // An add-on that ships an Experiment needs the folder whether or not Experiments are
+  // allowed - a source review of one refuses to start without it - so the .xpi's own
+  // manifest.json decides, and the prompt asks for it.
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from(
+      JSON.stringify({ manifest_version: 3, experiment_apis: { x: {} } })
+    )
+  );
+  zip.writeZip(xpi);
+  const exp = run([dir, "--llm-sca-review"]);
+  assert.deepEqual(flagsOf(exp), [
+    `--llm-review ${xpi}`,
+    "--sca-root <SCA_ROOT>",
+    "--sca-exp-source <SCA_EXP_SOURCE>",
+  ]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

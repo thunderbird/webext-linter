@@ -1,0 +1,21 @@
+{
+  "_comment": "A source code submission that keeps a vendored library and a build script inside the folder --sca-exp-source names. That folder is split out of the archive's files so the WebExtension checks (API, permission, eval) do not read privileged code - but the vendor pass and the build trace are questions about EVERY file the submission holds, so they read it too (withExperiment). What pins that: the VENDORS.md entry for experiment/lib/thing.js resolves, so there is no missing-vendor-file, and the declared library gets the same audit as any other - its GitHub source cannot be OSV-audited, so vendor-vuln-unknown reports it; and the build review names the network fetch in experiment/build.sh, which the trace could not see while it read only the source view. The xpi/ carries no Experiment declaration: the split is the flag's doing alone, and bg.js loads the library so nothing in the XPI reads as unused.",
+  "sca": {
+    "expSource": "experiment"
+  },
+  "expect": {
+    "vendor-vuln-unknown": [
+      "VENDORS.md:2"
+    ]
+  },
+  "network": {
+    "https://raw.githubusercontent.com/someone/thing-lib/1.4.2/dist/thing.js": {
+      "sameAs": "src/experiment/lib/thing.js"
+    },
+    "https://api.github.com/repos/someone/thing-lib": {
+      "json": {
+        "stargazers_count": 4200
+      }
+    }
+  }
+}

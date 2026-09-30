@@ -23,7 +23,11 @@ import { parseArgs } from "node:util";
 import { runPipeline } from "./pipeline.js";
 import { loadRegistry } from "./checks/registry.js";
 import { scaSubmission } from "./addon/submission.js";
-import { hasParentSegment, relativeInside } from "./addon/load.js";
+import {
+  hasParentSegment,
+  readPackedManifest,
+  relativeInside,
+} from "./addon/load.js";
 import { hasErrors } from "./report/finding.js";
 import {
   formatReview,
@@ -60,6 +64,7 @@ import { setColor, red } from "./util/color.js";
 import { wrapText } from "./util/text.js";
 import { parseJson } from "./util/json.js";
 import { rethrowIfFatal } from "./lib/errors.js";
+import { isExperiment } from "./lib/util.js";
 
 /** @typedef {import("./pipeline.js").PipelineOpts} PipelineOpts */
 
@@ -341,8 +346,9 @@ function shellArg(value) {
  * first - with --llm-sca-review replaced by --llm-review and the add-on the submission
  * folder holds - then the ones the reader works out. Anything dropped or invented here
  * reviews a different submission than the reviewer asked about, --allow-experiments above
- * all, which is also why --sca-exp-source is named only when Experiments are allowed:
- * nothing reads it otherwise.
+ * all. --sca-exp-source is named when the review will need it: when Experiments are allowed,
+ * or when the built add-on's manifest.json declares one - read from the .xpi here, since a
+ * source review of an Experiment refuses to start without it.
  *
  * Composed from the PARSED values against OPTIONS, which is what knows a flag from its
  * value. Reading argv again instead means guessing that pairing from the token shapes, and
@@ -373,7 +379,9 @@ function reviewCommand(values, submission) {
     );
   }
   flags.push("--sca-root <SCA_ROOT>");
-  const experiments = Boolean(values["allow-experiments"]);
+  const experiments =
+    Boolean(values["allow-experiments"]) ||
+    isExperiment(readPackedManifest(submission.xpi).json);
   if (experiments) {
     flags.push("--sca-exp-source <SCA_EXP_SOURCE>");
   }

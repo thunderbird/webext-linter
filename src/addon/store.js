@@ -169,9 +169,19 @@ export function fileView(store, { keys }) {
  *
  * `addon.files` is the add-on's WebExtension code: the Experiment is kept out of it so the
  * API, permission and eval checks never false-positive on Services/ChromeUtils. But a pass
- * that asks what a file IS - minified, obfuscated, a known library, parsable at all - is
- * asking about every file the add-on ships, and privileged code shipped unreadable is worse
- * than ordinary code shipped unreadable, not exempt. Those passes read this.
+ * that asks about every file the submission holds reads this instead:
+ *
+ *   - what a file IS - minified, obfuscated, a known library, parsable at all - because
+ *     privileged code shipped unreadable is worse than ordinary code shipped unreadable,
+ *     not exempt;
+ *   - the vendor pass - a library declared inside the Experiment folder is a declared
+ *     library like any other, and matching it against `files` alone would call it missing
+ *     and skip its audit;
+ *   - the build trace - a build step may name a script kept in the Experiment folder, and
+ *     it runs on the reviewer's machine like any other.
+ *
+ * A single lookup reads through fileIn below, which gives the same answer without the
+ * copy.
  *
  * Merging is always safe because the two views are disjoint by construction: the archive
  * partition put every file in exactly one of them (src/addon/load.js scaViews), so nothing
@@ -188,4 +198,17 @@ export function withExperiment(addon) {
     return addon.files;
   }
   return new Map([...addon.files, ...exp]);
+}
+
+/**
+ * One file of the submission by its key, the Experiment included - the lookup form of
+ * withExperiment, for a caller that wants one file rather than all of them. Asks each view
+ * in turn instead of merging them, since a per-file lookup would otherwise copy both maps
+ * each time; the answer is the same because the views are disjoint.
+ * @param {object} addon
+ * @param {string} key
+ * @returns {Buffer|undefined}
+ */
+export function fileIn(addon, key) {
+  return addon?.files?.get(key) ?? addon?.experiment?.get(key);
 }

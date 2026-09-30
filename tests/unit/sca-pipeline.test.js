@@ -652,6 +652,41 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
   }
 });
 
+// The archive cannot say which of its folders holds the Experiment, so a source review of
+// an add-on that ships one does not start until --sca-exp-source names it - otherwise its
+// privileged code would be reviewed, and rejected, as WebExtension code.
+test("SCA e2e: an Experiment add-on needs --sca-exp-source", async () => {
+  const manifest = JSON.parse(XPI_FILES["manifest.json"]);
+  const xpi = tmpDir({
+    ...XPI_FILES,
+    "manifest.json": JSON.stringify({
+      ...manifest,
+      experiment_apis: { myapi: {} },
+    }),
+  });
+  const src = tmpDir({
+    ...SRC_FILES,
+    "src/experiments/exp.js": `ChromeUtils.importESModule("resource:///x.sys.mjs");\n`,
+  });
+  try {
+    const base = {
+      addonPath: xpi,
+      scaRoot: src,
+      allowExperiments: true,
+      ...OFFLINE,
+    };
+    await assert.rejects(runPipeline(base), /--sca-exp-source/);
+    const review = await runPipeline({
+      ...base,
+      scaExpSource: path.join(src, "src", "experiments"),
+    });
+    assert.ok(review.findings, "with the folder named the review runs");
+  } finally {
+    fs.rmSync(xpi, { recursive: true, force: true });
+    fs.rmSync(src, { recursive: true, force: true });
+  }
+});
+
 test("SCA e2e: --sca-exp-source may sit beside the add-on code under --sca-root", async () => {
   const xpi = tmpDir(XPI_FILES);
   // The Experiment lives OUTSIDE the review source (src/), as a sibling under --sca-root:

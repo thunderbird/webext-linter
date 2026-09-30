@@ -49,6 +49,7 @@ import {
 import { settleScaRoot } from "./addon/sca-root.js";
 import { runChecks, loadRegistry, ctxForRule } from "./checks/registry.js";
 import { analyzeBuild } from "./build/analyze.js";
+import { withExperiment } from "./addon/store.js";
 import { buildXpiCtx, buildScaCtx, buildAllCtx } from "./checks/context.js";
 import {
   renderFindings,
@@ -358,8 +359,7 @@ export async function runPipeline(opts) {
   // record, so the name needs no artifact to tell it from another.
   const webExtManifestRecord = readWebExtManifest(xpiAddon.store);
   // The Experiment verdict, likewise the SHIPPED add-on's and likewise shared rather than
-  // stapled to an artifact: it reaches the checks as ctx.experiments, and the classifier as
-  // the set of files whose byte-match IS their review. Named for its type
+  // stapled to an artifact: it reaches the checks as ctx.experiments. Named for its type
   // (ExperimentVerification) rather than for the artifact, because there is only ever one.
   let experimentVerification = null;
   const xpiRootBase = addonIsDir ? addonPath : extractTo;
@@ -511,8 +511,7 @@ export async function runPipeline(opts) {
     // Experiments are reviewed from the XPI (its shipped-artifact role; xpiAddon ===
     // reviewTarget in XPI mode). They are privileged, non-bundled, readable code, and the
     // manifest.json's experiment paths resolve against the XPI's own files (no
-    // source-layout mismatch). The classification is the XPI's, so it is stored on
-    // xpiAddon here, whose bundled classification seeds the trusted experiment files.
+    // source-layout mismatch).
     experiments: async () => {
       experimentVerification = await verifyExperiments(
         xpiAddon,
@@ -585,10 +584,7 @@ export async function runPipeline(opts) {
       // Classification runs on the XPI in BOTH modes: what its bytes ARE - a known library,
       // minified, obfuscated - is a fact about the artifact, not about the review, and the
       // input:xpi checks read it either way.
-      classifyReview(xpiAddon, {
-        libraryHashes,
-        trustedFiles: experimentVerification?.trustedFiles,
-      });
+      classifyReview(xpiAddon, { libraryHashes });
     },
     "cdn-bundled": () =>
       identifyBundledLibraries(xpiAddon, {
@@ -626,6 +622,16 @@ export async function runPipeline(opts) {
         // loads, so none is read - ctx.manifest is the shipped one and must be the only
         // answer. The built add-on above is loaded the ordinary way, where a node_modules
         // folder is shipped content like any other and the manifest.json IS the artifact's.
+        // The archive cannot say which of its folders holds the Experiment - only the
+        // flag does - and without it the privileged code is reviewed as WebExtension code
+        // and rejected for being what an Experiment is. So the review does not start.
+        if (isExp && !opts.scaExpSource) {
+          throw new Error(
+            "This add-on ships an Experiment (its manifest.json declares experiment_apis): " +
+              "name the folder of the source archive that holds the Experiment " +
+              "implementation with --sca-exp-source."
+          );
+        }
         scaArchive = loadSourceArchive(opts.scaRoot);
         scaViews(scaArchive, {
           scaRoot: opts.scaRoot,
@@ -745,10 +751,7 @@ export async function runPipeline(opts) {
     // reads).
     "deps-source": async () => {
       await verifyScaDependencies(reviewTarget, opts.vendorNet, libraryBlocks);
-      classifyReview(reviewTarget, {
-        libraryHashes,
-        trustedFiles: experimentVerification?.trustedFiles,
-      });
+      classifyReview(reviewTarget, { libraryHashes });
     },
 
     // Identify the UNDECLARED libraries the audit cannot see (jsDelivr hash), and
@@ -769,14 +772,16 @@ export async function runPipeline(opts) {
       });
     },
 
-    // Look at the build ONCE here (the vendor pattern), over the source view - everything
-    // but the Experiment - because a build step may reference any of it, and a step the trace
-    // cannot see raises no signal for the reviewer to follow. What was found is stored on
-    // reviewTarget.buildReview for the input:sca checks to read. Nothing classifies what the
-    // build DOES, so it routes to the reviewer, who reproduces it from the source by hand.
+    // Look at the build ONCE here (the vendor pattern), over EVERY file the archive holds -
+    // the Experiment folder included - because a build step may reference any of it, and a
+    // step the trace cannot see raises no signal for the reviewer to follow. A script kept
+    // under the Experiment folder runs on the reviewer's machine like any other. What was
+    // found is stored on reviewTarget.buildReview for the input:sca checks to read. Nothing
+    // classifies what the build DOES, so it routes to the reviewer, who reproduces it from
+    // the source by hand.
     build: () => {
       reviewTarget.buildReview = analyzeBuild({
-        build: { files: reviewTarget.files },
+        build: { files: withExperiment(reviewTarget) },
       });
     },
 
@@ -1248,20 +1253,17 @@ function canWriteDir(dir) {
 
 /**
  * Per-file classification of the REVIEW TARGET (library hash / minified geometry /
- * obfuscation, plus the vendored + experiment-trusted non-authored seed) -> addon.bundled.
+ * obfuscation, plus the vendored non-authored seed) -> addon.bundled.
  * It runs before identifyBundledLibraries, which reads its tags (tag.obfuscation) and refines
  * the result.
  * @param {import("./addon/load.js").Addon} addon
- * @param {{libraryHashes: Map<string, {name: string, version: string}>,
- *   trustedFiles?: Set<string>}} deps  `trustedFiles` is the shipped add-on's Experiment
- *   verdict, which applies to whichever artifact is being classified.
+ * @param {{libraryHashes: Map<string, {name: string, version: string}>}} deps
  */
-function classifyReview(addon, { libraryHashes, trustedFiles }) {
+function classifyReview(addon, { libraryHashes }) {
   // Reuse the classification when the caller already has one (the SHIPPED XPI carries its own,
   // computed in Phase 2 by `vendor-xpi`); otherwise classify now.
   addon.bundled =
-    addon.bundled ??
-    assembleBundled(classifyFiles(addon, { libraryHashes, trustedFiles }));
+    addon.bundled ?? assembleBundled(classifyFiles(addon, { libraryHashes }));
 }
 
 /**

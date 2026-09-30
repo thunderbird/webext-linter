@@ -255,7 +255,6 @@ const status0 = (res) => res.groups[0]?.status;
 test("verifyExperiments: pristine bundle is recognised and fully matched", async () => {
   const res = await verifyExperiments(addon(demoFiles()), demoRecord, opts);
   assert.equal(res.pristine, true);
-  assert.equal(res.trustedFiles.size, 3);
   assert.equal(res.groups[0].name, "demo");
   assert.equal(status0(res), "pristine");
 });
@@ -269,7 +268,6 @@ test("verifyExperiments: recognised but modified -> modified (not aborted)", asy
   const res = await verifyExperiments(addon(files), demoRecord, opts);
   assert.equal(res.pristine, false);
   assert.equal(status0(res), "modified");
-  assert.equal(res.trustedFiles.size, 3); // modified files are still trusted (continue path)
 });
 
 test("verifyExperiments: an extra file in the subtree -> modified", async () => {

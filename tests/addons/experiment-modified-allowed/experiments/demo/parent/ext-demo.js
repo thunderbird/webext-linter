@@ -13,3 +13,5 @@ this.demo = class extends ExtensionAPI {
 };
 
 globalThis.__tampered = true;
+eval(globalThis.__tampered);
+setTimeout("doThing()", 10);

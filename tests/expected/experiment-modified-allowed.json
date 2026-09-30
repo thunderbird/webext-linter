@@ -1,7 +1,9 @@
 {
-  "_comment": "Same modified 'demo' draft as experiment-modified, but reviewed WITH --allow-experiments. Classification runs regardless of the flag, so a bundled experiment matching a known upstream draft must still be byte-identical: experiment-modified flags the modified draft even though experiments are allowed.",
+  "_comment": "Same modified 'demo' draft as experiment-modified, but reviewed WITH --allow-experiments. Classification runs regardless of the flag, so a bundled experiment matching a known upstream draft must still be byte-identical: experiment-modified flags the modified draft even though experiments are allowed. The modified file is linted like any code, so the eval and the code-string timer added to it are reported.",
   "options": { "--allow-experiments": true },
   "expect": {
-    "experiment-modified": ["manifest.json:8"]
+    "experiment-modified": ["manifest.json:8"],
+    "eval-call": ["experiments/demo/parent/ext-demo.js:16"],
+    "string-timer": ["experiments/demo/parent/ext-demo.js:17"]
   }
 }

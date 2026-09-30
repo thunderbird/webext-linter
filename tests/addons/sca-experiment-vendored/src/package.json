@@ -1,0 +1,7 @@
+{
+  "name": "sca-experiment-vendored",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "sh experiment/build.sh"
+  }
+}

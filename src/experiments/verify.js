@@ -144,8 +144,6 @@ function walkDir(root) {
  * @typedef {object} ExperimentVerification
  * @property {boolean} pristine  Every bundled experiment is a pristine upstream
  *   copy.
- * @property {Set<string>} trustedFiles  Experiment files to trust (the continue
- *   path: all of them when no group is unsupported; empty otherwise).
  * @property {ExperimentGroupStatus[]} groups
  */
 
@@ -202,22 +200,8 @@ export async function verifyExperiments(
     g.status = refsPresent && allMatch ? "pristine" : "modified";
   }
 
-  const anyUnsupported = groups.some((g) => g.status === "unsupported");
-  const trustedFiles = new Set();
-  if (!anyUnsupported) {
-    // Continue path: trust pristine AND modified experiment files. The fix is
-    // "use the unmodified latest upstream". Linting upstream-derived code is
-    // noise, and the modified error keeps the submission rejected.
-    for (const g of groups) {
-      for (const [file] of g.files) {
-        trustedFiles.add(file);
-      }
-    }
-  }
-
   return {
     pristine: groups.length > 0 && groups.every((g) => g.status === "pristine"),
-    trustedFiles,
     groups: groups.map((g) => ({
       name: g.name,
       // The experiment_apis key this group was declared under, so a check can ask the

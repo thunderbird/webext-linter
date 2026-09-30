@@ -21,6 +21,7 @@ import { readVendorDeclarations, readVendorFile } from "../normalize/vendor.js";
 import { classifySource } from "./sources.js";
 import { governingLock, lockedVersion, lockedPackages } from "./locks.js";
 import { SCHEME_RE } from "../lib/util.js";
+import { withExperiment } from "../addon/store.js";
 import {
   declarationKey,
   declaredDependencies,
@@ -159,7 +160,8 @@ export function declaredFiles(addon, entry) {
     return [entry.path];
   }
   const prefix = `${entry.path}/`;
-  return [...(addon.files?.keys() ?? [])].filter((f) => f.startsWith(prefix));
+  const files = addon.files ? withExperiment(addon) : new Map();
+  return [...files.keys()].filter((f) => f.startsWith(prefix));
 }
 
 /**

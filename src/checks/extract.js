@@ -109,7 +109,7 @@ function extractLoadGraph(
  *   signatures (the pass scans against ALL of them; the permission grounding
  *   intersects with what the manifest.json declares) and the loader-ref schema walk.
  * @param {Set<string>} [opts.nonAuthored]  Files that are not the developer's own
- *   (vendored / library / minified / obfuscated / experiment-trusted) -
+ *   (vendored / library / minified / obfuscated) -
  *   addon.bundled.nonAuthored, the same Set the consumers read. Used here for
  *   `codeAtoms` alone, whose absence routes the token scan to its raw-text path;
  *   every other result is extracted whether or not a file is in it.

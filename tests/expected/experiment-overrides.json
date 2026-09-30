@@ -1,5 +1,5 @@
 {
-  "_comment": "An Experiment (allowed via --allow-experiments) declaring two API paths that both graft onto the built-in 'messages' namespace -> one experiment-overrides-api error each. Both are anchored to the experiment_apis key, so the two findings share a locus and differ only in the API path. The experiment's own files are reachable but, being custom (not a pristine upstream copy), are still linted.",
+  "_comment": "An Experiment (allowed via --allow-experiments) declaring two API paths that both graft onto the built-in 'messages' namespace -> one experiment-overrides-api error each. Both are anchored to the experiment_apis key, so the two findings share a locus and differ only in the API path. The experiment's own files are reachable and linted like any code.",
   "options": { "--allow-experiments": true },
   "expect": {
     "experiment-overrides-api": ["manifest.json:7", "manifest.json:7"]

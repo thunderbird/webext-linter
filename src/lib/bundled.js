@@ -28,7 +28,7 @@ import {
   CSS_EXTENSIONS,
   CODE_EXTENSIONS,
 } from "../util/files.js";
-import { withExperiment } from "../addon/store.js";
+import { fileIn, withExperiment } from "../addon/store.js";
 import { isVendored } from "../vendor/resolve.js";
 import { rawSha256 } from "../normalize/hash.js";
 import { obfuscationVerdict } from "./obfuscation.js";
@@ -93,11 +93,8 @@ import { isMinified, isMinifiedJs } from "./minified.js";
  *   recognized.
  * @returns {Bundled}
  */
-export function classifyBundled(
-  addon,
-  { libraryHashes = new Map(), trustedFiles } = {}
-) {
-  return assembleBundled(classifyFiles(addon, { libraryHashes, trustedFiles }));
+export function classifyBundled(addon, { libraryHashes = new Map() } = {}) {
+  return assembleBundled(classifyFiles(addon, { libraryHashes }));
 }
 
 // Below this, the LIBRARY and OBFUSCATION questions are not worth asking: too small to
@@ -109,26 +106,16 @@ export const MIN_CLASSIFY_BYTES = 1024;
 
 /**
  * The per-file classification: library (content hash) / minified (geometry) /
- * obfuscation (structural, via classify) tags, plus the vendored / experiment-trusted /
- * library / minified / obfuscated non-authored seed. `tag.obfuscation` is the final
+ * obfuscation (structural, via classify) tags, plus the vendored / library / minified /
+ * obfuscated non-authored seed. `tag.obfuscation` is the final
  * verdict here - the detector is structural, so there is no later AST correction.
  * @param {Addon} addon
- * @param {{libraryHashes?: Map<string, LibraryId>, trustedFiles?: Set<string>}} [opts]
- *   `trustedFiles` are the files of a recognised allowed Experiment (pristine or modified):
- *   upstream-derived, not the developer's - the byte-match IS their review, so the
- *   source-level scanners skip them like a vendored library, regardless of
- *   --allow-experiments. Passed in rather than read off the artifact, because the
- *   classification is the SHIPPED add-on's answer whichever artifact is being classified.
- *   Absent means nothing is trusted, which is also what an unsupported experiment (not a
- *   known upstream draft) yields - then all of it stays linted.
+ * @param {{libraryHashes?: Map<string, LibraryId>}} [opts]
  * @returns {{classified: BundleTag[], nonAuthored: Set<string>}}
  */
-export function classifyFiles(
-  addon,
-  { libraryHashes = new Map(), trustedFiles } = {}
-) {
+export function classifyFiles(addon, { libraryHashes = new Map() } = {}) {
   const classified = [];
-  const nonAuthored = new Set(trustedFiles ?? []);
+  const nonAuthored = new Set();
   for (const [file, buf] of withExperiment(addon)) {
     const ext = extname(file);
     // A vendored file (an exact VENDOR entry OR a file under a vendored folder) is
@@ -262,7 +249,7 @@ export function applyUnverifiedVendor(addon) {
     if (!CODE_EXTENSIONS.has(extname(result.path))) {
       continue;
     }
-    const buf = addon.files?.get(result.path);
+    const buf = fileIn(addon, result.path);
     const content = buf
       ? classify(buf.toString("utf8"), result.path)
       : { minified: false, obfuscation: VERDICT.PASS };

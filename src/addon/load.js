@@ -351,6 +351,31 @@ export function readWebExtManifest(store) {
 }
 
 /**
+ * The manifest.json record of a PACKED add-on, read without extracting it: for a caller that
+ * prepares a review and writes nothing (--llm-sca-review). An archive that cannot be read
+ * answers as one with no manifest.json - the review being prepared reads it in full and
+ * refuses it there, in its own words.
+ * @param {string} zipPath
+ * @returns {WebExtManifestRecord}
+ */
+export function readPackedManifest(zipPath) {
+  try {
+    const entry = new AdmZip(zipPath).getEntry(MANIFEST_NAME);
+    if (
+      entry &&
+      !entry.isDirectory &&
+      !hidesItsSize(entry) &&
+      entry.header.size <= ADDON_MAX_UNPACKED_BYTES
+    ) {
+      return manifestRecord(entry.getData().toString("utf8"));
+    }
+  } catch (err) {
+    rethrowIfFatal(err);
+  }
+  return manifestRecord(null);
+}
+
+/**
  * The record itself, from the raw bytes. Separate from the read so the shape has ONE
  * owner: a second hand-built copy of it is a copy that goes out of step the next time it
  * gains a field, which is how a locus once reached a reader with no artifact on it.

@@ -38,6 +38,7 @@
 // vendor verification pre-step + the vendor checks. This file makes no verdict.
 
 import { basename, dirname } from "../util/files.js";
+import { withExperiment } from "../addon/store.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
@@ -59,10 +60,10 @@ const VENDOR_NAMES = new Set(["vendor", "vendor.md", "vendors", "vendors.md"]);
  * @returns {string[]}
  */
 export function vendorFileNames(addon) {
-  const files = addon?.files;
-  if (!files) {
+  if (!addon?.files) {
     return [];
   }
+  const files = withExperiment(addon);
   return [...files.keys()]
     .filter((f) => VENDOR_NAMES.has(basename(f).toLowerCase()))
     .sort();
@@ -82,7 +83,7 @@ export function readVendorFile(addon) {
     return null;
   }
   const [name] = names;
-  const files = addon.files;
+  const files = withExperiment(addon);
   // A leading BOM is how the file was SAVED, not part of what it says - and it must
   // come off before the character rule below, since U+FEFF is itself a format
   // character and would otherwise refuse every file a Windows editor wrote.
@@ -683,7 +684,7 @@ function scanVendorRecords(addon) {
  * @returns {{resolved: VendorEntry[], missing: VendorEntry[]}}
  */
 export function readVendorDeclarations(addon) {
-  const paths = new Set(addon.files.keys());
+  const paths = new Set(withExperiment(addon).keys());
   const holds = (dir) => [...paths].some((p) => p.startsWith(`${dir}/`));
   const at = dirname(readVendorFile(addon)?.name ?? "");
   const resolved = [];

@@ -1,9 +1,11 @@
 {
   "meta": {
     "action": "review",
-    "xpi": "<root>/tests/addons/experiment-modified-allowed",
-    "xpiRoot": "<root>/tests/addons/experiment-modified-allowed/",
-    "xpiFile": "experiment-modified-allowed",
+    "xpi": "<root>/tests/addons/sca-experiment-vendored/xpi",
+    "xpiRoot": "<root>/tests/addons/sca-experiment-vendored/xpi/",
+    "xpiFile": "xpi",
+    "scaRoot": "<root>/tests/addons/sca-experiment-vendored/src",
+    "scaExpSource": "<root>/tests/addons/sca-experiment-vendored/src/experiment",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
@@ -41,6 +43,7 @@
       "minified-code",
       "untrusted-minified-library",
       "untrusted-library",
+      "unpopular-source-dependency",
       "unparsable-file",
       "experiment-modified",
       "experiment-missing-strict-max-version",
@@ -48,12 +51,23 @@
       "experiment-manual-review",
       "experiment-unknown-api",
       "non-experiment-strict-max-version",
-      "xpi-lock-file-missing",
-      "xpi-lock-file-invalid",
       "unsupported-dependency",
       "vendor-vulnerable",
       "banned-library",
+      "vendor-vulnerable-dev",
+      "vendor-vulnerable-indirect",
+      "vendor-vulnerable-indirect-dev",
+      "sca-package-file-missing",
+      "sca-package-file-invalid",
+      "sca-lock-file-missing",
+      "sca-lock-file-invalid",
+      "build-registry-redirect",
+      "committed-node-modules",
+      "committed-build-artifact",
+      "sca-invalid-symlink",
       "xpi-packaged-symlink",
+      "build-lifecycle-hook",
+      "undeclared-build-source",
       "sca-xpi-declares-vendoring",
       "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",
@@ -95,54 +109,26 @@
     ]
   },
   "summary": {
-    "error": 3,
+    "error": 0,
     "hold": 0,
     "warning": 0,
-    "info": 0,
+    "info": 1,
     "byRule": {
-      "experiment-modified": 1,
-      "eval-call": 1,
-      "string-timer": 1
+      "vendor-vuln-unknown": 1
     }
   },
   "findings": [
     {
-      "ruleId": "eval-call",
-      "severity": "error",
-      "file": "experiments/demo/parent/ext-demo.js",
+      "ruleId": "vendor-vuln-unknown",
+      "severity": "info",
+      "file": "VENDORS.md",
       "loc": {
-        "line": 16,
-        "column": 0
+        "line": 2
       },
-      "item": null,
+      "item": "https://raw.githubusercontent.com/someone/thing-lib/1.4.2/dist/thing.js",
       "hint": null,
-      "artifact": "XPI",
-      "message": "Dynamic code execution via \"eval()\" is not allowed."
-    },
-    {
-      "ruleId": "string-timer",
-      "severity": "error",
-      "file": "experiments/demo/parent/ext-demo.js",
-      "loc": {
-        "line": 17,
-        "column": 0
-      },
-      "item": null,
-      "hint": null,
-      "artifact": "XPI",
-      "message": "Dynamic code execution via \"a code string passed to setTimeout/setInterval\" is not allowed."
-    },
-    {
-      "ruleId": "experiment-modified",
-      "severity": "error",
-      "file": "manifest.json",
-      "loc": {
-        "line": 8
-      },
-      "item": "demo",
-      "hint": null,
-      "artifact": "XPI",
-      "message": "The following Experiment API(s) are published Thunderbird API drafts, but this add-on bundles a modified or outdated copy of each. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments."
+      "artifact": "SCA",
+      "message": "The add-on sourced a third-party file from a CDN, where its known-vulnerability status could not be determined automatically. To benefit from automated auditing against the OSV database, consider switching to an npm-hosted source and update your vendor mechanism to point to an unpkg or jsDelivr package (pinned to an exact version)."
     }
   ]
 }

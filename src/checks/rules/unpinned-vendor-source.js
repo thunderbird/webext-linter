@@ -13,6 +13,7 @@
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { lineContaining } from "../../lib/util.js";
+import { fileIn } from "../../addon/store.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -30,7 +31,7 @@ export default {
     // a locus per file.
     const vendorName = vendor?.vendorFile ?? null;
     const vendorText = vendorName
-      ? (ctx.artifact.files.get(vendorName)?.toString("utf8") ?? "")
+      ? (fileIn(ctx.artifact, vendorName)?.toString("utf8") ?? "")
       : "";
     const findings = [];
     for (const { path, source } of (vendor?.results ?? []).filter(
