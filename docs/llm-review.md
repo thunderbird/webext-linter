@@ -51,7 +51,7 @@ entry never offered are all refusals.
 
 | Phase | What it is for | What fills its answers |
 | --- | --- | --- |
-| `spawn` | Start the sub-agents the review needs - the add-on description, the build report, the sweep - and record what the sweep found. | One row per swept check (see below) |
+| `spawn` | Start the sub-agents the review needs - the add-on description, the build report, one sweep per tree - and read back what the sweeps found. | Nothing: each sweep answers in a file of its own (see below) |
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
 | `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
@@ -147,16 +147,56 @@ one declares a **`sweep-instruction:`** describing the class of code it cannot s
 declare one. Every review prints those instructions under **Standard Code Review**, for
 whoever is reading the add-on to cover by hand.
 
-Under `--llm-review` that reading is a sub-agent's. The `spawn` phase carries one row per
-swept check for what it found - an empty list where that check is clean, which is what
-separates "found nothing" from "never looked":
+A sweep names a file, so it is a request about exactly **one tree**. Which tree is settled
+by the check's `input:`, except on `input: all` - the route that reads every artifact and
+so names none. A check there declares **`sweep-instruction-for-xpi:`** and/or
+**`sweep-instruction-for-sca:`** instead, and each declaration becomes an independent
+sweep with its own words and its own tree. Every entry, printed or handed out, names the
+folder to search as a path, because a source review has two trees open at once.
+
+Under `--llm-review` that reading is a sub-agent's, **one per tree**, and the sweep is the
+only sub-agent whose output the linter reads. So it is the only one with a shape, and it
+gets two files of its own rather than reporting through the orchestrating agent:
+
+| | Written by | Format | Read back by |
+| --- | --- | --- | --- |
+| `<stem>.sweep-<artifact>.yaml` | the linter | YAML - the prose is the bulk of it | nobody |
+| `<stem>.sweep-<artifact>.answers.json` | the sweeping agent | JSON - one quoting rule, where a hint holding `http://host: thing` would break YAML | the linter |
+
+The request stands alone, because the agent is handed a path and nothing else:
+
+```yaml
+sweepTarget: /reviews/addon-1.2.xpi.extracted/
+answerFile: /tmp/addon-1.2-....sweep-xpi.answers.json
+instructions: |-
+  This file holds 2 separate sweeps, listed under "sweeps" below. ...
+sweeps:
+  - label: 9
+    title: Check the package for unacceptable content
+    instruction: |-
+      Content shipped inside the package ...
+```
+
+and the answers file is pre-created with a `null` per label:
 
 ```json
-{ "check": "data-exfiltration",
-  "instruction": "Message content and headers, attachments, contacts, ...",
-  "answer": [ { "file": "background.js", "line": 40,
-                "hint": "<a ping> attribute carries the message digest" } ] }
+{ "answers": { "9": null, "10": null } }
 ```
+
+`label` is the identity, and it is the **linter's**: unique across the whole review, so
+the two files cannot collide and no agent is ever asked which request an answer belongs
+to. It is also the number the report prints beside that sweep, so the page a reviewer
+reads and the request an agent reads are the same list under the same numbers. Nothing of
+the review's vocabulary reaches the agent - not a check id, not an artifact - because
+where a hint lands is the review's to know.
+
+Replacing a `null` with a list is the whole answer; an empty list is "swept and clean",
+and a `null` left behind is refused. That is what separates "found nothing" from "never
+looked", and it is the agent's own statement rather than something inferred from silence.
+
+The orchestrating agent never touches any of this. Its two `spawn` steps each hand one
+sub-agent one path and tell it to follow the `instructions` in that file; it waits, and
+hands back a review file whose `entries` are empty.
 
 What comes back is not a verdict on the sweep, and not a classification either: the agent
 that sweeps reads the add-on, not the linter, so it cannot know whether what it found is
@@ -172,18 +212,19 @@ exactly as a case it found for itself:
 | escalates | An escalation of that check, in the section that check's own wording puts it in, asking the question that check asks - its own instructions, never the text the sweep agent was sent. |
 | does not escalate | A **finding** of that check. Such a check settles its cases as findings, so a swept one is a finding too, and the `verify` phase audits it like every other claim. |
 
-So a `sweep-instruction` says what to LOOK FOR, and is read in exactly two places: the
+So a sweep instruction says what to LOOK FOR, and is read in exactly two places: the
 request handed to the sweep agent, and the Standard Code Review list every report prints.
-It never says what confirming something means - that is the owning check's to say.
+It never says WHERE - that is the linter's, carried as `sweepTarget` - and it never says
+what confirming something means, which is the owning check's to say.
 
-Either way the case is deduplicated against what the deterministic pass already covered,
-as a to-do item or as a finding, so nothing downstream can tell a swept case from one a
-check found. The `hint` is a locus annotation naming what sits at that line; the paragraph
+Either way the case is deduplicated against what the deterministic pass already covered
+in that same tree, as a to-do item or as a finding, so nothing downstream can tell a swept
+case from one a check found. The `hint` is a locus annotation naming what sits at that line; the paragraph
 the developer reads stays the registry's.
 
-`--llm-skip-sweep` withholds all of this: the prompt neither spawns the agent nor asks for
-its rows, and the Standard Code Review list stays in the report for the reviewer to sweep
-by hand, exactly as in a review with no agent in it.
+`--llm-skip-sweep` withholds all of this: no request is written, the prompt spawns no
+sweeping agent, and the sweep is left out of the review - it is not handed to the
+reviewer, in the prompt or in the report.
 
 
 ## What the reviewer is handed
@@ -272,4 +313,4 @@ too many formats for it to open, which is why that one extraction is the reader'
 | `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
 | `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review stopped early, which takes them out. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
-| `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. The prompt neither spawns it nor asks for it, and the Standard Code Review section stays in the report for the reviewer to sweep by hand. |
+| `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. No sweeping agent is spawned, and the sweep is not handed to the reviewer either. |

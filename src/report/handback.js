@@ -12,7 +12,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { hasParentSegment } from "../addon/load.js";
-import { checkedResult } from "./sweep.js";
 import { VERB, verbOf } from "./verbs.js";
 import { displayLine } from "../util/text.js";
 import { parseJson } from "../util/json.js";
@@ -20,8 +19,8 @@ import { rethrowIfFatal } from "../lib/errors.js";
 
 /** Every entry in every phase carries this, and `null` always means unanswered. One slot,
  *  one name, one sentinel - so the handover text is one text and the agent never relearns
- *  the file. What an answer IS - a list of hints, a verb, a reviewer's words - the phase's
- *  own step has to say anyway. */
+ *  the file. What an answer IS - a verb, a reviewer's words - the phase's own step has to
+ *  say anyway. */
 export const SLOT = "answer";
 
 /**
@@ -111,9 +110,8 @@ export function readHandback(file) {
  *     told it
  *   - an answer of the wrong shape for what the phase asks
  *
- * `keyOf` differs by phase because the spawn phase's rows are keyed by the check they
- * answer: a sweep takes no verdict, produces cases rather than being one, and so must not
- * consume an index from a sequence it is not in.
+ * `keyOf` is the caller's, because what identifies an entry is the phase's business and
+ * not this function's.
  * @param {object[]} handed  What came back.
  * @param {object[]} asked  What was handed out.
  * @param {{name: string, verbs: string[]}} phase
@@ -126,9 +124,7 @@ export function answersOf(handed, asked, phase, keyOf) {
   for (const entry of handed) {
     const key = keyOf(entry);
     if (key === undefined || key === "undefined") {
-      throw new HandbackRefused(
-        `an entry has no ${phase.answer === "hints" ? '"check"' : '"index"'}`
-      );
+      throw new HandbackRefused('an entry has no "index"');
     }
     if (!wanted.has(key)) {
       throw new HandbackRefused(
@@ -153,28 +149,6 @@ export function answersOf(handed, asked, phase, keyOf) {
     );
   }
   for (const [key, value] of got) {
-    // `hints` is what a sweep found - a list, empty when that check is clean. `null` was
-    // unanswered and is already refused above, which is what separates "found nothing"
-    // from "never looked".
-    if (phase.answer === "hints") {
-      if (!Array.isArray(value)) {
-        throw new HandbackRefused(
-          `${key} answers with ${typeof value}, but a sweep answers with a list of what ` +
-            "it found (an empty list when it found nothing)"
-        );
-      }
-      // The agent AUTHORS these rows - the linter cannot, since a sweep exists for what
-      // its detectors miss - so each is held to a shape here, at the only point one
-      // enters the review.
-      value.forEach((found, i) => {
-        try {
-          checkedResult(`${key}, hint ${i + 1}`, { ...found, check: key });
-        } catch (err) {
-          throw new HandbackRefused(err.message);
-        }
-      });
-      continue;
-    }
     // `words` are a person's own answer, and those are not ours to judge - only to carry.
     if (phase.answer === "words") {
       if (typeof value !== "string" || value === "") {
@@ -345,28 +319,4 @@ function offeredBy(item, phase) {
         (lastResort ? prose["says-when-last-resort"] : null) ?? prose.says,
     };
   });
-}
-
-/**
- * The spawn phase's rows: one per check that declared a sweep instruction.
- *
- * Keyed by `check` and carrying no index, because a sweep takes no verdict and produces
- * cases rather than being one - an index would consume a number from a sequence it is not
- * in, and every real case would start at 2.
- *
- * ONE ROW PER CHECK is the part the linter DOES know in advance. It cannot write the
- * hints - a sweep exists precisely for what the detectors miss - but it knows exactly
- * which checks it asked about, so a check left unanswered is visible - and `null` is that
- * check unanswered where `[]` is that check swept and clean. Without the row, a sweep that
- * covered three checks of eight would be indistinguishable from one that covered all
- * eight and found nothing.
- * @param {{items: {check: string, instruction: string}[]}} preSweep
- * @returns {object[]}
- */
-export function sweepRows(preSweep) {
-  return preSweep.items.map((s) => ({
-    check: s.check,
-    instruction: s.instruction,
-    [SLOT]: null,
-  }));
 }

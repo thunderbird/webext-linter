@@ -51,6 +51,8 @@ import { SECTIONS, assertSection } from "./registry-schema.js";
 import {
   SCA_ONLY_INPUTS,
   MODE_RESPONSES,
+  SWEEP_INSTRUCTION,
+  SWEEP_INSTRUCTIONS,
   AUTO_SEVERITY,
   NO_SEVERITY,
   HOLD_OR_ERROR,
@@ -508,48 +510,71 @@ export class Registry {
   }
 
   /**
-   * The sweep instruction a check authors for its own blind spot, or null.
+   * The sweeps a check authors for its own blind spot: one entry per instruction it
+   * declares, each naming the artifact its reader is being sent into. Empty for a check
+   * with no blind spot, which is most of them.
    *
    * A check scans for what it can name, and code outside that boundary leaves no trace to
    * key on - an enumerated set of transmission APIs says nothing about the sender it does
    * not list. Where the boundary cannot be closed by naming more, the check authors an
    * instruction for a reader instead, and what the reader finds belongs to THIS check -
    * routed the way that check routes its own cases: to a finding in its band and its
-   * words, or to the question its instructions ask. Presence is the whole declaration: a check with no blind
-   * spot authors none.
+   * words, or to the question its instructions ask.
+   *
+   * A sweep NAMES A FILE, so it is a request about exactly one tree. On the
+   * single-artifact routes the check's own `input` is that tree, and SWEEP_INSTRUCTION
+   * leaves the artifact to whoever knows it - `null` here, filled in by preSweepOf from
+   * the ctx the check ran on. On `input: all`, which names no single artifact, the entry
+   * says it per instruction (SWEEP_INSTRUCTIONS) and each declaration is its own
+   * independent sweep. Which form an entry may use is settled at load
+   * (assertSweepInstruction), so nothing downstream has to ask.
    * @param {string} ruleId
-   * @returns {?string}
+   * @returns {{artifact: ?string, instruction: string}[]}
    */
-  sweepInstruction(ruleId) {
-    const t = this.checkEntry(ruleId)?.["sweep-instruction"];
-    return typeof t === "string" && t !== "" ? t : null;
+  sweepTargets(ruleId) {
+    const entry = this.checkEntry(ruleId);
+    if (!entry) {
+      return [];
+    }
+    const flat = entry[SWEEP_INSTRUCTION];
+    if (typeof flat === "string" && flat !== "") {
+      return [{ artifact: null, instruction: flat }];
+    }
+    return Object.entries(SWEEP_INSTRUCTIONS)
+      .filter(([, key]) => typeof entry[key] === "string" && entry[key] !== "")
+      .map(([artifact, key]) => ({ artifact, instruction: entry[key] }));
   }
 
   /**
-   * Every check that authors a sweep instruction, in registry order - which is the order
-   * the report and every phase list them in, so the two agree.
+   * Every sweep this registry authors, in registry order - which is the order the report
+   * and every phase list them in, so the two agree. A check that declares two
+   * instructions contributes two, adjacent and in SWEEP_INSTRUCTIONS order.
    * @param {{sca?: boolean}} [mode]  The review mode, for a check that words its
    *   response per mode (responseOf).
-   * @returns {{check: string, title: string, severity: string, instruction: string,
-   *   response: ?string}[]}
+   * @returns {{check: string, artifact: ?string, title: string, severity: string,
+   *   instruction: string, response: ?string}[]}
    */
   sweepInstructions(mode) {
     return this.checkEntries()
       .map((e) => ({ entry: e, id: stem(e.check) }))
-      .filter(({ id }) => this.sweepInstruction(id))
-      .map(({ entry, id }) => ({
-        check: id,
-        title: entry.title,
-        // Non-null for every entry that reaches here: the registry assert refuses a
-        // sweep instruction on a check with no band to stamp a reported case with.
-        severity: this.suggestedVerdict(id),
-        instruction: this.sweepInstruction(id),
-        // What the developer would be told if the sweep finds something - the same text
-        // a reported case is worded with. For the REPORT only: the agent hands back a
-        // locus and the routing is the linter's, so it has no use for the wording and is
-        // told not to produce any.
-        response: responseOf(entry, mode),
-      }));
+      .flatMap(({ entry, id }) =>
+        this.sweepTargets(id).map((t) => ({
+          check: id,
+          // Null where the route answers for it; preSweepOf is where that is resolved,
+          // because it is the last place a ctx exists to ask.
+          artifact: t.artifact,
+          title: entry.title,
+          // Non-null for every entry that reaches here: the registry assert refuses a
+          // sweep instruction on a check with no band to stamp a reported case with.
+          severity: this.suggestedVerdict(id),
+          instruction: t.instruction,
+          // What the developer would be told if the sweep finds something - the same text
+          // a reported case is worded with. For the REPORT only: the agent hands back a
+          // locus and the routing is the linter's, so it has no use for the wording and is
+          // told not to produce any.
+          response: responseOf(entry, mode),
+        }))
+      );
   }
 
   /**
@@ -955,10 +980,18 @@ function assertEntry(entry, at) {
 }
 
 /**
- * A `sweep-instruction` sends a reader after what this check cannot detect, and what they
- * find becomes a case OF this check. Three things must hold for that to be possible, and
- * all three are config, so they fail here rather than when a result first arrives - which
- * may be never.
+ * A sweep instruction sends a reader after what this check cannot detect, and what they
+ * find becomes a case OF this check. Everything that must hold for that to be possible is
+ * config, so it fails here rather than when a result first arrives - which may be never.
+ *
+ * A SWEEP IS LOCKED ONTO ONE TREE. A swept row names a file, and the same relative path
+ * exists in both artifacts, so every sweep has to say which one its reader is being sent
+ * into - the merge runs from a serialized state with no artifact left to ask, and the
+ * reader cannot be told to search "the submission" when two trees are open. Which is why
+ * the form an entry may use follows its route: on the single-artifact routes the `input`
+ * IS the answer, so the flat `sweep-instruction` says nothing it would only be repeating;
+ * on `input: all`, which names none, the entry says it per artifact
+ * (SWEEP_INSTRUCTIONS) and each declaration becomes its own independent sweep.
  *
  * Note what is NOT required: that the check escalate at all. Not because a swept case
  * always becomes a finding - a check that authors wording routes it to whoever that
@@ -969,36 +1002,46 @@ function assertEntry(entry, at) {
  * @param {string} severity  The entry's (already validated) severity.
  */
 function assertSweepInstruction(entry, where, severity) {
-  const sweepInstruction = entry["sweep-instruction"];
-  if (sweepInstruction === undefined) {
+  const perArtifact = Object.values(SWEEP_INSTRUCTIONS);
+  const forAll = entry.input === "all";
+  // The form that does not belong on this route, refused before anything is read off it:
+  // an entry that named its artifact twice could name it two different ways, and one that
+  // named it nowhere would have nothing to hand the reader.
+  const wrong = forAll ? [SWEEP_INSTRUCTION] : perArtifact;
+  for (const key of wrong) {
+    if (entry[key] !== undefined) {
+      throw new Error(
+        `${where} authors a \`${key}\` beside \`input: ${entry.input}\` - a sweep names ` +
+          "one tree, and " +
+          (forAll
+            ? "a route carrying every artifact cannot say which. Author " +
+              `\`${perArtifact.join("` or `")}\`, one or both`
+            : `this route already says which. Author \`${SWEEP_INSTRUCTION}\``) +
+          ", or drop the sweep"
+      );
+    }
+  }
+  const authored = (forAll ? perArtifact : [SWEEP_INSTRUCTION]).filter(
+    (key) => entry[key] !== undefined
+  );
+  if (authored.length === 0) {
     return;
   }
-  if (typeof sweepInstruction !== "string" || sweepInstruction.trim() === "") {
-    throw new Error(
-      `${where} has an invalid \`sweep-instruction\` ` +
-        `${JSON.stringify(sweepInstruction)} (expected a non-empty string)`
-    );
+  for (const key of authored) {
+    if (typeof entry[key] !== "string" || entry[key].trim() === "") {
+      throw new Error(
+        `${where} has an invalid \`${key}\` ` +
+          `${JSON.stringify(entry[key])} (expected a non-empty string)`
+      );
+    }
   }
   // A swept case that is reported is stamped with the check's own band. `auto` leaves the
   // band to each finding and `none` says the check emits none, so neither has one to give
   // - the sweep would return cases nothing could file.
   if (!isConcreteSeverity(severity) && severity !== HOLD_OR_ERROR) {
     throw new Error(
-      `${where} authors a \`sweep-instruction\` but its severity ` +
+      `${where} authors a \`${authored[0]}\` but its severity ` +
         `${JSON.stringify(severity)} gives a reported case no band to carry`
-    );
-  }
-  // A swept row NAMES A FILE, and on the one route that carries two artifacts the same
-  // relative path exists in both - so nothing could say which one the row is in. Not the
-  // merge, which runs from a serialized state with no artifact left to ask; not the pre-
-  // sweep list, which records one answer per check and this route has two; and not the
-  // sweeping reader, who was told to search a submission rather than a tree. Every other
-  // route names the single artifact its check reads, which is that answer for every row.
-  if (entry.input === "all") {
-    throw new Error(
-      `${where} authors a \`sweep-instruction\` beside \`input: all\` - a swept row ` +
-        "names a file, and a route carrying every artifact cannot say which of them it " +
-        "is in. Route the check at the artifact its cases are in, or drop the sweep"
     );
   }
   // A swept case carries no `item` and no `data`, so a placeholder in the response
@@ -1006,7 +1049,7 @@ function assertSweepInstruction(entry, where, severity) {
   for (const key of ["response", ...Object.values(MODE_RESPONSES)]) {
     if (typeof entry[key] === "string" && entry[key].includes("{{")) {
       throw new Error(
-        `${where} authors a \`sweep-instruction\` but its \`${key}\` carries a ` +
+        `${where} authors a \`${authored[0]}\` but its \`${key}\` carries a ` +
           "{{placeholder}} - a swept case brings no item to fill it with"
       );
     }

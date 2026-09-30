@@ -94,6 +94,29 @@ export function assertLocus(at, who) {
 }
 
 /**
+ * The review's two trees, keyed by the artifact each one holds - the lookup that turns an
+ * artifact into a directory a reader can open.
+ *
+ * ONE spelling of the pair, for the same reason the names above are named once: three
+ * readers need it - the report's sweep list, the paths handed to an agent, and the check
+ * on whether this review even has that tree - and a second table written out beside one
+ * of them is one that drifts from what a locus is stamped with.
+ *
+ * Takes whatever carries the two roots, because they travel under those names everywhere:
+ * the review's `meta`, and the loop state's `paths`. `null` for a tree this review has
+ * not got, which is every source archive in an XPI review - the absence IS the answer,
+ * and a caller asks it rather than asking the review mode a second time.
+ * @param {{xpiRoot?: ?string, scaRoot?: ?string}} where
+ * @returns {Record<string, ?string>}
+ */
+export function artifactRoots(where) {
+  return {
+    [ARTIFACT_XPI]: where?.xpiRoot ?? null,
+    [ARTIFACT_SCA]: where?.scaRoot ?? null,
+  };
+}
+
+/**
  * Whether a value is one of the subjects above. Beside them because a second spelling of
  * "these are the ones" is one that goes out of step - it was written out three times
  * before this existed.

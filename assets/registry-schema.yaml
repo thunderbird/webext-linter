@@ -124,7 +124,19 @@ shapes:
     sweep-instruction:
       kind: text
       why: >-
-        what a reviewer is asked to sweep for where this check is blind to its own gap
+        what a reviewer is asked to sweep for where this check is blind to its own gap.
+        A sweep names one tree, and on these routes the check's own `input` is that tree,
+        so this form says nothing it would only be repeating
+    sweep-instruction-for-xpi:
+      kind: text
+      why: >-
+        the same, asked of the built XPI. Only `input: all` may author it - that route
+        names no artifact, so a sweep on it has to say which one its reader is sent into
+    sweep-instruction-for-sca:
+      kind: text
+      why: >-
+        the same, asked of the source archive, and likewise only on `input: all`. A check
+        that authors both gets two independent sweeps, one per tree
     review-early-exit:
       kind: text
       why: >-
@@ -156,6 +168,8 @@ shapes:
         than leaving an absent `input` to be read as a default. `none` is the whole
         vocabulary here, and a check that RUNS cannot declare it
     sweep-instruction: *only-a-check-that-runs
+    sweep-instruction-for-xpi: *only-a-check-that-runs
+    sweep-instruction-for-sca: *only-a-check-that-runs
     settle-verbs: *only-a-check-that-runs
     review-early-exit: *only-a-check-that-runs
 

@@ -40,6 +40,7 @@ import {
   HandbackRefused,
 } from "./report/loop.js";
 import { readHandback } from "./report/handback.js";
+import { sweepSlots } from "./report/sweep-files.js";
 import {
   DEFAULT_CACHE,
   EXPERIMENTS_CACHE,
@@ -947,10 +948,9 @@ function pipelineOptsFromValues(values) {
     scaExpSource: inRoot(values["sca-exp-source"]),
     llmReview: Boolean(values["llm-review"]),
     llmSkip: reviewSkips(values),
-    // Not a PROMPT_SKIPS member: it names no `skip:` step. What it withholds is the
-    // `run: sweep` condition, and with it both steps that carry it - the one that spawns
-    // the sweep and waits for it, and the one that records what it found
-    // (src/report/phases.js stepsOf).
+    // Not a PROMPT_SKIPS member: it names no `skip:` step. What it withholds is every
+    // sweep REQUEST, and with them the per-tree conditions derived from the requests - so
+    // no step that starts a sweeping agent prints (src/report/phases.js stepsOf).
     llmSkipSweep: Boolean(values["llm-skip-sweep"]),
     llmVerdict: values["llm-verdict"],
   };
@@ -1053,6 +1053,7 @@ async function runLoopPass(file, base) {
       details: reviewDetails(state),
       scaRoot: state.paths.scaRoot ?? "",
       schema: state.paths.schema,
+      ...sweepSlots(state),
     })) {
       process.stdout.write(`${line}\n`);
     }

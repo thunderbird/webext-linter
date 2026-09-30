@@ -15,20 +15,11 @@ import { loadRegistry } from "../../src/checks/registry.js";
 
 const registry = loadRegistry();
 
-/** What this run asked to be swept, as preSweepOf builds it - including the artifact
- *  each check's cases will be in, recorded during the review because this merge runs
- *  from a serialized state with no artifact left to ask. */
-const asked = {
-  items: [
-    { check: "privacy-policy", artifact: ARTIFACT_SCA },
-    { check: "data-exfiltration", artifact: ARTIFACT_SCA },
-    { check: "cleartext-transmission", artifact: ARTIFACT_SCA },
-  ],
-};
-
-/** One result, with the fields a sweep hands back. */
-function result(check, file, line, hint = null) {
-  return { check, file, line, hint };
+/** One result as it reaches the merge: already saying which check it answers and which
+ *  tree it was found in. Both were resolved from its label by whoever read the answers
+ *  file (src/report/sweep-files.js), so nothing here has to work them out. */
+function result(check, file, line, hint = null, artifact = ARTIFACT_SCA) {
+  return { check, artifact, file, line, hint };
 }
 
 function merge(results, manual = [], findings = [], mode = undefined) {
@@ -36,9 +27,7 @@ function merge(results, manual = [], findings = [], mode = undefined) {
     results,
     manual,
     findings,
-    preSweep: asked,
     registry,
-    file: "/s.json",
     mode,
   });
 }
@@ -52,24 +41,25 @@ test("a malformed sweep result is rejected with a reason", () => {
   const bad = (entry, re) =>
     assert.throws(() => checkedResult("row 1", entry), re);
   bad("nope", /must be an object/);
-  bad({ check: "privacy-policy" }, /names no "file"/);
-  bad({ check: "x", file: "a.js", line: 0 }, /has line 0/);
-  bad({ check: "x", file: "a.js", hint: "" }, /has hint ""/);
-  bad(
-    { check: "x", file: "a.js", hint: "x".repeat(201) },
-    /201-character hint/
-  );
+  bad({}, /names no "file"/);
+  bad({ file: "a.js", line: 0 }, /has line 0/);
+  bad({ file: "a.js", hint: "" }, /has hint ""/);
+  bad({ file: "a.js", hint: "x".repeat(201) }, /201-character hint/);
+  // WHICH sweep a result answers is the slot it was written into, never something it
+  // says: a result naming one would be an agent choosing where its hint lands.
+  bad({ check: "privacy-policy", file: "a.js" }, /may only set/);
   // Where it lands and how it reads are the linter's, so a result that tries to say is
   // refused rather than quietly stripped - that would be an agent wording the report.
   bad(
-    { check: "x", file: "a.js", severity: "error" },
-    /may only set "check", "file", "line", "hint"/
+    { file: "a.js", severity: "error" },
+    /may only set "file", "line", "hint"/
   );
 
-  assert.deepEqual(
-    checkedResult("row 1", { check: "privacy-policy", file: "a.js" }),
-    { check: "privacy-policy", file: "a.js", line: null, hint: null }
-  );
+  assert.deepEqual(checkedResult("row 1", { file: "a.js" }), {
+    file: "a.js",
+    line: null,
+    hint: null,
+  });
 });
 
 // ---- the routing ----
@@ -84,9 +74,9 @@ test("a result goes where its check's own cases go", () => {
     result("cleartext-transmission", "sync.js", 12, "posts over http://"),
   ]);
   assert.deepEqual(applied, [
-    "privacy-policy (providers/Gravatar.js:23) -> code-review",
-    "data-exfiltration (bg.js:40) -> code-review",
-    "cleartext-transmission (sync.js:12) -> finding",
+    "privacy-policy [SCA] (providers/Gravatar.js:23) -> code-review",
+    "data-exfiltration [SCA] (bg.js:40) -> code-review",
+    "cleartext-transmission [SCA] (sync.js:12) -> finding",
   ]);
 
   // This check asks its two readers two different questions, so a swept case is screened
@@ -113,7 +103,7 @@ test("a result goes where its check's own cases go", () => {
   );
   assert.notEqual(
     code.instructions,
-    registry.sweepInstruction("data-exfiltration"),
+    registry.sweepTargets("data-exfiltration")[0].instruction,
     "the sweep's own text settles nothing"
   );
   assert.equal(code.hint, "<a ping> carries the digest");
@@ -138,16 +128,16 @@ test("a result goes where its check's own cases go", () => {
 
 // A result nothing can be done with is a sweep half applied, so it fails the run rather
 // than being skipped into silence.
+//
+// The OTHER way a result can be wrong - naming a sweep this review never asked for - is
+// settled before anything reaches here: the answers are read against the very slots this
+// run wrote, so a label nobody was asked about is refused at that door
+// (tests/unit/sweep-files.test.js). What is left to ask here is whether the check could
+// receive a case at all.
 test("a result for a check nobody swept refuses the run", () => {
-  // Authors no sweep instruction at all: this review asked nobody to look.
   assert.throws(
     () => merge([result("eval-call", "a.js", 1)]),
-    /authors no `sweep-instruction`/
-  );
-  // Authors one, but this run never asked - the check did not run here.
-  assert.throws(
-    () => merge([result("disguised-window", "a.js", 1)]),
-    /did not ask to be swept/
+    /authors no sweep instruction/
   );
 });
 
@@ -170,6 +160,7 @@ test("a location already covered for that check is merged once", () => {
       ruleId: "privacy-policy",
       file: "a.js",
       loc: { line: 1 },
+      artifact: ARTIFACT_SCA,
       section: "manual-review",
       extended: true,
     },
@@ -186,7 +177,12 @@ test("a location already covered for that check is merged once", () => {
   // And already FILED by the deterministic pass, which is what a check with no escalation
   // does with its cases. Without this the sweep would file the finding a second time.
   const filed = [
-    { ruleId: "cleartext-transmission", file: "sync.js", loc: { line: 12 } },
+    {
+      ruleId: "cleartext-transmission",
+      file: "sync.js",
+      loc: { line: 12 },
+      artifact: ARTIFACT_SCA,
+    },
   ];
   const dup = merge(
     [result("cleartext-transmission", "sync.js", 12)],
@@ -237,7 +233,9 @@ test("a swept result says which artifact it is in, whichever branch it takes", (
     items: [{ check: "data-exfiltration", artifact: ARTIFACT_XPI }],
   };
   const xpi = mergeSweepResults({
-    results: [result("data-exfiltration", "app.js", 3, "fetch()")],
+    results: [
+      result("data-exfiltration", "app.js", 3, "fetch()", ARTIFACT_XPI),
+    ],
     manual: [],
     findings: [],
     preSweep: xpiAsked,
@@ -255,7 +253,7 @@ test("a swept result says which artifact it is in, whichever branch it takes", (
 test("a sweep result naming a path outside the add-on is refused", () => {
   const refused = (file, what) =>
     assert.throws(
-      () => checkedResult("r[0]", { check: "privacy-policy", file, line: 1 }),
+      () => checkedResult("r[0]", { file, line: 1 }),
       /names a file INSIDE the add-on/,
       what
     );
@@ -265,11 +263,7 @@ test("a sweep result naming a path outside the add-on is refused", () => {
 
   // An ordinary nested path is still fine - the guard is about escaping, not depth.
   assert.equal(
-    checkedResult("r[0]", {
-      check: "privacy-policy",
-      file: "lib/deep/widget.js",
-      line: 2,
-    }).file,
+    checkedResult("r[0]", { file: "lib/deep/widget.js", line: 2 }).file,
     "lib/deep/widget.js"
   );
 });

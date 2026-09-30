@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import AdmZip from "adm-zip";
+import YAML from "yaml";
 
 import { pipelineOptsFromArgv } from "../../src/cli.js";
 import { seedFixtureCache } from "../seed-caches.js";
@@ -677,24 +678,32 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   assert.ok(!on.stdout.includes("── Found Issues ──"), "no prose report");
   assert.ok(!on.stdout.includes("── Setup ──"), "no feed");
 
-  // The prompt names the review file, and the file behind it holds what THIS pass asks
-  // about - the sweep's rows, one per check, each unanswered.
-  const entries = entriesOf(on.stdout);
-  assert.ok(entries.length > 0);
+  // The spawn pass asks for nothing in this file: its work is starting the agents, and
+  // each of those answers in a file of its own.
+  assert.deepEqual(entriesOf(on.stdout), []);
+  // The sweep request IS that file, named in the prompt and nowhere near it in content:
+  // the orchestrating agent is handed a path and told to pass it on, so no instruction
+  // text travels through the prompt at all.
+  const request = on.stdout.match(/^\s*(\S+\.sweep-xpi\.yaml)$/m);
+  assert.ok(request, "the sweep request is named");
+  const doc = YAML.parse(fs.readFileSync(request[1], "utf8"));
+  assert.ok(doc.sweepTarget, "it names the tree to read");
   assert.ok(
-    entries.every((e) => e.check && e.answer === null),
-    "one unanswered row per check that declared a sweep instruction"
-  );
-  // No index: a sweep takes no verdict and produces cases rather than being one, so it
-  // must not consume a number from a sequence it is not in.
-  assert.ok(
-    entries.every((e) => e.index === undefined),
-    "the sweep carries no index"
+    doc.sweeps.length > 0,
+    "one sweep per check that declared an instruction"
   );
   assert.ok(
-    entries.every((e) => e.instruction),
-    "each row carries the check's own instruction"
+    doc.sweeps.every((x) => x.label && x.instruction),
+    "each carries its own label and the check's own instruction"
   );
+  // And the answers file beside it is pre-created, one null per label - so a sweep
+  // nobody ran cannot read as one that ran and found nothing.
+  const slots = JSON.parse(fs.readFileSync(doc.answerFile, "utf8")).answers;
+  assert.deepEqual(
+    Object.keys(slots).map(Number),
+    doc.sweeps.map((x) => x.label)
+  );
+  assert.ok(Object.values(slots).every((v) => v === null));
 
   const off = run([addon, ...OFFLINE_FLAGS]);
   assert.ok(!off.stdout.includes("Please verify"), "off by default");
@@ -1102,6 +1111,30 @@ test("retired flags are unknown options", () => {
   }
 });
 
+/**
+ * Play the sweeping sub-agents this run started: answer every sweep it asked for, taking
+ * what to report for a check from `found` and answering every other with the empty list.
+ *
+ * Which label belongs to which check is read off the STATE, because that is where the
+ * review recorded it - the request handed to an agent names no check id at all, which is
+ * the point of it.
+ */
+function sweepBack(reviewFile, found = {}) {
+  const { base } = JSON.parse(fs.readFileSync(reviewFile, "utf8"));
+  const state = JSON.parse(fs.readFileSync(base, "utf8"));
+  for (const [artifact, paths] of Object.entries(state.paths.sweeps ?? {})) {
+    const mine = state.preSweep.items.filter((i) => i.artifact === artifact);
+    fs.writeFileSync(
+      paths.answers,
+      JSON.stringify({
+        answers: Object.fromEntries(
+          mine.map((i) => [i.label, found[i.check] ?? []])
+        ),
+      })
+    );
+  }
+}
+
 // The sweep path end to end: a swept case enters through --llm-sweep-results, is settled
 // through --llm-verdict, and comes out the far side as a finding of the check that owns
 // it, worded by that check's registry response. This is the chain the unit tests cannot
@@ -1119,27 +1152,18 @@ test("a swept case becomes an item of its check and settles like any other", () 
   assert.equal(first.code, 0, first.stderr);
   const file = first.stdout.match(/(\S+\.review\.json)/)[1];
 
-  // The spawn phase asks one row per check that declared a sweep instruction, and every
-  // row must be answered: an empty list is "swept and clean", null is "never looked".
-  const handed = JSON.parse(fs.readFileSync(file, "utf8"));
-  assert.ok(
-    handed.entries.every((e) => e.check && e.answer === null),
-    "one unanswered row per check"
-  );
-  handed.entries = handed.entries.map((e) => ({
-    ...e,
-    answer:
-      e.check === "data-exfiltration"
-        ? [
-            {
-              file: "background.js",
-              line: 12,
-              hint: "<a ping> attribute carries the message digest",
-            },
-          ]
-        : [],
-  }));
-  fs.writeFileSync(file, JSON.stringify(handed, null, 1));
+  // The spawn pass asks nothing in this file - the sweeping agents answer in their own,
+  // where an empty list is "swept and clean" and a null is "never looked".
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).entries, []);
+  sweepBack(file, {
+    "data-exfiltration": [
+      {
+        file: "background.js",
+        line: 12,
+        hint: "<a ping> attribute carries the message digest",
+      },
+    ],
+  });
 
   // The next pass carries it as a case of its own check, with its locus and its hint.
   const second = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
@@ -1192,15 +1216,11 @@ test("a swept case of a check that files findings is verified like one", () => {
   assert.equal(first.code, 0, first.stderr);
   const file = first.stdout.match(/(\S+\.review\.json)/)[1];
 
-  const handed = JSON.parse(fs.readFileSync(file, "utf8"));
-  handed.entries = handed.entries.map((e) => ({
-    ...e,
-    answer:
-      e.check === "cleartext-transmission"
-        ? [{ file: "sync.js", line: 12, hint: "posts over http://" }]
-        : [],
-  }));
-  fs.writeFileSync(file, JSON.stringify(handed, null, 1));
+  sweepBack(file, {
+    "cleartext-transmission": [
+      { file: "sync.js", line: 12, hint: "posts over http://" },
+    ],
+  });
 
   // It arrives in VERIFY, as a finding: a locus and the agent's hint, and no `instructions`
   // - a finding carries no question, because it is a claim to be audited.

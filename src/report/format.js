@@ -28,6 +28,7 @@ import {
 } from "./finding.js";
 import { orderReview, hasLocus, manualBody, collapseBody } from "./order.js";
 import { artifactLabel } from "./artifact.js";
+import { artifactRoots } from "../lib/artifacts.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
 import { displayLine, displayPath, wrapText } from "../util/text.js";
 
@@ -101,11 +102,11 @@ const SEV_COLOR = {
  *   `section` (which of the two extended lists it belongs to). The report splits it
  *   into three sections on those two tags - see src/report/order.js. Text-only;
  *   dropped from JSON.
- * @property {?{items: object[]}} [preSweep]  The blind-spot sweep to run
- *   before settling the review: the shared method, then one bare item per check that
- *   authors an instruction for what it cannot detect. ONE request, not one per check.
- *   Carries no finding and no locus - it is the job, not its result. Text-only; dropped
- *   from JSON.
+ * @property {?{items: object[]}} [preSweep]  The blind-spot sweeps to run
+ *   before settling the review: the shared method, then one bare item per sweep a check
+ *   that ran authors. ONE request, not one per item. Each says which ARTIFACT it is
+ *   about, and carries no finding and no locus - it is the job, not its result.
+ *   Text-only; dropped from JSON.
  * @property {?{intro: string, reasons: {id: string, text: string}[]}} [earlyExit]
  *   Why the review STOPPED, when it did: the authored line and the reasons it lists, each
  *   with the id that named it (src/report/early-exit.js). Absent on a review that ran to
@@ -203,7 +204,7 @@ function reviewBodyLines(review) {
     // they read as a pair after the extended sections, which are raised by this
     // submission in particular. A review that STOPPED keeps only the reading half: the
     // questions were never put to anyone (src/report/early-exit.js).
-    ...preSweepSection(meta.preSweep ?? null),
+    ...preSweepSection(meta.preSweep ?? null, artifactRoots(meta)),
     ...manualSection(todo("standard"), SECTION_TITLES.standard, blue, labelOf),
   ];
 }
@@ -1010,7 +1011,7 @@ function manualSection(items, title, accent = blue, labelOf) {
  * The Standard Code Review section: ONE sweep, carried by every submission - the shared
  * method, then the bare class of code each check cannot detect for itself.
  *
- * Unlike every other section here this one lists CHECKS, not cases, and it is printed
+ * Unlike every other section here this one lists SWEEPS, not cases, and it is printed
  * whether or not any of them found something: a check that found nothing is exactly the
  * one whose blind spot is worth reading. It carries no locus and takes no verdict - what
  * a sweep finds is filed as a finding of the named check, not as an answer to this.
@@ -1021,17 +1022,20 @@ function manualSection(items, title, accent = blue, labelOf) {
  * Blue, like Standard Manual Review and unlike the vivid cyan of the extended sections:
  * the colour says which pair a section belongs to - the standing review, or the part
  * raised by this submission.
+ * Each item names the FOLDER its sweep is about, because a sweep is locked onto one
+ * tree and a source review has two.
  * @param {?{intro: string, items: object[]}} sweep
+ * @param {Record<string, ?string>} trees  This review's trees by artifact
+ *   (artifactRoots), for the folder each item sends its reader into.
  * @returns {string[]}
  */
-function preSweepSection(sweep) {
+function preSweepSection(sweep, trees) {
   if (!sweep?.items?.length) {
     return [];
   }
   const out = section(SECTION_TITLES.preSweep);
   out.push("");
   out.push(blue(TODO_LEAD));
-  let n = 0;
   for (const entry of sweep.items) {
     out.push("");
     // Laid out exactly like a manual-review entry (manualBody): "N) title: body", with
@@ -1040,7 +1044,20 @@ function preSweepSection(sweep) {
     // reads them as fields of the entry, and the title already says which check this
     // is in the words the rest of the report uses.
     const body = entry.instruction.replace(/\s+/g, " ").trim();
-    out.push(...wrapText(`${++n}) ${entry.title}: ${body}`).map(blue));
+    // Numbered by the item's own LABEL, not by a counter of its own. That number is what
+    // the sweeping agent is asked about and answers by (src/report/sweep-files.js), so a
+    // reviewer reading this page and an agent reading its request are looking at the same
+    // list under the same numbers - counted twice they would agree until the day one of
+    // the two lists dropped an item.
+    out.push(...wrapText(`${entry.label}) ${entry.title}: ${body}`).map(blue));
+    // WHICH TREE to search, as a path and never as a name. A sweep is a request about
+    // exactly one artifact - what it finds is stamped with that one - and a source review
+    // has two trees open at once, so a reader told to search "the submission" answers
+    // about whichever they happened to open. Printing XPI_ROOT here instead would leave
+    // them resolving a reference before they could start. Printed in an XPI review too,
+    // where there is only one tree: a folder to open costs the reader nothing to read,
+    // and an instruction whose scope appears only sometimes is one they have to notice.
+    out.push(grey(`Sweep: ${displayPath(trees[entry.artifact])}`));
     // The band and the wording a find would carry, laid out exactly as a manual-review
     // entry lays them out: this section asks the same kind of question, so it should
     // answer the same question a reviewer asks of one - if I find this, what happens,

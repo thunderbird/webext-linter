@@ -1,7 +1,8 @@
-// What a sweep handed back, and where each result belongs. The agent that swept cannot
-// see the check it swept FOR - it reads the add-on, not the linter - so it classifies
-// nothing: it names the check, the location and what is there, and the routing is decided
-// here.
+// What a sweep found, and where each result belongs. The agent that swept cannot see the
+// check it swept FOR - it reads the add-on, not the linter - so it classifies nothing and
+// names nothing of the review: it answers a LABEL with a location and what is there, the
+// label is resolved to a check and a tree where the answers are read
+// (src/report/sweep-files.js), and the routing is decided here.
 //
 // A SWEEP IS A DETECTOR, NOTHING MORE. What comes back is a hint: a location its check's
 // own detectors missed. From that point the case is one of that check's, handled exactly
@@ -14,17 +15,19 @@
 //                           settles its cases as findings, so a swept one is a finding
 //                           too, and the verify phase audits it like every other claim.
 //
-// So a `sweep-instruction` is read in two places, neither of them here: the request handed
+// So a sweep instruction is read in two places, neither of them here: the request handed
 // to the sweep agent, and the report's Standard Code Review list, which names the blind
-// spots a reviewer covers by hand when no agent is sweeping. It says what to LOOK FOR. It
-// never says what confirming something means - that is the owning check's to say.
+// spots a reviewer covers by hand when no agent is sweeping. It says what to LOOK FOR, in
+// the one tree its sweep is locked onto. It never says what confirming something means -
+// that is the owning check's to say.
 //
 // Belongs here: holding an authored result to a shape, refusing what cannot be routed, and
-// building the items. The rows themselves arrive as the spawn phase's answers
-// (src/report/handback.js), already checked for being present and for being a list.
+// building the items. The results arrive already resolved to a check and a tree, from the
+// file each sweeping agent wrote (src/report/sweep-files.js), which is also where they are
+// checked for being present and for being a list.
 // Does NOT belong here: what a settled item becomes (-> src/report/verdicts.js), the
 // wording of either (-> assets/registry.yaml), or running the sweep, which the linter
-// never does - an agent does, and hands what it found back in the spawn phase's slots.
+// never does - an agent does, into a file of its own.
 
 import path from "node:path";
 import { hasParentSegment } from "../addon/load.js";
@@ -34,14 +37,19 @@ import { finding } from "./finding.js";
 
 /** @typedef {import("../checks/registry.js").Registry} Registry */
 
-/** The fields a result may carry. `check` is the ROW it was written into, not something
- *  the agent types - which is why a hint cannot be misattributed. Everything else about how
- *  it reads - its band, its response, the paragraph a developer gets - is the registry's,
- *  so a row that sets anything more is refused rather than quietly ignored. */
-const RESULT_FIELDS = ["check", "file", "line", "hint"];
+/** The fields a result may carry: where it is, and what is there. WHICH sweep it answers
+ *  is not among them - that is the slot it was written into, which is why a hint cannot be
+ *  misattributed. Everything about how it reads - its band, its response, the paragraph a
+ *  developer gets - is the registry's, so a result that sets anything more is refused
+ *  rather than quietly ignored. */
+const RESULT_FIELDS = ["file", "line", "hint"];
 
-/** What the agent writes into one row: where it is, and what is there. */
-const RESULT_SHAPE =
+/** What the agent writes for one thing it found. THE one spelling of the shape - the
+ *  message a malformed result is refused with, and the worked example a sweeping agent is
+ *  shown (src/report/sweep-files.js), so what is asked for and what is accepted cannot
+ *  drift. Its hint is a placeholder, because a plausible finding in an example is a
+ *  suggestion about what to go and find. */
+export const RESULT_SHAPE =
   '{"file": "background.js", "line": 40, "hint": "<what is there>"}';
 
 // A hint names what sits at one location and is printed on that location's line. Past
@@ -60,9 +68,9 @@ const MAX_HINT = 200;
  * names it in a phrase; where it lands and how it reads to a developer are the linter's,
  * from the owning check's registry entry. A row that set its own severity or response
  * would be an agent wording the report.
- * @param {string} where  Names the row, for the message.
+ * @param {string} where  Names the slot it was written into, for the message.
  * @param {*} raw
- * @returns {{check: string, file: string, line: ?number, hint: ?string}}
+ * @returns {{file: string, line: ?number, hint: ?string}}
  */
 export function checkedResult(where, raw) {
   const at = where;
@@ -123,7 +131,6 @@ export function checkedResult(where, raw) {
     );
   }
   return {
-    check: raw.check,
     file: raw.file,
     line: raw.line ?? null,
     hint: raw.hint ?? null,
@@ -135,23 +142,25 @@ export function checkedResult(where, raw) {
  * them merged in.
  *
  * Refused rather than skipped, because a result nothing can be done with is a sweep half
- * applied: a check this review asked nobody to sweep for, and a check whose instruction
- * this run withheld, are both files written against a different review.
+ * applied: a result naming a check this review asked nobody to sweep for is a file
+ * written against a different review. WHICH sweeps were asked for is settled upstream,
+ * where the answers were read against the very slots this run wrote (readSweepAnswers) -
+ * here the question left is only whether the check can receive a case at all.
  *
- * Deduplicated on (check, file, line) against BOTH lists: one sweep naming a location twice
- * is one case, and a location the deterministic pass already covered for that check - as a
- * to-do item or as a finding - is already in the review. Both are scanned because either is
- * what the pass would have produced, depending on whether that check escalates.
+ * Deduplicated on (check, artifact, file, line) against BOTH lists: one sweep naming a
+ * location twice is one case, and a location the deterministic pass already covered for
+ * that check in that tree - as a to-do item or as a finding - is already in the review.
+ * Both are scanned because either is what the pass would have produced, depending on
+ * whether that check escalates.
  * @param {object} args
- * @param {{check: string, file: string, line: ?number, hint: ?string}[]} args.results
+ * @param {{check: string, artifact: string, file: string, line: ?number,
+ *   hint: ?string}[]} args.results  Each already saying which check it answers and which
+ *   tree it was found in - resolved from its label by whoever read the answers file
+ *   (src/report/sweep-files.js), because by the time a result reaches here the review is
+ *   a serialized state with no artifact left to ask.
  * @param {object[]} args.manual  The rendered to-do list so far (meta.manualReview).
  * @param {object[]} args.findings  The findings so far, for dedup and for the new ones.
- * @param {?{items: {check: string, artifact: ?string}[]}} args.preSweep  What this run
- *   asked to be swept, and for each check WHICH artifact its cases are in - recorded
- *   during the review (src/pipeline.js preSweepOf), because by the time a result comes
- *   back the artifact that would have answered is gone.
  * @param {Registry} args.registry
- * @param {string} args.file  The path, for messages.
  * @param {{sca?: boolean}} [args.mode]  The review mode, for a check that words its
  *   response per mode - a swept case is worded from that same text.
  * @returns {{manual: object[], findings: object[], applied: string[]}}
@@ -160,48 +169,38 @@ export function mergeSweepResults({
   results,
   manual,
   findings,
-  preSweep,
   registry,
-  file,
   mode,
 }) {
-  // check -> the artifact its swept cases are in, as the REVIEW recorded it
-  // (src/pipeline.js preSweepOf). This merge runs from a serialized state, long after the
-  // artifacts are gone, so there is no holder here left to ask. The same map answers
-  // whether a check was asked at all: a result for one that is not in it is refused below.
-  // Every swept check has one artifact: the registry refuses a `sweep-instruction` on the
-  // one route that carries two (src/checks/registry.js assertSweepInstruction), so the
-  // recorded value is always a name and never absent.
-  const asked = new Map(
-    (preSweep?.items ?? []).map((s) => [s.check, s.artifact])
-  );
   const seen = new Set();
   const refs = [];
   const found = [];
   const applied = [];
-  for (const [i, r] of results.entries()) {
-    const at = `${file}: result ${i + 1}`;
-    if (!registry.sweepInstruction(r.check)) {
+  for (const r of results) {
+    const { check, artifact } = r;
+    // Not named after a file, and not a refusal the agent can act on: every result got
+    // here by answering a label this review wrote, so a check that cannot receive one
+    // means the REGISTRY changed under a review in flight.
+    if (!registry.sweepTargets(check).length) {
       throw new Error(
-        `${at} is for "${r.check}", which authors no \`sweep-instruction\` - this review asked nobody to sweep for it`
+        `a swept case is for "${check}", which authors no sweep instruction - this review asked nobody to sweep for it`
       );
     }
-    if (!asked.has(r.check)) {
-      throw new Error(
-        `${at} is for "${r.check}", which this review did not ask to be swept - the check did not run here, so its blind spot was never anyone's to cover`
-      );
-    }
-    const key = JSON.stringify([r.check, r.file, r.line]);
+    // Identified by the tree as well as the check: one check may sweep both, and the same
+    // relative path exists in each, so a hit in the XPI is not a repeat of one in the
+    // archive.
+    const listed = { ruleId: check, file: r.file, line: r.line, artifact };
+    const key = JSON.stringify([check, artifact, r.file, r.line]);
     if (
       seen.has(key) ||
-      listedAlready(manual, r) ||
-      listedAlready(findings, r)
+      listedAlready(manual, listed) ||
+      listedAlready(findings, listed)
     ) {
       continue;
     }
     seen.add(key);
-    const where = `${r.check} (${r.file}${r.line == null ? "" : `:${r.line}`})`;
-    const section = registry.sectionFor(r.check);
+    const where = `${check} [${artifact}] (${r.file}${r.line == null ? "" : `:${r.line}`})`;
+    const section = registry.sectionFor(check);
     if (section) {
       // An escalation of that check, in the section that check's own wording puts it in.
       // renderManualItems words it from that check's instructions, so a swept case and a
@@ -213,12 +212,12 @@ export function mergeSweepResults({
       // is synthesized from what the registry answers for this id, because a sweep result
       // names a check rather than carrying one.
       refs.push(
-        ...manualEscalations({ id: r.check, section }, [
+        ...manualEscalations({ id: check, section }, [
           {
             hint: r.hint,
             file: r.file,
             loc: r.line == null ? null : { line: r.line },
-            artifact: asked.get(r.check),
+            artifact,
           },
         ]).manualItems
       );
@@ -230,12 +229,12 @@ export function mergeSweepResults({
       // agent's hint carried over, and the message left to renderFindings.
       found.push(
         finding({
-          ruleId: r.check,
-          severity: registry.suggestedVerdict(r.check),
+          ruleId: check,
+          severity: registry.suggestedVerdict(check),
           file: r.file,
           loc: r.line == null ? null : { line: r.line },
           hint: r.hint,
-          artifact: asked.get(r.check),
+          artifact,
         })
       );
       applied.push(`${where} -> finding`);
@@ -257,18 +256,23 @@ export function mergeSweepResults({
 /**
  * Whether this location is already covered for this check.
  *
- * Asked of the to-do list and of the findings, because the same three fields identify a
+ * Asked of the to-do list and of the findings, because the same four fields identify a
  * case in either - a check that escalates listed it as one, a check that does not filed it
  * as the other, and a sweep that names it again is naming what is already there.
+ *
+ * The ARTIFACT is one of the four. A check that sweeps both trees sees the same relative
+ * path in each, and dropping the second as a repeat of the first would lose a real case in
+ * whichever tree the deterministic pass happened to reach.
  * @param {object[]} listed  To-do items or findings.
- * @param {{check: string, file: string, line: ?number}} r
+ * @param {{ruleId: string, file: string, line: ?number, artifact: string}} r
  * @returns {boolean}
  */
 function listedAlready(listed, r) {
   return listed.some(
     (m) =>
-      m.ruleId === r.check &&
+      m.ruleId === r.ruleId &&
       m.file === r.file &&
-      (m.loc?.line ?? null) === r.line
+      (m.loc?.line ?? null) === r.line &&
+      m.artifact === r.artifact
   );
 }

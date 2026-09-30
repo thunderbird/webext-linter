@@ -57,20 +57,26 @@ export function isOpen(item, state) {
 /**
  * The steps this run prints for a phase, in order, after its markers.
  *
- * The same three answers today's prompt filters on, read once here: what the run was told
- * to leave out, whether it is a source code review, and whether it sweeps. A step carries
- * at most one marker, so whether it prints is one answer and never two at once.
+ * Two answers decide it: what the run was told to leave out, and which of the conditions
+ * this run meets. A step carries at most one marker, so whether it prints is one answer
+ * and never two at once.
+ *
+ * A `run:` marker is LOOKED UP in the run record rather than compared against a name
+ * spelled here. The names live in one place (REVIEW_PROMPT_RUNS, which the registry
+ * validates each marker against), so adding a condition is declaring it there and
+ * answering it in the record - never editing a conjunction that a new condition could be
+ * left out of. A condition the record does not answer is false, which is what an absent
+ * one means.
  * @param {{steps: {skip: ?string, run: ?string, text: string}[]}} phase
- * @param {{skip: string[], sca: boolean, sweep: boolean}} run
+ * @param {{skip: string[]}} run  The run record, answering each condition by its own name.
  * @returns {{skip: ?string, run: ?string, text: string}[]}
  */
-export function stepsOf(phase, { skip = [], sca = false, sweep = false } = {}) {
-  const skipped = new Set(skip);
+export function stepsOf(phase, run = {}) {
+  const skipped = new Set(run.skip ?? []);
   return phase.steps.filter(
     (step) =>
       !skipped.has(step.skip) &&
-      (step.run !== "sca" || sca) &&
-      (step.run !== "sweep" || sweep)
+      ((step.run ?? null) === null || run[step.run] === true)
   );
 }
 
@@ -78,12 +84,12 @@ export function stepsOf(phase, { skip = [], sca = false, sweep = false } = {}) {
  * What a phase has to do this pass: the steps that survive, and the items still open in it.
  *
  * Both halves matter, because either alone is work. `spawn` in an XPI review with no sweep
- * has one step and no items - an agent to start, nothing to fill in - and a phase whose
+ * has one step and no items - an agent to start, nothing to answer - and a phase whose
  * items are all settled has neither and is skipped.
  * @param {{name: string, steps: object[]}} phase
  * @param {import("./order.js").OrderedItem[]} ordered
  * @param {import("./state.js").LoopState} state
- * @param {{skip: string[], sca: boolean, sweep: boolean, halted: boolean}} run
+ * @param {{skip: string[], halted: boolean}} run  The run record (stepsOf).
  * @returns {{steps: object[], items: object[]}}
  */
 export function workOf(phase, ordered, state, run) {
@@ -121,7 +127,7 @@ function aboutEntries(phase, step) {
  * @param {{name: string, steps: object[]}[]} phases  In the order they are issued.
  * @param {import("./order.js").OrderedItem[]} ordered
  * @param {import("./state.js").LoopState} state
- * @param {{skip: string[], sca: boolean, sweep: boolean, halted: boolean}} run
+ * @param {{skip: string[], halted: boolean}} run  The run record (stepsOf).
  * @returns {?{phase: object, steps: object[], items: object[]}}
  */
 export function nextPhase(phases, ordered, state, run) {
@@ -179,7 +185,8 @@ export function openIn(
   state,
   { skip = [], halted = false } = {}
 ) {
-  // The spawn phase asks about no ITEM: what it hands over is the sweep's own rows.
+  // The spawn phase asks about no ITEM: its work is starting the agents the review
+  // needs, and what each of those returns comes back in a file of its own.
   if (
     phaseName === "spawn" ||
     (phaseName === "ask" && (halted || skip.includes("manual")))

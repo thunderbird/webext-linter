@@ -8,6 +8,7 @@
 // a value (-> registry-schema.js for shape, registry.js for everything semantic), or any
 // behaviour keyed off one (-> modeEligible, routeCtx, runOneCheck).
 
+import { ARTIFACT_SCA, ARTIFACT_XPI } from "../lib/artifacts.js";
 import { SEVERITY } from "../report/finding.js";
 import { VERB_NAMES } from "../report/verbs.js";
 
@@ -127,10 +128,57 @@ export const MODE_RESPONSES = Object.freeze({
   xpi: "response-for-xpi",
 });
 
+/** What a check on a SINGLE-artifact route authors for its blind spot. It names no
+ *  artifact because its route already does - the check reads one tree, and that is the
+ *  tree its sweep is about. Beside the per-artifact spellings below because which of the
+ *  two forms an entry may use is one decision (assertSweepInstruction), and a form spelled
+ *  where it is read is one that can be spelled differently somewhere else. */
+export const SWEEP_INSTRUCTION = "sweep-instruction";
+
+/** The per-artifact sweep instruction keys, keyed by the ARTIFACT each one sends its
+ *  reader into. A sweep names a file, so it is a request about exactly ONE tree, and
+ *  `all` - the route that reads every artifact and so names none - is the one that has to
+ *  say which: a check there words its instruction per artifact and gets an independent
+ *  sweep out of each declaration it makes, one or two. The two forms are never mixed.
+ *
+ *  Keyed by the artifact rather than by a name of its own, because the key IS the answer:
+ *  what preSweepOf records on the item, which folder the request names, and what every
+ *  case the sweep returns is stamped with.
+ *
+ *  Shaped like MODE_RESPONSES above and read the same way, but the axis differs: that one
+ *  picks WORDING from the review mode and changes nothing else, while this one produces a
+ *  separate request per artifact. */
+export const SWEEP_INSTRUCTIONS = Object.freeze({
+  [ARTIFACT_XPI]: "sweep-instruction-for-xpi",
+  [ARTIFACT_SCA]: "sweep-instruction-for-sca",
+});
+
+/** What a sweep of one ARTIFACT is called, in the two places a name for it is needed: the
+ *  `run:` condition that decides whether its step prints, and the `{{placeholder}}` that
+ *  step names its request file with. Derived from the artifact rather than written out,
+ *  and written out nowhere else - the pipeline mints the condition and src/report/
+ *  sweep-files.js mints the slot, both from here, so the step, the condition and the path
+ *  cannot end up disagreeing about which tree they are for. */
+export const sweepRun = (artifact) => `sweep-${artifact.toLowerCase()}`;
+export const sweepSlot = (artifact) =>
+  `sweep${artifact.charAt(0)}${artifact.slice(1).toLowerCase()}`;
+
 /** What `run:` can name in each prompt: the things about a run that decide whether a step
  *  of it is printed. No flag spells these - unlike PROMPT_SKIPS, which the CLI offers - so
- *  they live here, beside the messages that name them. */
-export const REVIEW_PROMPT_RUNS = ["sca", "sweep"];
+ *  they live here, beside the messages that name them.
+ *
+ *  A name here IS the key the run record answers under (stepsOf, src/report/phases.js), so
+ *  this list is the whole declaration of a condition.
+ *
+ *  Each sweepable artifact is its own condition, because each starts its OWN sub-agent
+ *  against its own tree and a review may have one such tree or two. One condition covering
+ *  both would print a step naming a folder this review has not got. Taken from the
+ *  artifacts that can be swept rather than listed, so a third one is declared once
+ *  (SWEEP_INSTRUCTIONS) and not again here. */
+export const REVIEW_PROMPT_RUNS = [
+  "sca",
+  ...Object.keys(SWEEP_INSTRUCTIONS).map(sweepRun),
+];
 
 /**
  * The loop texts the LINTER owns, and the placeholder each one exists to carry. An empty

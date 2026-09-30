@@ -103,7 +103,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | `--llm-sca-review` | Read the add-on argument as a submission folder - one built `.xpi` and one archive of its source - print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-skip-summary` | Leave out the add-on description: the prompt does not ask for one and names no file for it. |
 | `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later, unless the review stopped early. |
-| `--llm-skip-sweep` | Leave out the sweep: the prompt neither spawns it nor asks for it, and the Standard Code Review section stays in the report to be swept by hand. |
+| `--llm-skip-sweep` | Leave out the sweep: no sweeping agent is spawned, and the sweep is not handed to the reviewer either. |
 
 **Source code archive (SCA):**
 
@@ -402,6 +402,18 @@ candidate forms, which would only rebuild the same blind spot in prose. Every
 check that declares one is listed in the report's **Standard Code Review** section, whether
 or not it found anything: a check that found nothing is exactly the one whose
 blind spot is worth reading.
+
+A sweep names a file, so it is a request about exactly one **tree**, and every
+entry names the folder to search - a source review has two open at once. The
+check's `input:` says which tree, except on `input: all`, which reads every
+artifact and so names none: a check there declares
+**`sweep-instruction-for-xpi:`** and/or **`sweep-instruction-for-sca:`**, and
+each becomes an independent sweep of its own tree.
+
+Under `--llm-review` each tree gets its own sweeping sub-agent, handed a request
+file the linter wrote - the folder to read, and the sweeps to answer - and an
+answers file to fill in. The instruction says what to look for; where to look,
+and where each answer belongs, are the linter's.
 
 A `sweep-instruction` says what to LOOK FOR, and never what confirming something
 means - that is the owning check's to say, in its own wording, so a swept case

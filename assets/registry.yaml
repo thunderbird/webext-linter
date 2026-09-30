@@ -1955,8 +1955,11 @@ llm-sca-review-prompt:
 #   HANDOVER     ONE text, appended by the linter as every phase's last numbered step. Not
 #                one per phase and not one per slot: every entry in every phase carries
 #                "answer": null, so the agent learns the file once and never relearns it.
-#                What an answer IS - a list of hints, a verb, a reviewer's words - the
-#                phase's own step already has to say.
+#                What an answer IS - a verb, a reviewer's words - the phase's own step
+#                already has to say. It also covers the phase that lists NO entry, because
+#                a text appended to every phase has to be true of every phase: `spawn`
+#                starts agents and asks nothing here, and an instruction to fill slots
+#                that are not there invites an agent to invent some.
 #
 # `verbs` is a property of the PHASE, not of the answer's shape: `verify` and `settle` both
 # fill "answer" with a verb and accept different ones. So is WHICH entries a phase asks
@@ -1965,9 +1968,11 @@ llm-sca-review-prompt:
 # listed here, or lists one no step names, is a drafting error - assertPhases refuses both.
 #
 # Placeholders the linter fills: {{review}} the review file, {{command}} the hand-back,
-# {{description}} and {{build}} the two files an agent writes, {{scaRoot}} the source root,
-# and {{schema}} - what a verdict is judged against, printed by the phases that judge and
-# by no other. The artifacts are NOT named here: each entry carries its own resolved paths
+# {{description}} and {{build}} the two files an agent writes, {{sweepXpi}} and
+# {{sweepSca}} the sweep request for each tree - one sub-agent's whole brief, so the step
+# that starts it relays nothing else - {{scaRoot}} the source root, {{details}} the Review
+# Details block, and {{schema}} - what a verdict is judged against, printed by the phases
+# that judge and by no other. The artifacts are NOT named here: each entry carries its own resolved paths
 # (src/report/handback.js), so nothing is left for the agent to join. A path is printed by
 # the thing that needs it, which is why the preamble names none of them: it is too early,
 # and a value with no step behind it reads as an assignment.
@@ -1985,7 +1990,7 @@ llm-phases:
 
     It has changed since the last pass, so read it again.
   handover: |-
-    Fill in the "answer" of every entry, in place, and change nothing else in that file. Every slot must be filled; one left null is refused. Then hand the file back by running exactly this command:
+    Fill in the "answer" of every entry, in place, and change nothing else in that file. Every slot must be filled; one left null is refused. Where the file lists no entry, this pass asks nothing of it and you hand it back untouched. Then hand the file back by running exactly this command:
 
     {{command}}
 
@@ -2054,8 +2059,9 @@ llm-phases:
     # SAME words: a second spelling of one instruction is a difference for its reader to
     # interpret.
     - name: spawn
-      # A row per swept check, answered with what the sweep found: a list, empty when it
-      # found nothing. Nothing here is a judgement, so this phase accepts no verb.
+      # Asks about nothing in the review file: its work is starting the agents this review
+      # needs, and each of those answers in a file of its own. `hints` says the sweeps are
+      # read back when this pass is accepted. Nothing here is a judgement, so no verb.
       answer: hints
       verbs: []
       intro: ""
@@ -2104,20 +2110,28 @@ llm-phases:
             and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision, on the reviewer's machine.
 
             Do not wait for it. What it writes is the reviewer's, and it is not needed until they are handed the review details.
-        - run: sweep
+        - run: sweep-xpi
           text: |-
-            Spawn an independent sub-agent NOW to run the sweep.
+            Spawn an independent sub-agent NOW to sweep the built add-on.
 
-            Give it this request, and nothing else - this text, then every check's "instruction" from the file:
+            Give it this, and nothing else:
 
-            The scans cannot settle the things listed below, so they are handed to you. Read the add-on for each of them. Judge by EFFECT, never by the METHOD used - an unfamiliar form counts as much as a familiar one. Where the thing below is about code, resolve values assembled or supplied at runtime and follow them through helpers and bundled libraries.
+            {{sweepXpi}}
 
-            Hand back one line per thing you find: the check it answers, the file, the line, and a short phrase naming what is there. Nothing else - no verdict, and no wording for the developer; that is the linter's.
+            Tell it to do what the "instructions" in that file say, and tell it nothing more: the file names the folder to read, what to look for there, and the file to write its answers into. Do not open it yourself, do not summarise it, and do not add to it.
 
-            Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. What it finds belongs in the file this pass hands back. Any other agent this prompt started keeps running meanwhile; leave it be.
-        - run: sweep
+            Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. Any other agent this prompt started keeps running meanwhile; leave it be.
+        - run: sweep-sca
           text: |-
-            Put what it returned in the "answer" of the check it answers: the file, the line, and the agent's own hint, copied as it came back, never reworded. A check it found nothing for gets an empty list.
+            Spawn an independent sub-agent NOW to sweep the source archive.
+
+            Give it this, and nothing else:
+
+            {{sweepSca}}
+
+            Tell it to do what the "instructions" in that file say, and tell it nothing more: the file names the folder to read, what to look for there, and the file to write its answers into. Do not open it yourself, do not summarise it, and do not add to it.
+
+            Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. Any other agent this prompt started keeps running meanwhile; leave it be.
 
     # Audits what the deterministic checks proved. Its intro earns its text: without it the
     # entries alone would let the agent hunt for new problems instead of checking the ones it

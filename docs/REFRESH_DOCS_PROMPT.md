@@ -54,7 +54,8 @@ that no longer exist.
    EVERY entry declares an `input` too - a route for a check that runs, `none` for a
 by-hand one. Entries may also carry `sca`, `eslint`, `sweep-instruction`
    (the class of code the check cannot see, listed in the report's Standard Code Review
-   section), `default-note` (the marker a reported case carries when the reviewer wrote
+   section - or `sweep-instruction-for-xpi`/`sweep-instruction-for-sca` on `input: all`,
+   which names no tree of its own and so says which per sweep), `default-note` (the marker a reported case carries when the reviewer wrote
    nothing) or `review-early-exit` (the id of a reason in the top-level
    `review-early-exit:` section: a check naming one STOPS the review when it
    reports at error severity, so the report puts nothing further to a reviewer -

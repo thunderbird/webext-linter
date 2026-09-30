@@ -21,7 +21,7 @@
 // (src/checks/registry.js and src/checks/context.js), and all user-facing text
 // (src/checks/registry.js plus src/report/responses.js).
 
-import { ARTIFACT_XPI } from "./lib/artifacts.js";
+import { ARTIFACT_XPI, artifactRoots } from "./lib/artifacts.js";
 import fs from "node:fs";
 import path from "node:path";
 import { extractionDestination, EXTRACTED_SUFFIX } from "./util/dest.js";
@@ -62,6 +62,8 @@ import { STATE_VERSION } from "./report/state.js";
 import { issue, reviewDetails } from "./report/loop.js";
 import { headerLines, loopPromptLines, schemaLines } from "./report/format.js";
 import { reviewFilePaths } from "./report/items.js";
+import { writeSweepFiles, sweepSlots } from "./report/sweep-files.js";
+import { sweepRun } from "./checks/registry-vocabulary.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import {
   verifyVendor,
@@ -949,9 +951,9 @@ export async function runPipeline(opts) {
           registry
         ),
     // The blind-spot sweeps to run BEFORE settling this review: the shared method, then
-    // one bare item per check that authors an instruction for what it cannot detect. ONE
-    // request, not one per check - the sweeps read the same add-on, so what is learned on
-    // one item is already in hand for the next. Registry-sourced and carried by every
+    // one bare item per sweep a check that ran authors. ONE request, not one per item -
+    // the sweeps read the same submission, so what is learned on one is already in hand
+    // for the next. Registry-sourced and carried by every
     // review, exactly like the by-hand manual-checks above, which is why it travels on
     // meta: the text renderer never sees the registry.
     //
@@ -961,7 +963,7 @@ export async function runPipeline(opts) {
     // the same reason it carries no manual review.
     preSweep: invalidExperiment
       ? null
-      : preSweepOf(registry, ranIds, mode, siblings),
+      : preSweepOf(registry, ranIds, mode, siblings, artifactRoots(meta)),
   });
 
   // What this run was told to leave out (--llm-skip-summary / --llm-skip-manual). Read
@@ -976,13 +978,17 @@ export async function runPipeline(opts) {
   let summaryPath = null;
   let buildPath = null;
   let reportPath = null;
+  // Each tree's sweep pair, by artifact - empty when this run sweeps nothing. The keys
+  // are what says which trees were asked: a step prints for one, and accepting the pass
+  // reads back exactly these.
+  let sweepFiles = {};
   // The REVIEW LOOP's state, built once the review is final and handed to `issue` below.
   // A LOCAL, never hung off meta: it carries the report, and the report carries meta.
   let loopState = null;
   // Whether this run SWEEPS: it asked for one, it was not told to leave it out, and there
-  // is a blind spot to cover. Every `run: sweep` step hangs off this - spawning the agent,
-  // waiting for it, recording what it found - so a review with nothing to sweep and one
-  // told not to read the same, and neither mentions a sweep that is not happening.
+  // is a blind spot to cover. The requests hang off this, and the per-tree conditions that
+  // print a step hang off the requests - so a review with nothing to sweep and one told
+  // not to read the same, and neither mentions a sweep that is not happening.
   const sweeping =
     opts.llmReview &&
     !opts.llmSkipSweep &&
@@ -1035,6 +1041,17 @@ export async function runPipeline(opts) {
     // into it (src/report/state.js), and nothing a reviewer keeps is written there.
     meta.stateFile = files.state;
     meta.reviewFile = files.review;
+    // One sweeping agent per tree, each handed a request of its own and an answers file
+    // of its own. Written HERE, with the review, because the request carries the tree's
+    // path and the sweeps that tree was asked about - both of which are this run's
+    // answers and neither of which a later pass could reconstruct.
+    //
+    // Nothing is written for a review that is not sweeping: --llm-skip-sweep withholds
+    // the asking though the instructions still stand, and then there is no request to
+    // make and no file for a step to name.
+    sweepFiles = sweeping
+      ? writeSweepFiles(files, meta.preSweep, artifactRoots(meta))
+      : {};
   }
 
   // Fill each finding's display message from its registry response (with the
@@ -1067,9 +1084,13 @@ export async function runPipeline(opts) {
       run: {
         skip,
         sca: Boolean(mode?.sca),
-        // Not derived from preSweep: --llm-skip-sweep leaves the instructions standing
-        // and withholds the asking, so the two are different facts.
-        sweep: sweeping,
+        // One condition per tree that has a sweep to run, keyed the way the step names
+        // it. Read off the FILES rather than off `sweeping` and `preSweep` separately:
+        // a step exists to send an agent at a request, so the request existing is the
+        // whole condition, and --llm-skip-sweep leaves none behind.
+        ...Object.fromEntries(
+          Object.keys(sweepFiles).map((a) => [sweepRun(a), true])
+        ),
         // The band policy, so a later pass reads the review under the one it was started
         // with. The findings below are already published at it, but a case REPORTED on a
         // later pass becomes a finding there and then (src/report/verdicts.js asFinding),
@@ -1089,6 +1110,10 @@ export async function runPipeline(opts) {
         // directories by the time anything is handed out.
         scaRoot: opts.scaRoot ?? null,
         xpiRoot: meta.xpiRoot,
+        // Where each tree's sweeping agent was sent and where it answers. Carried so the
+        // pass that accepts the hand-back reads back exactly the files this run wrote,
+        // rather than recomputing a stem it no longer has.
+        sweeps: sweepFiles,
         // The schema block a judging phase prints - the snapshot its verdicts mean
         // anything against. Built once, from the same meta the report's header is.
         schema: schemaLines(meta, opts.schemaCache).join("\n"),
@@ -1159,6 +1184,7 @@ export async function runPipeline(opts) {
           // and nothing to settle opens there - and that is the phase that hands the
           // block over. A run whose first phase does not name it passes it unused.
           details: reviewDetails(state),
+          ...sweepSlots(state),
         },
         // The preamble prints once, and this is the run that is once.
         true
@@ -1419,36 +1445,60 @@ export async function resolveReviewSchema({
 }
 
 /**
- * The blind-spot sweep for this review: the shared method plus the bare items, or null
+ * The blind-spot sweeps for this review: the shared method plus the bare items, or null
  * when no check that ran authors one.
  *
- * One object rather than a list, because it is ONE request. The intro says how to judge;
- * each item says only what its own check is looking for. Split the other way - method
- * repeated on every item - and eight near-identical paragraphs teach a reader to skim the
- * part that matters.
+ * One flat list, grouped into one request per tree when the requests are written
+ * (src/report/sweep-files.js): the method is said once per request and each item says
+ * only what its own check is looking for. Split the other way - method repeated on every
+ * item - and eight near-identical paragraphs teach a reader to skim the part that matters.
  *
- * Only the report's framing travels here. What the sweeping agent is told is authored in
- * the spawn phase's own step, beside the other sub-agent requests it relays.
+ * This is what BOTH readers get. The report prints it as the Standard Code Review list,
+ * and the same items are what each sweeping agent's request file is built from - so a
+ * reviewer covering a blind spot by hand and an agent covering it are asked the same
+ * thing, in the same words, under the same number.
  * @param {import("./checks/registry.js").Registry} registry
  * @param {Set<string>} ranIds  Ids of the checks that actually ran.
  * @param {{sca?: boolean}} [mode]  The review mode: a swept case is worded from the
  *   check's response, so an entry that words one per mode is read for this review's.
+ * @param {Record<string, object>} siblings  The routing ctxs, for the artifact a
+ *   single-artifact route answers with.
+ * @param {Record<string, ?string>} trees  This review's trees by artifact
+ *   (artifactRoots), asked only whether it HAS the one a sweep names.
  * @returns {?{items: object[]}}
  */
 
-function preSweepOf(registry, ranIds, mode, siblings) {
+function preSweepOf(registry, ranIds, mode, siblings, trees) {
   const items = registry
     .sweepInstructions(mode)
     .filter((s) => ranIds.has(s.check))
-    // WHICH artifact a swept case will be in, recorded HERE because here is where a
-    // holder still exists. The sweep is merged in the loop phase, long after the ctxs
-    // are gone and the state is JSON, so the answer cannot be asked for then - and
-    // re-deriving it from the route and the mode is the reconstruction this whole
-    // arrangement exists to avoid.
     .map((s) => ({
       ...s,
-      artifact: ctxForRule(registry, s.check, siblings).artifact?.kind ?? null,
-    }));
+      // WHICH artifact this sweep is about, settled HERE because here is where a holder
+      // still exists. The sweep is merged in the loop phase, long after the ctxs are
+      // gone and the state is JSON, so the answer cannot be asked for then - and
+      // re-deriving it from the route and the mode is the reconstruction this whole
+      // arrangement exists to avoid. An `input: all` entry named it itself; every other
+      // route names it by the single artifact its check read.
+      artifact:
+        s.artifact ?? ctxForRule(registry, s.check, siblings).artifact.kind,
+    }))
+    // An `input: all` check may author a sweep for an artifact THIS review does not have
+    // - the archive, in an XPI review. There is no tree to search, so the request is not
+    // made, the same way a check routed at that artifact does not run. Asked of the trees
+    // rather than of the review mode, because having the tree IS the question, and the
+    // PATH is not recorded: a reader is handed it when the list is printed or handed out,
+    // from the same lookup, so there is no second copy to go stale.
+    .filter((s) => trees[s.artifact])
+    // What NAMES this sweep for the rest of the review. Unique across the whole review
+    // rather than within a tree, so the two sweep files cannot both hold a label 1 and
+    // an answer can never be read against the wrong one; and the same number the report
+    // prints beside it, because both walk this list in this order.
+    //
+    // A NUMBER, and nothing a reader has to decode: a sweeping agent is told which
+    // labels to answer and says which it is answering, and the check and the artifact
+    // behind one are the review's own business (src/report/sweep-files.js).
+    .map((s, i) => ({ ...s, label: i + 1 }));
   return items.length ? { items } : null;
 }
 

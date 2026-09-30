@@ -37,16 +37,18 @@ export const REVIEW_SUFFIX = ".review.json";
  *   orderReview numbers the two together and either alone renumbers the rest.
  * @property {?object} preSweep  The blind-spot sweep as the registry authored it, or null
  *   when this review does not sweep.
- * @property {{skip: string[], sca: boolean, sweep: boolean, warningsAsErrors: boolean}} run
+ * @property {{skip: string[], sca: boolean, warningsAsErrors: boolean}} run
  *   What this run was told to leave out (PROMPT_SKIPS), whether it is a source code review,
  *   whether it sweeps, and the band it publishes a warning at (--warnings-as-errors). One
  *   record, read by everything that asks: a step prints by it, the routing drops entries by
  *   it, the registry is read under it, and both legs of a hand-over ask it the same question.
  * @property {object} paths  The values a step names: description, build, report,
- *   schemaCache, schema, and the two artifact roots (scaRoot, xpiRoot) an entry's paths
- *   are resolved against. Held here because a later pass prints them and cannot re-derive
- *   a moment - and `report` is also where a later pass WRITES, so losing it would leave the
- *   reviewer holding a link to a file nothing refreshes.
+ *   schemaCache, schema, the two artifact roots (scaRoot, xpiRoot) an entry's paths are
+ *   resolved against, and `sweeps` - each tree's sweep request and answers file, by
+ *   artifact, which is also what says WHICH trees this review asked about. Held here
+ *   because a later pass prints them and cannot re-derive a moment - and `report` is also
+ *   where a later pass WRITES, so losing it would leave the reviewer holding a link to a
+ *   file nothing refreshes.
  * @property {?string} phase  The phase in flight - what went out last, and so what the
  *   next hand-back is read as.
  * @property {string[]} issued  Every phase that has gone out, in order. What the final
@@ -54,7 +56,11 @@ export const REVIEW_SUFFIX = ".review.json";
  * @property {Object<string, *>} answers  index -> what came back, once it is settled.
  * @property {Object<string, string>} route  index -> the phase it is open in NOW, when a
  *   verdict moved it. Absent means the phase its kind routes it to.
- * @property {Object<string, *>} sweep  check -> the hints that check's sweep returned.
+ * @property {?object[]} sweep  Everything the sweeping agents found, read back off their
+ *   own answer files and already resolved to the check and the artifact each belongs to
+ *   (src/report/sweep-files.js). Null where no tree was asked, which is not the same as
+ *   every tree answering with nothing. Written and read inside the one `accept` that
+ *   starts them; what stops a second pass starting them again is `issued`.
  */
 
 /**
@@ -100,9 +106,11 @@ export function readState(file) {
 
 /** Bumped when the shape, or what the loop DOES with it, changes in a way an older file
  *  cannot satisfy. A review in flight does not survive the upgrade, and saying so beats
- *  reading it wrongly. Version 7 needs an `artifact` on every finding, case and pre-swept
- *  check, plus `paths.xpiRoot`. A v6 file has the first two but not the third: the sweep
- *  merge reads the artifact off the pre-sweep row now, because it runs from the state with
- *  no artifact left to ask, and a row without one would land a swept case unlabelled and
- *  unresolvable. */
-export const STATE_VERSION = 7;
+ *  reading it wrongly. Version 9 needs an `artifact` and a `label` on every pre-swept
+ *  sweep, an `artifact` on every finding and case, `paths.xpiRoot`, and `paths.sweeps`
+ *  naming each tree's request and answers. A v8 file has no `paths.sweeps` and no labels,
+ *  because its sweeps were asked for as rows in the review file and answered by the agent
+ *  transcribing them - so there are no answer files to read and nothing to read them
+ *  against. Saying the version is wrong sends the reviewer to start the review again,
+ *  where reading it would find every sweep unanswered. */
+export const STATE_VERSION = 9;

@@ -205,9 +205,21 @@ test("the steps that start an agent each say whether it is waited for", () => {
       `the \`${marker}\` step says it is not waited for, in the shared words`
     );
   }
-  // The sweep is the opposite, and says so where it is spawned rather than in a step of
-  // its own that may or may not follow.
-  assert.match(by("sweep").text, /Wait for it before going on/);
+  // A sweep is the opposite, and each says so in the SAME words: one agent per tree, and
+  // two instructions a reader has to tell apart would be two things to interpret.
+  const sweeps = ["sweep-xpi", "sweep-sca"].map(by);
+  for (const step of sweeps) {
+    assert.match(step.text, /Wait for it before going on/);
+  }
+  assert.equal(
+    new Set(sweeps.map((x) => x.text.split("\n\n").at(-1))).size,
+    1,
+    "both sweep steps say it the same way"
+  );
+  // And each is handed its own tree's request and nothing else - no instruction text
+  // travels through the prompt.
+  assert.match(sweeps[0].text, /\{\{sweepXpi\}\}/);
+  assert.match(sweeps[1].text, /\{\{sweepSca\}\}/);
 
   // Nothing leans on a sibling having printed.
   for (const step of spawn.steps) {

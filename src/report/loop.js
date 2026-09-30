@@ -18,15 +18,16 @@ import {
   entriesFor,
   readHandback,
   reviewFile,
-  sweepRows,
   writeReviewFile,
 } from "./handback.js";
 import { writeState } from "./state.js";
+import { rethrowIfFatal } from "../lib/errors.js";
 import { writeReportFile } from "./report-file.js";
 import { reviewItems } from "./items.js";
 import { mergeSweepResults } from "./sweep.js";
+import { readSweepAnswers } from "./sweep-files.js";
 import { resolveHolds } from "./finding.js";
-import { ARTIFACT_XPI, ARTIFACT_SCA } from "../lib/artifacts.js";
+import { artifactRoots } from "../lib/artifacts.js";
 import {
   detailLinkLines,
   earlyExitLines,
@@ -56,24 +57,6 @@ import { VERB } from "./verbs.js";
  *   here and another for the reviewer.
  * @returns {?{phase: object, steps: object[], entries: object[]}}  Null when settled.
  */
-/**
- * The rows a `hints` phase asks about: one per swept check, when this run sweeps and has
- * not swept yet.
- *
- * Read off `run.sweep`, never off `preSweep`: --llm-skip-sweep leaves the instructions
- * standing and withholds the asking (src/pipeline.js), so a review can carry a full
- * `preSweep` and still ask nothing. Called by BOTH legs of the round trip, because what a
- * phase hands out and what it accepts back have to be the same question - asked twice from
- * two fields, they can differ, and then no hand-back satisfies the pass.
- * @param {import("./state.js").LoopState} state
- * @returns {object[]}
- */
-function spawnRows(state) {
-  return state.run.sweep && state.sweep == null
-    ? sweepRows(state.preSweep)
-    : [];
-}
-
 /**
  * What this run was told, plus what the review has since decided for itself.
  *
@@ -105,13 +88,12 @@ export function issue(state, stateFile, phases, registry) {
     return null;
   }
   const { phase, steps } = next;
-  // A `hints` phase's rows are the sweep's, keyed by check. Every other phase hands over
-  // its open items, rendered for THIS reader - never stored, so the same item can be
-  // worded one way here and another for the reviewer.
+  // A `hints` phase asks about nothing in this file: its work is starting the agents, and
+  // each of those answers in a file of its own. Every other phase hands over its open
+  // items, rendered for THIS reader - never stored, so the same item can be worded one
+  // way here and another for the reviewer.
   const entries =
-    phase.answer === "hints"
-      ? spawnRows(state)
-      : phaseEntries(state, registry, phase, run);
+    phase.answer === "hints" ? [] : phaseEntries(state, registry, phase, run);
   state.phase = phase.name;
   // The `ask` phase hands the reviewer the Review Details block, and that block links the
   // report. Refresh the file first, so the link opens the review as it stands rather than
@@ -159,12 +141,13 @@ export function accept(state, file, phases, registry) {
   }
   const { entries } = readHandback(file);
   // What went out: the same question `issue` answered, asked again through the same
-  // helper rather than stored, so the two cannot disagree about what was asked.
+  // helper rather than stored, so the two cannot disagree about what was asked. A `hints`
+  // phase asks about no entry at all - its work is starting the agents, and each of those
+  // answers in a file of its own - so what it hands out is empty and so must be what
+  // comes back.
   const asked =
     phase.answer === "hints"
-      ? // A phase can have steps and no entries - `spawn` in a run with no sweep starts
-        // agents and asks nothing - and then an empty hand-back is the right one.
-        spawnRows(state)
+      ? []
       : phaseEntries(
           state,
           registry,
@@ -175,9 +158,13 @@ export function accept(state, file, phases, registry) {
             registry
           )
         );
-  const keyOf = (e) =>
-    phase.answer === "hints" ? e.check : String(e.index ?? "undefined");
-  const answers = answersOf(entries, asked, phase, keyOf);
+  const answers = answersOf(entries, asked, phase, (e) =>
+    String(e.index ?? "undefined")
+  );
+  // Read BEFORE anything is recorded, because a sweep file that cannot be acted on has to
+  // leave the review exactly as it was - the agent fixes that one file and hands back
+  // again.
+  const swept = phase.answer === "hints" ? sweptResults(state) : null;
   // Recorded only once every check above has passed, so a refusal leaves the review
   // exactly as it was.
   state.issued ??= [];
@@ -185,7 +172,7 @@ export function accept(state, file, phases, registry) {
     state.issued.push(phase.name);
   }
   if (phase.answer === "hints") {
-    state.sweep = Object.fromEntries(answers);
+    state.sweep = swept;
     return { phase, answers, swept: routeSweep(state, registry) };
   }
   state.answers ??= {};
@@ -237,12 +224,9 @@ function phaseEntries(state, registry, phase, run) {
     open.map((x) => rendered.get(x.index)).filter(Boolean),
     phase,
     // Keyed by the artifact a finding carries, so resolving a path is a lookup rather
-    // than a branch on the review mode. The keys are the module's own constants: a
-    // second spelling of them here is one that can drift from what is stamped.
-    {
-      [ARTIFACT_XPI]: state.paths.xpiRoot,
-      [ARTIFACT_SCA]: state.paths.scaRoot,
-    }
+    // than a branch on the review mode - and asked of the module that owns the names, so
+    // this cannot drift from what a locus is stamped with.
+    artifactRoots(state.paths)
   );
 }
 
@@ -357,8 +341,9 @@ export function settle(state, registry) {
     ).join("\n"),
     review: {
       findings,
-      // The sweep stops being asked: this review has been swept, and leaving it standing
-      // would ask a reviewer for work already in the report above it.
+      // The sweep list is not handed on. Either agents swept, and its results are in the
+      // report above, or the run was told to leave the sweep out (--llm-skip-sweep), and
+      // then it is left out for the reviewer too.
       meta: {
         ...state.report.meta,
         manualReview: manual,
@@ -384,12 +369,49 @@ export function settle(state, registry) {
 function reportMeta(state) {
   const {
     prompting: _prompting,
-    sweepFile: _sweep,
     stateFile: _state,
     reviewFile: _review,
     ...rest
   } = state.report.meta;
-  return { ...rest, manualReview: state.manual, preSweep: null };
+  return { ...rest, manualReview: state.manual };
+}
+
+/**
+ * Everything the sweeping agents wrote, read back off their own files.
+ *
+ * ONE READ for the whole review, because a sweep file that cannot be acted on must leave
+ * the review untouched: a half-applied sweep would record one tree's hints and then
+ * refuse on the other, and the agent's fix would replay the first.
+ *
+ * The files are the ones THIS run wrote (state.paths.sweeps), so which labels belong in
+ * each and what each label means are the review's own answers, never the file's. Read
+ * only where a tree was actually asked - `--llm-skip-sweep` writes none, and then there
+ * is nothing to read and nothing to say about it.
+ * Null where no tree was asked, which is not the same as every tree answering with
+ * nothing - the distinction the answers files are built around, kept here too.
+ * @param {import("./state.js").LoopState} state
+ * @returns {?{check: string, artifact: string, file: string, line: ?number,
+ *   hint: ?string}[]}
+ * @throws {HandbackRefused}
+ */
+function sweptResults(state) {
+  const trees = Object.entries(state.paths?.sweeps ?? {});
+  if (trees.length === 0) {
+    return null;
+  }
+  const out = [];
+  for (const [artifact, paths] of trees) {
+    const asked = (state.preSweep?.items ?? []).filter(
+      (s) => s.artifact === artifact
+    );
+    try {
+      out.push(...readSweepAnswers(paths.answers, asked));
+    } catch (err) {
+      rethrowIfFatal(err);
+      throw new HandbackRefused(err.message);
+    }
+  }
+  return out;
 }
 
 /**
@@ -399,17 +421,15 @@ function reportMeta(state) {
  * finding where it does not - so everything downstream sees the SAME two lists and cannot
  * tell a swept case from a deterministic one.
  *
- * This runs while accepting the `spawn` phase, whose rows are keyed by check and carry no
- * index; `verify` is the first pass that hands one out. So nothing is renumbered by what is
+ * This runs while accepting the `spawn` phase, which asks about no numbered entry;
+ * `verify` is the first pass that hands one out. So nothing is renumbered by what is
  * added here, because nothing has been numbered yet.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {string[]}  What was routed, for the audit line.
  */
 function routeSweep(state, registry) {
-  const results = Object.entries(state.sweep ?? {}).flatMap(([check, hints]) =>
-    (hints ?? []).map((h) => ({ ...h, check }))
-  );
+  const results = state.sweep ?? [];
   if (results.length === 0) {
     return [];
   }
@@ -421,9 +441,7 @@ function routeSweep(state, registry) {
     results,
     manual: state.manual,
     findings: state.report.findings,
-    preSweep: state.preSweep,
     registry,
-    file: state.review,
     mode,
   });
   state.manual = manual;

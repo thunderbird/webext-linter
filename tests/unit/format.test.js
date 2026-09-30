@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { REVIEW_MODE } from "../../src/lib/enum.js";
+import { ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 
 import {
   formatText,
@@ -37,6 +38,8 @@ function review() {
     meta: {
       action: "review",
       xpi: "x",
+      // The tree a sweep sends its reader into, so the section can name a folder.
+      xpiRoot: "/x/a.xpi.extracted/",
       reviewed: false,
       manualReview: [
         {
@@ -305,7 +308,12 @@ test("an escalation prints the verdict a reported case carries", () => {
 const SWEEP = {
   items: [
     {
+      // The number this sweep is known by everywhere - what the page prints beside it
+      // and what its agent is asked about (src/report/sweep-files.js). Not a counter
+      // over this list: the report and the request have to agree on it.
+      label: 1,
       check: "data-exfiltration",
+      artifact: ARTIFACT_XPI,
       title: "User-data exfiltration",
       severity: "error",
       instruction: "Read the add-on for other ways data reaches a remote host.",

@@ -14,33 +14,39 @@ Continue manual review for the following checks:
 
 1) Data smuggled through a resource URL: A resource loaded to be rendered or
    embedded, carrying data outward in its URL. Consent is no defence.
+Sweep: <root>/tests/addons/default-locale-missing/
 Suggested verdict: error
 Suggested response: This add-on appears to send data through a resource URL (image/iframe/media src) - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 2) Data smuggled through a stylesheet: A stylesheet, a CSS rule, or a property
    resolving to a remote reference, carrying data outward in its URL. Consent is
    no defence.
+Sweep: <root>/tests/addons/default-locale-missing/
 Suggested verdict: error
 Suggested response: This add-on appears to send data through a stylesheet or CSS url() - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 3) Data smuggled through an opened window: A new window or tab the add-on opens,
    carrying data outward in its URL. Consent is no defence.
+Sweep: <root>/tests/addons/default-locale-missing/
 Suggested verdict: error
 Suggested response: This add-on appears to send data through a window.open() to a remote URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 4) Data smuggled through a navigation: An already-open context sent elsewhere,
    carrying data outward in the URL. Consent is no defence.
+Sweep: <root>/tests/addons/default-locale-missing/
 Suggested verdict: error
 Suggested response: This add-on appears to send data through a page navigation - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
 5) Unencrypted data transmission: A remote endpoint reached over http://, ws://
    or ftp://. Whatever the payload: the objection is the transport.
+Sweep: <root>/tests/addons/default-locale-missing/
 Suggested verdict: error
 Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
 
 6) Remote data transmission needs a privacy policy: The add-on reaching a
    service the DEVELOPER chose - fixed in the add-on, not entered by the user -
    which receives anything about the user or their use of it.
+Sweep: <root>/tests/addons/default-locale-missing/
 Suggested verdict: hold
 Suggested response: Please add a privacy policy to this add-on that details which user data is being sent and to what services. The critical things to describe in the policy are how your extension collects, uses, stores, shares or discloses information about people. If your add-on makes it apparent to websites that it is installed, this must also be mentioned. The policy should be about the extension only, not a copy of the website’s privacy policy. It should also be the actual text, as opposed to a link to a privacy policy on a website. The privacy policy can be added in the add-on settings under "Manage Authors & License" on addons.thunderbird.net. For more information, please check our Review Policies [1], and Mozilla’s own privacy policy [2] as an example.
 
@@ -50,12 +56,14 @@ Suggested response: Please add a privacy policy to this add-on that details whic
 7) User-data exfiltration: Message content and headers, attachments, contacts,
    credentials, or anything derived from them, reaching a remote host without
    the user asking.
+Sweep: <root>/tests/addons/default-locale-missing/
 Suggested verdict: error
 Suggested response: The following code location(s) send user data or telemetry to a remote server without an explicit opt-in. User data or telemetry may be transmitted only when the user actively enables it on an options page that discloses what is sent.
 
 8) Data smuggled through a channel not meant for it: Any other mechanism that
    presents as loading, rendering, opening or navigating while carrying data
    outward in its URL. Consent is no defence.
+Sweep: <root>/tests/addons/default-locale-missing/
 Suggested verdict: error
 Suggested response: The following code location(s) appear to send data through a channel not meant for data transmission - a URL used for loading, styling, opening or navigating, with data riding in it. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
@@ -63,12 +71,14 @@ Suggested response: The following code location(s) appear to send data through a
    package - the name and description in manifest.json, or any bundled text,
    image or media - that is spam, inappropriate, misleading or low-effort, or
    that breaches Mozilla's Acceptable Use Policy.
+Sweep: <root>/tests/addons/default-locale-missing/
 Suggested verdict: error
 Suggested response: Content shipped inside this add-on does not meet our content requirements. It must not be spam, inappropriate, misleading, or low-effort, and it must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please correct the affected content and submit a new version.
 
 10) Check the shipped icons for trademark or logo imitation: An icon shipped
     inside the package that imitates or incorporates the Thunderbird, Firefox or
     Mozilla logo.
+Sweep: <root>/tests/addons/default-locale-missing/
 Suggested verdict: error
 Suggested response: An icon shipped inside this add-on imitates or incorporates a Mozilla trademark (the Thunderbird, Firefox or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please use a distinct icon and submit a new version.
 

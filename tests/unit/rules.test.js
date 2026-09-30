@@ -988,18 +988,21 @@ test("a check entry with no severity is refused", () => {
 test("the checks that sweep their own blind spot are exactly these", () => {
   const reg = loadRegistry();
   assert.deepEqual(
-    reg.sweepInstructions().map((s) => [s.check, s.severity]),
+    reg.sweepInstructions().map((s) => [s.check, s.severity, s.artifact]),
     [
-      ["disguised-resource", "error"],
-      ["disguised-stylesheet", "error"],
-      ["disguised-window", "error"],
-      ["disguised-navigation", "error"],
-      ["cleartext-transmission", "error"],
-      ["privacy-policy", "hold"],
-      ["data-exfiltration", "error"],
-      ["disguised-transmission", "error"],
-      ["unacceptable-package-content", "error"],
-      ["shipped-icon-trademark-imitation", "error"],
+      // Every one of them routes at a single artifact today, so each leaves the tree to
+      // its route (`null` here, filled in by preSweepOf). A check on `input: all` names
+      // its own, and contributes one of these per instruction it authors.
+      ["disguised-resource", "error", null],
+      ["disguised-stylesheet", "error", null],
+      ["disguised-window", "error", null],
+      ["disguised-navigation", "error", null],
+      ["cleartext-transmission", "error", null],
+      ["privacy-policy", "hold", null],
+      ["data-exfiltration", "error", null],
+      ["disguised-transmission", "error", null],
+      ["unacceptable-package-content", "error", null],
+      ["shipped-icon-trademark-imitation", "error", null],
     ]
   );
   // Every one of them can actually receive what its sweep finds: a band to stamp the case
@@ -1012,7 +1015,7 @@ test("the checks that sweep their own blind spot are exactly these", () => {
       `${s.check} response takes no placeholder`
     );
   }
-  assert.equal(reg.sweepInstruction("eval-call"), null);
+  assert.deepEqual(reg.sweepTargets("eval-call"), []);
 });
 
 // The three things that must hold for a sweep instruction to be fileable are config, so
@@ -1401,10 +1404,11 @@ test("a sweep-instruction no finding could be filed for is refused", () => {
     /carries a {{placeholder}}/
   );
   // A swept row names a FILE, and `input: all` can carry two artifacts holding the same
-  // relative paths - so nothing downstream could say which tree the row is in: not the
-  // merge (it runs from a serialized state with no artifact left to ask), not the
-  // pre-sweep list (one answer per check, and this route has two), and not the reader
-  // doing the sweeping. Refused where it is authored rather than crashing a pass later.
+  // relative paths - so the row has to say which tree it is in. Nothing downstream could
+  // work it out: not the merge (it runs from a serialized state with no artifact left to
+  // ask), and not the reader doing the sweeping, who has both trees open. So the flat
+  // form, which leaves the artifact to the route, is refused on the one route that names
+  // none - where it is authored, rather than crashing a pass later.
   bad(
     {
       "deterministic-phase": [
@@ -1415,8 +1419,77 @@ test("a sweep-instruction no finding could be filed for is refused", () => {
         }),
       ],
     },
-    /a route carrying every artifact cannot say which of them it is in/
+    /a route carrying every artifact cannot say which/
   );
+  // And the mirror: on a route that DOES name its artifact, naming it again is a second
+  // place to get it wrong, so the per-artifact form is refused there.
+  for (const input of ["source", "xpi", "sca"]) {
+    bad(
+      {
+        "deterministic-phase": [
+          entry({
+            check: input === "sca" ? "sca-lockfile-missing" : "sync-xhr",
+            input,
+            "sweep-instruction-for-xpi": "look for X",
+          }),
+        ],
+      },
+      /this route already says which/
+    );
+  }
+});
+
+// The capability the flat form cannot have: one check, two trees, two independent
+// requests. Each carries its own words and its own artifact, and they are adjacent and in
+// a fixed order, because the report and every phase list them from this one walk.
+test("an `input: all` check sweeps one tree per instruction it authors", () => {
+  const entry = (extra) => ({
+    title: "X",
+    check: "sca-xpi-declares-vendoring",
+    severity: "error",
+    input: "all",
+    ...extra,
+  });
+  const targets = (extra) => {
+    const reg = new Registry({ "deterministic-phase": [entry(extra)] });
+    assertEntries(reg, "t.yaml");
+    return reg.sweepTargets("sca-xpi-declares-vendoring");
+  };
+
+  assert.deepEqual(
+    targets({ "sweep-instruction-for-sca": "read the archive" }),
+    [{ artifact: ARTIFACT_SCA, instruction: "read the archive" }]
+  );
+  assert.deepEqual(
+    targets({
+      "sweep-instruction-for-xpi": "read the XPI",
+      "sweep-instruction-for-sca": "read the archive",
+    }),
+    [
+      { artifact: ARTIFACT_XPI, instruction: "read the XPI" },
+      { artifact: ARTIFACT_SCA, instruction: "read the archive" },
+    ]
+  );
+  // A check with no blind spot authors none, on this route as on any other.
+  assert.deepEqual(targets({}), []);
+
+  // The flat form leaves the artifact to the route, which is why it reads as null here:
+  // preSweepOf fills it in from the ctx the check ran on, the last place one exists.
+  const reg = new Registry({
+    "deterministic-phase": [
+      {
+        title: "X",
+        check: "sync-xhr",
+        severity: "error",
+        input: "source",
+        "sweep-instruction": "look for X",
+      },
+    ],
+  });
+  assertEntries(reg, "t.yaml");
+  assert.deepEqual(reg.sweepTargets("sync-xhr"), [
+    { artifact: null, instruction: "look for X" },
+  ]);
 });
 
 // A check words its developer-facing response ONCE for both review modes (`response`) or

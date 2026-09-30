@@ -27,8 +27,9 @@
 // that can assemble it from one of them alone.
 //
 // Belongs here: what an item carries, and the paths this run names - the two loop files,
-// and the description and build-report files its agents write (reviewFilePaths), which
-// share one name so none can drift from the review it belongs to.
+// the description and build-report files its agents write, and a request/answers pair for
+// each tree a sweeping agent is sent at (reviewFilePaths), which share one name so none
+// can drift from the review it belongs to.
 //
 // Does NOT belong here: WHICH of the two wordings an entry is handed over with, and the
 // progress label counting what a hand-over puts to a person - both are the phase's, at the
@@ -158,7 +159,7 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
  * them; for the other two it says where they go and nothing more, so a name cannot drift
  * from the review it belongs to.
  *
- * One base for all five: the submission's name does not identify a review - the same file can
+ * One base for all of them: the submission's name does not identify a review - the same file can
  * be reviewed twice in a session, and a fork carries the name of what it forked - so the
  * run's own moment separates them, and a later run does not open what an earlier one left
  * behind. Millisecond resolution, which separates reviews a person runs; two started in
@@ -167,7 +168,7 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
  * review file's path and finds the rest from it, so no later run has to recompute a moment
  * it does not have.
  *
- * Where the shipped package is unpacked (XPI_ROOT) is NOT one of these: unlike these five,
+ * Where the shipped package is unpacked (XPI_ROOT) is NOT one of these: unlike the rest,
  * the linter itself writes there (src/addon/load.js), before this is ever called, and it
  * keeps the suffix this stem drops - see src/util/dest.js.
  *
@@ -176,7 +177,8 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
  * @param {string} xpiPath  Where the add-on IS, absolute. An Addon carries no path of its
  *   own, so the caller passes the one the run was given (src/pipeline.js), which resolved
  *   it - nothing re-resolves it here.
- * @returns {{summary: string, build: string, report: string, state: string, review: string}}
+ * @returns {{summary: string, build: string, report: string, state: string,
+ *   review: string, sweep: (artifact: string) => {request: string, answers: string}}}
  */
 export function reviewFilePaths(xpiPath) {
   const base = reviewFileBase(xpiPath);
@@ -196,6 +198,22 @@ export function reviewFilePaths(xpiPath) {
     // review path it was given and compares the two.
     state: path.join(os.tmpdir(), `${base}${STATE_SUFFIX}`),
     review: path.join(os.tmpdir(), `${base}${REVIEW_SUFFIX}`),
+    // One sweeping agent's pair, per artifact it is asked about. Beside the loop's pair
+    // rather than beside the submission, because they are machinery and not something the
+    // reviewer is handed: the linter writes the request, one sub-agent writes the
+    // answers, and the review reads them back within the same loop.
+    //
+    // A FUNCTION, because how many there are is the review's answer and not this
+    // module's - an XPI review has one tree with sweeps and a source review may have two,
+    // and naming a fixed pair of fields here would invent a path for a tree that does not
+    // exist.
+    sweep: (artifact) => {
+      const tag = String(artifact).toLowerCase();
+      return {
+        request: path.join(os.tmpdir(), `${base}.sweep-${tag}.yaml`),
+        answers: path.join(os.tmpdir(), `${base}.sweep-${tag}.answers.json`),
+      };
+    },
   };
 }
 

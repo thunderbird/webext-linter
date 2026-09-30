@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { loadRegistry } from "../../src/checks/registry.js";
 import { REVIEW_MODE } from "../../src/lib/enum.js";
+import { ARTIFACT_SCA, ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 import { renderFindings } from "../../src/report/responses.js";
 import { STATE_VERSION, readState } from "../../src/report/state.js";
 import { writeReportFile } from "../../src/report/report-file.js";
@@ -106,16 +107,25 @@ function review(
       preSweep: sweep
         ? {
             items: [
-              { check: "privacy-policy", instruction: "i1", artifact: "XPI" },
               {
+                label: 1,
+                check: "privacy-policy",
+                title: "t1",
+                instruction: "i1",
+                artifact: ARTIFACT_XPI,
+              },
+              {
+                label: 2,
                 check: "data-exfiltration",
+                title: "t2",
                 instruction: "i2",
-                artifact: "XPI",
+                artifact: ARTIFACT_XPI,
               },
             ],
           }
         : null,
-      run: { skip: [], sca: false, sweep },
+      // One condition per tree with a sweep to run, named the way the step naming it is.
+      run: { skip: [], sca: false, ...(sweep ? { "sweep-xpi": true } : {}) },
       paths: {
         description: `${base}.summary.md`,
         build: null,
@@ -124,6 +134,18 @@ function review(
         // state carries both; without xpiRoot the loop would hand out relative paths.
         xpiRoot: "/tmp/pkg.xpi.extracted/",
         scaRoot: null,
+        // Each tree's sweep pair, which is also what says WHICH trees were asked. The
+        // request is never read back; the answers file is the one this loop opens.
+        ...(sweep
+          ? {
+              sweeps: {
+                [ARTIFACT_XPI]: {
+                  request: `${base}.sweep-xpi.yaml`,
+                  answers: `${base}.sweep-xpi.answers.json`,
+                },
+              },
+            }
+          : {}),
       },
       answers: {},
       route: {},
@@ -158,8 +180,10 @@ test("the report file is written for the questions and rewritten once they are a
       seen.includes("ask"),
       `after issuing ${out.phase.name}`
     );
+    if (out.phase.name === "spawn") {
+      swept(state, ARTIFACT_XPI);
+    }
     const handed = handBack(state, (e) => {
-      if (out.phase.name === "spawn") return [];
       if (out.phase.name === "verify")
         return e.index === 1 ? "withdrawn" : "reported";
       if (out.phase.name === "settle") return "ask";
@@ -187,6 +211,25 @@ function handBack(state, answerFor) {
   return file;
 }
 
+/**
+ * Play the sweeping sub-agent for one tree: fill in its answers file the way the request
+ * tells it to. `found` is what it found, by label; every other label it was asked about
+ * answers with the empty list.
+ */
+function swept(state, artifact, found = {}) {
+  const paths = state.paths.sweeps[artifact];
+  const labels = state.preSweep.items
+    .filter((i) => i.artifact === artifact)
+    .map((i) => i.label);
+  fs.writeFileSync(
+    paths.answers,
+    JSON.stringify({
+      answers: Object.fromEntries(labels.map((l) => [l, found[l] ?? []])),
+    })
+  );
+  return paths.answers;
+}
+
 // The shape of a whole review: which phases are issued, in what order, and what each one
 // asks about. Every route the loop has is exercised here - a sweep answered by check, a
 // finding withdrawn, a case settled, a case that becomes a question, and a person's own
@@ -200,8 +243,10 @@ test("a review runs spawn -> verify -> settle -> ask and then settles", () => {
     const out = issue(state, stateFile, PHASES, REGISTRY);
     if (!out) break;
     seen.push(out.phase.name);
+    if (out.phase.name === "spawn") {
+      swept(state, ARTIFACT_XPI);
+    }
     const file = handBack(state, (e) => {
-      if (out.phase.name === "spawn") return [];
       if (out.phase.name === "verify")
         return e.index === 1 ? "withdrawn" : "reported";
       if (out.phase.name === "settle") return "ask"; // -> becomes a question
@@ -222,10 +267,7 @@ test("a review runs spawn -> verify -> settle -> ask and then settles", () => {
     5: "Clear",
   });
   assert.deepEqual(state.route, { 3: "ask" });
-  assert.deepEqual(state.sweep, {
-    "privacy-policy": [],
-    "data-exfiltration": [],
-  });
+  assert.deepEqual(state.sweep, [], "both sweeps ran and found nothing");
 });
 
 // An entry says what it may be answered with, and that is what an answer is checked
@@ -449,43 +491,114 @@ test("a wrong hand-back is refused, and changes nothing", () => {
   );
 });
 
-// The sweep is the one phase whose answer is not a verb, and the one where an empty answer
-// is a real answer. `null` is unanswered; `[]` is swept and clean. Today those are the same
-// empty result, so a sweep that quietly covered two checks of eight reads like a clean one.
-test("a sweep answers per check, and an empty list is not the same as no answer", () => {
+// The sweep asks nothing of the file every other phase uses: its work is starting the
+// agents, and each of those answers in a file of its own. So what goes out is empty, and
+// what makes the review whole is the answers files - where an empty list is a real answer
+// and a null is not, which is the distinction a sweep quietly skipped would otherwise hide.
+test("the sweep phase asks for nothing in the review file, and answers in its own", () => {
   const dir = tmp();
   const { state, stateFile } = review(dir);
   const out = issue(state, stateFile, PHASES, REGISTRY);
   assert.equal(out.phase.name, "spawn");
-  assert.deepEqual(
-    out.entries.map((e) => e.check),
-    ["privacy-policy", "data-exfiltration"]
-  );
-  assert.ok(
-    out.entries.every((e) => e.answer === null),
-    "handed over unanswered"
+  assert.deepEqual(out.entries, [], "nothing to fill in here");
+  // It does hand over the steps that start the agents - a phase with no entries is
+  // still issued when it has work.
+  assert.ok(out.steps.length > 0);
+
+  // Nothing written yet: the pass cannot be accepted, and the refusal names the file the
+  // agent has to go and produce rather than anything in the hand-back.
+  const empty = handBack(state, () => null);
+  assert.throws(
+    () => accept(state, empty, PHASES, REGISTRY),
+    /sweep-xpi\.answers\.json could not be read/
   );
 
-  const half = handBack(state, (e) =>
-    e.check === "privacy-policy" ? [] : null
+  // A null left behind is not an answer, and is refused by the label it belongs to.
+  const before = JSON.stringify(state);
+  fs.writeFileSync(
+    state.paths.sweeps[ARTIFACT_XPI].answers,
+    JSON.stringify({ answers: { 1: [], 2: null } })
   );
   assert.throws(
-    () => accept(state, half, PHASES, REGISTRY),
-    /data-exfiltration still has no "answer"/
+    () => accept(state, empty, PHASES, REGISTRY),
+    /leaves label 2 unanswered/
   );
+  assert.equal(JSON.stringify(state), before, "a refusal changes nothing");
 
-  const notList = handBack(state, () => "nothing found");
-  assert.throws(
-    () => accept(state, notList, PHASES, REGISTRY),
-    /a sweep answers with a list/
-  );
+  swept(state, ARTIFACT_XPI);
+  accept(state, empty, PHASES, REGISTRY);
+  assert.deepEqual(state.sweep, [], "both ran, neither found anything");
+});
 
-  const clean = handBack(state, () => []);
-  accept(state, clean, PHASES, REGISTRY);
-  assert.deepEqual(state.sweep, {
-    "privacy-policy": [],
-    "data-exfiltration": [],
+// ONE check, TWO trees. A sweep is a request about exactly one artifact, and a check on
+// `input: all` reads both - so it authors an instruction per tree and gets an independent
+// sweep for each, in a different file, under a different label. The same relative path
+// exists in both trees, so this is the pair that would fold into one case if the artifact
+// were not carried with it.
+//
+// Driven the whole way round, because which tree a hint is in has to survive being
+// written out and read back: nothing here re-derives it - the pre-sweep list said so when
+// the artifacts still existed, and the label carries it back.
+test("one check sweeping both trees answers per tree, and each is filed there", () => {
+  const dir = tmp();
+  const { state, stateFile } = review(dir, {
+    findings: false,
+    questions: false,
   });
+  // Both trees exist for this one, so the review is a source-code review.
+  state.paths.scaRoot = path.join(dir, "src");
+  state.paths.sweeps[ARTIFACT_SCA] = {
+    request: path.join(dir, "r.sweep-sca.yaml"),
+    answers: path.join(dir, "r.sweep-sca.answers.json"),
+  };
+  state.run["sweep-sca"] = true;
+  state.preSweep = {
+    items: [ARTIFACT_XPI, ARTIFACT_SCA].map((artifact, i) => ({
+      label: i + 1,
+      check: "data-exfiltration",
+      title: "Data exfiltration",
+      severity: "error",
+      instruction: `look in the ${artifact}`,
+      response: null,
+      artifact,
+    })),
+  };
+
+  const out = issue(state, stateFile, PHASES, REGISTRY);
+  assert.equal(out.phase.name, "spawn");
+  // Two steps, one per tree, each starting an agent of its own.
+  assert.equal(out.steps.filter((x) => /sweep/i.test(x.text)).length, 2);
+
+  // Answered independently, at the SAME relative path in each tree.
+  const hit = (tree) => [
+    { file: "lib/net.js", line: 7, hint: `sends from the ${tree}` },
+  ];
+  swept(state, ARTIFACT_XPI, { 1: hit(ARTIFACT_XPI) });
+  swept(state, ARTIFACT_SCA, { 2: hit(ARTIFACT_SCA) });
+  accept(
+    state,
+    handBack(state, () => null),
+    PHASES,
+    REGISTRY
+  );
+
+  assert.deepEqual(
+    state.sweep.map((r) => [r.check, r.artifact, r.file]),
+    [
+      ["data-exfiltration", ARTIFACT_XPI, "lib/net.js"],
+      ["data-exfiltration", ARTIFACT_SCA, "lib/net.js"],
+    ]
+  );
+  // data-exfiltration escalates, so both hints arrive as cases of it - one per tree, each
+  // stamped with the tree the review asked about, and neither collapsed into the other.
+  const cases = state.manual.filter((m) => m.ruleId === "data-exfiltration");
+  assert.deepEqual(
+    cases.map((m) => [m.artifact, m.file, m.hint]),
+    [
+      [ARTIFACT_XPI, "lib/net.js", "sends from the XPI"],
+      [ARTIFACT_SCA, "lib/net.js", "sends from the SCA"],
+    ]
+  );
 });
 
 test("a refusal is its own class, so the caller can answer it differently", () => {
@@ -499,47 +612,6 @@ test("a refusal is its own class, so the caller can answer it differently", () =
     assert.ok(e instanceof HandbackRefused);
     assert.match(e.problem, /could not be read/);
   }
-});
-
-// The agent authors the sweep's rows, so they are held to a shape where they enter - and a
-// refusal here is a refusal like any other: named exactly, and the state untouched.
-test("a swept row that says too much, or too little, is refused", () => {
-  const dir = tmp();
-  const { state, stateFile } = review(dir);
-  issue(state, stateFile, PHASES, REGISTRY);
-  const before = JSON.stringify(state);
-  const hand = (found) =>
-    handBack(state, (e) => (e.check === "privacy-policy" ? [found] : []));
-
-  assert.throws(
-    () => accept(state, hand({ line: 3 }), PHASES, REGISTRY),
-    /names no "file"/
-  );
-  assert.throws(
-    () => accept(state, hand({ file: "a.js", line: 0 }), PHASES, REGISTRY),
-    /has line 0/
-  );
-  // Where it lands and how it reads to a developer are the linter's: a row that tries to
-  // say is an agent wording the report.
-  assert.throws(
-    () =>
-      accept(
-        state,
-        hand({ file: "a.js", severity: "error" }),
-        PHASES,
-        REGISTRY
-      ),
-    /may only set/
-  );
-  assert.equal(JSON.stringify(state), before, "a refusal changes nothing");
-
-  accept(
-    state,
-    hand({ file: "lib/sync.js", line: 88, hint: "posts to a fixed endpoint" }),
-    PHASES,
-    REGISTRY
-  );
-  assert.equal(state.sweep["privacy-policy"].length, 1);
 });
 
 // --llm-skip-manual means those items are not put to ANYONE: they stay in the report for
@@ -610,7 +682,10 @@ test("--llm-skip-sweep asks for no sweep, though the instructions still exist", 
   const dir = tmp();
   const { state, stateFile } = review(dir);
   assert.ok(state.preSweep, "the instructions are still there");
-  state.run = { skip: [], sca: false, sweep: false };
+  // What the flag does in the pipeline: no request is written, so no condition names one
+  // and there is no answers file for the pass to read.
+  state.run = { skip: [], sca: false };
+  delete state.paths.sweeps;
   const first = issue(state, stateFile, PHASES, REGISTRY);
   assert.deepEqual(first.entries, [], "no rows to fill in");
   const prose = first.steps.map((s) => s.text).join("\n");
@@ -618,8 +693,7 @@ test("--llm-skip-sweep asks for no sweep, though the instructions still exist", 
   assert.equal(state.sweep, null, "nothing was swept");
 
   // And the empty file IS the right hand-back. Both legs read the same fact, so the pass
-  // that asked for nothing accepts nothing; reading `preSweep` on the way back in would
-  // demand the rows this one withheld, and no hand-back could satisfy it.
+  // that asked for nothing accepts nothing.
   const { answers } = accept(
     state,
     handBack(state, () => null),
@@ -627,6 +701,9 @@ test("--llm-skip-sweep asks for no sweep, though the instructions still exist", 
     REGISTRY
   );
   assert.equal(answers.size, 0);
+  // Null, not an empty list: no tree was asked, which is not every tree answering with
+  // nothing - the same distinction the answers files themselves are built around.
+  assert.equal(state.sweep, null, "and still nothing was swept");
   assert.ok(issue(state, stateFile, PHASES, REGISTRY), "the review goes on");
 });
 
@@ -645,16 +722,19 @@ function phasesOf(state, stateFile) {
     const out = issue(state, stateFile, PHASES, REGISTRY);
     if (!out) break;
     seen.push(out.phase.name);
+    // Whatever trees this run asked about, answered clean - the sweeping agents' part of
+    // the pass, without which it cannot be accepted.
+    for (const artifact of Object.keys(state.paths.sweeps ?? {})) {
+      swept(state, artifact);
+    }
     accept(
       state,
       handBack(state, (e) =>
-        out.phase.name === "spawn"
-          ? []
-          : out.phase.name === "verify"
-            ? "reported"
-            : out.phase.name === "settle"
-              ? "cleared"
-              : "Clear"
+        out.phase.name === "verify"
+          ? "reported"
+          : out.phase.name === "settle"
+            ? "cleared"
+            : "Clear"
       ),
       PHASES,
       REGISTRY
@@ -707,8 +787,13 @@ test("every combination of the skips issues exactly the phases it should", () =>
     state.run = {
       skip: skip.filter((x) => x !== "sweep"),
       sca: false,
-      sweep: sweeps,
+      ...(sweeps ? { "sweep-xpi": true } : {}),
     };
+    // --llm-skip-sweep writes no request, so there is no file for a step to name and
+    // none for the pass to read back.
+    if (!sweeps) {
+      delete state.paths.sweeps;
+    }
     // A file is NAMED only where the step that writes it prints, as the pipeline names it:
     // --llm-skip-summary spawns no description agent, so there is no description to link.
     if (skip.includes("summary")) {
