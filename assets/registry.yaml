@@ -1042,6 +1042,8 @@ deterministic-phase:
 - title: Data smuggled through a resource URL
   severity: error
   check: disguised-resource
+  # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
+  # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
   sweep-instruction: |-
     A resource loaded to be rendered or embedded, carrying data outward in its URL.
@@ -1052,6 +1054,8 @@ deterministic-phase:
 - title: Data smuggled through a stylesheet
   severity: error
   check: disguised-stylesheet
+  # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
+  # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
   sweep-instruction: |-
     A stylesheet, a CSS rule, or a property resolving to a remote reference, carrying
@@ -1062,6 +1066,8 @@ deterministic-phase:
 - title: Data smuggled through an opened window
   severity: error
   check: disguised-window
+  # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
+  # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
   sweep-instruction: |-
     A new window or tab the add-on opens, carrying data outward in its URL. Consent is
@@ -1072,6 +1078,8 @@ deterministic-phase:
 - title: Data smuggled through a navigation
   severity: error
   check: disguised-navigation
+  # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
+  # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
   sweep-instruction: |-
     An already-open context sent elsewhere, carrying data outward in the URL. Consent
@@ -1081,13 +1089,25 @@ deterministic-phase:
 
 # Flags data transmitted to a remote host over an unencrypted (http/ws/ftp)
 # connection - any cleartext transmission, whatever the payload.
+#
+# Asked of EVERY artifact: the objection is the transport, and what reaches a cleartext
+# endpoint is whatever SHIPS. In a source review the shipped side can hold what the
+# archive does not show: vendor exemptions are read from the review target only, so a
+# readable library the build copies into the XPI is scanned there although the archive
+# exempts it, and a readable build reports a line the archive reports too. Minified
+# output is skipped on either side; there the sweep is the only reader.
+#
+# One question, asked of two trees, so the two instructions are one text. It names no
+# tree itself: which folder a sweep is about is the linter's to say, and it says it in
+# the request (src/report/sweep-files.js).
 - title: Unencrypted data transmission
   severity: error
   check: cleartext-transmission
-  input: source
-  sweep-instruction: |-
+  input: all
+  sweep-instruction-for-xpi: &cleartext-sweep |-
     A remote endpoint reached over http://, ws:// or ftp://. Whatever the payload:
     the objection is the transport.
+  sweep-instruction-for-sca: *cleartext-sweep
   response: |-
     Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
 
@@ -1099,6 +1119,8 @@ deterministic-phase:
 - title: Remote data transmission needs a privacy policy
   severity: hold-or-error
   check: privacy-policy
+  # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
+  # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
   # One case per transmission SITE, so an unresolved destination is still put to a
   # reviewer - but the question is about the host, and asking it once per file would
@@ -1429,6 +1451,8 @@ deterministic-phase:
 - title: User-data exfiltration
   severity: error
   check: data-exfiltration
+  # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
+  # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1462,6 +1486,8 @@ deterministic-phase:
 - title: Data smuggled through a channel not meant for it
   severity: error
   check: disguised-transmission
+  # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
+  # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-

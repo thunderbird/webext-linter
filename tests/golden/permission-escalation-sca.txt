@@ -69,11 +69,17 @@ Suggested response: This add-on appears to send data through a page navigation -
 
 5) Unencrypted data transmission: A remote endpoint reached over http://, ws://
    or ftp://. Whatever the payload: the objection is the transport.
+Sweep: <root>/tests/addons/permission-escalation-sca/xpi/
+Suggested verdict: error
+Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
+
+6) Unencrypted data transmission: A remote endpoint reached over http://, ws://
+   or ftp://. Whatever the payload: the objection is the transport.
 Sweep: <root>/tests/addons/permission-escalation-sca/src
 Suggested verdict: error
 Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
 
-6) Remote data transmission needs a privacy policy: The add-on reaching a
+7) Remote data transmission needs a privacy policy: The add-on reaching a
    service the DEVELOPER chose - fixed in the add-on, not entered by the user -
    which receives anything about the user or their use of it.
 Sweep: <root>/tests/addons/permission-escalation-sca/src
@@ -83,29 +89,29 @@ Suggested response: Please add a privacy policy to this add-on that details whic
 [1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
 [2]: https://www.mozilla.org/en-US/privacy/
 
-7) User-data exfiltration: Message content and headers, attachments, contacts,
+8) User-data exfiltration: Message content and headers, attachments, contacts,
    credentials, or anything derived from them, reaching a remote host without
    the user asking.
 Sweep: <root>/tests/addons/permission-escalation-sca/src
 Suggested verdict: error
 Suggested response: The following code location(s) send user data or telemetry to a remote server without an explicit opt-in. User data or telemetry may be transmitted only when the user actively enables it on an options page that discloses what is sent.
 
-8) Data smuggled through a channel not meant for it: Any other mechanism that
+9) Data smuggled through a channel not meant for it: Any other mechanism that
    presents as loading, rendering, opening or navigating while carrying data
    outward in its URL. Consent is no defence.
 Sweep: <root>/tests/addons/permission-escalation-sca/src
 Suggested verdict: error
 Suggested response: The following code location(s) appear to send data through a channel not meant for data transmission - a URL used for loading, styling, opening or navigating, with data riding in it. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
 
-9) Check the package for unacceptable content: Content shipped inside the
-   package - the name and description in manifest.json, or any bundled text,
-   image or media - that is spam, inappropriate, misleading or low-effort, or
-   that breaches Mozilla's Acceptable Use Policy.
+10) Check the package for unacceptable content: Content shipped inside the
+    package - the name and description in manifest.json, or any bundled text,
+    image or media - that is spam, inappropriate, misleading or low-effort, or
+    that breaches Mozilla's Acceptable Use Policy.
 Sweep: <root>/tests/addons/permission-escalation-sca/xpi/
 Suggested verdict: error
 Suggested response: Content shipped inside this add-on does not meet our content requirements. It must not be spam, inappropriate, misleading, or low-effort, and it must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please correct the affected content and submit a new version.
 
-10) Check the shipped icons for trademark or logo imitation: An icon shipped
+11) Check the shipped icons for trademark or logo imitation: An icon shipped
     inside the package that imitates or incorporates the Thunderbird, Firefox or
     Mozilla logo.
 Sweep: <root>/tests/addons/permission-escalation-sca/xpi/
@@ -208,4 +214,4 @@ Because the original project is still active, your submission does not meet thes
 
 0 error(s), 0 hold, 1 warning(s), 0 info,
 2 extended code review item(s), 1 extended manual review item(s),
-10 standard code review item(s), 10 standard manual review item(s)
+11 standard code review item(s), 10 standard manual review item(s)

@@ -8,6 +8,12 @@
 // hard error, or an escalation for the weak case); flagging them here too would
 // double-report the same line.
 //
+// Asked of EVERY artifact the review has (`input: all`, via perArtifact), because the
+// objection is the transport and what counts is what ships. Each artifact skips its own
+// non-authored code, and only the review target has a vendor reading - so in a source
+// review a readable vendored library copied into the XPI is scanned there, while the
+// archive exempts it. Minified code is skipped on both sides.
+//
 // Belongs here: turning each overt cleartext remote sink into a finding. Does
 // NOT belong here: the sink scan (-> src/parse/network-sinks.js, aggregated once
 // by src/lib/outbound-sinks.js), and authored wording (-> the response in
@@ -16,15 +22,12 @@
 import { VERDICT } from "../../lib/enum.js";
 import { getOutboundSinks, sinkLabel } from "../../lib/outbound-sinks.js";
 import { finding } from "../../report/finding.js";
+import { perArtifact } from "../each-artifact.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
 export default {
-  /**
-   * @param {RunContext} ctx
-   * @returns {{findings: import("../../report/finding.js").Finding[]}}
-   */
-  run(ctx) {
+  run: perArtifact((ctx) => {
     const out = [];
     for (const sink of getOutboundSinks(ctx)) {
       if (!sink.channel.overt || !sink.destClass.remote) {
@@ -45,5 +48,5 @@ export default {
       ctx.note?.(ctx.artifact.at(sink.file, loc), label, VERDICT.FAIL);
     }
     return { findings: out };
-  },
+  }),
 };

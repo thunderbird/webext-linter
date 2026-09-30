@@ -990,14 +990,17 @@ test("the checks that sweep their own blind spot are exactly these", () => {
   assert.deepEqual(
     reg.sweepInstructions().map((s) => [s.check, s.severity, s.artifact]),
     [
-      // Every one of them routes at a single artifact today, so each leaves the tree to
-      // its route (`null` here, filled in by preSweepOf). A check on `input: all` names
-      // its own, and contributes one of these per instruction it authors.
+      // A check on a single-artifact route leaves the tree to that route - `null` here,
+      // filled in by preSweepOf. A check on `input: all` names its own, and contributes
+      // one of these per instruction it authors.
       ["disguised-resource", "error", null],
       ["disguised-stylesheet", "error", null],
       ["disguised-window", "error", null],
       ["disguised-navigation", "error", null],
-      ["cleartext-transmission", "error", null],
+      // The one sweeping check on `input: all`, so the one that names its own trees -
+      // contributing two sweeps, one per tree, adjacent and XPI first.
+      ["cleartext-transmission", "error", ARTIFACT_XPI],
+      ["cleartext-transmission", "error", ARTIFACT_SCA],
       ["privacy-policy", "hold", null],
       ["data-exfiltration", "error", null],
       ["disguised-transmission", "error", null],
@@ -1666,6 +1669,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
       .map((c) => c.id)
       .sort(),
     [
+      "cleartext-transmission",
       "core-symbol-in-webext",
       "debugger-statement",
       "eval-call",
@@ -5541,8 +5545,10 @@ test("scanNetworkSinks carriesData follows aliases and captured namespaces", () 
 // with or without a payload; encrypted (https/wss) and local destinations are
 // fine, and covert channels are disguised-transmission's job.
 test("cleartext-transmission flags overt http/ws/ftp remote sends only", () => {
-  const n = (code) =>
-    cleartextTransmission.run(withManifest(jsCtx(code))).findings.length;
+  // On `input: all`, so the body runs once per artifact this review has - one here.
+  const run = (code) =>
+    cleartextTransmission.run(allOf(withManifest(jsCtx(code))));
+  const n = (code) => run(code).findings.length;
   assert.equal(n('fetch("http://api.example.com/x");'), 1); // GET, no payload
   assert.equal(n('new WebSocket("ws://x.example.com/feed");'), 1);
   assert.equal(n('fetch("ftp://files.example.com/x");'), 1);
@@ -5555,9 +5561,7 @@ test("cleartext-transmission flags overt http/ws/ftp remote sends only", () => {
   // collapse into a single entry with a locus each. A host would also be the lesser
   // fact - it is null whenever the URL is assembled at run time, while the written
   // line always shows.
-  const hit = cleartextTransmission.run(
-    withManifest(jsCtx('fetch("http://api.example.com/x");'))
-  ).findings[0];
+  const hit = run('fetch("http://api.example.com/x");').findings[0];
   assert.equal(hit.item, null);
   assert.equal(hit.hint, 'cleartext send "http://api.example.com/x"');
 
@@ -5566,8 +5570,8 @@ test("cleartext-transmission flags overt http/ws/ftp remote sends only", () => {
   // and it must still be renderable. Naming the host in the message crashed the
   // report here (a null message reaching message.split) and put a reason-less error
   // into the JSON upload filter.
-  const runtime = cleartextTransmission.run(
-    withManifest(jsCtx("fetch(`http://${server}/api`, { method: 'POST' });"))
+  const runtime = run(
+    "fetch(`http://${server}/api`, { method: 'POST' });"
   ).findings;
   assert.equal(runtime.length, 1);
   assert.equal(runtime[0].item, null);
