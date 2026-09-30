@@ -726,6 +726,38 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
 // printed text anyway, ignoring what it had been asked for. The message names the flag
 // that was actually used, because a run that said --llm-verdict is not helped by being
 // told about --llm-review.
+// `base` in a handed-back file names the state it belongs to, and the state names the
+// one review file it hands out - so a file whose `base` was pointed at ANOTHER review's
+// state is caught, rather than advancing that review with this one's answers. Needed on
+// purpose because a pass asking for no entry (the spawn phase) carries nothing that could
+// disagree with the wrong state by accident.
+test("a hand-back whose base leads to another review is refused", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const reviewOf = () => {
+    const out = run([addon, ...OFFLINE_FLAGS, "--llm-review"]);
+    assert.equal(out.code, 0, out.stderr);
+    return out.stdout.match(/(\S+\.review\.json)/)[1];
+  };
+  const a = reviewOf();
+  const b = reviewOf();
+  assert.notEqual(a, b);
+  const bState = JSON.parse(fs.readFileSync(b, "utf8")).base;
+  const before = fs.readFileSync(bState, "utf8");
+
+  const handed = JSON.parse(fs.readFileSync(a, "utf8"));
+  handed.base = bState;
+  fs.writeFileSync(a, JSON.stringify(handed, null, 1));
+
+  const out = run(["--llm-verdict", a, ...OFFLINE_FLAGS]);
+  assert.equal(out.code, 2);
+  assert.match(out.stdout, /belongs to a different review/);
+  assert.equal(
+    fs.readFileSync(bState, "utf8"),
+    before,
+    "the other review is untouched"
+  );
+});
+
 test("both ends of the review loop refuse --report-format json", () => {
   const started = run([
     "--llm-verdict",

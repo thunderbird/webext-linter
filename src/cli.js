@@ -1024,6 +1024,15 @@ async function runLoopPass(file, base) {
     // entries - two reads of what the agent handed back, not two ways of finding it.
     ({ state: stateFile } = readHandback(handed));
     state = readState(stateFile);
+    // `base` leads to a state, and the state names the one review file it hands out. A
+    // file that is not that one belongs to a different review: applying it here would
+    // advance a review with another's answers. Nothing else catches it - a pass that asks
+    // for no entry has nothing in the file that could disagree.
+    if (path.resolve(state.review) !== handed) {
+      throw new HandbackRefused(
+        "this file belongs to a different review - hand back the file the prompt named, unedited"
+      );
+    }
     // The band policy is the REVIEW's, recorded by the run that started it: this pass was
     // never given the flag, and a case reported HERE becomes a finding here
     // (src/report/verdicts.js asFinding), which has to land in the band the rest of the

@@ -68,9 +68,10 @@ export class HandbackRefused extends Error {
  * Read a returned REVIEW file and say which state it belongs to.
  *
  * `base` is the linter's own value, written into the file it handed out (`reviewFile`,
- * below) - so it is the authority on which state this hand-back belongs to, not a claim
- * to be checked against anything else. A name a person or an agent supplied has nowhere
- * safer to come from.
+ * below), so it is where the state is looked up - a name a person or an agent supplied
+ * has nowhere safer to come from. It is not taken on trust past that: the state names
+ * the one review file it hands out, and the caller refuses a file that is not it
+ * (src/cli.js runLoopPass).
  * @param {string} file  What the agent passed to --llm-verdict.
  * @returns {{state: string, entries: object[]}}
  */
