@@ -2134,7 +2134,6 @@ test("sca-xpi-declares-vendoring: names every vendoring file the XPI ships", () 
     "package-lock.json",
     "npm-shrinkwrap.json",
     "pnpm-lock.yaml",
-    "lib/deep/package.json",
   ]) {
     const out = declares({ ...built, [name]: "{}" }, archive);
     assert.equal(out.length, 1, `${name} in the XPI warns`);
@@ -2150,11 +2149,21 @@ test("sca-xpi-declares-vendoring: names every vendoring file the XPI ships", () 
         ...built,
         "VENDOR.md": "x",
         "package.json": "{}",
-        "a/package-lock.json": "{}",
+        "package-lock.json": "{}",
       },
       archive
     ).map((f) => f.file),
-    ["VENDOR.md", "a/package-lock.json", "package.json"]
+    ["VENDOR.md", "package-lock.json", "package.json"]
+  );
+
+  // A bundled library's own package.json or lock is no declaration: only the root ones
+  // are read as one.
+  assert.deepEqual(
+    declares(
+      { ...built, "lib/deep/package.json": "{}", "a/package-lock.json": "{}" },
+      archive
+    ),
+    []
   );
 
   // A DIRECTORY called vendor is not a vendoring file - only files are read.

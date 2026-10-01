@@ -33,8 +33,8 @@
         update that got its packaging wrong is simply told what to change.
       </p>
       <p>
-        All three file kinds count, matched by name at <em>any</em> depth in the package,
-        because a declaration is a declaration wherever the packaging put it. A shipped one
+        A VENDOR file counts at any depth, a <code>package.json</code> or lock file at the
+        root only, where the review reads them - a bundled library's own is no declaration. A shipped one
         means one of two things and the remedy differs: the submission type was misread, and
         the declarations belong in the archive; or an XPI-only submission was meant all
         along, and no archive was needed. The response offers both.

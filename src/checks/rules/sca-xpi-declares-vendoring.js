@@ -23,11 +23,10 @@ import { finding } from "../../report/finding.js";
 import { vendorFileNames } from "../../normalize/vendor.js";
 import { PACKAGE_FILE } from "../../vendor/package-file.js";
 import { TREE_LOCKS } from "../../vendor/locks.js";
-import { basename } from "../../util/files.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
-/** What the review reads a dependency DECLARATION from, by basename. A VENDOR file is
+/** What the review reads a dependency DECLARATION from, at the root. A VENDOR file is
  *  asked for separately, because what counts as one is that module's answer. */
 const DECLARATION_FILES = new Set([PACKAGE_FILE, ...TREE_LOCKS]);
 
@@ -35,25 +34,19 @@ const DECLARATION_FILES = new Set([PACKAGE_FILE, ...TREE_LOCKS]);
  * Every vendoring file the built XPI carries, as packaged paths, sorted and without
  * repeats.
  *
- * Matched at any depth, by basename, because a declaration is a declaration wherever the
- * packaging put it. Both halves read the same keyspace: for a built XPI `files` holds every
- * key the store has (src/addon/load.js), so a path from either is a path a reviewer can
- * open.
- *
- * Each half matches the way its own READER matches, which is why the case rules differ. A
- * VENDOR file is found case-insensitively (vendorFileNames), because that is how the review
- * finds the one it reads. A package.json or a lock is matched exactly, because that is how
- * npm resolves them and how src/vendor/package-file.js and src/vendor/locks.js read them.
- * Reporting a `Package.json` that nothing else in the review treats as one would name a file
- * the developer cannot act on.
+ * Each half matches the way its own READER matches. A VENDOR file is found at any depth and
+ * case-insensitively (vendorFileNames), because that is how the review finds the one it
+ * reads. A package.json or a lock is matched exactly and at the root only, because that is
+ * the one npm installs from and src/vendor/package-file.js and src/vendor/locks.js read - a
+ * bundled library's own package.json is no declaration, and nothing would act on it.
  * @param {import("../../addon/load.js").Addon} xpi
  * @returns {string[]}
  */
 function vendoringFilesIn(xpi) {
   const found = new Set(vendorFileNames(xpi));
-  for (const key of xpi.store.keys()) {
-    if (DECLARATION_FILES.has(basename(key))) {
-      found.add(key);
+  for (const name of DECLARATION_FILES) {
+    if (xpi.store.has(name)) {
+      found.add(name);
     }
   }
   return [...found].sort();
