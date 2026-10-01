@@ -144,6 +144,19 @@ test("flags an opaque orchestrator (make) and a network fetch", () => {
     mk.unresolved.some((u) => u.kind === "tool" && u.detail === "make")
   );
 
+  // A package manager the review does not install from is just as opaque, also when
+  // the root script hands the build to a nested project.
+  const yarn = collectBuildFiles(
+    build({
+      "package.json": JSON.stringify({
+        scripts: { build: "cd frontend && yarn install && yarn build" },
+      }),
+    })
+  );
+  assert.ok(
+    yarn.unresolved.some((u) => u.kind === "tool" && u.detail === "yarn")
+  );
+
   const net = collectBuildFiles(
     build({
       "package.json": JSON.stringify({ scripts: { build: "./b.sh" } }),

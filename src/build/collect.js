@@ -130,9 +130,14 @@ const SCRIPT_RUNNERS = new Set([
   "concurrently",
 ]);
 
-/** Opaque, non-npm build orchestrators the linter cannot follow: their presence in a
- *  script means the trace is incomplete -> human review. */
+/** Opaque tools the linter cannot follow - non-npm build orchestrators, and package
+ *  managers the review does not install from: their presence in a script means the trace
+ *  is incomplete -> human review. */
 const OPAQUE_TOOLS = new Set([
+  "yarn",
+  "yarnpkg",
+  "bun",
+  "bunx",
   "make",
   "gmake",
   "cmake",
