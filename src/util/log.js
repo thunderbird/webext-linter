@@ -1,23 +1,30 @@
 import { displayText } from "./text.js";
-// Minimal logger for the tool's narration - the live "what is going on" feed
-// (setup notices, progress, review activity). This is standard output: the feed is
-// one of the run's phases and goes to stdout, alongside the report. Only REAL
-// tool errors go to stderr, and those are written directly by the CLI (not
-// here). In quiet mode (--report-format json) nothing is emitted, so stdout
-// carries only the JSON document.
+// Minimal logger for the tool's own output, on two streams.
 //
-// Belongs here: the narration feed - info, debug (verbose), warn, progress, report,
-// the FEED levels and feedIndent, and the verbose/progress/feed/quiet toggles.
+// STDOUT carries the review: the report, the --llm-review prompt, and the live "what is
+// going on" feed (setup, progress, review activity) beside them. In quiet mode
+// (--report-format json) none of it is emitted, so stdout carries only the JSON document.
 //
-// Does NOT belong here: user-facing report content (findings, summaries), which
-// is built and emitted by src/report/*. Real tool errors (CLI writes those to
-// stderr directly).
+// STDERR carries every message that is NOT part of the normal review - a warning that
+// the run is degraded, a flag that cannot be honoured, a fatal error - and everything
+// written there goes through writeToStderr. In the runs that print a prompt for an agent,
+// the channel records instead of printing, and exitWith dumps the record as one block
+// after everything else: an agent's harness merges both streams, so a message printed in
+// place would read as part of the prompt.
+//
+// Belongs here: the narration feed - info, debug (verbose), progress, report, the FEED
+// levels and feedIndent - the stderr channel (warn, writeToStderr, exitWith), and the
+// verbose/progress/feed/quiet/recording toggles.
+//
+// Does NOT belong here: user-facing report content (findings, summaries), which is built
+// and emitted by src/report/*, or the wording of a message, which its caller owns.
 
 let verbose = false;
 let progressOn = false;
 let feedOn = true;
 let quiet = false;
-/** @type {string[]|null} Recorded lines while capturing, else null. */
+/** @type {string[]|null} The stderr messages held back while recording, else null. */
+let recorded = null;
 
 /**
  * Enable or disable verbose logging.
@@ -109,10 +116,9 @@ export function feedIndent(level) {
 }
 
 /**
- * Narrate to stdout when `show`, indented for its feed level, and record the
- * line whenever capture is on (independent of `show`). Quiet mode (JSON) emits
- * and records nothing. The level's indent is prepended to the first argument so
- * it sits OUTSIDE any color the caller wrapped the text in (spaces are colorless).
+ * Narrate to stdout when `show`, indented for its feed level. Quiet mode (JSON)
+ * emits nothing. The level's indent is prepended to the first argument so it sits
+ * OUTSIDE any color the caller wrapped the text in (spaces are colorless).
  *
  * @param {unknown[]} args
  * @param {boolean} show
@@ -147,8 +153,6 @@ export function info(...args) {
 
 /**
  * Narrate a debug line to the feed (stdout, only when verbose is enabled).
- * Recorded for capture only when verbose, so a non-verbose run does not bloat
- * the file.
  *
  * @param {...unknown} args
  */
@@ -164,15 +168,62 @@ export function debug(...args) {
 }
 
 /**
- * Narrate a warning notice to the feed - a line nested under its step (DETAIL),
- * shown when progress is enabled (a text run) and recorded for capture. These
- * are feed narration, not errors; real tool errors go to stderr, written by the
- * CLI.
+ * Hold stderr messages back until exit (on) or print them as they come (off). The CLI
+ * turns it on for the runs that print a prompt for an agent, and nothing else in this
+ * channel knows which those are.
+ *
+ * @param {boolean|undefined} v
+ */
+export function setRecording(v) {
+  recorded = v ? [] : null;
+}
+
+/**
+ * Write one message that is not part of the normal review to stderr - or hold it back
+ * for exitWith, while recording. Takes exactly what `process.stderr.write` takes: the
+ * caller owns its wording, newlines and colour.
+ *
+ * Never silenced by quiet mode. A message here says the run went wrong or cannot do
+ * what it was asked, and JSON mode keeps stdout clean, not stderr.
+ *
+ * @param {string} text
+ */
+export function writeToStderr(text) {
+  if (recorded) {
+    recorded.push(text);
+  } else {
+    process.stderr.write(text);
+  }
+}
+
+/**
+ * Warn that the run is carrying on degraded - an input that cannot be used as given, a
+ * refresh that failed. Indented as a DETAIL, so in a text run it sits under the feed step
+ * it belongs to. Silenced by quiet mode: JSON is a machine contract, and a degraded run's
+ * notice is for whoever watches it, not for the document.
  *
  * @param {...unknown} args
  */
 export function warn(...args) {
-  emit(args, progressOn, FEED.DETAIL);
+  if (quiet) {
+    return;
+  }
+  writeToStderr(`${PREFIX[FEED.DETAIL]}${args.join(" ")}\n`);
+}
+
+/**
+ * End the process, after dumping whatever stderr messages were held back - as one block
+ * under its own header, so a reader of the merged output sees them apart from the prompt
+ * and after everything else. With nothing recorded it prints nothing: outside the
+ * recording runs this is just the exit.
+ *
+ * @param {number} code
+ */
+export function exitWith(code) {
+  if (recorded?.length) {
+    process.stderr.write(`\n── Tool messages ──\n\n${recorded.join("")}`);
+  }
+  process.exit(code);
 }
 
 /**

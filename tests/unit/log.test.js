@@ -1,7 +1,7 @@
-// Unit tests for the feed logger's indentation levels + gating: the logger owns
-// the SECTION/STEP/DETAIL prefixes (callers pass a semantic level, never spaces),
-// progress and warn are gated on progressOn while info (the run banner) is always
-// shown, and quiet silences everything.
+// Unit tests for the logger's two streams. On stdout: the SECTION/STEP/DETAIL prefixes
+// (callers pass a semantic level, never spaces), progress gated on progressOn while info
+// (the run banner) is always shown, and quiet silencing the feed. On stderr: one channel,
+// writeToStderr, that prints or - while recording - holds messages back for exitWith.
 
 import { test, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
@@ -18,6 +18,9 @@ import {
   feedIndent,
   setProgress,
   setQuiet,
+  setRecording,
+  writeToStderr,
+  exitWith,
 } from "../../src/util/log.js";
 
 // The lines the logger writes with console.log while running fn (its stdout feed).
@@ -32,11 +35,26 @@ function emitted(fn) {
   return lines;
 }
 
-// The toggles are module globals; reset to a text-run state (feed on, not quiet)
-// before each test so cases do not leak state into one another.
+// What the logger writes to stderr while running fn, one entry per write.
+function toStderr(fn) {
+  const writes = [];
+  const spy = mock.method(process.stderr, "write", (t) =>
+    writes.push(String(t))
+  );
+  try {
+    fn();
+  } finally {
+    spy.mock.restore();
+  }
+  return writes;
+}
+
+// The toggles are module globals; reset to a text-run state (feed on, not quiet, not
+// recording) before each test so cases do not leak state into one another.
 beforeEach(() => {
   setProgress(true);
   setQuiet(false);
+  setRecording(false);
 });
 
 test("feedIndent maps each level to its exact prefix width", () => {
@@ -66,10 +84,15 @@ test("progress indents by its level; SECTION (the default) is column 0", () => {
   );
 });
 
-test("warn defaults to a DETAIL notice; info stays at column 0", () => {
+test("warn writes a DETAIL notice to stderr; info stays on stdout at column 0", () => {
+  assert.deepEqual(
+    toStderr(() => warn("Skipping symlink")),
+    ["      Skipping symlink\n"]
+  );
   assert.deepEqual(
     emitted(() => warn("Skipping symlink")),
-    ["      Skipping symlink"]
+    [],
+    "never on stdout"
   );
   assert.deepEqual(
     emitted(() => info("> banner")),
@@ -77,14 +100,26 @@ test("warn defaults to a DETAIL notice; info stays at column 0", () => {
   );
 });
 
-test("progress and warn are gated on progressOn; info is always shown", () => {
+// A warning says the run is degraded, so it reaches whoever runs it whatever the feed
+// shows. Gating it with the feed is how one landed, unsectioned, above an --llm-review
+// prompt on stdout.
+test("warn ignores the feed switches; only quiet silences it", () => {
+  setProgress(false);
+  setFeed(false);
+  try {
+    assert.deepEqual(
+      toStderr(() => warn("note")),
+      ["      note\n"]
+    );
+  } finally {
+    setFeed(true);
+  }
+});
+
+test("progress is gated on progressOn; info is always shown", () => {
   setProgress(false);
   assert.deepEqual(
     emitted(() => progress("s", FEED.STEP)),
-    []
-  );
-  assert.deepEqual(
-    emitted(() => warn("note")),
     []
   );
   // The run banner prints regardless of the progress feed.
@@ -94,15 +129,20 @@ test("progress and warn are gated on progressOn; info is always shown", () => {
   );
 });
 
-test("quiet silences every channel", () => {
+test("quiet silences the feed and warnings, never a fatal message", () => {
   setQuiet(true);
   assert.deepEqual(
     emitted(() => progress("s", FEED.STEP)),
     []
   );
   assert.deepEqual(
-    emitted(() => warn("note")),
+    toStderr(() => warn("note")),
     []
+  );
+  // JSON keeps stdout clean, not stderr: a run that went wrong still says so.
+  assert.deepEqual(
+    toStderr(() => writeToStderr("boom\n")),
+    ["boom\n"]
   );
   assert.deepEqual(
     emitted(() => info("> banner")),
@@ -155,5 +195,49 @@ test("debug removes control characters from what it dumps", () => {
     assert.match(lines[0], /\[2K \[1Afake/);
   } finally {
     setVerbose(false);
+  }
+});
+
+// The runs that print a prompt for an agent hold their stderr messages back and write them
+// as one block at exit, after everything else - the agent's harness merges both streams,
+// so a message printed in place would read as part of the prompt.
+test("while recording, stderr messages are held back and dumped by exitWith", () => {
+  const exit = mock.method(process, "exit", () => {});
+  try {
+    setRecording(true);
+    const held = toStderr(() => {
+      warn("degraded");
+      writeToStderr("fatal\nverify failed\n");
+    });
+    assert.deepEqual(held, [], "nothing printed in place");
+    const dumped = toStderr(() => exitWith(2)).join("");
+    assert.equal(
+      dumped,
+      "\n── Tool messages ──\n\n      degraded\nfatal\nverify failed\n",
+      "one block, under its header, in the order written"
+    );
+    assert.deepEqual(exit.mock.calls[0].arguments, [2]);
+  } finally {
+    exit.mock.restore();
+  }
+});
+
+// Outside the recording runs there is nothing held back, so the exit is just the exit.
+test("exitWith with nothing recorded writes nothing", () => {
+  const exit = mock.method(process, "exit", () => {});
+  try {
+    assert.deepEqual(
+      toStderr(() => exitWith(0)),
+      []
+    );
+    setRecording(true);
+    assert.deepEqual(
+      toStderr(() => exitWith(0)),
+      [],
+      "recording, but empty"
+    );
+    assert.equal(exit.mock.callCount(), 2);
+  } finally {
+    exit.mock.restore();
   }
 });

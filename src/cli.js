@@ -59,6 +59,8 @@ import {
   setProgress,
   setFeed,
   setQuiet,
+  setRecording,
+  writeToStderr,
 } from "./util/log.js";
 import { setColor, red } from "./util/color.js";
 import { wrapText } from "./util/text.js";
@@ -494,7 +496,7 @@ export async function main(argv) {
   try {
     registry = loadRegistry();
   } catch (err) {
-    process.stderr.write(`${err.message}\nverify failed\n`);
+    writeToStderr(`${err.message}\nverify failed\n`);
     return 2;
   }
   const checkIds = registry.checkIds();
@@ -507,14 +509,15 @@ export async function main(argv) {
     });
   } catch (err) {
     emitBanner(argv);
-    process.stderr.write(`${cleanParseError(err)}\n\n${helpText(checkIds)}`);
+    writeToStderr(`${cleanParseError(err)}\n\n${helpText(checkIds)}`);
     return 2;
   }
   const { values, positionals } = parsed;
 
-  // Output routing by format. Everything the tool narrates (the what-is-going-on
-  // feed) is standard output, alongside the report - only real tool errors go to
-  // stderr. JSON is a machine contract: quiet silences the feed so stdout
+  // Output routing by format. The review and the what-is-going-on feed are standard
+  // output; a message that is not part of the normal review - a degraded run, a flag
+  // that cannot be honoured, a fatal error - goes to stderr (src/util/log.js
+  // writeToStderr). JSON is a machine contract: quiet silences the feed so stdout
   // carries only the document.
   const format = values["report-format"] || "text";
   setQuiet(format === "json");
@@ -525,6 +528,14 @@ export async function main(argv) {
   // how it was produced - the Setup and Activity sections - is noise in it. The report's
   // own header and prompt are not feed and still print.
   setFeed(!values["llm-review"] && !values["llm-verdict"]);
+  // The runs that print a prompt for an agent hold their stderr messages back and write
+  // them as one block at exit: the agent's harness merges both streams, and a message
+  // printed in place would read as part of the prompt it is following.
+  setRecording(
+    Boolean(
+      values["llm-review"] || values["llm-verdict"] || values["llm-sca-review"]
+    )
+  );
   // Color only on an interactive text screen. Piped/redirected runs and JSON
   // stay plain, so nothing downstream has to undo it.
   setColor(format === "text" && Boolean(process.stdout.isTTY));
@@ -548,7 +559,7 @@ export async function main(argv) {
   // above have been given it: one question, asked once, at the point the value enters, and
   // before any branch can return without asking it.
   if (format !== "text" && format !== "json") {
-    process.stderr.write(
+    writeToStderr(
       `Invalid --report-format "${format}" (expected text or json).\n`
     );
     return 2;
@@ -566,7 +577,7 @@ export async function main(argv) {
     cdnLookup !== "true" &&
     cdnLookup !== "false"
   ) {
-    process.stderr.write(
+    writeToStderr(
       `Invalid --cdn-lib-lookup "${cdnLookup}" (expected true or false).\n`
     );
     return 2;
@@ -588,9 +599,7 @@ export async function main(argv) {
         !values[name].trim()
     );
     if (empty) {
-      process.stderr.write(
-        `--${empty[0]} needs a value, and none was given.\n`
-      );
+      writeToStderr(`--${empty[0]} needs a value, and none was given.\n`);
       return 2;
     }
   }
@@ -608,7 +617,7 @@ export async function main(argv) {
     checkIds
   );
   if (badCheck) {
-    process.stderr.write(
+    writeToStderr(
       `Unknown check "${badCheck}" (--checks-only/--checks-skip). Available: ${checkIds.join(", ")}.\n`
     );
     return 2;
@@ -626,7 +635,7 @@ export async function main(argv) {
     !values["llm-review"] &&
     values["llm-sca-review"] === undefined
   ) {
-    process.stderr.write(
+    writeToStderr(
       "--llm-skip-sweep names part of the --llm-review prompt to leave out, so it needs " +
         "--llm-review, or --llm-sca-review to hand to the review it prepares: a run that " +
         "prints its report has no prompt to cut down.\n"
@@ -640,7 +649,7 @@ export async function main(argv) {
     values["llm-sca-review"] === undefined
   ) {
     const many = skips.length > 1;
-    process.stderr.write(
+    writeToStderr(
       `${listOf(skips.map((s) => `--llm-skip-${s}`))} ${many ? "name parts" : "names part"} ` +
         `of the --llm-review prompt to leave out, so ${many ? "they need" : "it needs"} ` +
         "--llm-review, or " +
@@ -655,7 +664,7 @@ export async function main(argv) {
   // the same fact in two places, and a pass given it where the review was not would settle a
   // case in a band the rest of that review does not use.
   if (values["warnings-as-errors"] && values["llm-verdict"]) {
-    process.stderr.write(
+    writeToStderr(
       "--warnings-as-errors belongs to the review, which recorded it when it started, so " +
         "a --llm-verdict pass reads it back rather than being told it again. Drop it, or " +
         "start the review again with it.\n"
@@ -668,7 +677,7 @@ export async function main(argv) {
   if (values["llm-sca-review"]) {
     const given = SCA_FLAGS.filter((f) => values[f]);
     if (given.length) {
-      process.stderr.write(
+      writeToStderr(
         `--llm-sca-review works out ${listOf(given.map((f) => `--${f}`))} for you, ` +
           "so it cannot be given them. Drop them, or run --llm-review with the ones you " +
           "already have.\n"
@@ -676,14 +685,14 @@ export async function main(argv) {
       return 2;
     }
     if (values["llm-review"] || values["llm-verdict"]) {
-      process.stderr.write(
+      writeToStderr(
         "--llm-sca-review comes BEFORE a review: it prints how to start one and runs " +
           "none, so it cannot be combined with the flags that run or settle one.\n"
       );
       return 2;
     }
     if (format === "json") {
-      process.stderr.write(
+      writeToStderr(
         "--llm-sca-review is text only: it prints a prompt and no report, which is not " +
           "what --report-format json produces.\n"
       );
@@ -693,14 +702,14 @@ export async function main(argv) {
     // the add-on to review to the submission holding one. So the argument is required here
     // exactly as it is for a review, and refused in the plural for the same reason.
     if (positionals.length === 0) {
-      process.stderr.write(
+      writeToStderr(
         "--llm-sca-review reads the add-on argument as a submission folder, and none was " +
           "given. Name the folder holding the built .xpi and the archive of its source.\n"
       );
       return 2;
     }
     if (positionals.length > 1) {
-      process.stderr.write(
+      writeToStderr(
         `Only one submission can be prepared at a time, and ${positionals.length} were ` +
           `given: ${positionals.map((p) => `"${p}"`).join(", ")}. If the path contains ` +
           "spaces, quote it.\n"
@@ -713,7 +722,7 @@ export async function main(argv) {
     // here, unlike the --sca-* flags: this is the add-on argument, and no positional is
     // refused for the way it was spelled.
     if (!pointsAtFolder(path.resolve(folder))) {
-      process.stderr.write(
+      writeToStderr(
         `--llm-sca-review reads the add-on argument as a folder, and "${folder}" is not ` +
           "one. It is the submission folder - the one holding the built .xpi and the " +
           "archive of its source.\n"
@@ -725,7 +734,7 @@ export async function main(argv) {
       submission = scaSubmission(folder);
     } catch (err) {
       // The flag's name is this layer's: submission.js says what it found in the folder.
-      process.stderr.write(`--llm-sca-review "${folder}": ${err.message}\n`);
+      writeToStderr(`--llm-sca-review "${folder}": ${err.message}\n`);
       return 2;
     }
     // The prompt IS the output: no review has run, and none can until its reader answers
@@ -742,7 +751,7 @@ export async function main(argv) {
   }
 
   if (values["llm-review"] && values["llm-verdict"]) {
-    process.stderr.write(
+    writeToStderr(
       "--llm-review and --llm-verdict are the two ends of one review and cannot share a " +
         "run: --llm-review starts it, --llm-verdict carries it on.\n"
     );
@@ -758,7 +767,7 @@ export async function main(argv) {
   // said --llm-verdict is not helped by being told about --llm-review.
   if ((values["llm-review"] || values["llm-verdict"]) && format === "json") {
     const flag = values["llm-review"] ? "--llm-review" : "--llm-verdict";
-    process.stderr.write(
+    writeToStderr(
       `${flag} is text only: it prints a prompt and writes the files the review names, ` +
         "which is not what --report-format json produces.\n"
     );
@@ -783,7 +792,7 @@ export async function main(argv) {
   // ONE add-on per run. A silently ignored second positional is how an unquoted path with
   // a space in it ("/my sub/a.xpi") reviews "/my" and says nothing about the rest.
   if (positionals.length > 1) {
-    process.stderr.write(
+    writeToStderr(
       `Only one add-on can be reviewed at a time, and ${positionals.length} were given: ` +
         `${positionals.map((p) => `"${p}"`).join(", ")}. If the path contains spaces, ` +
         "quote it.\n"
@@ -800,7 +809,7 @@ export async function main(argv) {
   // is meaningless on its own - and unresolvable, since this layer resolves it against the
   // root. --sca-root alone is fine: the whole archive is the review source.
   if (values["sca-exp-source"] && !values["sca-root"]) {
-    process.stderr.write("--sca-exp-source requires --sca-root (SCA mode).\n");
+    writeToStderr("--sca-exp-source requires --sca-root (SCA mode).\n");
     return 2;
   }
 
@@ -836,7 +845,7 @@ export async function main(argv) {
           ? " This tool cannot open a source archive itself - extract it and point " +
             "--sca-root at the folder it produced."
           : "";
-      process.stderr.write(`${problem.text}${what}\n`);
+      writeToStderr(`${problem.text}${what}\n`);
       return 2;
     }
   }
@@ -851,7 +860,7 @@ export async function main(argv) {
     values["allow-experiments"] &&
     !values["sca-exp-source"]
   ) {
-    process.stderr.write(
+    writeToStderr(
       "--sca-exp-source is required with --allow-experiments in source code " +
         "archive (SCA) mode (it locates the Experiment code so it is not reviewed " +
         "as WebExtension code).\n"
@@ -887,7 +896,7 @@ export async function main(argv) {
     // A pipeline throw is a tool failure the review could not run through (an
     // unreachable/unusable schema, a bad review config, an unreadable add-on): state
     // it plainly and exit 2, distinct from a completed review that found errors.
-    process.stderr.write(`${err.message}\n${red("verify failed")}\n`);
+    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
 
@@ -1056,22 +1065,35 @@ async function runLoopPass(file, base) {
       );
       return 2;
     }
-    process.stderr.write(`${err.message}\n${red("verify failed")}\n`);
+    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
-  const next = issue(state, stateFile, texts.phases, registry);
+  // A failure from here on is the tool's: the hand-back was accepted. So it is not a
+  // refusal - the agent did nothing to correct - but ends the pass the way settle()
+  // does below. The prompt is built in full before any of it is printed, so a failure
+  // part-way leaves no half a prompt behind.
+  let next, lines;
+  try {
+    next = issue(state, stateFile, texts.phases, registry);
+    lines = next
+      ? loopPromptLines(texts, next.phase, next.steps, {
+          review: state.review,
+          command: `node verify.js --llm-verdict ${state.review}`,
+          schemaCache: state.paths.schemaCache ?? "",
+          description: state.paths.description ?? "",
+          build: state.paths.build ?? "",
+          details: reviewDetails(state),
+          scaRoot: state.paths.scaRoot ?? "",
+          schema: state.paths.schema,
+          ...sweepSlots(state),
+        })
+      : null;
+  } catch (err) {
+    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
+    return 2;
+  }
   if (next) {
-    for (const line of loopPromptLines(texts, next.phase, next.steps, {
-      review: state.review,
-      command: `node verify.js --llm-verdict ${state.review}`,
-      schemaCache: state.paths.schemaCache ?? "",
-      description: state.paths.description ?? "",
-      build: state.paths.build ?? "",
-      details: reviewDetails(state),
-      scaRoot: state.paths.scaRoot ?? "",
-      schema: state.paths.schema,
-      ...sweepSlots(state),
-    })) {
+    for (const line of lines) {
       process.stdout.write(`${line}\n`);
     }
     process.stdout.write("\n");
@@ -1091,7 +1113,7 @@ async function runLoopPass(file, base) {
     // recorded, and nothing re-prints a prompt for one that was already accepted. The
     // review ends here - a clean failure, not a stack trace, same as a state this build
     // cannot read.
-    process.stderr.write(`${err.message}\n${red("verify failed")}\n`);
+    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
   // Audible, and printed BEFORE the prompt: it is this tool's note to whoever ran the
