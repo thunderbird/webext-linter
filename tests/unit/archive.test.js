@@ -38,3 +38,24 @@ test("zipHashesUnder with empty subpath includes the whole repo", () => {
   zip.addFile("repo-ref/d/b.js", Buffer.from("B\n"));
   assert.equal(zipHashesUnder(zip.toBuffer(), "").size, 2);
 });
+
+// An entry declaring no content while carrying some (size and crc32 zeroed, as for an
+// empty file) would inflate without a cap and come back empty, so the archive is refused
+// rather than hashed.
+test("zipHashesUnder refuses an entry that hides its size", () => {
+  const zip = new AdmZip();
+  zip.addFile("repo-ref/sub/a.js", Buffer.alloc(1 << 20, 0x61));
+  const buf = zip.toBuffer();
+  for (const [sig, crcAt, sizeAt] of [
+    [0x04034b50, 14, 22],
+    [0x02014b50, 16, 24],
+  ]) {
+    for (let at = 0; at < buf.length - 4; at++) {
+      if (buf.readUInt32LE(at) === sig) {
+        buf.writeUInt32LE(0, at + crcAt);
+        buf.writeUInt32LE(0, at + sizeAt);
+      }
+    }
+  }
+  assert.throws(() => zipHashesUnder(buf, "sub"), /hides its size/);
+});

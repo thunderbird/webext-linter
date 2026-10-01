@@ -930,6 +930,34 @@ test("an unreadable archive is refused in our own words", () => {
   fs.writeFileSync(badCrc, buf);
   refuses(badCrc);
 
+  // One entry that declares no content but carries some: its size fields (local header
+  // +22, central +24) and crc32 zeroed, as for an empty file. adm-zip would inflate it
+  // without a cap and hand it back empty, so it is refused before inflating.
+  const hidden = new AdmZip();
+  hidden.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+  );
+  hidden.addFile("SECRET.js", Buffer.alloc(1 << 20, 0x61));
+  const hiddenBuf = hidden.toBuffer();
+  for (const [sig, crcAt, sizeAt] of [
+    [0x04034b50, 14, 22],
+    [0x02014b50, 16, 24],
+  ]) {
+    for (let at = 0; at < hiddenBuf.length - 4; at++) {
+      if (
+        hiddenBuf.readUInt32LE(at) === sig &&
+        hiddenBuf.includes("SECRET", at)
+      ) {
+        hiddenBuf.writeUInt32LE(0, at + crcAt);
+        hiddenBuf.writeUInt32LE(0, at + sizeAt);
+      }
+    }
+  }
+  const sizeZero = path.join(dir, "size-zero.xpi");
+  fs.writeFileSync(sizeZero, hiddenBuf);
+  refuses(sizeZero);
+
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

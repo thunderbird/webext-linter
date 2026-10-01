@@ -44,6 +44,7 @@ import JSON5 from "json5";
 import { buildManifestLoc } from "./manifest-loc.js";
 import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
 import { displayLine } from "../util/text.js";
+import { hidesItsSize } from "../util/zip.js";
 import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
 import { extractionDestination, EXTRACTED_SUFFIX } from "../util/dest.js";
 import { FileStore, fileView } from "./store.js";
@@ -688,7 +689,11 @@ function extractZip(zipPath, destDir, recordInstalledTrees) {
       }
       // Bound decompression against a zip bomb: check the declared size before
       // getData() so a lying-huge header aborts before inflating, then the actual
-      // inflated length in case a crafted header under-reports it.
+      // inflated length. adm-zip caps inflation at the declared size only when it is
+      // non-zero, so an entry declaring none while carrying data is refused first.
+      if (hidesItsSize(entry)) {
+        throw unreadableArchiveError(zipPath);
+      }
       if (unpacked + entry.header.size > ADDON_MAX_UNPACKED_BYTES) {
         throw addonTooLargeError();
       }

@@ -18,6 +18,7 @@ import AdmZip from "adm-zip";
 
 import { normalizedSha256 } from "../normalize/hash.js";
 import { VENDOR_TARBALL_MAX_UNPACKED_BYTES } from "../config.js";
+import { hidesItsSize } from "../util/zip.js";
 
 /**
  * The EOL-normalized SHA-256 of every file under `subpath` in a GitHub repo ZIP
@@ -26,7 +27,8 @@ import { VENDOR_TARBALL_MAX_UNPACKED_BYTES } from "../config.js";
  * @param {Buffer} zipBuf  The downloaded archive .zip bytes.
  * @param {string} [subpath]  Repo-relative directory; "" includes the whole repo.
  * @returns {Set<string>}  Normalized content hashes (see src/normalize/hash.js).
- * @throws if the buffer is not a valid ZIP or the unpacked subpath exceeds the cap.
+ * @throws if the buffer is not a valid ZIP, an entry hides its size (src/util/zip.js), or
+ *   the unpacked subpath exceeds the cap.
  */
 export function zipHashesUnder(zipBuf, subpath = "") {
   const prefix = subpath ? `${subpath.replace(/\/+$/, "")}/` : "";
@@ -41,6 +43,9 @@ export function zipHashesUnder(zipBuf, subpath = "") {
     const rel = entry.entryName.replace(/^[^/]+\//, "");
     if (prefix !== "" && !rel.startsWith(prefix)) {
       continue;
+    }
+    if (hidesItsSize(entry)) {
+      throw new Error("archive entry hides its size");
     }
     unpacked += entry.header.size;
     if (unpacked > VENDOR_TARBALL_MAX_UNPACKED_BYTES) {
