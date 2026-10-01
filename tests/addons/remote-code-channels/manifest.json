@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Lattice Relay",
+  "version": "1.0",
+  "permissions": ["messagesRead", "accountsRead", "storage"],
+  "background": { "scripts": ["bg.js"] },
+  "action": { "default_popup": "popup.html" },
+  "icons": { "16": "icon.png", "48": "icon.png" },
+  "browser_specific_settings": { "gecko": { "strict_min_version": "128.0" } }
+}

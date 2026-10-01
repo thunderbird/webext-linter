@@ -1,0 +1,7 @@
+{
+  "_comment": "Remote code and covert channels no other fixture carries. bg.js:1 loads a script with importScripts and bg.js:2 instantiates a remote WASM module - both remote-resources. bg.js:8 puts the user's messages into an image URL whose host is read from storage at runtime, so no literal names it - still a disguised-resource error. popup.html:5 loads a script from a data: URL, which cannot be judged statically and is escalated for a reviewer (golden).",
+  "expect": {
+    "remote-resources": ["bg.js:1", "bg.js:2"],
+    "disguised-resource": ["bg.js:8"]
+  }
+}

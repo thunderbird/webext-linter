@@ -7,6 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import AdmZip from "adm-zip";
 
+import { ADDON_MAX_UNPACKED_BYTES } from "../../src/config.js";
+
 import {
   loadAddon,
   loadSourceArchive,
@@ -958,6 +960,34 @@ test("an unreadable archive is refused in our own words", () => {
   fs.writeFileSync(sizeZero, hiddenBuf);
   refuses(sizeZero);
 
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A zip bomb is refused by the size its entries DECLARE, before anything is inflated: an
+// entry claiming more than the unpacked cap ends the read with the size error, and the
+// destination this call created is removed rather than left half-written.
+test("an archive declaring more than the unpacked cap is refused before inflating", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-zipcap-"));
+  const zip = new AdmZip();
+  zip.addFile("manifest.json", Buffer.from('{"manifest_version":3}'));
+  zip.addFile("big.js", Buffer.from("x;"));
+  const buf = zip.toBuffer();
+  // The uncompressed-size field of each header naming big.js: local +22, central +24.
+  for (const [sig, sizeAt] of [
+    [0x04034b50, 22],
+    [0x02014b50, 24],
+  ]) {
+    for (let at = 0; at < buf.length - 4; at++) {
+      if (buf.readUInt32LE(at) === sig && buf.includes("big.js", at)) {
+        buf.writeUInt32LE(ADDON_MAX_UNPACKED_BYTES + 1, at + sizeAt);
+      }
+    }
+  }
+  const file = path.join(dir, "big.xpi");
+  fs.writeFileSync(file, buf);
+  const dest = path.join(dir, "big.xpi.extracted");
+  assert.throws(() => loadAddon(file, dest, XPI), /unpacked size exceeds/);
+  assert.equal(fs.existsSync(dest), false, "the partial extraction is removed");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
