@@ -72,6 +72,16 @@ test("inputFor recovers the sibling a check ran on", () => {
 // The wrap and the registry entry are one decision in two files, so the failure when they
 // disagree has to name both halves. Only the `all` route names the artifacts; left to
 // itself the body would iterate nothing on any other route and report a clean review.
+// A body's results are read synchronously, so an async one would come back empty and
+// read as a clean review - it is refused by name instead.
+test("a perArtifact body that returns a promise fails by name", () => {
+  const wrapped = perArtifact(async () => ({ findings: [{ file: "x" }] }));
+  assert.throws(
+    () => wrapped({ xpi: {}, sca: null }, { id: "some-check", input: "all" }),
+    /some-check wraps an async body in perArtifact/
+  );
+});
+
 test("a perArtifact body routed anywhere but `all` fails by name", () => {
   const wrapped = perArtifact(() => ({ findings: [] }));
   assert.throws(

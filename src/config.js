@@ -109,23 +109,6 @@ export const MAX_NOTE = 2000;
  */
 export const PROMPT_SKIPS = ["summary", "manual"];
 
-/**
- * Whether the reference graph (reachability) skips "non-authored" JS - library,
- * minified, obfuscated, or VENDOR.md-declared files (see nonAuthoredJs in
- * src/lib/bundled.js) - when extracting outgoing edges.
- *
- * FALSE (default): reachability parses EVERY file for edges. The source-level
- * finding scanners (the eval checks, unsafe-html, remote-resources, code-sanity)
- * still skip those files on purpose - a bundled library legitimately uses
- * eval/innerHTML/sync-XHR, so scanning its internals is noise, and minified or
- * obfuscated code is rejected and re-reviewed as original source anyway. But
- * reachability must NOT skip them: dropping a file's loader edges
- * (import/getURL/executeScript/...) makes every file it loads look unreachable,
- * so a genuinely-used asset gets reported as unused - a wrong result. So the
- * graph follows edges everywhere.
- */
-export const REACHABILITY_SKIPS_NON_AUTHORED = false;
-
 // Vendor verification (src/vendor/verify.js) is the only stage that makes
 // outbound network requests. It runs once, before the review, and the checks
 // read its result.

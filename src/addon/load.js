@@ -237,7 +237,8 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   source archive below.
  *
  *   `recordInstalledTrees` is off by default and describes a submitted SOURCE ARCHIVE,
- *   which asks for it by name. It makes a node_modules directory a RECORDED path instead of
+ *   which asks for it by name; it applies to a folder read, since a source archive arrives
+ *   extracted. It makes a node_modules directory a RECORDED path instead of
  *   content: its paths land in `nodeModules` and not one of its files is read. An installed
  *   tree is not part of a submission - the reviewer installs it - so reading it would review
  *   bytes the build replaces. In an ADD-ON, which is what users receive, a folder called
@@ -270,14 +271,13 @@ export function loadAddon(
   } else {
     const dest =
       extractTo ?? extractionDestination(`${resolved}${EXTRACTED_SUFFIX}`);
-    // A recorded installed tree and a stored link entry are what extractZip will not put
-    // on disk, so they are what the read-back below cannot rediscover there - everything
-    // else (files, archives, symlink notices) is real on disk after extraction and is
-    // read the same way an already-unpacked submission's is.
-    const packed = extractZip(resolved, dest, recordInstalledTrees);
-    const unpackedDir = readDir(dest, recordInstalledTrees);
-    ({ nodeModules } = packed);
-    ({ store, archives, skipped, directories } = unpackedDir);
+    // A stored link entry is what extractZip will not put on disk, so it is what the
+    // read-back below cannot rediscover there - everything else (files, archives, symlink
+    // notices) is real on disk after extraction and is read the same way an
+    // already-unpacked submission's is.
+    const packed = extractZip(resolved, dest);
+    const unpackedDir = readDir(dest);
+    ({ store, nodeModules, archives, skipped, directories } = unpackedDir);
     // Both halves, so which one can see a link is not a fact this line depends on.
     symlinks = [...packed.symlinks, ...unpackedDir.symlinks];
   }
@@ -630,14 +630,11 @@ function unreadableArchiveError(zipPath) {
  * the whole thing.
  * @param {string} zipPath  Path to the .xpi/.zip archive.
  * @param {string} destDir  Where to write it. Created if missing.
- * @param {boolean} [recordInstalledTrees]  See loadAddon: record a node_modules entry's
- *   directory as a path instead of extracting it. Off means such an entry is extracted
- *   like any other, which is what a shipped add-on's files are.
- * @returns {{nodeModules: string[], symlinks: {path: string, cause: object}[]}}  What
- *   was skipped and never written - the facts a later read of destDir cannot recover,
- *   because nothing is there to find.
+ * @returns {{symlinks: {path: string, cause: object}[]}}  The stored links skipped and
+ *   never written - the fact a later read of destDir cannot recover, because nothing is
+ *   there to find.
  */
-function extractZip(zipPath, destDir, recordInstalledTrees) {
+function extractZip(zipPath, destDir) {
   let zip;
   try {
     zip = new AdmZip(zipPath);
@@ -646,12 +643,11 @@ function extractZip(zipPath, destDir, recordInstalledTrees) {
     // The container itself: truncated, or not a zip at all.
     throw unreadableArchiveError(zipPath);
   }
-  const nodeModules = new Set();
   const symlinks = [];
   let unpacked = 0;
   // Created up front, not only by the first entry's own mkdirSync: an archive with no
-  // file entries at all (only directories, or only a node_modules subtree) would
-  // otherwise leave nothing here for readDir to walk.
+  // file entries at all (only directories) would otherwise leave nothing here for
+  // readDir to walk.
   fs.mkdirSync(destDir, { recursive: true });
   try {
     for (const entry of zip.getEntries()) {
@@ -668,19 +664,6 @@ function extractZip(zipPath, destDir, recordInstalledTrees) {
       if (!isSafeAddonPath(name)) {
         throw unreadableArchiveError(zipPath);
       }
-      // Where an installed tree is recorded rather than read, record the outer
-      // node_modules directory and skip BEFORE getData(), so its contents never enter
-      // memory or reach disk. Otherwise the name means nothing here: an add-on's entries
-      // are its content whatever directory they sit in, and the size caps around this
-      // loop are what keep a large one bounded.
-      if (recordInstalledTrees) {
-        const segs = name.split("/");
-        const nm = segs.indexOf("node_modules");
-        if (nm !== -1 && nm < segs.length - 1) {
-          nodeModules.add(segs.slice(0, nm + 1).join("/"));
-          continue;
-        }
-      }
       // An entry the archive stored AS a link carries a target path where a file's bytes
       // belong. Record it and skip BEFORE getData(), so the store never holds a file
       // whose entire content is the name of another one.
@@ -688,10 +671,10 @@ function extractZip(zipPath, destDir, recordInstalledTrees) {
         symlinks.push({ path: name, cause: SYMLINK_CAUSE.ENTRY });
         continue;
       }
-      // Bound decompression against a zip bomb: check the declared size before
-      // getData() so a lying-huge header aborts before inflating, then the actual
-      // inflated length. adm-zip caps inflation at the declared size only when it is
-      // non-zero, so an entry declaring none while carrying data is refused first.
+      // Bound decompression against a zip bomb by the declared size, before getData():
+      // adm-zip inflates into a buffer of exactly that size, but caps inflation by it only
+      // when it is non-zero, so an entry declaring none while carrying data is refused
+      // first.
       if (hidesItsSize(entry)) {
         throw unreadableArchiveError(zipPath);
       }
@@ -708,6 +691,8 @@ function extractZip(zipPath, destDir, recordInstalledTrees) {
         // without them is not a review of it.
         throw unreadableArchiveError(zipPath);
       }
+      // The same cap on the bytes actually returned: adm-zip never returns more than the
+      // header declared, so this holds only if a future version did.
       unpacked += data.length;
       if (unpacked > ADDON_MAX_UNPACKED_BYTES) {
         throw addonTooLargeError();
@@ -720,7 +705,7 @@ function extractZip(zipPath, destDir, recordInstalledTrees) {
     fs.rmSync(destDir, { recursive: true, force: true });
     throw err;
   }
-  return { nodeModules: [...nodeModules], symlinks };
+  return { symlinks };
 }
 
 // A zip entry's external attributes carry the Unix mode in their high 16 bits, and the

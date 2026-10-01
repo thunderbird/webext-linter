@@ -5,10 +5,8 @@
 // family, setIcon, tabs.create, ... - extracted by loader-files.js). Two checks share
 // this: unused-files (files reachable from ANY entry point) and
 // minimize-web-accessible-resources (resources reachable from a WEB-FACING entry point,
-// i.e. a content script). Whether library/minified/vendored JS is parsed for edges is
-// the REACHABILITY_SKIPS_NON_AUTHORED toggle in src/config.js - off by default, so the
-// graph follows edges everywhere (skipping them would hide a loader and wrongly orphan
-// what it loads). `hasDynamicLoaders` is set when a LIVE (reachable) file builds a load
+// i.e. a content script). Library, minified and vendored JS is parsed for edges like any
+// other: skipping it would hide a loader and wrongly orphan what it loads. `hasDynamicLoaders` is set when a LIVE (reachable) file builds a load
 // path at runtime (dynamic import/getURL) that static analysis can't follow - a loader
 // in dead code never runs, so it is dropped. `isLive` says whether a file is reached
 // from any entry point. A `mentionsOf` string-find net catches references the structured
@@ -59,7 +57,6 @@ import {
   HTML_EXTENSIONS,
   RECOGNIZED_EXTS,
 } from "../util/files.js";
-import { REACHABILITY_SKIPS_NON_AUTHORED } from "../config.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
@@ -102,10 +99,6 @@ const PLAIN_HTML = new Set([".html", ".htm"]);
  * @property {(file: string) => boolean} isLive  Reachable from ANY entry point
  *   (general or web-facing) - tells a check whether a referrer is itself live
  *   code, so a reference from a dead file can be discounted.
- * @property {(roots: Iterable<string>) => Set<string>} closureFrom  The files
- *   reachable from the given roots over the same reference edges (imports,
- *   module loaders, HTML/CSS), roots included - used to gather a file's nested
- *   helper modules.
  * @property {{file: string, referrer: string, line?: number}[]} unrecognizedRefs
  *   Live packaged files referenced by the manifest.json or a <script> tag whose suffix is not
  *   in RECOGNIZED_EXTS - the browser loads them but the tool cannot classify them. `file`
@@ -163,7 +156,6 @@ function compute(ctx) {
       dynamicLoaderSites: [],
       mentionsOf: () => [],
       isLive: () => false,
-      closureFrom: () => new Set(),
       unrecognizedRefs: [],
     };
   }
@@ -175,10 +167,6 @@ function compute(ctx) {
   // does not load the add-on's own files, so its dynamic loads must not make
   // every unreferenced add-on file look ambiguous.
   const nonAuthored = nonAuthoredJs(ctx);
-  // JS we do NOT parse for outgoing edges. Off by default (see config.js):
-  // skipping a non-authored file would drop its loader edges and make the files
-  // it loads look unreachable. The finding scanners still skip these themselves.
-  const skipParse = REACHABILITY_SKIPS_NON_AUTHORED ? nonAuthored : new Set();
 
   // Host-page directories per script, for resolving page-relative loader paths
   // (computed once, shared with bundled-files via the per-ctx cache).
@@ -253,9 +241,6 @@ function compute(ctx) {
   }
 
   for (const src of ctx.jsSources || []) {
-    if (skipParse.has(src.file)) {
-      continue;
-    }
     // JS import/require/importScripts are relative to the importing file.
     // localImportsOf returns the pass's precomputed refs, or re-scans for a
     // shipped-view source the pass never ran on.
@@ -403,7 +388,6 @@ function compute(ctx) {
     dynamicLoaderSites: liveLoaders,
     mentionsOf: makeMentions(files),
     isLive,
-    closureFrom: (roots) => bfs(new Set(roots), outEdges),
     // Keep only LIVE targets: a manifest-declared file is an entry point (always live), and
     // a <script src> target is live iff its page is reached - a reference in dead code never
     // executes, so reporting it would be noise (and its dead page is already unused-files).

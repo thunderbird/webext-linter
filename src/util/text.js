@@ -9,8 +9,7 @@
 // sink that is one line, displayPath for a value the reader copies back. Which to call is
 // documented on each.
 //
-// Belongs here: wrapText (a generic width-wrapper), humanSize (a byte-size formatter) and
-// that guard family. Does NOT belong here: the report's section layout
+// Belongs here: wrapText (a generic width-wrapper) and that guard family. Does NOT belong here: the report's section layout
 // (src/report/format.js) or the activity-feed narration
 // (src/checks/escalation.js) that call them.
 
@@ -60,23 +59,6 @@ export function wrapText(text, indent = "", width = 80) {
     out.push(cur);
   }
   return out;
-}
-
-/**
- * A byte count as a short human string: "812 B", "4.5 KB", "2.4 MB" (one
- * decimal for KB/MB). Used for a reviewer-payload size in the summary status lines.
- * @param {number} bytes
- * @returns {string}
- */
-export function humanSize(bytes) {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const kb = bytes / 1024;
-  if (kb < 1024) {
-    return `${kb.toFixed(1)} KB`;
-  }
-  return `${(kb / 1024).toFixed(1)} MB`;
 }
 
 /**

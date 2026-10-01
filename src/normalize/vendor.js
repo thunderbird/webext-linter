@@ -26,9 +26,9 @@
 // unparseable finding quotes the accepted shapes (assets/registry.yaml).
 //
 // Belongs here: the deterministic VENDOR parse only - locating the file
-// (readVendorFile), the {path, sourceUrl} extraction (parseVendorEntries), and the
-// entries whose declared file is absent (missingVendorEntries). It is review-free
-// and pure.
+// (readVendorFile) and the {path, sourceUrl} extraction, split by
+// readVendorDeclarations into what resolved and what is absent. It is review-free and
+// pure.
 //
 // Does NOT belong here: a reviewer parse fallback and the canonical resolved set
 // (-> src/vendor/resolve.js). Nor any verdict about what was parsed: ONE source
@@ -709,26 +709,4 @@ export function readVendorDeclarations(addon) {
     });
   }
   return { resolved, missing };
-}
-
-/**
- * Parse the add-on's VENDOR file into the third-party entries it declares: each a
- * packaged-file path and the http(s) source URL paired with it. A declared path the
- * submission does not hold is not here - it is in missingVendorEntries.
- * Deterministic and pure; returns [] when there is no VENDOR file.
- * @param {Addon} addon
- * @returns {VendorEntry[]}
- */
-export function parseVendorEntries(addon) {
-  return readVendorDeclarations(addon).resolved;
-}
-
-/**
- * The declared paths the submission does NOT hold - the other half of the same
- * reading. Deterministic and pure; returns [] when there is no VENDOR file.
- * @param {Addon} addon
- * @returns {VendorEntry[]}
- */
-export function missingVendorEntries(addon) {
-  return readVendorDeclarations(addon).missing;
 }

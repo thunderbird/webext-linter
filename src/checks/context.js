@@ -28,7 +28,7 @@ import { apiUsageOf } from "./extract.js";
  *   is settled once, when the archive is split into views (src/addon/load.js scaViews), and a
  *   check reads the files it was routed rather than a path.
  * @property {import("../schema/index.js").SchemaIndex} schema
- * @property {{allowExperiments?: boolean, libraryHashes?: Map<string, object>}} options
+ * @property {{allowExperiments?: boolean}} options
  * @property {object} mode  The REVIEW_MODE enum member (XPI/SCA); read as `mode?.sca`.
  * @property {boolean} invalidExperiment
  * @property {?import("../addon/load.js").WebExtManifestRecord} manifest

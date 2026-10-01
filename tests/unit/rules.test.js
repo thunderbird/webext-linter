@@ -50,6 +50,7 @@ import {
 import vendorVulnerable from "../../src/checks/rules/vendor-vulnerable.js";
 import vendorVulnerableDev from "../../src/checks/rules/vendor-vulnerable-dev.js";
 import { rawSha256 } from "../../src/normalize/hash.js";
+import { classifyBundled } from "../../src/lib/bundled.js";
 import trademarkViolation from "../../src/checks/rules/trademark-violation.js";
 import trademarkThunderbirdLocale from "../../src/checks/rules/trademark-thunderbird-locale.js";
 import trademarkThunderbirdName from "../../src/checks/rules/trademark-thunderbird-name.js";
@@ -115,7 +116,7 @@ import { loadSchemaFiles } from "../../src/schema/load.js";
 import { buildSchemaIndex, SchemaIndex } from "../../src/schema/index.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 import { runExtractionPass, apiUsageOf } from "../../src/checks/extract.js";
-import { parseVendorEntries } from "../../src/normalize/vendor.js";
+import { readVendorDeclarations } from "../../src/normalize/vendor.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const schema = buildSchemaIndex(
@@ -136,7 +137,7 @@ const filesCtx = (files, { libs = [] } = {}) => {
   const addon = {
     files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
   };
-  const manifest = parseVendorEntries(addon);
+  const manifest = readVendorDeclarations(addon).resolved;
   addon.vendor = { set: new Set(manifest.map((e) => e.path)), manifest };
   // `libs`: file keys whose raw hash is registered as a known library, so the
   // hash-based classifier tags them `library` (and names them).
@@ -146,7 +147,8 @@ const filesCtx = (files, { libs = [] } = {}) => {
       { name: "demolib", version: "1.0.0" },
     ])
   );
-  return { artifact: addon, options: { libraryHashes } };
+  addon.bundled = classifyBundled(addon, { libraryHashes });
+  return { artifact: addon };
 };
 
 // Run a check with a fake ctx.note collector and return the recorded activity.
@@ -320,21 +322,25 @@ test("sync-xhr / debugger / async-onmessage skip non-authored code", () => {
     `debugger;\n` +
     `browser.runtime.onMessage.addListener(async (m) => {});\n`;
   const code = body + "var a = 1;\n".repeat(200); // >1KB so it is classified
-  const ctxFor = (file, lib = false) => ({
-    jsSources: parsed([{ file, code, lineOffset: 0 }]),
-    artifact: {
+  const ctxFor = (file, lib = false) => {
+    const artifact = {
       files: new Map([[file, Buffer.from(code)]]),
       manifest: manifestOf({}),
-    },
-    schema,
-    options: lib
-      ? {
-          libraryHashes: new Map([
+    };
+    // A hash-identified library is classified so, as setup's classifyReview does.
+    artifact.bundled = classifyBundled(artifact, {
+      libraryHashes: lib
+        ? new Map([
             [rawSha256(Buffer.from(code)), { name: "lib", version: "1" }],
-          ]),
-        }
-      : {},
-  });
+          ])
+        : new Map(),
+    });
+    return {
+      jsSources: parsed([{ file, code, lineOffset: 0 }]),
+      artifact,
+      schema,
+    };
+  };
   // A hash-identified library -> non-authored -> all three checks skip it. debugger
   // escalates rather than rejecting, so its silence is measured on the other array.
   const lib = ctxFor("vendor/lib.min.js", true);
@@ -407,20 +413,24 @@ test("code-sanity flags an empty block, not an empty function body", () => {
 // findings are noise); the same code under an authored filename is.
 test("code-sanity skips non-authored code, lints authored code", () => {
   const redecl = "var a = 1;\n".repeat(200); // ~2KB, trips no-redeclare, short lines
-  const ctxFor = (file, lib = false) => ({
-    jsSources: parsed([{ file, code: redecl, lineOffset: 0 }]),
-    artifact: {
+  const ctxFor = (file, lib = false) => {
+    const artifact = {
       files: new Map([[file, Buffer.from(redecl)]]),
       manifest: manifestOf({}),
-    },
-    options: lib
-      ? {
-          libraryHashes: new Map([
+    };
+    // A hash-identified library is classified so, as setup's classifyReview does.
+    artifact.bundled = classifyBundled(artifact, {
+      libraryHashes: lib
+        ? new Map([
             [rawSha256(Buffer.from(redecl)), { name: "lib", version: "1" }],
-          ]),
-        }
-      : {},
-  });
+          ])
+        : new Map(),
+    });
+    return {
+      jsSources: parsed([{ file, code: redecl, lineOffset: 0 }]),
+      artifact,
+    };
+  };
   // A hash-identified library -> non-authored -> skipped entirely.
   assert.equal(
     codeSanity.run(withManifest(ctxFor("vendor/lib.min.js", true))).findings

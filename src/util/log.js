@@ -13,7 +13,7 @@ import { displayText } from "./text.js";
 // place would read as part of the prompt.
 //
 // Belongs here: the narration feed - info, debug (verbose), progress, report, the FEED
-// levels and feedIndent - the stderr channel (warn, writeToStderr, exitWith), and the
+// levels - the stderr channel (warn, writeToStderr, exitWith), and the
 // verbose/progress/feed/quiet/recording toggles.
 //
 // Does NOT belong here: user-facing report content (findings, summaries), which is built
@@ -101,19 +101,6 @@ export const FEED = { SECTION: 0, STEP: 1, DETAIL: 2 };
 // Indentation for each FEED level, indexed by its value. Owned here so the feed's
 // shape lives in one place; callers pass a level, emit() maps it to spaces.
 const PREFIX = ["", "  ", "      "];
-
-/**
- * The indent string for a feed level, for a caller that must build the prefix
- * into a wrapText() call so wrapped continuation lines hang-align (a reviewer
- * verdict list, the escalation header). A plain line passes the level to
- * progress() instead of prefixing by hand.
- *
- * @param {number} level  A FEED value.
- * @returns {string}
- */
-export function feedIndent(level) {
-  return PREFIX[level] ?? "";
-}
 
 /**
  * Narrate to stdout when `show`, indented for its feed level. Quiet mode (JSON)

@@ -71,10 +71,8 @@ import { isMinified, isMinifiedJs } from "./minified.js";
  * eval checks, unsafe-html, remote-resources, code-sanity) skip these as noise -
  * minified or obfuscated code is forbidden anyway (minified-code,
  * obfuscated-code and missing-library reject it and request the original sources,
- * which are then reviewed), and vendored files are declared third-party. Reachability skips
- * them only when REACHABILITY_SKIPS_NON_AUTHORED is on (src/config.js, off by
- * default), since dropping their loader edges would wrongly orphan what they
- * load.
+ * which are then reviewed), and vendored files are declared third-party. Reachability still
+ * follows their edges, since dropping a loader would wrongly orphan what it loads.
  *
  * The `library` tag is a content-hash match (libraryHashes); the matched release
  * is named on tag.libraryId, which missing-library surfaces and which
@@ -113,7 +111,7 @@ export const MIN_CLASSIFY_BYTES = 1024;
  * @param {{libraryHashes?: Map<string, LibraryId>}} [opts]
  * @returns {{classified: BundleTag[], nonAuthored: Set<string>}}
  */
-export function classifyFiles(addon, { libraryHashes = new Map() } = {}) {
+function classifyFiles(addon, { libraryHashes = new Map() } = {}) {
   const classified = [];
   const nonAuthored = new Set();
   for (const [file, buf] of withExperiment(addon)) {
@@ -164,7 +162,7 @@ export function classifyFiles(addon, { libraryHashes = new Map() } = {}) {
  *   classifyFiles.
  * @returns {Bundled}
  */
-export function assembleBundled({ classified, nonAuthored }) {
+function assembleBundled({ classified, nonAuthored }) {
   // `untrusted` is filled later (cdn-lookup.js, vendor/verify.js) for an
   // identified-but-not-popular library: known by content, but not confirmed
   // widely used, so NOT in the trusted/exempt family - see markUntrusted.
@@ -263,23 +261,15 @@ export function applyUnverifiedVendor(addon) {
 }
 
 /**
- * The bundled classification for this review: the addon.bundled the pipeline computed in
- * setup, or a lazy compute for a caller that ran no setup step (unit tests). Memoized so the
- * ~8 consumers share one answer.
+ * The bundled classification of the routed artifact: the addon.bundled the pipeline
+ * computed in setup and reconciled against the vendor audit (classifyReview,
+ * identifyBundledLibraries). A sealed field, so an artifact setup never classified throws
+ * rather than answering with a classification that skipped the reconciliation.
  * @param {RunContext} ctx
  * @returns {Bundled}
  */
 function getBundled(ctx) {
-  // The ARTIFACT's answer wins: the pipeline reconciles it against the vendor audit, which a
-  // lazy recompute cannot see. In SCA it pre-classifies the built XPI too; in XPI mode they
-  // are one artifact. The fallback fires only for a rejected Experiment or a direct unit ctx,
-  // and is memoized on the ctx rather than stapled to the artifact.
-  return (
-    ctx.artifact.bundled ??
-    ((ctx.cache ??= {}).bundled ??= classifyBundled(ctx.artifact, {
-      libraryHashes: ctx.options.libraryHashes,
-    }))
-  );
+  return ctx.artifact.bundled;
 }
 
 /**

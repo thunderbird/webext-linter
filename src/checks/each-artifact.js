@@ -27,7 +27,8 @@ import { wiringError } from "../lib/errors.js";
  * its own artifact minted, so the report says which side every case is in.
  *
  * @param {(ctx: RunContext, check: LoadedCheck) => {findings?: object[], escalations?: object[]}} fn
- *   The per-artifact body, unchanged from the one-artifact shape.
+ *   The per-artifact body, unchanged from the one-artifact shape. Synchronous: a promise
+ *   would be read as an empty result, so one is refused.
  * @returns {(ctx: RunContext, check: LoadedCheck) => {findings: object[], escalations: object[]}}
  */
 export function perArtifact(fn) {
@@ -53,6 +54,12 @@ export function perArtifact(fn) {
       // object per check would recompute the reachability graph every time.
       one.note = ctx.note;
       const out = fn(one, check) ?? {};
+      if (typeof out.then === "function") {
+        throw wiringError(
+          `${check?.id ?? "a check"} wraps an async body in perArtifact, which reads ` +
+            "results synchronously"
+        );
+      }
       findings.push(...(out.findings ?? []));
       escalations.push(...(out.escalations ?? []));
     }

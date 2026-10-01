@@ -72,11 +72,7 @@ import {
   verifyScaDependencies,
   auditIdentifiedLibraries,
 } from "./vendor/verify.js";
-import {
-  classifyFiles,
-  assembleBundled,
-  applyUnverifiedVendor,
-} from "./lib/bundled.js";
+import { classifyBundled, applyUnverifiedVendor } from "./lib/bundled.js";
 import { collectJsSources } from "./addon/sources.js";
 import { runExtractionPass } from "./checks/extract.js";
 import { resolveCdnLibraries } from "./lib/cdn-lookup.js";
@@ -870,7 +866,7 @@ export async function runPipeline(opts) {
   // artifact's own template can shadow them. Only what a check reads goes on `options`.
   const env = {
     schema,
-    options: { allowExperiments: opts.allowExperiments, libraryHashes },
+    options: { allowExperiments: opts.allowExperiments },
     mode,
     invalidExperiment,
     manifest: webExtManifestRecord,
@@ -1262,8 +1258,7 @@ function canWriteDir(dir) {
 function classifyReview(addon, { libraryHashes }) {
   // Reuse the classification when the caller already has one (the SHIPPED XPI carries its own,
   // computed in Phase 2 by `vendor-xpi`); otherwise classify now.
-  addon.bundled =
-    addon.bundled ?? assembleBundled(classifyFiles(addon, { libraryHashes }));
+  addon.bundled = addon.bundled ?? classifyBundled(addon, { libraryHashes });
 }
 
 /**
@@ -1404,8 +1399,11 @@ export async function resolveReviewSchema({
   const newest = Math.max(...candidates.map((c) => c.major));
   if (
     !stepped &&
-    cap > newest &&
-    schemaCacheAgeDays(cacheDir, candidates) > 1
+    schemaSnapshotIsStale({
+      cap,
+      newest,
+      ageDays: schemaCacheAgeDays(cacheDir, candidates),
+    })
   ) {
     setupStep("Refreshing review schemas (add-on targets a newer Thunderbird)");
     stepped = true;

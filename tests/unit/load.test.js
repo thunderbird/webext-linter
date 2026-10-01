@@ -1055,11 +1055,9 @@ test("loadAddon(file) with no extractTo defaults beside the archive", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// node_modules is never decompressed - not into memory, not to disk - so
-// a later read of the extracted folder cannot rediscover it there. addon.nodeModules has
-// to come from the extraction step itself, or committed-node-modules would silently stop
-// firing on every zip-origin submission.
-test("loadAddon(file) records node_modules without writing it to disk", () => {
+// In an ADD-ON a node_modules folder is shipped content: extracted and reviewed like any
+// other file, and nothing recorded instead.
+test("a packed add-on's node_modules is extracted and reviewed like any content", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-extract-nm-"));
   const zip = new AdmZip();
   zip.addFile(
@@ -1073,17 +1071,6 @@ test("loadAddon(file) records node_modules without writing it to disk", () => {
   const file = path.join(dir, "addon.xpi");
   zip.writeZip(file);
 
-  const dest = path.join(dir, "addon.xpi.extracted");
-  const addon = loadAddon(file, dest, { ...XPI, recordInstalledTrees: true });
-
-  assert.deepEqual(addon.nodeModules, ["node_modules"]);
-  assert.ok(
-    !fs.existsSync(path.join(dest, "node_modules")),
-    "node_modules was written to disk"
-  );
-  assert.ok(!addon.files.has("node_modules/dep/index.js"));
-  // Loaded as an ADD-ON, the same archive ships those files and they are extracted and
-  // reviewed like any others.
   const shipped = loadAddon(file, path.join(dir, "as-addon"), XPI);
   assert.deepEqual(shipped.nodeModules, []);
   assert.ok(shipped.files.has("node_modules/dep/index.js"));
@@ -1113,21 +1100,18 @@ test("a refused archive leaves no partial extraction on disk", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// An archive with no real files at all (only a node_modules subtree) still leaves a
-// directory a later readDir can walk - otherwise loadAddon crashes on a submission that
-// is merely useless, not unreadable.
-test("an archive with nothing but node_modules still leaves an empty extracted folder", () => {
+// An archive with no real files at all (only directory entries) still leaves a directory
+// a later readDir can walk - otherwise loadAddon crashes on a submission that is merely
+// useless, not unreadable.
+test("an archive with nothing but directories still leaves an empty extracted folder", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-extract-empty-"));
   const zip = new AdmZip();
-  zip.addFile(
-    "node_modules/dep/index.js",
-    Buffer.from("module.exports = 1;\n")
-  );
+  zip.addFile("lib/", Buffer.alloc(0));
   const file = path.join(dir, "addon.xpi");
   zip.writeZip(file);
 
   const dest = path.join(dir, "addon.xpi.extracted");
-  const addon = loadAddon(file, dest, { ...XPI, recordInstalledTrees: true });
+  const addon = loadAddon(file, dest, XPI);
   assert.ok(fs.existsSync(dest) && fs.statSync(dest).isDirectory());
   assert.equal(addon.files.size, 0);
 

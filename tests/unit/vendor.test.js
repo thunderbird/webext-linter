@@ -1,6 +1,5 @@
-// Unit tests for the deterministic VENDOR parser (parseVendorEntries /
-// missingVendorEntries): the shapes it accepts, and - just as much - the shapes it
-// refuses rather than guesses at.
+// Unit tests for the deterministic VENDOR parser (readVendorDeclarations): the shapes it
+// accepts, and - just as much - the shapes it refuses rather than guesses at.
 //
 // A declaration is a packaged file paired with a source URL that points to a FILE,
 // where the developer MARKED the two as a pair: a colon, a key, or Markdown link
@@ -17,8 +16,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  parseVendorEntries,
-  missingVendorEntries,
+  readVendorDeclarations,
   vendorFileNames,
 } from "../../src/normalize/vendor.js";
 
@@ -30,9 +28,15 @@ function fakeAddon(files) {
   return { files: map };
 }
 const entries = (files) =>
-  parseVendorEntries(fakeAddon(files)).map((e) => [e.path, e.sourceUrl]);
+  readVendorDeclarations(fakeAddon(files)).resolved.map((e) => [
+    e.path,
+    e.sourceUrl,
+  ]);
 const missing = (files) =>
-  missingVendorEntries(fakeAddon(files)).map((e) => [e.path, e.sourceUrl]);
+  readVendorDeclarations(fakeAddon(files)).missing.map((e) => [
+    e.path,
+    e.sourceUrl,
+  ]);
 
 // Stand-in content for a bundled third-party library file; OWN is the add-on's
 // own code. (These VENDOR-resolution tests key off declared paths, not the
@@ -504,13 +508,13 @@ test("pinned failure: a lone path below the first line is prose", () => {
 // directory - does not parse at all, and takes the whole VENDOR file with it.
 test("a bundled directory + a pinned npm URL is a folder entry", () => {
   const CDN = "https://cdn.jsdelivr.net/npm/widget@1.2.3/dist/";
-  const m = parseVendorEntries(
+  const m = readVendorDeclarations(
     fakeAddon({
       "VENDOR.md": `- directory : vendor/lib\n- source : ${CDN}\n`,
       "vendor/lib/a.js": LIB,
       "vendor/lib/b.js": LIB,
     })
-  );
+  ).resolved;
   assert.deepEqual(
     m.map((e) => [e.path, e.kind, e.sourceUrl]),
     [["vendor/lib", "folder", CDN]]
@@ -521,12 +525,12 @@ test("a bundled directory + a pinned npm URL is a folder entry", () => {
 // the shape differs - and the packages that ship dozens of files tend to be scoped.
 test("a scoped pinned package is a directory source too", () => {
   const CDN = "https://cdn.jsdelivr.net/npm/@scope/widget@1.2.3/dist/";
-  const m = parseVendorEntries(
+  const m = readVendorDeclarations(
     fakeAddon({
       "VENDOR.md": `- directory : vendor/lib\n- source : ${CDN}\n`,
       "vendor/lib/a.js": LIB,
     })
-  );
+  ).resolved;
   assert.deepEqual(
     m.map((e) => [e.kind, e.sourceUrl]),
     [["folder", CDN]]
@@ -536,28 +540,28 @@ test("a scoped pinned package is a directory source too", () => {
 // An unpinned package names something that can change under a declaration claiming
 // it did not, so it is no more a directory source than a bare repo root is.
 test("an unpinned package URL is not a directory source", () => {
-  const m = parseVendorEntries(
+  const m = readVendorDeclarations(
     fakeAddon({
       "VENDOR.md":
         "- directory : vendor/lib\n" +
         "- source : https://cdn.jsdelivr.net/npm/widget/dist/\n",
       "vendor/lib/a.js": LIB,
     })
-  );
+  ).resolved;
   assert.deepEqual(m, []);
 });
 
 test("a bundled directory + a github tree URL is a folder entry", () => {
   const TREE =
     "https://github.com/o/r/tree/0123456789012345678901234567890123456789/dist/lib";
-  const m = parseVendorEntries(
+  const m = readVendorDeclarations(
     fakeAddon({
       "VENDOR.md":
         "- bundled directory : vendor/lib\n" + `- source : ${TREE}\n`,
       "vendor/lib/a.js": LIB,
       "vendor/lib/b.js": LIB,
     })
-  );
+  ).resolved;
   assert.deepEqual(
     m.map((e) => [e.path, e.kind, e.sourceUrl]),
     [["vendor/lib", "folder", TREE]]
@@ -637,7 +641,7 @@ test("a version token is not mistaken for a file", () => {
 });
 
 // A missing declaration with no source URL is not a declaration at all.
-test("missingVendorEntries ignores a declaration with no source URL", () => {
+test("a missing declaration with no source URL is not reported missing", () => {
   assert.deepEqual(
     missing({ VENDOR: "File: vendor/ghost.min.js\n", "bg.js": "x" }),
     []
@@ -786,12 +790,12 @@ test("a folder resolves however its path is spelled", () => {
     "./lib/vendor/",
     "lib\\vendor\\",
   ]) {
-    const m = parseVendorEntries(
+    const m = readVendorDeclarations(
       fakeAddon({
         "VENDOR.md": `- Folder: ${spelling}\n- Source: ${TREE}\n`,
         ...files,
       })
-    );
+    ).resolved;
     assert.deepEqual(
       m.map((e) => [e.path, e.kind]),
       [["lib/vendor", "folder"]],

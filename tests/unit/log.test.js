@@ -15,7 +15,6 @@ import {
   debug,
   setVerbose,
   FEED,
-  feedIndent,
   setProgress,
   setQuiet,
   setRecording,
@@ -55,14 +54,6 @@ beforeEach(() => {
   setProgress(true);
   setQuiet(false);
   setRecording(false);
-});
-
-test("feedIndent maps each level to its exact prefix width", () => {
-  assert.equal(feedIndent(FEED.SECTION), "");
-  assert.equal(feedIndent(FEED.STEP), "  ");
-  assert.equal(feedIndent(FEED.DETAIL), "      ");
-  // An out-of-range level degrades to column 0 rather than undefined-prefixing.
-  assert.equal(feedIndent(99), "");
 });
 
 test("progress indents by its level; SECTION (the default) is column 0", () => {

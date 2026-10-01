@@ -19,8 +19,7 @@ import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
 import { scanCoreSymbols } from "../../src/parse/core-symbols.js";
 import { parseApiUsage } from "../../src/parse/api-usage.js";
 import {
-  classifyFiles,
-  assembleBundled,
+  classifyBundled,
   applyUnverifiedVendor,
 } from "../../src/lib/bundled.js";
 import { collectJsSources } from "../../src/addon/sources.js";
@@ -153,9 +152,7 @@ test("a vendored library dropped from the skip set is still content-scanned", ()
   };
 
   // Phase 3, in the pipeline's order: classify -> identify (reconciles) -> parse.
-  addon.bundled = assembleBundled(
-    classifyFiles(addon, { libraryHashes: new Map() })
-  );
+  addon.bundled = classifyBundled(addon);
   assert.ok(
     addon.bundled.nonAuthored.has("lib/mylib.js"),
     "declared vendored -> non-authored"

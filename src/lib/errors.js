@@ -67,13 +67,15 @@ export function wiringError(message) {
 /**
  * What each artifact-conditional field is produced BY, for the message a wrongly-routed
  * check gets. These are the fields only some artifacts carry: the built XPI has no build
- * to trace, and an artifact whose vendor declarations were never read has no `vendor`.
+ * to trace, an artifact whose vendor declarations were never read has no `vendor`, and
+ * one a rejected Experiment's review never classified has no `bundled`.
  * Every other field a loaded artifact carries is set for all of them (src/addon/load.js
  * loadAddon), so absence there is a bug, not a route.
  */
 const PRODUCED_BY = {
   vendor: "resolveVendor, in the phase that prepares that artifact",
   buildReview: "analyzeBuild, in the phase that prepares the source archive",
+  bundled: "classifyReview, in the phase that prepares that artifact",
 };
 
 /**

@@ -9,6 +9,7 @@ import { locusMinter, manifestRecord } from "../../src/addon/load.js";
 import { ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 import { runExtractionPass } from "../../src/checks/extract.js";
+import { classifyBundled } from "../../src/lib/bundled.js";
 import { isExperiment } from "../../src/lib/util.js";
 import { experimentApiNamespaces } from "../../src/lib/experiments.js";
 
@@ -143,6 +144,14 @@ export function withManifest(ctx) {
     const kind = ctx.artifact.kind ?? ARTIFACT_XPI;
     ctx.artifact.kind = kind;
     ctx.artifact.at = locusMinter(kind);
+  }
+  // Setup classifies every artifact a check can be routed to (classifyReview); a test that
+  // set no classification of its own gets the one setup would compute without known
+  // library hashes or a vendor audit. Asked of the descriptor, so a sealed artifact's
+  // throwing getter is never read.
+  const set = Object.getOwnPropertyDescriptor(ctx.artifact, "bundled");
+  if (ctx.artifact.files && (!set || (!set.get && set.value === undefined))) {
+    ctx.artifact.bundled = classifyBundled(ctx.artifact);
   }
   // The other shipped-authoritative field the pipeline attaches to the review addon and
   // the ctx builders hoist onto ctx: the Experiment classification. Mirror that hoist here

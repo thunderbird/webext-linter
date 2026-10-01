@@ -222,9 +222,12 @@ test("without the pre-step, classifying the reformatted bytes misses it", () => 
   assert.deepEqual(flagged, []);
 });
 
-test("the classification is memoized: readers share one computation", () => {
-  const ctx = { artifact: addonWith({ "lib/blob.js": MINIFIED }), options: {} };
+test("readers share the artifact's one classification", () => {
+  const artifact = addonWith({ "lib/blob.js": MINIFIED });
+  artifact.bundled = classifyBundled(artifact);
+  const ctx = { artifact, options: {} };
   assert.strictEqual(classifyAddonJs(ctx), classifyAddonJs(ctx));
+  assert.strictEqual(classifyAddonJs(ctx), artifact.bundled.classified);
 });
 
 // A vendored CSS distribution: recognized as a library by a CONTENT-HASH match,
@@ -318,7 +321,11 @@ test("a CSS whose one long line is a single data: payload is not minified", () =
 // source. `ctx` here is the shape a check sees - jsSources, as collectJsSources builds
 // them, where an inline body carries the HTML path and inline: true.
 const inlineCtx = (code, file = "page.html", extra = {}) => ({
-  artifact: { files: new Map(), ...extra.artifact },
+  artifact: {
+    bundled: classifyBundled({ files: new Map() }),
+    files: new Map(),
+    ...extra.artifact,
+  },
   options: {},
   jsSources: [
     { file, code, lineOffset: 4, inline: true, declaredJs: true, ...extra.src },
@@ -406,7 +413,10 @@ test("a short stylesheet keeps the floor, a short script does not", () => {
 test("classifyInlineScripts yields nothing for a page with no inline body", () => {
   assert.deepEqual(
     classifyInlineScripts({
-      artifact: { files: new Map() },
+      artifact: {
+        bundled: classifyBundled({ files: new Map() }),
+        files: new Map(),
+      },
       jsSources: [],
       options: {},
     }),

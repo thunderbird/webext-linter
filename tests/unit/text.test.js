@@ -1,13 +1,12 @@
 // Unit tests for the text utilities: the wrapText width-wrapper (reflowing printed prose
-// to a column width), the humanSize byte formatter, and the three print guards for
-// submission text - displayText, displayLine, displayPath.
+// to a column width) and the three print guards for submission text - displayText,
+// displayLine, displayPath.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
   wrapText,
-  humanSize,
   displayText,
   displayLine,
   displayPath,
@@ -48,16 +47,6 @@ test("wrapText does not break an over-long word", () => {
   const url = `https://example.com/${"x".repeat(100)}`;
   const lines = wrapText(`see ${url} end`, "", 40);
   assert.ok(lines.some((l) => l.includes(url)));
-});
-
-// humanSize: bytes under 1 KB, then one-decimal KB / MB at the boundaries.
-test("humanSize formats B / KB / MB", () => {
-  assert.equal(humanSize(0), "0 B");
-  assert.equal(humanSize(812), "812 B");
-  assert.equal(humanSize(1024), "1.0 KB");
-  assert.equal(humanSize(1536), "1.5 KB");
-  assert.equal(humanSize(1024 * 1024), "1.0 MB");
-  assert.equal(humanSize(2.4 * 1024 * 1024), "2.4 MB");
 });
 
 // The guard on everything the review shows a person. It removes what can alter the
