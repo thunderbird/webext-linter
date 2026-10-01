@@ -25,7 +25,7 @@
 //                         it may not have been routed to, so it asks the record - there is
 //                         no route that could describe this.
 //   ctx.xpi / ctx.sca     the sides of the `all` route, which names none of them. A check
-//                         there mints from the side it means.
+//                         there mints from the side it means: ctx.xpi.artifact.at(...).
 //
 // NOTHING MAY NAME A PATH WITHOUT ITS HOLDER. A finding, an escalated case and a feed note
 // all carry a locus, and assertLocus below refuses one that cannot say which artifact it
@@ -33,8 +33,8 @@
 // made it and a filename is not evidence of anything. It throws a WIRING error, so a
 // producer that forgot exits 2 rather than losing its other findings to a check-failed.
 //
-// Belongs here: the names, the predicate over them, and the one guard every producer of a
-// locus is held to. Does NOT belong here: deciding which one a locus is in (the holders
+// Belongs here: the names, the predicate over them, their roots lookup, and the one guard
+// every producer of a locus is held to. Does NOT belong here: deciding which one a locus is in (the holders
 // above), or how it is SHOWN (-> src/report/artifact.js artifactLabel, which prints it
 // only where there are two artifacts to tell apart).
 
@@ -49,7 +49,7 @@ export const ARTIFACT_SCA = "SCA";
 /** NOT in the submission: the add-on as the public meets it - its listing page, and its
  *  behaviour once installed. What a by-hand reminder is about (`input: none`), and the
  *  reason such an entry is handed over with no tree: there is none to open. Distinct from
- *  the absence of an answer, which is what a null used to mean and what nothing means now. */
+ *  the absence of an answer, which no locus may be (assertLocus). */
 export const ARTIFACT_NONE = "NONE";
 
 /**
@@ -118,8 +118,7 @@ export function artifactRoots(where) {
 
 /**
  * Whether a value is one of the subjects above. Beside them because a second spelling of
- * "these are the ones" is one that goes out of step - it was written out three times
- * before this existed.
+ * "these are the ones" is one that goes out of step.
  * @param {*} x
  * @returns {boolean}
  */

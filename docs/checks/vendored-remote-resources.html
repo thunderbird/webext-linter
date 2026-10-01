@@ -36,9 +36,7 @@
         whole point: a declaration must never buy an exemption on its own.
       </p>
       <p>
-        Both checks read one shared scan, so the add-on is walked once. Two limits are
-        worth knowing: only the shipped XPI carries verified vendor results, so a
-        source-code archive review never reaches this lane, and a vendored
+        Both checks read one shared scan, so the add-on is walked once. A vendored
         <code>.js</code> is dropped from the scan entirely, so this lane covers only
         HTML and CSS references.
       </p>

@@ -168,9 +168,11 @@ export function fileView(store, { keys }) {
  * The add-on's files INCLUDING its privileged Experiment implementation.
  *
  * `addon.files` is the add-on's WebExtension code: the Experiment is kept out of it so the
- * API, permission and eval checks never false-positive on Services/ChromeUtils. But a pass
- * that asks about every file the submission holds reads this instead:
+ * WebExtension checks never false-positive on Services/ChromeUtils. But a pass that asks
+ * about every file the submission holds reads this instead:
  *
+ *   - the JS sources (collectJsSources) - each check scopes itself from there, so the
+ *     Experiment is linted like any code;
  *   - what a file IS - minified, obfuscated, a known library, parsable at all - because
  *     privileged code shipped unreadable is worse than ordinary code shipped unreadable,
  *     not exempt;

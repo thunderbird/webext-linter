@@ -68,8 +68,8 @@ import { isMinified, isMinifiedJs } from "./minified.js";
  *
  * `nonAuthored` is the VENDOR.md-declared third-party files plus any JS or CSS
  * tagged library / minified / obfuscated. The source-level finding scanners (the
- * eval checks, unsafe-html, remote-resources, code-sanity) skip these to save time
- * and noise - minified or obfuscated code is forbidden anyway (minified-code,
+ * eval checks, unsafe-html, remote-resources, code-sanity) skip these as noise -
+ * minified or obfuscated code is forbidden anyway (minified-code,
  * obfuscated-code and missing-library reject it and request the original sources,
  * which are then reviewed), and vendored files are declared third-party. Reachability skips
  * them only when REACHABILITY_SKIPS_NON_AUTHORED is on (src/config.js, off by
@@ -107,8 +107,8 @@ export const MIN_CLASSIFY_BYTES = 1024;
 /**
  * The per-file classification: library (content hash) / minified (geometry) /
  * obfuscation (structural, via classify) tags, plus the vendored / library / minified /
- * obfuscated non-authored seed. `tag.obfuscation` is the final
- * verdict here - the detector is structural, so there is no later AST correction.
+ * obfuscated non-authored seed. `tag.obfuscation` is the final verdict here - the
+ * detector is structural, so there is no later AST correction.
  * @param {Addon} addon
  * @param {{libraryHashes?: Map<string, LibraryId>}} [opts]
  * @returns {{classified: BundleTag[], nonAuthored: Set<string>}}

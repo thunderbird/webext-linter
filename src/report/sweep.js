@@ -61,12 +61,12 @@ const MAX_HINT = 200;
  * One thing a sweep found, checked.
  *
  * The agent authors these - the linter cannot, since a sweep exists for what its detectors
- * miss - so this is where an authored row is held to a shape. It is refused rather than
+ * miss - so this is where an authored result is held to a shape. It is refused rather than
  * repaired: a result nothing can be done with is a sweep half applied.
  *
  * The extra-field check matters more than it looks. A result says WHERE something is and
  * names it in a phrase; where it lands and how it reads to a developer are the linter's,
- * from the owning check's registry entry. A row that set its own severity or response
+ * from the owning check's registry entry. A result that set its own severity or response
  * would be an agent wording the report.
  * @param {string} where  Names the slot it was written into, for the message.
  * @param {*} raw
@@ -142,10 +142,9 @@ export function checkedResult(where, raw) {
  * them merged in.
  *
  * Refused rather than skipped, because a result nothing can be done with is a sweep half
- * applied: a result naming a check this review asked nobody to sweep for is a file
- * written against a different review. WHICH sweeps were asked for is settled upstream,
- * where the answers were read against the very slots this run wrote (readSweepAnswers) -
- * here the question left is only whether the check can receive a case at all.
+ * applied. WHICH sweeps were asked for is settled upstream, where the answers were read
+ * against the very slots this run wrote (readSweepAnswers) - here the question left is
+ * only whether the check can receive a case at all.
  *
  * Deduplicated on (check, artifact, file, line) against BOTH lists: one sweep naming a
  * location twice is one case, and a location the deterministic pass already covered for

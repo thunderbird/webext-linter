@@ -265,7 +265,7 @@ test("renderManualItems carries the ruleId and artifact through", () => {
   assert.equal(item.ruleId, "unused-files");
   assert.equal(item.artifact, "XPI");
 
-  // A ref with none - which production no longer builds - reads as null
+  // A ref with none - which production never builds - reads as null
   // rather than as some default artifact.
   const [bare] = renderManualItems(
     [{ ruleId: "unused-files", kind: "escalation" }],

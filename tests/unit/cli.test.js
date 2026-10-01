@@ -203,15 +203,6 @@ test("--sca-exp-source naming --sca-root itself is a usage error (exit 2)", () =
   assert.match(r.stderr, /Name the subfolder holding it/);
 });
 
-test("--allow-experiments in SCA mode requires --sca-exp-source (exit 2)", () => {
-  const r = run(["some.xpi", "--sca-root", ROOT, "--allow-experiments"]);
-  assert.equal(r.code, 2);
-  assert.match(
-    r.stderr,
-    /--sca-exp-source is required with --allow-experiments/
-  );
-});
-
 // The format decides how everything below it is routed, so it is checked where it is
 // read - before the --llm-sca-review branch, which would otherwise print nothing at all
 // and exit 0 for an unknown value.
@@ -306,14 +297,8 @@ test("--sca-root must point at a folder (exit 2)", () => {
     assert.match(r.stderr, /no-such-dir/, flag);
   }
 
-  // A folder passes this guard and the run reaches the NEXT --sca-* refusal, which pins
-  // both that a directory is accepted and that the folder check comes first.
-  const ok = run(["some.xpi", "--sca-root", dir, "--allow-experiments"]);
-  assert.equal(ok.code, 2);
-  assert.match(
-    ok.stderr,
-    /--sca-exp-source is required with --allow-experiments/
-  );
+  // A folder passes this guard, whatever ends the run after it.
+  const ok = run(["some.xpi", "--sca-root", dir]);
   assert.doesNotMatch(ok.stderr, /must point at a folder/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -807,8 +792,8 @@ test("a failure building the next pass ends it cleanly, not with a stack trace",
 
 // A message that is not part of the normal review goes to stderr. In a run printing a
 // prompt for an agent it is held back and written last, under its own header - the
-// agent's harness merges both streams, and a warning printed in place read as part of
-// the prompt (it used to land on stdout, unsectioned, right above it).
+// agent's harness merges both streams, and a warning printed in place reads as part of
+// the prompt.
 test("a warning reaches stderr, held back to the end of a prompt run", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wxl-warn-"));
   fs.cpSync(
@@ -1516,7 +1501,6 @@ test("--llm-sca-review prints the flags the review is run with", () => {
         "--eslint",
         "--allow-experiments",
         "--sca-root <SCA_ROOT>",
-        "--sca-exp-source <SCA_EXP_SOURCE>",
       ],
       flag.join(" ")
     );
@@ -1543,8 +1527,8 @@ test("--llm-sca-review prints the flags the review is run with", () => {
     [`--llm-review ${xpi}`, "--eslint", "--verbose", "--sca-root <SCA_ROOT>"]
   );
 
-  // Without --allow-experiments nothing reads --sca-exp-source, so the prompt neither
-  // asks for it nor prints it - and the steps renumber over what survives.
+  // With no Experiment shipped, the prompt neither asks for --sca-exp-source nor prints
+  // it - and the steps renumber over what survives.
   const plain = run([dir, "--llm-sca-review"]);
   assert.deepEqual(flagsOf(plain), [
     `--llm-review ${xpi}`,
@@ -1553,9 +1537,8 @@ test("--llm-sca-review prints the flags the review is run with", () => {
   assert.doesNotMatch(plain.stdout, /SCA_EXP_SOURCE|Experiment/);
   assert.match(plain.stdout, /\n4\. That review prints a prompt of its own/);
 
-  // An add-on that ships an Experiment needs the folder whether or not Experiments are
-  // allowed - a source review of one refuses to start without it - so the .xpi's own
-  // manifest.json decides, and the prompt asks for it.
+  // An add-on that ships an Experiment needs the folder, so the .xpi's own manifest.json
+  // decides, and the prompt asks for it.
   const zip = new AdmZip();
   zip.addFile(
     "manifest.json",

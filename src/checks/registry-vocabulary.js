@@ -4,9 +4,10 @@
 // the semantic assertions and the orchestrator (registry.js) read them to decide and to
 // route.
 //
-// Belongs here: the sets, and what each member means. Does NOT belong here: any rule ABOUT
-// a value (-> registry-schema.js for shape, registry.js for everything semantic), or any
-// behaviour keyed off one (-> modeEligible, routeCtx, runOneCheck).
+// Belongs here: the sets, the keys and names derived from them, and what each member
+// means. Does NOT belong here: any rule ABOUT a value (-> registry-schema.js for shape,
+// registry.js for everything semantic), or any behaviour keyed off one (-> modeEligible,
+// routeCtx, runOneCheck).
 
 import { ARTIFACT_SCA, ARTIFACT_XPI } from "../lib/artifacts.js";
 import { SEVERITY } from "../report/finding.js";
@@ -65,9 +66,9 @@ export const COLLAPSE_MODES = new Set(["subject"]);
 // --sca-root in an SCA review, the built XPI in an XPI review - the only artifact
 // there); "xpi" = ALWAYS the built XPI (the shipped artifact), analysed in both modes;
 // "sca" = the submitted source archive, which the build and dependency checks read
-// (and which `source` points at in a source review, being the target there); "all" = EVERY artifact this review has, named ctx.xpi and ctx.sca and
-// with no ctx.artifact - two of them in an SCA review, and in an XPI review just the one,
-// with ctx.sca null. "all" is the only route that can see more than one, so a
+// (and which `source` points at in a source review, being the target there); "all" =
+// EVERY artifact this review has, named ctx.xpi and ctx.sca and with no ctx.artifact -
+// two of them in an SCA review, and in an XPI review just the one, with ctx.sca null. "all" is the only route that can see more than one, so a
 // cross-artifact comparison is a thing the registry declares rather than something setup
 // does invisibly and hands down as a flag. What a route hands over is not a promise that
 // it is there: a check on "all" tests for the artifact it needs before reading it, and
@@ -86,7 +87,7 @@ export const COLLAPSE_MODES = new Set(["subject"]);
 // pins no mode and runs in either.
 //
 // A check reads only the artifact its route names, and has no way to reach another (see
-// buildXpiCtx / buildScaCtx). The artifacts themselves are sealed (sealArtifact,
+// buildXpiCtx / buildScaCtx / buildAllCtx). The artifacts themselves are sealed (sealArtifact,
 // src/lib/errors.js), so reading a field the routed artifact never produced throws rather
 // than answering nothing.
 //
@@ -208,6 +209,6 @@ export const LOOP_VERBS = VERB_NAMES;
 
 export const ANSWER_KINDS = ["hints", "verdict", "words"];
 
-/** The one condition the SCA prompt can evaluate: whether this review allows
+/** The one condition the SCA prompt can evaluate: whether the built add-on declares
  *  Experiments, which decides whether it asks its reader for --sca-exp-source. */
 export const SCA_PROMPT_RUNS = ["experiments"];

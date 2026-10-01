@@ -5,7 +5,7 @@
 // verifyScaDependencies -> auditNpm), recording each hit on
 // addon.vendor.devVulnerabilities; this check maps that set to findings via the
 // shared lib/vuln-findings.js mapper - identical to vendor-vulnerable, but for the
-// dev set (SCA-only; the registry entry is sca:true).
+// dev set (SCA-only; the registry entry is input: sca).
 //
 // Belongs here: choosing the dev vulnerability set. Does NOT belong here: the
 // vulnerability->finding mapping incl. the severity:auto band mapping

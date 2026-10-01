@@ -103,9 +103,9 @@ const SEV_COLOR = {
  *   into three sections on those two tags - see src/report/order.js. Text-only;
  *   dropped from JSON.
  * @property {?{items: object[]}} [preSweep]  The blind-spot sweeps to run
- *   before settling the review: the shared method, then one bare item per sweep a check
- *   that ran authors. ONE request, not one per item. Each says which ARTIFACT it is
- *   about, and carries no finding and no locus - it is the job, not its result.
+ *   before settling the review: one bare item per sweep a check that ran authors. Each
+ *   says which ARTIFACT it is about, and carries no finding and no locus - it is the job,
+ *   not its result.
  *   Text-only; dropped from JSON.
  * @property {?{intro: string, reasons: {id: string, text: string}[]}} [earlyExit]
  *   Why the review STOPPED, when it did: the authored line and the reasons it lists, each
@@ -225,9 +225,8 @@ function reviewBodyLines(review) {
  * reassemble (the SCA prompt's flags, and the review prompt's own hand-back), and so is a
  * table of named values (the paths a review hands its build agent).
  *
- * A LIST rather than one, because a single prompt can carry two of them: an SCA review
- * that also sweeps hands its build agent a path table and its sweep a command, and the
- * step carrying each is a different step.
+ * A LIST rather than one, because a single prompt can carry more than one, each in its
+ * own step.
  * @param {number} n  The step's number, as printed.
  * @param {string} text  The authored step.
  * @param {{name: string, lines: string[]}[]} [blocks]  Paragraphs the caller renders.
@@ -434,10 +433,9 @@ function valueLines(entries) {
  * out, <SCA_EXP_SOURCE> - instead of carrying paths themselves. The FLAGS
  * are the finished command, one flag per line, filled into the step that says to run it.
  *
- * What this run was given decides what is printed: a step marked `run: experiments` is
- * dropped unless Experiments are allowed, and the surviving steps are numbered 1..N here,
- * so no step may number itself. A prompt that asked for a value nothing will read would be
- * asking for work that cannot be used.
+ * A step marked `run: experiments` is dropped unless the built add-on declares
+ * Experiments, and the surviving steps are numbered 1..N here, so no step may number
+ * itself.
  *
  * No review has run when this prints, and none can until its reader answers it - so unlike
  * every other section here, this one describes work still to do rather than work done.
@@ -447,7 +445,7 @@ function valueLines(entries) {
  *   From scaSubmission().
  * @param {{flags: string[], experiments: boolean}} review  What the review is to be run
  *   as, composed by the front-end (src/cli.js), which owns the flag names and holds the
- *   parser's answers: the finished flag lines, and whether Experiments are allowed.
+ *   parser's answers: the finished flag lines, and whether the add-on declares Experiments.
  *   Laid out here, never added to, trimmed or second-guessed.
  * @returns {string[]}
  */
@@ -556,9 +554,6 @@ export function headerLines(meta) {
   }
   // Only --llm-review writes one. It is named here rather than only in the prompt so
   // the section stays the one place that says what this review consists of.
-  // Where the sweep's results GO, like the description below: this run writes no such
-  // file either. Named only by a run that sweeps, because only that run prints the step
-  // that writes it and the hand-back that reads it back.
   // Where the description GOES, not where it is: this run writes no such file. The
   // prompt's reader does, and the reviewer is handed a link to it.
   if (meta.summaryFile) {
@@ -1008,23 +1003,23 @@ function manualSection(items, title, accent = blue, labelOf) {
 }
 
 /**
- * The Standard Code Review section: ONE sweep, carried by every submission - the shared
- * method, then the bare class of code each check cannot detect for itself.
+ * The Standard Code Review section: the sweeps carried by every submission - the bare
+ * class of code each check cannot detect for itself.
  *
  * Unlike every other section here this one lists SWEEPS, not cases, and it is printed
  * whether or not any of them found something: a check that found nothing is exactly the
  * one whose blind spot is worth reading. It carries no locus and takes no verdict - what
  * a sweep finds is filed as a finding of the named check, not as an answer to this.
  *
- * The same text the --llm-review prompt carries, so the reviewer reading this page and
- * the agent doing the reading are told the same thing in the same words.
+ * The same text each sweeping agent's request carries, so the reviewer reading this page
+ * and the agent doing the reading are told the same thing in the same words.
  *
  * Blue, like Standard Manual Review and unlike the vivid cyan of the extended sections:
  * the colour says which pair a section belongs to - the standing review, or the part
  * raised by this submission.
  * Each item names the FOLDER its sweep is about, because a sweep is locked onto one
  * tree and a source review has two.
- * @param {?{intro: string, items: object[]}} sweep
+ * @param {?{items: object[]}} sweep
  * @param {Record<string, ?string>} trees  This review's trees by artifact
  *   (artifactRoots), for the folder each item sends its reader into.
  * @returns {string[]}

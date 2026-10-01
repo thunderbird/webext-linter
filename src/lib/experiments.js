@@ -3,10 +3,9 @@
 // the experiment verifier (src/experiments/verify.js), reachability seeding, and
 // the experiment-overrides-api check.
 //
-// Belongs here: extracting the declared API paths, the API namespaces and manifest.json
-// keys the bundled schemas declare, the implementation file refs, and the bundle
-// subtree root from experiment_apis. Does NOT belong here:
-// detecting Experiment status (-> isExperiment in util.js), hashing/verifying
+// Belongs here: extracting the declared API paths, the API namespaces, members and
+// manifest.json keys the bundled schemas declare, the implementation file refs, and the
+// bundle subtree root from experiment_apis. Does NOT belong here: detecting Experiment status (-> isExperiment in util.js), hashing/verifying
 // the files (-> src/experiments/verify.js), or any verdict.
 
 import { asArray, asObject } from "./util.js";
@@ -49,9 +48,8 @@ export function experimentApiPaths(manifest) {
  * The top-level API namespaces an add-on's Experiments expose, so the add-on's own
  * WebExtension code (browser|messenger|chrome.<namespace>.<method>(...)) resolves.
  * The AUTHORITATIVE source is each entry's bundled schema.json `namespace` field -
- * the manifest.json key and the binding `paths` are arbitrary and often differ from it
- * (e.g. key "qapp" exposes "qnote"; key "ExpressionSearchTools" binds path
- * "ExpressionSearch"). Falls back to the declared paths/key when an entry has no
+ * the manifest.json key and the binding `paths` are arbitrary and often differ from it.
+ * Falls back to the declared paths/key when an entry has no
  * readable bundled schema (an unsupported draft / a bare declaration).
  * @param {Manifest} manifest
  * @param {Map<string, Buffer>} [files]  The add-on's files, to read the schema(s).
@@ -85,7 +83,7 @@ export function experimentApiNamespaces(manifest, files) {
  * whose `schema` is absent, points at no packaged file, or does not parse, and it is
  * what keeps a malformed developer file from becoming a wave of unknown-member reports.
  *
- * The DOTTED name is kept, unlike experimentApiNamespaces below, which takes the first
+ * The DOTTED name is kept, unlike experimentApiNamespaces above, which takes the first
  * segment because its readers ask "is this an experiment namespace". A sub-namespace
  * declares its own members (`calendar.items` has none of `calendar`'s), and resolveApi
  * matches the longest prefix, so flattening them here would check a member against the
@@ -103,8 +101,7 @@ export function experimentApiMembers(manifest, files) {
     if (declared) {
       for (const [ns, members] of declared) {
         // UNION, never replace: one namespace may be declared across several schema
-        // files - an add-on splits `convContacts` over a contacts schema and a gloda
-        // one - and what it declares is all of them together. Overwriting would leave
+        // files, and what it declares is all of them together. Overwriting would leave
         // the members of whichever file lost the race reported as undeclared.
         const known = out.get(ns);
         out.set(ns, known ? new Set([...known, ...members]) : members);

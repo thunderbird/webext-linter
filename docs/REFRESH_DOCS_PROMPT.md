@@ -52,7 +52,7 @@ that no longer exist.
    intent. EVERY entry declares a
    `severity`, the `manual-checks` ones included - the loader refuses one that does not.
    EVERY entry declares an `input` too - a route for a check that runs, `none` for a
-by-hand one. Entries may also carry `sca`, `eslint`, `sweep-instruction`
+   by-hand one. Entries may also carry `sca`, `eslint`, `sweep-instruction`
    (the class of code the check cannot see, listed in the report's Standard Code Review
    section - or `sweep-instruction-for-xpi`/`sweep-instruction-for-sca` on `input: all`,
    which names no tree of its own and so says which per sweep), `default-note` (the marker a reported case carries when the reviewer wrote
@@ -83,9 +83,9 @@ by-hand one. Entries may also carry `sca`, `eslint`, `sweep-instruction`
    same way either way. The vulnerability audit is NOT part of it - it follows the
    review target, in its own later phase. Getting this backwards inverts the diagram.
    The review mode is DERIVED (`--sca-root`, minus a rejected Experiment) and assigned
-   nowhere. The file also shows the `mode?.sca` forks, and the four routes a check can
-   declare (`source` / `xpi` / `sca` / `both`) dispatched by `routeCtx` over the sibling
-   ctxs built by `buildXpiCtx` / `buildScaCtx`.
+   nowhere. The file also shows the `mode.sca` forks, and the four routes a check can
+   declare (`source` / `xpi` / `sca` / `all`) dispatched by `routeCtx` over the sibling
+   ctxs built by `buildXpiCtx` / `buildScaCtx` / `buildAllCtx`.
 5. `src/checks/registry.js` - the orchestrator (`runChecks`), which runs the whole
    review inside that single Phase-6 call: the phase's checks in its main loop, then
    the unused-folder collapse. The pipeline only calls `runChecks` and assembles the

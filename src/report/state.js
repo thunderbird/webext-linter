@@ -35,11 +35,11 @@ export const REVIEW_SUFFIX = ".review.json";
  *   to it.
  * @property {object[]} manual  The to-do items, kept beside the findings because
  *   orderReview numbers the two together and either alone renumbers the rest.
- * @property {?object} preSweep  The blind-spot sweep as the registry authored it, or null
- *   when this review does not sweep.
+ * @property {?object} preSweep  The blind-spot sweeps as the registry authored them, or
+ *   null when no check that ran authors one.
  * @property {{skip: string[], sca: boolean, warningsAsErrors: boolean}} run
  *   What this run was told to leave out (PROMPT_SKIPS), whether it is a source code review,
- *   whether it sweeps, and the band it publishes a warning at (--warnings-as-errors). One
+ *   which trees it sweeps (one sweepRun key each), and the band it publishes a warning at (--warnings-as-errors). One
  *   record, read by everything that asks: a step prints by it, the routing drops entries by
  *   it, the registry is read under it, and both legs of a hand-over ask it the same question.
  * @property {object} paths  The values a step names: description, build, report,

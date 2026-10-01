@@ -110,7 +110,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | Option | Description |
 | --- | --- |
 | `--sca-root <folder>` | The **extracted** source root (holds `package.json`/lock) - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
-| `--sca-exp-source <path>` | The Experiment implementation folder, **inside** `--sca-root`, anywhere under it. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission/eval checks. Needs `--sca-root`, and is required when `--allow-experiments` is used in SCA mode. |
+| `--sca-exp-source <path>` | The Experiment implementation folder, **inside** `--sca-root`, anywhere under it. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission checks. Needs `--sca-root`, and is required for an Experiment. |
 
 **Other:**
 
@@ -157,7 +157,7 @@ which means either nothing was built or the build output was committed beside th
   it, because no subtree can be called the add-on's: a build may move, rename or generate
   anything, so a path in a source archive cannot be trusted and nothing can say which files
   are used. Every file in the archive is assumed used and is reviewed.
-- The **readable source** is reviewed for code defects (the API/permission/eval/
+- The **readable source** is reviewed for code defects (the API/permission/
   exfiltration checks run over every source file).
 - The **declared dependencies** (`--sca-root`'s `package.json`) are audited, build
   dependencies included: each must come from npm or GitHub, and each is gated on
@@ -205,14 +205,14 @@ which means either nothing was built or the build output was committed beside th
   not follow statically is named in that escalation.
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
   manifest.json, the experiments and the file-completeness checks (bundled /
-  web-accessible / unused / locales). It is analysed in full in either mode - the
-  same vendor, library and parse passes - so those checks see the shipped add-on
-  the same way whether or not a source archive came with it.
+  web-accessible / unused / locales). It gets the same library and parse passes in either
+  mode (the vendor pass reads the review target only), so those checks see the
+  shipped add-on the same way whether or not a source archive came with it.
 - `--sca-exp-source` names an Experiment implementation folder - anywhere under
   `--sca-root`, relative to it or absolute inside it (e.g. `addon/experiment-api`),
   but never the root itself, which would exclude nothing - so its privileged,
-  non-WebExtension code is excluded from the WebExtension checks (required when
-  `--allow-experiments` is used in SCA mode).
+  non-WebExtension code is excluded from the WebExtension checks (required for an
+  Experiment).
 - Because a review spans two artifacts, each finding's `file:line` is prefixed with the
   artifact it lives in - `[XPI]` (the built XPI) or `[SCA]` (the readable source code
   archive) - so a reviewer knows which one to open. The Found Issues section closes with a
@@ -380,10 +380,10 @@ handed a concrete `file:line` to look at rather than a verdict the tool guessed.
 
 | Check id (`check:`) | What the scan settles, and what it escalates |
 | --- | --- |
-| `strict-min-version-api` | Pre-flight: a call to a real, schema-resolved API added in a Thunderbird newer than the declared `strict_min_version`. An unguarded call is a finding straight away. A call carrying a guard signal (optional chaining, a `typeof`/existence test, a `getBrowserInfo` version gate, an earlier guard clause that returned or threw when the API was missing) escalates, for the reviewer to judge from the call's file whether the guard really keeps it off the older versions. A non-existent API is `unknown-api`'s concern. |
+| `strict-min-version-api` | Pre-flight: a call to a real, schema-resolved API added in a Thunderbird newer than the declared `strict_min_version`. Every call escalates, for the reviewer to judge from the call's file whether a guard (optional chaining, a `typeof`/existence test, a `getBrowserInfo` version gate, an earlier guard clause that returned or threw when the API was missing) keeps it off the older versions. A non-existent API is `unknown-api`'s concern. |
 | `remote-eval` | Pre-flight: the statically-undecidable `fetch()->eval` pattern (scanned only outside the WebExtension tree, like the other dynamic-execution checks - WebExtension code is CSP-gated) escalates, for the reviewer to judge from the offending file whether the executed code is fetched remotely. The definite dynamic-execution cases are the deterministic `eval-call`/`function-constructor`/`string-timer`/`csp-unsafe-eval`/`csp-unsafe-inline` checks. |
 | `remote-resources` | Pre-flight: remote `<script>`/`<link>`/`@import`/`url()`/media/imports/`importScripts`/runtime injection/WASM, and a CSP permitting a remote script source → a finding. Statically-undecidable cases (non-literal URLs, inline `data:`/`blob:` script sources) escalate for the reviewer to resolve. |
-| `vendored-remote-resources` | The same scan's other question: a remote load inside an HTML/CSS file whose content matches a published upstream release. The line is that release's, not the developer's, so it emits no finding and every site goes to a person - accepting it as published is a judgement they own. Turns on the content match, never on a declaration (XPI reviews only, since an SCA review has no verified result to read). |
+| `vendored-remote-resources` | The same scan's other question: a remote load inside an HTML/CSS file whose content matches a published upstream release. The line is that release's, not the developer's, so it emits no finding and every site goes to a person - accepting it as published is a judgement they own. Turns on the content match, never on a declaration. |
 | `data-exfiltration` | Pre-flight: a normal transmission (`fetch`/XHR/WebSocket/EventSource/`sendBeacon`) to a remote/dynamic host escalates, for the reviewer to judge from the file and the options page whether user data is sent without an explicit opt-in. Covert channels are the separate `disguised-*` errors. |
 | `disguised-transmission` | Pre-flight: the weak residue of the covert channels - a resource URL, a stylesheet `url()`, a `window.open()`, or a page navigation to a remote host built from a runtime value, with no user-data API call in it escalates, for the reviewer to judge whether it really smuggles user data out through that channel or is just legitimate dynamic URL building. The strong cases (a user-data call in the URL) are the deterministic `disguised-*` errors. |
 | `minimize-web-accessible-resources` | Pre-flight: over-broad exposure (a resource pattern like `*`, or MV3 `matches` of `<all_urls>`/`*://*/*`) and concrete resources no content script/page loads → a finding. An ambiguous exposed resource (dynamic loaders, or name mentioned) escalates, for the reviewer to judge whether it is needlessly exposed. |

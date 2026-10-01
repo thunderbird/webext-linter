@@ -149,9 +149,7 @@ function compute(ctx) {
   // paths miss (so the closure would be empty). It is gated on the review-target ctx
   // (NOT ctx.isShippedView), so on a shipped view it falls to the closure branch -
   // the XPI's manifest.json entry points resolve against its own files, giving a
-  // meaningful WebExtension scope there too. (It is still read only by `input: source`
-  // checks over the review target - see the consumer split the reachability tests
-  // pin - so the shipped-view value is unused; the gate keeps it correct regardless.)
+  // meaningful WebExtension scope there too.
   const artifact = ctx.artifact;
   const files = artifact?.files;
   // A context with no files (degenerate / unit harness) has nothing reachable;

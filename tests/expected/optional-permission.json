@@ -1,4 +1,4 @@
 {
-  "_comment": "messagesMove is optional (runtime-granted) and unused, so it is no deterministic finding - the golden raises it for a reader under Possibly unused permissions instead. messagesRead and accountsRead are grounded by messages.list.",
+  "_comment": "messagesMove is optional and unused. An optional permission still needs code that requests it, so it is judged like a required one. It has no permission-prompt tokens, so it is no deterministic finding - the golden raises it for a reader under the possibly-unused review instead. messagesRead and accountsRead are grounded by messages.list.",
   "expect": {}
 }

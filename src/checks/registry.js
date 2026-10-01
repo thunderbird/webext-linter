@@ -196,8 +196,8 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {import("../lib/enum.js").ReviewMode} [mode]  Review mode: "xpi" (a built add-on, default) or
  *   "sca" (a source code archive). Gates checks via modeEligible.
  *
- *   The SHIPPED artifact (the built XPI) is deliberately NOT a ctx field: a check
- *   has no way to reach the artifact it was not routed to. The orchestrator builds a
+ *   The SHIPPED artifact (the built XPI) is deliberately NOT a ctx field off the `all`
+ *   route: a check has no way to reach the artifact it was not routed to. The orchestrator builds a
  *   separate shipped context (buildXpiCtx, src/checks/context.js) and routes each
  *   `input: xpi` check to it - see runChecks / runOneCheck.
  * @property {boolean} [isShippedView]  Set by buildXpiCtx on the shipped
@@ -393,8 +393,7 @@ export class Registry {
    *
    * NOT what its findings are about: a finding carries the artifact it is in, from the
    * holder that minted its locus (src/addon/load.js `at`, and the shipped manifest.json
-   * record). Those are two questions, and this answers only the first, which is why it
-   * is no longer named for the other one.
+   * record). Those are two questions, and this answers only the first.
    * @param {string} ruleId
    * @returns {"xpi"|"sca"|"source"|"all"}
    */
@@ -1823,7 +1822,7 @@ function eslintEligible(entry, inEslintMode) {
  * matching sibling (e.g. a stray `input: sca` in XPI mode) THROWS rather than silently
  * running on the wrong artifact.
  * @param {LoadedCheck} check
- * @param {Record<string, RunContext>} siblings  Keyed by input value (source/xpi/sca).
+ * @param {Record<string, RunContext>} siblings  Keyed by input value (source/xpi/sca/all).
  * @returns {RunContext}
  */
 export function routeCtx(check, siblings) {
@@ -1836,7 +1835,7 @@ export function routeCtx(check, siblings) {
   if (!ctx) {
     throw new Error(
       `routeCtx: no ctx for input "${check.input}" (check ${check.id}) - a declared ` +
-        "input must have a sibling (an input:sca check needs sca:true to stay out of XPI mode)."
+        "input must have a sibling (modeEligible keeps an input:sca check out of XPI mode)."
     );
   }
   return ctx;

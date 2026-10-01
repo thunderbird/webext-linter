@@ -48,8 +48,8 @@ test("populates src.extracted with results equal to a direct scanner call", () =
 // A non-authored file is extracted like any other. Whether its hits are REPORTED is the
 // consumer's call - every content check skips it against the same nonAuthored Set - and
 // keeping that decision out of the pass is what makes it impossible for a consumer to read
-// a field the pass declined to produce. That shape used to throw a bare TypeError from
-// inside the scan, taking every check sharing it down as an anonymous check-failed.
+// a field the pass declined to produce. Such a read throws a bare TypeError inside the
+// scan, taking every check sharing it down as an anonymous check-failed.
 test("extracts content for a non-authored file too, except its atoms", () => {
   const sources = [src("vendor/lib.js", RICH)];
   runExtractionPass(sources, { nonAuthored: new Set(["vendor/lib.js"]) });

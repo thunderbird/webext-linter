@@ -185,13 +185,13 @@ flowchart TB
   IQ -- yes --> SETINV
 
   subgraph P3 ["runPipeline() · Phase 3 - SCA only: the SOURCE ARCHIVE's own preparation → its parsed sources + the build trace"]
-    LSRC["the review target, from the archive Phase 2 read → scaViews()<br/>reviewTarget.experiments = xpiAddon.experiments"] --> LSQ{{"--sca-exp-source resolves within --sca-root?"}}
+    LSRC["the review target, from the archive Phase 2 read → scaViews()<br/>reviewTarget.experiments = xpiAddon.experiments"] --> LSQ{{"--sca-exp-source given for an Experiment,<br/>and resolves within --sca-root?"}}
     LSQ -- no --> P3F((("THROW<br/>exit 2")))
     LSQ -- yes --> SV["resolveVendor(source) → verifyScaDependencies()<br/>the source's package.json"]
     SV --> SC["classifyReview(source)<br/>library hash · minified · obfuscation · vendored"]
     SC --> SI["identifyBundledLibraries(source)<br/>CDN + not-popular-vendor - FINALIZES the split"]
     SI --> SE["Parsing source → extractReview(source)<br/>content extraction + api-usage on the authored remainder<br/>→ preParsedJsSources (the review target's sources)"]
-    SE --> SB["Analyzing the build → analyzeBuild()<br/>over the source view, narrowed to what the build reaches"]
+    SE --> SB["Analyzing the build → analyzeBuild()<br/>over the source view + Experiment folder, narrowed to what the build reaches"]
     HP1(( ))
     HP3(( ))
   end

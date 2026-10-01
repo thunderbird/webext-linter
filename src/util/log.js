@@ -36,7 +36,7 @@ export function setVerbose(v) {
 }
 
 /**
- * Whether a debug() line would actually be narrated or recorded, for a caller that must do
+ * Whether a debug() line would actually be narrated, for a caller that must do
  * EXTRA WORK to produce one (rather than just format one it already has). Quiet is part of
  * the answer: --report-format json sets it independently of --verbose, and emit() drops
  * everything while it is on, so verbose alone would have such a caller pay for output
@@ -75,9 +75,9 @@ export function setFeed(v) {
 }
 
 /**
- * Enable or disable quiet mode. When quiet, nothing is narrated or recorded -
- * the CLI turns this on for --report-format json so stdout carries only the JSON
- * document (real tool errors still go to stderr, written by the CLI directly).
+ * Enable or disable quiet mode. When quiet, nothing is narrated and warn() is
+ * silent - the CLI turns this on for --report-format json so stdout carries only the
+ * JSON document (writeToStderr still writes).
  *
  * @param {boolean|undefined} v
  */
@@ -106,7 +106,7 @@ const PREFIX = ["", "  ", "      "];
  * The indent string for a feed level, for a caller that must build the prefix
  * into a wrapText() call so wrapped continuation lines hang-align (a reviewer
  * verdict list, the escalation header). A plain line passes the level to
- * progress()/warn() instead of prefixing by hand.
+ * progress() instead of prefixing by hand.
  *
  * @param {number} level  A FEED value.
  * @returns {string}

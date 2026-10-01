@@ -602,22 +602,20 @@ function permissionOccurrences(permission, tokens, located) {
 
 /**
  * Split declared manifest.json permissions into named permissions (required +
- * optional) and host match patterns, where `required` is the "permissions"
- * array only (used for the unused check). Shared with the native-messaging
- * check, which keys off whether a named permission is declared.
+ * optional) and host match patterns. Shared with the native-messaging check, which
+ * keys off whether a named permission is declared.
  * @param {Manifest} manifest
- * @returns {{named: Set<string>, required: Set<string>, hosts: Set<string>}}
+ * @returns {{named: Set<string>, hosts: Set<string>}}
  */
 export function declaredPermissions(manifest) {
   const named = new Set();
-  const required = new Set();
   const hosts = new Set();
   const lists = [
-    { list: manifest.permissions, required: true },
-    { list: manifest.optional_permissions, required: false },
-    { list: manifest.host_permissions, required: false },
+    manifest.permissions,
+    manifest.optional_permissions,
+    manifest.host_permissions,
   ];
-  for (const { list, required: isRequired } of lists) {
+  for (const list of lists) {
     for (const p of asArray(list)) {
       if (typeof p !== "string") {
         continue;
@@ -626,11 +624,8 @@ export function declaredPermissions(manifest) {
         hosts.add(p);
       } else {
         named.add(p);
-        if (isRequired) {
-          required.add(p);
-        }
       }
     }
   }
-  return { named, required, hosts };
+  return { named, hosts };
 }

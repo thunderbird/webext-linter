@@ -1936,9 +1936,8 @@ llm-sca-review-prompt:
     This is the first half of a source code review. The add-on was submitted in two parts: the built XPI users install, and an archive of the source it was built from. A source archive has no fixed shape - the developer lays it out however they like - so where the add-on's own code sits inside it can only be found by looking. Work that out from the values below, then run the review yourself.
 
     A name in <angle brackets> is a value you work out. The rest are given under "Submission".
-  # A step marked `run: experiments` is printed only when the review allows Experiments:
-  # the flags are known here, so a prompt that asks for --sca-exp-source when nothing will
-  # read it is asking for work that cannot be used. Absent means every run prints it.
+  # A step marked `run: experiments` is printed when the built XPI's manifest.json declares
+  # Experiments. Absent means every run prints it.
   #
   # `run` names the axis and its VALUE names the condition, the way `skip` does in the
   # other prompt: a step cannot accumulate conditions, and the value is checked against
@@ -2016,7 +2015,7 @@ llm-phases:
 
     It has changed since the last pass, so read it again.
   handover: |-
-    Fill in the "answer" of every entry, in place, and change nothing else in that file. Every slot must be filled; one left null is refused. Where the file lists no entry, this pass asks nothing of it and you hand it back untouched. Then hand the file back by running exactly this command:
+    Fill in the "answer" of every entry, in place, and change nothing else in that file. Every slot must be filled, and one left null is refused. Where the file lists no entry, this pass asks nothing of it and you hand it back untouched. Then hand the file back by running exactly this command:
 
     {{command}}
 
@@ -2146,7 +2145,7 @@ llm-phases:
 
             Tell it to do what the "instructions" in that file say, and tell it nothing more: the file names the folder to read, what to look for there, and the file to write its answers into. Do not open it yourself, do not summarise it, and do not add to it.
 
-            Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. Any other agent this prompt started keeps running meanwhile; leave it be.
+            Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. Any other agent this prompt started keeps running meanwhile. Leave it be.
         - run: sweep-sca
           text: |-
             Spawn an independent sub-agent NOW to sweep the source archive.
@@ -2157,7 +2156,7 @@ llm-phases:
 
             Tell it to do what the "instructions" in that file say, and tell it nothing more: the file names the folder to read, what to look for there, and the file to write its answers into. Do not open it yourself, do not summarise it, and do not add to it.
 
-            Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. Any other agent this prompt started keeps running meanwhile; leave it be.
+            Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. Any other agent this prompt started keeps running meanwhile. Leave it be.
 
     # Audits what the deterministic checks proved. Its intro earns its text: without it the
     # entries alone would let the agent hunt for new problems instead of checking the ones it

@@ -234,9 +234,9 @@ export const SETUP_STEPS = Object.freeze([
  *   source is derived at the one read that wants it (src/lib/reachability.js), in the
  *   keyspace the review target's keys live in. Its privileged, non-WebExtension files are
  *   excluded from the WebExtension code checks (which review all of the readable source,
- *   having no reachability tree there). Optional in general, but REQUIRED when
- *   allowExperiments is set in SCA mode (the CLI enforces this) - without it, Experiment
- *   code cannot be told apart from WebExtension code.
+ *   having no reachability tree there). REQUIRED in SCA mode when the add-on is an
+ *   Experiment (runPipeline refuses to start): without it, Experiment code cannot be told
+ *   apart from WebExtension code.
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
  * @property {boolean} [cdnLookup]  Identify an unrecognized bundled library (minified,
  *   or a large readable file) by a jsDelivr content-hash lookup (on by default;
@@ -305,8 +305,8 @@ export async function runPipeline(opts) {
   // in both modes: a source-code submission's promise is readable source, so a minified
   // file in the archive is rejected like one in an XPI, not scanned as authored.
   // The source view holds every file but the Experiment, and collectBuildFiles traces the
-  // build over it off the root package.json - the code and the tooling are one set of files,
-  // which is what the build checks want.
+  // build over both off the root package.json - the code and the tooling are one set of
+  // files, which is what the build checks want.
   //
   // The review mode is DERIVED from the two facts below and assigned nowhere, so it cannot
   // drift from the steps that ran: --sca-root makes it a source code review, and a REJECTED
@@ -884,7 +884,7 @@ export async function runPipeline(opts) {
   // The submitted archive, which only a source review has. One ctx over one artifact: the
   // build checks and the code checks read the same object, and what separates them is the
   // route each declared, not a second narrowed projection.
-  const scaCtx = mode?.sca
+  const scaCtx = mode.sca
     ? buildScaCtx(reviewTarget, preParsedJsSources, env)
     : null;
   // The sibling ctxs keyed by the `input` value that routes to each (see routeCtx). Routing
@@ -955,12 +955,12 @@ export async function runPipeline(opts) {
           ],
           registry
         ),
-    // The blind-spot sweeps to run BEFORE settling this review: the shared method, then
-    // one bare item per sweep a check that ran authors. ONE request, not one per item -
-    // the sweeps read the same submission, so what is learned on one is already in hand
-    // for the next. Registry-sourced and carried by every
-    // review, exactly like the by-hand manual-checks above, which is why it travels on
-    // meta: the text renderer never sees the registry.
+    // The blind-spot sweeps to run BEFORE settling this review: one bare item per sweep a
+    // check that ran authors, asked as one request per tree rather than one per item - the
+    // sweeps of a tree read the same files, so what is learned on one is already in hand
+    // for the next. Registry-sourced and carried by every review, exactly like the by-hand
+    // manual-checks above, which is why it travels on meta: the text renderer never sees
+    // the registry.
     //
     // Gated on the checks that actually RAN: sweeping the blind spot of a scan that did
     // not happen asks a reader to cover for nothing, and this is what makes
@@ -1008,7 +1008,7 @@ export async function runPipeline(opts) {
     meta.prompting = true;
     const files = reviewFilePaths(addonPath);
     summaryPath = skip.includes("summary") ? null : files.summary;
-    buildPath = mode?.sca ? files.build : null;
+    buildPath = mode.sca ? files.build : null;
     // Ungated, unlike the two above: every review has a report, and this one is written by
     // the linter (src/report/report-file.js) rather than asked of an agent, so there is no
     // step whose absence could leave the path naming nothing.
@@ -1080,7 +1080,7 @@ export async function runPipeline(opts) {
     loopState = {
       version: STATE_VERSION,
       review: meta.reviewFile,
-      report: { findings, meta, sca: Boolean(mode?.sca) },
+      report: { findings, meta, sca: mode.sca },
       manual: meta.manualReview,
       preSweep: meta.preSweep,
       // What this run was told, recorded ONCE. Every pass reads it from here - a second
@@ -1088,7 +1088,7 @@ export async function runPipeline(opts) {
       // differently is a phase issued for entries it never shows.
       run: {
         skip,
-        sca: Boolean(mode?.sca),
+        sca: mode.sca,
         // One condition per tree that has a sweep to run, keyed the way the step names
         // it. Read off the FILES rather than off `sweeping` and `preSweep` separately:
         // a step exists to send an agent at a request, so the request existing is the
@@ -1447,8 +1447,7 @@ export async function resolveReviewSchema({
 }
 
 /**
- * The blind-spot sweeps for this review: the shared method plus the bare items, or null
- * when no check that ran authors one.
+ * The blind-spot sweeps for this review, or null when no check that ran authors one.
  *
  * One flat list, grouped into one request per tree when the requests are written
  * (src/report/sweep-files.js): the method is said once per request and each item says

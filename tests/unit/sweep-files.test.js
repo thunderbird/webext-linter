@@ -286,7 +286,7 @@ test("a file that cannot be acted on is refused, saying which thing is wrong", (
     /may only set/,
     "a hit wording the report"
   );
-  // The path guards every swept result has always been held to still apply.
+  // Every swept result is held to the path guards.
   refused(
     { 3: [{ file: "../../etc/passwd" }], 4: [] },
     /names a file INSIDE the add-on/,

@@ -28,8 +28,8 @@ test("the label shows the stamped artifact, and only in a source review", () => 
   }
 });
 
-// Asked to show no artifact, this shows nothing rather than guessing one. A finding can
-// no longer reach it that way - the constructor refuses a locus without one - so this
+// Asked to show no artifact, this shows nothing rather than guessing one. A finding cannot
+// reach it that way - the constructor refuses a locus without one - so this
 // pins the renderer's own floor, which every caller relies on and none should test around.
 test("no artifact is labelled with nothing, not with a default", () => {
   assert.equal(artifactLabel({ mode: REVIEW_MODE.SCA }), "");

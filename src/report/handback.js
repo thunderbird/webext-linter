@@ -211,7 +211,7 @@ export function answersOf(handed, asked, phase, keyOf) {
  * its absence means the table was built wrongly, and handing out a relative path instead
  * would leave the agent resolving it against its own directory. A caller that passes no
  * table is not resolving at all, which is a different thing and is left alone.
- * A file that escapes its root is UNTRUSTED INPUT that got past its door - only a sweep row
+ * A file that escapes its root is UNTRUSTED INPUT that got past its door - only a sweep result
  * authors a path, and checkedResult refuses one that steps out (src/report/sweep.js) - so
  * reaching here means that door failed, and composing the path anyway would publish a
  * location outside the submission as the linter's own claim.

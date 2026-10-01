@@ -2,8 +2,8 @@
 //
 // Asked of EVERY artifact the review has (`input: all`, via perArtifact). The scan covers
 // only code OUTSIDE the pure WebExtension tree, because a WebExtension cannot eval without
-// a permissive CSP and csp-unsafe-eval reports that separately - so on the shipped side
-// this is the Experiment implementation, which a source review otherwise never reads.
+// a permissive CSP and csp-unsafe-eval reports that separately - so on either side this
+// is the Experiment implementation, as written and as built.
 //
 // Belongs here: a finding per eval() hit. Does NOT belong here: the scan (->
 // getEvalScan in src/lib/eval-scan.js, shared with the other

@@ -6,7 +6,7 @@
 // main(argv) below. `npm run help` is an alias for `verify.js --help`.
 //
 // Belongs here: the front-end only - the OPTIONS table, usage/help text, argv
-// parse and flag validation, the values -> PipelineOpts mapping, stream/capture
+// parse and flag validation, the values -> PipelineOpts mapping, stream
 // routing, exit codes, and the COMMAND a prompt hands back: which flags a
 // prepared review is to be run with is a fact about this run's own arguments,
 // known here and nowhere else, so it is composed here and laid out there.
@@ -227,7 +227,7 @@ function helpText(checkIds) {
     ],
     [
       "--sca-exp-source <path>",
-      "The Experiment implementation folder, inside --sca-root - relative to it or absolute within it, anywhere under it (e.g. addon/experiment-api, or a sibling of the source like experiment), but never the root itself: naming the root would exclude nothing. Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission/eval checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-root; REQUIRED when --allow-experiments is used in SCA mode.",
+      "The Experiment implementation folder, inside --sca-root - relative to it or absolute within it, anywhere under it (e.g. addon/experiment-api, or a sibling of the source like experiment), but never the root itself: naming the root would exclude nothing. Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-root; REQUIRED in SCA mode for an Experiment add-on.",
     ],
   ];
 
@@ -341,16 +341,15 @@ function shellArg(value) {
 
 /**
  * What --llm-sca-review hands its reader: the flags the REVIEW is run with, one finished
- * line each, and whether that review allows Experiments.
+ * line each, and whether it reviews an Experiment.
  *
  * The whole command, not a template to assemble: the flags are known here, so printing
  * them saves its reader the one step where a flag can go missing. This run's own flags
  * first - with --llm-sca-review replaced by --llm-review and the add-on the submission
  * folder holds - then the ones the reader works out. Anything dropped or invented here
  * reviews a different submission than the reviewer asked about, --allow-experiments above
- * all. --sca-exp-source is named when the review will need it: when Experiments are allowed,
- * or when the built add-on's manifest.json declares one - read from the .xpi here, since a
- * source review of an Experiment refuses to start without it.
+ * all. --sca-exp-source is named when the built add-on's manifest.json declares
+ * Experiments, read from the .xpi here.
  *
  * Composed from the PARSED values against OPTIONS, which is what knows a flag from its
  * value. Reading argv again instead means guessing that pairing from the token shapes, and
@@ -381,9 +380,7 @@ function reviewCommand(values, submission) {
     );
   }
   flags.push("--sca-root <SCA_ROOT>");
-  const experiments =
-    Boolean(values["allow-experiments"]) ||
-    isExperiment(readPackedManifest(submission.xpi).json);
+  const experiments = isExperiment(readPackedManifest(submission.xpi).json);
   if (experiments) {
     flags.push("--sca-exp-source <SCA_EXP_SOURCE>");
   }
@@ -848,24 +845,6 @@ export async function main(argv) {
       writeToStderr(`${problem.text}${what}\n`);
       return 2;
     }
-  }
-
-  // In SCA mode there is no manifest.json trace to separate Experiment code from
-  // WebExtension code (the readable source is reviewed whole), so allowing
-  // Experiments REQUIRES naming their folder via --sca-exp-source. Without it the
-  // privileged Experiment code would be reviewed as WebExtension code and flood the
-  // report with false positives.
-  if (
-    values["sca-root"] &&
-    values["allow-experiments"] &&
-    !values["sca-exp-source"]
-  ) {
-    writeToStderr(
-      "--sca-exp-source is required with --allow-experiments in source code " +
-        "archive (SCA) mode (it locates the Experiment code so it is not reviewed " +
-        "as WebExtension code).\n"
-    );
-    return 2;
   }
 
   let result;

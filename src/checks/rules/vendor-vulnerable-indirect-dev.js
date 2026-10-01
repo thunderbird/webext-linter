@@ -7,7 +7,7 @@
 // addon.vendor.treeDevVulnerabilities; this check maps that set to findings via
 // the shared lib/vuln-findings.js mapper, anchored at the lock-file line.
 // Identical to vendor-vulnerable-indirect, but for the build-only half of the
-// tree (SCA-only; the registry entry is sca:true).
+// tree (SCA-only; the registry entry is input: sca).
 //
 // Belongs here: choosing the build-time tree vulnerability set. Does NOT belong
 // here: the vulnerability->finding mapping (-> src/lib/vuln-findings.js), the

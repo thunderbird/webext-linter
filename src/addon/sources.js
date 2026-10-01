@@ -48,7 +48,7 @@ import {
  *   accessors. A CHECK NEVER PARSES: the accessors THROW on a source no pass ran, rather
  *   than recompute. runExtractionPass sets every field below; it runs once per artifact -
  *   the review target, and in an SCA review the built XPI too (so its input:xpi checks read
- *   the same load graph + api-usage a native XPI review would produce).
+ *   the same results a native XPI review would produce).
  */
 
 /**
@@ -57,7 +57,6 @@ import {
  *   source, authored or not - whether a non-authored file's hits are REPORTED is each
  *   consumer's call, not something the shape decides. The one exception is codeAtoms,
  *   whose absence routes the permission token scan to its raw-text path.
- *   The light shipped pass sets only the load-graph subset (see JsSource.extracted).
  * @property {import("../parse/api-usage.js").ApiUsageResult} apiUsage  WebExtension
  *   API usage (ctx.apiUsages is derived from it; its parseError feeds unparsable-file)
  *   - every source.
@@ -68,13 +67,13 @@ import {
  *   statement loc, or null - every source (the two input:xpi module checks read it).
  * @property {object} [experimentRefs]  scanExperimentInjectedRefs refs - every
  *   source, but only for an Experiment add-on (absent otherwise).
- * @property {object} [remoteJs]  scanRemoteJs (eval-scan + remote-resources) - authored.
- * @property {object} [networkSinks]  scanNetworkSinks (outbound-sinks) - authored.
- * @property {object} [unsafeHtml]  scanUnsafeHtml - authored.
- * @property {object} [coreSymbols]  scanCoreSymbols (core-symbol-in-webext) - authored.
- * @property {object} [syncXhr]  scanSyncXhr (sync-xhr) - authored.
- * @property {object} [debuggerStmt]  scanDebugger (debugger-statement) - authored.
- * @property {object} [asyncOnMessage]  scanAsyncOnMessage (async-onmessage) - authored.
+ * @property {object} remoteJs  scanRemoteJs (eval-scan + remote-resources) - every source.
+ * @property {object} networkSinks  scanNetworkSinks (outbound-sinks) - every source.
+ * @property {object} unsafeHtml  scanUnsafeHtml - every source.
+ * @property {object} coreSymbols  scanCoreSymbols (core-symbol-in-webext) - every source.
+ * @property {object} syncXhr  scanSyncXhr (sync-xhr) - every source.
+ * @property {object} debuggerStmt  scanDebugger (debugger-statement) - every source.
+ * @property {object} asyncOnMessage  scanAsyncOnMessage (async-onmessage) - every source.
  * @property {Set<string>} [webApiPerms]  scanWebApiCalls grounded permissions
  *   (against ALL web_api signatures; the consumer intersects with declared) - EVERY source
  *   (a vendored library's navigator.* call grounds the permission just as authored code does).

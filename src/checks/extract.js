@@ -101,8 +101,7 @@ function extractLoadGraph(
  * The one full pass, run once per artifact - the review target, and in an SCA review the
  * built XPI too. Parse each source once and store its per-file extraction results on
  * `src.extracted`; the AST is dropped with each iteration. On top of the load graph it
- * extracts api-usage from every source, and runs the content scanners over the AUTHORED
- * remainder.
+ * extracts api-usage and runs the content scanners on every source.
  * @param {JsSource[]} jsSources
  * @param {object} [opts]
  * @param {import("../schema/index.js").SchemaIndex} [opts.schema]  For the web_api
@@ -140,9 +139,8 @@ export function runExtractionPass(
     // Content extractors: EVERY source, whoever wrote it. Whether a non-authored file's
     // hits are reported is the consumer's call, and each one makes it for itself against
     // the same nonAuthored Set. Producing the result either way is what stops the two
-    // from disagreeing: a scanner that skipped here left the field undefined, so a
-    // consumer that forgot to skip did not read "nothing found" - it read `undefined` and
-    // threw, taking every check sharing that scan down with it.
+    // from disagreeing: a consumer that forgot to skip reads real hits, never an
+    // `undefined` that throws and takes every check sharing that scan down with it.
     extracted.remoteJs = scanRemoteJs(src.code, src.lineOffset, parsed);
     extracted.networkSinks = scanNetworkSinks(src.code, src.lineOffset, parsed);
     extracted.unsafeHtml = scanUnsafeHtml(src.code, src.lineOffset, parsed);
@@ -179,9 +177,8 @@ export function runExtractionPass(
  * never parses, so a source that reaches a check without having been through a pass is a
  * wiring bug in setup, not something to paper over by parsing here. Fail loudly instead.
  *
- * A field being ABSENT is a different thing, and legitimate, but it is now only ever
- * `codeAtoms`: everything else - the load graph, api-usage and every content result - is
- * extracted for every source, so a consumer reads a real answer rather than `undefined`.
+ * A field being ABSENT is a different thing, and legitimate: `codeAtoms` on a non-authored
+ * source, `experimentRefs` on a non-Experiment add-on. Everything else is on every source.
  * @param {JsSource} src
  * @returns {object}
  */

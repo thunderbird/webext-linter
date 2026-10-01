@@ -1,5 +1,5 @@
 {
-  "_comment": "An obfuscated file committed into the source archive. Obfuscation is banned outright, so the diagnosis is the same as the XPI's - but the XPI response ends by pointing at the source-code-submission instructions, which is the one thing this developer has already done. The SCA branch says what is actually left: the archive has to carry the file readable. The file is in BOTH trees, and obfuscated-code is asked of every artifact (input: all), so it is reported twice - once per artifact. Nothing pairs the two copies: a build can move or rewrite a file, so two hits cannot be known to be the same one, which is why both are reported and the sort groups them by artifact rather than interleaving them.",
+  "_comment": "An obfuscated file committed into the source archive. Obfuscation is banned outright, so the diagnosis is the same as the XPI's, and the SCA branch adds what is left: the archive has to carry the file readable. The file is in BOTH trees, and obfuscated-code is asked of every artifact (input: all), so it is reported twice - once per artifact. Nothing pairs the two copies: a build can move or rewrite a file, so two hits cannot be known to be the same one, which is why both are reported and the sort groups them by artifact rather than interleaving them.",
   "expect": {
     "obfuscated-code": [
       "obf.js",

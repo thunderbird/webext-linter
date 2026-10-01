@@ -12,10 +12,8 @@
 //
 // This turns on the content match, NOT on the declaration: a declared file that could
 // not be verified is reviewed as the developer's own code (applyUnverifiedVendor), so
-// its remote loads stay remote-resources' findings. Two limits worth knowing: only the
-// shipped XPI carries verified results (verifyVendor runs on it alone), so an SCA review
-// never reaches this lane; and the JS lane never does either, because a vendored .js is
-// dropped from the scan entirely.
+// its remote loads stay remote-resources' findings. The JS lane never reaches this check,
+// because a vendored .js is dropped from the scan entirely.
 //
 // Belongs here: putting each upstream-matched site to a person. Does NOT belong here:
 // the scan and its classification (-> src/lib/remote-refs.js), the developer's own

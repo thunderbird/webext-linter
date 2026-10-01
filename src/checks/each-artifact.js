@@ -28,7 +28,7 @@ import { wiringError } from "../lib/errors.js";
  *
  * @param {(ctx: RunContext, check: LoadedCheck) => {findings?: object[], escalations?: object[]}} fn
  *   The per-artifact body, unchanged from the one-artifact shape.
- * @returns {(ctx: RunContext, check: LoadedCheck) => {findings: object[], escalations?: object[]}}
+ * @returns {(ctx: RunContext, check: LoadedCheck) => {findings: object[], escalations: object[]}}
  */
 export function perArtifact(fn) {
   return (ctx, check) => {

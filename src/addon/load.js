@@ -146,9 +146,9 @@ import { rethrowIfFatal } from "../lib/errors.js";
  * (src/pipeline.js). Nothing here resolves a path, derives a lookup from one, or reads it
  * back - a check is handed no path at all (src/checks/context.js projectCtx builds the
  * whole ctx, and none of its fields is one) - so a path stapled on at load could only
- * drift from the one the run was given. It also has no
- * honest value for a source review, whose files are a SUBTREE of an archive: no single path
- * names that, and for a zip root none exists.
+ * drift from the one the run was given. It also has no honest value for a source review,
+ * whose files are a SUBTREE of an archive: no single path names that, and for a zip root
+ * none exists.
  * @typedef {object} Addon
  * @property {string} kind  WHICH artifact this is - the built XPI, or the submitted
  *   source code archive (src/lib/artifacts.js). Set where it is loaded, because the
@@ -535,17 +535,17 @@ export function hasParentSegment(value) {
  *   source      everything the archive holds, MINUS the Experiment subtree. The whole of
  *               it, because a build script may put any file anywhere: nothing in the
  *               archive can be assumed unused, so the archive IS what the review reads and
- *               there is no narrower add-on subtree to carve out of it. It is also what
- *               the build trace runs over (src/build/collect.js collectBuildFiles, via
- *               analyzeBuild), which narrows it to the files reached from the root
+ *               there is no narrower add-on subtree to carve out of it. With the
+ *               experiment view it is what the build trace runs over (src/build/collect.js
+ *               collectBuildFiles, via analyzeBuild), which narrows it to the files reached from the root
  *               package.json. An installed dependency tree is in neither: loadAddon records
  *               the directory paths for committed-node-modules and reads none of it.
  *   experiment  the Experiment implementation at `scaExpSource`, wherever it sits - inside
  *               the source or beside it. Privileged, non-WebExtension code: it is recorded
  *               here ONCE so nothing downstream has to re-derive where it went.
  *
- * The two are disjoint, and the source view serves both the code review and the build
- * trace: the tooling is intermingled with the code, so there is no line to draw between
+ * The two are disjoint, and together they serve both the code review and the build
+ * trace (./store.js withExperiment): the tooling is intermingled with the code, so there is no line to draw between
  * them. One pass, one set of prefixes, so no two readers can disagree about where a file
  * went.
  *
@@ -592,8 +592,9 @@ function addonTooLargeError() {
 }
 
 /**
- * One sentence for an archive we cannot read, shared by extractZip's three refusals: the
- * container will not open, an entry name is not one we take, an entry will not inflate.
+ * One sentence for an archive we cannot read, shared by extractZip's refusals: the
+ * container will not open, an entry name is not one we take, an entry hides its size or
+ * will not inflate.
  * They are one answer because they have one consequence - no review of this submission can
  * be complete - and because the alternative is AdmZip's own wording, which either names its
  * internals or quotes a file name out of the archive.

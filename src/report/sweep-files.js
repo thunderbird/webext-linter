@@ -28,7 +28,7 @@
 //
 // Belongs here: the shape of both files, the prose that goes in the request, and reading
 // an answers file back into results. Does NOT belong here: WHAT to look for (-> each
-// check's `sweep-instruction` in assets/registry.yaml, carried through unchanged), where
+// check's sweep instruction in assets/registry.yaml, carried through unchanged), where
 // the files live (-> src/report/items.js reviewFilePaths), what a result MEANS once read
 // (-> src/report/sweep.js), or when they are written (-> src/pipeline.js).
 
@@ -54,12 +54,8 @@ const PROSE = new Set(["instructions", "instruction"]);
  *
  * Every path it needs is a FIELD, named once and referred to by that name in the prose -
  * `sweepTarget` and `answerFile` - so nothing it must open is buried in a sentence, and
- * the prose says which tree without repeating the path.
- *
- * The worked example is built from RESULT_SHAPE, the same constant checkedResult refuses
- * against, so what the agent is shown and what the door accepts cannot drift. Its hint is
- * a placeholder: a plausible finding in an example is a suggestion about what to go and
- * find, and a sweep exists to look without being told what to look for.
+ * the prose says which tree without repeating the path. The worked example is
+ * exampleAnswers'.
  * @param {object} args
  * @param {string} args.sweepTarget  The tree to read, absolute.
  * @param {string} args.answerFile  Where to write, absolute.
@@ -294,8 +290,8 @@ export function readSweepAnswers(file, asked) {
     }
     value.forEach((found, i) => {
       const at = `${where}, label ${label}, entry ${i + 1}`;
-      // Shape-checked by the same door every swept result has always gone through, so the
-      // path guards - inside the add-on, never absolute, never a way out - hold here too.
+      // Shape-checked by checkedResult, so its path guards - inside the add-on, never
+      // absolute, never a way out - hold here.
       const hit = checkedResult(at, found);
       // The check and the artifact come from what was ASKED, never from the file: the
       // agent names a label, and where its finding lands is the review's to know.

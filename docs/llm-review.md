@@ -281,10 +281,9 @@ node verify.js ./submission-folder --llm-sca-review
 
 It reviews nothing. It names which file is the add-on and which is the source, computes
 where the source archive should be extracted (`EXTRACT_TO`, beside the archive and named
-after it), and asks its reader to extract it there and work out three things that only
+after it), and asks its reader to extract it there and work out two things that only
 reading the tree can settle: which directory is the source root, being the one holding
-`package.json` (`<SCA_ROOT>`), and - when Experiments are allowed - which holds the
-Experiment implementation (`<SCA_EXP_SOURCE>`). A name in `<angle brackets>` is one of
+`package.json` (`<SCA_ROOT>`), and - for an Experiment - which holds the Experiment implementation (`<SCA_EXP_SOURCE>`). A name in `<angle brackets>` is one of
 those, and every other name is given. Nothing asks which directory holds the add-on's own
 code: the whole of `<SCA_ROOT>` is reviewed, because a build may move or generate anything
 and no subtree can be shown to be the add-on's.

@@ -8,7 +8,7 @@
 // maps that set to findings via the shared lib/vuln-findings.js mapper, anchored
 // at the lock-file line. Only high and critical advisories are recorded - plus any
 // advisory saying the package itself is malicious, which state no band at all - so every
-// finding here is an error (SCA-only; the registry entry is sca:true).
+// finding here is an error (SCA-only; the registry entry is input: sca).
 //
 // Belongs here: choosing the production tree vulnerability set. Does NOT belong
 // here: the vulnerability->finding mapping (-> src/lib/vuln-findings.js), the

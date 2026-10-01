@@ -7,8 +7,7 @@
 //
 // WHY TWO FUNCTIONS AND NOT A CONVERSATION: `state + a filled review file -> the next
 // state + review file` is a pure file-to-file transformation, and so is `state -> report`.
-// That is what makes this half of the tool testable at all - the old round trip could only
-// be exercised by talking to an agent, which is why nothing ever drove it end to end.
+// That is what makes this half of the tool testable without talking to an agent.
 import { orderReview } from "./order.js";
 import { nextPhase, openIn, phaseNow } from "./phases.js";
 import { earlyExitOf, withoutQuestions } from "./early-exit.js";
@@ -39,9 +38,28 @@ import { applyVerdicts } from "./verdicts.js";
 import { renderFindings } from "./responses.js";
 import { VERB } from "./verbs.js";
 
-/** The verdict that does not settle an item but MOVES it: a case the agent could not
- *  settle from the package goes on to the reviewer, keeping its index, so the question a
- *  person is asked is addressable by the number the agent saw. */
+/**
+ * What this run was told, plus what the review has since decided for itself.
+ *
+ * `state.run` records the flags the review was STARTED with, and never changes. Whether
+ * the review has stopped early is not one of those: it is derived from the findings that
+ * still stand, so it can change with every verdict - a pass that withdraws the finding
+ * which stopped the review puts its question block back.
+ *
+ * Derived in ONE place because both legs of the round trip need the same answer. `issue`
+ * decides what goes out by it, and `accept` re-derives what went out rather than storing
+ * it - two derivations that could differ would leave a hand-back no answer satisfies.
+ * @param {import("./state.js").LoopState} state
+ * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
+ * @param {import("../checks/registry.js").Registry} registry
+ * @returns {{skip: string[], sca: boolean, halted: boolean}}
+ */
+function runOf(state, ordered, registry) {
+  return {
+    ...state.run,
+    halted: Boolean(earlyExitOf(ordered, state.answers ?? {}, registry)),
+  };
+}
 
 /**
  * Hand out the next phase, or say the review is settled.
@@ -57,29 +75,6 @@ import { VERB } from "./verbs.js";
  *   here and another for the reviewer.
  * @returns {?{phase: object, steps: object[], entries: object[]}}  Null when settled.
  */
-/**
- * What this run was told, plus what the review has since decided for itself.
- *
- * `state.run` records the flags the review was STARTED with, and never changes. Whether
- * the review has stopped early is not one of those: it is derived from the findings that
- * still stand, so it can change with every verdict - a pass that withdraws the finding
- * which stopped the review puts its question block back.
- *
- * Derived in ONE place because both legs of the round trip need the same answer. `issue`
- * decides what goes out by it, and `accept` re-derives what went out rather than storing
- * it - two derivations that could differ would leave a hand-back no answer satisfies.
- * @param {import("./state.js").LoopState} state
- * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
- * @param {import("../checks/registry.js").Registry} registry
- * @returns {{skip: string[], sca: boolean, sweep: boolean, halted: boolean}}
- */
-function runOf(state, ordered, registry) {
-  return {
-    ...state.run,
-    halted: Boolean(earlyExitOf(ordered, state.answers ?? {}, registry)),
-  };
-}
-
 export function issue(state, stateFile, phases, registry) {
   const ordered = orderReview(state.report.findings, state.manual);
   const run = runOf(state, ordered, registry);

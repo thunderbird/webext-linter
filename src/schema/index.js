@@ -19,9 +19,9 @@
 // Belongs here: the SchemaIndex query API the rest of the app consults -
 // resolveApi/resolveRef, requiredPermissions, validPermissions,
 // permissionWebApis, validManifestKeys, manifestKeyPermissions,
-// manifestVersionMajor, fileLoaderMethods, and the static annotation helpers
-// (versionAdded, deprecation, isUnsupported, docUrl). It consumes the parsed
-// files and calls merge.js to build its registries.
+// manifestVersionMajor, fileLoaderMethods, registerExperimentApis, and the static
+// annotation helpers (versionAdded, deprecation, isUnsupported, docUrl). It consumes
+// the parsed files and calls merge.js to build its registries.
 //
 // Does NOT belong here: the merge algorithm itself (src/schema/merge.js),
 // fetching or reading files (src/schema/fetch.js and src/schema/load.js), ajv
@@ -522,9 +522,9 @@ export class SchemaIndex {
    * "calendar.items"), mapped to the members its own schema declares.
    *
    * A null member set leaves the namespace OPAQUE - the namespace and everything under
-   * it resolve as known, which is all this could do before an Experiment's schema was
-   * read. That is the answer wherever the schema is absent, unreadable or unparsable,
-   * and a malformed developer file must not turn into a wave of unknown-member reports.
+   * it resolve as known. That is the answer wherever the schema is absent, unreadable or
+   * unparsable, so a malformed developer file cannot become a wave of unknown-member
+   * reports.
    * @param {Map<string, ?Set<string>>|Iterable<[string, ?Set<string>]>} apis
    */
   registerExperimentApis(apis) {

@@ -1,8 +1,8 @@
 // Builds the sibling RunContexts every check runs against. There is ONE ctx per artifact -
 // the built XPI, and in a source review the submitted archive - plus the route that carries
 // every artifact at once. `source` gets no ctx of its own: it points at whichever artifact
-// the review mode makes the target. They all project ONE shared review env: the schema, the shipped manifest.json and experiments, and
-// the mode. The pipeline (pipeline.js) resolves the schema, parses the sources, and builds
+// the review mode makes the target. They all project ONE shared review env: the schema,
+// the shipped manifest.json and experiments, and the mode. The pipeline (pipeline.js) resolves the schema, parses the sources, and builds
 // that shared env; this module only derives ctx.apiUsages from the already-parsed sources and
 // swaps the per-artifact fields for each sibling.
 //
@@ -21,7 +21,7 @@ import { apiUsageOf } from "./extract.js";
 
 /**
  * @typedef {object} ReviewEnv  The review-level state shared by every sibling ctx, built ONCE
- *   by the pipeline (src/pipeline.js) and handed to both ctx builders. It carries only what is
+ *   by the pipeline (src/pipeline.js) and handed to every ctx builder. It carries only what is
  *   the SAME across artifacts, so a sibling can never drift from another: the schema, the
  *   shipped manifest.json and experiments, the review mode and the
  *   invalid-Experiment flag. Where the source and the Experiment sit on disk is NOT here: it
@@ -61,11 +61,10 @@ function deriveApiUsages(jsSources) {
  * @param {import("../addon/load.js").Addon} [routed.artifact]  The routed artifact, linked
  *   by reference: ctx.artifact IS the object the loader produced. Absent for the ONE route
  *   that can be about more than one artifact (the `all` ctx), which names them instead.
- *   By the time a check sees it,
- *   the artifact is sealed (src/lib/errors.js sealArtifact): a field only some artifacts
- *   carry throws when read off one that never produced it, so a check has no reason to ask
- *   whether a field EXISTS - the only way it cannot is that the check declared the wrong
- *   `input`. A field whose VALUE is null is the other thing entirely: `experiments` below
+ *   By the time a check sees it, the artifact is sealed (src/lib/errors.js sealArtifact): a
+ *   field only some artifacts carry throws when read off one that never produced it, so a
+ *   check has no reason to ask whether a field EXISTS - the only way it cannot is that the
+ *   check declared the wrong `input`. A field whose VALUE is null is the other thing entirely: `experiments` below
  *   is a verdict or null, and null is that artifact's answer (it declares none), so
  *   reading it through `?.` is right where guarding a field's existence is not.
  * @param {import("../addon/sources.js").JsSource[]} routed.jsSources
@@ -110,7 +109,7 @@ function projectCtx(
     // shared above. What stops a check reaching the artifact it was NOT routed to is the
     // routing - its declared `input` - so there is nothing here to withhold.
     //
-    // Set only when there IS one artifact. The cross-artifact route has two and names them;
+    // Set only when there IS one artifact. The `all` route names its artifacts instead;
     // leaving the field off there means anything written for the one-artifact shape fails
     // on it rather than silently reading whichever side happened to be here.
     ctx.artifact = artifact;
