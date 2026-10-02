@@ -10,7 +10,12 @@
 // displayTerminal for the terminal itself, applied to every byte written there. Which to
 // call is documented on each.
 //
-// Belongs here: wrapText (a generic width-wrapper) and that guard family. Does NOT belong
+// And the plain scans that replace regexes on submission text whose time grows faster than
+// it (trimStartOf, trimEndOf, cutAtFirst, replaceSpans, replaceQuoted, pathTokensEndingIn):
+// a pattern like /[,;:]+$/ is retried from every position inside a long run - a loop walks
+// it once.
+//
+// Belongs here: wrapText (a generic width-wrapper), that guard family, and those scans. Does NOT belong
 // here: the report's section layout (src/report/format.js), the activity-feed narration
 // (src/checks/escalation.js) that call them, or the one door to the terminal
 // (src/util/log.js) that calls displayTerminal.
@@ -32,7 +37,7 @@ const MARKER = /^([-*•]\s+|\d+[.)]\s+)/;
 export function wrapText(text, indent = "", width = 80) {
   const out = [];
   for (const raw of text.split("\n")) {
-    const line = raw.replace(/\s+$/, "");
+    const line = raw.trimEnd();
     if (!line.trim()) {
       out.push("");
       continue;
@@ -152,5 +157,188 @@ export function displayTerminal(text) {
   return String(text ?? "").replace(
     /(?![\t\n])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu,
     " "
+  );
+}
+
+/**
+ * `s` without its leading run of characters from `chars` - the linear form of
+ * `s.replace(/^[chars]+/, "")`.
+ * @param {string} s
+ * @param {string} chars  The characters to drop, each one a single code unit.
+ * @returns {string}
+ */
+export function trimStartOf(s, chars) {
+  let start = 0;
+  while (start < s.length && chars.includes(s[start])) {
+    start++;
+  }
+  return s.slice(start);
+}
+
+/**
+ * `s` without its trailing run of characters from `chars` - the linear form of
+ * `s.replace(/[chars]+$/, "")`, which retries from every position inside a long run.
+ * @param {string} s
+ * @param {string} chars  The characters to drop, each one a single code unit.
+ * @returns {string}
+ */
+export function trimEndOf(s, chars) {
+  let end = s.length;
+  while (end > 0 && chars.includes(s[end - 1])) {
+    end--;
+  }
+  return s.slice(0, end);
+}
+
+/**
+ * Everything in `s` before its first character from `chars`, or `s` when it has none -
+ * the linear form of `s.replace(/[chars].*$/, "")`. Unlike that regex it cuts across a line
+ * break too, which in the values it is used on (a path, a version) is malformed anyway.
+ * @param {string} s
+ * @param {string} chars  The characters to cut at, each one a single code unit.
+ * @returns {string}
+ */
+export function cutAtFirst(s, chars) {
+  for (let i = 0; i < s.length; i++) {
+    if (chars.includes(s[i])) {
+      return s.slice(0, i);
+    }
+  }
+  return s;
+}
+
+/**
+ * `text` with every `open ... close` span (the shortest, left to right) replaced by
+ * `replacement` - the linear form of a lazy /open[\s\S]*?close/g. An `open` with no `close`
+ * after it leaves the rest unchanged: nothing later can be closed either, so the scan stops
+ * where the regex would have retried from every remaining `open`.
+ * @param {string} text
+ * @param {string} open
+ * @param {string} close
+ * @param {string} replacement
+ * @param {{caseInsensitive?: boolean}} [options]  Match `open` in any ASCII case.
+ * @returns {string}
+ */
+export function replaceSpans(text, open, close, replacement, options = {}) {
+  const find = options.caseInsensitive
+    ? (from) => indexOfAsciiCi(text, open, from)
+    : (from) => text.indexOf(open, from);
+  let out = "";
+  let at = 0;
+  for (;;) {
+    const start = find(at);
+    const end = start === -1 ? -1 : text.indexOf(close, start + open.length);
+    if (end === -1) {
+      return out + text.slice(at);
+    }
+    out += text.slice(at, start) + replacement;
+    at = end + close.length;
+  }
+}
+
+/** @param {string} text @param {string} needle  Lower-case. @param {number} from */
+function indexOfAsciiCi(text, needle, from) {
+  for (let i = from; i + needle.length <= text.length; i++) {
+    let k = 0;
+    while (
+      k < needle.length &&
+      (text[i + k] === needle[k] || text[i + k] === needle[k].toUpperCase())
+    ) {
+      k++;
+    }
+    if (k === needle.length) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * `text` with every `quote`-delimited string replaced by two quotes - the linear form of
+ * /"(?:[^"\\]|\\.)*"/g. A backslash escapes the next character unless that is a line break
+ * or the end, which leaves the string unterminated and its text unchanged. After an
+ * unterminated string the scan resumes where it failed: no unescaped quote lies inside it,
+ * so no string could start there either.
+ * @param {string} text
+ * @param {string} quote  `"` or `'`.
+ * @returns {string}
+ */
+export function replaceQuoted(text, quote) {
+  let out = "";
+  let at = 0;
+  let from = 0;
+  for (;;) {
+    const start = text.indexOf(quote, from);
+    if (start === -1) {
+      return out + text.slice(at);
+    }
+    let k = start + 1;
+    let closed = false;
+    while (k < text.length) {
+      const c = text[k];
+      if (c === quote) {
+        closed = true;
+        break;
+      }
+      if (c === "\\") {
+        if (k + 1 < text.length && !LINE_BREAKS.includes(text[k + 1])) {
+          k += 2;
+          continue;
+        }
+        break;
+      }
+      k++;
+    }
+    if (closed) {
+      out += text.slice(at, start) + quote + quote;
+      at = from = k + 1;
+    } else {
+      from = Math.max(k, start + 1);
+    }
+  }
+}
+
+// The line terminators a regex "." does not match.
+const LINE_BREAKS = "\n\r\u2028\u2029";
+
+/**
+ * Each token of `line` that is a run of path characters (letters, digits, `_ . / @ -`)
+ * ending in `base`, left to right - what /[\w./@-]*<base>/g yields, without retrying from
+ * every position of a long run that never reaches `base`. From each occurrence of `base` the
+ * token reaches back over path characters (not into the previous token) and forward to the
+ * LAST `base` starting inside that run, as the greedy prefix did.
+ * @param {string} line
+ * @param {string} base  Non-empty.
+ * @returns {string[]}
+ */
+export function pathTokensEndingIn(line, base) {
+  const tokens = [];
+  let from = 0;
+  for (;;) {
+    const hit = line.indexOf(base, from);
+    if (hit === -1) {
+      return tokens;
+    }
+    let start = hit;
+    while (start > from && isPathChar(line[start - 1])) {
+      start--;
+    }
+    let runEnd = start;
+    while (runEnd < line.length && isPathChar(line[runEnd])) {
+      runEnd++;
+    }
+    const last = line.lastIndexOf(base, runEnd);
+    tokens.push(line.slice(start, last + base.length));
+    from = last + base.length;
+  }
+}
+
+/** @param {string} c @returns {boolean} */
+function isPathChar(c) {
+  return (
+    (c >= "a" && c <= "z") ||
+    (c >= "A" && c <= "Z") ||
+    (c >= "0" && c <= "9") ||
+    "_./@-".includes(c)
   );
 }

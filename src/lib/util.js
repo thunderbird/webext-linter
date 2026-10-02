@@ -9,7 +9,8 @@
 // escapeRegExp/wholeWordRe, the line locators (tokenLine, lineContaining,
 // declarationLine), utf8ComparisonSigns, the doc/dependency-file tests
 // (isDocMetadataFile, isDocFile, DEPENDENCY_FILE_RE), isExperiment/strictMaxVersion, the
-// version family (strictMinVersion, parseVersion, cmpVersion, versionInBounds), the
+// version family (strictMinVersion, parseVersion, cmpVersion, versionInBounds, isVersion,
+// stripVersionSuffix), the
 // suspected-loader helper referrerSupported, and the feed-note builder loaderTrace.
 //
 // Does NOT belong here: anything with a heavier dependency or a single home -
@@ -451,6 +452,87 @@ export function declarationLine(text, token) {
 }
 
 /**
+ * Whether `s` is a concrete version: an optional "v", digits, then optionally a "." or "-"
+ * followed by more of [0-9a-z.-] - "1.2.3", "v2.0.0-beta.1", "4.0rc1", but never a dist-tag
+ * like "latest". Case-insensitive. Written as a scan: the regex it replaces,
+ * /^v?\d+(\.\d+)*([.-][0-9a-z.-]+)?$/i, can split a long digit-and-dot run in many ways
+ * before failing, which is quadratic in it.
+ * @param {string} s
+ * @returns {boolean}
+ */
+export function isVersion(s) {
+  let i = s[0] === "v" || s[0] === "V" ? 1 : 0;
+  const digits = i;
+  while (i < s.length && isDigit(s[i])) {
+    i++;
+  }
+  if (i === digits) {
+    return false;
+  }
+  if (i === s.length) {
+    return true;
+  }
+  if ((s[i] !== "." && s[i] !== "-") || i + 1 === s.length) {
+    return false;
+  }
+  for (let j = i + 1; j < s.length; j++) {
+    const c = s[j];
+    const letter = (c >= "a" && c <= "z") || (c >= "A" && c <= "Z");
+    if (!isDigit(c) && !letter && c !== "." && c !== "-") {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** @param {string} c @returns {boolean} */
+function isDigit(c) {
+  return c >= "0" && c <= "9";
+}
+
+/**
+ * `s` without a trailing version segment - "jquery-3.7.1" -> "jquery", "lib.v2" -> "lib",
+ * "a_3" -> "a": a "-", "_" or "." separator, an optional "v", then dot-separated digit
+ * groups to the end. The longest such tail goes. Written as a backward scan over the digit
+ * groups: the regex it replaces, /[-_.]v?\d+(\.\d+)*$/, retries from every "." of a long
+ * digit-and-dot run, which is quadratic in it.
+ * @param {string} s
+ * @returns {string}
+ */
+export function stripVersionSuffix(s) {
+  const SEPARATORS = "-_.";
+  let cut = -1;
+  let end = s.length;
+  for (;;) {
+    let start = end;
+    while (start > 0 && isDigit(s[start - 1])) {
+      start--;
+    }
+    if (start === end) {
+      break;
+    }
+    if (
+      start >= 2 &&
+      s[start - 1] === "v" &&
+      SEPARATORS.includes(s[start - 2])
+    ) {
+      cut = start - 2;
+      break;
+    }
+    if (start < 1 || !SEPARATORS.includes(s[start - 1])) {
+      break;
+    }
+    cut = start - 1;
+    // A "." after more digits joins this group to an earlier one - keep reaching back.
+    if (s[start - 1] !== "." || start < 2 || !isDigit(s[start - 2])) {
+      break;
+    }
+    end = start - 1;
+  }
+  return cut === -1 ? s : s.slice(0, cut);
+}
+
+/**
  * The line where `key` is a YAML mapping key - the whole key, optionally quoted,
  * followed by its colon. Deliberately not a substring test: that is what
  * declarationLine falls back to, and only after this has ruled out a real entry.
@@ -460,12 +542,42 @@ export function declarationLine(text, token) {
 function yamlKeyLine(text, key) {
   const lines = text.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
-    const m = /^(['"]?)(.*?)\1\s*:(?:\s|$)/.exec(lines[i].trim());
-    if (m && m[2] === key) {
+    if (yamlKeyOf(lines[i].trim()) === key) {
       return i + 1;
     }
   }
   return null;
+}
+
+/**
+ * The key a trimmed YAML line opens with, or null: the shortest text before a colon that is
+ * followed by whitespace or the end, unquoted or inside one matching pair of quotes (tried
+ * first, as a quoted key is). A scan over the colons: the regex it replaces,
+ * /^(['"]?)(.*?)\1\s*:(?:\s|$)/, is quadratic in a long run of whitespace.
+ * @param {string} line
+ * @returns {?string}
+ */
+function yamlKeyOf(line) {
+  const space = (c) => c !== undefined && c.trim() === "";
+  // Each colon that ends a key, with where the whitespace before it starts.
+  const ends = [];
+  for (let c = line.indexOf(":"); c !== -1; c = line.indexOf(":", c + 1)) {
+    if (c + 1 === line.length || space(line[c + 1])) {
+      let w = c;
+      while (w > 0 && space(line[w - 1])) {
+        w--;
+      }
+      ends.push(w);
+    }
+  }
+  const quote = line[0] === "'" || line[0] === '"' ? line[0] : null;
+  if (quote) {
+    const w = ends.find((e) => e >= 2 && line[e - 1] === quote);
+    if (w !== undefined) {
+      return line.slice(1, w - 1);
+    }
+  }
+  return ends.length ? line.slice(0, ends[0]) : null;
 }
 
 /**

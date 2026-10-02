@@ -50,6 +50,7 @@ import { defaultNet, isPopular } from "../vendor/verify.js";
 import { rethrowIfFatal } from "./errors.js";
 import { markUntrusted, MIN_CLASSIFY_BYTES } from "./bundled.js";
 import { parseJson } from "../util/json.js";
+import { stripVersionSuffix } from "./util.js";
 
 import {
   CDN_LOOKUP_URL,
@@ -247,21 +248,36 @@ function packageMatchesFile(pkgName, file) {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "")
       .replace(/js$/, "");
-  let stem = path.posix
-    .basename(file)
-    .toLowerCase()
-    .replace(/\.(js|mjs|cjs)$/, "");
-  let prev;
-  do {
-    prev = stem;
-    stem = stem.replace(
-      /\.(min|slim|umd|esm|iife|bundle|prod|production|dev|development|global|browser)$/,
-      ""
-    );
-  } while (stem !== prev);
-  stem = stem.replace(/[-_.]v?\d+(\.\d+)*$/, "");
-  return canon(stem) === canon(pkgName.split("/").pop());
+  let stem = path.posix.basename(file).toLowerCase();
+  const ext = [".js", ".mjs", ".cjs"].find((e) => stem.endsWith(e));
+  if (ext) {
+    stem = stem.slice(0, -ext.length);
+  }
+  for (;;) {
+    const suffix = BUILD_SUFFIXES.find((w) => stem.endsWith(w));
+    if (!suffix) {
+      break;
+    }
+    stem = stem.slice(0, -suffix.length);
+  }
+  return canon(stripVersionSuffix(stem)) === canon(pkgName.split("/").pop());
 }
+
+// The build-flavour suffixes a distributed file name carries before its extension.
+const BUILD_SUFFIXES = [
+  "min",
+  "slim",
+  "umd",
+  "esm",
+  "iife",
+  "bundle",
+  "prod",
+  "production",
+  "dev",
+  "development",
+  "global",
+  "browser",
+].map((w) => `.${w}`);
 
 /**
  * One hash lookup against jsDelivr, as a tri-state so the caller can cache only

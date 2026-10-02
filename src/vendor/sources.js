@@ -13,6 +13,7 @@
 
 import { VENDOR_TRUSTED_HOSTS } from "../config.js";
 import { rethrowIfFatal } from "../lib/errors.js";
+import { isVersion } from "../lib/util.js";
 
 /**
  * @typedef {object} VendorSource
@@ -46,10 +47,18 @@ const UNTRUSTED = Object.freeze({
   subpath: null,
 });
 
-// A concrete npm version (not a dist-tag like "latest"/"next").
-const VERSION = /^v?\d+(\.\d+)*([.-][0-9a-z.-]+)?$/i;
-// A pinned git ref: a version tag or a full 40-hex commit SHA.
-const GIT_REF = /^(v?\d+(\.\d+)*([.-][0-9a-z.-]+)?|[0-9a-f]{40})$/i;
+/**
+ * A pinned git ref: a version tag (isVersion) or a full 40-hex commit SHA.
+ * @param {string} ref
+ * @returns {boolean}
+ */
+function isPinnedRef(ref) {
+  return (
+    isVersion(ref) ||
+    (ref.length === 40 &&
+      [...ref].every((c) => "0123456789abcdefABCDEF".includes(c)))
+  );
+}
 
 // An accepted INPUT host allowed alongside the config fetch hosts: a
 // github.com/.../blob URL is rewritten to raw.githubusercontent.com (which IS in
@@ -171,7 +180,7 @@ function npm(pkg, version, rawUrl) {
     pkg,
     version: version ?? null,
     rawUrl,
-    pinned: Boolean(version) && version !== "latest" && VERSION.test(version),
+    pinned: Boolean(version) && version !== "latest" && isVersion(version),
   };
 }
 
@@ -187,7 +196,7 @@ function github(repo, ref, rawUrl) {
     repo,
     ref: ref ?? null,
     rawUrl,
-    pinned: Boolean(ref) && GIT_REF.test(ref),
+    pinned: Boolean(ref) && isPinnedRef(ref),
   };
 }
 

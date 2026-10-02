@@ -24,6 +24,7 @@
 import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
 import { resolveRef } from "../lib/manifest-refs.js";
 import { parseJson } from "../util/json.js";
+import { cutAtFirst } from "../util/text.js";
 
 /** Recognized build tools -> their convention config filenames (auto-discovered by name,
  *  so a reference walk never sees them). Recognition also marks the tool KNOWN, so it is
@@ -424,5 +425,5 @@ function looksLikePath(w) {
 
 /** Strip a trailing ?query/#hash or leading ./ so resolveRef sees a plain path. */
 function stripPathArg(w) {
-  return w.replace(/^\.\//, "").replace(/[?#].*$/, "");
+  return cutAtFirst(w.replace(/^\.\//, ""), "?#");
 }

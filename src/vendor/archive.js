@@ -19,6 +19,7 @@ import AdmZip from "adm-zip";
 import { normalizedSha256 } from "../normalize/hash.js";
 import { VENDOR_TARBALL_MAX_UNPACKED_BYTES } from "../config.js";
 import { hidesItsSize } from "../util/zip.js";
+import { trimEndOf } from "../util/text.js";
 
 /**
  * The EOL-normalized SHA-256 of every file under `subpath` in a GitHub repo ZIP
@@ -31,7 +32,7 @@ import { hidesItsSize } from "../util/zip.js";
  *   the unpacked subpath exceeds the cap.
  */
 export function zipHashesUnder(zipBuf, subpath = "") {
-  const prefix = subpath ? `${subpath.replace(/\/+$/, "")}/` : "";
+  const prefix = subpath ? `${trimEndOf(subpath, "/")}/` : "";
   const hashes = new Set();
   let unpacked = 0;
   for (const entry of new AdmZip(zipBuf).getEntries()) {

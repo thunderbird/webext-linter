@@ -3,7 +3,7 @@
 // One neutral home (importable from every layer) so the extension sets cannot
 // drift between the source collector, the normalizer, and the checks.
 //
-// Belongs here: pure path/extension string helpers (extname, basename, dirname) and the
+// Belongs here: pure path/extension string helpers (extname, basename, dirname, globMatch) and the
 // extension sets built on them (JS / CSS / HTML / SFC / CODE / ARCHIVE / RECOGNIZED). No
 // filesystem IO and no dependencies. Does NOT belong here: reading files off disk or out of an
 // archive - that is src/addon/load.js for the add-on and src/schema/load.js for
@@ -146,4 +146,60 @@ export function basename(file) {
 export function dirname(file) {
   const i = file.lastIndexOf("/");
   return i === -1 ? "" : file.slice(0, i);
+}
+
+// The line terminators a regex "." does not match, which a "**" never crossed.
+const LINE_BREAKS = "\n\r\u2028\u2029";
+
+/**
+ * Whether `path` matches a web_accessible_resources style glob: `**` any run, `*` a run
+ * without "/", `?` one character but "/", everything else itself. Matched by stepping one
+ * row of booleans over the pattern positions per path character, so the time is pattern
+ * length times path length - a glob compiled to a regex backtracks exponentially in its
+ * number of stars. `**` does not cross a line break, as the regex's ".*" did not.
+ * @param {string} glob
+ * @param {string} path
+ * @returns {boolean}
+ */
+export function globMatch(glob, path) {
+  const STAR = 1;
+  const GLOBSTAR = 2;
+  const ONE = 3;
+  const tokens = [];
+  for (let i = 0; i < glob.length; i++) {
+    if (glob[i] === "*" && glob[i + 1] === "*") {
+      tokens.push(GLOBSTAR);
+      i++;
+    } else if (glob[i] === "*") {
+      tokens.push(STAR);
+    } else if (glob[i] === "?") {
+      tokens.push(ONE);
+    } else {
+      tokens.push(glob[i]);
+    }
+  }
+  const runs = (t) => t === STAR || t === GLOBSTAR;
+  // row[j]: the first j tokens match the path read so far.
+  let row = [true];
+  for (let j = 0; j < tokens.length; j++) {
+    row.push(runs(tokens[j]) && row[j]);
+  }
+  for (let k = 0; k < path.length; k++) {
+    const c = path[k];
+    const next = [false];
+    for (let j = 0; j < tokens.length; j++) {
+      const t = tokens[j];
+      if (t === STAR) {
+        next.push(next[j] || (row[j + 1] && c !== "/"));
+      } else if (t === GLOBSTAR) {
+        next.push(next[j] || (row[j + 1] && !LINE_BREAKS.includes(c)));
+      } else if (t === ONE) {
+        next.push(row[j] && c !== "/");
+      } else {
+        next.push(row[j] && c === t);
+      }
+    }
+    row = next;
+  }
+  return row[tokens.length];
 }

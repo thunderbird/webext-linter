@@ -30,6 +30,7 @@
 // guards like asArray - lib/util.js.
 
 import { dirname } from "../util/files.js";
+import { cutAtFirst, trimStartOf } from "../util/text.js";
 import { MANIFEST_ROOT_TYPES, REL_URL_FORMATS } from "../schema/index.js";
 
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
@@ -215,10 +216,7 @@ export function manifestStringRefs(manifest) {
  * @returns {string}
  */
 export function normalizeRef(p) {
-  return String(p)
-    .replace(/^\.\//, "")
-    .replace(/^\/+/, "")
-    .replace(/[?#].*$/, "");
+  return cutAtFirst(trimStartOf(String(p).replace(/^\.\//, ""), "/"), "?#");
 }
 
 /**
@@ -245,9 +243,7 @@ export function resolveRef(files, fromFile, raw) {
  */
 function normalizeRefInDir(dir, raw) {
   // No backslash folding, for the reason normalizeRef gives: these resolve as URLs.
-  let p = String(raw ?? "")
-    .replace(/[?#].*$/, "")
-    .trim();
+  let p = cutAtFirst(String(raw ?? ""), "?#").trim();
   if (p === "") {
     return { key: null, escaped: false };
   }

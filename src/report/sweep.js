@@ -34,6 +34,7 @@ import { hasParentSegment } from "../addon/load.js";
 import { manualEscalations } from "../checks/escalation.js";
 import { renderManualItems } from "./responses.js";
 import { finding } from "./finding.js";
+import { trimEndOf } from "../util/text.js";
 
 /** @typedef {import("../checks/registry.js").Registry} Registry */
 
@@ -101,7 +102,7 @@ export function checkedResult(where, raw) {
   // the caller turns this into a hand-back the agent can correct (src/report/handback.js).
   // normalize keeps a trailing separator ("./" stays "./"), so strip it before asking -
   // the resolver compares a RESOLVED path and would catch both.
-  const within = path.normalize(raw.file).replace(/[\\/]+$/, "");
+  const within = trimEndOf(path.normalize(raw.file), "\\/");
   if (
     path.isAbsolute(raw.file) ||
     hasParentSegment(raw.file) ||

@@ -20,6 +20,7 @@
 import { extname, JS_EXTENSIONS } from "../util/files.js";
 import { parseJs, traverse } from "../parse/ast.js";
 import { debug } from "../util/log.js";
+import { replaceSpans, replaceQuoted } from "../util/text.js";
 
 // A line this long is what "packed" looks like: real minification emits lines of
 // thousands of characters. Below it a file cannot be minified, so it is not parsed.
@@ -136,13 +137,15 @@ function maxLineStatements(text, file) {
 
 /**
  * CSS with comments, url(...) payloads and quoted strings collapsed, so what is left is
- * the rule structure alone - long only when the stylesheet is genuinely packed.
+ * the rule structure alone - long only when the stylesheet is genuinely packed. One
+ * linear pass per kind, in this order: a comment may hold a quote or a url(, and a url(
+ * payload a quote.
  * @param {string} text @returns {string}
  */
 function stripCssPayloads(text) {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/url\([^)]*\)/gi, "url()")
-    .replace(/"(?:[^"\\]|\\.)*"/g, '""')
-    .replace(/'(?:[^'\\]|\\.)*'/g, "''");
+  const noComments = replaceSpans(text, "/*", "*/", "");
+  const noUrls = replaceSpans(noComments, "url(", ")", "url()", {
+    caseInsensitive: true,
+  });
+  return replaceQuoted(replaceQuoted(noUrls, '"'), "'");
 }

@@ -16,6 +16,7 @@
 
 import { asArray } from "./util.js";
 import { normalizeRef } from "./manifest-refs.js";
+import { globMatch } from "../util/files.js";
 
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
 
@@ -61,11 +62,10 @@ export function expandResourcePattern(files, pattern) {
   if (pat === "") {
     return [];
   }
-  if (!/[*?]/.test(pat)) {
+  if (!pat.includes("*") && !pat.includes("?")) {
     return files.has(pat) ? [pat] : [];
   }
-  const re = globToRegExp(pat);
-  return [...files.keys()].filter((f) => re.test(f));
+  return [...files.keys()].filter((f) => globMatch(pat, f));
 }
 
 /**
@@ -76,25 +76,4 @@ export function expandResourcePattern(files, pattern) {
 export function isOverBroadResource(pattern) {
   const p = normalizeRef(pattern);
   return p === "*" || p === "**" || p === "**/*" || p === "*.*";
-}
-
-/** @param {string} glob @returns {RegExp} */
-function globToRegExp(glob) {
-  let re = "^";
-  for (let i = 0; i < glob.length; i++) {
-    const c = glob[i];
-    if (c === "*") {
-      if (glob[i + 1] === "*") {
-        re += ".*";
-        i++;
-      } else {
-        re += "[^/]*";
-      }
-    } else if (c === "?") {
-      re += "[^/]";
-    } else {
-      re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-    }
-  }
-  return new RegExp(`${re}$`);
 }

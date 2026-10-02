@@ -18,7 +18,12 @@
 // Whether a check escalates to manual review (vs a reviewer) is decided in
 // src/checks/escalation.js - here a manual ref is only rendered, not chosen.
 
-import { displayLine, displayText } from "../util/text.js";
+import {
+  displayLine,
+  displayText,
+  trimEndOf,
+  trimStartOf,
+} from "../util/text.js";
 
 const PLACEHOLDER = "{{item}}";
 
@@ -35,7 +40,11 @@ const PLACEHOLDER = "{{item}}";
  */
 const collapse = (s) =>
   s
-    .replace(/[ \t]*\n[ \t]*/g, "\n")
+    // Spaces and tabs around each line break go - trimmed per line rather than with
+    // /[ \t]*\n[ \t]*/g, which is quadratic in a long run of them.
+    .split("\n")
+    .map((line) => trimEndOf(trimStartOf(line, " \t"), " \t"))
+    .join("\n")
     .replace(/[ \t]+/g, " ")
     .trim();
 

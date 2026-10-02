@@ -38,6 +38,8 @@
 // vendor verification pre-step + the vendor checks. This file makes no verdict.
 
 import { basename, dirname } from "../util/files.js";
+import { trimEndOf, trimStartOf } from "../util/text.js";
+import { isVersion } from "../lib/util.js";
 import { withExperiment } from "../addon/store.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 
@@ -101,19 +103,19 @@ export function readVendorFile(addon) {
  * @returns {string}
  */
 function normalizeToken(token) {
-  return (
-    String(token)
-      .trim()
-      .replace(/^["'`]+|["'`]+$/g, "") // strip surrounding quotes / Markdown backticks
-      .replace(/[,;:]+$/g, "")
-      .replace(/\\/g, "/")
-      .replace(/^\.?\//, "")
-      // A trailing slash spells a directory, it does not name a different one. Every
-      // consumer builds `${path}/` to prefix-match under it, so leaving the slash on
-      // yields "lib/vendor//" and matches nothing: the folder reads as not shipped,
-      // and its files lose the vendored exemption.
-      .replace(/\/+$/, "")
-  );
+  // Surrounding quotes / Markdown backticks, then trailing punctuation.
+  const QUOTES = "\"'`";
+  const bare = trimEndOf(
+    trimEndOf(trimStartOf(String(token).trim(), QUOTES), QUOTES),
+    ",;:"
+  )
+    .replace(/\\/g, "/")
+    .replace(/^\.?\//, "");
+  // A trailing slash spells a directory, it does not name a different one. Every
+  // consumer builds `${path}/` to prefix-match under it, so leaving the slash on
+  // yields "lib/vendor//" and matches nothing: the folder reads as not shipped,
+  // and its files lose the vendored exemption.
+  return trimEndOf(bare, "/");
 }
 
 // Any extension - a loose "could name a file" gate (so a real ".7z" still
@@ -194,16 +196,15 @@ function isDirSource(url) {
   // packages under `/npm/`, which is not part of the name either way.
   const named = segs[0] === "npm" ? segs.slice(1) : segs;
   const pkg = named[0]?.startsWith("@") ? named[1] : named[0];
-  return PINNED_PACKAGE.test(pkg ?? "");
+  // Only the LAST "@" can start a version: the version itself never holds one.
+  const at = (pkg ?? "").lastIndexOf("@");
+  return at !== -1 && isVersion(pkg.slice(at + 1));
 }
 
 // The hosts that serve an npm package's published files, and therefore name a
 // package a folder declaration can be resolved to. Kept beside the shape it is
 // matched with; the fetch-time allowlist is config.js VENDOR_TRUSTED_HOSTS.
 const PACKAGE_HOSTS = new Set(["unpkg.com", "cdn.jsdelivr.net"]);
-
-// `<name>@<version>`, with a concrete version rather than a dist-tag like "latest".
-const PINNED_PACKAGE = /@v?\d+(\.\d+)*([.-][0-9a-z.-]+)?$/i;
 
 // The keys that name the packaged file of a declaration, and the ones that name its
 // upstream source. Matched case-insensitively with runs of whitespace folded, so
@@ -297,7 +298,7 @@ function undecorate(token) {
   let prev;
   do {
     prev = t;
-    t = t.replace(/[.,;]+$/, "");
+    t = trimEndOf(t, ".,;");
     // `**` is the one pair that can nest - the others' inner classes exclude their
     // own closer. Taking every layer in one walk is what keeps this loop from
     // rescanning the whole token once per layer.

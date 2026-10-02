@@ -49,7 +49,7 @@ import {
   experimentRefsOf,
 } from "../checks/extract.js";
 import { nonAuthoredJs } from "./bundled.js";
-import { asArray, isExperiment, isDocFile, escapeRegExp } from "./util.js";
+import { asArray, isExperiment, isDocFile } from "./util.js";
 import {
   basename,
   extname,
@@ -57,6 +57,7 @@ import {
   HTML_EXTENSIONS,
   RECOGNIZED_EXTS,
 } from "../util/files.js";
+import { pathTokensEndingIn } from "../util/text.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
@@ -423,18 +424,15 @@ function bfs(seeds, outEdges) {
  * token points elsewhere - a bare basename, an unresolvable token, or one
  * resolving to `target` itself all keep the line (the net stays recall-first).
  * @param {string} line
- * @param {RegExp} tokenRe  Global regex for "<path>basename".
+ * @param {string} base  The target's basename.
  * @param {string} fromFile  The mentioning file (for relative resolution).
  * @param {string} target  The file whose reference we are looking for.
  * @param {Map<string, Buffer>} files
  * @returns {boolean}
  */
-function refersTo(line, tokenRe, fromFile, target, files) {
-  tokenRe.lastIndex = 0;
+function refersTo(line, base, fromFile, target, files) {
   let sawElsewhere = false;
-  let m;
-  while ((m = tokenRe.exec(line))) {
-    const tok = m[0];
+  for (const tok of pathTokensEndingIn(line, base)) {
     const rel = resolveRef(files, fromFile, tok);
     const root = resolveRef(files, null, tok);
     if (rel === target || root === target) {
@@ -470,17 +468,13 @@ function makeMentions(files) {
   }
   return (target) => {
     const base = basename(target);
-    const tokenRe = new RegExp(`[\\w./@-]*${escapeRegExp(base)}`, "g");
     const hits = [];
     for (const [file, ls] of lines) {
       if (file === target) {
         continue; // a file mentioning its own name does not save itself
       }
       ls.forEach((line, i) => {
-        if (
-          line.includes(base) &&
-          refersTo(line, tokenRe, file, target, files)
-        ) {
+        if (line.includes(base) && refersTo(line, base, file, target, files)) {
           hits.push({ file, line: i + 1 });
         }
       });

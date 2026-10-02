@@ -8,6 +8,8 @@
 
 import { createHash } from "node:crypto";
 
+import { trimEndOf } from "../util/text.js";
+
 /**
  * Normalize end-of-lines for a byte-stable, EOL-tolerant compare: CRLF/CR collapse
  * to LF and trailing newlines are stripped. latin1 is byte-preserving.
@@ -16,7 +18,7 @@ import { createHash } from "node:crypto";
  */
 export function eolNormalize(buf) {
   return Buffer.isBuffer(buf)
-    ? buf.toString("latin1").replace(/\r\n?/g, "\n").replace(/\n+$/, "")
+    ? trimEndOf(buf.toString("latin1").replace(/\r\n?/g, "\n"), "\n")
     : "";
 }
 

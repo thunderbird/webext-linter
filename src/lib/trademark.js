@@ -27,8 +27,42 @@ const FORBIDDEN = [
   ["mzla", "MZLA"],
 ];
 
-// The allowed construction, anchored at the end: "<add-on name> for Thunderbird".
-const ALLOWED_FORM = /\s+for\s+thunderbird\s*$/i;
+/**
+ * `name` without its allowed ending "<whitespace>for<whitespace>Thunderbird<whitespace>"
+ * (case-insensitive), or `name` itself when it has none. A scan from the end: the regex it
+ * replaces, /\s+for\s+thunderbird\s*$/i, retried from every position inside a long run of
+ * whitespace, which is quadratic in it.
+ * @param {string} name
+ * @returns {string}
+ */
+function withoutAllowedForm(name) {
+  const space = (c) => c !== undefined && c.trim() === "";
+  let end = name.length;
+  while (space(name[end - 1])) {
+    end--;
+  }
+  const word = end - "thunderbird".length;
+  if (word < 0 || name.slice(word, end).toLowerCase() !== "thunderbird") {
+    return name;
+  }
+  let gap = word;
+  while (space(name[gap - 1])) {
+    gap--;
+  }
+  const forAt = gap - "for".length;
+  if (
+    gap === word ||
+    forAt < 0 ||
+    name.slice(forAt, gap).toLowerCase() !== "for"
+  ) {
+    return name;
+  }
+  let start = forAt;
+  while (space(name[start - 1])) {
+    start--;
+  }
+  return start === forAt ? name : name.slice(0, start);
+}
 
 /**
  * The Mozilla brand a name misuses, or null. Case-insensitive, and needs no
@@ -58,5 +92,5 @@ export function offFormThunderbird(name) {
   if (!/thunderbird/i.test(s)) {
     return false;
   }
-  return /thunderbird/i.test(s.replace(ALLOWED_FORM, ""));
+  return /thunderbird/i.test(withoutAllowedForm(s));
 }

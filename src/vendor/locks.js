@@ -46,6 +46,7 @@ import {
   PACKAGE_FILE,
 } from "./package-file.js";
 import { rethrowIfFatal } from "../lib/errors.js";
+import { cutAtFirst } from "../util/text.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /**
@@ -1078,5 +1079,5 @@ function cmp(a, b) {
  * @returns {string}
  */
 function cleanVersion(version) {
-  return version.replace(/\(.*$/, "").trim();
+  return cutAtFirst(version, "(").trim();
 }
