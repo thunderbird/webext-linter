@@ -593,8 +593,8 @@ function addonTooLargeError() {
 
 /**
  * One sentence for an archive we cannot read, shared by extractZip's refusals: the
- * container will not open, an entry name is not one we take, an entry hides its size or
- * will not inflate.
+ * container will not open, two entries name one path, an entry name is not one we take, an
+ * entry hides its size or will not inflate.
  * They are one answer because they have one consequence - no review of this submission can
  * be complete - and because the alternative is AdmZip's own wording, which either names its
  * internals or quotes a file name out of the archive.
@@ -643,6 +643,18 @@ function extractZip(zipPath, destDir) {
     // The container itself: truncated, or not a zip at all.
     throw unreadableArchiveError(zipPath);
   }
+  // An archive whose entries do not name each file exactly once has no single meaning:
+  // readers disagree on which copy wins (this one writes both and keeps the last, `unzip`
+  // and Gecko read the first), so whichever we reviewed, another reader sees the other.
+  // Refused before anything is written, like a name we will not take.
+  const entries = zip.getEntries();
+  if (
+    namesCollide(
+      entries.filter((e) => !e.isDirectory).map((e) => entryKey(e.entryName))
+    )
+  ) {
+    throw unreadableArchiveError(zipPath);
+  }
   const symlinks = [];
   let unpacked = 0;
   // Created up front, not only by the first entry's own mkdirSync: an archive with no
@@ -650,7 +662,7 @@ function extractZip(zipPath, destDir) {
   // readDir to walk.
   fs.mkdirSync(destDir, { recursive: true });
   try {
-    for (const entry of zip.getEntries()) {
+    for (const entry of entries) {
       if (entry.isDirectory) {
         continue;
       }
@@ -857,6 +869,35 @@ function linkCause(full, rootReal) {
  */
 function entryKey(p) {
   return p.replace(/^\.\//, "");
+}
+
+/**
+ * Whether two of an archive's file keys name one path: the same key twice (two entries,
+ * or two spellings entryKey maps together), a key that is also another's folder (`lib`
+ * beside `lib/a.js`), or keys that differ only in case - which a reviewer extracting on a
+ * case-insensitive filesystem gets as ONE file, not the two we reviewed. Compared
+ * case-folded for all three, so each rule is asked once.
+ * @param {string[]} keys
+ * @returns {boolean}
+ */
+function namesCollide(keys) {
+  const files = new Set();
+  for (const key of keys) {
+    const folded = key.toLowerCase();
+    if (files.has(folded)) {
+      return true;
+    }
+    files.add(folded);
+  }
+  for (const key of files) {
+    const segs = key.split("/");
+    for (let i = 1; i < segs.length; i++) {
+      if (files.has(segs.slice(0, i).join("/"))) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /**

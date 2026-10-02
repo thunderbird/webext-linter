@@ -960,6 +960,28 @@ test("an unreadable archive is refused in our own words", () => {
   fs.writeFileSync(sizeZero, hiddenBuf);
   refuses(sizeZero);
 
+  // Entries that name one path twice: readers disagree on which copy wins, so the archive
+  // has no single meaning. An exact duplicate, two spellings of one path, a path that is a
+  // file and a folder, and two names that differ only in case.
+  const colliding = (name, files) => {
+    const z = new AdmZip();
+    files.forEach((_, i) => z.addFile(`f${i}`, Buffer.from("1;")));
+    z.getEntries().forEach((e, i) => {
+      e.entryName = files[i][0];
+    });
+    const file = path.join(dir, `${name}.xpi`);
+    fs.writeFileSync(file, z.toBuffer());
+    return file;
+  };
+  for (const [name, files] of [
+    ["twice", [["manifest.json"], ["manifest.json"]]],
+    ["dot-spelling", [["manifest.json"], ["./manifest.json"]]],
+    ["file-and-folder", [["lib"], ["lib/a.js"]]],
+    ["case-only", [["manifest.json"], ["Manifest.json"]]],
+  ]) {
+    refuses(colliding(name, files));
+  }
+
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
