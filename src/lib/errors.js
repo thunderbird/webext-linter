@@ -65,6 +65,21 @@ export function wiringError(message) {
 }
 
 /**
+ * A submission file that was readable when the tree was loaded and is not any more - it
+ * changed or vanished during the run. Not the submission's fault (an unreadable file at load
+ * is an invalid input, refused there), but fatal: reviewing it as empty or absent would review
+ * bytes that are not the submission's, and silently, since a file with no code raises no finding.
+ * @param {string} file  The file's path on disk, as the reviewer can find it.
+ * @returns {LinterError}
+ */
+export function ioError(file) {
+  return new LinterError(
+    ERROR_CLASS.IO,
+    `A file changed during the review and cannot be read: ${file}`
+  );
+}
+
+/**
  * What each artifact-conditional field is produced BY, for the message a wrongly-routed
  * check gets. These are the fields only some artifacts carry: the built XPI has no build
  * to trace, an artifact whose vendor declarations were never read has no `vendor`, and

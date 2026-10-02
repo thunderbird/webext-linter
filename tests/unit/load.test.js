@@ -19,7 +19,7 @@ import {
   relativeInside,
 } from "../../src/addon/load.js";
 import { withExperiment } from "../../src/addon/store.js";
-import { SYMLINK_CAUSE } from "../../src/lib/enum.js";
+import { ERROR_CLASS, SYMLINK_CAUSE } from "../../src/lib/enum.js";
 import { ARTIFACT_SCA, ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 
 // Every load here is of a built add-on; loadSourceArchive has its own tests.
@@ -1218,4 +1218,52 @@ test("an unparsable manifest.json still mints, with no line", () => {
     loc: null,
     artifact: ARTIFACT_XPI,
   });
+});
+
+// A file this machine cannot read makes the submission invalid: reviewed as empty, its code
+// would be absent and raise no finding. Refused when the tree is loaded, naming the artifact,
+// the file and the reason. (As root a permission denies nothing, so there is nothing to show.)
+test("an unreadable file makes the submission invalid at load", (t) => {
+  if (process.getuid?.() === 0) {
+    t.skip("root reads every file");
+    return;
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-unreadable-"));
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  const locked = path.join(dir, "bg.js");
+  fs.writeFileSync(locked, "browser.runtime.id;\n");
+  fs.chmodSync(locked, 0o000);
+  try {
+    assert.throws(() => loadAddon(dir, undefined, XPI), {
+      message: "Invalid XPI: bg.js cannot be read (permission denied).",
+    });
+    assert.throws(() => loadSourceArchive(dir), {
+      message:
+        "Invalid source archive: bg.js cannot be read (permission denied).",
+    });
+  } finally {
+    fs.chmodSync(locked, 0o644);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A file that leaves the disk after the tree was loaded is not the submission's fault, but a
+// read that fails mid-review ends it as an I/O error rather than reviewing an empty file.
+test("a file that cannot be read mid-review is an I/O error, not an empty file", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-vanished-"));
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  fs.writeFileSync(path.join(dir, "bg.js"), "browser.runtime.id;\n");
+  const addon = loadAddon(dir, undefined, XPI);
+  fs.rmSync(path.join(dir, "bg.js"));
+  assert.throws(
+    () => addon.files.get("bg.js"),
+    (err) => err.class === ERROR_CLASS.IO
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
 });

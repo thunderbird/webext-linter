@@ -266,6 +266,7 @@ export function loadAddon(
   if (stat.isDirectory()) {
     ({ store, nodeModules, archives, skipped, symlinks, directories } = readDir(
       resolved,
+      kind,
       recordInstalledTrees
     ));
   } else {
@@ -276,7 +277,7 @@ export function loadAddon(
     // notices) is real on disk after extraction and is read the same way an
     // already-unpacked submission's is.
     const packed = extractZip(resolved, dest);
-    const unpackedDir = readDir(dest);
+    const unpackedDir = readDir(dest, kind);
     ({ store, nodeModules, archives, skipped, directories } = unpackedDir);
     // Both halves, so which one can see a link is not a fact this line depends on.
     symlinks = [...packed.symlinks, ...unpackedDir.symlinks];
@@ -585,6 +586,23 @@ export function scaViews(archive, { scaRoot, scaExpSource }) {
   return archive;
 }
 
+/**
+ * The refusal for a submission holding a file this machine cannot read - an invalid input,
+ * named by artifact, with the file and the reason, so whoever submitted it can fix it.
+ * @param {string} kind  ARTIFACT_XPI or ARTIFACT_SCA.
+ * @param {string} rel  The file's path inside the submission.
+ * @param {NodeJS.ErrnoException} err  Why it cannot be read.
+ * @returns {Error}
+ */
+function unreadableFileError(kind, rel, err) {
+  const artifact = kind === ARTIFACT_SCA ? "source archive" : "XPI";
+  const reason =
+    err?.code === "EACCES" || err?.code === "EPERM"
+      ? "permission denied"
+      : (err?.code ?? "unreadable");
+  return new Error(`Invalid ${artifact}: ${rel} cannot be read (${reason}).`);
+}
+
 /** @returns {Error} The add-on-too-large error, shared by extractZip and readDir. */
 function addonTooLargeError() {
   const mb = ADDON_MAX_UNPACKED_BYTES / (1024 * 1024);
@@ -740,6 +758,8 @@ function isStoredLink(entry) {
 
 /**
  * @param {string} dir  Root directory of the unpacked add-on.
+ * @param {string} kind  Which artifact this is (src/lib/artifacts.js), for the refusal when a
+ *   file in it cannot be read.
  * @param {boolean} [recordInstalledTrees]  See loadAddon: record a node_modules directory
  *   as a path instead of walking it. Off means it is an ordinary folder, walked and keyed
  *   like any other, which is what a shipped add-on's folders are.
@@ -748,7 +768,7 @@ function isStoredLink(entry) {
  *   directories: string[]}}  The walk's one store, plus the paths it recorded without
  *   reading. A view over it is the caller's to build (loadAddon, scaViews).
  */
-function readDir(dir, recordInstalledTrees) {
+function readDir(dir, kind, recordInstalledTrees) {
   const keys = [];
   const nodeModules = [];
   const archives = [];
@@ -810,6 +830,15 @@ function readDir(dir, recordInstalledTrees) {
         unpacked += fs.statSync(full).size;
         if (unpacked > ADDON_MAX_UNPACKED_BYTES) {
           throw addonTooLargeError();
+        }
+        // Readable now, or the submission is invalid: the bytes are read later, on demand,
+        // and every one of them has to be reviewed. Decided here, while the tree is loaded,
+        // so no review starts on files it cannot read (a source archive's own extraction
+        // can restore a permission that denies the reviewer).
+        try {
+          fs.accessSync(full, fs.constants.R_OK);
+        } catch (err) {
+          throw unreadableFileError(kind, rel, err);
         }
         keys.push(rel);
       }

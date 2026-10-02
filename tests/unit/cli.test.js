@@ -1821,3 +1821,51 @@ test("a submission's escape sequences never reach the terminal raw", () => {
   assert.ok(!r.stderr.includes("\u001b"), "raw ESC on stderr");
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// An unreadable submission file makes it invalid: exit 2 and one sentence naming the artifact,
+// the file and why, before any check runs - never a review that read it as empty.
+test("an unreadable submission file makes it invalid, exit 2", (t) => {
+  if (process.getuid?.() === 0) {
+    t.skip("root reads every file");
+    return;
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-unreadable-"));
+  const xpi = path.join(dir, "xpi");
+  const src = path.join(dir, "src");
+  fs.mkdirSync(xpi);
+  fs.mkdirSync(src);
+  fs.writeFileSync(
+    path.join(xpi, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1","background":{"scripts":["bg.js"]}}'
+  );
+  const bg = path.join(xpi, "bg.js");
+  fs.writeFileSync(bg, "browser.runtime.id;\n");
+  fs.writeFileSync(
+    path.join(src, "package.json"),
+    '{"name":"x","version":"1.0.0"}'
+  );
+  const build = path.join(src, "build.js");
+  fs.writeFileSync(build, "1;\n");
+  try {
+    fs.chmodSync(bg, 0o000);
+    const r = run([xpi, ...OFFLINE_FLAGS]);
+    assert.equal(r.code, 2, r.stderr);
+    assert.match(
+      r.stderr,
+      /Invalid XPI: bg\.js cannot be read \(permission denied\)\./
+    );
+    // The same in a source archive: the archive is the invalid input.
+    fs.chmodSync(bg, 0o644);
+    fs.chmodSync(build, 0o000);
+    const sca = run([xpi, "--sca-root", src, ...OFFLINE_FLAGS]);
+    assert.equal(sca.code, 2, sca.stderr);
+    assert.match(
+      sca.stderr,
+      /Invalid source archive: build\.js cannot be read \(permission denied\)\./
+    );
+  } finally {
+    fs.chmodSync(bg, 0o644);
+    fs.chmodSync(build, 0o644);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

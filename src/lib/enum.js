@@ -173,17 +173,20 @@ export const SYMLINK_CAUSE = makeEnum(
  */
 export const REVIEW_MODE = makeEnum(["sca", "xpi"], "review_mode");
 
-/** @typedef {{network_gone: boolean, wiring: boolean}} ErrorClass  An opaque guarded
- *   singleton; only its two LOWERCASE booleans are readable (any other access throws).
+/** @typedef {{network_gone: boolean, wiring: boolean, io: boolean}} ErrorClass  An opaque
+ *   guarded singleton; only its LOWERCASE booleans are readable (any other access throws).
  *   Compare by reference (c === ERROR_CLASS.WIRING) or boolean (c.wiring). */
 
 /**
  * Why the review cannot continue, carried by a LinterError (src/lib/errors.js) so each
  * catch can tell a local failure it may swallow from one it must re-throw:
- * NETWORK_GONE (the route to the internet is down, not one load failing) or WIRING (a
- * check reached for data that was never generated for the artifact it was routed to).
- * Both are fatal today; the class is what a catch reads to decide, and what the exit
+ * NETWORK_GONE (the route to the internet is down, not one load failing), WIRING (a
+ * check reached for data that was never generated for the artifact it was routed to) or IO
+ * (a submission file that changed during the run and can no longer be read). All are fatal today; the class is what a catch reads to decide, and what the exit
  * names.
- * @type {{NETWORK_GONE: ErrorClass, WIRING: ErrorClass}}
+ * @type {{NETWORK_GONE: ErrorClass, WIRING: ErrorClass, IO: ErrorClass}}
  */
-export const ERROR_CLASS = makeEnum(["network_gone", "wiring"], "error_class");
+export const ERROR_CLASS = makeEnum(
+  ["network_gone", "wiring", "io"],
+  "error_class"
+);

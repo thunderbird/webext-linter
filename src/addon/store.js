@@ -40,7 +40,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { rethrowIfFatal } from "../lib/errors.js";
+import { ioError } from "../lib/errors.js";
 
 /**
  * Posix paths into the SUBMISSION, and no bytes: what a load RECORDED without reading (a
@@ -87,9 +87,11 @@ export class FileStore {
   }
 
   /**
-   * The file's bytes, or undefined when this store does not hold that key. A key that IS
-   * held but has since left the disk reads as empty rather than throwing: the review is a
-   * snapshot of a tree it does not own, and a mid-review deletion must not abort it.
+   * The file's bytes, or undefined when this store does not hold that key. Every held file
+   * was readable when the tree was loaded (src/addon/load.js refuses one that is not), so a
+   * read that fails now means it changed during the run - which ends the review (ioError):
+   * read as empty, its code would be reviewed as absent, and a file with no code raises no
+   * finding.
    * @param {string} key
    * @returns {Buffer|undefined}
    */
@@ -102,9 +104,8 @@ export class FileStore {
       let buf;
       try {
         buf = fs.readFileSync(full);
-      } catch (err) {
-        rethrowIfFatal(err);
-        buf = Buffer.alloc(0);
+      } catch {
+        throw ioError(full);
       }
       this.#cache.set(key, buf);
     }
