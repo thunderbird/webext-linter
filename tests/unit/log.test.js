@@ -6,6 +6,8 @@
 import { test, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
 
+import { setColor, red } from "../../src/util/color.js";
+
 import {
   progress,
   report,
@@ -22,10 +24,14 @@ import {
   exitWith,
 } from "../../src/util/log.js";
 
-// The lines the logger writes with console.log while running fn (its stdout feed).
+// The lines the logger writes to stdout while running fn (its feed), one per write.
 function emitted(fn) {
+  // Strings only: the test runner's own Buffers on this stream pass through untouched.
   const lines = [];
-  const spy = mock.method(console, "log", (...a) => lines.push(a.join(" ")));
+  const real = process.stdout.write.bind(process.stdout);
+  const spy = mock.method(process.stdout, "write", (t, ...rest) =>
+    typeof t === "string" ? lines.push(t.replace(/\n$/, "")) : real(t, ...rest)
+  );
   try {
     fn();
   } finally {
@@ -164,11 +170,15 @@ test("setFeed(false) silences the feed", () => {
 });
 
 test("the level prefix sits OUTSIDE a color wrap (spaces are colorless)", () => {
-  const colored = "\x1b[31mX\x1b[0m";
-  assert.deepEqual(
-    emitted(() => progress(colored, FEED.DETAIL)),
-    [`      ${colored}`]
-  );
+  setColor(true);
+  try {
+    assert.deepEqual(
+      emitted(() => progress(red("X"), FEED.DETAIL)),
+      ["      \x1b[31mX\x1b[0m"]
+    );
+  } finally {
+    setColor(false);
+  }
 });
 
 // Verbose output is where the submission is quoted most freely - a file body, a
@@ -231,4 +241,35 @@ test("exitWith with nothing recorded writes nothing", () => {
   } finally {
     exit.mock.restore();
   }
+});
+
+// The one door: whatever reaches it - submission text, a library's error message, our own
+// - leaves without a control character, and our colour is applied only after that, from
+// markers nothing else can produce.
+test("the door strips every control character, then applies our colour", () => {
+  setColor(true);
+  try {
+    const [line] = emitted(() =>
+      progress(`${red("ok")} evil\x1b[2K\x1b[1A\rX \u202Ename`)
+    );
+    assert.equal(line, "\x1b[31mok\x1b[0m evil [2K [1A X  name");
+  } finally {
+    setColor(false);
+  }
+});
+
+test("a look-alike colour marker from the submission stays inert", () => {
+  setColor(true);
+  try {
+    const forged = "\uE000deadbeefdeadbeef:31\uE001";
+    const [line] = emitted(() => progress(`x${forged}y`));
+    assert.ok(!line.includes("\x1b"), "a forged marker became an escape code");
+  } finally {
+    setColor(false);
+  }
+});
+
+test("stderr passes the same door", () => {
+  const writes = toStderr(() => writeToStderr("bad\x1b]0;title\x07name\n"));
+  assert.deepEqual(writes, ["bad ]0;title name\n"]);
 });

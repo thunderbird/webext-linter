@@ -1,5 +1,12 @@
-import { displayText } from "./text.js";
-// Minimal logger for the tool's own output, on two streams.
+import { displayTerminal, displayText } from "./text.js";
+import { applyColor } from "./color.js";
+// Minimal logger for the tool's own output, on two streams - and the one door to them.
+// Every write to stdout or stderr passes write() below: the terminal guard removes every
+// control character from every source (src/util/text.js displayTerminal), and only then
+// does applyColor turn this run's colour markers into escape codes. So no text - the
+// submission's, a library's error message, our own - reaches the terminal with a control
+// character in it, whatever its caller forgot. Lint keeps the door the only one: no other
+// file may write to process.stdout or process.stderr (eslint.config.js).
 //
 // STDOUT carries the review: the report, the --llm-review prompt, and the live "what is
 // going on" feed (setup, progress, review activity) beside them. In quiet mode
@@ -13,8 +20,8 @@ import { displayText } from "./text.js";
 // place would read as part of the prompt.
 //
 // Belongs here: the narration feed - info, debug (verbose), progress, report, the FEED
-// levels - the stderr channel (warn, writeToStderr, exitWith), and the
-// verbose/progress/feed/quiet/recording toggles.
+// levels - the stderr channel (warn, writeToStderr, exitWith), writeToStdout for a whole
+// document, the verbose/progress/feed/quiet/recording toggles, and the door itself.
 //
 // Does NOT belong here: user-facing report content (findings, summaries), which is built
 // and emitted by src/report/*, or the wording of a message, which its caller owns.
@@ -115,12 +122,31 @@ function emit(args, show, level = FEED.SECTION) {
   if (quiet) {
     return;
   }
-  const prefix = PREFIX[level] ?? "";
-  const out =
-    prefix && args.length ? [prefix + String(args[0]), ...args.slice(1)] : args;
   if (show) {
-    console.log(...out);
+    write(
+      process.stdout,
+      `${PREFIX[level] ?? ""}${args.map(String).join(" ")}\n`
+    );
   }
+}
+
+/**
+ * The door: guard, then colour, then write. See the header.
+ * @param {NodeJS.WritableStream} stream
+ * @param {string} text
+ */
+function write(stream, text) {
+  stream.write(applyColor(displayTerminal(text)));
+}
+
+/**
+ * Write a whole document to stdout - the report, the help text, an agent prompt - exactly
+ * as given, through the door. Never silenced: in quiet mode this IS what stdout carries.
+ *
+ * @param {string} text
+ */
+export function writeToStdout(text) {
+  write(process.stdout, text);
 }
 
 /**
@@ -167,8 +193,8 @@ export function setRecording(v) {
 
 /**
  * Write one message that is not part of the normal review to stderr - or hold it back
- * for exitWith, while recording. Takes exactly what `process.stderr.write` takes: the
- * caller owns its wording, newlines and colour.
+ * for exitWith, while recording. The caller owns its wording and newlines, and colours it
+ * through the src/util/color.js wrappers.
  *
  * Never silenced by quiet mode. A message here says the run went wrong or cannot do
  * what it was asked, and JSON mode keeps stdout clean, not stderr.
@@ -179,7 +205,7 @@ export function writeToStderr(text) {
   if (recorded) {
     recorded.push(text);
   } else {
-    process.stderr.write(text);
+    write(process.stderr, text);
   }
 }
 
@@ -208,7 +234,7 @@ export function warn(...args) {
  */
 export function exitWith(code) {
   if (recorded?.length) {
-    process.stderr.write(`\n── Tool messages ──\n\n${recorded.join("")}`);
+    write(process.stderr, `\n── Tool messages ──\n\n${recorded.join("")}`);
   }
   process.exit(code);
 }

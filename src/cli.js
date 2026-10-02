@@ -61,6 +61,7 @@ import {
   setQuiet,
   setRecording,
   writeToStderr,
+  writeToStdout,
 } from "./util/log.js";
 import { setColor, red } from "./util/color.js";
 import { wrapText } from "./util/text.js";
@@ -548,7 +549,7 @@ export async function main(argv) {
   // impossible come first - a registry this tool cannot read, and a command line it cannot
   // parse. Every guard below can therefore assume a run, and none of them repeats the test.
   if (values.help) {
-    process.stdout.write(helpText(checkIds));
+    writeToStdout(helpText(checkIds));
     return 0;
   }
 
@@ -782,7 +783,7 @@ export async function main(argv) {
   // No add-on to review: the usage text answers what was missing, and the exit code says
   // it was a mistake rather than a question (--help returns 0, far above).
   if (positionals.length === 0) {
-    process.stdout.write(helpText(checkIds));
+    writeToStdout(helpText(checkIds));
     return 2;
   }
 
@@ -888,7 +889,7 @@ export async function main(argv) {
   // entries they can address. The settled report comes from the last pass of the loop.
   const rendered = result.meta.prompting ? "" : formatReview(result, format);
   if (rendered) {
-    process.stdout.write(rendered + "\n");
+    writeToStdout(rendered + "\n");
   }
 
   return hasErrors(result.findings) ? 1 : 0;
@@ -1039,9 +1040,7 @@ async function runLoopPass(file, base) {
     accept(state, handed, texts.phases, registry);
   } catch (err) {
     if (err instanceof HandbackRefused) {
-      process.stdout.write(
-        `${fillSlots(texts.refused, { problem: err.problem })}\n`
-      );
+      writeToStdout(`${fillSlots(texts.refused, { problem: err.problem })}\n`);
       return 2;
     }
     writeToStderr(`${err.message}\n${red("verify failed")}\n`);
@@ -1073,9 +1072,9 @@ async function runLoopPass(file, base) {
   }
   if (next) {
     for (const line of lines) {
-      process.stdout.write(`${line}\n`);
+      writeToStdout(`${line}\n`);
     }
-    process.stdout.write("\n");
+    writeToStdout("\n");
     return 0;
   }
   // Settled. The last prompt differs from every other only in carrying what the reviewer is
@@ -1099,7 +1098,7 @@ async function runLoopPass(file, base) {
   // command, and a line between the two blocks below is a line that can be copied along
   // with one of them.
   if (applied.length) {
-    process.stdout.write(
+    writeToStdout(
       `Applied ${applied.length} verdict(s): ${applied.join(", ")}\n\n`
     );
   }
@@ -1113,7 +1112,7 @@ async function runLoopPass(file, base) {
   // nothing between them saying where one ends.
   // A review that STOPPED hands over the same parts under a text that says so: "the review
   // is settled" is not true of one cut short, and the agent relays what it is given.
-  process.stdout.write(
+  writeToStdout(
     `${fillSlots(earlyExit ? texts.finalEarlyExit : texts.final, {
       details,
       tally,

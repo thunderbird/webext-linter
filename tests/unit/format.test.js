@@ -329,6 +329,21 @@ test("JSON output omits manual-review items (ATN auto-verification)", () => {
   assert.ok(!formatJson(review()).includes("Source Archive required"));
 });
 
+// A format character or line separator in a JSON value is escaped, losslessly: the document
+// carries no raw character a terminal acts on, and a consumer still reads the exact value.
+// Shown on a nested meta value, which the per-field guards leave as it is.
+test("JSON output escapes format characters and line separators", () => {
+  const r = review();
+  r.meta.nested = { name: "a\u202Eb\u2028c\u{E0001}d" };
+  const text = formatJson(r);
+  assert.ok(
+    !/[\p{Cf}\p{Zl}\p{Zp}]/u.test(text),
+    "a raw format character survived"
+  );
+  assert.ok(text.includes("a\\u202Eb\\u2028c\\uDB40\\uDC01d"));
+  assert.equal(JSON.parse(text).meta.nested.name, r.meta.nested.name);
+});
+
 // The pre-sweep list is an INSTRUCTION to a reader, not a statement about the add-on, so
 // it says nothing this document is for - and the document is an upload filter ATN can
 // auto-reject against. What a sweep FINDS does reach here, as a finding of the check that

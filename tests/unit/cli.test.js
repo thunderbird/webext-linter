@@ -1795,3 +1795,29 @@ test("the activity feed labels a locus the same way the report does", () => {
   assert.match(r.stdout, /• .*\[XPI\] VENDOR\.md - vendoring information/);
   assert.match(r.stdout, /^ - \[XPI\] VENDOR\.md$/m);
 });
+
+// Nothing the submission names reaches the terminal with a control character in it: every
+// write passes one guarded door (src/util/log.js). The case that found the gap - a source
+// archive whose only folder is named with escape sequences, which the "Source root" feed
+// line printed raw - now prints them as plain text.
+test("a submission's escape sequences never reach the terminal raw", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-escape-"));
+  const xpi = path.join(dir, "xpi");
+  fs.mkdirSync(xpi);
+  fs.writeFileSync(
+    path.join(xpi, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  const root = path.join(dir, "src");
+  const evil = path.join(root, "evil\u001b[2K\u001b[1Aname");
+  fs.mkdirSync(evil, { recursive: true });
+  fs.writeFileSync(
+    path.join(evil, "package.json"),
+    '{"name":"x","version":"1.0.0"}'
+  );
+  const r = run([xpi, "--sca-root", root, ...OFFLINE_FLAGS]);
+  assert.match(r.stdout, /evil \[2K \[1Aname/, "the folder was named");
+  assert.ok(!r.stdout.includes("\u001b"), "raw ESC on stdout");
+  assert.ok(!r.stderr.includes("\u001b"), "raw ESC on stderr");
+  fs.rmSync(dir, { recursive: true, force: true });
+});

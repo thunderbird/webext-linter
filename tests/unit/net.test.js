@@ -484,17 +484,22 @@ async function narrationOf({ feed, retryAfter = "3", message }) {
     }
     return res.status;
   };
-  // What the logger actually wrote, read off console.log - the same way log.test.js
-  // observes the feed. A line the feed is switched off for is never written, so the
+  // What the logger actually wrote, read off stdout - the same way log.test.js observes
+  // the feed. A line the feed is switched off for is never written, so the
   // `feed: false` case reads as the empty string here exactly as it should.
-  const lines = [];
-  const spy = mock.method(console, "log", (...a) => lines.push(a.join(" ")));
+  // Strings only: the logger writes strings, while the test runner talks to its worker
+  // over this same stream in Buffers, which pass through untouched.
+  const writes = [];
+  const real = process.stdout.write.bind(process.stdout);
+  const spy = mock.method(process.stdout, "write", (t, ...rest) =>
+    typeof t === "string" ? writes.push(t) : real(t, ...rest)
+  );
   try {
     await fetchWithTimeout(PACED, consume);
   } finally {
     spy.mock.restore();
   }
-  return lines.map((line) => `${line}\n`).join("");
+  return writes.join("");
 }
 
 test("a long wait says what it is waiting for", async (t) => {

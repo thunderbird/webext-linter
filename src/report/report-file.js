@@ -18,6 +18,7 @@
 // rendered by src/report/format.js.
 
 import { writeFileAtomic } from "../util/atomic.js";
+import { withoutColor } from "../util/color.js";
 
 /**
  * Write the developer-facing report to the path this review named, or do nothing when it
@@ -34,5 +35,7 @@ export function writeReportFile(file, body) {
   if (!file) {
     return;
   }
-  writeFileAtomic(file, `${body}\n`);
+  // Rendered by the same formatter as the terminal report, so colour markers are removed:
+  // a file carries none.
+  writeFileAtomic(file, `${withoutColor(body)}\n`);
 }

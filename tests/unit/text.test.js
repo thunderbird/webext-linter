@@ -10,6 +10,7 @@ import {
   displayText,
   displayLine,
   displayPath,
+  displayTerminal,
 } from "../../src/util/text.js";
 
 // A long single line wraps to multiple lines, none over the width, each carrying
@@ -102,4 +103,15 @@ test("displayLine collapses what would become a second line", () => {
   assert.equal(displayLine(`one\ntwo\tthree ${ESC}[2K`), "one two three [2K");
   assert.equal(displayLine("  padded  "), "padded");
   assert.equal(displayLine(null), "");
+});
+
+// The terminal's own guard: stricter than displayText about CR and the line separators,
+// which a terminal acts on, and it keeps newline and tab, since whole documents pass it.
+test("displayTerminal removes what a terminal acts on, keeps newline and tab", () => {
+  assert.equal(
+    displayTerminal("a\x1b[2Kb\rc\u202Ed\u2028e\u2029f\tg\nh"),
+    "a [2Kb c d e f\tg\nh"
+  );
+  // Ordinary text and private-use characters are not its business.
+  assert.equal(displayTerminal("über \uE000 ok"), "über \uE000 ok");
 });

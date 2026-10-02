@@ -1197,6 +1197,9 @@ export function formatJson(review) {
       ...(note == null ? {} : { note: displayLine(note) }),
     })
   );
+  // JSON.stringify escapes every control character, but leaves format characters (a bidi
+  // override) and the line separators raw. Escaped here, losslessly, so the terminal's guard
+  // (src/util/log.js) finds nothing to replace in a JSON document and its values survive.
   return JSON.stringify(
     {
       meta,
@@ -1205,6 +1208,14 @@ export function formatJson(review) {
     },
     null,
     2
+  ).replace(/[\p{Cf}\p{Zl}\p{Zp}]/gu, (c) =>
+    // Per UTF-16 unit, so an astral character becomes the surrogate pair JSON spells it as.
+    [...Array(c.length).keys()]
+      .map(
+        (i) =>
+          `\\u${c.charCodeAt(i).toString(16).toUpperCase().padStart(4, "0")}`
+      )
+      .join("")
   );
 }
 

@@ -6,12 +6,14 @@
 //
 // It also holds the guards that make submission-derived text safe to print, which is the
 // other half of "text on its way to a reader": displayText for prose, displayLine for a
-// sink that is one line, displayPath for a value the reader copies back. Which to call is
-// documented on each.
+// sink that is one line, displayPath for a value the reader copies back, and
+// displayTerminal for the terminal itself, applied to every byte written there. Which to
+// call is documented on each.
 //
-// Belongs here: wrapText (a generic width-wrapper) and that guard family. Does NOT belong here: the report's section layout
-// (src/report/format.js) or the activity-feed narration
-// (src/checks/escalation.js) that call them.
+// Belongs here: wrapText (a generic width-wrapper) and that guard family. Does NOT belong
+// here: the report's section layout (src/report/format.js), the activity-feed narration
+// (src/checks/escalation.js) that call them, or the one door to the terminal
+// (src/util/log.js) that calls displayTerminal.
 
 // A leading list marker ("- ", "* ", "• ", "1. ", "2) ") - its width sets the
 // hanging indent for the wrapped continuations.
@@ -129,4 +131,26 @@ export function displayLine(text) {
  */
 export function displayPath(text) {
   return displayText(text).replace(/[\t\r\n\p{Zl}\p{Zp}]+/gu, " ");
+}
+
+/**
+ * The guard for the terminal itself, applied by the one door every stdout and stderr write
+ * passes (src/util/log.js) - to everything, our own text included, since nothing printed
+ * there needs a control character. Stricter than displayText in one place: a carriage
+ * return goes too, because on a terminal "safe\rEVIL" prints EVIL over safe; so do the line
+ * and paragraph separators some terminals break on. Newline and tab stay: the door writes
+ * whole multi-line documents. Nothing is collapsed or reflowed - keeping a value to one line
+ * is the source's job (displayLine, displayPath), since only the source knows a value's role.
+ *
+ * Our own colour survives because it is not in the text at this point: it travels as
+ * markers that hold no control character, turned into escape codes after this guard
+ * (src/util/color.js applyColor).
+ * @param {?string} text
+ * @returns {string}
+ */
+export function displayTerminal(text) {
+  return String(text ?? "").replace(
+    /(?![\t\n])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu,
+    " "
+  );
 }
