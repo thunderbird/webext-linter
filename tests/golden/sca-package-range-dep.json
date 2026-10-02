@@ -61,6 +61,7 @@
       "sca-lock-file-missing",
       "sca-lock-file-invalid",
       "build-registry-redirect",
+      "lock-foreign-source",
       "committed-node-modules",
       "committed-build-artifact",
       "sca-invalid-symlink",

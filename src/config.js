@@ -144,6 +144,15 @@ export const VENDOR_NPM_DOWNLOADS_API =
 export const VENDOR_GITHUB_REPOS_API = "https://api.github.com/repos/";
 
 /**
+ * Where a source review's install may take a package from: the npm registry, or GitHub
+ * (the only non-registry source a package.json may declare). A lock entry resolved
+ * anywhere else installs bytes the dependency audit never read (lock-foreign-source).
+ */
+export const NPM_REGISTRY_TARBALLS = "https://registry.npmjs.org/";
+export const GITHUB_INSTALL_SOURCE =
+  /^(?:git\+)?(?:https?|ssh|git):\/\/(?:[^@/]+@)?(?:codeload\.)?github\.com\//i;
+
+/**
  * The smallest gap between two requests to the same host, for every request the tool
  * makes through its one transport (src/util/net.js). The sole exception is that
  * transport's own control-point probe, which runs from inside a failure to decide

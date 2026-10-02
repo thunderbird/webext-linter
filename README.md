@@ -268,12 +268,12 @@ not the developer's, so accepting it is a judgement a person owns), and
 so no scan of its surface settles what it does).
 
 Some findings stop the review outright. A check can declare that it does by naming the
-reason the report gives (`review-early-exit:` in the registry) - today eleven do, across
+reason the report gives (`review-early-exit:` in the registry) - today twelve do, across
 three reasons: the four dependency-vulnerability checks name *known security
-vulnerabilities*, `banned-library` names *disallowed library versions*, and the six that
+vulnerabilities*, `banned-library` names *disallowed library versions*, and the seven that
 decide a source submission cannot be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
-`build-registry-redirect` and `build-lifecycle-hook` - name *a
+`lock-foreign-source`, `build-registry-redirect` and `build-lifecycle-hook` - name *a
 build that cannot be reproduced*. When one of them reports at error
 severity, nothing further is put to a reviewer: the report drops every to-do item they
 would have been **asked** - the two manual-review sections and their tally counts, plus
@@ -353,6 +353,7 @@ machine.
 | `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, stops the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce. Whether the archive held the whole XPI is a separate question, so `sca-xpi-fully-included-in-archive` prints beside this rejection rather than in place of it. |
 | `sca-package-file-invalid` | A `package.json` that is present but unusable - it does not parse, or it parses to something other than a JSON object - so the build it defines cannot be run (error, stops the review). Presence is decided by name and usability by reading, so exactly one of this and the check above ever speaks. |
 | `sca-lock-file-invalid` | A committed lock file that cannot install what `package.json` declares: it cannot be read, it is not a recognisable npm or pnpm lock, it resolves nothing for a declared package, or the version it pins for one is not a version that `package.json` allows (error). `npm ci` / `pnpm install --frozen-lockfile` refuse over all four, so the build cannot be reproduced and the review stops. |
+| `lock-foreign-source` | A lock entry the install takes from a source other than the npm registry or GitHub, or a root dependency declared as a registry release that the lock takes from GitHub (error, stops the review). The audit identifies a package by name and version, while the installer fetches the URL the lock records, so such an entry installs bytes the audit never read. |
 | `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, stops the review). The lock is owed by the `package.json`, not by what it declares: both installers refuse without one whatever it holds. A build using a package manager the review does not install from commits no lock that counts, so it is rejected here. |
 | `string-timer` | A code string passed to `setTimeout`/`setInterval` (it is eval'd) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
 | `sync-xhr` | Synchronous `XMLHttpRequest` (`open(..., false)`). |

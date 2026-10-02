@@ -1,7 +1,7 @@
 // Unit tests for the lock-file readers (src/vendor/locks.js): version resolution
 // for one declared name across npm and pnpm (lockedVersion), enumeration
 // of the whole installed tree across npm v1/v2/v3 and pnpm v5-v9
-// (lockedPackages), and resolveVendor's package.json dependency resolution
+// (lockedPackages), where each entry installs from (lockSourceGaps), and resolveVendor's package.json dependency resolution
 // (exact pin / range+lock -> pinned, range without a lock -> unpinned, a
 // non-registry spec -> ignored). No network.
 
@@ -12,6 +12,7 @@ import {
   lockedVersion,
   lockedPackages,
   lockGaps,
+  lockSourceGaps,
 } from "../../src/vendor/locks.js";
 import { resolveVendor } from "../../src/vendor/resolve.js";
 
@@ -890,4 +891,128 @@ test("an XPI's lock pins its ranges and nothing more", async () => {
     "jszip",
     "webpack",
   ]);
+});
+
+// ---- lockSourceGaps ----
+
+// The audit names a package; the installer fetches the URL the lock records. Only the npm
+// registry and GitHub are sources the review reads, so any other host is reported - and a
+// package installed from a foreign host is never audited under the registry name.
+test("lockSourceGaps: an npm v3 entry resolved off the registry and GitHub is reported", () => {
+  const pkg = (dependencies) => JSON.stringify({ name: "x", dependencies });
+  const lock = (entries) =>
+    JSON.stringify({
+      lockfileVersion: 3,
+      packages: { "": { dependencies: {} }, ...entries },
+    });
+  const addon = fakeAddon({
+    "package.json": pkg({ a: "1.0.0", b: "1.0.0", c: "1.0.0", d: "1.0.0" }),
+    "package-lock.json": lock({
+      "node_modules/a": {
+        version: "1.0.0",
+        resolved: "https://registry.npmjs.org/a/-/a-1.0.0.tgz",
+      },
+      "node_modules/b": { version: "1.0.0" },
+      "node_modules/c": {
+        version: "1.0.0",
+        resolved: "https://cdn.example.invalid/c-1.0.0.tgz",
+      },
+      "node_modules/d": {
+        version: "1.0.0",
+        resolved: "https://registry.yarnpkg.com/d/-/d-1.0.0.tgz",
+      },
+      "node_modules/e": {
+        version: "2.0.0",
+        resolved: "git+ssh://git@github.com/o/e.git#abc",
+      },
+      "node_modules/local": { resolved: "../local", link: true },
+    }),
+  });
+  assert.deepEqual(
+    lockSourceGaps(addon).map((g) => [g.name, g.source]),
+    [
+      ["c", "https://cdn.example.invalid/c-1.0.0.tgz"],
+      ["d", "https://registry.yarnpkg.com/d/-/d-1.0.0.tgz"],
+    ]
+  );
+  // And neither foreign entry is audited as a registry release.
+  assert.deepEqual(
+    lockedPackages(addon).map((p) => p.name),
+    ["a", "b"]
+  );
+});
+
+// GitHub is a declarable source - except for a root dependency declared as a registry
+// release: that one is audited as the npm package and installed from GitHub.
+test("lockSourceGaps: GitHub is fine for a GitHub declaration, not for a registry one", () => {
+  const files = (spec) =>
+    fakeAddon({
+      "package.json": JSON.stringify({ dependencies: { g: spec } }),
+      "package-lock.json": JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          "": { dependencies: { g: spec } },
+          "node_modules/g": {
+            version: "1.0.0",
+            resolved: "git+ssh://git@github.com/o/g.git#abc",
+          },
+        },
+      }),
+    });
+  assert.deepEqual(lockSourceGaps(files("github:o/g")), []);
+  assert.deepEqual(
+    lockSourceGaps(files("1.0.0")).map((g) => g.name),
+    ["g"]
+  );
+});
+
+test("lockSourceGaps: npm v1 walks the nested tree", () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({ dependencies: { a: "1.0.0" } }),
+    "package-lock.json": JSON.stringify({
+      lockfileVersion: 1,
+      dependencies: {
+        a: {
+          version: "1.0.0",
+          dependencies: {
+            n: {
+              version: "3.0.0",
+              resolved: "http://mirror.example.invalid/n-3.0.0.tgz",
+            },
+          },
+        },
+      },
+    }),
+  });
+  assert.deepEqual(
+    lockSourceGaps(addon).map((g) => [g.name, g.version]),
+    [["n", "3.0.0"]]
+  );
+});
+
+test("lockSourceGaps: pnpm tarball and git resolutions", () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({ dependencies: {} }),
+    "pnpm-lock.yaml": [
+      "lockfileVersion: '9.0'",
+      "packages:",
+      "  ok@1.0.0:",
+      "    resolution: {integrity: sha512-x}",
+      "  gh@1.0.0:",
+      "    resolution: {tarball: https://codeload.github.com/o/gh/tar.gz/abc}",
+      "  bad@1.0.0:",
+      "    resolution: {tarball: https://cdn.example.invalid/bad-1.0.0.tgz}",
+      "  gitlab@1.0.0:",
+      "    resolution: {type: git, repo: https://gitlab.example.invalid/o/r.git, commit: abc}",
+      "",
+    ].join("\n"),
+  });
+  assert.deepEqual(
+    lockSourceGaps(addon).map((g) => g.name),
+    ["bad", "gitlab"]
+  );
+  assert.deepEqual(
+    lockedPackages(addon).map((p) => p.name),
+    ["ok"]
+  );
 });

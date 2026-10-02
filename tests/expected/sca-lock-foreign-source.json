@@ -1,0 +1,6 @@
+{
+  "_comment": "A source-code submission declaring left-pad 1.3.0 as a registry release, whose package-lock.json resolves it to a host other than the npm registry. The dependency audit reads left-pad 1.3.0 by name and version, while npm ci would install the tarball from that host - so lock-foreign-source rejects the entry and stops the review.",
+  "expect": {
+    "lock-foreign-source": ["package-lock.json:12"]
+  }
+}

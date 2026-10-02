@@ -735,6 +735,7 @@ test("where a check runs: the route says it, or the flag says what a route canno
   for (const id of [
     "undeclared-build-source",
     "build-registry-redirect",
+    "lock-foreign-source",
     "build-lifecycle-hook",
     "committed-node-modules",
     "committed-build-artifact",
@@ -904,6 +905,7 @@ test("every check's severity is pinned to its band", async () => {
       "experiment-overrides-api",
       "experiment-unknown-api",
       "function-constructor",
+      "lock-foreign-source",
       "manifest-invalid-json",
       "manifest-missing",
       "manifest-missing-key",
@@ -1756,6 +1758,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "build-registry-redirect",
     "committed-build-artifact",
     "committed-node-modules",
+    "lock-foreign-source",
     "sca-invalid-symlink",
     "sca-lock-file-invalid",
     "sca-lock-file-missing",

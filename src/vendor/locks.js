@@ -1,21 +1,23 @@
-// Reads the project's lock file, for three questions. (1) Which exact version did
+// Reads the project's lock file, for four questions. (1) Which exact version did
 // a package.json range (e.g. "^3.10.0") actually install - lockedVersion, so a
 // declared dependency can still be pinned and audited. (2) What does the whole
 // installed tree contain - lockedPackages, which enumerates every package the
 // lock records, declared or pulled in by another package, so the OSV audit can
 // reach the ~90% of the tree nobody declares. (3) Can the lock install what the
 // package file declares at all - lockGaps, which is what `npm ci` and
-// `pnpm install --frozen-lockfile` refuse over. Reads whichever lock the
+// `pnpm install --frozen-lockfile` refuse over. (4) Where does the install take each
+// package from - lockSourceGaps, since the audit identifies a package by name and version
+// while the installer fetches the URL the lock records. Reads whichever lock the
 // submission ships - npm (package-lock.json / npm-shrinkwrap.json, JSON) or pnpm
 // (pnpm-lock.yaml, YAML), the two supported package managers.
 //
-// ONE GOVERNING LOCK. All three readers below ask governingLock which file the submission
+// ONE GOVERNING LOCK. All four readers below ask governingLock which file the submission
 // installs from, so a submission cannot be rejected over one lock while a version is pinned
 // and a whole tree audited out of another - which is what happened while each picked for
 // itself (first present / first that resolves / first that yields).
 //
 // Belongs here: lockedVersion(addon, name), lockedPackages(addon), lockGaps(addon),
-// governingLock, and the per-format readers. lockGaps is a comparison, so it needs both sides, but only this
+// lockSourceGaps(addon), governingLock, and the per-format readers. lockGaps is a comparison, so it needs both sides, but only this
 // one is its own: what the package file DECLARES comes from ./package-file.js, and every lock-side
 // detail the comparison turns on (the npm root record, the pnpm importers, the v1/v3
 // split) is here and private. Does NOT belong here: reading or shaping package.json
@@ -25,7 +27,11 @@
 import YAML from "yaml";
 import semver from "semver";
 
-import { VENDOR_LOCK_MAX_PACKAGES } from "../config.js";
+import {
+  VENDOR_LOCK_MAX_PACKAGES,
+  NPM_REGISTRY_TARBALLS,
+  GITHUB_INSTALL_SOURCE,
+} from "../config.js";
 import { stripBom } from "../util/json.js";
 import { parseJson } from "../util/json.js";
 
@@ -121,8 +127,28 @@ export function governingLock(addon) {
 // release, so auditing it under that name would fabricate a hit.
 const NUMERIC_VERSION = /^\d+\.\d+/;
 
-// A `resolved` pointing somewhere other than the registry - same reasoning.
-const NON_REGISTRY_RESOLVED = /^(?:git\+|file:|link:)/i;
+/**
+ * Where a lock entry's install takes the package from, by its `resolved` URL (npm) or
+ * `resolution.tarball` (pnpm). Absent means the registry: that is what npm records when it
+ * omits the field. Only a "registry" entry is a release its name and version identify, so
+ * it alone is audited as one; "foreign" is what lock-foreign-source rejects.
+ * @param {unknown} url
+ * @returns {"registry"|"github"|"local"|"foreign"}
+ */
+function installSource(url) {
+  const s = String(url ?? "");
+  if (s === "" || s.startsWith(NPM_REGISTRY_TARBALLS)) {
+    return "registry";
+  }
+  if (GITHUB_INSTALL_SOURCE.test(s)) {
+    return "github";
+  }
+  // A file:/link: spec or a bare relative path is the submission's own code.
+  if (/^(?:file|link):/i.test(s) || !/^[a-z][a-z0-9+.-]*:/i.test(s)) {
+    return "local";
+  }
+  return "foreign";
+}
 
 // A pnpm `packages:` key, across every format pnpm has used: v5 "/name/version",
 // v6-v8 "/name@version(peers)" and v9 "name@version".
@@ -296,7 +322,7 @@ function npmTreePackages(packages, file) {
     const version = String(entry.version ?? "");
     if (
       !NUMERIC_VERSION.test(version) ||
-      NON_REGISTRY_RESOLVED.test(String(entry.resolved ?? ""))
+      installSource(entry.resolved) !== "registry"
     ) {
       continue;
     }
@@ -346,7 +372,7 @@ function npmV1Packages(deps, file) {
       // v1 records a git install in `version` itself, hence the same guard as v3.
       if (
         NUMERIC_VERSION.test(version) &&
-        !NON_REGISTRY_RESOLVED.test(String(node.resolved ?? ""))
+        installSource(node.resolved) === "registry"
       ) {
         out.push({
           name,
@@ -396,7 +422,7 @@ function pnpmPackages(data, file) {
     }
     const name = m[1];
     const version = cleanVersion(m[2]);
-    if (!NUMERIC_VERSION.test(version)) {
+    if (!NUMERIC_VERSION.test(version) || pnpmSource(entry) !== "registry") {
       continue;
     }
     out.push({
@@ -514,6 +540,155 @@ function dedupe(found) {
 function declaredName(name, spec) {
   const written = typeof spec === "string" ? spec : (spec?.specifier ?? "");
   return aliasTarget(written)?.name ?? name;
+}
+
+/**
+ * @typedef {object} SourceGap  A lock entry the install takes from a source the review
+ * cannot audit: neither the npm registry nor GitHub, or GitHub for a package the root
+ * package.json declares as a registry release.
+ * @property {string} file  The governing lock it was read from.
+ * @property {string} token  The entry's key in that lock, locating its line.
+ * @property {string} name  The package.
+ * @property {string} version  The version the entry records ("" when it records none).
+ * @property {string} source  Where the install takes it from, as the lock records it.
+ */
+
+/**
+ * Every lock entry the install takes from a source the dependency audit does not read.
+ * The audit identifies a package by name and version, while `npm ci` and pnpm fetch it
+ * from the URL the lock records - so an entry resolved anywhere else installs bytes the
+ * audit vouched for under someone else's name. GitHub is a source a package.json may
+ * declare, so it is accepted, except for a root dependency declared as a registry
+ * release: that one is audited as the npm package and installed from GitHub. Read by
+ * the lock-foreign-source check.
+ * @param {Addon} addon  The SCA archive (the root package.json and its governing lock).
+ * @returns {SourceGap[]}
+ */
+export function lockSourceGaps(addon) {
+  const file = governingLock(addon);
+  const data = file ? parsedLock(addon, file) : null;
+  if (!data) {
+    return [];
+  }
+  const pkg = readPackageFile(submissionFiles(addon));
+  const fromRegistry = new Set(
+    declaredDependencies(pkg)
+      .filter(({ spec }) => !/[:/]/.test(spec) || aliasTarget(spec))
+      .map(({ name }) => name)
+  );
+  const gaps = [];
+  const judge = (token, name, version, source, kind, top) => {
+    if (
+      kind === "foreign" ||
+      (kind === "github" && top && fromRegistry.has(name))
+    ) {
+      gaps.push({ file, token, name, version, source });
+    }
+  };
+  if (!file.endsWith(".json")) {
+    for (const [token, entry] of Object.entries(data.packages ?? {})) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const m = token.match(PNPM_KEY_RE);
+      const name = String(entry.name ?? m?.[1] ?? token);
+      const version = String(entry.version ?? (m ? cleanVersion(m[2]) : ""));
+      const source = String(
+        entry.resolution?.tarball ?? entry.resolution?.repo ?? ""
+      );
+      judge(token, name, version, source, pnpmSource(entry), false);
+    }
+    // A root registry declaration the importer records at a GitHub location.
+    const root = data.importers?.["."] ?? data;
+    for (const map of DECLARATION_MAPS) {
+      for (const [name, raw] of Object.entries(root?.[map] ?? {})) {
+        const v = typeof raw === "string" ? raw : String(raw?.version ?? "");
+        if (/^\d/.test(v) || !fromRegistry.has(name)) {
+          continue;
+        }
+        const kind = /github\.com\//i.test(v) ? "github" : installSource(v);
+        if (kind !== "registry" && kind !== "local") {
+          judge(
+            name,
+            name,
+            "",
+            v,
+            kind === "foreign" ? "foreign" : "github",
+            true
+          );
+        }
+      }
+    }
+    return gaps;
+  }
+  if (data.packages && typeof data.packages === "object") {
+    const marker = "node_modules/";
+    for (const [token, entry] of Object.entries(data.packages)) {
+      const at = token.lastIndexOf(marker);
+      if (at === -1 || !entry || typeof entry !== "object" || entry.link) {
+        continue;
+      }
+      const written = token.slice(at + marker.length);
+      const top = token === `${marker}${written}`;
+      const source = String(entry.resolved ?? "");
+      judge(
+        token,
+        written,
+        String(entry.version ?? ""),
+        source,
+        installSource(source),
+        top
+      );
+    }
+    return gaps;
+  }
+  // lockfileVersion 1: a nested tree, walked like npmV1Packages; its top level is the
+  // hoisted install that answers the root's declarations.
+  const stack = [[data.dependencies, true]];
+  while (stack.length) {
+    const [deps, top] = stack.pop();
+    for (const [name, node] of Object.entries(deps ?? {})) {
+      if (!node || typeof node !== "object") {
+        continue;
+      }
+      const source = String(node.resolved ?? "");
+      judge(
+        name,
+        name,
+        String(node.version ?? ""),
+        source,
+        installSource(source),
+        top
+      );
+      if (node.dependencies) {
+        stack.push([node.dependencies, false]);
+      }
+    }
+  }
+  return gaps;
+}
+
+/**
+ * Where a pnpm `packages` entry installs from: its `resolution.tarball` when it records
+ * one, a git `repo` when it is a git install, and the registry otherwise (a registry
+ * entry carries only an integrity).
+ * @param {object} entry
+ * @returns {"registry"|"github"|"local"|"foreign"}
+ */
+function pnpmSource(entry) {
+  const resolution = entry?.resolution ?? {};
+  if (resolution.tarball !== undefined) {
+    return installSource(resolution.tarball);
+  }
+  if (resolution.type === "git" || resolution.repo !== undefined) {
+    return /github\.com[/:]/i.test(String(resolution.repo ?? ""))
+      ? "github"
+      : "foreign";
+  }
+  if (resolution.type === "directory") {
+    return "local";
+  }
+  return "registry";
 }
 
 /**

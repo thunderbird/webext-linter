@@ -788,6 +788,21 @@ deterministic-phase:
     The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
+# Deterministic (SCA only): a lock entry the install takes from a source the review cannot
+# audit. The dependency audit identifies a package by name and version, while the installer
+# fetches the URL the lock records - so an entry resolved anywhere but the npm registry or
+# GitHub (or a root registry declaration the lock takes from GitHub) installs bytes the
+# audit vouched for under another name. Read from the governing lock
+# (src/vendor/locks.js lockSourceGaps); {{item}} names the package and the recorded source.
+- title: Lock file installs from an unsupported source
+  severity: error
+  review-early-exit: unreproducible-build
+  check: lock-foreign-source
+  input: sca
+  response: |-
+    The committed lock file installs the following package(s) from a source the review does not support. Every dependency must install from the npm registry (registry.npmjs.org) or, where package.json declares one, from GitHub. Please install the dependencies from those sources and commit the regenerated lock file.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
 # Deterministic (SCA only): a node_modules folder anywhere in --sca-root is a hard
 # reject. Installed dependencies are build output - the reviewer installs them from the
 # declared package.json/lock - so a committed node_modules is useless bloat and a decoy

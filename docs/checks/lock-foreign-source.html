@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lock file installs from an unsupported source</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Lock file installs from an unsupported source <span class="badge error">error</span></h1>
+        <div class="check-id">lock-foreign-source</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission whose committed lock file installs a package from a
+        source other than the npm registry or GitHub. The dependency audit identifies a
+        package by its name and version, while <code>npm ci</code> and
+        <code>pnpm install --frozen-lockfile</code> fetch it from the URL the lock
+        records, so an entry resolved elsewhere installs bytes the audit never read.
+      </p>
+      <p>
+        GitHub is accepted, because a package.json may declare a GitHub dependency. A
+        root dependency declared as a registry release but locked to GitHub is reported
+        too: it is audited as the npm package and installed from somewhere else. An
+        entry with no recorded source is a registry install, and a local
+        <code>file:</code> or linked package is the submission's own code, judged by
+        other checks.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The governing lock file"] --> B{"For each installed entry:<br/>where does it resolve from?"}
+  B -- "npm registry, or none recorded" --> OK([no finding])
+  B -- "local file: / link" --> OK
+  B -- GitHub --> G{"A root dependency declared<br/>as a registry release?"}
+  G -- no --> OK
+  G -- yes --> ERR([ERROR: unsupported source])
+  B -- "any other host" --> ERR
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told which packages its lock file installs from an unsupported
+        source, and that every dependency must install from the npm registry or, where
+        package.json declares one, from GitHub, with a regenerated lock file.
+      </div>
+
+      <div class="outcome">
+        <strong>It stops the review</strong>
+        Like the other build checks, this one settles the submission on its own
+        (&ldquo;A build that cannot be reproduced&rdquo;): the install would run, but
+        what it fetches is not what the audit read, so reproducing the build attests
+        nothing - and it would pull code from a developer-chosen host onto the
+        reviewer's own machine.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/lock-foreign-source.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

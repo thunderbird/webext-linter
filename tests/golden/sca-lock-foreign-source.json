@@ -1,10 +1,10 @@
 {
   "meta": {
     "action": "review",
-    "xpi": "<root>/tests/addons/sca-vendor-vuln-unknown/xpi",
-    "xpiRoot": "<root>/tests/addons/sca-vendor-vuln-unknown/xpi/",
+    "xpi": "<root>/tests/addons/sca-lock-foreign-source/xpi",
+    "xpiRoot": "<root>/tests/addons/sca-lock-foreign-source/xpi/",
     "xpiFile": "xpi",
-    "scaRoot": "<root>/tests/addons/sca-vendor-vuln-unknown/src",
+    "scaRoot": "<root>/tests/addons/sca-lock-foreign-source/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
@@ -106,40 +106,38 @@
       "disguised-transmission",
       "unacceptable-package-content",
       "shipped-icon-trademark-imitation"
-    ]
+    ],
+    "earlyExit": {
+      "intro": "The review was not completed and the report is incomplete due to the following issues:",
+      "reasons": [
+        {
+          "id": "unreproducible-build",
+          "text": "Build process issues"
+        }
+      ]
+    }
   },
   "summary": {
-    "error": 0,
+    "error": 1,
     "hold": 0,
-    "warning": 1,
-    "info": 1,
+    "warning": 0,
+    "info": 0,
     "byRule": {
-      "sca-xpi-declares-vendoring": 1,
-      "vendor-vuln-unknown": 1
+      "lock-foreign-source": 1
     }
   },
   "findings": [
     {
-      "ruleId": "sca-xpi-declares-vendoring",
-      "severity": "warning",
-      "file": "VENDORS.md",
-      "loc": null,
-      "item": null,
-      "hint": null,
-      "artifact": "XPI",
-      "message": "This add-on was submitted as a source-code archive, but the built XPI carries vendoring information of its own. In a source-code submission a VENDOR file, a package.json and a lock file belong in the archive - the copy the reviewer reads and the build installs from - not in the package you ship. Remove the file(s) below from the XPI and declare the dependencies in the archive instead. If the add-on needs no archive behind it, submit just the XPI.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
-    },
-    {
-      "ruleId": "vendor-vuln-unknown",
-      "severity": "info",
-      "file": "VENDORS.md",
+      "ruleId": "lock-foreign-source",
+      "severity": "error",
+      "file": "package-lock.json",
       "loc": {
-        "line": 2
+        "line": 12
       },
-      "item": "https://raw.githubusercontent.com/someone/thing-lib/1.4.2/dist/thing.js",
+      "item": "left-pad 1.3.0 - https://cdn.example.invalid/left-pad-1.3.0.tgz",
       "hint": null,
       "artifact": "SCA",
-      "message": "The add-on sourced a third-party file from a CDN, where its known-vulnerability status could not be determined automatically. To benefit from automated auditing against the OSV database, consider switching to an npm-hosted source and update your vendor mechanism to point to an unpkg or jsDelivr package (pinned to an exact version)."
+      "message": "The committed lock file installs the following package(s) from a source the review does not support. Every dependency must install from the npm registry (registry.npmjs.org) or, where package.json declares one, from GitHub. Please install the dependencies from those sources and commit the regenerated lock file.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]
 }
