@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import {
   experimentApiPaths,
   experimentApiNamespaces,
+  experimentApiMembers,
   experimentManifestKeys,
   experimentGroups,
 } from "../../src/lib/experiments.js";
@@ -188,6 +189,39 @@ test("experimentManifestKeys is empty without a manifest $extend block", () => {
   const noBlock = { experiment_apis: { x: { schema: "s.json" } } };
   const files = new Map([["s.json", Buffer.from('[{"namespace":"x"}]')]]);
   assert.deepEqual([...experimentManifestKeys(noBlock, files)], []);
+});
+
+// An Experiment schema is read as Thunderbird reads it: `//` comments (a licence header, a
+// note after a value) leave its namespaces, members and manifest keys declared - and one
+// Thunderbird would refuse (a trailing comma) declares nothing.
+test("an Experiment schema with // comments declares what it declares", () => {
+  const manifest = {
+    experiment_apis: {
+      widget: { schema: "api/schema.json", parent: { paths: [["widget"]] } },
+    },
+  };
+  const schemaText = `// This Source Code Form is subject to the terms of the MPL.
+[
+  {
+    "namespace": "manifest", // the manifest.json keys this declares
+    "types": [
+      { "$extend": "WebExtensionManifest", "properties": { "widget_action": {} } }
+    ]
+  },
+  { "namespace": "widget", "functions": [{ "name": "doThing", "type": "function" }] }
+]`;
+  const files = new Map([["api/schema.json", Buffer.from(schemaText)]]);
+  assert.deepEqual(
+    [...experimentManifestKeys(manifest, files)],
+    ["widget_action"]
+  );
+  assert.deepEqual([...experimentApiNamespaces(manifest, files)], ["widget"]);
+  assert.ok(experimentApiMembers(manifest, files).get("widget").has("doThing"));
+
+  const refused = new Map([
+    ["api/schema.json", Buffer.from(schemaText.replace("{} }", "{}, }"))],
+  ]);
+  assert.deepEqual([...experimentManifestKeys(manifest, refused)], []);
 });
 
 // ---- normalizedSha256 is EOL-tolerant ----

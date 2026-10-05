@@ -3,8 +3,6 @@
 // single artifact, so this derives that field from ctx.artifact (mutating and
 // returning the SAME ctx, so tests that inspect the ctx after a run still observe it).
 
-import JSON5 from "json5";
-
 import { locusMinter, manifestRecord } from "../../src/addon/load.js";
 import { ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 import { collectJsSources } from "../../src/addon/sources.js";

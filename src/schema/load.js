@@ -7,7 +7,8 @@
 // a plain directory fixture.
 //
 // Belongs here: file reading and JSON parsing - locating schema-files/*.json
-// inside a zip or dir, JSON5-parsing each into namespace-object arrays, and
+// inside a zip or dir, parsing each into namespace-object arrays (parseExtensionJson,
+// which takes their comment headers), and
 // returning the "<name>.json" -> parsed map. File IO only.
 //
 // Does NOT belong here: fetching or caching the zip (src/schema/fetch.js),
@@ -17,9 +18,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import AdmZip from "adm-zip";
-import JSON5 from "json5";
 import { debug } from "../util/log.js";
-import { stripBom } from "../util/json.js";
+import { parseExtensionJson } from "../util/json.js";
 
 /** @typedef {import("./index.js").SchemaNode} SchemaNode */
 
@@ -110,9 +110,9 @@ export function loadSchemaFiles(source) {
  * @returns {SchemaNode[]} Parsed schema file (namespace objects).
  */
 function parse(name, text) {
-  try {
-    return JSON5.parse(stripBom(text));
-  } catch (err) {
-    throw new Error(`Failed to parse schema file ${name}: ${err.message}`);
+  const data = parseExtensionJson(text);
+  if (data === undefined) {
+    throw new Error(`Failed to parse schema file ${name}`);
   }
+  return data;
 }

@@ -39,9 +39,9 @@ import { wiringError } from "../lib/errors.js";
 import fs from "node:fs";
 import path from "node:path";
 import AdmZip from "adm-zip";
-import JSON5 from "json5";
 
 import { buildManifestLoc } from "./manifest-loc.js";
+import { parseExtensionJson } from "../util/json.js";
 import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
 import { displayLine } from "../util/text.js";
 import { hidesItsSize } from "../util/zip.js";
@@ -324,7 +324,7 @@ export function loadSourceArchive(source) {
 const MANIFEST_NAME = "manifest.json";
 
 /**
- * Read the artifact's ROOT manifest.json (BOM-tolerant, JSON5) into the record every reader of
+ * Read the artifact's ROOT manifest.json (read as Thunderbird reads it - parseExtensionJson) into the record every reader of
  * that manifest.json shares. Asked for, never derived at load: the record is the SHIPPED
  * answer to "what does this add-on declare", so the review reads it once off the built XPI
  * and shares it (src/pipeline.js -> ctx.manifest). A source archive is never asked - its root
@@ -335,8 +335,7 @@ const MANIFEST_NAME = "manifest.json";
  * ALWAYS a record, absent manifest.json or not: a reader asking what the add-on declares
  * gets the same shape either way, and says which case it is by reading `present`. Unparsable
  * is a record too - `error` is what the review reports and `text` is what a token search
- * anchors it in, while `loc` answers null to everything (buildManifestLoc gets no tree out
- * of text JSON5 alone will take).
+ * anchors it in.
  * @param {FileStore} store  The artifact's store, to read it from.
  * @returns {WebExtManifestRecord}
  */
@@ -412,10 +411,11 @@ export function manifestRecord(raw) {
     },
   };
   if (present) {
-    try {
-      record.json = JSON5.parse(text);
-    } catch (err) {
-      record.error = err.message;
+    const json = parseExtensionJson(text);
+    if (json === undefined) {
+      record.error = "not JSON that Thunderbird can read";
+    } else {
+      record.json = json;
     }
   }
   return record;

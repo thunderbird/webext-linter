@@ -1,0 +1,4 @@
+{
+  "_comment": "The clean add-on with `//` comments in manifest.json: one on its own line, one after a value, one between keys, and a `//` inside a string (a URL) that is text. Thunderbird removes such comments before parsing, so the add-on loads - and reviews clean, the comments neither breaking the read nor shifting the lines findings point at.",
+  "expect": {}
+}

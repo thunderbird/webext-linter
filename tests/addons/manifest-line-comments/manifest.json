@@ -1,0 +1,12 @@
+// A whole-line comment before the object.
+{
+  "manifest_version": 3,
+  "name": "Line Comments",
+  "version": "1.0", // a trailing comment after a value
+  "description": "Uses only declared permissions. See https://example.invalid/docs",
+  "permissions": ["messagesRead", "accountsRead", "messagesMove"],
+  // a comment between two keys
+  "background": { "scripts": ["background.js"] },
+  "compose_action": { "default_title": "Compose" },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

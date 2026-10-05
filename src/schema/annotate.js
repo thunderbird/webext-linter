@@ -39,7 +39,7 @@ const ANNOTATIONS_DIR = path.resolve(here, "../../assets/schema-annotations");
 
 /**
  * Load the bundled annotation fragments (assets/schema-annotations/*.json), parsed
- * like schema files (JSON5/BOM-tolerant).
+ * like schema files (parseExtensionJson: a BOM and `//` comments allowed).
  * @returns {Record<string, SchemaNode[]>}  file name -> namespace objects.
  */
 export function loadSchemaAnnotations() {

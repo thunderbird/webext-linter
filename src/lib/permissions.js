@@ -487,7 +487,7 @@ function permissionTokens(manifest, prompts) {
  * non-authored bundle has no atoms, so its raw text is scanned line by line (a
  * token in its comments only over-includes an occurrence, the safe direction).
  * String literals deliberately count (dynamic access spells the token in a string).
- * The manifest.json is also searched as JSON (no comments there) and a manifest.json occurrence
+ * The manifest.json is also searched as JSON and a manifest.json occurrence
  * is located via tokenLine - though the script-injection manifest.json keys
  * (compose_scripts / message_display_scripts) are NOT tokens: they ground their
  * permission deterministically (analyzePermissions), so they never escalate.

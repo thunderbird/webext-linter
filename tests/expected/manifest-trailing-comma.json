@@ -1,0 +1,6 @@
+{
+  "_comment": "A manifest.json, the add-on's only file, with a trailing comma after its last key. Thunderbird reads manifest.json as JSON with only `//` comments removed, so it refuses this file - and so does the review: manifest-invalid-json, and every other manifest check skips on it.",
+  "expect": {
+    "manifest-invalid-json": ["manifest.json"]
+  }
+}

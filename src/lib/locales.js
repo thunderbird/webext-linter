@@ -16,8 +16,7 @@
 // could later adopt this helper), and the authored wording (->
 // assets/registry.yaml).
 
-import { parseJson } from "../util/json.js";
-import { rethrowIfFatal } from "./errors.js";
+import { parseExtensionJson } from "../util/json.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {{locale: string|null, name: string}} LocalizedName */
@@ -122,14 +121,10 @@ function scanNames(ctx) {
     if (!locale) {
       continue;
     }
-    let json;
-    try {
-      // Thunderbird reads these through a BOM-stripping JSON reader, so a
-      // BOM-prefixed file states a name it DISPLAYS. Parsing it strictly would
-      // turn a common packaging accident into a name no check ever sees.
-      json = parseJson(buf);
-    } catch (err) {
-      rethrowIfFatal(err);
+    // Read as Thunderbird reads it (a BOM and `//` comments allowed), so a file it would
+    // display a name from states one here, and one it would refuse is unreadable.
+    const json = parseExtensionJson(buf);
+    if (json === undefined) {
       unreadable.push(locale);
       continue;
     }

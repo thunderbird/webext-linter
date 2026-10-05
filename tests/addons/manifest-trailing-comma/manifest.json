@@ -1,0 +1,6 @@
+{
+  "manifest_version": 3,
+  "name": "Trailing Comma",
+  "version": "1.0",
+  "description": "A manifest.json Thunderbird will not load.",
+}

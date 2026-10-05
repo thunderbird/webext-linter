@@ -19,15 +19,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import AdmZip from "adm-zip";
-import JSON5 from "json5";
 
 import { debug } from "../util/log.js";
-import { stripBom } from "../util/json.js";
+import { parseExtensionJson } from "../util/json.js";
 import { EXPERIMENTS_CACHE } from "../config.js";
 import { experimentGroups } from "../lib/experiments.js";
 import { resolveExperimentsZip } from "./fetch.js";
 import { normalizedSha256 } from "../normalize/hash.js";
-import { rethrowIfFatal } from "../lib/errors.js";
 
 // The EOL-tolerant content hash lives in a shared module (the vendor tarball matcher
 // reuses it); re-exported so this module's existing importers keep working.
@@ -85,13 +83,9 @@ export function loadAllowList(src) {
  * @returns {void}
  */
 function collectNamespaces(buf, set) {
-  let data;
-  try {
-    data = JSON5.parse(stripBom(buf.toString("utf8")));
-  } catch (err) {
-    rethrowIfFatal(err);
-    return;
-  }
+  // Read as Thunderbird reads an Experiment's schema, so a namespace it would not load is
+  // not one this declares.
+  const data = parseExtensionJson(buf);
   if (!Array.isArray(data)) {
     return;
   }

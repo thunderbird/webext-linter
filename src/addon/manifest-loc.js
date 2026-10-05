@@ -22,8 +22,8 @@ import { rethrowIfFatal } from "../lib/errors.js";
 
 /**
  * Build a position index over the manifest.json source. Tolerant of comments and
- * trailing commas (JSONC); on text it cannot parse into a tree (a rare
- * JSON5-only manifest.json) every lookup returns null, so callers degrade gracefully.
+ * trailing commas (JSONC); on text it cannot parse into a tree every lookup returns
+ * null, so callers degrade gracefully.
  * @param {string} text  The manifest.json source (BOM already stripped).
  * @returns {ManifestLoc}
  */

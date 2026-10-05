@@ -103,6 +103,8 @@ A selection, not the catalogue - every folder under `addons/` is a fixture:
 | `manifest-key-ok` | A required manifest.json key (`action`) is declared - no false positive, and `manifest:action` is not reported as a missing permission. |
 | `manifest-key-wrong-version` | A wrong-MV manifest key (`browser_action` on MV3) → `missing-permission` + `unrecognized-manifest-key`. |
 | `invalid-manifest` | `manifest-missing-key` (a missing required key) + `manifest-unknown-permission` (a bad permission value) + `unrecognized-manifest-key` (an unknown top-level key). |
+| `manifest-trailing-comma` | `manifest-invalid-json`: a trailing comma, which Thunderbird's manifest reader refuses. |
+| `manifest-line-comments` | `//` comments in manifest.json (whole-line, trailing, and `//` inside a string), which Thunderbird removes before parsing - expects zero findings. |
 | `bundled-files` | `bundled-files`: a referenced file (`content_scripts`) isn't packaged. |
 | `remote-code` | `remote-resources` (remote `<script src>` + remote `@import`) and `eval-call`. |
 | `unsafe-html` | `unsafe-html`: every `innerHTML` write is flagged (static and dynamic alike); only an empty/null clear is exempt. |
@@ -135,6 +137,7 @@ A selection, not the catalogue - `unit/` holds one file per module or scanner:
 | `escalation.test.js` | `manualEscalations` - a check's cases repacked as manual refs, carrying locus, data and the code-review / manual-review bucket flag. |
 | `format.test.js` | The text / JSON report renderers - notably that the Manual review list is in the text report but omitted from JSON. |
 | `html-parse.test.js` | HTML parsing via parse5 - inline vs `src` scripts, and `>` inside attribute values - the cases a regex scanner mishandles. |
+| `json.test.js` | `parseExtensionJson`, the reader for files Thunderbird's extension loader reads (manifest.json, Experiment schemas, `_locales` messages, API schemas): `//` comments accepted, every other JSON5 extension refused. |
 | `invalid-manifest.test.js` | The `manifest-*` error-level checks (invalid JSON, missing manifest or key, version mismatch, unknown permission) and `unrecognized-manifest-key` / `mistyped-manifest-value` (unknown keys + deep ajv value-type validation). |
 | `load.test.js` | Add-on loading - an XPI holding a symlink is refused, a source archive's symlinks are skipped and recorded, real files kept. |
 | `loader-files.test.js` | The file-loader extractor (`scanLoaderRefs`) - schema-directed type walking for derived loaders, plus the bridge for `getURL`/`executeScript`/`insertCSS`/`tabs.create`/`setPopup`. |

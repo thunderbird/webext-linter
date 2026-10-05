@@ -6,12 +6,14 @@
 // reader forgot was the BOM: JSON.parse throws on it, the tools that write these
 // files do not, so a good file reads as absent and every caller's empty case
 // swallows it silently. That shipped four times in four readers before this rule
-// existed. parseJson (src/util/json.js) is the only permitted call site; it strips
-// the BOM and answers null for every failure alike.
+// existed. src/util/json.js is the only permitted call site, with two readers: parseJson
+// for plain JSON (a package file, a lock, our own state; null for every failure), and
+// parseExtensionJson for a file Thunderbird's extension loader reads (manifest.json, an
+// Experiment schema, _locales messages; `//` comments allowed, undefined on failure).
 const ONE_PARSER = {
   selector: "MemberExpression[object.name='JSON'][property.name='parse']",
   message:
-    "Use parseJson from src/util/json.js - it strips the BOM and returns null. Direct JSON.parse is allowed only inside that module.",
+    "Use src/util/json.js: parseJson for plain JSON, parseExtensionJson for a file Thunderbird's extension loader reads (manifest.json, Experiment schemas, _locales messages). Direct JSON.parse is allowed only inside that module.",
 };
 
 // ONE DOOR. Every write to the terminal passes src/util/log.js, which removes every control

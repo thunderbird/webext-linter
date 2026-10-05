@@ -9,7 +9,7 @@
 // the files (-> src/experiments/verify.js), or any verdict.
 
 import { asArray, asObject } from "./util.js";
-import { parseJson } from "../util/json.js";
+import { parseExtensionJson } from "../util/json.js";
 
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
 
@@ -142,8 +142,9 @@ function schemaMembers(schemaPath, files) {
   if (!buf) {
     return null;
   }
-  const parsed = parseJson(buf);
-  if (parsed === null) {
+  // Read as Thunderbird reads an Experiment schema, `//` comments and all.
+  const parsed = parseExtensionJson(buf);
+  if (parsed === undefined) {
     return null;
   }
   const out = new Map();
@@ -209,8 +210,9 @@ function schemaNamespaces(schemaPath, files) {
   if (!buf) {
     return [];
   }
-  const parsed = parseJson(buf);
-  if (parsed === null) {
+  // Read as Thunderbird reads an Experiment schema, `//` comments and all.
+  const parsed = parseExtensionJson(buf);
+  if (parsed === undefined) {
     return [];
   }
   const out = [];
@@ -264,8 +266,9 @@ function schemaManifestKeys(schemaPath, files) {
   if (!buf) {
     return [];
   }
-  const parsed = parseJson(buf);
-  if (parsed === null) {
+  // Read as Thunderbird reads an Experiment schema, `//` comments and all.
+  const parsed = parseExtensionJson(buf);
+  if (parsed === undefined) {
     return [];
   }
   const out = [];
