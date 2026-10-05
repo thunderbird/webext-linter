@@ -22,12 +22,17 @@
         run, which is a form of dynamic code execution, and is not allowed.
       </p>
       <p>
-        The shared dynamic-execution scan reads the directive that governs script
-        execution — script-src (or script-src-elem), falling back to default-src —
-        and records whether it allows 'unsafe-inline'. The same keyword in
-        style-src is asset policy, not code execution, and a policy with no
-        script-governing directive leaves scripts on the restrictive platform
-        default, so neither fires. This check reports a single finding when the
+        The shared dynamic-execution scan reads the policy directive by directive,
+        by name, so the order they are written in does not matter. Inline script
+        is governed by script-src-elem (script elements) and script-src-attr
+        (event handlers), each falling back to script-src and then default-src;
+        the scan records whether either allows 'unsafe-inline'. A nonce, a hash
+        or 'strict-dynamic' in the same directive makes Thunderbird ignore
+        'unsafe-inline', so it does not fire then - a nonce or hash counts in the
+        form Thunderbird parses (a base64 value), its value is not checked. The
+        same keyword in style-src is asset policy, not code execution, and a
+        policy with no script-governing directive leaves scripts on the
+        restrictive platform default, so neither fires. This check reports a single finding when the
         flag is set, anchored to the policy line in manifest.json.
       </p>
 
@@ -35,9 +40,11 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The manifest content security policy"] --> B{"Does the script-governing directive<br/>(script-src, else default-src)<br/>allow 'unsafe-inline'?"}
+  A["The manifest content security policy"] --> B{"Does script-src-elem or script-src-attr<br/>(else script-src, else default-src)<br/>allow 'unsafe-inline'?"}
   B -- no --> OK([no finding])
-  B -- yes --> ERR([ERROR: CSP allows unsafe-inline])
+  B -- yes --> C{"Same directive has a nonce,<br/>hash or 'strict-dynamic'?"}
+  C -- yes --> OK
+  C -- no --> ERR([ERROR: CSP allows unsafe-inline])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;

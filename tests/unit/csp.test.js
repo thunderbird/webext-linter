@@ -72,3 +72,175 @@ test("MV3 object CSP scopes per policy string", () => {
   assert.equal(r.unsafeEval, true);
   assert.equal(r.unsafeInline, false);
 });
+
+// ---- directives are read by name, never by position ----
+
+// A policy is tokenized into directives and each question asked of the one that governs
+// it, so the order directives are written in changes nothing - including where a
+// script-src-elem or script-src-attr comes first.
+test("directive order never changes the answer", () => {
+  const parts = [
+    "script-src 'self' 'unsafe-eval' https://cdn.example.com",
+    "script-src-elem 'self'",
+    "script-src-attr 'none'",
+    "object-src 'self'",
+  ];
+  const orders = [
+    [0, 1, 2, 3],
+    [1, 0, 2, 3],
+    [2, 0, 1, 3],
+    [1, 2, 3, 0],
+    [3, 2, 1, 0],
+  ];
+  for (const order of orders) {
+    const r = csp(order.map((i) => parts[i]).join("; "));
+    assert.equal(r.unsafeEval, true, order.join(","));
+    assert.deepEqual(
+      r.remoteHosts,
+      ["https://cdn.example.com"],
+      order.join(",")
+    );
+  }
+});
+
+// script-src-elem governs <script> elements, so 'unsafe-inline' there allows inline
+// script whatever script-src says; eval is never script-src-elem's to allow.
+test("each kind of script is governed by its own directive", () => {
+  const r = csp(
+    "script-src 'self'; script-src-elem 'self' 'unsafe-inline' 'unsafe-eval'"
+  );
+  assert.equal(r.unsafeInline, true);
+  assert.equal(r.unsafeEval, false);
+  assert.equal(
+    csp("script-src 'self'; script-src-attr 'unsafe-inline'").unsafeInline,
+    true
+  );
+  // A remote host for workers is a remote script source too.
+  assert.deepEqual(
+    csp("script-src 'self'; worker-src https://w.example.com").remoteHosts,
+    ["https://w.example.com"]
+  );
+});
+
+// A directive declared twice keeps its first declaration; names and keywords are read
+// without regard to case.
+test("a repeated directive keeps its first declaration, case does not matter", () => {
+  assert.equal(
+    csp("script-src 'self'; script-src 'unsafe-eval'").unsafeEval,
+    false
+  );
+  assert.equal(csp("SCRIPT-SRC 'Unsafe-Eval'").unsafeEval, true);
+  assert.equal(csp("Default-Src 'self' 'UNSAFE-INLINE'").unsafeInline, true);
+});
+
+// A nonce, a hash or 'strict-dynamic' makes a browser ignore 'unsafe-inline' in the same
+// list. A nonce or hash counts in the form Gecko parses (a base64 value, a closing quote);
+// one that does not parse is dropped and cancels nothing. The value itself is not checked.
+test("'unsafe-inline' beside a nonce, hash or 'strict-dynamic' allows nothing", () => {
+  for (const cancel of [
+    "'nonce-abc'",
+    "'nonce-YWJj=='",
+    "'sha256-xyz'",
+    "'SHA384-xyz'",
+    "'sha512-xyz'",
+    "'strict-dynamic'",
+  ]) {
+    assert.equal(
+      csp(`script-src 'self' 'unsafe-inline' ${cancel}`).unsafeInline,
+      false,
+      cancel
+    );
+  }
+  for (const malformed of [
+    "'nonce-!'",
+    "'sha256-'",
+    "'nonce-abc",
+    "'sha256-a=b'",
+  ]) {
+    assert.equal(
+      csp(`script-src 'self' 'unsafe-inline' ${malformed}`).unsafeInline,
+      true,
+      malformed
+    );
+  }
+  // Only in the same list: a nonce in another directive cancels nothing.
+  assert.equal(
+    csp("script-src 'self' 'unsafe-inline'; style-src 'nonce-abc'")
+      .unsafeInline,
+    true
+  );
+});
+
+// The MV3 object form: each named policy is read on its own.
+test("each MV3 policy is read on its own", () => {
+  const r = analyzeCsp({
+    content_security_policy: {
+      extension_pages:
+        "script-src-elem 'self'; script-src 'self' 'unsafe-eval'",
+      sandbox: "sandbox; script-src 'self'",
+    },
+  });
+  assert.equal(r.unsafeEval, true);
+});
+
+// Every fallback link, each pinned on its own.
+test("each fallback chain is followed link by link", () => {
+  // script-src-attr falls back to script-src.
+  assert.equal(
+    csp("script-src 'unsafe-inline'; script-src-elem 'self'").unsafeInline,
+    true
+  );
+  // Workers fall back to child-src before script-src.
+  assert.deepEqual(
+    csp("script-src 'self'; child-src https://c.example.com").remoteHosts,
+    ["https://c.example.com"]
+  );
+  // ...and to script-src before default-src.
+  assert.deepEqual(
+    csp("script-src 'self'; default-src https://d.example.com").remoteHosts,
+    []
+  );
+  // script-src-elem's own hosts count.
+  assert.deepEqual(
+    csp("script-src 'self'; script-src-elem https://e.example.com").remoteHosts,
+    ["https://e.example.com"]
+  );
+  // A repeated name in another case is the same directive: the first one wins.
+  assert.equal(
+    csp("script-src 'self'; SCRIPT-SRC 'unsafe-eval'").unsafeEval,
+    false
+  );
+  // A tab separates tokens like a space.
+  assert.equal(csp("script-src\t'unsafe-eval'").unsafeEval, true);
+});
+
+// Gecko drops a directive holding any character outside printable ASCII before it looks
+// for duplicates, so a later declaration of that name is the one in force.
+test("a directive Gecko drops claims no name", () => {
+  assert.equal(
+    csp("script-src 'self' \u00e9; script-src 'self' 'unsafe-eval'").unsafeEval,
+    true
+  );
+  assert.equal(
+    csp("script-src 'self' 'unsafe-eval' \u000b; script-src 'self'").unsafeEval,
+    false
+  );
+});
+
+// A remote script source is one a script can be fetched over the network by: a URL with a
+// network scheme, a network scheme alone, or `*`. A source with no scheme takes the add-on's
+// own moz-extension: scheme, so it names nothing remote.
+test("remote sources are the ones with a network scheme, or *", () => {
+  assert.deepEqual(
+    csp(
+      "script-src 'self'; script-src-elem 'self' https: * wss://w.example.com"
+    ).remoteHosts,
+    ["https:", "*", "wss://w.example.com"]
+  );
+  assert.deepEqual(
+    csp(
+      "script-src 'self' cdn.example.com //x.example.com data: blob: moz-extension://abc"
+    ).remoteHosts,
+    []
+  );
+});

@@ -21,10 +21,13 @@
         execution, which is not allowed.
       </p>
       <p>
-        The shared dynamic-execution scan reads the directive that governs script
-        execution — script-src (or script-src-elem), falling back to default-src —
-        and records whether it allows 'unsafe-eval'. The keyword anywhere else
-        governs assets, not code, so it does not fire. This check reports a single
+        The shared dynamic-execution scan reads the policy directive by directive,
+        by name, so the order they are written in does not matter. Eval is
+        governed by script-src, falling back to default-src; the scan records
+        whether that directive allows 'unsafe-eval'. The keyword anywhere else
+        (style-src, or script-src-elem, which governs script elements and not
+        eval) does not fire. A directive Thunderbird would drop - one holding a
+        character outside printable ASCII - is dropped here too. This check reports a single
         finding when the flag is set, anchored to the policy line in manifest.json.
       </p>
 
