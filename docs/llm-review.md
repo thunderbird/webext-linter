@@ -74,13 +74,13 @@ loop would do is ask a reviewer to **reproduce the build** - running that tree o
 machine, on the strength of a question the linter issued knowing better.
 
 A check declares that it stops the review by naming the reason the report gives
-(`review-early-exit:` in the registry). Today eleven do, across three reasons: the four
+(`review-early-exit:` in the registry). Today twelve do, across three reasons: the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
-names *disallowed library versions*, and the six that decide a source submission cannot be
-built from - `sca-package-file-missing`,
+names *disallowed library versions*, and the seven that decide a source submission cannot
+be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
-`build-registry-redirect` and `build-lifecycle-hook` - name *a build that cannot be
-reproduced*. The threshold is the finding's severity, so an advisory
+`build-registry-redirect`, `lock-foreign-source` and `build-lifecycle-hook` - name *a build
+that cannot be reproduced*. The threshold is the finding's severity, so an advisory
 that lands as a warning stops nothing.
 
 That threshold is also what lets `build-lifecycle-hook` carry the flag while it reports
