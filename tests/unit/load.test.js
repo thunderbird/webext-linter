@@ -25,36 +25,85 @@ import { ARTIFACT_SCA, ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 // Every load here is of a built add-on; loadSourceArchive has its own tests.
 const XPI = { kind: ARTIFACT_XPI };
 
-// Loading a directory keeps a real .js file but drops a symlink pointing at it,
-// preventing duplicate or out-of-tree content from entering addon.files.
-test("directory load skips symlinks but keeps real files", () => {
+const MANIFEST = '{"manifest_version":3,"name":"x","version":"1"}';
+
+// The one sentence an XPI holding a link is refused with: invalid, which file, and why.
+const linkRefusal = (rel) => ({
+  message: `Invalid XPI: ${rel} is a symbolic link (an add-on must contain regular files only).`,
+});
+
+// An add-on may not link at all, wherever the link points: the first one refuses the whole
+// XPI at load, before any review starts.
+test("an XPI folder holding a symlink is refused at load", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-sym-"));
-  fs.writeFileSync(
-    path.join(dir, "manifest.json"),
-    '{"manifest_version":3,"name":"x","version":"1"}'
-  );
+  fs.writeFileSync(path.join(dir, "manifest.json"), MANIFEST);
   fs.writeFileSync(path.join(dir, "real.js"), "browser.runtime.id;\n");
   fs.symlinkSync(path.join(dir, "real.js"), path.join(dir, "link.js"));
 
-  const addon = loadAddon(dir, undefined, XPI);
-  assert.ok(addon.files.has("real.js"), "real file is loaded");
-  assert.ok(!addon.files.has("link.js"), "symlink is skipped");
-  // The skip is collected as a notice (not printed) for the pipeline to narrate.
-  assert.deepEqual(addon.skipped, ["Skipping symlink (not packaged): link.js"]);
-  // It is ALSO recorded with where its target landed. Inside the root here, which is what
-  // a source archive is allowed to do - so only the add-on's own check refuses this one.
-  assert.equal(addon.symlinks.length, 1);
-  assert.equal(addon.symlinks[0].path, "link.js");
-  assert.equal(addon.symlinks[0].cause, SYMLINK_CAUSE.INTERNAL);
+  assert.throws(() => loadAddon(dir, undefined, XPI), linkRefusal("link.js"));
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// Where a link LEADS is a fact the loader records and neither check computes. The three
-// answers, from one walk: inside the root, beyond it, and nowhere. The target of an
-// escaping link is deliberately real, so only its location distinguishes it from the
-// internal one.
-test("directory load records where each symlink's target lands", () => {
+// The file a review starts from is no exception: a linked manifest.json refuses the XPI the
+// same way, rather than reaching a check.
+test("an XPI folder whose manifest.json is a symlink is refused at load", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-symman-"));
+  fs.writeFileSync(path.join(dir, "real.json"), MANIFEST);
+  fs.symlinkSync("real.json", path.join(dir, "manifest.json"));
+
+  assert.throws(
+    () => loadAddon(dir, undefined, XPI),
+    linkRefusal("manifest.json")
+  );
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// In an add-on the name node_modules means nothing: a link called that is a link like any
+// other, and refuses the XPI.
+test("an XPI folder holding a symlinked node_modules is refused at load", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-nmsym-xpi-"));
+  fs.writeFileSync(path.join(dir, "manifest.json"), MANIFEST);
+  fs.symlinkSync(
+    path.join(os.tmpdir(), "wrr-nm-target"),
+    path.join(dir, "node_modules"),
+    "dir"
+  );
+
+  assert.throws(
+    () => loadAddon(dir, undefined, XPI),
+    linkRefusal("node_modules")
+  );
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A source archive may link within itself, so its load keeps the real file, skips the link
+// (never following it) with a notice for the pipeline to narrate, and records where the
+// target landed for its check to judge.
+test("source-archive load skips a symlink, keeps real files and records the link", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scasym-"));
+  fs.writeFileSync(path.join(dir, "real.js"), "browser.runtime.id;\n");
+  fs.symlinkSync(path.join(dir, "real.js"), path.join(dir, "link.js"));
+
+  const archive = loadSourceArchive(dir);
+  assert.ok(archive.files.has("real.js"), "real file is loaded");
+  assert.ok(!archive.files.has("link.js"), "symlink is skipped");
+  assert.deepEqual(archive.skipped, [
+    "Skipping symlink (not packaged): link.js",
+  ]);
+  assert.equal(archive.symlinks.length, 1);
+  assert.equal(archive.symlinks[0].path, "link.js");
+  assert.equal(archive.symlinks[0].cause, SYMLINK_CAUSE.INTERNAL);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Where a link LEADS is a fact the loader records and the check judges. The three answers,
+// from one walk: inside the root, beyond it, and nowhere. The target of an escaping link is
+// deliberately real, so only its location distinguishes it from the internal one.
+test("source-archive load records where each symlink's target lands", () => {
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-out-"));
   fs.mkdirSync(path.join(outside, "secret"));
   fs.writeFileSync(
@@ -62,10 +111,6 @@ test("directory load records where each symlink's target lands", () => {
     "exfiltrate();\n"
   );
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-cause-"));
-  fs.writeFileSync(
-    path.join(dir, "manifest.json"),
-    '{"manifest_version":3,"name":"x","version":"1"}'
-  );
   fs.mkdirSync(path.join(dir, "inner"));
   fs.writeFileSync(path.join(dir, "inner", "real.js"), "browser.runtime.id;\n");
   fs.symlinkSync("inner", path.join(dir, "intree"), "dir");
@@ -76,8 +121,8 @@ test("directory load records where each symlink's target lands", () => {
   );
   fs.symlinkSync(path.join(dir, "nothing-here"), path.join(dir, "dangling"));
 
-  const addon = loadAddon(dir, undefined, XPI);
-  const byPath = new Map(addon.symlinks.map((l) => [l.path, l.cause]));
+  const archive = loadSourceArchive(dir);
+  const byPath = new Map(archive.symlinks.map((l) => [l.path, l.cause]));
   assert.deepEqual([...byPath.keys()].sort(), [
     "dangling",
     "intree",
@@ -88,7 +133,7 @@ test("directory load records where each symlink's target lands", () => {
   assert.equal(byPath.get("dangling"), SYMLINK_CAUSE.BROKEN);
   // Recorded, still never followed: the escaping target stays out of the store.
   assert.ok(
-    ![...addon.files.keys()].some((k) => k.includes("payload")),
+    ![...archive.files.keys()].some((k) => k.includes("payload")),
     "an escaping link's target is not read"
   );
 
@@ -97,21 +142,17 @@ test("directory load records where each symlink's target lands", () => {
 
 // A link is followed to its END before the question is asked, so a chain that starts
 // inside the root and leaves it is the escape it arrives at, not the hop it began with.
-test("directory load follows a symlink chain to where it really ends", () => {
+test("source-archive load follows a symlink chain to where it really ends", () => {
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-chain-out-"));
   fs.writeFileSync(path.join(outside, "target.js"), "exfiltrate();\n");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-chain-"));
-  fs.writeFileSync(
-    path.join(dir, "manifest.json"),
-    '{"manifest_version":3,"name":"x","version":"1"}'
-  );
   // hop.js sits inside the root and points out of it; first.js points at hop.js, so a
   // test of the written target alone would read the first link as internal.
   fs.symlinkSync(path.join(outside, "target.js"), path.join(dir, "hop.js"));
   fs.symlinkSync(path.join(dir, "hop.js"), path.join(dir, "first.js"));
 
-  const addon = loadAddon(dir, undefined, XPI);
-  const chain = new Map(addon.symlinks.map((l) => [l.path, l.cause]));
+  const archive = loadSourceArchive(dir);
+  const chain = new Map(archive.symlinks.map((l) => [l.path, l.cause]));
   assert.deepEqual([...chain.keys()].sort(), ["first.js", "hop.js"]);
   assert.equal(chain.get("hop.js"), SYMLINK_CAUSE.OUTSIDE);
   assert.equal(chain.get("first.js"), SYMLINK_CAUSE.OUTSIDE);
@@ -124,10 +165,6 @@ test("directory load follows a symlink chain to where it really ends", () => {
 // read - and it is not a symlink record, so exactly one check answers it.
 test("source-archive load records a symlinked node_modules without following it", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-nmsym-"));
-  fs.writeFileSync(
-    path.join(dir, "manifest.json"),
-    '{"manifest_version":3,"name":"x","version":"1"}'
-  );
   // Point node_modules at an out-of-tree target: it must be recorded, never followed.
   fs.symlinkSync(
     path.join(os.tmpdir(), "wrr-nm-target"),
@@ -135,44 +172,14 @@ test("source-archive load records a symlinked node_modules without following it"
     "dir"
   );
 
-  const addon = loadAddon(dir, undefined, {
-    ...XPI,
-    recordInstalledTrees: true,
-  });
-  assert.deepEqual(addon.nodeModules, ["node_modules"]);
-  assert.deepEqual(addon.skipped, []);
-  assert.deepEqual(addon.symlinks, []);
+  const archive = loadSourceArchive(dir);
+  assert.deepEqual(archive.nodeModules, ["node_modules"]);
+  assert.deepEqual(archive.skipped, []);
+  assert.deepEqual(archive.symlinks, []);
   assert.ok(
-    ![...addon.files.keys()].some((k) => k.startsWith("node_modules")),
+    ![...archive.files.keys()].some((k) => k.startsWith("node_modules")),
     "symlink target not read"
   );
-
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
-// In an ADD-ON the name means nothing: nothing installs anything here, so a link called
-// node_modules is just a link and is answered by the one rule that judges links. It is
-// still never followed - no link ever is.
-test("add-on load treats a symlinked node_modules as an ordinary symlink", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-nmsym-xpi-"));
-  fs.writeFileSync(
-    path.join(dir, "manifest.json"),
-    '{"manifest_version":3,"name":"x","version":"1"}'
-  );
-  fs.symlinkSync(
-    path.join(os.tmpdir(), "wrr-nm-target"),
-    path.join(dir, "node_modules"),
-    "dir"
-  );
-
-  const addon = loadAddon(dir, undefined, XPI);
-  assert.deepEqual(addon.nodeModules, []);
-  assert.equal(addon.symlinks.length, 1);
-  assert.equal(addon.symlinks[0].path, "node_modules");
-  assert.equal(addon.symlinks[0].cause, SYMLINK_CAUSE.BROKEN);
-  assert.deepEqual(addon.skipped, [
-    "Skipping symlink (not packaged): node_modules",
-  ]);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -181,10 +188,7 @@ test("add-on load treats a symlinked node_modules as an ordinary symlink", () =>
 // any other folder, because that is what a user receives.
 test("add-on load reviews a node_modules directory like any other folder", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-nmdir-xpi-"));
-  fs.writeFileSync(
-    path.join(dir, "manifest.json"),
-    '{"manifest_version":3,"name":"x","version":"1"}'
-  );
+  fs.writeFileSync(path.join(dir, "manifest.json"), MANIFEST);
   fs.mkdirSync(path.join(dir, "node_modules", "dep"), { recursive: true });
   fs.writeFileSync(
     path.join(dir, "node_modules", "dep", "index.js"),
@@ -200,16 +204,12 @@ test("add-on load reviews a node_modules directory like any other folder", () =>
 
 // A packed archive can store an entry AS a link, and its data is then a target path where
 // a file's bytes belong. Extraction never replays a stored mode (that is what keeps a
-// crafted archive from writing a real link), so writing it would put a file in the store
-// whose whole content is the name of another one. Recorded and dropped instead - and since
-// nothing lands on disk, the record is the only thing that can report it.
-test("loadAddon(file) records an entry the archive stored as a link, writing nothing", () => {
+// crafted archive from writing a real link); the entry refuses the XPI like a link on disk
+// does, and the partial extraction is removed.
+test("loadAddon(file) refuses an entry the archive stored as a link", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-linkentry-"));
   const zip = new AdmZip();
-  zip.addFile(
-    "manifest.json",
-    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
-  );
+  zip.addFile("manifest.json", Buffer.from(MANIFEST));
   zip.addFile("bg.js", Buffer.from("browser.runtime.id;\n"));
   // addFile stamps S_IFREG and keeps only the permission bits, so the file TYPE is set on
   // the entry itself - which is exactly the claim a hand-built archive would make.
@@ -219,21 +219,11 @@ test("loadAddon(file) records an entry the archive stored as a link, writing not
   zip.writeZip(file);
 
   const dest = path.join(dir, "addon.xpi.extracted");
-  const addon = loadAddon(file, dest, XPI);
-
-  assert.equal(addon.symlinks.length, 1);
-  assert.equal(addon.symlinks[0].path, "libs/jquery.js");
-  assert.equal(addon.symlinks[0].cause, SYMLINK_CAUSE.ENTRY);
-  assert.ok(
-    !addon.files.has("libs/jquery.js"),
-    "the link entry is not a stored file"
+  assert.throws(
+    () => loadAddon(file, dest, XPI),
+    linkRefusal("libs/jquery.js")
   );
-  assert.ok(
-    !fs.existsSync(path.join(dest, "libs", "jquery.js")),
-    "and nothing was written for it"
-  );
-  // The rest of the archive is unaffected.
-  assert.ok(addon.files.has("bg.js"));
+  assert.ok(!fs.existsSync(dest), "the partial extraction is removed");
 
   fs.rmSync(dir, { recursive: true, force: true });
 });

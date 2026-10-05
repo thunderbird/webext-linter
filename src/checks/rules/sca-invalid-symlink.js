@@ -5,8 +5,8 @@
 //
 // A link pointing WITHIN the submission is fine and is not reported: its target is walked
 // and reviewed under its own real path, so the code is covered wherever the link sits.
-// That is the whole difference from an add-on, which may carry no link at all
-// (-> xpi-packaged-symlink).
+// That is the whole difference from an add-on, which may carry no link at all and is
+// refused at load (src/addon/load.js symlinkError).
 //
 // The links are recorded at load (addon.symlinks) with the cause as a FACT - loadAddon
 // classifies, it does not judge - and scaViews passes the list onto the input: sca addon.

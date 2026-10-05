@@ -1306,38 +1306,21 @@ test("SCA e2e: a symlink leaving --sca-root is rejected, one staying inside is n
   }
 });
 
-// The add-on half of the pair, over the built XPI, in an SCA review - so the two checks
-// judge their own artifacts side by side and neither claims the other's links. The add-on
-// holds links to the stricter standard: the one INSIDE it fails here, where the same shape
-// inside --sca-root does not.
-test("SCA e2e: the add-on's own links are judged by the stricter rule", async () => {
+// The add-on half of the pair, in an SCA review: the built XPI holds links to the stricter
+// standard. The shape the source archive may carry (a link INSIDE it) refuses the XPI at
+// load, before either artifact is reviewed.
+test("SCA e2e: a link inside the add-on refuses the XPI", async () => {
   const xpi = tmpDir({ ...XPI_FILES, "lib/real.js": "const y = 2;\n" });
   fs.symlinkSync("lib/real.js", path.join(xpi, "alias.js"));
   const src = tmpDir(SRC_FILES);
   fs.symlinkSync("src", path.join(src, "intree"), "dir");
   try {
-    const { findings } = await runPipeline({
-      addonPath: xpi,
-      scaRoot: src,
-      ...OFFLINE,
-    });
-    assert.ok(
-      has(
-        findings,
-        "xpi-packaged-symlink",
-        (f) => f.file === "alias.js" && f.hint === "link inside the package"
-      ),
-      "a link inside the add-on is rejected"
-    );
-    // The same shape in the source archive is ordinary layout, and neither check
-    // reaches across into the other's artifact.
-    assert.ok(
-      !has(findings, "sca-invalid-symlink"),
-      "the source archive's internal link is not a finding"
-    );
-    assert.ok(
-      !has(findings, "xpi-packaged-symlink", (f) => f.file === "intree"),
-      "and the add-on check does not see the source archive's links"
+    await assert.rejects(
+      runPipeline({ addonPath: xpi, scaRoot: src, ...OFFLINE }),
+      {
+        message:
+          "Invalid XPI: alias.js is a symbolic link (an add-on must contain regular files only).",
+      }
     );
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));

@@ -66,7 +66,6 @@
       "committed-node-modules",
       "committed-build-artifact",
       "sca-invalid-symlink",
-      "xpi-packaged-symlink",
       "build-lifecycle-hook",
       "undeclared-build-source",
       "sca-xpi-declares-vendoring",

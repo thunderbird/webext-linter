@@ -451,16 +451,12 @@ export async function runPipeline(opts) {
 
     // Phase 1: what every review needs, whatever it turns out to be.
 
-    // Mark the start of the review. The .xpi was already read pre-banner (above); the
-    // SCA source archive is read by `source-archive` and reused after it - in a source
-    // review, and not when a rejected Experiment drops that step. Narrate the .xpi loader's
-    // skip notices (a non-node_modules symlink, so only ever an unpacked submission) here;
-    // the source loader's notices are narrated by `target-source`.
-    read: () => {
-      for (const notice of xpiAddon.skipped ?? []) {
-        warn(notice);
-      }
-    },
+    // Mark the start of the review. The .xpi was already read pre-banner (above), and has
+    // nothing to narrate: an XPI holding a link, the one entry a load skips, is refused
+    // there. The SCA source archive is read by `source-archive` and reused after it - in a
+    // source review, and not when a rejected Experiment drops that step - and its skip
+    // notices are narrated by `target-source`.
+    read: () => {},
 
     // The review schema: fetched, annotated, indexed. It is resolved from the SHIPPED
     // XPI's manifest.json alone (manifest_version + strict_max_version pick the channel), so it

@@ -136,7 +136,7 @@ A selection, not the catalogue - `unit/` holds one file per module or scanner:
 | `format.test.js` | The text / JSON report renderers - notably that the Manual review list is in the text report but omitted from JSON. |
 | `html-parse.test.js` | HTML parsing via parse5 - inline vs `src` scripts, and `>` inside attribute values - the cases a regex scanner mishandles. |
 | `invalid-manifest.test.js` | The `manifest-*` error-level checks (invalid JSON, missing manifest or key, version mismatch, unknown permission) and `unrecognized-manifest-key` / `mistyped-manifest-value` (unknown keys + deep ajv value-type validation). |
-| `load.test.js` | Add-on directory loading - symlinks are skipped, real files kept. |
+| `load.test.js` | Add-on loading - an XPI holding a symlink is refused, a source archive's symlinks are skipped and recorded, real files kept. |
 | `loader-files.test.js` | The file-loader extractor (`scanLoaderRefs`) - schema-directed type walking for derived loaders, plus the bridge for `getURL`/`executeScript`/`insertCSS`/`tabs.create`/`setPopup`. |
 | `pipeline.test.js` | End-to-end `runPipeline` against the schema fixture (read-only: line numbers match the source, nothing written back). |
 | `remote-code.test.js` | The remote-code scanners and the `remote-resources` / `eval-call` checks. |

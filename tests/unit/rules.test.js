@@ -67,7 +67,6 @@ import undeclaredBuildSource from "../../src/checks/rules/undeclared-build-sourc
 import buildRegistryRedirect from "../../src/checks/rules/build-registry-redirect.js";
 import committedNodeModules from "../../src/checks/rules/committed-node-modules.js";
 import scaInvalidSymlink from "../../src/checks/rules/sca-invalid-symlink.js";
-import xpiPackagedSymlink from "../../src/checks/rules/xpi-packaged-symlink.js";
 import { SYMLINK_CAUSE } from "../../src/lib/enum.js";
 import scaPackageFileMissing from "../../src/checks/rules/sca-package-file-missing.js";
 import scaXpiDeclaresVendoring from "../../src/checks/rules/sca-xpi-declares-vendoring.js";
@@ -784,7 +783,6 @@ test("where a check runs: the route says it, or the flag says what a route canno
     "unpinned-vendor-source",
     "unused-files",
     "unsupported-dependency",
-    "xpi-packaged-symlink",
     "eval-call",
     "unknown-api",
   ]) {
@@ -948,7 +946,6 @@ test("every check's severity is pinned to its band", async () => {
       "vendored-remote-resources",
       "xpi-lock-file-invalid",
       "xpi-lock-file-missing",
-      "xpi-packaged-symlink",
     ],
     warning: [
       "async-onmessage",
@@ -1740,7 +1737,6 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "unused-files",
     "unused-permission",
     "update-url",
-    "xpi-packaged-symlink",
   ]);
   // input: sca reads the submitted source archive (minus the Experiment and a recorded
   // node_modules). The one build-review check (undeclared-build-source, which reads the setup
@@ -2004,15 +2000,13 @@ test("committed-node-modules flags each recorded node_modules directory", () => 
   assert.deepEqual(run([]), []);
 });
 
-// ---- the symlink pair (one recorded list, two policies) ----
+// ---- the source archive's symlinks (an XPI holding one is refused at load) ----
 
-// Every link the loader met, one per cause, so each test below says which subset its
-// artifact refuses out of the SAME input.
+// Every link the loader can record, one per cause.
 const ALL_LINKS = [
   { path: "in.js", cause: SYMLINK_CAUSE.INTERNAL },
   { path: "out.js", cause: SYMLINK_CAUSE.OUTSIDE },
   { path: "gone.js", cause: SYMLINK_CAUSE.BROKEN },
-  { path: "packed.js", cause: SYMLINK_CAUSE.ENTRY },
 ];
 
 // A source archive may link within itself: the target is walked and reviewed under its own
@@ -2024,25 +2018,19 @@ test("sca-invalid-symlink rejects the escaping and broken links, not the interna
     })
   ).findings;
   // Everything but the internal one, which is the only link a source archive may carry.
-  // The entry cause cannot arise for a --sca-root (we never unpack it ourselves), and is
-  // refused rather than skipped if it ever does.
   assert.deepEqual(
     out.map((f) => f.file),
-    ["out.js", "gone.js", "packed.js"]
+    ["out.js", "gone.js"]
   );
   // The cause rides as a hint, not an item: it describes the LOCATION, so the findings
   // still collapse into one entry and each locus line says which kind it was.
   assert.deepEqual(
     out.map((f) => f.hint),
-    [
-      "target outside the submission",
-      "target does not exist",
-      "target cannot be followed",
-    ]
+    ["target outside the submission", "target does not exist"]
   );
   assert.deepEqual(
     out.map((f) => f.item),
-    [null, null, null]
+    [null, null]
   );
   // The policy is what is TOLERATED, so anything that is not a cause this check accepts
   // is still refused - described generically rather than skipped. A rejecting check must
@@ -2060,49 +2048,6 @@ test("sca-invalid-symlink rejects the escaping and broken links, not the interna
   // None recorded, or no addon -> no finding.
   assert.deepEqual(
     scaInvalidSymlink.run(withManifest({ artifact: { symlinks: [] } }))
-      .findings,
-    []
-  );
-});
-
-// An add-on may carry no link at all, so every cause is a finding - including the internal
-// one the source archive tolerates, and the entry one that never reached disk.
-test("xpi-packaged-symlink rejects every recorded link, whatever its target", () => {
-  const out = xpiPackagedSymlink.run(
-    withManifest({
-      artifact: { symlinks: ALL_LINKS },
-    })
-  ).findings;
-  assert.deepEqual(
-    out.map((f) => f.file),
-    ["in.js", "out.js", "gone.js", "packed.js"]
-  );
-  assert.deepEqual(
-    out.map((f) => f.hint),
-    [
-      "link inside the package",
-      "link outside the package",
-      "link with no target",
-      "stored as a link in the archive",
-    ]
-  );
-  assert.deepEqual(
-    out.map((f) => f.item),
-    [null, null, null, null]
-  );
-  // A value this check has no wording for is still a link, and still refused.
-  assert.deepEqual(
-    xpiPackagedSymlink
-      .run(
-        withManifest({
-          artifact: { symlinks: [{ path: "odd.js", cause: "not-a-member" }] },
-        })
-      )
-      .findings.map((f) => [f.file, f.hint]),
-    [["odd.js", "symbolic link"]]
-  );
-  assert.deepEqual(
-    xpiPackagedSymlink.run(withManifest({ artifact: { symlinks: [] } }))
       .findings,
     []
   );

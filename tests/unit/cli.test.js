@@ -1869,3 +1869,55 @@ test("an unreadable submission file makes it invalid, exit 2", (t) => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// An XPI may hold no symbolic link, whichever file it is and however it arrives: the run
+// refuses it as invalid, names the link, and reviews nothing - in an XPI review and as the
+// XPI of a source review alike.
+test("an XPI holding a symlink is invalid, exit 2", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-symlink-"));
+  const xpi = path.join(dir, "xpi");
+  const src = path.join(dir, "src");
+  fs.mkdirSync(xpi);
+  fs.mkdirSync(src);
+  fs.writeFileSync(
+    path.join(xpi, "real.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  fs.symlinkSync("real.json", path.join(xpi, "manifest.json"));
+  fs.writeFileSync(
+    path.join(src, "package.json"),
+    '{"name":"x","version":"1.0.0"}'
+  );
+  const refusal =
+    /Invalid XPI: manifest\.json is a symbolic link \(an add-on must contain regular files only\)\./;
+  try {
+    for (const args of [
+      [xpi, ...OFFLINE_FLAGS],
+      [xpi, "--sca-root", src, ...OFFLINE_FLAGS],
+    ]) {
+      const r = run(args);
+      assert.equal(r.code, 2, r.stderr);
+      assert.match(r.stderr, refusal);
+      assert.match(r.stderr, /verify failed/);
+      assert.doesNotMatch(r.stdout, /Found Issues/);
+    }
+    // A packed XPI that stored an entry AS a link is the same refusal.
+    const zip = new AdmZip();
+    zip.addFile(
+      "manifest.json",
+      Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+    );
+    zip.addFile("lib/a.js", Buffer.from("../../etc/passwd"));
+    zip.getEntry("lib/a.js").attr = (0o120777 << 16) >>> 0;
+    const packed = path.join(dir, "addon.xpi");
+    zip.writeZip(packed);
+    const r = run([packed, ...OFFLINE_FLAGS]);
+    assert.equal(r.code, 2, r.stderr);
+    assert.match(
+      r.stderr,
+      /Invalid XPI: lib\/a\.js is a symbolic link \(an add-on must contain regular files only\)\./
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

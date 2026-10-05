@@ -141,24 +141,22 @@ export const REF_KIND = makeEnum(
   "ref_kind"
 );
 
-/** @typedef {{internal: boolean, outside: boolean, broken: boolean, entry: boolean}}
- *   SymlinkCause  An opaque guarded singleton; only its four LOWERCASE booleans are
+/** @typedef {{internal: boolean, outside: boolean, broken: boolean}}
+ *   SymlinkCause  An opaque guarded singleton; only its three LOWERCASE booleans are
  *   readable (any other access throws). Compare by reference
  *   (c === SYMLINK_CAUSE.OUTSIDE) or boolean (c.outside). */
 
 /**
- * What the loader found at the far end of a symbolic link (src/addon/load.js):
- * INTERNAL (a target inside the submission root), OUTSIDE (beyond it), BROKEN (it
- * resolves to nothing) or ENTRY (a packed archive stored the file AS a link, so there
- * is no link on disk and no target to resolve).
+ * What the loader found at the far end of a symbolic link in a source archive
+ * (src/addon/load.js): INTERNAL (a target inside the submission root), OUTSIDE (beyond
+ * it) or BROKEN (it resolves to nothing). An XPI holding any link is refused at load.
  *
- * A FACT about the link, never a verdict: the two artifacts hold links to different
- * standards, so which of these is refused is decided by each check, not here.
- * @type {{INTERNAL: SymlinkCause, OUTSIDE: SymlinkCause, BROKEN: SymlinkCause,
- *   ENTRY: SymlinkCause}}
+ * A FACT about the link, never a verdict: which of these a source archive may carry is
+ * decided by its check, not here.
+ * @type {{INTERNAL: SymlinkCause, OUTSIDE: SymlinkCause, BROKEN: SymlinkCause}}
  */
 export const SYMLINK_CAUSE = makeEnum(
-  ["internal", "outside", "broken", "entry"],
+  ["internal", "outside", "broken"],
   "symlink_cause"
 );
 

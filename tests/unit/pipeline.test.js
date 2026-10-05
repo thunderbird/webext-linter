@@ -122,12 +122,9 @@ test("allowed Experiment: normal review runs, no reject", async () => {
 });
 
 // A link named node_modules is a link like any other here. Nothing installs anything into
-// an add-on, so the name earns it no special handling - and it must not, because the check
-// that answers a committed dependency tree is sca:true and never runs over an add-on. When
-// the loader did treat the name specially, this exact submission reported NOTHING: the link
-// was filed as a dependency tree, no check claimed it, and the code it reached was neither
-// reviewed nor named.
-test("add-on: a node_modules symlink out of the package is rejected", async () => {
+// an add-on, so the name earns it no special handling: the XPI holding it is refused before
+// any review starts, and nothing behind the link is read.
+test("add-on: a node_modules symlink out of the package refuses the XPI", async () => {
   const outside = tmpAddon({ "secret/payload.js": "exfiltrate();\n" });
   const src = tmpAddon({
     "manifest.json": JSON.stringify({
@@ -144,22 +141,10 @@ test("add-on: a node_modules symlink out of the package is rejected", async () =
     "dir"
   );
 
-  const { findings } = await runPipeline({ addonPath: src, ...OFFLINE });
-
-  assert.ok(
-    findings.some(
-      (f) =>
-        f.ruleId === "xpi-packaged-symlink" &&
-        f.file === "node_modules" &&
-        f.hint === "link outside the package"
-    ),
-    "the link is rejected, named as a link rather than as a dependency tree"
-  );
-  // Its target is still never followed, so nothing behind it entered the review.
-  assert.ok(
-    !findings.some((f) => /payload/.test(f.file ?? "")),
-    "the link target is not read"
-  );
+  await assert.rejects(runPipeline({ addonPath: src, ...OFFLINE }), {
+    message:
+      "Invalid XPI: node_modules is a symbolic link (an add-on must contain regular files only).",
+  });
 
   [src, outside].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
 });

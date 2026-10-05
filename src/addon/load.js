@@ -195,23 +195,18 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   --sca-root (before the source/build split), so one is caught wherever it sits. Set by
  *   loadAddon only.
  * @property {string[]} skipped  Ready-to-narrate notices for entries skipped at
- *   load (a non-node_modules symlink); empty when none. A DIRECTORY submission is the
- *   only source: a packed archive names nothing here, since it is extracted with no
- *   symlink of its own (extractZip writes bytes, never a link) and a name extractZip
- *   will not take refuses the whole archive instead. This is the FEED side of a skipped
+ *   load (a non-node_modules symlink); empty when none, and always empty for an XPI, since
+ *   an XPI holding a link is refused at load (symlinkError). This is the FEED side of a skipped
  *   link, saying why bytes are missing from the store; whether the link is also a
- *   finding is a separate question, answered from `symlinks` by the checks. The loader
- *   collects them; the pipeline narrates them under "Reading add-on", so a pre-banner
- *   sizing load prints nothing before the Setup banner. Set by loadAddon only.
- * @property {{path: string, cause: import("../lib/enum.js").SymlinkCause}[]} symlinks  Every symbolic link the load
- *   met, posix path and what its target turned out to be; empty when none. The cause is
- *   a FACT about the link, never a verdict - the two artifacts hold links to different
- *   standards (a source archive may link within itself, an add-on may not link at all),
- *   so the policy lives in the checks that read this and nowhere else. `internal` is a
- *   target inside the submission root, `outside` one beyond it, `broken` one that
- *   resolves to nothing, and `entry` a packed archive that stored the file AS a link,
- *   which is the one cause with no link on disk: extractZip records it and writes
- *   nothing, so the store never holds a file whose bytes are a path. Where an installed
+ *   finding is a separate question, answered from `symlinks` by the check. The loader
+ *   collects them; the pipeline narrates them, so a pre-banner load prints nothing before
+ *   the Setup banner. Set by loadAddon only.
+ * @property {{path: string, cause: import("../lib/enum.js").SymlinkCause}[]} symlinks  Every symbolic link a SOURCE
+ *   ARCHIVE holds, posix path and what its target turned out to be; empty when none, and
+ *   always empty for an XPI, which may not link at all and is refused at load instead. The
+ *   cause is a FACT about the link, never a verdict - which links a source archive may
+ *   carry is its check's policy. `internal` is a target inside the submission root,
+ *   `outside` one beyond it, and `broken` one that resolves to nothing. Where an installed
  *   tree is recorded rather than read, a link named node_modules is that tree and is not
  *   here (see nodeModules); everywhere else every link is. Set by loadAddon only.
  * @property {string[]} directories  Posix paths of every directory the walk entered;
@@ -272,15 +267,13 @@ export function loadAddon(
   } else {
     const dest =
       extractTo ?? extractionDestination(`${resolved}${EXTRACTED_SUFFIX}`);
-    // A stored link entry is what extractZip will not put on disk, so it is what the
-    // read-back below cannot rediscover there - everything else (files, archives, symlink
-    // notices) is real on disk after extraction and is read the same way an
+    // Everything extracted is real on disk afterwards and is read the same way an
     // already-unpacked submission's is.
-    const packed = extractZip(resolved, dest);
-    const unpackedDir = readDir(dest, kind);
-    ({ store, nodeModules, archives, skipped, directories } = unpackedDir);
-    // Both halves, so which one can see a link is not a fact this line depends on.
-    symlinks = [...packed.symlinks, ...unpackedDir.symlinks];
+    extractZip(resolved, dest);
+    ({ store, nodeModules, archives, skipped, symlinks, directories } = readDir(
+      dest,
+      kind
+    ));
   }
   // An artifact loaded on its own has nothing to hold back - every file it holds is a file
   // it ships - so its `files` is a view over every key the store has. It says that by
@@ -603,6 +596,21 @@ function unreadableFileError(kind, rel, err) {
   return new Error(`Invalid ${artifact}: ${rel} cannot be read (${reason}).`);
 }
 
+/**
+ * The refusal for an XPI holding a symbolic link, wherever it points and whichever way it
+ * arrived (a link in a folder, an entry a packed archive stored AS a link). An add-on is
+ * the bytes a user installs, and a link is resolved by whatever machine unpacks it, so the
+ * file a reviewer would read need not be the file that runs. Named, so the developer can
+ * replace it with the real file.
+ * @param {string} rel  The link's path inside the XPI.
+ * @returns {Error}
+ */
+function symlinkError(rel) {
+  return new Error(
+    `Invalid XPI: ${displayLine(rel)} is a symbolic link (an add-on must contain regular files only).`
+  );
+}
+
 /** @returns {Error} The add-on-too-large error, shared by extractZip and readDir. */
 function addonTooLargeError() {
   const mb = ADDON_MAX_UNPACKED_BYTES / (1024 * 1024);
@@ -638,9 +646,8 @@ function unreadableArchiveError(zipPath) {
  * write. Every entry here is read with getData() and written with writeFileSync, so
  * what lands on disk is never anything other than the file it claims to be.
  *
- * The mode is still READ, for the one claim worth recording: an entry stored as a link
- * holds a path where a file's bytes belong, so writing it would put a file in the store
- * whose whole content is the name of another one. It is recorded and dropped instead.
+ * The mode is still READ, for the one claim that refuses the archive: an entry stored as a
+ * link, which an XPI may not hold (symlinkError).
  *
  * destDir is always this call's own fresh destination (the caller computed it, or
  * defaulted it, right before calling this), so a refusal removes it rather than
@@ -648,9 +655,6 @@ function unreadableArchiveError(zipPath) {
  * the whole thing.
  * @param {string} zipPath  Path to the .xpi/.zip archive.
  * @param {string} destDir  Where to write it. Created if missing.
- * @returns {{symlinks: {path: string, cause: object}[]}}  The stored links skipped and
- *   never written - the fact a later read of destDir cannot recover, because nothing is
- *   there to find.
  */
 function extractZip(zipPath, destDir) {
   let zip;
@@ -673,7 +677,6 @@ function extractZip(zipPath, destDir) {
   ) {
     throw unreadableArchiveError(zipPath);
   }
-  const symlinks = [];
   let unpacked = 0;
   // Created up front, not only by the first entry's own mkdirSync: an archive with no
   // file entries at all (only directories) would otherwise leave nothing here for
@@ -695,11 +698,10 @@ function extractZip(zipPath, destDir) {
         throw unreadableArchiveError(zipPath);
       }
       // An entry the archive stored AS a link carries a target path where a file's bytes
-      // belong. Record it and skip BEFORE getData(), so the store never holds a file
-      // whose entire content is the name of another one.
+      // belong. Refused BEFORE getData(), so nothing ever holds a file whose entire content
+      // is the name of another one.
       if (isStoredLink(entry)) {
-        symlinks.push({ path: name, cause: SYMLINK_CAUSE.ENTRY });
-        continue;
+        throw symlinkError(name);
       }
       // Bound decompression against a zip bomb by the declared size, before getData():
       // adm-zip inflates into a buffer of exactly that size, but caps inflation by it only
@@ -735,7 +737,6 @@ function extractZip(zipPath, destDir) {
     fs.rmSync(destDir, { recursive: true, force: true });
     throw err;
   }
-  return { symlinks };
 }
 
 // A zip entry's external attributes carry the Unix mode in their high 16 bits, and the
@@ -758,8 +759,9 @@ function isStoredLink(entry) {
 
 /**
  * @param {string} dir  Root directory of the unpacked add-on.
- * @param {string} kind  Which artifact this is (src/lib/artifacts.js), for the refusal when a
- *   file in it cannot be read.
+ * @param {string} kind  Which artifact this is (src/lib/artifacts.js): it words the refusal
+ *   when a file cannot be read, and decides what a symbolic link does - an XPI's refuses
+ *   the load, a source archive's is recorded.
  * @param {boolean} [recordInstalledTrees]  See loadAddon: record a node_modules directory
  *   as a path instead of walking it. Off means it is an ordinary folder, walked and keyed
  *   like any other, which is what a shipped add-on's folders are.
@@ -789,13 +791,17 @@ function readDir(dir, kind, recordInstalledTrees) {
     for (const e of fs.readdirSync(current, { withFileTypes: true })) {
       const full = path.join(current, e.name);
       if (e.isSymbolicLink()) {
+        // An XPI may not hold a link at all, so the first one refuses it.
+        if (kind === ARTIFACT_XPI) {
+          throw symlinkError(walkedKey(path.relative(dir, full)));
+        }
         // Where an installed tree is recorded rather than read, a symlink NAMED
         // node_modules is that tree too: record it by name and let the one check that
         // owns installed trees answer it, so nothing else in the review has to know the
         // name at all. Every other symlink is skipped rather than followed - following
         // could pull in host files or loop - with the skip collected as a notice (the
         // caller narrates it) so it is not silent, and WHERE the target lands recorded
-        // as a fact, which the two artifacts' checks hold to their own standards.
+        // as a fact, which the source archive's check judges.
         if (recordInstalledTrees && e.name === "node_modules") {
           nodeModules.push(walkedKey(path.relative(dir, full)));
         } else {
