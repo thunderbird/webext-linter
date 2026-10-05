@@ -4,6 +4,7 @@ node_modules/
 tmp_extract/
 logs/
 plans/
+notes/
 .schema-cache/
 .experiments-cache/
 .lib-mozilla-hash-db-cache/
@@ -16,5 +17,3 @@ plans/
 *.summary.md
 *.build.md
 *.tmp
-*.key
-run-nextpass.sh
