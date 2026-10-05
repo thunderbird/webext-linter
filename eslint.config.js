@@ -45,6 +45,7 @@ export default [
         setTimeout: "readonly",
         clearTimeout: "readonly",
         structuredClone: "readonly",
+        TextDecoder: "readonly",
       },
     },
     rules: {

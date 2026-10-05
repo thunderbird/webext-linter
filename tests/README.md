@@ -104,6 +104,10 @@ A selection, not the catalogue - every folder under `addons/` is a fixture:
 | `manifest-key-wrong-version` | A wrong-MV manifest key (`browser_action` on MV3) → `missing-permission` + `unrecognized-manifest-key`. |
 | `invalid-manifest` | `manifest-missing-key` (a missing required key) + `manifest-unknown-permission` (a bad permission value) + `unrecognized-manifest-key` (an unknown top-level key). |
 | `manifest-trailing-comma` | `manifest-invalid-json`: a trailing comma, which Thunderbird's manifest reader refuses. |
+| `manifest-latin1` | `manifest-invalid-json`: a Latin-1 byte, which Thunderbird's strict UTF-8 decoding refuses. |
+| `manifest-utf16` | A manifest.json stored as UTF-16LE behind a byte-order mark, which Thunderbird reads - expects zero findings. |
+| `locale-messages-invalid` | `locale-messages-invalid`: one `_locales` folder's messages.json has a trailing comma. |
+| `experiment-schema-invalid` | `experiment-schema-invalid`: an allowed Experiment whose second schema file has a trailing comma. |
 | `manifest-line-comments` | `//` comments in manifest.json (whole-line, trailing, and `//` inside a string), which Thunderbird removes before parsing - expects zero findings. |
 | `bundled-files` | `bundled-files`: a referenced file (`content_scripts`) isn't packaged. |
 | `remote-code` | `remote-resources` (remote `<script src>` + remote `@import`) and `eval-call`. |

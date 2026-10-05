@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unreadable _locales messages.json</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Unreadable _locales messages.json <span class="badge error">error</span></h1>
+        <div class="check-id">locale-messages-invalid</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A <code>_locales/&lt;lang&gt;/</code> folder whose
+        <code>messages.json</code> Thunderbird cannot read. When it installs an
+        add-on, Thunderbird reads every folder under <code>_locales</code> and
+        refuses the whole add-on if one has no <code>messages.json</code>, or
+        one that is not UTF-8 or UTF-16 text, not JSON as its loader reads it
+        (only <code>//</code> comments are allowed), or not messages data: an
+        object whose every entry is an object with a string
+        <code>message</code>.
+      </p>
+      <p>
+        The file is read exactly the way Thunderbird reads it, so a
+        <code>messages.json</code> with <code>//</code> comments or a byte-order
+        mark is fine, and one with a trailing comma, a block comment or a stray
+        Latin-1 byte is not. An empty locale folder counts too: it has no
+        <code>messages.json</code>. Thunderbird treats <code>en_US</code> and
+        <code>en-US</code> as one locale and reads only one of the two folders,
+        so where one of them is fine the other is not reported.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Each folder under _locales/"] --> B{"Has a messages.json?"}
+  B -- no --> ERR([ERROR: missing])
+  B -- yes --> C{"Can Thunderbird read it?<br/>(UTF-8/UTF-16, JSON + // comments)"}
+  C -- no --> ERR2([ERROR: cannot be read])
+  C -- yes --> D{"Messages data?<br/>(entries with a string message)"}
+  D -- no --> ERR3([ERROR: not messages data])
+  D -- yes --> OK([no finding])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR,ERR2,ERR3 err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        One error finding per folder, at its <code>messages.json</code>, saying
+        whether the file is missing, cannot be read, or is not messages data.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/locale-messages-invalid.js</code>, the locale scan in <code>src/lib/locales.js</code> and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

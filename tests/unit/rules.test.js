@@ -63,6 +63,8 @@ import disguisedStylesheet from "../../src/checks/rules/disguised-stylesheet.js"
 import disguisedTransmission from "../../src/checks/rules/disguised-transmission.js";
 import unparsableFile from "../../src/checks/rules/unparsable-file.js";
 import unanalysableFile from "../../src/checks/rules/unanalysable-file.js";
+import localeMessagesInvalid from "../../src/checks/rules/locale-messages-invalid.js";
+import experimentSchemaInvalid from "../../src/checks/rules/experiment-schema-invalid.js";
 import dataExfiltration from "../../src/checks/rules/data-exfiltration.js";
 import undeclaredBuildSource from "../../src/checks/rules/undeclared-build-source.js";
 import buildRegistryRedirect from "../../src/checks/rules/build-registry-redirect.js";
@@ -961,8 +963,10 @@ test("every check's severity is pinned to its band", async () => {
       "experiment-modified",
       "experiment-not-allowed",
       "experiment-overrides-api",
+      "experiment-schema-invalid",
       "experiment-unknown-api",
       "function-constructor",
+      "locale-messages-invalid",
       "lock-foreign-source",
       "manifest-invalid-json",
       "manifest-missing",
@@ -1778,6 +1782,8 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "experiment-modified",
     "experiment-not-allowed",
     "experiment-overrides-api",
+    "experiment-schema-invalid",
+    "locale-messages-invalid",
     "manifest-invalid-json",
     "manifest-missing",
     "manifest-missing-key",
@@ -6262,5 +6268,82 @@ test("ctxForRule refuses an id that never ran", () => {
         xpi: {},
       }),
     /only a check that RAN has a ctx to recover/
+  );
+});
+
+// ---- files Thunderbird reads at install and refuses the add-on over ----
+
+// Every _locales directory needs a messages.json Thunderbird can read: one with none at all
+// (an empty directory, which only the walk's directory record shows) and one it cannot
+// parse are each reported at their messages.json, with which it was as the hint.
+test("locale-messages-invalid reports a missing and an unreadable messages.json", () => {
+  const ctx = withManifest({
+    artifact: {
+      ...addonOf({
+        "_locales/en/messages.json": '// strings\n{"a": {"message": "A"}}',
+        "_locales/de/messages.json": '{"a": {"message": "A"},}',
+      }),
+      directories: ["_locales", "_locales/de", "_locales/en", "_locales/fr"],
+    },
+  });
+  assert.deepEqual(
+    localeMessagesInvalid.run(ctx).findings.map((f) => [f.file, f.hint]),
+    [
+      ["_locales/de/messages.json", "cannot be read"],
+      ["_locales/fr/messages.json", "missing"],
+    ]
+  );
+});
+
+// Messages data is what Thunderbird accepts as a locale: an object of entries, each an
+// object with a string `message`. And it reads one folder per locale, `_` read as `-`, so
+// where en_US is fine a broken en-US beside it is not reported.
+test("locale-messages-invalid checks the messages shape, one folder per locale", () => {
+  const ctx = withManifest({
+    artifact: addonOf({
+      "_locales/en_US/messages.json": '{"a": {"message": "A"}}',
+      "_locales/en-US/messages.json": '{"a": {"message": "A"},}',
+      "_locales/de/messages.json": "[]",
+      "_locales/fr/messages.json": '{"a": {"description": "no message"}}',
+      "_locales/it/messages.json": '{"a": "plain text"}',
+    }),
+  });
+  assert.deepEqual(
+    localeMessagesInvalid.run(ctx).findings.map((f) => [f.file, f.hint]),
+    [
+      ["_locales/de/messages.json", "not messages data"],
+      ["_locales/fr/messages.json", "not messages data"],
+      ["_locales/it/messages.json", "not messages data"],
+    ]
+  );
+});
+
+// A declared Experiment schema that is packaged but unreadable is reported once, at the
+// file, however many entries name it; one that is not packaged is bundled-files' finding.
+test("experiment-schema-invalid reports a packaged schema Thunderbird cannot read", () => {
+  const ctx = withManifest({
+    artifact: {
+      ...addonOf({
+        "api/broken.json": '[{"namespace": "x"},]',
+        "api/fine.json": '// header\n[{"namespace": "y"}]',
+        "api/other.json": "[{,}]",
+      }),
+      manifest: manifestOf({
+        manifest_version: 2,
+        name: "x",
+        version: "1",
+        experiment_apis: {
+          one: { schema: "./api/broken.json" },
+          two: { schema: "api/broken.json" },
+          three: { schema: "api/fine.json" },
+          four: { schema: "api/not-packaged.json" },
+          five: { schema: "api/sub/../other.json" },
+        },
+      }),
+    },
+  });
+  assert.deepEqual(
+    experimentSchemaInvalid.run(ctx).findings.map((f) => f.file),
+    ["api/broken.json", "api/other.json"]
   );
 });

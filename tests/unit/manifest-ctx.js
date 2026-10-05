@@ -98,6 +98,7 @@ export function addonOf(files, kind = ARTIFACT_XPI) {
     at: locusMinter(kind),
     files: map,
     store: map,
+    directories: [],
   };
 }
 
@@ -138,6 +139,9 @@ export function withManifest(ctx) {
   // the XPI, unless the test said otherwise. (The `all` route carries no `artifact` and
   // is not built here - a check on it names ctx.xpi or ctx.sca.)
   ctx.artifact ??= { files: new Map() };
+  // The directories the walk entered: a loaded artifact always carries them, and a reader
+  // that finds an empty directory asks here (the file keys cannot show one).
+  ctx.artifact.directories ??= [];
   if (typeof ctx.artifact.at !== "function") {
     const kind = ctx.artifact.kind ?? ARTIFACT_XPI;
     ctx.artifact.kind = kind;

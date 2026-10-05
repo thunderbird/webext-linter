@@ -5,7 +5,8 @@
 // once, checks read it" pattern as addon.outboundSinks / addon.bundled.
 //
 // Belongs here: getLocales - collecting the _locales/<lang> directories present
-// in the package; localizedNames - the name each locale states, resolved through a
+// in the package; localeMessages - each locale directory's messages.json, read the way
+// Thunderbird reads it; localizedNames - the name each locale states, resolved through a
 // __MSG_ placeholder, plus the locales whose file could not be read;
 // isEnglishLocale - reading a locale directory's tag; and memoizing both scans on
 // the addon.
@@ -65,6 +66,85 @@ function scan(ctx) {
 }
 
 /**
+ * Every locale directory's messages.json, read the way Thunderbird reads it, scanned once
+ * and memoized. Thunderbird reads EVERY directory under _locales at install and refuses the
+ * add-on when one has no messages.json, one it cannot read, or one that is not messages
+ * data (an object of entries, each an object with a string `message`) - so each directory
+ * is answered: `ok` with its parse, `missing`, `unreadable` or `invalid`.
+ *
+ * A directory is any `_locales/<dir>/` the package holds, an empty one included (the walk
+ * records directories the file keys cannot show, a packed one's directory entries too); a
+ * file sitting directly in _locales is not one. Thunderbird keys a locale by its tag with
+ * `_` read as `-`, and reads ONE directory per key, so where `en_US` and `en-US` both exist
+ * and one of them is fine, the other is not reported: which one Thunderbird reads depends on
+ * the order it lists them.
+ * @param {RunContext} ctx
+ * @returns {{locale: string, file: string, state: "ok"|"missing"|"unreadable",
+ *   json?: *}[]}
+ */
+export function localeMessages(ctx) {
+  return ((ctx.cache ??= {}).localeMessages ??= scanMessages(ctx));
+}
+
+/**
+ * @param {RunContext} ctx
+ * @returns {ReturnType<typeof localeMessages>}
+ */
+function scanMessages(ctx) {
+  const files = ctx.artifact.files;
+  const dirs = new Set();
+  const note = (path) => {
+    const parts = path.split("/");
+    if (parts[0] === "_locales" && parts[1] && parts.length >= 3) {
+      dirs.add(parts[1]);
+    }
+  };
+  for (const path of files.keys()) {
+    note(path);
+  }
+  for (const dir of ctx.artifact.directories) {
+    note(`${dir}/`);
+  }
+  const read = [...dirs].sort().map((locale) => {
+    const file = `_locales/${locale}/messages.json`;
+    if (!files.has(file)) {
+      return { locale, file, state: "missing" };
+    }
+    const json = parseExtensionJson(files.get(file));
+    if (json === undefined) {
+      return { locale, file, state: "unreadable" };
+    }
+    return isMessagesData(json)
+      ? { locale, file, state: "ok", json }
+      : { locale, file, state: "invalid" };
+  });
+  const fineKeys = new Set(
+    read.filter((r) => r.state === "ok").map((r) => localeKey(r.locale))
+  );
+  return read.filter(
+    (r) => r.state === "ok" || !fineKeys.has(localeKey(r.locale))
+  );
+}
+
+/** @param {string} tag @returns {string} The key Thunderbird files a locale under. */
+function localeKey(tag) {
+  return tag.split("_").join("-");
+}
+
+/**
+ * Whether a parse is messages data as Thunderbird accepts it (LocaleData.addLocale): a plain
+ * object whose every entry is a plain object with a string `message`.
+ * @param {*} json @returns {boolean}
+ */
+function isMessagesData(json) {
+  const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+  return (
+    plain(json) &&
+    Object.values(json).every((m) => plain(m) && typeof m.message === "string")
+  );
+}
+
+/**
  * The name each locale states, scanned once and memoized on the addon so every
  * trademark check shares the result.
  *
@@ -80,8 +160,7 @@ function scan(ctx) {
  * substituted text is not seen. `unreadable` carries every locale whose file could
  * not be parsed and `resolved` is false when the placeholder resolves nowhere -
  * both exist so a caller can report that it could not read the name rather than
- * pass on silence. NOTHING else reports an unparsable locale file, so a caller that
- * drops these is all that stands between such a name and no review at all.
+ * pass on silence. The file itself is locale-messages-invalid's finding.
  *
  * The name comes from ctx.manifest.json (always the shipped one) and the locale files
  * from ctx.artifact.files (the routed artifact), so this is only meaningful for a
@@ -116,17 +195,9 @@ function scanNames(ctx) {
   }
   const pairs = [];
   const unreadable = [];
-  for (const [path, buf] of ctx.artifact?.files ?? []) {
-    const locale = /^_locales\/([^/]+)\/messages\.json$/.exec(path)?.[1];
-    if (!locale) {
-      continue;
-    }
-    // Read as Thunderbird reads it (a BOM and `//` comments allowed), so a file it would
-    // display a name from states one here, and one it would refuse is unreadable.
-    const json = parseExtensionJson(buf);
-    if (json === undefined) {
+  for (const { locale, state, json } of localeMessages(ctx)) {
+    if (state === "unreadable") {
       unreadable.push(locale);
-      continue;
     }
     const value = json?.[key]?.message;
     if (typeof value === "string") {

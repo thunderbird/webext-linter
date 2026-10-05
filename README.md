@@ -322,6 +322,7 @@ machine.
 | `csp-unsafe-eval` | A `content_security_policy` that allows `'unsafe-eval'` - permits dynamic code execution (error). |
 | `csp-unsafe-inline` | A `content_security_policy` that allows `'unsafe-inline'` - permits dynamic code execution via inline scripts (error). |
 | `debugger-statement` | Unconditional `debugger` statements. |
+| `locale-messages-invalid` | A `_locales/<lang>/` folder whose `messages.json` is missing or that Thunderbird cannot read (not UTF-8 or UTF-16 text, not JSON with only `//` comments, or not messages data) - Thunderbird refuses to install the add-on (error). |
 | `default-locale-missing` | A packaged `_locales/` directory but no `default_locale` manifest.json key - Thunderbird refuses to load the add-on (error). |
 | `default-locale-unused` | A `default_locale` manifest.json key but no packaged `_locales/` directory - Thunderbird refuses to load the add-on (error). |
 | `deprecated-api` | Deprecated APIs (member or namespace level). An API newer than the declared range is the `strict-*-version-api` checks. |
@@ -332,10 +333,11 @@ machine.
 | `eval-call` | An `eval()` call in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt: it cannot run eval without a permissive CSP, which `csp-unsafe-eval` flags. |
 | `experiment-manual-review` | Every reviewed Experiment (declares `experiment_apis`) - routed to manual review with a reminder that Experiments have full access to Thunderbird's internals and need a careful human code review. Fires for pristine, modified, and `--allow-experiments` submissions. Silent for non-Experiments and outright-rejected ones. |
 | `experiment-missing-strict-max-version` | An accepted Experiment (`--allow-experiments`) that sets no `strict_max_version` (error). Silent when experiments are disallowed, since `experiment-not-allowed` already rejects it. |
+| `experiment-schema-invalid` | A packaged Experiment schema file Thunderbird cannot read (not UTF-8 or UTF-16 text, or not JSON with only `//` comments) - Thunderbird refuses to install the add-on (error). A declared schema that is not packaged is `bundled-files`'. |
 | `experiment-modified` | A bundled Experiment that is a recognised published Thunderbird API draft but a modified or outdated copy (error) - the submission stays on the normal review path but is rejected until the unmodified latest upstream copy is bundled. |
 | `experiment-overrides-api` | An Experiment whose declared API path overrides or grafts onto a built-in Thunderbird API instead of adding a new namespace (error). |
 | `function-constructor` | A `new Function(...)` (the Function constructor) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
-| `manifest-invalid-json` | manifest.json is present but is not a JSON object - unparsable, or a primitive or array (error). |
+| `manifest-invalid-json` | manifest.json is present but is not a JSON object - Thunderbird cannot read it (not UTF-8 or UTF-16 text, or not JSON with only `//` comments), or it reads as a primitive or array (error). |
 | `manifest-missing` | No manifest.json at the add-on root (error). |
 | `manifest-missing-key` | A required top-level manifest.json key (`manifest_version`/`name`/`version`) is absent (error). |
 | `manifest-unknown-permission` | A declared permission value that is neither a known permission, a data-collection permission, nor a match pattern (error). |

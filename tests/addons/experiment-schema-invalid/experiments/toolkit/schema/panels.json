@@ -1,0 +1,8 @@
+[
+  {
+    "namespace": "widgetTools.panels",
+    "functions": [
+      { "name": "open", "type": "function", "async": true, "parameters": [] }
+    ]
+  },
+]

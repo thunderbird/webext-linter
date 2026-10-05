@@ -1,0 +1,8 @@
+{
+  "_comment": "A manifest.json, the add-on's only file, whose description holds a Latin-1 byte (0xE9) that is not UTF-8. Thunderbird decodes manifest.json strictly as UTF-8 and refuses the file, so the review does too: manifest-invalid-json.",
+  "expect": {
+    "manifest-invalid-json": [
+      "manifest.json"
+    ]
+  }
+}

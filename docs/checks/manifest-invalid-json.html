@@ -16,8 +16,10 @@
       <h2>What it detects</h2>
       <p class="lead">
         A manifest.json is present at the add-on root but does not give a JSON
-        object, so the submission cannot be read. Two ways to fail: the text will
-        not parse, or it parses to a primitive or an array.
+        object, so the submission cannot be read. Two ways to fail: Thunderbird
+        cannot read the file at all (it is not UTF-8 or UTF-16 text, or not JSON
+        as Thunderbird reads it, where only <code>//</code> comments are allowed),
+        or it reads as a primitive or an array.
       </p>
       <p>
         Where the text will not parse this is the single finding — every other
@@ -29,7 +31,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["manifest.json at the add-on root"] --> B{"Did it parse as JSON?"}
+  A["manifest.json at the add-on root"] --> B{"Can Thunderbird read it?<br/>(UTF-8/UTF-16, JSON + // comments)"}
   B -- no --> ERR([ERROR: invalid manifest JSON])
   B -- yes --> C{"Is what it holds<br/>a JSON object?"}
   C -- no --> ERR

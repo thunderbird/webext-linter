@@ -41,9 +41,13 @@ import path from "node:path";
 import AdmZip from "adm-zip";
 
 import { buildManifestLoc } from "./manifest-loc.js";
-import { parseExtensionJson } from "../util/json.js";
+import {
+  decodeExtensionText,
+  parseExtensionJson,
+  stripBom,
+} from "../util/json.js";
 import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
-import { displayLine } from "../util/text.js";
+import { displayLine, trimEndOf } from "../util/text.js";
 import { hidesItsSize } from "../util/zip.js";
 import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
 import { extractionDestination, EXTRACTED_SUFFIX } from "../util/dest.js";
@@ -125,11 +129,11 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   field that tells absent from unparsable, which `json` cannot: it is null for both, and
  *   the two are different findings (manifest-missing, manifest-invalid-json) owed different
  *   words.
- * @property {?Manifest} json  Parsed; null when the text would not parse, and null when
- *   there was no text.
- * @property {string} text  The raw bytes as text, kept so a reader locating a token in the
+ * @property {?Manifest} json  Parsed; null when Thunderbird could not read the file (not
+ *   UTF-8 or UTF-16 text, or not JSON), and null when there was no file.
+ * @property {string} text  The file as text, kept so a reader locating a token in the
  *   source does not re-read and re-parse the file.
- * @property {?string} error  The parse error message; null when `json` is the answer.
+ * @property {?string} error  Why the file cannot be read; null when `json` is the answer.
  * @property {?import("./manifest-loc.js").ManifestLoc} loc  Resolves a JSON path in manifest.json to
  *   its source line.
  * @property {(...path: (string|number)[]) => {file: string, loc: ?object,
@@ -340,8 +344,7 @@ const MANIFEST_NAME = "manifest.json";
  * @returns {WebExtManifestRecord}
  */
 export function readWebExtManifest(store) {
-  const manifestBuf = store.get(MANIFEST_NAME);
-  return manifestRecord(manifestBuf ? manifestBuf.toString("utf8") : null);
+  return manifestRecord(store.get(MANIFEST_NAME) ?? null);
 }
 
 /**
@@ -361,7 +364,7 @@ export function readPackedManifest(zipPath) {
       !hidesItsSize(entry) &&
       entry.header.size <= ADDON_MAX_UNPACKED_BYTES
     ) {
-      return manifestRecord(entry.getData().toString("utf8"));
+      return manifestRecord(entry.getData());
     }
   } catch (err) {
     rethrowIfFatal(err);
@@ -373,21 +376,29 @@ export function readPackedManifest(zipPath) {
  * The record itself, from the raw bytes. Separate from the read so the shape has ONE
  * owner: a second hand-built copy of it is a copy that goes out of step the next time it
  * gains a field, which is how a locus once reached a reader with no artifact on it.
- * @param {?string} raw  The manifest.json bytes as text, BOM and all, or null when the
- *   artifact ships none - which is a record like any other, saying so with `present`.
+ * @param {Buffer|string|null} raw  The manifest.json bytes (a string is taken as already
+ *   decoded), or null when the artifact ships none - which is a record like any other,
+ *   saying so with `present`.
  * @returns {WebExtManifestRecord}
  */
 export function manifestRecord(raw) {
   const present = raw !== null;
-  const bytes = present ? raw : "";
-  const text = bytes.charCodeAt(0) === 0xfeff ? bytes.slice(1) : bytes;
+  // Decoded as Thunderbird decodes it (a byte-order mark sniffed, strict UTF-8), or
+  // undefined for bytes it would refuse. Those still get a text - the lenient UTF-8
+  // reading - so a finding has something to quote and a token search something to anchor
+  // in, while the record says the file cannot be read.
+  const decoded = !present
+    ? ""
+    : typeof raw === "string"
+      ? stripBom(raw)
+      : decodeExtensionText(raw);
+  const text = decoded ?? raw.toString("utf8");
   const record = {
     present,
     json: null,
-    // The bytes AS SUBMITTED, BOM and all - what a finding quotes is the file the developer
-    // sent, and the empty string where there is no file to quote. The parse and the line
-    // index take the stripped copy, which neither can read past.
-    text: bytes,
+    // The file AS SUBMITTED, as text - what a finding quotes is the file the developer
+    // sent, and the empty string where there is no file to quote.
+    text,
     error: null,
     loc: buildManifestLoc(text),
     // WHERE in the shipped manifest.json, by the JSON path of the value it is about - and
@@ -411,9 +422,13 @@ export function manifestRecord(raw) {
     },
   };
   if (present) {
-    const json = parseExtensionJson(text);
+    // Parsed from what was submitted, so a BOM is dropped once, as Thunderbird drops it.
+    const json = decoded === undefined ? undefined : parseExtensionJson(raw);
     if (json === undefined) {
-      record.error = "not JSON that Thunderbird can read";
+      record.error =
+        decoded === undefined
+          ? "not UTF-8 or UTF-16 text"
+          : "not JSON that Thunderbird can read";
     } else {
       record.json = json;
     }
@@ -682,9 +697,20 @@ function extractZip(zipPath, destDir) {
   // file entries at all (only directories) would otherwise leave nothing here for
   // readDir to walk.
   fs.mkdirSync(destDir, { recursive: true });
+  // Directory entries are created after the files, so an empty one - which no file key
+  // can show - is still on disk for the walk to record (Thunderbird lists it: an empty
+  // _locales/<dir>/ is a locale it tries to read).
+  const folders = [];
   try {
     for (const entry of entries) {
       if (entry.isDirectory) {
+        const folder = trimEndOf(entryKey(entry.entryName), "/");
+        if (folder && !isSafeAddonPath(folder)) {
+          throw unreadableArchiveError(zipPath);
+        }
+        if (folder) {
+          folders.push(folder);
+        }
         continue;
       }
       const name = entryKey(entry.entryName);
@@ -732,6 +758,15 @@ function extractZip(zipPath, destDir) {
       const dest = path.join(destDir, ...name.split("/"));
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.writeFileSync(dest, data);
+    }
+    for (const folder of folders) {
+      const dest = path.join(destDir, ...folder.split("/"));
+      // A name that is both a file and a folder has no single meaning, like two entries
+      // naming one path.
+      if (fs.existsSync(dest) && !fs.statSync(dest).isDirectory()) {
+        throw unreadableArchiveError(zipPath);
+      }
+      fs.mkdirSync(dest, { recursive: true });
     }
   } catch (err) {
     fs.rmSync(destDir, { recursive: true, force: true });

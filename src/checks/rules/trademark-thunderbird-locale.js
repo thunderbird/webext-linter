@@ -56,9 +56,8 @@ export default {
       ctx.note?.(at, "name is not localized", VERDICT.SKIPPED);
       return { findings: [], escalations: [] };
     }
-    // Every locale that could not be read is said out loud. Nothing else in the
-    // review reports an unparsable messages.json, so staying quiet here would
-    // leave a name that Thunderbird displays reviewed by nobody.
+    // Every locale that could not be read is said out loud, so the feed shows which
+    // names went unchecked (locale-messages-invalid reports the file itself).
     for (const locale of unreadable) {
       ctx.note?.(
         at,

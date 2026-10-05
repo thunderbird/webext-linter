@@ -1,0 +1,14 @@
+[
+  {
+    "namespace": "widgetTools",
+    "functions": [
+      { "name": "build", "type": "function", "async": true, "parameters": [] }
+    ],
+    "events": [
+      { "name": "onBuilt", "type": "function", "parameters": [] }
+    ],
+    "properties": {
+      "MAX_WIDGETS": { "type": "integer", "value": 8 }
+    }
+  }
+]

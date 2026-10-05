@@ -84,8 +84,8 @@ export function parseJson(input) {
  * function (ExtensionData.readJSON, toolkit/components/extensions/Extension.sys.mjs): it
  * removes `//` comments outside strings, refuses any other `/` there (so no block
  * comments), then calls JSON.parse - which refuses a trailing comma, an unquoted key and a
- * single-quoted string. This is that same syntax. A leading UTF-8 BOM is dropped too:
- * manifests carrying one install. The bytes are decoded as UTF-8.
+ * single-quoted string. This is that same syntax, and bytes are decoded the way Gecko decodes
+ * them (decodeExtensionText).
  *
  * UNDEFINED is the failure value, not null: a JSON text may be `null`, and a manifest.json
  * holding it parses - it is just not a manifest object.
@@ -93,16 +93,54 @@ export function parseJson(input) {
  * @returns {*}  The parsed value, or undefined.
  */
 export function parseExtensionJson(input) {
-  const text = typeof input === "string" ? input : input?.toString("utf8");
+  // Bytes lose their one BOM in decoding; a string is the file's text with its BOM, if any.
+  // Never two: a second U+FEFF is text, and JSON.parse refuses it, as Thunderbird does.
+  const text =
+    typeof input === "string"
+      ? stripBom(input)
+      : input && decodeExtensionText(input);
   if (text == null) {
     return undefined;
   }
-  const json = withoutLineComments(stripBom(text));
+  const json = withoutLineComments(text);
   if (json === null) {
     return undefined;
   }
   try {
     return JSON.parse(json);
+  } catch (err) {
+    rethrowIfFatal(err);
+    return undefined;
+  }
+}
+
+/**
+ * Decode a file's bytes the way Thunderbird's extension loader does, or `undefined` when it
+ * would refuse them. Gecko reads these files as UTF-8 with no replacement character, so one
+ * invalid byte (a Latin-1 "é") refuses the whole file, and its decoder sniffs a byte-order
+ * mark first: a UTF-16 BOM reads the file as UTF-16, a UTF-8 BOM is dropped. It reads the
+ * file in one pass that never flushes, so an incomplete sequence at the very end (half a
+ * UTF-8 character, an odd UTF-16 byte, a lone high surrogate) is dropped, not refused.
+ * @param {Uint8Array} bytes
+ * @returns {string|undefined}
+ */
+export function decodeExtensionText(bytes) {
+  let encoding = "utf-8";
+  let start = 0;
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    start = 3;
+  } else if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+    encoding = "utf-16le";
+    start = 2;
+  } else if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+    encoding = "utf-16be";
+    start = 2;
+  }
+  try {
+    return new TextDecoder(encoding, { fatal: true, ignoreBOM: true }).decode(
+      bytes.subarray(start),
+      { stream: true }
+    );
   } catch (err) {
     rethrowIfFatal(err);
     return undefined;

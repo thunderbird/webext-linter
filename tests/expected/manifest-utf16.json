@@ -1,0 +1,4 @@
+{
+  "_comment": "The clean add-on with its manifest.json stored as UTF-16LE behind a byte-order mark. Thunderbird sniffs the mark and reads the file as UTF-16, so the add-on loads - and reviews clean.",
+  "expect": {}
+}

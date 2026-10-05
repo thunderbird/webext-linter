@@ -1,0 +1,11 @@
+{
+  "_comment": "An allowed Experiment with two schema files; panels.json ends its array with a trailing comma, which Thunderbird's JSON reader refuses. Thunderbird reads every declared schema at install and refuses the add-on, so the review reports that file: experiment-schema-invalid. tools.json reads fine and is not reported.",
+  "options": {
+    "--allow-experiments": true
+  },
+  "expect": {
+    "experiment-schema-invalid": [
+      "experiments/toolkit/schema/panels.json"
+    ]
+  }
+}

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unreadable Experiment schema</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Unreadable Experiment schema <span class="badge error">error</span></h1>
+        <div class="check-id">experiment-schema-invalid</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        An Experiment schema file, declared by <code>experiment_apis</code> in
+        manifest.json and packaged in the add-on, that Thunderbird cannot read.
+        Thunderbird reads every declared schema when it installs the add-on and
+        refuses the add-on if one is not UTF-8 or UTF-16 text, or not JSON as
+        its loader reads it (only <code>//</code> comments are allowed).
+      </p>
+      <p>
+        A declared schema that is not packaged at all is reported by
+        <a href="bundled-files.html">bundled-files</a> instead. A schema file
+        named by more than one Experiment is reported once.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Each experiment_apis schema"] --> B{"Packaged?"}
+  B -- no --> BF([bundled-files reports it])
+  B -- yes --> C{"Can Thunderbird read it?<br/>(UTF-8/UTF-16, JSON + // comments)"}
+  C -- no --> ERR([ERROR: unreadable Experiment schema])
+  C -- yes --> OK([no finding])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        One error finding per schema file Thunderbird cannot read, at the file.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/experiment-schema-invalid.js</code> and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

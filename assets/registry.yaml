@@ -158,8 +158,9 @@ deterministic-phase:
   response: |-
     The following APIs each need a manifest.json key that is not declared. Add one of the keys named for each API to manifest.json.
 
-# manifest.json is present but does not give a JSON object - it will not parse, or
-# it parses to a primitive or an array.
+# manifest.json is present but does not give a JSON object - Thunderbird could not read
+# it (not UTF-8 or UTF-16 text, or not JSON with only `//` comments allowed), or it reads
+# as a primitive or an array.
 - title: Invalid manifest.json
   severity: error
   check: manifest-invalid-json
@@ -457,6 +458,17 @@ deterministic-phase:
   input: all
   response: |-
     The following file(s) contain code that is not valid JavaScript, so it cannot run and could not be reviewed. Correct the code at each line named.
+
+# Deterministic: an experiment_apis schema file that is packaged but that Thunderbird cannot
+# read (not UTF-8 or UTF-16 text, or not JSON with only `//` comments allowed). Thunderbird
+# reads every declared schema at install and refuses the add-on on any it cannot read. A
+# declared schema that is not packaged is bundled-files' to report.
+- title: Unreadable Experiment schema
+  severity: error
+  check: experiment-schema-invalid
+  input: xpi
+  response: |-
+    The following Experiment schema file(s) cannot be read by Thunderbird (not UTF-8 or UTF-16 text, or not valid JSON). Thunderbird refuses to install an add-on whose Experiment schema it cannot read. Correct each file.
 
 # Flags a recognised published Experiment draft that is bundled modified or
 # outdated (it would be accepted if it were the unmodified latest upstream copy).
@@ -1179,6 +1191,18 @@ deterministic-phase:
     This add-on requests the "nativeMessaging" permission. Confirm the add-on
     listing page on ATN discloses what information is exchanged with the local
     app and that it complies with the No Surprises policy.
+
+# Deterministic: a _locales directory without a messages.json Thunderbird can read (missing,
+# not UTF-8 or UTF-16 text, not JSON with only `//` comments allowed, or not messages data -
+# an object of entries each with a string `message`). Thunderbird reads every locale
+# directory at install and refuses the add-on on any of these. Which it was rides as the
+# locus hint, so every case collapses into this entry.
+- title: Unreadable _locales messages.json
+  severity: error
+  check: locale-messages-invalid
+  input: xpi
+  response: |-
+    The following _locales folder(s) have a messages.json that Thunderbird cannot read (it is missing, not UTF-8 or UTF-16 text, not valid JSON, or not in the messages format, where every entry is an object with a "message" string). Thunderbird refuses to install an add-on with such a folder. Fix each file, or remove a folder that is not used.
 
 # A packaged _locales directory requires a default_locale key, or Thunderbird
 # will not load the add-on.

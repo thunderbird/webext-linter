@@ -1,0 +1,8 @@
+{
+  "_comment": "Two locales: en is valid, de has a trailing comma Thunderbird's JSON reader refuses. Thunderbird reads every _locales directory at install and refuses the add-on on the de one, so the review reports it: locale-messages-invalid at the de file, hint 'cannot be read'.",
+  "expect": {
+    "locale-messages-invalid": [
+      "_locales/de/messages.json"
+    ]
+  }
+}

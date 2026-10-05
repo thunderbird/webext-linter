@@ -1,7 +1,8 @@
-// manifest.json is present but does not parse to an object, so the submission is
+// manifest.json is present but does not give an object, so the submission is
 // invalid. Two ways to fail one question - is what this file holds a JSON object
-// the review can read keys off: the text will not parse at all, or it parses to
-// something that is not an object (a primitive, or an array). Both are reported
+// the review can read keys off: Thunderbird could not read it at all (not UTF-8 or
+// UTF-16 text, or not JSON as its loader reads it), or it reads as something that is
+// not an object (a primitive, or an array). Both are reported
 // the same way, because the developer's remedy is the same and neither yields a
 // key to name. A file that is not there at all is manifest-missing's verdict.
 //

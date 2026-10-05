@@ -1257,3 +1257,30 @@ test("a file that cannot be read mid-review is an I/O error, not an empty file",
   );
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// An archive's directory entries are created on extraction, so an empty one - which no file
+// key can show - is recorded like a folder's: Thunderbird lists it (an empty
+// _locales/<dir>/ is a locale it tries to read). A name that is both a file and a folder
+// has no single meaning, and refuses the archive.
+test("loadAddon(file) records an archive's empty directory entries", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-dirent-"));
+  const zip = new AdmZip();
+  zip.addFile("manifest.json", Buffer.from(MANIFEST));
+  zip.addFile("_locales/fr/", Buffer.alloc(0));
+  const file = path.join(dir, "addon.xpi");
+  zip.writeZip(file);
+  const addon = loadAddon(file, path.join(dir, "out"), XPI);
+  assert.ok(addon.directories.includes("_locales/fr"), addon.directories);
+
+  const clash = new AdmZip();
+  clash.addFile("manifest.json", Buffer.from(MANIFEST));
+  clash.addFile("lib", Buffer.from("x"));
+  clash.addFile("lib/", Buffer.alloc(0));
+  const bad = path.join(dir, "clash.xpi");
+  clash.writeZip(bad);
+  assert.throws(() => loadAddon(bad, path.join(dir, "out2"), XPI), {
+    message: `Could not read archive: ${bad}`,
+  });
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
