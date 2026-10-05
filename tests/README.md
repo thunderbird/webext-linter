@@ -138,7 +138,7 @@ A selection, not the catalogue - `unit/` holds one file per module or scanner:
 | `invalid-manifest.test.js` | The `manifest-*` error-level checks (invalid JSON, missing manifest or key, version mismatch, unknown permission) and `unrecognized-manifest-key` / `mistyped-manifest-value` (unknown keys + deep ajv value-type validation). |
 | `load.test.js` | Add-on loading - an XPI holding a symlink is refused, a source archive's symlinks are skipped and recorded, real files kept. |
 | `loader-files.test.js` | The file-loader extractor (`scanLoaderRefs`) - schema-directed type walking for derived loaders, plus the bridge for `getURL`/`executeScript`/`insertCSS`/`tabs.create`/`setPopup`. |
-| `pipeline.test.js` | End-to-end `runPipeline` against the schema fixture (read-only: line numbers match the source, nothing written back). |
+| `pipeline.test.js` | End-to-end `runPipeline` against the schema fixture (read-only: line numbers match the source, nothing written back), including a review that ends because a host gave no answer (an unpkg listing, an OSV query, a stale-schema refresh). |
 | `remote-code.test.js` | The remote-code scanners and the `remote-resources` / `eval-call` checks. |
 | `responses.test.js` | The report-assembly resolver - filling a finding's message from the registry `response` (by ruleId), system `messages`, and manual-item `instructions`, with `{{item}}` substitution. |
 | `rules.test.js` | The deterministic rule modules and the `Registry`-driven loader (`loadRegistry`, `loadChecks` - including its hard-throw on a missing module). |

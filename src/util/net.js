@@ -9,16 +9,25 @@
 // the headers would still hang on a body that never arrives, so every caller reads
 // through `consume` rather than after the fetch resolves.
 //
-// It also decides, per request, whether a failure means "this load failed" or "there
-// is no network". Nothing in Node can answer that from the outside: `navigator.onLine`
-// does not exist here, and os.networkInterfaces() reports a cable, not a route. So the
-// answer comes from evidence - the CONTROL POINT, the first host we reached. Reaching
-// any later request proves that one worked, since a review cannot start without it.
+// It also decides, per request, which of three things happened. Every question the
+// review asks a host is one it cannot be completed without, so only the first may become a
+// value:
 //
-//   a response, any status | ECONNREFUSED | a timeout  -> the load failed
-//   a connection-class failure of the control point    -> no network, stop
-//   a connection-class failure of anything else        -> fetch the control point,
-//                                                         which stops if IT fails
+//   an ANSWER     a response the host chose to give - 2xx, or a 4xx that is not a
+//                 refusal (a 404 saying there is no such package). Returned, or thrown
+//                 carrying its status, for the caller to read.
+//   NO ANSWER     a refusal still standing after the retries, a timeout, a connection the
+//                 host did not accept -> NoAnswerError, the review stops.
+//   NO NETWORK    -> NetworkGoneError, the review stops.
+//
+// Telling the last two apart takes evidence, since nothing in Node can answer it from the
+// outside (`navigator.onLine` does not exist here, and os.networkInterfaces() reports a
+// cable, not a route). The evidence is the CONTROL POINT, the first host we reached:
+//
+//   a connection-class failure of the control point -> no network
+//   a connection-class failure of anything else     -> fetch the control point, which
+//                                                      stops the review if IT fails, and
+//                                                      otherwise this host gave no answer
 //
 // One rule applied to itself, so it terminates: the probe can only recurse one level,
 // and that level takes the clause above rather than probing again. That is what tells
@@ -35,7 +44,8 @@
 // is retried - once at the time the host named, or on a guessed backoff when it named
 // none). Does NOT belong here: what is fetched or where it is cached (->
 // src/util/download.js, src/lib/library-hashes.js), nor exiting - this throws
-// NetworkGoneError and main() turns it into an exit like any other setup failure.
+// NetworkGoneError or NoAnswerError and main() turns it into an exit like any other setup
+// failure.
 
 import {
   CONTROL_TIMEOUT_MS,
@@ -74,10 +84,32 @@ export class NetworkGoneError extends LinterError {
   }
 }
 
+/**
+ * Thrown when one host gave no answer the review could use: it was still refusing after
+ * the retries, it did not respond in time, or it did not accept the connection while the
+ * network was otherwise fine. Every question asked of a host is one the review cannot be
+ * completed without, so this ends the run like NetworkGoneError - a review that went on
+ * would read the silence as a value (no advisories, not shipped, not popular). Its own
+ * class, because the remedy differs: the network is fine, that host is not.
+ */
+export class NoAnswerError extends LinterError {
+  /**
+   * @param {string} url  The request that got no answer.
+   * @param {string} reason  Why, in a few words ("HTTP 503", "timed out after 10s").
+   */
+  constructor(url, reason) {
+    super(
+      ERROR_CLASS.NO_ANSWER,
+      `no answer from ${meteredHost(url)}: ${url} (${reason}). The review cannot be completed without it. Run it again once the host answers.`
+    );
+    this.name = "NoAnswerError";
+  }
+}
+
 // Failures that happen BEFORE any response - the only ones that can mean "no
 // network". ECONNREFUSED is deliberately absent: something answered, so the network
-// works. A timeout is absent for the same reason it is not fatal - a slow or
-// half-open host says nothing about the route to the rest of the internet.
+// works. A timeout is absent for the same reason - a slow or half-open host says nothing
+// about the route to the rest of the internet. Both are that host giving no answer.
 const NO_RESPONSE_CODES = new Set([
   "ENOTFOUND", // DNS said no such host - offline, OR a hostname that does not exist
   "EAI_AGAIN", // DNS temporary failure
@@ -105,14 +137,13 @@ function isConnectionFailure(err) {
 }
 
 // WE PACE OURSELVES, THEY DO NOT PACE US. A host meters a caller by IP, and answers a
-// burst by REFUSING - which arrives here as an exception that every swallow site in the
-// tool reads as an answer. api.npmjs.org showed what that costs: a 429 read as "not
-// widely used" demoted a library and rejected its minified files, differently on every
-// run. The same shape waits at every other endpoint - an unreachable OSV records no
-// advisories, which is a clean bill of health for a package nobody checked.
+// burst by REFUSING. Read as an answer, a refusal is a verdict nobody reached:
+// api.npmjs.org showed it, a 429 read as "not widely used" demoting a library differently
+// on every run, and an unreachable OSV would read as a clean bill of health for a package
+// nobody checked.
 //
 // So the gate holds each host to an interval and retries a refusal rather than believing
-// it. Module-level, because the rate is OURS in total: the vendor step, the CDN
+// it, and a refusal that outlasts the retries is no answer (NoAnswerError). Module-level, because the rate is OURS in total: the vendor step, the CDN
 // identifier and the dependency audit all ask, about different things, and none of them
 // can see what the others have spent.
 const nextFree = new Map();
@@ -188,7 +219,33 @@ export function withHttpStatus(err, res) {
   if (after !== null) {
     err.retryAfterMs = after;
   }
+  // When a host's rate limit resets, if it says (api.github.com does, in epoch seconds,
+  // instead of a Retry-After). Not waited for - it is what a refusal that ends the review
+  // tells the reviewer, so they know when a re-run can succeed.
+  const reset = Number(res.headers?.get("x-ratelimit-reset"));
+  if (Number.isFinite(reset) && reset > 0) {
+    err.rateLimitResetMs = reset * 1000;
+  }
   return err;
+}
+
+/**
+ * Why a refusal that outlasted the retries ended the review: its status, and when the host
+ * said it would answer again, where it said.
+ * @param {{status: number, retryAfterMs?: number, rateLimitResetMs?: number}} err
+ * @returns {string}
+ */
+function refusalReason(err) {
+  const parts = [`HTTP ${err.status}`];
+  if (err.rateLimitResetMs !== undefined) {
+    parts.push(
+      `its rate limit resets at ${new Date(err.rateLimitResetMs).toISOString()}`
+    );
+  }
+  if (err.retryAfterMs !== undefined) {
+    parts.push(`it asked to wait ${Math.ceil(err.retryAfterMs / 1000)}s`);
+  }
+  return parts.join(", ");
 }
 
 /**
@@ -227,9 +284,8 @@ function retryAfterMs(header) {
 /**
  * The error a non-ok response becomes where the caller has no wording of its own.
  *
- * The message shape is load-bearing: the CDN identifier tells a genuine 404 from a
- * transient failure with a regex over it (src/lib/cdn-lookup.js), and an injected test
- * net throws the same shape by hand.
+ * The status rides on the error (withHttpStatus), which is what a caller reads to tell a
+ * 404 from any other answer (src/lib/cdn-lookup.js).
  * @param {Response} res
  * @returns {Error}
  */
@@ -271,10 +327,11 @@ function refusedToAnswer(err) {
  * EVERY request in the tool comes through here, which is the point: the gate is not
  * something a caller opts into, so no endpoint can be added later that forgets it.
  *
- * `rethrowIfFatal` runs first on every failure, so a dead route still stops the
- * review promptly - we retry a refusal, not an absence of network. Anything that is not
- * a refusal is re-thrown untouched on the first try, leaving each caller's existing
- * fallback to mean exactly what it always meant.
+ * `rethrowIfFatal` runs first on every failure, so a dead route or a host that never
+ * responded stops the review promptly - we retry a refusal, not an absence of network.
+ * A refusal still standing after the retries is no answer either (NoAnswerError). Anything
+ * else is an ANSWER the host chose to give, re-thrown untouched with its status for the
+ * caller to read (a 404: no such package).
  * @template T
  * @param {string} url
  * @param {(res: Response) => Promise<T>} consume  Reads the body, or throws on a
@@ -311,8 +368,19 @@ export async function fetchWithTimeout(
       return await issue(url, consume, timeoutMs, init);
     } catch (err) {
       rethrowIfFatal(err);
-      if (obeyed || !refusedToAnswer(err)) {
+      if (!refusedToAnswer(err)) {
+        // A status is an answer only when it is one a caller can read: a 2xx, or a 404
+        // saying there is no such thing. Any other (a 400, a 410, a 451, a 304 nobody
+        // asked for) answers a different question than the one asked, and reading it
+        // as "not there" is how a library goes unaudited. A failure with no status is
+        // the caller's own verdict on bytes that arrived (a size cap), and stays its own.
+        if (err?.status !== undefined && err.status !== 404) {
+          throw new NoAnswerError(url, `HTTP ${err.status}`);
+        }
         throw err;
+      }
+      if (obeyed) {
+        throw new NoAnswerError(url, refusalReason(err));
       }
       // TWO THINGS A HOST CAN SAY, and they are not the same thing.
       //
@@ -332,7 +400,7 @@ export async function fetchWithTimeout(
         wait = Math.min(named, networkMaxWaitMs);
       } else {
         if (attempt >= NETWORK_RETRIES) {
-          throw err;
+          throw new NoAnswerError(url, refusalReason(err));
         }
         wait = networkBackoffMs * 2 ** attempt;
       }
@@ -369,36 +437,98 @@ export async function fetchWithTimeout(
 async function issue(url, consume, timeoutMs, init) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let res;
   try {
-    const res = await fetch(url, {
-      ...init,
-      signal: ctrl.signal,
-      redirect: "follow",
-    });
+    try {
+      res = await fetch(url, {
+        ...init,
+        signal: ctrl.signal,
+        redirect: "follow",
+      });
+    } catch (err) {
+      // No response. Either the network is gone (assertNetwork stops the review with
+      // that), or this host gave no answer: it refused the connection, failed TLS, or
+      // sent us round a redirect loop. Only a URL that does not parse reached no host,
+      // and stays the caller's to read.
+      if (ctrl.signal.aborted) {
+        throw timedOut(url, timeoutMs);
+      }
+      if (isConnectionFailure(err)) {
+        await assertNetwork(url, failureReason(err));
+      }
+      if (hasCode(err, "ERR_INVALID_URL")) {
+        throw err;
+      }
+      throw new NoAnswerError(url, failureReason(err));
+    }
     // Reached a host: remember the first one as the control point. Any status will
     // do - what it proves is the route, not the resource.
     controlUrl ??= url;
-    return await consume(res);
-  } catch (err) {
-    if (ctrl.signal.aborted) {
-      throw new Error(`request to ${url} timed out after ${timeoutMs}ms`);
+    try {
+      return await consume(res);
+    } catch (err) {
+      // The body is read under the same timer, so a host that sent headers and then
+      // stalled gave no answer either; nor did one whose body broke off or would not
+      // decode, which fetch reports as a TypeError. Anything else consume throws is its
+      // reading of the response - a status, or a verdict on bytes that did arrive - and
+      // stays the caller's.
+      if (ctrl.signal.aborted) {
+        throw timedOut(url, timeoutMs);
+      }
+      if (err instanceof TypeError && err.status === undefined) {
+        throw new NoAnswerError(url, failureReason(err));
+      }
+      throw err;
     }
-    if (isConnectionFailure(err)) {
-      await assertNetwork(url);
-    }
-    throw err;
   } finally {
     clearTimeout(timer);
   }
 }
 
+/** @param {string} url @param {number} timeoutMs @returns {NoAnswerError} */
+function timedOut(url, timeoutMs) {
+  return new NoAnswerError(url, `timed out after ${timeoutMs}ms`);
+}
+
+/** @param {unknown} err @param {string} code @returns {boolean} */
+function hasCode(err, code) {
+  for (let e = err; e; e = e.cause) {
+    if (e.code === code) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The few words saying why a fetch failed: the deepest error code in the chain
+ * (ECONNREFUSED, ERR_SSL_WRONG_VERSION_NUMBER, UND_ERR_SOCKET), else the deepest message
+ * ("redirect count exceeded").
+ * @param {unknown} err @returns {string}
+ */
+function failureReason(err) {
+  let reason = err instanceof Error ? err.message : String(err);
+  for (let e = err; e; e = e.cause) {
+    if (typeof e.code === "string") {
+      reason = e.code;
+    } else if (e !== err && typeof e.message === "string" && e.message) {
+      reason = e.message;
+    }
+  }
+  return reason;
+}
+
 /**
  * A request failed before any response. Decide whether the network is gone, and
- * throw NetworkGoneError if it is; return quietly when only that one load failed.
+ * throw NetworkGoneError if it is; return quietly when only that one load failed. A probe
+ * that fails short of proving the network gone (refused, timed out) still says nothing
+ * good about the request, which is reported as having had no answer - against its own
+ * URL, not the control point's.
  * @param {string} url  The request that failed.
+ * @param {string} reason  Why it failed, for that report.
  * @returns {Promise<void>}
  */
-async function assertNetwork(url) {
+async function assertNetwork(url, reason) {
   // Nothing has ever been reached, so there is no evidence to weigh - and the first
   // request a review makes is one it cannot proceed without.
   if (controlUrl === null || url === controlUrl) {
@@ -416,8 +546,9 @@ async function assertNetwork(url) {
   } catch (err) {
     // The probe took the clause above, so the network is gone - but report it
     // against the request that revealed it, not against the control point.
-    throw err instanceof NetworkGoneError
-      ? new NetworkGoneError(url, true)
-      : err;
+    if (err instanceof NetworkGoneError) {
+      throw new NetworkGoneError(url, true);
+    }
+    throw new NoAnswerError(url, reason);
   }
 }

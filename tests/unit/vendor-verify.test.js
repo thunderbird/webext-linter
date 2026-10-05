@@ -17,8 +17,19 @@ import {
   verifyScaDependencies,
   auditIdentifiedLibraries,
   isPopular,
+  defaultNet,
 } from "../../src/vendor/verify.js";
-import { NetworkGoneError, setNetworkPacing } from "../../src/util/net.js";
+import http from "node:http";
+import { VENDOR_FETCH_MAX_BYTES } from "../../src/config.js";
+
+// What a host's "there is no such thing" arrives as through the real transport: the one
+// failure a caller may read as a value.
+const notFound = () => Object.assign(new Error("HTTP 404"), { status: 404 });
+import {
+  NetworkGoneError,
+  NoAnswerError,
+  setNetworkPacing,
+} from "../../src/util/net.js";
 import { parseLibraryBlocks } from "../../src/lib/library-blocks.js";
 import xpiLockFileMissing from "../../src/checks/rules/xpi-lock-file-missing.js";
 import xpiLockFileInvalid from "../../src/checks/rules/xpi-lock-file-invalid.js";
@@ -175,10 +186,11 @@ function addonWith(files, vendor) {
 
 // An injectable transport. `bytes` answers every fetchBytes (the VENDOR case);
 // `files` answers per-URL (the package case, a missing URL is a 404); `listing`
-// answers the "?meta" tree, and `throwOnListing` makes that lookup fail instead;
+// answers the "?meta" tree, and `throwOnListing` makes unpkg answer 404 for it instead
+// ("no-answer": the listing gets no answer at all);
 // `downloads` drives the npm popularity lookup; `osv` answers the OSV audit
 // postJson (an object, or a function of the request body), and `throwOnPost` makes
-// the audit POST fail (the offline case).
+// OSV answer 404 for the audit POST.
 function net({
   bytes,
   files,
@@ -215,7 +227,7 @@ function net({
       if (url.includes("/v1/vulns/")) {
         calls?.hydrate?.push(url);
         if (throwOnHydrate) {
-          throw new Error("offline");
+          throw notFound();
         }
         const id = url.slice(url.lastIndexOf("/") + 1);
         if (!(id in (advisories ?? {}))) {
@@ -224,8 +236,11 @@ function net({
         return advisories[id];
       }
       if (url.includes("?meta")) {
+        if (throwOnListing === "no-answer") {
+          throw new NoAnswerError(url, "HTTP 503");
+        }
         if (throwOnListing) {
-          throw new Error("offline");
+          throw Object.assign(new Error("HTTP 404"), { status: 404 });
         }
         return listing ?? { type: "directory", files: [] };
       }
@@ -244,7 +259,7 @@ function net({
       if (url.includes("querybatch")) {
         calls?.batch?.push(body);
         if (throwOnBatch) {
-          throw new Error("offline");
+          throw notFound();
         }
         return typeof batch === "function"
           ? batch(body)
@@ -252,7 +267,7 @@ function net({
       }
       calls?.query?.push(body);
       if (throwOnPost) {
-        throw new Error("offline");
+        throw notFound();
       }
       return (typeof osv === "function" ? osv(body) : osv) ?? { vulns: [] };
     },
@@ -350,23 +365,23 @@ test("verifyScaDependencies: a POPULAR declared dep is allowed (not recorded)", 
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
-test("verifyScaDependencies: offline (every lookup throws) records nothing", async () => {
+test("verifyScaDependencies: lookups that find nothing (404) record nothing", async () => {
   const addon = addonWith(
     { "package.json": "{}" },
     store({ packages: [{ name: "niche", version: "1.0.0" }] })
   );
-  const offline = {
+  const nothingFound = {
     fetchBytes: async () => {
-      throw new Error("offline");
+      throw notFound();
     },
     fetchJson: async () => {
-      throw new Error("offline");
+      throw notFound();
     },
     postJson: async () => {
-      throw new Error("offline");
+      throw notFound();
     },
   };
-  await verifyScaDependencies(addon, offline);
+  await verifyScaDependencies(addon, nothingFound);
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
@@ -439,18 +454,18 @@ test("verifyScaDependencies: a GitHub stars lookup failure records nothing", asy
       ],
     })
   );
-  const offline = {
+  const nothingFound = {
     fetchBytes: async () => {
-      throw new Error("offline");
+      throw notFound();
     },
     fetchJson: async () => {
-      throw new Error("offline");
+      throw notFound();
     },
     postJson: async () => {
-      throw new Error("offline");
+      throw notFound();
     },
   };
-  await verifyScaDependencies(addon, offline);
+  await verifyScaDependencies(addon, nothingFound);
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
@@ -865,7 +880,7 @@ test("verifyVendor: a copy differing only in line endings is the release it decl
   assert.ok(addon.vendor.set.has("vendor/lib.js"));
 });
 
-test("verifyVendor: a listing that cannot be read is not audited either", async () => {
+test("verifyVendor: a release unpkg does not have is not audited either", async () => {
   const addon = addonWith(
     { "vendor/lib.js": "LIB\n" },
     store({ packages: [{ name: "jszip", version: "3.10.1" }] })
@@ -876,12 +891,26 @@ test("verifyVendor: a listing that cannot be read is not audited either", async 
     net({ throwOnListing: true, osv: ADVISORY, calls, throwOnFetch: true })
   );
   // A 404 says the release was never published, so nothing packaged can have come from
-  // it. This is not the offline case being decided quietly: a route that is really gone
-  // raises NetworkGoneError through every swallow site and ends the run, so it never
-  // reaches a verdict to be wrong about.
+  // it.
   assert.deepEqual(calls.query, []);
   assert.deepEqual(addon.vendor.vulnerabilities, []);
   assert.deepEqual(addon.vendor.packages, []);
+});
+
+// A listing that got no answer decides nothing: reading it as "not carried" would drop the
+// declaration before its audit, and a vulnerable library would pass. The review stops.
+test("verifyVendor: a listing that gets no answer ends the review", async () => {
+  const addon = addonWith(
+    { "vendor/lib.js": "LIB\n" },
+    store({ packages: [{ name: "jszip", version: "3.10.1" }] })
+  );
+  await assert.rejects(
+    verifyVendor(
+      addon,
+      net({ throwOnListing: "no-answer", osv: ADVISORY, throwOnFetch: true })
+    ),
+    NoAnswerError
+  );
 });
 
 test("verifyVendor: a shipped file another declaration covers still answers for the release", async () => {
@@ -1066,7 +1095,7 @@ test("auditIdentifiedLibraries: dedupes by release across files and prior audits
   );
 });
 
-test("auditIdentifiedLibraries: records nothing offline (no postJson)", async () => {
+test("auditIdentifiedLibraries: records nothing with a net that has no postJson", async () => {
   const addon = addonWith({ "vendor/lib.min.js": "X" }, store());
   addon.bundled = {
     classified: [
@@ -1251,7 +1280,7 @@ test("verifyVendor: a clean package records no vulnerability", async () => {
   assert.deepEqual(addon.vendor.vulnerabilities, []);
 });
 
-test("verifyVendor: a failed OSV lookup records nothing (best-effort)", async () => {
+test("verifyVendor: an OSV 404 records nothing", async () => {
   const addon = addonWith(
     {},
     store({ packages: [{ name: "lodash", version: "4.17.20" }] })
@@ -1600,18 +1629,20 @@ test("every unverified outcome becomes untrusted, routed by readability", () => 
 });
 
 // ---- a dead network aborts, one dead load does not ----
-// Every catch in the vendor and CDN paths turns a fetch failure into a benign value:
-// "not popular", "unfetchable", no CDN match. That is right for ONE load failing and
-// wrong for a dead route - it would silently reclassify a popular library as the
-// developer's own code, and the report would look like a clean review of a different
-// add-on. assertNetwork already tells the two apart with a control-point probe, so each
-// swallow site only has to not eat the answer (rethrowIfNetworkGone).
+// Every catch in the vendor and CDN paths turns an answer into a value: "not popular",
+// "unfetchable", no CDN match. That is right for a host saying "no such thing" and wrong
+// for a dead route or a host that gave no answer - it would silently reclassify a popular
+// library as the developer's own code, and the report would look like a clean review of a
+// different add-on. The transport raises those two as their own errors, so each catch
+// site only has to not eat them (rethrowIfFatal).
 //
 // This is the guard against a NEW swallow site forgetting the rule: it asserts at the
 // public entry points, not at the catches.
-const goneNet = () => {
+const goneNet = (
+  fail = () => new NetworkGoneError("https://registry.example/x", true)
+) => {
   const boom = () => {
-    throw new NetworkGoneError("https://registry.example/x", true);
+    throw fail();
   };
   return {
     fetchBytes: async () => boom(),
@@ -1672,6 +1703,56 @@ test("a NetworkGoneError propagates out of every vendor entry point", async () =
     () => isPopular({ kind: "npm", pkg: "x" }, goneNet()),
     NetworkGoneError,
     "isPopular - the reclassification this protects"
+  );
+});
+
+// A host that gave no answer stops the review the same way, from every entry point.
+test("a NoAnswerError propagates out of every vendor entry point", async () => {
+  const silent = () =>
+    goneNet(() => new NoAnswerError("https://registry.example/x", "HTTP 503"));
+  const vendorStore = () => ({
+    entries: [
+      {
+        path: "lib/x.js",
+        sourceUrl: "https://unpkg.com/x@1.0.0/x.js",
+        trusted: true,
+        pinned: true,
+        kind: "file",
+      },
+    ],
+    packages: [{ name: "x", version: "1.0.0" }],
+    devPackages: [],
+    githubDeps: [],
+    results: [],
+    vulnerabilities: [],
+    devVulnerabilities: [],
+    unpopularDeps: [],
+    unaudited: [],
+    set: new Set(),
+    folders: new Set(),
+    vendorFile: "VENDOR.md",
+  });
+  await assert.rejects(
+    verifyVendor(addonWith({ "lib/x.js": "x" }, vendorStore()), silent()),
+    NoAnswerError
+  );
+  await assert.rejects(
+    verifyVendorDeclarations(
+      addonWith({ "lib/x.js": "x" }, vendorStore()),
+      silent()
+    ),
+    NoAnswerError
+  );
+  await assert.rejects(
+    verifyScaDependencies(
+      addonWith({ "lib/x.js": "x" }, vendorStore()),
+      silent()
+    ),
+    NoAnswerError
+  );
+  await assert.rejects(
+    isPopular({ kind: "npm", pkg: "x" }, silent()),
+    NoAnswerError
   );
 });
 
@@ -2110,21 +2191,21 @@ test("verifyVendorDeclarations: a below-bar reading still records not-popular", 
   ]);
 });
 
-// The other half, and the one every golden rests on: an ORDINARY failure is still
-// swallowed. The offline harness throws plain Errors, so a fixture run must stay a
-// clean review with no matches - never an abort.
-test("an ordinary fetch failure is still swallowed, not fatal", async () => {
-  // A transport that fails every request with an ORDINARY error - what the offline
-  // fixture harness injects.
+// The other half, and the one every golden rests on: a 404 is an answer, read as a value.
+// The fixture harness answers every URL it does not know with one, so a fixture run must
+// stay a clean review with no matches - never an abort.
+test("a 404 is read as an answer, not fatal", async () => {
+  // A transport that answers every request 404 - what the fixture harness does for a URL
+  // it has no entry for.
   const deadLoad = {
     fetchBytes: async () => {
-      throw new Error("offline");
+      throw notFound();
     },
     fetchJson: async () => {
-      throw new Error("offline");
+      throw notFound();
     },
     postJson: async () => {
-      throw new Error("offline");
+      throw notFound();
     },
   };
   assert.equal(await isPopular({ kind: "npm", pkg: "x" }, deadLoad), false);
@@ -2572,4 +2653,48 @@ test("auditLockedPackages: an empty tree sends no request", async () => {
   const addon = addonWith({ "package.json": "{}" }, store());
   await verifyScaDependencies(addon, net({ calls }));
   assert.deepEqual(calls.batch, []);
+});
+
+// ---- the real transport's reading of a body ----
+
+// A JSON answer that cannot be read is no answer: handed back as nothing, it would reach
+// every caller as a value (no advisories, nothing published). A source over the cap is a
+// verdict on what the submission names, and arrives as one - read only up to the cap, so
+// a huge archive is refused by its size, not by how long it takes to arrive.
+test("defaultNet: a non-JSON or oversized JSON body is no answer; an oversized source is a verdict", async () => {
+  const big = Buffer.alloc(VENDOR_FETCH_MAX_BYTES + 1024 * 1024, 0x61);
+  let sent = 0;
+  const server = http.createServer((req, res) => {
+    if (req.url === "/html") {
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end("<html>maintenance</html>");
+      return;
+    }
+    // Chunked, no content-length: the cap has to be found while reading.
+    res.writeHead(200, { "content-type": "application/octet-stream" });
+    for (let at = 0; at < big.length; at += 1024 * 1024) {
+      sent += 1;
+      res.write(big.subarray(at, at + 1024 * 1024));
+    }
+    res.end();
+  });
+  await new Promise((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    await assert.rejects(
+      defaultNet.fetchJson(`${base}/html`),
+      (err) => err instanceof NoAnswerError && err.message.includes("not JSON")
+    );
+    await assert.rejects(
+      defaultNet.fetchJson(`${base}/big`),
+      (err) => err instanceof NoAnswerError && err.message.includes("size cap")
+    );
+    await assert.rejects(
+      defaultNet.fetchBytes(`${base}/big`),
+      (err) => !(err instanceof NoAnswerError) && /size cap/.test(err.message)
+    );
+    assert.ok(sent > 0);
+  } finally {
+    server.close();
+  }
 });

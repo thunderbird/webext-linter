@@ -171,7 +171,8 @@ export const SYMLINK_CAUSE = makeEnum(
  */
 export const REVIEW_MODE = makeEnum(["sca", "xpi"], "review_mode");
 
-/** @typedef {{network_gone: boolean, wiring: boolean, io: boolean, walk: boolean}}
+/** @typedef {{network_gone: boolean, no_answer: boolean, wiring: boolean, io: boolean,
+ *   walk: boolean}}
  *   ErrorClass  An opaque
  *   guarded singleton; only its LOWERCASE booleans are readable (any other access throws).
  *   Compare by reference (c === ERROR_CLASS.WIRING) or boolean (c.wiring). */
@@ -179,16 +180,19 @@ export const REVIEW_MODE = makeEnum(["sca", "xpi"], "review_mode");
 /**
  * Why the review cannot continue, carried by a LinterError (src/lib/errors.js) so each
  * catch can tell a local failure it may swallow from one it must re-throw:
- * NETWORK_GONE (the route to the internet is down, not one load failing), WIRING (a
+ * NETWORK_GONE (the route to the internet is down, not one load failing), NO_ANSWER (one
+ * host gave no answer - still refusing after the retries, timed out, or never accepted the
+ * connection - to a question the review cannot be completed without), WIRING (a
  * check reached for data that was never generated for the artifact it was routed to), IO
  * (a submission file that changed during the run and can no longer be read) or WALK (Babel
- * could not walk the AST of one submission file). The first three end the run. WALK is about
+ * could not walk the AST of one submission file). All but WALK end the run. WALK is about
  * one file: the per-file loops that walk submission code catch it and carry on, and only
  * one escaping them ends the run. The class is what a catch reads to decide, and what the
  * exit names.
- * @type {{NETWORK_GONE: ErrorClass, WIRING: ErrorClass, IO: ErrorClass, WALK: ErrorClass}}
+ * @type {{NETWORK_GONE: ErrorClass, NO_ANSWER: ErrorClass, WIRING: ErrorClass,
+ *   IO: ErrorClass, WALK: ErrorClass}}
  */
 export const ERROR_CLASS = makeEnum(
-  ["network_gone", "wiring", "io", "walk"],
+  ["network_gone", "no_answer", "wiring", "io", "walk"],
   "error_class"
 );

@@ -241,8 +241,8 @@ export const SETUP_STEPS = Object.freeze([
  * @property {string} [cdnLookupCache]  Where to cache the CDN hash-lookup results.
  * @property {import("./vendor/verify.js").VendorNet} [vendorNet]  Injectable
  *   network transport for every review fetch that is not a cached asset - vendor
- *   verification, the CDN lookup, the OSV audit (the test harness injects an offline
- *   one); defaults to the real fetch.
+ *   verification, the CDN lookup, the OSV audit (a unit test injects its own);
+ *   defaults to the real fetch.
  * @property {import("./checks/registry.js").Registry} [registry]  Parsed
  *   registry threaded from the caller, parsed once here otherwise.
  * @property {string} [llmVerdict]  Path to a verdict file (--llm-verdict) settling the
@@ -1297,7 +1297,8 @@ function extractReview(addon, { schema, webExtManifestRecord }) {
  * Second-tier library identification over an already-classified add-on: reconcile the
  * not-popular declared (VENDOR/package) results into the untrusted family, then match the
  * still-unrecognized bundles against jsDelivr by content hash. Reads/writes addon.bundled
- * and addon.vendor; best-effort, and skips silently offline. Runs AFTER classification (so
+ * and addon.vendor. A lookup jsDelivr does not answer ends the review (src/util/net.js); with
+ * the lookup off, or no net, no request is made. Runs AFTER classification (so
  * the Mozilla-hash matches and tag.obfuscation are final), and before the OSV audit of what
  * it identified (auditIdentifiedLibraries), which is the setup step after it.
  * @param {import("./addon/load.js").Addon} addon
@@ -1388,9 +1389,8 @@ export async function resolveReviewSchema({
   //
   // So: refresh when the add-on's cap is above every cached train AND the snapshot is more
   // than a day old. The age test is what keeps a run from re-downloading six zips for every
-  // add-on with no cap or a cap on an unreleased train. Best effort - with the network down
-  // the stale cache still reviews, which beats not reviewing at all, and Review Details
-  // names the version either way.
+  // add-on with no cap or a cap on an unreleased train. A refresh that fails ends the
+  // review: a cache known to be too old for this add-on is not reviewed against.
   const cap = parseVersion(strictMaxVersion(manifest))?.[0] ?? Infinity;
   const newest = Math.max(...candidates.map((c) => c.major));
   if (
@@ -1403,14 +1403,11 @@ export async function resolveReviewSchema({
   ) {
     setupStep("Refreshing review schemas (add-on targets a newer Thunderbird)");
     stepped = true;
-    try {
-      await refreshAllSchemas({ cacheDir });
-      candidates = readAnchors();
-    } catch (err) {
-      warn(
-        `Could not refresh the schema cache, reviewing against it as it is: ${err.message}`
-      );
-    }
+    // Not best-effort: the cache is stale for THIS add-on, so a failed refresh ends the
+    // review like a failed first download, rather than reviewing against schemas known
+    // to be too old.
+    await refreshAllSchemas({ cacheDir });
+    candidates = readAnchors();
   }
 
   // Still short after a full re-download means the schema set itself is unusable -

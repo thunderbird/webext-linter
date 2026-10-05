@@ -173,7 +173,7 @@ function helpText(checkIds) {
     ],
     [
       "--cache-cdn-lookup-dir <dir>",
-      `Where the CDN hash-lookup results are cached - best-effort, backing the optional --cdn-lib-lookup (default: ${CDN_LOOKUP_CACHE}).`,
+      `Where the CDN hash-lookup results are cached, backing --cdn-lib-lookup (default: ${CDN_LOOKUP_CACHE}).`,
     ],
     [
       "--cache-experiments-dir <dir>",
@@ -239,7 +239,7 @@ function helpText(checkIds) {
     ],
     [
       "--cdn-lib-lookup <true|false>",
-      "Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default: true). Results are cached; an offline run simply finds no match.",
+      "Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default: true). Results are cached. With false, no request goes to jsDelivr.",
     ],
     [
       "--eslint",

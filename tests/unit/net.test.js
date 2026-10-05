@@ -22,6 +22,7 @@ import http from "node:http";
 import {
   fetchWithTimeout,
   NetworkGoneError,
+  NoAnswerError,
   setNetworkPacing,
   httpError,
   withHttpStatus,
@@ -65,17 +66,22 @@ test("a failing load is told from a failing network by the control point", async
   assert.equal(await fetchWithTimeout(CONTROL, read), 200);
 
   // 2. A load that cannot connect, while the control point still answers: the network
-  //    is fine and only that load failed, so the original error is what surfaces.
+  //    is fine and that host gave no answer, which the review cannot go on without.
   routes.set(OTHER, () => connectionFailure("ENOTFOUND"));
-  await assert.rejects(() => fetchWithTimeout(OTHER, read), {
-    name: "TypeError",
-  });
+  await assert.rejects(
+    () => fetchWithTimeout(OTHER, read),
+    (err) => {
+      assert.ok(err instanceof NoAnswerError);
+      assert.ok(err.class.no_answer);
+      assert.match(err.message, /cdn\.example\.com.*ENOTFOUND/);
+      return true;
+    }
+  );
 
-  // 3. ECONNREFUSED means something answered and said no - the route works.
+  // 3. ECONNREFUSED means something answered and said no - the route works, and that
+  //    host gave no answer.
   routes.set(OTHER, () => connectionFailure("ECONNREFUSED"));
-  await assert.rejects(() => fetchWithTimeout(OTHER, read), {
-    name: "TypeError",
-  });
+  await assert.rejects(() => fetchWithTimeout(OTHER, read), NoAnswerError);
 
   // 4. The same failure once the control point has gone too: no network, stop. The
   //    probe comes back through this same rule and takes the clause below.
@@ -95,10 +101,20 @@ test("a failing load is told from a failing network by the control point", async
   await assert.rejects(() => fetchWithTimeout(CONTROL, read), NetworkGoneError);
 });
 
+// A request that reaches no host - a URL that does not parse - is not a host failing to
+// answer: the caller reads it like any other failure of its own request.
+test("a request that cannot be built is not 'no answer'", async () => {
+  await assert.rejects(
+    () => fetchWithTimeout("not a url", statusOrThrow),
+    (err) => !(err instanceof NoAnswerError) && err instanceof TypeError
+  );
+});
+
 // A non-ok response is not a network failure: the host answered. This is the case the
 // rule most has to keep its hands off - a 404 from a mistyped release URL is the
-// developer's citation being wrong, not the review being unable to run.
-test("a 404 or a 503 is a load failure, never a network one", async (t) => {
+// developer's citation being wrong, an ANSWER the caller reads, not the review being
+// unable to run.
+test("a 404 is an answer the caller reads, never a stop", async (t) => {
   mock.method(globalThis, "fetch", async () => ({ ok: false, status: 404 }));
   t.after(() => mock.restoreAll());
   await assert.rejects(
@@ -109,11 +125,11 @@ test("a 404 or a 503 is a load failure, never a network one", async (t) => {
         }
         return null;
       }),
-    /HTTP 404/
+    (err) => !(err instanceof NoAnswerError) && /HTTP 404/.test(err.message)
   );
 });
 
-test("fetchWithTimeout aborts a stalled response and throws", async () => {
+test("fetchWithTimeout aborts a stalled response: no answer", async () => {
   const server = http.createServer((req, res) => {
     res.writeHead(200, { "content-type": "text/plain" });
     // Headers sent, body never - the half-open hang the setup fetches must survive.
@@ -123,7 +139,9 @@ test("fetchWithTimeout aborts a stalled response and throws", async () => {
   try {
     await assert.rejects(
       () => fetchWithTimeout(`http://127.0.0.1:${port}/`, (r) => r.text(), 300),
-      /timed out after 300ms/
+      (err) =>
+        err instanceof NoAnswerError &&
+        /timed out after 300ms/.test(err.message)
     );
   } finally {
     server.close();
@@ -231,7 +249,7 @@ test("a 404 is an answer, not a refusal, and is never retried", async (t) => {
 // respond is not, and retrying it would multiply the slowest failure the tool has - the
 // mandatory setup downloads wait a minute each, and four of those is a review that looks
 // hung rather than one that reports a problem.
-test("a timeout is not a refusal, so it is not retried", async (t) => {
+test("a timeout is no answer, and it is not retried", async (t) => {
   let calls = 0;
   mock.method(globalThis, "fetch", async (_url, { signal }) => {
     calls++;
@@ -244,19 +262,20 @@ test("a timeout is not a refusal, so it is not retried", async (t) => {
   t.after(() => mock.restoreAll());
   await assert.rejects(
     () => fetchWithTimeout(PACED, statusOrThrow, 20),
-    /timed out after 20ms/
+    (err) =>
+      err instanceof NoAnswerError && /timed out after 20ms/.test(err.message)
   );
   assert.equal(calls, 1, "asked once, and not again");
 });
 
-// Retrying cannot become waiting forever. When the host never relents the caller gets
-// its failure and its own fallback means what it always meant.
-test("retries are bounded, and the last refusal is thrown", async (t) => {
+// Retrying cannot become waiting forever. When the host never relents it has given no
+// answer, and the review stops rather than reading the refusal as one.
+test("retries are bounded, and a refusal that outlasts them is no answer", async (t) => {
   const { calls } = statusSequence([429, 429, 429, 429, 429, 429]);
   t.after(() => mock.restoreAll());
   await assert.rejects(
     () => fetchWithTimeout(PACED, statusOrThrow),
-    /HTTP 429/
+    (err) => err instanceof NoAnswerError && /HTTP 429/.test(err.message)
   );
   assert.equal(
     calls.length,
@@ -311,7 +330,7 @@ test("a named wait is obeyed once, and a second refusal ends it", async (t) => {
   t.after(() => mock.restoreAll());
   await assert.rejects(
     () => fetchWithTimeout(PACED, statusOrThrow),
-    /HTTP 429/
+    (err) => err instanceof NoAnswerError && /HTTP 429/.test(err.message)
   );
   assert.equal(
     calls.length,
@@ -668,4 +687,96 @@ test("the waiting is outside the abort timer", async (t) => {
   assert.equal(await fetchWithTimeout(PACED, statusOrThrow, 30), 200);
   assert.ok(Date.now() - started >= 180, "the wait happened");
   assert.equal(calls.length, 2, "and did not abort the request it preceded");
+});
+
+// ---- every outcome that is not an answer ----
+
+// A status other than 2xx or 404 answers a different question than the one asked - read
+// as "not there", it is how a library goes unaudited.
+test("a status other than a 2xx or 404 is no answer", async (t) => {
+  for (const status of [400, 410, 451]) {
+    mock.method(globalThis, "fetch", async () => ({
+      ok: false,
+      status,
+      headers: { get: () => null },
+    }));
+    await assert.rejects(
+      () => fetchWithTimeout(PACED, statusOrThrow),
+      (err) =>
+        err instanceof NoAnswerError && err.message.includes(`HTTP ${status}`)
+    );
+    mock.restoreAll();
+  }
+  t.after(() => mock.restoreAll());
+});
+
+// A real server, so fetch's own failures arrive in their own shapes: a body that breaks
+// off after the headers, and a redirect that never ends.
+test("a body that breaks off, or a redirect loop, is no answer", async () => {
+  const server = http.createServer((req, res) => {
+    if (req.url === "/loop") {
+      res.writeHead(302, { location: "/loop" });
+      res.end();
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.write('{"type":"directory","files":[');
+    req.socket.destroy();
+  });
+  await new Promise((r) => server.listen(0, r));
+  const { port } = server.address();
+  try {
+    for (const route of ["reset", "loop"]) {
+      await assert.rejects(
+        () =>
+          fetchWithTimeout(`http://127.0.0.1:${port}/${route}`, (r) =>
+            r.json()
+          ),
+        (err) => err instanceof NoAnswerError,
+        route
+      );
+    }
+  } finally {
+    server.close();
+  }
+});
+
+// When the control point fails too, but short of proving the network gone, the report
+// names the request that failed - not the control point it was measured against.
+test("a probe that fails short of no-network reports the original request", async (t) => {
+  mock.method(globalThis, "fetch", async (url) => {
+    if (String(url) === CONTROL) {
+      throw connectionFailure("ECONNREFUSED");
+    }
+    throw connectionFailure("ENOTFOUND");
+  });
+  t.after(() => mock.restoreAll());
+  await assert.rejects(
+    () => fetchWithTimeout(OTHER, read),
+    (err) =>
+      err instanceof NoAnswerError &&
+      err.message.includes("cdn.example.com") &&
+      !err.message.includes("schemas.example.com")
+  );
+});
+
+// A review that ends on a refusal says when the host will answer again, where it said:
+// api.github.com names the reset of its hourly limit instead of a Retry-After.
+test("a refusal that ends the review names the host's rate-limit reset", async (t) => {
+  const reset = Math.floor(Date.UTC(2026, 9, 5, 14, 5) / 1000);
+  mock.method(globalThis, "fetch", async () => ({
+    ok: false,
+    status: 403,
+    headers: {
+      get: (h) => (h === "x-ratelimit-reset" ? String(reset) : null),
+    },
+  }));
+  t.after(() => mock.restoreAll());
+  await assert.rejects(
+    () => fetchWithTimeout(PACED, statusOrThrow),
+    (err) =>
+      err instanceof NoAnswerError &&
+      err.message.includes("HTTP 403") &&
+      err.message.includes("rate limit resets at 2026-10-05T14:05:00.000Z")
+  );
 });

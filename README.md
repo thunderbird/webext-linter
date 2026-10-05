@@ -60,8 +60,10 @@ own manifest.json - no channel flag. Two dimensions:
 The options, grouped as in `--help`:
 
 **Cache:** the schema, the library-hash DB and the allowed-experiments list are each
-downloaded once and reused. The CDN lookup cache fills incrementally as a best-effort
-side-channel.
+downloaded once and reused. The CDN lookup cache fills incrementally as lookups are made.
+A review needs every host it asks to answer: a request that gets no answer (still refused
+after the retries, timed out, not accepted) ends the review with exit 2, like no network,
+rather than reading the silence as a result.
 
 A channel branch is a moving target, so a cached schema is a snapshot. When an add-on's
 `strict_max_version` reaches past every cached train - or it declares none at all - and
@@ -73,7 +75,7 @@ snapshot would be reported as unknown rather than as needing a newer `strict_min
 | `--cache-clear` | Delete every cache directory below before the review, so all fetched sources (schema, library-hash DB, CDN lookups, allowed-experiments) are re-downloaded from scratch - as on a first run. |
 | `--cache-schema-dir <dir>` | Where the downloaded schema zips are cached (default `.schema-cache`). |
 | `--cache-hash-db-dir <dir>` | Where the fetched library-hash database (the addons-linter "dispensary" `hashes.txt`, used by `missing-library` to identify a bundled library by its exact content hash) is cached (default `.lib-mozilla-hash-db-cache`). |
-| `--cache-cdn-lookup-dir <dir>` | Where the jsDelivr CDN hash-lookup results are cached - best-effort, backing the optional `--cdn-lib-lookup` (default `.lib-cdn-lookup-cache`). |
+| `--cache-cdn-lookup-dir <dir>` | Where the jsDelivr CDN hash-lookup results are cached, backing `--cdn-lib-lookup` (default `.lib-cdn-lookup-cache`). |
 | `--cache-experiments-dir <dir>` | Where the fetched allowed-experiments zip (the Thunderbird Draft-API list feeding the Experiment checks, e.g. `experiment-modified`) is cached (default `.experiments-cache`). |
 
 The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `banned-library`) is curated by hand from Mozilla's [addons-linter third-party library docs](https://github.com/mozilla/addons-linter/blob/master/docs/third-party-libraries.md), since Mozilla ships no machine-readable list, and that page
@@ -117,7 +119,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | Option | Description |
 | --- | --- |
 | `--allow-experiments` | Accept add-ons that use Experiment APIs, instead of rejecting them as unsupported. Off by default. |
-| `--cdn-lib-lookup <true\|false>` | Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default `true`). Results are cached, and an offline run simply finds no match. |
+| `--cdn-lib-lookup <true\|false>` | Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default `true`). Results are cached. With `false`, no request goes to jsDelivr. |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--report-format <text\|json>` | Report output format (default `text`). |
 | `--verbose` | Verbose logging. |

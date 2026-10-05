@@ -28,12 +28,12 @@
 // hit is deliberately name-agnostic: canonical packages often serve files named unlike
 // the package, e.g. pdf.mjs from pdfjs-dist.)
 //
-// Best-effort, like auditIdentifiedLibraries: results (positive AND negative) are
-// cached on disk so a repeat review of the same bundle makes no request, and any
-// network error - or an injected net with no fetchJson (offline / the golden
-// harness) - simply leaves the tag untouched, so a minified file falls through to
-// minified-code and a readable one is scanned as authored source. Never throws, never
-// blocks a review.
+// Results (positive AND negative) are cached on disk so a repeat review of the same
+// bundle makes no request. With the lookup off, or an injected net with no fetchJson (the
+// golden harness), every tag is left untouched, so a minified file falls through to
+// minified-code and a readable one is scanned as authored source. A lookup jsDelivr does
+// not answer ends the review (src/util/net.js), like every other question the review asks
+// a host.
 //
 // Belongs here: the per-file lookup, the disk cache IO, and the tag promotion.
 // Does NOT belong here: the raw hashing (src/normalize/hash.js rawSha256), the
@@ -86,8 +86,7 @@ export function cdnUrl({ type, name, version, file }) {
  * @param {Addon} addon
  * @param {object} [opts]
  * @param {VendorNet} [opts.net]      Injectable transport (fetchJson); defaults to
- *   the real fetch. The golden harness injects an offline net (fetchJson throws),
- *   like verifyVendor / auditIdentifiedLibraries, so its runs make no request.
+ *   the real fetch. A unit test injects its own.
  * @param {string} [opts.cacheDir]    Where hash->result is cached.
  * @param {boolean} [opts.enabled]    Off disables the lookup entirely (--cdn-lib-lookup false).
  * @returns {Promise<void>}
@@ -97,8 +96,8 @@ export async function resolveCdnLibraries(
   { net = defaultNet, cacheDir = CDN_LOOKUP_CACHE, enabled = true } = {}
 ) {
   const classified = addon?.bundled?.classified;
-  // No net, no fetchJson (offline / golden harness), disabled, or nothing to do:
-  // skip entirely so the review stays deterministic and offline-safe.
+  // Disabled, a net with no fetchJson, or nothing to do: skip entirely, making no
+  // request.
   if (!enabled || !classified || typeof net?.fetchJson !== "function") {
     return;
   }
@@ -151,10 +150,8 @@ export async function resolveCdnLibraries(
     } else {
       const { state, hit: looked } = await lookupHash(net, hash);
       if (state === "error") {
-        // Transient (offline / 5xx / rate-limit / DNS / timeout): do NOT cache,
-        // so a later online run retries instead of treating a blip as a permanent
-        // miss. Only a genuine 404 - a stable, content-addressed negative - and a
-        // hit are cached.
+        // A failure that says nothing about these bytes: do NOT cache it. Only a
+        // genuine 404 - a stable, content-addressed negative - and a hit are cached.
         continue;
       }
       hit = looked ?? null; // null for a confirmed 404 miss (JSON drops undefined)
@@ -169,9 +166,9 @@ export async function resolveCdnLibraries(
     // gets: jsDelivr is uncurated (unlike the Mozilla hash DB, whose membership IS
     // the popularity signal), so an obscure or author-published package found here
     // must not be silently accepted. Looked up fresh each run (popularity is
-    // time-varying, so it is not cached with the hash hit) and offline-safe (an
-    // unanswered lookup reads as not-popular, after the transport has spaced and
-    // retried it - src/util/net.js).
+    // time-varying, so it is not cached with the hash hit). A package with no reading
+    // counts as not-popular; a lookup that got no answer ends the review
+    // (src/util/net.js).
     //
     // The run's memo is shared with the vendor step rather than kept here: both ask
     // about packages, per FILE, against a host that refuses a burst - so what
@@ -287,10 +284,12 @@ const BUILD_SUFFIXES = [
  *   - "miss"         - a genuine HTTP 404 ("Couldn't find <hash>"): the bytes are
  *                      not published, a content-addressed and therefore stable
  *                      negative; cache it.
- *   - "error"        - offline / 5xx / rate-limit / DNS / timeout / bad JSON: a
- *                      TRANSIENT failure; do NOT cache, so a later run retries.
- * VendorNet.fetchJson throws "HTTP <status>" on a non-2xx, so a 404 is told apart
- * from other failures by the status in the message.
+ *   - "error"        - a failure that is neither (an injected net's own error): not a
+ *                      statement about these bytes, so do NOT cache it.
+ * No answer at all - offline, a refusal past the retries, a timeout, a body that is not
+ * JSON - is not an outcome here: it ends the review (src/util/net.js), because a lookup
+ * that went unanswered would leave a library unidentified for no reason the reviewer is
+ * told. A 404 is read off the status the fetch stamps on its error.
  * @param {VendorNet} net @param {string} hash
  * @returns {Promise<{state: "hit"|"miss"|"error", hit?: CdnHit}>}
  */
@@ -319,7 +318,7 @@ async function lookupHash(net, hash) {
     return { state: "miss" };
   } catch (err) {
     rethrowIfFatal(err);
-    const miss = /\b404\b/.test(err.message);
+    const miss = err.status === 404;
     debug(`CDN lookup ${miss ? "miss" : "error"} for ${hash}: ${err.message}`);
     return { state: miss ? "miss" : "error" };
   }

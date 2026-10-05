@@ -266,7 +266,7 @@ export const ADDON_MAX_UNPACKED_BYTES = 128 * 1024 * 1024;
  * package.json dependency (name@version, exact or lock-resolved) is POSTed here
  * to learn whether the bundled version has known advisories. No API token is
  * needed. OSV ingests the GitHub Advisory DB, so it covers `npm audit`'s npm
- * data and more. Best-effort: a failed lookup just skips (no finding).
+ * data and more. A query it does not answer ends the review (src/util/net.js).
  */
 export const VENDOR_OSV_API = "https://api.osv.dev/v1/query";
 

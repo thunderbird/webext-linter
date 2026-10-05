@@ -1,6 +1,6 @@
 // Unit tests for the jsDelivr CDN hash-lookup identifier (resolveCdnLibraries): a
 // hit promotes an unrecognized bundle - minified, or a large readable one - into the
-// vendored family (library + libraryId + cdn + nonAuthored), a miss/offline leaves it
+// vendored family (library + libraryId + cdn + nonAuthored), a miss leaves it
 // as classified, and results are cached on disk so a second run makes no request. All
 // via an injected `net` - no real network.
 
@@ -14,7 +14,11 @@ import path from "node:path";
 import { classifyBundled } from "../../src/lib/bundled.js";
 import { VERDICT } from "../../src/lib/enum.js";
 import { resolveCdnLibraries, cdnUrl } from "../../src/lib/cdn-lookup.js";
-import { NetworkGoneError, setNetworkPacing } from "../../src/util/net.js";
+import {
+  NetworkGoneError,
+  NoAnswerError,
+  setNetworkPacing,
+} from "../../src/util/net.js";
 import findLibOnCdn from "../../src/checks/rules/find-lib-on-cdn.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
@@ -28,6 +32,10 @@ const MINIFIED = `var a=0;${"a=a+1;".repeat(250)}`;
 const addonWith = (files) => ({
   files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
 });
+
+// An HTTP answer as the real fetch delivers it: the status stamped on the error.
+const httpAnswer = (status) =>
+  Object.assign(new Error(`HTTP ${status}`), { status });
 
 // A net that answers the jsDelivr hash lookup for known hashes AND the popularity
 // trust-bar lookups (npm last-month downloads / GitHub stars) resolveCdnLibraries
@@ -57,7 +65,7 @@ function netFor(map, { downloads = 5000, stars = 500 } = {}) {
       if (map.has(hash)) {
         return map.get(hash);
       }
-      throw new Error("HTTP 404"); // jsDelivr 404 surfaces as a throw via fetchJson
+      throw httpAnswer(404); // jsDelivr's 404 surfaces as a throw via fetchJson
     },
   };
 }
@@ -580,7 +588,7 @@ test("a miss leaves the bundle minified (falls through to minified-code)", async
   );
 });
 
-test("a thrown network error is swallowed and leaves the bundle minified", async () => {
+test("a lookup that fails short of a 404 leaves the bundle minified", async () => {
   const addon = classify(addonWith({ "app/blob.js": MINIFIED }));
   const net = {
     async fetchJson() {
@@ -592,13 +600,26 @@ test("a thrown network error is swallowed and leaves the bundle minified", async
   assert.equal(tag.library, false);
 });
 
-// A transient failure (offline / 5xx / DNS) must NOT be cached as a permanent
-// miss: a later online run has to retry. A genuine 404 IS a stable, content-
-// addressed negative, so it is cached and not re-queried.
-test("a transient error is retried next run; a 404 is cached", async () => {
+// Only a genuine 404 is a stable, content-addressed negative, so only it is cached and not
+// re-queried. Any other answer says nothing about these bytes and is asked again next run,
+// and no answer at all ends the review rather than leaving the file unidentified.
+test("a non-404 answer is asked again next run; a 404 is cached", async () => {
   const cacheDir = tmpCacheDir();
 
-  // Run 1: the network is down (no "404" in the message) -> not cached.
+  // No answer: the review stops, and nothing is cached.
+  await assert.rejects(
+    resolveCdnLibraries(classify(addonWith({ "x.js": MINIFIED })), {
+      cacheDir,
+      net: {
+        async fetchJson(url) {
+          throw new NoAnswerError(url, "HTTP 503");
+        },
+      },
+    }),
+    NoAnswerError
+  );
+
+  // Run 1: an answer that is not a 404 -> not cached.
   let calls = 0;
   const downAddon = classify(addonWith({ "x.js": MINIFIED }));
   await resolveCdnLibraries(downAddon, {
@@ -606,7 +627,7 @@ test("a transient error is retried next run; a 404 is cached", async () => {
     net: {
       async fetchJson() {
         calls += 1;
-        throw new Error("fetch failed");
+        throw httpAnswer(400);
       },
     },
   });
@@ -620,7 +641,7 @@ test("a transient error is retried next run; a 404 is cached", async () => {
     net: {
       async fetchJson() {
         secondAsked += 1;
-        throw new Error("HTTP 404");
+        throw httpAnswer(404);
       },
     },
   });
@@ -634,7 +655,7 @@ test("a transient error is retried next run; a 404 is cached", async () => {
     net: {
       async fetchJson() {
         thirdAsked += 1;
-        throw new Error("HTTP 404");
+        throw httpAnswer(404);
       },
     },
   });
@@ -724,8 +745,9 @@ test("cdnUrl builds npm and gh source URLs", () => {
 // A dead network aborts here too. The CDN identifier's catch turns a lookup failure into
 // "no match", which for a dead route would mean a shipped jQuery is reviewed as the
 // developer's own code and the report reads like a clean review of a different add-on.
-// One dead LOOKUP still means no match - that is what an offline fixture run relies on.
-test("resolveCdnLibraries propagates a dead network but swallows one dead lookup", async () => {
+// A dead network and a host that gave no answer stop the review; any other failure of one
+// lookup still means no match.
+test("resolveCdnLibraries propagates no network and no answer, but not one failed lookup", async () => {
   const addon = classify(addonWith({ "app/lib.min.js": MINIFIED }));
   const gone = {
     fetchJson: async () => {
@@ -737,9 +759,23 @@ test("resolveCdnLibraries propagates a dead network but swallows one dead lookup
     NetworkGoneError
   );
 
+  const silent = {
+    fetchJson: async (url) => {
+      throw new NoAnswerError(url, "HTTP 503");
+    },
+  };
+  await assert.rejects(
+    () =>
+      resolveCdnLibraries(classify(addonWith({ "app/lib.min.js": MINIFIED })), {
+        net: silent,
+        cacheDir: tmpCacheDir(),
+      }),
+    NoAnswerError
+  );
+
   const ordinary = {
     fetchJson: async () => {
-      throw new Error("offline");
+      throw new Error("could not be read");
     },
   };
   const other = classify(addonWith({ "app/lib.min.js": MINIFIED }));

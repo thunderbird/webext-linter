@@ -33,8 +33,9 @@
 //     name@version is audited against OSV (auditNpm) at all: the advisory and policy
 //     findings it feeds speak about a library the add-on SHIPS, and an XPI carries
 //     its libraries as-is, so a release none of the packaged files came from is not
-//     one this add-on can be told it bundles. A listing that cannot be read leaves
-//     the question open and the audit is made.
+//     one this add-on can be told it bundles. A listing unpkg answers 404 for is a
+//     release that was never published; one that gets no answer ends the review
+//     (src/util/net.js), since "not shipped" would skip the audit.
 //   - the whole installed tree, in a source-code review only: every package the
 //     committed lock file records, declared or pulled in by another package, is
 //     OSV-audited in one batch (auditLockedPackages). This is where almost all of
@@ -42,12 +43,11 @@
 //     wrote down.
 //
 // The popularity lookups are MEMOIZED as well as made. They go to one host per kind,
-// which answers a burst by refusing - and a refusal reaching a caller as an exception
-// is indistinguishable from "no such package", which demotes the library. So the
-// reading is taken once per package for the run, which removes the requests rather
-// than spacing them. Spacing them, and retrying a refusal, is every request's problem
-// and belongs to the transport (src/util/net.js); only an answer, or an exhausted
-// retry, reaches the bar itself.
+// which answers a burst by refusing. So the reading is taken once per package for the
+// run, which removes the requests rather than spacing them. Spacing them, retrying a
+// refusal, and ending the review when one outlasts the retries is every request's
+// problem and belongs to the transport (src/util/net.js); only an answer reaches the bar
+// itself.
 //
 // Belongs here: verifyVendor and verifyScaDependencies (the two batches), the
 // per-source compare, the popularity lookup and the memo that bounds it, the OSV audits,
@@ -66,7 +66,7 @@ import { fileIn, withExperiment } from "../addon/store.js";
 import { npmNameForLibrary } from "../lib/library-hashes.js";
 import { matchLibraryBlock } from "../lib/library-blocks.js";
 import { normalizedSha256, eolNormalize } from "../normalize/hash.js";
-import { fetchWithTimeout, httpError } from "../util/net.js";
+import { fetchWithTimeout, httpError, NoAnswerError } from "../util/net.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 import { debug } from "../util/log.js";
 import { parseJson } from "../util/json.js";
@@ -289,9 +289,9 @@ export async function verifyVendorDeclarations(
  * vendor.treeVulnerabilities / treeDevVulnerabilities), which is where almost all
  * of a submission's exposure actually sits.
  *
- * Popularity uses a direct npm-downloads lookup (npmDownloads), not isPopular, so
- * a FAILED lookup skips rather than false-rejecting a popular dependency; offline
- * runs (the listing/downloads throw) therefore record nothing.
+ * Popularity uses a direct npm-downloads lookup (npmDownloads), not isPopular, so a
+ * package npm has no reading for is skipped rather than false-rejected. A lookup that
+ * gets no answer ends the review (src/util/net.js).
  * @param {Addon} addon  Must already carry `addon.vendor` from resolveVendor.
  * @param {VendorNet} [net]
  * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist, applied to
@@ -325,8 +325,8 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
     }
   }
   // GitHub-sourced deps clear the bar by stars (or a trusted-org free pass) - the
-  // same popularity check a VENDOR.md github source gets. A failed lookup records
-  // nothing (like npmDownloads above).
+  // same popularity check a VENDOR.md github source gets. A repo GitHub has no reading
+  // for records nothing (like npmDownloads above).
   for (const dep of vendor.githubDeps ?? []) {
     const popular = await githubPopular(dep.repo, net);
     if (popular === false) {
@@ -398,9 +398,10 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
  * exception (isMaliciousAdvisory) - those state no severity at all, so a band
  * rule alone would discard exactly the records that matter most here.
  *
- * All-or-nothing: results are held until every chunk has answered, so a scan the
- * network cuts short records NOTHING rather than a partial tree that reads like
- * a clean one.
+ * All-or-nothing: results are held until every chunk has answered, so a scan cut short
+ * records NOTHING rather than a partial tree that reads like a clean one. A chunk OSV gives
+ * no answer for ends the review (src/util/net.js); one it answers 404 for, or a net
+ * without postJson (the golden harness), abandons the scan.
  * @param {VendorStore} vendor  Must carry lockPackages (resolveVendor).
  * @param {VendorNet} net
  * @returns {Promise<void>}
@@ -431,7 +432,7 @@ async function auditLockedPackages(vendor, net) {
       results = Array.isArray(res?.results) ? res.results : [];
     } catch (err) {
       rethrowIfFatal(err);
-      return; // offline / no postJson / OSV unreachable - abandon the scan
+      return; // OSV answered 404, or the net has no postJson - abandon the scan
     }
     // The endpoint answers positionally, one result per query, and says nothing
     // about which package each answer is for - hence the index, and hence the
@@ -558,9 +559,10 @@ async function hydrateAdvisory(id, cache, net) {
 /**
  * Whether a GitHub repo clears the popularity bar (stargazers >=
  * VENDOR_GITHUB_MIN_STARS), with a trusted-org (VENDOR_TRUSTED_GITHUB_ORGS) free
- * pass. Returns null when the stars lookup fails - kept distinguishable from a
- * real below-bar reading (like npmDownloads) so an offline / flaky run records
- * nothing rather than false-rejecting a popular repo.
+ * pass. Returns null when GitHub has no reading for the repo (a 404) - kept
+ * distinguishable from a real below-bar reading (like npmDownloads) so it records
+ * nothing rather than false-rejecting. A lookup that gets no answer ends the review
+ * (src/util/net.js).
  * @param {string} repo  "owner/repo".
  * @param {VendorNet} net
  * @returns {Promise<boolean | null>}
@@ -583,12 +585,12 @@ async function githubPopular(repo, net) {
 }
 
 /**
- * Last-month npm download count for a package, or null when the lookup fails.
- * A failed lookup is kept distinguishable from a real below-threshold reading, so
- * the unpopular-source-dependency REJECT only ever fires on a reading. isPopular
- * collapses the same null to "not popular", because there the file has a fallback
- * to fall to; the rate gate every request passes through (src/util/net.js) is what
- * makes that collapse rare. The npm download API serves scoped packages too.
+ * Last-month npm download count for a package, or null when npm gives no reading (it
+ * answers 404 for a package it has no data for). No reading is kept distinguishable from a
+ * real below-threshold one, so the unpopular-source-dependency REJECT only ever fires on a
+ * reading. isPopular collapses the same null to "not popular", because there the file has
+ * a fallback to fall to. A lookup npm does not answer at all ends the review
+ * (src/util/net.js). The npm download API serves scoped packages too.
  * @param {string} name  npm package name.
  * @param {VendorNet} net
  * @returns {Promise<number | null>}
@@ -611,10 +613,11 @@ async function npmDownloads(name, net) {
  * regardless); an unadvised one is recorded but still audited (a live CVE on an
  * allowed library still matters). `blocks` is passed only for SHIPPED libraries, so
  * an SCA devDependency (never shipped) is audited but never policy-blocked.
- * Best-effort: a package with known advisories is recorded on
- * `into` (one entry aggregating its advisories, anchored at `file`/`token`). Any
- * network or parse error - or an injected net without `postJson` (offline runs,
- * the golden harness) - records nothing. Drives package.json deps and npm-sourced
+ * A package with known advisories is recorded on `into` (one entry aggregating its
+ * advisories, anchored at `file`/`token`). An OSV 404, or an injected net without
+ * `postJson` (the golden harness), records nothing. A query OSV
+ * does not answer ends the review (src/util/net.js): recording nothing for it would read
+ * as a package with no advisories. Drives package.json deps and npm-sourced
  * VENDOR entries -> vendor.vulnerabilities (read by vendor-vulnerable), and SCA
  * devDependencies -> vendor.devVulnerabilities (read by vendor-vulnerable-dev); the
  * caller passes the target `into` array.
@@ -661,7 +664,7 @@ async function auditNpm(name, version, file, token, vendor, net, into, blocks) {
     vulns = Array.isArray(res?.vulns) ? res.vulns : [];
   } catch (err) {
     rethrowIfFatal(err);
-    return; // offline / no postJson / OSV unreachable - skip silently
+    return; // OSV answered 404, or the net has no postJson
   }
   const record = vulnRecord(name, version, vulns, file, token);
   if (record) {
@@ -722,8 +725,8 @@ function vulnRecord(name, version, vulns, file, token) {
  * bundled file with no line (an undeclared library has no declaration line, so
  * the token is empty). Each release is audited at most once: a package already
  * flagged as a declared dep / VENDOR entry, or the same library bundled in more
- * than one file, is not re-queried or double-reported. Best-effort: runs after
- * classifyBundled, shares the OSV transport, and skips silently offline. Requires
+ * than one file, is not re-queried or double-reported. Runs after classifyBundled and
+ * shares the OSV transport, so an unanswered query ends the review there too. Requires
  * addon.vendor (resolveVendor) for the shared vulnerabilities store.
  * @param {Addon} addon  Must carry addon.vendor and addon.bundled.
  * @param {VendorNet} [net]
@@ -848,10 +851,10 @@ async function auditGithub(entry, src, addon, vendor, net, blocks) {
  * Whether `bytes` content-hash-matches ANY published file of the npm package
  * name@version - a path-independent Subresource-Integrity match from the package
  * "?meta" listing (the same proof verifyPackage uses, but for one buffer and
- * fetching only the listing, no file bodies). Best-effort: any error, a net
- * without fetchJson (offline / the golden harness), or a non-existent candidate
- * package returns false, so the caller falls back / records the entry as
- * unaudited rather than guessing.
+ * fetching only the listing, no file bodies). A candidate package unpkg does not have (a
+ * 404), or a net without fetchJson (the golden harness), returns false, so the caller
+ * falls back / records the entry as unaudited rather than guessing. A listing unpkg does
+ * not answer ends the review (src/util/net.js).
  * @param {string} name @param {string} version @param {Buffer} bytes
  * @param {VendorNet} net
  * @returns {Promise<boolean>}
@@ -1333,12 +1336,13 @@ async function verifyFolder(entry, addon, vendor, net) {
  * and an XPI carries its vendored libraries as-is - a submission that bundles or
  * minifies them belongs in a source-code review instead. So a release none of the
  * packaged files came from is a release this add-on does not carry, and the caller
- * audits accordingly. A listing that cannot be read decides nothing, and says so.
+ * audits accordingly.
  * @param {{name: string, version: string}} pkg
  * @param {Addon} addon @param {VendorStore} vendor @param {VendorNet} net
  * @returns {Promise<boolean>}  Whether any packaged file is this release's. A listing
- *   that cannot be read answers no: a 404 says there is no such published release, and a
- *   route that is actually gone never gets this far (rethrowIfFatal -> exit 2).
+ *   unpkg answers it does not have (a 404) answers no - there is no such published
+ *   release. One that got no answer never gets this far: it ends the review
+ *   (src/util/net.js), since "not carried" would drop the declaration unaudited.
  */
 async function verifyPackage(pkg, addon, vendor, net) {
   const base = `https://unpkg.com/${pkg.name}@${pkg.version}`;
@@ -1347,7 +1351,7 @@ async function verifyPackage(pkg, addon, vendor, net) {
     listing = await net.fetchJson(`${base}/?meta`);
   } catch (err) {
     rethrowIfFatal(err);
-    return false; // no listing, so nothing is shown to have come from it
+    return false; // unpkg has no such release, so nothing came from it
   }
   const byHash = indexBySri(listing);
   const algos = [...new Set([...byHash.keys()].map((k) => k.split("-")[0]))];
@@ -1472,13 +1476,11 @@ function metaFiles(node, out = []) {
  * identifier (src/lib/cdn-lookup.js), so all identification paths gate on
  * the same bar. `src` need only carry {kind, pkg} (npm) or {kind, repo} (github).
  *
- * A lookup that is never answered still counts as "not popular": the file keeps
- * its declaration and is reviewed as the developer's own code, which is the safe
- * reading. The dangerous one would be the opposite - an add-on's own entries are
- * what spend the request budget, so trusting an unanswered lookup would let a
- * submission pad its VENDOR file until the package it cares about goes unasked.
- * The rate gate every request passes through (src/util/net.js) is what keeps that
- * fallback rare enough to be honest.
+ * A package npm or GitHub has no reading for counts as "not popular": the file keeps its
+ * declaration and is reviewed as the developer's own code, which is the safe reading. A
+ * lookup that got no answer at all is read neither way - it ends the review
+ * (src/util/net.js), so a submission cannot pad its VENDOR file until the package it cares
+ * about goes unasked.
  *
  * `memo` holds one answer per package for the length of ONE review (never across
  * runs - popularity is time-varying, the same reason cdn-lookup does not cache it
@@ -1534,7 +1536,9 @@ export const defaultNet = {
 
 /**
  * Read a fetch Response as bytes, enforcing the size cap (fetchBytes' consumer). A
- * consume callback for fetchWithTimeout, so the read runs under the abort timeout.
+ * consume callback for fetchWithTimeout, so the read runs under the abort timeout. A
+ * source over the cap is a verdict on what the submission names (it cannot be verified),
+ * not a host failing to answer.
  * @param {Response} res
  * @returns {Promise<Buffer>}
  */
@@ -1542,20 +1546,50 @@ async function readBytes(res) {
   if (!res.ok) {
     throw httpError(res);
   }
-  const declared = Number(res.headers.get("content-length"));
-  if (declared && declared > VENDOR_FETCH_MAX_BYTES) {
-    throw new Error("source exceeds size cap");
-  }
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length > VENDOR_FETCH_MAX_BYTES) {
+  const buf = await readCapped(res);
+  if (buf === null) {
     throw new Error("source exceeds size cap");
   }
   return buf;
 }
 
 /**
+ * A response body, or null once it passes VENDOR_FETCH_MAX_BYTES. Read as it arrives and
+ * abandoned at the cap, so how large a source is decides the outcome - not how long a body
+ * too large to use takes to arrive, which would turn into a timeout on a slow link.
+ * @param {Response} res
+ * @returns {Promise<?Buffer>}
+ */
+async function readCapped(res) {
+  const declared = Number(res.headers.get("content-length"));
+  if (declared && declared > VENDOR_FETCH_MAX_BYTES) {
+    return null;
+  }
+  if (!res.body) {
+    return Buffer.alloc(0);
+  }
+  const chunks = [];
+  let size = 0;
+  const reader = res.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      return Buffer.concat(chunks, size);
+    }
+    size += value.length;
+    if (size > VENDOR_FETCH_MAX_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+}
+
+/**
  * Read a fetch Response as JSON, enforcing the size cap. Shared by fetchJson and
- * postJson.
+ * postJson. A 2xx whose body is not JSON, or too large to read, is no answer: handing back
+ * nothing would reach every caller as a value - no advisories, nothing published,
+ * unpopular - for a question nobody answered.
  * @param {Response} res
  * @returns {Promise<object>}
  */
@@ -1563,13 +1597,13 @@ async function readJson(res) {
   if (!res.ok) {
     throw httpError(res);
   }
-  const declared = Number(res.headers.get("content-length"));
-  if (declared && declared > VENDOR_FETCH_MAX_BYTES) {
-    throw new Error("response exceeds size cap");
+  const buf = await readCapped(res);
+  if (buf === null) {
+    throw new NoAnswerError(res.url, "the response exceeds the size cap");
   }
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length > VENDOR_FETCH_MAX_BYTES) {
-    throw new Error("response exceeds size cap");
+  const json = parseJson(buf);
+  if (json === null) {
+    throw new NoAnswerError(res.url, "the response is not JSON");
   }
-  return parseJson(buf);
+  return json;
 }

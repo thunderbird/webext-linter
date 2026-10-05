@@ -7,8 +7,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { runPipeline } from "../../src/pipeline.js";
+import { runPipeline, resolveReviewSchema } from "../../src/pipeline.js";
 import { fixtureCacheOpts } from "../seed-caches.js";
+import { createHash } from "node:crypto";
+import { NoAnswerError, setNetworkPacing } from "../../src/util/net.js";
 
 // A cache pre-seeded from the fixtures, so the pipeline's schema / experiments /
 // library-hash fetches all hit disk - these runs stay offline.
@@ -180,4 +182,102 @@ test("add-on: a shipped node_modules folder is reviewed like any other folder", 
   );
 
   fs.rmSync(src, { recursive: true, force: true });
+});
+
+// ---- a host that gives no answer ends the review ----
+
+// The add-on ships lodash under its own file name; package.json + the lock name the
+// release, its unpkg listing matches the shipped bytes, and the OSV audit of the release
+// rejects. Each request answers from `answers`; anything else is a 404.
+const LODASH = path.resolve("tests/addons/package-range-locked-shipped");
+const LISTING = "https://unpkg.com/lodash@4.17.21/?meta";
+const OSV_QUERY = "https://api.osv.dev/v1/query";
+
+/** globalThis.fetch answering each URL with `answers[url]` (a status, or a JSON body). */
+function answering(t, answers) {
+  setNetworkPacing({ intervalMs: 0, backoffMs: 0, maxWaitMs: 0 });
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const a = answers[String(url)];
+    if (typeof a === "number") {
+      return new Response("", { status: a });
+    }
+    return a === undefined
+      ? new Response("", { status: 404 })
+      : new Response(JSON.stringify(a), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+  };
+  t.after(() => {
+    globalThis.fetch = real;
+  });
+}
+
+const lodashListing = () => {
+  const bytes = fs.readFileSync(path.join(LODASH, "lib/collection-helpers.js"));
+  const sri = createHash("sha256").update(bytes).digest("base64");
+  return {
+    type: "directory",
+    files: [{ path: "/lodash.core.js", integrity: `sha256-${sri}` }],
+  };
+};
+
+// AUDITS #49: unpkg refusing the listing used to read as "lodash is not shipped", which
+// dropped the declaration before its audit and passed the add-on clean.
+test("a listing unpkg does not answer ends the review instead of passing it", async (t) => {
+  answering(t, {
+    [LISTING]: 503,
+    "https://api.npmjs.org/downloads/point/last-month/lodash": {
+      downloads: 50000000,
+    },
+  });
+  await assert.rejects(
+    runPipeline({ addonPath: LODASH, ...OFFLINE }),
+    (err) =>
+      err instanceof NoAnswerError &&
+      err.message.includes("unpkg.com") &&
+      err.message.includes("HTTP 503")
+  );
+});
+
+// An OSV outage used to record nothing, which reads as a release with no advisories.
+test("an OSV query that gets no answer ends the review", async (t) => {
+  answering(t, {
+    [LISTING]: lodashListing(),
+    "https://api.npmjs.org/downloads/point/last-month/lodash": {
+      downloads: 50000000,
+    },
+    [OSV_QUERY]: 502,
+  });
+  await assert.rejects(
+    runPipeline({ addonPath: LODASH, ...OFFLINE }),
+    (err) => err instanceof NoAnswerError && err.message.includes("api.osv.dev")
+  );
+});
+
+// A schema cache known to be too old for the add-on is refreshed; a refresh that gets no
+// answer ends the review rather than reviewing against the stale copy.
+test("a stale schema cache whose refresh gets no answer ends the review", async (t) => {
+  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-stale-schema-"));
+  t.after(() => fs.rmSync(cacheDir, { recursive: true, force: true }));
+  fs.cpSync(OFFLINE.schemaCache, cacheDir, { recursive: true });
+  const old = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+  for (const f of fs.readdirSync(cacheDir)) {
+    fs.utimesSync(path.join(cacheDir, f), old, old);
+  }
+  answering(t, {}); // every download refused below
+  globalThis.fetch = async () => new Response("", { status: 503 });
+  await assert.rejects(
+    resolveReviewSchema({
+      cacheDir,
+      manifest: {
+        manifest_version: 3,
+        browser_specific_settings: {
+          gecko: { id: "x@example.invalid", strict_max_version: "999.*" },
+        },
+      },
+    }),
+    NoAnswerError
+  );
 });
