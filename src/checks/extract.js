@@ -30,6 +30,8 @@
 // (-> src/lib/bundled.js). Babel access goes through src/parse/ast.js.
 
 import { parseJs } from "../parse/ast.js";
+import { LinterError } from "../lib/errors.js";
+import { ERROR_CLASS } from "../lib/enum.js";
 import { parseApiUsage } from "../parse/api-usage.js";
 import { scanRemoteJs } from "../parse/remote-js.js";
 import { scanNetworkSinks } from "../parse/network-sinks.js";
@@ -122,54 +124,96 @@ export function runExtractionPass(
 ) {
   const webApiSigs = webApiSignatures(schema);
   const mvMajor = schema?.manifestVersionMajor ?? null;
+  const opts = {
+    schema,
+    mvMajor,
+    experimentNamespaces,
+    nonAuthored,
+    webApiSigs,
+  };
   for (const src of jsSources) {
-    const parsed = parseJs(src.code, parseHint(src));
-    const extracted = extractLoadGraph(src, parsed, {
-      schema,
-      mvMajor,
-      experimentNamespaces,
-    });
-    // Every source: api-usage (its consumers read ctx.apiUsages), and the Web/DOM API
-    // grounding. webApiPerms is EVERY source, not just the authored ones: a permission is
-    // used if the shipped code calls its API, and a vendored library calling
-    // navigator.clipboard grounds clipboardWrite just as the developer's own file would.
-    // Scanned against ALL web_api signatures; groundWebApiPermissions keeps the declared.
-    extracted.apiUsage = parseApiUsage(src.code, src.lineOffset, parsed);
-    extracted.webApiPerms = scanWebApiCalls(src.code, webApiSigs, parsed);
-    // Content extractors: EVERY source, whoever wrote it. Whether a non-authored file's
-    // hits are reported is the consumer's call, and each one makes it for itself against
-    // the same nonAuthored Set. Producing the result either way is what stops the two
-    // from disagreeing: a consumer that forgot to skip reads real hits, never an
-    // `undefined` that throws and takes every check sharing that scan down with it.
-    extracted.remoteJs = scanRemoteJs(src.code, src.lineOffset, parsed);
-    extracted.networkSinks = scanNetworkSinks(src.code, src.lineOffset, parsed);
-    extracted.unsafeHtml = scanUnsafeHtml(src.code, src.lineOffset, parsed);
-    extracted.coreSymbols = scanCoreSymbols(src.code, src.lineOffset, parsed);
-    extracted.syncXhr = scanSyncXhr(src.code, src.lineOffset, parsed);
-    extracted.debuggerStmt = scanDebugger(src.code, src.lineOffset, parsed);
-    extracted.asyncOnMessage = scanAsyncOnMessage(
-      src.code,
-      src.lineOffset,
-      parsed
-    );
-    // The one exception, and not for cost: the code-text atoms (identifiers/strings/
-    // templates, comments excluded) with their source lines, which the unused-permission
-    // token scan reads to test presence AND point the reviewer at each occurrence. Their
-    // ABSENCE is what selects the other path - a non-authored bundle is searched raw
-    // instead (permissions.js reads `if (atoms)`), where including comments only pushes
-    // toward escalation, the safe direction. Producing them here would quietly move that
-    // scan off the conservative branch.
-    if (!nonAuthored?.has(src.file)) {
-      extracted.codeAtoms = scanCodeText(
-        src.code,
-        src.lineOffset,
-        parsed
-      ).atoms;
+    // Babel's parser recovers from errors its walker cannot model (a `let` declared twice),
+    // and the first walk of such an AST throws. That is this file's failure, not the
+    // review's: the file is extracted again as one with no AST - which every extractor
+    // answers with empty results, so nothing walks it again - and the failure is recorded
+    // for the check that reports it. A second walk of the same AST would not throw: it
+    // would run on a half-built scope.
+    let walkFailure = null;
+    let extracted;
+    try {
+      extracted = extractSource(src, parseJs(src.code, parseHint(src)), opts);
+    } catch (err) {
+      if (!(err instanceof LinterError) || err.class !== ERROR_CLASS.WALK) {
+        throw err;
+      }
+      walkFailure = {
+        reason: err.message,
+        line: err.line == null ? null : err.line + src.lineOffset,
+      };
+      extracted = extractSource(
+        src,
+        { ast: null, parseError: err.message },
+        opts
+      );
     }
+    extracted.walkFailure = walkFailure;
     src.extracted = extracted;
-    // The AST (`parsed`) goes out of scope with this iteration; src.extracted holds
-    // only the small summaries, so peak memory is a single AST.
+    // The AST goes out of scope with this iteration; src.extracted holds only the small
+    // summaries, so peak memory is a single AST.
   }
+}
+
+/**
+ * Every per-file result for one source, from one parse of it.
+ * @param {JsSource} src
+ * @param {import("../parse/ast.js").ParseResult} parsed
+ * @param {object} opts  The pass's options, with the schema-derived values resolved once.
+ * @returns {object} The `src.extracted` record.
+ */
+function extractSource(
+  src,
+  parsed,
+  { schema, mvMajor, experimentNamespaces, nonAuthored, webApiSigs }
+) {
+  const extracted = extractLoadGraph(src, parsed, {
+    schema,
+    mvMajor,
+    experimentNamespaces,
+  });
+  // Every source: api-usage (its consumers read ctx.apiUsages), and the Web/DOM API
+  // grounding. webApiPerms is EVERY source, not just the authored ones: a permission is
+  // used if the shipped code calls its API, and a vendored library calling
+  // navigator.clipboard grounds clipboardWrite just as the developer's own file would.
+  // Scanned against ALL web_api signatures; groundWebApiPermissions keeps the declared.
+  extracted.apiUsage = parseApiUsage(src.code, src.lineOffset, parsed);
+  extracted.webApiPerms = scanWebApiCalls(src.code, webApiSigs, parsed);
+  // Content extractors: EVERY source, whoever wrote it. Whether a non-authored file's
+  // hits are reported is the consumer's call, and each one makes it for itself against
+  // the same nonAuthored Set. Producing the result either way is what stops the two
+  // from disagreeing: a consumer that forgot to skip reads real hits, never an
+  // `undefined` that throws and takes every check sharing that scan down with it.
+  extracted.remoteJs = scanRemoteJs(src.code, src.lineOffset, parsed);
+  extracted.networkSinks = scanNetworkSinks(src.code, src.lineOffset, parsed);
+  extracted.unsafeHtml = scanUnsafeHtml(src.code, src.lineOffset, parsed);
+  extracted.coreSymbols = scanCoreSymbols(src.code, src.lineOffset, parsed);
+  extracted.syncXhr = scanSyncXhr(src.code, src.lineOffset, parsed);
+  extracted.debuggerStmt = scanDebugger(src.code, src.lineOffset, parsed);
+  extracted.asyncOnMessage = scanAsyncOnMessage(
+    src.code,
+    src.lineOffset,
+    parsed
+  );
+  // The one exception, and not for cost: the code-text atoms (identifiers/strings/
+  // templates, comments excluded) with their source lines, which the unused-permission
+  // token scan reads to test presence AND point the reviewer at each occurrence. Their
+  // ABSENCE is what selects the other path - a non-authored bundle is searched raw
+  // instead (permissions.js reads `if (atoms)`), where including comments only pushes
+  // toward escalation, the safe direction. Producing them here would quietly move that
+  // scan off the conservative branch.
+  if (!nonAuthored?.has(src.file)) {
+    extracted.codeAtoms = scanCodeText(src.code, src.lineOffset, parsed).atoms;
+  }
+  return extracted;
 }
 
 /**
@@ -215,6 +259,9 @@ export const localImportsOf = (src) => resultsOf(src).localImports;
 export const loaderRefsOf = (src) => resultsOf(src).loaderRefs;
 /** @param {JsSource} src */
 export const experimentRefsOf = (src) => resultsOf(src).experimentRefs;
+/** @param {JsSource} src  Why Babel could not walk this source, and where:
+ *   `{reason, line}` (line null when Babel gave none), or null for a source it walked. */
+export const walkFailureOf = (src) => resultsOf(src).walkFailure;
 /** @param {JsSource} src  The loc of the first ES module statement (import/export), or
  *   null if none. */
 export const moduleSyntaxOf = (src) => resultsOf(src).moduleSyntaxLoc;

@@ -445,6 +445,19 @@ deterministic-phase:
   response: |-
     Limited static-analysis coverage: could not be parsed, so API checks were skipped ({{detail}})
 
+# Deterministic: a JS source Babel parsed (its parser recovers from errors) but could not
+# walk, so none of its code was analysed. The known case is a `let`, `const` or `class`
+# declared twice, an early SyntaxError in every engine and bundler: the file can neither run
+# nor be built. Asked of every artifact (input: all), so a broken shipped file is reported in
+# a source review too. The reason Babel gave rides as the locus hint, so every case collapses
+# into this one entry.
+- title: File could not be analysed
+  severity: error
+  check: unanalysable-file
+  input: all
+  response: |-
+    The following file(s) contain code that is not valid JavaScript, so it cannot run and could not be reviewed. Correct the code at each line named.
+
 # Flags a recognised published Experiment draft that is bundled modified or
 # outdated (it would be accepted if it were the unmodified latest upstream copy).
 - title: Modified or outdated Experiment draft

@@ -62,6 +62,7 @@ import disguisedResource from "../../src/checks/rules/disguised-resource.js";
 import disguisedStylesheet from "../../src/checks/rules/disguised-stylesheet.js";
 import disguisedTransmission from "../../src/checks/rules/disguised-transmission.js";
 import unparsableFile from "../../src/checks/rules/unparsable-file.js";
+import unanalysableFile from "../../src/checks/rules/unanalysable-file.js";
 import dataExfiltration from "../../src/checks/rules/data-exfiltration.js";
 import undeclaredBuildSource from "../../src/checks/rules/undeclared-build-source.js";
 import buildRegistryRedirect from "../../src/checks/rules/build-registry-redirect.js";
@@ -681,18 +682,77 @@ test("vendor-vulnerable-dev yields nothing when devVulnerabilities is empty", ()
 // A file that failed to parse had every AST-based check skipped over it, so the parse
 // error is reported with the parser's own wording. A source that parsed cleanly yields
 // nothing. Severity is left unset - runChecks stamps the yaml entry's type ("info").
+// Sources run through the extraction pass, the way every check receives them.
+const extractedSources = (files) => {
+  const sources = Object.entries(files).map(([file, code]) => ({
+    file,
+    code,
+    lineOffset: 0,
+    inline: false,
+  }));
+  runExtractionPass(sources);
+  return sources;
+};
+
 test("unparsable-file flags parse failures", () => {
-  const apiUsages = [
-    { file: "broken.js", parseError: "Unexpected token (3:5)" },
-    { file: "ok.js", limitations: [] },
-  ];
-  const unparsable = unparsableFile.run(withManifest({ apiUsages })).findings;
+  const jsSources = extractedSources({
+    "broken.js": "function (",
+    "ok.js": "1;",
+  });
+  const unparsable = unparsableFile.run(withManifest({ jsSources })).findings;
   assert.equal(unparsable.length, 1);
   assert.equal(unparsable[0].file, "broken.js");
   assert.equal(unparsable[0].severity, null);
   // The "could not be parsed" wording lives in the registry; the check emits the
   // parser error as data.
   assert.match(unparsable[0].data.detail, /Unexpected token/);
+});
+
+// Code Babel parsed but could not walk is reported once, by unanalysable-file, at the line
+// Babel named and in whichever artifact holds it - never also as "could not be parsed".
+test("unanalysable-file reports a walk failure at its line, in each artifact", () => {
+  const xpi = withManifest({
+    artifact: addonOf({}, ARTIFACT_XPI),
+    jsSources: extractedSources({
+      "bad.js": "const k = 1;\nconst k = 2;",
+      "ok.js": "1;",
+    }),
+  });
+  const sca = withManifest({
+    artifact: addonOf({}, ARTIFACT_SCA),
+    jsSources: extractedSources({
+      "src/bad.js": "let a;\nlet a;",
+      "src/broken.js": "function (",
+    }),
+  });
+  assert.deepEqual(
+    unanalysableFile
+      .run(allOf([xpi, sca]))
+      .findings.map((f) => [f.artifact, f.file, f.loc?.line, f.hint]),
+    [
+      [ARTIFACT_XPI, "bad.js", 2, "Identifier 'k' has already been declared."],
+      [
+        ARTIFACT_SCA,
+        "src/bad.js",
+        2,
+        "Identifier 'a' has already been declared.",
+      ],
+    ]
+  );
+  assert.deepEqual(
+    unparsableFile.run(sca).findings.map((f) => f.file),
+    ["src/broken.js"],
+    "the file Babel could not parse at all stays unparsable-file's"
+  );
+});
+
+// A <script> body the page declares as data is never run, so a redeclaration in it rejects
+// nothing.
+test("unanalysable-file skips a script body the page declares as data", () => {
+  const [template] = extractedSources({ "page.html": "let q;\nlet q;" });
+  template.declaredJs = false;
+  const ctx = withManifest({ jsSources: [template] });
+  assert.deepEqual(unanalysableFile.run(allOf(ctx)).findings, []);
 });
 
 // The eslint gate (eslintEligible): code-sanity is eslint:true, so it loads ONLY with the
@@ -930,6 +990,7 @@ test("every check's severity is pinned to its band", async () => {
       "trademark-thunderbird-name",
       "trademark-violation",
       "unacceptable-package-content",
+      "unanalysable-file",
       "undeclared-build-source",
       "unknown-api",
       "unpinned-vendor-source",
@@ -1688,6 +1749,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
       "sca-xpi-fully-included-in-archive",
       "string-timer",
       "sync-xhr",
+      "unanalysable-file",
     ]
   );
   const xpi = checks

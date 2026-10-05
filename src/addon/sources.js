@@ -58,8 +58,12 @@ import {
  *   consumer's call, not something the shape decides. The one exception is codeAtoms,
  *   whose absence routes the permission token scan to its raw-text path.
  * @property {import("../parse/api-usage.js").ApiUsageResult} apiUsage  WebExtension
- *   API usage (ctx.apiUsages is derived from it; its parseError feeds unparsable-file)
- *   - every source.
+ *   API usage (ctx.apiUsages is derived from it) - every source. Its parseError is set
+ *   whenever the code was not analysed: a file Babel could not parse (unparsable-file
+ *   reports it) or one it could not walk (walkFailure below, unanalysable-file's).
+ * @property {?{reason: string, line: ?number}} walkFailure  Why Babel parsed this source but
+ *   could not walk it, and the line (page line for an inline script); null for a source it
+ *   walked - every source. Its scans are then empty, like an unparsable file's.
  * @property {object} localImports  scanLocalImports import/require refs - every
  *   source (reachability follows a non-authored file's own loaders too).
  * @property {object} loaderRefs  scanLoaderRefs file-loading API refs - every source.

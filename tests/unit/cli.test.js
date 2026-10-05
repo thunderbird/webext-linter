@@ -1870,6 +1870,45 @@ test("an unreadable submission file makes it invalid, exit 2", (t) => {
   }
 });
 
+// Code Babel parses but cannot walk (a `const` declared twice) is one file's failure, not
+// the run's: the review finishes and reports it at its line, in the XPI and in a source
+// archive alike, instead of ending as a tool failure.
+test("code Babel cannot walk is reported at its line, not exit 2", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-walk-"));
+  const xpi = path.join(dir, "xpi");
+  const src = path.join(dir, "src");
+  fs.mkdirSync(xpi);
+  fs.mkdirSync(src);
+  fs.writeFileSync(
+    path.join(xpi, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1","background":{"scripts":["bg.js"]}}'
+  );
+  fs.writeFileSync(path.join(xpi, "bg.js"), "const k = 1;\nconst k = 2;\n");
+  fs.writeFileSync(
+    path.join(src, "package.json"),
+    '{"name":"x","version":"1.0.0"}'
+  );
+  fs.writeFileSync(path.join(src, "broken.js"), "let a;\nlet a;\n");
+  try {
+    const r = run([xpi, ...OFFLINE_FLAGS]);
+    assert.equal(r.code, 1, r.stderr);
+    assert.match(
+      r.stdout,
+      /bg\.js:2 - Identifier 'k' has already been declared\./
+    );
+    assert.doesNotMatch(r.stderr, /verify failed/);
+    fs.writeFileSync(path.join(xpi, "bg.js"), "browser.runtime.id;\n");
+    const sca = run([xpi, "--sca-root", src, ...OFFLINE_FLAGS]);
+    assert.equal(sca.code, 1, sca.stderr);
+    assert.match(
+      sca.stdout,
+      /broken\.js:2 - Identifier 'a' has already been declared\./
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // An XPI may hold no symbolic link, whichever file it is and however it arrives: the run
 // refuses it as invalid, names the link, and reviews nothing - in an XPI review and as the
 // XPI of a source review alike.

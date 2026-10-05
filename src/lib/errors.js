@@ -9,7 +9,9 @@
 //
 // The class reaches the outside world because nothing swallows it: src/cli.js prints
 // err.message and exits 2 - a tool failure the review could not run through, distinct from a
-// completed review that found errors.
+// completed review that found errors. The one class a catch may absorb is WALK, and only in
+// the per-file loops that walk submission code (src/checks/extract.js, src/lib/minified.js):
+// it is about one file, which those loops record and skip.
 //
 // Belongs here: the error type, the class-driven re-throw guard. Does NOT belong here: the
 // class NAMES (-> src/lib/enum.js, where every enum is declared), what any one failure means
@@ -77,6 +79,22 @@ export function ioError(file) {
     ERROR_CLASS.IO,
     `A file changed during the review and cannot be read: ${file}`
   );
+}
+
+/**
+ * Babel could not walk the AST of one submission file. Its parser recovers from errors
+ * (src/parse/ast.js), so an AST can come back that its walker then refuses - a `let`
+ * declared twice is the known case. The file's code cannot be analysed, but the review can
+ * go on: the per-file loops that walk submission code catch this class, record the file,
+ * and move on to the next one.
+ * @param {string} reason  Why, in Babel's words.
+ * @param {?number} line  Where in the parsed code, 1-based; null when Babel gave no place.
+ * @returns {LinterError}
+ */
+export function walkError(reason, line) {
+  const err = new LinterError(ERROR_CLASS.WALK, reason);
+  err.line = line;
+  return err;
 }
 
 /**

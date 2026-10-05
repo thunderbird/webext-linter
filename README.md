@@ -362,6 +362,7 @@ machine.
 | `trademark-thunderbird-name` | The same question for a name the manifest.json states literally. It carries no locale tag, so nothing in the package says what language it is in and the language must be settled first - not answerable from the submission, so it escalates to manual review and never rejects on its own. |
 | `unknown-api` | Unknown namespaces, unknown members (incl. methods on property types like `storage.local.x`), and APIs marked `unsupported`. |
 | `unparsable-file` | A JavaScript, TypeScript, or Vue `<script>` source that failed to parse, so its API checks were skipped (info). |
+| `unanalysable-file` | A source the parser read but whose code could not be walked, so none of it was analysed - a `let`, `const` or `class` declared twice, which no engine runs and no bundler builds. Reported in either artifact, at the line the parser named (error). |
 | `unpinned-vendor-source` | A VENDOR-declared file whose (trusted-host) source is not pinned to an immutable version/tag/commit, so its bytes can't be verified (error). |
 | `unrecognized-manifest-key` | A top-level manifest.json key the schema does not define - Thunderbird ignores it (info). |
 | `unsafe-html` | Any write to `innerHTML`/`outerHTML`/`srcdoc`/`insertAdjacentHTML`. Only `Element.setHTML()` is sanctioned (an empty/null clear is exempt) (info). |

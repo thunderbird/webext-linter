@@ -2,7 +2,9 @@
 // one canonical set of lenient parse options, the ESM unwrap of
 // @babel/traverse's CommonJS default export, and the node -> finding-loc
 // helper. Submission code is untrusted and often partial, so parsing is
-// error-recovering and a fatal failure is reported, never thrown.
+// error-recovering and a fatal failure is reported, never thrown. A recovered AST
+// can still be one Babel's walker refuses; `traverse` throws that as a walkError
+// (src/lib/errors.js), about the one file, for the per-file loops to record.
 //
 // Belongs here: the only direct import of @babel/parser and @babel/traverse in
 // the app, plus the parse-options and the node->report primitives every parser
@@ -19,8 +21,106 @@ import { parse } from "@babel/parser";
 import _traverse from "@babel/traverse";
 import { extname } from "../util/files.js";
 import { displayLine } from "../util/text.js";
+import { LinterError, walkError } from "../lib/errors.js";
 
-export const traverse = _traverse.default || _traverse;
+const babelTraverse = _traverse.default || _traverse;
+
+/**
+ * Walk an AST with Babel - the one walk every parser uses. A throw from one of the
+ * `visitor` handlers is ours and passes through untouched, so a bug in a scanner still
+ * ends the run rather than being blamed on the submission. A throw from Babel's walker is a
+ * walkError only when it refuses a declaration Babel's parser recovered from (a `let`
+ * declared twice): the walker names that declaration, the parser recorded it with its
+ * reason and place, and that record is what the walkError carries. Anything else the walker
+ * throws - a stack overflow on deeply nested code, say - is not something the parser
+ * recovered from and stays a tool failure.
+ * @param {import("@babel/types").File} ast
+ * @param {object} visitor  Babel visitor: handlers keyed by node type, or {enter, exit}.
+ * @returns {void}
+ */
+export function traverse(ast, visitor) {
+  const ours = new WeakSet();
+  try {
+    babelTraverse(ast, guardedVisitor(visitor, ours));
+  } catch (err) {
+    if (
+      err === null ||
+      typeof err !== "object" ||
+      err instanceof LinterError ||
+      ours.has(err)
+    ) {
+      throw err;
+    }
+    const name = quotedName(err.message);
+    const recovered =
+      name == null
+        ? undefined
+        : ast?.errors?.find((e) => e.details?.identifierName === name);
+    if (!recovered) {
+      throw err;
+    }
+    throw walkError(
+      withoutPosition(recovered.message),
+      recovered.loc?.line ?? null
+    );
+  }
+}
+
+/**
+ * The name a Babel walker message quotes (`Duplicate declaration "k"` -> `k`), or null when
+ * it quotes none.
+ * @param {string} message @returns {?string}
+ */
+function quotedName(message) {
+  const open = message.indexOf('"');
+  const close = message.lastIndexOf('"');
+  return open === -1 || close <= open ? null : message.slice(open + 1, close);
+}
+
+/**
+ * `visitor` with every handler wrapped to remember what it threw, so a throw from our own
+ * code can be told from one Babel raised while walking.
+ * @param {object} visitor @param {WeakSet<object>} ours @returns {object}
+ */
+function guardedVisitor(visitor, ours) {
+  const guard = (fn) =>
+    function (...args) {
+      try {
+        return fn.apply(this, args);
+      } catch (err) {
+        if (err !== null && typeof err === "object") {
+          ours.add(err);
+        }
+        throw err;
+      }
+    };
+  const guarded = {};
+  for (const [key, handler] of Object.entries(visitor)) {
+    if (typeof handler === "function") {
+      guarded[key] = guard(handler);
+    } else if (handler !== null && typeof handler === "object") {
+      guarded[key] = { ...handler };
+      for (const phase of ["enter", "exit"]) {
+        if (typeof handler[phase] === "function") {
+          guarded[key][phase] = guard(handler[phase]);
+        }
+      }
+    } else {
+      guarded[key] = handler;
+    }
+  }
+  return guarded;
+}
+
+/**
+ * A Babel error message without the "(line:column)" it ends with - the position is reported
+ * as a line of its own, offset for an inline script, so the message keeps only the reason.
+ * @param {string} message @returns {string}
+ */
+function withoutPosition(message) {
+  const cut = message.lastIndexOf(" (");
+  return cut > 0 && message.endsWith(")") ? message.slice(0, cut) : message;
+}
 
 /** @typedef {import("@babel/types").Node} AstNode */
 /**

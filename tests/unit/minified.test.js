@@ -101,3 +101,14 @@ test("isMinifiedJs lets the caller choose which way an unparsable body falls", (
     );
   }
 });
+
+// A long-line file Babel parses but cannot walk is judged like one it cannot parse: packed
+// by default, and not packed where the caller says an unparsable body is not code.
+test("isMinifiedJs answers a file Babel cannot walk instead of throwing", () => {
+  const code = `const k = 1; const k = 2; var s = "${"x".repeat(600)}";`;
+  assert.equal(isMinifiedJs(code, "a.js"), true);
+  assert.equal(
+    isMinifiedJs(code, "a.js", { unparsableIsMinified: false }),
+    false
+  );
+});

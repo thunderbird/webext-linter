@@ -21,6 +21,8 @@ import { extname, JS_EXTENSIONS } from "../util/files.js";
 import { parseJs, traverse } from "../parse/ast.js";
 import { debug } from "../util/log.js";
 import { replaceSpans, replaceQuoted } from "../util/text.js";
+import { LinterError } from "./errors.js";
+import { ERROR_CLASS } from "./enum.js";
 
 // A line this long is what "packed" looks like: real minification emits lines of
 // thousands of characters. Below it a file cannot be minified, so it is not parsed.
@@ -105,7 +107,9 @@ function longestLine(text) {
 /**
  * The most statement starts on any single line of `text`. Fail-open: source we cannot
  * parse (already past the long-line gate) stays minified, so unparseable packed code is
- * not waved through - errorRecovery makes this rare.
+ * not waved through - errorRecovery makes this rare. Source Babel parses but cannot walk
+ * (a walkError, src/parse/ast.js) is answered the same way; the extraction pass, which
+ * walks every source, records that file for the review.
  * @param {string} text @param {string} [file] @returns {number}
  */
 function maxLineStatements(text, file) {
@@ -116,22 +120,30 @@ function maxLineStatements(text, file) {
   }
   const perLine = new Map();
   let max = 0;
-  traverse(ast, {
-    enter(path) {
-      if (!path.isStatement()) {
-        return;
-      }
-      const line = path.node.loc?.start.line;
-      if (line == null) {
-        return;
-      }
-      const n = (perLine.get(line) ?? 0) + 1;
-      perLine.set(line, n);
-      if (n > max) {
-        max = n;
-      }
-    },
-  });
+  try {
+    traverse(ast, {
+      enter(path) {
+        if (!path.isStatement()) {
+          return;
+        }
+        const line = path.node.loc?.start.line;
+        if (line == null) {
+          return;
+        }
+        const n = (perLine.get(line) ?? 0) + 1;
+        perLine.set(line, n);
+        if (n > max) {
+          max = n;
+        }
+      },
+    });
+  } catch (err) {
+    if (!(err instanceof LinterError) || err.class !== ERROR_CLASS.WALK) {
+      throw err;
+    }
+    debug(`minified: could not walk ${file ?? "source"}: ${err.message}`);
+    return Infinity;
+  }
   return max;
 }
 

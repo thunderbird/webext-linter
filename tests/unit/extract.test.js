@@ -13,7 +13,9 @@ import {
   runExtractionPass,
   remoteJsOf,
   moduleSyntaxOf,
+  walkFailureOf,
 } from "../../src/checks/extract.js";
+import { parseJs, traverse } from "../../src/parse/ast.js";
 import { scanRemoteJs } from "../../src/parse/remote-js.js";
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
 import { scanCoreSymbols } from "../../src/parse/core-symbols.js";
@@ -172,5 +174,123 @@ test("a vendored library dropped from the skip set is still content-scanned", ()
     hits.length,
     1,
     "the exfiltration in the now-authored library is seen"
+  );
+});
+
+// ---- code Babel parses but cannot walk ----
+
+// Babel's parser recovers from a redeclared `let`/`const`/`class`, and the first walk of that
+// AST throws. That is the file's failure, not the review's: the pass records it with the
+// line and reason Babel's parser gave, empties the file's scans, and carries on with the
+// next source.
+test("a source Babel cannot walk is recorded, emptied, and the rest extract", () => {
+  for (const [code, line, name] of [
+    ['const k = 1;\nconst k = 2;\nfetch("https://x.example/");', 2, "k"],
+    // Babel places this one at the parameter it collides with.
+    ['function f(x) {\n  let x = 1;\n}\nfetch("https://x.example/");', 1, "x"],
+    [
+      'function g() {\n  { class A {}\n    class A {} }\n}\nfetch("https://x.example/");',
+      3,
+      "A",
+    ],
+  ]) {
+    const sources = [
+      src("bad.js", code),
+      src("ok.js", 'fetch("https://y.example/");'),
+    ];
+    runExtractionPass(sources);
+    const [bad, ok] = sources;
+    assert.deepEqual(walkFailureOf(bad), {
+      reason: `Identifier '${name}' has already been declared.`,
+      line,
+    });
+    assert.deepEqual(networkSinksOf(bad).hits, [], "its scans are empty");
+    assert.ok(apiUsageOf(bad).parseError, "consumers see it as not analysed");
+    assert.equal(walkFailureOf(ok), null);
+    assert.equal(
+      networkSinksOf(ok).hits.length,
+      1,
+      "the next source is extracted"
+    );
+  }
+});
+
+// An inline script reports the line in its page, not in the script body.
+test("a walk failure in an inline script is placed on the page's line", () => {
+  const inline = {
+    file: "popup.html",
+    code: "let a = 1;\nlet a = 2;",
+    lineOffset: 10,
+    inline: true,
+  };
+  runExtractionPass([inline]);
+  assert.equal(walkFailureOf(inline).line, 12);
+});
+
+// What a classic script allows is not a failure: a function declared twice walks, and so
+// does the shape real add-ons ship (an async function redeclared at top level), which Babel's
+// parser flags and recovers from.
+test("redeclarations a classic script allows are walked normally", () => {
+  for (const code of [
+    "function a() {}\nfunction a() {}",
+    "async function h() {}\nasync function h() {}",
+  ]) {
+    const sources = [src("fine.js", code)];
+    runExtractionPass(sources);
+    assert.equal(walkFailureOf(sources[0]), null, code);
+    assert.equal(apiUsageOf(sources[0]).parseError, null, code);
+  }
+});
+
+// A throw from a visitor is the linter's own bug: it passes through unchanged, so it ends
+// the run instead of being reported as the submission's fault.
+test("traverse passes a visitor's own throw through untouched", () => {
+  const { ast } = parseJs("const k = 1;\nconst k = 2;", "a.js");
+  const bug = new Error("scanner bug");
+  assert.throws(
+    () =>
+      traverse(parseJs("var x = 1;", "a.js").ast, {
+        Identifier() {
+          throw bug;
+        },
+      }),
+    (err) => err === bug
+  );
+  // ...while Babel refusing the code is a walk error with Babel's reason and line.
+  assert.throws(
+    () => traverse(ast, { Identifier() {} }),
+    (err) =>
+      err.class.walk &&
+      err.message === "Identifier 'k' has already been declared." &&
+      err.line === 2
+  );
+});
+
+// Babel's parser also records errors a classic script allows (a legacy octal, a function
+// declared twice) and walks past them. The finding names the declaration the walk refused,
+// not the first thing the parser noted.
+test("a walk failure names the declaration refused, not an earlier recovered note", () => {
+  const sources = [
+    src(
+      "bad.js",
+      "var mode = 0755;\nfunction h() {}\nfunction h() {}\nconst k = 1;\nconst k = 2;"
+    ),
+  ];
+  runExtractionPass(sources);
+  assert.deepEqual(walkFailureOf(sources[0]), {
+    reason: "Identifier 'k' has already been declared.",
+    line: 5,
+  });
+});
+
+// Only a declaration the parser recovered from is the submission's failure. Babel running
+// out of stack on deeply nested, valid code is the tool's limit: it is not turned into a
+// claim that the code is invalid.
+test("a walker throw the parser did not recover from is not a walk error", () => {
+  const terms = Array.from({ length: 3000 }, (_, i) => `"p${i}"`);
+  const { ast } = parseJs(`var s = ${terms.join(" +\n")};`, "deep.js");
+  assert.throws(
+    () => traverse(ast, { Identifier() {} }),
+    (err) => err instanceof RangeError && err.class === undefined
   );
 });

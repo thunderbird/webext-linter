@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>File could not be analysed</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>File could not be analysed <span class="badge error">error</span></h1>
+        <div class="check-id">unanalysable-file</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A JavaScript source the parser read but whose code could not be
+        analysed. The parser recovers from some errors and still produces a
+        syntax tree, but the analysis that walks that tree refuses it, so none
+        of the file's code was checked.
+      </p>
+      <p>
+        The known case is a <code>let</code>, <code>const</code> or
+        <code>class</code> declared twice in one scope. Every JavaScript engine
+        and bundler rejects that before running anything, so the file can
+        neither run in Thunderbird nor be built. The rest of the review goes on:
+        the failure belongs to the one file.
+      </p>
+      <p>
+        It is asked of every artifact the review has, so in a source review a
+        broken file is reported in the built XPI as well as in the source
+        archive. A file the parser could not read at all is
+        <a href="unparsable-file.html">unparsable-file</a>'s instead.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A JavaScript source<br/>in either artifact"] --> B{"Did the parser read it?"}
+  B -- no --> U([unparsable-file])
+  B -- yes --> C{"Could its code be walked?"}
+  C -- yes --> OK([no finding])
+  C -- no --> ERR([ERROR: file could not be analysed,<br/>at the line the parser named])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        One error finding per file, at the line the parser named, with its
+        reason (for example "Identifier 'k' has already been declared").
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/unanalysable-file.js</code>, the
+        walk in <code>src/parse/ast.js</code>, and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

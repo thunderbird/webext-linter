@@ -42,6 +42,7 @@
       "untrusted-minified-library",
       "untrusted-library",
       "unparsable-file",
+      "unanalysable-file",
       "experiment-modified",
       "experiment-missing-strict-max-version",
       "experiment-overrides-api",
