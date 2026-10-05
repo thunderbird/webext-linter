@@ -1,19 +1,19 @@
-// A default_locale manifest.json key requires a packaged _locales directory; without
-// it Thunderbird refuses to load the add-on. Errors when default_locale is
-// declared but no _locales directory is present, locating the default_locale
-// line. The inverse (_locales with no default_locale) is
-// default-locale-missing.js.
+// A default_locale manifest.json key must name a folder in _locales/; Thunderbird refuses to
+// load the add-on otherwise ("must correspond to a directory in _locales/"). Errors when
+// default_locale names no such folder - including when the add-on ships no _locales at all,
+// and when the value is not a string, which Thunderbird cannot read as a locale - locating
+// the default_locale line. Matched as Thunderbird matches, `_` read as `-` on both
+// sides, so "en_US" is found in an `_locales/en-US/` folder. The inverse (_locales with no
+// default_locale) is default-locale-missing.js.
 //
-// Belongs here: the declared-default_locale / absent-_locales verdict and
-// locating the default_locale line. Does NOT belong here: the _locales scan (->
-// getLocales in src/lib/locales.js, memoized and shared with
-// default-locale-missing), finding a manifest.json key's line (-> tokenLine
-// in src/lib/util.js), authored wording (-> assets/registry.yaml), and
+// Belongs here: the default_locale-names-no-folder verdict and locating the default_locale
+// line. Does NOT belong here: the _locales scan (-> localeMessages in src/lib/locales.js,
+// the directories Thunderbird lists), authored wording (-> assets/registry.yaml), and
 // severity (-> that registry entry).
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { getLocales } from "../../lib/locales.js";
+import { localeKey, localeMessages } from "../../lib/locales.js";
 import { skipWithoutManifest } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -32,22 +32,34 @@ export default {
     if (!manifest) {
       return skipWithoutManifest(ctx);
     }
-    if (!manifest.default_locale) {
+    const declared = manifest.default_locale;
+    if (!declared) {
       ctx.note?.(ctx.manifest.locus(), "no default_locale", VERDICT.SKIPPED);
       return { findings: [] };
     }
-    if (getLocales(ctx).hasLocales) {
+    const folders = localeMessages(ctx).map((l) => l.locale);
+    // Thunderbird reads it as a locale name; anything else it cannot load at all.
+    if (
+      typeof declared === "string" &&
+      folders.some((f) => localeKey(f) === localeKey(declared))
+    ) {
       ctx.note?.(
         ctx.manifest.locus(),
-        "_locales directory present",
+        "default_locale names a _locales folder",
         VERDICT.PASS
       );
       return { findings: [] };
     }
     const at = ctx.manifest.locus("default_locale");
-    ctx.note?.(at, "default_locale without _locales", VERDICT.FAIL);
+    const hint =
+      typeof declared !== "string"
+        ? "not a locale name"
+        : folders.length
+          ? `no _locales/${declared}/ folder`
+          : "no _locales folder";
+    ctx.note?.(at, hint, VERDICT.FAIL);
     return {
-      findings: [finding({ ...at })],
+      findings: [finding({ ...at, hint })],
     };
   },
 };

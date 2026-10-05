@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Wrong Locale Folder",
+  "version": "1.0",
+  "description": "Uses only declared permissions and existing APIs.",
+  "permissions": [
+    "messagesRead",
+    "accountsRead",
+    "messagesMove"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "compose_action": {
+    "default_title": "Compose"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png"
+  },
+  "default_locale": "fr"
+}

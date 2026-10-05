@@ -107,6 +107,7 @@ A selection, not the catalogue - every folder under `addons/` is a fixture:
 | `manifest-latin1` | `manifest-invalid-json`: a Latin-1 byte, which Thunderbird's strict UTF-8 decoding refuses. |
 | `manifest-utf16` | A manifest.json stored as UTF-16LE behind a byte-order mark, which Thunderbird reads - expects zero findings. |
 | `locale-messages-invalid` | `locale-messages-invalid`: one `_locales` folder's messages.json has a trailing comma. |
+| `default-locale-wrong-folder` | `default-locale-unused`: default_locale names a locale with no `_locales/<lang>/` folder. |
 | `experiment-schema-invalid` | `experiment-schema-invalid`: an allowed Experiment whose second schema file has a trailing comma. |
 | `manifest-line-comments` | `//` comments in manifest.json (whole-line, trailing, and `//` inside a string), which Thunderbird removes before parsing - expects zero findings. |
 | `bundled-files` | `bundled-files`: a referenced file (`content_scripts`) isn't packaged. |

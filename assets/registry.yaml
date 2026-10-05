@@ -1213,14 +1213,14 @@ deterministic-phase:
   response: |-
     A _locales directory is present but manifest.json declares no default_locale, so Thunderbird will refuse to load the add-on. Add a default_locale naming the fallback locale (e.g. "en").
 
-# A default_locale key requires a packaged _locales directory, or Thunderbird
-# will not load the add-on.
+# A default_locale key must name a folder in _locales/ (no _locales at all included), or
+# Thunderbird will not load the add-on. Matched with `_` read as `-`, as Thunderbird does.
 - title: Unused default_locale
   severity: error
   check: default-locale-unused
   input: xpi
   response: |-
-    manifest.json declares default_locale but the add-on ships no _locales directory, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files, or remove default_locale.
+    manifest.json declares a default_locale for which the add-on ships no _locales/[lang] folder, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files for it, or correct or remove default_locale.
 
 # An extension with no top-level `icons` key ships no defined add-on icon, so
 # Thunderbird shows the generic puzzle-piece placeholder in the Add-ons Manager.

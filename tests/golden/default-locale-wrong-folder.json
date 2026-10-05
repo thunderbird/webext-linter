@@ -1,9 +1,9 @@
 {
   "meta": {
     "action": "review",
-    "xpi": "<root>/tests/addons/default-locale-unused",
-    "xpiRoot": "<root>/tests/addons/default-locale-unused/",
-    "xpiFile": "default-locale-unused",
+    "xpi": "<root>/tests/addons/default-locale-wrong-folder",
+    "xpiRoot": "<root>/tests/addons/default-locale-wrong-folder/",
+    "xpiFile": "default-locale-wrong-folder",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
@@ -111,10 +111,10 @@
       "severity": "error",
       "file": "manifest.json",
       "loc": {
-        "line": 5
+        "line": 23
       },
       "item": null,
-      "hint": "no _locales folder",
+      "hint": "no _locales/fr/ folder",
       "artifact": "XPI",
       "message": "manifest.json declares a default_locale for which the add-on ships no _locales/[lang] folder, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files for it, or correct or remove default_locale."
     }

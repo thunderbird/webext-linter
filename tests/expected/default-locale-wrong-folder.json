@@ -1,0 +1,8 @@
+{
+  "_comment": "default_locale names \"fr\" but the add-on ships only _locales/en/. Thunderbird requires default_locale to name a folder in _locales/ and refuses the add-on otherwise, so default-locale-unused reports the default_locale line (hint: no _locales/fr/ folder).",
+  "expect": {
+    "default-locale-unused": [
+      "manifest.json:23"
+    ]
+  }
+}

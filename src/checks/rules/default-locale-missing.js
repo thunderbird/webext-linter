@@ -1,16 +1,17 @@
-// A packaged _locales directory requires a default_locale manifest.json key; without
-// it Thunderbird refuses to load the add-on. Errors when _locales is present but
-// default_locale is absent. The inverse (default_locale with no _locales) is
+// A packaged _locales folder requires a default_locale manifest.json key; without it
+// Thunderbird refuses to load the add-on. Errors when _locales holds a locale folder but
+// default_locale is absent - folders only, as Thunderbird lists them, so a stray file in
+// _locales/ is no locale. The inverse (a default_locale naming no _locales folder) is
 // default-locale-unused.js.
 //
-// Belongs here: the present-_locales / absent-default_locale verdict. Does NOT
-// belong here: the _locales scan (-> getLocales in src/lib/locales.js,
-// memoized and shared with default-locale-unused), authored wording (->
-// assets/registry.yaml), and severity (-> that registry entry).
+// Belongs here: the locale-folders / absent-default_locale verdict. Does NOT belong here:
+// the _locales scan (-> localeMessages in src/lib/locales.js, shared with
+// default-locale-unused), authored wording (-> assets/registry.yaml), and severity (->
+// that registry entry).
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { getLocales } from "../../lib/locales.js";
+import { localeMessages } from "../../lib/locales.js";
 import { skipWithoutManifest } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -29,7 +30,7 @@ export default {
     if (!manifest) {
       return skipWithoutManifest(ctx);
     }
-    if (!getLocales(ctx).hasLocales) {
+    if (!localeMessages(ctx).length) {
       ctx.note?.(
         ctx.manifest.locus(),
         "no _locales directory",

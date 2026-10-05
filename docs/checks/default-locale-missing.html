@@ -22,10 +22,11 @@
       </p>
       <p>
         This is the mirror image of the default-locale-unused check, which covers
-        the opposite mistake of declaring a default locale with no _locales
-        directory. This check only acts when a _locales directory is actually
-        present; if the manifest did not parse, or there is no _locales
-        directory, or a default locale is already declared, it stays silent.
+        the opposite mistake of declaring a default locale that names no
+        _locales folder. This check only acts when _locales holds a locale
+        folder (a file sitting directly in _locales is not one); if the manifest
+        did not parse, or there is no locale folder, or a default locale is
+        already declared, it stays silent.
       </p>
 
       <h2>Decision flow</h2>

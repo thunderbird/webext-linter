@@ -5742,6 +5742,60 @@ test("default-locale checks flag the two load-breaking directions", () => {
   );
 });
 
+// The wider question Thunderbird asks: default_locale must name a FOLDER in _locales/, the
+// name matched with `_` read as `-`. A folder for another locale does not count.
+test("default-locale-unused reports a default_locale naming no _locales folder", () => {
+  const ctx = (files, manifest) =>
+    withManifest({
+      artifact: {
+        files: new Map(
+          Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])
+        ),
+        manifest: manifestOf(manifest),
+      },
+    });
+  const en = { "_locales/en/messages.json": "{}" };
+  assert.deepEqual(
+    defaultLocaleUnused
+      .run(ctx(en, { default_locale: "fr" }))
+      .findings.map((f) => f.hint),
+    ["no _locales/fr/ folder"]
+  );
+  assert.deepEqual(
+    defaultLocaleUnused
+      .run(ctx({}, { default_locale: "en" }))
+      .findings.map((f) => f.hint),
+    ["no _locales folder"]
+  );
+  assert.equal(
+    defaultLocaleUnused.run(
+      ctx({ "_locales/en-US/messages.json": "{}" }, { default_locale: "en_US" })
+    ).findings.length,
+    0
+  );
+  // A file sitting directly in _locales is not a folder Thunderbird lists.
+  assert.equal(
+    defaultLocaleUnused.run(
+      ctx({ "_locales/fr": "x", ...en }, { default_locale: "fr" })
+    ).findings.length,
+    1
+  ); // A value that is not a string is no locale name: Thunderbird cannot load it, even
+  // where a folder spells what it would stringify to.
+  assert.deepEqual(
+    defaultLocaleUnused
+      .run(ctx(en, { default_locale: ["en"] }))
+      .findings.map((f) => f.hint),
+    ["not a locale name"]
+  );
+  // And the sibling counts folders the same way: a stray file in _locales is no locale,
+  // so it asks for no default_locale.
+  assert.equal(
+    defaultLocaleMissing.run(ctx({ "_locales/README.txt": "notes" }, {}))
+      .findings.length,
+    0
+  );
+});
+
 // ---- addon-icon-missing ----
 // No defined add-on icon (absent `icons`, empty/blank values, or a malformed
 // non-object) gets one advisory with no location; a declared icon passes; themes

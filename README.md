@@ -324,7 +324,7 @@ machine.
 | `debugger-statement` | Unconditional `debugger` statements. |
 | `locale-messages-invalid` | A `_locales/<lang>/` folder whose `messages.json` is missing or that Thunderbird cannot read (not UTF-8 or UTF-16 text, not JSON with only `//` comments, or not messages data) - Thunderbird refuses to install the add-on (error). |
 | `default-locale-missing` | A packaged `_locales/` directory but no `default_locale` manifest.json key - Thunderbird refuses to load the add-on (error). |
-| `default-locale-unused` | A `default_locale` manifest.json key but no packaged `_locales/` directory - Thunderbird refuses to load the add-on (error). |
+| `default-locale-unused` | A `default_locale` manifest.json key that names no packaged `_locales/<lang>/` folder (or no `_locales/` at all) - Thunderbird refuses to load the add-on (error). |
 | `deprecated-api` | Deprecated APIs (member or namespace level). An API newer than the declared range is the `strict-*-version-api` checks. |
 | `disguised-navigation` | Data smuggled out through a page navigation (`location.assign`/`replace`) built with appended runtime data (error, regardless of consent). |
 | `disguised-resource` | Data smuggled out through a resource-load URL (image/iframe/media `src`, `setAttribute`) built with appended runtime data (error, regardless of consent). |

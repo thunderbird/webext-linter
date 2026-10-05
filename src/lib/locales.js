@@ -4,12 +4,11 @@
 // scan runs a single time per review - the same "compute
 // once, checks read it" pattern as addon.outboundSinks / addon.bundled.
 //
-// Belongs here: getLocales - collecting the _locales/<lang> directories present
-// in the package; localeMessages - each locale directory's messages.json, read the way
-// Thunderbird reads it; localizedNames - the name each locale states, resolved through a
-// __MSG_ placeholder, plus the locales whose file could not be read;
-// isEnglishLocale - reading a locale directory's tag; and memoizing both scans on
-// the addon.
+// Belongs here: localeMessages - each _locales/<lang> folder and its messages.json, read
+// the way Thunderbird reads them; localeKey - the key Thunderbird files a locale under;
+// localizedNames - the name each locale states, resolved through a __MSG_ placeholder,
+// plus the locales whose file could not be read; isEnglishLocale - reading a locale
+// folder's tag; and memoizing both scans on ctx.cache.
 //
 // Does NOT belong here: the verdicts (-> src/checks/rules/default-locale-*.js
 // and the trademark-* checks), the English-localization judgement (->
@@ -36,33 +35,6 @@ const ENGLISH_DIR = /^en([-_]|$)/i;
  */
 export function isEnglishLocale(tag) {
   return typeof tag === "string" && ENGLISH_DIR.test(tag);
-}
-
-/**
- * The add-on's _locales directories, scanned once and memoized on the addon so
- * every check shares the result.
- * @param {RunContext} ctx
- * @returns {{dirs: Set<string>, hasLocales: boolean}}
- */
-export function getLocales(ctx) {
-  return ((ctx.cache ??= {}).locales ??= scan(ctx));
-}
-
-/**
- * @param {RunContext} ctx
- * @returns {{dirs: Set<string>, hasLocales: boolean}}
- */
-function scan(ctx) {
-  const dirs = new Set();
-  for (const p of ctx.artifact?.files?.keys() ?? []) {
-    if (p.startsWith("_locales/")) {
-      const lang = p.split("/")[1];
-      if (lang) {
-        dirs.add(lang);
-      }
-    }
-  }
-  return { dirs, hasLocales: dirs.size > 0 };
 }
 
 /**
@@ -126,8 +98,12 @@ function scanMessages(ctx) {
   );
 }
 
-/** @param {string} tag @returns {string} The key Thunderbird files a locale under. */
-function localeKey(tag) {
+/**
+ * The key Thunderbird files a locale under: its tag with `_` read as `-` (Gecko's
+ * normalizeLocaleCode), so `en_US` and `en-US` name one locale.
+ * @param {string} tag @returns {string}
+ */
+export function localeKey(tag) {
   return tag.split("_").join("-");
 }
 

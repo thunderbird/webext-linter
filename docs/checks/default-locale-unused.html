@@ -15,18 +15,21 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        An add-on that declares a <code>default_locale</code> key in its manifest
-        but ships no <code>_locales</code> directory to back it up. A default
-        locale points at localized message files that must exist in the package,
-        and without them Thunderbird refuses to load the add-on. The finding is
-        located on the default_locale line in the manifest.
+        An add-on whose <code>default_locale</code> manifest key names no folder
+        in <code>_locales/</code> - including an add-on that ships no
+        <code>_locales</code> directory at all. A default locale points at the
+        localized message files of that folder, and when the folder is not there
+        Thunderbird refuses to load the add-on. The name is matched as
+        Thunderbird matches it, with <code>_</code> read as <code>-</code>, so
+        <code>en_US</code> is found in an <code>_locales/en-US/</code> folder.
+        The finding is located on the default_locale line in the manifest.
       </p>
       <p>
         This is the mirror image of the default-locale-missing check, which
         covers the opposite mistake of shipping a _locales directory with no
         default locale declared. This check only acts when a default locale is
         declared; if the manifest did not parse, or no default locale is
-        declared, or a _locales directory is already present, it stays silent.
+        declared, or the folder it names is present, it stays silent.
       </p>
 
       <h2>Decision flow</h2>
@@ -37,9 +40,9 @@ flowchart TD
   B -- no --> S([skip])
   B -- yes --> C{"default_locale declared<br/>in the manifest?"}
   C -- no --> S
-  C -- yes --> D{"A _locales directory<br/>is present?"}
+  C -- yes --> D{"_locales/ holds the folder<br/>it names? (_ read as -)"}
   D -- yes --> OK([no finding])
-  D -- no --> ERR([ERROR: default_locale declared<br/>but no _locales directory])
+  D -- no --> ERR([ERROR: default_locale names<br/>no _locales folder])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -52,9 +55,10 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told the manifest declares default_locale but ships no
-        _locales directory, so Thunderbird will refuse to load it, and is asked
-        to add the _locales message files or remove default_locale.
+        The add-on is told the manifest declares a default_locale for which it
+        ships no _locales folder, so Thunderbird will refuse to load it, and is
+        asked to add that folder's message files, or correct or remove
+        default_locale. The location line names the folder that is missing.
       </div>
 
       <p class="source-note">
