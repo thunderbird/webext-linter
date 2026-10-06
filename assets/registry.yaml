@@ -425,18 +425,16 @@ deterministic-phase:
 # so a SHIPPED one must be included readable in the archive. BUILD dependencies are held to
 # the same bar, for the reason they are OSV-audited: the reviewer installs and runs them, so
 # an obscure build tool is code we ask them to execute on nobody's word, and refusing only
-# the vulnerabilities we can name would protect them from the named risk alone. They cannot
-# be shipped readable, so the remedy is a widely-used equivalent - or none, where the
-# package is not needed to reproduce the XPI at all: an archive is submitted so the build
-# can be REPRODUCED, and a dependency no step of that needs is one the reviewer is asked to
-# install for nothing. That is the only route open to a package with no popular counterpart,
-# such as a types-only package. verifyScaDependencies records both (vendor.unpopularDeps).
-- title: Unreviewable build dependency
+# the vulnerabilities we can name would protect them from the named risk alone. Either kind
+# can instead be included readable in the archive as a local file: package, which the review
+# treats as authored code; or replaced, or removed where the add-on does not need it.
+# verifyScaDependencies records both (vendor.unpopularDeps).
+- title: Unreviewable dependency
   severity: error
   check: unpopular-source-dependency
   input: sca
   response: |-
-    The following dependencies could not be confirmed to be widely-used. Such dependencies must instead be included non-minified in the source so they can be reviewed directly. A build dependency cannot be included that way. Please replace it with a widely-used equivalent, or remove it from the submitted source archive if it is not strictly needed to reproduce the shipped add-on. Reviewers should only be asked to install tools the wider community has vetted.
+    The following dependencies could not be confirmed as widely used, so they can be neither shipped nor used in the build without being reviewed. Replace each with a widely-used equivalent, remove it if the add-on does not need it, or include its non-minified source in the archive and declare it as a local package ("file:./path/to/it") so it is reviewed as part of the submission. Its own dependencies are checked the same way.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 - title: Unparsable file

@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Unreviewable build dependency</title>
+    <title>Unreviewable dependency</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
   <body>
     <main class="page">
       <header class="check-header">
-        <h1>Unreviewable build dependency <span class="badge error">error</span></h1>
+        <h1>Unreviewable dependency <span class="badge error">error</span></h1>
         <div class="check-id">unpopular-source-dependency</div>
       </header>
 
@@ -37,14 +37,11 @@
         them on their own machine to reproduce the build. Refusing only the
         vulnerabilities that have been written down, while accepting a package
         nobody has vetted, would guard against the risk we can name and not the
-        one we cannot. The remedy differs, though. A dependency you ship can be
-        included readable in the source instead, and a build tool cannot, so
-        there the answer is a widely-used equivalent - or removing it, where
-        reproducing the shipped add-on never needed it. The archive is submitted
-        so the build can be reproduced, and a package no step of that build
-        requires is one the reviewer is asked to install for nothing. For a
-        package with no popular counterpart, such as a types-only package used
-        while editing, that is the only route open.
+        one we cannot. Either kind can be replaced with a widely-used
+        equivalent, removed where the add-on does not need it, or included
+        readable in the archive and declared as a local package
+        (<code>file:./path/to/it</code>), which the review treats as authored
+        code while checking that package's own dependencies the same way.
       </p>
 
       <h2>Decision flow</h2>
@@ -57,7 +54,7 @@ flowchart TD
   B -- "no (registry has none)" --> S
   B -- yes --> C{"Above the widely-used bar<br/>(npm downloads or GitHub stars)?"}
   C -- yes --> OK([no finding])
-  C -- no --> ERR([ERROR: unreviewable build dependency])
+  C -- no --> ERR([ERROR: unreviewable dependency])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -70,9 +67,9 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told a declared dependency could not be confirmed to be
-        widely-used, and that it needs to be packaged with the add-on so it can
-        be reviewed.
+        The add-on is told a declared dependency could not be confirmed as
+        widely used, and to replace it, remove it, or include it readable as a
+        local package.
       </div>
 
       <p class="source-note">

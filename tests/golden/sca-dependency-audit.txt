@@ -2,7 +2,7 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) The following dependencies could not be confirmed to be widely-used. Such dependencies must instead be included non-minified in the source so they can be reviewed directly. A build dependency cannot be included that way. Please replace it with a widely-used equivalent, or remove it from the submitted source archive if it is not strictly needed to reproduce the shipped add-on. Reviewers should only be asked to install tools the wider community has vetted.
+1) The following dependencies could not be confirmed as widely used, so they can be neither shipped nor used in the build without being reviewed. Replace each with a widely-used equivalent, remove it if the add-on does not need it, or include its non-minified source in the archive and declare it as a local package ("file:./path/to/it") so it is reviewed as part of the submission. Its own dependencies are checked the same way.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - [SCA] package.json:5 - tiny-obscure-helper (1.0.0)
 

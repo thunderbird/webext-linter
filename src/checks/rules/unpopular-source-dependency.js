@@ -2,10 +2,9 @@
 // kind. Rejects a declared dependency that is not a confirmed
 // widely-used library. In a source-code submission the dependency code is not in
 // the readable source (it is pulled in at build) and is mangled in the built XPI,
-// so a non-popular one cannot be reviewed. The remedy differs by what it is for: a
-// SHIPPED dependency can be included readable in the archive instead, and a BUILD
-// one cannot, so there the answer is a widely-used equivalent, or dropping the dependency
-// where reproducing the XPI never needed it. Build dependencies are
+// so a non-popular one cannot be reviewed. Either kind can be replaced, dropped where the
+// add-on never needed it, or included readable in the archive as a local file: package,
+// which is authored code (src/vendor/resolve.js). Build dependencies are
 // held to the same bar for the reason they are OSV-audited - the reviewer installs and
 // RUNS them - so the pre-step (src/vendor/verify.js verifyScaDependencies) looks up the
 // popularity of every declared dependency, production and build alike, and records the
@@ -48,7 +47,7 @@ export default {
       const item = `${name} (${version})`;
       ctx.note?.(
         ctx.artifact.at(file, loc),
-        `${item} - unreviewable build dependency`,
+        `${item} - unreviewable dependency`,
         VERDICT.FAIL
       );
       findings.push(finding({ ...ctx.artifact.at(file, loc), item }));
