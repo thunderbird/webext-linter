@@ -13,14 +13,14 @@
 //
 // ONE GOVERNING LOCK. All four readers below ask governingLock which file the submission
 // installs from, so a submission cannot be rejected over one lock while a version is pinned
-// and a whole tree audited out of another - which is what happened while each picked for
-// itself (first present / first that resolves / first that yields).
+// and a whole tree audited out of another, as readers each picking for itself (first
+// present / first that resolves / first that yields) would allow.
 //
 // Belongs here: lockedVersion(addon, name), lockedPackages(addon), lockGaps(addon),
-// lockSourceGaps(addon), governingLock, and the per-format readers. lockGaps is a comparison, so it needs both sides, but only this
-// one is its own: what the package file DECLARES comes from ./package-file.js, and every lock-side
-// detail the comparison turns on (the npm root record, the pnpm importers, the v1/v3
-// split) is here and private. Does NOT belong here: reading or shaping package.json
+// lockSourceGaps(addon), governingLock, and the per-format readers. lockGaps is a
+// comparison, so it needs both sides, but only this one is its own: what the package file
+// DECLARES comes from ./package-file.js, and every lock-side detail the comparison turns on
+// (the npm root record, the pnpm importers, the v1/v3 split) is here and private. Does NOT belong here: reading or shaping package.json
 // (-> ./package-file.js), deciding pinned/unpinned (-> ./resolve.js), and the verification
 // that follows (-> ./verify.js).
 

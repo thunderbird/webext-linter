@@ -1,8 +1,7 @@
-// One place to fetch under a hard timeout, for the MANDATORY setup downloads (the
-// schema, the allowed-experiments list, the library-hash DB). A bare fetch() with no
-// timeout hangs the whole review on a half-open connection, silently and forever;
-// these inputs are required, so a stalled fetch must fail loud (a throw that main()
-// turns into exit 2), not hang.
+// One place to fetch under a hard timeout. A bare fetch() with no timeout hangs the whole
+// review on a half-open connection, silently and forever; every answer is one the review
+// needs, so a stalled fetch must fail loud (a throw that main() turns into exit 2), not
+// hang.
 //
 // The timeout covers the WHOLE operation - the connection AND the body read - because
 // `consume` runs while the abort signal is still armed. A timeout that only guarded
@@ -13,11 +12,11 @@
 // review asks a host is one it cannot be completed without, so only the first may become a
 // value:
 //
-//   an ANSWER     a response the host chose to give - 2xx, or a 4xx that is not a
-//                 refusal (a 404 saying there is no such package). Returned, or thrown
+//   an ANSWER     a 2xx, or a 404 saying there is no such package. Returned, or thrown
 //                 carrying its status, for the caller to read.
-//   NO ANSWER     a refusal still standing after the retries, a timeout, a connection the
-//                 host did not accept -> NoAnswerError, the review stops.
+//   NO ANSWER     any other status, a refusal still standing after the retries, a
+//                 timeout, a connection the host did not accept -> NoAnswerError, the
+//                 review stops.
 //   NO NETWORK    -> NetworkGoneError, the review stops.
 //
 // Telling the last two apart takes evidence, since nothing in Node can answer it from the
@@ -143,9 +142,10 @@ function isConnectionFailure(err) {
 // nobody checked.
 //
 // So the gate holds each host to an interval and retries a refusal rather than believing
-// it, and a refusal that outlasts the retries is no answer (NoAnswerError). Module-level, because the rate is OURS in total: the vendor step, the CDN
-// identifier and the dependency audit all ask, about different things, and none of them
-// can see what the others have spent.
+// it, and a refusal that outlasts the retries is no answer (NoAnswerError). Module-level,
+// because the rate is OURS in total: the vendor step, the CDN identifier and the dependency
+// audit all ask, about different things, and none of them can see what the others have
+// spent.
 const nextFree = new Map();
 
 let networkIntervalMs = NETWORK_MIN_INTERVAL_MS;
@@ -208,7 +208,7 @@ function meteredHost(url) {
  * without re-reading the response.
  *
  * Separate from httpError because a caller's own wording is often the useful part - the
- * schema download says which schema failed - and that message should not be thrown away
+ * schema download's 404 says which branch is missing - and that message should not be thrown away
  * to gain a status.
  * @param {Error} err  The error to stamp, returned. @param {Response} res
  * @returns {Error}
@@ -284,8 +284,8 @@ function retryAfterMs(header) {
 /**
  * The error a non-ok response becomes where the caller has no wording of its own.
  *
- * The status rides on the error (withHttpStatus), which is what a caller reads to tell a
- * 404 from any other answer (src/lib/cdn-lookup.js).
+ * The status rides on the error (withHttpStatus): fetchWithTimeout reads it to tell a
+ * refusal or a 404 from no answer, and a caller to recognise the 404 (src/lib/cdn-lookup.js).
  * @param {Response} res
  * @returns {Error}
  */
@@ -329,14 +329,14 @@ function refusedToAnswer(err) {
  *
  * `rethrowIfFatal` runs first on every failure, so a dead route or a host that never
  * responded stops the review promptly - we retry a refusal, not an absence of network.
- * A refusal still standing after the retries is no answer either (NoAnswerError). Anything
- * else is an ANSWER the host chose to give, re-thrown untouched with its status for the
- * caller to read (a 404: no such package).
+ * A refusal still standing after the retries, or any status but a 404, is no answer either
+ * (NoAnswerError). A 404 is re-thrown untouched for the caller to read (no such package),
+ * as is a failure with no status (the caller's verdict on bytes that arrived).
  * @template T
  * @param {string} url
  * @param {(res: Response) => Promise<T>} consume  Reads the body, or throws on a
- *   non-ok status with the caller's own wording. Runs while the timeout is armed.
- *   A retry runs it again, against a fresh response.
+ *   non-ok status with the caller's own wording and the status on it (withHttpStatus).
+ *   Runs while the timeout is armed. A retry runs it again, against a fresh response.
  * @param {number} [timeoutMs]
  * @param {RequestInit} [init]  Extra fetch options (method/headers/body). The abort
  *   signal and redirect handling are set here and cannot be overridden.

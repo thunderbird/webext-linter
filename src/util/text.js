@@ -15,10 +15,10 @@
 // a pattern like /[,;:]+$/ is retried from every position inside a long run - a loop walks
 // it once.
 //
-// Belongs here: wrapText (a generic width-wrapper), that guard family, and those scans. Does NOT belong
-// here: the report's section layout (src/report/format.js), the activity-feed narration
-// (src/checks/escalation.js) that call them, or the one door to the terminal
-// (src/util/log.js) that calls displayTerminal.
+// Belongs here: wrapText (a generic width-wrapper), that guard family, and those scans.
+// Does NOT belong here: the report's section layout (src/report/format.js), the
+// activity-feed narration (src/checks/escalation.js) that call them, or the one door to the
+// terminal (src/util/log.js) that calls displayTerminal.
 
 // A leading list marker ("- ", "* ", "• ", "1. ", "2) ") - its width sets the
 // hanging indent for the wrapped continuations.

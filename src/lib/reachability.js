@@ -6,9 +6,10 @@
 // this: unused-files (files reachable from ANY entry point) and
 // minimize-web-accessible-resources (resources reachable from a WEB-FACING entry point,
 // i.e. a content script). Library, minified and vendored JS is parsed for edges like any
-// other: skipping it would hide a loader and wrongly orphan what it loads. `hasDynamicLoaders` is set when a LIVE (reachable) file builds a load
-// path at runtime (dynamic import/getURL) that static analysis can't follow - a loader
-// in dead code never runs, so it is dropped. `isLive` says whether a file is reached
+// other: skipping it would hide a loader and wrongly orphan what it loads.
+// `hasDynamicLoaders` is set when a LIVE (reachable) file builds a load path at runtime
+// (dynamic import/getURL) that static analysis can't follow - a loader in dead code never
+// runs, so it is dropped. `isLive` says whether a file is reached
 // from any entry point. A `mentionsOf` string-find net catches references the structured
 // parsers miss (custom loaders, odd strings); it is path-aware, so a reference to a
 // same-basename file elsewhere (a library's own button.js) does not make an unrelated

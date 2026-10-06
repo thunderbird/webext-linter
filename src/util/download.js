@@ -20,8 +20,9 @@ export function codeloadZipUrl(repo, branch) {
 /**
  * Download `url` to `dest` atomically - write a temp file then rename it into
  * place - so an interrupted download can't leave a truncated cache that later
- * fails with an opaque unzip error. On a non-ok response, throws the message
- * `describeError(res)` builds (each caller words its own).
+ * fails with an opaque unzip error. On a 404, throws the message `describeError(res)`
+ * builds (each caller words its own); any other non-ok status is no answer
+ * (src/util/net.js).
  * @param {string} url
  * @param {string} dest  The final cache path.
  * @param {(res: Response) => string} describeError

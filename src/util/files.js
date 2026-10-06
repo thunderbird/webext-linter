@@ -3,11 +3,11 @@
 // One neutral home (importable from every layer) so the extension sets cannot
 // drift between the source collector, the normalizer, and the checks.
 //
-// Belongs here: pure path/extension string helpers (extname, basename, dirname, globMatch) and the
-// extension sets built on them (JS / CSS / HTML / SFC / CODE / ARCHIVE / RECOGNIZED). No
-// filesystem IO and no dependencies. Does NOT belong here: reading files off disk or out of an
-// archive - that is src/addon/load.js for the add-on and src/schema/load.js for
-// schemas.
+// Belongs here: pure path/extension string helpers (extname, basename, dirname, globMatch)
+// and the extension sets built on them (JS / CSS / HTML / SFC / CODE / ARCHIVE /
+// RECOGNIZED). No filesystem IO and no dependencies. Does NOT belong here: reading files off
+// disk or out of an archive - that is src/addon/load.js for the add-on and
+// src/schema/load.js for schemas.
 
 /** Extensions treated as JavaScript source: the ESM/CJS variants (Gecko loads a
  *  background.scripts entry by PATH, so a .cjs script is executable code and must be
@@ -148,7 +148,7 @@ export function dirname(file) {
   return i === -1 ? "" : file.slice(0, i);
 }
 
-// The line terminators a regex "." does not match, which a "**" never crossed.
+// The line terminators a "**" does not cross (those a regex "." does not match).
 const LINE_BREAKS = "\n\r\u2028\u2029";
 
 /**
@@ -156,7 +156,7 @@ const LINE_BREAKS = "\n\r\u2028\u2029";
  * without "/", `?` one character but "/", everything else itself. Matched by stepping one
  * row of booleans over the pattern positions per path character, so the time is pattern
  * length times path length - a glob compiled to a regex backtracks exponentially in its
- * number of stars. `**` does not cross a line break, as the regex's ".*" did not.
+ * number of stars. `**` does not cross a line break.
  * @param {string} glob
  * @param {string} path
  * @returns {boolean}

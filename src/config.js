@@ -159,10 +159,8 @@ export const GITHUB_INSTALL_SOURCE =
  * whether the network is gone and must not be held back from saying so.
  *
  * This is OUR restraint, not theirs: api.npmjs.org enforces a per-IP budget that
- * a burst trips within about a dozen requests, and a refusal is indistinguishable
- * from a reading - it comes back as "not widely used" and demotes the library. An
- * add-on vendoring many packages was therefore rate-limiting itself into false
- * findings. Measured against THAT endpoint: 40 consecutive requests 250ms apart
+ * a burst trips within about a dozen requests, and a refusal that outlasts the retries
+ * ends the review (src/util/net.js NoAnswerError). Measured against THAT endpoint: 40 consecutive requests 250ms apart
  * were never refused, so this doubles that margin, and the same figure is applied
  * to every host rather than guessing a budget per host nobody has measured.
  *

@@ -144,7 +144,7 @@ flowchart TB
   SUB(["called from src/cli.js -<br/>a built XPI / folder (+ a source archive, --sca-root)"]) --> LOAD
 
   subgraph P1 ["runPipeline() · Phase 1 - load, schema, experiments"]
-    LOAD["Reading add-on<br/>loadAddon(XPI): extract a packed one<br/>to XPI_ROOT, then read that folder"] --> LDQ{{"the archive opens, every entry name is a plain path,<br/>every entry inflates, and it fits the size cap?"}}
+    LOAD["Reading add-on<br/>loadAddon(XPI): extract a packed one<br/>to XPI_ROOT, then read that folder"] --> LDQ{{"the archive opens, names each file once by a plain path,<br/>holds no symbolic link, every file reads, and it fits the size cap?"}}
     LDQ -- no --> P1F((("THROW<br/>exit 2")))
     LDQ -- yes --> SCH["Fetching review schemas<br/>resolveReviewSchema()<br/>pick the channel from manifest_version +<br/>strict_max_version, fetch it, index it"]
 
@@ -303,7 +303,7 @@ flowchart TB
         <code>src.extracted.*</code> fields), whether or not anything reads it.
         A <strong>cache</strong> (dashed) is a <em>derived, lazy</em> view -
         <code>apiResolution</code>, <code>permissionAnalysis</code>,
-        <code>outboundSinks</code>, <code>evalScan</code>, <code>locales</code>,
+        <code>outboundSinks</code>, <code>evalScan</code>, <code>localeMessages</code>,
         and the <code>reachability</code> graph - computed from stores on the
         first read that needs it, then memoized (so a cache nobody reads is
         never built). The lazy caches never re-parse: they derive from the
@@ -418,6 +418,7 @@ flowchart LR
 
   s_locales -.-> k_loc_missing["default-locale-missing"]
   s_locales -.-> k_loc_unused["default-locale-unused"]
+  s_locales -.-> k_loc_invalid["locale-messages-invalid"]
 
   s_reachability -.-> k_unused_files["unused-files"]
   s_reachability -.-> k_bundled_files["bundled-files"]
@@ -455,7 +456,7 @@ flowchart LR
   class s_schema,s_vendor,s_bundled,s_apiusage,s_webapiperms,s_loaderrefs,s_localimports,s_modulesyntax,s_experimentrefs,s_sinks,s_remotejs,s_codeatoms,s_unsafehtml,s_syncxhr,s_debugger,s_asyncmsg,s_coresym,s_walkfailure,s_localefiles store;
   class s_apiresolution,s_permanalysis,s_outboundsinks,s_evalscan,s_locales,s_reachability cache;
   class r_apiusage,r_codeatoms,r_modsyntax,r_remotejs,r_unsafehtml,r_syncxhr,r_debugger,r_asyncmsg,r_coresym,r_walkfailure,r_vendor,r_bundled relay;
-  class k_unknown_api,k_deprecated_api,k_smin,k_smax,k_exp_unknown_api,k_unparsable,k_missing_perm,k_unused_perm,k_missing_key,k_eval_call,k_fn_ctor,k_string_timer,k_remote_eval,k_csp_eval,k_csp_inline,k_loc_missing,k_loc_unused,k_vendor_mod,k_vendor_vuln,k_unpinned_dep,k_banned_lib,k_minified,k_obfuscated,k_untrusted_lib,k_cdn,k_code_sanity,k_exfil,k_disguised,k_cleartext,k_privacy,k_disg_nav,k_disg_win,k_disg_style,k_disg_res,k_remote_script,k_unused_files,k_bundled_files,k_war,k_unsafe_html,k_sync_xhr,k_debugger_stmt,k_async_onmsg,k_core_symbol,k_unanalysable,k_bg_module,k_bg_page_module,k_unrecognized check;
+  class k_unknown_api,k_deprecated_api,k_smin,k_smax,k_exp_unknown_api,k_unparsable,k_missing_perm,k_unused_perm,k_missing_key,k_eval_call,k_fn_ctor,k_string_timer,k_remote_eval,k_csp_eval,k_csp_inline,k_loc_missing,k_loc_unused,k_loc_invalid,k_vendor_mod,k_vendor_vuln,k_unpinned_dep,k_banned_lib,k_minified,k_obfuscated,k_untrusted_lib,k_cdn,k_code_sanity,k_exfil,k_disguised,k_cleartext,k_privacy,k_disg_nav,k_disg_win,k_disg_style,k_disg_res,k_remote_script,k_unused_files,k_bundled_files,k_war,k_unsafe_html,k_sync_xhr,k_debugger_stmt,k_async_onmsg,k_core_symbol,k_unanalysable,k_bg_module,k_bg_page_module,k_unrecognized check;
         </pre>
       </div>
 

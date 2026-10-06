@@ -21,9 +21,9 @@
 import { ERROR_CLASS } from "./enum.js";
 
 /**
- * A failure the review cannot continue through, tagged with WHY. The message is the one
- * a reviewer sees: src/cli.js writes `err.message` before exiting 2, so it says what
- * happened in full rather than naming a code.
+ * A failure the review cannot continue through (or, for WALK, one file it cannot analyse),
+ * tagged with WHY. The message is the one a reviewer sees: src/cli.js writes `err.message`
+ * before exiting 2, so it says what happened in full rather than naming a code.
  */
 export class LinterError extends Error {
   /**

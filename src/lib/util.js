@@ -10,8 +10,8 @@
 // declarationLine), utf8ComparisonSigns, the doc/dependency-file tests
 // (isDocMetadataFile, isDocFile, DEPENDENCY_FILE_RE), isExperiment/strictMaxVersion, the
 // version family (strictMinVersion, parseVersion, cmpVersion, versionInBounds, isVersion,
-// stripVersionSuffix), the
-// suspected-loader helper referrerSupported, and the feed-note builder loaderTrace.
+// stripVersionSuffix), the suspected-loader helper referrerSupported, and the feed-note
+// builder loaderTrace.
 //
 // Does NOT belong here: anything with a heavier dependency or a single home -
 // reachability lives in reachability.js, permission analysis in permissions.js,
@@ -454,8 +454,8 @@ export function declarationLine(text, token) {
 /**
  * Whether `s` is a concrete version: an optional "v", digits, then optionally a "." or "-"
  * followed by more of [0-9a-z.-] - "1.2.3", "v2.0.0-beta.1", "4.0rc1", but never a dist-tag
- * like "latest". Case-insensitive. Written as a scan: the regex it replaces,
- * /^v?\d+(\.\d+)*([.-][0-9a-z.-]+)?$/i, can split a long digit-and-dot run in many ways
+ * like "latest". Case-insensitive. A scan, because the equivalent regex
+ * (/^v?\d+(\.\d+)*([.-][0-9a-z.-]+)?$/i) can split a long digit-and-dot run in many ways
  * before failing, which is quadratic in it.
  * @param {string} s
  * @returns {boolean}
@@ -493,8 +493,8 @@ function isDigit(c) {
 /**
  * `s` without a trailing version segment - "jquery-3.7.1" -> "jquery", "lib.v2" -> "lib",
  * "a_3" -> "a": a "-", "_" or "." separator, an optional "v", then dot-separated digit
- * groups to the end. The longest such tail goes. Written as a backward scan over the digit
- * groups: the regex it replaces, /[-_.]v?\d+(\.\d+)*$/, retries from every "." of a long
+ * groups to the end. The longest such tail goes. A backward scan over the digit groups,
+ * because the equivalent regex (/[-_.]v?\d+(\.\d+)*$/) retries from every "." of a long
  * digit-and-dot run, which is quadratic in it.
  * @param {string} s
  * @returns {string}
@@ -552,8 +552,8 @@ function yamlKeyLine(text, key) {
 /**
  * The key a trimmed YAML line opens with, or null: the shortest text before a colon that is
  * followed by whitespace or the end, unquoted or inside one matching pair of quotes (tried
- * first, as a quoted key is). A scan over the colons: the regex it replaces,
- * /^(['"]?)(.*?)\1\s*:(?:\s|$)/, is quadratic in a long run of whitespace.
+ * first, as a quoted key is). A scan over the colons, because the equivalent regex
+ * (/^(['"]?)(.*?)\1\s*:(?:\s|$)/) is quadratic in a long run of whitespace.
  * @param {string} line
  * @returns {?string}
  */

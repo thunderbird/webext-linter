@@ -145,7 +145,7 @@ the code you wrote: minified, obfuscated, transpiled, or bundled.
 
 Two rules govern the shape of such a submission, and each is its own check (both warning,
 neither narrowing the review it appears in). `sca-xpi-declares-vendoring` - the built XPI
-must not carry a VENDOR file, a `package.json` or a lock file, because those are the
+must not carry a VENDOR file, or a `package.json` or lock file at its root, because those are the
 archive's, the copy the reviewer reads and the build installs from. It names the offending
 files. `sca-xpi-fully-included-in-archive` - the archive must not hold the built XPI entire,
 which means either nothing was built or the build output was committed beside the source.
@@ -323,7 +323,7 @@ machine.
 | `csp-unsafe-inline` | A `content_security_policy` that allows `'unsafe-inline'` - permits dynamic code execution via inline scripts (error). |
 | `debugger-statement` | Unconditional `debugger` statements. |
 | `locale-messages-invalid` | A `_locales/<lang>/` folder whose `messages.json` is missing or that Thunderbird cannot read (not UTF-8 or UTF-16 text, not JSON with only `//` comments, or not messages data) - Thunderbird refuses to install the add-on (error). |
-| `default-locale-missing` | A packaged `_locales/` directory but no `default_locale` manifest.json key - Thunderbird refuses to load the add-on (error). |
+| `default-locale-missing` | A packaged `_locales/<lang>/` folder but no `default_locale` manifest.json key - Thunderbird refuses to load the add-on (error). |
 | `default-locale-unused` | A `default_locale` manifest.json key that names no packaged `_locales/<lang>/` folder (or no `_locales/` at all) - Thunderbird refuses to load the add-on (error). |
 | `deprecated-api` | Deprecated APIs (member or namespace level). An API newer than the declared range is the `strict-*-version-api` checks. |
 | `disguised-navigation` | Data smuggled out through a page navigation (`location.assign`/`replace`) built with appended runtime data (error, regardless of consent). |
@@ -351,7 +351,7 @@ machine.
 | `mistyped-manifest-value` | A known manifest.json key whose value has the wrong type, validated with ajv against a JSON Schema derived from the annotated schema (warning). Thunderbird misreads such values. |
 | `native-messaging` | The `nativeMessaging` permission (in `permissions` or `optional_permissions`), which lets the add-on exchange messages with a native application outside Thunderbird - routed to manual review to confirm disclosure (No Surprises). |
 | `non-experiment-strict-max-version` | A non-Experiment that pins `strict_max_version` (warning - it only blocks installs on newer Thunderbird). |
-| `minified-code` | A script or stylesheet (not a recognized library, not obfuscated) shipped minified - by minified line geometry (a very long, dense line) (error). A script that will not parse at all counts as minified, since nothing there can be reviewed either. |
+| `minified-code` | A script or stylesheet (not a recognized library, not obfuscated) shipped minified - by minified line geometry (a very long, dense line) (error). A script that will not parse or walk counts as minified, since nothing there can be reviewed either. |
 | `obfuscated-code` | A JS file (not a recognized library) shipped obfuscated - recognized by the AST structure of a known obfuscator family via the `obfuscation-detector` library. The families a match is drawn from are pinned, so a family the library gains later decides nothing and a match needs no second opinion. High precision, partial recall - some obfuscators evade it. |
 | `privacy-policy` | Data transmitted by an overt API to a remote host the developer chose (fixed in the add-on, not entered by the user) - one case per transmission site, naming its host. A host the add-on assembles while it runs is reported too, marked rather than named, since dropping it would hide the site the tool can say least about. Routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
 | `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, stops the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce. Whether the archive held the whole XPI is a separate question, so `sca-xpi-fully-included-in-archive` prints beside this rejection rather than in place of it. |

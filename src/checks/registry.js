@@ -179,8 +179,8 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {object[]} apiUsages  Per-source extracted API usage.
  * @property {?import("../addon/load.js").WebExtManifestRecord} manifest  The authoritative,
  *   SHIPPED manifest.json (the built XPI's - what Thunderbird loads), read once like `schema`:
- *   `json` the parse, `text` the raw manifest.json (tokenLine reads it), `error` the
- *   JSON parse failure, `loc` the position index (the record's `locus` reads it). ALWAYS a
+ *   `json` the parse, `text` the manifest.json text (tokenLine reads it), `error` why
+ *   it cannot be read, `loc` the position index (the record's `locus` reads it). ALWAYS a
  *   record: `present` says whether the artifact ships the file at all, so absent and
  *   unparsable stay separable even where a reader answers `!json` to both.
  *   Every manifest / permission / API check reads this; no artifact carries a record of its
@@ -190,9 +190,8 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {?object} experiments  The Experiment classification (verifyExperiments),
  *   computed from the SHIPPED XPI, shared like the manifest.json. Null for a non-Experiment
  *   add-on.
- * @property {{allowExperiments?: boolean,
- *   libraryHashes?: Map<string, {name: string, version: string}>}} options  The only run
- *   options a check reads (experiment-not-allowed, the lazy bundled classifier).
+ * @property {{allowExperiments?: boolean}} options  The only run option a check reads
+ *   (experiment-not-allowed).
  * @property {import("../lib/enum.js").ReviewMode} [mode]  Review mode: "xpi" (a built add-on, default) or
  *   "sca" (a source code archive). Gates checks via modeEligible.
  *

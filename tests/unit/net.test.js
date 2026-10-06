@@ -168,10 +168,9 @@ test("fetchWithTimeout returns the consumed body on a fast response", async () =
 });
 
 // ---- the rate gate ----
-// The bug it exists for: api.npmjs.org answers a burst with 429, and every swallow site
-// in the tool reads a failure as an answer. One add-on declaring a package across 34
-// files demoted its own library, differently on every run. A refusal is not a reading,
-// and must be waited out rather than believed. The gate lives HERE, below every
+// The bug it exists for: api.npmjs.org answers a burst with 429, and a refusal read as an
+// answer demoted one add-on's own library, differently on every run. A refusal is not a
+// reading: it is waited out, and one that outlasts the retries ends the review. The gate lives HERE, below every
 // transport, so no endpoint added later can forget to pass through it.
 
 const PACED = "https://paced.example.com/thing";

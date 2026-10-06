@@ -1,4 +1,4 @@
-// The add-on's _locales state, scanned once and shared. The
+// The add-on's _locales state, scanned once and shared. The locale-messages-invalid,
 // default-locale-missing, default-locale-unused and trademark checks read these
 // results (missing-english-localization takes isEnglishLocale only), so each file
 // scan runs a single time per review - the same "compute
@@ -51,8 +51,8 @@ export function isEnglishLocale(tag) {
  * and one of them is fine, the other is not reported: which one Thunderbird reads depends on
  * the order it lists them.
  * @param {RunContext} ctx
- * @returns {{locale: string, file: string, state: "ok"|"missing"|"unreadable",
- *   json?: *}[]}
+ * @returns {{locale: string, file: string, state: "ok"|"missing"|"unreadable"|
+ *   "invalid", json?: *}[]}
  */
 export function localeMessages(ctx) {
   return ((ctx.cache ??= {}).localeMessages ??= scanMessages(ctx));
@@ -121,7 +121,7 @@ function isMessagesData(json) {
 }
 
 /**
- * The name each locale states, scanned once and memoized on the addon so every
+ * The name each locale states, scanned once and memoized on ctx.cache so every
  * trademark check shares the result.
  *
  * A literal manifest.json name yields ONE pair carrying `locale: null` - the package

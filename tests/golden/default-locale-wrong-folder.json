@@ -116,7 +116,7 @@
       "item": null,
       "hint": "no _locales/fr/ folder",
       "artifact": "XPI",
-      "message": "manifest.json declares a default_locale for which the add-on ships no _locales/[lang] folder, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files for it, or correct or remove default_locale."
+      "message": "manifest.json declares a default_locale that names no _locales/[lang] folder the add-on ships, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files for it, or correct or remove default_locale."
     }
   ]
 }

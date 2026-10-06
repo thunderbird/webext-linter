@@ -2,7 +2,7 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) manifest.json declares a default_locale for which the add-on ships no _locales/[lang] folder, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files for it, or correct or remove default_locale.
+1) manifest.json declares a default_locale that names no _locales/[lang] folder the add-on ships, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files for it, or correct or remove default_locale.
  - manifest.json:23 - no _locales/fr/ folder
 
 You can run this automated review yourself before submitting:

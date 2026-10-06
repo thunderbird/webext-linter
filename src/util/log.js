@@ -111,7 +111,7 @@ const PREFIX = ["", "  ", "      "];
 
 /**
  * Narrate to stdout when `show`, indented for its feed level. Quiet mode (JSON)
- * emits nothing. The level's indent is prepended to the first argument so it sits
+ * emits nothing. The level's indent is prepended to the line so it sits
  * OUTSIDE any color the caller wrapped the text in (spaces are colorless).
  *
  * @param {unknown[]} args
@@ -210,8 +210,8 @@ export function writeToStderr(text) {
 }
 
 /**
- * Warn that the run is carrying on degraded - an input that cannot be used as given, a
- * refresh that failed. Indented as a DETAIL, so in a text run it sits under the feed step
+ * Warn that the run is carrying on degraded - an entry the load skipped, a flag that
+ * matched nothing. Indented as a DETAIL, so in a text run it sits under the feed step
  * it belongs to. Silenced by quiet mode: JSON is a machine contract, and a degraded run's
  * notice is for whoever watches it, not for the document.
  *

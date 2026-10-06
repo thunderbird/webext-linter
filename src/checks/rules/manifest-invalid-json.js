@@ -18,7 +18,7 @@
 // a wider change than this verdict.
 //
 // Belongs here: the unusable-manifest.json verdict. Does NOT belong here: parsing the
-// manifest.json (-> src/addon/load.js records the parse error, surfaced as
+// manifest.json (-> src/addon/load.js records why it cannot be read, surfaced as
 // ctx.manifest.error - the SHIPPED manifest.json's), authored wording
 // (-> assets/registry.yaml), and severity (-> that registry entry).
 

@@ -1204,8 +1204,8 @@ deterministic-phase:
   response: |-
     The following _locales folder(s) have a messages.json that Thunderbird cannot read (it is missing, not UTF-8 or UTF-16 text, not valid JSON, or not in the messages format, where every entry is an object with a "message" string). Thunderbird refuses to install an add-on with such a folder. Fix each file, or remove a folder that is not used.
 
-# A packaged _locales directory requires a default_locale key, or Thunderbird
-# will not load the add-on.
+# A locale folder in _locales requires a default_locale key, or Thunderbird will not
+# load the add-on (a file directly in _locales is no locale).
 - title: Missing default_locale
   severity: error
   check: default-locale-missing
@@ -1220,7 +1220,7 @@ deterministic-phase:
   check: default-locale-unused
   input: xpi
   response: |-
-    manifest.json declares a default_locale for which the add-on ships no _locales/[lang] folder, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files for it, or correct or remove default_locale.
+    manifest.json declares a default_locale that names no _locales/[lang] folder the add-on ships, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files for it, or correct or remove default_locale.
 
 # An extension with no top-level `icons` key ships no defined add-on icon, so
 # Thunderbird shows the generic puzzle-piece placeholder in the Add-ons Manager.

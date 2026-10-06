@@ -35,7 +35,7 @@
 flowchart TD
   A["The add-on manifest"] --> B{"Manifest parsed?"}
   B -- no --> S([skip])
-  B -- yes --> C{"A _locales directory<br/>is present?"}
+  B -- yes --> C{"_locales holds<br/>a locale folder?"}
   C -- no --> S
   C -- yes --> D{"default_locale declared<br/>in the manifest?"}
   D -- yes --> OK([no finding])

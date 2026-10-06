@@ -8,8 +8,8 @@
 //
 // Belongs here: file reading and JSON parsing - locating schema-files/*.json
 // inside a zip or dir, parsing each into namespace-object arrays (parseExtensionJson,
-// which takes their comment headers), and
-// returning the "<name>.json" -> parsed map. File IO only.
+// which takes their comment headers), and returning the "<name>.json" -> parsed map. File
+// IO only.
 //
 // Does NOT belong here: fetching or caching the zip (src/schema/fetch.js),
 // merging the parsed fragments or any query logic (src/schema/merge.js and

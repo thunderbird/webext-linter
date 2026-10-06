@@ -3,23 +3,22 @@
 // Two readers, and the only `JSON.parse` calls in src/ - eslint refuses another one anywhere
 // else (no-restricted-syntax, eslint.config.js). `parseJson` reads plain JSON (a package
 // file, a lock, our own state). `parseExtensionJson` reads a file the way Thunderbird's
-// extension loader does - manifest.json, an Experiment's schemas, _locales messages - which
-// is plain JSON plus `//` comments, so what reviews clean is JSON the application reads.
-// The annotated API schemas (our own input) go through it too: they parse with it. That rule exists because the alternative
-// was tried and failed repeatedly: a reader that parses for itself carries its own
-// tolerances, and the one every hand-written reader forgot was the BOM. `JSON.parse` throws
-// on a leading BOM while every tool that writes and reads these files does not, so a
+// extension loader does - manifest.json, an Experiment's schemas, _locales messages, and the
+// annotated API schemas - plain JSON plus `//` comments, so what reviews clean is JSON the
+// application reads. The lint rule exists because the alternative was tried and failed
+// repeatedly: a reader that parses for itself carries its own tolerances, and the one every
+// hand-written reader forgot was the BOM. `JSON.parse` throws on a leading BOM while every tool that writes and reads these files does not, so a
 // perfectly good file read as absent - silently, because "absent" is each reader's empty
 // case. That defect shipped four separate times in four separate readers (an Experiment
 // schema, a build package file, an install-hook package file, a package-manager
 // fingerprint), each time invisible to a green suite. One parser cannot drift from itself.
 //
-// Belongs here: turning bytes or text into a value (parseJson, parseExtensionJson), the BOM
-// and comment handling that needs (stripBom), and deterministic JSON shaping (sortKeys,
-// canonicalJson). Does NOT belong
-// here: what a parsed value MEANS - a package.json's declarations are src/vendor/package-file.js,
-// a lock's are src/vendor/locks.js, a check's comparison is that check - and user-facing
-// JSON report output, which is src/report/*.
+// Belongs here: turning bytes or text into a value (parseJson, parseExtensionJson), the
+// decoding, BOM and comment handling that needs (decodeExtensionText, stripBom), and
+// deterministic JSON shaping (sortKeys, canonicalJson). Does NOT belong here: what a parsed
+// value MEANS - a package.json's declarations are src/vendor/package-file.js, a lock's are
+// src/vendor/locks.js, a check's comparison is that check - and user-facing JSON report
+// output, which is src/report/*.
 
 import { rethrowIfFatal } from "../lib/errors.js";
 

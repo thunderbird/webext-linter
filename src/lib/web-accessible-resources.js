@@ -6,12 +6,13 @@
 //
 // Belongs here: warResourceList (normalize MV2/MV3 entries),
 // expandResourcePattern (glob a pattern to packaged files), and
-// isOverBroadResource. The glob-to-regexp matcher these need.
+// isOverBroadResource.
 //
 // Does NOT belong here: the minimize-web-accessible-resources verdict and its
 // text - the rule under src/checks/rules/* and assets/registry.yaml. Walking
 // reachability from the exposed seeds - reachability.js. The lexical path
-// normalizer - normalizeRef in manifest-refs.js. Generic shape guards -
+// normalizer - normalizeRef in manifest-refs.js. The glob matcher - globMatch in
+// src/util/files.js. Generic shape guards -
 // lib/util.js.
 
 import { asArray } from "./util.js";

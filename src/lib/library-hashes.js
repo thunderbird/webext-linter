@@ -64,8 +64,7 @@ export async function resolveLibraryHashes({
   const text = await fetchWithTimeout(url, async (res) => {
     if (!res.ok) {
       // Stamped with the status so the rate gate can tell a refusal from an answer
-      // and retry it (src/util/net.js), without losing the wording that says what
-      // failed.
+      // (src/util/net.js); only a 404 keeps this wording.
       throw withHttpStatus(
         new Error(
           `Failed to download library hashes: HTTP ${res.status} ${res.statusText} (${url}).`

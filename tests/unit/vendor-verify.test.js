@@ -2466,9 +2466,8 @@ test("auditLockedPackages: an advisory affecting two packages is fetched once", 
   );
 });
 
-// A partial scan would make the report depend on how far the network got, so a
-// failure anywhere abandons the whole thing and records nothing - the same
-// silence an offline run gets everywhere else.
+// A partial scan would make the report depend on how far it got, so a 404 from any
+// batch or hydration abandons the whole thing and records nothing.
 test("auditLockedPackages: a failing batch or hydration records nothing", async () => {
   const batchDown = addonWith(
     { "package.json": "{}" },

@@ -1,8 +1,9 @@
 // A _locales directory whose messages.json Thunderbird cannot read. At install Thunderbird
 // reads every directory under _locales and refuses the whole add-on when one holds no
 // messages.json, one that is not UTF-8 / UTF-16 text or not JSON as its loader reads it, or
-// one that is not messages data ("Extension is invalid"). One finding per directory, at its messages.json, with which of
-// the two it was as the hint, so every case collapses under one entry.
+// one that is not messages data ("Extension is invalid"). One finding per directory, at its
+// messages.json, with which of the three it was as the hint, so every case collapses under
+// one entry.
 //
 // Belongs here: turning the locale scan (src/lib/locales.js localeMessages) into findings.
 // Does NOT belong here: reading the files (-> localeMessages, shared with the trademark

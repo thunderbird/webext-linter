@@ -25,7 +25,7 @@
 // always agree" guarantee (see resultsOf).
 //
 // Belongs here: orchestrating the per-source parse + the per-concern extractors,
-// and the read accessors. Does NOT belong here: the extractors themselves (each
+// recording a source Babel cannot walk (walkFailure), and the read accessors. Does NOT belong here: the extractors themselves (each
 // stays a pure per-concern scanner under src/parse/*) or the non-authored skip set
 // (-> src/lib/bundled.js). Babel access goes through src/parse/ast.js.
 

@@ -873,8 +873,9 @@ export async function main(argv) {
       registry,
     });
   } catch (err) {
-    // A pipeline throw is a tool failure the review could not run through (an
-    // unreachable/unusable schema, a bad review config, an unreadable add-on): state
+    // A pipeline throw is a tool failure the review could not run through (no network, a
+    // host that gave no answer, an unusable schema, a bad review config, an unreadable
+    // add-on): state
     // it plainly and exit 2, distinct from a completed review that found errors.
     writeToStderr(`${err.message}\n${red("verify failed")}\n`);
     return 2;

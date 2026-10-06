@@ -452,8 +452,8 @@ export async function runPipeline(opts) {
     // Phase 1: what every review needs, whatever it turns out to be.
 
     // Mark the start of the review. The .xpi was already read pre-banner (above), and has
-    // nothing to narrate: an XPI holding a link, the one entry a load skips, is refused
-    // there. The SCA source archive is read by `source-archive` and reused after it - in a
+    // nothing to narrate: an XPI holding a link is refused at load, so it skips nothing. The
+    // SCA source archive is read by `source-archive` and reused after it - in a
     // source review, and not when a rejected Experiment drops that step - and its skip
     // notices are narrated by `target-source`.
     read: () => {},
@@ -739,8 +739,8 @@ export async function runPipeline(opts) {
     // stays non-authored and is rejected.
     // Classify the source's files (library hash, minified geometry, obfuscation), seeding
     // reviewTarget.bundled and its non-authored set - AFTER the declaration audit, so the vendored
-    // set is final (verifyScaDependencies DISCOVERS further vendored files that classifyFiles
-    // reads).
+    // set is final (verifyScaDependencies DISCOVERS further vendored files that
+    // classifyBundled reads).
     "deps-source": async () => {
       await verifyScaDependencies(reviewTarget, opts.vendorNet, libraryBlocks);
       classifyReview(reviewTarget, { libraryHashes });
@@ -1298,8 +1298,8 @@ function extractReview(addon, { schema, webExtManifestRecord }) {
  * not-popular declared (VENDOR/package) results into the untrusted family, then match the
  * still-unrecognized bundles against jsDelivr by content hash. Reads/writes addon.bundled
  * and addon.vendor. A lookup jsDelivr does not answer ends the review (src/util/net.js); with
- * the lookup off, or no net, no request is made. Runs AFTER classification (so
- * the Mozilla-hash matches and tag.obfuscation are final), and before the OSV audit of what
+ * the lookup off, or a net with no fetchJson, no request is made. Runs AFTER classification
+ * (so the Mozilla-hash matches and tag.obfuscation are final), and before the OSV audit of what
  * it identified (auditIdentifiedLibraries), which is the setup step after it.
  * @param {import("./addon/load.js").Addon} addon
  * @param {{net?: object, cacheDir?: string, cdnEnabled?: boolean}} opts
@@ -1403,9 +1403,6 @@ export async function resolveReviewSchema({
   ) {
     setupStep("Refreshing review schemas (add-on targets a newer Thunderbird)");
     stepped = true;
-    // Not best-effort: the cache is stale for THIS add-on, so a failed refresh ends the
-    // review like a failed first download, rather than reviewing against schemas known
-    // to be too old.
     await refreshAllSchemas({ cacheDir });
     candidates = readAnchors();
   }

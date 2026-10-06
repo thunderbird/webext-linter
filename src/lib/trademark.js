@@ -29,9 +29,9 @@ const FORBIDDEN = [
 
 /**
  * `name` without its allowed ending "<whitespace>for<whitespace>Thunderbird<whitespace>"
- * (case-insensitive), or `name` itself when it has none. A scan from the end: the regex it
- * replaces, /\s+for\s+thunderbird\s*$/i, retried from every position inside a long run of
- * whitespace, which is quadratic in it.
+ * (case-insensitive), or `name` itself when it has none. A scan from the end, because an
+ * anchored regex (/\s+for\s+thunderbird\s*$/i) retries from every position inside a long
+ * run of whitespace, which is quadratic in it.
  * @param {string} name
  * @returns {string}
  */
