@@ -1,0 +1,22 @@
+# Daily check of the locked dependencies against the npm advisory database. A failed
+# run is the alert: GitHub notifies whoever last changed the schedule below.
+name: Dependency audit
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      # Reads package-lock.json only, so nothing is installed.
+      - run: npm audit
