@@ -5,7 +5,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) The following _locales folder(s) have a messages.json that Thunderbird cannot read (it is missing, not UTF-8 or UTF-16 text, not valid JSON, or not in the messages format, where every entry is an object with a "message" string). Thunderbird refuses to install an add-on with such a folder. Fix each file, or remove a folder that is not used.
  - _locales/de/messages.json - cannot be read
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 ── Standard Code Review ──

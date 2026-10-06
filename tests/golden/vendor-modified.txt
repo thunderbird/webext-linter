@@ -5,7 +5,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) A bundled third-party file does not match its declared source: lib/widget.min.js does not match the bytes its declared source (https://unpkg.com/widget@1.2.3/dist/widget.min.js) serves, so it appears to have been modified from the upstream release. Ship the file exactly as the source publishes it, or correct the declared source to the release the file actually came from.
  - lib/widget.min.js
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 ── Extended Code Review ──

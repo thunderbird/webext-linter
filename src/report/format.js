@@ -798,9 +798,7 @@ export function issuesBodyLines(
   // A pointer to the tool: the developer can run this same automated review before
   // submitting and fix the findings above first. Shown in both modes.
   out.push("");
-  out.push(
-    grey("You can run this automated review yourself before submitting:")
-  );
+  out.push(grey("You can run an automated review yourself before submitting:"));
   out.push(grey("https://github.com/thunderbird/webext-linter"));
   return squared([...out, ...earlyExitLines(earlyExit)]);
 }

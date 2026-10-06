@@ -27,7 +27,7 @@ Read more: https://developer.thunderbird.net/add-ons/mailextensions/supported-ma
 5) Limited static-analysis coverage: could not be parsed, so API checks were skipped (This experimental syntax requires enabling one of the following parser plugin(s): "jsx", "flow", "typescript". (2:0))
  - template.html
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 ── Extended Code Review ──

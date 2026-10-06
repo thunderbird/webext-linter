@@ -5,7 +5,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) The following dependencies are declared as a version range, and the lock file the add-on ships records no version for them. A range names no single release, so there is nothing to verify the bundled copy against. Regenerate the lock file so it records what was bundled, or pin each dependency in package.json to a bare version like "4.17.21".
  - package.json:5 - lodash (^4.17.21)
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 ── Standard Code Review ──

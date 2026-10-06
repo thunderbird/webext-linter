@@ -5,7 +5,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) This add-on sets an update_url, which directs Thunderbird to install updates from a self-hosted location instead of ATN (addons.thunderbird.net). Because those updates bypass review, an add-on using update_url cannot be listed on ATN. Remove update_url from browser_specific_settings.gecko (or applications.gecko).
  - manifest.json:7 - https://example.com/updates.json
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 ── Extended Code Review ──

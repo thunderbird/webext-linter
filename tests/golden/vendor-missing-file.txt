@@ -6,7 +6,7 @@ Thank you for your contribution, it will be approved shortly. We kindly ask you 
  - lib/ghost.js
  - lib/phantom.js
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 ── Standard Code Review ──

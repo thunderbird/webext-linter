@@ -29,7 +29,7 @@ Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html
  - VENDORS.md - https://unpkg.com/pkg@1.0.0/dist/bundle.min.js - lib/a.min.js, lib/b.min.js
  - VENDORS.md - https://unpkg.com/other@2.0.0/dist/other.min.js - lib/c.min.js, lib/d.min.js
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 ── Extended Code Review ──

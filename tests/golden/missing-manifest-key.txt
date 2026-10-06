@@ -6,7 +6,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
  - bg.js:4 - action.onClicked - "action"
  - bg.js:6 - messageDisplayScripts.register - "message_display_scripts"
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 ── Extended Code Review ──

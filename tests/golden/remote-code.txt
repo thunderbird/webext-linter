@@ -14,7 +14,7 @@ We kindly ask you to resolve the following issues with your next release:
  - page.html
  - style.css
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 ── Extended Code Review ──

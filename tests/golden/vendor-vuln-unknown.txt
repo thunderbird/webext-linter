@@ -6,7 +6,7 @@ Thank you for your contribution, it will be approved shortly. We would like to s
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
  - VENDORS.md:2 - https://raw.githubusercontent.com/someone/thing-lib/1.4.2/dist/thing.js
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 ── Extended Code Review ──

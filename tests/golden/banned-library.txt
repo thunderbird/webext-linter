@@ -8,7 +8,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 2) A bundled library version is disallowed by Mozilla's add-on policy: angular (1.5.0) - AngularJS before 1.5.9 is affected by a Content-Security-Policy bypass. Update to the latest 1.x. Update to a permitted version.
  - package.json:6
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 The review was not completed and the report is incomplete due to the following issues:

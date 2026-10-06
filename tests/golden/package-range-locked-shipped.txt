@@ -5,7 +5,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) A dependency this add-on bundles directly has known security vulnerabilities: lodash (4.17.21) is affected by published advisories of high severity (CVE-2021-23337). Update lodash to 4.17.22 or later.
  - package.json:5
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 The review was not completed and the report is incomplete due to the following issues:

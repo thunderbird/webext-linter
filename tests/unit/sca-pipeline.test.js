@@ -1474,8 +1474,8 @@ test("SCA e2e: an archive holding the whole XPI is reported, and is still review
     const adviceLines = advice.split("\n");
     assert.match(
       advice,
-      /longer/i,
-      "the advice presses the case: the source-archive route costs time"
+      /faster/i,
+      "the advice presses the case: the XPI-only route is faster"
     );
     const lines = body.split("\n");
     const entry = lines.findIndex((l) => l.includes(adviceLines[0]));

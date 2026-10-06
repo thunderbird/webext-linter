@@ -6,7 +6,7 @@ Thank you for your contribution, it will be approved shortly. We would like to s
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
  - lib/undeclared.min.js - tinybundle 3.2.1 - https://cdn.jsdelivr.net/npm/tinybundle@3.2.1/dist/tinybundle.min.js
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 ── Extended Code Review ──

