@@ -672,19 +672,19 @@ function unreadableArchiveError(zipPath) {
  * @param {string} destDir  Where to write it. Created if missing.
  */
 function extractZip(zipPath, destDir) {
-  let zip;
+  // An archive whose entries do not name each file exactly once has no single meaning:
+  // readers disagree on which copy wins (`unzip` and Gecko read the first), so whichever
+  // we reviewed, another reader sees the other. adm-zip refuses an exact repeat when
+  // listing; namesCollide covers the spellings it does not. Refused before anything is
+  // written, like a name we will not take.
+  let entries;
   try {
-    zip = new AdmZip(zipPath);
+    entries = new AdmZip(zipPath).getEntries();
   } catch (err) {
     rethrowIfFatal(err);
-    // The container itself: truncated, or not a zip at all.
+    // The container itself: truncated, not a zip at all, or one name entered twice.
     throw unreadableArchiveError(zipPath);
   }
-  // An archive whose entries do not name each file exactly once has no single meaning:
-  // readers disagree on which copy wins (this one writes both and keeps the last, `unzip`
-  // and Gecko read the first), so whichever we reviewed, another reader sees the other.
-  // Refused before anything is written, like a name we will not take.
-  const entries = zip.getEntries();
   if (
     namesCollide(
       entries.filter((e) => !e.isDirectory).map((e) => entryKey(e.entryName))
@@ -729,10 +729,9 @@ function extractZip(zipPath, destDir) {
       if (isStoredLink(entry)) {
         throw symlinkError(name);
       }
-      // Bound decompression against a zip bomb by the declared size, before getData():
-      // adm-zip inflates into a buffer of exactly that size, but caps inflation by it only
-      // when it is non-zero, so an entry declaring none while carrying data is refused
-      // first.
+      // Bound decompression against a zip bomb by the declared size, before getData(),
+      // which adm-zip caps inflation at. An entry declaring none while carrying data lies
+      // about it, so it is refused first.
       if (hidesItsSize(entry)) {
         throw unreadableArchiveError(zipPath);
       }
@@ -749,8 +748,8 @@ function extractZip(zipPath, destDir) {
         // without them is not a review of it.
         throw unreadableArchiveError(zipPath);
       }
-      // The same cap on the bytes actually returned: adm-zip never returns more than the
-      // header declared, so this holds only if a future version did.
+      // The same cap on the bytes actually returned: a stored entry comes back at its real
+      // length, whatever the header declared.
       unpacked += data.length;
       if (unpacked > ADDON_MAX_UNPACKED_BYTES) {
         throw addonTooLargeError();

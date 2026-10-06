@@ -9,10 +9,8 @@
 const EMPTY_STREAM_MAX_BYTES = 16;
 
 /**
- * Whether an entry declares no content but carries compressed data. adm-zip bounds
- * inflation by the declared size only when it is non-zero, so such an entry inflates
- * without limit, and with a matching empty-data CRC it is then returned as an empty file
- * - its real content never reaches the reader. Checked before getData().
+ * Whether an entry declares no content but carries compressed data: its declared size,
+ * which bounds inflation, is false. Checked before getData().
  * @param {import("adm-zip").IZipEntry} entry
  * @returns {boolean}
  */

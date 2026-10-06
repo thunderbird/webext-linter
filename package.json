@@ -49,7 +49,7 @@
     "@babel/parser": "^8.0.4",
     "@babel/traverse": "^8.0.4",
     "@babel/types": "^8.0.4",
-    "adm-zip": "^0.5.18",
+    "adm-zip": "^0.6.1",
     "ajv": "^8.17.1",
     "eslint": "^10.6.0",
     "flast": "^3.2.0",
