@@ -54,6 +54,7 @@ entry never offered are all refusals.
 | `spawn` | Start the sub-agents the review needs - the add-on description, the build report, one sweep per tree - and read back what the sweeps found. | Nothing: each sweep answers in a file of its own (see below) |
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
+| `build` | Source code review only: with the reviewer's consent, build the add-on in the agent's own sandbox and write how the result differs from the shipped XPI. | Nothing: the diff goes to a file of its own |
 | `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
 
 A phase is issued only when it has **work** - steps that survive their markers, or
@@ -62,7 +63,13 @@ mentions one, and a review that starts no sub-agent at all skips `spawn` and ope
 first phase that has any. The package itself is not unpacked by any of this: the linter extracts a packed
 submission before the first prompt is printed, and every phase reads that one folder.
 
-`ask` has one further condition: a review that **stopped early** never reaches it.
+`build` and `ask` have one further condition: a review that **stopped early** never
+reaches them. `build` runs the submission's own code, so it waits until every check that
+can stop the review has had its say - including `build-lifecycle-hook`, which `settle`
+decides. The agent asks the reviewer before building, builds in a copy of the source
+archive, and writes the outcome to `BUILD_DIFF`: identical, differing (with the diff), or
+failed (with the failing step and its error). The linter judges none of it; the reviewer
+reads the diff while answering the questions.
 
 
 ## When the review stops early
@@ -94,7 +101,7 @@ What a stopped review does:
 
 | | |
 | --- | --- |
-| The `ask` phase | is not issued. Nothing is put to a reviewer. |
+| The `build` and `ask` phases | are not issued. Nothing is built, and nothing is put to a reviewer. |
 | The report | drops every to-do item a reviewer would have been **asked** - the Extended Manual Review and Standard Manual Review sections, and their tally counts. |
 | | keeps both code-review sections: reading code is safe, and what it turns up is the evidence for the halt. |
 | | ends on the reason it is incomplete, one line per distinct cause. |
@@ -240,11 +247,12 @@ what this review is and where to read it:
 | `SCA_EXP_SOURCE` | The Experiment implementation folder, when one was named |
 | `ADDON_DESCRIPTION` | Where a sub-agent wrote a description of the add-on, for reading while answering |
 | `BUILD_PROCESS` | Where another wrote what building the add-on takes, in a source code review |
+| `BUILD_DIFF` | How the agent's build differs from the shipped XPI - only once the `build` phase wrote it, since the reviewer may decline the build |
 | `REVIEW_REPORT` | The text the reviewer sends to the developer, written by the linter |
 
-The linter names all three and reads none of them. The first two are a sub-agent's, and the
-agent conducting the review is told only to name them - not to open, read, summarise or
-print what was written there.
+The linter names these files and reads none of them. The description and the build report
+are a sub-agent's, and the agent conducting the review is told only to name them - not to
+open, read, summarise or print what was written there.
 
 `REVIEW_REPORT` it writes itself, twice: once as the `ask` phase goes out, so the reviewer
 can read the report while answering the questions it puts, and again from the settled review

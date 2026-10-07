@@ -246,6 +246,12 @@ shapes:
       required: true
       allow-empty: true
       why: the verdicts this pass accepts - empty for a pass that takes none
+    product:
+      kind: one-of
+      values: PHASE_PRODUCTS
+      why: >-
+        the file this pass's agent may write for the reviewer, linked in the Review Details
+        only once it was
     steps:
       kind: list
       of: mapping

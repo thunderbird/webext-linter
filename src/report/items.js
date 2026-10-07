@@ -177,8 +177,9 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
  * @param {string} xpiPath  Where the add-on IS, absolute. An Addon carries no path of its
  *   own, so the caller passes the one the run was given (src/pipeline.js), which resolved
  *   it - nothing re-resolves it here.
- * @returns {{summary: string, build: string, report: string, state: string,
- *   review: string, sweep: (artifact: string) => {request: string, answers: string}}}
+ * @returns {{summary: string, build: string, buildDiff: string, report: string,
+ *   state: string, review: string, buildCopy: string,
+ *   sweep: (artifact: string) => {request: string, answers: string}}}
  */
 export function reviewFilePaths(xpiPath) {
   const base = reviewFileBase(xpiPath);
@@ -189,6 +190,9 @@ export function reviewFilePaths(xpiPath) {
   return {
     summary: path.join(beside, `${base}.summary.md`),
     build: path.join(beside, `${base}.build.md`),
+    // What the build phase's agent writes when the reviewer lets it build: the difference
+    // between its build and the shipped XPI, for the reviewer to read.
+    buildDiff: path.join(beside, `${base}.build-diff.md`),
     // The one of these the linter writes itself (src/report/report-file.js): the reviewer
     // reads it while answering, so it is refreshed before the questions are put to them and
     // rewritten once they are answered.
@@ -198,6 +202,9 @@ export function reviewFilePaths(xpiPath) {
     // review path it was given and compares the two.
     state: path.join(os.tmpdir(), `${base}${STATE_SUFFIX}`),
     review: path.join(os.tmpdir(), `${base}${REVIEW_SUFFIX}`),
+    // Where that agent copies the source archive to build it: never the archive itself,
+    // which the reviewer and the other agents read as submitted.
+    buildCopy: path.join(os.tmpdir(), `${base}.build`),
     // One sweeping agent's pair, per artifact it is asked about. Beside the loop's pair
     // rather than beside the submission, because they are machinery and not something the
     // reviewer is handed: the linter writes the request, one sub-agent writes the

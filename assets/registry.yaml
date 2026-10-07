@@ -2097,7 +2097,7 @@ llm-phases:
   # run never issues would block forever).
   #
   # `intro` is EMPTY unless the steps alone would let the agent do work that is not its own.
-  # Two of the four earn text, and both for that reason.
+  # Two of the five earn text, and both for that reason.
   phases:
     # Every sub-agent the review may need started, before anything else reads the add-on.
     # Named for what its steps DO, and NOT called `setup`: the pipeline has a setup of its
@@ -2246,6 +2246,46 @@ llm-phases:
             {{schema}}
 
             Judge every API, permission and method against SCHEMA, never against what you remember: a name the schema does not have is not a name this add-on can use, whatever another version of Thunderbird offers.
+
+    # Builds the add-on and writes how the result differs from the shipped XPI, for the
+    # reviewer to read before the questions. Only in a source code review that nothing has
+    # stopped (`run: build`, src/report/loop.js runOf), because building runs the
+    # submission's own code. Opt-in: the reviewer is asked first. The linter judges nothing
+    # here - the diff is the reviewer's to read, and the Review Details block links it once
+    # it exists.
+    - name: build
+      # Asks about nothing in the review file: its one product is the diff, in a file of its
+      # own, and only when the reviewer agreed to the build.
+      answer: none
+      verbs: []
+      product: buildDiff
+      intro: ""
+      steps:
+        - run: build
+          text: |-
+            Wait for every agent you spawned to come back. Then ask the reviewer, with your question tool, whether to build the add-on from the source archive and compare the result with the shipped XPI, saying that building runs the submission's own code. If they decline, build nothing and write nothing.
+
+            If they agree, copy
+
+            {{scaRoot}}
+
+            to
+
+            {{buildCopy}}
+
+            and build there, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in
+
+            {{build}}
+
+            Then compare the built XPI with the shipped one, extracted in
+
+            {{xpiRoot}}
+
+            and write the result to
+
+            {{buildDiff}}
+
+            and to nothing else. Open it with one line saying the outcome: the build is identical, the build differs, or the build failed. Where it differs, list the files only one side has, give a unified diff for every text file whose content differs, and name every binary file that differs. Where the build failed, say which step failed and quote its error output. That file is the reviewer's: write what you found, never a verdict.
 
     # Puts what only a person can answer to a person. Intro EMPTY: today's two ask blocks say
     # where an entry came from, which is procedural - the agent relays both identically, and

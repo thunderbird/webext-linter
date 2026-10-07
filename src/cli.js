@@ -1061,8 +1061,11 @@ async function runLoopPass(file, base) {
           schemaCache: state.paths.schemaCache ?? "",
           description: state.paths.description ?? "",
           build: state.paths.build ?? "",
+          buildCopy: state.paths.buildCopy ?? "",
+          buildDiff: state.paths.buildDiff ?? "",
           details: reviewDetails(state),
           scaRoot: state.paths.scaRoot ?? "",
+          xpiRoot: state.paths.xpiRoot,
           schema: state.paths.schema,
           ...sweepSlots(state),
         })

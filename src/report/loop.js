@@ -14,6 +14,7 @@ import { earlyExitOf, withoutQuestions } from "./early-exit.js";
 import {
   HandbackRefused,
   answersOf,
+  productWritten,
   entriesFor,
   readHandback,
   reviewFile,
@@ -37,6 +38,7 @@ import {
 import { applyVerdicts } from "./verdicts.js";
 import { renderFindings } from "./responses.js";
 import { VERB } from "./verbs.js";
+import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
 
 /**
  * What this run was told, plus what the review has since decided for itself.
@@ -52,13 +54,13 @@ import { VERB } from "./verbs.js";
  * @param {import("./state.js").LoopState} state
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
  * @param {import("../checks/registry.js").Registry} registry
- * @returns {{skip: string[], sca: boolean, halted: boolean}}
+ * @returns {{skip: string[], sca: boolean, halted: boolean, build: boolean}}
  */
 function runOf(state, ordered, registry) {
-  return {
-    ...state.run,
-    halted: Boolean(earlyExitOf(ordered, state.answers ?? {}, registry)),
-  };
+  const halted = Boolean(earlyExitOf(ordered, state.answers ?? {}, registry));
+  // Building runs the submission's own code, so only a source code review that nothing
+  // has stopped builds: a known vulnerability or an install hook stops it first.
+  return { ...state.run, halted, build: state.run?.sca === true && !halted };
 }
 
 /**
@@ -83,12 +85,13 @@ export function issue(state, stateFile, phases, registry) {
     return null;
   }
   const { phase, steps } = next;
-  // A `hints` phase asks about nothing in this file: its work is starting the agents, and
-  // each of those answers in a file of its own. Every other phase hands over its open
-  // items, rendered for THIS reader - never stored, so the same item can be worded one
-  // way here and another for the reviewer.
-  const entries =
-    phase.answer === "hints" ? [] : phaseEntries(state, registry, phase, run);
+  // An itemless phase asks about nothing in this file: its work is what its steps do, and
+  // each product lands in a file of its own. Every other phase hands over its open items,
+  // rendered for THIS reader - never stored, so the same item can be worded one way here
+  // and another for the reviewer.
+  const entries = ITEMLESS_ANSWERS.includes(phase.answer)
+    ? []
+    : phaseEntries(state, registry, phase, run);
   state.phase = phase.name;
   // The `ask` phase hands the reviewer the Review Details block, and that block links the
   // report. Refresh the file first, so the link opens the review as it stands rather than
@@ -136,23 +139,18 @@ export function accept(state, file, phases, registry) {
   }
   const { entries } = readHandback(file);
   // What went out: the same question `issue` answered, asked again through the same
-  // helper rather than stored, so the two cannot disagree about what was asked. A `hints`
-  // phase asks about no entry at all - its work is starting the agents, and each of those
-  // answers in a file of its own - so what it hands out is empty and so must be what
+  // helper rather than stored, so the two cannot disagree about what was asked. An
+  // itemless phase asks about no entry at all - its work is what its steps do, and each
+  // product lands in a file of its own - so what it hands out is empty and so must be what
   // comes back.
-  const asked =
-    phase.answer === "hints"
-      ? []
-      : phaseEntries(
-          state,
-          registry,
-          phase,
-          runOf(
-            state,
-            orderReview(state.report.findings, state.manual),
-            registry
-          )
-        );
+  const asked = ITEMLESS_ANSWERS.includes(phase.answer)
+    ? []
+    : phaseEntries(
+        state,
+        registry,
+        phase,
+        runOf(state, orderReview(state.report.findings, state.manual), registry)
+      );
   const answers = answersOf(entries, asked, phase, (e) =>
     String(e.index ?? "undefined")
   );
@@ -169,6 +167,14 @@ export function accept(state, file, phases, registry) {
   if (phase.answer === "hints") {
     state.sweep = swept;
     return { phase, answers, swept: routeSweep(state, registry) };
+  }
+  // A product exists only where the reviewer wanted the work that makes it, so whether it
+  // came back is recorded here, once, and every later pass says the same thing about it.
+  if (phase.product && productWritten(state.paths?.[phase.product])) {
+    state.products = [...(state.products ?? []), phase.product];
+  }
+  if (phase.answer === "none") {
+    return { phase, answers };
   }
   state.answers ??= {};
   state.route ??= {};
@@ -357,10 +363,10 @@ export function settle(state, registry) {
 }
 
 /** The meta the Review Details block names: which add-on this is and where it can be read
- *  (the unpacked package), plus the files written for the reviewer - the description and
- *  the build report. Those are what the block exists to hand over. The loop's own
- *  bookkeeping is not: the state and review files are the linter talking to itself, and a
- *  reviewer has no use for either. */
+ *  (the unpacked package), plus the files written for the reviewer - the description, the
+ *  build report, and the build diff where the build phase wrote one. Those are what the
+ *  block exists to hand over. The loop's own bookkeeping is not: the state and review
+ *  files are the linter talking to itself, and a reviewer has no use for either. */
 function reportMeta(state) {
   const {
     prompting: _prompting,
@@ -368,7 +374,13 @@ function reportMeta(state) {
     reviewFile: _review,
     ...rest
   } = state.report.meta;
-  return { ...rest, manualReview: state.manual };
+  return {
+    ...rest,
+    ...(state.products?.includes("buildDiff")
+      ? { buildDiffFile: state.paths.buildDiff }
+      : {}),
+    manualReview: state.manual,
+  };
 }
 
 /**

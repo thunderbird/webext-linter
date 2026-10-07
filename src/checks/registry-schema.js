@@ -22,6 +22,7 @@ import {
   MANUAL_ENTRY_INPUTS,
   COLLAPSE_MODES,
   ANSWER_KINDS,
+  PHASE_PRODUCTS,
 } from "./registry-vocabulary.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -40,6 +41,7 @@ const VOCABULARIES = {
   MANUAL_ENTRY_INPUTS,
   COLLAPSE_MODES,
   ANSWER_KINDS: new Set(ANSWER_KINDS),
+  PHASE_PRODUCTS: new Set(PHASE_PRODUCTS),
   SEVERITY_BANDS: Object.values(SEVERITY),
   VERDICT_KEYS,
 };

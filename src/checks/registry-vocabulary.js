@@ -168,8 +168,9 @@ export const sweepSlot = (artifact) =>
  *  of it is printed. No flag spells these - unlike PROMPT_SKIPS, which the CLI offers - so
  *  they live here, beside the messages that name them.
  *
- *  A name here IS the key the run record answers under (stepsOf, src/report/phases.js), so
- *  this list is the whole declaration of a condition.
+ *  A name here IS the key the run record answers under (stepsOf, src/report/phases.js).
+ *  Most are answered from what the run was told; `build` is derived each pass, by the loop
+ *  (src/report/loop.js runOf), because whether the review stopped can change.
  *
  *  Each sweepable artifact is its own condition, because each starts its OWN sub-agent
  *  against its own tree and a review may have one such tree or two. One condition covering
@@ -178,6 +179,9 @@ export const sweepSlot = (artifact) =>
  *  (SWEEP_INSTRUCTIONS) and not again here. */
 export const REVIEW_PROMPT_RUNS = [
   "sca",
+  // A source code review that has not stopped: building runs the submission's own code,
+  // which is safe only once every check that stops a review has had its say.
+  "build",
   ...Object.keys(SWEEP_INSTRUCTIONS).map(sweepRun),
 ];
 
@@ -207,7 +211,17 @@ export const FINAL_SLOTS = ["{{details}}", "{{tally}}"];
  */
 export const LOOP_VERBS = VERB_NAMES;
 
-export const ANSWER_KINDS = ["hints", "verdict", "words"];
+export const ANSWER_KINDS = ["hints", "verdict", "words", "none"];
+
+/** The answer kinds of a phase that asks about no entry: its work is what its steps do, so
+ *  it is issued once and handed back with an empty file. `hints` also reads the sweeps back
+ *  on that hand-back, `none` reads nothing. */
+export const ITEMLESS_ANSWERS = ["hints", "none"];
+
+/** What a phase's `product` can name: a file its agent writes for the reviewer only when the
+ *  reviewer wants it, keyed as the state's `paths` key that holds it. Whether it was written
+ *  is recorded when the phase comes back, and the Review Details block links it only then. */
+export const PHASE_PRODUCTS = ["buildDiff"];
 
 /** The one condition the SCA prompt can evaluate: whether the built add-on declares
  *  Experiments, which decides whether it asks its reader for --sca-exp-source. */

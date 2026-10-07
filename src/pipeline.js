@@ -974,6 +974,8 @@ export async function runPipeline(opts) {
   // by --llm-skip-summary, the build report by a review that is not a source code one.
   let summaryPath = null;
   let buildPath = null;
+  let buildCopyPath = null;
+  let buildDiffPath = null;
   let reportPath = null;
   // Each tree's sweep pair, by artifact - empty when this run sweeps nothing. The keys
   // are what says which trees were asked: a step prints for one, and accepting the pass
@@ -1001,6 +1003,10 @@ export async function runPipeline(opts) {
     const files = reviewFilePaths(addonPath);
     summaryPath = skip.includes("summary") ? null : files.summary;
     buildPath = mode.sca ? files.build : null;
+    // The build phase's two paths, named only where it can be issued: a source code review
+    // (src/report/loop.js runOf).
+    buildCopyPath = mode.sca ? files.buildCopy : null;
+    buildDiffPath = mode.sca ? files.buildDiff : null;
     // Ungated, unlike the two above: every review has a report, and this one is written by
     // the linter (src/report/report-file.js) rather than asked of an agent, so there is no
     // step whose absence could leave the path naming nothing.
@@ -1099,6 +1105,8 @@ export async function runPipeline(opts) {
         review: meta.reviewFile,
         description: summaryPath,
         build: buildPath,
+        buildCopy: buildCopyPath,
+        buildDiff: buildDiffPath,
         report: reportPath,
         schemaCache: opts.schemaCache,
         // The two roots every reported path is relative to, so a later pass can resolve
@@ -1175,7 +1183,10 @@ export async function runPipeline(opts) {
           schemaCache: state.paths.schemaCache ?? "",
           description: summaryPath ?? "",
           build: buildPath ?? "",
+          buildCopy: state.paths.buildCopy ?? "",
+          buildDiff: state.paths.buildDiff ?? "",
           scaRoot: state.paths.scaRoot ?? "",
+          xpiRoot: state.paths.xpiRoot,
           schema: state.paths.schema,
           // Named because `ask` can be the FIRST phase issued - a review with no findings
           // and nothing to settle opens there - and that is the phase that hands the

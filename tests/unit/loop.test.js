@@ -21,6 +21,7 @@ import {
   issue,
   accept,
   settle,
+  reviewDetails,
   HandbackRefused,
 } from "../../src/report/loop.js";
 
@@ -1144,6 +1145,100 @@ test("a case the agent routed to a reviewer is dropped by the halt too", () => {
     "the routed case is not left listed as reviewer work"
   );
   assert.match(tally, /0 extended code review item\(s\)/);
+});
+
+/** The small review as a source code review: the build phase's two paths named, as the
+ *  pipeline names them for one. */
+function buildReview(dir) {
+  const made = review(dir, { sweep: false });
+  made.state.run = { skip: [], sca: true };
+  made.state.paths.buildCopy = path.join(dir, "r.build");
+  made.state.paths.buildDiff = path.join(dir, "r.build-diff.md");
+  return made;
+}
+
+// Building runs the submission's own code, so it comes after `settle` has had its say on
+// every case that could stop the review, and before the questions the diff is read for.
+test("a source code review builds once, after settle and before ask", () => {
+  const { state, stateFile } = buildReview(tmp());
+  const { seen } = driveLoop(state, stateFile, (phase) =>
+    phase === "verify" ? "withdrawn" : "cleared"
+  );
+  assert.deepEqual(seen, ["spawn", "verify", "settle", "build", "ask"]);
+});
+
+test("an XPI review never builds", () => {
+  const { state, stateFile } = review(tmp(), { sweep: false });
+  const { seen } = driveLoop(state, stateFile, (phase) =>
+    phase === "verify" ? "withdrawn" : "cleared"
+  );
+  assert.ok(!seen.includes("build"), seen.join(", "));
+});
+
+test("a stopped review never builds", () => {
+  const { state, stateFile } = blockingReview(tmp());
+  const { seen } = driveLoop(state, stateFile, (phase) =>
+    phase === "verify" ? "reported" : "cleared"
+  );
+  assert.ok(!seen.includes("build"), seen.join(", "));
+});
+
+// The build phase asks about no entry, so a hand-back that adds one is answering a
+// question nobody asked.
+test("the build phase is handed back empty, or refused", () => {
+  const { state, stateFile } = buildReview(tmp());
+  driveLoop(state, stateFile, (phase) =>
+    phase === "verify" ? "withdrawn" : "cleared"
+  );
+  const fresh = buildReview(tmp());
+  fresh.state.phase = "build";
+  fs.writeFileSync(
+    fresh.state.review,
+    JSON.stringify({ base: "r", entries: [{ index: 1, answer: "x" }] })
+  );
+  assert.throws(
+    () => accept(fresh.state, fresh.state.review, PHASES, REGISTRY),
+    HandbackRefused
+  );
+});
+
+// The reviewer may decline the build, and then there is no diff to link. Whether there is
+// one is read when the phase comes back, so the ask hand-over and the final both say the
+// same thing.
+test("the details link the build diff only when the build phase wrote one", () => {
+  // A folder at the diff's path is not a diff the agent wrote.
+  for (const wrote of ["file", "folder", null]) {
+    const { state, stateFile } = buildReview(tmp());
+    for (let pass = 0; pass < 8; pass++) {
+      const out = issue(state, stateFile, PHASES, REGISTRY);
+      if (!out || out.phase.name === "ask") {
+        break;
+      }
+      if (out.phase.name === "build" && wrote === "file") {
+        fs.writeFileSync(state.paths.buildDiff, "The build is identical.\n");
+      }
+      if (out.phase.name === "build" && wrote === "folder") {
+        fs.mkdirSync(state.paths.buildDiff);
+      }
+      accept(
+        state,
+        handBack(state, () =>
+          out.phase.name === "verify" ? "withdrawn" : "cleared"
+        ),
+        PHASES,
+        REGISTRY
+      );
+    }
+    const linked = /^\* BUILD_DIFF: \[build-diff\.md\]/m;
+    const { details } = settle(state, REGISTRY);
+    for (const block of [reviewDetails(state), details]) {
+      if (wrote === "file") {
+        assert.match(block, linked);
+      } else {
+        assert.doesNotMatch(block, /BUILD_DIFF/);
+      }
+    }
+  }
 });
 
 // The two suppressions of the `ask` phase are different facts and must stay so: the skip

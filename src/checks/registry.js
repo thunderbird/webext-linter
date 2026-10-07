@@ -607,6 +607,7 @@ export class Registry {
         name: phase.name,
         answer: phase.answer,
         verbs: [...phase.verbs],
+        product: phase.product ?? null,
         // What each of those verbs MEANS, for the phase to render onto its entries. A
         // copy per phase rather than a shared reference, so nothing downstream can edit
         // the loaded registry by editing what it was handed.
@@ -1425,8 +1426,8 @@ export function assertPhases(registry, at) {
     }
     seen.add(name);
     const at2 = `${where} phase \`${name}\``;
-    // A verdict phase states its vocabulary; the other two take no verb, and a verb
-    // authored beside them would never be offered to anyone.
+    // A verdict phase states its vocabulary; no other kind takes a verb, and a verb
+    // authored beside one would never be offered to anyone.
     if ((phase.answer === "verdict") !== phase.verbs.length > 0) {
       throw new Error(
         `${at2} answers with \`${phase.answer}\` but accepts \`${phase.verbs.join(", ")}\` - ` +

@@ -1,5 +1,6 @@
 // Belongs here: the REVIEW file - what the linter hands the agent, and what it accepts
-// back. One shape in both directions, so the agent learns the file once.
+// back. One shape in both directions, so the agent learns the file once. Also whether a
+// phase's product (its `product` file) came back with the hand-back.
 //
 // Does NOT belong here: which phase is issued (src/report/phases.js), the linter's own
 // state (src/report/state.js), or what a verdict DOES to an item
@@ -320,4 +321,19 @@ function offeredBy(item, phase) {
         (lastResort ? prose["says-when-last-resort"] : null) ?? prose.says,
     };
   });
+}
+
+/**
+ * Whether a phase's product came back: a file at the path it was named, written by the
+ * agent. Asked once, as the phase is handed back, so every later pass says the same thing.
+ * @param {?string} file
+ * @returns {boolean}
+ */
+export function productWritten(file) {
+  try {
+    return Boolean(file) && fs.statSync(file).isFile();
+  } catch (err) {
+    rethrowIfFatal(err);
+    return false;
+  }
 }

@@ -42,7 +42,8 @@ export const REVIEW_SUFFIX = ".review.json";
  *   which trees it sweeps (one sweepRun key each), and the band it publishes a warning at (--warnings-as-errors). One
  *   record, read by everything that asks: a step prints by it, the routing drops entries by
  *   it, the registry is read under it, and both legs of a hand-over ask it the same question.
- * @property {object} paths  The values a step names: description, build, report,
+ * @property {object} paths  The values a step names: description, build, buildCopy,
+ *   buildDiff, report,
  *   schemaCache, schema, the two artifact roots (scaRoot, xpiRoot) an entry's paths are
  *   resolved against, and `sweeps` - each tree's sweep request and answers file, by
  *   artifact, which is also what says WHICH trees this review asked about. Held here
@@ -61,6 +62,9 @@ export const REVIEW_SUFFIX = ".review.json";
  *   (src/report/sweep-files.js). Null where no tree was asked, which is not the same as
  *   every tree answering with nothing. Written and read inside the one `accept` that
  *   starts them; what stops a second pass starting them again is `issued`.
+ * @property {string[]} [products]  The `paths` keys of the phase products that came back
+ *   (a phase's `product`, src/report/handback.js productWritten), recorded once as that
+ *   phase is handed back.
  */
 
 /**
@@ -112,5 +116,6 @@ export function readState(file) {
  *  because its sweeps were asked for as rows in the review file and answered by the agent
  *  transcribing them - so there are no answer files to read and nothing to read them
  *  against. Saying the version is wrong sends the reviewer to start the review again,
- *  where reading it would find every sweep unanswered. */
-export const STATE_VERSION = 9;
+ *  where reading it would find every sweep unanswered. Version 10 adds the build phase,
+ *  which reads `paths.buildCopy` and `paths.buildDiff`. */
+export const STATE_VERSION = 10;

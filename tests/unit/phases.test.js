@@ -241,6 +241,7 @@ test("a phase declares the kind of answer its entries take", () => {
       ["spawn", "hints", 0],
       ["verify", "verdict", 2],
       ["settle", "verdict", 3],
+      ["build", "none", 0],
       ["ask", "words", 0],
     ]
   );
@@ -254,7 +255,7 @@ test("a phase declares the kind of answer its entries take", () => {
   phaseNamed(unknown, "verify").answer = "verdicts";
   assert.throws(
     () => check(unknown),
-    /invalid `answer` "verdicts" \(expected one of: hints, verdict, words\)/
+    /invalid `answer` "verdicts" \(expected one of: hints, verdict, words, none\)/
   );
 
   // A verdict phase with nothing to say back, and a phase that names a verb nobody will

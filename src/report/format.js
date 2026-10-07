@@ -90,6 +90,9 @@ const SEV_COLOR = {
  *   file's name. Named by this tool, written and read by neither.
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
  *   in a source code review, where the reviewer reproduces the build.
+ * @property {string} [buildDiffFile]  Where the build phase's agent wrote how its build
+ *   differs from the shipped XPI: set by the loop (src/report/loop.js reportMeta) only
+ *   once that file exists, since the reviewer may decline the build.
  * @property {string} [reportFile]  Where the text the reviewer sends to the developer is
  *   written - beside the other two, sharing their name. Unlike them this tool WRITES it
  *   (src/report/report-file.js), which is why it is named for every review rather than
@@ -638,6 +641,9 @@ export function detailLinkLines(meta) {
   }
   if (meta.buildFile) {
     rows.push(["BUILD_PROCESS", "build.md", meta.buildFile]);
+  }
+  if (meta.buildDiffFile) {
+    rows.push(["BUILD_DIFF", "build-diff.md", meta.buildDiffFile]);
   }
   if (meta.reportFile) {
     rows.push(["REVIEW_REPORT", "report.md", meta.reportFile]);

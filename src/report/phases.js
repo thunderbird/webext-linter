@@ -10,6 +10,7 @@
 // sees it - is one condition here rather than a rule copied into the renderer, the phase
 // builder and the verdict walk, where three copies drift.
 import { isQuestion } from "./order.js";
+import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
 
 /**
  * The phase an item is answered in, from what the item IS.
@@ -124,7 +125,8 @@ function aboutEntries(phase, step) {
  * A phase is issued when it has WORK - surviving steps, or open items. This is also what
  * ends the loop: NOT "no item is still open", which an item routed to a phase this run
  * never issues would block forever, but "no phase left to issue".
- * @param {{name: string, steps: object[]}[]} phases  In the order they are issued.
+ * @param {{name: string, answer: string, steps: object[]}[]} phases  In the order they
+ *   are issued.
  * @param {import("./order.js").OrderedItem[]} ordered
  * @param {import("./state.js").LoopState} state
  * @param {{skip: string[], halted: boolean}} run  The run record (stepsOf).
@@ -138,12 +140,11 @@ export function nextPhase(phases, ordered, state, run) {
       continue;
     }
     // A phase exists to settle ENTRIES, so with none there is nothing to issue it for -
-    // whatever its steps would otherwise say. `spawn` is the exception and is one by
-    // nature: its work is starting the agents the review needs, it has no entries at all,
-    // and it is issued ONCE, because a second pass would spawn every one of them again.
-    // Its steps are all optional, so a run that starts no agent reaches it with none and
-    // never gets here - the check above has already passed it over.
-    if (phase.name === "spawn") {
+    // whatever its steps would otherwise say. An itemless phase (`spawn`, `build`) is the
+    // exception by nature: its work is what its steps do, and it is issued ONCE, because a
+    // second pass would do all of it again. A run whose markers leave it no step never
+    // gets here - the check above has already passed it over.
+    if (ITEMLESS_ANSWERS.includes(phase.answer)) {
       if (!issued.has(phase.name)) {
         return { phase, steps, items };
       }
@@ -185,12 +186,8 @@ export function openIn(
   state,
   { skip = [], halted = false } = {}
 ) {
-  // The spawn phase asks about no ITEM: its work is starting the agents the review
-  // needs, and what each of those returns comes back in a file of its own.
-  if (
-    phaseName === "spawn" ||
-    (phaseName === "ask" && (halted || skip.includes("manual")))
-  ) {
+  // An itemless phase (spawn, build) needs no case here: no item is ever routed to it.
+  if (phaseName === "ask" && (halted || skip.includes("manual"))) {
     return [];
   }
   return ordered.filter(
