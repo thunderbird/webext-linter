@@ -2054,43 +2054,14 @@ llm-phases:
   # input invites a loop. "{{problem}}" names what is wrong, exactly.
   refused: |-
     The file you handed back is not what this pass expected: {{problem}}. You still have the prompt you were following. Read it again carefully and redo that pass. If it fails a second time, abort the review and say why.
-  final: |-
-    The review is settled. Wait for every agent you spawned to come back, then give the reviewer what follows, each part under a heading of its own and in this order. Print nothing between the parts and nothing after them.
-
-    Under "LLM decisions", your own account in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why. This part is yours to write and the only part that is.
-
-    Under "Summary", this, as it is written here:
-
-    {{tally}}
-
-    Under "Final Review Details", this, as it is written here - every path this review named, the report among them, and nothing of what is in any of them:
-
-    {{details}}
-  # The same hand-over, for a review that STOPPED. It differs in its first sentence and
-  # nowhere else: everything below that is the same two slots, and what stopped the review
-  # rides in `details` rather than being authored here - a body that differed would be
-  # refused (assertRegistry). Telling an agent "the review is settled" about a review that
-  # was cut short is the one thing this text exists to avoid - the rest is deliberately
-  # identical, so the reviewer reads the same document either way.
-  final-early-exit: |-
-    The review was stopped before it finished: what it found settles the submission, and nothing further is asked of anyone. Wait for every agent you spawned to come back, then give the reviewer what follows, each part under a heading of its own and in this order. Print nothing between the parts and nothing after them.
-
-    Under "LLM decisions", your own account in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why. This part is yours to write and the only part that is.
-
-    Under "Summary", this, as it is written here:
-
-    {{tally}}
-
-    Under "Final Review Details", this, as it is written here - every path this review named, the report among them, and nothing of what is in any of them:
-
-    {{details}}
   # The phases, in the order they are issued. A phase is issued when it has WORK - steps that
-  # survive their markers, or entries to settle; a phase with neither is skipped, and that is
-  # also what ends the loop (not "no item is still open", which an item routed to a phase this
-  # run never issues would block forever).
+  # survive their markers, or entries to settle; a phase with neither is skipped. The last,
+  # `close`, always has work, so it is reached once nothing before it has any (not once "no
+  # item is still open", which an item routed to a phase this run never issues would block
+  # forever), and the review ends with it.
   #
   # `intro` is EMPTY unless the steps alone would let the agent do work that is not its own.
-  # Two of the five earn text, and both for that reason.
+  # Two of the six earn text, and both for that reason.
   phases:
     # Every sub-agent the review may need started, before anything else reads the add-on.
     # Named for what its steps DO, and NOT called `setup`: the pipeline has a setup of its
@@ -2306,3 +2277,33 @@ llm-phases:
             Put every entry in the file to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each entry's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under that entry's "answers", in the order they are listed, each with the label and description written there and no wording of your own.
 
             Record what they answered in that entry's "answer", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
+
+    # The closing hand-over: what the reviewer is left with once nothing else has work. The
+    # linter settles the review before printing it (src/report/loop.js issue), and whether
+    # the review stopped is read off that settled review - so exactly one of the two opening
+    # steps prints, and the body after them is the same either way. Telling an agent "the
+    # review is settled" about one that was cut short is what the two openings exist to
+    # avoid. Nothing is handed back after it: the review ends here.
+    - name: close
+      answer: end
+      verbs: []
+      intro: ""
+      steps:
+        - skip-if-not-stopped: true
+          text: |-
+            The review was stopped before it finished: what it found settles the submission, and nothing further is asked of anyone.
+        - skip-if-stopped: true
+          text: |-
+            The review is settled.
+        - text: |-
+            Wait for every agent you spawned to come back, then give the reviewer what follows, each part under a heading of its own and in this order. Print nothing between the parts and nothing after them.
+
+            Under "LLM decisions", your own account in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why. This part is yours to write and the only part that is.
+
+            Under "Summary", this, as it is written here:
+
+            {{tally}}
+
+            Under "Final Review Details", this, as it is written here - every path this review named, the report among them, and nothing of what is in any of them:
+
+            {{details}}

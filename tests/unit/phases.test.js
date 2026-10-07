@@ -28,7 +28,7 @@ const phaseNamed = (registry, name) =>
 
 test("the shipped registry's phases load and are whole", () => {
   const p = fresh().llmPhases();
-  for (const key of ["preamble", "frame", "handover", "refused", "final"]) {
+  for (const key of ["preamble", "frame", "handover", "refused"]) {
     assert.equal(typeof p[key], "string", key);
     assert.ok(p[key].length > 0, key);
   }
@@ -72,7 +72,7 @@ test("a linter-owned text that loses its placeholder is refused", () => {
 });
 
 test("a missing linter-owned text is refused by name", () => {
-  for (const key of ["preamble", "frame", "handover", "refused", "final"]) {
+  for (const key of ["preamble", "frame", "handover", "refused"]) {
     const registry = fresh();
     delete registry.doc["llm-phases"][key];
     assert.throws(
@@ -244,6 +244,7 @@ test("a phase declares the kind of answer its entries take", () => {
       ["settle", "verdict", 3],
       ["build", "none", 0],
       ["ask", "words", 0],
+      ["close", "end", 0],
     ]
   );
 
@@ -256,7 +257,7 @@ test("a phase declares the kind of answer its entries take", () => {
   phaseNamed(unknown, "verify").answer = "verdicts";
   assert.throws(
     () => check(unknown),
-    /invalid `answer` "verdicts" \(expected one of: hints, verdict, words, none\)/
+    /invalid `answer` "verdicts" \(expected one of: hints, verdict, words, none, end\)/
   );
 
   // A verdict phase with nothing to say back, and a phase that names a verb nobody will
@@ -281,40 +282,42 @@ test("a phase declares the kind of answer its entries take", () => {
 
 // ---- the early exit's registry half ----
 
-// Both finals hand over the same parts, and which one is printed is decided at the very end
-// of the loop. One of them quietly missing a slot would drop that part from exactly the
-// reviews that took that branch, and from no others.
-test("a final that loses one of the hand-over slots is refused", () => {
-  for (const key of ["final", "final-early-exit"]) {
-    for (const slot of ["{{details}}", "{{tally}}"]) {
-      const registry = fresh();
-      const doc = registry.doc["llm-phases"];
-      assert.ok(doc[key].includes(slot), `${key} carries ${slot} as shipped`);
-      doc[key] = doc[key].replace(slot, "somewhere");
-      assert.throws(
-        () => check(registry),
-        new RegExp(`\`${key}\` carries no `),
-        `${key} without ${slot}`
-      );
-    }
+// The review ends with ONE closing phase, the last, and it hands over what the reviewer is
+// left with. A second would never be reached, one that is not last would end the review with
+// phases still to come, and one missing a slot would drop that part from every review.
+test("the closing phase is the one last phase, and carries both hand-over slots", () => {
+  for (const slot of ["{{details}}", "{{tally}}"]) {
+    const registry = fresh();
+    const body = phaseNamed(registry, "close").steps.at(-1);
+    assert.ok(body.text.includes(slot), `close carries ${slot} as shipped`);
+    body.text = body.text.replace(slot, "somewhere");
+    assert.throws(
+      () => check(registry),
+      new RegExp(`phase \`close\` carries no ${slot.replace(/[{}]/g, "\\$&")}`),
+      `close without ${slot}`
+    );
   }
+
+  const none = fresh();
+  phaseNamed(none, "close").answer = "none";
+  assert.throws(() => check(none), /needs exactly one phase answering `end`/);
+
+  const notLast = fresh();
+  const phases = notLast.doc["llm-phases"].phases;
+  phases.splice(phases.length - 2, 0, phases.pop());
+  assert.throws(() => check(notLast), /and it must be the last/);
 });
 
-test("a registry with no final-early-exit is refused", () => {
-  const registry = fresh();
-  delete registry.doc["llm-phases"]["final-early-exit"];
-  assert.throws(() => check(registry), /authors no `final-early-exit`/);
-});
-
-// The two finals describe the same document to the same reader and differ only in how
-// they open. Side-by-side copies are exactly how one comes to be edited and the other not.
-test("the two finals may differ only in their opening line", () => {
-  const registry = fresh();
-  const doc = registry.doc["llm-phases"];
-  const lines = doc["final-early-exit"].split("\n");
-  lines[3] = `${lines[3]} ...and one more thing.`;
-  doc["final-early-exit"] = lines.join("\n");
-  assert.throws(() => check(registry), /differ below their opening line/);
+// Exactly one of the two openings prints: the settled one, or the stopped one.
+test("the closing phase opens one way for a settled review and another for a stopped one", () => {
+  const close = fresh()
+    .llmPhases()
+    .phases.find((p) => p.name === "close");
+  const opening = (halted) => stepsOf(close, { halted })[0].text;
+  assert.match(opening(false), /^The review is settled\./);
+  assert.match(opening(true), /^The review was stopped before it finished/);
+  assert.equal(stepsOf(close, { halted: false }).length, 2);
+  assert.equal(stepsOf(close, { halted: true }).length, 2);
 });
 
 // Whether the review stopped is read against every step: one flagged skip-if-stopped is

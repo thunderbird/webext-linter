@@ -1339,7 +1339,8 @@ test("a swept case becomes an item of its check and settles like any other", () 
   next.entries = next.entries.map((e) => ({ ...e, answer: "reported" }));
   fs.writeFileSync(file, JSON.stringify(next, null, 1));
   let out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
-  while (/── LLM Prompt ──/.test(out.stdout)) {
+  // Every prompt but the closing one ends on the command that hands it back.
+  while (/^\s+node verify\.js --llm-verdict /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries = doc.entries.map((e) => ({ ...e, answer: "Clear" }));
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
@@ -1403,7 +1404,8 @@ test("a swept case of a check that files findings is verified like one", () => {
   verify.entries = verify.entries.map((e) => ({ ...e, answer: "reported" }));
   fs.writeFileSync(file, JSON.stringify(verify, null, 1));
   let out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
-  while (/── LLM Prompt ──/.test(out.stdout)) {
+  // Every prompt but the closing one ends on the command that hands it back.
+  while (/^\s+node verify\.js --llm-verdict /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries = doc.entries.map((e) => ({ ...e, answer: "Clear" }));
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
@@ -1741,7 +1743,8 @@ test("an answer too long for settle() to apply fails cleanly, not as a crash", (
   const file = first.stdout.match(/(\S+\.review\.json)/)[1];
 
   let out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
-  while (/── LLM Prompt ──/.test(out.stdout)) {
+  // Every prompt but the closing one ends on the command that hands it back.
+  while (/^\s+node verify\.js --llm-verdict /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries = doc.entries.map((e) => ({
       ...e,

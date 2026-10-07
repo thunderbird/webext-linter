@@ -171,7 +171,7 @@ test("the report file is written for the questions and rewritten once they are a
   const seen = [];
   for (let pass = 0; pass < 10; pass++) {
     const out = issue(state, stateFile, PHASES, REGISTRY);
-    if (!out) {
+    if (out.phase.answer === "end") {
       break;
     }
     seen.push(out.phase.name);
@@ -242,7 +242,7 @@ test("a review runs spawn -> verify -> settle -> ask and then settles", () => {
   const answered = [];
   for (let pass = 0; pass < 10; pass++) {
     const out = issue(state, stateFile, PHASES, REGISTRY);
-    if (!out) break;
+    if (out.phase.answer === "end") break;
     seen.push(out.phase.name);
     if (out.phase.name === "spawn") {
       swept(state, ARTIFACT_XPI);
@@ -395,7 +395,7 @@ test("nothing to ask: the review settles after the last settle", () => {
   const seen = [];
   for (let pass = 0; pass < 10; pass++) {
     const out = issue(state, stateFile, PHASES, REGISTRY);
-    if (!out) break;
+    if (out.phase.answer === "end") break;
     seen.push(out.phase.name);
     accept(
       state,
@@ -411,7 +411,11 @@ test("nothing to ask: the review settles after the last settle", () => {
     );
   }
   assert.deepEqual(seen, ["verify", "settle"]);
-  assert.equal(issue(state, stateFile, PHASES, REGISTRY), null, "settled");
+  assert.equal(
+    issue(state, stateFile, PHASES, REGISTRY).phase.name,
+    "close",
+    "settled"
+  );
 });
 
 // Four ways a hand-back can be wrong. Each names the one thing to fix, and NONE of them
@@ -630,7 +634,7 @@ test("--llm-skip-manual withholds the entries, so the ask phase is not issued", 
   const seen = [];
   for (let pass = 0; pass < 8; pass++) {
     const out = issue(state, stateFile, PHASES, REGISTRY);
-    if (!out) break;
+    if (out.phase.answer === "end") break;
     seen.push(out.phase.name);
     accept(
       state,
@@ -658,7 +662,7 @@ test("no questions at all: the ask phase is not issued either", () => {
   const seen = [];
   for (let pass = 0; pass < 8; pass++) {
     const out = issue(state, stateFile, PHASES, REGISTRY);
-    if (!out) break;
+    if (out.phase.answer === "end") break;
     seen.push(out.phase.name);
     accept(
       state,
@@ -721,7 +725,7 @@ function phasesOf(state, stateFile) {
   const seen = [];
   for (let pass = 0; pass < 10; pass++) {
     const out = issue(state, stateFile, PHASES, REGISTRY);
-    if (!out) break;
+    if (out.phase.answer === "end") break;
     seen.push(out.phase.name);
     // Whatever trees this run asked about, answered clean - the sweeping agents' part of
     // the pass, without which it cannot be accepted.
@@ -965,8 +969,8 @@ test("a reviewer who writes `ask` has answered, not asked for a move", () => {
   assert.deepEqual(state.route, {}, "nobody was moved");
   assert.deepEqual(state.answers, { 1: "ask", 2: "ask" }, "both were answered");
   assert.equal(
-    issue(state, stateFile, PHASES, REGISTRY),
-    null,
+    issue(state, stateFile, PHASES, REGISTRY).phase.name,
+    "close",
     "and it is over"
   );
 
@@ -995,9 +999,11 @@ function driveLoop(state, stateFile, answer, reg = REGISTRY) {
   // `ask` takes a REVIEWER's answer, not a verb: the phase that asks declares none, and
   // handing it one would be refused where it is applied rather than where it is taken.
   const [clear] = REGISTRY.manualReviewChoices().map((c) => c.label);
+  let closing = null;
   for (let pass = 0; pass < 8; pass++) {
     const out = issue(state, stateFile, PHASES, reg);
-    if (!out) {
+    if (out.phase.answer === "end") {
+      closing = out;
       break;
     }
     seen.push(out.phase.name);
@@ -1010,7 +1016,7 @@ function driveLoop(state, stateFile, answer, reg = REGISTRY) {
       reg
     );
   }
-  return { seen, settled: settle(state, reg) };
+  return { seen, closing, settled: settle(state, reg) };
 }
 
 /** The review above, with its findings reported by a check that stops the review. */
@@ -1049,6 +1055,52 @@ test("withdrawing the blocking findings puts the question block back", () => {
   );
   assert.ok(seen.includes("ask"), `ask was not issued: ${seen.join(", ")}`);
   assert.equal(settled.earlyExit, false);
+});
+
+// The review ends with the closing phase, which carries the settled review and opens on
+// what happened to it: settled, or stopped. Nothing is handed back after it.
+test("the closing phase opens on how the review ended, and takes nothing back", () => {
+  const ran = blockingReview(tmp());
+  const { closing: settledClose } = driveLoop(
+    ran.state,
+    ran.stateFile,
+    (phase) => (phase === "verify" ? "withdrawn" : "cleared")
+  );
+  assert.match(settledClose.steps[0].text, /^The review is settled\./);
+  assert.equal(settledClose.settled.earlyExit, false);
+  assert.throws(
+    () => accept(ran.state, ran.state.review, PHASES, REGISTRY),
+    /nothing is handed back after its closing prompt/
+  );
+
+  const stopped = blockingReview(tmp());
+  const { closing: stoppedClose } = driveLoop(
+    stopped.state,
+    stopped.stateFile,
+    (phase) => (phase === "verify" ? "reported" : "cleared")
+  );
+  assert.match(stoppedClose.steps[0].text, /^The review was stopped/);
+  assert.equal(stoppedClose.settled.earlyExit, true);
+  // The same body either way: the stop rides in the details block.
+  assert.equal(stoppedClose.steps[1].text, settledClose.steps[1].text);
+  assert.match(
+    stoppedClose.settled.details,
+    /- Known security vulnerabilities$/
+  );
+});
+
+// A review with nothing to do at all still closes: its first pass is the closing one.
+test("a review with no other work is closed on its first pass", () => {
+  const { state, stateFile } = review(tmp(), {
+    sweep: false,
+    findings: false,
+    code: false,
+    questions: false,
+  });
+  state.run = { skip: ["summary"], sca: false };
+  const out = issue(state, stateFile, PHASES, REGISTRY);
+  assert.equal(out.phase.name, "close");
+  assert.ok(out.settled, "it carries the settled review");
 });
 
 // Whether the review stopped is a fact about the review, so the hand-over carries it too -
@@ -1120,7 +1172,7 @@ test("a case the agent routed to a reviewer is dropped by the halt too", () => {
   const seen = [];
   for (let pass = 0; pass < 8; pass++) {
     const out = issue(state, stateFile, PHASES, REGISTRY);
-    if (!out) {
+    if (out.phase.answer === "end") {
       break;
     }
     seen.push(out.phase.name);

@@ -191,14 +191,10 @@ export const PHASE_TEXTS = {
   frame: "{{review}}",
   handover: "{{command}}",
   refused: "{{problem}}",
-  final: "",
-  // The hand-over for a review that STOPPED. Required like the rest, because which of
-  // the two is printed is decided at the end of the loop and a missing one would be
-  // found only by the review that needed it.
-  "final-early-exit": "",
 };
 
-/** What the last prompt hands the reviewer, whichever of the two texts carries it. */
+/** What the closing phase (`answer: end`) hands the reviewer, whether the review settled or
+ *  stopped. */
 export const FINAL_SLOTS = ["{{details}}", "{{tally}}"];
 
 /**
@@ -208,12 +204,14 @@ export const FINAL_SLOTS = ["{{details}}", "{{tally}}"];
  */
 export const LOOP_VERBS = VERB_NAMES;
 
-export const ANSWER_KINDS = ["hints", "verdict", "words", "none"];
+export const ANSWER_KINDS = ["hints", "verdict", "words", "none", "end"];
 
 /** The answer kinds of a phase that asks about no entry: its work is what its steps do, so
- *  it is issued once and handed back with an empty file. `hints` also reads the sweeps back
- *  on that hand-back, `none` reads nothing. */
-export const ITEMLESS_ANSWERS = ["hints", "none"];
+ *  it is issued once. `hints` and `none` are handed back with an empty file - `hints` also
+ *  reads the sweeps back on that hand-back, `none` reads nothing. `end` is the closing
+ *  phase: issued once nothing else has work, and never handed back, because the review
+ *  ends with it. */
+export const ITEMLESS_ANSWERS = ["hints", "none", "end"];
 
 /** What a phase's `product` can name: a file its agent writes for the reviewer only when the
  *  reviewer wants it, keyed as the state's `paths` key that holds it. Whether it was written

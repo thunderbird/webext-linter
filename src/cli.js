@@ -35,16 +35,8 @@ import {
   loopPromptLines,
 } from "./report/format.js";
 import { readState } from "./report/state.js";
-import { writeReportFile } from "./report/report-file.js";
-import {
-  accept,
-  issue,
-  settle,
-  reviewDetails,
-  HandbackRefused,
-} from "./report/loop.js";
+import { accept, issue, loopSlots, HandbackRefused } from "./report/loop.js";
 import { readHandback } from "./report/handback.js";
-import { sweepSlots } from "./report/sweep-files.js";
 import {
   DEFAULT_CACHE,
   EXPERIMENTS_CACHE,
@@ -217,7 +209,7 @@ function helpText(checkIds) {
     ],
     [
       "--llm-verdict <file>",
-      "Take one pass of the review loop: apply what the file carries and print the next prompt, or the settled report when nothing is left to ask. The file is the one --llm-review named, and no add-on is named again. Normally run by the agent working through the review rather than by a person.",
+      "Take one pass of the review loop: apply what the file carries and print the next prompt - the last one, once nothing else is left, hands over the settled review. The file is the one --llm-review named, and no add-on is named again. Normally run by the agent working through the review rather than by a person.",
     ],
   ];
 
@@ -997,8 +989,8 @@ function splitList(value) {
 }
 
 /**
- * One pass of the review loop: take a phase back, then hand out the next - or, when
- * nothing is left to issue, print the finished report.
+ * One pass of the review loop: take a phase back, then hand out the next - the closing
+ * phase, once nothing else has work, which carries the finished review.
  *
  * A REFUSAL is answered differently from every other failure here. The prompt is NOT
  * re-printed: the agent still has it, and re-issuing the same text against the same input
@@ -1048,81 +1040,39 @@ async function runLoopPass(file, base) {
     return 2;
   }
   // A failure from here on is the tool's: the hand-back was accepted. So it is not a
-  // refusal - the agent did nothing to correct - but ends the pass the way settle()
-  // does below. The prompt is built in full before any of it is printed, so a failure
-  // part-way leaves no half a prompt behind.
+  // refusal - the agent did nothing to correct - and it cannot be redone either: the answer
+  // a closing settle refuses is already recorded, and nothing re-prints a prompt for one
+  // that was already accepted. The review ends here - a clean failure, not a stack trace.
+  // The prompt is built in full before any of it is printed, so a failure part-way leaves
+  // no half a prompt behind.
   let next, lines;
   try {
     next = issue(state, stateFile, texts.phases, registry);
-    lines = next
-      ? loopPromptLines(texts, next.phase, next.steps, {
-          review: state.review,
-          command: `node verify.js --llm-verdict ${state.review}`,
-          schemaCache: state.paths.schemaCache ?? "",
-          description: state.paths.description ?? "",
-          build: state.paths.build ?? "",
-          buildCopy: state.paths.buildCopy ?? "",
-          buildDiff: state.paths.buildDiff ?? "",
-          details: reviewDetails(state),
-          scaRoot: state.paths.scaRoot ?? "",
-          xpiRoot: state.paths.xpiRoot,
-          schema: state.paths.schema,
-          ...sweepSlots(state),
-        })
-      : null;
+    lines = loopPromptLines(
+      texts,
+      next.phase,
+      next.steps,
+      loopSlots(state, next)
+    );
   } catch (err) {
     writeToStderr(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
-  if (next) {
-    for (const line of lines) {
-      writeToStdout(`${line}\n`);
-    }
-    writeToStdout("\n");
-    return 0;
-  }
-  // Settled. The last prompt differs from every other only in carrying what the reviewer is
-  // left with: the tally, and the Review Details block - every path this review named, the
-  // report among them, and the line saying so where the review stopped.
-  let review, applied, details, tally, report, earlyExit;
-  try {
-    ({ review, applied, details, tally, report, earlyExit } = settle(
-      state,
-      registry
-    ));
-  } catch (err) {
-    // Unlike a hand-back, this cannot be redone: the answer settle() refuses is already
-    // recorded, and nothing re-prints a prompt for one that was already accepted. The
-    // review ends here - a clean failure, not a stack trace, same as a state this build
-    // cannot read.
-    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-    return 2;
-  }
-  // Audible, and printed BEFORE the prompt: it is this tool's note to whoever ran the
-  // command, and a line between the two blocks below is a line that can be copied along
-  // with one of them.
-  if (applied.length) {
+  // The closing phase ends the review. Audible, and printed BEFORE the prompt: what the
+  // verdicts did is this tool's note to whoever ran the command, and a line inside the
+  // prompt is a line that can be copied along with it. The report the prompt links is
+  // already written (issue), so the link is live the moment the reviewer is told to open it.
+  const { settled } = next;
+  if (settled?.applied.length) {
     writeToStdout(
-      `Applied ${applied.length} verdict(s): ${applied.join(", ")}\n\n`
+      `Applied ${settled.applied.length} verdict(s): ${settled.applied.join(", ")}\n\n`
     );
   }
-  // The settled report goes to the FILE the review details link, never into the prompt: a
-  // model asked to hand it back would reword its input, and this is the one text a
-  // developer receives. Written before the prompt that names it, so the link is live the
-  // moment the reviewer is told to open it.
-  writeReportFile(state.paths?.report, report);
-  // Both blocks travel in the text's own slots rather than as writes after it, so the
-  // text says which is which. Printed in sequence they would be two documents with
-  // nothing between them saying where one ends.
-  // A review that STOPPED hands over the same parts under a text that says so: "the review
-  // is settled" is not true of one cut short, and the agent relays what it is given.
-  writeToStdout(
-    `${fillSlots(earlyExit ? texts.finalEarlyExit : texts.final, {
-      details,
-      tally,
-    })}\n`
-  );
-  return hasErrors(review.findings) ? 1 : 0;
+  for (const line of lines) {
+    writeToStdout(`${line}\n`);
+  }
+  writeToStdout("\n");
+  return settled && hasErrors(settled.review.findings) ? 1 : 0;
 }
 
 /** Fill a linter-owned text's placeholders. The same substitution the prompt uses, so a

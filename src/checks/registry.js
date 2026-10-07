@@ -575,7 +575,7 @@ export class Registry {
    * The REVIEW LOOP's prompts: the four texts the linter owns, and the phases it hands out
    * one per pass.
    *
-   * `preamble`, `frame`, `handover`, `refused` and `final` are the linter's - authored once
+   * `preamble`, `frame`, `handover` and `refused` are the linter's - authored once
    * and printed the same way every time, so no phase can forget to say how to hand back, or
    * that the file has changed since the last pass. The phases author only what differs:
    * their `intro` (often empty) and their `steps`.
@@ -584,7 +584,7 @@ export class Registry {
    * prompt's steps come back in, so the caller filters by one shape: `skip` against the flags the run was given,
    * `run` against the conditions this review meets.
    * @returns {{preamble: string, frame: string, handover: string, refused: string,
-   *   final: string, phases: {name: string, verbs: string[], intro: string,
+   *   phases: {name: string, verbs: string[], intro: string,
    *   steps: {skip: ?string, run: ?string, text: string}[]}[]}}
    */
   llmPhases() {
@@ -594,11 +594,6 @@ export class Registry {
       frame: p.frame,
       handover: p.handover,
       refused: p.refused,
-      final: p.final,
-      // The same hand-over, for a review that stopped early. Carried beside `final`
-      // rather than chosen here, because which one is used is settled by the findings
-      // that survive every verdict - which this loader cannot know.
-      finalEarlyExit: p["final-early-exit"],
       phases: p.phases.map((phase) => ({
         name: phase.name,
         answer: phase.answer,
@@ -1376,7 +1371,7 @@ function assertStep(step, i, where, markers, flags = []) {
 const SETTLE_PHASE = "settle";
 
 /**
- * The REVIEW LOOP's texts, checked at load: the five the linter owns, and every phase's
+ * The REVIEW LOOP's texts, checked at load: the four the linter owns, and every phase's
  * intro and steps.
  *
  * The placeholders are checked because each one is the only way a value reaches the agent:
@@ -1403,31 +1398,25 @@ export function assertPhases(registry, at) {
       );
     }
   }
-  // The two finals are interchangeable by construction: the loop picks one at the end
-  // and fills the same three slots in it. One of them quietly missing a slot would drop
-  // that part of the hand-over from exactly the reviews that took that branch.
-  for (const key of ["final", "final-early-exit"]) {
-    for (const slot of FINAL_SLOTS) {
-      if (!doc[key].includes(slot)) {
-        throw new Error(
-          `${where} \`${key}\` carries no ${slot} - both finals hand over the same ` +
-            "three parts, and the one that omits it drops it silently"
-        );
-      }
-    }
-  }
-  // They describe the SAME document to the same reader, and differ only in how they open:
-  // one says the review is settled, the other that it stopped. Every line after that is
-  // the instruction for printing the hand-over, and the two copies existing side by side
-  // is exactly how one of them comes to be edited and the other not.
-  const [settledBody, stoppedBody] = ["final", "final-early-exit"].map((key) =>
-    doc[key].split("\n").slice(1).join("\n")
-  );
-  if (settledBody !== stoppedBody) {
+  // The review ends with ONE closing phase, the last, and it hands over what the reviewer
+  // is left with. Two would leave the second unreachable, one that is not last would end
+  // the review with phases still to come, and one missing a slot would drop that part of
+  // the hand-over from every review.
+  const ends = doc.phases.filter((phase) => phase.answer === "end");
+  if (ends.length !== 1 || doc.phases.at(-1) !== ends[0]) {
     throw new Error(
-      `${where} \`final\` and \`final-early-exit\` differ below their opening line - ` +
-        "they hand the same document to the same reader, so only the first line may differ"
+      `${where} needs exactly one phase answering \`end\`, and it must be the last - ` +
+        "the review ends with it"
     );
+  }
+  const closing = ends[0].steps.map((step) => step.text).join("\n");
+  for (const slot of FINAL_SLOTS) {
+    if (!closing.includes(slot)) {
+      throw new Error(
+        `${where} phase \`${ends[0].name}\` carries no ${slot} - the closing hands it ` +
+          "over, whether the review settled or stopped"
+      );
+    }
   }
   const seen = new Set();
   for (const phase of doc.phases) {

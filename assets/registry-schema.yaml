@@ -347,8 +347,6 @@ sections:
       frame: *loop-text
       handover: *loop-text
       refused: *loop-text
-      final: *loop-text
-      final-early-exit: *loop-text
       phases:
         kind: entries
         shape: loop-phase-entry

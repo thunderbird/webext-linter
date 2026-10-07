@@ -60,10 +60,10 @@ import { resolveHolds } from "./report/finding.js";
 import { orderReview } from "./report/order.js";
 import { earlyExitOf, withoutQuestions } from "./report/early-exit.js";
 import { STATE_VERSION } from "./report/state.js";
-import { issue, reviewDetails } from "./report/loop.js";
+import { issue, loopSlots } from "./report/loop.js";
 import { headerLines, loopPromptLines, schemaLines } from "./report/format.js";
 import { reviewFilePaths } from "./report/items.js";
-import { writeSweepFiles, sweepSlots } from "./report/sweep-files.js";
+import { writeSweepFiles } from "./report/sweep-files.js";
 import { sweepRun } from "./checks/registry-vocabulary.js";
 import { resolveVendor } from "./vendor/resolve.js";
 import {
@@ -1172,33 +1172,15 @@ export async function runPipeline(opts) {
     const texts = registry.llmPhases();
     const state = loopState;
     const first = issue(state, meta.stateFile, texts.phases, registry);
-    if (first) {
-      for (const line of loopPromptLines(
-        texts,
-        first.phase,
-        first.steps,
-        {
-          review: state.review,
-          command: `node verify.js --llm-verdict ${state.review}`,
-          schemaCache: state.paths.schemaCache ?? "",
-          description: summaryPath ?? "",
-          build: buildPath ?? "",
-          buildCopy: state.paths.buildCopy ?? "",
-          buildDiff: state.paths.buildDiff ?? "",
-          scaRoot: state.paths.scaRoot ?? "",
-          xpiRoot: state.paths.xpiRoot,
-          schema: state.paths.schema,
-          // Named because `ask` can be the FIRST phase issued - a review with no findings
-          // and nothing to settle opens there - and that is the phase that hands the
-          // block over. A run whose first phase does not name it passes it unused.
-          details: reviewDetails(state),
-          ...sweepSlots(state),
-        },
-        // The preamble prints once, and this is the run that is once.
-        true
-      )) {
-        report(line);
-      }
+    for (const line of loopPromptLines(
+      texts,
+      first.phase,
+      first.steps,
+      loopSlots(state, first),
+      // The preamble prints once, and this is the run that is once.
+      true
+    )) {
+      report(line);
     }
   }
   // The prompt IS the whole output of a run that hands out a phase. Neither the header

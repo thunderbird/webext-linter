@@ -9,7 +9,7 @@
 // state + review file` is a pure file-to-file transformation, and so is `state -> report`.
 // That is what makes this half of the tool testable without talking to an agent.
 import { orderReview } from "./order.js";
-import { nextPhase, openIn, phaseNow } from "./phases.js";
+import { nextPhase, openIn, phaseNow, stepsOf } from "./phases.js";
 import { earlyExitOf, withoutQuestions } from "./early-exit.js";
 import {
   HandbackRefused,
@@ -25,7 +25,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
 import { writeReportFile } from "./report-file.js";
 import { reviewItems } from "./items.js";
 import { mergeSweepResults } from "./sweep.js";
-import { readSweepAnswers } from "./sweep-files.js";
+import { readSweepAnswers, sweepSlots } from "./sweep-files.js";
 import { resolveHolds } from "./finding.js";
 import { artifactRoots } from "../lib/artifacts.js";
 import {
@@ -73,16 +73,30 @@ function runOf(state, ordered, registry) {
  * @param {import("../checks/registry.js").Registry} registry  Renders each entry for
  *   THIS reader, at hand-out - never stored, so the same item can be worded one way
  *   here and another for the reviewer.
- * @returns {?{phase: object, steps: object[], entries: object[]}}  Null when settled.
+ * @returns {{phase: object, steps: object[], entries: object[],
+ *   settled: ?ReturnType<typeof settle>}}  `settled` is the finished review, for the
+ *   closing phase only.
  */
 export function issue(state, stateFile, phases, registry) {
   const ordered = orderReview(state.report.findings, state.manual);
   const run = runOf(state, ordered, registry);
   const next = nextPhase(phases, ordered, state, run);
   if (!next) {
-    return null;
+    // The registry refuses a loop without a closing phase, and that phase always has a
+    // step to print - so nothing reaches here but a broken wiring.
+    throw new Error("the review loop has no phase left to issue");
   }
-  const { phase, steps } = next;
+  const { phase } = next;
+  // The closing phase hands over the FINISHED review: every answer applied, and the report
+  // the reviewer sends written. Whether the review stopped is read off that settled review
+  // rather than the run's - a verdict applied only now can still decide it - so the steps
+  // are chosen again against it. Settled on a COPY, as below: the state is written after
+  // this, and a review settled in place would be settled twice by anything that read it.
+  const settled =
+    phase.answer === "end" ? settle(structuredClone(state), registry) : null;
+  const steps = settled
+    ? stepsOf(phase, { ...run, halted: settled.earlyExit })
+    : next.steps;
   // An itemless phase asks about nothing in this file: its work is what its steps do, and
   // each product lands in a file of its own. Every other phase hands over its open items,
   // rendered for THIS reader - never stored, so the same item can be worded one way here
@@ -101,7 +115,9 @@ export function issue(state, stateFile, phases, registry) {
   //
   // Only on this phase, not on every pass: settling walks every answer recorded so far, and
   // a throw inside issue() would break the loop over a file nobody has been handed yet.
-  if (phase.name === "ask") {
+  if (settled) {
+    writeReportFile(state.paths?.report, settled.report);
+  } else if (phase.name === "ask") {
     writeReportFile(
       state.paths?.report,
       settle(structuredClone(state), registry).report
@@ -109,7 +125,38 @@ export function issue(state, stateFile, phases, registry) {
   }
   writeState(stateFile, state);
   writeReviewFile(state.review, reviewFile(stateFile, entries));
-  return { phase, steps, entries };
+  return { phase, steps, entries, settled };
+}
+
+/**
+ * Every value a phase's steps name, filled from the state - the one list both the first run
+ * and every later pass print a prompt from.
+ * @param {import("./state.js").LoopState} state
+ * @param {{settled: ?object}} issued  What `issue` handed out: the closing phase carries the
+ *   finished review, whose Review Details and tally it hands over.
+ * @returns {Object<string, string>}
+ */
+export function loopSlots(state, issued) {
+  const paths = state.paths ?? {};
+  return {
+    review: state.review,
+    command: `node verify.js --llm-verdict ${state.review}`,
+    schemaCache: paths.schemaCache ?? "",
+    description: paths.description ?? "",
+    build: paths.build ?? "",
+    buildCopy: paths.buildCopy ?? "",
+    buildDiff: paths.buildDiff ?? "",
+    scaRoot: paths.scaRoot ?? "",
+    xpiRoot: paths.xpiRoot,
+    schema: paths.schema,
+    // Named because `ask` can be the FIRST phase issued - a review with no findings and
+    // nothing to settle opens there - and that is a phase that hands the block over. The
+    // closing phase hands over the finished review's block instead, which ends on what
+    // stopped it where something did.
+    details: issued.settled?.details ?? reviewDetails(state),
+    tally: issued.settled?.tally ?? "",
+    ...sweepSlots(state),
+  };
 }
 
 /**
@@ -133,6 +180,11 @@ export function accept(state, file, phases, registry) {
   if (!phase) {
     throw new HandbackRefused(
       `this review is not waiting on a phase called "${state.phase}"`
+    );
+  }
+  if (phase.answer === "end") {
+    throw new HandbackRefused(
+      "this review is finished - nothing is handed back after its closing prompt"
     );
   }
   const { entries } = readHandback(file);
@@ -238,11 +290,10 @@ function phaseEntries(state, registry, phase, run) {
  * are answered, and by the time they have been, it is far above the reviewer. The report they
  * are about to send is one of these rows, and so is the package it is about.
  *
- * The early-exit lines belong to the block rather than to the text around it, because the two
- * finals are asserted byte-identical below their opening line (src/checks/registry.js): a
- * trailer authored into the stopped one could not exist. earlyExitLines answers [] for a
- * review that did not stop, so this is asked unconditionally and the block simply ends
- * sooner.
+ * The early-exit lines belong to the block rather than to the closing phase's steps, because
+ * the reasons are the review's, not authored text: only the block can list the ones that
+ * stopped THIS review. earlyExitLines answers [] for a review that did not stop, so this is
+ * asked unconditionally and the block simply ends sooner.
  * @param {import("./state.js").LoopState} state
  * @param {?{intro: string, reasons: {id: string, text: string}[]}} earlyExit  What stopped the
  *   review, or null where nothing did.

@@ -22,7 +22,7 @@ flags in the context of every other option.
 
 `--llm-review` runs the review **once** and prints the first phase's prompt instead of
 the report. Every `--llm-verdict` run after that takes a phase back and hands out the
-next, until nothing is left to issue and the last one carries the report.
+next, until nothing else has work and the last one, `close`, hands over the settled review.
 
 ```sh
 node verify.js ./submission.xpi --llm-review     # runs the review, prints prompt 1
@@ -56,6 +56,7 @@ entry never offered are all refusals.
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
 | `build` | Source code review only: with the reviewer's consent, build the add-on in the agent's own sandbox and write how the result differs from the shipped XPI. | Nothing: the diff goes to a file of its own |
 | `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
+| `close` | The last phase, once nothing else has work: hand over the settled review. It opens on whether the review is settled or stopped. | Nothing: the review ends with it |
 
 A phase is issued only when it has **work** - steps that survive their markers, or
 entries to settle - and that is also what ends the loop. So a review with no sweep never
@@ -107,7 +108,7 @@ What a stopped review does:
 | The report | drops every to-do item a reviewer would have been **asked** - the Extended Manual Review and Standard Manual Review sections, and their tally counts. |
 | | keeps both code-review sections: reading code is safe, and what it turns up is the evidence for the halt. |
 | | ends on the reason it is incomplete, one line per distinct cause. |
-| The last prompt | is a hand-over of its own, because telling an agent "the review is settled" about one that was cut short is not true. It carries the same three parts as the ordinary one. |
+| The `close` phase | opens with a step of its own (`skip-if-not-stopped`), because telling an agent "the review is settled" about one that was cut short is not true. Everything after that opening is the same. |
 
 The decision is taken again on every pass, never recorded once, because the `verify` phase
 is where those findings are audited: an agent that **withdraws** the finding which stopped
@@ -267,14 +268,17 @@ The block is handed over twice, for two different readings. The `ask` phase hand
 before it asks anything, so the reviewer can open those files while answering, and the last
 pass hands it over again as what they are left holding.
 
-The last pass hands over the agent's own account and the block, each under a heading of its
-own: **LLM decisions** (every finding it withdrew and every verdict it reached, with its
-reasons - the only part that is the agent's to write), **Summary** (the tally), and **Final
-Review Details** (every path this review named, `REVIEW_REPORT` among them, and nothing of
-what is in any of them). Where the review stopped early, the line saying so closes that
-block - the two final texts are asserted identical below their opening line, so what differs
-between a settled review and a stopped one has to travel in the block rather than around
-it.
+The last pass is the `close` phase. The linter applies every answer, writes `REVIEW_REPORT`,
+and only then prints it, so it opens on whether the review settled or stopped: of its two
+opening steps, one is flagged `skip-if-stopped` and the other `skip-if-not-stopped`. The
+rest is one step, the same either way. It hands over the agent's own account and the block,
+each under a heading of its own: **LLM decisions** (every finding it withdrew and every
+verdict it reached, with its reasons - the only part that is the agent's to write),
+**Summary** (the tally), and **Final Review Details** (every path this review named,
+`REVIEW_REPORT` among them, and nothing of what is in any of them). Where the review stopped
+early, the reasons close that block, because only the block can list what stopped this
+review. Nothing is handed back after `close`: it carries no hand-back step, and a hand-back
+is refused.
 
 
 ## Preparing a source code review
@@ -318,7 +322,7 @@ too many formats for it to open, which is why that one extraction is the reader'
 | Option | Description |
 | --- | --- |
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Refused with `--report-format json`. |
-| `--llm-verdict <file>` | Take a phase back and hand out the next, from the review file the prompt named - or, when nothing is left to issue, print the settled report. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file beside this one. Normally run by the agent working through the review rather than by a person. |
+| `--llm-verdict <file>` | Take a phase back and hand out the next, from the review file the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file beside this one. Normally run by the agent working through the review rather than by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
 | `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review stopped early, which takes them out. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |

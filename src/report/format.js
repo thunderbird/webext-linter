@@ -284,10 +284,11 @@ function stepLines(n, text, blocks = []) {
  * @returns {string[]}
  */
 /** The prompt values that are handed to a step as a BLOCK rather than substituted into
- *  its prose: printed line for line, never re-wrapped. Both are tables of named values, and
- *  a wrapped path is one nobody can copy - the schema block because its reader looks values
- *  up in it, the Review Details block because the reviewer is given it as it stands. */
-const BLOCK_VALUES = new Set(["schema", "details"]);
+ *  its prose: printed line for line, never re-wrapped. Each is a table, and a wrapped row is
+ *  one nobody can read back - the schema block because its reader looks values up in it,
+ *  the Review Details block and the closing tally because the reviewer is given them as
+ *  they stand. */
+const BLOCK_VALUES = new Set(["schema", "details", "tally"]);
 
 export function loopPromptLines(texts, phase, steps, values, first = false) {
   // Everything BUT the value blocks, which stepLines lays out unwrapped below.
@@ -301,7 +302,12 @@ export function loopPromptLines(texts, phase, steps, values, first = false) {
   if (first) {
     lines.push(...promptProse(fill(texts.preamble)), "");
   }
-  lines.push(...promptProse(fill(texts.frame)));
+  // The closing phase (`end`) is neither read from the review file nor handed back: the
+  // review ends with it, so it names no file to re-read and carries no hand-back step.
+  const closing = phase.answer === "end";
+  if (!closing) {
+    lines.push(...promptProse(fill(texts.frame)));
+  }
   if (phase.intro) {
     lines.push("", ...promptProse(fill(phase.intro)));
   }
@@ -313,9 +319,17 @@ export function loopPromptLines(texts, phase, steps, values, first = false) {
     .map((name) => ({ name: `{{${name}}}`, lines: values[name].split("\n") }));
   // The handover is the last numbered step, not a trailer: the agent follows a numbered
   // list, and a hand-back tacked on as prose is the one instruction it can skim past.
-  const all = [...steps.map((s) => s.text), texts.handover];
+  const all = [
+    ...steps.map((s) => s.text),
+    ...(closing ? [] : [texts.handover]),
+  ];
   all.forEach((text, i) => {
-    lines.push("", ...stepLines(i + 1, fill(text), blocks));
+    // One blank line between parts: a prompt with no frame opens on its steps, straight
+    // after the blank line below its heading.
+    if (lines.at(-1) !== "") {
+      lines.push("");
+    }
+    lines.push(...stepLines(i + 1, fill(text), blocks));
   });
   assertFilled(lines, phase.name);
   return lines;
