@@ -104,29 +104,10 @@ export function stepsOf(phase, run = {}) {
  * @returns {{steps: object[], items: object[]}}
  */
 export function workOf(phase, ordered, state, run) {
-  const items = openIn(phase.name, ordered, state, run);
-  const steps = stepsOf(phase, run).filter(
-    (step) => items.length > 0 || !aboutEntries(phase, step)
-  );
-  return { steps, items };
-}
-
-/**
- * Whether a step is about the entries, and so has nothing to say when there are none.
- *
- * Derived rather than marked, because the two things that make a step item-directed are
- * already visible: a phase that accepts VERBS settles entries and does nothing else, and
- * the one step --llm-skip-manual withholds is the one that puts entries to a reviewer.
- * The steps that stand alone - spawning an agent, handing over a link - carry neither.
- *
- * It matters because a phase whose every step is about entries it does not have is a pass
- * spent asking the agent to settle nothing.
- * @param {{verbs: string[]}} phase
- * @param {{skip: ?string}} step
- * @returns {boolean}
- */
-function aboutEntries(phase, step) {
-  return phase.verbs.length > 0 || step.skip === "manual";
+  return {
+    steps: stepsOf(phase, run),
+    items: openIn(phase.name, ordered, state, run),
+  };
 }
 
 /**

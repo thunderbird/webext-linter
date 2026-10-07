@@ -243,6 +243,7 @@ test("a phase declares the kind of answer its entries take", () => {
       ["verify", "verdict", 2],
       ["settle", "verdict", 3],
       ["build", "none", 0],
+      ["details", "none", 0],
       ["ask", "words", 0],
       ["close", "end", 0],
     ]

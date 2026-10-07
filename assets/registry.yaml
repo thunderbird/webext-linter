@@ -2252,6 +2252,26 @@ llm-phases:
 
             and to nothing else. Open it with one line saying the outcome: the build is identical, the build differs, or the build failed. Where it differs, list the files only one side has, give a unified diff for every text file whose content differs, and name every binary file that differs. Where the build failed, say which step failed and quote its error output. That file is the reviewer's: write what you found, never a verdict.
 
+    # Hands the reviewer the Review Details block, once, before anything is put to them:
+    # what this review is, and where to read it while answering. Its own phase so it does
+    # not hang off one particular question phase. Not under --llm-skip-manual (`skip:
+    # manual`), where nothing is put to a reviewer, and not in a review that stopped
+    # (`skip-if-stopped`), whose closing hand-over carries the block anyway.
+    - name: details
+      # Asks about nothing in the review file: the block is its whole work.
+      answer: none
+      verbs: []
+      intro: ""
+      steps:
+        - skip: manual
+          skip-if-stopped: true
+          text: |-
+            Wait for every agent you spawned to come back, then give the reviewer this block before you put anything to them, under a "Review details" heading and otherwise exactly as it is written here:
+
+            {{details}}
+
+            It names what this review is and where to read it, and its links are written for their client to open. Write nothing of your own about it: no summary, no excerpt, no link of your own making. Where a path names a file another agent wrote, the reviewer reads it themselves, while you work.
+
     # Puts what only a person can answer to a person. Intro EMPTY: today's two ask blocks say
     # where an entry came from, which is procedural - the agent relays both identically, and
     # naming the difference invites it to treat them differently, which step 3 forbids.
@@ -2264,13 +2284,6 @@ llm-phases:
       verbs: []
       intro: ""
       steps:
-        - skip-if-stopped: true
-          text: |-
-            Wait for every agent you spawned to come back, then give the reviewer this block before you put anything to them, under a "Review details" heading and otherwise exactly as it is written here:
-
-            {{details}}
-
-            It names what this review is and where to read it, and its links are written for their client to open. Write nothing of your own about it: no summary, no excerpt, no link of your own making. Where a path names a file another agent wrote, the reviewer reads it themselves, while you work.
         - skip: manual
           skip-if-stopped: true
           text: |-

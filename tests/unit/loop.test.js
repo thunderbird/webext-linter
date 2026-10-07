@@ -175,10 +175,10 @@ test("the report file is written for the questions and rewritten once they are a
       break;
     }
     seen.push(out.phase.name);
-    // Written exactly when `ask` goes out, and not before it.
+    // Written exactly when `details` hands the reviewer its link, and not before it.
     assert.equal(
       fs.existsSync(file),
-      seen.includes("ask"),
+      seen.includes("details"),
       `after issuing ${out.phase.name}`
     );
     if (out.phase.name === "spawn") {
@@ -235,7 +235,7 @@ function swept(state, artifact, found = {}) {
 // asks about. Every route the loop has is exercised here - a sweep answered by check, a
 // finding withdrawn, a case settled, a case that becomes a question, and a person's own
 // words coming back.
-test("a review runs spawn -> verify -> settle -> ask and then settles", () => {
+test("a review runs spawn -> verify -> settle -> details -> ask and then settles", () => {
   const dir = tmp();
   const { state, stateFile } = review(dir);
   const seen = [];
@@ -256,10 +256,10 @@ test("a review runs spawn -> verify -> settle -> ask and then settles", () => {
     const { answers } = accept(state, file, PHASES, REGISTRY);
     answered.push([out.phase.name, [...answers.keys()].join(",")]);
   }
-  assert.deepEqual(seen, ["spawn", "verify", "settle", "ask"]);
+  assert.deepEqual(seen, ["spawn", "verify", "settle", "details", "ask"]);
   // The settle case became a question and was asked WITH its own index, beside the two
   // standard ones - three questions, not two.
-  assert.equal(answered[3][1].split(",").length, 3);
+  assert.equal(answered[4][1].split(",").length, 3);
   assert.deepEqual(state.answers, {
     1: "withdrawn",
     2: "reported",
@@ -281,9 +281,10 @@ test("an entry is answered from its own answers, not its phase's verbs", () => {
   // --llm-skip-summary with no sweep leaves spawn with nothing to start, so settle is
   // first once it has been issued.
   state.run = { skip: ["summary"], sca: false, sweep: false };
-  // Spawn unpacks the package whatever else it does, so it is issued in every review;
-  // marked done here so this test starts where it means to.
-  state.issued = ["spawn"];
+  // Spawn unpacks the package whatever else it does, and `details` hands over the block,
+  // so both are issued in every review; marked done here so this test starts where it
+  // means to.
+  state.issued = ["spawn", "details"];
   // What the 14 screened checks declare: settle it, or clear it. No handing it on.
   state.manual[0].settleVerbs = ["reported", "cleared"];
 
@@ -325,7 +326,7 @@ test("reporting reads as the last resort only where clearing was the way out", (
   const dir = tmp();
   const skipSetup = (r) => {
     r.state.run = { skip: ["summary"], sca: false, sweep: false };
-    r.state.issued = ["spawn"];
+    r.state.issued = ["spawn", "details"];
     return r;
   };
   const offered = (verbs) => {
@@ -427,9 +428,10 @@ test("a wrong hand-back is refused, and changes nothing", () => {
   // --llm-skip-summary as well, so spawn starts nothing and verify is the phase in
   // flight: a refusal needs a pass that actually asked for something.
   state.run = { skip: ["summary"], sca: false, sweep: false };
-  // Spawn unpacks the package whatever else it does, so it is issued in every review;
-  // marked done here so this test starts where it means to.
-  state.issued = ["spawn"];
+  // Spawn unpacks the package whatever else it does, and `details` hands over the block,
+  // so both are issued in every review; marked done here so this test starts where it
+  // means to.
+  state.issued = ["spawn", "details"];
   assert.equal(issue(state, stateFile, PHASES, REGISTRY).phase.name, "verify");
   const before = JSON.stringify(state);
   // Each case starts from the file as it was HANDED OUT: mangling the last mangle would
@@ -756,13 +758,23 @@ function phasesOf(state, stateFile) {
 test("a phase with no entries is not issued, whichever phase it is", () => {
   const cases = [
     // what the review holds                        which phases run
-    [{ findings: false, code: false, questions: false }, ["spawn"]],
-    [{ findings: true, code: false, questions: false }, ["spawn", "verify"]],
-    [{ findings: false, code: true, questions: false }, ["spawn", "settle"]],
-    [{ findings: false, code: false, questions: true }, ["spawn", "ask"]],
+    // `details` hands over the block in every review that is not told to skip it.
+    [{ findings: false, code: false, questions: false }, ["spawn", "details"]],
+    [
+      { findings: true, code: false, questions: false },
+      ["spawn", "verify", "details"],
+    ],
+    [
+      { findings: false, code: true, questions: false },
+      ["spawn", "settle", "details"],
+    ],
+    [
+      { findings: false, code: false, questions: true },
+      ["spawn", "details", "ask"],
+    ],
     [
       { findings: true, code: true, questions: true },
-      ["spawn", "verify", "settle", "ask"],
+      ["spawn", "verify", "settle", "details", "ask"],
     ],
   ];
   for (const [holds, expected] of cases) {
@@ -811,14 +823,15 @@ test("every combination of the skips issues exactly the phases it should", () =>
       ...(!skip.includes("summary") || sweeps ? ["spawn"] : []),
       "verify",
       "settle",
-      // The questions are the only thing `ask` is for.
-      ...(skip.includes("manual") ? [] : ["ask"]),
+      // The questions are the only thing `ask` is for, and the block `details` hands over
+      // is for answering them.
+      ...(skip.includes("manual") ? [] : ["details", "ask"]),
     ];
     const { seen, details } = phasesOf(state, stateFile);
     const where = `skips: ${skip.join(",") || "none"}`;
     assert.deepEqual(seen, expected, where);
 
-    // The block ends EVERY settled review, whether or not the `ask` phase showed the same
+    // The block ends EVERY settled review, whether or not `details` showed the same
     // one earlier. That copy was for answering the questions with, and by the time they are
     // answered it is far above the reviewer - while the report they are about to send, and
     // the package it is about, are rows in this one.
@@ -853,9 +866,9 @@ test("a case sent on with `ask` arrives as a question, worded and answerable", (
   const { state, stateFile } = review(dir, { sweep: false, findings: false });
   // Nothing for spawn to start either, so `settle` is the phase in flight.
   state.run = { skip: ["summary"], sca: false, sweep: false };
-  // spawn has nothing to start in this config and is never issued - marked done here
-  // anyway, so this test starts where it means to regardless.
-  state.issued = ["spawn"];
+  // spawn has nothing to start in this config and is never issued, and `details` comes
+  // after `settle` - both marked done here anyway, so this test starts where it means to.
+  state.issued = ["spawn", "details"];
   assert.equal(issue(state, stateFile, PHASES, REGISTRY).phase.name, "settle");
   accept(
     state,
@@ -888,9 +901,10 @@ test("a case sent on with `ask` is settled by the reviewer's own answer", () => 
   const dir = tmp();
   const { state, stateFile } = review(dir, { sweep: false, findings: false });
   state.run = { skip: ["summary"], sca: false, sweep: false };
-  // Spawn unpacks the package whatever else it does, so it is issued in every review;
-  // marked done here so this test starts where it means to.
-  state.issued = ["spawn"];
+  // Spawn unpacks the package whatever else it does, and `details` hands over the block,
+  // so both are issued in every review; marked done here so this test starts where it
+  // means to.
+  state.issued = ["spawn", "details"];
 
   const sent = issue(state, stateFile, PHASES, REGISTRY);
   assert.equal(sent.phase.name, "settle");
@@ -948,9 +962,10 @@ test("a reviewer who writes `ask` has answered, not asked for a move", () => {
     code: false,
   });
   state.run = { skip: ["summary"], sca: false, sweep: false };
-  // Spawn unpacks the package whatever else it does, so it is issued in every review;
-  // marked done here so this test starts where it means to.
-  state.issued = ["spawn"];
+  // Spawn unpacks the package whatever else it does, and `details` hands over the block,
+  // so both are issued in every review; marked done here so this test starts where it
+  // means to.
+  state.issued = ["spawn", "details"];
   // Real check ids, because a reported case becomes a finding of its own check and takes
   // the severity that check declares.
   state.manual.forEach((m, i) => {
@@ -1057,6 +1072,58 @@ test("withdrawing the blocking findings puts the question block back", () => {
   assert.equal(settled.earlyExit, false);
 });
 
+// The Review Details block goes out once, in a phase of its own, before the questions - and
+// not where nothing will be put to the reviewer: under --llm-skip-manual, or once the review
+// stopped.
+test("the details block is handed over by its own phase, before the questions", () => {
+  const blocks = (made) => {
+    const shown = [];
+    for (let pass = 0; pass < 10; pass++) {
+      const out = issue(made.state, made.stateFile, PHASES, REGISTRY);
+      if (out.phase.answer === "end") {
+        break;
+      }
+      if (out.steps.some((step) => step.text.includes("{{details}}"))) {
+        shown.push(out.phase.name);
+      }
+      accept(
+        made.state,
+        handBack(made.state, () => {
+          if (out.phase.name === "verify") return "withdrawn";
+          return out.phase.name === "settle" ? "cleared" : "Clear";
+        }),
+        PHASES,
+        REGISTRY
+      );
+    }
+    return shown;
+  };
+  assert.deepEqual(blocks(review(tmp(), { sweep: false })), ["details"]);
+
+  const skipped = review(tmp(), { sweep: false });
+  skipped.state.run.skip = ["manual"];
+  assert.deepEqual(blocks(skipped), []);
+
+  const stopped = blockingReview(tmp());
+  const shown = [];
+  for (let pass = 0; pass < 10; pass++) {
+    const out = issue(stopped.state, stopped.stateFile, PHASES, REGISTRY);
+    if (out.phase.answer === "end") {
+      break;
+    }
+    shown.push(out.phase.name);
+    accept(
+      stopped.state,
+      handBack(stopped.state, () =>
+        out.phase.name === "verify" ? "reported" : "cleared"
+      ),
+      PHASES,
+      REGISTRY
+    );
+  }
+  assert.ok(!shown.includes("details"), shown.join(", "));
+});
+
 // The review ends with the closing phase, which carries the settled review and opens on
 // what happened to it: settled, or stopped. Nothing is handed back after it.
 test("the closing phase opens on how the review ended, and takes nothing back", () => {
@@ -1097,7 +1164,7 @@ test("a review with no other work is closed on its first pass", () => {
     code: false,
     questions: false,
   });
-  state.run = { skip: ["summary"], sca: false };
+  state.run = { skip: ["summary", "manual"], sca: false };
   const out = issue(state, stateFile, PHASES, REGISTRY);
   assert.equal(out.phase.name, "close");
   assert.ok(out.settled, "it carries the settled review");
@@ -1216,7 +1283,14 @@ test("a source code review builds once, after settle and before ask", () => {
   const { seen } = driveLoop(state, stateFile, (phase) =>
     phase === "verify" ? "withdrawn" : "cleared"
   );
-  assert.deepEqual(seen, ["spawn", "verify", "settle", "build", "ask"]);
+  assert.deepEqual(seen, [
+    "spawn",
+    "verify",
+    "settle",
+    "build",
+    "details",
+    "ask",
+  ]);
 });
 
 test("an XPI review never builds", () => {

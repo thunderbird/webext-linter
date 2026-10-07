@@ -105,9 +105,9 @@ export function issue(state, stateFile, phases, registry) {
     ? []
     : phaseEntries(state, registry, phase, run);
   state.phase = phase.name;
-  // The `ask` phase hands the reviewer the Review Details block, and that block links the
-  // report. Refresh the file first, so the link opens the review as it stands rather than
-  // nothing at all - the reviewer reads it to answer the very questions this phase puts.
+  // The `details` phase hands the reviewer the Review Details block, and that block links
+  // the report. Refresh the file first, so the link opens the review as it stands rather
+  // than nothing at all - the reviewer reads it to answer the questions that follow.
   //
   // Settled on a COPY: settle() applies the verdicts in place, and this pass is not the
   // last. What the copy answers is "what would the report say if the review ended now",
@@ -117,7 +117,7 @@ export function issue(state, stateFile, phases, registry) {
   // a throw inside issue() would break the loop over a file nobody has been handed yet.
   if (settled) {
     writeReportFile(state.paths?.report, settled.report);
-  } else if (phase.name === "ask") {
+  } else if (phase.name === "details") {
     writeReportFile(
       state.paths?.report,
       settle(structuredClone(state), registry).report
@@ -149,10 +149,10 @@ export function loopSlots(state, issued) {
     scaRoot: paths.scaRoot ?? "",
     xpiRoot: paths.xpiRoot,
     schema: paths.schema,
-    // Named because `ask` can be the FIRST phase issued - a review with no findings and
-    // nothing to settle opens there - and that is a phase that hands the block over. The
-    // closing phase hands over the finished review's block instead, which ends on what
-    // stopped it where something did.
+    // Named because `details` can be the FIRST phase issued - a review with no findings
+    // and nothing to settle opens there - and that is a phase that hands the block over.
+    // The closing phase hands over the finished review's block instead, which ends on
+    // what stopped it where something did.
     details: issued.settled?.details ?? reviewDetails(state),
     tally: issued.settled?.tally ?? "",
     ...sweepSlots(state),
@@ -285,8 +285,8 @@ function phaseEntries(state, registry, phase, run) {
  * What the LAST prompt hands over: every path this review named, and - where the review
  * stopped - the line saying so.
  *
- * Handed over on EVERY settled review, including one whose `ask` phase already showed the
- * same block. That is not a duplicate: the `ask` copy exists to be read WHILE the questions
+ * Handed over on EVERY settled review, including one whose `details` phase already showed the
+ * same block. That is not a duplicate: the `details` copy exists to be read WHILE the questions
  * are answered, and by the time they have been, it is far above the reviewer. The report they
  * are about to send is one of these rows, and so is the package it is about.
  *

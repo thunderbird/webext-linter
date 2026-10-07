@@ -55,6 +55,7 @@ entry never offered are all refusals.
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
 | `build` | Source code review only: with the reviewer's consent, build the add-on in the agent's own sandbox and write how the result differs from the shipped XPI. | Nothing: the diff goes to a file of its own |
+| `details` | Hand the reviewer the Review Details block, before anything is put to them. Not under `--llm-skip-manual`. | Nothing: the block is its whole work |
 | `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
 | `close` | The last phase, once nothing else has work: hand over the settled review. It opens on whether the review is settled or stopped. | Nothing: the review ends with it |
 
@@ -64,8 +65,8 @@ mentions one, and a review that starts no sub-agent at all skips `spawn` and ope
 first phase that has any. The package itself is not unpacked by any of this: the linter extracts a packed
 submission before the first prompt is printed, and every phase reads that one folder.
 
-`build` and `ask` have one further condition: a review that **stopped early** never
-reaches them. Their steps are flagged `skip-if-stopped`, and a phase with no step left is
+`build`, `details` and `ask` have one further condition: a review that **stopped early**
+never reaches them. Their steps are flagged `skip-if-stopped`, and a phase with no step left is
 not issued (a step flagged `skip-if-not-stopped` is the opposite: it prints only in a
 review that stopped). `build` runs the submission's own code, so it waits until every check that
 can stop the review has had its say - including `build-lifecycle-hook`, which `settle`
@@ -104,7 +105,7 @@ What a stopped review does:
 
 | | |
 | --- | --- |
-| The `build` and `ask` phases | are not issued. Nothing is built, and nothing is put to a reviewer. |
+| The `build`, `details` and `ask` phases | are not issued. Nothing is built, and nothing is put to a reviewer. |
 | The report | drops every to-do item a reviewer would have been **asked** - the Extended Manual Review and Standard Manual Review sections, and their tally counts. |
 | | keeps both code-review sections: reading code is safe, and what it turns up is the evidence for the halt. |
 | | ends on the reason it is incomplete, one line per distinct cause. |
@@ -257,16 +258,16 @@ The linter names these files and reads none of them. The description and the bui
 are a sub-agent's, and the agent conducting the review is told only to name them - not to
 open, read, summarise or print what was written there.
 
-`REVIEW_REPORT` it writes itself, twice: once as the `ask` phase goes out, so the reviewer
-can read the report while answering the questions it puts, and again from the settled review
+`REVIEW_REPORT` it writes itself, twice: once as the `details` phase goes out, so the
+reviewer can read the report while answering the questions that follow, and again from the settled review
 once those answers are in. It is a file rather than something the agent prints because
 printing it failed - the hand-over used to carry the report and ask for it back "in a code
 block and unchanged", and that is the one text where a model rewording its input reaches the
 developer.
 
-The block is handed over twice, for two different readings. The `ask` phase hands it over
-before it asks anything, so the reviewer can open those files while answering, and the last
-pass hands it over again as what they are left holding.
+The block is handed over twice, for two different readings. The `details` phase hands it
+over before anything is asked, so the reviewer can open those files while answering, and
+the last pass hands it over again as what they are left holding.
 
 The last pass is the `close` phase. The linter applies every answer, writes `REVIEW_REPORT`,
 and only then prints it, so it opens on whether the review settled or stopped: of its two
