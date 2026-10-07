@@ -107,7 +107,7 @@ export const MAX_NOTE = 2000;
  * the flags, src/checks/registry.js refuses a step marked with anything else, and
  * src/report/format.js drops the steps and asks that a skip names.
  */
-export const PROMPT_SKIPS = ["summary", "manual"];
+export const PROMPT_SKIPS = ["llm-skip-summary", "llm-skip-manual"];
 
 // Vendor verification (src/vendor/verify.js) is the only stage that makes
 // outbound network requests. It runs once, before the review, and the checks

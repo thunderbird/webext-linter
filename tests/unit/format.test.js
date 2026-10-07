@@ -1433,7 +1433,7 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   // the other prompt's marker - which reads as plausible here, and does nothing - is
   // refused by name, as is the bare name prop `run` replaced.
   const wrongMarker = loadRegistry();
-  wrongMarker.doc["llm-sca-review-prompt"].outcome[1].skip = "manual";
+  wrongMarker.doc["llm-sca-review-prompt"].outcome[1].skip = "llm-skip-manual";
   assert.throws(
     () => checkScaPrompt(wrongMarker),
     /step 2 authors `skip`, which this prompt cannot act on \(expected `run`\)/

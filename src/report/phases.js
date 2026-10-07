@@ -173,7 +173,7 @@ export function nextPhase(phases, ordered, state, run) {
  */
 export function openIn(phaseName, ordered, state, { skip = [] } = {}) {
   // An itemless phase (spawn, build) needs no case here: no item is ever routed to it.
-  if (phaseName === "ask" && skip.includes("manual")) {
+  if (phaseName === "ask" && skip.includes("llm-skip-manual")) {
     return [];
   }
   return ordered.filter(

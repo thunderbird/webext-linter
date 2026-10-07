@@ -306,15 +306,15 @@ const OPTIONS = {
 };
 
 /**
- * What a --llm-review run was told to leave out, as the registry names it: "summary" for
- * --llm-skip-summary, "manual" for --llm-skip-manual. Read HERE and nowhere else, so
+ * What a --llm-review run was told to leave out, named by the flag that said so - the same
+ * name a registry step's `skip:` marker carries. Read HERE and nowhere else, so
  * main()'s guards and pipelineOptsFromValues cannot drift apart about what was given -
  * they run on different paths (pipelineOptsFromArgv runs none of main's guards).
  * @param {Record<string, string|boolean>} values
  * @returns {string[]}
  */
 function reviewSkips(values) {
-  return PROMPT_SKIPS.filter((skip) => values[`llm-skip-${skip}`]);
+  return PROMPT_SKIPS.filter((flag) => values[flag]);
 }
 
 /** The --sca-* flags, which --llm-sca-review exists to work out and so refuses to be given. */
@@ -640,7 +640,7 @@ export async function main(argv) {
   ) {
     const many = skips.length > 1;
     writeToStderr(
-      `${listOf(skips.map((s) => `--llm-skip-${s}`))} ${many ? "name parts" : "names part"} ` +
+      `${listOf(skips.map((flag) => `--${flag}`))} ${many ? "name parts" : "names part"} ` +
         `of the --llm-review prompt to leave out, so ${many ? "they need" : "it needs"} ` +
         "--llm-review, or " +
         "--llm-sca-review to hand to the review it prepares: a run that prints its " +

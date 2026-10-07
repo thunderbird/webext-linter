@@ -200,7 +200,7 @@ test("the steps that start an agent each say whether it is waited for", () => {
     "they are handed the review details.";
 
   // The description and the build report: one sentence, used twice.
-  for (const marker of ["summary", "sca"]) {
+  for (const marker of ["llm-skip-summary", "sca"]) {
     assert.ok(
       by(marker).text.includes(UNATTENDED),
       `the \`${marker}\` step says it is not waited for, in the shared words`

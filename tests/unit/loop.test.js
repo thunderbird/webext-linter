@@ -280,7 +280,7 @@ test("an entry is answered from its own answers, not its phase's verbs", () => {
   const { state, stateFile } = review(dir, { sweep: false, findings: false });
   // --llm-skip-summary with no sweep leaves spawn with nothing to start, so settle is
   // first once it has been issued.
-  state.run = { skip: ["summary"], sca: false, sweep: false };
+  state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
   // Spawn unpacks the package whatever else it does, and `details` hands over the block,
   // so both are issued in every review; marked done here so this test starts where it
   // means to.
@@ -325,7 +325,7 @@ test("an entry is answered from its own answers, not its phase's verbs", () => {
 test("reporting reads as the last resort only where clearing was the way out", () => {
   const dir = tmp();
   const skipSetup = (r) => {
-    r.state.run = { skip: ["summary"], sca: false, sweep: false };
+    r.state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
     r.state.issued = ["spawn", "details"];
     return r;
   };
@@ -380,7 +380,7 @@ test("spawn with nothing to start is skipped, not issued empty", () => {
   const { state, stateFile } = review(dir, { sweep: false });
   // --llm-skip-summary on an XPI review with no sweep starts no agent at all, so spawn
   // has nothing left to do.
-  state.run = { skip: ["summary"], sca: false, sweep: false };
+  state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
   const out = issue(state, stateFile, PHASES, REGISTRY);
   assert.equal(out.phase.name, "verify");
 });
@@ -392,7 +392,11 @@ test("nothing to ask: the review settles after the last settle", () => {
   // skip:manual drops only the questions. spawn is skipped too (nothing to start) - so
   // what this pins is that `ask` is not issued either, once it has nothing to put to
   // anyone.
-  state.run = { skip: ["manual", "summary"], sca: false, sweep: false };
+  state.run = {
+    skip: ["llm-skip-manual", "llm-skip-summary"],
+    sca: false,
+    sweep: false,
+  };
   const seen = [];
   for (let pass = 0; pass < 10; pass++) {
     const out = issue(state, stateFile, PHASES, REGISTRY);
@@ -427,7 +431,7 @@ test("a wrong hand-back is refused, and changes nothing", () => {
   const { state, stateFile } = review(dir, { sweep: false });
   // --llm-skip-summary as well, so spawn starts nothing and verify is the phase in
   // flight: a refusal needs a pass that actually asked for something.
-  state.run = { skip: ["summary"], sca: false, sweep: false };
+  state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
   // Spawn unpacks the package whatever else it does, and `details` hands over the block,
   // so both are issued in every review; marked done here so this test starts where it
   // means to.
@@ -632,7 +636,7 @@ test("a refusal is its own class, so the caller can answer it differently", () =
 test("--llm-skip-manual withholds the entries, so the ask phase is not issued", () => {
   const dir = tmp();
   const { state, stateFile } = review(dir, { sweep: false });
-  state.run = { skip: ["manual"], sca: false, sweep: false };
+  state.run = { skip: ["llm-skip-manual"], sca: false, sweep: false };
   const seen = [];
   for (let pass = 0; pass < 8; pass++) {
     const out = issue(state, stateFile, PHASES, REGISTRY);
@@ -791,18 +795,19 @@ test("a phase with no entries is not issued, whichever phase it is", () => {
 // Every combination of the three skips, over a review that holds something for every
 // phase - so what drops out is the FLAG's doing and nothing else.
 //
-//   summary -> the description agent, and the link that hands it over
-//   manual  -> the questions: the entries as well as the step that asks them
-//   sweep   -> the sweep agent, the wait, and the rows it would have filled
+//   llm-skip-summary -> the description agent, and the link that hands it over
+//   llm-skip-manual  -> the details block and the questions: the entries as well as the
+//                       step that asks them
+//   llm-skip-sweep   -> the sweep agent, the wait, and the rows it would have filled
 test("every combination of the skips issues exactly the phases it should", () => {
-  const SKIPS = ["summary", "manual", "sweep"];
+  const SKIPS = ["llm-skip-summary", "llm-skip-manual", "llm-skip-sweep"];
   for (let bits = 0; bits < 8; bits++) {
     const skip = SKIPS.filter((_, i) => bits & (1 << i));
-    const sweeps = !skip.includes("sweep");
+    const sweeps = !skip.includes("llm-skip-sweep");
     const dir = tmp();
     const { state, stateFile } = review(dir, { sweep: sweeps });
     state.run = {
-      skip: skip.filter((x) => x !== "sweep"),
+      skip: skip.filter((x) => x !== "llm-skip-sweep"),
       sca: false,
       ...(sweeps ? { "sweep-xpi": true } : {}),
     };
@@ -813,19 +818,19 @@ test("every combination of the skips issues exactly the phases it should", () =>
     }
     // A file is NAMED only where the step that writes it prints, as the pipeline names it:
     // --llm-skip-summary spawns no description agent, so there is no description to link.
-    if (skip.includes("summary")) {
+    if (skip.includes("llm-skip-summary")) {
       state.paths.description = null;
     }
     // `spawn` runs only where it starts an agent: the package itself is no longer
     // unpacked by a step here (the linter extracts it before the review is printed), so
     // a run that skips the summary agent and does not sweep has nothing left to spawn.
     const expected = [
-      ...(!skip.includes("summary") || sweeps ? ["spawn"] : []),
+      ...(!skip.includes("llm-skip-summary") || sweeps ? ["spawn"] : []),
       "verify",
       "settle",
       // The questions are the only thing `ask` is for, and the block `details` hands over
       // is for answering them.
-      ...(skip.includes("manual") ? [] : ["details", "ask"]),
+      ...(skip.includes("llm-skip-manual") ? [] : ["details", "ask"]),
     ];
     const { seen, details } = phasesOf(state, stateFile);
     const where = `skips: ${skip.join(",") || "none"}`;
@@ -865,7 +870,7 @@ test("a case sent on with `ask` arrives as a question, worded and answerable", (
   const dir = tmp();
   const { state, stateFile } = review(dir, { sweep: false, findings: false });
   // Nothing for spawn to start either, so `settle` is the phase in flight.
-  state.run = { skip: ["summary"], sca: false, sweep: false };
+  state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
   // spawn has nothing to start in this config and is never issued, and `details` comes
   // after `settle` - both marked done here anyway, so this test starts where it means to.
   state.issued = ["spawn", "details"];
@@ -900,7 +905,7 @@ test("a case sent on with `ask` arrives as a question, worded and answerable", (
 test("a case sent on with `ask` is settled by the reviewer's own answer", () => {
   const dir = tmp();
   const { state, stateFile } = review(dir, { sweep: false, findings: false });
-  state.run = { skip: ["summary"], sca: false, sweep: false };
+  state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
   // Spawn unpacks the package whatever else it does, and `details` hands over the block,
   // so both are issued in every review; marked done here so this test starts where it
   // means to.
@@ -961,7 +966,7 @@ test("a reviewer who writes `ask` has answered, not asked for a move", () => {
     findings: false,
     code: false,
   });
-  state.run = { skip: ["summary"], sca: false, sweep: false };
+  state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
   // Spawn unpacks the package whatever else it does, and `details` hands over the block,
   // so both are issued in every review; marked done here so this test starts where it
   // means to.
@@ -1101,7 +1106,7 @@ test("the details block is handed over by its own phase, before the questions", 
   assert.deepEqual(blocks(review(tmp(), { sweep: false })), ["details"]);
 
   const skipped = review(tmp(), { sweep: false });
-  skipped.state.run.skip = ["manual"];
+  skipped.state.run.skip = ["llm-skip-manual"];
   assert.deepEqual(blocks(skipped), []);
 
   const stopped = blockingReview(tmp());
@@ -1164,7 +1169,7 @@ test("a review with no other work is closed on its first pass", () => {
     code: false,
     questions: false,
   });
-  state.run = { skip: ["summary", "manual"], sca: false };
+  state.run = { skip: ["llm-skip-summary", "llm-skip-manual"], sca: false };
   const out = issue(state, stateFile, PHASES, REGISTRY);
   assert.equal(out.phase.name, "close");
   assert.ok(out.settled, "it carries the settled review");
@@ -1372,7 +1377,7 @@ test("the details link the build diff only when the build phase wrote one", () =
 // them out because nobody is going to.
 test("a skip and a halt suppress the same phase and leave different reports", () => {
   const skipped = review(tmp(), { sweep: false });
-  skipped.state.run = { skip: ["manual"], sca: false, sweep: false };
+  skipped.state.run = { skip: ["llm-skip-manual"], sca: false, sweep: false };
   const { settled: skippedOut } = driveLoop(
     skipped.state,
     skipped.stateFile,
@@ -1385,7 +1390,7 @@ test("a skip and a halt suppress the same phase and leave different reports", ()
   );
 
   const halted = blockingReview(tmp());
-  halted.state.run = { skip: ["manual"], sca: true, sweep: false };
+  halted.state.run = { skip: ["llm-skip-manual"], sca: true, sweep: false };
   const { settled } = driveLoop(halted.state, halted.stateFile, (phase) =>
     phase === "verify" ? "reported" : "cleared"
   );

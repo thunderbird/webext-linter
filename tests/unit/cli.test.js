@@ -1245,7 +1245,7 @@ test("a review flag carries only the prompt decision into the run", () => {
     "--llm-skip-summary",
   ]);
   // Authored order, never the order the flags were given: the registry names the steps.
-  assert.deepEqual(cut.llmSkip, ["summary", "manual"]);
+  assert.deepEqual(cut.llmSkip, ["llm-skip-summary", "llm-skip-manual"]);
   assert.deepEqual(
     shape({ ...cut, llmReview: false, llmSkip: [] }),
     shape(bare)

@@ -117,5 +117,7 @@ export function readState(file) {
  *  transcribing them - so there are no answer files to read and nothing to read them
  *  against. Saying the version is wrong sends the reviewer to start the review again,
  *  where reading it would find every sweep unanswered. Version 10 adds the build phase,
- *  which reads `paths.buildCopy` and `paths.buildDiff`. */
-export const STATE_VERSION = 10;
+ *  which reads `paths.buildCopy` and `paths.buildDiff`. Version 11 names each skip in
+ *  `run.skip` by its full flag (`llm-skip-manual`), the way the registry's `skip:` markers
+ *  now do - a v10 file's short names would match no step. */
+export const STATE_VERSION = 11;

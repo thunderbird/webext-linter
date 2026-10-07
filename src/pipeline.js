@@ -254,8 +254,8 @@ export const SETUP_STEPS = Object.freeze([
  *   printing the report. Changes nothing about the review itself, only what is printed
  *   and what is written for the passes that follow.
  * @property {string[]} [llmSkip]  What that prompt leaves out (PROMPT_SKIPS, src/config.js):
- *   "summary" (--llm-skip-summary) drops the add-on description and the file named for it;
- *   "manual" (--llm-skip-manual) drops the steps that put the manual items to a reviewer,
+ *   --llm-skip-summary drops the add-on description and the file named for it;
+ *   --llm-skip-manual drops the steps that put the manual items to a reviewer,
  *   and no phase puts them to anyone - they stay in the report, for the
  *   reviewer to work through later.
  */
@@ -1001,7 +1001,7 @@ export async function runPipeline(opts) {
     // output is that prompt and the report is not printed beside it.
     meta.prompting = true;
     const files = reviewFilePaths(addonPath);
-    summaryPath = skip.includes("summary") ? null : files.summary;
+    summaryPath = skip.includes("llm-skip-summary") ? null : files.summary;
     buildPath = mode.sca ? files.build : null;
     // The build phase's two paths, named only where it can be issued: a source code review
     // (src/report/loop.js runOf).
