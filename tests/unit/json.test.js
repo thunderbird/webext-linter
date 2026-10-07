@@ -79,6 +79,33 @@ test("a messages.json is read as Thunderbird reads it", () => {
   assert.deepEqual(unreadable, ["de"]);
 });
 
+// A __MSG_ name is looked up as Thunderbird looks it up: names are case-insensitive, and of
+// two that differ only in case the later one is the one it keeps.
+test("a __MSG_ name is resolved case-insensitively", () => {
+  const ctx = {
+    manifest: { json: { name: "__MSG_appName__" } },
+    artifact: {
+      files: new Map([
+        [
+          "_locales/en/messages.json",
+          Buffer.from('{"APPNAME": {"message": "Mail Helper"}}'),
+        ],
+        [
+          "_locales/de/messages.json",
+          Buffer.from(
+            '{"appname": {"message": "first"}, "AppName": {"message": "second"}}'
+          ),
+        ],
+      ]),
+      directories: ["_locales", "_locales/de", "_locales/en"],
+    },
+  };
+  assert.deepEqual(localizedNames(ctx).pairs, [
+    { locale: "de", name: "second" },
+    { locale: "en", name: "Mail Helper" },
+  ]);
+});
+
 // Bytes are decoded as Gecko decodes them: a byte-order mark is sniffed (UTF-16 either way
 // round, a UTF-8 one dropped), and otherwise UTF-8 with no replacement - one invalid byte
 // refuses the whole file.

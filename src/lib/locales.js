@@ -122,7 +122,8 @@ function isMessagesData(json) {
 
 /**
  * The name each locale states, scanned once and memoized on ctx.cache so every
- * trademark check shares the result.
+ * trademark check shares the result. Message names are looked up case-insensitively, as
+ * Thunderbird looks them up.
  *
  * A literal manifest.json name yields ONE pair carrying `locale: null` - the package
  * says nothing about its language. A `__MSG_key__` name yields one pair per
@@ -175,10 +176,28 @@ function scanNames(ctx) {
     if (state === "unreadable") {
       unreadable.push(locale);
     }
-    const value = json?.[key]?.message;
+    const value = messageText(json, key);
     if (typeof value === "string") {
       pairs.push({ locale, name: value });
     }
   }
   return { pairs, resolved: pairs.length > 0, localized: true, unreadable };
+}
+
+/**
+ * A message's text, looked up the way Thunderbird looks it up: names are case-insensitive,
+ * and of two names that differ only in case the later one is the one it keeps.
+ * @param {*} json  A messages.json parse.
+ * @param {string} key
+ * @returns {*}
+ */
+function messageText(json, key) {
+  const wanted = key.toLowerCase();
+  let text;
+  for (const [name, entry] of Object.entries(json ?? {})) {
+    if (name.toLowerCase() === wanted) {
+      text = entry?.message;
+    }
+  }
+  return text;
 }
