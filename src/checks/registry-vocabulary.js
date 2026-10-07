@@ -168,9 +168,8 @@ export const sweepSlot = (artifact) =>
  *  of it is printed. No flag spells these - unlike PROMPT_SKIPS, which the CLI offers - so
  *  they live here, beside the messages that name them.
  *
- *  A name here IS the key the run record answers under (stepsOf, src/report/phases.js).
- *  Most are answered from what the run was told; `build` is derived each pass, by the loop
- *  (src/report/loop.js runOf), because whether the review stopped can change.
+ *  A name here IS the key the run record answers under (stepsOf, src/report/phases.js),
+ *  answered from what the run was told.
  *
  *  Each sweepable artifact is its own condition, because each starts its OWN sub-agent
  *  against its own tree and a review may have one such tree or two. One condition covering
@@ -181,6 +180,13 @@ export const REVIEW_PROMPT_RUNS = [
   "sca",
   ...Object.keys(SWEEP_INSTRUCTIONS).map(sweepRun),
 ];
+
+/** What `skip:` can name besides a flag (PROMPT_SKIPS): the review's own state, which no
+ *  flag gives and which the loop derives every pass (src/report/loop.js runOf), because a
+ *  verdict can abort a review or take the abort back. `if-aborted` leaves a step out of a
+ *  review that was aborted early, `if-not-aborted` out of every other (stepsOf,
+ *  src/report/phases.js). */
+export const REVIEW_STATE_SKIPS = ["if-aborted", "if-not-aborted"];
 
 /**
  * The loop texts the LINTER owns, and the placeholder each one exists to carry. An empty
@@ -194,7 +200,7 @@ export const PHASE_TEXTS = {
 };
 
 /** What the closing phase (`answer: end`) hands the reviewer, whether the review settled or
- *  stopped. */
+ *  was aborted. */
 export const FINAL_SLOTS = ["{{details}}", "{{tally}}"];
 
 /**

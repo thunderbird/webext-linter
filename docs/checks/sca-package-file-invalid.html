@@ -49,7 +49,7 @@ flowchart TD
   A["The submitted source archive"] --> B{"A package.json at its root?"}
   B -- no --> S3([skip: absent, not broken<br/>-- its sibling reports that])
   B -- yes --> C{"Does it parse as JSON?"}
-  C -- no --> ERR([ERROR: invalid package.json<br/>the review stops here])
+  C -- no --> ERR([ERROR: invalid package.json<br/>the review is aborted here])
   C -- yes --> D{"Is what it holds<br/>a JSON object?"}
   D -- no --> ERR
   D -- yes --> OK([no finding])
@@ -72,7 +72,7 @@ flowchart TD
       </div>
 
       <div class="outcome">
-        <strong>It stops the review</strong>
+        <strong>It aborts the review</strong>
         This check is one of the few that settle the submission on their own. When it
         reports, nothing further is put to a reviewer: the report drops every to-do item
         they would have been asked, keeps the code-review sections, and the

@@ -58,9 +58,12 @@ export function isOpen(item, state) {
 /**
  * The steps this run prints for a phase, in order, after its markers.
  *
- * Two answers decide it: what the run was told to leave out, and which of the conditions
- * this run meets. A step carries at most one marker, so whether it prints is one answer
- * and never two at once.
+ * Two answers decide it, and a step prints only when both allow it: its `run:` condition
+ * holds (or it names none), and none of its `skip:` values applies. A skip value is a flag
+ * this run was given or the review's own state: `if-aborted` once a finding has aborted
+ * the review, `if-not-aborted` otherwise. That is how an abort withholds what comes after
+ * it - the build that would run the submission's code, the questions nobody should be
+ * asked - since a phase left with no step is not issued.
  *
  * A `run:` marker is LOOKED UP in the run record rather than compared against a name
  * spelled here. The names live in one place (REVIEW_PROMPT_RUNS, which the registry
@@ -68,26 +71,20 @@ export function isOpen(item, state) {
  * answering it in the record - never editing a conjunction that a new condition could be
  * left out of. A condition the record does not answer is false, which is what an absent
  * one means.
- *
- * Whether the review STOPPED early is read against every step, beside its marker: a step
- * flagged `skip-if-stopped` is left out of a stopped review, one flagged
- * `skip-if-not-stopped` out of every other. That is how a stop withholds what comes after
- * it - the build that would run the submission's code, the questions nobody should be
- * asked - since a phase left with no step is not issued.
- * @param {{steps: {skip: ?string, run: ?string, skipIfStopped?: boolean,
- *   skipIfNotStopped?: boolean, text: string}[]}} phase
+ * @param {{steps: {skip: string[], run: ?string, text: string}[]}} phase
  * @param {{skip: string[], halted: boolean}} run  The run record, answering each condition
- *   by its own name, and whether the review stopped.
+ *   by its own name, and whether the review was aborted.
  * @returns {object[]}
  */
 export function stepsOf(phase, run = {}) {
-  const skipped = new Set(run.skip ?? []);
-  const halted = run.halted === true;
+  const skipped = new Set([
+    ...(run.skip ?? []),
+    run.halted === true ? "if-aborted" : "if-not-aborted",
+  ]);
   return phase.steps.filter(
     (step) =>
-      !skipped.has(step.skip) &&
-      ((step.run ?? null) === null || run[step.run] === true) &&
-      !(halted ? step.skipIfStopped : step.skipIfNotStopped)
+      !(step.skip ?? []).some((value) => skipped.has(value)) &&
+      ((step.run ?? null) === null || run[step.run] === true)
   );
 }
 
@@ -162,7 +159,7 @@ export function nextPhase(phases, ordered, state, run) {
  * told not to ask and a handover demanding an answer for each.
  *
  * An EARLY EXIT is not decided here. It withholds the phase itself, through the steps it
- * leaves out (stepsOf, `skip-if-stopped`), and the report drops the same items rather
+ * leaves out (stepsOf, `skip: if-aborted`), and the report drops the same items rather
  * than leaving a to-do list under a line saying it was never finished
  * (src/report/early-exit.js).
  * @param {string} phaseName

@@ -62,6 +62,7 @@ import {
   LOOP_VERBS,
   SCA_PROMPT_RUNS,
   REVIEW_PROMPT_RUNS,
+  REVIEW_STATE_SKIPS,
 } from "./registry-vocabulary.js";
 import { rethrowIfFatal, wiringError } from "../lib/errors.js";
 import { verdictLabel } from "../report/verdict-label.js";
@@ -265,7 +266,7 @@ export class Registry {
    *   the registry hands out, as opposed to what the yaml says: --warnings-as-errors reads
    *   every warning as an error. Held beside the document rather than folded into it, so
    *   the authored severity stays readable (assertRegistry decides what an entry may
-   *   declare, and a policy cannot make a warning entry eligible to stop a review).
+   *   declare, and a policy cannot make a warning entry eligible to abort a review).
    */
   constructor(doc, policy = {}) {
     this.doc = doc && typeof doc === "object" ? doc : {};
@@ -610,10 +611,9 @@ export class Registry {
         ),
         intro: phase.intro,
         steps: phase.steps.map((step) => ({
-          skip: step.skip ?? null,
+          // Always a list, so the caller asks one question of every step.
+          skip: step.skip === undefined ? [] : [step.skip].flat(),
           run: step.run ?? null,
-          skipIfStopped: step["skip-if-stopped"] === true,
-          skipIfNotStopped: step["skip-if-not-stopped"] === true,
           text: step.text,
         })),
       })),
@@ -657,9 +657,9 @@ export class Registry {
   }
 
   /**
-   * The reason this check gives for stopping the review, or null when it does not stop
+   * The reason this check gives for aborting the review, or null when it does not abort
    * one. A check that names a reason BLOCKS: a finding it reports at error severity
-   * settles the submission on its own, and the review stops rather than asking anyone to
+   * settles the submission on its own, and the review is aborted rather than asking anyone to
    * carry on with it (src/report/early-exit.js).
    *
    * A reason id rather than a flag, because the report's closing text is a list: two
@@ -1301,25 +1301,18 @@ export function assertEntries(registry, at) {
  * numbers what survived that run's own filtering, so a literal number would print twice
  * and the second one would be wrong as soon as anything above it was withheld.
  *
- * It may carry ONE marker, from those its own prompt acts on, and nothing else. Each
- * prompt reads only its own - `skip` and `run` here, `run` there - so any other key is
- * dropped at load and the step prints in every run: a typo of a marker, or the other
- * prompt's marker, both read as a step that was never marked.
- *
- * ONE of them, never two: what withholds a step is a single answer, so a reader works out
- * whether a step prints by looking at one marker rather than composing two.
- *
- * Beside the marker, a step may carry the STOP flags its prompt acts on: booleans saying
- * the step is left out of a review that stopped early, or of one that did not. They are
- * not a second marker - whether the review stopped is one fact every step is read
- * against, not a condition a step picks.
+ * It may carry the markers its own prompt acts on, and nothing else. Each prompt reads only
+ * its own - `skip` and `run` here, `run` there - so any other key is dropped at load and the
+ * step prints in every run: a typo of a marker, or the other prompt's marker, both read as a
+ * step that was never marked. Where a prompt acts on both, they combine one way only: a
+ * step prints when its `run` condition holds AND none of its `skip` values applies, so
+ * neither marker can turn back on what the other left out.
  * @param {unknown} step
  * @param {number} i  Its position, for the message.
  * @param {string} where  Which prompt, for the message.
  * @param {string[]} markers  The markers this prompt acts on.
- * @param {string[]} [flags]  The stop flags this prompt acts on.
  */
-function assertStep(step, i, where, markers, flags = []) {
+function assertStep(step, i, where, markers) {
   const nth = `${where} \`outcome\` step ${i + 1}`;
   if (!step || typeof step !== "object" || Array.isArray(step)) {
     throw new Error(`${nth} is not a step mapping`);
@@ -1335,27 +1328,13 @@ function assertStep(step, i, where, markers, flags = []) {
   }
   const named = markers.map((m) => `\`${m}\``).join(" or ");
   const stray = Object.keys(step).find(
-    (key) => key !== "text" && !markers.includes(key) && !flags.includes(key)
+    (key) => key !== "text" && !markers.includes(key)
   );
   if (stray) {
     throw new Error(
       `${nth} authors \`${stray}\`, which this prompt cannot act on (expected ` +
         `${named}) - the step would print in every run`
     );
-  }
-  const carried = markers.filter((m) => step[m] !== undefined);
-  if (carried.length > 1) {
-    throw new Error(
-      `${nth} carries ${carried.map((m) => `\`${m}\``).join(" and ")} - a step takes ` +
-        "ONE marker, or whether it prints depends on two answers at once"
-    );
-  }
-  for (const flag of flags) {
-    if (step[flag] !== undefined && typeof step[flag] !== "boolean") {
-      throw new Error(
-        `${nth} carries \`${flag}: ${JSON.stringify(step[flag])}\` - it is true or false`
-      );
-    }
   }
 }
 
@@ -1414,7 +1393,7 @@ export function assertPhases(registry, at) {
     if (!closing.includes(slot)) {
       throw new Error(
         `${where} phase \`${ends[0].name}\` carries no ${slot} - the closing hands it ` +
-          "over, whether the review settled or stopped"
+          "over, whether the review settled or was aborted"
       );
     }
   }
@@ -1443,18 +1422,24 @@ export function assertPhases(registry, at) {
       }
     }
     phase.steps.forEach((step, i) => {
-      assertStep(
-        step,
-        i,
-        `llm-phases phase \`${name}\``,
-        ["skip", "run"],
-        ["skip-if-stopped", "skip-if-not-stopped"]
-      );
-      if (step.skip !== undefined && !PROMPT_SKIPS.includes(step.skip)) {
-        throw new Error(
-          `${at2} step ${i + 1} is skipped by \`${step.skip}\`, which no flag gives ` +
-            `(expected one of: ${PROMPT_SKIPS.join(", ")})`
-        );
+      assertStep(step, i, `llm-phases phase \`${name}\``, ["skip", "run"]);
+      // One value or a list, and a step is left out when ANY of them applies: a flag this
+      // run was given, or the review's own state.
+      if (step.skip !== undefined) {
+        const skips = [step.skip].flat();
+        const known = [...PROMPT_SKIPS, ...REVIEW_STATE_SKIPS];
+        if (skips.length === 0) {
+          throw new Error(
+            `${at2} step ${i + 1} carries an empty \`skip\` list, which leaves it out of nothing`
+          );
+        }
+        const odd = skips.find((v) => !known.includes(v));
+        if (odd !== undefined) {
+          throw new Error(
+            `${at2} step ${i + 1} is skipped by \`${JSON.stringify(odd)}\`, which neither a ` +
+              `flag nor the review's state gives (expected one of: ${known.join(", ")})`
+          );
+        }
       }
       if (step.run !== undefined && !REVIEW_PROMPT_RUNS.includes(step.run)) {
         throw new Error(
@@ -1572,7 +1557,7 @@ function assertRegistry(registry, at, { partial = false } = {}) {
  * name, and every reason authored is named by a check.
  *
  * Both directions matter, and they fail differently. A reference nothing defines would
- * stop a review and then print a bullet with nothing in it - the report would say the
+ * abort a review and then print a bullet with nothing in it - the report would say the
  * submission could not be reviewed without saying why. A reason nothing references is
  * wording no report can reach, which is the same dead-prose failure a closed `prose-map`
  * refuses in the schema.
@@ -1596,13 +1581,13 @@ export function assertEarlyExit(registry, at) {
     // then a report declaring itself incomplete.
     if (entry.severity !== SEVERITY.ERROR && entry.severity !== AUTO_SEVERITY) {
       throw new Error(
-        `\`${entry.check}\` stops the review but is severity \`${entry.severity}\` - ` +
+        `\`${entry.check}\` aborts the review but is severity \`${entry.severity}\` - ` +
           `only \`error\` or \`auto\` can report one at the band a halt is decided on (${at})`
       );
     }
     if (!ids.includes(reason)) {
       throw new Error(
-        `\`${entry.check}\` stops the review for \`${reason}\`, which ` +
+        `\`${entry.check}\` aborts the review for \`${reason}\`, which ` +
           `\`review-early-exit\` does not define (expected one of: ${ids.join(", ")}) (${at})`
       );
     }

@@ -4989,7 +4989,7 @@ test("--warnings-as-errors publishes every warning as an error", async () => {
 //
 // A policy reads the authored registry; it never rewrites it. That is what keeps
 // assertEntries deciding what an entry MAY declare - a warning entry stays ineligible to
-// stop a review under any policy (assertEarlyExit) - and what lets one document be read
+// abort a review under any policy (assertEarlyExit) - and what lets one document be read
 // under two policies at once.
 test("--warnings-as-errors moves the suggested verdict with it", () => {
   const doc = {
@@ -5914,8 +5914,8 @@ test("unrecognized-file-type does NOT flag a script in a DEAD (unreachable) page
 
 // ---- the early exit's registry half ----
 
-// A check declares that it stops the review by naming the REASON the report gives, so the
-// two halves have to agree in both directions. A reference nothing defines would stop a
+// A check declares that it aborts the review by naming the REASON the report gives, so the
+// two halves have to agree in both directions. A reference nothing defines would abort a
 // review and then print a bullet with nothing in it - the report would say the submission
 // could not be reviewed without saying why.
 test("a check naming a reason the registry does not define is refused", () => {
@@ -6008,7 +6008,7 @@ test("a non-string early-exit reference is refused", () => {
 // is final. A check whose band cannot reach error on its own would make the answer depend
 // on WHEN it is asked - the loop asks before holds are settled - so the question block
 // could be put to a reviewer, answered, and then a report declare itself incomplete.
-test("a check that cannot reach error on its own may not stop the review", () => {
+test("a check that cannot reach error on its own may not abort the review", () => {
   for (const [id, band] of [
     ["privacy-policy", "hold-or-error"],
     ["unused-files", "warning"],
@@ -6022,8 +6022,8 @@ test("a check that cannot reach error on its own may not stop the review", () =>
     }
     assert.throws(
       () => checkEarlyExit(registry),
-      new RegExp(`stops the review but is severity \`${band}\``),
-      `${id} (${band}) should not be allowed to stop the review`
+      new RegExp(`aborts the review but is severity \`${band}\``),
+      `${id} (${band}) should not be allowed to abort the review`
     );
   }
 });

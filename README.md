@@ -104,7 +104,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | `--llm-verdict <file>` | Take a phase back and hand out the next - the last being `close`, which hands over the settled review. Takes no add-on path. Normally run by the agent, not by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission folder - one built `.xpi` and one archive of its source - print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-skip-summary` | Leave out the add-on description: the prompt does not ask for one and names no file for it. |
-| `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later, unless the review stopped early. |
+| `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later, unless the review was aborted early. |
 | `--llm-skip-sweep` | Leave out the sweep: no sweeping agent is spawned, and the sweep is not handed to the reviewer either. |
 
 **Source code archive (SCA):**
@@ -188,15 +188,15 @@ which means either nothing was built or the build output was committed beside th
   `--sca-root` means there is nothing to reproduce), and it must commit a **lock file**
   that installs exactly what `package.json` declares. npm and pnpm are the only package
   managers the review installs from, so those are the only locks that count and a build
-  using anything else is rejected for having none. Each stops the review, since every
-  remaining question depends on installing and building. A third requirement stops the
+  using anything else is rejected for having none. Each aborts the review, since every
+  remaining question depends on installing and building. A third requirement aborts the
   review from the other side: an `.npmrc` **at `--sca-root`** that points the package
   **registry** elsewhere is rejected (npm reads its config from the directory the install
   runs in), because the install would run but fetch something other than what is declared,
   so reproducing it attests nothing and it pulls code from a developer-chosen host onto the
   reviewer's machine. Beyond those, the build must not commit a `node_modules` folder or a
   built archive (`.xpi` / `.zip` - both are build output, never shipped in a source
-  submission), and any `package.json` install hook (`postinstall`, …) escalates and stops
+  submission), and any `package.json` install hook (`postinstall`, …) escalates and aborts
   the review once reported. The build is traced once in setup, over the files reached from
   `package.json`, and what `undeclared-build-source` reads of it is the steps that trace
   could not follow.
@@ -269,7 +269,7 @@ not the developer's, so accepting it is a judgement a person owns), and
 `experiment-manual-review` (an Experiment runs with Thunderbird's own internals in reach,
 so no scan of its surface settles what it does).
 
-Some findings stop the review outright. A check can declare that it does by naming the
+Some findings abort the review outright. A check can declare that it does by naming the
 reason the report gives (`review-early-exit:` in the registry) - today twelve do, across
 three reasons: the four dependency-vulnerability checks name *known security
 vulnerabilities*, `banned-library` names *disallowed library versions*, and the seven that
@@ -354,11 +354,11 @@ machine.
 | `minified-code` | A script or stylesheet (not a recognized library, not obfuscated) shipped minified - by minified line geometry (a very long, dense line) (error). A script that will not parse or walk counts as minified, since nothing there can be reviewed either. |
 | `obfuscated-code` | A JS file (not a recognized library) shipped obfuscated - recognized by the AST structure of a known obfuscator family via the `obfuscation-detector` library. The families a match is drawn from are pinned, so a family the library gains later decides nothing and a match needs no second opinion. High precision, partial recall - some obfuscators evade it. |
 | `privacy-policy` | Data transmitted by an overt API to a remote host the developer chose (fixed in the add-on, not entered by the user) - one case per transmission site, naming its host. A host the add-on assembles while it runs is reported too, marked rather than named, since dropping it would hide the site the tool can say least about. Routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
-| `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, stops the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce. Whether the archive held the whole XPI is a separate question, so `sca-xpi-fully-included-in-archive` prints beside this rejection rather than in place of it. |
-| `sca-package-file-invalid` | A `package.json` that is present but unusable - it does not parse, or it parses to something other than a JSON object - so the build it defines cannot be run (error, stops the review). Presence is decided by name and usability by reading, so exactly one of this and the check above ever speaks. |
-| `sca-lock-file-invalid` | A committed lock file that cannot be read: it does not parse, or it is not a recognisable npm or pnpm lock (error). The dependency audit reads the installed tree from it, so the review stops. Whether a readable lock matches `package.json` is left to `npm ci` / `pnpm install --frozen-lockfile` at the build. |
-| `lock-foreign-source` | A lock entry the install takes from a source other than the npm registry or GitHub, or a root dependency declared as a registry release that the lock takes from GitHub (error, stops the review). The audit identifies a package by name and version, while the installer fetches the URL the lock records, so such an entry installs bytes the audit never read. |
-| `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, stops the review). The lock is owed by the `package.json`, not by what it declares: both installers refuse without one whatever it holds. A build using a package manager the review does not install from commits no lock that counts, so it is rejected here. |
+| `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, aborts the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce. Whether the archive held the whole XPI is a separate question, so `sca-xpi-fully-included-in-archive` prints beside this rejection rather than in place of it. |
+| `sca-package-file-invalid` | A `package.json` that is present but unusable - it does not parse, or it parses to something other than a JSON object - so the build it defines cannot be run (error, aborts the review). Presence is decided by name and usability by reading, so exactly one of this and the check above ever speaks. |
+| `sca-lock-file-invalid` | A committed lock file that cannot be read: it does not parse, or it is not a recognisable npm or pnpm lock (error). The dependency audit reads the installed tree from it, so the review is aborted. Whether a readable lock matches `package.json` is left to `npm ci` / `pnpm install --frozen-lockfile` at the build. |
+| `lock-foreign-source` | A lock entry the install takes from a source other than the npm registry or GitHub, or a root dependency declared as a registry release that the lock takes from GitHub (error, aborts the review). The audit identifies a package by name and version, while the installer fetches the URL the lock records, so such an entry installs bytes the audit never read. |
+| `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, aborts the review). The lock is owed by the `package.json`, not by what it declares: both installers refuse without one whatever it holds. A build using a package manager the review does not install from commits no lock that counts, so it is rejected here. |
 | `string-timer` | A code string passed to `setTimeout`/`setInterval` (it is eval'd) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
 | `sync-xhr` | Synchronous `XMLHttpRequest` (`open(..., false)`). |
 | `trademark-violation` | Add-on name (resolved from `_locales` for a `__MSG__` name) using a Mozilla brand term - `Firefox`/`Mozilla`/`MZLA` anywhere, in any locale (error, case-insensitive). Needs no knowledge of the language, so it is always a finding, and each offending name is reported once naming every locale that states it. `Thunderbird` is the two checks below, and a name carrying a brand term is left to this one alone, since it is refused either way. The icon is checked separately, on the listing and in the package. |
@@ -449,7 +449,7 @@ result into the owning check - described in
 Some review steps can't be automated - they need hands-on testing or a human's
 judgment over content the tool can't see (the store listing, screenshots, the
 icon). These live under `manual-checks` in the yaml and are surfaced in the
-report's **Standard Manual Review** to-do list, unless the review stopped early. They carry a severity like every other entry, so a reviewer settles one exactly as they settle an escalation: the item names the band a confirmed case lands in, and `--llm-verdict` can confirm it into a finding or clear it away.
+report's **Standard Manual Review** to-do list, unless the review was aborted early. They carry a severity like every other entry, so a reviewer settles one exactly as they settle an escalation: the item names the band a confirmed case lands in, and `--llm-verdict` can confirm it into a finding or clear it away.
 
 | Check id (`check:`) | What the reviewer verifies |
 | --- | --- |

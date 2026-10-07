@@ -1,4 +1,4 @@
-// The EARLY EXIT: some cases settle the submission on their own, and the review stops
+// The EARLY EXIT: some cases settle the submission on their own, and the review is aborted
 // there rather than asking anyone to carry on with it.
 //
 // The case it exists for: a source submission whose dependency tree carries known
@@ -7,8 +7,8 @@
 // strength of a question the linter issued knowing better. The linter knows before it
 // asks, so it should not ask.
 //
-// Two decisions, and they are deliberately separate. WHETHER to stop is the registry's:
-// a check names the reason it stops a review (`review-early-exit`), and the report lists
+// Two decisions, and they are deliberately separate. WHETHER to abort is the registry's:
+// a check names the reason it aborts a review (`review-early-exit`), and the report lists
 // those reasons. WHAT is withheld is not per-check at all: it is every to-do item a
 // REVIEWER would have been asked, which src/report/phases.js already answers for the
 // phase machine (phaseNow). Tying the second to the first would mean a table of items to
@@ -22,10 +22,10 @@
 // Read from BOTH renderers, which is why it lives here rather than in either: the plain
 // review applies it in src/pipeline.js, and the --llm-review loop asks it again on every
 // phase (src/report/loop.js), because what settles a submission is not fixed when the
-// checks run: the agent may withdraw the very finding that stopped the review, and it may
+// checks run: the agent may withdraw the very finding that aborted the review, and it may
 // report a case no check had judged yet.
 //
-// Belongs here: whether a review stopped, and what a stopped review withholds. Does NOT
+// Belongs here: whether a review was aborted, and what an aborted review withholds. Does NOT
 // belong here: how the closing block is drawn (-> src/report/format.js), which items a
 // reviewer answers (-> src/report/order.js), and the wording (-> assets/registry.yaml).
 
@@ -48,7 +48,7 @@ import { VERB, verbNamed } from "./verbs.js";
  * A TO-DO item stands only once it is REPORTED, at the severity the registry stamps on a
  * reported case (`suggestedVerdict`, the same read applyVerdicts makes) - because being
  * reported is the moment it becomes a finding of its own check (src/report/verdicts.js
- * asFinding). That is how a check that only ESCALATES can stop a review: the case it
+ * asFinding). That is how a check that only ESCALATES can abort a review: the case it
  * raised is not an error until someone has judged it one, so a case cleared as benign
  * stands for nothing, and neither does one in a review with nobody to judge it.
  *
@@ -56,7 +56,7 @@ import { VERB, verbNamed } from "./verbs.js";
  * conversion cannot happen sooner: it moves a case out of the manual list and into the
  * findings, which renumbers every index after it, and an index is what a recorded answer
  * names. So settlement runs once, at the end - after the `ask` phase has been issued - and
- * a stop decided only there would prune the printed report instead of sparing the question.
+ * an abort decided only there would prune the printed report instead of sparing the question.
  * @param {import("./order.js").OrderedItem} item  One ordered entry.
  * @param {?string} verdict  The verb its answer names, if it has one.
  * @param {Registry} registry
@@ -75,20 +75,20 @@ function standsAsError(item, verdict, registry) {
 }
 
 /**
- * The reasons this review stopped, deduplicated and in the order the registry authors
- * them. Empty means it did not stop.
+ * The reasons this review was aborted, deduplicated and in the order the registry authors
+ * them. Empty means it was not aborted.
  *
  * An entry counts when two things are true of it: its check names a reason, and it stands
  * as an ERROR (standsAsError). Severity is the whole of the threshold, which is what makes
  * this "high and above" without restating any band - an advisory check maps its band to a
  * severity already (src/lib/vuln-findings.js), so a moderate advisory arrives here as a
- * warning and stops nothing, while a malicious-package advisory, which states no band at
- * all, arrives as an error and stops the review like any other.
+ * warning and aborts nothing, while a malicious-package advisory, which states no band at
+ * all, arrives as an error and aborts the review like any other.
  *
  * Reading the severity rather than the band is also what keeps --warnings-as-errors out of
  * this file. That policy is applied to each finding's own severity before this is asked
  * (bandUnder, src/checks/registry.js), so under it the same moderate advisory arrives as an
- * error and does stop the review - the consequence of settling every warning as an error,
+ * error and does abort the review - the consequence of settling every warning as an error,
  * reached without anything here knowing the flag exists.
  *
  * Registry order, not encounter order: which finding happened to come first is an
@@ -126,7 +126,7 @@ function earlyExitReasons(ordered, answers, registry) {
 }
 
 /**
- * What a stopped review carries, or null when it did not stop: the authored line and the
+ * What an aborted review carries, or null when it was not aborted: the authored line and the
  * reasons it lists, each with the id that named it.
  *
  * ONE producer for that value. Assembled per renderer, the shape - and the null-vs-empty
@@ -149,7 +149,7 @@ export function earlyExitOf(ordered, answers, registry) {
 }
 
 /**
- * The to-do items a stopped review still lists: the ones nobody was going to be ASKED.
+ * The to-do items an aborted review still lists: the ones nobody was going to be ASKED.
  *
  * Filtering the manual list is the whole of the strip. Three of the report's four to-do
  * sections are rendered from it, and the Summary re-orders the same array for its counts

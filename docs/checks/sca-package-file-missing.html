@@ -49,7 +49,7 @@
 flowchart TD
   A["The submitted source archive"] --> B{"A package.json at its root?"}
   B -- yes --> OK([no finding])
-  B -- no --> ERR([ERROR: missing package.json<br/>the review stops here])
+  B -- no --> ERR([ERROR: missing package.json<br/>the review is aborted here])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -67,7 +67,7 @@ flowchart TD
       </div>
 
       <div class="outcome">
-        <strong>It stops the review</strong>
+        <strong>It aborts the review</strong>
         This check is one of the few that settle the submission on their own. When it
         reports, nothing further is put to a reviewer: the report drops every to-do item
         they would have been asked, keeps the code-review sections, and the

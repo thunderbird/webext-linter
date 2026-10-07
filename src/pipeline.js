@@ -1129,21 +1129,21 @@ export async function runPipeline(opts) {
     };
   }
 
-  // A review the findings themselves settle STOPS here: nothing further is put to a
+  // A review the findings themselves settle is ABORTED here: nothing further is put to a
   // reviewer, and the report says why rather than listing work nobody should do. The case
   // it exists for is a build the reviewer would otherwise be asked to reproduce from a
   // dependency tree this review has already rejected.
   //
   // Applied only for a review that PRINTS one. Under --llm-review the same decision is
   // taken again at the end of the loop (src/report/loop.js settle), because a pass may
-  // withdraw the very finding that stopped it - so the state above keeps the full list,
+  // withdraw the very finding that aborted it - so the state above keeps the full list,
   // and nothing here narrows what a later pass can still change its mind about.
   //
   // AFTER resolveHolds, and that ordering is load-bearing: the threshold reads a
   // finding's severity, and resolveHolds is the moment a provisional hold becomes one.
-  // Decided before it, a blocking check that reported a hold would stop nothing.
+  // Decided before it, a blocking check that reported a hold would abort nothing.
   //
-  // The key is left off a review that did not stop, rather than written as null - the
+  // The key is left off a review that was not aborted, rather than written as null - the
   // same way manualReview and preSweep are dropped from the JSON rather than emptied.
   if (!prompting) {
     const ordered = orderReview(findings, meta.manualReview ?? []);

@@ -10,7 +10,7 @@ flags in the context of every other option.
 
 - [The round trip](#the-round-trip)
 - [The phases](#the-phases)
-- [When the review stops early](#when-the-review-stops-early)
+- [When the review is aborted early](#when-the-review-is-aborted-early)
 - [What an answer may say](#what-an-answer-may-say)
 - [The sweep](#the-sweep)
 - [What the reviewer is handed](#what-the-reviewer-is-handed)
@@ -57,7 +57,7 @@ entry never offered are all refusals.
 | `build` | Source code review only: with the reviewer's consent, build the add-on in the agent's own sandbox and write how the result differs from the shipped XPI. | Nothing: the diff goes to a file of its own |
 | `details` | Hand the reviewer the Review Details block, before anything is put to them. Not under `--llm-skip-manual`. | Nothing: the block is its whole work |
 | `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
-| `close` | The last phase, once nothing else has work: hand over the settled review. It opens on whether the review is settled or stopped. | Nothing: the review ends with it |
+| `close` | The last phase, once nothing else has work: hand over the settled review. It opens on whether the review is settled or was aborted. | Nothing: the review ends with it |
 
 A phase is issued only when it has **work** - steps that survive their markers, or
 entries to settle - and that is also what ends the loop. So a review with no sweep never
@@ -65,18 +65,20 @@ mentions one, and a review that starts no sub-agent at all skips `spawn` and ope
 first phase that has any. The package itself is not unpacked by any of this: the linter extracts a packed
 submission before the first prompt is printed, and every phase reads that one folder.
 
-`build`, `details` and `ask` have one further condition: a review that **stopped early**
-never reaches them. Their steps are flagged `skip-if-stopped`, and a phase with no step left is
-not issued (a step flagged `skip-if-not-stopped` is the opposite: it prints only in a
-review that stopped). `build` runs the submission's own code, so it waits until every check that
-can stop the review has had its say - including `build-lifecycle-hook`, which `settle`
+`build`, `details` and `ask` have one further condition: a review that was **aborted
+early** never reaches them. Their steps carry `skip: if-aborted`, and a phase with no step
+left is not issued (`skip: if-not-aborted` is the opposite: the step prints only in a review
+that was aborted). A step's `skip:` takes one value or a list - a `--llm-skip-*` flag or one
+of these two - and the step is left out when any of them applies, and when its `run:`
+condition does not hold. `build` runs the submission's own code, so it waits until every
+check that can abort the review has had its say - including `build-lifecycle-hook`, which `settle`
 decides. The agent asks the reviewer before building, builds in a copy of the source
 archive, and writes the outcome to `BUILD_DIFF`: identical, differing (with the diff), or
 failed (with the failing step and its error). The linter judges none of it; the reviewer
 reads the diff while answering the questions.
 
 
-## When the review stops early
+## When the review is aborted early
 
 Some findings settle the submission on their own, and carrying on would ask someone to do
 work the review has already ruled out. The case it exists for: a source submission whose
@@ -84,7 +86,7 @@ dependency tree carries known high or critical advisories, where the very next t
 loop would do is ask a reviewer to **reproduce the build** - running that tree on their own
 machine, on the strength of a question the linter issued knowing better.
 
-A check declares that it stops the review by naming the reason the report gives
+A check declares that it aborts the review by naming the reason the report gives
 (`review-early-exit:` in the registry). Today twelve do, across three reasons: the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
 names *disallowed library versions*, and the seven that decide a source submission cannot
@@ -92,16 +94,16 @@ be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
 `build-registry-redirect`, `lock-foreign-source` and `build-lifecycle-hook` - name *a build
 that cannot be reproduced*. The threshold is the finding's severity, so an advisory
-that lands as a warning stops nothing.
+that lands as a warning aborts nothing.
 
 That threshold is also what lets `build-lifecycle-hook` carry the flag while it reports
 nothing itself. It escalates its install hook to the agent, and an escalated case becomes a
 finding of its own check only when the agent **reports** it, at that check's severity. So a
-hook the agent clears stops nothing, and neither does a review with no agent to judge it -
-the review stops once someone has determined the hook fetches code, which is code that
+hook the agent clears aborts nothing, and neither does a review with no agent to judge it -
+the review is aborted once someone has determined the hook fetches code, which is code that
 would run on the reviewer's machine the moment they install.
 
-What a stopped review does:
+What an aborted review does:
 
 | | |
 | --- | --- |
@@ -109,13 +111,13 @@ What a stopped review does:
 | The report | drops every to-do item a reviewer would have been **asked** - the Extended Manual Review and Standard Manual Review sections, and their tally counts. |
 | | keeps both code-review sections: reading code is safe, and what it turns up is the evidence for the halt. |
 | | ends on the reason it is incomplete, one line per distinct cause. |
-| The `close` phase | opens with a step of its own (`skip-if-not-stopped`), because telling an agent "the review is settled" about one that was cut short is not true. Everything after that opening is the same. |
+| The `close` phase | opens with a step of its own (`skip: if-not-aborted`), because telling an agent "the review is settled" about one that was cut short is not true. Everything after that opening is the same. |
 
 The decision is taken again on every pass, never recorded once, because the `verify` phase
-is where those findings are audited: an agent that **withdraws** the finding which stopped
-the review has removed the thing that stopped it, and the question block comes back.
+is where those findings are audited: an agent that **withdraws** the finding which aborted
+the review has removed the thing that aborted it, and the question block comes back.
 
-None of this is particular to an agent. A review run without `--llm-review` stops on the
+None of this is particular to an agent. A review run without `--llm-review` is aborted on the
 same terms and prints the same report - the trap is the same one with one fewer
 participant.
 
@@ -270,14 +272,14 @@ over before anything is asked, so the reviewer can open those files while answer
 the last pass hands it over again as what they are left holding.
 
 The last pass is the `close` phase. The linter applies every answer, writes `REVIEW_REPORT`,
-and only then prints it, so it opens on whether the review settled or stopped: of its two
-opening steps, one is flagged `skip-if-stopped` and the other `skip-if-not-stopped`. The
+and only then prints it, so it opens on whether the review settled or was aborted: of its two
+opening steps, one carries `skip: if-aborted` and the other `skip: if-not-aborted`. The
 rest is one step, the same either way. It hands over the agent's own account and the block,
 each under a heading of its own: **LLM decisions** (every finding it withdrew and every
 verdict it reached, with its reasons - the only part that is the agent's to write),
 **Summary** (the tally), and **Final Review Details** (every path this review named,
-`REVIEW_REPORT` among them, and nothing of what is in any of them). Where the review stopped
-early, the reasons close that block, because only the block can list what stopped this
+`REVIEW_REPORT` among them, and nothing of what is in any of them). Where the review was aborted
+early, the reasons close that block, because only the block can list what aborted this
 review. Nothing is handed back after `close`: it carries no hand-back step, and a hand-back
 is refused.
 
@@ -326,5 +328,5 @@ too many formats for it to open, which is why that one extraction is the reader'
 | `--llm-verdict <file>` | Take a phase back and hand out the next, from the review file the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file beside this one. Normally run by the agent working through the review rather than by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
-| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review stopped early, which takes them out. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
+| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted early, which takes them out. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
 | `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. No sweeping agent is spawned, and the sweep is not handed to the reviewer either. |

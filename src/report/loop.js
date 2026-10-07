@@ -44,9 +44,9 @@ import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
  * What this run was told, plus what the review has since decided for itself.
  *
  * `state.run` records the flags the review was STARTED with, and never changes. Whether
- * the review has stopped early is not one of those: it is derived from the findings that
+ * the review was aborted early is not one of those: it is derived from the findings that
  * still stand, so it can change with every verdict - a pass that withdraws the finding
- * which stopped the review puts its question block back.
+ * which aborted the review puts its question block back.
  *
  * Derived in ONE place because both legs of the round trip need the same answer. `issue`
  * decides what goes out by it, and `accept` re-derives what went out rather than storing
@@ -88,7 +88,7 @@ export function issue(state, stateFile, phases, registry) {
   }
   const { phase } = next;
   // The closing phase hands over the FINISHED review: every answer applied, and the report
-  // the reviewer sends written. Whether the review stopped is read off that settled review
+  // the reviewer sends written. Whether the review was aborted is read off that settled review
   // rather than the run's - a verdict applied only now can still decide it - so the steps
   // are chosen again against it. Settled on a COPY, as below: the state is written after
   // this, and a review settled in place would be settled twice by anything that read it.
@@ -152,7 +152,7 @@ export function loopSlots(state, issued) {
     // Named because `details` can be the FIRST phase issued - a review with no findings
     // and nothing to settle opens there - and that is a phase that hands the block over.
     // The closing phase hands over the finished review's block instead, which ends on
-    // what stopped it where something did.
+    // what aborted it where something did.
     details: issued.settled?.details ?? reviewDetails(state),
     tally: issued.settled?.tally ?? "",
     ...sweepSlots(state),
@@ -283,7 +283,7 @@ function phaseEntries(state, registry, phase, run) {
 
 /**
  * What the LAST prompt hands over: every path this review named, and - where the review
- * stopped - the line saying so.
+ * was aborted - the line saying so.
  *
  * Handed over on EVERY settled review, including one whose `details` phase already showed the
  * same block. That is not a duplicate: the `details` copy exists to be read WHILE the questions
@@ -292,10 +292,10 @@ function phaseEntries(state, registry, phase, run) {
  *
  * The early-exit lines belong to the block rather than to the closing phase's steps, because
  * the reasons are the review's, not authored text: only the block can list the ones that
- * stopped THIS review. earlyExitLines answers [] for a review that did not stop, so this is
+ * aborted THIS review. earlyExitLines answers [] for a review that was not aborted, so this is
  * asked unconditionally and the block simply ends sooner.
  * @param {import("./state.js").LoopState} state
- * @param {?{intro: string, reasons: {id: string, text: string}[]}} earlyExit  What stopped the
+ * @param {?{intro: string, reasons: {id: string, text: string}[]}} earlyExit  What aborted the
  *   review, or null where nothing did.
  * @returns {string}
  */
@@ -358,7 +358,7 @@ export function settle(state, registry) {
   resolveHolds(findings);
   // Decided HERE, on the findings that survived every verdict, rather than carried over
   // from the run that produced them: the agent may have withdrawn the very finding that
-  // stopped the review, and then nothing stopped it. What remains is what the reviewer
+  // aborted the review, and then nothing aborted it. What remains is what the reviewer
   // is left with - the questions were never put to anyone, so the report drops them
   // instead of listing work under a line saying the review did not finish.
   const ordered = orderReview(findings, state.manual);
@@ -367,10 +367,10 @@ export function settle(state, registry) {
   return {
     applied,
     // Which hand-over text the last prompt carries. Telling an agent the review is
-    // settled, when it stopped, is the one thing the second text exists to avoid.
+    // settled, when it was aborted, is the one thing the second text exists to avoid.
     earlyExit: Boolean(earlyExit),
     // The Review Details block the reviewer is left with, and the line saying the review
-    // stopped where one did. Pure from meta, which is stored - so this pass prints what a
+    // was aborted where one was. Pure from meta, which is stored - so this pass prints what a
     // settled report has always printed, without the add-on being read a second time.
     details: finalDetails(state, earlyExit),
     // The tally, which only this pass can be right about: every earlier one runs before
@@ -397,7 +397,7 @@ export function settle(state, registry) {
       meta: {
         ...state.report.meta,
         manualReview: manual,
-        // Spread rather than set: a review that did not stop carries no such key, which
+        // Spread rather than set: a review that was not aborted carries no such key, which
         // is the shape the plain path produces for the same outcome.
         ...(earlyExit ? { earlyExit } : {}),
         preSweep: null,

@@ -111,7 +111,7 @@ const SEV_COLOR = {
  *   not its result.
  *   Text-only; dropped from JSON.
  * @property {?{intro: string, reasons: {id: string, text: string}[]}} [earlyExit]
- *   Why the review STOPPED, when it did: the authored line and the reasons it lists, each
+ *   Why the review was ABORTED, when it was: the authored line and the reasons it lists, each
  *   with the id that named it (src/report/early-exit.js). Absent on a review that ran to
  *   the end. Unlike the two above it is KEPT in the JSON: it is a statement about the
  *   review rather than an instruction to a reader, and a consumer deciding whether to
@@ -205,7 +205,7 @@ function reviewBodyLines(review) {
     // Beside the standard manual checks, and before them: the two STANDARD sections are
     // the review every submission gets - this one done by reading, that one by hand - so
     // they read as a pair after the extended sections, which are raised by this
-    // submission in particular. A review that STOPPED keeps only the reading half: the
+    // submission in particular. A review that was ABORTED keeps only the reading half: the
     // questions were never put to anyone (src/report/early-exit.js).
     ...preSweepSection(meta.preSweep ?? null, artifactRoots(meta)),
     ...manualSection(todo("standard"), SECTION_TITLES.standard, blue, labelOf),
@@ -763,8 +763,8 @@ function squared(lines) {
  * @param {Record<string, string>} [verdictIntros]
  * @param {(f: import("./finding.js").Finding) => string} [labelOf]
  * @param {import("../lib/enum.js").ReviewMode} [mode]
- * @param {?{intro: string, reasons: {id: string, text: string}[]}} [earlyExit]  Why the review stopped, when
- *   it did. Rendered LAST, so the developer's text ends on the reason it is incomplete -
+ * @param {?{intro: string, reasons: {id: string, text: string}[]}} [earlyExit]  Why the review was aborted,
+ *   when it was. Rendered LAST, so the developer's text ends on the reason it is incomplete -
  *   and rendered here rather than by each caller, because this body is the developer's
  *   text in both places it is produced: under Found Issues in the terminal, and in the
  *   slot the review loop's last prompt hands over.
@@ -824,7 +824,7 @@ export function issuesBodyLines(
 }
 
 /**
- * The closing block of a review that STOPPED: the authored line, then one bullet per
+ * The closing block of a review that was ABORTED: the authored line, then one bullet per
  * reason. Empty for a review that ran to the end, which is what lets every caller render
  * it unconditionally.
  *
@@ -1092,7 +1092,7 @@ function preSweepSection(sweep, trees) {
 /**
  * Summary: issue counts by severity plus one count per to-do section, in the body's
  * section order (the two extended sections, then the two standard ones - which every
- * submission gets unless the review stopped early, src/report/early-exit.js).
+ * submission gets unless the review was aborted early, src/report/early-exit.js).
  *
  * Also printed on its own by a --llm-review run, which has no report body for it to close:
  * without it that run's output would not say whether the add-on is ready to sign off or

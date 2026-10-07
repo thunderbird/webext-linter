@@ -1043,7 +1043,7 @@ function driveLoop(state, stateFile, answer, reg = REGISTRY) {
   return { seen, closing, settled: settle(state, reg) };
 }
 
-/** The review above, with its findings reported by a check that stops the review. */
+/** The review above, with its findings reported by a check that aborts the review. */
 function blockingReview(dir) {
   const made = review(dir, { sweep: false });
   for (const f of made.state.report.findings) {
@@ -1056,7 +1056,7 @@ function blockingReview(dir) {
 // The case this exists for: the very next thing the loop would do is ask a reviewer to
 // reproduce a build the review has already rejected. It must not get that far - and the
 // phases BEFORE it still run, because what they settle is what the report is made of.
-test("a blocking finding stops the loop before the question block", () => {
+test("a blocking finding aborts the loop before the question block", () => {
   const dir = tmp();
   const { state, stateFile } = blockingReview(dir);
   const { seen, settled } = driveLoop(state, stateFile, (phase) =>
@@ -1070,7 +1070,7 @@ test("a blocking finding stops the loop before the question block", () => {
 
 // The mirror image, and the reason the halt is derived every pass rather than recorded
 // once: the agent audits those findings, and an agent that withdraws them has removed the
-// thing that stopped the review. The question block comes back.
+// thing that aborted the review. The question block comes back.
 test("withdrawing the blocking findings puts the question block back", () => {
   const dir = tmp();
   const { state, stateFile } = blockingReview(dir);
@@ -1083,7 +1083,7 @@ test("withdrawing the blocking findings puts the question block back", () => {
 
 // The Review Details block goes out once, in a phase of its own, before the questions - and
 // not where nothing will be put to the reviewer: under --llm-skip-manual, or once the review
-// stopped.
+// was aborted.
 test("the details block is handed over by its own phase, before the questions", () => {
   const blocks = (made) => {
     const shown = [];
@@ -1113,17 +1113,17 @@ test("the details block is handed over by its own phase, before the questions", 
   skipped.state.run.skip = ["llm-skip-manual"];
   assert.deepEqual(blocks(skipped), []);
 
-  const stopped = blockingReview(tmp());
+  const aborted = blockingReview(tmp());
   const shown = [];
   for (let pass = 0; pass < 10; pass++) {
-    const out = issue(stopped.state, stopped.stateFile, PHASES, REGISTRY);
+    const out = issue(aborted.state, aborted.stateFile, PHASES, REGISTRY);
     if (out.phase.answer === "end") {
       break;
     }
     shown.push(out.phase.name);
     accept(
-      stopped.state,
-      handBack(stopped.state, () =>
+      aborted.state,
+      handBack(aborted.state, () =>
         out.phase.name === "verify" ? "reported" : "cleared"
       ),
       PHASES,
@@ -1134,7 +1134,7 @@ test("the details block is handed over by its own phase, before the questions", 
 });
 
 // The review ends with the closing phase, which carries the settled review and opens on
-// what happened to it: settled, or stopped. Nothing is handed back after it.
+// what happened to it: settled, or aborted. Nothing is handed back after it.
 test("the closing phase opens on how the review ended, and takes nothing back", () => {
   const ran = blockingReview(tmp());
   const { closing: settledClose } = driveLoop(
@@ -1149,18 +1149,18 @@ test("the closing phase opens on how the review ended, and takes nothing back", 
     /nothing is handed back after its closing prompt/
   );
 
-  const stopped = blockingReview(tmp());
-  const { closing: stoppedClose } = driveLoop(
-    stopped.state,
-    stopped.stateFile,
+  const aborted = blockingReview(tmp());
+  const { closing: abortedClose } = driveLoop(
+    aborted.state,
+    aborted.stateFile,
     (phase) => (phase === "verify" ? "reported" : "cleared")
   );
-  assert.match(stoppedClose.steps[0].text, /^The review was stopped/);
-  assert.equal(stoppedClose.settled.earlyExit, true);
-  // The same body either way: the stop rides in the details block.
-  assert.equal(stoppedClose.steps[1].text, settledClose.steps[1].text);
+  assert.match(abortedClose.steps[0].text, /^The review was aborted/);
+  assert.equal(abortedClose.settled.earlyExit, true);
+  // The same body either way: the abort rides in the details block.
+  assert.equal(abortedClose.steps[1].text, settledClose.steps[1].text);
   assert.match(
-    stoppedClose.settled.details,
+    abortedClose.settled.details,
     /- Known security vulnerabilities$/
   );
 });
@@ -1179,11 +1179,10 @@ test("a review with no other work is closed on its first pass", () => {
   assert.ok(out.settled, "it carries the settled review");
 });
 
-// Whether the review stopped is a fact about the review, so the hand-over carries it too -
-// not just the developer's text. It rides in the details block rather than in the text
-// around it because the two finals are asserted byte-identical below their opening line, so
-// a trailer authored into the stopped one could not exist.
-test("a stopped review closes its details block with the reason", () => {
+// Whether the review was aborted is a fact about the review, so the hand-over carries it
+// too - not just the developer's text. It rides in the details block, because only the
+// block can list the reasons that aborted THIS review.
+test("an aborted review closes its details block with the reason", () => {
   const dir = tmp();
   const { state, stateFile } = blockingReview(dir);
   const { settled } = driveLoop(state, stateFile, (phase) =>
@@ -1202,7 +1201,7 @@ test("a stopped review closes its details block with the reason", () => {
   assert.equal(lines.at(-1), "- Known security vulnerabilities");
 
   // ... and a review that ran to the end closes with the block itself. Nothing says a
-  // review stopped unless one did.
+  // review was aborted unless one was.
   const clean = blockingReview(tmp());
   const ran = driveLoop(clean.state, clean.stateFile, (phase) =>
     phase === "verify" ? "withdrawn" : "cleared"
@@ -1215,10 +1214,10 @@ test("a stopped review closes its details block with the reason", () => {
   );
 });
 
-// What a stopped review hands the reviewer: the closing line in the developer's text, no
+// What an aborted review hands the reviewer: the closing line in the developer's text, no
 // questions left listed under it, and a tally that does not advertise work nobody was
 // asked to do. The code-review items it settled are still there.
-test("a stopped review hands over the reason and drops the questions", () => {
+test("an aborted review hands over the reason and drops the questions", () => {
   const dir = tmp();
   const { state, stateFile } = blockingReview(dir);
   const {
@@ -1286,7 +1285,7 @@ function buildReview(dir) {
 }
 
 // Building runs the submission's own code, so it comes after `settle` has had its say on
-// every case that could stop the review, and before the questions the diff is read for.
+// every case that could abort the review, and before the questions the diff is read for.
 test("a source code review builds once, after settle and before ask", () => {
   const { state, stateFile } = buildReview(tmp());
   const { seen } = driveLoop(state, stateFile, (phase) =>
@@ -1310,7 +1309,7 @@ test("an XPI review never builds", () => {
   assert.ok(!seen.includes("build"), seen.join(", "));
 });
 
-test("a stopped review never builds", () => {
+test("an aborted review never builds", () => {
   const { state, stateFile } = blockingReview(tmp());
   const { seen } = driveLoop(state, stateFile, (phase) =>
     phase === "verify" ? "reported" : "cleared"

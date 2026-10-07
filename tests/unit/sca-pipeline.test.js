@@ -60,7 +60,7 @@ const XPI_FILES = {
 const SRC_FILES = {
   "package.json": JSON.stringify({ name: "sca-e2e", version: "1.0.0" }),
   // A source submission owes a lock whatever its package.json declares, and without one the
-  // review stops early - which would withhold the very manual-review items these tests
+  // review is aborted early - which would withhold the very manual-review items these tests
   // assert on. Empty is enough: nothing here declares a dependency to cover.
   "package-lock.json": JSON.stringify({
     lockfileVersion: 3,

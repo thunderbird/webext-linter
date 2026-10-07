@@ -1,5 +1,5 @@
-// Unit tests for the early exit (src/report/early-exit.js): whether a review stopped, and
-// what a stopped review withholds. The registry decides WHICH checks stop one, so these
+// Unit tests for the early exit (src/report/early-exit.js): whether a review was aborted,
+// and what an aborted review withholds. The registry decides WHICH checks abort one, so these
 // run against the shipped registry rather than a fixture - a check losing its
 // `review-early-exit` is exactly the regression worth catching.
 
@@ -22,7 +22,7 @@ const finding = (ruleId, severity = SEVERITY.ERROR) => ({
   message: "x",
 });
 
-/** The reason TEXTS a review of these findings stops for, or [] when it does not. */
+/** The reason TEXTS a review of these findings is aborted for, or [] when it is not. */
 const reasonsFor = (findings, answers = {}) =>
   (
     earlyExitOf(orderReview(findings, []), answers, registry)?.reasons ?? []
@@ -30,8 +30,8 @@ const reasonsFor = (findings, answers = {}) =>
 
 // The case the feature exists for, at its simplest: a high/critical advisory reported
 // against the shipped tree settles the submission, and the report says which kind of
-// problem stopped it.
-test("an error from a blocking check stops the review", () => {
+// problem aborted it.
+test("an error from a blocking check aborts the review", () => {
   assert.deepEqual(reasonsFor([finding("vendor-vulnerable")]), [
     "Known security vulnerabilities",
   ]);
@@ -39,9 +39,9 @@ test("an error from a blocking check stops the review", () => {
 
 // The threshold is the SEVERITY and nothing else. vendor-vulnerable is severity:auto, so
 // a moderate advisory reaches the report as a warning - worth telling the developer, not
-// worth stopping a review over. Restating the band here would be a second threshold to
+// worth aborting a review over. Restating the band here would be a second threshold to
 // keep in step with the one in vuln-findings.js.
-test("a warning or info from a blocking check stops nothing", () => {
+test("a warning or info from a blocking check aborts nothing", () => {
   assert.deepEqual(
     reasonsFor([finding("vendor-vulnerable", SEVERITY.WARNING)]),
     []
@@ -55,13 +55,13 @@ test("a warning or info from a blocking check stops nothing", () => {
 // The threshold reads a SETTLED band, which is why the run's own policy reaches it without
 // this file knowing about the flag: under --warnings-as-errors the same moderate advisory
 // is published as an error (src/checks/registry.js bandUnder), and an error from a blocking
-// check is what stops a review. Under that policy the submission is rejected, so not asking
-// a reviewer to reproduce its build is the whole point of stopping.
+// check is what aborts a review. Under that policy the submission is rejected, so not asking
+// a reviewer to reproduce its build is the whole point of aborting.
 //
 // Three checks can reach here this way, and only three: no check declared `warning` may
 // declare `review-early-exit` at all (assertEarlyExit refuses it), so the ones that do are
 // the severity:auto pair plus banned-library, whose band is their own.
-test("--warnings-as-errors makes a moderate advisory stop the review", () => {
+test("--warnings-as-errors makes a moderate advisory abort the review", () => {
   const strict = registry.withPolicy({ warningsAsErrors: true });
   const moderate = finding("vendor-vulnerable", SEVERITY.WARNING);
   // The band the check publishes it at under this policy - the value runOneCheck stamps.
@@ -76,7 +76,7 @@ test("--warnings-as-errors makes a moderate advisory stop the review", () => {
 
 // Blocking is a property of the CHECK, not of the severity. Plenty of checks reject a
 // submission without making it dangerous to build or install.
-test("an error from a check that does not block stops nothing", () => {
+test("an error from a check that does not block aborts nothing", () => {
   assert.deepEqual(reasonsFor([finding("eval-call")]), []);
 });
 
@@ -109,7 +109,7 @@ test("two reasons produce two lines, in the order the registry authors them", ()
 
 // A finding the agent withdrew is not a finding. The review loop asks this again after
 // every pass for exactly this reason: a withdrawal puts the question block back.
-test("a withdrawn finding stops nothing", () => {
+test("a withdrawn finding aborts nothing", () => {
   const findings = [finding("vendor-vulnerable")];
   const ordered = orderReview(findings, []);
   const index = String(ordered[0].index);
@@ -123,12 +123,12 @@ test("a withdrawn finding stops nothing", () => {
   );
 });
 
-// An ESCALATING check stops a review too, but only from the far side of a verdict: it
+// An ESCALATING check aborts a review too, but only from the far side of a verdict: it
 // reports nothing itself, so its case weighs nothing until someone has judged it. This is
 // build-lifecycle-hook, which raises an install hook for a reviewer to read - a hook that
-// only runs local build steps settles nothing, and one that fetches code stops the review
+// only runs local build steps settles nothing, and one that fetches code aborts the review
 // before anyone is asked to install it.
-test("an escalated case stops the review once it is reported, and not before", () => {
+test("an escalated case aborts the review once it is reported, and not before", () => {
   const todo = [
     {
       ruleId: "build-lifecycle-hook",
@@ -140,7 +140,7 @@ test("an escalated case stops the review once it is reported, and not before", (
   ];
   const ordered = orderReview([], todo);
   const index = String(ordered[0].index);
-  // Nobody has judged it: a plain review with no agent in it stops nothing.
+  // Nobody has judged it: a plain review with no agent in it aborts nothing.
   assert.equal(earlyExitOf(ordered, {}, registry), null);
   assert.equal(earlyExitOf(ordered, { [index]: "cleared" }, registry), null);
   assert.deepEqual(
@@ -154,7 +154,7 @@ test("an escalated case stops the review once it is reported, and not before", (
 // The verb alone is not the trigger. Every to-do item in a review is answered, and all but
 // a handful of checks name no reason at all - reporting one of those is ordinary review
 // work, not a submission that settles itself.
-test("a reported to-do stops nothing when its check names no reason", () => {
+test("a reported to-do aborts nothing when its check names no reason", () => {
   const ordered = orderReview(
     [],
     [
@@ -182,7 +182,7 @@ const item = (title, { extended, section }) => ({
 // What is withheld is every item a REVIEWER would have been asked, and nothing else. The
 // code-review items stay: reading code is safe, and what it turns up is the evidence for
 // the halt rather than work the halt makes pointless.
-test("a stopped review keeps the code-review items and drops the questions", () => {
+test("an aborted review keeps the code-review items and drops the questions", () => {
   const kept = item("Read this code", {
     extended: true,
     section: SECTION.CODE_REVIEW,
@@ -221,7 +221,7 @@ test("withoutQuestions survives an empty review", () => {
 
 // A review that ran to the end renders nothing, which is what lets every caller append
 // the block unconditionally.
-test("a review that did not stop renders no closing block", () => {
+test("a review that was not aborted renders no closing block", () => {
   assert.deepEqual(earlyExitLines(null), []);
   assert.deepEqual(earlyExitLines({ intro: "x", reasons: [] }), []);
   // No intro is no sentence: a bullet list under a blank line says nothing.
@@ -236,13 +236,13 @@ test("a review that did not stop renders no closing block", () => {
 test("the closing block is the intro and one bullet per reason", () => {
   assert.deepEqual(
     earlyExitLines({
-      intro: "Stopped because:",
+      intro: "Aborted because:",
       reasons: [
         { id: "a", text: "A" },
         { id: "b", text: "B" },
       ],
     }),
-    ["", "Stopped because:", "- A", "- B"]
+    ["", "Aborted because:", "- A", "- B"]
   );
 });
 

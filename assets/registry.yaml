@@ -867,7 +867,7 @@ deterministic-phase:
 # review-early-exit, and the first ESCALATING check to carry one - which works because only
 # a FINDING halts a review, and an escalated case becomes one only when it is reported at
 # this check's severity (src/report/verdicts.js). So a benign `husky prepare` that is
-# cleared stops nothing, and a plain review with nobody to judge the hook stops nothing
+# cleared aborts nothing, and a plain review with nobody to judge the hook aborts nothing
 # either. Once someone HAS judged it remote-fetching, the next thing the review would ask
 # is that a reviewer install these dependencies - which is the moment the hook runs on
 # their machine. It is settled in the `settle` phase, before `ask` is ever issued.
@@ -1917,8 +1917,8 @@ verdict-intros:
   hold: "Thank you for your contribution."
   rejected: "Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form."
 
-# The EARLY EXIT: some findings settle the submission on their own, and the review stops
-# rather than asking anyone to carry on with it. The case it exists for: a dependency tree
+# The EARLY EXIT: some findings settle the submission on their own, and the review is
+# aborted rather than asking anyone to carry on with it. The case it exists for: a dependency tree
 # with known high/critical advisories, where the very next thing the review would ask is
 # for a reviewer to reproduce the build - running that tree on their own machine, on the
 # strength of a question the linter issued knowing better.
@@ -2213,7 +2213,7 @@ llm-phases:
 
     # Builds the add-on and writes how the result differs from the shipped XPI, for the
     # reviewer to read before the questions. Only in a source code review (`run: sca`) that
-    # nothing has stopped (`skip-if-stopped`), because building runs the submission's own
+    # nothing has aborted (`skip: if-aborted`), because building runs the submission's own
     # code. Opt-in: the reviewer is asked first. The linter judges nothing
     # here - the diff is the reviewer's to read, and the Review Details block links it once
     # it exists.
@@ -2226,7 +2226,7 @@ llm-phases:
       intro: ""
       steps:
         - run: sca
-          skip-if-stopped: true
+          skip: if-aborted
           text: |-
             Wait for every agent you spawned to come back. Then ask the reviewer, with your question tool, whether to build the add-on from the source archive and compare the result with the shipped XPI, saying that building runs the submission's own code. If they decline, build nothing and write nothing.
 
@@ -2256,15 +2256,14 @@ llm-phases:
     # what this review is, and where to read it while answering. Its own phase so it does
     # not hang off one particular question phase. Not under --llm-skip-manual
     # (`skip: llm-skip-manual`), where nothing is put to a reviewer, and not in a review
-    # that stopped (`skip-if-stopped`), whose closing hand-over carries the block anyway.
+    # that was aborted (`if-aborted`), whose closing hand-over carries the block anyway.
     - name: details
       # Asks about nothing in the review file: the block is its whole work.
       answer: none
       verbs: []
       intro: ""
       steps:
-        - skip: llm-skip-manual
-          skip-if-stopped: true
+        - skip: [llm-skip-manual, if-aborted]
           text: |-
             Wait for every agent you spawned to come back, then give the reviewer this block before you put anything to them, under a "Review details" heading and otherwise exactly as it is written here:
 
@@ -2275,7 +2274,8 @@ llm-phases:
     # Puts what only a person can answer to a person. Intro EMPTY: today's two ask blocks say
     # where an entry came from, which is procedural - the agent relays both identically, and
     # naming the difference invites it to treat them differently, which step 3 forbids.
-    # Never in a review that stopped (`skip-if-stopped`): nothing further is put to anyone.
+    # Never in a review that was aborted (`skip: if-aborted`): nothing further is put to
+    # anyone.
     - name: ask
       # A person's own words, whether they picked one of the labels offered or typed
       # something else. Turning "Clear" into `cleared` is the linter's job, so this phase
@@ -2284,8 +2284,7 @@ llm-phases:
       verbs: []
       intro: ""
       steps:
-        - skip: llm-skip-manual
-          skip-if-stopped: true
+        - skip: [llm-skip-manual, if-aborted]
           text: |-
             Put every entry in the file to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each entry's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under that entry's "answers", in the order they are listed, each with the label and description written there and no wording of your own.
 
@@ -2293,7 +2292,7 @@ llm-phases:
 
     # The closing hand-over: what the reviewer is left with once nothing else has work. The
     # linter settles the review before printing it (src/report/loop.js issue), and whether
-    # the review stopped is read off that settled review - so exactly one of the two opening
+    # the review was aborted is read off that settled review - so exactly one of the two opening
     # steps prints, and the body after them is the same either way. Telling an agent "the
     # review is settled" about one that was cut short is what the two openings exist to
     # avoid. Nothing is handed back after it: the review ends here.
@@ -2302,10 +2301,10 @@ llm-phases:
       verbs: []
       intro: ""
       steps:
-        - skip-if-not-stopped: true
+        - skip: if-not-aborted
           text: |-
-            The review was stopped before it finished: what it found settles the submission, and nothing further is asked of anyone.
-        - skip-if-stopped: true
+            The review was aborted before it finished: what it found settles the submission, and nothing further is asked of anyone.
+        - skip: if-aborted
           text: |-
             The review is settled.
         - text: |-

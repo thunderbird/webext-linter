@@ -41,8 +41,9 @@ test("the shipped registry's phases load and are whole", () => {
     for (const step of phase.steps) {
       assert.equal(typeof step.text, "string");
       assert.ok(step.text.length > 0);
-      // Null when the step carries no marker, so one filter handles every step.
-      assert.ok(step.skip === null || typeof step.skip === "string");
+      // A list (empty when the step carries none) and a run that is null when absent, so
+      // one filter handles every step.
+      assert.ok(Array.isArray(step.skip));
       assert.ok(step.run === null || typeof step.run === "string");
     }
   }
@@ -148,7 +149,10 @@ test("a step that numbers itself, or carries a marker nothing answers, is refuse
 
   const badSkip = fresh();
   phaseNamed(badSkip, "ask").steps[0].skip = "nonsense";
-  assert.throws(() => check(badSkip), /which no flag gives/);
+  assert.throws(
+    () => check(badSkip),
+    /which neither a flag nor the review's state gives/
+  );
 
   const badRun = fresh();
   // Found by its marker, not by position: a step added to the phase should not decide
@@ -309,50 +313,75 @@ test("the closing phase is the one last phase, and carries both hand-over slots"
   assert.throws(() => check(notLast), /and it must be the last/);
 });
 
-// Exactly one of the two openings prints: the settled one, or the stopped one.
-test("the closing phase opens one way for a settled review and another for a stopped one", () => {
+// Exactly one of the two openings prints: the settled one, or the aborted one.
+test("the closing phase opens one way for a settled review and another for an aborted one", () => {
   const close = fresh()
     .llmPhases()
     .phases.find((p) => p.name === "close");
   const opening = (halted) => stepsOf(close, { halted })[0].text;
   assert.match(opening(false), /^The review is settled\./);
-  assert.match(opening(true), /^The review was stopped before it finished/);
+  assert.match(opening(true), /^The review was aborted before it finished/);
   assert.equal(stepsOf(close, { halted: false }).length, 2);
   assert.equal(stepsOf(close, { halted: true }).length, 2);
 });
 
-// Whether the review stopped is read against every step: one flagged skip-if-stopped is
-// left out of a stopped review, one flagged skip-if-not-stopped out of every other.
-test("a step's stop flags decide whether it prints in a stopped review", () => {
+// A step's `skip:` names everything that leaves it out - a flag this run was given, or the
+// review's own state - and ANY of them does. `run:` beside it still has to hold: neither
+// marker can turn back on what the other left out.
+test("a step is left out when any of its skip values applies, and its run must hold", () => {
   const phase = {
     steps: [
-      { skip: null, run: null, text: "always" },
-      { skip: null, run: null, skipIfStopped: true, text: "running" },
-      { skip: null, run: null, skipIfNotStopped: true, text: "stopped" },
+      { skip: [], run: null, text: "always" },
+      { skip: ["if-aborted"], run: null, text: "running" },
+      { skip: ["if-not-aborted"], run: null, text: "aborted" },
+      { skip: ["llm-skip-manual", "if-aborted"], run: null, text: "asking" },
+      { skip: ["if-aborted"], run: "sca", text: "building" },
     ],
   };
-  const texts = (halted) => stepsOf(phase, { halted }).map((s) => s.text);
-  assert.deepEqual(texts(false), ["always", "running"]);
-  assert.deepEqual(texts(true), ["always", "stopped"]);
+  const texts = (run) => stepsOf(phase, run).map((s) => s.text);
+  assert.deepEqual(texts({ skip: [], halted: false, sca: true }), [
+    "always",
+    "running",
+    "asking",
+    "building",
+  ]);
+  assert.deepEqual(texts({ skip: [], halted: true, sca: true }), [
+    "always",
+    "aborted",
+  ]);
+  assert.deepEqual(
+    texts({ skip: ["llm-skip-manual"], halted: false, sca: false }),
+    ["always", "running"]
+  );
 });
 
-// A stop flag is true or false, and it sits beside a marker rather than counting as one.
-test("a stop flag is a boolean, and not a second marker", () => {
-  const flagged = fresh();
-  const step = phaseNamed(flagged, "ask").steps.find((x) => x.skip);
-  step["skip-if-stopped"] = true;
-  check(flagged);
+// One value or a list, each a flag or a state the review is in - anything else would leave
+// the step in every run, and an empty list leaves it out of nothing.
+test("a skip value is a flag or the review's state, alone or in a list", () => {
+  const listed = fresh();
+  phaseNamed(listed, "ask").steps.find((x) => x.skip).skip = [
+    "llm-skip-manual",
+    "if-not-aborted",
+  ];
+  check(listed);
 
-  const wrong = fresh();
-  phaseNamed(wrong, "ask").steps[0]["skip-if-stopped"] = "yes";
-  assert.throws(
-    () => check(wrong),
-    /carries `skip-if-stopped: "yes"` - it is true or false/
-  );
+  for (const [value, refusal] of [
+    [
+      "if-stopped",
+      /is skipped by `"if-stopped"`, which neither a flag nor the review's state gives/,
+    ],
+    [["llm-skip-manual", 3], /is skipped by `3`/],
+    [[], /carries an empty `skip` list/],
+  ]) {
+    const wrong = fresh();
+    phaseNamed(wrong, "ask").steps.find((x) => x.skip).skip = value;
+    assert.throws(() => check(wrong), refusal, JSON.stringify(value));
+  }
 
-  const loaded = fresh()
-    .llmPhases()
-    .phases.find((p) => p.name === "build");
-  assert.equal(loaded.steps[0].skipIfStopped, true);
-  assert.equal(loaded.steps[0].skipIfNotStopped, false);
+  const loaded = fresh().llmPhases().phases;
+  const build = loaded.find((p) => p.name === "build");
+  assert.deepEqual(build.steps[0].skip, ["if-aborted"]);
+  assert.equal(build.steps[0].run, "sca");
+  const ask = loaded.find((p) => p.name === "ask");
+  assert.deepEqual(ask.steps[0].skip, ["llm-skip-manual", "if-aborted"]);
 });
