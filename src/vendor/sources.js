@@ -4,12 +4,12 @@
 // used for the popularity lookup (npm package or GitHub owner/repo).
 //
 // Belongs here: parsing the trusted host shapes (unpkg, jsDelivr npm + gh,
-// raw.githubusercontent) plus the github.com/.../blob -> raw rewrite, and the
-// pinned-ref heuristic. The host allowlist policy itself is config.js
-// VENDOR_TRUSTED_HOSTS - the single source of truth this module gates on (a host
-// it does not list is untrusted, no matter what a parser could do with it). Does
-// NOT belong here: fetching/comparing/popularity (-> src/vendor/verify.js), or
-// the finding/manual routing (-> the check).
+// raw.githubusercontent) plus the github.com/.../blob -> raw rewrite and the
+// github.com/.../releases/download/<tag>/<file> asset, and the pinned-ref heuristic.
+// The host allowlist policy itself is config.js VENDOR_TRUSTED_HOSTS - the single
+// source of truth this module gates on (a host it does not list is untrusted, no matter
+// what a parser could do with it). Does NOT belong here: fetching/comparing/popularity
+// (-> src/vendor/verify.js), or the finding/manual routing (-> the check).
 
 import { VENDOR_TRUSTED_HOSTS } from "../config.js";
 import { rethrowIfFatal } from "../lib/errors.js";
@@ -63,8 +63,8 @@ function isPinnedRef(ref) {
 // An accepted INPUT host allowed alongside the config fetch hosts: a
 // github.com/.../blob URL is rewritten to raw.githubusercontent.com (which IS in
 // VENDOR_TRUSTED_HOSTS) before fetch, while a /tree/ folder source is fetched as the
-// repo archive ZIP from github.com itself - which is why the host is accepted here
-// rather than listed in config.
+// repo archive ZIP and a release asset as itself, both from github.com - which is why
+// the host is accepted here rather than listed in config.
 const GITHUB_INPUT_HOST = "github.com";
 
 // Per-host URL parsers. The keys are the only hosts classifySource will parse;
@@ -101,8 +101,14 @@ const HOST_PARSERS = {
       ? github(`${segs[0]}/${segs[1]}`, segs[2], url)
       : UNTRUSTED;
   },
-  [GITHUB_INPUT_HOST]: (segs) => {
+  [GITHUB_INPUT_HOST]: (segs, url) => {
     const [owner, repo, type, ref, ...rest] = segs;
+    // A release asset: /releases/download/<tag>/<file>. Fetched as declared - GitHub
+    // answers with a redirect to a signed, short-lived URL, which is followed and
+    // never recorded.
+    if (type === "releases" && ref === "download" && segs.length === 6) {
+      return github(`${owner}/${repo}`, rest[0], url);
+    }
     // A single file: /blob/<ref>/<path> -> the raw file URL (byte-compared).
     if (type === "blob" && segs.length >= 5) {
       const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${rest.join("/")}`;

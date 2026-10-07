@@ -115,10 +115,11 @@ export const PROMPT_SKIPS = ["summary", "manual"];
 
 /**
  * The hosts vendor verification fetches a declared source from. A source on any
- * other host is sent to manual review, never requested. All four pin an immutable
- * version or tag, so a byte comparison is stable. A github.com/.../blob URL is
- * rewritten to raw.githubusercontent.com first; a github.com/.../tree/ folder source
- * is fetched as the repo archive ZIP from github.com itself.
+ * other host is untrusted, never requested. Each names a version or tag, so a byte
+ * comparison is stable, though a release asset can be re-uploaded under its tag. A
+ * github.com/.../blob URL is rewritten to raw.githubusercontent.com first; a
+ * github.com/.../tree/ folder is fetched as the repo archive ZIP and a
+ * .../releases/download/<tag>/<file> asset as declared, both from github.com.
  */
 export const VENDOR_TRUSTED_HOSTS = [
   "unpkg.com",

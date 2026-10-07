@@ -681,6 +681,61 @@ test("verifyVendor: an unfetchable source -> unfetchable", async () => {
   assert.equal(addon.vendor.results[0].outcome, "unfetchable");
 });
 
+test("classifySource accepts a github.com release asset, keeping the declared URL", () => {
+  const url =
+    "https://github.com/kewisch/ical.js/releases/download/v2.2.1/ical.min.js";
+  const gh = classifySource(url);
+  assert.deepEqual(
+    [gh.trusted, gh.pinned, gh.kind, gh.repo, gh.ref, gh.rawUrl],
+    [true, true, "github", "kewisch/ical.js", "v2.2.1", url]
+  );
+  // Only <tag>/<file> is a release asset: not a bare releases page, a tag alone, or a
+  // nested path. A moving tag is accepted as a source but is not pinned.
+  for (const bad of [
+    "https://github.com/kewisch/ical.js/releases",
+    "https://github.com/kewisch/ical.js/releases/download/v2.2.1",
+    "https://github.com/kewisch/ical.js/releases/download/v2.2.1/dist/ical.min.js",
+  ]) {
+    assert.equal(classifySource(bad).trusted, false, bad);
+  }
+  assert.equal(
+    classifySource(
+      "https://github.com/kewisch/ical.js/releases/download/latest/ical.min.js"
+    ).pinned,
+    false
+  );
+});
+
+test("verifyVendor: a github release asset is byte-compared and star-gated", async () => {
+  const url =
+    "https://github.com/someone/repo/releases/download/v1.0.0/lib.min.js";
+  const mk = () =>
+    addonWith(
+      { "vendor/lib.min.js": "BODY\n" },
+      store({
+        set: new Set(["vendor/lib.min.js"]),
+        entries: [pinnedEntry("vendor/lib.min.js", url)],
+      })
+    );
+  const fetchBytes = async () => Buffer.from("BODY\n");
+
+  const popular = mk();
+  await verifyVendor(popular, {
+    fetchBytes,
+    fetchJson: async () => ({ stargazers_count: 1180 }),
+  });
+  assert.equal(popular.vendor.results[0].outcome, "verified");
+
+  const niche = mk();
+  await verifyVendor(niche, {
+    fetchBytes,
+    fetchJson: async () => ({ stargazers_count: 5 }), // below VENDOR_GITHUB_MIN_STARS
+  });
+  applyUnverifiedVendor(niche);
+  assert.deepEqual(niche.vendor.results, []);
+  assert.equal(niche.bundled.untrusted[0].file, "vendor/lib.min.js");
+});
+
 test("verifyVendor: a github source from a trusted org verifies despite low stars, no popularity lookup", async () => {
   const url =
     "https://github.com/thunderbird/webext-support/blob/" +
