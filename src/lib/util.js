@@ -589,13 +589,13 @@ function yamlKeyOf(line) {
  *
  * Only for a finding's `item` where it is a raw npm/lock-file spec a developer may need to
  * read accurately and copy back into their own package.json: unsupported-dependency,
- * xpi-lock-file-missing, xpi-lock-file-invalid, sca-lock-file-invalid. squared()'s blanket
+ * xpi-lock-file-missing, xpi-lock-file-invalid. squared()'s blanket
  * bracket substitution is correct and unchanged for every other check - free-form text (an
  * add-on name, a banned-library reason) has no "must stay visually exact" requirement the
  * way a comparison operator does; `[`/`]` there is display noise, not lost meaning.
  *
  * Unconditional - every occurrence, not just ones shaped like an HTML tag. A narrower rule
- * isn't airtight anyway: classifyDeps/lockGaps admit a "range" by absence of `:`/`/`, not by
+ * isn't airtight anyway: classifyDeps admits a "range" by absence of `:`/`/`, not by
  * real semver grammar, so a crafted spec with neither character could still carry HTML-shaped
  * text this has to defuse regardless of what follows it.
  *

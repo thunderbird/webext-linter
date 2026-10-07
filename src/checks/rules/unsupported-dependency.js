@@ -2,8 +2,7 @@
 // support. Only two sources are auditable: an npm package and a GitHub URL (rated by
 // popularity). This is the SOURCE axis - whether the release a spec names can be
 // pinned at all is a separate question, answered per submission type
-// (xpi-lock-file-missing / xpi-lock-file-invalid, sca-lock-file-missing /
-// sca-lock-file-invalid).
+// (xpi-lock-file-missing / xpi-lock-file-invalid, sca-lock-file-missing).
 // Anything else - a workspace: ref, a tarball URL, a non-GitHub git source, or a
 // file:/link: path that does NOT resolve to a real directory inside the submission -
 // cannot be identified or vetted, so the developer must re-declare it as a pinned

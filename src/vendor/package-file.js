@@ -1,6 +1,6 @@
 // Reads the submission's package.json through ONE implementation, into a shape every
 // dependency reader can use. Each of them asks a question of the same file - resolveVendor
-// (classifying each declaration), lockGaps (what the lock fails to cover),
+// (classifying each declaration), unreadableLock (whether a lock has anything to install),
 // sca-lock-file-missing (whether a lock was owed) and sca-package-file-invalid (whether the
 // package file can be used at all) - and one parse answers for all of them. A parse per reader is a copy of these tolerances per
 // reader, and a submission shaped in a way one copy mishandles is mishandled by that one

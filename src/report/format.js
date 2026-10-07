@@ -722,7 +722,7 @@ function issuesLines(
  * to the to-do sections (which reach a terminal and an agent, never this document).
  *
  * Also NOT the last word for a version-range spec: unsupported-dependency,
- * xpi-lock-file-missing, xpi-lock-file-invalid and sca-lock-file-invalid pre-empt this by
+ * xpi-lock-file-missing and xpi-lock-file-invalid pre-empt this by
  * running their own `item` through utf8ComparisonSigns (src/lib/util.js) before it ever
  * reaches here, so `>=4.17.0 <5.0.0` reads as `≥4.17.0 ＜5.0.0` rather than the unreadable
  * `]=4.17.0 [5.0.0` this function alone would produce - a comparison operator has to stay

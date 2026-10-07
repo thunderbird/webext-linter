@@ -15,40 +15,18 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        A committed lock file that cannot install what the package.json
-        declares. Reviewers reproduce the build with the package manager's
-        strict install, which compares the two files before installing anything
-        and refuses outright when they disagree.
+        A committed lock file that cannot be read: it does not parse, or it
+        parses but is not an npm or pnpm lock file while the package.json
+        declares something to install from it.
       </p>
       <p>
-        Four things make a lock file unusable, and all four are reported here: it
-        cannot be read at all, it can be read but is not a lock file this comparison
-        recognises, it resolves nothing for a package the package.json declares, or the
-        version it pins for one is not a version that package.json allows. The
-        first two are worded apart because a developer would check which it is: one
-        will not open, the other opens perfectly well and simply is not a lock. Production, build and optional
-        dependencies are all checked, because the reviewer installs all of them.
-        A dependency pointing at git, a URL, a file or a workspace is left
-        alone: whether such a source is allowed is a separate question.
-      </p>
-      <p>
-        The last case is asked exactly as the installer asks it, and the two installers do
-        not ask the same thing. <strong>npm</strong> resolves one version per package and
-        checks it against the declared range, so replacing a range with the exact version
-        already installed is not a fault - the lock still installs something the
-        declaration allows. Comparing the two <em>ranges</em> instead would reject that,
-        and would also miss the reverse: two ranges can overlap while the version actually
-        pinned satisfies neither. <strong>pnpm</strong> compares the specifier it recorded
-        to the declared one as text and refuses on any difference, which is what
-        <code>--frozen-lockfile</code> does, so there the recorded string is the subject.
-        The oldest npm lock format restates no ranges at all, so there only presence can be
-        checked and no mismatch is ever claimed.
-      </p>
-      <p>
-        A finding is shown against the file its failing value is in: the lock, at the entry
-        holding the version it pins, when the pin is what fails; package.json, at the
-        declaration, when the lock resolves nothing for it - there being no entry in the
-        lock to point at is the fault itself.
+        The dependency audit reads the installed tree out of the lock file, so a
+        lock it cannot read would leave that audit seeing nothing - and a review
+        that sees nothing is not a review that found the tree clean. Whether a
+        readable lock file matches the package.json is not decided here: that is
+        the package manager&rsquo;s own question, which <code>npm ci</code> and
+        <code>pnpm install --frozen-lockfile</code> answer when the build
+        installs.
       </p>
 
       <h2>Decision flow</h2>
@@ -57,50 +35,46 @@
 flowchart TD
   A["The submitted source archive"] --> B{"An npm or pnpm lock file?"}
   B -- no --> S([skip: nothing committed to judge])
-  B -- yes --> C{"Can it be read, and is it a<br/>lock file we recognise?"}
+  B -- yes --> C{"Does it parse?"}
   C -- no --> ERR([ERROR: invalid lock file])
-  C -- yes --> D["Each dependency the<br/>package.json declares"]
-  D --> E{"Source is git, a URL,<br/>a file or a workspace?"}
-  E -- yes --> S2([skip: a question of source])
-  E -- no --> F{"The lock file resolves it?"}
-  F -- no --> ERR
-  F -- yes --> G{"Is the version it pins one<br/>the declaration allows?"}
-  G -- no --> ERR
-  G -- yes --> OK([no finding])
+  C -- yes --> D{"Does package.json declare<br/>anything to install?"}
+  D -- no --> OK([no finding])
+  D -- yes --> E{"Is it an npm or<br/>pnpm lock file?"}
+  E -- no --> ERR
+  E -- yes --> OK
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   class ERR err;
   class OK ok;
-  class S,S2 skip;
+  class S skip;
         </pre>
       </div>
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told its lock file fails to pin the version used for one or
-        more declared packages, which of them is unresolved or recorded
-        differently, and that it should run the install again and commit the
-        regenerated lock file.
-        The report then closes, saying it is incomplete because the build cannot
-        be reproduced.
+        The add-on is told its lock file cannot be read, so the dependencies it
+        installs cannot be checked, and that it should run the install again and
+        commit the lock file it writes. The report then closes, saying it is
+        incomplete.
       </div>
 
       <div class="outcome">
         <strong>It stops the review</strong>
-        This check is one of the few that settle the submission on their own. When it
-        reports, nothing further is put to a reviewer: the report drops every to-do item
-        they would have been asked, keeps the code-review sections, and the
-        developer&rsquo;s text ends on the reason it is incomplete (&ldquo;A build that
-        cannot be reproduced&rdquo;). Every question that remains would depend on
-        installing and building the add-on, which cannot succeed, so the work it would
-        otherwise put to a reviewer cannot change the outcome.
+        This check is one of the few that settle the submission on their own.
+        When it reports, nothing further is put to a reviewer: the report drops
+        every to-do item they would have been asked, keeps the code-review
+        sections, and the developer&rsquo;s text ends on the reason it is
+        incomplete (&ldquo;Build process issues&rdquo;). Nothing in the
+        dependency tree was checked, so building it would run code nobody
+        vetted.
       </div>
 
       <p class="source-note">
-        Source of truth: <code>src/checks/rules/sca-lock-file-invalid.js</code>
-        and its entry in <code>assets/registry.yaml</code>.
+        Source of truth:
+        <code>src/checks/rules/sca-lock-file-invalid.js</code> and its entry in
+        <code>assets/registry.yaml</code>.
       </p>
     </main>
 

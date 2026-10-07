@@ -19,7 +19,8 @@
 // rather than the folder a command line happened to name.
 //
 // Belongs here: deciding whether a lock was owed and is absent. Does NOT belong here:
-// whether a present lock works (-> sca-lock-file-invalid) or the wording (-> the registry).
+// whether a present lock can be read (-> sca-lock-file-invalid) or the wording (-> the
+// registry).
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
@@ -40,8 +41,8 @@ export default {
       return { findings: [] }; // no readable package file: no declared install to lock
     }
     // Presence is tested by NAME, not by parse: a lock that exists but is corrupt is not
-    // MISSING (-> sca-lock-file-invalid). The list is the one sca-lock-file-invalid reads,
-    // so the two cannot disagree about whether a submission has a lock at all.
+    // MISSING (-> sca-lock-file-invalid). The list is the one sca-lock-file-invalid reads
+    // (TREE_LOCKS), so the two cannot disagree about whether a submission has a lock at all.
     //
     // Owed by the PACKAGE FILE, never by what it happens to declare. `npm ci` and `pnpm
     // install --frozen-lockfile` refuse without a lock whatever it holds, so a

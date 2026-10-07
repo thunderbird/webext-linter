@@ -1,31 +1,25 @@
-// Rejects a source-code submission whose committed lock file cannot install what its
-// package.json declares. `npm ci` and `pnpm install --frozen-lockfile` both compare the
-// lock against the package file before installing anything, and refuse over all four
-// reported here: a lock that does not parse, one that parses but is not a lock this
-// comparison can read, a declared package it resolves nothing for, and one whose pin the
-// declaration does not admit.
+// Rejects a source-code submission whose committed lock file cannot be read: it does not
+// parse, or it parses but is not an npm or pnpm lock while package.json declares something
+// to install from it. The dependency audit reads the installed tree out of that file, so an
+// unreadable one would leave the audit seeing nothing. Whether a readable lock matches
+// package.json is the package manager's question, which `npm ci` and
+// `pnpm install --frozen-lockfile` answer when the build installs - it is not re-decided
+// here.
 //
-// The last case is asked the way each installer asks it, which is not the same question.
-// npm resolves ONE node per name and checks the version it pinned against the declared
-// range, so `unsatisfied` names a pin, and tightening a range to exactly what the lock
-// already installs is no fault at all. pnpm compares the recorded SPECIFIER to the declared
-// one as text and refuses on any difference, so `stale` names a string. Reading npm's the
-// way pnpm's reads would reject locks npm installs from (-> src/vendor/locks.js npmGap).
-//
-// Belongs here: mapping a gap to a finding and wording its subject. Does NOT belong here:
-// reading the lock formats (-> src/vendor/locks.js lockGaps), whether a lock was owed at
-// all (-> sca-lock-file-missing), or the response (-> the registry).
+// Belongs here: turning an unreadable lock into a finding. Does NOT belong here: reading
+// the lock formats (-> src/vendor/locks.js unreadableLock), whether a lock was owed at all
+// (-> sca-lock-file-missing), or the response (-> the registry).
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { lockGaps } from "../../vendor/locks.js";
-import {
-  declarationLine,
-  tokenLine,
-  utf8ComparisonSigns,
-} from "../../lib/util.js";
+import { unreadableLock } from "../../vendor/locks.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
+
+const SUBJECT = {
+  unreadable: "could not be read",
+  unrecognised: "is not a recognisable npm or pnpm lock file",
+};
 
 export default {
   /**
@@ -33,59 +27,12 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const files = ctx.artifact.files;
-    const findings = [];
-    for (const gap of lockGaps(ctx.artifact)) {
-      // Each gap anchors in the file its failing value sits in (LockGap.file), so the line
-      // is located in THAT file: the pinned entry inside the lock for `unsatisfied`, the
-      // declaration in package.json otherwise. An unreadable lock is the subject itself and
-      // has no line at all.
-      const text = files.get(gap.file)?.toString("utf8") ?? "";
-      const line = gap.token
-        ? declarationLine(text, gap.token)
-        : gap.name
-          ? tokenLine(text, gap.name)
-          : null;
-      const loc = line ? { line } : undefined;
-      const item = subject(gap);
-      ctx.note?.(ctx.artifact.at(gap.file, loc), item, VERDICT.FAIL);
-      // utf8ComparisonSigns: a spec's comparison signs must stay readable/copyable,
-      // unlike free prose - see its own doc comment (src/lib/util.js). Applied only to
-      // the report's item, not the feed note above, matching the other three checks.
-      findings.push(
-        finding({
-          ...ctx.artifact.at(gap.file, loc),
-          item: utf8ComparisonSigns(item),
-        })
-      );
+    const lock = unreadableLock(ctx.artifact);
+    if (!lock) {
+      return { findings: [] };
     }
-    return { findings };
+    const item = SUBJECT[lock.reason];
+    ctx.note?.(ctx.artifact.at(lock.file), item, VERDICT.FAIL);
+    return { findings: [finding({ ...ctx.artifact.at(lock.file), item })] };
   },
 };
-
-/**
- * What this gap is about, as the location line renders it. The response states the rule
- * once, so which of the three ways the lock failed rides here.
- * @param {import("../../vendor/locks.js").LockGap} gap
- * @returns {string}
- */
-function subject(gap) {
-  // Two ways the FILE is the subject, told apart because a developer would check: one
-  // will not open, the other opens fine and is simply not a lock we can compare against.
-  if (gap.reason === "unreadable") {
-    return "could not be read";
-  }
-  if (gap.reason === "unrecognised") {
-    return "is not a recognisable npm or pnpm lock file";
-  }
-  if (gap.reason === "unsatisfied") {
-    // Read at the lock entry this anchors on: the pinned version is ON that line, and the
-    // other two are attributed to where they live - the root record that produced the pin,
-    // and the declaration in package.json that it fails.
-    return `${gap.name} ${gap.installed} installed via ${gap.recorded} locking does not satisfy the declared ${gap.spec}`;
-  }
-  const declared = `${gap.name} (${gap.spec})`;
-  return gap.reason === "stale"
-    ? `${declared} - the lock records ${gap.recorded}`
-    : `${declared} - not recorded in the lock file`;
-}

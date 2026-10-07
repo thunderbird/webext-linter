@@ -767,27 +767,20 @@ deterministic-phase:
     The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# Deterministic (SCA only): a lock was submitted but cannot install what package.json
-# declares. `npm ci` and `pnpm install --frozen-lockfile` compare the two before installing
-# anything and refuse over the cases reported here: a lock that does not parse, one that
-# parses but is not a lock this comparison can read, a declared package it resolves nothing
-# for, and one whose pin the declaration does not admit. The two file-level cases are kept
-# apart in the wording because a developer would check: one will not open, the other opens
-# fine. Decided offline from the two committed files (src/vendor/locks.js lockGaps), over
-# dependencies, devDependencies and optionalDependencies alike - the reviewer installs all
-# of them. The last case is asked as each installer asks it: npm against the VERSION its
-# lock pins (so tightening a range to exactly what is installed is no fault), pnpm against
-# the recorded specifier as text, which is what --frozen-lockfile compares. Which case
-# failed rides the location line as {{item}}, so the response states the rule once - and
-# that line sits in the file the failing value is in, the lock for a pin and package.json
-# for a declaration.
+# Deterministic (SCA only): a lock was submitted but cannot be read - it does not parse, or
+# it is not an npm or pnpm lock while package.json declares something to install from it.
+# The dependency audit reads the installed tree out of the lock, so an unreadable one would
+# leave it seeing nothing (src/vendor/locks.js unreadableLock). Whether a readable lock
+# matches package.json is NOT asked: that is the package manager's own question, which
+# `npm ci` and `pnpm install --frozen-lockfile` answer when the build installs. Which of the
+# two it was rides the location line as {{item}}.
 - title: Invalid lock file
   severity: error
   review-early-exit: unreproducible-build
   check: sca-lock-file-invalid
   input: sca
   response: |-
-    The committed lock file cannot install what package.json declares, so the build cannot be reproduced from this source. Please run the install again and commit the regenerated lock file. The supported package managers are npm and pnpm.
+    The committed lock file cannot be read, so the dependencies it installs cannot be checked. Please run the install again and commit the lock file it writes. The supported package managers are npm and pnpm.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Deterministic (SCA only): a committed .npmrc that SETS a package registry (registry=

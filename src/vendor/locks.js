@@ -3,30 +3,26 @@
 // declared dependency can still be pinned and audited. (2) What does the whole
 // installed tree contain - lockedPackages, which enumerates every package the
 // lock records, declared or pulled in by another package, so the OSV audit can
-// reach the ~90% of the tree nobody declares. (3) Can the lock install what the
-// package file declares at all - lockGaps, which is what `npm ci` and
-// `pnpm install --frozen-lockfile` refuse over. (4) Where does the install take each
-// package from - lockSourceGaps, since the audit identifies a package by name and version
-// while the installer fetches the URL the lock records. Reads whichever lock the
+// reach the ~90% of the tree nobody declares. (3) Can the lock be read at all -
+// unreadableLock, since the audit reads the tree out of it; whether it matches package.json
+// is the package manager's question, answered when the build installs. (4) Where does the
+// install take each package from - lockSourceGaps, since the audit identifies a package by
+// name and version while the installer fetches the URL the lock records. Reads whichever lock the
 // submission ships - npm (package-lock.json / npm-shrinkwrap.json, JSON) or pnpm
 // (pnpm-lock.yaml, YAML), the two supported package managers.
 //
-// ONE GOVERNING LOCK. All four readers below ask governingLock which file the submission
+// ONE GOVERNING LOCK. Every reader below asks governingLock which file the submission
 // installs from, so a submission cannot be rejected over one lock while a version is pinned
 // and a whole tree audited out of another, as readers each picking for itself (first
 // present / first that resolves / first that yields) would allow.
 //
-// Belongs here: lockedVersion(addon, name), lockedPackages(addon), lockGaps(addon),
-// lockSourceGaps(addon), governingLock, and the per-format readers. lockGaps is a
-// comparison, so it needs both sides, but only this one is its own: what the package file
-// DECLARES comes from ./package-file.js, and every lock-side detail the comparison turns on
-// (the npm root record, the pnpm importers, the v1/v3 split) is here and private. Does NOT belong here: reading or shaping package.json
-// (-> ./package-file.js), deciding pinned/unpinned (-> ./resolve.js), and the verification
-// that follows (-> ./verify.js).
+// Belongs here: lockedVersion(addon, name), lockedPackages(addon), unreadableLock(addon),
+// lockSourceGaps(addon), governingLock, and the per-format readers. Does NOT belong here:
+// reading or shaping package.json (-> ./package-file.js), deciding pinned/unpinned
+// (-> ./resolve.js), whether the lock matches package.json (the package manager's own
+// question, at install), and the verification that follows (-> ./verify.js).
 
 import YAML from "yaml";
-import semver from "semver";
-
 import {
   VENDOR_LOCK_MAX_PACKAGES,
   NPM_REGISTRY_TARBALLS,
@@ -42,8 +38,6 @@ import {
   readPackageFile,
   submissionFiles,
   ownValue,
-  resolveLocalPackageFiles,
-  PACKAGE_FILE,
 } from "./package-file.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 import { cutAtFirst } from "../util/text.js";
@@ -64,26 +58,6 @@ import { cutAtFirst } from "../util/text.js";
  * @property {string} file  The lock file it was read from (the finding's anchor).
  * @property {string} token  The string locating its entry in `file`.
  */
-/**
- * @typedef {object} LockGap  One way the committed lock cannot install what the root
- * package.json declares.
- * @property {string} file  The finding's anchor, which is the file the failing value sits
- *   in: the LOCK for `unsatisfied` (the version it pins) and when the lock cannot be read
- *   at all, the declaring package file for every other declaration gap - the root
- *   package.json, or a nested one reached by a file:/link: walk (SCA mode only).
- * @property {?string} name  The declared package, or null for an unreadable lock.
- * @property {?string} spec  What package.json asks for it, or null (same).
- * @property {?string} recorded  The spec the lock's root record restates - where its pin
- *   came from, not a verdict on it. Null outside `unsatisfied` / `stale`.
- * @property {?string} installed  The version the lock pins, for `unsatisfied`; else null.
- * @property {?string} token  Locates the pinned entry inside the lock, for `unsatisfied`.
- * @property {string} reason  About one declaration: `absent` (the lock resolves nothing for
- *   it), `unsatisfied` (npm: the pinned version does not satisfy the declared range) or
- *   `stale` (pnpm: the recorded specifier is not the declared one, which is what
- *   --frozen-lockfile compares). About the FILE: `unreadable` (it does not parse) or
- *   `unrecognised` (it parses but is not a lock this comparison can read).
- */
-
 // The lock files that record a whole tree, in the order they are consulted. Only the first
 // one PRESENT is read (-> governingLock) - merging two would report the same tree twice,
 // and judging the wrong one reports a tree that is never installed.
@@ -693,294 +667,34 @@ function pnpmSource(entry) {
 }
 
 /**
- * Every way the committed lock cannot install what the root package.json declares - what
- * `npm ci` and `pnpm install --frozen-lockfile` refuse over, decided offline from the two
- * files alone - PLUS every package file a file:/link: chain reaches from the root
- * (resolveLocalPackageFiles): `npm ci` installs a locally-linked package's own declared
- * dependencies from the same ONE governing lock, so they are held to the same question.
- * Read by the sca-lock-file-invalid check.
+ * Why the governing lock cannot be read, or null when it can (or there is none). The
+ * dependency audit reads the installed tree out of this file (lockedPackages), so a lock it
+ * cannot read would leave that audit seeing nothing - and a review saying nothing is not a
+ * review saying the tree is clean. Whether the lock matches package.json is not asked here:
+ * that is the package manager's own question, which `npm ci` and
+ * `pnpm install --frozen-lockfile` answer when the build installs. Read by the
+ * sca-lock-file-invalid check.
  *
- * Returns nothing when the package file declares nothing this lock could pin, or when there is
- * no lock at all - the latter being sca-lock-file-missing's question, which also decides
- * whether one was owed. Both come first: a lock that governs no declaration is not judged,
- * whatever shape it is in, because every verdict here is about a declaration it fails.
- * Only the first lock PRESENT governs, in TREE_LOCKS order - two locks describe one
- * install, and the installer reads the one it prefers rather than the one that happens to
- * work. When that lock does not parse it is reported alone: a lock that cannot be read
- * refuses the install as flatly as one missing an entry, and nothing falls through to
- * another sitting beside it.
+ * `unreadable`: the file does not parse. `unrecognised`: it parses but is not a lock the
+ * readers here know - which matters only when the package file declares something to
+ * install from it (`npm ci` accepts a `{}` lock for a package file that declares nothing).
  * @param {Addon} addon  The SCA archive (the root package.json and its locks).
- * @returns {LockGap[]}
+ * @returns {?{file: string, reason: string}}
  */
-export function lockGaps(addon) {
-  const files = submissionFiles(addon);
-  if (!files) {
-    return [];
-  }
-  const pkg = readPackageFile(files);
-  if (!pkg) {
-    return []; // no readable package file: nothing states what the lock should cover
-  }
-  // Not a registry spec (file:/link:/workspace:/git/GitHub). The lock records these in
-  // shapes a spec comparison cannot read, and whether such a source is allowed at all is
-  // unsupported-dependency's question, not this one.
-  //
-  // An `npm:` alias is KEPT. It installs a registry package, and both formats record it the
-  // way they record any other: keyed by the name it is WRITTEN under, with the spec stored
-  // verbatim. So the comparison reads it without having to know it is an alias, and `npm
-  // ci` and `pnpm install --frozen-lockfile` refuse over a missing or stale one exactly as
-  // they do for the rest - which is the question this check answers.
-  const nonRegistry = ({ spec }) =>
-    !/[:/]/.test(spec) || Boolean(aliasTarget(spec));
-  const declared = declaredDependencies(pkg)
-    .filter(nonRegistry)
-    .map((d) => ({ ...d, packageFile: PACKAGE_FILE, rootKey: "" }));
-  // Every package file a file:/link: chain reaches (SCA mode only - resolveLocalPackageFiles
-  // itself is a no-op with no lock/store to read from otherwise) declares real external
-  // dependencies too, `npm ci` installs them from the same ONE governing lock the root
-  // does, and they are held to the same "can the lock install this" question - see the
-  // rootKey handling in npmGap/pnpmGap below for how a NESTED package file's declaration is
-  // compared, which is not the same lookup as the root's.
-  const { packageFiles } = resolveLocalPackageFiles(addon);
-  for (const m of packageFiles) {
-    for (const d of declaredDependencies(m.pkg).filter(nonRegistry)) {
-      declared.push({ ...d, packageFile: m.file, rootKey: m.dir });
-    }
-  }
+export function unreadableLock(addon) {
   const file = governingLock(addon);
   if (!file) {
-    return []; // no lock at all is sca-lock-file-missing's question, not this one
+    return null; // no lock at all is sca-lock-file-missing's question, not this one
   }
-  // A governing lock that does not parse is where the install stops (-> governingLock).
-  //
-  // Asked BEFORE what the package file declares, because whether the file can be read at all
-  // does not depend on there being anything to compare it against. `npm ci` opens the lock
-  // whatever the package file holds and refuses on one it cannot parse - measured, with and
-  // without declarations - so deciding "nothing is declared, so the shape does not matter"
-  // first would clear exactly that submission, and reward committing a corrupt lock over
-  // committing none, since the missing-lock check sees the file by NAME and falls silent.
   const data = parsedLock(addon, file);
   if (!data) {
-    return [lockItself(file, "unreadable")];
+    return { file, reason: "unreadable" };
   }
-  // Being UNREADABLE and being the wrong SHAPE part company here, which is why the two
-  // faults are not asked together. `npm ci` accepts a `{}` lock for a package file that
-  // declares nothing (measured: "up to date") and refuses the same file the moment one
-  // dependency is declared. So a shapeless lock is only a fault when something has to be
-  // installed from it, while an unparseable one is a fault either way.
-  if (!declared.length) {
-    return []; // nothing is declared, so a readable lock governs nothing
-  }
-  const reader = READERS.get(file);
-  // A lock we cannot interpret says nothing about the declarations, so it is reported as
-  // ITSELF rather than judged through. Guessing the other way is the loudest possible
-  // wrong answer: every declared package would come back "not recorded", rejecting a
-  // submission on the strength of a file nothing here understood.
-  if (!reader?.recognises(data)) {
-    return [lockItself(file, "unrecognised")];
-  }
-  const gaps = [];
-  // What npm INSTALLS for a declaration: its own spec normally, an `npm:` alias's target
-  // range where the two differ. Collected per NAME because that is how npm compares - one
-  // resolved node answering every declaration of it - while pnpm keys by map and judges
-  // each declaration on its own.
-  const rangesFor = new Map();
-  for (const { name, spec, installs } of declared) {
-    rangesFor.set(name, [
-      ...(rangesFor.get(name) ?? []),
-      installs?.spec ?? spec,
-    ]);
-  }
-  const reported = new Set();
-  for (const { map, name, spec, packageFile, rootKey } of declared) {
-    const gap = reader.gap(
-      data,
-      map,
-      name,
-      spec,
-      rangesFor.get(name),
-      addon,
-      rootKey
-    );
-    // The npm reader answers about the ONE resolved node, so a package declared in two
-    // maps must not be reported twice for it.
-    if (gap?.reason === "unsatisfied" && reported.has(name)) {
-      continue;
-    }
-    if (gap) {
-      reported.add(name);
-      // An `unsatisfied` gap is about the version the LOCK pins, so it is reported there,
-      // at that entry - the way a tree vulnerability is (src/lib/vuln-findings.js). Every
-      // other reason is about the declaration, which lives in the declaring package file.
-      const at = gap.reason === "unsatisfied" ? file : packageFile;
-      gaps.push({ file: at, name, spec, ...gap });
-    }
-  }
-  return gaps;
-}
-
-/**
- * Whether `installed` satisfies any of `ranges` - the one comparison both npmGap's precise
- * path and its flat fallback make, once each has its own idea of `recorded` (what the
- * declaration is compared against, kept only to say WHERE the pin came from) and
- * `reason` (`unsatisfied` for a real restated spec, `stale` for the fallback, which cannot
- * tell a stale pin from a genuinely undeclared one - see npmGap).
- *
- * A range this cannot read - a dist-tag, anything exotic - says nothing at all. This check
- * halts a review, so an undecidable case has to be silent rather than a guess. Satisfied by
- * ANY range declared for this name, not each in turn: npm resolves one node per name and
- * lets a second declaration win (measured: `dependencies: ^3.0.1` beside `devDependencies:
- * ^2.0.0` installs 2.0.0 and `npm ci` accepts it), so holding the pin to every declaration
- * separately rejects a lock npm is happy with.
- * @param {string} installed @param {string[]} ranges
- * @param {string} recorded @param {string} token @param {string} reason
- * @returns {?{recorded: string, installed: string, token: string, reason: string}}
- */
-function satisfiesGap(installed, ranges, recorded, token, reason) {
-  const readable = ranges.filter((r) => semver.validRange(r));
-  if (!readable.length || !semver.valid(installed)) {
-    return null;
-  }
-  return readable.some((r) => semver.satisfies(installed, r))
-    ? null
-    : { recorded, installed, token, reason };
-}
-
-/**
- * One declaration against an npm lock. lockfileVersion 2/3 restates EVERY local package file's
- * own declarations this way - the root under `packages[""]`, and (per the real submission
- * this was verified against) a file:/link:-linked package under `packages[<its own
- * relative path>]`, the same path resolveLocalPackageFiles already computes for it. `rootKey`
- * says which: `""` for the root, a nested package file's own `dir` otherwise. The installed
- * entry is checked too, since a restated record naming a package that resolved to nothing
- * installs nothing.
- *
- * A restated record is expected at `rootKey` whenever this reader was chosen at all (the
- * true root's is required by recognisesNpm) - EXCEPT that this feature's own path
- * arithmetic could in principle diverge from the lock's own key for a nested package file (an
- * unverified edge case). When no record sits at `rootKey`, this falls back to the flat,
- * hoisted, name-only lookup `lockedVersion`/`npmLock` already trust for pinning: it cannot
- * distinguish a stale pin from a genuinely undeclared one (both come back "stale"/"absent"
- * from the SAME flat fact), but it does not silently pass an uninstallable declaration.
- *
- * lockfileVersion 1 carries no restatement at all (its top level is the hoisted tree), for
- * root or nested alike - no `stale`/`unsatisfied` verdict rather than a guessed one.
- * @param {object} data  Parsed lock. @param {string} map  The declaring dependency map.
- * @param {string} name @param {string} spec  What package.json asks for.
- * @param {string[]} ranges @param {Addon} addon  For the flat-fallback lookup.
- * @param {string} [rootKey]  `""` for the root, else a nested package file's own `dir`.
- * @returns {?{recorded: ?string, reason: string}}
- */
-function npmGap(data, map, name, spec, ranges, addon, rootKey = "") {
-  // A recorded entry only covers a declaration if the install can read a VERSION out of it.
-  // lockedVersion reads that same field, so requiring it here is what keeps the two from
-  // disagreeing about one declaration. They must agree because both modes consult a lock:
-  // calling a declaration covered here while failing to pin it there would leave it named
-  // by no gap and pinned by no version - reported as neither, and audited as nothing.
-  if (!plainObject(data.packages)) {
-    // lockfileVersion 1: the hoisted tree is all there is to go on. It restates no ranges,
-    // so there is nothing to satisfy and presence is the whole test.
-    return ownValue(data.dependencies, name)?.version
-      ? null
-      : { recorded: null, reason: "absent" };
-  }
-  const root = data.packages[rootKey];
-  if (!plainObject(root)) {
-    // No restated record at this path - see the doc comment above. Falls back to the flat
-    // lookup rather than reporting every correctly-installed nested dependency "absent".
-    const installed = lockedVersion(addon, name);
-    if (!installed) {
-      return { recorded: null, reason: "absent" };
-    }
-    const token = `node_modules/${name}`;
-    return satisfiesGap(installed, ranges, installed, token, "stale");
-  }
-  // Across ALL the record's maps, not the declaring one: `npm ci` compares the two
-  // package files by NAME, so moving a package between dependencies and devDependencies
-  // without regenerating is an install it accepts. pnpm is stricter, which is why its
-  // reader keys by map.
-  let recorded;
-  for (const m of DECLARATION_MAPS) {
-    const found = ownValue(root?.[m], name);
-    if (found !== undefined) {
-      recorded = found;
-      break;
-    }
-  }
-  if (recorded === undefined) {
-    return { recorded: null, reason: "absent" }; // npm: "Missing: X from lock file"
-  }
-  const token = `node_modules/${name}`;
-  const installed = ownValue(data.packages, token)?.version;
-  if (!installed) {
-    return { recorded: null, reason: "absent" };
-  }
-  // npm's OWN question, and the only one worth asking: does the version this lock pins
-  // satisfy the range the package file declares? The restated record mirrors it as it
-  // stood when the lock was written, so comparing the two SPECS answers a different
-  // question and gets it wrong both ways - "3.0.1" against a recorded "^3.0.1" is the same
-  // install (npm: "added 2 packages") while the strings differ, and "^3.0.0" against a
-  // recorded ">=2.0.0" is two overlapping ranges while the pinned 6.0.0 satisfies neither
-  // the declaration nor npm (npm: "Invalid: lock file's chalk@6.0.0 does not satisfy
-  // chalk@3.0.0").
-  return satisfiesGap(
-    installed,
-    ranges,
-    String(recorded).trim(),
-    token,
-    "unsatisfied"
-  );
-}
-
-/**
- * One declaration against a pnpm lock. The importers ARE the package files restated - one per
- * workspace-relative path, `"."` being the root's own - and the recorded specifier is what
- * `--frozen-lockfile` compares against. `rootKey` picks which: `""` (the default, mapped to
- * the `"."` importer below) for the root, a nested package file's own `dir` otherwise. v6+
- * carries the specifier on the entry; v5 keeps a separate `specifiers` map, per importer
- * when the lock has importers and at the top level when it does not - so a string entry
- * looks in both, nearest first.
- *
- * When no importer sits at the resolved path (expected for the root only in the flat v5/v6
- * shape that carries no `importers` map at all, where the whole lock stands in for it - and,
- * unverified against a real pnpm lockfile, possibly for a nested `file:`-linked package that
- * is not a declared pnpm workspace member), this falls back to presence alone via the same
- * flat, hoisted lookup pinning trusts. Unlike npmGap's fallback this cannot even approximate
- * `stale`: this reader's comparison is textual (the recorded SPECIFIER against the declared
- * one), and there is no restated specifier to compare without a record - so the fallback is
- * silent on staleness rather than a guessed one, `absent` only when the lock does not
- * install this name at all.
- * @param {object} data  Parsed lock. @param {string} map  The declaring dependency map.
- * @param {string} name @param {string} spec  What package.json asks for.
- * @param {string[]} _ranges  Unused - see the comment on the textual comparison.
- * @param {Addon} addon  For the flat-fallback lookup.
- * @param {string} [rootKey]  `""` for the root, else a nested package file's own `dir`.
- * @returns {?{recorded: ?string, reason: string}}
- */
-function pnpmGap(data, map, name, spec, _ranges, addon, rootKey = "") {
-  // Textual, deliberately, and NOT the semantic comparison npmGap makes: `pnpm install
-  // --frozen-lockfile` compares the recorded specifier to the declared one as text and
-  // refuses on any difference (ERR_PNPM_OUTDATED_LOCKFILE, "specifiers in the lockfile
-  // don't match"). So the range plays no part here.
-  const importers = plainObject(data.importers) ? data.importers : null;
-  const importer =
-    rootKey === "" ? (importers?.["."] ?? data) : importers?.[rootKey];
-  if (!plainObject(importer)) {
-    return lockedVersion(addon, name)
-      ? null
-      : { recorded: null, reason: "absent" };
-  }
-  const entry = ownValue(importer?.[map], name);
-  if (entry === undefined) {
-    return { recorded: null, reason: "absent" };
-  }
-  const recorded =
-    typeof entry === "string"
-      ? (ownValue(importer?.specifiers, name) ??
-        ownValue(data?.specifiers, name))
-      : entry?.specifier;
-  if (recorded !== undefined && String(recorded).trim() !== spec) {
-    return { recorded: String(recorded).trim(), reason: "stale" };
+  const declares = declaredDependencies(
+    readPackageFile(submissionFiles(addon))
+  ).length;
+  if (declares && !READERS.get(file)?.(data)) {
+    return { file, reason: "unrecognised" };
   }
   return null;
 }
@@ -996,34 +710,29 @@ function plainObject(value) {
 }
 
 /**
- * The reader for each lock, keyed by NAME rather than chosen by extension. Dispatching on
- * ".json or else pnpm" reads as "npm or pnpm" but says "JSON, or else ASSUME pnpm", which
- * is true only while pnpm's is the one non-JSON entry: a fourth format added to TREE_LOCKS
- * would inherit pnpm's reader silently and report every declaration missing. Keyed here, a
- * new lock has to be given a reader or it is not recognised at all.
- *
- * `recognises` is what keeps a guess from becoming a verdict. It asks whether the file is
- * this format AND carries the restated package file the comparison needs - npm's `packages[""]`
- * or a v1 `dependencies` tree, pnpm's `importers["."]` or its flat top level. Anything else
- * (a YAML file that is not a pnpm lock, a lock whose root record is missing) is declined
- * rather than judged through.
+ * Whether a parsed file is the lock its name says, per lock - keyed by NAME rather than
+ * chosen by extension, so a fourth format added to TREE_LOCKS is not recognised until it is
+ * given one. A lock is recognised by the root record npm and pnpm always write: npm's
+ * `packages[""]` or a v1 `dependencies` tree, pnpm's `importers["."]` or its flat top
+ * level. Anything else (a YAML file that is not a pnpm lock, a lock whose root record is
+ * missing) is not a lock the readers here can read.
  */
 const READERS = new Map([
-  ["npm-shrinkwrap.json", { recognises: recognisesNpm, gap: npmGap }],
-  ["package-lock.json", { recognises: recognisesNpm, gap: npmGap }],
-  ["pnpm-lock.yaml", { recognises: recognisesPnpm, gap: pnpmGap }],
+  ["npm-shrinkwrap.json", recognisesNpm],
+  ["package-lock.json", recognisesNpm],
+  ["pnpm-lock.yaml", recognisesPnpm],
 ]);
 
 /**
  * @param {unknown} data  Parsed lock.
- * @returns {boolean}  Whether it is an npm lock this comparison can read.
+ * @returns {boolean}  Whether it is an npm lock.
  */
 function recognisesNpm(data) {
   if (!plainObject(data)) {
     return false;
   }
   // lockfileVersion 2/3 restates the root package file under "". npm always writes it, so a
-  // `packages` map without one is not a lock we can compare against.
+  // `packages` map without one is not an npm lock.
   if (plainObject(data.packages)) {
     return plainObject(data.packages[""]);
   }
@@ -1033,7 +742,7 @@ function recognisesNpm(data) {
 
 /**
  * @param {unknown} data  Parsed lock.
- * @returns {boolean}  Whether it is a pnpm lock this comparison can read.
+ * @returns {boolean}  Whether it is a pnpm lock.
  */
 function recognisesPnpm(data) {
   if (!plainObject(data)) {
@@ -1049,16 +758,6 @@ function recognisesPnpm(data) {
     DECLARATION_MAPS.some((m) => plainObject(data[m])) ||
     plainObject(data.specifiers)
   );
-}
-
-/**
- * A gap about the lock FILE rather than about a declaration: it names no package, because
- * the subject is the file we could not use.
- * @param {string} file @param {string} reason
- * @returns {LockGap}
- */
-function lockItself(file, reason) {
-  return { file, name: null, spec: null, recorded: null, reason };
 }
 
 /**

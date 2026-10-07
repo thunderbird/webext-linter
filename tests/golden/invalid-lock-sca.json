@@ -132,14 +132,12 @@
     {
       "ruleId": "sca-lock-file-invalid",
       "severity": "error",
-      "file": "package.json",
-      "loc": {
-        "line": 9
-      },
-      "item": "web-ext (^8.0.0) - not recorded in the lock file",
+      "file": "package-lock.json",
+      "loc": null,
+      "item": "could not be read",
       "hint": null,
       "artifact": "SCA",
-      "message": "The committed lock file cannot install what package.json declares, so the build cannot be reproduced from this source. Please run the install again and commit the regenerated lock file. The supported package managers are npm and pnpm.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+      "message": "The committed lock file cannot be read, so the dependencies it installs cannot be checked. Please run the install again and commit the lock file it writes. The supported package managers are npm and pnpm.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]
 }

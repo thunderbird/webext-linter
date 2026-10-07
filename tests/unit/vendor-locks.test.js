@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import {
   lockedVersion,
   lockedPackages,
-  lockGaps,
+  unreadableLock,
   lockSourceGaps,
 } from "../../src/vendor/locks.js";
 import { resolveVendor } from "../../src/vendor/resolve.js";
@@ -759,15 +759,9 @@ test("a UTF-8 BOM does not hide a package.json or a lock", () => {
     "package.json": BOM + pkg,
     "package-lock.json": BOM + lock,
   });
-  // The gap is real in both: the lock records nothing for the declared web-ext.
-  assert.deepEqual(
-    lockGaps(bommed).map((g) => `${g.name}:${g.reason}`),
-    lockGaps(clean).map((g) => `${g.name}:${g.reason}`)
-  );
-  assert.deepEqual(
-    lockGaps(bommed).map((g) => g.name),
-    ["web-ext"]
-  );
+  // Both read: a BOM does not make a lock unreadable.
+  assert.equal(unreadableLock(bommed), null);
+  assert.equal(unreadableLock(clean), null);
 
   // And the same for the version a lock pins, which feeds the dependency audit.
   const pinned = {
@@ -790,8 +784,7 @@ test("a UTF-8 BOM does not hide a package.json or a lock", () => {
 });
 
 // npm reads npm-shrinkwrap.json and IGNORES package-lock.json when both are committed,
-// so judging the package-lock invents failures the install never has - and misses the
-// ones it does.
+// so the version pinned is read from the shrinkwrap.
 test("npm-shrinkwrap.json outranks package-lock.json", () => {
   const npmLockFor = (spec, version) =>
     JSON.stringify({
@@ -806,23 +799,16 @@ test("npm-shrinkwrap.json outranks package-lock.json", () => {
     "package-lock.json": npmLockFor("^1.0.0", "1.0.0"), // stale, and ignored by npm
     "npm-shrinkwrap.json": npmLockFor("^2.1.3", "2.1.3"), // what npm installs from
   });
-  assert.deepEqual(lockGaps(addon), []);
   assert.equal(lockedVersion(addon, "ms"), "2.1.3");
 
-  // The other way round: the shrinkwrap npm uses pins 1.0.0, which cannot satisfy the
-  // declared ^2.1.3, so it IS a gap - and the valid package-lock.json beside it does not
-  // rescue the submission, because npm never opens it.
+  // The other way round: the version pinned is the shrinkwrap's, whatever the
+  // package-lock.json beside it says, because npm never opens that one.
   const outdated = fakeAddon({
     "package.json": JSON.stringify({ dependencies: { ms: "^2.1.3" } }),
     "package-lock.json": npmLockFor("^2.1.3", "2.1.3"),
     "npm-shrinkwrap.json": npmLockFor("^1.0.0", "1.0.0"),
   });
-  assert.deepEqual(
-    lockGaps(outdated).map(
-      (g) => `${g.file}:${g.name}:${g.reason}:${g.installed}`
-    ),
-    ["npm-shrinkwrap.json:ms:unsatisfied:1.0.0"]
-  );
+  assert.equal(lockedVersion(outdated, "ms"), "1.0.0");
 });
 
 // What an XPI's lock is read FOR, and what it is not. It pins a declared range, because

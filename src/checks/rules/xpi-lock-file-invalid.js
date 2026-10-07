@@ -9,8 +9,7 @@
 // The reading is fixed by the SUBMISSION TYPE, never by the file's contents: in an XPI a
 // package.json declares VENDORED libraries whatever else it carries, `scripts` included,
 // because nothing in a built add-on is installed. The mirror holds in a source archive,
-// where the same question is asked of the tree the reviewer installs
-// (-> sca-lock-file-invalid).
+// where the package manager asks it of the tree the reviewer installs, at the build.
 //
 // Reports only the declarations `resolveVendor` filed as having a lock that resolves them
 // to nothing. Where none was committed, the submission is asked for one instead

@@ -2439,150 +2439,39 @@ test("sca-lock-file-missing fires whenever a source ships a package.json and no 
   assert.deepEqual(run({}), []);
 });
 
-// ---- sca-lock-file-invalid (SCA deterministic: the lock must install what is declared) ----
+// ---- sca-lock-file-invalid (SCA deterministic: the lock must be readable) ----
 
-// The comparison itself is lockGaps (tests/unit/lock-coverage.test.js); this rule turns
-// each gap into a finding, anchors it, and words its subject.
-test("sca-lock-file-invalid anchors each gap and names what is wrong", () => {
-  const out = scaLockFileInvalid.run(
-    withManifest({
-      artifact: {
-        files: fileMap({
-          "package.json": JSON.stringify(
-            {
-              dependencies: { absent: "^1.0.0" },
-              devDependencies: { drifted: "^2.0.0" },
-            },
-            null,
-            2
-          ),
-          // Indented, so the anchor below proves the entry is LOCATED rather than
-          // defaulting to the first line of a single-line file.
-          "package-lock.json": JSON.stringify(
-            {
-              lockfileVersion: 3,
-              packages: {
-                "": { devDependencies: { drifted: "^1.0.0" } },
-                "node_modules/drifted": { version: "1.5.0" },
-              },
-            },
-            null,
-            2
-          ),
-        }),
-      },
-    })
-  ).findings;
-
-  // Each gap anchors in the file its failing value sits in. A package the lock never
-  // mentions has no line there, so it anchors at the declaration the developer fixes; a
-  // pin that cannot satisfy the declaration anchors at the pin, inside the lock.
-  assert.deepEqual(
-    out.map((f) => `${f.file}:${f.loc?.line}`),
-    ["package.json:3", "package-lock.json:9"]
-  );
-  // The response states the rule once, so which of the ways it failed rides the item. The
-  // unsatisfied case names all three strings and where each lives: the pin it anchors on,
-  // the root record that produced it, and the declaration in package.json it fails.
-  assert.deepEqual(
-    out.map((f) => f.item),
-    [
-      "absent (^1.0.0) - not recorded in the lock file",
-      "drifted 1.5.0 installed via ^1.0.0 locking does not satisfy the declared ^2.0.0",
-    ]
-  );
-
-  // An unreadable lock is the subject itself: anchored at the lock, with no line.
-  const unreadable = scaLockFileInvalid.run(
-    withManifest({
-      artifact: {
-        files: fileMap({
-          "package.json": JSON.stringify({ dependencies: { x: "^1.0.0" } }),
-          "package-lock.json": "{not json",
-        }),
-      },
-    })
-  ).findings;
-  assert.deepEqual(
-    unreadable.map((f) => [f.file, f.loc, f.item]),
-    [["package-lock.json", null, "could not be read"]]
-  );
-
-  // A lock that covers the package.json, and no addon at all.
-  assert.deepEqual(
+// Whether a lock is readable is unreadableLock (tests/unit/lock-coverage.test.js); this rule
+// reports it at the lock, saying which of the two it was. A readable lock that disagrees
+// with package.json is left to the package manager at the build.
+test("sca-lock-file-invalid reports an unreadable lock at the lock, and nothing else", () => {
+  const run = (lock) =>
     scaLockFileInvalid.run(
       withManifest({
         artifact: {
           files: fileMap({
-            "package.json": JSON.stringify({ dependencies: { x: "1.0.0" } }),
-            "package-lock.json": JSON.stringify({
-              lockfileVersion: 3,
-              packages: {
-                "": { dependencies: { x: "1.0.0" } },
-                "node_modules/x": { version: "1.0.0" },
-              },
-            }),
+            "package.json": JSON.stringify({ dependencies: { ms: "^2.1.3" } }),
+            "package-lock.json": lock,
           }),
         },
       })
-    ).findings,
-    []
-  );
-
-  // The governing lock is chosen by name from the three the review installs from, so a
-  // file in another format sitting beside them changes nothing: the stale npm lock is
-  // still judged, anchored at the lock because a PIN is the failing value.
+    ).findings;
   assert.deepEqual(
-    scaLockFileInvalid
-      .run(
-        withManifest({
-          artifact: {
-            files: fileMap({
-              "package.json": JSON.stringify({ dependencies: { x: "^2.0.0" } }),
-              "package-lock.json": JSON.stringify({
-                lockfileVersion: 3,
-                packages: {
-                  "": { dependencies: { x: "^1.0.0" } },
-                  "node_modules/x": { version: "1.0.0" },
-                },
-              }),
-              "other.lock": "# lockfile v1\n",
-            }),
-          },
-        })
-      )
-      .findings.map((f) => f.file),
-    ["package-lock.json"]
+    run('{"packages": {').map((f) => [f.file, f.item]),
+    [["package-lock.json", "could not be read"]]
   );
-});
-
-// A comparison-sign-bearing spec/recorded pin reads correctly, not squared() 's unreadable
-// brackets - see utf8ComparisonSigns (src/lib/util.js).
-test("sca-lock-file-invalid keeps a comparison-sign spec readable in the item", () => {
-  const out = scaLockFileInvalid.run(
-    withManifest({
-      artifact: {
-        files: fileMap({
-          "package.json": JSON.stringify({
-            dependencies: { drifted: ">=2.0.0 <3.0.0" },
-          }),
-          "package-lock.json": JSON.stringify({
-            lockfileVersion: 3,
-            packages: {
-              "": { dependencies: { drifted: ">=1.0.0 <2.0.0" } },
-              "node_modules/drifted": { version: "1.5.0" },
-            },
-          }),
-        }),
-      },
-    })
-  ).findings;
   assert.deepEqual(
-    out.map((f) => f.item),
-    [
-      "drifted 1.5.0 installed via ≥1.0.0 ＜2.0.0 locking does not satisfy the declared ≥2.0.0 ＜3.0.0",
-    ]
+    run("{}").map((f) => [f.file, f.item]),
+    [["package-lock.json", "is not a recognisable npm or pnpm lock file"]]
   );
+  const stale = JSON.stringify({
+    lockfileVersion: 3,
+    packages: {
+      "": { dependencies: { ms: "^1.0.0" } },
+      "node_modules/ms": { version: "1.0.0" },
+    },
+  });
+  assert.deepEqual(run(stale), []);
 });
 
 // ---- manual-checks ----
