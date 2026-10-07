@@ -7,6 +7,7 @@
 // looks finished. Each rule below is one way that can happen.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { stepsOf } from "../../src/report/phases.js";
 import {
   loadRegistry,
   assertPhases,
@@ -314,4 +315,40 @@ test("the two finals may differ only in their opening line", () => {
   lines[3] = `${lines[3]} ...and one more thing.`;
   doc["final-early-exit"] = lines.join("\n");
   assert.throws(() => check(registry), /differ below their opening line/);
+});
+
+// Whether the review stopped is read against every step: one flagged skip-if-stopped is
+// left out of a stopped review, one flagged skip-if-not-stopped out of every other.
+test("a step's stop flags decide whether it prints in a stopped review", () => {
+  const phase = {
+    steps: [
+      { skip: null, run: null, text: "always" },
+      { skip: null, run: null, skipIfStopped: true, text: "running" },
+      { skip: null, run: null, skipIfNotStopped: true, text: "stopped" },
+    ],
+  };
+  const texts = (halted) => stepsOf(phase, { halted }).map((s) => s.text);
+  assert.deepEqual(texts(false), ["always", "running"]);
+  assert.deepEqual(texts(true), ["always", "stopped"]);
+});
+
+// A stop flag is true or false, and it sits beside a marker rather than counting as one.
+test("a stop flag is a boolean, and not a second marker", () => {
+  const flagged = fresh();
+  const step = phaseNamed(flagged, "ask").steps.find((x) => x.skip);
+  step["skip-if-stopped"] = true;
+  check(flagged);
+
+  const wrong = fresh();
+  phaseNamed(wrong, "ask").steps[0]["skip-if-stopped"] = "yes";
+  assert.throws(
+    () => check(wrong),
+    /carries `skip-if-stopped: "yes"` - it is true or false/
+  );
+
+  const loaded = fresh()
+    .llmPhases()
+    .phases.find((p) => p.name === "build");
+  assert.equal(loaded.steps[0].skipIfStopped, true);
+  assert.equal(loaded.steps[0].skipIfNotStopped, false);
 });

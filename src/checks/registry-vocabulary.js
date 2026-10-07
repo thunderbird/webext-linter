@@ -179,9 +179,6 @@ export const sweepSlot = (artifact) =>
  *  (SWEEP_INSTRUCTIONS) and not again here. */
 export const REVIEW_PROMPT_RUNS = [
   "sca",
-  // A source code review that has not stopped: building runs the submission's own code,
-  // which is safe only once every check that stops a review has had its say.
-  "build",
   ...Object.keys(SWEEP_INSTRUCTIONS).map(sweepRun),
 ];
 

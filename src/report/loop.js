@@ -54,13 +54,11 @@ import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
  * @param {import("./state.js").LoopState} state
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
  * @param {import("../checks/registry.js").Registry} registry
- * @returns {{skip: string[], sca: boolean, halted: boolean, build: boolean}}
+ * @returns {{skip: string[], sca: boolean, halted: boolean}}
  */
 function runOf(state, ordered, registry) {
   const halted = Boolean(earlyExitOf(ordered, state.answers ?? {}, registry));
-  // Building runs the submission's own code, so only a source code review that nothing
-  // has stopped builds: a known vulnerability or an install hook stops it first.
-  return { ...state.run, halted, build: state.run?.sca === true && !halted };
+  return { ...state.run, halted };
 }
 
 /**

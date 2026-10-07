@@ -617,6 +617,8 @@ export class Registry {
         steps: phase.steps.map((step) => ({
           skip: step.skip ?? null,
           run: step.run ?? null,
+          skipIfStopped: step["skip-if-stopped"] === true,
+          skipIfNotStopped: step["skip-if-not-stopped"] === true,
           text: step.text,
         })),
       })),
@@ -1311,12 +1313,18 @@ export function assertEntries(registry, at) {
  *
  * ONE of them, never two: what withholds a step is a single answer, so a reader works out
  * whether a step prints by looking at one marker rather than composing two.
+ *
+ * Beside the marker, a step may carry the STOP flags its prompt acts on: booleans saying
+ * the step is left out of a review that stopped early, or of one that did not. They are
+ * not a second marker - whether the review stopped is one fact every step is read
+ * against, not a condition a step picks.
  * @param {unknown} step
  * @param {number} i  Its position, for the message.
  * @param {string} where  Which prompt, for the message.
  * @param {string[]} markers  The markers this prompt acts on.
+ * @param {string[]} [flags]  The stop flags this prompt acts on.
  */
-function assertStep(step, i, where, markers) {
+function assertStep(step, i, where, markers, flags = []) {
   const nth = `${where} \`outcome\` step ${i + 1}`;
   if (!step || typeof step !== "object" || Array.isArray(step)) {
     throw new Error(`${nth} is not a step mapping`);
@@ -1332,7 +1340,7 @@ function assertStep(step, i, where, markers) {
   }
   const named = markers.map((m) => `\`${m}\``).join(" or ");
   const stray = Object.keys(step).find(
-    (key) => key !== "text" && !markers.includes(key)
+    (key) => key !== "text" && !markers.includes(key) && !flags.includes(key)
   );
   if (stray) {
     throw new Error(
@@ -1346,6 +1354,13 @@ function assertStep(step, i, where, markers) {
       `${nth} carries ${carried.map((m) => `\`${m}\``).join(" and ")} - a step takes ` +
         "ONE marker, or whether it prints depends on two answers at once"
     );
+  }
+  for (const flag of flags) {
+    if (step[flag] !== undefined && typeof step[flag] !== "boolean") {
+      throw new Error(
+        `${nth} carries \`${flag}: ${JSON.stringify(step[flag])}\` - it is true or false`
+      );
+    }
   }
 }
 
@@ -1439,7 +1454,13 @@ export function assertPhases(registry, at) {
       }
     }
     phase.steps.forEach((step, i) => {
-      assertStep(step, i, `llm-phases phase \`${name}\``, ["skip", "run"]);
+      assertStep(
+        step,
+        i,
+        `llm-phases phase \`${name}\``,
+        ["skip", "run"],
+        ["skip-if-stopped", "skip-if-not-stopped"]
+      );
       if (step.skip !== undefined && !PROMPT_SKIPS.includes(step.skip)) {
         throw new Error(
           `${at2} step ${i + 1} is skipped by \`${step.skip}\`, which no flag gives ` +

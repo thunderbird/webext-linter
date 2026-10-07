@@ -64,7 +64,9 @@ first phase that has any. The package itself is not unpacked by any of this: the
 submission before the first prompt is printed, and every phase reads that one folder.
 
 `build` and `ask` have one further condition: a review that **stopped early** never
-reaches them. `build` runs the submission's own code, so it waits until every check that
+reaches them. Their steps are flagged `skip-if-stopped`, and a phase with no step left is
+not issued (a step flagged `skip-if-not-stopped` is the opposite: it prints only in a
+review that stopped). `build` runs the submission's own code, so it waits until every check that
 can stop the review has had its say - including `build-lifecycle-hook`, which `settle`
 decides. The agent asks the reviewer before building, builds in a copy of the source
 archive, and writes the outcome to `BUILD_DIFF`: identical, differing (with the diff), or

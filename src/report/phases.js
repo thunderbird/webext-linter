@@ -68,16 +68,26 @@ export function isOpen(item, state) {
  * answering it in the record - never editing a conjunction that a new condition could be
  * left out of. A condition the record does not answer is false, which is what an absent
  * one means.
- * @param {{steps: {skip: ?string, run: ?string, text: string}[]}} phase
- * @param {{skip: string[]}} run  The run record, answering each condition by its own name.
- * @returns {{skip: ?string, run: ?string, text: string}[]}
+ *
+ * Whether the review STOPPED early is read against every step, beside its marker: a step
+ * flagged `skip-if-stopped` is left out of a stopped review, one flagged
+ * `skip-if-not-stopped` out of every other. That is how a stop withholds what comes after
+ * it - the build that would run the submission's code, the questions nobody should be
+ * asked - since a phase left with no step is not issued.
+ * @param {{steps: {skip: ?string, run: ?string, skipIfStopped?: boolean,
+ *   skipIfNotStopped?: boolean, text: string}[]}} phase
+ * @param {{skip: string[], halted: boolean}} run  The run record, answering each condition
+ *   by its own name, and whether the review stopped.
+ * @returns {object[]}
  */
 export function stepsOf(phase, run = {}) {
   const skipped = new Set(run.skip ?? []);
+  const halted = run.halted === true;
   return phase.steps.filter(
     (step) =>
       !skipped.has(step.skip) &&
-      ((step.run ?? null) === null || run[step.run] === true)
+      ((step.run ?? null) === null || run[step.run] === true) &&
+      !(halted ? step.skipIfStopped : step.skipIfNotStopped)
   );
 }
 
@@ -169,25 +179,20 @@ export function nextPhase(phases, ordered, state, run) {
  * means those items are not put to anyone - they stay in the report for the reviewer to
  * work through later - so leaving them in the file would hand the agent questions it was
  * told not to ask and a handover demanding an answer for each.
- * An EARLY EXIT withholds them for a different reason and to a different end. The skip
- * says a reviewer will work through these later; the early exit says the review stopped,
- * and the report drops the same items rather than leaving a to-do list under a line
- * saying it was never finished (src/report/early-exit.js). Both land here because the
- * question is the same one - is this item put to anyone on this run.
+ *
+ * An EARLY EXIT is not decided here. It withholds the phase itself, through the steps it
+ * leaves out (stepsOf, `skip-if-stopped`), and the report drops the same items rather
+ * than leaving a to-do list under a line saying it was never finished
+ * (src/report/early-exit.js).
  * @param {string} phaseName
  * @param {import("./order.js").OrderedItem[]} ordered
  * @param {import("./state.js").LoopState} state
- * @param {{skip: string[], halted: boolean}} run
+ * @param {{skip: string[]}} run
  * @returns {import("./order.js").OrderedItem[]}
  */
-export function openIn(
-  phaseName,
-  ordered,
-  state,
-  { skip = [], halted = false } = {}
-) {
+export function openIn(phaseName, ordered, state, { skip = [] } = {}) {
   // An itemless phase (spawn, build) needs no case here: no item is ever routed to it.
-  if (phaseName === "ask" && (halted || skip.includes("manual"))) {
+  if (phaseName === "ask" && skip.includes("manual")) {
     return [];
   }
   return ordered.filter(
