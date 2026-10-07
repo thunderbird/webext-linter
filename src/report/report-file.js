@@ -36,6 +36,25 @@ export function writeReportFile(file, body) {
     return;
   }
   // Rendered by the same formatter as the terminal report, so colour markers are removed:
-  // a file carries none.
-  writeFileAtomic(file, `${withoutColor(body)}\n`);
+  // a file carries none. The empty lines that separate it from a section heading in the
+  // terminal have nothing to separate here, so the file starts and ends on its text.
+  writeFileAtomic(file, `${withoutBlankEnds(withoutColor(body))}\n`);
+}
+
+/**
+ * The text without empty lines at either end. Plain code rather than a regex: the body
+ * carries submission text, and `\n+$` backtracks over every run of newlines inside it.
+ * @param {string} text
+ * @returns {string}
+ */
+function withoutBlankEnds(text) {
+  let start = 0;
+  let end = text.length;
+  while (start < end && text[start] === "\n") {
+    start++;
+  }
+  while (end > start && text[end - 1] === "\n") {
+    end--;
+  }
+  return text.slice(start, end);
 }

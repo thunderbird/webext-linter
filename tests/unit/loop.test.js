@@ -199,7 +199,11 @@ test("the report file is written for the questions and rewritten once they are a
   const asked = fs.readFileSync(file, "utf8");
   const settled = settle(state, REGISTRY);
   writeReportFile(file, settled.report);
-  assert.equal(fs.readFileSync(file, "utf8"), `${settled.report}\n`);
+  // The file starts and ends on its text: the empty lines that set the body apart from a
+  // section heading in the terminal have nothing to set it apart from here.
+  const written = fs.readFileSync(file, "utf8");
+  assert.equal(written, `${settled.report.replace(/^\n+|\n+$/g, "")}\n`);
+  assert.ok(!written.startsWith("\n"), "no leading empty line");
   assert.notEqual(asked, "", "the copy handed to the reviewer is not empty");
 });
 
