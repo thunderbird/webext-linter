@@ -199,10 +199,6 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   route: a check has no way to reach the artifact it was not routed to. The orchestrator builds a
  *   separate shipped context (buildXpiCtx, src/checks/context.js) and routes each
  *   `input: xpi` check to it - see runChecks / runOneCheck.
- * @property {boolean} [isShippedView]  Set by buildXpiCtx on the shipped
- *   context (never the review target). buildReachability reads it so the SCA
- *   "all readable-source files" pureWebExtensionReachable fallback applies only to
- *   the review source, not the built XPI (whose entry points resolve).
  * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
  *   --allow-experiments is off: the review short-circuits to the reject check
  *   only (see runChecks and buildXpiCtx).

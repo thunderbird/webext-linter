@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { buildReachability } from "../../src/lib/reachability.js";
+import { ARTIFACT_SCA, ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 import { manifestStringRefs } from "../../src/lib/manifest-refs.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
@@ -25,8 +26,10 @@ const fixtureSchema = buildSchemaIndex(
 // Build a review ctx from a {path: content} map + manifest.json object. The schema goes in HERE,
 // not onto the ctx afterwards: the extraction pass type-walks the schema-derived loaders
 // against it, and a check only ever reads what the pass already extracted.
-function ctxFrom(files, manifest, schema) {
+function ctxFrom(files, manifest, schema, kind) {
   const addon = {
+    // Which artifact this is, as the loader names it (src/lib/artifacts.js).
+    ...(kind ? { kind } : {}),
     files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
     manifest: manifestOf(manifest, files["manifest.json"]),
   };
@@ -215,7 +218,7 @@ test("SCA mode: pureWebExtensionReachable is every file the source view holds", 
   // SCA mode, no exp folder: every source file is WebExtension code (incl. the
   // experiment subtree - the deferred false-positive case).
   const sca = buildReachability({
-    ...ctxFrom(files, manifest),
+    ...ctxFrom(files, manifest, undefined, ARTIFACT_SCA),
     mode: REVIEW_MODE.SCA,
   });
   assert.ok(sca.pureWebExtensionReachable.has("helper.js"));
@@ -229,19 +232,18 @@ test("SCA mode: pureWebExtensionReachable is every file the source view holds", 
     Object.entries(files).filter(([f]) => !f.startsWith("experiments/"))
   );
   const scaExp = buildReachability({
-    ...ctxFrom(files2, manifest),
+    ...ctxFrom(files2, manifest, undefined, ARTIFACT_SCA),
     mode: REVIEW_MODE.SCA,
   });
   assert.ok(scaExp.pureWebExtensionReachable.has("helper.js"));
   assert.ok(!scaExp.pureWebExtensionReachable.has("experiments/exp.js"));
 
-  // The SHIPPED view (isShippedView) is not the review source: it uses the closure
-  // branch like an XPI review (its entry points resolve against its own files), so
-  // the all-source SCA fallback does NOT apply - a non-entry file is not swept in.
+  // The built XPI is not the source archive: it uses the closure branch like an XPI
+  // review (its entry points resolve against its own files), so the all-source fallback
+  // does NOT apply - a non-entry file is not swept in.
   const shipped = buildReachability({
-    ...ctxFrom(files, manifest),
+    ...ctxFrom(files, manifest, undefined, ARTIFACT_XPI),
     mode: REVIEW_MODE.SCA,
-    isShippedView: true,
   });
   assert.ok(!shipped.pureWebExtensionReachable.has("helper.js"));
 });

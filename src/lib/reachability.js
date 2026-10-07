@@ -59,6 +59,7 @@ import {
   RECOGNIZED_EXTS,
 } from "../util/files.js";
 import { pathTokensEndingIn } from "../util/text.js";
+import { ARTIFACT_SCA } from "./artifacts.js";
 
 /** @typedef {import("../checks/registry.js").RunContext} RunContext */
 /** @typedef {import("../addon/load.js").Manifest} Manifest */
@@ -139,12 +140,10 @@ function compute(ctx) {
   // `artifact`/`files`/`jsSources` below is that one artifact's, so the graph is always
   // internally consistent.
   //
-  // pureWebExtensionReachable's SCA "all readable-source files" branch exists only
-  // for the review source, whose pre-build layout the manifest.json's built entry-point
-  // paths miss (so the closure would be empty). It is gated on the review-target ctx
-  // (NOT ctx.isShippedView), so on a shipped view it falls to the closure branch -
-  // the XPI's manifest.json entry points resolve against its own files, giving a
-  // meaningful WebExtension scope there too.
+  // pureWebExtensionReachable's "all readable-source files" branch exists only for the
+  // source archive, whose pre-build layout the manifest.json's built entry-point paths miss
+  // (so the closure would be empty). The built XPI takes the closure branch in either
+  // review: its manifest.json entry points resolve against its own files.
   const artifact = ctx.artifact;
   const files = artifact?.files;
   // A context with no files (degenerate / unit harness) has nothing reachable;
@@ -366,11 +365,10 @@ function compute(ctx) {
   // code and nothing else: the archive partition put the Experiment implementation
   // (--sca-exp-source) in its own view, wherever the developer placed it, so privileged
   // Services/ChromeUtils code never reaches these checks and there is no subtree left to
-  // subtract here. The shipped view is excluded (ctx.isShippedView): the built XPI's
-  // entry points DO resolve, so it uses the closure branch, like an XPI review. (That
-  // closure already excludes experiment implementation code.)
+  // subtract here. The built XPI's entry points DO resolve, so it uses the closure branch.
+  // (That closure already excludes experiment implementation code.)
   const pureWebExtensionReachable =
-    ctx.mode?.sca && !ctx.isShippedView
+    artifact?.kind === ARTIFACT_SCA
       ? new Set(files.keys())
       : bfs(new Set([...generalSeeds, ...htmlInjectedSeeds]), outEdges);
 

@@ -52,8 +52,8 @@ function deriveApiUsages(jsSources) {
 /**
  * Project one sibling RunContext from the shared review `env` onto a single artifact. Every
  * review-level field (schema, the shipped manifest.json and experiments, mode) is copied from
- * `env`, so all siblings share them by reference and cannot drift; only the artifact itself,
- * its parsed `jsSources`/`apiUsages`, and the shipped-view flag differ. The manifest.json and
+ * `env`, so all siblings share them by reference and cannot drift; only the artifact itself
+ * and its parsed `jsSources`/`apiUsages` differ. The manifest.json and
  * experiments are shipped-authoritative - read off `env`, which asked the built XPI once - so
  * a check cannot read one artifact's manifest.json against another's files.
  * @param {ReviewEnv} env
@@ -70,14 +70,9 @@ function deriveApiUsages(jsSources) {
  * @param {import("../addon/sources.js").JsSource[]} routed.jsSources
  * @param {object[]|undefined} routed.apiUsages  Per-source usage, or undefined for a ctx
  *   over no artifact (the `all` route, which names its artifacts instead).
- * @param {boolean} [routed.isShippedView]  Mark the built-XPI view for reachability (SCA
- *   only - in an XPI review the XPI IS the review target, so it is NOT a distinct shipped view).
  * @returns {RunContext}
  */
-function projectCtx(
-  env,
-  { artifact, jsSources, apiUsages, isShippedView = false }
-) {
+function projectCtx(env, { artifact, jsSources, apiUsages }) {
   /** @type {RunContext} */
   const ctx = {
     // Per-ctx scratch for the memoized derivations (see the lazy accessors in src/lib/*),
@@ -114,13 +109,6 @@ function projectCtx(
     // on it rather than silently reading whichever side happened to be here.
     ctx.artifact = artifact;
   }
-  if (isShippedView) {
-    // The built XPI's manifest.json entry points resolve against its OWN files, so
-    // pureWebExtensionReachable takes the closure branch - not the SCA "all readable-source
-    // files" fallback, which exists only for the review source, whose pre-build layout the
-    // manifest.json's built paths miss.
-    ctx.isShippedView = true;
-  }
   return ctx;
 }
 
@@ -153,9 +141,6 @@ export function buildXpiCtx(xpiAddon, xpiParsedSources, env) {
     artifact: xpiAddon,
     jsSources,
     apiUsages: deriveApiUsages(jsSources),
-    // A distinct shipped view ONLY in SCA. In an XPI review xpiCtx IS siblings.source (the
-    // review target), so it must NOT flag the shipped-view reachability branch.
-    isShippedView: Boolean(env.mode?.sca),
   });
 }
 

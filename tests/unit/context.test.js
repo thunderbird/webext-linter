@@ -89,11 +89,8 @@ test("buildXpiCtx throws when a reviewable built XPI arrives with no parsed sour
   );
 });
 
-// buildXpiCtx builds the shipped ctx (siblings.xpi) from the XPI's OWN sources + api-usage, and
-// marks it the shipped view ONLY in SCA - where the XPI is a distinct artifact from the review
-// source. In an XPI review the XPI IS the review target (the pipeline aliases siblings.source to
-// it), so it must NOT set the shipped-view reachability flag.
-test("buildXpiCtx carries the XPI's own sources; isShippedView only in SCA", () => {
+// buildXpiCtx builds the shipped ctx (siblings.xpi) from the XPI's OWN sources + api-usage.
+test("buildXpiCtx carries the XPI's own sources", () => {
   const xpi = addonWith({ "app.js": "export const x = 1;" });
   const xpiParsed = parsed(xpi);
 
@@ -103,7 +100,6 @@ test("buildXpiCtx carries the XPI's own sources; isShippedView only in SCA", () 
   assert.equal(inSca.jsSources, xpiParsed);
   assert.equal(inSca.apiUsages.length, xpiParsed.length); // the XPI's OWN api-usage
   assert.equal(inSca.apiUsages[0].file, "app.js");
-  assert.equal(inSca.isShippedView, true); // gates reachability's SCA fallback
 
   // The two SCA paths reach a check AS GIVEN, absolute - never a prefix derived from them.
   // The --sca-* paths are NOT on the ctx: where the source and the Experiment sit is
@@ -119,9 +115,6 @@ test("buildXpiCtx carries the XPI's own sources; isShippedView only in SCA", () 
     })
   );
   assert.equal(withPaths.scaExpSource, undefined);
-
-  const inXpi = buildXpiCtx(xpi, xpiParsed, envWith({ mode: REVIEW_MODE.XPI }));
-  assert.equal(inXpi.isShippedView, undefined); // one artifact - not a distinct shipped view
 });
 
 // The Experiment implementation reaches a check. ctx.artifact.files deliberately EXCLUDES it,
