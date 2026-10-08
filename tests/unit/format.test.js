@@ -1427,7 +1427,11 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   // And the shared step rule: both prompts are numbered by the renderer.
   const selfNumbered = loadRegistry();
   selfNumbered.doc["llm-sca-review-prompt"].outcome[0].text = "1. Do it.";
-  assert.throws(() => checkScaPrompt(selfNumbered), /step 1 numbers itself/);
+  // Named by its prompt and its list, in full.
+  assert.throws(
+    () => checkScaPrompt(selfNumbered),
+    /llm-sca-review-prompt \(t\.yaml\) `outcome` step 1 numbers itself/
+  );
 
   // A step acts on `when` and nothing else, so a retired marker - which reads as plausible
   // and would do nothing - is refused by name, as is a bare fact written as a key.

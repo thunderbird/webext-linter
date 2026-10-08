@@ -2047,11 +2047,11 @@ llm-sca-review-prompt:
 #                rule everywhere here: a path is printed by the thing that needs it.
 #   FRAME        every pass: the file, and that it changed. The linter's, so it cannot drift.
 #   INTRO        per phase, and EMPTY unless the steps alone would let the agent act wrongly.
-#   STEPS        per phase, numbered over what survives its `when:` condition, exactly as
-#                llm-review-prompt's `outcome` does. No step numbers itself. A condition is
-#                AND / OR / NOT over the facts REVIEW_PROMPT_FACTS names - the flags given,
-#                `aborted`, `sca`, `sweep-<artifact>`, `first`, `spawned`, `decided` and
-#                `closing` (src/checks/condition.js).
+#   STEPS        per phase, numbered over what survives its `when:` condition, exactly
+#                as llm-sca-review-prompt's `outcome` does. No step numbers itself. A
+#                condition is AND / OR / NOT over the facts REVIEW_PROMPT_FACTS names - the
+#                flags given, `aborted`, `sca`, `sweep-<artifact>`, `first`, `spawned`,
+#                `decided` and `closing` (src/checks/condition.js).
 #   HANDOVER     ONE text, appended by the linter as every phase's last numbered step. Not
 #                one per phase and not one per slot: every entry in every phase carries
 #                "answer": null, so the agent learns the file once and never relearns it.

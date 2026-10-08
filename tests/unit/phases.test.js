@@ -153,7 +153,11 @@ test("a phase missing its own parts is refused by name", () => {
 test("a step that numbers itself, or carries a marker nothing answers, is refused", () => {
   const numbered = fresh();
   phaseNamed(numbered, "verify").steps[0].text = "1. Verify every entry.";
-  assert.throws(() => check(numbered), /numbers itself/);
+  // Named by its phase and its place in that phase's steps - the list it is actually in.
+  assert.throws(
+    () => check(numbered),
+    /llm-phases \(t\.yaml\) phase `verify` step 1 numbers itself/
+  );
 
   // A condition naming a fact nothing answers would be false in every run.
   const unknown = fresh();
@@ -482,7 +486,8 @@ test("the preamble's parts are checked like steps", () => {
   for (const [mutate, refusal] of [
     [
       (part) => (part.skip = "first"),
-      /authors `skip`, which this prompt cannot act on/,
+      // Named as a part of the preamble, not as a step of some other list.
+      /llm-phases \(t\.yaml\) `preamble` part 1 authors `skip`, which this prompt cannot act on/,
     ],
     [
       (part) => (part.when = "first AND nonsense"),

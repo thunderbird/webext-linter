@@ -1299,8 +1299,8 @@ export function assertEntries(registry, at) {
 }
 
 /**
- * Assert one authored prompt step: what BOTH prompts need of one, because both render
- * through the same layout (stepLines, src/report/format.js).
+ * Assert one authored prompt step, or one part of the review loop's preamble: what all of
+ * them need, because they render through the same layout (stepLines, src/report/format.js).
  *
  * A step must be a mapping carrying prose, and it must not number itself: the renderer
  * numbers what survived that run's own filtering, so a literal number would print twice
@@ -1315,13 +1315,15 @@ export function assertEntries(registry, at) {
  * from a step that is never meant to print.
  * @param {unknown} step
  * @param {number} i  Its position, for the message.
- * @param {string} where  Which prompt, for the message.
+ * @param {string} where  Which prompt it is in, with the registry path, for the message.
+ * @param {string} noun  What its list calls one item, for the message: "`outcome` step"
+ *   in the SCA prompt, "step" in a phase, "part" in the preamble.
  * @param {string[]} facts  The facts this prompt's conditions may name.
  */
-function assertStep(step, i, where, facts) {
-  const nth = `${where} \`outcome\` step ${i + 1}`;
+function assertStep(step, i, where, noun, facts) {
+  const nth = `${where} ${noun} ${i + 1}`;
   if (!step || typeof step !== "object" || Array.isArray(step)) {
-    throw new Error(`${nth} is not a step mapping`);
+    throw new Error(`${nth} is not a mapping`);
   }
   if (typeof step.text !== "string" || step.text === "") {
     throw new Error(`${nth} authors no \`text\``);
@@ -1417,7 +1419,7 @@ export function assertPhases(registry, at) {
   // The preamble's parts are conditioned and printed like steps, so they are checked like
   // them: prose, not self-numbered, and a condition naming only facts this prompt knows.
   doc.preamble.forEach((part, i) =>
-    assertStep(part, i, `${where} \`preamble\``, REVIEW_PROMPT_FACTS)
+    assertStep(part, i, `${where} \`preamble\``, "part", REVIEW_PROMPT_FACTS)
   );
   // The review ends with ONE closing phase, the last, and it hands over what the reviewer
   // is left with. Two would leave the second unreachable, one that is not last would end
@@ -1464,7 +1466,7 @@ export function assertPhases(registry, at) {
       }
     }
     phase.steps.forEach((step, i) => {
-      assertStep(step, i, `llm-phases phase \`${name}\``, REVIEW_PROMPT_FACTS);
+      assertStep(step, i, at2, "step", REVIEW_PROMPT_FACTS);
     });
     // Both ways, over the phase's `verb-prose`. A step does not name verbs: what an
     // answer means is rendered onto the entry that offers it, so this is where the agent
@@ -1499,7 +1501,13 @@ export function assertPhases(registry, at) {
  */
 export function assertScaPrompt(registry, at) {
   registry.doc["llm-sca-review-prompt"].outcome.forEach((step, i) => {
-    assertStep(step, i, `llm-sca-review-prompt (${at})`, SCA_PROMPT_FACTS);
+    assertStep(
+      step,
+      i,
+      `llm-sca-review-prompt (${at})`,
+      "`outcome` step",
+      SCA_PROMPT_FACTS
+    );
   });
 }
 
