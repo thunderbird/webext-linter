@@ -30,9 +30,11 @@ import {
   refreshAllSchemas,
   hasAllCachedSchemas,
   cachedZipPath,
+  allSchemaBranches,
   schemaBranch as branchName,
   SCHEMA_CHANNELS,
 } from "./schema/fetch.js";
+import { cacheIsStale } from "./util/cache-age.js";
 import { loadSchemaFiles, peekApplicationVersion } from "./schema/load.js";
 import { buildSchemaIndex } from "./schema/index.js";
 import { REVIEW_MODE } from "./lib/enum.js";
@@ -1374,27 +1376,15 @@ export async function resolveReviewSchema({
     candidates = readAnchors();
   }
 
-  // A channel branch is a MOVING target: release-mv2 means "whatever release is today", so
-  // a cached zip is a snapshot that goes stale the moment Thunderbird ships. Staleness only
-  // matters when the add-on reaches past the snapshot - then the schema cannot know the APIs
-  // of the versions in between, and a call to one is reported as unknown rather than as
-  // needing a newer strict_min_version, which is the wrong reason handed to the developer.
-  //
-  // So: refresh when the add-on's cap is above every cached train AND the snapshot is more
-  // than a day old. The age test is what keeps a run from re-downloading six zips for every
-  // add-on with no cap or a cap on an unreleased train. A refresh that fails ends the
-  // review: a cache known to be too old for this add-on is not reviewed against.
-  const cap = parseVersion(strictMaxVersion(manifest))?.[0] ?? Infinity;
-  const newest = Math.max(...candidates.map((c) => c.major));
-  if (
-    !stepped &&
-    schemaSnapshotIsStale({
-      cap,
-      newest,
-      ageDays: schemaCacheAgeDays(cacheDir, candidates),
-    })
-  ) {
-    setupStep("Refreshing review schemas (add-on targets a newer Thunderbird)");
+  // A channel branch is a MOVING target: release-mv2 means "whatever release is today", and
+  // even a train already cached gains backported API data, so a cached zip is a snapshot
+  // that goes stale as Thunderbird ships. All six are refreshed once ANY of them is older
+  // than a day (schemaCacheIsStale) - every one, not only this manifest version's, so a
+  // refresh that failed halfway can never leave an old branch looking fresh beside new
+  // ones. A refresh that fails ends the review: a cache known to be stale is not reviewed
+  // against.
+  if (!stepped && schemaCacheIsStale(cacheDir)) {
+    setupStep("Refreshing review schemas (cache older than a day)");
     stepped = true;
     await refreshAllSchemas({ cacheDir });
     candidates = readAnchors();
@@ -1485,37 +1475,17 @@ function preSweepOf(registry, ranIds, mode, siblings, trees) {
 }
 
 /**
- * Whether the cached schema snapshot is too old to review this add-on against: its cap
- * reaches past every cached train, so the schema cannot know the APIs in between, AND the
- * snapshot is more than a day old, so a newer one plausibly exists. An add-on with no cap
- * has an infinite one, which is why the age test carries the weight - without it every such
- * add-on would re-download six zips on every run.
- * @param {{cap: number, newest: number, ageDays: number}} state
+ * Whether the cached schema snapshot must be downloaded again: any of the six branch zips
+ * is missing or older than CACHE_MAX_AGE_DAYS (src/util/cache-age.js). The oldest decides,
+ * because refreshAllSchemas writes them one after another and may stop part-way.
+ * @param {string} cacheDir
+ * @param {number} [now]  The current time, in ms.
  * @returns {boolean}
  */
-export function schemaSnapshotIsStale({ cap, newest, ageDays }) {
-  return cap > newest && ageDays > 1;
-}
-
-/**
- * How old the cached schema snapshot is, in days - the NEWEST of the candidate zips, since
- * refreshAllSchemas writes them together. Infinity when none can be read, which makes a
- * refresh the answer.
- * @param {string} cacheDir
- * @param {{branch: string}[]} candidates
- * @returns {number}
- */
-function schemaCacheAgeDays(cacheDir, candidates) {
-  const times = candidates.map((c) => {
-    try {
-      return fs.statSync(cachedZipPath(cacheDir, c.branch)).mtimeMs;
-    } catch (err) {
-      rethrowIfFatal(err);
-      return null;
-    }
-  });
-  const newest = Math.max(...times.filter((t) => t != null), -Infinity);
-  return newest === -Infinity ? Infinity : (Date.now() - newest) / 86400000;
+export function schemaCacheIsStale(cacheDir, now = Date.now()) {
+  return allSchemaBranches().some((branch) =>
+    cacheIsStale(cachedZipPath(cacheDir, branch), now)
+  );
 }
 
 /**

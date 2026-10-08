@@ -2,8 +2,8 @@
 // text and parses it into a sha256 -> {name, version} map. The library classifier
 // (src/lib/bundled.js) identifies a bundled third-party library by the raw
 // SHA-256 of its bytes against this map - a true content lookup, not a name/UMD
-// guess. It downloads the upstream hashes.txt into the cache dir (reused next
-// run; a pre-seeded cache keeps offline runs deterministic).
+// guess. It downloads the upstream hashes.txt into the cache dir (reused while it is no
+// older than CACHE_MAX_AGE_DAYS; a pre-seeded cache keeps offline runs deterministic).
 //
 // Belongs here: the fetch/cache IO and the line parser. Does NOT belong here: the
 // raw hashing of add-on files (src/normalize/hash.js rawSha256) or the library
@@ -16,6 +16,7 @@ import { debug } from "../util/log.js";
 import { writeFileAtomic } from "../util/atomic.js";
 import { fetchWithTimeout, withHttpStatus } from "../util/net.js";
 import { LIBRARY_HASHES_URL, LIBRARY_HASHES_CACHE } from "../config.js";
+import { cacheAgeHours, cacheIsStale } from "../util/cache-age.js";
 
 /**
  * @param {string} cacheDir  The library-hashes cache directory.
@@ -33,8 +34,9 @@ export function cachedHashesPath(cacheDir) {
 /**
  * Resolve the library-hashes source to text, downloading + caching if needed -
  * the same cache/fetch shape as resolveSchemaZip / resolveExperimentsZip.
- * Cache-first: a previously downloaded (or pre-seeded) copy is reused without a
- * request, so only a first-ever run with no network reaches the fetch. Throws on a
+ * Cache-first: a downloaded (or pre-seeded) copy no older than a day is reused without a
+ * request. An older one is downloaded again, because the DB gains library releases and a
+ * stale one would review a new release as authored code. Throws on a
  * download failure rather than degrading to an empty DB: a partial library DB would
  * silently change the review (a known library would go unrecognized and be scanned
  * as authored), so - like the schema and experiments sources - an unavailable DB is
@@ -47,20 +49,24 @@ export async function resolveLibraryHashes({
 } = {}) {
   fs.mkdirSync(cacheDir, { recursive: true });
   const cached = cachedHashesPath(cacheDir);
-  if (fs.existsSync(cached)) {
+  if (!cacheIsStale(cached)) {
     const text = fs.readFileSync(cached, "utf8");
     // Validate the cache, don't trust it: a truncated/partial cached DB would
     // silently review a real library as authored code. A bad cache falls through to
     // a re-download (self-heal) rather than being used.
     if (isCompleteHashDb(text)) {
-      debug(`Using cached library hashes: ${cached}`);
+      debug(
+        `Using cached library hashes (${cacheAgeHours(cached)} h old): ${cached}`
+      );
       return { text, source: "cache" };
     }
     debug(`Cached library hashes look incomplete; re-downloading: ${cached}`);
   }
 
   const url = LIBRARY_HASHES_URL;
-  debug(`Downloading library hashes from ${url} ...`);
+  debug(
+    `Downloading library hashes from ${url} - ${fs.existsSync(cached) ? "the cached copy is older than a day, or incomplete" : "none cached"} ...`
+  );
   const text = await fetchWithTimeout(url, async (res) => {
     if (!res.ok) {
       // Stamped with the status so the rate gate can tell a refusal from an answer

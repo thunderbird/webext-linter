@@ -59,24 +59,28 @@ own manifest.json - no channel flag. Two dimensions:
 
 The options, grouped as in `--help`:
 
-**Cache:** the schema, the library-hash DB and the allowed-experiments list are each
-downloaded once and reused. The CDN lookup cache fills incrementally as lookups are made.
-A review needs every host it asks to answer: a request that gets no answer (still refused
-after the retries, timed out, not accepted) ends the review with exit 2, like no network,
-rather than reading the silence as a result.
+**Cache:** every download is cached in one folder, `WEBEXT-LINTER-CACHE/`, beside wherever
+the linter runs - visible on purpose, so a developer packing their add-on folder sees it and
+leaves it out (the linter reports it as junk in an XPI that carries it). Folders left by
+older versions (`.schema-cache`, `.experiments-cache`, `.lib-mozilla-hash-db-cache`,
+`.lib-cdn-lookup-cache`) are no longer read and can be deleted.
 
-A channel branch is a moving target, so a cached schema is a snapshot. When an add-on's
-`strict_max_version` reaches past every cached train - or it declares none at all - and
-the snapshot is more than a day old, the schemas are re-downloaded before the review - otherwise an API added since the
-snapshot would be reported as unknown rather than as needing a newer `strict_min_version`.
+A cached download older than a day is downloaded again before it is used: the schemas
+(all six together, once any of them is that old), the library-hash DB and the
+allowed-experiments list each move upstream, and a stale copy would review against what
+was true when it was fetched. The CDN lookup cache keeps a hit for good - a file hash
+names one release - and asks again about a miss after a day. A review needs every host it
+asks to answer: a request that gets no answer (still refused after the retries, timed out,
+not accepted) ends the review with exit 2, like no network, rather than reading the
+silence as a result - so an offline machine needs the network once a day.
 
 | Option | Description |
 | --- | --- |
 | `--cache-clear` | Delete every cache directory below before the review, so all fetched sources (schema, library-hash DB, CDN lookups, allowed-experiments) are re-downloaded from scratch - as on a first run. |
-| `--cache-schema-dir <dir>` | Where the downloaded schema zips are cached (default `.schema-cache`). |
-| `--cache-hash-db-dir <dir>` | Where the fetched library-hash database (the addons-linter "dispensary" `hashes.txt`, used by `missing-library` to identify a bundled library by its exact content hash) is cached (default `.lib-mozilla-hash-db-cache`). |
-| `--cache-cdn-lookup-dir <dir>` | Where the jsDelivr CDN hash-lookup results are cached, backing `--cdn-lib-lookup` (default `.lib-cdn-lookup-cache`). |
-| `--cache-experiments-dir <dir>` | Where the fetched allowed-experiments zip (the Thunderbird Draft-API list feeding the Experiment checks, e.g. `experiment-modified`) is cached (default `.experiments-cache`). |
+| `--cache-schema-dir <dir>` | Where the downloaded schema zips are cached (default `WEBEXT-LINTER-CACHE/schema`). |
+| `--cache-hash-db-dir <dir>` | Where the fetched library-hash database (the addons-linter "dispensary" `hashes.txt`, used by `missing-library` to identify a bundled library by its exact content hash) is cached (default `WEBEXT-LINTER-CACHE/mozilla-hash-db`). |
+| `--cache-cdn-lookup-dir <dir>` | Where the jsDelivr CDN hash-lookup results are cached, backing `--cdn-lib-lookup` (default `WEBEXT-LINTER-CACHE/cdn-lookup`). |
+| `--cache-experiments-dir <dir>` | Where the fetched allowed-experiments zip (the Thunderbird Draft-API list feeding the Experiment checks, e.g. `experiment-modified`) is cached (default `WEBEXT-LINTER-CACHE/experiments`). |
 
 The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `banned-library`) is curated by hand from Mozilla's [addons-linter third-party library docs](https://github.com/mozilla/addons-linter/blob/master/docs/third-party-libraries.md), since Mozilla ships no machine-readable list, and that page
 is monitored and upstream changes are ported manually.

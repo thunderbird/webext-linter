@@ -7,6 +7,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { loadSchemaFiles } from "../../src/schema/load.js";
+import { DEFAULT_CACHE } from "../../src/config.js";
 import { buildSchemaIndex, SchemaIndex } from "../../src/schema/index.js";
 import { manifestFileRefs } from "../../src/lib/manifest-refs.js";
 import {
@@ -428,15 +429,16 @@ test("derives the fixture's messageDisplayScripts.register loader", () => {
 // is the artefact the walk replaced - so the check lives here instead, against the real
 // cached branches, where a lost format breaks a test rather than a review.
 //
-// Skipped when .schema-cache is absent (a fresh clone before `npm test` seeds it).
-const CACHE = path.join(here, "..", "..", ".schema-cache");
+// Skipped when the real schema cache is absent - a fresh clone where no review has run from
+// the repo root yet (the test suite itself only seeds a throwaway cache).
+const CACHE = path.join(here, "..", "..", DEFAULT_CACHE);
 const branches = ["release-mv2", "release-mv3"].filter((b) =>
   fs.existsSync(path.join(CACHE, `webext-annotated-schemas-${b}.zip`))
 );
 
 test("the real schema still types these manifest keys as packaged paths", (t) => {
   if (!branches.length) {
-    t.skip("no .schema-cache - run tests/seed-caches.js or npm test");
+    t.skip(`no ${DEFAULT_CACHE} - run a review from the repo root first`);
     return;
   }
   // One entry per SHAPE the walk has to descend, not an exhaustive list: a size map

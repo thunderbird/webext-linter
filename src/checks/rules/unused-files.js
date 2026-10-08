@@ -63,6 +63,9 @@ const WEBEXT_MANIFEST = "manifest.json";
 // separately via ARCHIVE_EXTENSIONS (shared with the loader / committed-build-artifact).
 const JUNK = [
   /(^|\/)\.[^/]+(\/|$)/, // a dotfile/dotdir segment (.git/, .DS_Store, .vscode/)
+  // This linter's own download cache (CACHE_ROOT), left behind by a run in the add-on
+  // folder. Visible on purpose, so the dotdir rule above no longer catches it.
+  /(^|\/)WEBEXT-LINTER-CACHE(\/|$)/,
   /(^|\/)(Thumbs\.db|__MACOSX(\/|$))/i,
   /~$/, // editor backups
   /\.(map|orig|bak|swp|tmp)$/i,

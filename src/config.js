@@ -3,8 +3,24 @@
 // modules. CLI flags override the defaults at runtime. The toggles have no flag
 // and are changed here, where each records why it has its value.
 
+import path from "node:path";
+
+/**
+ * The one folder every download is cached under, beside wherever the linter runs. Visible
+ * and upper case on purpose: it is not the add-on's, and a developer packing their add-on
+ * folder should see it there and leave it out - a hidden one ended up inside XPIs.
+ */
+export const CACHE_ROOT = "WEBEXT-LINTER-CACHE";
+
+/**
+ * How old a cached download may be, in days, before it is downloaded again. Each upstream
+ * moves - a Thunderbird release, an Experiment approved, a library release added - and a
+ * cache that never refreshed would review against what was true when it was filled.
+ */
+export const CACHE_MAX_AGE_DAYS = 1;
+
 /** Directory where fetched schema zips are cached (--cache-schema-dir default). */
-export const DEFAULT_CACHE = ".schema-cache";
+export const DEFAULT_CACHE = path.join(CACHE_ROOT, "schema");
 
 /**
  * The upstream repository of allowed Thunderbird Experiments. An add-on that
@@ -19,7 +35,7 @@ export const EXPERIMENTS_BRANCH = "main";
 /**
  * Directory where the fetched experiments zip is cached (--cache-experiments-dir).
  */
-export const EXPERIMENTS_CACHE = ".experiments-cache";
+export const EXPERIMENTS_CACHE = path.join(CACHE_ROOT, "experiments");
 
 /**
  * The upstream known-library hash database: Mozilla dispensary's generated
@@ -36,7 +52,7 @@ export const LIBRARY_HASHES_URL =
  * "Mozilla dispensary hashes.txt" description; the user-facing --cache-* flag is
  * the discoverable label, mapped to the internal opts once, in cli.js.
  */
-export const LIBRARY_HASHES_CACHE = ".lib-mozilla-hash-db-cache";
+export const LIBRARY_HASHES_CACHE = path.join(CACHE_ROOT, "mozilla-hash-db");
 
 /**
  * Timeout for the MANDATORY setup downloads that back the caches above - the schema
@@ -64,7 +80,7 @@ export const CONTROL_TIMEOUT_MS = 5000;
 export const CDN_LOOKUP_URL = "https://data.jsdelivr.com/v1/lookup/hash/";
 
 /** Directory where CDN hash-lookup results are cached (--cache-cdn-lookup-dir). */
-export const CDN_LOOKUP_CACHE = ".lib-cdn-lookup-cache";
+export const CDN_LOOKUP_CACHE = path.join(CACHE_ROOT, "cdn-lookup");
 
 /**
  * Minimum size (bytes) for a READABLE file to earn a CDN identification attempt - a

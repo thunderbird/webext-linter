@@ -12,7 +12,7 @@ import AdmZip from "adm-zip";
 
 import {
   selectSchemaChannel,
-  schemaSnapshotIsStale,
+  schemaCacheIsStale,
   detectManifestVersion,
   peekBranchMajor,
   resolveReviewSchema,
@@ -245,26 +245,30 @@ test("peekBranchMajor: missing / corrupt zip → null, never throws", () => {
   }
 });
 
-// A channel branch is a moving target, so a cached zip is a snapshot that goes stale the
-// moment Thunderbird ships. It only MATTERS when the add-on's cap reaches past every
-// cached train: the schema then cannot know the APIs in between, and a call to one is
-// reported as unknown instead of as needing a newer strict_min_version. The age test is
-// what stops every uncapped add-on from re-downloading six zips on every run.
-test("a schema snapshot is stale only when the add-on outreaches it AND it is old", () => {
-  const stale = (cap, newest, ageDays) =>
-    schemaSnapshotIsStale({ cap, newest, ageDays });
-  // The case from a real run: capped at 157, newest cached train 153, snapshot 2 months old.
-  assert.equal(stale(157, 153, 62), true);
-  // Fresh enough to be the current train, however far the add-on reaches.
-  assert.equal(stale(157, 153, 0.5), false);
-  assert.equal(stale(Infinity, 153, 0.5), false);
-  // Within the cached trains: the schema describes it, so age does not matter.
-  assert.equal(stale(152, 153, 999), false);
-  assert.equal(stale(153, 153, 999), false);
-  // No cap at all reads as reaching past everything, so only age holds it back.
-  assert.equal(stale(Infinity, 153, 2), true);
-  // An unreadable cache (age Infinity) asks to be refreshed only when the add-on also
-  // outreaches the cached trains.
-  assert.equal(stale(140, 153, Infinity), false);
-  assert.equal(stale(Infinity, 153, Infinity), true);
+// A channel branch is a moving target, so a cached zip is a snapshot that goes stale as
+// Thunderbird ships - whatever the add-on's cap. All six are refreshed once ANY of them is
+// older than a day: a refresh writes them one after another, and one that stopped part-way
+// must not leave an old branch looking fresh beside new ones.
+test("the schema cache is stale once any branch is older than a day", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "schema-age-"));
+  try {
+    const now = Date.now();
+    const at = (ms) => new Date(ms);
+    for (const branch of allSchemaBranches()) {
+      fs.writeFileSync(cachedZipPath(dir, branch), "zip");
+    }
+    assert.equal(schemaCacheIsStale(dir, now), false, "all fresh");
+
+    // One branch two days old, five fresh: stale.
+    const [first] = allSchemaBranches();
+    const twoDaysAgo = now - 2 * 86400000;
+    fs.utimesSync(cachedZipPath(dir, first), at(twoDaysAgo), at(twoDaysAgo));
+    assert.equal(schemaCacheIsStale(dir, now), true, "one old branch");
+
+    // Missing counts as stale too.
+    fs.rmSync(cachedZipPath(dir, first));
+    assert.equal(schemaCacheIsStale(dir, now), true, "one missing branch");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

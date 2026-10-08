@@ -783,3 +783,49 @@ test("resolveCdnLibraries propagates no network and no answer, but not one faile
   const tag = other.bundled.classified.find((c) => c.file === "app/lib.min.js");
   assert.equal(tag?.cdn ?? null, null); // no match, no abort
 });
+
+// A miss is kept for a day only: a file absent from jsDelivr today can be published
+// tomorrow. A hit is kept for good, since a file hash names one release.
+test("a cached miss is asked again after a day, a hit never is", async () => {
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const now = Date.now();
+  const lookups = async (entry) => {
+    const cacheDir = tmpCacheDir();
+    const addon = classify(addonWith({ "x.min.js": MINIFIED }));
+    const hash = rawSha256(addon.files.get("x.min.js"));
+    fs.writeFileSync(
+      path.join(cacheDir, "jsdelivr-hash-lookup.json"),
+      JSON.stringify({ [hash]: entry })
+    );
+    const net = netFor(new Map());
+    await resolveCdnLibraries(addon, { net, cacheDir });
+    const written = JSON.parse(
+      fs.readFileSync(path.join(cacheDir, "jsdelivr-hash-lookup.json"), "utf8")
+    )[hash];
+    return { asked: net.lookupCalls.length, written };
+  };
+
+  assert.equal(
+    (await lookups({ missedAt: now - 3600000 })).asked,
+    0,
+    "recent miss"
+  );
+  const old = await lookups({ missedAt: now - 2 * 86400000 });
+  assert.equal(old.asked, 1, "a miss older than a day is asked again");
+  assert.ok(
+    Number.isFinite(old.written.missedAt),
+    "and recorded with its time"
+  );
+  assert.equal(
+    (await lookups(null)).asked,
+    1,
+    "a legacy bare miss is asked again"
+  );
+  assert.equal(
+    (await lookups({ missedAt: now + 2 * 86400000 })).asked,
+    1,
+    "a miss dated in the future is not trusted"
+  );
+  const hit = { type: "npm", name: "lib", version: "1.0.0", file: "/x.min.js" };
+  assert.equal((await lookups(hit)).asked, 0, "a hit is never asked again");
+});

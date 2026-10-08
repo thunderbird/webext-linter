@@ -7,4 +7,4 @@ README.md
 # Generated / vendored.
 tests/golden/
 node_modules/
-.schema-cache/
+WEBEXT-LINTER-CACHE/

@@ -8,6 +8,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { setNetworkPacing } from "../../src/util/net.js";
+import { DAY_MS } from "../../src/util/cache-age.js";
 import {
   parseLibraryHashes,
   resolveLibraryHashes,
@@ -63,6 +65,64 @@ test("resolveLibraryHashes reads a pre-seeded cache without touching the network
   assert.match(text, /lib\.1\.0\.0/);
   assert.equal(source, "cache");
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+/** globalThis.fetch answering with `respond()` for the length of the test. */
+function fetching(t, respond) {
+  setNetworkPacing({ intervalMs: 0, backoffMs: 0, maxWaitMs: 0 });
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => respond();
+  t.after(() => {
+    globalThis.fetch = real;
+  });
+}
+
+// The DB gains library releases upstream, so a copy older than a day is downloaded again
+// - and one that gets no answer ends the review rather than being used stale.
+test("resolveLibraryHashes downloads a cache older than a day again", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "libhash-old-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cached = path.join(dir, "dispensary-hashes.txt");
+  fs.writeFileSync(cached, `${H} lib.1.0.0.lib.js\n`);
+  const old = new Date(Date.now() - 2 * DAY_MS);
+  fs.utimesSync(cached, old, old);
+
+  fetching(t, () => new Response(`${H} lib.2.0.0.lib.js\n`, { status: 200 }));
+  const { text, source } = await resolveLibraryHashes({ cacheDir: dir });
+  assert.equal(source, "download");
+  assert.match(text, /lib\.2\.0\.0/);
+  assert.match(
+    fs.readFileSync(cached, "utf8"),
+    /lib\.2\.0\.0/,
+    "cache rewritten"
+  );
+});
+
+test("a stale hash DB whose refresh gets no answer is not used", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "libhash-noans-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cached = path.join(dir, "dispensary-hashes.txt");
+  fs.writeFileSync(cached, `${H} lib.1.0.0.lib.js\n`);
+  const old = new Date(Date.now() - 2 * DAY_MS);
+  fs.utimesSync(cached, old, old);
+
+  fetching(t, () => new Response("", { status: 503 }));
+  await assert.rejects(resolveLibraryHashes({ cacheDir: dir }));
+});
+
+// A fresh cache is used without a request: any fetch here fails the test.
+test("a fresh hash DB is used without a request", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "libhash-fresh-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(
+    path.join(dir, "dispensary-hashes.txt"),
+    `${H} lib.1.0.0.lib.js\n`
+  );
+  fetching(t, () => {
+    throw new Error("network attempted");
+  });
+  const { source } = await resolveLibraryHashes({ cacheDir: dir });
+  assert.equal(source, "cache");
 });
 
 // A partial/corrupt cached DB must not be used: it would silently review a real

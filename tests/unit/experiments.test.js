@@ -28,6 +28,12 @@ import experimentOverridesApi from "../../src/checks/rules/experiment-overrides-
 import experimentNotAllowed from "../../src/checks/rules/experiment-not-allowed.js";
 import experimentModified from "../../src/checks/rules/experiment-modified.js";
 import { seedFixtureCache } from "../seed-caches.js";
+import {
+  resolveExperimentsZip,
+  cachedExperimentsPath,
+} from "../../src/experiments/fetch.js";
+import { setNetworkPacing } from "../../src/util/net.js";
+import { DAY_MS } from "../../src/util/cache-age.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const EXPERIMENTS_FIXTURE = path.join(here, "..", "experiments-fixture");
@@ -522,4 +528,35 @@ test("experiment-modified flags only modified groups", () => {
   assert.equal(out[0].item, "calendar");
   // The group's own key, not the block it sits in.
   assert.deepEqual(out[0].loc, { line: 3 });
+});
+
+// The allowed list moves upstream - an Experiment approved, one withdrawn - so a cached copy
+// older than a day is downloaded again before it is used, and a fresh one is used as is.
+test("resolveExperimentsZip downloads a list older than a day again", async (t) => {
+  setNetworkPacing({ intervalMs: 0, backoffMs: 0, maxWaitMs: 0 });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exp-age-"));
+  const real = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = real;
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const cached = cachedExperimentsPath(dir, "main");
+  fs.writeFileSync(cached, "old zip");
+
+  globalThis.fetch = async () => {
+    throw new Error("network attempted");
+  };
+  const fresh = await resolveExperimentsZip({ branch: "main", cacheDir: dir });
+  assert.equal(
+    fresh.source,
+    "cache:main",
+    "a fresh copy is used without a request"
+  );
+
+  const old = new Date(Date.now() - 2 * DAY_MS);
+  fs.utimesSync(cached, old, old);
+  globalThis.fetch = async () => new Response("new zip", { status: 200 });
+  const stale = await resolveExperimentsZip({ branch: "main", cacheDir: dir });
+  assert.equal(stale.source, "download:main");
+  assert.equal(fs.readFileSync(cached, "utf8"), "new zip", "cache rewritten");
 });

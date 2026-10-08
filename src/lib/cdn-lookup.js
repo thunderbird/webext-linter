@@ -28,8 +28,10 @@
 // hit is deliberately name-agnostic: canonical packages often serve files named unlike
 // the package, e.g. pdf.mjs from pdfjs-dist.)
 //
-// Results (positive AND negative) are cached on disk so a repeat review of the same
-// bundle makes no request. With the lookup off, or an injected net with no fetchJson (the
+// Results are cached on disk so a repeat review of the same bundle makes no request. A hit
+// is kept for good: a file hash names one release, and that never changes. A miss is kept
+// for a day only (CACHE_MAX_AGE_DAYS), because a file absent from the CDN today can be
+// published tomorrow. With the lookup off, or an injected net with no fetchJson (the
 // golden harness), every tag is left untouched, so a minified file falls through to
 // minified-code and a readable one is scanned as authored source. A lookup jsDelivr does
 // not answer ends the review (src/util/net.js), like every other question the review asks
@@ -53,10 +55,12 @@ import { parseJson } from "../util/json.js";
 import { stripVersionSuffix } from "./util.js";
 
 import {
+  CACHE_MAX_AGE_DAYS,
   CDN_LOOKUP_URL,
   CDN_LOOKUP_CACHE,
   CDN_LOOKUP_READABLE_MIN_BYTES,
 } from "../config.js";
+import { DAY_MS } from "../util/cache-age.js";
 
 /** @typedef {import("../addon/load.js").Addon} Addon */
 /** @typedef {import("../vendor/verify.js").VendorNet} VendorNet */
@@ -136,18 +140,16 @@ export async function resolveCdnLibraries(
     const hash = rawSha256(buf);
 
     let hit;
-    if (Object.prototype.hasOwnProperty.call(cache, hash)) {
-      hit = cache[hash]; // cached result (a CdnHit, or null for a known miss)
-      if (
-        hit &&
-        (typeof hit.name !== "string" ||
-          typeof hit.version !== "string" ||
-          !hit.name ||
-          !hit.version)
-      ) {
-        hit = null; // a corrupt/foreign cache entry is treated as a miss
-      }
+    const entry = Object.prototype.hasOwnProperty.call(cache, hash)
+      ? cache[hash]
+      : undefined;
+    if (isCachedHit(entry)) {
+      hit = entry;
+    } else if (isFreshMiss(entry)) {
+      hit = null;
     } else {
+      // Not asked yet, a miss older than a day, or an entry this cache does not recognise
+      // (a legacy bare null, a corrupt or foreign value): asked again.
       const { state, hit: looked } = await lookupHash(net, hash);
       if (state === "error") {
         // A failure that says nothing about these bytes: do NOT cache it. Only a
@@ -155,7 +157,7 @@ export async function resolveCdnLibraries(
         continue;
       }
       hit = looked ?? null; // null for a confirmed 404 miss (JSON drops undefined)
-      cache[hash] = hit; // a CdnHit, or null
+      cache[hash] = hit ?? { missedAt: Date.now() };
       dirty = true;
     }
     if (!hit) {
@@ -324,7 +326,36 @@ async function lookupHash(net, hash) {
   }
 }
 
-/** The on-disk cache file: a `{ "<sha256>": CdnHit | null }` JSON map. */
+/**
+ * Whether a cache entry is a hit: a CdnHit naming a package and a version.
+ * @param {unknown} entry
+ * @returns {boolean}
+ */
+function isCachedHit(entry) {
+  return (
+    Boolean(entry) &&
+    typeof entry.name === "string" &&
+    typeof entry.version === "string" &&
+    entry.name !== "" &&
+    entry.version !== ""
+  );
+}
+
+/**
+ * Whether a cache entry is a miss recorded within the last CACHE_MAX_AGE_DAYS. A miss
+ * dated in the future is not trusted to be recent.
+ * @param {unknown} entry
+ * @param {number} [now]
+ * @returns {boolean}
+ */
+function isFreshMiss(entry, now = Date.now()) {
+  const at = entry?.missedAt;
+  return (
+    Number.isFinite(at) && at <= now && now - at <= CACHE_MAX_AGE_DAYS * DAY_MS
+  );
+}
+
+/** The on-disk cache file: a `{ "<sha256>": CdnHit | {missedAt: <ms>} }` JSON map. */
 function cacheFile(cacheDir) {
   return path.join(cacheDir, "jsdelivr-hash-lookup.json");
 }
@@ -332,7 +363,7 @@ function cacheFile(cacheDir) {
 /**
  * Load the hash->result cache, or an empty map when absent/corrupt.
  * @param {string} cacheDir
- * @returns {Record<string, CdnHit|null>}
+ * @returns {Record<string, CdnHit|{missedAt: number}>}
  */
 function loadCache(cacheDir) {
   try {
@@ -346,7 +377,8 @@ function loadCache(cacheDir) {
 /**
  * Persist the cache. Best-effort: a write failure is non-fatal (the lookups just
  * aren't cached for next run).
- * @param {string} cacheDir @param {Record<string, CdnHit|null>} cache
+ * @param {string} cacheDir
+ * @param {Record<string, CdnHit|{missedAt: number}>} cache
  */
 function saveCache(cacheDir, cache) {
   try {

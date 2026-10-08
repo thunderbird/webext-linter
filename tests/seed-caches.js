@@ -106,7 +106,7 @@ export function fixtureCacheOpts() {
   const dir = seedFixtureCache();
   // cdnLookupCache points at the same throwaway dir, NOT at the repo's real one. The CDN
   // identifier writes its results back, so a fixture that exercises it would otherwise
-  // pollute `.lib-cdn-lookup-cache` - and then PASS from that cache on the next run, which
+  // pollute the real CDN lookup cache - and then PASS from that cache on the next run, which
   // hides a defect in the lookup itself: a mutation that discarded every hit would
   // still pass, served from the poisoned cache.
   return {

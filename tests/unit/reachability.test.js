@@ -361,6 +361,8 @@ test("unused-files: junk + orphan are findings; mentioned -> escalation", () => 
     "manifest.json": JSON.stringify(manifest),
     "bg.js": `const n = "maybe.js";\nconsole.log(n);`,
     ".DS_Store": "",
+    // This linter's own download cache, left behind by a run in the add-on folder.
+    "WEBEXT-LINTER-CACHE/mozilla-hash-db/dispensary-hashes.txt": "x",
     "orphan.js": `console.log(1);`,
     "maybe.js": `console.log(2);`, // string-mentioned in bg.js -> ambiguous
     LICENSE: "MIT",
@@ -378,6 +380,12 @@ test("unused-files: junk + orphan are findings; mentioned -> escalation", () => 
   const found = result.findings.map((f) => f.file);
   const manual = manualItems(result).map((m) => m.file);
   assert.ok(found.includes(".DS_Store"));
+  const cache = "WEBEXT-LINTER-CACHE/mozilla-hash-db/dispensary-hashes.txt";
+  assert.equal(
+    result.findings.find((f) => f.file === cache)?.severity,
+    null,
+    "the linter's cache folder is junk, like a dotdir"
+  );
   assert.ok(found.includes("orphan.js"));
   assert.equal(
     result.findings.find((f) => f.file === ".DS_Store").severity,
