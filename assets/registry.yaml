@@ -898,22 +898,66 @@ deterministic-phase:
 # must not fetch or execute code/resources from an UNDECLARED external source (a raw URL,
 # curl|sh, a git clone of an unpinned repo, a CDN, a postinstall hook) - only installing the
 # declared dependencies (npm ci from node_modules, importing a declared package) is allowed.
-# Nothing decides that from the files, so every build escalates and the reviewer reproduces
-# it: their attestation that the source produces the shipped XPI is what the SCA review rests
-# on. {{unresolvedBuildSteps}} names the steps the linter could not follow, in the manual
-# instructions.
+# Settled by the agent in `settle`, before anything is built: a build that reaches for an
+# undeclared source aborts the review there, so it is never run and never offered. A plain
+# review lists it under Extended Code Review, ahead of the two build questions below.
+# {{unresolvedBuildSteps}} names the steps the linter could not follow.
 - title: Build process review
   severity: error
   check: undeclared-build-source
   input: sca
+  settle-verbs: [reported, cleared]
+  review-early-exit: unreproducible-build
+  instructions-for-llm: |-
+    Read the build: package.json's scripts and every script, configuration file
+    and file they run. Report it if any step fetches or runs code or resources
+    from outside the dependencies declared in package.json/lock - a raw URL,
+    curl/wget, a git clone of an unpinned repo, a CDN, or an install hook that
+    downloads. Clear it only when you have accounted for every step.
+    {{unresolvedBuildSteps}}
   instructions-for-human: |-
-    Confirm by hand that the shipped XPI is produced by this source: reproduce the
-    build and compare the result against the submitted XPI. Confirm the build pulls
-    ONLY from the dependencies declared in package.json/lock - no remote code or
-    resources from a raw URL, curl/wget, a git clone of an unpinned repo, a CDN, or a
-    postinstall hook. {{unresolvedBuildSteps}}
+    Confirm the build pulls ONLY from the dependencies declared in
+    package.json/lock - no remote code or resources from a raw URL, curl/wget, a
+    git clone of an unpinned repo, a CDN, or a postinstall hook.
+    {{unresolvedBuildSteps}}
   response: |-
     The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
+
+# SCA only: the first of the two build questions, asked of every source review. Reproducing
+# the build is the reviewer's attestation that the shipped XPI comes from the source they
+# read, which is what an SCA review rests on - so a build that does not succeed aborts the
+# review before anyone is asked to install the XPI. Asked ALONE, in a phase of its own
+# (`asked-in: built`), after the build and before any other question. Declared before
+# build-reproduces-xpi, which is the order a plain review lists them in.
+- title: Build failure
+  severity: error
+  check: build-succeeds
+  input: sca
+  asked-in: built
+  review-early-exit: unreproducible-build
+  instructions-for-human: |-
+    Did the build succeed? Follow the build process from a clean copy of the
+    source archive, or read the build diff where the review wrote one. Clear
+    only if every step completed.
+  response: |-
+    The submitted source could not be built by following its build instructions, so the review cannot continue. Please make sure the instructions are complete and that the build succeeds from a clean copy of the submitted archive.
+
+# SCA only: the second build question, asked once the build succeeded (`asked-in:
+# reproduced`, after `built`). A build that does not reproduce the shipped XPI attests
+# nothing about it, so the review is aborted before anyone is asked to install it.
+- title: Build does not reproduce the XPI
+  severity: error
+  check: build-reproduces-xpi
+  input: sca
+  asked-in: reproduced
+  review-early-exit: unreproducible-build
+  instructions-for-human: |-
+    Does the built XPI reproduce the submitted XPI? Read the build diff where
+    the review wrote one, or compare your own build's result with the submitted
+    XPI. Clear only if they match. Files that differ only by what every build
+    changes (a timestamp, a build id) still match.
+  response: |-
+    The XPI built from the submitted source differs from the submitted XPI, so the review cannot continue. Please make sure the submitted XPI is built from exactly the submitted source, by the build instructions it contains.
 
 # Two rules about the SHAPE of a source-code submission, one per entry below. They were one
 # check while both said "you did not need to submit source", and they are two now because
@@ -1929,9 +1973,9 @@ verdict-intros:
 # written below, so two runs over one submission cannot disagree.
 #
 # What is withheld is not listed here and is not a property of these entries: it is every
-# to-do item a REVIEWER would have been asked (src/report/phases.js phaseNow - the same
-# predicate that decides the `ask` phase). The code-review sections stay, because reading
-# code is safe and is the evidence for the halt.
+# to-do item a REVIEWER would have been asked: a question by its section, or one that
+# carries the phase a person is asked it in (src/report/early-exit.js withoutQuestions). The
+# code-review sections stay, because reading code is safe and is the evidence for the halt.
 review-early-exit:
   intro: |-
     The review was not completed and the report is incomplete due to the following issues:
@@ -2061,7 +2105,7 @@ llm-phases:
   # forever), and the review ends with it.
   #
   # `intro` is EMPTY unless the steps alone would let the agent do work that is not its own.
-  # Two of the six earn text, and both for that reason.
+  # Two of the nine earn text, and both for that reason.
   phases:
     # Every sub-agent the review may need started, before anything else reads the add-on.
     # Named for what its steps DO, and NOT called `setup`: the pipeline has a setup of its
@@ -2253,23 +2297,54 @@ llm-phases:
             and to nothing else. Open it with one line saying the outcome: the build is identical, the build differs, or the build failed. Where it differs, list the files only one side has, give a unified diff for every text file whose content differs, and name every binary file that differs. Where the build failed, say which step failed and quote its error output. That file is the reviewer's: write what you found, never a verdict.
 
     # Hands the reviewer the Review Details block, once, before anything is put to them:
-    # what this review is, and where to read it while answering. Its own phase so it does
-    # not hang off one particular question phase. Not under --llm-skip-manual
-    # (`skip: llm-skip-manual`), where nothing is put to a reviewer, and not in a review
-    # that was aborted (`if-aborted`), whose closing hand-over carries the block anyway.
+    # what this review is, and where to read it while answering - the build diff among it.
+    # Its own phase so it does not hang off one particular question phase. Shown under
+    # --llm-skip-manual too, because the build questions after it are still asked there.
+    # Not in a review that was aborted (`skip: if-aborted`), whose closing hand-over
+    # carries the block anyway.
     - name: details
       # Asks about nothing in the review file: the block is its whole work.
       answer: none
       verbs: []
       intro: ""
       steps:
-        - skip: [llm-skip-manual, if-aborted]
+        - skip: if-aborted
           text: |-
             Wait for every agent you spawned to come back, then give the reviewer this block before you put anything to them, under a "Review details" heading and otherwise exactly as it is written here:
 
             {{details}}
 
             It names what this review is and where to read it, and its links are written for their client to open. Write nothing of your own about it: no summary, no excerpt, no link of your own making. Where a path names a file another agent wrote, the reviewer reads it themselves, while you work.
+
+    # The two build questions, each in a phase of its own so it is put to the reviewer ALONE
+    # and before anything else: `ask` batches, and a reviewer must not be asked to install
+    # an XPI in the same breath as being asked whether the source reproduces it. Only the
+    # cases of a check naming the phase (`asked-in`) open here, so neither appears in an XPI
+    # review. Asked under --llm-skip-manual too: they decide whether the review goes on,
+    # which is not what that flag withholds. A "no" aborts the review, so `reproduced` is
+    # never asked after a build that failed (`skip: if-aborted`), and neither is `ask`.
+    - name: built
+      # A person's own words, read like `ask`'s.
+      answer: words
+      verbs: []
+      intro: ""
+      steps:
+        - skip: if-aborted
+          text: |-
+            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Where they declined the build, it is the question they answer once they have built the add-on themselves. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+
+            Record what they answered in its "answer", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
+
+    - name: reproduced
+      answer: words
+      verbs: []
+      intro: ""
+      steps:
+        - skip: if-aborted
+          text: |-
+            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Where they declined the build, it is the question they answer once they have built the add-on themselves. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+
+            Record what they answered in its "answer", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
 
     # Puts what only a person can answer to a person. Intro EMPTY: today's two ask blocks say
     # where an entry came from, which is procedural - the agent relays both identically, and

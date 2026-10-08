@@ -1124,7 +1124,6 @@ export async function runPipeline(opts) {
         schema: schemaLines(meta, opts.schemaCache).join("\n"),
       },
       answers: {},
-      route: {},
       issued: [],
     };
   }

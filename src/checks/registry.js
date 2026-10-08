@@ -815,6 +815,21 @@ export class Registry {
   }
 
   /**
+   * The loop phase a check's question is put to a person in, where it is not `ask` - or
+   * null. A check names one when its question must be answered ALONE and before anything
+   * else is asked: a build that did not succeed, or did not reproduce the XPI, aborts the
+   * review before anyone is asked to install that XPI, so the question cannot wait in the
+   * batch beside those that would. assertAskedIn guarantees the phase exists, takes a
+   * person's words, and that the check asks a question at all.
+   * @param {string} ruleId
+   * @returns {?string}
+   */
+  askedIn(ruleId) {
+    const phase = this.checkEntry(ruleId)?.["asked-in"];
+    return typeof phase === "string" && phase !== "" ? phase : null;
+  }
+
+  /**
    * The wording an AGENT is handed for a ref of this rule: the check's
    * `instructions-for-llm`, or its `instructions` where one text serves either reader.
    *
@@ -1550,6 +1565,48 @@ function assertRegistry(registry, at, { partial = false } = {}) {
   assertScaPrompt(registry, at);
   assertChoices(registry, at);
   assertEarlyExit(registry, at);
+  assertAskedIn(registry, at);
+}
+
+/**
+ * Assert every `asked-in`: it names a loop phase that takes a person's words, and the check
+ * is a question only a person answers (Extended Manual Review - human wording alone). A
+ * phase that does not exist would route the case where nothing opens it; one an agent
+ * answers would hand a reviewer's question to a model; and a case an agent screens put to
+ * a person this way would be neither listed as a question nor dropped as one when the
+ * review is aborted.
+ * @param {Registry} registry @param {string} at
+ * @returns {void}
+ */
+export function assertAskedIn(registry, at) {
+  const phases = registry.doc["llm-phases"]?.phases ?? [];
+  for (const entry of registry.allEntries()) {
+    const name = entry["asked-in"];
+    if (name === undefined) {
+      continue;
+    }
+    const phase = phases.find((p) => p.name === name);
+    if (phase?.answer !== "words") {
+      throw new Error(
+        `Registry ${at}: "${stem(entry.check)}" is asked in \`${name}\`, which is not a ` +
+          "phase a person answers"
+      );
+    }
+    // The rule sectionFor applies, read off this entry rather than asked of the registry:
+    // asking would build its entry cache mid-load, before a caller can still edit the doc.
+    const authored = (key) =>
+      typeof entry[key] === "string" && entry[key] !== "";
+    if (
+      authored("instructions") ||
+      authored("instructions-for-llm") ||
+      !authored("instructions-for-human")
+    ) {
+      throw new Error(
+        `Registry ${at}: "${stem(entry.check)}" is asked in \`${name}\` but is not a ` +
+          "question only a person answers - it authors wording an agent is handed"
+      );
+    }
+  }
 }
 
 /**

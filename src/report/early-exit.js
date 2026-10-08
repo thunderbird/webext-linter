@@ -10,14 +10,13 @@
 // Two decisions, and they are deliberately separate. WHETHER to abort is the registry's:
 // a check names the reason it aborts a review (`review-early-exit`), and the report lists
 // those reasons. WHAT is withheld is not per-check at all: it is every to-do item a
-// REVIEWER would have been asked, which src/report/phases.js already answers for the
-// phase machine (phaseNow). Tying the second to the first would mean a table of items to
-// strip, maintained beside the table of checks that strip them, drifting apart.
+// REVIEWER would have been asked. Tying the second to the first would mean a table of
+// items to strip, maintained beside the table of checks that strip them, drifting apart.
 //
-// phaseNow, and NOT the section an item was filed under: a case the agent could not
-// settle is sent on to a reviewer KEEPING its section, so asking where it was filed would
-// leave it listed as reviewer work under a closing line saying nobody was asked. Where an
-// item is answered NOW is the question, and one function answers it for both readers.
+// Asked of the ITEM, and not only of the section it was filed under: a case the agent
+// could not settle is sent on to a reviewer KEEPING its section, so asking where it was
+// filed would leave it listed as reviewer work under a closing line saying nobody was
+// asked. The item carries where it is asked (`askedIn`, src/report/phases.js phaseOf).
 //
 // Read from BOTH renderers, which is why it lives here rather than in either: the plain
 // review applies it in src/pipeline.js, and the --llm-review loop asks it again on every
@@ -30,7 +29,7 @@
 // reviewer answers (-> src/report/order.js), and the wording (-> assets/registry.yaml).
 
 import { SEVERITY } from "./finding.js";
-import { phaseNow } from "./phases.js";
+import { isQuestion } from "./order.js";
 import { VERB, verbNamed } from "./verbs.js";
 
 /** @typedef {import("./finding.js").ManualItem} ManualItem */
@@ -157,17 +156,17 @@ export function earlyExitOf(ordered, answers, registry) {
  * left. The sweep list is untouched: reading code is safe, and what it turns up is the
  * evidence for the halt rather than work the halt makes pointless.
  *
- * Asked of the ORDERED review rather than the raw list, because "would a reviewer have
- * been asked this" is not answered by the section an item was filed under. A case the
- * agent could not settle is routed onward keeping its section, and only the route says so.
+ * A reviewer would have been asked an item that is a question by its section, or that
+ * names the phase a person is asked it in (`askedIn`): a check that asks its question in
+ * a phase of its own, or a case the agent sent on to a reviewer while it keeps the section
+ * it was filed under. Both are facts about the item itself, so this answers the same
+ * whichever ordering it is handed - including one taken after verdicts renumbered the
+ * review.
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
- * @param {import("./state.js").LoopState} [state]  Carries the route. Absent for a review
- *   with no agent in it, where nothing has been routed and every item starts where it
- *   stays.
  * @returns {ManualItem[]}
  */
-export function withoutQuestions(ordered, state = {}) {
+export function withoutQuestions(ordered) {
   return ordered
-    .filter((x) => x.kind === "todo" && phaseNow(x, state) !== "ask")
+    .filter((x) => x.kind === "todo" && !isQuestion(x) && !x.target?.askedIn)
     .map((x) => x.target);
 }

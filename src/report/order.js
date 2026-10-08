@@ -88,21 +88,20 @@ function bucketOf(m) {
 const TODO_SECTIONS = Object.freeze(["code", "extendedManual", "standard"]);
 
 /** The to-do sections a person answers, as opposed to the ones settled by reading the
- *  add-on. It has ONE reader, `isQuestion` below, and through it decides the phase an item
- *  starts in. They are the LAST sections TODO_SECTIONS numbers, which is what makes
+ *  add-on. It has ONE reader, `isQuestion` below. They are the LAST sections TODO_SECTIONS numbers, which is what makes
  *  omitting them truncate the numbering rather than punch a hole in it. */
 const MANUAL_SECTIONS = Object.freeze(["extendedManual", "standard"]);
 
 /**
  * Whether this ordered entry is a question only a REVIEWER can answer, as opposed to a
- * case settled by reading the add-on. It decides ONE thing: which phase an item starts in
- * (src/report/phases.js phaseOf).
+ * case settled by reading the add-on - by the section it was filed under. It decides where
+ * an item opens when nothing else says (src/report/phases.js phaseOf), and which to-do
+ * items an aborted review drops (src/report/early-exit.js withoutQuestions).
  *
- * Where an item STARTS, never where it is now. The `ask` verdict sends a case on to a
- * reviewer without changing the section it was filed under, so anything asking "is a
- * person answering this" reads the item's current phase instead (phases.js phaseNow) -
- * which is what the file a phase hands out and the answer it takes back are both built
- * from.
+ * Not the whole answer to "is a person answering this". The `ask` verdict sends a case on
+ * to a reviewer without changing the section it was filed under, and a check can ask its
+ * question in a phase of its own: both are carried on the item (`askedIn`), which is what
+ * anything asking that reads (phases.js phaseOf).
  * @param {OrderedItem} x
  * @returns {boolean}
  */

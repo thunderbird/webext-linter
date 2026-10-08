@@ -17,7 +17,14 @@ import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
  *
  * A finding is a claim the linter proved, so it is audited. A code-review case is one a
  * check could not settle, so it is settled. A question is one only a person can answer.
- * Nothing else decides it - not a flag, not the run's shape, and never the case itself.
+ *
+ * A to-do item can name the phase a person is asked it in (`askedIn`), and then it opens
+ * there. Two things write that, both onto the item itself: its check, which asks its
+ * question in a phase of its own (`asked-in`, stamped when the item is rendered), and the
+ * agent's `ask` verdict, which sends a case it could not settle on to a reviewer (stamped
+ * when the hand-back is accepted). Carried BY the item rather than kept beside it by
+ * number, so nothing that renumbers the review - a sweep adding cases, a verdict removing
+ * one - can point a route at the wrong case.
  * @param {import("./order.js").OrderedItem} item
  * @returns {string}
  */
@@ -25,21 +32,7 @@ export function phaseOf(item) {
   if (item.kind === "finding") {
     return "verify";
   }
-  return isQuestion(item) ? "ask" : "settle";
-}
-
-/**
- * Where an item is open NOW: its route when a verdict moved it, its kind otherwise.
- *
- * Only one verdict moves an item - `ask`, which sends a case the agent could not settle on
- * to the reviewer - and it keeps its index when it does, so the question a person is asked
- * is addressable by the same number the agent saw.
- * @param {import("./order.js").OrderedItem} item
- * @param {import("./state.js").LoopState} state
- * @returns {string}
- */
-export function phaseNow(item, state) {
-  return state.route?.[String(item.index)] ?? phaseOf(item);
+  return item.target?.askedIn ?? (isQuestion(item) ? "ask" : "settle");
 }
 
 /**
@@ -173,7 +166,5 @@ export function openIn(phaseName, ordered, state, { skip = [] } = {}) {
   if (phaseName === "ask" && skip.includes("llm-skip-manual")) {
     return [];
   }
-  return ordered.filter(
-    (x) => isOpen(x, state) && phaseNow(x, state) === phaseName
-  );
+  return ordered.filter((x) => isOpen(x, state) && phaseOf(x) === phaseName);
 }

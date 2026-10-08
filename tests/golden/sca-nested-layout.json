@@ -70,6 +70,8 @@
       "sca-invalid-symlink",
       "build-lifecycle-hook",
       "undeclared-build-source",
+      "build-succeeds",
+      "build-reproduces-xpi",
       "sca-xpi-declares-vendoring",
       "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",

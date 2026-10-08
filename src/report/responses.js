@@ -193,6 +193,9 @@ export function renderManualItems(refs, registry, mode) {
       // nothing. Carried on the item so the phase handing it over reads it here rather
       // than looking the check up again.
       settleVerbs: registry.settleVerbsFor(ref.ruleId),
+      // The phase a person is asked this in, where its check names one of its own. Carried
+      // on the item so routing reads the case, never a number that a renumbering can move.
+      askedIn: registry.askedIn(ref.ruleId),
       // The slot values behind {{name}} in the texts above. Kept so a REPORTED case
       // can be re-resolved as a finding from the same inputs (src/report/verdicts.js)
       // rather than from the already-rendered prose.

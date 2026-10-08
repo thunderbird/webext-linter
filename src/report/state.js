@@ -55,8 +55,6 @@ export const REVIEW_SUFFIX = ".review.json";
  * @property {string[]} issued  Every phase that has gone out, in order. What the final
  *   prompt reads to know whether a link was already handed over.
  * @property {Object<string, *>} answers  index -> what came back, once it is settled.
- * @property {Object<string, string>} route  index -> the phase it is open in NOW, when a
- *   verdict moved it. Absent means the phase its kind routes it to.
  * @property {?object[]} sweep  Everything the sweeping agents found, read back off their
  *   own answer files and already resolved to the check and the artifact each belongs to
  *   (src/report/sweep-files.js). Null where no tree was asked, which is not the same as
@@ -119,5 +117,8 @@ export function readState(file) {
  *  where reading it would find every sweep unanswered. Version 10 adds the build phase,
  *  which reads `paths.buildCopy` and `paths.buildDiff`. Version 11 names each skip in
  *  `run.skip` by its full flag (`llm-skip-manual`), the way the registry's `skip:` markers
- *  now do - a v10 file's short names would match no step. */
-export const STATE_VERSION = 11;
+ *  now do - a v10 file's short names would match no step. Version 12 carries where a
+ *  to-do item is asked on the item itself (`askedIn`), set by its check or by the agent's
+ *  `ask` verdict, instead of in a `route` map keyed by index - a v11 file's routes would be
+ *  read by nothing. */
+export const STATE_VERSION = 12;

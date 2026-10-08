@@ -291,6 +291,10 @@ export function sortFindings(findings) {
  *   a check whose question only a person can answer.
  * @property {string[]|null} [settleVerbs]  Which answers an agent is offered for this
  *   case, or null where the owning check narrows nothing and its phase's own verbs stand.
+ * @property {string|null} [askedIn]  The loop phase a person is asked this in, where it is
+ *   not the one its section opens in (src/report/phases.js phaseOf): its check's
+ *   `asked-in`, stamped when the item is rendered, or "ask" once the agent sent the case
+ *   on to a reviewer. Null otherwise.
  * @property {string|null} [response]  Developer-facing wording (the registry
  *   `response`), printed under the instructions in the report; null when none.
  * @property {Record<string, string|number>|null} [data]  The slot values the item's

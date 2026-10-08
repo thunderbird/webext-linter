@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { stepsOf } from "../../src/report/phases.js";
 import {
   loadRegistry,
+  assertAskedIn,
   assertPhases,
   assertEntries,
   assertRequiredSections,
@@ -248,6 +249,8 @@ test("a phase declares the kind of answer its entries take", () => {
       ["settle", "verdict", 3],
       ["build", "none", 0],
       ["details", "none", 0],
+      ["built", "words", 0],
+      ["reproduced", "words", 0],
       ["ask", "words", 0],
       ["close", "end", 0],
     ]
@@ -384,4 +387,31 @@ test("a skip value is a flag or the review's state, alone or in a list", () => {
   assert.equal(build.steps[0].run, "sca");
   const ask = loaded.find((p) => p.name === "ask");
   assert.deepEqual(ask.steps[0].skip, ["llm-skip-manual", "if-aborted"]);
+});
+
+// A check asked in a phase of its own names one a PERSON answers, and is itself a question
+// only a person answers: a phase that does not exist would route its case where nothing
+// opens it, one an agent answers would hand a reviewer's question to a model, and a case an
+// agent screens would be neither listed as a question nor dropped as one on an abort.
+test("asked-in names a phase a person answers, on a question only a person answers", () => {
+  // The raw entry in the document: allEntries hands out copies.
+  const entry = (r) =>
+    r.doc["deterministic-phase"].find((e) => e.check === "build-succeeds");
+  assertAskedIn(fresh(), "t.yaml");
+
+  for (const [phase, refusal] of [
+    ["builds", /is asked in `builds`, which is not a phase a person answers/],
+    ["settle", /is asked in `settle`, which is not a phase a person answers/],
+  ]) {
+    const wrong = fresh();
+    entry(wrong)["asked-in"] = phase;
+    assert.throws(() => assertAskedIn(wrong, "t.yaml"), refusal, phase);
+  }
+
+  const screened = fresh();
+  entry(screened)["instructions-for-llm"] = "read the build log";
+  assert.throws(
+    () => assertAskedIn(screened, "t.yaml"),
+    /is not a question only a person answers/
+  );
 });

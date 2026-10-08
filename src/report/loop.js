@@ -9,7 +9,7 @@
 // state + review file` is a pure file-to-file transformation, and so is `state -> report`.
 // That is what makes this half of the tool testable without talking to an agent.
 import { orderReview } from "./order.js";
-import { nextPhase, openIn, phaseNow, stepsOf } from "./phases.js";
+import { nextPhase, openIn, phaseOf, stepsOf } from "./phases.js";
 import { earlyExitOf, withoutQuestions } from "./early-exit.js";
 import {
   HandbackRefused,
@@ -35,7 +35,7 @@ import {
   locusLabeler,
   summaryBodyLines,
 } from "./format.js";
-import { applyVerdicts } from "./verdicts.js";
+import { applyVerdicts, pickedChoice } from "./verdicts.js";
 import { renderFindings } from "./responses.js";
 import { VERB } from "./verbs.js";
 import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
@@ -57,8 +57,61 @@ import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
  * @returns {{skip: string[], sca: boolean, halted: boolean}}
  */
 function runOf(state, ordered, registry) {
-  const halted = Boolean(earlyExitOf(ordered, state.answers ?? {}, registry));
+  const halted = Boolean(
+    earlyExitOf(ordered, verdictsOf(state, ordered, registry), registry)
+  );
   return { ...state.run, halted };
+}
+
+/**
+ * The answers recorded so far, each as the verdict it settles its item with.
+ *
+ * An agent's answer already IS a verdict. A person's is their words: the label they picked,
+ * read as the verdict the registry says it settles with (Clear, Report), or anything else
+ * they typed, which reports the case - the same reading applyVerdicts gives it once the
+ * review is settled (src/report/verdicts.js settleAnswer). Read here too, so that a person
+ * who reports a case that aborts the review aborts it on the very next pass, before
+ * anything further is put to them, rather than only in the closing report.
+ *
+ * Keyed on the RECORDED answers, never on open items: an answered item is not open. And
+ * nothing is validated here - an empty or overlong answer is refused when the review is
+ * settled, and refusing it on every pass instead would break a loop that has already
+ * accepted it.
+ * @param {import("./state.js").LoopState} state
+ * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
+ * @param {import("../checks/registry.js").Registry} registry
+ * @returns {Record<string, string>}
+ */
+function verdictsOf(state, ordered, registry) {
+  const answers = state.answers ?? {};
+  const asking = askedByPerson(registry);
+  const choices = registry.manualReviewChoices();
+  const out = { ...answers };
+  for (const x of ordered) {
+    const index = String(x.index);
+    if (index in answers && asking(x)) {
+      out[index] =
+        pickedChoice(answers[index], choices)?.verdict ?? String(VERB.reported);
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether a person answers this item: the phase it is open in takes their words. Read off
+ * the phase's answer kind rather than its name, so every phase that asks a person reads
+ * its answers the same way.
+ * @param {import("../checks/registry.js").Registry} registry
+ * @returns {(x: import("./order.js").OrderedItem) => boolean}
+ */
+function askedByPerson(registry) {
+  const words = new Set(
+    registry
+      .llmPhases()
+      .phases.filter((p) => p.answer === "words")
+      .map((p) => p.name)
+  );
+  return (x) => words.has(phaseOf(x));
 }
 
 /**
@@ -103,7 +156,7 @@ export function issue(state, stateFile, phases, registry) {
   // and another for the reviewer.
   const entries = ITEMLESS_ANSWERS.includes(phase.answer)
     ? []
-    : phaseEntries(state, registry, phase, run);
+    : phaseEntries(state, registry, phase, ordered, run);
   state.phase = phase.name;
   // The `details` phase hands the reviewer the Review Details block, and that block links
   // the report. Refresh the file first, so the link opens the review as it stands rather
@@ -193,13 +246,17 @@ export function accept(state, file, phases, registry) {
   // itemless phase asks about no entry at all - its work is what its steps do, and each
   // product lands in a file of its own - so what it hands out is empty and so must be what
   // comes back.
+  // The one ordering of this hand-back: what went out is read from it, and an answer that
+  // moves a case finds that case in it - so both name the same item by the same number.
+  const ordered = orderReview(state.report.findings, state.manual);
   const asked = ITEMLESS_ANSWERS.includes(phase.answer)
     ? []
     : phaseEntries(
         state,
         registry,
         phase,
-        runOf(state, orderReview(state.report.findings, state.manual), registry)
+        ordered,
+        runOf(state, ordered, registry)
       );
   const answers = answersOf(entries, asked, phase, (e) =>
     String(e.index ?? "undefined")
@@ -227,11 +284,12 @@ export function accept(state, file, phases, registry) {
     return { phase, answers };
   }
   state.answers ??= {};
-  state.route ??= {};
+  const byIndex = new Map(ordered.map((x) => [String(x.index), x]));
   for (const [index, value] of answers) {
     if (value === VERB.ask) {
-      // Not settled: moved. It keeps its index and opens in the phase that asks a person.
-      state.route[index] = "ask";
+      // Not settled: moved. The case itself carries where it is asked now (phaseOf), so a
+      // later pass that renumbers the review still finds it there.
+      byIndex.get(index).target.askedIn = "ask";
     } else {
       // Written down as text, because the state is JSON. A verb spells itself; a person's
       // answer is already their own words.
@@ -254,10 +312,11 @@ export { HandbackRefused };
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
  * @param {{name: string, answer: string}} phase
+ * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered - the
+ *   caller's, so what it hands out and what it acts on are numbered alike.
  * @returns {object[]}
  */
-function phaseEntries(state, registry, phase, run) {
-  const ordered = orderReview(state.report.findings, state.manual);
+function phaseEntries(state, registry, phase, ordered, run) {
   const open = openIn(phase.name, ordered, state, run);
   if (open.length === 0) {
     return [];
@@ -347,10 +406,10 @@ export function settle(state, registry) {
     ),
     registry,
     labelOf,
-    // Who was asked is the PHASE's answer, not the item's: a case the agent sent on with
-    // `ask` is answered by a reviewer while keeping the section it was filed under, so
-    // reading that section would refuse the words they gave.
-    asking: (x) => phaseNow(x, state) === "ask",
+    // Who was asked is the PHASE's answer, not the item's section: a case the agent sent
+    // on with `ask` is answered by a reviewer while keeping the section it was filed
+    // under, so reading that section would refuse the words they gave.
+    asking: askedByPerson(registry),
   });
   // A reported case became a finding carrying only its locus and slots, so word it from
   // the registry like any other - the same text either way.
@@ -363,7 +422,7 @@ export function settle(state, registry) {
   // instead of listing work under a line saying the review did not finish.
   const ordered = orderReview(findings, state.manual);
   const earlyExit = earlyExitOf(ordered, {}, registry);
-  const manual = earlyExit ? withoutQuestions(ordered, state) : state.manual;
+  const manual = earlyExit ? withoutQuestions(ordered) : state.manual;
   return {
     applied,
     // Which hand-over text the last prompt carries. Telling an agent the review is

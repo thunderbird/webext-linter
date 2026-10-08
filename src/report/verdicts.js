@@ -86,9 +86,7 @@ function settleAnswer(answer, asked, index, choices) {
     }
     return { verdict: verbNamed(answer), note: null };
   }
-  const picked = choices.find(
-    (c) => c.label.toLowerCase() === answer.trim().toLowerCase()
-  );
+  const picked = pickedChoice(answer, choices);
   if (picked) {
     // The registry spells what each answer settles the item with; crossing it here is
     // what lets a reviewer's label and a verb be compared as the same kind of thing.
@@ -111,6 +109,19 @@ function settleAnswer(answer, asked, index, choices) {
     );
   }
   return { verdict: VERB.reported, note };
+}
+
+/**
+ * The answer a reviewer picked, matched by its label, or null when what they gave is their
+ * own words. One matching rule, shared with the loop's reading of an answer mid-review
+ * (src/report/loop.js verdictsOf), so the two cannot disagree about what was picked.
+ * @param {string} answer
+ * @param {{label: string, verdict: string}[]} choices
+ * @returns {?{label: string, verdict: string}}
+ */
+export function pickedChoice(answer, choices) {
+  const said = String(answer).trim().toLowerCase();
+  return choices.find((c) => c.label.toLowerCase() === said) ?? null;
 }
 
 /**

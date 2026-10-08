@@ -55,7 +55,9 @@ entry never offered are all refusals.
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
 | `build` | Source code review only: with the reviewer's consent, build the add-on in the agent's own sandbox and write how the result differs from the shipped XPI. | Nothing: the diff goes to a file of its own |
-| `details` | Hand the reviewer the Review Details block, before anything is put to them. Not under `--llm-skip-manual`. | Nothing: the block is its whole work |
+| `details` | Hand the reviewer the Review Details block, before anything is put to them. | Nothing: the block is its whole work |
+| `built` | Source code review only: ask the reviewer, alone, whether the build succeeded. | The reviewer's own answer |
+| `reproduced` | Source code review only: ask the reviewer, alone, whether the built XPI reproduces the submitted one. | The reviewer's own answer |
 | `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
 | `close` | The last phase, once nothing else has work: hand over the settled review. It opens on whether the review is settled or was aborted. | Nothing: the review ends with it |
 
@@ -65,7 +67,7 @@ mentions one, and a review that starts no sub-agent at all skips `spawn` and ope
 first phase that has any. The package itself is not unpacked by any of this: the linter extracts a packed
 submission before the first prompt is printed, and every phase reads that one folder.
 
-`build`, `details` and `ask` have one further condition: a review that was **aborted
+`build`, `details`, `built`, `reproduced` and `ask` have one further condition: a review that was **aborted
 early** never reaches them. Their steps carry `skip: if-aborted`, and a phase with no step
 left is not issued (`skip: if-not-aborted` is the opposite: the step prints only in a review
 that was aborted). A step's `skip:` takes one value or a list - a `--llm-skip-*` flag or one
@@ -75,7 +77,21 @@ check that can abort the review has had its say - including `build-lifecycle-hoo
 decides. The agent asks the reviewer before building, builds in a copy of the source
 archive, and writes the outcome to `BUILD_DIFF`: identical, differing (with the diff), or
 failed (with the failing step and its error). The linter judges none of it; the reviewer
-reads the diff while answering the questions.
+reads the diff to answer the two build questions.
+
+Before anything is built, the agent settles `undeclared-build-source` in `settle`: does any
+build step reach outside the declared dependencies? Reported, it aborts the review, so the
+build never runs and is never offered. After the build come the two build questions, each in
+a phase of its own so it is put to the reviewer ALONE and before anything else - `ask`
+batches, and nobody may be asked to install an XPI in the same breath as being asked whether
+the source reproduces it. `built` asks whether the build succeeded (`build-succeeds`), then
+`reproduced` whether its result matches the submitted XPI (`build-reproduces-xpi`); each
+check names its phase (`asked-in:` in the registry), and the case carries it. A "no" - Report,
+or the reviewer's own words - aborts the review: that case becomes its finding, the other
+build question and every `ask` question are dropped, and the report ends on "Build process
+issues". So a build that failed is never also reported as not reproducing the XPI. Both
+questions are asked under `--llm-skip-manual` too: they decide whether the review goes on,
+which is not what that flag withholds.
 
 
 ## When the review is aborted early
@@ -87,12 +103,13 @@ loop would do is ask a reviewer to **reproduce the build** - running that tree o
 machine, on the strength of a question the linter issued knowing better.
 
 A check declares that it aborts the review by naming the reason the report gives
-(`review-early-exit:` in the registry). Today twelve do, across three reasons: the four
+(`review-early-exit:` in the registry). Today fifteen do, across three reasons: the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
-names *disallowed library versions*, and the seven that decide a source submission cannot
+names *disallowed library versions*, and the ten that decide a source submission cannot
 be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
-`build-registry-redirect`, `lock-foreign-source` and `build-lifecycle-hook` - name *a build
+`build-registry-redirect`, `lock-foreign-source`, `build-lifecycle-hook`,
+`undeclared-build-source`, `build-succeeds` and `build-reproduces-xpi` - name *a build
 that cannot be reproduced*. The threshold is the finding's severity, so an advisory
 that lands as a warning aborts nothing.
 
@@ -328,5 +345,5 @@ too many formats for it to open, which is why that one extraction is the reader'
 | `--llm-verdict <file>` | Take a phase back and hand out the next, from the review file the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file beside this one. Normally run by the agent working through the review rather than by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
-| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted early, which takes them out. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
+| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted early, which takes them out. The two build questions are still asked. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
 | `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. No sweeping agent is spawned, and the sweep is not handed to the reviewer either. |

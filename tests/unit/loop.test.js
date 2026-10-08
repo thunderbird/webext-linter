@@ -16,6 +16,7 @@ import { REVIEW_MODE } from "../../src/lib/enum.js";
 import { ARTIFACT_SCA, ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 import { renderFindings } from "../../src/report/responses.js";
 import { STATE_VERSION, readState } from "../../src/report/state.js";
+import { orderReview } from "../../src/report/order.js";
 import { writeReportFile } from "../../src/report/report-file.js";
 import {
   issue,
@@ -271,7 +272,12 @@ test("a review runs spawn -> verify -> settle -> details -> ask and then settles
     4: "Clear",
     5: "Clear",
   });
-  assert.deepEqual(state.route, { 3: "ask" });
+  // Moved by the case itself, not by its number: the item carries where it is asked now.
+  const moved = state.manual.filter((m) => m.askedIn === "ask");
+  assert.deepEqual(
+    moved.map((m) => m.ruleId),
+    ["unknown-api"]
+  );
   assert.deepEqual(state.sweep, [], "both sweeps ran and found nothing");
 });
 
@@ -395,7 +401,8 @@ test("nothing to ask: the review settles after the last settle", () => {
   state.manual = state.manual.filter((m) => m.extended);
   // skip:manual drops only the questions. spawn is skipped too (nothing to start) - so
   // what this pins is that `ask` is not issued either, once it has nothing to put to
-  // anyone.
+  // anyone. The details block still goes out: the build questions it serves are asked
+  // under --llm-skip-manual too, and it does not ask which review it is.
   state.run = {
     skip: ["llm-skip-manual", "llm-skip-summary"],
     sca: false,
@@ -419,7 +426,7 @@ test("nothing to ask: the review settles after the last settle", () => {
       REGISTRY
     );
   }
-  assert.deepEqual(seen, ["verify", "settle"]);
+  assert.deepEqual(seen, ["verify", "settle", "details"]);
   assert.equal(
     issue(state, stateFile, PHASES, REGISTRY).phase.name,
     "close",
@@ -832,9 +839,10 @@ test("every combination of the skips issues exactly the phases it should", () =>
       ...(!skip.includes("llm-skip-summary") || sweeps ? ["spawn"] : []),
       "verify",
       "settle",
-      // The questions are the only thing `ask` is for, and the block `details` hands over
-      // is for answering them.
-      ...(skip.includes("llm-skip-manual") ? [] : ["details", "ask"]),
+      // The block `details` hands over goes out either way - the build questions it serves
+      // are asked under --llm-skip-manual too - and the questions are what `ask` is for.
+      "details",
+      ...(skip.includes("llm-skip-manual") ? [] : ["ask"]),
     ];
     const { seen, details } = phasesOf(state, stateFile);
     const where = `skips: ${skip.join(",") || "none"}`;
@@ -1082,8 +1090,8 @@ test("withdrawing the blocking findings puts the question block back", () => {
 });
 
 // The Review Details block goes out once, in a phase of its own, before the questions - and
-// not where nothing will be put to the reviewer: under --llm-skip-manual, or once the review
-// was aborted.
+// not once the review was aborted. --llm-skip-manual does not withhold it: the build
+// questions it serves are asked there too.
 test("the details block is handed over by its own phase, before the questions", () => {
   const blocks = (made) => {
     const shown = [];
@@ -1111,7 +1119,7 @@ test("the details block is handed over by its own phase, before the questions", 
 
   const skipped = review(tmp(), { sweep: false });
   skipped.state.run.skip = ["llm-skip-manual"];
-  assert.deepEqual(blocks(skipped), []);
+  assert.deepEqual(blocks(skipped), ["details"]);
 
   const aborted = blockingReview(tmp());
   const shown = [];
@@ -1165,8 +1173,8 @@ test("the closing phase opens on how the review ended, and takes nothing back", 
   );
 });
 
-// A review with nothing to do at all still closes: its first pass is the closing one.
-test("a review with no other work is closed on its first pass", () => {
+// A review with nothing else to do still closes, once the details block went out.
+test("a review with no other work closes right after the details block", () => {
   const { state, stateFile } = review(tmp(), {
     sweep: false,
     findings: false,
@@ -1174,6 +1182,15 @@ test("a review with no other work is closed on its first pass", () => {
     questions: false,
   });
   state.run = { skip: ["llm-skip-summary", "llm-skip-manual"], sca: false };
+  // The details block is all there is to hand over before it closes.
+  const first = issue(state, stateFile, PHASES, REGISTRY);
+  assert.equal(first.phase.name, "details");
+  accept(
+    state,
+    handBack(state, () => null),
+    PHASES,
+    REGISTRY
+  );
   const out = issue(state, stateFile, PHASES, REGISTRY);
   assert.equal(out.phase.name, "close");
   assert.ok(out.settled, "it carries the settled review");
@@ -1283,6 +1300,229 @@ function buildReview(dir) {
   made.state.paths.buildDiff = path.join(dir, "r.build-diff.md");
   return made;
 }
+
+/**
+ * The source review above, carrying the three build items every source review raises, as
+ * the pipeline renders them: undeclared-build-source for the agent to settle, and the two
+ * build questions, each naming the phase it is asked in (`asked-in`).
+ */
+function buildQuestionsReview(dir) {
+  const made = buildReview(dir);
+  const todo = (ruleId, extra) => ({
+    ruleId,
+    title: ruleId,
+    extended: true,
+    verdict: "error",
+    instructions: `${ruleId}?`,
+    file: null,
+    loc: null,
+    artifact: "SCA",
+    askedIn: REGISTRY.askedIn(ruleId),
+    ...extra,
+  });
+  made.state.paths.scaRoot = path.join(dir, "src");
+  made.state.manual.push(
+    todo("undeclared-build-source", {
+      section: "code-review",
+      llmInstructions: "read the build",
+      settleVerbs: ["reported", "cleared"],
+    }),
+    todo("build-succeeds", { section: "manual-review" }),
+    todo("build-reproduces-xpi", { section: "manual-review" })
+  );
+  return made;
+}
+
+/**
+ * Drive the loop to its close, answering each phase with `answer(phase, entry)`. Returns the
+ * phases issued, the rules each one handed out, and the settled review.
+ */
+function driveBuild(made, answer) {
+  const seen = [];
+  const handed = {};
+  let closing = null;
+  for (let pass = 0; pass < 12; pass++) {
+    const out = issue(made.state, made.stateFile, PHASES, REGISTRY);
+    if (out.phase.answer === "end") {
+      closing = out;
+      break;
+    }
+    seen.push(out.phase.name);
+    // Named at hand-out, while the numbers still mean what they meant to this pass.
+    handed[out.phase.name] = out.entries.map((e) => ruleAt(made, e.index));
+    accept(
+      made.state,
+      handBack(made.state, (e) => answer(out.phase.name, e)),
+      PHASES,
+      REGISTRY
+    );
+  }
+  return {
+    seen,
+    handed,
+    closing,
+    settled: settle(made.state, REGISTRY),
+  };
+}
+
+/** Every phase answered the way a review that goes on answers it. */
+const goesOn =
+  (overrides = {}) =>
+  (phase, e) =>
+    overrides[phase]?.(e) ??
+    (phase === "verify"
+      ? "withdrawn"
+      : phase === "settle"
+        ? "cleared"
+        : "Clear");
+
+/** The rule behind one ordered index in this review. */
+function ruleAt(made, index) {
+  const ordered = made.state.manual;
+  return orderReview(made.state.report.findings, ordered).find(
+    (x) => x.index === index
+  )?.target?.ruleId;
+}
+
+// The build questions come after the build, each in a phase of its own so it is put to the
+// reviewer ALONE: `ask` batches, and nobody may be asked to install an XPI beside the
+// question whether the source reproduces it. undeclared-build-source is settled before
+// anything is built.
+test("the two build questions are asked alone, after the build and before ask", () => {
+  const made = buildQuestionsReview(tmp());
+  const { seen, handed, settled } = driveBuild(made, goesOn());
+  assert.deepEqual(seen, [
+    "spawn",
+    "verify",
+    "settle",
+    "build",
+    "details",
+    "built",
+    "reproduced",
+    "ask",
+  ]);
+  assert.deepEqual(handed.built, ["build-succeeds"]);
+  assert.deepEqual(handed.reproduced, ["build-reproduces-xpi"]);
+  const asked = handed.ask;
+  assert.ok(!asked.includes("build-succeeds"), asked.join(", "));
+  assert.ok(!asked.includes("build-reproduces-xpi"), asked.join(", "));
+  assert.ok(
+    handed.settle.includes("undeclared-build-source"),
+    "the agent settles the build sources"
+  );
+  assert.equal(settled.earlyExit, false);
+});
+
+// A "no" to either build question aborts the review there: the case is its finding, the
+// questions still pending are never put, and the report ends on why. A build that failed
+// is never also asked whether it reproduces the XPI.
+test("a build question answered no aborts the review, and nothing after it is asked", () => {
+  for (const [phase, said, rule, skipped] of [
+    ["built", "Report", "build-succeeds", ["reproduced", "ask"]],
+    ["built", "npm run build fails", "build-succeeds", ["reproduced", "ask"]],
+    ["reproduced", "Report", "build-reproduces-xpi", ["ask"]],
+  ]) {
+    const made = buildQuestionsReview(tmp());
+    const { seen, closing, settled } = driveBuild(
+      made,
+      goesOn({ [phase]: () => said })
+    );
+    for (const later of skipped) {
+      assert.ok(!seen.includes(later), `${phase}/${said}: ${seen.join(", ")}`);
+    }
+    assert.equal(settled.earlyExit, true, `${phase}/${said}`);
+    assert.match(closing.steps[0].text, /^The review was aborted/);
+    assert.match(settled.report, /- Build process issues/);
+    assert.deepEqual(
+      settled.review.findings.map((f) => f.ruleId),
+      [rule],
+      `${phase}/${said}`
+    );
+    assert.deepEqual(
+      settled.review.meta.manualReview
+        .map((m) => m.ruleId)
+        .filter((id) => id.startsWith("build-")),
+      [],
+      "no build question is left listed"
+    );
+  }
+});
+
+// The agent reads the build before anything is built: a build reaching for an undeclared
+// source aborts the review in `settle`, so it is never run and never offered.
+test("undeclared build sources reported in settle abort the review before the build", () => {
+  const made = buildQuestionsReview(tmp());
+  const { seen, settled } = driveBuild(
+    made,
+    goesOn({
+      settle: (e) =>
+        ruleAt(made, e.index) === "undeclared-build-source"
+          ? "reported"
+          : "cleared",
+    })
+  );
+  assert.deepEqual(seen, ["spawn", "verify", "settle"]);
+  assert.equal(settled.earlyExit, true);
+  assert.deepEqual(
+    settled.review.findings.map((f) => f.ruleId),
+    ["undeclared-build-source"]
+  );
+});
+
+// --llm-skip-manual withholds the questions in `ask`, not the build questions: those decide
+// whether the review goes on at all.
+test("--llm-skip-manual still asks the build questions", () => {
+  const made = buildQuestionsReview(tmp());
+  made.state.run.skip = ["llm-skip-manual"];
+  const { seen } = driveBuild(made, goesOn());
+  assert.deepEqual(seen.slice(-3), ["details", "built", "reproduced"]);
+  assert.ok(!seen.includes("ask"), seen.join(", "));
+});
+
+// A case is routed by what it IS, not by its number: a sweep that files cases ahead of the
+// build questions renumbers the review, and each question still opens in its own phase.
+test("a renumbered review still asks each build question in its own phase", () => {
+  const made = buildQuestionsReview(tmp());
+  // Two cases filed ahead of everything, the way a sweep's escalations land in code review.
+  made.state.manual.unshift(
+    { ...made.state.manual[0], ruleId: "privacy-policy", instructions: "a" },
+    { ...made.state.manual[0], ruleId: "privacy-policy", instructions: "b" }
+  );
+  const { handed } = driveBuild(made, goesOn());
+  assert.deepEqual(handed.built, ["build-succeeds"]);
+  assert.deepEqual(handed.reproduced, ["build-reproduces-xpi"]);
+});
+
+// The agent's `ask` verdict moves the case itself. A verdict that removes an earlier item
+// renumbers the review before an abort decides what is dropped, and the routed case must
+// still be the one that goes - not whatever now holds its old number.
+test("a case sent on with ask is dropped by an abort even after a renumbering", () => {
+  const made = buildQuestionsReview(tmp());
+  made.state.manual.unshift({
+    ...made.state.manual[0],
+    ruleId: "unknown-api",
+    instructions: "cleared first",
+    settleVerbs: ["reported", "cleared", "ask"],
+  });
+  const { settled } = driveBuild(
+    made,
+    goesOn({
+      settle: (e) => {
+        const instr = made.state.manual.find(
+          (m) =>
+            orderReview(made.state.report.findings, made.state.manual).find(
+              (x) => x.index === e.index
+            )?.target === m
+        )?.instructions;
+        return instr === "settle me" ? "ask" : "cleared";
+      },
+      built: () => "Report",
+    })
+  );
+  assert.equal(settled.earlyExit, true);
+  const left = settled.review.meta.manualReview.map((m) => m.instructions);
+  assert.ok(!left.includes("settle me"), `routed case kept: ${left}`);
+});
 
 // Building runs the submission's own code, so it comes after `settle` has had its say on
 // every case that could abort the review, and before the questions the diff is read for.

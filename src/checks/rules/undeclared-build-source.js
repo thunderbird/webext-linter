@@ -2,14 +2,12 @@
 // Everything must ship in the source; the only allowed copy-in is installed libraries via
 // `npm ci` (from node_modules). A curl/wget/git-clone/CDN fetch is a reject.
 //
-// Nothing decides that from the files, so EVERY source-code submission raises this:
-// the reviewer reproduces the build by hand and confirms the shipped XPI comes from the
-// source they just read. That attestation is what the SCA review rests on - reviewing
-// readable source is only worth anything if the shipped bytes come from it, so a
-// submission documenting no build at all still has to be checked against the XPI. The
-// deterministic `unresolved` signals from collectBuildFiles (a network fetch, an
-// orchestrator the linter could not follow) ride along, so the entry names what could
-// not be followed.
+// Nothing decides that from the files, so EVERY source-code submission raises this, for
+// the agent to settle by reading the build before anything is built (or, with no agent, for
+// the reviewer). Whether the build then succeeds and reproduces the shipped XPI are two
+// questions of their own (build-succeeds, build-reproduces-xpi). The deterministic
+// `unresolved` signals from collectBuildFiles (a network fetch, an orchestrator the linter
+// could not follow) ride along, so the entry names what could not be followed.
 //
 // Belongs here: raising the escalation and the detail it carries. Does NOT
 // belong here: the analysis (-> src/build/analyze.js), the collection policy
@@ -76,7 +74,7 @@ function formatUnresolved(unresolved) {
     parts.length > 1
       ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`
       : parts[0];
-  // NOT "reproduce the build": the instruction this lands in opens by asking for exactly
-  // that, so what this adds is WHICH steps went unaccounted for.
+  // NOT "check the build": the instruction this lands in opens by asking for exactly that,
+  // so what this adds is WHICH steps went unaccounted for.
   return `The linter could not statically analyze part of the build (${listed}), so what it found may be incomplete - check those steps yourself.`;
 }

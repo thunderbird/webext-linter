@@ -24,21 +24,23 @@
       <p>
         The build files are collected once, up front, by the build analysis, in
         the setup phase over the build-relevant files (collected by following the package file,
-        so build output and tooling the build never runs are never sent). Nothing then says what
-        that build <em>does</em>: reproducing it is the reviewer's attestation that the shipped XPI
-        comes from the source they read, and no analysis substitutes for it. So this check emits no
-        finding of its own and escalates EVERY source-code submission to Extended Manual Review —
-        one whose source documents no build at all included, since the shipped bytes still have to
-        be accounted for.
+        so build output and tooling the build never runs are never sent). Nothing in them says
+        for certain what that build <em>does</em>, so this check emits no finding of its own and
+        escalates EVERY source-code submission - one whose source documents no build at all
+        included - for its build to be read: does any step reach outside the declared
+        dependencies?
       </p>
       <p>
-        What the analysis contributes is detail the reviewer reads with it: the steps it could not
-        statically follow (an opaque orchestrator, yarn or bun, a network fetch in a script) are named in the
-        escalation, and the entry anchors at the submission's own <code>package.json</code> where
-        there is one. Under <code>--llm-review</code> a source-code review's prompt also has its
-        reader spawn an agent that reports how to produce the release build for Thunderbird, so
-        the reviewer has the
-        steps in front of them — a report they work from, never a verdict on the build.
+        Under <code>--llm-review</code> the agent settles it in the <code>settle</code> phase,
+        before anything is built - so a build that reaches for an undeclared source is never
+        run and never offered to the reviewer. In a review with no agent it is listed under
+        Extended Code Review, the first build item on the to-do list. Whether the build then
+        succeeds, and whether it reproduces the shipped XPI, are two questions of their own
+        (<a href="build-succeeds.html">Build failure</a>,
+        <a href="build-reproduces-xpi.html">Build does not reproduce the XPI</a>). The steps the
+        analysis could not statically follow (an opaque orchestrator, yarn or bun, a network
+        fetch in a script) are named in the entry, which anchors at the submission's own
+        <code>package.json</code> where there is one.
       </p>
 
       <h2>Decision flow</h2>
@@ -47,29 +49,33 @@
 flowchart TD
   A["Build files<br/>(build analysis, setup phase)"] --> B{"a source-code<br/>submission?"}
   B -- no --> OK([nothing to review<br/>— an XPI submission has no build])
-  B -- yes --> M([escalate to extended manual review:<br/>the reviewer reproduces the build<br/>and compares it against the shipped XPI])
-  A --> D["steps the linter could not follow<br/>ride along with the escalation"]
+  B -- yes --> M{"does any build step reach outside<br/>the declared dependencies?<br/>(agent in settle, or the reviewer)"}
+  A --> D["steps the linter could not follow<br/>ride along with the entry"]
   D --> M
+  M -- no --> CL([cleared: the build may run])
+  M -- yes --> ERR([ERROR: undeclared build source<br/>the review is aborted, nothing is built])
 
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   class OK ok;
+  class CL ok;
   class M manual;
+  class ERR err;
         </pre>
       </div>
 
       <div class="outcome">
         <strong>When it fires</strong>
-        Every source-code submission is escalated to Extended Manual Review, where a reviewer
-        reproduces the build by hand and confirms that it produces the shipped XPI and pulls only
-        from the declared dependencies. Where they find it does not, the add-on is told that every
-        part of the build must come only from the dependencies declared in the package file and lock
-        file.
+        The add-on is told that every part of the build must come only from the dependencies
+        declared in the package file and lock file, never from a remote source.
+      </div>
 
-        One thing withholds it: a review that was aborted early never puts this to anyone. This is
-        the escalation that halt exists for - asking a reviewer to reproduce a build from a
-        dependency tree the same review has already rejected is the thing it prevents - so the
-        check still escalates and the report simply does not carry it.
+      <div class="outcome">
+        <strong>It aborts the review</strong>
+        A build that reaches for an undeclared source settles the submission on its own:
+        nothing is built, nothing further is put to a reviewer, and the developer&rsquo;s text
+        ends on the reason it is incomplete (&ldquo;Build process issues&rdquo;).
       </div>
 
       <p class="source-note">

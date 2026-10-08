@@ -140,8 +140,13 @@ shapes:
     review-early-exit:
       kind: text
       why: >-
-        it names the reason the report gives for stopping, and a reason with no name cannot
+        it names the reason the report gives for aborting, and a reason with no name cannot
         be looked up
+    asked-in:
+      kind: text
+      why: >-
+        it names the loop phase a person is asked this check's question in, alone, where it
+        cannot wait in the batch beside the others
     escalation:
       kind: refused
       why: >-
@@ -172,6 +177,7 @@ shapes:
     sweep-instruction-for-sca: *only-a-check-that-runs
     settle-verbs: *only-a-check-that-runs
     review-early-exit: *only-a-check-that-runs
+    asked-in: *only-a-check-that-runs
 
   # The token vocabulary that can justify a permission. The two version bounds are
   # snake_case where every other field is kebab - deliberately, because they echo the

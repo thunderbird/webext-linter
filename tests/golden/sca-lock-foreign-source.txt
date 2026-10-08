@@ -19,7 +19,14 @@ The review was not completed and the report is incomplete due to the following i
 
 Continue manual review for the following checks:
 
-1) Missing English localization: Read the strings this add-on shows the user. It
+1) Build process review: Confirm the build pulls ONLY from the dependencies
+   declared in package.json/lock - no remote code or resources from a raw URL,
+   curl/wget, a git clone of an unpinned repo, a CDN, or a postinstall hook.
+Suggested verdict: error
+Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
+ - [SCA] package.json
+
+2) Missing English localization: Read the strings this add-on shows the user. It
    ships no English localization, so that text may be hardcoded in another
    language. English is Thunderbird's default, and most users who cannot read
    the hardcoded language will be able to read English. Report it unless the
@@ -112,5 +119,5 @@ Suggested response: An icon shipped inside this add-on imitates or incorporates 
 ── Summary ──
 
 1 error(s), 0 hold, 0 warning(s), 0 info,
-1 extended code review item(s), 0 extended manual review item(s),
+2 extended code review item(s), 0 extended manual review item(s),
 11 standard code review item(s), 0 standard manual review item(s)

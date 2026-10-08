@@ -151,6 +151,40 @@ test("an escalated case aborts the review once it is reported, and not before", 
   );
 });
 
+// A build question is escalated like any case, so it weighs nothing until a reviewer has
+// answered it - a review with nobody to ask aborts on nothing - and a "no" aborts it.
+test("a build question aborts the review once it is reported, and not before", () => {
+  for (const ruleId of ["build-succeeds", "build-reproduces-xpi"]) {
+    const ordered = orderReview(
+      [],
+      [
+        {
+          ruleId,
+          title: ruleId,
+          instructions: "did it",
+          section: SECTION.MANUAL_REVIEW,
+          extended: true,
+          file: null,
+        },
+      ]
+    );
+    const index = String(ordered[0].index);
+    assert.equal(earlyExitOf(ordered, {}, registry), null, ruleId);
+    assert.equal(
+      earlyExitOf(ordered, { [index]: "cleared" }, registry),
+      null,
+      ruleId
+    );
+    assert.deepEqual(
+      earlyExitOf(ordered, { [index]: "reported" }, registry).reasons.map(
+        (r) => r.text
+      ),
+      ["Build process issues"],
+      ruleId
+    );
+  }
+});
+
 // The verb alone is not the trigger. Every to-do item in a review is answered, and all but
 // a handful of checks name no reason at all - reporting one of those is ordinary review
 // work, not a submission that settles itself.
@@ -210,9 +244,10 @@ test("a case the agent routed to a reviewer is dropped too", () => {
   const ordered = orderReview([], [punted]);
   // Filed under code review, so without the route it stays.
   assert.deepEqual(withoutQuestions(ordered), [punted]);
-  // Routed onward, it goes - the same answer the phase machine gives.
-  const state = { route: { [String(ordered[0].index)]: "ask" } };
-  assert.deepEqual(withoutQuestions(ordered, state), []);
+  // Routed onward, it goes - the case carries where it is asked, which is what the phase
+  // machine reads too.
+  punted.askedIn = "ask";
+  assert.deepEqual(withoutQuestions(ordered), []);
 });
 
 test("withoutQuestions survives an empty review", () => {

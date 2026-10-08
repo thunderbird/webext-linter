@@ -795,6 +795,8 @@ test("where a check runs: the route says it, or the flag says what a route canno
   // Said by the ROUTE: the archive is the artifact these read, and an XPI review has none.
   for (const id of [
     "undeclared-build-source",
+    "build-succeeds",
+    "build-reproduces-xpi",
     "build-registry-redirect",
     "lock-foreign-source",
     "build-lifecycle-hook",
@@ -899,15 +901,17 @@ test("every escalating check lands in the section its reader implies", async () 
       "strict-min-version-api",
       "trademark-thunderbird-locale",
       "unacceptable-package-content",
+      "undeclared-build-source",
       "unknown-api",
       "unused-files",
       "unused-permission",
     ],
     "manual-review": [
+      "build-reproduces-xpi",
+      "build-succeeds",
       "experiment-manual-review",
       "native-messaging",
       "trademark-thunderbird-name",
-      "undeclared-build-source",
       "vendored-remote-resources",
     ],
   });
@@ -941,6 +945,8 @@ test("every check's severity is pinned to its band", async () => {
       "background-page-module",
       "build-lifecycle-hook",
       "build-registry-redirect",
+      "build-reproduces-xpi",
+      "build-succeeds",
       "bundled-files",
       "cleartext-transmission",
       "committed-build-artifact",
@@ -1820,6 +1826,8 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
   assert.deepEqual(sca, [
     "build-lifecycle-hook",
     "build-registry-redirect",
+    "build-reproduces-xpi",
+    "build-succeeds",
     "committed-build-artifact",
     "committed-node-modules",
     "lock-foreign-source",

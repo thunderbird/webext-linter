@@ -31,17 +31,31 @@ Read more: https://webextension-api.thunderbird.net/.
  - [SCA] addon/main.js:4 - browser.totallyFakeNamespace - unknown namespace
  - [SCA] build.js:3 - browser.totallyFakeBuildNamespace - unknown namespace
 
+2) Build process review: Confirm the build pulls ONLY from the dependencies
+   declared in package.json/lock - no remote code or resources from a raw URL,
+   curl/wget, a git clone of an unpinned repo, a CDN, or a postinstall hook.
+Suggested verdict: error
+Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
+ - [SCA] package.json
+
 ── Extended Manual Review ──
 
 Continue manual review for the following checks:
 
-1) Build process review: Confirm by hand that the shipped XPI is produced by
-   this source: reproduce the build and compare the result against the submitted
-   XPI. Confirm the build pulls ONLY from the dependencies declared in
-   package.json/lock - no remote code or resources from a raw URL, curl/wget, a
-   git clone of an unpinned repo, a CDN, or a postinstall hook.
+1) Build failure: Did the build succeed? Follow the build process from a clean
+   copy of the source archive, or read the build diff where the review wrote
+   one. Clear only if every step completed.
 Suggested verdict: error
-Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
+Suggested response: The submitted source could not be built by following its build instructions, so the review cannot continue. Please make sure the instructions are complete and that the build succeeds from a clean copy of the submitted archive.
+ - [SCA] package.json
+
+2) Build does not reproduce the XPI: Does the built XPI reproduce the submitted
+   XPI? Read the build diff where the review wrote one, or compare your own
+   build's result with the submitted XPI. Clear only if they match. Files that
+   differ only by what every build changes (a timestamp, a build id) still
+   match.
+Suggested verdict: error
+Suggested response: The XPI built from the submitted source differs from the submitted XPI, so the review cannot continue. Please make sure the submitted XPI is built from exactly the submitted source, by the build instructions it contains.
  - [SCA] package.json
 
 ── Standard Code Review ──
@@ -219,5 +233,5 @@ Because the original project is still active, your submission does not meet thes
 ── Summary ──
 
 0 error(s), 0 hold, 0 warning(s), 3 info,
-2 extended code review item(s), 1 extended manual review item(s),
+3 extended code review item(s), 2 extended manual review item(s),
 11 standard code review item(s), 10 standard manual review item(s)

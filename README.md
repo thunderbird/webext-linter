@@ -104,7 +104,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | `--llm-verdict <file>` | Take a phase back and hand out the next - the last being `close`, which hands over the settled review. Takes no add-on path. Normally run by the agent, not by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission folder - one built `.xpi` and one archive of its source - print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
 | `--llm-skip-summary` | Leave out the add-on description: the prompt does not ask for one and names no file for it. |
-| `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later, unless the review was aborted early. |
+| `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later, unless the review was aborted early. The two build questions are still asked. |
 | `--llm-skip-sweep` | Leave out the sweep: no sweeping agent is spawned, and the sweep is not handed to the reviewer either. |
 
 **Source code archive (SCA):**
@@ -200,11 +200,15 @@ which means either nothing was built or the build output was committed beside th
   the review once reported. The build is traced once in setup, over the files reached from
   `package.json`, and what `undeclared-build-source` reads of it is the steps that trace
   could not follow.
-  Nothing in those files says what the build **does**, so every source submission is
-  escalated to Extended Manual Review: the reviewer reproduces the build and confirms
-  it produces the shipped XPI from the declared dependencies alone - no raw URL,
-  `curl|sh`, unpinned `git clone`, CDN or postinstall hook. Any step the linter could
-  not follow statically is named in that escalation.
+  Nothing in those files says for certain what the build **does**, so every source
+  submission raises three build items. `undeclared-build-source` (Extended Code Review) asks
+  whether the build pulls from the declared dependencies alone - no raw URL, `curl|sh`,
+  unpinned `git clone`, CDN or postinstall hook - and names any step the linter could not
+  follow statically; under `--llm-review` the agent settles it before anything is built.
+  `build-succeeds` and `build-reproduces-xpi` (Extended Manual Review) ask the reviewer
+  whether the build succeeded and whether it reproduces the shipped XPI - each asked alone
+  under `--llm-review`, after the build and before any other question. Any of the three
+  reported aborts the review.
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
   manifest.json, the experiments and the file-completeness checks (bundled /
   web-accessible / unused / locales). It gets the same library and parse passes in either
@@ -260,8 +264,9 @@ question for each), or an `instructions-for-human` alone. A check with wording a
 agent can be handed is screened, and its cases land under **Extended Code Review**.
 A check whose cases the code cannot answer authors only the human half, and its cases
 land under **Extended Manual Review**: `native-messaging` (what the listing discloses
-about the native app), `undeclared-build-source` (reproducing the build is the reviewer's own
-attestation that the source produces the shipped XPI), `trademark-thunderbird-name` (an
+about the native app), `build-succeeds` and `build-reproduces-xpi` (reproducing the build is
+the reviewer's own attestation that the source produces the shipped XPI),
+`trademark-thunderbird-name` (an
 add-on name written directly in the manifest.json carries no locale tag, so the language has
 to be settled before the trademark form can be judged at all), `vendored-remote-resources`
 (a remote `@import` inside a file matching a published release is that release's line,
@@ -270,13 +275,14 @@ not the developer's, so accepting it is a judgement a person owns), and
 so no scan of its surface settles what it does).
 
 Some findings abort the review outright. A check can declare that it does by naming the
-reason the report gives (`review-early-exit:` in the registry) - today twelve do, across
+reason the report gives (`review-early-exit:` in the registry) - today fifteen do, across
 three reasons: the four dependency-vulnerability checks name *known security
-vulnerabilities*, `banned-library` names *disallowed library versions*, and the seven that
+vulnerabilities*, `banned-library` names *disallowed library versions*, and the ten that
 decide a source submission cannot be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
-`lock-foreign-source`, `build-registry-redirect` and `build-lifecycle-hook` - name *a
-build that cannot be reproduced*. When one of them reports at error
+`lock-foreign-source`, `build-registry-redirect`, `build-lifecycle-hook`,
+`undeclared-build-source`, `build-succeeds` and `build-reproduces-xpi` - name *a build that
+cannot be reproduced*. When one of them reports at error
 severity, nothing further is put to a reviewer: the report drops every to-do item they
 would have been **asked** - the two manual-review sections and their tally counts, plus
 any case an agent had routed onward to a reviewer - keeps both code-review sections, and

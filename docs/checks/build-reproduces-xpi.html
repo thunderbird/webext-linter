@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Build does not reproduce the XPI</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Build does not reproduce the XPI <span class="badge error">error</span></h1>
+        <div class="check-id">build-reproduces-xpi</div>
+      </header>
+
+      <h2>What it asks</h2>
+      <p class="lead">
+        Every source-code submission asks the reviewer whether the build reproduces the
+        submitted XPI: does what the source builds match what was submitted?
+      </p>
+      <p>
+        Reproducing the build is the reviewer's attestation that the shipped XPI comes
+        from the source they read, which is what a source-code review rests on. The
+        reviewer answers from the build diff the review wrote, or by comparing their own
+        build with the submitted XPI. Files that differ only by what every build changes (a
+        timestamp, a build id) still match. It is asked only once the build succeeded
+        (<a href="build-succeeds.html">Build failure</a>), so a build that failed is never
+        also reported as not reproducing the XPI.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A build that succeeded"] --> Q{"Does its result match<br/>the submitted XPI?"}
+  Q -- yes --> OK([cleared: the remaining<br/>questions follow])
+  Q -- "no, or the reviewer's own words" --> ERR([ERROR: the build differs from the XPI<br/>the review is aborted])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR err;
+  class OK ok;
+  class Q manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that the XPI built from the submitted source differs from the
+        submitted XPI, so the review cannot continue, and that the submitted XPI must be
+        built from exactly the submitted source, by the build instructions it contains.
+      </div>
+
+      <div class="outcome">
+        <strong>It aborts the review</strong>
+        A &ldquo;no&rdquo; settles the submission on its own. Nothing further is put to a
+        reviewer: the report drops every to-do item they would have been asked, keeps the
+        code-review sections, and the developer&rsquo;s text ends on the reason it is
+        incomplete (&ldquo;Build process issues&rdquo;). Under <code>--llm-review</code> the
+        question is asked ALONE, in the <code>reproduced</code> phase, after the build and
+        before any other question - <code>ask</code> batches, and nobody may be asked to
+        install an XPI in the same breath as being asked whether the source reproduces it.
+        It is asked under <code>--llm-skip-manual</code> too.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/build-reproduces-xpi.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>
