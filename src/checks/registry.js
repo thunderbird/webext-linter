@@ -573,25 +573,27 @@ export class Registry {
   }
 
   /**
-   * The REVIEW LOOP's prompts: the four texts the linter owns, and the phases it hands out
-   * one per pass.
+   * The REVIEW LOOP's prompts: the preamble, the three texts the linter owns, and the
+   * phases it hands out one per pass.
    *
-   * `preamble`, `frame`, `handover` and `refused` are the linter's - authored once
-   * and printed the same way every time, so no phase can forget to say how to hand back, or
-   * that the file has changed since the last pass. The phases author only what differs:
-   * their `intro` (often empty) and their `steps`.
+   * `frame`, `handover` and `refused` are the linter's - authored once and printed the same
+   * way every time, so no phase can forget to say how to hand back, or that the file has
+   * changed since the last pass. The phases author only what differs: their `intro` (often
+   * empty) and their `steps`. The `preamble` is a list of parts, each printed where its
+   * condition holds - on the first prompt, unless that prompt is already the closing one.
    *
-   * A step comes back with its `when` condition already parsed, or null when it carries
-   * none - the same shape the SCA prompt's steps come back in, so both are filtered by one
-   * evaluator (src/checks/condition.js holds) against the facts their run meets.
-   * @returns {{preamble: string, frame: string, handover: string, refused: string,
-   *   phases: {name: string, verbs: string[], intro: string,
+   * A step or part comes back with its `when` condition already parsed, or null when it
+   * carries none - the same shape the SCA prompt's steps come back in, so all of them are
+   * filtered by one evaluator (src/checks/condition.js holds) against the facts their run
+   * meets.
+   * @returns {{preamble: {when: ?object, text: string}[], frame: string, handover: string,
+   *   refused: string, phases: {name: string, verbs: string[], intro: string,
    *   steps: {when: ?object, text: string}[]}[]}}
    */
   llmPhases() {
     const p = this.doc["llm-phases"];
     return {
-      preamble: p.preamble,
+      preamble: p.preamble.map(loadedStep),
       frame: p.frame,
       handover: p.handover,
       refused: p.refused,
@@ -1405,13 +1407,18 @@ export function assertPhases(registry, at) {
   // Each linter-owned text must CARRY the placeholder it exists for - the linter fills it
   // there, and nothing else names that value.
   for (const [key, slot] of Object.entries(PHASE_TEXTS)) {
-    if (slot && !doc[key].includes(slot)) {
+    if (!doc[key].includes(slot)) {
       throw new Error(
         `${where} \`${key}\` carries no ${slot} - the linter fills it there, and nothing ` +
           "else names that value"
       );
     }
   }
+  // The preamble's parts are conditioned and printed like steps, so they are checked like
+  // them: prose, not self-numbered, and a condition naming only facts this prompt knows.
+  doc.preamble.forEach((part, i) =>
+    assertStep(part, i, `${where} \`preamble\``, REVIEW_PROMPT_FACTS)
+  );
   // The review ends with ONE closing phase, the last, and it hands over what the reviewer
   // is left with. Two would leave the second unreachable, one that is not last would end
   // the review with phases still to come, and one missing a slot would drop that part of

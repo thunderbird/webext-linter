@@ -175,22 +175,31 @@ export const sweepSlot = (artifact) =>
  *  - one `sweep-<artifact>` per tree with a sweep to run. Each sweepable artifact is its
  *    own fact, because each starts its OWN sub-agent against its own tree and a review may
  *    have one such tree or two. Taken from the artifacts that can be swept rather than
- *    listed, so a third one is declared once (SWEEP_INSTRUCTIONS) and not again here.
+ *    listed, so a third one is declared once (SWEEP_INSTRUCTIONS) and not again here;
+ *  - `first`: this is the review's first prompt - no phase has gone out yet;
+ *  - `spawned`: `spawn` went out, so agents may still be running;
+ *  - `decided`: the agent has judged something - `verify` or `settle` went out;
+ *  - `closing`: the prompt being printed is the closing one (its phase answers `end`).
  *
- *  Every name but `aborted` and the flags is the key the run record answers under. */
+ *  `first`, `spawned` and `decided` are read off the review each pass (runOf); `closing`
+ *  comes from the phase being printed (stepsOf). Every other name but `aborted` and the
+ *  flags is the key the run record answers under. */
 export const REVIEW_PROMPT_FACTS = [
   ...PROMPT_SKIPS,
   "aborted",
   "sca",
   ...Object.keys(SWEEP_INSTRUCTIONS).map(sweepRun),
+  "first",
+  "spawned",
+  "decided",
+  "closing",
 ];
 
 /**
- * The loop texts the LINTER owns, and the placeholder each one exists to carry. An empty
- * slot means the text names no value - it is the same words every pass.
+ * The loop texts the LINTER owns, and the placeholder each one exists to carry. The
+ * preamble is not one of them: it is a list of parts, checked like steps.
  */
 export const PHASE_TEXTS = {
-  preamble: "",
   frame: "{{review}}",
   handover: "{{command}}",
   refused: "{{problem}}",

@@ -260,28 +260,31 @@ function stepLines(n, text, blocks = []) {
  *
  * Five layers, and only the middle two vary by phase:
  *
- *   PREAMBLE  once, on the first run. What is about to happen, and the one standing rule
- *             about reading code against the schema. No input path is named here - a block
+ *   PREAMBLE  the parts whose condition holds - on the first prompt only, and not where
+ *             that prompt is already the closing one. What is about to happen, and the one
+ *             standing rule about reading code against the schema. No input path is named here - a block
  *             headed "what is being reviewed" reads as an assignment, and invites the agent
  *             to go and read it before a step asks.
  *   FRAME     the file, and that it changed since the last pass. The linter's, every pass.
  *   INTRO     the phase's, and often empty: an intro earns its text only where the steps
  *             alone would let the agent do work that is not its own.
- *   STEPS     the phase's, numbered over what survived its markers. No step numbers itself.
+ *   STEPS     the phase's, numbered over what survived its conditions. No step numbers
+ *             itself.
  *   HANDOVER  ONE text, appended as the last numbered step, so no phase can forget to say
  *             how to hand back and no author has to know which phase is last.
  *
  * The values a step names are filled here rather than carried in the file: `{{paths}}`-style
  * blocks are printed by the step that uses them, which is the same rule today's prompt
  * follows - a path is printed by the thing that needs it.
- * @param {{preamble: string, frame: string, handover: string}} texts  From
- *   registry.llmPhases().
+ * @param {{frame: string, handover: string}} texts  From registry.llmPhases().
  * @param {{name: string, intro: string}} phase
  * @param {{text: string}[]} steps  Already filtered by src/report/phases.js stepsOf.
  * @param {Object<string, string>} values  What the texts and steps name: review, command,
  *   schemaCache, description, build, scaRoot, schema, details. The last two are laid out
  *   as blocks rather than substituted into prose (BLOCK_VALUES).
- * @param {boolean} [first]  Print the preamble, which one run does and the rest do not.
+ * @param {{text: string}[]} [preamble]  The preamble parts this prompt prints, already
+ *   filtered by their conditions (src/report/loop.js issue) - none on every pass but the
+ *   first.
  * @returns {string[]}
  */
 /** The prompt values that are handed to a step as a BLOCK rather than substituted into
@@ -291,7 +294,7 @@ function stepLines(n, text, blocks = []) {
  *  they stand. */
 const BLOCK_VALUES = new Set(["schema", "details", "tally"]);
 
-export function loopPromptLines(texts, phase, steps, values, first = false) {
+export function loopPromptLines(texts, phase, steps, values, preamble = []) {
   // Everything BUT the value blocks, which stepLines lays out unwrapped below.
   const fill = (text) =>
     Object.entries(values).reduce(
@@ -300,8 +303,8 @@ export function loopPromptLines(texts, phase, steps, values, first = false) {
       text
     );
   const lines = [...section("LLM Prompt"), ""];
-  if (first) {
-    lines.push(...promptProse(fill(texts.preamble)), "");
+  for (const part of preamble) {
+    lines.push(...promptProse(fill(part.text)), "");
   }
   // The closing phase (`end`) is neither read from the review file nor handed back: the
   // review ends with it, so it names no file to re-read and carries no hand-back step.

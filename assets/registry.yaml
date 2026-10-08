@@ -2039,7 +2039,8 @@ llm-sca-review-prompt:
 #
 # Five layers assemble a pass, and only the middle three are authored here per phase:
 #
-#   PREAMBLE     once, on the first --llm-review run: what is about to happen, and nothing
+#   PREAMBLE     on the first prompt only, and not where that prompt is already the closing
+#                one (its parts' `when:`): what is about to happen, and nothing
 #                else. NO PATH is named - a block headed "what is being reviewed" reads as
 #                an assignment and invites the agent to go and read it before a step asks.
 #                Every path is printed on the ENTRY it is about instead, which is the same
@@ -2049,7 +2050,8 @@ llm-sca-review-prompt:
 #   STEPS        per phase, numbered over what survives its `when:` condition, exactly as
 #                llm-review-prompt's `outcome` does. No step numbers itself. A condition is
 #                AND / OR / NOT over the facts REVIEW_PROMPT_FACTS names - the flags given,
-#                `aborted`, `sca`, `sweep-<artifact>` (src/checks/condition.js).
+#                `aborted`, `sca`, `sweep-<artifact>`, `first`, `spawned`, `decided` and
+#                `closing` (src/checks/condition.js).
 #   HANDOVER     ONE text, appended by the linter as every phase's last numbered step. Not
 #                one per phase and not one per slot: every entry in every phase carries
 #                "answer": null, so the agent learns the file once and never relearns it.
@@ -2073,12 +2075,17 @@ llm-sca-review-prompt:
 # the thing that needs it, which is why the preamble names none of them: it is too early,
 # and a value with no step behind it reads as an assignment.
 llm-phases:
-  preamble: |-
-    This review runs in passes, and this is the first of them.
+  # Printed above the first prompt only, and not where that prompt is already the closing
+  # one: a review with nothing but `close` to do runs no passes, so describing them would
+  # only send the reader looking for a file and a command that do not exist.
+  preamble:
+    - when: first AND NOT closing
+      text: |-
+        This review runs in passes, and this is the first of them.
 
-    Each pass you are given a prompt and a file. Do what the prompt says, fill in the file's empty slots, and hand the file back by running the command the prompt names. That run answers with the next prompt. Keep going until a prompt tells you the review is settled and names the file holding the finished report - that one is the last. You never decide what happens next, and you never decide that the review is over.
+        Each pass you are given a prompt and a file. Do what the prompt says, fill in the file's empty slots, and hand the file back by running the command the prompt names. That run answers with the next prompt. Keep going until a prompt tells you the review is settled and names the file holding the finished report - that one is the last. You never decide what happens next, and you never decide that the review is over.
 
-    Nothing in this preamble is a task. Do only what the numbered steps of the prompt you are reading tell you to do, and the step that has you read the add-on names what to read and what to judge it against.
+        Nothing in this preamble is a task. Do only what the numbered steps of the prompt you are reading tell you to do, and the step that has you read the add-on names what to read and what to judge it against.
   frame: |-
     The review you are working on is in this file:
 
@@ -2267,9 +2274,15 @@ llm-phases:
       product: buildDiff
       intro: ""
       steps:
+        # Its own step, printed only where an agent was started. It carries the phase's own
+        # condition too: a phase is issued while any step survives, and a wait alone is no
+        # work.
+        - when: spawned AND sca AND NOT aborted
+          text: |-
+            Wait for every agent you spawned to come back.
         - when: sca AND NOT aborted
           text: |-
-            Wait for every agent you spawned to come back. Then ask the reviewer, with your question tool, whether to build the add-on from the source archive and compare the result with the shipped XPI, saying that building runs the submission's own code. If they decline, build nothing and write nothing.
+            Ask the reviewer, with your question tool, whether to build the add-on from the source archive and compare the result with the shipped XPI, saying that building runs the submission's own code. If they decline, build nothing and write nothing.
 
             If they agree, copy
 
@@ -2305,9 +2318,14 @@ llm-phases:
       verbs: []
       intro: ""
       steps:
+        # As in `build`: the wait only where an agent was started, under the phase's own
+        # condition so it never issues the phase on its own.
+        - when: spawned AND NOT aborted AND (sca OR NOT llm-skip-manual)
+          text: |-
+            Wait for every agent you spawned to come back.
         - when: NOT aborted AND (sca OR NOT llm-skip-manual)
           text: |-
-            Wait for every agent you spawned to come back, then give the reviewer this block before you put anything to them, under a "Review details" heading and otherwise exactly as it is written here:
+            Give the reviewer this block before you put anything to them, under a "Review details" heading and otherwise exactly as it is written here:
 
             {{details}}
 
@@ -2364,10 +2382,11 @@ llm-phases:
 
     # The closing hand-over: what the reviewer is left with once nothing else has work. The
     # linter settles the review before printing it (src/report/loop.js issue), and whether
-    # the review was aborted is read off that settled review - so exactly one of the two opening
-    # steps prints, and the body after them is the same either way. Telling an agent "the
-    # review is settled" about one that was cut short is what the two openings exist to
-    # avoid. Nothing is handed back after it: the review ends here.
+    # the review was aborted is read off that settled review - so at most one of the two
+    # openings prints. Telling an agent "the review is settled" about one that was cut short
+    # is what the two openings exist to avoid. Each later step says only what applies: the
+    # wait where an agent was started, "LLM decisions" where the agent judged anything; the
+    # summary and the details always. Nothing is handed back after it: the review ends here.
     - name: close
       answer: end
       verbs: []
@@ -2376,14 +2395,22 @@ llm-phases:
         - when: aborted
           text: |-
             The review was aborted before it finished: what it found settles the submission, and nothing further is asked of anyone.
-        - when: NOT aborted
+        # Not on a first prompt: a reader who never saw the review in progress learns nothing
+        # from its being settled.
+        - when: NOT aborted AND NOT first
           text: |-
             The review is settled.
+        - when: spawned
+          text: |-
+            Wait for every agent you spawned to come back.
         - text: |-
-            Wait for every agent you spawned to come back, then give the reviewer what follows, each part under a heading of its own and in this order. Print nothing between the parts and nothing after them.
-
+            Give the reviewer what follows, each part under a heading of its own and in this order. Print nothing between the parts and nothing after them.
+        # Only where the agent judged anything - a review with no finding to audit and no case
+        # to settle leaves it nothing to account for.
+        - when: decided
+          text: |-
             Under "LLM decisions", your own account in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why. This part is yours to write and the only part that is.
-
+        - text: |-
             Under "Summary", this, as it is written here:
 
             {{tally}}

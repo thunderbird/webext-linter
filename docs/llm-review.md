@@ -36,7 +36,8 @@ never pointed at, which is why `--llm-verdict` takes no add-on path: the determi
 review ran once, and nothing re-derives it.
 
 Each prompt is assembled from the same layers, so a pass never has to be read as a
-special case: a preamble on the first pass only (what is about to happen), the frame
+special case: a preamble on the first pass only (what is about to happen - left out where
+that first pass is already the closing one, since no passes follow), the frame
 (which file, and that it changed), the phase's own intro and numbered steps, and one
 closing step saying how to hand the file back. A path is printed by the step that needs
 it, and nowhere else.
@@ -59,7 +60,7 @@ entry never offered are all refusals.
 | `built` | Source code review only: ask the reviewer, alone, whether the build succeeded. | The reviewer's own answer |
 | `reproduced` | Source code review only: ask the reviewer, alone, whether the built XPI reproduces the submitted one. | The reviewer's own answer |
 | `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
-| `close` | The last phase, once nothing else has work: hand over the settled review. It opens on whether the review is settled or was aborted. | Nothing: the review ends with it |
+| `close` | The last phase, once nothing else has work: hand over the settled review. It opens on whether the review is settled or was aborted, and says only what applies to it. | Nothing: the review ends with it |
 
 A phase is issued only when it has **work** - steps that survive their markers, or
 entries to settle - and that is also what ends the loop. So a review with no sweep never
@@ -69,9 +70,13 @@ submission before the first prompt is printed, and every phase reads that one fo
 
 Which steps a phase prints is decided by each step's `when:` condition: `AND`, `OR`, `NOT`
 and parentheses over the facts of this run - the `--llm-skip-*` flags it was given,
-`aborted` once a finding has aborted the review, `sca` for a source code review, and
-`sweep-xpi` / `sweep-sca` for a tree with a sweep to run. A step with no condition prints
-in every run, and a phase left with no step is not issued. The registry spells each one
+`aborted` once a finding has aborted the review, `sca` for a source code review,
+`sweep-xpi` / `sweep-sca` for a tree with a sweep to run, `first` on the review's first
+prompt, `spawned` once `spawn` went out, `decided` once `verify` or `settle` did, and
+`closing` in the closing prompt. A step with no condition prints in every run, and a phase
+left with no step is not issued. The preamble's parts are conditioned the same way. A wait
+for spawned agents is a step of its own (`when: spawned AND ...`), carrying its phase's own
+condition so that a wait alone never issues a phase. The registry spells each one
 out, for example `build`'s `sca AND NOT aborted`, or `details`'
 `NOT aborted AND (sca OR NOT llm-skip-manual)`, and refuses a condition that does not parse
 or names a fact nothing answers.
@@ -133,7 +138,7 @@ What an aborted review does:
 | The report | drops every to-do item a reviewer would have been **asked** - the Extended Manual Review and Standard Manual Review sections, and their tally counts. |
 | | keeps both code-review sections: reading code is safe, and what it turns up is the evidence for the halt. |
 | | ends on the reason it is incomplete, one line per distinct cause. |
-| The `close` phase | opens with a step of its own (`when: aborted`), because telling an agent "the review is settled" about one that was cut short is not true. Everything after that opening is the same. |
+| The `close` phase | opens with a step of its own (`when: aborted`), because telling an agent "the review is settled" about one that was cut short is not true. The summary and the details that follow are the same. |
 
 The decision is taken again on every pass, never recorded once, because the `verify` phase
 is where those findings are audited: an agent that **withdraws** the finding which aborted
@@ -295,10 +300,13 @@ the last pass hands it over again as what they are left holding.
 
 The last pass is the `close` phase. The linter applies every answer, writes `REVIEW_REPORT`,
 and only then prints it, so it opens on whether the review settled or was aborted: of its two
-opening steps, one reads `when: NOT aborted` and the other `when: aborted`. The
-rest is one step, the same either way. It hands over the agent's own account and the block,
-each under a heading of its own: **LLM decisions** (every finding it withdrew and every
-verdict it reached, with its reasons - the only part that is the agent's to write),
+opening steps, one reads `when: aborted` and the other `when: NOT aborted AND NOT first` - a
+reader who never saw the review in progress learns nothing from its being settled. Each
+step after them says only what applies: the wait where agents were started (`spawned`), and
+**LLM decisions** where the agent judged anything (`decided`). It hands over the agent's own
+account and the block, each under a heading of its own: **LLM decisions** (every finding it
+withdrew and every verdict it reached, with its reasons - the only part that is the agent's
+to write),
 **Summary** (the tally), and **Final Review Details** (every path this review named,
 `REVIEW_REPORT` among them, and nothing of what is in any of them). Where the review was aborted
 early, the reasons close that block, because only the block can list what aborted this

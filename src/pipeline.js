@@ -1176,8 +1176,9 @@ export async function runPipeline(opts) {
       first.phase,
       first.steps,
       loopSlots(state, first),
-      // The preamble prints once, and this is the run that is once.
-      true
+      // The preamble parts its conditions chose: this is the first prompt, so it prints
+      // unless the review closes right here.
+      first.preamble
     )) {
       report(line);
     }

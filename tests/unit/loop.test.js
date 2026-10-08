@@ -1517,6 +1517,115 @@ test("a case sent on with ask is dropped by an abort even after a renumbering", 
   assert.ok(!left.includes("settle me"), `routed case kept: ${left}`);
 });
 
+/**
+ * Drive the loop, answering each phase plainly, and return the first line of each step of
+ * every prompt it printed - by phase, with the preamble the prompt carried.
+ */
+function promptsOf(made) {
+  const prompts = {};
+  for (let pass = 0; pass < 12; pass++) {
+    const out = issue(made.state, made.stateFile, PHASES, REGISTRY);
+    prompts[out.phase.name] = {
+      steps: out.steps.map((x) => x.text.split("\n")[0]),
+      preamble: out.preamble.length,
+    };
+    if (out.phase.answer === "end") {
+      break;
+    }
+    for (const artifact of Object.keys(made.state.paths.sweeps ?? {})) {
+      swept(made.state, artifact);
+    }
+    accept(
+      made.state,
+      handBack(made.state, () =>
+        out.phase.name === "verify"
+          ? "withdrawn"
+          : out.phase.name === "settle"
+            ? "cleared"
+            : "Clear"
+      ),
+      PHASES,
+      REGISTRY
+    );
+  }
+  return prompts;
+}
+
+const WAIT = "Wait for every agent you spawned to come back.";
+
+// A review whose first prompt is already the closing one ran nothing before it, so that
+// prompt says nothing about passes, agents or decisions: no preamble, no "settled", no
+// wait, no "LLM decisions" - just what to give the reviewer.
+test("a one-pass review's only prompt says only what applies", () => {
+  const { state, stateFile } = review(tmp(), {
+    sweep: false,
+    findings: false,
+    code: false,
+    questions: false,
+  });
+  state.run = { skip: ["llm-skip-summary", "llm-skip-manual"], sca: false };
+  const prompts = promptsOf({ state, stateFile });
+  assert.deepEqual(Object.keys(prompts), ["close"]);
+  assert.equal(prompts.close.preamble, 0, "no preamble above it");
+  assert.deepEqual(prompts.close.steps, [
+    "Give the reviewer what follows, each part under a heading of its own and in this order. Print nothing between the parts and nothing after them.",
+    'Under "Summary", this, as it is written here:',
+  ]);
+});
+
+// The preamble opens the first prompt and only that one; the closing prompt of a review
+// that ran says it is settled, waits for the agents it started, and asks for the account
+// of what the agent decided.
+test("the preamble opens the first prompt only, and close says what ran", () => {
+  const made = review(tmp());
+  const prompts = promptsOf(made);
+  const order = Object.keys(prompts);
+  assert.equal(prompts[order[0]].preamble, 1, `${order[0]} opens the review`);
+  for (const name of order.slice(1)) {
+    assert.equal(prompts[name].preamble, 0, `${name} carries no preamble`);
+  }
+  assert.deepEqual(prompts.close.steps.slice(0, 2), [
+    "The review is settled.",
+    WAIT,
+  ]);
+  assert.ok(
+    prompts.close.steps.some((x) => x.startsWith('Under "LLM decisions"')),
+    "the agent accounts for what it decided"
+  );
+});
+
+// The wait for spawned agents is its own step, printed only where an agent was started -
+// and never on its own: a phase whose only surviving step is the wait is not issued.
+test("the agent wait prints only where an agent was started, and never alone", () => {
+  // A source review always starts the build-report agent, so both phases wait.
+  const source = promptsOf(buildQuestionsReview(tmp()));
+  assert.equal(source.build.steps[0], WAIT);
+  assert.match(
+    source.build.steps[1],
+    /^Ask the reviewer, with your question tool/
+  );
+  assert.deepEqual(source.details.steps[0], WAIT);
+  assert.match(source.details.steps[1], /^Give the reviewer this block/);
+
+  // An XPI review that started a sweep waits before the details block, and never builds.
+  const swept = promptsOf(review(tmp()));
+  assert.equal(swept.details.steps[0], WAIT);
+  assert.ok(!("build" in swept), "no build phase made of a wait alone");
+
+  // An XPI review that started nothing does not wait.
+  const quiet = review(tmp(), { sweep: false });
+  quiet.state.run = { skip: ["llm-skip-summary"], sca: false };
+  const prompts = promptsOf(quiet);
+  assert.ok(!("spawn" in prompts));
+  assert.deepEqual(prompts.details.steps.length, 1);
+  assert.match(prompts.details.steps[0], /^Give the reviewer this block/);
+
+  // An XPI review under --llm-skip-manual asks nothing, so no details phase made of a wait.
+  const skipped = review(tmp());
+  skipped.state.run.skip = ["llm-skip-manual"];
+  assert.ok(!("details" in promptsOf(skipped)));
+});
+
 // Building runs the submission's own code, so it comes after `settle` has had its say on
 // every case that could abort the review, and before the questions the diff is read for.
 test("a source code review builds once, after settle and before ask", () => {

@@ -54,7 +54,8 @@ export function isOpen(item, state) {
  * those whose condition holds (src/checks/condition.js) over the facts this run meets.
  *
  * The facts are the flags the run was given, `aborted` once a finding has aborted the
- * review, and every other name the run record answers true (`sca`, `sweep-<artifact>`).
+ * review, `closing` when the phase is the one the review ends with, and every other name
+ * the run record answers true (`sca`, `sweep-<artifact>`, `first`, `spawned`, `decided`).
  * Their names live in one place (REVIEW_PROMPT_FACTS, which the registry validates every
  * condition against), so a new fact is declared there and answered in the record - never
  * added to a test spelled out here. A fact the record does not answer is false, which is
@@ -63,7 +64,7 @@ export function isOpen(item, state) {
  * This is how an abort withholds what comes after it - the build that would run the
  * submission's code, the questions nobody should be asked - since a phase left with no
  * step is not issued.
- * @param {{steps: {when: ?object, text: string}[]}} phase
+ * @param {{answer?: string, steps: {when: ?object, text: string}[]}} phase
  * @param {{skip: string[], halted: boolean}} run  The run record: the flags it was given,
  *   whether the review was aborted, and each other fact by its own name.
  * @returns {object[]}
@@ -72,6 +73,11 @@ export function stepsOf(phase, run = {}) {
   const facts = new Set(run.skip ?? []);
   if (run.halted === true) {
     facts.add("aborted");
+  }
+  // The one fact the phase itself contributes: the prompt it is printed in is the one
+  // the review ends with.
+  if (phase.answer === "end") {
+    facts.add("closing");
   }
   for (const [name, value] of Object.entries(run)) {
     if (value === true) {

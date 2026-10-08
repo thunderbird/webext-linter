@@ -1052,7 +1052,8 @@ async function runLoopPass(file, base) {
       texts,
       next.phase,
       next.steps,
-      loopSlots(state, next)
+      loopSlots(state, next),
+      next.preamble
     );
   } catch (err) {
     writeToStderr(`${err.message}\n${red("verify failed")}\n`);

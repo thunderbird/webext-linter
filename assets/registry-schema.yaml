@@ -346,11 +346,18 @@ sections:
     kind: object
     noun: loop prompts
     fields:
-      preamble: &loop-text
+      preamble:
+        kind: list
+        of: mapping
+        required: true
+        noun: "`preamble` parts"
+        why: >-
+          what the first prompt tells its reader before anything else, part by part, each
+          printed where its `when:` condition holds
+      frame: &loop-text
         kind: text
         required: true
         why: a loop text the linter fills and prints
-      frame: *loop-text
       handover: *loop-text
       refused: *loop-text
       phases:

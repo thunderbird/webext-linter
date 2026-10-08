@@ -30,9 +30,15 @@ const phaseNamed = (registry, name) =>
 
 test("the shipped registry's phases load and are whole", () => {
   const p = fresh().llmPhases();
-  for (const key of ["preamble", "frame", "handover", "refused"]) {
+  for (const key of ["frame", "handover", "refused"]) {
     assert.equal(typeof p[key], "string", key);
     assert.ok(p[key].length > 0, key);
+  }
+  // The preamble is parts, loaded like steps: text, and a parsed condition or none.
+  assert.ok(p.preamble.length > 0, "the preamble has parts");
+  for (const part of p.preamble) {
+    assert.ok(part.text.length > 0);
+    assert.ok(part.when === null || typeof part.when === "object");
   }
   assert.ok(p.phases.length > 0, "at least one phase");
   for (const phase of p.phases) {
@@ -333,16 +339,37 @@ test("the closing phase is the one last phase, and carries both hand-over slots"
   assert.throws(() => check(notLast), /and it must be the last/);
 });
 
-// Exactly one of the two openings prints: the settled one, or the aborted one.
-test("the closing phase opens one way for a settled review and another for an aborted one", () => {
+// At most one of the two openings prints - the settled one, or the aborted one - and each
+// later part only where it applies: the wait where an agent was started, "LLM decisions"
+// where the agent judged anything. The summary and the details always.
+test("the closing phase says only what applies to the review it closes", () => {
   const close = fresh()
     .llmPhases()
     .phases.find((p) => p.name === "close");
-  const opening = (halted) => stepsOf(close, { halted })[0].text;
-  assert.match(opening(false), /^The review is settled\./);
-  assert.match(opening(true), /^The review was aborted before it finished/);
-  assert.equal(stepsOf(close, { halted: false }).length, 2);
-  assert.equal(stepsOf(close, { halted: true }).length, 2);
+  const heads = (run) =>
+    stepsOf(close, run).map((x) => x.text.split(/[.:]/)[0]);
+  const full = { spawned: true, decided: true };
+  assert.deepEqual(heads({ halted: false, ...full }), [
+    "The review is settled",
+    "Wait for every agent you spawned to come back",
+    "Give the reviewer what follows, each part under a heading of its own and in this order",
+    'Under "LLM decisions", your own account in two sections',
+    'Under "Summary", this, as it is written here',
+  ]);
+  assert.match(
+    stepsOf(close, { halted: true, ...full })[0].text,
+    /^The review was aborted before it finished/
+  );
+  // A review whose first prompt is already the closing one: nothing ran before it.
+  assert.deepEqual(heads({ halted: false, first: true }), [
+    "Give the reviewer what follows, each part under a heading of its own and in this order",
+    'Under "Summary", this, as it is written here',
+  ]);
+  // An abort is news even then.
+  assert.match(
+    stepsOf(close, { halted: true, first: true })[0].text,
+    /^The review was aborted/
+  );
 });
 
 // A step prints when its `when:` condition holds over the facts this run meets: the flags
@@ -393,10 +420,32 @@ test("the shipped steps carry the conditions they are printed under", () => {
     loaded
       .find((p) => p.name === name)
       .steps.map((x) => (x.when ? namesOf(x.when).sort() : null));
-  assert.deepEqual(when("build"), [["aborted", "sca"]]);
-  assert.deepEqual(when("details"), [["aborted", "llm-skip-manual", "sca"]]);
+  // The wait steps carry their phase's own condition beside `spawned`, so a phase is never
+  // issued with nothing but a wait in it.
+  assert.deepEqual(when("build"), [
+    ["aborted", "sca", "spawned"],
+    ["aborted", "sca"],
+  ]);
+  assert.deepEqual(when("details"), [
+    ["aborted", "llm-skip-manual", "sca", "spawned"],
+    ["aborted", "llm-skip-manual", "sca"],
+  ]);
   assert.deepEqual(when("ask"), [["aborted", "llm-skip-manual"]]);
-  assert.deepEqual(when("close"), [["aborted"], ["aborted"], null]);
+  assert.deepEqual(when("close"), [
+    ["aborted"],
+    ["aborted", "first"],
+    ["spawned"],
+    null,
+    ["decided"],
+    null,
+  ]);
+  // The preamble: the first prompt only, and never above a first-pass close.
+  assert.deepEqual(
+    fresh()
+      .llmPhases()
+      .preamble.map((x) => namesOf(x.when).sort()),
+    [["closing", "first"]]
+  );
 });
 
 // A check asked in a phase of its own names one a PERSON answers, and is itself a question
@@ -424,4 +473,28 @@ test("asked-in names a phase a person answers, on a question only a person answe
     () => assertAskedIn(screened, "t.yaml"),
     /is not a question only a person answers/
   );
+});
+
+// The preamble's parts are conditioned and printed like steps, so they are checked like
+// them - a stray key, a condition naming an unknown fact, and a self-numbered part are all
+// refused.
+test("the preamble's parts are checked like steps", () => {
+  for (const [mutate, refusal] of [
+    [
+      (part) => (part.skip = "first"),
+      /authors `skip`, which this prompt cannot act on/,
+    ],
+    [
+      (part) => (part.when = "first AND nonsense"),
+      /is conditioned on `nonsense`/,
+    ],
+    [
+      (part) => (part.text = "1. This review runs in passes."),
+      /numbers itself/,
+    ],
+  ]) {
+    const registry = fresh();
+    mutate(registry.doc["llm-phases"].preamble[0]);
+    assert.throws(() => check(registry), refusal);
+  }
 });

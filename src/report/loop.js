@@ -55,13 +55,24 @@ import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
  * @param {import("./state.js").LoopState} state
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
  * @param {import("../checks/registry.js").Registry} registry
- * @returns {{skip: string[], sca: boolean, halted: boolean}}
+ * @returns {{skip: string[], sca: boolean, halted: boolean, first: boolean,
+ *   spawned: boolean, decided: boolean}}
  */
 function runOf(state, ordered, registry) {
   const halted = Boolean(
     earlyExitOf(ordered, verdictsOf(state, ordered, registry), registry)
   );
-  return { ...state.run, halted };
+  const issued = state.issued ?? [];
+  return {
+    ...state.run,
+    halted,
+    // What the prompt about to go out can say: whether it is the review's first, whether
+    // an agent was started that may still be running, and whether the agent has judged
+    // anything it would account for when the review closes.
+    first: !state.phase,
+    spawned: issued.includes("spawn"),
+    decided: issued.includes("verify") || issued.includes("settle"),
+  };
 }
 
 /**
@@ -127,9 +138,9 @@ function askedByPerson(registry) {
  * @param {import("../checks/registry.js").Registry} registry  Renders each entry for
  *   THIS reader, at hand-out - never stored, so the same item can be worded one way
  *   here and another for the reviewer.
- * @returns {{phase: object, steps: object[], entries: object[],
- *   settled: ?ReturnType<typeof settle>}}  `settled` is the finished review, for the
- *   closing phase only.
+ * @returns {{phase: object, steps: object[], preamble: object[], entries: object[],
+ *   settled: ?ReturnType<typeof settle>}}  `preamble` is the parts of it this prompt
+ *   prints; `settled` is the finished review, for the closing phase only.
  */
 export function issue(state, stateFile, phases, registry) {
   const ordered = orderReview(state.report.findings, state.manual);
@@ -151,6 +162,12 @@ export function issue(state, stateFile, phases, registry) {
   const steps = settled
     ? stepsOf(phase, { ...run, halted: settled.earlyExit })
     : next.steps;
+  // The preamble's parts are chosen the way a phase's steps are, against the same facts -
+  // and as part of THIS prompt, so `closing` answers for the phase it sits above.
+  const preamble = stepsOf(
+    { answer: phase.answer, steps: registry.llmPhases().preamble },
+    run
+  );
   // An itemless phase asks about nothing in this file: its work is what its steps do, and
   // each product lands in a file of its own. Every other phase hands over its open items,
   // rendered for THIS reader - never stored, so the same item can be worded one way here
@@ -179,7 +196,7 @@ export function issue(state, stateFile, phases, registry) {
   }
   writeState(stateFile, state);
   writeReviewFile(state.review, reviewFile(stateFile, entries));
-  return { phase, steps, entries, settled };
+  return { phase, steps, preamble, entries, settled };
 }
 
 /**

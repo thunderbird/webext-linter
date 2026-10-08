@@ -51,9 +51,11 @@ export const REVIEW_SUFFIX = ".review.json";
  *   where a later pass WRITES, so losing it would leave the reviewer holding a link to a
  *   file nothing refreshes.
  * @property {?string} phase  The phase in flight - what went out last, and so what the
- *   next hand-back is read as.
- * @property {string[]} issued  Every phase that has gone out, in order. What the final
- *   prompt reads to know whether a link was already handed over.
+ *   next hand-back is read as. Unset until the first prompt goes out, which is how a prompt
+ *   knows it is the first (`first`, src/report/loop.js runOf).
+ * @property {string[]} issued  Every phase that has been handed back, in order. What a
+ *   later prompt reads to know what already happened: whether agents were started
+ *   (`spawned`) and whether the agent judged anything (`decided`).
  * @property {Object<string, *>} answers  index -> what came back, once it is settled.
  * @property {?object[]} sweep  Everything the sweeping agents found, read back off their
  *   own answer files and already resolved to the check and the artifact each belongs to

@@ -1447,7 +1447,7 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
 // UNDER its number - the example included, since it belongs to that step, and a paragraph
 // left flush-left reads as a step of its own.
 test("a step's paragraphs sit under its number, line breaks and all", () => {
-  const texts = { preamble: "P", frame: "F", handover: "H" };
+  const texts = { frame: "F", handover: "H" };
   const phase = { name: "p", intro: "" };
   const steps = [{ text: 'lead in\n\n{"a": 1,\n"b": 2}\n\ntail out' }];
   const lines = loopPromptLines(texts, phase, steps, {});
@@ -1461,22 +1461,23 @@ test("a step's paragraphs sit under its number, line breaks and all", () => {
   ]);
 });
 
-// The preamble is keyed on WHICH PASS this is, never on which phase it hands out. `spawn`
-// used to be that pass's phase in every configuration (it always carried the unconditional
-// package-extraction step), so nothing pinned this independence directly - now a run that
-// starts no agent and does not sweep skips `spawn` entirely, and the first phase an agent
-// ever sees can be `verify` instead. The preamble still has to print then: it is what tells
-// the agent it is reading pass one of the loop at all.
-test("the preamble prints on the first pass, whichever phase that pass hands out", () => {
-  const texts = { preamble: "P", frame: "F", handover: "H" };
-  const lines = loopPromptLines(
-    texts,
-    { name: "verify", intro: "" },
-    [],
-    {},
-    true
+// The prompt prints the preamble parts it is handed, whichever phase it hands out - which
+// parts those are is the conditions' answer (src/report/loop.js issue), not the renderer's:
+// `spawn` is not always the first phase, and the preamble still has to open pass one.
+test("the prompt prints the preamble parts it is handed, above the frame", () => {
+  const texts = { frame: "F", handover: "H" };
+  const lines = loopPromptLines(texts, { name: "verify", intro: "" }, [], {}, [
+    { text: "P" },
+  ]);
+  assert.ok(lines.indexOf("P") > -1, "the preamble is missing");
+  assert.ok(
+    lines.indexOf("P") < lines.indexOf("F"),
+    "the preamble comes first"
   );
-  assert.ok(lines.includes("P"), "the preamble is missing");
+  // None handed, none printed: every pass but the first.
+  assert.ok(
+    !loopPromptLines(texts, { name: "verify", intro: "" }, [], {}).includes("P")
+  );
 });
 
 // A registry text is authored as wrapped YAML, so its source line breaks must not survive
@@ -1642,7 +1643,7 @@ test("collapse:subject keeps a case a reviewer wrote about", () => {
 // and the agent is told to print a block that is not there. Nothing downstream can tell
 // that from prose, which is why it is refused where the prompt is built.
 test("a prompt naming a value nothing filled is refused", () => {
-  const texts = { preamble: "P", frame: "F", handover: "H" };
+  const texts = { frame: "F", handover: "H" };
   const phase = { name: "ask", intro: "" };
   // The two ways a value arrives fail the same way: substituted into a sentence, and
   // handed over as a block on a paragraph of its own (BLOCK_VALUES).
