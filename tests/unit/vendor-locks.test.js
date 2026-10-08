@@ -3,10 +3,14 @@
 // of the whole installed tree across npm v1/v2/v3 and pnpm v5-v9
 // (lockedPackages), where each entry installs from (lockSourceGaps), and resolveVendor's package.json dependency resolution
 // (exact pin / range+lock -> pinned, range without a lock -> unpinned, a
-// non-registry spec -> ignored). No network.
+// non-registry spec -> ignored). Overrides are read through the lock, which records what
+// they installed. No network.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   lockedVersion,
@@ -1000,5 +1004,55 @@ test("lockSourceGaps: pnpm tarball and git resolutions", () => {
   assert.deepEqual(
     lockedPackages(addon).map((p) => p.name),
     ["ok"]
+  );
+});
+
+// ---- overrides ----
+
+/** A real submission's package files and lock, as npm or pnpm wrote them. */
+function overrideFixture(manager) {
+  const dir = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "lock-overrides-fixture",
+    manager
+  );
+  return fakeAddon(
+    Object.fromEntries(
+      fs.readdirSync(dir).map((f) => [f, fs.readFileSync(path.join(dir, f))])
+    )
+  );
+}
+
+// An override is applied while the package manager resolves, so the lock records what it
+// INSTALLED - and the audit, which reads the lock, asks about exactly that. The fixtures
+// are real: npm 11.17 (`npm install --package-lock-only --ignore-scripts`) and pnpm 11.26
+// (`pnpm install --lockfile-only --ignore-scripts`), over optimist 0.6.1, whose own
+// package.json asks for minimist ~0.0.1 and wordwrap ~0.0.2. Both override minimist
+// globally and wordwrap under optimist only; pnpm also overrides the declared lodash
+// 4.17.20, which npm refuses (an npm override cannot move a direct dependency).
+test("an overridden version is the one the tree audit reads, for npm and pnpm", () => {
+  for (const manager of ["npm", "pnpm"]) {
+    const addon = overrideFixture(manager);
+    const tree = lockedPackages(addon).map((p) => `${p.name}@${p.version}`);
+    assert.ok(tree.includes("minimist@1.2.8"), `${manager}: ${tree}`);
+    assert.ok(tree.includes("wordwrap@1.0.0"), `${manager}: ${tree}`);
+    assert.ok(
+      !tree.some((p) =>
+        /^(minimist@0\.0\.|wordwrap@0\.0\.|lodash@4\.17\.20)/.test(p)
+      ),
+      `${manager}: no release the override replaced: ${tree}`
+    );
+    // An override is neither an unreadable lock nor a foreign source.
+    assert.equal(unreadableLock(addon), null, manager);
+    assert.deepEqual(lockSourceGaps(addon), [], manager);
+  }
+  // A declared exact version is pinned to the release the override put in its place.
+  const pnpm = overrideFixture("pnpm");
+  assert.equal(lockedVersion(pnpm, "lodash"), "4.17.21");
+  assert.ok(
+    lockedPackages(pnpm).some(
+      (p) => p.name === "lodash" && p.version === "4.17.21"
+    )
   );
 });

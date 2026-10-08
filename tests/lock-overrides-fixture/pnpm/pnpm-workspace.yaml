@@ -1,0 +1,4 @@
+overrides:
+  lodash: 4.17.21
+  minimist: 1.2.8
+  optimist>wordwrap: 1.0.0

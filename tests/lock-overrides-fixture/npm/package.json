@@ -1,0 +1,14 @@
+{
+  "name": "lock-overrides-npm",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "optimist": "0.6.1"
+  },
+  "overrides": {
+    "minimist": "1.2.8",
+    "optimist": {
+      "wordwrap": "1.0.0"
+    }
+  }
+}
