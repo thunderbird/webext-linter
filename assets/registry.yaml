@@ -2009,12 +2009,10 @@ llm-sca-review-prompt:
     This is the first half of a source code review. The add-on was submitted in two parts: the built XPI users install, and an archive of the source it was built from. A source archive has no fixed shape - the developer lays it out however they like - so where the add-on's own code sits inside it can only be found by looking. Work that out from the values below, then run the review yourself.
 
     A name in <angle brackets> is a value you work out. The rest are given under "Submission".
-  # A step marked `run: experiments` is printed when the built XPI's manifest.json declares
-  # Experiments. Absent means every run prints it.
-  #
-  # `run` names the axis and its VALUE names the condition, the way `skip` does in the
-  # other prompt: a step cannot accumulate conditions, and the value is checked against
-  # what this prompt can evaluate rather than merely being a boolean.
+  # A step with `when: experiments` is printed when the built XPI's manifest.json declares
+  # Experiments. Absent means every run prints it. `when:` is the same condition language
+  # the review loop's steps use (src/checks/condition.js), checked against the one fact this
+  # prompt can evaluate (SCA_PROMPT_FACTS).
   outcome:
     - text: |-
         Extract SOURCE_ARCHIVE into EXTRACT_TO, given above.
@@ -2026,7 +2024,7 @@ llm-sca-review-prompt:
         In EXTRACT_TO, find the directory holding package.json. That directory is <SCA_ROOT>, absolute.
 
         One rule, and nothing to weigh: the root of a source archive is where its build runs, and the build runs where package.json is. Usually that is EXTRACT_TO itself. Where the archive carries its contents in a directory of its own, it is that directory, however many of them it took to get there. Where several hold one, it is the one holding the lock file beside it - package-lock.json, pnpm-lock.yaml or npm-shrinkwrap.json - because that is the pair an install reads. Never look inside node_modules: those are installed dependencies, each with a package.json of its own, and none of them is this submission.
-    - run: experiments
+    - when: experiments
       text: |-
         Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under <SCA_ROOT>. Its path relative to <SCA_ROOT> is <SCA_EXP_SOURCE>.
     - text: |-
@@ -2048,8 +2046,10 @@ llm-sca-review-prompt:
 #                rule everywhere here: a path is printed by the thing that needs it.
 #   FRAME        every pass: the file, and that it changed. The linter's, so it cannot drift.
 #   INTRO        per phase, and EMPTY unless the steps alone would let the agent act wrongly.
-#   STEPS        per phase, numbered over what survives `skip:`/`run:`, exactly as
-#                llm-review-prompt's `outcome` does. No step numbers itself.
+#   STEPS        per phase, numbered over what survives its `when:` condition, exactly as
+#                llm-review-prompt's `outcome` does. No step numbers itself. A condition is
+#                AND / OR / NOT over the facts REVIEW_PROMPT_FACTS names - the flags given,
+#                `aborted`, `sca`, `sweep-<artifact>` (src/checks/condition.js).
 #   HANDOVER     ONE text, appended by the linter as every phase's last numbered step. Not
 #                one per phase and not one per slot: every entry in every phase carries
 #                "answer": null, so the agent learns the file once and never relearns it.
@@ -2060,9 +2060,7 @@ llm-sca-review-prompt:
 #                that are not there invites an agent to invent some.
 #
 # `verbs` is a property of the PHASE, not of the answer's shape: `verify` and `settle` both
-# fill "answer" with a verb and accept different ones. So is WHICH entries a phase asks
-# about - a `skip:` withholds the entries and not only the step that would use them
-# (src/report/phases.js openIn), or the agent is handed work it was told not to do. A phase whose step names a verb not
+# fill "answer" with a verb and accept different ones. A phase whose step names a verb not
 # listed here, or lists one no step names, is a drafting error - assertPhases refuses both.
 #
 # Placeholders the linter fills: {{review}} the review file, {{command}} the hand-back,
@@ -2135,7 +2133,7 @@ llm-phases:
       verbs: []
       intro: ""
       steps:
-        - skip: llm-skip-summary
+        - when: NOT llm-skip-summary
           text: |-
             Spawn an independent sub-agent NOW to describe the add-on for the reviewer, so they can read it while you work. That file is the reviewer's and yours only to name: do not open it, read it, summarise it, or print what is in it.
 
@@ -2150,7 +2148,7 @@ llm-phases:
             and to nothing else: not to the chat, not to a file of your own choosing.
 
             Do not wait for it. What it writes is the reviewer's, and it is not needed until they are handed the review details.
-        - run: sca
+        - when: sca
           text: |-
             Spawn an independent sub-agent NOW to work out what building this add-on takes. This is a source code review, so the reviewer reproduces the build themselves, and nothing in the report says what that takes. That file is the reviewer's and yours only to name: do not open it, read it, summarise it, or print what is in it.
 
@@ -2179,7 +2177,7 @@ llm-phases:
             and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision, on the reviewer's machine.
 
             Do not wait for it. What it writes is the reviewer's, and it is not needed until they are handed the review details.
-        - run: sweep-xpi
+        - when: sweep-xpi
           text: |-
             Spawn an independent sub-agent NOW to sweep the built add-on.
 
@@ -2190,7 +2188,7 @@ llm-phases:
             Tell it to do what the "instructions" in that file say, and tell it nothing more: the file names the folder to read, what to look for there, and the file to write its answers into. Do not open it yourself, do not summarise it, and do not add to it.
 
             Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. Any other agent this prompt started keeps running meanwhile. Leave it be.
-        - run: sweep-sca
+        - when: sweep-sca
           text: |-
             Spawn an independent sub-agent NOW to sweep the source archive.
 
@@ -2256,8 +2254,8 @@ llm-phases:
             Judge every API, permission and method against SCHEMA, never against what you remember: a name the schema does not have is not a name this add-on can use, whatever another version of Thunderbird offers.
 
     # Builds the add-on and writes how the result differs from the shipped XPI, for the
-    # reviewer to read before the questions. Only in a source code review (`run: sca`) that
-    # nothing has aborted (`skip: if-aborted`), because building runs the submission's own
+    # reviewer to read before the questions. Only in a source code review that nothing has
+    # aborted (`when: sca AND NOT aborted`), because building runs the submission's own
     # code. Opt-in: the reviewer is asked first. The linter judges nothing
     # here - the diff is the reviewer's to read, and the Review Details block links it once
     # it exists.
@@ -2269,8 +2267,7 @@ llm-phases:
       product: buildDiff
       intro: ""
       steps:
-        - run: sca
-          skip: if-aborted
+        - when: sca AND NOT aborted
           text: |-
             Wait for every agent you spawned to come back. Then ask the reviewer, with your question tool, whether to build the add-on from the source archive and compare the result with the shipped XPI, saying that building runs the submission's own code. If they decline, build nothing and write nothing.
 
@@ -2298,17 +2295,17 @@ llm-phases:
 
     # Hands the reviewer the Review Details block, once, before anything is put to them:
     # what this review is, and where to read it while answering - the build diff among it.
-    # Its own phase so it does not hang off one particular question phase. Shown under
-    # --llm-skip-manual too, because the build questions after it are still asked there.
-    # Not in a review that was aborted (`skip: if-aborted`), whose closing hand-over
-    # carries the block anyway.
+    # Its own phase so it does not hang off one particular question phase. Shown whenever a
+    # question follows: in every review --llm-skip-manual leaves `ask` to, and in every
+    # source review, whose build questions are asked under that flag too. Not in a review
+    # that was aborted, whose closing hand-over carries the block anyway.
     - name: details
       # Asks about nothing in the review file: the block is its whole work.
       answer: none
       verbs: []
       intro: ""
       steps:
-        - skip: if-aborted
+        - when: NOT aborted AND (sca OR NOT llm-skip-manual)
           text: |-
             Wait for every agent you spawned to come back, then give the reviewer this block before you put anything to them, under a "Review details" heading and otherwise exactly as it is written here:
 
@@ -2322,14 +2319,14 @@ llm-phases:
     # cases of a check naming the phase (`asked-in`) open here, so neither appears in an XPI
     # review. Asked under --llm-skip-manual too: they decide whether the review goes on,
     # which is not what that flag withholds. A "no" aborts the review, so `reproduced` is
-    # never asked after a build that failed (`skip: if-aborted`), and neither is `ask`.
+    # never asked after a build that failed (`when: NOT aborted`), and neither is `ask`.
     - name: built
       # A person's own words, read like `ask`'s.
       answer: words
       verbs: []
       intro: ""
       steps:
-        - skip: if-aborted
+        - when: NOT aborted
           text: |-
             Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Where they declined the build, it is the question they answer once they have built the add-on themselves. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
 
@@ -2340,7 +2337,7 @@ llm-phases:
       verbs: []
       intro: ""
       steps:
-        - skip: if-aborted
+        - when: NOT aborted
           text: |-
             Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Where they declined the build, it is the question they answer once they have built the add-on themselves. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
 
@@ -2349,8 +2346,8 @@ llm-phases:
     # Puts what only a person can answer to a person. Intro EMPTY: today's two ask blocks say
     # where an entry came from, which is procedural - the agent relays both identically, and
     # naming the difference invites it to treat them differently, which step 3 forbids.
-    # Never in a review that was aborted (`skip: if-aborted`): nothing further is put to
-    # anyone.
+    # Never in a review that was aborted: nothing further is put to anyone. Nor under
+    # --llm-skip-manual, whose questions stay in the report for later.
     - name: ask
       # A person's own words, whether they picked one of the labels offered or typed
       # something else. Turning "Clear" into `cleared` is the linter's job, so this phase
@@ -2359,7 +2356,7 @@ llm-phases:
       verbs: []
       intro: ""
       steps:
-        - skip: [llm-skip-manual, if-aborted]
+        - when: NOT aborted AND NOT llm-skip-manual
           text: |-
             Put every entry in the file to the reviewer in index order, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each entry's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under that entry's "answers", in the order they are listed, each with the label and description written there and no wording of your own.
 
@@ -2376,10 +2373,10 @@ llm-phases:
       verbs: []
       intro: ""
       steps:
-        - skip: if-not-aborted
+        - when: aborted
           text: |-
             The review was aborted before it finished: what it found settles the submission, and nothing further is asked of anyone.
-        - skip: if-aborted
+        - when: NOT aborted
           text: |-
             The review is settled.
         - text: |-

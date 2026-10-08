@@ -12,6 +12,7 @@
 import { ARTIFACT_SCA, ARTIFACT_XPI } from "../lib/artifacts.js";
 import { SEVERITY } from "../report/finding.js";
 import { VERB_NAMES } from "../report/verbs.js";
+import { PROMPT_SKIPS } from "../config.js";
 
 // The severity token a check entry may declare. error/warning/info are stamped
 // onto every finding the check emits. "auto" instead delegates the per-finding
@@ -155,7 +156,7 @@ export const SWEEP_INSTRUCTIONS = Object.freeze({
 });
 
 /** What a sweep of one ARTIFACT is called, in the two places a name for it is needed: the
- *  `run:` condition that decides whether its step prints, and the `{{placeholder}}` that
+ *  `when:` fact that decides whether its step prints, and the `{{placeholder}}` that
  *  step names its request file with. Derived from the artifact rather than written out,
  *  and written out nowhere else - the pipeline mints the condition and src/report/
  *  sweep-files.js mints the slot, both from here, so the step, the condition and the path
@@ -164,29 +165,25 @@ export const sweepRun = (artifact) => `sweep-${artifact.toLowerCase()}`;
 export const sweepSlot = (artifact) =>
   `sweep${artifact.charAt(0)}${artifact.slice(1).toLowerCase()}`;
 
-/** What `run:` can name in each prompt: the things about a run that decide whether a step
- *  of it is printed. No flag spells these - unlike PROMPT_SKIPS, which the CLI offers - so
- *  they live here, beside the messages that name them.
+/** The facts the review loop's `when:` conditions can name (src/checks/condition.js), and
+ *  so what a step of it is printed under (stepsOf, src/report/phases.js):
  *
- *  A name here IS the key the run record answers under (stepsOf, src/report/phases.js),
- *  answered from what the run was told.
+ *  - the flags the run was given (PROMPT_SKIPS, which the CLI offers);
+ *  - `aborted`: a finding has aborted the review. Derived every pass (src/report/loop.js
+ *    runOf), because a verdict can abort a review or take the abort back;
+ *  - `sca`: a source code review;
+ *  - one `sweep-<artifact>` per tree with a sweep to run. Each sweepable artifact is its
+ *    own fact, because each starts its OWN sub-agent against its own tree and a review may
+ *    have one such tree or two. Taken from the artifacts that can be swept rather than
+ *    listed, so a third one is declared once (SWEEP_INSTRUCTIONS) and not again here.
  *
- *  Each sweepable artifact is its own condition, because each starts its OWN sub-agent
- *  against its own tree and a review may have one such tree or two. One condition covering
- *  both would print a step naming a folder this review has not got. Taken from the
- *  artifacts that can be swept rather than listed, so a third one is declared once
- *  (SWEEP_INSTRUCTIONS) and not again here. */
-export const REVIEW_PROMPT_RUNS = [
+ *  Every name but `aborted` and the flags is the key the run record answers under. */
+export const REVIEW_PROMPT_FACTS = [
+  ...PROMPT_SKIPS,
+  "aborted",
   "sca",
   ...Object.keys(SWEEP_INSTRUCTIONS).map(sweepRun),
 ];
-
-/** What `skip:` can name besides a flag (PROMPT_SKIPS): the review's own state, which no
- *  flag gives and which the loop derives every pass (src/report/loop.js runOf), because a
- *  verdict can abort a review or take the abort back. `if-aborted` leaves a step out of a
- *  review that was aborted early, `if-not-aborted` out of every other (stepsOf,
- *  src/report/phases.js). */
-export const REVIEW_STATE_SKIPS = ["if-aborted", "if-not-aborted"];
 
 /**
  * The loop texts the LINTER owns, and the placeholder each one exists to carry. An empty
@@ -224,6 +221,6 @@ export const ITEMLESS_ANSWERS = ["hints", "none", "end"];
  *  is recorded when the phase comes back, and the Review Details block links it only then. */
 export const PHASE_PRODUCTS = ["buildDiff"];
 
-/** The one condition the SCA prompt can evaluate: whether the built add-on declares
- *  Experiments, which decides whether it asks its reader for --sca-exp-source. */
-export const SCA_PROMPT_RUNS = ["experiments"];
+/** The one fact the SCA prompt's `when:` conditions can name: whether the built add-on
+ *  declares Experiments, which decides whether it asks its reader for --sca-exp-source. */
+export const SCA_PROMPT_FACTS = ["experiments"];

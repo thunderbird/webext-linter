@@ -116,8 +116,8 @@ export function readState(file) {
  *  against. Saying the version is wrong sends the reviewer to start the review again,
  *  where reading it would find every sweep unanswered. Version 10 adds the build phase,
  *  which reads `paths.buildCopy` and `paths.buildDiff`. Version 11 names each skip in
- *  `run.skip` by its full flag (`llm-skip-manual`), the way the registry's `skip:` markers
- *  now do - a v10 file's short names would match no step. Version 12 carries where a
+ *  `run.skip` by its full flag (`llm-skip-manual`), the name the registry's step
+ *  conditions read - a v10 file's short names would match no step. Version 12 carries where a
  *  to-do item is asked on the item itself (`askedIn`), set by its check or by the agent's
  *  `ask` verdict, instead of in a `route` map keyed by index - a v11 file's routes would be
  *  read by nothing. */

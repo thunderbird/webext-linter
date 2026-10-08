@@ -8,6 +8,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { stepsOf } from "../../src/report/phases.js";
+import { namesOf, parseCondition } from "../../src/checks/condition.js";
 import {
   loadRegistry,
   assertAskedIn,
@@ -42,10 +43,10 @@ test("the shipped registry's phases load and are whole", () => {
     for (const step of phase.steps) {
       assert.equal(typeof step.text, "string");
       assert.ok(step.text.length > 0);
-      // A list (empty when the step carries none) and a run that is null when absent, so
-      // one filter handles every step.
-      assert.ok(Array.isArray(step.skip));
-      assert.ok(step.run === null || typeof step.run === "string");
+      // A parsed condition, or null for a step printed in every run - one shape, so one
+      // filter handles every step.
+      assert.ok(step.when === null || typeof step.when === "object");
+      assert.equal("skip" in step || "run" in step, false);
     }
   }
 });
@@ -148,18 +149,31 @@ test("a step that numbers itself, or carries a marker nothing answers, is refuse
   phaseNamed(numbered, "verify").steps[0].text = "1. Verify every entry.";
   assert.throws(() => check(numbered), /numbers itself/);
 
-  const badSkip = fresh();
-  phaseNamed(badSkip, "ask").steps[0].skip = "nonsense";
+  // A condition naming a fact nothing answers would be false in every run.
+  const unknown = fresh();
+  phaseNamed(unknown, "ask").steps[0].when = "NOT aborted AND nonsense";
   assert.throws(
-    () => check(badSkip),
-    /which neither a flag nor the review's state gives/
+    () => check(unknown),
+    /is conditioned on `nonsense`, which this prompt does not know/
   );
 
-  const badRun = fresh();
-  // Found by its marker, not by position: a step added to the phase should not decide
-  // which one this mutates.
-  phaseNamed(badRun, "spawn").steps.find((x) => x.run).run = "nonsense";
-  assert.throws(() => check(badRun), /cannot evaluate/);
+  const unparsed = fresh();
+  phaseNamed(unparsed, "ask").steps[0].when = "NOT aborted AND";
+  assert.throws(
+    () => check(unparsed),
+    /`when` that does not parse: expected a name/
+  );
+
+  // The markers `when:` replaced are refused, not read as a step printed in every run.
+  for (const key of ["skip", "run"]) {
+    const stale = fresh();
+    phaseNamed(stale, "ask").steps[0][key] = "aborted";
+    assert.throws(
+      () => check(stale),
+      new RegExp(`authors \`${key}\`, which this prompt cannot act on`),
+      key
+    );
+  }
 });
 
 test("the loop's phases are refused outright when absent", () => {
@@ -198,8 +212,11 @@ test("the loop's phases are refused outright when absent", () => {
 // about nothing.
 test("the steps that start an agent each say whether it is waited for", () => {
   const spawn = phaseNamed(fresh(), "spawn");
-  const by = (marker) =>
-    spawn.steps.find((x) => x.skip === marker || x.run === marker);
+  // Found by the fact its condition reads, not by position.
+  const by = (fact) =>
+    spawn.steps.find(
+      (x) => x.when && namesOf(parseCondition(x.when)).includes(fact)
+    );
   const UNATTENDED =
     "Do not wait for it. What it writes is the reviewer's, and it is not needed until " +
     "they are handed the review details.";
@@ -328,65 +345,58 @@ test("the closing phase opens one way for a settled review and another for an ab
   assert.equal(stepsOf(close, { halted: true }).length, 2);
 });
 
-// A step's `skip:` names everything that leaves it out - a flag this run was given, or the
-// review's own state - and ANY of them does. `run:` beside it still has to hold: neither
-// marker can turn back on what the other left out.
-test("a step is left out when any of its skip values applies, and its run must hold", () => {
+// A step prints when its `when:` condition holds over the facts this run meets: the flags
+// it was given, `aborted` once a finding aborted the review, and each fact the run record
+// answers true. A step with no condition prints in every run.
+test("a step prints when its condition holds over the run's facts", () => {
+  const step = (when, text) => ({
+    when: when === null ? null : parseCondition(when),
+    text,
+  });
   const phase = {
     steps: [
-      { skip: [], run: null, text: "always" },
-      { skip: ["if-aborted"], run: null, text: "running" },
-      { skip: ["if-not-aborted"], run: null, text: "aborted" },
-      { skip: ["llm-skip-manual", "if-aborted"], run: null, text: "asking" },
-      { skip: ["if-aborted"], run: "sca", text: "building" },
+      step(null, "always"),
+      step("NOT aborted", "running"),
+      step("aborted", "aborted"),
+      step("NOT aborted AND NOT llm-skip-manual", "asking"),
+      step("sca AND NOT aborted", "building"),
+      step("NOT aborted AND (sca OR NOT llm-skip-manual)", "details"),
     ],
   };
   const texts = (run) => stepsOf(phase, run).map((s) => s.text);
-  assert.deepEqual(texts({ skip: [], halted: false, sca: true }), [
+  assert.deepEqual(texts({ skip: [], halted: false, sca: false }), [
     "always",
     "running",
     "asking",
-    "building",
+    "details",
   ]);
   assert.deepEqual(texts({ skip: [], halted: true, sca: true }), [
     "always",
     "aborted",
   ]);
+  // --llm-skip-manual: no questions in an XPI review, so no details block either ...
   assert.deepEqual(
     texts({ skip: ["llm-skip-manual"], halted: false, sca: false }),
     ["always", "running"]
   );
+  // ... but a source review still asks its build questions, so the block stays.
+  assert.deepEqual(
+    texts({ skip: ["llm-skip-manual"], halted: false, sca: true }),
+    ["always", "running", "building", "details"]
+  );
 });
 
-// One value or a list, each a flag or a state the review is in - anything else would leave
-// the step in every run, and an empty list leaves it out of nothing.
-test("a skip value is a flag or the review's state, alone or in a list", () => {
-  const listed = fresh();
-  phaseNamed(listed, "ask").steps.find((x) => x.skip).skip = [
-    "llm-skip-manual",
-    "if-not-aborted",
-  ];
-  check(listed);
-
-  for (const [value, refusal] of [
-    [
-      "if-stopped",
-      /is skipped by `"if-stopped"`, which neither a flag nor the review's state gives/,
-    ],
-    [["llm-skip-manual", 3], /is skipped by `3`/],
-    [[], /carries an empty `skip` list/],
-  ]) {
-    const wrong = fresh();
-    phaseNamed(wrong, "ask").steps.find((x) => x.skip).skip = value;
-    assert.throws(() => check(wrong), refusal, JSON.stringify(value));
-  }
-
+// The shipped conditions, loaded parsed: what each phase's steps read.
+test("the shipped steps carry the conditions they are printed under", () => {
   const loaded = fresh().llmPhases().phases;
-  const build = loaded.find((p) => p.name === "build");
-  assert.deepEqual(build.steps[0].skip, ["if-aborted"]);
-  assert.equal(build.steps[0].run, "sca");
-  const ask = loaded.find((p) => p.name === "ask");
-  assert.deepEqual(ask.steps[0].skip, ["llm-skip-manual", "if-aborted"]);
+  const when = (name) =>
+    loaded
+      .find((p) => p.name === name)
+      .steps.map((x) => (x.when ? namesOf(x.when).sort() : null));
+  assert.deepEqual(when("build"), [["aborted", "sca"]]);
+  assert.deepEqual(when("details"), [["aborted", "llm-skip-manual", "sca"]]);
+  assert.deepEqual(when("ask"), [["aborted", "llm-skip-manual"]]);
+  assert.deepEqual(when("close"), [["aborted"], ["aborted"], null]);
 });
 
 // A check asked in a phase of its own names one a PERSON answers, and is itself a question

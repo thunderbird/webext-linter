@@ -1395,10 +1395,10 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   for (const step of prompt.outcome) {
     assert.equal(typeof step.text, "string");
     assert.ok(step.text.length > 0);
-    assert.ok(step.run === null || step.run === "experiments");
+    assert.ok(step.when === null || typeof step.when === "object");
   }
   // Exactly one step is the Experiment one, and it is printed only when they are allowed.
-  assert.equal(prompt.outcome.filter((s) => s.run === "experiments").length, 1);
+  assert.equal(prompt.outcome.filter((s) => s.when !== null).length, 1);
   const noIntro = loadRegistry();
   delete noIntro.doc["llm-sca-review-prompt"].intro;
   assert.throws(() => checkScaPrompt(noIntro), /authors no `intro`/);
@@ -1414,14 +1414,14 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   ];
   assert.throws(() => checkScaPrompt(blankStep), /step 2 authors no `text`/);
 
-  // The marker decides whether the Experiment step prints at all, so a condition this
+  // The condition decides whether the Experiment step prints at all, so a fact this
   // prompt cannot evaluate - a plausible near-miss included - is refused by name rather
-  // than leaving the step printed in every run.
+  // than leaving the step printed in no run.
   const badMarker = loadRegistry();
-  badMarker.doc["llm-sca-review-prompt"].outcome[0].run = "experiment";
+  badMarker.doc["llm-sca-review-prompt"].outcome[0].when = "experiment";
   assert.throws(
     () => checkScaPrompt(badMarker),
-    /step 1 has `run: experiment`, which this prompt cannot evaluate \(expected one of: experiments\)/
+    /step 1 is conditioned on `experiment`, which this prompt does not know \(expected one of: experiments\)/
   );
 
   // And the shared step rule: both prompts are numbered by the renderer.
@@ -1429,14 +1429,13 @@ test("the SCA prompt comes from the registry and both parts are required", () =>
   selfNumbered.doc["llm-sca-review-prompt"].outcome[0].text = "1. Do it.";
   assert.throws(() => checkScaPrompt(selfNumbered), /step 1 numbers itself/);
 
-  // The mirror of the review prompt's rule: this one acts on `run` and nothing else, so
-  // the other prompt's marker - which reads as plausible here, and does nothing - is
-  // refused by name, as is the bare name prop `run` replaced.
+  // A step acts on `when` and nothing else, so a retired marker - which reads as plausible
+  // and would do nothing - is refused by name, as is a bare fact written as a key.
   const wrongMarker = loadRegistry();
-  wrongMarker.doc["llm-sca-review-prompt"].outcome[1].skip = "llm-skip-manual";
+  wrongMarker.doc["llm-sca-review-prompt"].outcome[1].run = "experiments";
   assert.throws(
     () => checkScaPrompt(wrongMarker),
-    /step 2 authors `skip`, which this prompt cannot act on \(expected `run`\)/
+    /step 2 authors `run`, which this prompt cannot act on \(expected `when`\)/
   );
   const typo = loadRegistry();
   typo.doc["llm-sca-review-prompt"].outcome[2].experiments = true;

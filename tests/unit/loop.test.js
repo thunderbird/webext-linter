@@ -401,8 +401,7 @@ test("nothing to ask: the review settles after the last settle", () => {
   state.manual = state.manual.filter((m) => m.extended);
   // skip:manual drops only the questions. spawn is skipped too (nothing to start) - so
   // what this pins is that `ask` is not issued either, once it has nothing to put to
-  // anyone. The details block still goes out: the build questions it serves are asked
-  // under --llm-skip-manual too, and it does not ask which review it is.
+  // anyone - and neither is the details block, which exists to answer questions with.
   state.run = {
     skip: ["llm-skip-manual", "llm-skip-summary"],
     sca: false,
@@ -426,7 +425,7 @@ test("nothing to ask: the review settles after the last settle", () => {
       REGISTRY
     );
   }
-  assert.deepEqual(seen, ["verify", "settle", "details"]);
+  assert.deepEqual(seen, ["verify", "settle"]);
   assert.equal(
     issue(state, stateFile, PHASES, REGISTRY).phase.name,
     "close",
@@ -839,10 +838,9 @@ test("every combination of the skips issues exactly the phases it should", () =>
       ...(!skip.includes("llm-skip-summary") || sweeps ? ["spawn"] : []),
       "verify",
       "settle",
-      // The block `details` hands over goes out either way - the build questions it serves
-      // are asked under --llm-skip-manual too - and the questions are what `ask` is for.
-      "details",
-      ...(skip.includes("llm-skip-manual") ? [] : ["ask"]),
+      // An XPI review asks nothing else, so --llm-skip-manual leaves no question for the
+      // details block to serve and no entry for `ask`.
+      ...(skip.includes("llm-skip-manual") ? [] : ["details", "ask"]),
     ];
     const { seen, details } = phasesOf(state, stateFile);
     const where = `skips: ${skip.join(",") || "none"}`;
@@ -1090,8 +1088,8 @@ test("withdrawing the blocking findings puts the question block back", () => {
 });
 
 // The Review Details block goes out once, in a phase of its own, before the questions - and
-// not once the review was aborted. --llm-skip-manual does not withhold it: the build
-// questions it serves are asked there too.
+// only where a question follows: not in an aborted review, and not in an XPI review under
+// --llm-skip-manual. A source review keeps it under that flag, for its build questions.
 test("the details block is handed over by its own phase, before the questions", () => {
   const blocks = (made) => {
     const shown = [];
@@ -1119,7 +1117,11 @@ test("the details block is handed over by its own phase, before the questions", 
 
   const skipped = review(tmp(), { sweep: false });
   skipped.state.run.skip = ["llm-skip-manual"];
-  assert.deepEqual(blocks(skipped), ["details"]);
+  assert.deepEqual(blocks(skipped), []);
+
+  const source = buildQuestionsReview(tmp());
+  source.state.run.skip = ["llm-skip-manual"];
+  assert.deepEqual(blocks(source), ["details"]);
 
   const aborted = blockingReview(tmp());
   const shown = [];
@@ -1173,8 +1175,8 @@ test("the closing phase opens on how the review ended, and takes nothing back", 
   );
 });
 
-// A review with nothing else to do still closes, once the details block went out.
-test("a review with no other work closes right after the details block", () => {
+// A review with nothing to do at all still closes: its first pass is the closing one.
+test("a review with no other work is closed on its first pass", () => {
   const { state, stateFile } = review(tmp(), {
     sweep: false,
     findings: false,
@@ -1182,15 +1184,6 @@ test("a review with no other work closes right after the details block", () => {
     questions: false,
   });
   state.run = { skip: ["llm-skip-summary", "llm-skip-manual"], sca: false };
-  // The details block is all there is to hand over before it closes.
-  const first = issue(state, stateFile, PHASES, REGISTRY);
-  assert.equal(first.phase.name, "details");
-  accept(
-    state,
-    handBack(state, () => null),
-    PHASES,
-    REGISTRY
-  );
   const out = issue(state, stateFile, PHASES, REGISTRY);
   assert.equal(out.phase.name, "close");
   assert.ok(out.settled, "it carries the settled review");

@@ -28,6 +28,7 @@ import {
 } from "./finding.js";
 import { orderReview, hasLocus, manualBody, collapseBody } from "./order.js";
 import { artifactLabel } from "./artifact.js";
+import { holds } from "../checks/condition.js";
 import { artifactRoots } from "../lib/artifacts.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
 import { displayLine, displayPath, wrapText } from "../util/text.js";
@@ -450,13 +451,13 @@ function valueLines(entries) {
  * out, <SCA_EXP_SOURCE> - instead of carrying paths themselves. The FLAGS
  * are the finished command, one flag per line, filled into the step that says to run it.
  *
- * A step marked `run: experiments` is dropped unless the built add-on declares
+ * A step with `when: experiments` is dropped unless the built add-on declares
  * Experiments, and the surviving steps are numbered 1..N here, so no step may number
  * itself.
  *
  * No review has run when this prints, and none can until its reader answers it - so unlike
  * every other section here, this one describes work still to do rather than work done.
- * @param {{intro: string, outcome: {run: ?string, text: string}[]}} prompt  From
+ * @param {{intro: string, outcome: {when: ?object, text: string}[]}} prompt  From
  *   registry.llmScaReviewPrompt().
  * @param {{folder: string, xpi: string, source: string, extracted: string}} submission
  *   From scaSubmission().
@@ -485,8 +486,11 @@ export function scaPromptLines(prompt, submission, review) {
   // reader RUNS it. Collapsing a run of spaces inside a quoted path hands them a command
   // for a file that does not exist - or, worse, for a different one that does.
   const flags = review.flags.map(displayPath);
+  // The facts this prompt's conditions can name (SCA_PROMPT_FACTS): only whether the
+  // built add-on declares Experiments.
+  const facts = new Set(review.experiments ? ["experiments"] : []);
   const steps = prompt.outcome.filter(
-    (step) => step.run !== "experiments" || review.experiments
+    (step) => step.when === null || holds(step.when, facts)
   );
   steps.forEach((step, i) => {
     // The flags are a paragraph of their own and are NOT wrapped - a command split across

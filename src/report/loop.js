@@ -48,9 +48,10 @@ import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
  * still stand, so it can change with every verdict - a pass that withdraws the finding
  * which aborted the review puts its question block back.
  *
- * Derived in ONE place because both legs of the round trip need the same answer. `issue`
- * decides what goes out by it, and `accept` re-derives what went out rather than storing
- * it - two derivations that could differ would leave a hand-back no answer satisfies.
+ * Derived in ONE place, every pass, and read by `issue` to decide which phase goes out
+ * and which of its steps it prints (src/report/phases.js stepsOf). What a phase asks
+ * about does not depend on it, which is what lets `accept` re-derive what went out from
+ * the review alone.
  * @param {import("./state.js").LoopState} state
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
  * @param {import("../checks/registry.js").Registry} registry
@@ -156,7 +157,7 @@ export function issue(state, stateFile, phases, registry) {
   // and another for the reviewer.
   const entries = ITEMLESS_ANSWERS.includes(phase.answer)
     ? []
-    : phaseEntries(state, registry, phase, ordered, run);
+    : phaseEntries(state, registry, phase, ordered);
   state.phase = phase.name;
   // The `details` phase hands the reviewer the Review Details block, and that block links
   // the report. Refresh the file first, so the link opens the review as it stands rather
@@ -251,13 +252,7 @@ export function accept(state, file, phases, registry) {
   const ordered = orderReview(state.report.findings, state.manual);
   const asked = ITEMLESS_ANSWERS.includes(phase.answer)
     ? []
-    : phaseEntries(
-        state,
-        registry,
-        phase,
-        ordered,
-        runOf(state, ordered, registry)
-      );
+    : phaseEntries(state, registry, phase, ordered);
   const answers = answersOf(entries, asked, phase, (e) =>
     String(e.index ?? "undefined")
   );
@@ -316,8 +311,8 @@ export { HandbackRefused };
  *   caller's, so what it hands out and what it acts on are numbered alike.
  * @returns {object[]}
  */
-function phaseEntries(state, registry, phase, ordered, run) {
-  const open = openIn(phase.name, ordered, state, run);
+function phaseEntries(state, registry, phase, ordered) {
+  const open = openIn(phase.name, ordered, state);
   if (open.length === 0) {
     return [];
   }

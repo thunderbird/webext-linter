@@ -100,12 +100,13 @@ export const MAX_ENTRIES_PER_CATEGORY = 25;
 export const MAX_NOTE = 2000;
 
 /**
- * What a --llm-review run can be told to leave out, as the prompt's steps declare it and
- * the flags spell it: --llm-skip-summary and --llm-skip-manual.
+ * What a --llm-review run can be told to leave out, named by the flag that says so:
+ * --llm-skip-summary and --llm-skip-manual. Each is a fact a prompt step's `when:` condition
+ * can read (REVIEW_PROMPT_FACTS, src/checks/registry-vocabulary.js).
  *
  * Read from every layer of that round trip, which is why it lives here: src/cli.js offers
- * the flags, src/checks/registry.js refuses a step marked with anything else, and
- * src/report/format.js drops the steps and asks that a skip names.
+ * the flags, the registry validates every condition against them, and the loop prints a
+ * step only where its condition holds over them (src/report/phases.js stepsOf).
  */
 export const PROMPT_SKIPS = ["llm-skip-summary", "llm-skip-manual"];
 

@@ -307,7 +307,7 @@ const OPTIONS = {
 
 /**
  * What a --llm-review run was told to leave out, named by the flag that said so - the same
- * name a registry step's `skip:` marker carries. Read HERE and nowhere else, so
+ * name a registry step's `when:` condition reads. Read HERE and nowhere else, so
  * main()'s guards and pipelineOptsFromValues cannot drift apart about what was given -
  * they run on different paths (pipelineOptsFromArgv runs none of main's guards).
  * @param {Record<string, string|boolean>} values
@@ -618,7 +618,7 @@ export async function main(argv) {
   // and hands them back in the command it prints. The loop's later passes need none - the
   // run they belong to recorded them, and every pass after reads that. Refused FIRST, so
   // every guard below can assume a skip implies one of the two.
-  // Not collected by reviewSkips - it names no `skip:` step - so the rule the others get
+  // Not collected by reviewSkips - no `when:` names it - so the rule the others get
   // for free is spelled out for it.
   if (
     values["llm-skip-sweep"] &&
@@ -938,7 +938,7 @@ function pipelineOptsFromValues(values) {
     scaExpSource: inRoot(values["sca-exp-source"]),
     llmReview: Boolean(values["llm-review"]),
     llmSkip: reviewSkips(values),
-    // Not a PROMPT_SKIPS member: it names no `skip:` step. What it withholds is every
+    // Not a PROMPT_SKIPS member: no `when:` names it. What it withholds is every
     // sweep REQUEST, and with them the per-tree conditions derived from the requests - so
     // no step that starts a sweeping agent prints (src/report/phases.js stepsOf).
     llmSkipSweep: Boolean(values["llm-skip-sweep"]),

@@ -10,6 +10,7 @@
 // sees it - is one condition here rather than a rule copied into the renderer, the phase
 // builder and the verdict walk, where three copies drift.
 import { isQuestion } from "./order.js";
+import { holds } from "../checks/condition.js";
 import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
 
 /**
@@ -49,36 +50,35 @@ export function isOpen(item, state) {
 }
 
 /**
- * The steps this run prints for a phase, in order, after its markers.
+ * The steps this run prints for a phase, in order: those with no `when:` condition, and
+ * those whose condition holds (src/checks/condition.js) over the facts this run meets.
  *
- * Two answers decide it, and a step prints only when both allow it: its `run:` condition
- * holds (or it names none), and none of its `skip:` values applies. A skip value is a flag
- * this run was given or the review's own state: `if-aborted` once a finding has aborted
- * the review, `if-not-aborted` otherwise. That is how an abort withholds what comes after
- * it - the build that would run the submission's code, the questions nobody should be
- * asked - since a phase left with no step is not issued.
+ * The facts are the flags the run was given, `aborted` once a finding has aborted the
+ * review, and every other name the run record answers true (`sca`, `sweep-<artifact>`).
+ * Their names live in one place (REVIEW_PROMPT_FACTS, which the registry validates every
+ * condition against), so a new fact is declared there and answered in the record - never
+ * added to a test spelled out here. A fact the record does not answer is false, which is
+ * what an absent one means.
  *
- * A `run:` marker is LOOKED UP in the run record rather than compared against a name
- * spelled here. The names live in one place (REVIEW_PROMPT_RUNS, which the registry
- * validates each marker against), so adding a condition is declaring it there and
- * answering it in the record - never editing a conjunction that a new condition could be
- * left out of. A condition the record does not answer is false, which is what an absent
- * one means.
- * @param {{steps: {skip: string[], run: ?string, text: string}[]}} phase
- * @param {{skip: string[], halted: boolean}} run  The run record, answering each condition
- *   by its own name, and whether the review was aborted.
+ * This is how an abort withholds what comes after it - the build that would run the
+ * submission's code, the questions nobody should be asked - since a phase left with no
+ * step is not issued.
+ * @param {{steps: {when: ?object, text: string}[]}} phase
+ * @param {{skip: string[], halted: boolean}} run  The run record: the flags it was given,
+ *   whether the review was aborted, and each other fact by its own name.
  * @returns {object[]}
  */
 export function stepsOf(phase, run = {}) {
-  const skipped = new Set([
-    ...(run.skip ?? []),
-    run.halted === true ? "if-aborted" : "if-not-aborted",
-  ]);
-  return phase.steps.filter(
-    (step) =>
-      !(step.skip ?? []).some((value) => skipped.has(value)) &&
-      ((step.run ?? null) === null || run[step.run] === true)
-  );
+  const facts = new Set(run.skip ?? []);
+  if (run.halted === true) {
+    facts.add("aborted");
+  }
+  for (const [name, value] of Object.entries(run)) {
+    if (value === true) {
+      facts.add(name);
+    }
+  }
+  return phase.steps.filter((step) => !step.when || holds(step.when, facts));
 }
 
 /**
@@ -96,7 +96,7 @@ export function stepsOf(phase, run = {}) {
 export function workOf(phase, ordered, state, run) {
   return {
     steps: stepsOf(phase, run),
-    items: openIn(phase.name, ordered, state, run),
+    items: openIn(phase.name, ordered, state),
   };
 }
 
@@ -146,25 +146,17 @@ export function nextPhase(phases, ordered, state, run) {
  * answers means a phase issued for entries it never shows, or entries shown that nothing
  * asked for.
  *
- * A SKIP withholds the entries, not only the step that would use them. `--llm-skip-manual`
- * means those items are not put to anyone - they stay in the report for the reviewer to
- * work through later - so leaving them in the file would hand the agent questions it was
- * told not to ask and a handover demanding an answer for each.
- *
- * An EARLY EXIT is not decided here. It withholds the phase itself, through the steps it
- * leaves out (stepsOf, `skip: if-aborted`), and the report drops the same items rather
- * than leaving a to-do list under a line saying it was never finished
- * (src/report/early-exit.js).
+ * Whether the items are put to anyone at all is not decided here. A flag that withholds
+ * them (--llm-skip-manual) or an abort withholds the PHASE, through the steps its `when:`
+ * leaves out (stepsOf) - a phase with no step is never issued, so its entries never go
+ * out - and an aborted report drops the same items rather than leaving a to-do list under
+ * a line saying it was never finished (src/report/early-exit.js).
  * @param {string} phaseName
  * @param {import("./order.js").OrderedItem[]} ordered
  * @param {import("./state.js").LoopState} state
- * @param {{skip: string[]}} run
  * @returns {import("./order.js").OrderedItem[]}
  */
-export function openIn(phaseName, ordered, state, { skip = [] } = {}) {
+export function openIn(phaseName, ordered, state) {
   // An itemless phase (spawn, build) needs no case here: no item is ever routed to it.
-  if (phaseName === "ask" && skip.includes("llm-skip-manual")) {
-    return [];
-  }
   return ordered.filter((x) => isOpen(x, state) && phaseOf(x) === phaseName);
 }

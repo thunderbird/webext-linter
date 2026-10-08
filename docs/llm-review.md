@@ -55,7 +55,7 @@ entry never offered are all refusals.
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
 | `build` | Source code review only: with the reviewer's consent, build the add-on in the agent's own sandbox and write how the result differs from the shipped XPI. | Nothing: the diff goes to a file of its own |
-| `details` | Hand the reviewer the Review Details block, before anything is put to them. | Nothing: the block is its whole work |
+| `details` | Hand the reviewer the Review Details block, before anything is put to them - whenever a question follows: every review without `--llm-skip-manual`, and every source review, whose build questions are asked under it too. | Nothing: the block is its whole work |
 | `built` | Source code review only: ask the reviewer, alone, whether the build succeeded. | The reviewer's own answer |
 | `reproduced` | Source code review only: ask the reviewer, alone, whether the built XPI reproduces the submitted one. | The reviewer's own answer |
 | `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
@@ -67,12 +67,17 @@ mentions one, and a review that starts no sub-agent at all skips `spawn` and ope
 first phase that has any. The package itself is not unpacked by any of this: the linter extracts a packed
 submission before the first prompt is printed, and every phase reads that one folder.
 
+Which steps a phase prints is decided by each step's `when:` condition: `AND`, `OR`, `NOT`
+and parentheses over the facts of this run - the `--llm-skip-*` flags it was given,
+`aborted` once a finding has aborted the review, `sca` for a source code review, and
+`sweep-xpi` / `sweep-sca` for a tree with a sweep to run. A step with no condition prints
+in every run, and a phase left with no step is not issued. The registry spells each one
+out, for example `build`'s `sca AND NOT aborted`, or `details`'
+`NOT aborted AND (sca OR NOT llm-skip-manual)`, and refuses a condition that does not parse
+or names a fact nothing answers.
+
 `build`, `details`, `built`, `reproduced` and `ask` have one further condition: a review that was **aborted
-early** never reaches them. Their steps carry `skip: if-aborted`, and a phase with no step
-left is not issued (`skip: if-not-aborted` is the opposite: the step prints only in a review
-that was aborted). A step's `skip:` takes one value or a list - a `--llm-skip-*` flag or one
-of these two - and the step is left out when any of them applies, and when its `run:`
-condition does not hold. `build` runs the submission's own code, so it waits until every
+early** never reaches them - each of their steps reads `NOT aborted`. `build` runs the submission's own code, so it waits until every
 check that can abort the review has had its say - including `build-lifecycle-hook`, which `settle`
 decides. The agent asks the reviewer before building, builds in a copy of the source
 archive, and writes the outcome to `BUILD_DIFF`: identical, differing (with the diff), or
@@ -128,7 +133,7 @@ What an aborted review does:
 | The report | drops every to-do item a reviewer would have been **asked** - the Extended Manual Review and Standard Manual Review sections, and their tally counts. |
 | | keeps both code-review sections: reading code is safe, and what it turns up is the evidence for the halt. |
 | | ends on the reason it is incomplete, one line per distinct cause. |
-| The `close` phase | opens with a step of its own (`skip: if-not-aborted`), because telling an agent "the review is settled" about one that was cut short is not true. Everything after that opening is the same. |
+| The `close` phase | opens with a step of its own (`when: aborted`), because telling an agent "the review is settled" about one that was cut short is not true. Everything after that opening is the same. |
 
 The decision is taken again on every pass, never recorded once, because the `verify` phase
 is where those findings are audited: an agent that **withdraws** the finding which aborted
@@ -290,7 +295,7 @@ the last pass hands it over again as what they are left holding.
 
 The last pass is the `close` phase. The linter applies every answer, writes `REVIEW_REPORT`,
 and only then prints it, so it opens on whether the review settled or was aborted: of its two
-opening steps, one carries `skip: if-aborted` and the other `skip: if-not-aborted`. The
+opening steps, one reads `when: NOT aborted` and the other `when: aborted`. The
 rest is one step, the same either way. It hands over the agent's own account and the block,
 each under a heading of its own: **LLM decisions** (every finding it withdrew and every
 verdict it reached, with its reasons - the only part that is the agent's to write),

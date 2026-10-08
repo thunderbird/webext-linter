@@ -39,7 +39,8 @@ import YAML from "yaml";
 import { displayLine } from "../util/text.js";
 
 import { finding, SECTION, SEVERITY } from "../report/finding.js";
-import { MAX_NOTE, PROMPT_SKIPS } from "../config.js";
+import { MAX_NOTE } from "../config.js";
+import { namesOf, parseCondition } from "./condition.js";
 import { artifactLabel } from "../report/artifact.js";
 import { ARTIFACT_NONE, assertLocus } from "../lib/artifacts.js";
 import { VERB, VERB_NAMES, verbNamed } from "../report/verbs.js";
@@ -60,9 +61,8 @@ import {
   PHASE_TEXTS,
   FINAL_SLOTS,
   LOOP_VERBS,
-  SCA_PROMPT_RUNS,
-  REVIEW_PROMPT_RUNS,
-  REVIEW_STATE_SKIPS,
+  SCA_PROMPT_FACTS,
+  REVIEW_PROMPT_FACTS,
 } from "./registry-vocabulary.js";
 import { rethrowIfFatal, wiringError } from "../lib/errors.js";
 import { verdictLabel } from "../report/verdict-label.js";
@@ -581,12 +581,12 @@ export class Registry {
    * that the file has changed since the last pass. The phases author only what differs:
    * their `intro` (often empty) and their `steps`.
    *
-   * A step's marker comes back as null when it carries none, the same shape the SCA
-   * prompt's steps come back in, so the caller filters by one shape: `skip` against the flags the run was given,
-   * `run` against the conditions this review meets.
+   * A step comes back with its `when` condition already parsed, or null when it carries
+   * none - the same shape the SCA prompt's steps come back in, so both are filtered by one
+   * evaluator (src/checks/condition.js holds) against the facts their run meets.
    * @returns {{preamble: string, frame: string, handover: string, refused: string,
    *   phases: {name: string, verbs: string[], intro: string,
-   *   steps: {skip: ?string, run: ?string, text: string}[]}[]}}
+   *   steps: {when: ?object, text: string}[]}[]}}
    */
   llmPhases() {
     const p = this.doc["llm-phases"];
@@ -610,12 +610,7 @@ export class Registry {
           ])
         ),
         intro: phase.intro,
-        steps: phase.steps.map((step) => ({
-          // Always a list, so the caller asks one question of every step.
-          skip: step.skip === undefined ? [] : [step.skip].flat(),
-          run: step.run ?? null,
-          text: step.text,
-        })),
+        steps: phase.steps.map(loadedStep),
       })),
     };
   }
@@ -698,24 +693,17 @@ export class Registry {
    * set, and both are required then - a run whose whole output is this prompt has nothing
    * to print without them.
    *
-   * A step comes back with the `run` condition it is marked with, never filtered here:
-   * which steps a run prints is layout, decided in src/report/format.js beside the flags
-   * themselves. `run: experiments` marks a step that asks for the Experiment folder, which
-   * only a review allowing Experiments reads - so it is printed only when one does.
-   * @returns {{intro: string, outcome: {run: ?string, text: string}[]}}
+   * A step comes back with its `when` condition parsed, never filtered here: which steps a
+   * run prints is layout, decided in src/report/format.js beside the flags themselves.
+   * `when: experiments` marks a step that asks for the Experiment folder, which only a
+   * review allowing Experiments reads - so it is printed only when one does.
+   * @returns {{intro: string, outcome: {when: ?object, text: string}[]}}
    */
   llmScaReviewPrompt() {
     const p = this.doc["llm-sca-review-prompt"];
     return {
       intro: p.intro,
-      // A step's `run` comes back as null when it carries no marker: every run prints it.
-      // `run: experiments` asks for the Experiment folder, which only a review allowing
-      // Experiments reads - so it comes back marked, and the renderer drops it when it
-      // would ask for a value nothing will use.
-      outcome: p.outcome.map((step) => ({
-        run: step.run ?? null,
-        text: step.text,
-      })),
+      outcome: p.outcome.map(loadedStep),
     };
   }
 
@@ -1316,18 +1304,19 @@ export function assertEntries(registry, at) {
  * numbers what survived that run's own filtering, so a literal number would print twice
  * and the second one would be wrong as soon as anything above it was withheld.
  *
- * It may carry the markers its own prompt acts on, and nothing else. Each prompt reads only
- * its own - `skip` and `run` here, `run` there - so any other key is dropped at load and the
- * step prints in every run: a typo of a marker, or the other prompt's marker, both read as a
- * step that was never marked. Where a prompt acts on both, they combine one way only: a
- * step prints when its `run` condition holds AND none of its `skip` values applies, so
- * neither marker can turn back on what the other left out.
+ * It may carry one condition, `when:`, and nothing else: a step prints when its condition
+ * holds over the facts the prompt names (`facts`), and always when it carries none. Any
+ * other key would be dropped at load and the step would print in every run, so a typo of
+ * the marker reads as a step that was never conditioned - which is refused rather than
+ * read. A condition that does not parse, or names a fact the prompt does not know, is
+ * refused too: a name nothing answers is false in every run, which no reader could tell
+ * from a step that is never meant to print.
  * @param {unknown} step
  * @param {number} i  Its position, for the message.
  * @param {string} where  Which prompt, for the message.
- * @param {string[]} markers  The markers this prompt acts on.
+ * @param {string[]} facts  The facts this prompt's conditions may name.
  */
-function assertStep(step, i, where, markers) {
+function assertStep(step, i, where, facts) {
   const nth = `${where} \`outcome\` step ${i + 1}`;
   if (!step || typeof step !== "object" || Array.isArray(step)) {
     throw new Error(`${nth} is not a step mapping`);
@@ -1341,16 +1330,47 @@ function assertStep(step, i, where, markers) {
         "number would render twice"
     );
   }
-  const named = markers.map((m) => `\`${m}\``).join(" or ");
   const stray = Object.keys(step).find(
-    (key) => key !== "text" && !markers.includes(key)
+    (key) => key !== "text" && key !== "when"
   );
   if (stray) {
     throw new Error(
       `${nth} authors \`${stray}\`, which this prompt cannot act on (expected ` +
-        `${named}) - the step would print in every run`
+        "`when`) - the step would print in every run"
     );
   }
+  if (step.when === undefined) {
+    return;
+  }
+  let tree;
+  try {
+    tree = parseCondition(step.when);
+  } catch (err) {
+    throw new Error(
+      `${nth} has a \`when\` that does not parse: ${err.message}`
+    );
+  }
+  const unknown = namesOf(tree).find((name) => !facts.includes(name));
+  if (unknown !== undefined) {
+    throw new Error(
+      `${nth} is conditioned on \`${unknown}\`, which this prompt does not know ` +
+        `(expected one of: ${facts.join(", ")})`
+    );
+  }
+}
+
+/**
+ * One prompt step as its reader takes it: the text, and the condition it is printed under -
+ * parsed once, here, or null for a step printed in every run. assertStep has already
+ * refused a condition that does not parse.
+ * @param {{text: string, when?: string}} step
+ * @returns {{when: ?import("./condition.js").ConditionTree, text: string}}
+ */
+function loadedStep(step) {
+  return {
+    when: step.when === undefined ? null : parseCondition(step.when),
+    text: step.text,
+  };
 }
 
 /** What one entry of a phase is answered WITH, which decides the shape the entry is handed
@@ -1437,31 +1457,7 @@ export function assertPhases(registry, at) {
       }
     }
     phase.steps.forEach((step, i) => {
-      assertStep(step, i, `llm-phases phase \`${name}\``, ["skip", "run"]);
-      // One value or a list, and a step is left out when ANY of them applies: a flag this
-      // run was given, or the review's own state.
-      if (step.skip !== undefined) {
-        const skips = [step.skip].flat();
-        const known = [...PROMPT_SKIPS, ...REVIEW_STATE_SKIPS];
-        if (skips.length === 0) {
-          throw new Error(
-            `${at2} step ${i + 1} carries an empty \`skip\` list, which leaves it out of nothing`
-          );
-        }
-        const odd = skips.find((v) => !known.includes(v));
-        if (odd !== undefined) {
-          throw new Error(
-            `${at2} step ${i + 1} is skipped by \`${JSON.stringify(odd)}\`, which neither a ` +
-              `flag nor the review's state gives (expected one of: ${known.join(", ")})`
-          );
-        }
-      }
-      if (step.run !== undefined && !REVIEW_PROMPT_RUNS.includes(step.run)) {
-        throw new Error(
-          `${at2} step ${i + 1} runs on \`${step.run}\`, which this prompt cannot ` +
-            `evaluate (expected one of: ${REVIEW_PROMPT_RUNS.join(", ")})`
-        );
-      }
+      assertStep(step, i, `llm-phases phase \`${name}\``, REVIEW_PROMPT_FACTS);
     });
     // Both ways, over the phase's `verb-prose`. A step does not name verbs: what an
     // answer means is rendered onto the entry that offers it, so this is where the agent
@@ -1496,18 +1492,7 @@ export function assertPhases(registry, at) {
  */
 export function assertScaPrompt(registry, at) {
   registry.doc["llm-sca-review-prompt"].outcome.forEach((step, i) => {
-    assertStep(step, i, "llm-sca-review-prompt", ["run"]);
-    // Checked against what this prompt can EVALUATE, the way `skip` is checked against the
-    // flags that give it: the marker decides whether the step is printed at all, so a
-    // condition nothing answers would print it in every run - which is the one case a
-    // reader cannot tell from a step that was never marked.
-    if (step.run !== undefined && !SCA_PROMPT_RUNS.includes(step.run)) {
-      throw new Error(
-        `llm-sca-review-prompt \`outcome\` step ${i + 1} has \`run: ${step.run}\`, which ` +
-          `this prompt cannot evaluate (expected one of: ${SCA_PROMPT_RUNS.join(", ")}) ` +
-          `(${at})`
-      );
-    }
+    assertStep(step, i, `llm-sca-review-prompt (${at})`, SCA_PROMPT_FACTS);
   });
 }
 
