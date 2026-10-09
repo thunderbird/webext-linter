@@ -766,6 +766,32 @@ test("a rescued copy that cannot be made ends the preparation", async (t) => {
   });
 });
 
+// Every path a record holds is read by a later run, from any directory, so each is written
+// absolute - and a record about to hold a relative one is refused at the write, naming it.
+test("a record holding a relative path is never written", async () => {
+  const { work, copy } = await rescued();
+  const record = recordOf(copy);
+  const relative = {
+    "submission.xpi": {
+      submission: { ...record.submission, xpi: "addon.xpi" },
+    },
+    "roots.scaRoot": { roots: { ...record.roots, scaRoot: "sca" } },
+    "roots.scaExpSource": { roots: { ...record.roots, scaExpSource: "exp" } },
+    "original.work": { original: { ...record.original, work: "work" } },
+    "original.scaRoot": { original: { ...record.original, scaRoot: "sca" } },
+    rescued: { rescued: "work-rescued" },
+    "flags.cache-schema-dir": { flags: { "cache-schema-dir": "cache" } },
+  };
+  for (const [field, over] of Object.entries(relative)) {
+    assert.throws(
+      () => writePrepare(copy, { ...record, ...over }),
+      new RegExp(`and ${field.replace(/\./g, "\\.")} is not`),
+      field
+    );
+  }
+  cleanup(work);
+});
+
 // ---- sca-dependencies-changed: what a rescued review tells the developer ----
 
 /** The check run on a source archive written from `files`, beside the original package

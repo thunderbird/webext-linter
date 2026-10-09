@@ -324,6 +324,14 @@ function reviewSkips(values) {
 /** The --sca-* flags, which --llm-sca-review exists to work out and so refuses to be given. */
 const SCA_FLAGS = ["sca-root", "sca-exp-source"];
 
+/** Where each cache lives when the run names none. */
+const CACHE_DIR_DEFAULTS = Object.freeze({
+  "cache-schema-dir": DEFAULT_CACHE,
+  "cache-hash-db-dir": LIBRARY_HASHES_CACHE,
+  "cache-cdn-lookup-dir": CDN_LOOKUP_CACHE,
+  "cache-experiments-dir": EXPERIMENTS_CACHE,
+});
+
 /** The flags that name a folder on this machine, each taken to be its real target before
  *  anything reads it (main). --sca-exp-source is not one of them: it names a folder INSIDE
  *  --sca-root, and is followed from there. */
@@ -431,14 +439,14 @@ function linkedFile(p) {
 }
 
 /**
- * The FOLDER `p` really is, links followed - or `p` as it was written, where no link
- * touches it, so a message still quotes what was typed. Read for folders only: a file named
- * through a link is refused before this is asked (linkedFile). A path that does not exist yet (a
- * work folder or a cache folder the run creates) is followed as far as it exists, and the
- * rest joined back on. A path that cannot be followed is left as written, for the check
- * that reads it to report in its own words.
+ * The FOLDER `p` really is, as one absolute name, links followed: the name every check
+ * asks of, every message quotes, and every record holds, whatever directory a later run
+ * reads it from. Read for folders only: a file named through a link is refused before this
+ * is asked (linkedFile). A path that does not exist yet (a work folder or a cache folder the
+ * run creates) is followed as far as it exists, and the rest joined back on. A path that
+ * cannot be followed is taken as it resolves, for the check that reads it to report.
  * @param {string} p
- * @returns {string}
+ * @returns {string}  Absolute.
  */
 function realFolder(p) {
   const full = path.resolve(p);
@@ -448,16 +456,15 @@ function realFolder(p) {
     while (!fs.existsSync(at)) {
       const up = path.dirname(at);
       if (up === at) {
-        return p;
+        return full;
       }
       rest.unshift(path.basename(at));
       at = up;
     }
-    const real = path.join(fs.realpathSync(at), ...rest);
-    return real === full ? p : real;
+    return path.join(fs.realpathSync(at), ...rest);
   } catch (err) {
     rethrowIfFatal(err);
-    return p;
+    return full;
   }
 }
 
@@ -619,16 +626,16 @@ export async function main(argv) {
   // A FILE is never followed: the .xpi named here, like the files of a submission folder
   // (src/addon/submission.js), must be the file itself, so a link to one is refused.
   //
-  // The work folder a --llm-handback names is also taken as one absolute name: it is
-  // recorded, a rescued copy is placed beside it, and the command handed to the agent names
-  // it, so a relative path or a trailing slash would make each of those mean something else.
+  // A cache the run was not given is its default, filled in first so it is taken the same
+  // way: the preparation records every cache it used, and the review a later hand-back
+  // starts reads those, whatever directory that hand-back runs from.
+  for (const [flag, folder] of Object.entries(CACHE_DIR_DEFAULTS)) {
+    values[flag] ??= folder;
+  }
   for (const flag of FOLDER_FLAGS) {
     if (values[flag] !== undefined) {
       values[flag] = realFolder(values[flag]);
     }
-  }
-  if (values["llm-handback"] !== undefined) {
-    values["llm-handback"] = path.resolve(values["llm-handback"]);
   }
   if (positionals[0] !== undefined) {
     const linked = linkedFile(positionals[0]);
@@ -642,14 +649,9 @@ export async function main(argv) {
   }
   // Named inside --sca-root, so followed from there - the folder the review resolves it to.
   if (values["sca-exp-source"] !== undefined) {
-    const inRoot = path.resolve(
-      values["sca-root"] ?? ".",
-      values["sca-exp-source"]
+    values["sca-exp-source"] = realFolder(
+      path.resolve(values["sca-root"] ?? ".", values["sca-exp-source"])
     );
-    const real = realFolder(inRoot);
-    if (real !== inRoot) {
-      values["sca-exp-source"] = real;
-    }
   }
 
   // A bad --checks-only/--checks-skip id is a bad command line whatever the run does with
@@ -1162,10 +1164,16 @@ function pipelineOptsFromValues(values) {
   const inRoot = (value) =>
     value === undefined ? undefined : path.resolve(scaRoot ?? ".", value);
   return {
-    schemaCache: values["cache-schema-dir"] || DEFAULT_CACHE,
-    libraryHashesCache: values["cache-hash-db-dir"] || LIBRARY_HASHES_CACHE,
-    cdnLookupCache: values["cache-cdn-lookup-dir"] || CDN_LOOKUP_CACHE,
-    experimentsCache: values["cache-experiments-dir"] || EXPERIMENTS_CACHE,
+    schemaCache:
+      values["cache-schema-dir"] || CACHE_DIR_DEFAULTS["cache-schema-dir"],
+    libraryHashesCache:
+      values["cache-hash-db-dir"] || CACHE_DIR_DEFAULTS["cache-hash-db-dir"],
+    cdnLookupCache:
+      values["cache-cdn-lookup-dir"] ||
+      CACHE_DIR_DEFAULTS["cache-cdn-lookup-dir"],
+    experimentsCache:
+      values["cache-experiments-dir"] ||
+      CACHE_DIR_DEFAULTS["cache-experiments-dir"],
     // --cdn-lib-lookup true|false, default true. Only those two values reach here (main
     // refuses the rest), so this is the default-when-absent expression and nothing more.
     cdnLookup: values["cdn-lib-lookup"] !== "false",

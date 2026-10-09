@@ -38,7 +38,7 @@ import { writeFileAtomic } from "../util/atomic.js";
 import { rawSha256 } from "../normalize/hash.js";
 import { parseJson } from "../util/json.js";
 import { workPaths } from "../util/dest.js";
-import { rethrowIfFatal } from "../lib/errors.js";
+import { rethrowIfFatal, wiringError } from "../lib/errors.js";
 import { PACKAGE_FILE } from "../vendor/package-file.js";
 import { TREE_LOCKS } from "../vendor/locks.js";
 import { VENDOR_TREE_BANDS } from "../config.js";
@@ -203,6 +203,13 @@ export function startRecord({ submission, flags }) {
  * @returns {PrepareRecord}  The record as written, with its new digest.
  */
 export function writePrepare(work, record) {
+  const relative = relativeFolders(record);
+  if (relative.length) {
+    throw wiringError(
+      "writePrepare: the preparation's record must hold every folder as an absolute path, " +
+        `and ${relative.join(", ")} is not.`
+    );
+  }
   const { digest: _stale, ...body } = record;
   const written = { ...body, digest: recordDigest(body) };
   const file = workPaths(work).prepare;
@@ -211,6 +218,36 @@ export function writePrepare(work, record) {
   writeFileAtomic(file, `${JSON.stringify(written, null, 1)}\n`);
   fs.chmodSync(file, READ_ONLY);
   return written;
+}
+
+/**
+ * The fields of a record that name a folder or file and are not absolute, by name. Every
+ * path a record holds is read by a later run, from whatever directory that run is started
+ * in, so each is turned absolute where it enters (src/cli.js realFolder) - and checked here,
+ * where a missed conversion would otherwise be written down for good. The folder flags are
+ * the `*-dir` ones, the only folder flags a preparation forwards. An empty value names no
+ * path, and is the record's "missing" (src/cli.js RECORD_FIELDS), not a relative one.
+ * @param {PrepareRecord} record
+ * @returns {string[]}
+ */
+function relativeFolders(record) {
+  const named = [
+    ["submission.xpi", record.submission?.xpi],
+    ["roots.scaRoot", record.roots?.scaRoot],
+    ["roots.scaExpSource", record.roots?.scaExpSource],
+    ["original.work", record.original?.work],
+    ["original.scaRoot", record.original?.scaRoot],
+    ["rescued", record.rescued],
+    ...Object.entries(record.flags ?? {})
+      .filter(([flag]) => flag.endsWith("-dir"))
+      .map(([flag, value]) => [`flags.${flag}`, value]),
+  ];
+  return named
+    .filter(
+      ([, value]) =>
+        typeof value === "string" && value !== "" && !path.isAbsolute(value)
+    )
+    .map(([field]) => field);
 }
 
 /**

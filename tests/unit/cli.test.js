@@ -667,7 +667,7 @@ test("a folder flag is checked against the folder the review will read", () => {
   assert.equal(missing.code, 2);
   assert.match(
     missing.stderr,
-    /--sca-exp-source must point at a folder: "\.src"/
+    /--sca-exp-source must point at a folder: "[^"]*\/\.src"/
   );
   assert.match(missing.stderr, new RegExp(`${dir}/\\.src`), "looked in .src");
 
@@ -742,7 +742,7 @@ test("a second positional is refused (exit 2)", () => {
     r.stderr,
     /Only one add-on can be reviewed at a time, and 2 were given/
   );
-  assert.match(r.stderr, /"some\.xpi", "another\.xpi"/);
+  assert.match(r.stderr, /"[^"]*some\.xpi", "another\.xpi"/);
 });
 
 // --help is a request for the usage text, not a run, so it is answered before every guard
@@ -1959,7 +1959,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
   );
   refusedFor(
     "an experiments that is neither true nor false",
-    { submission: { xpi: "x.xpi", experiments: 1 } },
+    { submission: { xpi: path.join(os.tmpdir(), "x.xpi"), experiments: 1 } },
     /The hand-back was refused: the preparation's record holds submission\.experiments as neither true nor false/
   );
   refusedFor(
@@ -2162,6 +2162,47 @@ test("--llm-sca-review starts the review of an Experiment it would reject", () =
     assert.match(prepared.stdout, /── SCA Review Prompt ──/, fixture);
     fs.rmSync(allowed, { recursive: true, force: true });
   }
+});
+
+// The preparation records every cache its review is to read, given or default, as one
+// absolute name: a hand-back started from another directory reads the same caches.
+test("the preparation records every cache as an absolute path", () => {
+  const dir = submissionFolder();
+  const cwd = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "wl-cwd-"))
+  );
+  const r = spawnSync(
+    process.execPath,
+    [REVIEW, dir, "--llm-sca-review", "--cache-schema-dir", "mycache"],
+    { encoding: "utf8", cwd }
+  );
+  assert.equal(r.status, 0, r.stderr);
+  const flags = readJson(workOf(r.stdout), "prepare.json").flags;
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries(flags).filter(([name]) => name.endsWith("-dir"))
+    ),
+    {
+      "cache-schema-dir": path.join(cwd, "mycache"),
+      "cache-hash-db-dir": path.join(
+        cwd,
+        "WEBEXT-LINTER-CACHE",
+        "mozilla-hash-db"
+      ),
+      "cache-cdn-lookup-dir": path.join(
+        cwd,
+        "WEBEXT-LINTER-CACHE",
+        "cdn-lookup"
+      ),
+      "cache-experiments-dir": path.join(
+        cwd,
+        "WEBEXT-LINTER-CACHE",
+        "experiments"
+      ),
+    }
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(cwd, { recursive: true, force: true });
 });
 
 // A check id nobody can run is a bad command line whatever the run does with it - and
