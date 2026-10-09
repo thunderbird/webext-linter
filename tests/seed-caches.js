@@ -77,9 +77,18 @@ let cached = null;
  * @returns {string} The cache directory path.
  */
 export function seedFixtureCache() {
-  if (cached) {
-    return cached;
+  if (!cached) {
+    cached = freshFixtureCache();
   }
+  return cached;
+}
+
+/**
+ * A seeded cache dir of its own, as seedFixtureCache builds, for a test that must not share
+ * one: a run given --cache-clear empties the dir it names. Removed when the process exits.
+ * @returns {string} The cache directory path.
+ */
+export function freshFixtureCache() {
   const dir = fs.mkdtempSync(
     path.join(os.tmpdir(), "webext-linter-fixture-cache-")
   );
@@ -92,7 +101,6 @@ export function seedFixtureCache() {
   );
   fs.copyFileSync(LIBRARY_HASHES_FIXTURE, cachedHashesPath(dir));
   process.on("exit", () => fs.rmSync(dir, { recursive: true, force: true }));
-  cached = dir;
   return dir;
 }
 

@@ -18,10 +18,13 @@ import {
   experimentGroups,
 } from "../../src/lib/experiments.js";
 import {
+  experimentVerdict,
   verifyExperiments,
   loadAllowList,
   normalizedSha256,
 } from "../../src/experiments/verify.js";
+import { extractXpiToTemp } from "../../src/addon/load.js";
+import AdmZip from "adm-zip";
 import { buildSchemaIndex } from "../../src/schema/index.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
 import experimentOverridesApi from "../../src/checks/rules/experiment-overrides-api.js";
@@ -559,4 +562,34 @@ test("resolveExperimentsZip downloads a list older than a day again", async (t) 
   const stale = await resolveExperimentsZip({ branch: "main", cacheDir: dir });
   assert.equal(stale.source, "download:main");
   assert.equal(fs.readFileSync(cached, "utf8"), "new zip", "cache rewritten");
+});
+
+// The verdict --llm-sca-review asks before it prepares a review, by the rule the review's own
+// step asks it by, of the .xpi extracted to a temporary folder.
+test("experimentVerdict reads an extracted .xpi as the review would", async () => {
+  const fixtures = path.join(here, "..", "addons");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-verdict-"));
+  const verdictOf = async (name, extra = {}) => {
+    const zip = new AdmZip();
+    zip.addLocalFolder(path.join(fixtures, name));
+    const xpi = path.join(dir, `${name}.xpi`);
+    zip.writeZip(xpi);
+    const folder = extractXpiToTemp(xpi);
+    try {
+      assert.deepEqual(
+        fs.readdirSync(folder).sort(),
+        fs.readdirSync(path.join(fixtures, name)).sort()
+      );
+      return (await experimentVerdict(folder, { ...opts, ...extra })).invalid;
+    } finally {
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
+  };
+  assert.equal(await verdictOf("experiment-disallowed"), true);
+  assert.equal(await verdictOf("experiment-pristine"), false);
+  assert.equal(
+    await verdictOf("experiment-disallowed", { allowExperiments: true }),
+    false
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
 });

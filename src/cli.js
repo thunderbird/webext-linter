@@ -27,7 +27,12 @@ import { scaSubmission } from "./addon/submission.js";
 import { defaultWorkFolder, workPaths } from "./util/dest.js";
 import { recordBoolean, startRecord } from "./prepare/state.js";
 import { handBack, recordedRoots, startPreparation } from "./prepare/steps.js";
-import { readPackedManifest, relativeInside } from "./addon/load.js";
+import {
+  extractXpiToTemp,
+  readPackedManifest,
+  relativeInside,
+} from "./addon/load.js";
+import { experimentVerdict } from "./experiments/verify.js";
 import { hasErrors } from "./report/finding.js";
 import {
   formatReview,
@@ -204,7 +209,7 @@ function helpText(checkIds) {
     ],
     [
       "--llm-sca-review",
-      "Read the add-on argument as a submission FOLDER - one built .xpi and one archive of the source it was built from - and print the prompt for preparing a source code review of it, then exit without reviewing anything. It creates the review's work folder at its default place, beside the .xpi, and the prompt has the source extracted into it and the roots its reader worked out handed back with --llm-handback and that work folder. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the work folder (<work folder>-rescued) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags: of the copy, or of the source as submitted, whose review the vulnerabilities then abort. Refused beside any --sca-* flag, which is what it exists to produce.",
+      "Read the add-on argument as a submission FOLDER - one built .xpi and one archive of the source it was built from - and print the prompt for preparing a source code review of it, then exit without reviewing anything. It creates the review's work folder at its default place, beside the .xpi, and the prompt has the source extracted into it and the roots its reader worked out handed back with --llm-handback and that work folder. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the work folder (<work folder>-rescued) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags: of the copy, or of the source as submitted, whose review the vulnerabilities then abort. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any --sca-* flag, which is what it exists to produce.",
     ],
     [
       "--llm-handback <dir>",
@@ -769,6 +774,42 @@ export async function main(argv) {
       writeToStderr(`--llm-sca-review "${folder}": ${err.message}\n`);
       return 2;
     }
+    // Whether the add-on declares Experiments is read from the .xpi first: it decides
+    // whether the roots include the Experiment folder, and whether there is a review to
+    // prepare at all.
+    const experiments = isExperiment(readPackedManifest(submission.xpi).json);
+    // The caches are cleared by the run that was given --cache-clear, never by a later one:
+    // the review this preparation starts reads its flags from a record the agent can write,
+    // and a record that could name a folder for the linter to delete is one too many.
+    // Cleared before anything below reads one.
+    if (values["cache-clear"]) {
+      clearCaches(cacheDirs(pipelineOptsFromValues(values)));
+    }
+    // An Experiment the review would reject is not worth preparing: the review rejects it
+    // from the .xpi alone, before it reads a line of the source. So its verdict is asked
+    // here, by the rule the review asks it by (experimentVerdict), of a temporary
+    // extraction of the .xpi - and where it rejects, the review starts at once, decides
+    // the same, and ends where it always does. A run that allows Experiments, or a
+    // submission with none, has nothing to ask.
+    let rejected = false;
+    if (experiments && !values["allow-experiments"]) {
+      let folder;
+      try {
+        folder = extractXpiToTemp(submission.xpi);
+        ({ invalid: rejected } = await experimentVerdict(
+          folder,
+          pipelineOptsFromValues(values)
+        ));
+      } catch (err) {
+        rethrowIfFatal(err);
+        writeToStderr(`${err.message}\n${red("verify failed")}\n`);
+        return 2;
+      } finally {
+        if (folder) {
+          fs.rmSync(folder, { recursive: true, force: true });
+        }
+      }
+    }
     // The review's work folder, created here because the source is extracted into it before
     // the review starts: at its default place, beside the .xpi, as every review's is. Not
     // recursive, and an existing one is refused: the folder is fresh by its moment, so one
@@ -786,16 +827,23 @@ export async function main(argv) {
       );
       return 2;
     }
-    // The preparation's record and the review file the roots come back in, written before
-    // the prompt that names them. Whether the add-on declares Experiments is read from the
-    // .xpi here: it decides whether the roots include the Experiment folder.
-    const experiments = isExperiment(readPackedManifest(submission.xpi).json);
-    // The caches are cleared by the run that was given --cache-clear, never by a later one:
-    // the review this preparation starts reads its flags from a record the agent can write,
-    // and a record that could name a folder for the linter to delete is one too many.
-    if (values["cache-clear"]) {
-      clearCaches(cacheDirs(pipelineOptsFromValues(values)));
+    if (rejected) {
+      let result;
+      try {
+        result = await startReview(
+          { ...forwardedFlags(values), "llm-review": true },
+          submission.xpi,
+          work,
+          registry
+        );
+      } catch (err) {
+        writeToStderr(`${err.message}\n${red("verify failed")}\n`);
+        return 2;
+      }
+      return printReview(result, "text");
     }
+    // The preparation's record and the review file the roots come back in, written before
+    // the prompt that names them.
     startPreparation(
       work,
       startRecord({

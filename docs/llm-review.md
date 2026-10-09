@@ -339,6 +339,13 @@ those, and every other name is given. Nothing asks which directory holds the add
 code: the whole of `<SCA_ROOT>` is reviewed, because a build may move or generate anything
 and no subtree can be shown to be the add-on's.
 
+An add-on whose Experiment the review would reject is not prepared at all: the review
+rejects it from the `.xpi` alone, before it reads any source. Without `--allow-experiments`,
+`--llm-sca-review` first asks the Experiment verdict of the `.xpi`, by the rule the review
+itself asks it by, and where the verdict rejects, it starts that review at once instead of
+printing the preparation's prompt. That review is the one `--llm-review` of the `.xpi`
+starts, and it ends the way it always does.
+
 Where the archive is extracted and where its build runs are two different places, which is
 why `EXTRACT_TO` is not `<SCA_ROOT>`: an archive that carries its contents in a directory
 of its own puts the build files a level below the destination. The review does not depend

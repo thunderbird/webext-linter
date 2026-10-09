@@ -16,6 +16,7 @@ import { pipelineOptsFromArgv } from "../../src/cli.js";
 import { startRecord, writePrepare } from "../../src/prepare/state.js";
 import {
   addonOutsideRepo,
+  freshFixtureCache,
   freshWorkFolder,
   seedFixtureCache,
 } from "../seed-caches.js";
@@ -2080,6 +2081,77 @@ test("a hand-back takes its folder as one absolute name", () => {
     handed.stdout
   );
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// An Experiment the review would reject is not worth preparing: --llm-sca-review asks the
+// review's own verdict of the .xpi first, and where it rejects, starts that review at once -
+// the same review --llm-review of the .xpi starts, ending where it always does. An Experiment
+// the review accepts is prepared as any submission is.
+test("--llm-sca-review starts the review of an Experiment it would reject", () => {
+  // A cache of its own: the verdict reads the seeded allow-list, which a --cache-clear
+  // elsewhere in this file empties from the shared one.
+  const cache = freshFixtureCache();
+  const flags = [
+    "--cache-schema-dir",
+    cache,
+    "--cache-hash-db-dir",
+    cache,
+    "--cache-experiments-dir",
+    cache,
+    "--cache-cdn-lookup-dir",
+    cache,
+    "--cdn-lib-lookup",
+    "false",
+  ];
+  const submission = (fixture) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-exp-gate-"));
+    const zip = new AdmZip();
+    zip.addLocalFolder(path.join(ROOT, "tests", "addons", fixture));
+    zip.writeZip(path.join(dir, "addon.xpi"));
+    fs.writeFileSync(path.join(dir, "src.tar.gz"), "");
+    return dir;
+  };
+  const dir = submission("experiment-disallowed");
+  const r = run([dir, "--llm-sca-review", ...flags]);
+  assert.equal(r.code, 1, r.stderr);
+  assert.doesNotMatch(r.stdout, /SCA Review Prompt/);
+  assert.match(r.stdout, /── LLM Prompt ──/);
+  const work = defaultFolderOf(path.join(dir, "addon.xpi"));
+  assert.deepEqual(fs.readdirSync(work).sort(), [
+    "review.json",
+    "state.json",
+    "xpi",
+  ]);
+  assert.deepEqual(readJson(work, "state.json").report.meta.checksRun, [
+    "experiment-not-allowed",
+  ]);
+  const plain = run([path.join(dir, "addon.xpi"), "--llm-review", ...flags]);
+  assert.equal(plain.code, 1, plain.stderr);
+  const promptOf = (out, w) =>
+    out.split("── LLM Prompt ──")[1].replaceAll(w, "<W>");
+  assert.equal(
+    promptOf(r.stdout, work),
+    promptOf(
+      plain.stdout,
+      fs
+        .readdirSync(dir)
+        .map((n) => path.join(dir, n))
+        .find((p) => /addon-[\d-]+T[\d-]+Z$/.test(p) && p !== work)
+    ),
+    "the review --llm-review of the .xpi starts"
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+
+  for (const [fixture, extra] of [
+    ["experiment-disallowed", ["--allow-experiments"]],
+    ["experiment-pristine", []],
+  ]) {
+    const allowed = submission(fixture);
+    const prepared = run([allowed, "--llm-sca-review", ...flags, ...extra]);
+    assert.equal(prepared.code, 0, prepared.stderr);
+    assert.match(prepared.stdout, /── SCA Review Prompt ──/, fixture);
+    fs.rmSync(allowed, { recursive: true, force: true });
+  }
 });
 
 // A check id nobody can run is a bad command line whatever the run does with it - and

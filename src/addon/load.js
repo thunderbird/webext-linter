@@ -39,6 +39,7 @@
 import { ARTIFACT_SCA, ARTIFACT_XPI, isArtifact } from "../lib/artifacts.js";
 import { wiringError } from "../lib/errors.js";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import AdmZip from "adm-zip";
 
@@ -304,6 +305,20 @@ export function loadAddon(source, copyTo, { recordInstalledTrees, kind } = {}) {
     symlinks,
     directories,
   };
+}
+
+/**
+ * Extract a packed .xpi into a fresh temporary folder of its own, for a caller that has to
+ * read it before any review exists to name a place for it. Extracted exactly as a review
+ * extracts it, so every archive a review refuses is refused here too, and a refusal leaves
+ * nothing behind. The caller removes the folder when it is done with it.
+ * @param {string} xpiPath  The packed .xpi.
+ * @returns {string}  The folder it was extracted into.
+ */
+export function extractXpiToTemp(xpiPath) {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "webext-linter-xpi-"));
+  extractZip(path.resolve(xpiPath), folder);
+  return folder;
 }
 
 /**

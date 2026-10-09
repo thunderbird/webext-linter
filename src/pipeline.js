@@ -97,7 +97,7 @@ import {
   experimentApiMembers,
   experimentApiNamespaces,
 } from "./lib/experiments.js";
-import { verifyExperiments } from "./experiments/verify.js";
+import { experimentVerdict } from "./experiments/verify.js";
 import { debug, progress, report, warn, FEED } from "./util/log.js";
 import { DEFAULT_CACHE } from "./config.js";
 import { rethrowIfFatal, sealArtifact, wiringError } from "./lib/errors.js";
@@ -577,11 +577,12 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     // (github.com/thunderbird/webext-experiments), regardless of
     // --allow-experiments: a bundled experiment whose name matches a known draft
     // MUST be the unmodified upstream copy, which experiment-modified enforces.
-    // verifyExperiments fetches the allow-list only when a group actually bundles
-    // files (a bare experiment_apis declaration stays offline -> unsupported, and the
-    // step's line is the only sign of it), and a fetch failure throws so the run
-    // hard-exits (2) rather than letting a missing allow-list masquerade as a verdict -
-    // we cannot verify identity without it.
+    // The verdict (experimentVerdict) is read from the review's own xpi/, by the one rule
+    // --llm-sca-review asks before it prepares a review. It fetches the allow-list only
+    // when a group actually bundles files (a bare experiment_apis declaration stays
+    // offline -> unsupported, and the step's line is the only sign of it), and a fetch
+    // failure throws so the run hard-exits (2) rather than letting a missing allow-list
+    // masquerade as a verdict - we cannot verify identity without it.
     //
     // Without
     // --allow-experiments an Experiment add-on is rejected outright (the review
@@ -596,14 +597,8 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     // manifest.json's experiment paths resolve against the XPI's own files (no
     // source-layout mismatch).
     experiments: async () => {
-      experimentVerification = await verifyExperiments(
-        xpiAddon,
-        webExtManifestRecord,
-        opts
-      );
-      invalidExperiment =
-        !opts.allowExperiments &&
-        experimentVerification.groups.some((g) => g.status === "unsupported");
+      ({ verification: experimentVerification, invalid: invalidExperiment } =
+        await experimentVerdict(work.xpi, opts));
     },
 
     // A valid Experiment's declared APIs are part of its platform: register each

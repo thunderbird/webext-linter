@@ -25,6 +25,8 @@ import { parseExtensionJson } from "../util/json.js";
 import { EXPERIMENTS_CACHE } from "../config.js";
 import { experimentGroups } from "../lib/experiments.js";
 import { resolveExperimentsZip } from "./fetch.js";
+import { loadAddon, readWebExtManifest } from "../addon/load.js";
+import { ARTIFACT_XPI } from "../lib/artifacts.js";
 import { normalizedSha256 } from "../normalize/hash.js";
 
 // The EOL-tolerant content hash lives in a shared module (the vendor tarball matcher
@@ -145,6 +147,32 @@ function walkDir(root) {
  * @typedef {object} VerifyExperimentsOpts  Pipeline opts (experiments source).
  * @property {string} [experimentsCache]  Cache dir for the downloaded zip.
  */
+
+/**
+ * The Experiment verdict on an extracted XPI folder, read where it is: the classification
+ * of every bundled Experiment, and whether the review rejects the add-on for one
+ * (`invalid`) - an Experiment upstream does not publish, or one with no files, and the
+ * reviewer did not allow Experiments. One rule for both of its readers: the review's own
+ * step on its `xpi/`, and --llm-sca-review, which asks before it prepares a review the
+ * verdict would reject (src/cli.js).
+ * @param {string} xpiRoot  The extracted XPI folder.
+ * @param {VerifyExperimentsOpts & {allowExperiments?: boolean}} [opts]
+ * @returns {Promise<{verification: ExperimentVerification, invalid: boolean}>}
+ */
+export async function experimentVerdict(xpiRoot, opts = {}) {
+  const addon = loadAddon(xpiRoot, undefined, { kind: ARTIFACT_XPI });
+  const verification = await verifyExperiments(
+    addon,
+    readWebExtManifest(addon.store),
+    opts
+  );
+  return {
+    verification,
+    invalid:
+      !opts.allowExperiments &&
+      verification.groups.some((g) => g.status === "unsupported"),
+  };
+}
 
 /**
  * Classify the add-on's bundled experiment(s) against the upstream allow-list.
