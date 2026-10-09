@@ -849,7 +849,6 @@ test("an XPI's lock pins its ranges and nothing more", async () => {
 
   const shipped = await resolveVendor({
     addon: fakeAddon(files),
-    enabled: false,
   });
   // The production range is pinned from it, and nothing is left for either lock check.
   assert.deepEqual(shipped.packages, [
@@ -865,7 +864,6 @@ test("an XPI's lock pins its ranges and nothing more", async () => {
   const source = await resolveVendor({
     addon: fakeAddon(files),
     reviewerInstalls: true,
-    enabled: false,
   });
   assert.deepEqual(source.packages, []);
   assert.deepEqual(source.unpinned, []);

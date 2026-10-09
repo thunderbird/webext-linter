@@ -19,7 +19,11 @@ import { runPipeline } from "../src/pipeline.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
 import { formatReview } from "../src/report/format.js";
 import { setNetworkPacing } from "../src/util/net.js";
-import { fixtureCacheOpts, freshWorkFolder } from "./seed-caches.js";
+import {
+  cdnMissCache,
+  fixtureCacheOpts,
+  freshWorkFolder,
+} from "./seed-caches.js";
 import { advisory, realPreparation } from "./prepared.js";
 import { makeTgz } from "./unit/tarball-fixture.js";
 
@@ -34,6 +38,8 @@ const ROOT = path.resolve(here, "..");
 // A cache pre-seeded from the fixtures, so the pipeline's schema / experiments /
 // library-hash fetches all hit disk - the whole harness runs offline.
 const CACHE_OPTS = fixtureCacheOpts();
+/** The jsDelivr hash lookup a fixture's "network" block can answer, before the hash. */
+const CDN_HASH_LOOKUP = "data.jsdelivr.com/v1/lookup/hash/";
 const ADDONS_DIR = path.join(here, "addons");
 // The fixtures' specs, kept out of the add-ons they describe (see loadFixture).
 const EXPECTED_DIR = path.join(here, "expected");
@@ -180,6 +186,28 @@ function loadFixture(dir) {
     sca: parsed.sca ?? {},
     preparation: parsed.preparation ?? null,
   };
+}
+
+/**
+ * The CDN lookup cache a fixture is reviewed with: jsDelivr's answer for each of its files
+ * already in it, a miss - except the files whose lookup the fixture's "network" block
+ * answers itself (data.jsdelivr.com/v1/lookup/hash/<sha256>), which it asks for.
+ * @param {string} dir  The fixture.
+ * @param {Record<string, object>} network  Its "network" block.
+ * @returns {string} The cache directory.
+ */
+function fixtureCdnCache(dir, network) {
+  const cache = cdnMissCache(dir);
+  const file = path.join(cache, "jsdelivr-hash-lookup.json");
+  const misses = JSON.parse(fs.readFileSync(file, "utf8"));
+  for (const url of Object.keys(network)) {
+    const at = url.indexOf(CDN_HASH_LOOKUP);
+    if (at !== -1) {
+      delete misses[url.slice(at + CDN_HASH_LOOKUP.length)];
+    }
+  }
+  fs.writeFileSync(file, JSON.stringify(misses));
+  return cache;
 }
 
 /**
@@ -335,17 +363,15 @@ async function main() {
       // first; the harness's cache opts win, because pipelineOptsFromArgv supplies the
       // REAL cache directories as defaults and the harness must keep its own.
       //
-      // The CDN identifier is off unless a fixture asks for it: most declare no `network`
-      // answer for the lookup, and leaving it on would have every one of them try it. The
-      // opt-in is read here rather than left to the spread, for the same reason - the
-      // harness has to win on everything else in that object.
+      // The CDN identifier runs as in any review (a fixture's own --cdn-lib-lookup false
+      // turns it off), answered from a cache of the fixture's own (fixtureCdnCache).
       //
       // Each fixture gets a fresh work folder of its own: the default one sits beside the
       // add-on argument, which would put a copy of every fixture inside tests/addons.
       const base = {
         ...pipelineOptsFromArgv(optionsToArgv(options)),
         ...CACHE_OPTS,
-        cdnLookup: String(options["--cdn-lib-lookup"]) === "true",
+        cdnLookupCache: fixtureCdnCache(dir, network),
         workFolder: freshWorkFolder(),
       };
       // The folder the review runs in: the fresh one, or the one a preparation left.

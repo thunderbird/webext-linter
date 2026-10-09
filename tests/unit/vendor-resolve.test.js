@@ -290,7 +290,6 @@ test("a source review fills the store from the lock alone", async () => {
   const v = await resolveVendor({
     addon,
     reviewerInstalls: true,
-    enabled: false,
   });
   for (const bucket of [
     "packages",
@@ -314,7 +313,7 @@ test("a source review fills the store from the lock alone", async () => {
     ["local:../x"]
   );
 
-  const shipped = await resolveVendor({ addon, enabled: false });
+  const shipped = await resolveVendor({ addon });
   assert.deepEqual(shipped.lockPackages, []);
   assert.deepEqual(shipped.lockGithubInstalls, []);
   assert.deepEqual(shipped.lockLocalInstalls, []);
@@ -336,7 +335,7 @@ test("resolveVendor classifies package.json deps by source", async () => {
       },
     }),
   });
-  const v = await resolveVendor({ addon, enabled: false });
+  const v = await resolveVendor({ addon });
   assert.deepEqual(v.packages, [
     { name: "pinned", version: "1.2.3", file: "package.json" },
     // The alias enters as the package it installs, which is what OSV and npm know.
@@ -372,7 +371,7 @@ test("resolveVendor leaves an optionalDependency unclassified", async () => {
       optionalDependencies: { "platform-binary": "2.3.3" },
     }),
   });
-  const v = await resolveVendor({ addon, enabled: false });
+  const v = await resolveVendor({ addon });
   assert.deepEqual(v.packages, [
     { name: "prod", version: "1.0.0", file: "package.json" },
   ]);
@@ -391,7 +390,7 @@ test("resolveVendor drops a dependencies entry an optional entry overrides", asy
         ...extra,
       }),
     });
-    const v = await resolveVendor({ addon, enabled: false });
+    const v = await resolveVendor({ addon });
     assert.deepEqual(v.packages, []);
   }
 });
@@ -417,7 +416,7 @@ test("resolveVendor classifies no devDependency", async () => {
       packages: { "node_modules/webpack": { version: "5.88.0" } },
     }),
   });
-  const v = await resolveVendor({ addon, enabled: false });
+  const v = await resolveVendor({ addon });
   assert.deepEqual(v.packages, [
     { name: "prod", version: "1.0.0", file: "package.json" },
     { name: "shared", version: "2.0.0", file: "package.json" },

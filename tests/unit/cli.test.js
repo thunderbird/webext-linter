@@ -17,6 +17,7 @@ import { readPrepare, writePrepare } from "../../src/prepare/state.js";
 import { advisory, realPreparation } from "../prepared.js";
 import {
   addonOutsideRepo,
+  cdnMissCache,
   freshFixtureCache,
   freshWorkFolder,
   seedFixtureCache,
@@ -31,9 +32,14 @@ const REVIEW = path.join(ROOT, "verify.js");
 // spawned CLI (schema auto-detection, library-hash DB, experiments allow-list) runs
 // fully offline.
 const CACHE = seedFixtureCache();
-/** The flags that point every cache at `cache` and turn the CDN lookup off, so a run is
- *  answered from the prepared cache alone. */
-const cacheFlags = (cache) => [
+// The CDN lookup runs as in any review, answered from a cache that already holds jsDelivr's
+// answer for every fixture file: none of them is on the CDN. A cache of its own, apart from
+// the harness's, whose CDN fixtures expect a hit for their files.
+const FIXTURES_DIR = path.join(ROOT, "tests", "addons");
+const CDN_CACHE = cdnMissCache(FIXTURES_DIR);
+/** The flags that point every cache at a prepared one, so a run is answered from caches
+ *  alone. */
+const cacheFlags = (cache, cdnCache = CDN_CACHE) => [
   "--cache-schema-dir",
   cache,
   "--cache-hash-db-dir",
@@ -41,9 +47,7 @@ const cacheFlags = (cache) => [
   "--cache-experiments-dir",
   cache,
   "--cache-cdn-lookup-dir",
-  cache,
-  "--cdn-lib-lookup",
-  "false",
+  cdnCache,
 ];
 const OFFLINE_FLAGS = cacheFlags(CACHE);
 
@@ -1150,7 +1154,7 @@ test("--eslint gates the code-sanity check", () => {
 // One flag is read in one place (src/checks/registry.js bandUnder) and all four follow.
 test("--warnings-as-errors settles a warning as an error, exit code included", () => {
   const addon = path.join(ROOT, "tests", "addons", "mistyped-manifest-value");
-  const base = [addon, ...OFFLINE_FLAGS, "--cdn-lib-lookup", "false"];
+  const base = [addon, ...OFFLINE_FLAGS];
   const off = run([...base, "--report-format", "json"]);
   const offDoc = JSON.parse(off.stdout);
   assert.equal(off.code, 0); // a warning alone does not fail the run
@@ -1832,7 +1836,7 @@ test("the preparation records the flags its review is started with", () => {
     "--eslint",
     "--verbose",
     "--cache-clear",
-    ...cacheFlags(freshFixtureCache())
+    ...cacheFlags(freshFixtureCache(), cdnMissCache(FIXTURES_DIR))
   );
   assert.deepEqual(ownFlags(workOf(own.stdout)), { eslint: true });
 
@@ -1916,8 +1920,7 @@ async function preparedFolder(over = {}) {
       "cache-schema-dir": CACHE,
       "cache-hash-db-dir": CACHE,
       "cache-experiments-dir": CACHE,
-      "cache-cdn-lookup-dir": CACHE,
-      "cdn-lib-lookup": "false",
+      "cache-cdn-lookup-dir": CDN_CACHE,
     },
     vulns: {
       "lint-pebble@0.4.0": [
@@ -2037,8 +2040,7 @@ test("a prepared review drops what a record must not say", async () => {
       "cache-schema-dir": CACHE,
       "cache-hash-db-dir": CACHE,
       "cache-experiments-dir": CACHE,
-      "cache-cdn-lookup-dir": CACHE,
-      "cdn-lib-lookup": "false",
+      "cache-cdn-lookup-dir": CDN_CACHE,
       eslint: false,
       "rm-rf": "/",
     },
@@ -2277,8 +2279,6 @@ test("the activity feed labels a locus the same way the report does", () => {
     "--sca-root",
     `${fx}/src`,
     "--verbose",
-    "--cdn-lib-lookup",
-    "false",
     ...OFFLINE_FLAGS,
   ]);
   const feed = r.stdout
