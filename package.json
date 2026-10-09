@@ -41,9 +41,9 @@
     "verify": "node verify.js",
     "lint": "eslint src *.js",
     "format:check": "prettier --check \"src/**/*.js\" \"tests/**/*.js\" \"*.js\"",
-    "test": "node tests/run-tests.js && node --test tests/unit/*.test.js",
-    "test:addons": "node tests/run-tests.js",
-    "test:unit": "node --test tests/unit/*.test.js"
+    "test": "node --import ./tests/offline.js tests/run-tests.js && node --import ./tests/offline.js --test tests/unit/*.test.js",
+    "test:addons": "node --import ./tests/offline.js tests/run-tests.js",
+    "test:unit": "node --import ./tests/offline.js --test tests/unit/*.test.js"
   },
   "dependencies": {
     "@babel/parser": "^8.0.4",

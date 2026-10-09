@@ -15,7 +15,11 @@ import path from "node:path";
 import { runPipeline } from "../../src/pipeline.js";
 import { formatText } from "../../src/report/format.js";
 import { loadRegistry } from "../../src/checks/registry.js";
-import { fixtureCacheOpts, freshWorkFolder } from "../seed-caches.js";
+import {
+  cdnMissCache,
+  fixtureCacheOpts,
+  freshWorkFolder,
+} from "../seed-caches.js";
 import { defaultWorkFolder } from "../../src/util/dest.js";
 import { readPrepare, writePrepare } from "../../src/prepare/state.js";
 import { advisory, realPreparation } from "../prepared.js";
@@ -115,6 +119,7 @@ test("SCA e2e: a flat layout is accepted and fully reviewed", async () => {
         addonPath: xpi,
         scaRoot: src,
         ...OFFLINE,
+        cdnLookupCache: cdnMissCache(xpi, src),
       });
       assert.equal(
         meta.reviewed,
@@ -158,6 +163,7 @@ test("SCA e2e: the rendered report carries [XPI]/[SCA] labels + the footer", asy
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     const report = formatText(result);
     assert.match(
@@ -210,8 +216,18 @@ test("SCA e2e: the built XPI's input:xpi findings match a standalone XPI review 
   });
   const src = tmpDir(SRC_FILES);
   try {
-    const sca = await runReview({ addonPath: xpi, scaRoot: src, ...OFFLINE });
-    const xpiOnly = await runReview({ addonPath: xpi, ...OFFLINE });
+    const cdnLookupCache = cdnMissCache(xpi, src);
+    const sca = await runReview({
+      addonPath: xpi,
+      scaRoot: src,
+      ...OFFLINE,
+      cdnLookupCache,
+    });
+    const xpiOnly = await runReview({
+      addonPath: xpi,
+      ...OFFLINE,
+      cdnLookupCache,
+    });
     assert.equal(
       sca.mode,
       REVIEW_MODE.SCA,
@@ -255,6 +271,7 @@ test("SCA e2e: --sca-root alone switches to SCA mode and is the review source", 
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.equal(meta.reviewed, true, "SCA mode engaged from --sca-root alone");
     // The root source is reviewed (proves mode === "sca", source === the root).
@@ -459,6 +476,8 @@ test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-au
 test("SCA: the --sca-root archive is read once, not twice", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(SRC_FILES);
+  // Built before the count starts: making it walks the source too.
+  const cdnLookupCache = cdnMissCache(xpi, src);
   const realReaddir = fs.readdirSync;
   let rootReads = 0;
   mock.method(fs, "readdirSync", (p, ...rest) => {
@@ -472,6 +491,7 @@ test("SCA: the --sca-root archive is read once, not twice", async () => {
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache,
     });
     assert.equal(rootReads, 1, "--sca-root walked once, not twice");
   } finally {
@@ -510,6 +530,7 @@ test("SCA meta names the artifacts, each a real path", async () => {
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.equal(meta.xpi, xpi);
     assert.equal(meta.scaRoot, src);
@@ -588,6 +609,7 @@ test("SCA e2e: code checks review the source; manifest/WAR resolve against the X
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     const { findings } = result;
 
@@ -770,6 +792,7 @@ test("SCA e2e: unused-files flags the build's dead files, not source scaffolding
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     // unused-files describes the SHIPPED artifact: the XPI's dead file is flagged...
     assert.ok(
@@ -807,6 +830,7 @@ test("SCA e2e: locale checks evaluate _locales against the XPI, not the source",
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     // The shipped XPI satisfies default_locale, so there is no false reject - even
     // though the source has no _locales directory.
@@ -843,6 +867,7 @@ test("SCA e2e: missing-english-localization checks the XPI's _locales, not sourc
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.ok(
       !has(findings, "missing-english-localization"),
@@ -926,6 +951,7 @@ test("SCA e2e: trademark-violation resolves a localized name via the XPI's _loca
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.ok(
       has(findings, "trademark-violation"),
@@ -991,6 +1017,7 @@ test("SCA e2e: a build script outside the source is reviewed by undeclared-build
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     // The check ran (SCA-eligible)...
     assert.ok(
@@ -1024,6 +1051,7 @@ test("SCA e2e: a redirected registry is flagged offline", async () => {
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     // The registry as written rides on the item (the locus line), not the message,
     // so every redirected .npmrc collapses into one entry.
@@ -1051,6 +1079,7 @@ test("SCA e2e: a clean npm build fires no build-policy check", async () => {
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.ok(!has(findings, "build-registry-redirect"));
     assert.ok(!has(findings, "committed-node-modules"));
@@ -1081,6 +1110,7 @@ test("SCA e2e: TypeScript and Vue source is parsed and its defects are caught", 
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     // (1) The .ts file is parsed and API-resolved.
     assert.ok(
@@ -1121,6 +1151,7 @@ test("SCA e2e: a minified file in the source is rejected by minified-code", asyn
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     // The prefix is stripped by loadScaAddon, so the review file is "blob.min.js".
     assert.ok(
@@ -1152,6 +1183,7 @@ test("SCA e2e: a package.json install hook escalates to a reviewer", async () =>
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.ok(
       meta.manualReview.some(
@@ -1183,6 +1215,7 @@ test("SCA e2e: a committed build archive is rejected anywhere in --sca-root", as
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.ok(
       has(
@@ -1222,6 +1255,7 @@ test("SCA e2e: a committed node_modules folder is rejected, and never inspected"
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.ok(
       has(findings, "committed-node-modules", (f) =>
@@ -1260,6 +1294,7 @@ test("SCA e2e: a symlinked node_modules is answered once, as a committed tree", 
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.deepEqual(
       findings.filter((f) => f.file === "node_modules").map((f) => f.ruleId),
@@ -1292,6 +1327,7 @@ test("SCA e2e: a symlink leaving --sca-root is rejected, one staying inside is n
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.ok(
       has(
@@ -1449,6 +1485,7 @@ test("SCA e2e: an archive holding the whole XPI is reported, and is still review
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     const { findings, mode } = result;
     assert.equal(
@@ -1505,6 +1542,7 @@ test("SCA e2e: a minified-XPI submission stays in SCA mode (a legitimate SCA)", 
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.equal(
       mode,

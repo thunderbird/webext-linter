@@ -4,6 +4,7 @@
 // and the library-hash DB all read from disk, so the suite touches no network. Pass
 // the returned dir as schemaCache / experimentsCache / libraryHashesCache.
 
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -168,4 +169,30 @@ export function addonOutsideRepo(addon) {
   const copy = path.join(freshParent(), path.basename(addon));
   fs.cpSync(addon, copy, { recursive: true, verbatimSymlinks: true });
   return copy;
+}
+
+/**
+ * A CDN lookup cache that already holds the lookup's answer for every file under `folders`:
+ * a miss, recorded now, so the lookup reads that the CDN has none of them and asks no host.
+ * For a review of files a test wrote itself, which no seeded cache can know in advance.
+ * Removed when the process exits.
+ * @param {...string} folders
+ * @returns {string} The cache directory path.
+ */
+export function cdnMissCache(...folders) {
+  const dir = freshParent();
+  const misses = {};
+  for (const folder of folders) {
+    for (const rel of walk(folder)) {
+      const hash = createHash("sha256")
+        .update(fs.readFileSync(path.join(folder, rel)))
+        .digest("hex");
+      misses[hash] = { missedAt: Date.now() };
+    }
+  }
+  fs.writeFileSync(
+    path.join(dir, "jsdelivr-hash-lookup.json"),
+    JSON.stringify(misses)
+  );
+  return dir;
 }

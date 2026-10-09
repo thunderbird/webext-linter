@@ -38,6 +38,15 @@
 // no single caller can see what the others have spent. A gate anywhere above this would
 // be one each caller had to remember to pass through; here it cannot be bypassed.
 //
+// The TESTS switch the network off (WEBEXT_LINTER_NO_NETWORK=1, set by tests/offline.js):
+// a test must be answered by a seeded cache or by an answer it supplies, never by a host.
+// The switch is read once, when this module loads, and nothing can turn it back on; while it
+// is on, a request that would go out through the built-in fetch to another machine throws
+// instead. Two kinds still pass, since neither can leave this one: a loopback host (the tests
+// of this module run their own server there), and a URL that does not parse, which fetch
+// refuses itself with the same parser before it connects anywhere. It only takes the network
+// away: unset, as in every real run, nothing changes.
+//
 // Belongs here: the abort-timeout wrapper, that decision, and the rate gate (the
 // per-host interval, the status a refusal is recognised by, and the two ways a refusal
 // is retried - once at the time the host named, or on a guessed backoff when it named
@@ -56,9 +65,32 @@ import {
   NETWORK_MAX_WAIT_MS,
 } from "../config.js";
 import { ERROR_CLASS } from "../lib/enum.js";
-import { LinterError, rethrowIfFatal } from "../lib/errors.js";
+import { LinterError, rethrowIfFatal, wiringError } from "../lib/errors.js";
 import { debug, progress } from "./log.js";
 import { displayLine } from "./text.js";
+
+/** Whether the tests switched the network off. Read once: no setter, nothing to undo. */
+const NO_NETWORK = process.env.WEBEXT_LINTER_NO_NETWORK === "1";
+/** The fetch this process started with: the one that reaches a real host. */
+const BUILTIN_FETCH = globalThis.fetch;
+/** The hosts that are this machine, as the URL parser spells them. */
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/**
+ * Whether a request to `url` could reach another machine: its host, read by the parser fetch
+ * itself uses, is not loopback. A URL that does not parse reaches nothing.
+ * @param {string} url
+ * @returns {boolean}
+ */
+function reachesAnotherMachine(url) {
+  let host;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  return !LOOPBACK_HOSTS.has(host);
+}
 
 /**
  * Thrown when the network itself is gone, as opposed to one load failing. Its own
@@ -435,6 +467,17 @@ export async function fetchWithTimeout(
  * @returns {Promise<T>}
  */
 async function issue(url, consume, timeoutMs, init) {
+  // Before the timer and outside the try below, so it is never read as a host that gave no
+  // answer. A wiring error, the class no catch absorbs: a caller that tolerates one failed
+  // request (the CDN lookup does) would otherwise swallow it, and the test would pass on a
+  // request it was never allowed to make.
+  if (
+    NO_NETWORK &&
+    globalThis.fetch === BUILTIN_FETCH &&
+    reachesAnotherMachine(url)
+  ) {
+    throw wiringError(`network request in a test: ${url}`);
+  }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   let res;

@@ -31,14 +31,21 @@ const REVIEW = path.join(ROOT, "verify.js");
 // spawned CLI (schema auto-detection, library-hash DB, experiments allow-list) runs
 // fully offline.
 const CACHE = seedFixtureCache();
-const OFFLINE_FLAGS = [
+/** The flags that point every cache at `cache` and turn the CDN lookup off, so a run is
+ *  answered from the prepared cache alone. */
+const cacheFlags = (cache) => [
   "--cache-schema-dir",
-  CACHE,
+  cache,
   "--cache-hash-db-dir",
-  CACHE,
+  cache,
   "--cache-experiments-dir",
-  CACHE,
+  cache,
+  "--cache-cdn-lookup-dir",
+  cache,
+  "--cdn-lib-lookup",
+  "false",
 ];
+const OFFLINE_FLAGS = cacheFlags(CACHE);
 
 /** What the Review Details block prints under one of its names - the value sits on the
  *  line beneath the name, indented, so no line holds both. Undefined when the run printed
@@ -989,6 +996,9 @@ test("a warning reaches stderr, held back to the end of a prompt run", () => {
   );
   // A folder that exists and holds nothing: the run carries on, degraded, and says so.
   fs.mkdirSync(path.join(dir, "src", "emptyexp"));
+  // Its VENDORS.md sends the review to GitHub for the vendored file, which no cache answers;
+  // what this test reads is the held warning, which does not need it.
+  fs.rmSync(path.join(dir, "src", "VENDORS.md"));
   const args = [
     path.join(dir, "xpi"),
     "--sca-root",
@@ -1028,6 +1038,9 @@ test("a failure outside main still dumps the held messages", () => {
     }
   );
   fs.mkdirSync(path.join(dir, "src", "emptyexp"));
+  // Its VENDORS.md sends the review to GitHub for the vendored file, which no cache answers;
+  // what this test reads is the held warning, which does not need it.
+  fs.rmSync(path.join(dir, "src", "VENDORS.md"));
   const stray = path.join(dir, "stray.mjs");
   fs.writeFileSync(
     stray,
@@ -1629,16 +1642,6 @@ function packAddon(file, manifest = {}) {
   zip.writeZip(file);
 }
 
-/** The flags every preparation run in these tests is given, and so records for the review
- *  it starts, which then runs offline: the seeded caches, and no CDN lookup. */
-const PREPARE_FLAGS = [
-  ...OFFLINE_FLAGS,
-  "--cache-cdn-lookup-dir",
-  CACHE,
-  "--cdn-lib-lookup",
-  "false",
-];
-
 /** The source the preparation tests extract: one with no lock, so its audit asks no
  *  network and cannot read a tree to rescue - the review is started at once. */
 const NO_LOCK_SOURCE = path.join(
@@ -1765,7 +1768,7 @@ test("the hand-back that finishes the preparation starts the review", () => {
   const prepared = run([
     dir,
     "--llm-sca-review",
-    ...PREPARE_FLAGS,
+    ...OFFLINE_FLAGS,
     "--checks-only",
     "unused-files",
   ]);
@@ -1804,7 +1807,7 @@ test("the preparation records the flags its review is started with", () => {
       )
     );
   const prepared = (...flags) => {
-    const r = run([dir, "--llm-sca-review", ...PREPARE_FLAGS, ...flags]);
+    const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS, ...flags]);
     assert.equal(r.code, 0, r.stderr);
     return r;
   };
@@ -1824,7 +1827,13 @@ test("the preparation records the flags its review is started with", () => {
     ["unused-files"],
     "the started review runs with them"
   );
-  const own = prepared("--eslint", "--verbose", "--cache-clear");
+  // --cache-clear really empties the caches it is given, so this run is given its own.
+  const own = prepared(
+    "--eslint",
+    "--verbose",
+    "--cache-clear",
+    ...cacheFlags(freshFixtureCache())
+  );
   assert.deepEqual(ownFlags(workOf(own.stdout)), { eslint: true });
 
   // With no Experiment shipped, the prompt neither asks for the Experiment folder nor
@@ -1855,7 +1864,7 @@ test("--llm-sca-review hands a skip to the review it prepares", () => {
   const r = run([
     dir,
     "--llm-sca-review",
-    ...PREPARE_FLAGS,
+    ...OFFLINE_FLAGS,
     "--llm-skip-manual",
   ]);
   assert.equal(r.code, 0, r.stderr);
@@ -1868,7 +1877,7 @@ test("--llm-sca-review hands a skip to the review it prepares", () => {
       .replace(/addon-\d{4}-\d{2}-\d{2}T[\d-]+Z/g, "<WORK>");
   assert.equal(
     prompt(r.stdout),
-    prompt(run([dir, "--llm-sca-review", ...PREPARE_FLAGS]).stdout)
+    prompt(run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]).stdout)
   );
   handBackRoots(r.stdout);
   assert.deepEqual(readJson(workOf(r.stdout), "state.json").run.skip, [
@@ -1880,7 +1889,7 @@ test("--llm-sca-review hands a skip to the review it prepares", () => {
 // A hand-back that cannot be read is refused to the agent, with the folder as it was.
 test("a preparation refuses an unanswered hand-back", () => {
   const dir = submissionFolder();
-  const r = run([dir, "--llm-sca-review", ...PREPARE_FLAGS]);
+  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
   const unanswered = run(["--llm-handback", work]);
@@ -2051,7 +2060,7 @@ test("the preparation quotes an argument that carries whitespace", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl sub mission-"));
   packAddon(path.join(dir, "addon  v2.xpi"));
   fs.writeFileSync(path.join(dir, "src.tar.gz"), "");
-  const r = run([dir, "--llm-sca-review", ...PREPARE_FLAGS]);
+  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   // The values above the command are read by eye, not typed, so they carry no quotes, and
   // keep the run of spaces the file name has.
@@ -2073,7 +2082,7 @@ test("the preparation quotes an argument that carries whitespace", () => {
 // name: the review starts in it, and the prompt names its files by that name.
 test("a hand-back takes its folder as one absolute name", () => {
   const dir = submissionFolder();
-  const r = run([dir, "--llm-sca-review", ...PREPARE_FLAGS]);
+  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
   const handed = handBackRoots(r.stdout, {
@@ -2093,21 +2102,6 @@ test("a hand-back takes its folder as one absolute name", () => {
 // the same review --llm-review of the .xpi starts, ending where it always does. An Experiment
 // the review accepts is prepared as any submission is.
 test("--llm-sca-review starts the review of an Experiment it would reject", () => {
-  // A cache of its own: the verdict reads the seeded allow-list, which a --cache-clear
-  // elsewhere in this file empties from the shared one.
-  const cache = freshFixtureCache();
-  const flags = [
-    "--cache-schema-dir",
-    cache,
-    "--cache-hash-db-dir",
-    cache,
-    "--cache-experiments-dir",
-    cache,
-    "--cache-cdn-lookup-dir",
-    cache,
-    "--cdn-lib-lookup",
-    "false",
-  ];
   const submission = (fixture) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-exp-gate-"));
     const zip = new AdmZip();
@@ -2117,7 +2111,7 @@ test("--llm-sca-review starts the review of an Experiment it would reject", () =
     return dir;
   };
   const dir = submission("experiment-disallowed");
-  const r = run([dir, "--llm-sca-review", ...flags]);
+  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 1, r.stderr);
   assert.doesNotMatch(r.stdout, /SCA Review Prompt/);
   assert.match(r.stdout, /── LLM Prompt ──/);
@@ -2130,7 +2124,11 @@ test("--llm-sca-review starts the review of an Experiment it would reject", () =
   assert.deepEqual(readJson(work, "state.json").report.meta.checksRun, [
     "experiment-not-allowed",
   ]);
-  const plain = run([path.join(dir, "addon.xpi"), "--llm-review", ...flags]);
+  const plain = run([
+    path.join(dir, "addon.xpi"),
+    "--llm-review",
+    ...OFFLINE_FLAGS,
+  ]);
   assert.equal(plain.code, 1, plain.stderr);
   const promptOf = (out, w) =>
     out.split("── LLM Prompt ──")[1].replaceAll(w, "<W>");
@@ -2152,7 +2150,12 @@ test("--llm-sca-review starts the review of an Experiment it would reject", () =
     ["experiment-pristine", []],
   ]) {
     const allowed = submission(fixture);
-    const prepared = run([allowed, "--llm-sca-review", ...flags, ...extra]);
+    const prepared = run([
+      allowed,
+      "--llm-sca-review",
+      ...OFFLINE_FLAGS,
+      ...extra,
+    ]);
     assert.equal(prepared.code, 0, prepared.stderr);
     assert.match(prepared.stdout, /── SCA Review Prompt ──/, fixture);
     fs.rmSync(allowed, { recursive: true, force: true });
