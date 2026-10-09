@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/xpi-shipped-node-modules",
-    "xpiRoot": "<root>/tests/addons/xpi-shipped-node-modules/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi-shipped-node-modules",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

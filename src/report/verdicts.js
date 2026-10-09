@@ -76,7 +76,7 @@ const VERBS = new Set(VERB_NAMES.filter((v) => v !== String(VERB.ask)));
  * @returns {{verdict: string, note: ?string}}
  */
 function settleAnswer(answer, asked, index, choices) {
-  const at = `--llm-verdict: item ${index}`;
+  const at = `--llm-handback: item ${index}`;
   const verbs = [...VERBS].join(", ");
   if (!asked) {
     if (!VERBS.has(answer)) {
@@ -206,7 +206,7 @@ export function applyVerdicts({
     const item = byIndex.get(index);
     if (!item) {
       throw new Error(
-        `--llm-verdict: item ${index} does not exist - this review lists ${byIndex.size} item(s)`
+        `--llm-handback: item ${index} does not exist - this review lists ${byIndex.size} item(s)`
       );
     }
     const { verdict, note } = settleAnswer(
@@ -236,14 +236,14 @@ export function applyVerdicts({
       }
       if (verdict !== VERB.withdrawn) {
         throw new Error(
-          `--llm-verdict: item ${index} is a finding, so it is "reported" or "withdrawn" (given: ${verdict})`
+          `--llm-handback: item ${index} is a finding, so it is "reported" or "withdrawn" (given: ${verdict})`
         );
       }
       dropFindings.add(item.target);
     } else {
       if (verdict === VERB.withdrawn) {
         throw new Error(
-          `--llm-verdict: item ${index} is a to-do item, so it is "reported" or "cleared" (given: withdrawn)`
+          `--llm-handback: item ${index} is a to-do item, so it is "reported" or "cleared" (given: withdrawn)`
         );
       }
       dropManual.add(item.target);
@@ -315,7 +315,7 @@ function asFinding(item, index, registry, note = null) {
   const severity = item.ruleId ? registry.suggestedVerdict(item.ruleId) : null;
   if (!severity) {
     throw new Error(
-      `--llm-verdict: item ${index} cannot be reported - "${item.title}" declares no severity a reported case could carry`
+      `--llm-handback: item ${index} cannot be reported - "${item.title}" declares no severity a reported case could carry`
     );
   }
   const f = finding({

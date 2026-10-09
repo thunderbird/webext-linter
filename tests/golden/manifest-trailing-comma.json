@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/manifest-trailing-comma",
-    "xpiRoot": "<root>/tests/addons/manifest-trailing-comma/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "manifest-trailing-comma",
     "reviewed": true,
     "schemaSource": "cache:release-mv2",

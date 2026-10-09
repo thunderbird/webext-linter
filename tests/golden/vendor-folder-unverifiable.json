@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/vendor-folder-unverifiable",
-    "xpiRoot": "<root>/tests/addons/vendor-folder-unverifiable/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "vendor-folder-unverifiable",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

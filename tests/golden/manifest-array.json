@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/manifest-array",
-    "xpiRoot": "<root>/tests/addons/manifest-array/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "manifest-array",
     "reviewed": true,
     "schemaSource": "cache:release-mv2",

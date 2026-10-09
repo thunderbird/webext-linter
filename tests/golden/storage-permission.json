@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/storage-permission",
-    "xpiRoot": "<root>/tests/addons/storage-permission/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "storage-permission",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

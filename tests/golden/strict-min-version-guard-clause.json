@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/strict-min-version-guard-clause",
-    "xpiRoot": "<root>/tests/addons/strict-min-version-guard-clause/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "strict-min-version-guard-clause",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

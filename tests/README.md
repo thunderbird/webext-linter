@@ -86,7 +86,13 @@ shipped built add-on, the authoritative manifest.json) and `src/` (the readable 
 tree, e.g. a Vue `.vue`) - is run in **SCA** mode (source-code archive) rather than
 XPI mode. The layout is auto-detected (no flag needed), and its spec sits in
 `expected/` like every other. Use one when a check depends on the source/shipped split
-or on a source format that only exists pre-build.
+or on a source format that only exists pre-build. An SCA spec may also name an
+`"original"` folder of the fixture: the source root `src/` is a rescued copy of. The
+harness records it in the fixture's work folder the way a preparation that came out clean
+does, so the review reports what the rescue changed (`sca-dependencies-changed`). Or it
+may carry an `"unrescued"` lock audit - the four lists a preparation records before it gives
+its rescue up - which the harness records the same way, so the review is decided by it
+(`sca-unrescued`).
 
 A selection, not the catalogue - every folder under `addons/` is a fixture:
 
@@ -146,6 +152,7 @@ A selection, not the catalogue - `unit/` holds one file per module or scanner:
 | `json.test.js` | `parseExtensionJson`, the reader for files Thunderbird's extension loader reads (manifest.json, Experiment schemas, `_locales` messages, API schemas): `//` comments accepted, every other JSON5 extension refused. |
 | `load.test.js` | Add-on loading - an XPI holding a symlink is refused, a source archive's symlinks are skipped and recorded, real files kept. |
 | `loader-files.test.js` | The file-loader extractor (`scanLoaderRefs`) - schema-directed type walking for derived loaders, plus the bridge for `getURL`/`executeScript`/`insertCSS`/`tabs.create`/`setPopup`. |
+| `prepare.test.js` | The preparation of a source code review, one hand-back at a time: the roots read back and settled, the lock audit that decides a rescue, the rescued copy's steps, a rescue given up, runs cut short, forged records, and `sca-dependencies-changed` - against a fake OSV. |
 | `pipeline.test.js` | End-to-end `runPipeline` against the schema fixture (read-only: line numbers match the source, nothing written back), including a review that ends because a host gave no answer (an unpkg listing, an OSV query, a stale-schema refresh). |
 | `remote-code.test.js` | The remote-code scanners and the `remote-resources` / `eval-call` checks. |
 | `responses.test.js` | The report-assembly resolver - filling a finding's message from the registry `response` (by ruleId), system `messages`, and manual-item `instructions`, with `{{item}}` substitution. |

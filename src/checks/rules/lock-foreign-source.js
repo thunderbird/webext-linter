@@ -2,8 +2,7 @@
 // source the review cannot audit. The dependency audit identifies each package by name and
 // version, while `npm ci` and `pnpm install --frozen-lockfile` fetch the URL the lock
 // records - so an entry resolved anywhere but the npm registry or GitHub installs bytes the
-// audit vouched for under another name. The same holds for a root dependency declared as a
-// registry release that the lock takes from GitHub.
+// audit vouched for under another name.
 //
 // Belongs here: mapping each such entry to a finding at its line in the lock. Does NOT
 // belong here: reading the lock formats or deciding what counts as a supported source

@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/locale-messages-invalid",
-    "xpiRoot": "<root>/tests/addons/locale-messages-invalid/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "locale-messages-invalid",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

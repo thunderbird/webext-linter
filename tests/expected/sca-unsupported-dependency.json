@@ -1,7 +1,11 @@
 {
-  "_comment": "The SCA twin of unsupported-dependency: the same file: path declaration, in the archive the reviewer builds from. The diagnosis does not change - nothing identifies a local path - but this submission is the one npm actually installs from, so its response keeps the lock-file route the XPI branch must not offer, and asks for the library in the archive rather than bundled into the add-on. The committed package-lock.json is not what this fixture is about: a source archive declaring dependencies owes one whatever their source, and a file: spec is skipped by the coverage comparison, so neither lock check speaks here. The XPI here also ships a package.json of its own, which in a source-code submission belongs in the archive - the copy the reviewer reads and the build installs from - so sca-xpi-declares-vendoring reports it, naming the file(s) on the finding. It narrows nothing here - the archive is still reviewed in full.",
+  "_comment": "The SCA twin of unsupported-dependency: the same file: path, in the archive the reviewer builds from. A source review reads its dependencies from the committed package-lock.json, which records the install as a link to ../shared/helper - outside the source root, so the archive does not hold it and it cannot be reviewed. The diagnosis is the XPI one - nothing identifies a local path - and the finding anchors at the lock entry. This submission is the one npm actually installs from, so its response keeps the lock-file route the XPI branch must not offer, and asks for the library in the archive rather than bundled into the add-on. The XPI here also ships a package.json of its own, which in a source-code submission belongs in the archive - the copy the reviewer reads and the build installs from - so sca-xpi-declares-vendoring reports it, naming the file(s) on the finding. It narrows nothing here - the archive is still reviewed in full.",
   "expect": {
-    "unsupported-dependency": ["package.json:5"],
-    "sca-xpi-declares-vendoring": ["package.json"]
+    "unsupported-dependency": [
+      "package-lock.json:12"
+    ],
+    "sca-xpi-declares-vendoring": [
+      "package.json"
+    ]
   }
 }

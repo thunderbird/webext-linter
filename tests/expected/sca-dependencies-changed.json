@@ -1,0 +1,7 @@
+{
+  "_comment": "A source-code submission reviewed from a rescued copy: the original declared a lint tool as a devDependency, and its lock installed wick-trim 1.0.1 under tidy-lantern. The copy dropped the lint tool and installs wick-trim 1.0.3. sca-dependencies-changed says once, at info and at package.json, that the review used changed dependencies, and lists nothing.",
+  "original": "original",
+  "expect": {
+    "sca-dependencies-changed": ["package.json"]
+  }
+}

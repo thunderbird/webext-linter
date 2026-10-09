@@ -72,7 +72,7 @@ export function setProgress(v) {
  * stream as a whole: the report's own sections (its header, the --llm-review prompt)
  * ride that stream too and are NOT feed, so they survive this being off.
  *
- * The CLI turns it off for --llm-review and --llm-verdict, where the output exists to be
+ * The CLI turns it off for --llm-review and --llm-handback, where the output exists to be
  * read or handed on, and a record of how it was produced is noise in it.
  *
  * @param {boolean|undefined} v

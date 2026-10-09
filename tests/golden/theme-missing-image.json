@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/theme-missing-image",
-    "xpiRoot": "<root>/tests/addons/theme-missing-image/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "theme-missing-image",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

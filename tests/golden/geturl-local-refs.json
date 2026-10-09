@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/geturl-local-refs",
-    "xpiRoot": "<root>/tests/addons/geturl-local-refs/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "geturl-local-refs",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

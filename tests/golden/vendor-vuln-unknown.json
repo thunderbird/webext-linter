@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/vendor-vuln-unknown",
-    "xpiRoot": "<root>/tests/addons/vendor-vuln-unknown/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "vendor-vuln-unknown",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

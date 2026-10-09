@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/invalid-manifest",
-    "xpiRoot": "<root>/tests/addons/invalid-manifest/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "invalid-manifest",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

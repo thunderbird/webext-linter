@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/optional-permission",
-    "xpiRoot": "<root>/tests/addons/optional-permission/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "optional-permission",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

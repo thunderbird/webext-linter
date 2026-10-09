@@ -5,10 +5,12 @@
 // asks (./store.js); nothing is held twice. What the add-on DECLARES is a separate question,
 // asked once for the shipped artifact (readWebExtManifest).
 //
-// A packed archive is read exactly once, by being extracted to disk (extractZip) and then
-// walked back like any already-unpacked submission (readDir). That destination is the
-// caller's to choose (loadAddon's `extractTo`): the review names it once, in meta.xpiRoot,
-// and hands the SAME folder to the reviewer and to this loader.
+// The shipped add-on is read from the review's OWN copy of it: a packed archive is extracted
+// to disk (extractZip), an unpacked folder is copied (copyFolder), and the copy is walked
+// like any already-unpacked submission (readDir). Where the copy goes is the caller's to
+// choose (loadAddon's `copyTo`): the review names it once, in meta.xpiRoot, and hands the
+// SAME folder to the reviewer and to this loader. The submitted source archive is read
+// where it is: --sca-root names a folder the source archive was already extracted into.
 //
 // It also PARTITIONS a submitted SCA archive into the two views a source review reads - the
 // add-on code and the Experiment implementation - as views over that one store (scaViews). One
@@ -21,8 +23,8 @@
 // place that knows without being told - after this an Addon is a bag of files, and every
 // reader that needed the answer would be inferring it from how it got there.
 //
-// Belongs here: walking either artifact into the Addon model, extracting a packed one to disk
-// first, the SCA partition above, naming the artifact and minting loci in it, reading one
+// Belongs here: walking either artifact into the Addon model, extracting or copying the
+// shipped one into the folder the caller names first, the SCA partition above, naming the artifact and minting loci in it, reading one
 // artifact's manifest.json into the record every reader shares, the Manifest and
 // WebExtManifestRecord typedefs, and the load-time path guards.
 //
@@ -31,8 +33,8 @@
 // collection policy, seeded from package.json (-> src/build/collect.js
 // collectBuildFiles). Enumerating which JS sources to scan is src/addon/sources.js.
 // Parsing CSS/HTML/CSP content is src/scan/*. Schema files load via
-// src/schema/load.js. Choosing a non-colliding destination is
-// src/util/dest.js, shared with the SCA source archive.
+// src/schema/load.js. Naming the folder the copy goes to is src/util/dest.js workPaths,
+// and claiming it for a review is src/pipeline.js.
 
 import { ARTIFACT_SCA, ARTIFACT_XPI, isArtifact } from "../lib/artifacts.js";
 import { wiringError } from "../lib/errors.js";
@@ -50,7 +52,6 @@ import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
 import { displayLine, trimEndOf } from "../util/text.js";
 import { hidesItsSize } from "../util/zip.js";
 import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
-import { extractionDestination, EXTRACTED_SUFFIX } from "../util/dest.js";
 import { FileStore, fileView } from "./store.js";
 import { SYMLINK_CAUSE } from "../lib/enum.js";
 import { rethrowIfFatal } from "../lib/errors.js";
@@ -224,10 +225,12 @@ import { rethrowIfFatal } from "../lib/errors.js";
 /**
  * @param {string} source  Path to an .xpi/.zip file or an unpacked add-on
  *   directory.
- * @param {string} [extractTo]  Where to extract `source` if it is a packed file;
- *   ignored if it is already a directory. Defaults to a fresh `<source>.extracted`
- *   (src/util/dest.js) when omitted - callers that care where it landed (the
- *   review, so it can hand the same folder to a reviewer) pass their own.
+ * @param {string} [copyTo]  Where the review's own copy of `source` goes, a path nothing is
+ *   at yet: a packed file is extracted there and an unpacked folder copied there, and the
+ *   copy is what is read. The review passes the folder it names XPI_ROOT, so the reviewer,
+ *   an agent and this loader read one tree. Absent, a folder is read where it is - the
+ *   source archive, which its reader already extracted - and a packed file is refused as a
+ *   wiring error, because extracting it needs a place the review has named.
  * @param {{kind: string, recordInstalledTrees?: boolean}} options
  *   `kind` says WHICH artifact is being loaded (src/lib/artifacts.js). REQUIRED, and not
  *   defaulted: the loader is the one place that knows without being told, and an Addon that
@@ -244,11 +247,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   node_modules is shipped content like any other folder and is loaded and reviewed as one.
  * @returns {Addon}
  */
-export function loadAddon(
-  source,
-  extractTo,
-  { recordInstalledTrees, kind } = {}
-) {
+export function loadAddon(source, copyTo, { recordInstalledTrees, kind } = {}) {
   if (!isArtifact(kind)) {
     throw new Error(
       `loadAddon: kind must be "${ARTIFACT_XPI}" or "${ARTIFACT_SCA}", got ` +
@@ -260,25 +259,30 @@ export function loadAddon(
   if (!fs.existsSync(resolved)) {
     throw new Error(`Add-on not found: ${resolved}`);
   }
-  const stat = fs.statSync(resolved);
-  let store, nodeModules, archives, skipped, symlinks, directories;
-  if (stat.isDirectory()) {
-    ({ store, nodeModules, archives, skipped, symlinks, directories } = readDir(
-      resolved,
-      kind,
-      recordInstalledTrees
-    ));
-  } else {
-    const dest =
-      extractTo ?? extractionDestination(`${resolved}${EXTRACTED_SUFFIX}`);
-    // Everything extracted is real on disk afterwards and is read the same way an
-    // already-unpacked submission's is.
-    extractZip(resolved, dest);
-    ({ store, nodeModules, archives, skipped, symlinks, directories } = readDir(
-      dest,
-      kind
-    ));
+  const isDir = fs.statSync(resolved).isDirectory();
+  if (!isDir && copyTo === undefined) {
+    throw wiringError(
+      `loadAddon: ${resolved} is a packed file and no copyTo was given - it is read by ` +
+        "being extracted, and only the caller can name where."
+    );
   }
+  let root = resolved;
+  if (copyTo !== undefined) {
+    if (isDir) {
+      // Walked FIRST, where it is, so every refusal - a symbolic link, an unreadable file,
+      // the size cap - fires before anything is written. The walk's answer is then
+      // discarded: the copy is what the review reads, and the copy is walked below.
+      readDir(resolved, kind, recordInstalledTrees);
+      copyFolder(resolved, copyTo);
+    } else {
+      // Everything extracted is real on disk afterwards and is read the same way an
+      // already-unpacked submission's is.
+      extractZip(resolved, copyTo);
+    }
+    root = copyTo;
+  }
+  const { store, nodeModules, archives, skipped, symlinks, directories } =
+    readDir(root, kind, recordInstalledTrees);
   // An artifact loaded on its own has nothing to hold back - every file it holds is a file
   // it ships - so its `files` is a view over every key the store has. It says that by
   // HOLDING all of them rather than by being the store: one shape for every artifact, so a
@@ -310,8 +314,9 @@ export function loadAddon(
  * package file and lock), so it is recorded rather than read as content. A caller asking for
  * a submission asks for it by name.
  *
- * No `extractTo`: --sca-root is a directory by the time anything loads it, extracted by the
- * reviewer and settled before the review starts (src/addon/submission.js, sca-root.js).
+ * No `copyTo`: --sca-root is a directory by the time anything loads it, extracted by the
+ * reviewer and settled before the review starts (src/addon/sca-root.js), so it is read
+ * where it is.
  * @param {string} source  Absolute path to the extracted source root.
  * @returns {Addon}
  */
@@ -349,7 +354,7 @@ export function readWebExtManifest(store) {
 
 /**
  * The manifest.json record of a PACKED add-on, read without extracting it: for a caller that
- * prepares a review and writes nothing (--llm-sca-review). An archive that cannot be read
+ * prepares a review and writes nothing. An archive that cannot be read
  * answers as one with no manifest.json - the review being prepared reads it in full and
  * refuses it there, in its own words.
  * @param {string} zipPath
@@ -664,10 +669,9 @@ function unreadableArchiveError(zipPath) {
  * The mode is still READ, for the one claim that refuses the archive: an entry stored as a
  * link, which an XPI may not hold (symlinkError).
  *
- * destDir is always this call's own fresh destination (the caller computed it, or
- * defaulted it, right before calling this), so a refusal removes it rather than
- * leaving a partial extraction beside the submission for a reviewer to mistake for
- * the whole thing.
+ * destDir is always this call's own fresh destination (the review claimed it before
+ * loading, src/pipeline.js), so a refusal removes it rather than leaving a partial
+ * extraction in the work folder for a reviewer to mistake for the whole thing.
  * @param {string} zipPath  Path to the .xpi/.zip archive.
  * @param {string} destDir  Where to write it. Created if missing.
  */
@@ -767,6 +771,34 @@ function extractZip(zipPath, destDir) {
       }
       fs.mkdirSync(dest, { recursive: true });
     }
+  } catch (err) {
+    fs.rmSync(destDir, { recursive: true, force: true });
+    throw err;
+  }
+}
+
+/**
+ * Copy an unpacked add-on folder to `destDir`, which is the review's own copy of it.
+ *
+ * Only regular files and directories are copied, asked with lstat so nothing is followed.
+ * readDir has already refused a symbolic link in the source, and it passes over a FIFO, a
+ * socket or a device file without reading it, so the copy holds exactly the entries the
+ * walk accounts for - and a FIFO, which would block the copy reading it, is never opened.
+ *
+ * destDir is this call's own fresh destination, like extractZip's, so a failure part-way
+ * removes it rather than leaving half a copy for a reviewer to mistake for the whole thing.
+ * @param {string} sourceDir  The unpacked add-on, already walked by readDir.
+ * @param {string} destDir  Where to copy it. Nothing may be there yet.
+ */
+function copyFolder(sourceDir, destDir) {
+  try {
+    fs.cpSync(sourceDir, destDir, {
+      recursive: true,
+      filter: (src) => {
+        const st = fs.lstatSync(src);
+        return st.isFile() || st.isDirectory();
+      },
+    });
   } catch (err) {
     fs.rmSync(destDir, { recursive: true, force: true });
     throw err;

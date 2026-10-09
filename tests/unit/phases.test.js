@@ -424,6 +424,16 @@ test("the shipped steps carry the conditions they are printed under", () => {
     loaded
       .find((p) => p.name === name)
       .steps.map((x) => (x.when ? namesOf(x.when).sort() : null));
+  // A review the deterministic checks aborted starts no agent and verifies or settles
+  // nothing: every step of the three phases before the questions carries `aborted`.
+  assert.deepEqual(when("spawn"), [
+    ["aborted", "llm-skip-summary"],
+    ["aborted", "sca"],
+    ["aborted", "sweep-xpi"],
+    ["aborted", "sweep-sca"],
+  ]);
+  assert.deepEqual(when("verify"), [["aborted"]]);
+  assert.deepEqual(when("settle"), [["aborted"]]);
   // The wait steps carry their phase's own condition beside `spawned`, so a phase is never
   // issued with nothing but a wait in it.
   assert.deepEqual(when("build"), [

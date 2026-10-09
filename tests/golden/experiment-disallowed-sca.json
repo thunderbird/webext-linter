@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-disallowed-sca/xpi",
-    "xpiRoot": "<root>/tests/addons/experiment-disallowed-sca/xpi/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

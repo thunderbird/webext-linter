@@ -1,4 +1,4 @@
-// Unit tests for --llm-verdict: settling a finished review against answers a reviewer
+// Unit tests for --llm-handback: settling a finished review against answers a reviewer
 // (or a model) gave it. The answers carry no prose - every guard here exists because a
 // verdict that lands on the wrong item, or brings its own wording, would corrupt a
 // report that is otherwise entirely the linter's.
@@ -552,7 +552,7 @@ test("each phase hands over what settling it needs, and no more", () => {
 // which root to join it to. `root` comes with it because a claim about ABSENCE -
 // unused-files, an options page that is not there - is checked against a tree, not a file.
 test("an entry names the full path of its own artifact, and the root that scopes it", () => {
-  const roots = { XPI: "/tmp/sub.xpi.extracted/", SCA: "/tmp/src/" };
+  const roots = { XPI: "/tmp/work/xpi/", SCA: "/tmp/src/" };
   const findings = [
     {
       ruleId: "unused-files",
@@ -575,7 +575,7 @@ test("an entry names the full path of its own artifact, and the root that scopes
   const byRule = Object.fromEntries(out.map((e) => [e.ruleId, e]));
   assert.deepEqual(
     [byRule["unused-files"].file, byRule["unused-files"].root],
-    ["/tmp/sub.xpi.extracted/lib/orphan.js", "/tmp/sub.xpi.extracted/"],
+    ["/tmp/work/xpi/lib/orphan.js", "/tmp/work/xpi/"],
     "an XPI finding resolves against the extracted package"
   );
   assert.deepEqual(
@@ -652,7 +652,7 @@ test("an entry names the full path of its own artifact, and the root that scopes
 // own claim. Only a sweep row authors a path - every other one is read off disk - and
 // checkedResult refuses these at that door, so reaching here means the door failed.
 test("an entry refuses to compose a path that escapes its artifact", () => {
-  const roots = { XPI: "/tmp/pkg.xpi.extracted/", SCA: null };
+  const roots = { XPI: "/tmp/work/xpi/", SCA: null };
   const escaping = (file) => {
     const items = reviewItems({
       findings: [

@@ -15,38 +15,52 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        A dependency declared in package.json from a source the review cannot
-        identify or verify. Only two sources can be vetted: an npm package and a
-        GitHub URL, which is gated by popularity. Everything else is rejected.
-        Whether the release a spec names can be pinned at all is a separate
-        question, answered by other checks.
+        A dependency from a source the review cannot identify or verify. Only
+        two sources can be vetted: an npm package and a GitHub URL, which is
+        gated by popularity. Everything else is rejected. Whether the release a
+        spec names can be pinned at all is a separate question, answered by
+        other checks.
       </p>
       <p>
-        Before the review begins, the vendor resolver reads the package.json
-        dependencies once and classifies each by its source. A local file
-        reference, a link or workspace reference, a tarball URL, or
-        a git source that is not GitHub cannot be resolved to a known upstream,
-        so it is set aside as unsupported. This check reads that set and turns
-        each entry into a finding, anchored at its declaration line.
+        In a built XPI, the vendor resolver reads the package.json dependencies
+        once and classifies each by its source. A local file reference, a link
+        or workspace reference, a tarball URL, or a git source that is not
+        GitHub cannot be resolved to a known upstream, so it is set aside as
+        unsupported. Build dependencies are left alone there: nothing is
+        installed from a built XPI and they declare no bundled files.
       </p>
       <p>
-        Build dependencies count too, in a source-code submission. They are never
-        shipped, but the reviewer installs them to reproduce the build, so a build
-        tool pulled from an arbitrary git or tarball URL is code that runs on the
-        reviewer's machine from a source nobody can check - if anything, a worse
-        position than a bundled library, which is only read. In a built XPI the
-        same entry is inert: nothing is installed there and build dependencies
-        declare no bundled files, so it is left alone.
+        In a source-code submission, package.json is not read for dependencies:
+        the committed lock file is, because it is what the install follows.
+        What this check reports there is an install from a local path the
+        archive does not hold as a folder - a path outside the source root, one
+        the archive does not contain, or a local tarball. A local folder inside
+        the source root is the submission's own code, reviewed like any other
+        file, so nothing is said about it. A remote tarball or a git source that
+        is not GitHub is reported by
+        <a href="lock-foreign-source.html">lock-foreign-source</a>. Build
+        dependencies count as much as shipped ones: the reviewer installs them
+        to reproduce the build, so an unreviewable one is code that runs on the
+        reviewer's machine.
+      </p>
+      <p>
+        This check turns each entry into a finding, anchored at its declaration
+        line in package.json or at its entry in the lock file.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
+  R{"Source-code submission?"} -- "no (a built XPI)" --> A
+  R -- yes --> L["An install the lock file records"]
+  L --> LP{"From a local path?"}
+  LP -- no --> OK
+  LP -- yes --> LF{"An existing folder<br/>inside the source root?"}
+  LF -- yes --> OK
+  LF -- "no (outside the root, absent,<br/>or a local tarball)" --> ERR
   A["A package.json dependency"] --> Z{"A build dependency?"}
-  Z -- yes --> Y{"Does the reviewer<br/>install from this artifact?"}
-  Y -- "no (a built XPI)" --> S([skip: nothing installs it])
-  Y -- "yes (a source archive)" --> B
+  Z -- yes --> S([skip: nothing installs it])
   Z -- no --> B{"Source is an npm package<br/>or a GitHub URL?"}
   B -- yes --> OK([no finding])
   B -- "no (a file, link, or workspace ref,<br/>a tarball, or a<br/>non-GitHub git source)" --> ERR([ERROR: unsupported dependency source])

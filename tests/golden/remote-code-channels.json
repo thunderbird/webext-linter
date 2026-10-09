@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/remote-code-channels",
-    "xpiRoot": "<root>/tests/addons/remote-code-channels/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "remote-code-channels",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/lock-without-manifest",
-    "xpiRoot": "<root>/tests/addons/lock-without-manifest/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "lock-without-manifest",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

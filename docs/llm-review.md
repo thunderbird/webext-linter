@@ -21,19 +21,20 @@ flags in the context of every other option.
 ## The round trip
 
 `--llm-review` runs the review **once** and prints the first phase's prompt instead of
-the report. Every `--llm-verdict` run after that takes a phase back and hands out the
+the report. Every `--llm-handback` run after that takes a phase back and hands out the
 next, until nothing else has work and the last one, `close`, hands over the settled review.
 
 ```sh
 node verify.js ./submission.xpi --llm-review     # runs the review, prints prompt 1
-node verify.js --llm-verdict <review-file>       # ...and each pass after it
+node verify.js --llm-handback <work-folder>      # ...and each pass after it
 ```
 
 The agent opens ONE file, ever: the review file the prompt names. It fills in each
-entry's empty `"answer"` and hands the same path back - the command is in the prompt.
-Everything the linter needs between passes is in a state file beside it that the agent is
-never pointed at, which is why `--llm-verdict` takes no add-on path: the deterministic
-review ran once, and nothing re-derives it.
+entry's empty `"answer"` and hands the review's work folder back - the command is in the
+prompt. Everything the linter needs between passes is in a state file beside it that the
+agent is never pointed at, which is why `--llm-handback` takes no add-on path: the
+deterministic review ran once, and nothing re-derives it. Both files sit in the review's work folder,
+with every other file the review names (see [Where a review's files go](#where-a-reviews-files-go)).
 
 Each prompt is assembled from the same layers, so a pass never has to be read as a
 special case: a preamble on the first pass only (what is about to happen - left out where
@@ -66,7 +67,8 @@ A phase is issued only when it has **work** - steps that survive their markers, 
 entries to settle - and that is also what ends the loop. So a review with no sweep never
 mentions one, and a review that starts no sub-agent at all skips `spawn` and opens at the
 first phase that has any. The package itself is not unpacked by any of this: the linter extracts a packed
-submission before the first prompt is printed, and every phase reads that one folder.
+submission, or copies an unpacked one, into the work folder's `xpi/` before the first
+prompt is printed, and every phase reads that one folder.
 
 Which steps a phase prints is decided by each step's `when:` condition: `AND`, `OR`, `NOT`
 and parentheses over the facts of this run - the `--llm-skip-*` flags it was given,
@@ -85,8 +87,10 @@ or names a fact nothing answers.
 early** never reaches them - each of their steps reads `NOT aborted`. `build` runs the submission's own code, so it waits until every
 check that can abort the review has had its say - including `build-lifecycle-hook`, which `settle`
 decides. The agent asks the reviewer before building, builds in a copy of the source
-archive, and writes the outcome to `BUILD_DIFF`: identical, differing (with the diff), or
-failed (with the failing step and its error). The linter judges none of it; the reviewer
+archive, installing the dependencies exactly as the lock pins them (`npm ci` /
+`pnpm install --frozen-lockfile`), and writes the outcome to `BUILD_DIFF`: identical,
+differing (with the diff), or failed (with the failing step and its error, and saying so
+where package.json and the lock file disagree). The linter judges none of it; the reviewer
 reads the diff to answer the two build questions.
 
 Before anything is built, the agent settles `undeclared-build-source` in `settle`: does any
@@ -130,23 +134,23 @@ hook the agent clears aborts nothing, and neither does a review with no agent to
 the review is aborted once someone has determined the hook fetches code, which is code that
 would run on the reviewer's machine the moment they install.
 
-What an aborted review does:
+What an aborted review does under `--llm-review`:
 
 | | |
 | --- | --- |
-| The `build`, `details` and `ask` phases | are not issued. Nothing is built, and nothing is put to a reviewer. |
-| The report | drops every to-do item a reviewer would have been **asked** - the Extended Manual Review and Standard Manual Review sections, and their tally counts. |
-| | keeps both code-review sections: reading code is safe, and what it turns up is the evidence for the halt. |
-| | ends on the reason it is incomplete, one line per distinct cause. |
+| A review the deterministic checks aborted | asks nothing at all: its first prompt is the `close` phase. No agent is started (no description, no build report, no sweep), and nothing is verified or settled - every step of `spawn`, `verify` and `settle` carries `NOT aborted`. What it hands over is decided before any pass, so no pass could change it. |
+| A review a pass aborted | (a case reported that aborts it, a build that did not reproduce) stops there: the `build`, `details` and `ask` phases that would follow are not issued, so nothing is built and nothing further is put to a reviewer. |
+| The hand-over | carries no to-do item: the tally counts none, and the Final Review Details name no file an agent was never asked to write. |
+| The report | ends on the reason it is incomplete, one line per distinct cause. |
 | The `close` phase | opens with a step of its own (`when: aborted`), because telling an agent "the review is settled" about one that was cut short is not true. The summary and the details that follow are the same. |
 
-The decision is taken again on every pass, never recorded once, because the `verify` phase
-is where those findings are audited: an agent that **withdraws** the finding which aborted
-the review has removed the thing that aborted it, and the question block comes back.
+A finding that aborts the review is never put to the agent to verify, so no verdict takes it
+back. That is also why a check that authors a sweep may not abort a review: a sweep's hints
+are merged unverified, and the registry refuses a check that does both.
 
-None of this is particular to an agent. A review run without `--llm-review` is aborted on the
-same terms and prints the same report - the trap is the same one with one fewer
-participant.
+A review run without `--llm-review` is aborted on the same terms. Its printed report drops
+every to-do item a reviewer would have been **asked**, and keeps both code-review sections:
+reading code is safe, and what it turns up is the evidence for the halt.
 
 
 ## What an answer may say
@@ -200,14 +204,14 @@ gets two files of its own rather than reporting through the orchestrating agent:
 
 | | Written by | Format | Read back by |
 | --- | --- | --- | --- |
-| `<stem>.sweep-<artifact>.yaml` | the linter | YAML - the prose is the bulk of it | nobody |
-| `<stem>.sweep-<artifact>.answers.json` | the sweeping agent | JSON - one quoting rule, where a hint holding `http://host: thing` would break YAML | the linter |
+| `sweep-<artifact>.yaml` | the linter | YAML - the prose is the bulk of it | nobody |
+| `sweep-<artifact>.answers.json` | the sweeping agent | JSON - one quoting rule, where a hint holding `http://host: thing` would break YAML | the linter |
 
 The request stands alone, because the agent is handed a path and nothing else:
 
 ```yaml
-sweepTarget: /reviews/addon-1.2.xpi.extracted/
-answerFile: /tmp/addon-1.2-....sweep-xpi.answers.json
+sweepTarget: /reviews/addon-1.2-<timestamp>/xpi/
+answerFile: /reviews/addon-1.2-<timestamp>/sweep-xpi.answers.json
 instructions: |-
   This file holds 2 separate sweeps, listed under "sweeps" below. ...
 sweeps:
@@ -326,9 +330,9 @@ can do, and hands those two to a reader who can open the archive.
 node verify.js ./submission-folder --llm-sca-review
 ```
 
-It reviews nothing. It names which file is the add-on and which is the source, computes
-where the source archive should be extracted (`EXTRACT_TO`, beside the archive and named
-after it), and asks its reader to extract it there and work out two things that only
+It reviews nothing. It names which file is the add-on and which is the source, creates the
+review's work folder at its default place beside the `.xpi`, names its `sca/` as where the
+source archive is to be extracted (`EXTRACT_TO`), and asks its reader to extract it there and work out two things that only
 reading the tree can settle: which directory is the source root, being the one holding
 `package.json` (`<SCA_ROOT>`), and - for an Experiment - which holds the Experiment implementation (`<SCA_EXP_SOURCE>`). A name in `<angle brackets>` is one of
 those, and every other name is given. Nothing asks which directory holds the add-on's own
@@ -342,12 +346,92 @@ on that being answered correctly - handed a root with no `package.json` and one 
 that has one, it settles the root itself before reading anything (`src/addon/sca-root.js`)
 and says so in its Setup feed.
 
-It then prints the review command to run, which is this run's own flags with
-`--llm-review` in place of `--llm-sca-review` and the `--sca-*` arguments filled in. That
-review prints a prompt of its own, and the round trip above takes over from there.
+The reader hands the two back in the work folder's review file (`ANSWERS`, the same
+`review.json` a review pass uses) and runs `--llm-handback` on the folder. The preparation's
+own record, `prepare.json`, says where it stands, so every step is that one command; the
+reader never chooses what comes next. A root outside `sca/`, or an Experiment folder outside
+the root, is refused, and the reader corrects the file and hands it back again.
+
+That hand-back settles the roots as the review would, and then **audits the root's lock**
+(`src/prepare/audit.js`): every package it installs, against OSV and the policy blocklist,
+exactly as the review's own dependency audit reads it. Nothing else is judged here -
+another reason to stop, an Experiment, `--checks-*`, the band policy: all of that stays with
+the review. Three outcomes:
+
+- **The lock is clean**, or the audit cannot read it in full (no lock, one that does not
+  parse, an entry from a source the audit cannot read, a scan OSV refused with a 404): the
+  folder is done, and the same hand-back starts its review. The review decides the rest.
+- **The lock installs a package with a known high or critical advisory**: the linter copies
+  the work folder to `<work folder>-rescued` and hands the copy two steps. First the reader
+  **reduces** the copy's dependencies to what the release build uses, then, where that is not
+  enough, applies the package manager's **audit fix** - lock-only commands with
+  `--ignore-scripts`, so no submission code runs. The copy is audited after each step, and a
+  clean one is reviewed instead of the original. A reader that cannot run the commands hands
+  back without changing anything. The hand-back that finds the copy clean starts its review.
+- **The copy is still vulnerable after the fix**: the copy is deleted, and the original is
+  reviewed, **unrescued**. Its record holds the lock audit the preparation ran, and its
+  review takes that as its own: it reads the add-on, the schema and the source archive, asks
+  no network for the dependencies, and runs only the checks whose early-exit reason the
+  registry's `rescue-for` names. They report each vulnerable lock entry, which aborts the
+  review for known vulnerabilities, and it closes as any aborted review does. A record that
+  says the rescue was given up but holds no high or critical entry was edited, and the
+  review refuses it before it starts.
+
+A rescued copy's review tells the developer, at info, that the source was reviewed with
+changed dependencies (`sca-dependencies-changed`): their own `package.json` and lock still
+carry the vulnerabilities.
+
+The reader never runs anything but `--llm-handback`. The hand-back that finds the preparation
+done starts the review itself, in that folder: under `--llm-review`, with the preparation's
+own flags, the add-on it was given and the settled `--sca-*` roots, all read from
+`prepare.json`. That record is the linter's alone: every write leaves it read-only, and stores
+a hash over it, so a record changed after the linter wrote it is refused. The reader works in
+the same folder as the same user, so neither makes the file tamper-proof, and nothing in it is
+taken as it stands either: only the flags a review takes, each of its own type and checked as a command line is,
+with the roots checked again as folders, and a record that does not hold up is refused to the
+reader. `--cache-clear` and `--verbose` belong to the `--llm-sca-review` run and are not
+passed on. The hand-back prints the review's first prompt,
+and from then on the same command carries the round trip above.
 
 The tool extracts the submitted `.xpi` itself, but not a source archive: those arrive in
 too many formats for it to open, which is why that one extraction is the reader's.
+
+
+## Where a review's files go
+
+Every file a review creates - the linter's own, and each one an agent it instructs writes -
+lives in one **work folder**, under a name that is the same in every review:
+
+| Name | What it is | Written by |
+| --- | --- | --- |
+| `xpi/` | The shipped add-on, extracted (or, for an unpacked one, copied): `XPI_ROOT` | the linter, as the review starts |
+| `sca/` | The source archive, extracted: `EXTRACT_TO`, holding `SCA_ROOT` | the reader of the `--llm-sca-review` prompt |
+| `prepare.json` | Where the preparation of a source code review stands, and how its review is to be run - read-only, and hashed | the linter, at each step of the preparation |
+| `state.json` | The review itself, which every pass reads | the linter |
+| `review.json` | The file the agent fills in and hands back (`ANSWERS` while a source code review is prepared) | the linter, each pass |
+| `report.md` | `REVIEW_REPORT` | the linter |
+| `summary.md` | `ADDON_DESCRIPTION` | a sub-agent |
+| `build.md` | `BUILD_PROCESS` | a sub-agent, in a source code review |
+| `build/` | The copy of the source the agent builds in, never the archive itself | the agent, when the reviewer lets it build |
+| `build-diff.md` | `BUILD_DIFF` | the agent, after building |
+| `sweep-<artifact>.yaml` and `sweep-<artifact>.answers.json` | One tree's sweep request and answers | the linter, and a sweeping agent |
+
+The folder is always `<add-on name>-<timestamp>` beside the add-on argument, named by the
+run that starts the review: no flag names another. It must not exist: the run that starts a
+review creates it, and an existing work folder is carried on by `--llm-handback` alone. The one review that starts in a folder already there is the one a preparation's
+hand-back starts, in the folder that holds `prepare.json` and `sca/`. There every name the
+review will create is checked to be free - `--llm-review` claims every name above except
+`sca/` and `prepare.json`, since the agents it instructs write the rest later - and a name
+already there ends the run with exit 2, naming it. A start that fails before the review exists
+(a schema fetch that gets no answer, an audit that ends the review, an Experiment the command
+does not say how to read) removes what it created, so it can be run again. The `--llm-handback`
+passes rewrite `state.json`, `review.json` and `report.md` as the review moves on.
+
+`--sca-root` must not include the add-on: the source is reviewed where it is, so the shipped
+XPI, and the work folder created beside it, would be read as files of the source. Extract the
+source archive into a folder of its own.
+
+The caches are not part of it: they stay in `WEBEXT-LINTER-CACHE/`.
 
 
 ## Flags
@@ -355,8 +439,8 @@ too many formats for it to open, which is why that one extraction is the reader'
 | Option | Description |
 | --- | --- |
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Refused with `--report-format json`. |
-| `--llm-verdict <file>` | Take a phase back and hand out the next, from the review file the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file beside this one. Normally run by the agent working through the review rather than by a person. |
-| `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
+| `--llm-handback <dir>` | Take a phase back and hand out the next, from the review file in the work folder the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file in that folder. On a folder a source code review is being prepared in (`prepare.json`, and no review started), take the next step of the preparation instead, and once it is done, start its review. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person. |
+| `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - print the first prompt for preparing a source code review of it, and exit without reviewing anything. It creates the review's work folder beside the `.xpi`, records there how the review is to be run, and its prompt ends in `--llm-handback` on that folder (see [Preparing a source code review](#preparing-a-source-code-review)). Refused beside any `--sca-*` flag, which is what the preparation works out. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
 | `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted early, which takes them out. The two build questions are still asked. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
 | `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. No sweeping agent is spawned, and the sweep is not handed to the reviewer either. |

@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/mistyped-manifest-value",
-    "xpiRoot": "<root>/tests/addons/mistyped-manifest-value/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "mistyped-manifest-value",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

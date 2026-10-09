@@ -21,8 +21,9 @@
         This is a <strong>policy</strong> check, distinct from
         <a href="vendor-vulnerable.html">Vulnerable dependency</a>: it fires on a
         version Mozilla bans even when no published CVE advisory exists, and it
-        covers a package.json dependency, an npm-sourced VENDOR entry, and a
-        library the linter identified by content hash.
+        covers a package.json dependency of a built XPI, every package the
+        committed lock file of a source-code submission installs, an npm-sourced
+        VENDOR entry, and a library the linter identified by content hash.
       </p>
       <p>
         The policy is a small curated list —
@@ -33,18 +34,21 @@
         network pre-step as the OSV audit. A hit is recorded with its version and
         the policy reason; a <strong>banned</strong> hit also skips the OSV query
         for that library (it is rejected regardless). This check reads that result
-        and emits one finding per hit, anchored at the declaration line (or, for an
-        identified library, at the bundled file). Its severity is
+        and emits one finding per hit, anchored at the declaration line or the
+        package's entry in the lock file (or, for an identified library, at the
+        bundled file). Its severity is
         <strong>auto</strong>: <strong>banned</strong> is an error,
-        <strong>unadvised</strong> a warning. Build-only devDependencies are never
-        shipped, so they are not policy-blocked here.
+        <strong>unadvised</strong> a warning. In a source-code submission the
+        lock file is read in full and every package it installs is matched,
+        declared or pulled in, for production or for the build only; a release
+        a VENDOR entry already recorded is not reported twice.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A pinned/identified shipped library<br/>(package.json dep, npm VENDOR entry,<br/>or hash-identified bundle)"] --> B{"Version matched in<br/>the policy blocklist?"}
+  A["A pinned/identified library<br/>(package.json dep, a package the lock installs,<br/>npm VENDOR entry, or hash-identified bundle)"] --> B{"Version matched in<br/>the policy blocklist?"}
   B -- no --> OK([no finding])
   B -- "below banned_below" --> ERR([ERROR: banned library<br/>OSV query skipped])
   B -- "below unadvised_below" --> WARN([WARNING: unadvised library])
@@ -60,17 +64,16 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told a bundled library version is disallowed (or discouraged)
+        The add-on is told a library version it uses is disallowed (or discouraged)
         by Mozilla's add-on policy, with the version and the reason, and is asked to
-        update to a permitted version and re-bundle.
+        update to a permitted version.
       </div>
 
       <div class="outcome">
         <strong>It aborts the review</strong>
         This check is one of the few that settle the submission on their own. When
         it reports at error severity, nothing further is put to a reviewer: the
-        report drops every to-do item they would have been asked, keeps the
-        code-review sections, and the developer&rsquo;s text ends on the reason it
+        report drops every to-do item they would have been asked, keeps the code-review sections of a printed report (an aborted <code>--llm-review</code> hands over no to-do item at all), and the developer&rsquo;s text ends on the reason it
         is incomplete (&ldquo;Disallowed library versions&rdquo;). A version add-on policy
         disallows is refused whatever else the review finds, so the work it would
         otherwise put to a reviewer cannot change the outcome.

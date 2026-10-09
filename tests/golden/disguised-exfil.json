@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/disguised-exfil",
-    "xpiRoot": "<root>/tests/addons/disguised-exfil/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "disguised-exfil",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

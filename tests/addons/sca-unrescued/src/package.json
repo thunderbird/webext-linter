@@ -1,0 +1,7 @@
+{
+  "name": "lantern-sorter",
+  "version": "1.0.0",
+  "scripts": { "build": "node build.js", "lint": "lint-pebble ." },
+  "dependencies": { "tidy-lantern": "2.1.0" },
+  "devDependencies": { "lint-pebble": "0.4.0" }
+}

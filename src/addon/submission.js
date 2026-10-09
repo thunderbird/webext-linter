@@ -3,18 +3,15 @@
 //
 // An SCA review needs the source archive's own paths, and nobody can write
 // --sca-exp-source without opening it. This module
-// does the half a program can do: which file is the add-on, which is the source, and where
-// the source is to be extracted (--sca-root, below). The prompt hands the other two to
-// whoever can open the archive.
+// does the half a program can do: which file is the add-on and which is the source. The
+// prompt hands the rest to whoever can open the archive.
 //
-// Belongs here: locating those two files, refusing a folder that is not that pair, and
-// naming where the source archive's own extraction goes - path math on the same terms as
-// the other two, not the extracting itself, which stays the reader's (this tool cannot
-// open every format the source arrives in; see src/addon/load.js for the built .xpi,
-// which it can, and does, unpack itself).
+// Belongs here: locating those two files, and refusing a folder that is not that pair.
 //
-// Does NOT belong here: reading either file (src/addon/load.js), extracting the source
-// archive, the prompt's wording (assets/registry.yaml), how it is printed
+// Does NOT belong here: reading either file (src/addon/load.js), where the source archive
+// is extracted (the review's work folder, src/util/dest.js workPaths), extracting it, which
+// stays the reader's (this tool cannot open every format the source arrives in), the
+// prompt's wording (assets/registry.yaml), how it is printed
 // (src/report/format.js), or the NAME of the flag that asked - src/cli.js owns the
 // options table, so it says which flag was wrong and this says what was found. A caller
 // with no command line gets an answer about the folder.
@@ -23,7 +20,6 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { extname } from "../util/files.js";
-import { extractionDestination, EXTRACTED_SUFFIX } from "../util/dest.js";
 
 /** The built add-on's extension - the one archive in the folder that is not the source. */
 const ADDON_EXTENSION = ".xpi";
@@ -66,7 +62,7 @@ const SOURCE_ARCHIVE_EXTENSIONS = new Set([
  * them, and a prompt built on a guess would send its reader to review a file nobody
  * submitted.
  * @param {string} folder
- * @returns {{folder: string, xpi: string, source: string, extracted: string}}
+ * @returns {{folder: string, xpi: string, source: string}}
  */
 export function scaSubmission(folder) {
   const root = path.resolve(folder);
@@ -76,13 +72,21 @@ export function scaSubmission(folder) {
   } catch (err) {
     throw new Error(`not a readable folder: ${err.message}`);
   }
+  const submitted = (e) =>
+    extname(e.name) === ADDON_EXTENSION ||
+    SOURCE_ARCHIVE_EXTENSIONS.has(extname(e.name));
+  // The submission's files must be the files themselves. A link to one names a file
+  // anywhere on this machine, so it is refused by name rather than read - or skipped, which
+  // would report the folder as missing the file it plainly lists.
+  const linked = entries.find((e) => e.isSymbolicLink() && submitted(e));
+  if (linked) {
+    throw new Error(
+      `"${linked.name}" is a symlink, and a submission's files must be the files ` +
+        "themselves."
+    );
+  }
   const archives = entries
-    .filter(
-      (e) =>
-        e.isFile() &&
-        (extname(e.name) === ADDON_EXTENSION ||
-          SOURCE_ARCHIVE_EXTENSIONS.has(extname(e.name)))
-    )
+    .filter((e) => e.isFile() && submitted(e))
     .map((e) => e.name);
   const addons = archives.filter((n) => extname(n) === ADDON_EXTENSION);
   const sources = archives.filter((n) => extname(n) !== ADDON_EXTENSION);
@@ -96,14 +100,9 @@ export function scaSubmission(folder) {
         `source archive(s) (${found(sources)}).`
     );
   }
-  const source = path.join(root, sources[0]);
   return {
     folder: root,
     xpi: path.join(root, addons[0]),
-    source,
-    // Where the reader is asked to extract `source` - named on the same terms as the XPI
-    // side (src/util/dest.js), so a submission reviewed twice gets a fresh folder rather
-    // than a second extraction silently landing in the first one's.
-    extracted: `${extractionDestination(`${source}${EXTRACTED_SUFFIX}`)}${path.sep}`,
+    source: path.join(root, sources[0]),
   };
 }

@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/default-locale-unused",
-    "xpiRoot": "<root>/tests/addons/default-locale-unused/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "default-locale-unused",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

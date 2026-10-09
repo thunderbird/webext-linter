@@ -1,9 +1,10 @@
 // Flags a bundled third-party library version disallowed by Mozilla's add-on policy
 // (banned -> error) or discouraged (unadvised -> warning) - the curated policy in
 // assets/library-blocks.yaml. The vendor audit (src/vendor/verify.js) matched each
-// identified/declared (name, version) against the policy BEFORE its OSV query,
-// recording hits on artifact.vendor.blocked (a banned one also skipped the OSV request);
-// this check maps that set to findings, anchored at the declaration line. Deterministic,
+// identified/declared (name, version) - and in a source review every package the lock file
+// installs - against the policy BEFORE its OSV query, recording hits on
+// artifact.vendor.blocked (a banned one also skipped the OSV request); this check maps that
+// set to findings, anchored at the declaration line or the lock entry. Deterministic,
 // no network.
 //
 // Distinct from vendor-vulnerable, which reports published CVE advisories (OSV): this
@@ -44,9 +45,10 @@ export default {
     const findings = [];
     for (const { name, version, status, reason, file, token } of blocked) {
       const text = fileText(file);
-      // A quoted JSON token (a package.json dep name) or a plain substring (a VENDOR
-      // source URL) locates the declaration line. An empty token (a hash-identified
-      // library) has no declaration line, so the finding anchors at the file.
+      // A quoted JSON token (a package.json dep name, an npm lock key), a YAML key (a pnpm
+      // lock key) or a plain substring (a VENDOR source URL) locates the declaration line.
+      // An empty token (a hash-identified library) has no declaration line, so the
+      // finding anchors at the file.
       const line = token ? declarationLine(text, token) : null;
       const loc = line ? { line } : undefined;
       const statusText = status === "banned" ? "disallowed" : "discouraged";

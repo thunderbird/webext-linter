@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/not-popular-vendor-source",
-    "xpiRoot": "<root>/tests/addons/not-popular-vendor-source/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "not-popular-vendor-source",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

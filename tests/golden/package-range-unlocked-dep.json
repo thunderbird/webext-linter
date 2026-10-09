@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/package-range-unlocked-dep",
-    "xpiRoot": "<root>/tests/addons/package-range-unlocked-dep/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "package-range-unlocked-dep",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

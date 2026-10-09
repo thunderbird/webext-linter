@@ -21,8 +21,9 @@
 // Read from BOTH renderers, which is why it lives here rather than in either: the plain
 // review applies it in src/pipeline.js, and the --llm-review loop asks it again on every
 // phase (src/report/loop.js), because what settles a submission is not fixed when the
-// checks run: the agent may withdraw the very finding that aborted the review, and it may
-// report a case no check had judged yet.
+// checks run: a pass may report a case no check had judged yet. A finding that aborts the
+// review is never put to anyone - an aborted review verifies nothing - so what aborted a
+// review stays aborting it.
 //
 // Belongs here: whether a review was aborted, and what an aborted review withholds. Does NOT
 // belong here: how the closing block is drawn (-> src/report/format.js), which items a
@@ -40,9 +41,9 @@ import { VERB, verbNamed } from "./verbs.js";
  * whether the report will show it as one.
  *
  * Two shapes reach here, because a check settles a submission from either. A FINDING
- * stands at the severity it was reported at, unless the agent withdrew it - a finding
- * taken back is not a finding, which is why this is asked again after every pass rather
- * than once.
+ * stands at the severity it was reported at. One that would abort the review is never put
+ * to the agent to verify - an aborted review hands out no such phase - so no verdict can
+ * take it back.
  *
  * A TO-DO item stands only once it is REPORTED, at the severity the registry stamps on a
  * reported case (`suggestedVerdict`, the same read applyVerdicts makes) - because being
@@ -63,9 +64,7 @@ import { VERB, verbNamed } from "./verbs.js";
  */
 function standsAsError(item, verdict, registry) {
   if (item.kind === "finding") {
-    return (
-      verdict !== VERB.withdrawn && item.target?.severity === SEVERITY.ERROR
-    );
+    return item.target?.severity === SEVERITY.ERROR;
   }
   return (
     verdict === VERB.reported &&

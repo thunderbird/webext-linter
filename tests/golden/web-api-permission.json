@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/web-api-permission",
-    "xpiRoot": "<root>/tests/addons/web-api-permission/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "web-api-permission",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

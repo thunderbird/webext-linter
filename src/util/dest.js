@@ -1,69 +1,127 @@
-// The naming convention for what a run puts on disk beside a submission, in BOTH
-// directions: where to extract an archive without clobbering a leftover from an earlier
-// run, and how to read a submission's own name back out of such a path. Shared by the XPI
-// submission (src/addon/load.js) and the SCA source archive (src/addon/submission.js), so a
-// reviewer sees one convention for both.
+// The naming convention for what a review puts on disk: the WORK FOLDER every file of one
+// review lives in, and the bare name each of those files has inside it. One folder per
+// review, so a review is something a reviewer can open, archive or delete as one thing,
+// and the names inside it are the same in every review, so a prompt, a test and a person
+// looking at the folder all find a file where the last one was.
 //
-// Both directions live here because they are one convention: the suffix this module stamps
-// on is the suffix submissionLeaf takes off, and a reader that guessed at it from elsewhere
-// would drift the moment either half moved.
+// A command-line review always starts in the folder named here: what the submission is
+// called, and the moment the review began, beside the add-on argument - no flag names
+// another, and only --llm-handback names one that exists (src/cli.js). The submission's name is read back off the
+// path rather than off the manifest.json, which is submission data of any shape - see
+// submissionLeaf.
 //
-// Belongs here: choosing the destination path, the stamp that makes it unique, and
-// recovering the submission's name from either. Does NOT belong here: writing anything
-// there, or deciding what "beside" means for the caller's own file (each caller joins
-// its own directory/basename before calling this).
+// Belongs here: the default folder, the stamp that makes it unique, the submission's name
+// it is built from, the folder a rescued copy is made in, and the bare names inside it
+// (workPaths). Does NOT belong here: writing
+// anything there, or deciding which of those names a run may create (src/pipeline.js claims
+// them when a review starts, and src/cli.js creates the folder a source code review is
+// prepared in).
 
-import fs from "node:fs";
 import path from "node:path";
-
-/** What a run appends to a submission's path for the folder it unpacks it into. Composed
- *  by each caller onto its own base (see the header), and taken back off by
- *  submissionLeaf - so the two cannot disagree about it. */
-export const EXTRACTED_SUFFIX = ".extracted";
 
 /** A moment, spelled so it can sit in a filename: no colons, no dots. */
 export function pathStamp() {
   return new Date().toISOString().replace(/[:.]/g, "-");
 }
 
-/** The shape pathStamp produces, for reading one back off a path. */
-const STAMP = /\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z/;
-
 /**
- * What the submission is CALLED: the last segment of the path a run was given, with
- * anything this convention added taken back off.
+ * What the submission is CALLED: the last segment of the path a run was given, without the
+ * `.xpi` it was packed as.
  *
- * A reviewer re-reviewing a submission points the linter at the folder an earlier run
- * unpacked - `foo.xpi.extracted`, or `foo.xpi.extracted-<stamp>` where that folder was
- * already there - and the name they recognise is still `foo`. An unpacked submission has
- * no suffix to remove and keeps the name its folder has.
- *
- * The stamp is matched by its real shape rather than by anything-at-all, so a folder
- * someone called `foo.xpi.extracted-notes` keeps the name they gave it.
+ * An unpacked submission has no extension to remove and keeps the name its folder has.
  * @param {string} p  A path, absolute or not.
  * @returns {string}  Its leaf name, never a path.
  */
 export function submissionLeaf(p) {
-  const leaf = path.basename(p);
-  const suffix = new RegExp(
-    `\\.xpi(?:${EXTRACTED_SUFFIX.replace(".", "\\.")}(?:-${STAMP.source})?)?$`
-  );
-  return leaf.replace(suffix, "");
+  return path.basename(p).replace(/\.xpi$/, "");
 }
 
 /**
- * `base` if nothing is there yet, otherwise `base` with a timestamp suffix.
+ * The work folder a review starts in: `<name>-<stamp>`, beside the add-on argument.
  *
- * A collision is not chased further than that: two runs starting in the same
- * millisecond would still collide, which reviewFileBase (src/report/items.js) already
- * accepts for the same reason - a caller polling this in a loop is not what either
- * exists for.
- * @param {string} base
+ * Beside it, because that is the folder the reviewer downloaded the submission into and is
+ * working out of: what they are handed opens where they are looking. For an unpacked
+ * submission it is the folder holding it, for the same reason, and never inside what is
+ * being reviewed.
+ *
+ * The submission's name does not identify a review - the same file can be reviewed twice in
+ * a session, and a fork carries the name of what it forked - so the run's own moment
+ * separates them, and a later run does not open what an earlier one left behind.
+ * Millisecond resolution, which separates reviews a person runs. Two started in the same
+ * millisecond would name one folder, and the second is then refused because the folder
+ * already exists (src/cli.js), rather than writing into the first.
+ *
+ * Escaped, though a leaf cannot contain a separator and so cannot escape a directory:
+ * `My Add-on 1.0.xpi` is an ordinary name, and anything outside [A-Za-z0-9._@-] can still
+ * upset a shell.
+ * @param {string} addonPath  The add-on argument, absolute.
  * @returns {string}
  */
-export function extractionDestination(base) {
-  if (!fs.existsSync(base)) {
-    return base;
-  }
-  return `${base}-${pathStamp()}`;
+export function defaultWorkFolder(addonPath) {
+  const name = `${submissionLeaf(addonPath)}-${pathStamp()}`.replace(
+    /[^A-Za-z0-9._@-]/g,
+    "_"
+  );
+  return path.join(path.dirname(addonPath), name);
+}
+
+/**
+ * The work folder a rescued copy of `work` is made in (src/prepare/steps.js): beside it,
+ * under its name with `-rescued` after it. Always computed from the folder it copies, never
+ * read from a record, because it is also the one folder the preparation ever deletes.
+ * @param {string} work  The work folder, absolute and real.
+ * @returns {string}
+ */
+export function rescuedWorkFolder(work) {
+  return `${work}-rescued`;
+}
+
+/**
+ * Every name a review uses inside its work folder, as absolute paths.
+ *
+ * - `xpi`, the shipped add-on, extracted or copied there by the linter (src/addon/load.js),
+ *   so every reader - the checks, a reviewer, an agent - reads one unpacked tree.
+ * - `sca`, where the source archive is extracted when the review is prepared. An INPUT to
+ *   the review, never written by it.
+ * - `prepare`, reserved for the preparation of a source code review. An input like `sca`,
+ *   so no review claims it.
+ * - `state`, the linter's own record of the review, and `review`, the file it hands the
+ *   agent one phase at a time. A pass is handed back with the work folder (--llm-handback,
+ *   src/cli.js), and finds both in it by these names.
+ * - `report`, the text the reviewer sends to the developer. The one document the linter
+ *   writes itself (src/report/report-file.js).
+ * - `summary` and `build`, where sub-agents write the add-on description and what building
+ *   it takes. `buildDiff` is where the build phase's agent writes the difference between
+ *   its build and the shipped XPI, and `buildCopy` the copy of the source archive it builds
+ *   in, never the archive itself, which the reviewer and the other agents read as submitted.
+ * - `sweep`, one sweeping agent's request and answers, per artifact it is asked about. A
+ *   FUNCTION, because how many there are is the review's answer and not this module's: an
+ *   XPI review has one tree with sweeps and a source review may have two, and a fixed pair
+ *   of fields here would invent a path for a tree that does not exist.
+ * @param {string} work  The work folder, absolute.
+ * @returns {{xpi: string, sca: string, prepare: string, state: string, review: string,
+ *   report: string, summary: string, build: string, buildDiff: string, buildCopy: string,
+ *   sweep: (artifact: string) => {request: string, answers: string}}}
+ */
+export function workPaths(work) {
+  const at = (name) => path.join(work, name);
+  return {
+    xpi: at("xpi"),
+    sca: at("sca"),
+    prepare: at("prepare.json"),
+    state: at("state.json"),
+    review: at("review.json"),
+    report: at("report.md"),
+    summary: at("summary.md"),
+    build: at("build.md"),
+    buildDiff: at("build-diff.md"),
+    buildCopy: at("build"),
+    sweep: (artifact) => {
+      const tag = String(artifact).toLowerCase();
+      return {
+        request: at(`sweep-${tag}.yaml`),
+        answers: at(`sweep-${tag}.answers.json`),
+      };
+    },
+  };
 }

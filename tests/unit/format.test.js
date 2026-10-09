@@ -19,6 +19,7 @@ import { orderReview, hasLocus } from "../../src/report/order.js";
 import { renderManualItems } from "../../src/report/responses.js";
 import {
   assertChoices,
+  assertEarlyExit,
   assertEntries,
   assertRequiredSections,
   assertScaPrompt,
@@ -39,7 +40,7 @@ function review() {
       action: "review",
       xpi: "x",
       // The tree a sweep sends its reader into, so the section can name a folder.
-      xpiRoot: "/x/a.xpi.extracted/",
+      xpiRoot: "/x/work/xpi/",
       reviewed: false,
       manualReview: [
         {
@@ -1388,61 +1389,81 @@ test("the report's authored prose is required, by the names that index it", () =
 // The SCA prompt is the whole output of its own flag - no review runs beside it - so a
 // missing key there is a run with nothing to print, and it refuses rather than printing
 // half an instruction.
-test("the SCA prompt comes from the registry and both parts are required", () => {
+test("the preparation prompts come from the registry and every part is required", () => {
   const prompt = loadRegistry().llmScaReviewPrompt();
   assert.ok(prompt.intro.length > 0);
-  assert.ok(prompt.outcome.length > 0);
-  for (const step of prompt.outcome) {
-    assert.equal(typeof step.text, "string");
-    assert.ok(step.text.length > 0);
-    assert.ok(step.when === null || typeof step.when === "object");
+  assert.deepEqual(prompt.rescueFor, ["known-vulnerabilities"]);
+  for (const name of ["extract", "reduce", "fix"]) {
+    assert.ok(prompt.steps[name].length > 0, name);
+    for (const step of prompt.steps[name]) {
+      assert.equal(typeof step.text, "string");
+      assert.ok(step.text.length > 0);
+      assert.ok(step.when === null || typeof step.when === "object");
+    }
   }
-  // Exactly one step is the Experiment one, and it is printed only when they are allowed.
-  assert.equal(prompt.outcome.filter((s) => s.when !== null).length, 1);
+  // The Experiment folder is asked for in the first prompt alone, and only for an add-on
+  // that declares Experiments: its own step, and the review file step in two wordings.
+  assert.equal(prompt.steps.extract.filter((s) => s.when !== null).length, 3);
   const noIntro = loadRegistry();
   delete noIntro.doc["llm-sca-review-prompt"].intro;
   assert.throws(() => checkScaPrompt(noIntro), /authors no `intro`/);
 
   const noSteps = loadRegistry();
-  noSteps.doc["llm-sca-review-prompt"].outcome = [];
-  assert.throws(() => checkScaPrompt(noSteps), /authors no `outcome` steps/);
+  noSteps.doc["llm-sca-review-prompt"].fix = [];
+  assert.throws(() => checkScaPrompt(noSteps), /authors no `fix` steps/);
 
   const blankStep = loadRegistry();
-  blankStep.doc["llm-sca-review-prompt"].outcome = [
-    { text: "fine" },
+  blankStep.doc["llm-sca-review-prompt"].extract = [
+    { text: "fine {{flags}}" },
     { text: "" },
   ];
   assert.throws(() => checkScaPrompt(blankStep), /step 2 authors no `text`/);
+
+  // Every prompt prints the command that carries the preparation on.
+  const noCommand = loadRegistry();
+  noCommand.doc["llm-sca-review-prompt"].fix = [{ text: "Do it." }];
+  assert.throws(
+    () => checkScaPrompt(noCommand),
+    /`fix` carries no \{\{flags\}\}/
+  );
+  // A rescue is for a reason a review can stop for: its checks are what the review of an
+  // unrescued source runs.
+  const badReason = loadRegistry();
+  badReason.doc["llm-sca-review-prompt"]["rescue-for"] = ["no-such-reason"];
+  assert.throws(
+    () => assertEarlyExit(badReason, "t.yaml"),
+    /`llm-sca-review-prompt` rescues for `no-such-reason`, which `review-early-exit` does not define/
+  );
 
   // The condition decides whether the Experiment step prints at all, so a fact this
   // prompt cannot evaluate - a plausible near-miss included - is refused by name rather
   // than leaving the step printed in no run.
   const badMarker = loadRegistry();
-  badMarker.doc["llm-sca-review-prompt"].outcome[0].when = "experiment";
+  badMarker.doc["llm-sca-review-prompt"].extract[0].when = "experiment";
   assert.throws(
     () => checkScaPrompt(badMarker),
     /step 1 is conditioned on `experiment`, which this prompt does not know \(expected one of: experiments\)/
   );
 
-  // And the shared step rule: both prompts are numbered by the renderer.
+  // And the shared step rule: every prompt is numbered by the renderer.
   const selfNumbered = loadRegistry();
-  selfNumbered.doc["llm-sca-review-prompt"].outcome[0].text = "1. Do it.";
+  selfNumbered.doc["llm-sca-review-prompt"].reduce[0].text = "1. Do it.";
   // Named by its prompt and its list, in full.
   assert.throws(
     () => checkScaPrompt(selfNumbered),
-    /llm-sca-review-prompt \(t\.yaml\) `outcome` step 1 numbers itself/
+    /llm-sca-review-prompt \(t\.yaml\) `reduce` step 1 numbers itself/
   );
 
   // A step acts on `when` and nothing else, so a retired marker - which reads as plausible
   // and would do nothing - is refused by name, as is a bare fact written as a key.
   const wrongMarker = loadRegistry();
-  wrongMarker.doc["llm-sca-review-prompt"].outcome[1].run = "experiments";
+  wrongMarker.doc["llm-sca-review-prompt"].extract[1].run = "experiments";
   assert.throws(
     () => checkScaPrompt(wrongMarker),
     /step 2 authors `run`, which this prompt cannot act on \(expected `when`\)/
   );
   const typo = loadRegistry();
-  typo.doc["llm-sca-review-prompt"].outcome[2].experiments = true;
+  typo.doc["llm-sca-review-prompt"].extract[2].experiments = true;
   assert.throws(() => checkScaPrompt(typo), /step 3 authors `experiments`/);
 });
 
@@ -1516,7 +1537,7 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
     applicationVersion: "155.0",
     manifestVersion: 3,
     xpi: "/x/a.xpi",
-    xpiRoot: "/x/a.xpi.extracted/",
+    xpiRoot: "/x/work/xpi/",
     xpiFile: "a.xpi",
   };
   const head = ["", "── Review Details ──", ""];
@@ -1535,7 +1556,7 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
       "  XPI_FILE",
       "    a.xpi",
       "  XPI_ROOT",
-      "    /x/a.xpi.extracted/",
+      "    /x/work/xpi/",
       "  SCA_ROOT",
       "    /x/src",
       // The optional one of the two: what it names was excluded from the WebExtension
@@ -1550,7 +1571,7 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
     "  XPI_FILE",
     "    a.xpi",
     "  XPI_ROOT",
-    "    /x/a.xpi.extracted/",
+    "    /x/work/xpi/",
     ...schema,
   ]);
   // This section names what was REVIEWED, and nothing about how it is being settled. A
@@ -1573,19 +1594,19 @@ test("detailLinkLines links every location but XPI_FILE", () => {
     applicationVersion: "155.0",
     manifestVersion: 3,
     xpiFile: "a.xpi",
-    xpiRoot: "/x/a.xpi.extracted/",
+    xpiRoot: "/x/work/xpi/",
   };
   const lines = detailLinkLines({
     ...base,
     scaRoot: "/x/src",
-    summaryFile: "/x/a.summary.md",
+    summaryFile: "/x/work/summary.md",
     buildFile: "/x/a.build.md",
   });
   assert.deepEqual(lines, [
     "* XPI_FILE: a.xpi",
-    "* XPI_ROOT: [extracted addon](/x/a.xpi.extracted/)",
+    "* XPI_ROOT: [extracted addon](/x/work/xpi/)",
     "* SCA_ROOT: [source archive](/x/src)",
-    "* ADDON_DESCRIPTION: [summary.md](/x/a.summary.md)",
+    "* ADDON_DESCRIPTION: [summary.md](/x/work/summary.md)",
     "* BUILD_PROCESS: [build.md](/x/a.build.md)",
     "",
     "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
@@ -1594,11 +1615,11 @@ test("detailLinkLines links every location but XPI_FILE", () => {
   // are conditional like every other row here, not a fixed preamble.
   assert.deepEqual(detailLinkLines(base).slice(0, 2), [
     "* XPI_FILE: a.xpi",
-    "* XPI_ROOT: [extracted addon](/x/a.xpi.extracted/)",
+    "* XPI_ROOT: [extracted addon](/x/work/xpi/)",
   ]);
   assert.deepEqual(
     detailLinkLines({ ...base, xpiFile: undefined }).slice(0, 1),
-    ["* XPI_ROOT: [extracted addon](/x/a.xpi.extracted/)"]
+    ["* XPI_ROOT: [extracted addon](/x/work/xpi/)"]
   );
 });
 

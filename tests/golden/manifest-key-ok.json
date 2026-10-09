@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/manifest-key-ok",
-    "xpiRoot": "<root>/tests/addons/manifest-key-ok/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "manifest-key-ok",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

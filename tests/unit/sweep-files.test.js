@@ -19,21 +19,14 @@ import {
   sweepSlots,
   writeSweepFiles,
 } from "../../src/report/sweep-files.js";
+import { workPaths } from "../../src/util/dest.js";
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "wxl-sweepfiles-"));
-
-/** The review's paths, as reviewFilePaths answers them (src/report/items.js). */
-const pathsIn = (dir) => ({
-  sweep: (artifact) => ({
-    request: path.join(dir, `r.sweep-${artifact.toLowerCase()}.yaml`),
-    answers: path.join(dir, `r.sweep-${artifact.toLowerCase()}.answers.json`),
-  }),
-});
 
 /** Write one tree's pair and read the request back, the way the review does. */
 function requested(sweeps, sweepTarget = "/tmp/tree/") {
   const dir = tmp();
-  const files = pathsIn(dir);
+  const files = workPaths(dir);
   const written = writeSweepFiles(
     files,
     { items: sweeps },
@@ -81,7 +74,7 @@ test("the request names its tree, its answers file, and every sweep", () => {
   const { yaml } = requested(SWEEPS);
   const doc = YAML.parse(yaml);
   assert.equal(doc.sweepTarget, "/tmp/tree/");
-  assert.match(doc.answerFile, /r\.sweep-sca\.answers\.json$/);
+  assert.match(doc.answerFile, /\/sweep-sca\.answers\.json$/);
   assert.deepEqual(
     doc.sweeps.map((s) => s.label),
     [3, 4]
@@ -150,12 +143,7 @@ test("the answers file starts with every label and no answer", () => {
 
 test("one pair is written per tree, grouped from the pre-sweep list", () => {
   const dir = tmp();
-  const files = {
-    sweep: (artifact) => ({
-      request: path.join(dir, `r.sweep-${artifact.toLowerCase()}.yaml`),
-      answers: path.join(dir, `r.sweep-${artifact.toLowerCase()}.answers.json`),
-    }),
-  };
+  const files = workPaths(dir);
   const preSweep = {
     items: [
       ...SWEEPS,

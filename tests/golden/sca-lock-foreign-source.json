@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/sca-lock-foreign-source/xpi",
-    "xpiRoot": "<root>/tests/addons/sca-lock-foreign-source/xpi/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-lock-foreign-source/src",
     "reviewed": true,
@@ -64,6 +64,7 @@
       "sca-lock-file-invalid",
       "build-registry-redirect",
       "lock-foreign-source",
+      "sca-dependencies-changed",
       "committed-node-modules",
       "committed-build-artifact",
       "sca-invalid-symlink",
@@ -141,7 +142,7 @@
       "item": "left-pad 1.3.0 - https://cdn.example.invalid/left-pad-1.3.0.tgz",
       "hint": null,
       "artifact": "SCA",
-      "message": "The committed lock file installs the following package(s) from a source the review does not support. Every dependency must install from the npm registry (registry.npmjs.org) or, where package.json declares one, from GitHub. Please install the dependencies from those sources and commit the regenerated lock file.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+      "message": "The committed lock file installs the following package(s) from a source the review does not support. Every dependency must install from the npm registry (registry.npmjs.org) or from GitHub. Please install the dependencies from those sources and commit the regenerated lock file.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]
 }

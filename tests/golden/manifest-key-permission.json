@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/manifest-key-permission",
-    "xpiRoot": "<root>/tests/addons/manifest-key-permission/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "manifest-key-permission",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

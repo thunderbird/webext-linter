@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dependencies changed for the review</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Dependencies changed for the review <span class="badge info">info</span></h1>
+        <div class="check-id">sca-dependencies-changed</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission reviewed from a <em>rescued copy</em>. When the
+        submitted lock installs a package with a known high or critical advisory, the
+        preparation of the review copies the source and reduces the copy's dependencies
+        to what the release build uses, then, where that is not enough, applies the
+        package manager's audit fix. A copy the linter's own audit finds clean is reviewed
+        instead of the submission. A copy still vulnerable after the fix is deleted, and
+        the submission is reviewed as it was submitted, aborted by those vulnerabilities.
+      </p>
+      <p>
+        The developer's own <code>package.json</code> and lock file still have the
+        vulnerabilities, so this check says so once, at <code>package.json</code>, when the
+        copy's lock differs from the lock of the root it was made from: a release it no
+        longer installs or newly installs, or a package it no longer records as declared
+        or newly does. Like every dependency question of a source-code review, it reads
+        the locks alone, not <code>package.json</code>. It lists nothing: the
+        developer's own <code>npm audit</code> or <code>pnpm audit</code> names what to fix,
+        against their own lock.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The reviewed source archive"] --> B{"Is it a rescued copy?<br/>(its work folder's preparation<br/>names an original)"}
+  B -- no --> OK([no finding])
+  B -- yes --> C{"Compare the lock<br/>with the original's"}
+  C -- "the same releases, declared the same" --> OK
+  C -- "an installed release or a declared package differs" --> INFO([INFO: reviewed with changed dependencies])
+
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class INFO info;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told that the review used their dependencies with changes made
+        to get past known vulnerabilities, that their own package.json and lock file
+        still have them, and to run their package manager's audit before the next
+        submission.
+      </div>
+
+      <div class="outcome">
+        <strong>It never aborts the review</strong>
+        The finding is information for the developer. Whether the build of the rescued
+        copy reproduces the shipped add-on is asked by the review itself, like for any
+        source-code submission.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/sca-dependencies-changed.js</code>
+        and its entry in <code>assets/registry.yaml</code>. The rescue itself:
+        <code>src/prepare/steps.js</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

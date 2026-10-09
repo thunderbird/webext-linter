@@ -335,12 +335,30 @@ sections:
         kind: text
         required: true
         why: what the prompt tells its reader first
-      outcome:
+      rescue-for:
+        kind: list
+        required: true
+        why: >-
+          the reasons a rescue is for - ids a check names in `review-early-exit`. The review
+          of a source whose rescue was given up runs the checks that name them
+      extract:
         kind: list
         of: mapping
         required: true
-        noun: "`outcome` steps"
-        why: the steps the prompt asks for, in order
+        noun: "`extract` steps"
+        why: the steps the first prompt asks for, in order
+      reduce:
+        kind: list
+        of: mapping
+        required: true
+        noun: "`reduce` steps"
+        why: the steps the prompt that reduces a rescued copy asks for, in order
+      fix:
+        kind: list
+        of: mapping
+        required: true
+        noun: "`fix` steps"
+        why: the steps the prompt that audit-fixes a rescued copy asks for, in order
 
   llm-phases:
     kind: object

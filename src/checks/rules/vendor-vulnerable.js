@@ -1,10 +1,12 @@
 // Flags a pinned npm library whose bundled version has known security
-// advisories - a package.json dependency OR an npm-sourced VENDOR entry. The OSV
-// audit ran once in the network pre-step (src/vendor/verify.js auditNpm), which
-// recorded each vulnerable package on addon.vendor.vulnerabilities with the file +
-// token to anchor it; this check maps that set to findings via the shared
-// lib/vuln-findings.js mapper (also used by vendor-vulnerable-dev for the SCA dev
-// set). Deterministic, no network.
+// advisories - a package.json dependency of a built XPI, a package the committed lock file
+// of a source archive marks as declared and installs for production, OR an npm-sourced
+// VENDOR entry. The OSV audit ran once in the network pre-step (src/vendor/verify.js
+// auditNpm, or auditLockedPackages in a source review, which records only high, critical
+// and malicious advisories), which recorded each vulnerable package on
+// addon.vendor.vulnerabilities with the file + token to anchor it; this check maps that
+// set to findings via the shared lib/vuln-findings.js mapper (also used by
+// vendor-vulnerable-dev for the SCA dev set). Deterministic, no network.
 //
 // Belongs here: choosing the prod/vendored vulnerability set. Does NOT belong
 // here: the vulnerability->finding mapping incl. the severity:auto band mapping

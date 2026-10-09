@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/trademark-unlocalized-name",
-    "xpiRoot": "<root>/tests/addons/trademark-unlocalized-name/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "trademark-unlocalized-name",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

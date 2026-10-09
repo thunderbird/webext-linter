@@ -69,7 +69,7 @@ flowchart TD
         reports nothing by itself: a reviewer has to conclude first that a hook reaches the
         network. A hook cleared as a local build step aborts nothing. Once one is reported,
         nothing further is put to a reviewer: the report drops every to-do item they would
-        have been asked, keeps the code-review sections, and the developer&rsquo;s text ends
+        have been asked, keeps the code-review sections of a printed report (an aborted <code>--llm-review</code> hands over no to-do item at all), and the developer&rsquo;s text ends
         on the reason it is incomplete (&ldquo;A build that cannot be reproduced&rdquo;).
         The next thing the review would otherwise ask is that a reviewer install these
         dependencies, which is the moment the hook runs on their machine.

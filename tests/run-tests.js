@@ -16,10 +16,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runPipeline } from "../src/pipeline.js";
+import {
+  PREPARE_STEP,
+  startRecord,
+  writePrepare,
+} from "../src/prepare/state.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
 import { formatReview } from "../src/report/format.js";
 import { setNetworkPacing } from "../src/util/net.js";
-import { fixtureCacheOpts } from "./seed-caches.js";
+import { fixtureCacheOpts, freshWorkFolder } from "./seed-caches.js";
 import { makeTgz } from "./unit/tarball-fixture.js";
 
 // Every request paces itself against a live host's request budget
@@ -162,6 +167,13 @@ function installFetchMock(dir, network) {
 // where the source IS the root. The block is the only way a fixture can express a NESTED
 // submission, and the keyspaces only differ there - flat means the prefix is empty, so the
 // review source and the archive key a file identically.
+// An SCA spec may also name an "original" folder of the fixture: the source root the src/
+// tree is a RESCUED COPY of (src/prepare/steps.js). The harness then records that in the
+// fixture's work folder, the way a preparation that came out clean does (seedPreparation),
+// and the review reads the original's package files from there. An SCA spec may instead
+// carry an "unrescued" lock audit: the four lists a preparation records before it gives its
+// rescue up. The harness records them as that preparation does, and the review takes them as
+// its own dependency audit.
 function loadFixture(dir) {
   const file = path.join(EXPECTED_DIR, `${path.basename(dir)}.json`);
   const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -170,7 +182,29 @@ function loadFixture(dir) {
     options: parsed.options ?? {},
     network: parsed.network ?? {},
     sca: parsed.sca ?? {},
+    original: parsed.original ?? null,
+    unrescued: parsed.unrescued ?? null,
   };
+}
+
+/**
+ * Record in a fixture's work folder what a finished preparation leaves there: done, and
+ * either a rescued copy of `original` (naming the root it was copied from), or an original
+ * whose rescue was given up (with the lock audit it recorded). Only what a review reads is
+ * filled in, with the rest of the record in the shape the preparation writes it.
+ * @param {string} work  The fixture's work folder.
+ * @param {{original?: string, lockAudit?: object}} done  The original source root,
+ *   absolute, or the recorded lock audit.
+ */
+function seedPreparation(work, { original, lockAudit }) {
+  writePrepare(work, {
+    ...startRecord({ submission: { xpi: "", experiments: false }, flags: {} }),
+    step: PREPARE_STEP.done,
+    ...(original
+      ? { original: { work: path.dirname(original), scaRoot: original } }
+      : {}),
+    ...(lockAudit ? { lockAudit, unrescued: true } : {}),
+  });
 }
 
 // A fixture is an SCA (source-code archive) review when it holds two artifacts as
@@ -237,10 +271,12 @@ function diff(expected, actual) {
   return problems;
 }
 
-// Replace the repo's absolute path so goldens are machine-independent (the
-// add-on path and schema source both embed it).
-function normalize(text) {
-  return text.split(ROOT).join("<root>");
+// Replace the run's absolute paths so goldens are machine-independent: the fixture's
+// work folder (XPI_ROOT is the add-on's copy there) and the repo (the add-on path and
+// schema source both embed it). The work folder first - it is not under the repo, but a
+// golden should not depend on that.
+function normalize(text, work) {
+  return text.split(work).join("<work>").split(ROOT).join("<root>");
 }
 
 // First differing line between two multi-line strings, for a concise report.
@@ -280,7 +316,14 @@ async function main() {
   let failed = 0;
   for (const name of addons) {
     const dir = path.join(ADDONS_DIR, name);
-    const { expect: expected, options, network, sca } = loadFixture(dir);
+    const {
+      expect: expected,
+      options,
+      network,
+      sca,
+      original,
+      unrescued,
+    } = loadFixture(dir);
     let problems;
     const restoreFetch = installFetchMock(dir, network);
     try {
@@ -292,10 +335,14 @@ async function main() {
       // answer for the lookup, and leaving it on would have every one of them try it. The
       // opt-in is read here rather than left to the spread, for the same reason - the
       // harness has to win on everything else in that object.
+      //
+      // Each fixture gets a fresh work folder of its own: the default one sits beside the
+      // add-on argument, which would put a copy of every fixture inside tests/addons.
       const base = {
         ...pipelineOptsFromArgv(optionsToArgv(options)),
         ...CACHE_OPTS,
         cdnLookup: String(options["--cdn-lib-lookup"]) === "true",
+        workFolder: freshWorkFolder(),
       };
       let review;
       if (isScaFixture(dir)) {
@@ -305,6 +352,12 @@ async function main() {
         // source IS the root - the flat layout. Named absolutely, like every other path
         // opt, since that is what the arg reader hands the pipeline.
         const scaRoot = path.join(dir, "src");
+        if (original || unrescued) {
+          seedPreparation(base.workFolder, {
+            original: original ? path.join(dir, original) : undefined,
+            lockAudit: unrescued ?? undefined,
+          });
+        }
         const inRoot = (value) =>
           value ? path.join(scaRoot, value) : undefined;
         review = await runPipeline({
@@ -326,7 +379,7 @@ async function main() {
         // formatReview is the single source of the shipped report - the same string the
         // CLI writes.
         const body = formatReview(review, fmt);
-        const p = checkGolden(name, ext, normalize(body));
+        const p = checkGolden(name, ext, normalize(body, base.workFolder));
         if (p) {
           problems.push(p);
         }

@@ -34,6 +34,8 @@ Run the `node` script directly:
 node verify.js <xpi|folder> [options]
 ```
 
+The `.xpi` must be the file itself, never a symlink to one.
+
 Or put it on your PATH and run it from anywhere:
 
 ```sh
@@ -93,9 +95,10 @@ is monitored and upstream changes are ported manually.
 | `--checks-skip <ids>` | Skip these checks (comma-separated). See the check list below. |
 
 **LLM review:** what an LLM agent runs, instead of a person reading the report. `--llm-review`
-runs the review ONCE and hands out the first of its phases. Every `--llm-verdict` run after
+runs the review ONCE and hands out the first of its phases. Every `--llm-handback` run after
 that takes a phase back and hands out the next, until the last one carries the report.
-`--llm-sca-review` prepares a source code review and is over before one starts.
+`--llm-sca-review` starts preparing a source code review, and `--llm-handback` on the work
+folder it created carries the preparation on, until it starts the review itself.
 
 The agent audits each finding, settles what the scans could not, and puts the rest to a
 reviewer - the linter decides what is asked and what an answer may say. The whole round
@@ -105,8 +108,8 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | Option | Description |
 | --- | --- |
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. Refused with `--report-format json`. |
-| `--llm-verdict <file>` | Take a phase back and hand out the next - the last being `close`, which hands over the settled review. Takes no add-on path. Normally run by the agent, not by a person. |
-| `--llm-sca-review` | Read the add-on argument as a submission folder - one built `.xpi` and one archive of its source - print the prompt for preparing a source code review of it, and exit without reviewing anything. Refused beside any `--sca-*` flag, which is what it exists to produce. |
+| `--llm-handback <dir>` | Take a phase back from the review's work folder and hand out the next - the last being `close`, which hands over the settled review. On a work folder a source code review is being prepared in, take the next step of the preparation instead, and once it is done, start its review (see [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review)). The only run that carries on an existing work folder. Takes no add-on path. Normally run by the agent, not by a person. |
+| `--llm-sca-review` | Read the add-on argument as a submission folder - one built `.xpi` and one archive of its source - print the first prompt for preparing a source code review of it, and exit without reviewing anything. It creates the review's work folder at its default place beside the `.xpi`, records there how the review is to be run (this run's flags), has the source extracted into its `sca/` and the roots handed back with `--llm-handback`. Where the lock installs a package with a known high or critical advisory, the preparation has a copy's dependencies reduced, then audit-fixed (`<work folder>-rescued`), and reviews the copy if that resolves them. If it does not, the source as submitted is reviewed, aborted by the vulnerabilities the preparation recorded. The hand-back that finishes the preparation starts that review itself, with this run's flags. Refused beside any `--sca-*` flag, which is what the preparation works out. See [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review). |
 | `--llm-skip-summary` | Leave out the add-on description: the prompt does not ask for one and names no file for it. |
 | `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later, unless the review was aborted early. The two build questions are still asked. |
 | `--llm-skip-sweep` | Leave out the sweep: no sweeping agent is spawned, and the sweep is not handed to the reviewer either. |
@@ -115,7 +118,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 
 | Option | Description |
 | --- | --- |
-| `--sca-root <folder>` | The **extracted** source root (holds `package.json`/lock) - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
+| `--sca-root <folder>` | The **extracted** source root (holds `package.json`/lock) - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode. It must not include the add-on. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
 | `--sca-exp-source <path>` | The Experiment implementation folder, **inside** `--sca-root`, anywhere under it. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission checks. Needs `--sca-root`, and is required for an Experiment. |
 
 **Other:**
@@ -127,7 +130,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--report-format <text\|json>` | Report output format (default `text`). |
 | `--verbose` | Verbose logging. |
-| `--warnings-as-errors` | Read every warning as an error for this review. Each one is listed among the issues that rejected the submission rather than as something to resolve with the next release, and the run exits `1`. Off by default. Set once, by the run that starts a review: a `--llm-verdict` pass reads it back from the review and is refused if given it again. |
+| `--warnings-as-errors` | Read every warning as an error for this review. Each one is listed among the issues that rejected the submission rather than as something to resolve with the next release, and the run exits `1`. Off by default. Set once, by the run that starts a review: a `--llm-handback` pass reads it back from the review and is refused if given it again. |
 
 **Exit codes:** `0` no errors · `1` one or more error-severity findings (with
 `--warnings-as-errors`, every warning is one) · `2` tool failure.
@@ -165,26 +168,25 @@ which means either nothing was built or the build output was committed beside th
   are used. Every file in the archive is assumed used and is reviewed.
 - The **readable source** is reviewed for code defects (the API/permission/
   exfiltration checks run over every source file).
-- The **declared dependencies** (`--sca-root`'s `package.json`) are audited, build
-  dependencies included: each must come from npm or GitHub, and each is gated on
-  popularity (npm downloads / GitHub stars) and known vulnerabilities. A source the
-  review cannot verify is rejected. Build dependencies are held to that same bar because
-  the reviewer installs and RUNS them to reproduce the build, so refusing only the risks
-  we can name would leave the ones we cannot - but they need no pin, since nothing is
-  vendored from one and no release is ever fetched to compare against. Which release a
-  version range resolves to is the lock file's answer rather than the declaration's, so a
-  range is fine here and the lock is what must pin it. In a shipped XPI the declaration
-  must name a bare version, or a committed lock must resolve it - the two submission types
-  ask the same question of different files.
-- The **rest of the installed tree** is audited too: the committed lock file
-  records every package the install actually pulls in, at any depth, and almost
-  all of a real submission's vulnerable packages are ones nobody declared. Those
-  are queried against the same advisory database in one batch, but reported only
-  at **high and critical** - a package the developer did not choose is worth
-  reporting when it fails the review, not when it merely appears in one. An
-  advisory saying the package itself is malicious is reported whatever its band,
-  since those state none at all. Declared
-  and pulled-in cases are separate checks, because the developer fixes them
+- The **dependencies** are read from the committed lock file alone, never from
+  `package.json`: the lock is what the install follows, so an override, a workspace
+  member's own declarations and an optional dependency are all audited as installed. The
+  packages the lock marks as declared, build dependencies included, are gated on
+  popularity (npm downloads, or GitHub stars for one installed from GitHub). An npm
+  lockfile v1 records no declared set, so every package in one counts as declared. A
+  local install the archive does not hold as a folder (outside the source root, absent,
+  or a local tarball) is rejected, as is any other source the review cannot verify. Build
+  dependencies are held to that same bar because the reviewer installs and RUNS them to
+  reproduce the build, so refusing only the risks we can name would leave the ones we
+  cannot. In a shipped XPI the `package.json` declaration must name a bare version, or a
+  committed lock must resolve it.
+- The **whole installed tree** is audited: the committed lock file records every
+  package the install actually pulls in, at any depth, and almost all of a real
+  submission's vulnerable packages are ones nobody declared. Every installed package is
+  matched against the banned-library policy and queried against the advisory database in
+  one batch, but reported only at **high and critical** - a package is worth reporting
+  when it fails the review, not when it merely appears in one. An advisory saying the
+  package itself is malicious states no band, and counts as critical. Declared and pulled-in cases are separate checks, because the developer fixes them
   differently: update this package, or update the one that pulls it in.
 - The **build tooling** (build scripts, configs, `.npmrc`) is reviewed as part of the
   submission like everything else, and additionally feeds the build checks below. Two requirements decide whether the build
@@ -367,7 +369,8 @@ machine.
 | `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, aborts the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce. Whether the archive held the whole XPI is a separate question, so `sca-xpi-fully-included-in-archive` prints beside this rejection rather than in place of it. |
 | `sca-package-file-invalid` | A `package.json` that is present but unusable - it does not parse, or it parses to something other than a JSON object - so the build it defines cannot be run (error, aborts the review). Presence is decided by name and usability by reading, so exactly one of this and the check above ever speaks. |
 | `sca-lock-file-invalid` | A committed lock file that cannot be read: it does not parse, or it is not a recognisable npm or pnpm lock (error). The dependency audit reads the installed tree from it, so the review is aborted. Whether a readable lock matches `package.json` is left to `npm ci` / `pnpm install --frozen-lockfile` at the build. |
-| `lock-foreign-source` | A lock entry the install takes from a source other than the npm registry or GitHub, or a root dependency declared as a registry release that the lock takes from GitHub (error, aborts the review). The audit identifies a package by name and version, while the installer fetches the URL the lock records, so such an entry installs bytes the audit never read. |
+| `sca-dependencies-changed` | The source reviewed is a rescued copy (see [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review)): its dependencies were reduced to what the release build uses, or audit-fixed, to get past known vulnerabilities. Says so once, at `package.json`, and tells the developer to run their package manager's audit, since their own files still have the vulnerabilities (info). Compared lock to lock: silent for a source that is no rescued copy, or a copy whose lock installs what the original's did. |
+| `lock-foreign-source` | A lock entry the install takes from a source other than the npm registry or GitHub (error, aborts the review). The audit identifies a package by name and version, while the installer fetches the URL the lock records, so such an entry installs bytes the audit never read. |
 | `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, aborts the review). The lock is owed by the `package.json`, not by what it declares: both installers refuse without one whatever it holds. A build using a package manager the review does not install from commits no lock that counts, so it is rejected here. |
 | `string-timer` | A code string passed to `setTimeout`/`setInterval` (it is eval'd) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
 | `sync-xhr` | Synchronous `XMLHttpRequest` (`open(..., false)`). |
@@ -459,7 +462,7 @@ result into the owning check - described in
 Some review steps can't be automated - they need hands-on testing or a human's
 judgment over content the tool can't see (the store listing, screenshots, the
 icon). These live under `manual-checks` in the yaml and are surfaced in the
-report's **Standard Manual Review** to-do list, unless the review was aborted early. They carry a severity like every other entry, so a reviewer settles one exactly as they settle an escalation: the item names the band a confirmed case lands in, and `--llm-verdict` can confirm it into a finding or clear it away.
+report's **Standard Manual Review** to-do list, unless the review was aborted early. They carry a severity like every other entry, so a reviewer settles one exactly as they settle an escalation: the item names the band a confirmed case lands in, and `--llm-handback` can confirm it into a finding or clear it away.
 
 | Check id (`check:`) | What the reviewer verifies |
 | --- | --- |
@@ -479,10 +482,10 @@ report's **Standard Manual Review** to-do list, unless the review was aborted ea
 
 ```sh
 # Review a submitted xpi against the matching schema (report only - the submission
-# is never modified, though it is extracted to ./submission.xpi.extracted/ to be read)
+# is never modified, though it is extracted to ./submission-<timestamp>/xpi/ to be read)
 node verify.js ./submission.xpi
 
-# Review an already-unpacked folder (nothing is extracted - it already is the folder)
+# Review an already-unpacked folder (copied to ./my-addon-<timestamp>/xpi/ and read there)
 node verify.js ./my-addon
 
 # machine-readable JSON output

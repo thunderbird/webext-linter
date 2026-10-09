@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-undeclared-member",
-    "xpiRoot": "<root>/tests/addons/experiment-undeclared-member/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "experiment-undeclared-member",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

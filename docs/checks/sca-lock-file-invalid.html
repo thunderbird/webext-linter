@@ -64,8 +64,7 @@ flowchart TD
         <strong>It aborts the review</strong>
         This check is one of the few that settle the submission on their own.
         When it reports, nothing further is put to a reviewer: the report drops
-        every to-do item they would have been asked, keeps the code-review
-        sections, and the developer&rsquo;s text ends on the reason it is
+        every to-do item they would have been asked, keeps the code-review sections of a printed report (an aborted <code>--llm-review</code> hands over no to-do item at all), and the developer&rsquo;s text ends on the reason it is
         incomplete (&ldquo;Build process issues&rdquo;). Nothing in the
         dependency tree was checked, so building it would run code nobody
         vetted.

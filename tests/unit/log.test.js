@@ -148,7 +148,7 @@ test("quiet silences the feed and warnings, never a fatal message", () => {
 });
 
 // setFeed governs the ACTIVITY FEED - the Setup and Activity sections - and is switched
-// off for --llm-review / --llm-verdict, where the output is the document itself.
+// off for --llm-review / --llm-handback, where the output is the document itself.
 // report() is not feed and survives.
 test("setFeed(false) silences the feed", () => {
   setProgress(true);

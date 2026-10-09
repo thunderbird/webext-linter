@@ -1,17 +1,19 @@
 // Shared vulnerability->finding mapping for the four dependency-vulnerability
 // checks, one per (declared vs pulled in) x (shipped vs build-time only):
 // vendor-vulnerable (prod deps + vendored libs, artifact.vendor.vulnerabilities),
-// vendor-vulnerable-dev (SCA dev deps, artifact.vendor.devVulnerabilities), and the
-// two indirect ones reading the lock-file tree (artifact.vendor.treeVulnerabilities /
-// treeDevVulnerabilities). The OSV audit ran once in the network pre-step
-// (src/vendor/verify.js), which recorded each vulnerable package with the file +
-// token to anchor it; this maps each recorded vulnerability to a finding, anchored
-// at its declaration line. Deterministic, no network.
+// vendor-vulnerable-dev (SCA declared build deps, artifact.vendor.devVulnerabilities), and
+// the two indirect ones (artifact.vendor.treeVulnerabilities / treeDevVulnerabilities).
+// The OSV audit ran once in the network pre-step (src/vendor/verify.js), which recorded
+// each vulnerable package with the file + token to anchor it; this maps each recorded
+// vulnerability to a finding, anchored at its declaration line - a package.json or VENDOR
+// file line in a built XPI, the package's lock entry in a source review. Deterministic,
+// no network.
 //
-// The two DECLARED entries are severity:auto, so the finding's severity is set here
+// vendor-vulnerable is severity:auto, so the finding's severity is set here
 // from the advisory's OSV band: high / critical -> error, moderate / medium ->
-// warning, everything else (low / unknown) -> info. Every vulnerability reaching
-// this mapper is reported; none are dropped. The two INDIRECT entries declare a
+// warning, everything else (low / unknown) -> info. A malicious-package advisory arrives
+// as critical (src/vendor/verify.js vulnRecord). Every vulnerability reaching
+// this mapper is reported; none are dropped. The three source-review entries declare a
 // flat error instead, which the registry stamps over what is set here - their audit
 // only ever records high and critical, so there is no band left to map.
 //
@@ -74,10 +76,10 @@ export function vulnFindings(ctx, vulns) {
   const findings = [];
   for (const { name, version, ids, severity, fixed, file, token } of vulns) {
     const text = fileText(file);
-    // A quoted JSON token (a package.json dep name) or a plain substring (the
-    // VENDOR-file source URL) - whichever locates the declaration line. An empty
-    // token means there is no declaration line (a hash-identified library), so
-    // the finding anchors at the file with no line.
+    // A quoted JSON token (a package.json dep name, an npm lock key), a YAML key (a
+    // pnpm lock key) or a plain substring (the VENDOR-file source URL) - whichever
+    // locates the declaration line. An empty token means there is no declaration line
+    // (a hash-identified library), so the finding anchors at the file with no line.
     const line = token ? declarationLine(text, token) : null;
     const loc = line ? { line } : undefined;
     // One locus, in the artifact this check was routed to, for both the note and the
@@ -92,8 +94,8 @@ export function vulnFindings(ctx, vulns) {
       finding({
         ...at,
         item: name,
-        // The advisory's band, mapped to a finding severity for the two
-        // severity:auto entries. The two indirect ones declare a flat error,
+        // The advisory's band, mapped to a finding severity for the
+        // severity:auto entry. The other three declare a flat error,
         // which the registry stamps over this. Either way the raw band string
         // fills the {{severity}} response slot via data.severity.
         severity: severityForBand(severity),

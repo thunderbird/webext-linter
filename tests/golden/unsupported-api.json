@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/unsupported-api",
-    "xpiRoot": "<root>/tests/addons/unsupported-api/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "unsupported-api",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

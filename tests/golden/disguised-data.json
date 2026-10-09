@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/disguised-data",
-    "xpiRoot": "<root>/tests/addons/disguised-data/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "disguised-data",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

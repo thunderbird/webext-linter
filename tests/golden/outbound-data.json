@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/outbound-data",
-    "xpiRoot": "<root>/tests/addons/outbound-data/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "outbound-data",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

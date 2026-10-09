@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/privacy-policy-sites",
-    "xpiRoot": "<root>/tests/addons/privacy-policy-sites/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "privacy-policy-sites",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

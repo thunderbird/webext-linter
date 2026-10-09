@@ -13,7 +13,14 @@ import AdmZip from "adm-zip";
 import YAML from "yaml";
 
 import { pipelineOptsFromArgv } from "../../src/cli.js";
-import { seedFixtureCache } from "../seed-caches.js";
+import { startRecord, writePrepare } from "../../src/prepare/state.js";
+import {
+  addonOutsideRepo,
+  freshWorkFolder,
+  seedFixtureCache,
+} from "../seed-caches.js";
+import { relativeInside } from "../../src/addon/load.js";
+import { workPaths } from "../../src/util/dest.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..", "..");
@@ -43,7 +50,7 @@ function headerValue(stdout, name) {
 /** The review file a prompt names, and what is in it. The prompt is the only place any
  *  path is given out, which is exactly what a test should read. */
 function reviewFile(stdout) {
-  const at = stdout.match(/(\S+\.review\.json)/);
+  const at = stdout.match(/(\S+\/review\.json)/);
   return at ? at[1] : undefined;
 }
 function entriesOf(stdout) {
@@ -57,7 +64,7 @@ function entriesOf(stdout) {
  *  the file, the way the reviewer does. Read out of the link's target, because a path
  *  taken as "the next run of non-space" would take the `](` with it. */
 function reportOf(stdout) {
-  const at = stdout.match(/\]\((\S+\.report\.md)\)/);
+  const at = stdout.match(/\]\((\S+\/report\.md)\)/);
   assert.ok(at, "the prompt links the report file");
   return fs.readFileSync(at[1], "utf8");
 }
@@ -68,9 +75,42 @@ function runFile(file, args = []) {
   return { code: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
-/** Run the review entry (verify.js). */
+/** The fixtures' folder: a review creates its work folder beside its add-on, so an add-on
+ *  there is reviewed as a copy (addonOutsideRepo). */
+const FIXTURES = path.join(ROOT, "tests", "addons");
+
+/** The flags whose value names a folder the review READS, never the add-on, and so is
+ *  passed as it stands. */
+const READ_FOLDER_FLAGS = new Set(["--sca-root", "--sca-exp-source"]);
+
+/** Run the review entry (verify.js), with an add-on from the fixtures' folder replaced by a
+ *  copy outside the repository, so no review writes its work folder into tests/addons. */
 function run(args) {
-  return runFile(REVIEW, args);
+  return runFile(
+    REVIEW,
+    args.map((a, i) =>
+      typeof a === "string" &&
+      !READ_FOLDER_FLAGS.has(args[i - 1]) &&
+      relativeInside(a, FIXTURES) !== null &&
+      relativeInside(a, FIXTURES) !== "" &&
+      fs.existsSync(a)
+        ? addonOutsideRepo(a)
+        : a
+    )
+  );
+}
+
+/** The default work folder a review of `addon` created beside it: the one folder there
+ *  named after it and a moment. */
+function defaultFolderOf(addon) {
+  const leaf = path.basename(addon).replace(/\.xpi$/, "");
+  const made = fs
+    .readdirSync(path.dirname(addon))
+    .filter((n) =>
+      new RegExp(`^${leaf}-\\d{4}-\\d{2}-\\d{2}T[\\d-]+Z$`).test(n)
+    );
+  assert.equal(made.length, 1, "one default work folder, beside the add-on");
+  return path.join(path.dirname(addon), made[0]);
 }
 
 // --help prints the usage (the check-id list and the verify.js command) to
@@ -324,7 +364,8 @@ test("an archive the loader will not take fails the run (exit 2)", () => {
   const file = path.join(dir, "addon.xpi");
   zip.writeZip(file);
 
-  const r = run([file, ...OFFLINE_FLAGS]);
+  // In the default work folder, beside the add-on: the run that created it removes it.
+  const r = runFile(REVIEW, [file, ...OFFLINE_FLAGS]);
   assert.equal(r.code, 2);
   assert.match(r.stderr, /Could not read archive: /);
   assert.match(r.stderr, /verify failed/);
@@ -333,17 +374,17 @@ test("an archive the loader will not take fails the run (exit 2)", () => {
   // No review was produced: the run stopped at the read.
   assert.doesNotMatch(r.stdout, /Found Issues|Summary/);
   // A refusal mid-extraction leaves nothing behind for a reviewer to mistake for the
-  // whole submission (src/addon/load.js extractZip's cleanup-on-throw).
-  assert.ok(!fs.existsSync(`${file}.extracted`));
+  // whole submission (src/addon/load.js extractZip's cleanup-on-throw), and no work folder
+  // the run created for a review that never began.
+  assert.deepEqual(fs.readdirSync(dir), ["addon.xpi"]);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A PLAIN review - no --llm-review at all - now extracts a packed .xpi too: the linter
-// reads a submission from disk once, whether or not an agent is involved, rather than
-// keeping the zip's bytes in memory only and never writing them anywhere. This is new:
-// before this, extraction was --llm-review-only and asked of the agent, not the tool.
-test("a plain review of a packed .xpi extracts it beside the file", () => {
+// The linter reads a submission from disk once, whether or not an agent is involved: a
+// packed .xpi is extracted into the work folder, under the one name every review uses, and
+// read back from there.
+test("a plain review of a packed .xpi extracts it into the work folder", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-plain-extract-"));
   const zip = new AdmZip();
   zip.addFile(
@@ -356,7 +397,9 @@ test("a plain review of a packed .xpi extracts it beside the file", () => {
 
   const r = run([file, ...OFFLINE_FLAGS]);
   assert.notEqual(r.code, 2, r.stderr);
-  const extracted = `${file}.extracted`;
+  // The review gets its folder beside the add-on, named after it.
+  const work = defaultFolderOf(file);
+  const extracted = path.join(work, "xpi");
   assert.equal(
     fs.readFileSync(path.join(extracted, "manifest.json"), "utf8"),
     '{"manifest_version":3,"name":"x","version":"1"}'
@@ -369,34 +412,204 @@ test("a plain review of a packed .xpi extracts it beside the file", () => {
   // .xpi path.
   assert.equal(headerValue(r.stdout, "XPI_FILE"), "addon.xpi");
   assert.equal(headerValue(r.stdout, "XPI_ROOT"), `${extracted}${path.sep}`);
-
-  // Reviewed a second time: a fresh, timestamp-suffixed extraction, not a silent reuse
-  // or overwrite of the first.
-  const again = run([file, ...OFFLINE_FLAGS]);
-  assert.notEqual(again.code, 2, again.stderr);
-  const secondRoot = headerValue(again.stdout, "XPI_ROOT");
-  assert.notEqual(secondRoot, `${extracted}${path.sep}`);
-  assert.ok(
-    fs.existsSync(path.join(extracted, "manifest.json")),
-    "the first survives"
-  );
-  assert.ok(
-    fs.existsSync(path.join(secondRoot, "manifest.json")),
-    "the second is its own tree"
-  );
+  // A plain review writes nothing else there: its report is printed.
+  assert.deepEqual(fs.readdirSync(work), ["xpi"]);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// An already-unpacked submission needs no extraction at all: it already IS the folder,
-// and XPI_ROOT names it directly with nothing written beside it.
-test("a directory submission writes nothing extra to disk", () => {
-  const addon = path.join(ROOT, "tests", "addons", "clean");
-  const before = fs.readdirSync(path.dirname(addon));
+// An unpacked submission is copied into the work folder like a packed one is extracted
+// there, so XPI_ROOT is the same name in every review - and the submission is only read: its
+// folder gets nothing but the work folder beside it.
+test("a folder add-on is copied into the work folder and its parent left alone", () => {
+  const addon = addonOutsideRepo(path.join(ROOT, "tests", "addons", "clean"));
+  const before = fs.readdirSync(addon).sort();
   const r = run([addon, ...OFFLINE_FLAGS]);
   assert.notEqual(r.code, 2, r.stderr);
-  assert.equal(headerValue(r.stdout, "XPI_ROOT"), `${addon}${path.sep}`);
-  assert.deepEqual(fs.readdirSync(path.dirname(addon)), before);
+  const work = defaultFolderOf(addon);
+  const copy = path.join(work, "xpi");
+  assert.equal(headerValue(r.stdout, "XPI_ROOT"), `${copy}${path.sep}`);
+  assert.deepEqual(fs.readdirSync(copy).sort(), before);
+  assert.deepEqual(
+    fs.readFileSync(path.join(copy, "manifest.json")),
+    fs.readFileSync(path.join(addon, "manifest.json"))
+  );
+  assert.deepEqual(fs.readdirSync(addon).sort(), before);
+  assert.deepEqual(fs.readdirSync(path.dirname(addon)).sort(), [
+    "clean",
+    path.basename(work),
+  ]);
+});
+
+// A start that fails after the add-on was copied - here the Experiment refusal, which a
+// source review of an Experiment reaches once its XPI is read - gives back the folder it
+// created, so the same command can simply run again.
+test("a failed start leaves the work folder as it found it", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-failed-start-"));
+  const xpi = path.join(dir, "xpi");
+  const src = path.join(dir, "src");
+  fs.mkdirSync(xpi);
+  fs.mkdirSync(src);
+  fs.writeFileSync(
+    path.join(xpi, "manifest.json"),
+    JSON.stringify({
+      manifest_version: 3,
+      name: "Exp",
+      version: "1.0",
+      experiment_apis: { myapi: {} },
+    })
+  );
+  fs.writeFileSync(path.join(src, "package.json"), "{}");
+  const argv = [
+    xpi,
+    "--sca-root",
+    src,
+    "--allow-experiments",
+    "--llm-review",
+    ...OFFLINE_FLAGS,
+  ];
+  for (let i = 0; i < 2; i++) {
+    const r = run(argv);
+    assert.equal(r.code, 2, `run ${i + 1}`);
+    assert.match(r.stderr, /--sca-exp-source/, `run ${i + 1}`);
+    assert.doesNotMatch(r.stderr, /must not exist/, `run ${i + 1}`);
+    assert.deepEqual(
+      fs.readdirSync(dir).sort(),
+      ["src", "xpi"],
+      `run ${i + 1}`
+    );
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A review's work folder is always its default, beside the add-on, and the only run that
+// names an existing one is --llm-handback: --work-folder is no option, for any run.
+test("--work-folder is an unknown option", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-work-flag-"));
+  for (const argv of [
+    ["x.xpi", "--work-folder", dir],
+    [dir, "--llm-sca-review", "--work-folder", dir],
+    ["--llm-handback", dir, "--work-folder", dir],
+  ]) {
+    const r = run(argv);
+    assert.equal(r.code, 2, argv.join(" "));
+    assert.match(r.stderr, /Unknown option '--work-folder'/, argv.join(" "));
+  }
+  assert.deepEqual(fs.readdirSync(dir), []);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Everything under --sca-root is reviewed as the source, so the add-on may never lie inside
+// it - nor be it. Every folder argument is the folder it really is, so a link in a path
+// changes none of this, and nothing is created.
+test("--sca-root must not include the add-on", () => {
+  const dir = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "wl-work-sca-"))
+  );
+  const proj = path.join(dir, "proj");
+  const addon = path.join(proj, "dist", "addon");
+  fs.cpSync(path.join(ROOT, "tests", "addons", "clean"), addon, {
+    recursive: true,
+  });
+  fs.writeFileSync(path.join(proj, "package.json"), "{}");
+  const link = path.join(dir, "link");
+  fs.symlinkSync(proj, link);
+  const before = fs.readdirSync(path.join(proj, "dist"));
+  for (const [named, root] of [
+    [addon, proj],
+    [path.join(link, "dist", "addon"), proj],
+    [addon, link],
+    [addon, addon],
+  ]) {
+    const r = run([named, "--sca-root", root]);
+    assert.equal(r.code, 2, named);
+    const realRoot = root === link ? proj : root;
+    assert.equal(
+      r.stderr,
+      `--sca-root "${realRoot}" must not include the add-on "${addon}".\n`,
+      `${named} in ${root}`
+    );
+  }
+  assert.deepEqual(fs.readdirSync(path.join(proj, "dist")), before);
+  // Without --sca-root nothing is reviewed in place, and the default beside it is fine.
+  const xpiOnly = run([addon, ...OFFLINE_FLAGS]);
+  assert.notEqual(xpiOnly.code, 2, xpiOnly.stderr);
+  const work = defaultFolderOf(addon);
+  assert.ok(fs.existsSync(path.join(work, "xpi", "manifest.json")));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A folder named through a link is the folder it names: an add-on is copied from its
+// target, and a source root is reviewed where it really is.
+test("folders named through a link are reviewed as their targets", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-work-link-"));
+  const addonLink = path.join(dir, "addon");
+  const target = addonOutsideRepo(path.join(ROOT, "tests", "addons", "clean"));
+  fs.symlinkSync(target, addonLink);
+  const r = run([addonLink, ...OFFLINE_FLAGS]);
+  assert.notEqual(r.code, 2, r.stderr);
+  // The work folder goes beside the target, the folder the add-on really is.
+  const work = defaultFolderOf(target);
+  assert.ok(fs.existsSync(path.join(work, "xpi", "manifest.json")));
+  const fixture = path.join(ROOT, "tests", "addons", "build-hygiene-sca");
+  const srcLink = path.join(dir, "src");
+  fs.symlinkSync(path.join(fixture, "src"), srcLink);
+  const sca = run([
+    path.join(fixture, "xpi"),
+    "--sca-root",
+    srcLink,
+    ...OFFLINE_FLAGS,
+  ]);
+  assert.notEqual(sca.code, 2, sca.stderr);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Files are never followed: the .xpi named, and the files of a submission folder, must be
+// the files themselves. The folder holding them may be a link.
+test("an .xpi or a source archive given through a link is refused", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-file-link-"));
+  const real = path.join(dir, "real");
+  fs.mkdirSync(real);
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":2,"name":"x","version":"1"}')
+  );
+  zip.writeZip(path.join(real, "a.xpi"));
+  fs.writeFileSync(path.join(real, "src.zip"), "");
+  const linkedXpi = path.join(dir, "linked.xpi");
+  fs.symlinkSync(path.join(real, "a.xpi"), linkedXpi);
+  const r = runFile(REVIEW, [linkedXpi]);
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /The add-on ".+linked\.xpi" is a symlink/);
+  assert.deepEqual(fs.readdirSync(dir).sort(), ["linked.xpi", "real"]);
+
+  // A submission folder named through a link is accepted ...
+  const folderLink = path.join(dir, "submission");
+  fs.symlinkSync(real, folderLink);
+  const prepared = run(["--llm-sca-review", folderLink]);
+  assert.equal(prepared.code, 0, prepared.stderr);
+  // ... but not a submission whose files are links.
+  for (const name of ["a.xpi", "src.zip"]) {
+    const sub = path.join(dir, `sub-${name}`);
+    fs.mkdirSync(sub);
+    for (const file of ["a.xpi", "src.zip"]) {
+      const target = path.join(real, file);
+      if (file === name) {
+        fs.symlinkSync(target, path.join(sub, file));
+      } else {
+        fs.copyFileSync(target, path.join(sub, file));
+      }
+    }
+    const refused = run(["--llm-sca-review", sub]);
+    assert.equal(refused.code, 2, name);
+    assert.match(
+      refused.stderr,
+      new RegExp(`"${name.replace(".", "\\.")}" is a symlink`),
+      name
+    );
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // A flag given with no value names something and says nothing. Asked of EVERY option that
@@ -410,7 +623,7 @@ test("a flag given no value is refused (exit 2)", () => {
     [["some.xpi", "--report-format="], "--report-format"],
     [["some.xpi", "--checks-only="], "--checks-only"],
     [["some.xpi", "--cache-schema-dir="], "--cache-schema-dir"],
-    [["some.xpi", "--llm-verdict="], "--llm-verdict"],
+    [["some.xpi", "--llm-handback="], "--llm-handback"],
     [["some.xpi", "--sca-root="], "--sca-root"],
     [["some.xpi", "--sca-root", " "], "--sca-root"],
   ]) {
@@ -455,11 +668,12 @@ test("a folder flag is checked against the folder the review will read", () => {
 });
 
 // Where a folder flag LANDS is the question, asked with the loader's own relativeInside so
-// the guard and the review cannot answer it differently: a ".." segment names a folder by
-// the way out of another, and a path resolving outside --sca-root names one on the reviewing
-// machine. For --sca-exp-source "nothing to exclude" is also the legitimate answer for an
-// Experiment outside the source, so neither mistake announces itself.
-test("a folder flag takes an absolute path inside the root, and refuses one outside it or with a .. segment (exit 2)", () => {
+// the guard and the review cannot answer it differently: a path resolving outside
+// --sca-root names a folder on the reviewing machine. How it was spelled - a ".." segment
+// included - makes no difference. For --sca-exp-source "nothing to exclude" is also the
+// legitimate answer for an Experiment outside the source, so the mistake would not
+// announce itself.
+test("a folder flag is judged by where it lands, however it was spelled (exit 2 outside the root)", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-folder-"));
   fs.mkdirSync(path.join(dir, "src"));
 
@@ -481,12 +695,14 @@ test("a folder flag takes an absolute path inside the root, and refuses one outs
   );
   for (const argv of [
     ["some.xpi", "--sca-root", dir, "--sca-exp-source", "/tmp"],
+    ["some.xpi", "--sca-root", dir, "--sca-exp-source", "../outside"],
   ]) {
     const r = run(argv);
     assert.equal(r.code, 2, argv.join(" "));
     assert.match(r.stderr, /which is outside/, argv.join(" "));
   }
 
+  // A ".." segment is no reason to refuse: where it lands, the folder is the one named.
   for (const argv of [
     ["some.xpi", "--sca-root", `${dir}/../${path.basename(dir)}`],
     [
@@ -498,9 +714,7 @@ test("a folder flag takes an absolute path inside the root, and refuses one outs
     ],
   ]) {
     const r = run(argv);
-    assert.equal(r.code, 2, argv.join(" "));
-    assert.match(r.stderr, /never a way out of one/, argv.join(" "));
-    assert.match(r.stderr, /carries a "\.\." segment/, argv.join(" "));
+    assert.doesNotMatch(r.stderr, /--sca-(root|exp-source)/, argv.join(" "));
   }
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -586,7 +800,8 @@ test("reviewing a fixture renders to stdout with a severity-based exit", () => {
 // Keyed on the paths themselves, because a path is all a step gives out: a sub-agent is
 // handed the request and nothing else, so nothing in one stands for a path by name.
 test("a source code review's steps carry the paths the review resolved to", () => {
-  const sca = path.join(ROOT, "tests", "addons", "build-hygiene-sca");
+  // A source review nothing aborts, so its first prompt starts the agents that take paths.
+  const sca = path.join(ROOT, "tests", "addons", "sca-transpiled-kept");
   const r = run([
     path.join(sca, "xpi"),
     ...OFFLINE_FLAGS,
@@ -602,7 +817,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
     "the step names the source root"
   );
   assert.ok(
-    lines.some((l) => /\.build\.md$/.test(l)),
+    lines.some((l) => /\/build\.md$/.test(l)),
     "and where the build report goes"
   );
 
@@ -622,7 +837,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
   const rejectedLines = rejected.stdout.split("\n").map((l) => l.trim());
   assert.ok(!rejectedLines.includes(exp), "no source root is handed out");
   assert.ok(
-    !rejectedLines.some((l) => /\.build\.md$/.test(l)),
+    !rejectedLines.some((l) => /\/build\.md$/.test(l)),
     "and no build report is asked for"
   );
 });
@@ -646,15 +861,15 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   // The first pass is the SPAWN phase, and it says nothing about the questions: a later
   // pass asks those, and the agent only ever sees what the pass in front of it needs.
   assert.doesNotMatch(on.stdout, /"answers"/, "the questions are a later pass");
-  assert.match(on.stdout, /\.review\.json/, "the file to hand back is named");
+  assert.match(on.stdout, /\/review\.json/, "the file to hand back is named");
   assert.match(
     on.stdout,
-    /--llm-verdict/,
+    /--llm-handback/,
     "and the command that hands it back"
   );
   // The description is a file the reader writes and the reviewer opens: this run names
   // the path, and never reads what lands there.
-  assert.match(on.stdout, /^\s*\S+\.summary\.md$/m);
+  assert.match(on.stdout, /^\s*\S+\/summary\.md$/m);
   assert.ok(
     !on.stdout.includes('"Report"'),
     "the answers are not prose in the prompt"
@@ -669,7 +884,7 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   // The sweep request IS that file, named in the prompt and nowhere near it in content:
   // the orchestrating agent is handed a path and told to pass it on, so no instruction
   // text travels through the prompt at all.
-  const request = on.stdout.match(/^\s*(\S+\.sweep-xpi\.yaml)$/m);
+  const request = on.stdout.match(/^\s*(\S+\/sweep-xpi\.yaml)$/m);
   assert.ok(request, "the sweep request is named");
   const doc = YAML.parse(fs.readFileSync(request[1], "utf8"));
   assert.ok(doc.sweepTarget, "it names the tree to read");
@@ -706,43 +921,10 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
 });
 
 // Both ends of the loop print a prompt, so both have to refuse the one format that is
-// not one. --llm-verdict used to be asked nowhere: it returns from its own branch before
-// reaching the test --llm-review takes, so it accepted --report-format json and then
-// printed text anyway, ignoring what it had been asked for. The message names the flag
-// that was actually used, because a run that said --llm-verdict is not helped by being
+// not one. --llm-handback returns from its own branch before reaching the test
+// --llm-review takes, so the refusal is asked ahead of both. The message names the flag
+// that was actually used, because a run that said --llm-handback is not helped by being
 // told about --llm-review.
-// `base` in a handed-back file names the state it belongs to, and the state names the
-// one review file it hands out - so a file whose `base` was pointed at ANOTHER review's
-// state is caught, rather than advancing that review with this one's answers. Needed on
-// purpose because a pass asking for no entry (the spawn phase) carries nothing that could
-// disagree with the wrong state by accident.
-test("a hand-back whose base leads to another review is refused", () => {
-  const addon = path.join(ROOT, "tests", "addons", "clean");
-  const reviewOf = () => {
-    const out = run([addon, ...OFFLINE_FLAGS, "--llm-review"]);
-    assert.equal(out.code, 0, out.stderr);
-    return out.stdout.match(/(\S+\.review\.json)/)[1];
-  };
-  const a = reviewOf();
-  const b = reviewOf();
-  assert.notEqual(a, b);
-  const bState = JSON.parse(fs.readFileSync(b, "utf8")).base;
-  const before = fs.readFileSync(bState, "utf8");
-
-  const handed = JSON.parse(fs.readFileSync(a, "utf8"));
-  handed.base = bState;
-  fs.writeFileSync(a, JSON.stringify(handed, null, 1));
-
-  const out = run(["--llm-verdict", a, ...OFFLINE_FLAGS]);
-  assert.equal(out.code, 2);
-  assert.match(out.stdout, /belongs to a different review/);
-  assert.equal(
-    fs.readFileSync(bState, "utf8"),
-    before,
-    "the other review is untouched"
-  );
-});
-
 // A failure while building the NEXT pass is the tool's, not the agent's: its hand-back was
 // accepted. So it is not a refusal - that would send the agent to retry a file it got right,
 // into the same failure - but the clean failure every other tool error in the loop gives:
@@ -756,8 +938,8 @@ test("a failure building the next pass ends it cleanly, not with a stack trace",
     "--llm-skip-summary",
   ]);
   assert.equal(first.code, 0, first.stderr);
-  const file = first.stdout.match(/(\S+\.review\.json)/)[1];
-  const stateFile = JSON.parse(fs.readFileSync(file, "utf8")).base;
+  const file = first.stdout.match(/(\S+\/review\.json)/)[1];
+  const stateFile = path.join(path.dirname(file), "state.json");
   // A finding in the archive, in a review that has no archive: the next phase cannot
   // resolve its path, which is the linter's own inconsistency to report.
   const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
@@ -773,7 +955,7 @@ test("a failure building the next pass ends it cleanly, not with a stack trace",
   sweepBack(file);
   const before = fs.readFileSync(stateFile, "utf8");
 
-  const out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  const out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
   assert.equal(out.code, 2);
   assert.match(out.stderr, /orphan\.js/, "the error's own message");
   assert.match(out.stderr, /verify failed/);
@@ -888,30 +1070,34 @@ test("a failure outside main still dumps the held messages", () => {
 
 test("both ends of the review loop refuse --report-format json", () => {
   const started = run([
-    "--llm-verdict",
-    "/nonexistent.json",
+    "--llm-handback",
+    "/nonexistent",
     "--report-format",
     "json",
   ]);
   assert.equal(started.code, 2);
-  assert.match(started.stderr, /--llm-verdict is text only/);
+  assert.match(started.stderr, /--llm-handback is text only/);
   assert.doesNotMatch(
     started.stderr,
     /--llm-review/,
     "names the flag the run used"
   );
 
-  // Text is still the loop's own format, so the pass runs and answers in its own words.
-  const text = run(["--llm-verdict", "/nonexistent.json"]);
-  assert.match(text.stdout, /not what this pass expected/);
+  // Text is still the loop's own format, so the pass runs - and a folder holding no review
+  // is a hand-back gone wrong, refused to the agent on stdout like any other.
+  const text = run(["--llm-handback", "/nonexistent"]);
+  assert.equal(text.code, 2);
+  assert.match(
+    text.stdout,
+    /The hand-back was refused: "\/nonexistent" holds no review/
+  );
 });
 
 // The review file is the linter's to name, so the flag takes no value at all - which is
 // what lets it sit anywhere on the command line, including before the add-on, where a flag
-// with an optional value would have swallowed the path and left nothing to review. The name
-// carries the moment as well as the SUBMISSION - the leaf of the path this run was given,
-// which is what the reviewer recognises - so no second run can open the file a reader is
-// still working from.
+// with an optional value would have swallowed the path and left nothing to review. It sits
+// in the run's own work folder, so no second run can open the file a reader is still
+// working from.
 test("--llm-review names its own review file and swallows no argument", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const named = (r) => reviewFile(r.stdout);
@@ -925,11 +1111,7 @@ test("--llm-review names its own review file and swallows no argument", () => {
   for (const file of written) {
     assert.ok(file && fs.existsSync(file), `${file} was written`);
     assert.ok(Array.isArray(JSON.parse(fs.readFileSync(file, "utf8")).entries));
-    // `clean` is the folder that was reviewed, not the "Clean" its manifest declares.
-    assert.match(
-      path.basename(file),
-      /^clean-\d{4}-\d{2}-\d{2}T[\d-]+Z\.review\.json$/
-    );
+    assert.equal(path.basename(file), "review.json");
   }
   assert.equal(
     new Set(written).size,
@@ -979,15 +1161,11 @@ test("--warnings-as-errors settles a warning as an error, exit code included", (
 
 // The band belongs to the REVIEW, recorded when it started, so a later pass reads it back
 // instead of being told it again - two sources for one fact is one of them going stale.
-test("--warnings-as-errors is refused on a --llm-verdict pass", () => {
-  const r = run([
-    "--llm-verdict",
-    "/nonexistent.review.json",
-    "--warnings-as-errors",
-  ]);
+test("--warnings-as-errors is refused on a --llm-handback pass", () => {
+  const r = run(["--llm-handback", "/nonexistent", "--warnings-as-errors"]);
   assert.equal(r.code, 2);
   assert.match(r.stderr, /belongs to the review/);
-  // Refused before the file is read: the message is about the flag, not about the path.
+  // Refused before the folder is read: the message is about the flag, not about the path.
   assert.doesNotMatch(r.stderr, /nonexistent/);
 });
 
@@ -1071,11 +1249,11 @@ test("the two skips withhold the description and the manual items", () => {
   assert.ok(!on.stdout.includes('"answers"'), "no manual questions asked");
   assert.doesNotMatch(
     on.stdout,
-    /\.summary\.md/,
+    /\/summary\.md/,
     "no add-on description asked for, and no file named for one"
   );
   // ...while the step that closes the round trip survives the renumbering.
-  assert.match(on.stdout, /--llm-verdict/);
+  assert.match(on.stdout, /--llm-handback/);
 
   // Both skips are off the spawn phase, so its only agent is the sweep - and the manual
   // items are not dropped from the REVIEW, only from what a phase puts to anyone. They
@@ -1103,7 +1281,7 @@ test("each skip leaves out its own part and nothing else", () => {
     "--llm-skip-summary",
   ]);
   assert.equal(noSummary.code, 0, noSummary.stderr);
-  assert.doesNotMatch(noSummary.stdout, /\.summary\.md/);
+  assert.doesNotMatch(noSummary.stdout, /\/summary\.md/);
   // The questions are a later pass, so the first prompt names none either way. What the
   // skip decides is whether the FILE still carries them.
 
@@ -1121,7 +1299,7 @@ test("each skip leaves out its own part and nothing else", () => {
     "--llm-skip-manual",
   ]);
   assert.equal(noManual.code, 0, noManual.stderr);
-  assert.match(noManual.stdout, /^\s*\S+\.summary\.md$/m);
+  assert.match(noManual.stdout, /^\s*\S+\/summary\.md$/m);
   assert.ok(!noManual.stdout.includes('"answers"'), "no questions asked");
   assert.ok(
     !itemsOf(noManual).some((x) => manualSections.includes(x.section)),
@@ -1156,7 +1334,7 @@ test("a review with nothing to settle names no description file", () => {
   // request and nothing else, so a name standing for a path it never saw names nothing.
   assert.match(
     r.stdout,
-    /Write it to\n\n\s+\S+\.summary\.md\n\n\s+and to nothing else/
+    /Write it to\n\n\s+\S+\/summary\.md\n\n\s+and to nothing else/
   );
   assert.doesNotMatch(r.stdout, /ADDON_DESCRIPTION/);
   // The review file is handed over with nothing to answer: this phase has a step to do
@@ -1195,7 +1373,7 @@ test("a skip without --llm-review is refused", () => {
 });
 
 // --llm-review carries its own guards, and a skip changes none of them: the prompt is
-// still text only, and it is still the asking half of a round trip --llm-verdict closes.
+// still text only, and it is still the asking half of a round trip --llm-handback closes.
 test("a skipped review carries the same guards", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const json = run([
@@ -1214,11 +1392,11 @@ test("a skipped review carries the same guards", () => {
     ...OFFLINE_FLAGS,
     "--llm-review",
     "--llm-skip-summary",
-    "--llm-verdict",
-    "answers.json",
+    "--llm-handback",
+    os.tmpdir(),
   ]);
   assert.equal(verdict.code, 2);
-  assert.match(verdict.stderr, /--llm-review and --llm-verdict/);
+  assert.match(verdict.stderr, /--llm-review and --llm-handback/);
 });
 
 // --llm-review switches on the verification prompt and the skips cut it down: the review
@@ -1280,8 +1458,9 @@ test("retired flags are unknown options", () => {
  * the point of it.
  */
 function sweepBack(reviewFile, found = {}) {
-  const { base } = JSON.parse(fs.readFileSync(reviewFile, "utf8"));
-  const state = JSON.parse(fs.readFileSync(base, "utf8"));
+  const state = JSON.parse(
+    fs.readFileSync(path.join(path.dirname(reviewFile), "state.json"), "utf8")
+  );
   for (const [artifact, paths] of Object.entries(state.paths.sweeps ?? {})) {
     const mine = state.preSweep.items.filter((i) => i.artifact === artifact);
     fs.writeFileSync(
@@ -1296,7 +1475,7 @@ function sweepBack(reviewFile, found = {}) {
 }
 
 // The sweep path end to end: a swept case enters through --llm-sweep-results, is settled
-// through --llm-verdict, and comes out the far side as a finding of the check that owns
+// through --llm-handback, and comes out the far side as a finding of the check that owns
 // it, worded by that check's registry response. This is the chain the unit tests cannot
 // see - mergeSweepResults -> reviewItems -> applyVerdicts -> renderFindings -> formatText
 // - and it is where a check whose response carried a placeholder, or whose band could not
@@ -1310,7 +1489,7 @@ test("a swept case becomes an item of its check and settles like any other", () 
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const first = run([addon, ...OFFLINE_FLAGS, "--llm-review"]);
   assert.equal(first.code, 0, first.stderr);
-  const file = first.stdout.match(/(\S+\.review\.json)/)[1];
+  const file = first.stdout.match(/(\S+\/review\.json)/)[1];
 
   // The spawn pass asks nothing in this file - the sweeping agents answer in their own,
   // where an empty list is "swept and clean" and a null is "never looked".
@@ -1326,7 +1505,7 @@ test("a swept case becomes an item of its check and settles like any other", () 
   });
 
   // The next pass carries it as a case of its own check, with its locus and its hint.
-  const second = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  const second = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
   assert.equal(second.code, 0, second.stderr);
   const next = JSON.parse(fs.readFileSync(file, "utf8"));
   const swept = next.entries.find((e) => e.ruleId === "data-exfiltration");
@@ -1338,13 +1517,13 @@ test("a swept case becomes an item of its check and settles like any other", () 
   // sweeping agent's, which never leave the hint.
   next.entries = next.entries.map((e) => ({ ...e, answer: "reported" }));
   fs.writeFileSync(file, JSON.stringify(next, null, 1));
-  let out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  let out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
   // Every prompt but the closing one ends on the command that hands it back.
-  while (/^\s+node verify\.js --llm-verdict /m.test(out.stdout)) {
+  while (/^\s+node verify\.js --llm-handback /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries = doc.entries.map((e) => ({ ...e, answer: "Clear" }));
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
-    out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+    out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
   }
   assert.equal(out.code, 1, out.stderr);
   // The invariant clause, not the subject: what the response calls the data (user data,
@@ -1375,7 +1554,7 @@ test("a swept case of a check that files findings is verified like one", () => {
     "--llm-skip-summary",
   ]);
   assert.equal(first.code, 0, first.stderr);
-  const file = first.stdout.match(/(\S+\.review\.json)/)[1];
+  const file = first.stdout.match(/(\S+\/review\.json)/)[1];
 
   sweepBack(file, {
     "cleartext-transmission": [
@@ -1385,7 +1564,7 @@ test("a swept case of a check that files findings is verified like one", () => {
 
   // It arrives in VERIFY, as a finding: a locus and the agent's hint, and no `instructions`
   // - a finding carries no question, because it is a claim to be audited.
-  const second = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  const second = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
   assert.equal(second.code, 0, second.stderr);
   assert.match(second.stdout, /Verify every entry in ONE pass/);
   const verify = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -1403,13 +1582,13 @@ test("a swept case of a check that files findings is verified like one", () => {
   // Confirmed, it reaches the developer worded by the OWNING check - never by the sweep.
   verify.entries = verify.entries.map((e) => ({ ...e, answer: "reported" }));
   fs.writeFileSync(file, JSON.stringify(verify, null, 1));
-  let out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  let out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
   // Every prompt but the closing one ends on the command that hands it back.
-  while (/^\s+node verify\.js --llm-verdict /m.test(out.stdout)) {
+  while (/^\s+node verify\.js --llm-handback /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries = doc.entries.map((e) => ({ ...e, answer: "Clear" }));
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
-    out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+    out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
   }
   const report = reportOf(out.stdout);
   assert.match(report, /Data is sent over an unencrypted connection/);
@@ -1418,16 +1597,109 @@ test("a swept case of a check that files findings is verified like one", () => {
 
 // ---- --llm-sca-review ----
 // The half of an SCA review a program can do: which file is the add-on, which is the
-// source, and what command the review is run with. It reviews nothing - it cannot, until
-// its reader has opened the source archive - so its whole output is that prompt.
+// source, and where it is extracted. It reviews nothing - it cannot, until its reader has
+// opened the source archive - so its whole output is that prompt, and every run after it is
+// a hand-back of the work folder, which starts the review itself once the preparation is
+// done.
 
-/** A submission folder: one built add-on, one source archive, and the usual clutter. */
-function submissionFolder() {
+/** A submission folder: one built add-on, one source archive, and the usual clutter. The
+ *  add-on is a real one, because the hand-back that finishes the preparation reviews it. */
+function submissionFolder(name = "addon.xpi") {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-submission-"));
-  fs.writeFileSync(path.join(dir, "addon.xpi"), "");
+  packAddon(path.join(dir, name));
   fs.writeFileSync(path.join(dir, "src-4.3.12.tar_ABC.gz"), "");
   fs.writeFileSync(path.join(dir, "README.txt"), "");
   return dir;
+}
+
+/** Pack the clean fixture as an .xpi at `file`, with `manifest` merged into its own. */
+function packAddon(file, manifest = {}) {
+  const clean = path.join(ROOT, "tests", "addons", "clean");
+  const zip = new AdmZip();
+  zip.addLocalFolder(clean);
+  const own = JSON.parse(
+    fs.readFileSync(path.join(clean, "manifest.json"), "utf8")
+  );
+  zip.updateFile(
+    "manifest.json",
+    Buffer.from(JSON.stringify({ ...own, ...manifest }))
+  );
+  zip.writeZip(file);
+}
+
+/** The flags every preparation run in these tests is given, and so records for the review
+ *  it starts, which then runs offline: the seeded caches, and no CDN lookup. */
+const PREPARE_FLAGS = [
+  ...OFFLINE_FLAGS,
+  "--cache-cdn-lookup-dir",
+  CACHE,
+  "--cdn-lib-lookup",
+  "false",
+];
+
+/** The source the preparation tests extract: one with no lock, so its audit asks no
+ *  network and cannot read a tree to rescue - the review is started at once. */
+const NO_LOCK_SOURCE = path.join(
+  ROOT,
+  "tests",
+  "addons",
+  "build-hygiene-sca",
+  "src"
+);
+
+/** The command a preparation prompt prints, one flag per line: the paragraph after the
+ *  step that says to run the linter. */
+function commandOf(stdout) {
+  return stdout
+    .split("with exactly these flags, and nothing else:\n\n")[1]
+    .split("\n\n")[0]
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
+/** The work folder a first prompt created: the folder its ANSWERS file is in. */
+const workOf = (stdout) => path.dirname(headerValue(stdout, "ANSWERS"));
+
+/** A work folder's JSON file, read back. */
+const readJson = (work, name) =>
+  JSON.parse(fs.readFileSync(path.join(work, name), "utf8"));
+
+/**
+ * Do what the first prompt asks, the way its reader would: extract the source into
+ * EXTRACT_TO, fill the roots into ANSWERS, and run the hand-back it prints - which, with
+ * nothing to rescue, starts the review.
+ * @param {string} stdout  The --llm-sca-review run's output.
+ * @param {{expSource?: string, typed?: (work: string) => string}} [opts]  The Experiment
+ *   folder to answer, relative to the root, for an add-on that declares Experiments - and
+ *   how the work folder is typed, where not as the prompt prints it.
+ * @returns {{code: number, stdout: string, stderr: string}}  The hand-back's run.
+ */
+function handBackRoots(stdout, { expSource, typed } = {}) {
+  const root = headerValue(stdout, "EXTRACT_TO");
+  fs.cpSync(NO_LOCK_SOURCE, root, { recursive: true });
+  if (expSource) {
+    fs.mkdirSync(path.join(root, expSource), { recursive: true });
+  }
+  const answers = headerValue(stdout, "ANSWERS");
+  const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
+  doc.entries = doc.entries.map((e) => ({
+    ...e,
+    answer: e.index === "SCA_ROOT" ? root : expSource,
+  }));
+  fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
+  return typed
+    ? run(["--llm-handback", typed(workOf(stdout))])
+    : run(argvOf(commandOf(stdout)));
+}
+
+/** A printed command, one flag per line, as the argv it stands for. */
+function argvOf(flags) {
+  return flags.flatMap((line) => {
+    const [flag, ...rest] = line.split(" ");
+    const value = rest.join(" ").replace(/^'|'$/g, "");
+    return value ? [flag, value] : [flag];
+  });
 }
 
 test("--llm-sca-review prints the prompt, names both files, and reviews nothing", () => {
@@ -1450,216 +1722,369 @@ test("--llm-sca-review prints the prompt, names both files, and reviews nothing"
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The block NAMES the files and the command RUNS on them, so the two have to name one
-// file. A run of spaces is what separates them: only one of the two sanitisers keeps it,
-// and every other test here builds its folder with mkdtemp, whose names have none.
-test("the command --llm-sca-review prints names the file its block names", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-spaced-"));
-  const sub = path.join(dir, "my  submission");
-  fs.mkdirSync(sub);
-  fs.writeFileSync(path.join(sub, "addon  v2.xpi"), "");
-  fs.writeFileSync(path.join(sub, "src.tar.gz"), "");
-  const r = run([sub, "--llm-sca-review", ...OFFLINE_FLAGS]);
-  assert.equal(r.code, 0, r.stderr);
-  const xpi = headerValue(r.stdout, "XPI");
-  assert.equal(xpi, path.join(sub, "addon  v2.xpi"));
-  // Quoted because it carries whitespace, and quoting is worth nothing if the path inside
-  // was altered first.
-  assert.ok(
-    r.stdout.includes(`--llm-review '${xpi}'`),
-    "the command names the file the block named"
-  );
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
-// The contract the review rests on: the flags printed are this run's own, with the flag
-// swapped and the add-on in place of the folder, plus the ones its reader works out. A
-// flag invented or dropped here reviews a different submission than the reviewer asked
-// about - --allow-experiments most of all, which decides whether the review runs at all.
-// They print in the order OPTIONS declares them, never the order they were typed: composed
-// from the parsed values, so the command reads the same however it was written.
-test("--llm-sca-review prints the flags the review is run with", () => {
+// The source is extracted into the review's work folder before the review starts, so the
+// preparation creates that folder - at its default place, beside the .xpi - names its sca/
+// as EXTRACT_TO, writes its record and the review file the roots come back in, and hands
+// the folder back with --llm-handback.
+test("--llm-sca-review creates the work folder and hands it back", () => {
   const dir = submissionFolder();
-  const xpi = path.join(dir, "addon.xpi");
-  // Both SCA paths are placeholders: only a reader who has opened the archive can say
-  // which folder is the root and which part of it is the add-on's own code. The
-  // extraction DESTINATION is given, above the flags, under EXTRACT_TO.
-  // The flags are the paragraph after the step that says to run the linter, indented
-  // beneath its number and ending at the blank line before the next step.
-  const flagsOf = (r) =>
-    r.stdout
-      .split("with exactly these flags, and nothing else:\n\n")[1]
-      .split("\n\n")[0]
-      .split("\n")
-      .map((l) => l.trim());
-
-  // Every spelling of every flag collapses to one command: the parser reads them, so
-  // "--flag=value" and "--flag value" reach the reader as the same line.
-  for (const flag of [[dir, "--llm-sca-review"]]) {
-    assert.deepEqual(
-      flagsOf(run([...flag, "--allow-experiments", "--eslint"])),
-      [
-        `--llm-review ${xpi}`,
-        "--eslint",
-        "--allow-experiments",
-        "--sca-root <SCA_ROOT>",
-      ],
-      flag.join(" ")
-    );
-  }
-  assert.deepEqual(
-    flagsOf(run([dir, "--llm-sca-review", "--checks-only=unused-files"])),
-    [
-      `--llm-review ${xpi}`,
-      "--checks-only unused-files",
-      "--sca-root <SCA_ROOT>",
-    ],
-    "--flag=value"
-  );
-
-  // A boolean flag is never paired with what follows it, wherever it sits: the OPTIONS
-  // table says which flags take a value, so nothing is guessed from the token shapes -
-  // a trailing one printed with the argument after it would print "undefined".
-  assert.doesNotMatch(
-    run([dir, "--llm-sca-review", "--eslint"]).stdout,
-    /undefined/
-  );
-  assert.deepEqual(
-    flagsOf(run([dir, "--llm-sca-review", "--eslint", "--verbose"])),
-    [`--llm-review ${xpi}`, "--eslint", "--verbose", "--sca-root <SCA_ROOT>"]
-  );
-
-  // With no Experiment shipped, the prompt neither asks for --sca-exp-source nor prints
-  // it - and the steps renumber over what survives.
-  const plain = run([dir, "--llm-sca-review"]);
-  assert.deepEqual(flagsOf(plain), [
-    `--llm-review ${xpi}`,
-    "--sca-root <SCA_ROOT>",
-  ]);
-  assert.doesNotMatch(plain.stdout, /SCA_EXP_SOURCE|Experiment/);
-  assert.match(plain.stdout, /\n4\. That review prints a prompt of its own/);
-
-  // An add-on that ships an Experiment needs the folder, so the .xpi's own manifest.json
-  // decides, and the prompt asks for it.
-  const zip = new AdmZip();
-  zip.addFile(
-    "manifest.json",
-    Buffer.from(
-      JSON.stringify({ manifest_version: 3, experiment_apis: { x: {} } })
-    )
-  );
-  zip.writeZip(xpi);
-  const exp = run([dir, "--llm-sca-review"]);
-  assert.deepEqual(flagsOf(exp), [
-    `--llm-review ${xpi}`,
-    "--sca-root <SCA_ROOT>",
-    "--sca-exp-source <SCA_EXP_SOURCE>",
-  ]);
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
-// A skip names part of the prompt the PREPARED review will print, so it belongs to the
-// command handed back rather than to this run - which prints no such prompt of its own.
-test("--llm-sca-review hands a skip to the review it prepares", () => {
-  const dir = submissionFolder();
-  const r = run([dir, "--llm-sca-review", "--llm-skip-manual"]);
+  const r = run([dir, "--llm-sca-review"]);
   assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, /\n {3}--llm-skip-manual\n/);
-  // The prompt itself is unchanged: the skip belongs to the run the command starts, not to
-  // this one, which asks nobody anything either way.
-  const prompt = (out) => out.split("── SCA Review Prompt ──")[1];
+  const made = fs
+    .readdirSync(dir)
+    .filter((n) => /^addon-\d{4}-\d{2}-\d{2}T[\d-]+Z$/.test(n));
+  assert.equal(made.length, 1, "one work folder, beside the .xpi");
+  const work = path.join(dir, made[0]);
+  assert.deepEqual(fs.readdirSync(work).sort(), [
+    "prepare.json",
+    "review.json",
+  ]);
   assert.equal(
-    prompt(r.stdout).replace(/ {3}--llm-skip-manual\n/, ""),
-    prompt(run([dir, "--llm-sca-review"]).stdout)
+    headerValue(r.stdout, "EXTRACT_TO"),
+    `${path.join(work, "sca")}${path.sep}`
   );
+  assert.equal(
+    headerValue(r.stdout, "ANSWERS"),
+    path.join(work, "review.json")
+  );
+  assert.deepEqual(readJson(work, "review.json"), {
+    entries: [{ index: "SCA_ROOT", answer: null }],
+  });
+  assert.deepEqual(commandOf(r.stdout), [`--llm-handback ${work}`]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The prompt tells its reader to run the printed command "with exactly these flags, and
-// nothing else", so the one thing worth asserting about it is that it RUNS. Every guard
-// between that command and a review - the empty-value rule, the
-// unknown check id, the folder questions - and each of them could turn the
-// handed-back command into a usage error without a single test noticing.
-test("the command --llm-sca-review prints is one the tool accepts", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-handback-"));
-  const zip = new AdmZip();
-  zip.addLocalFolder(path.join(ROOT, "tests", "addons", "clean"));
-  zip.writeZip(path.join(dir, "addon.xpi"));
-  fs.writeFileSync(path.join(dir, "src-1.0.tar.gz"), "");
-
+// The hand-back that finds the preparation done starts the review itself, in that folder,
+// with the add-on and the root the preparation recorded - the agent runs no command but the
+// hand-back. The review's first prompt is what it prints, and the next hand-back of the
+// same folder carries the review on.
+test("the hand-back that finishes the preparation starts the review", () => {
+  const dir = submissionFolder();
   const prepared = run([
     dir,
     "--llm-sca-review",
-    ...OFFLINE_FLAGS,
+    ...PREPARE_FLAGS,
     "--checks-only",
     "unused-files",
   ]);
   assert.equal(prepared.code, 0, prepared.stderr);
-
-  // EXTRACT_TO is given: unpack into the exact folder the tool named, same as its reader
-  // would. Which folder inside it is the ROOT is the reader's to settle, below.
-  const root = headerValue(prepared.stdout, "EXTRACT_TO");
-  fs.cpSync(
-    path.join(ROOT, "tests", "addons", "build-hygiene-sca", "src"),
-    root,
-    {
-      recursive: true,
-    }
-  );
-
-  const flags = prepared.stdout
-    .split("with exactly these flags, and nothing else:\n\n")[1]
-    .split("\n\n")[0]
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  // Substitute what its reader still has to work out - which folder is the source root,
-  // and where the add-on's own code sits inside it - and run what is left. Here the
-  // archive unpacked flat, so the root IS the folder it was unpacked into.
-  const argv = flags
-    .flatMap((line) => {
-      const [flag, ...rest] = line.split(" ");
-      const value = rest.join(" ").replace(/^'|'$/g, "");
-      return value ? [flag, value] : [flag];
-    })
-    .map((arg) => (arg === "<SCA_ROOT>" ? root : arg));
-  const review = run(argv);
-
-  // A review may pass or find something (0 or 1); what it must not be is a usage error,
-  // and its own prompt must be what it prints.
-  assert.notEqual(review.code, 2, review.stderr);
-  assert.equal(
-    review.stderr,
-    "",
-    "the handed-back command is accepted as written"
-  );
-  assert.match(review.stdout, /── LLM Prompt ──/);
+  const work = workOf(prepared.stdout);
+  const handed = handBackRoots(prepared.stdout);
+  assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
+  assert.equal(handed.stderr, "", "the review starts cleanly");
+  assert.match(handed.stdout, /── LLM Prompt ──/);
+  assert.doesNotMatch(handed.stdout, /SCA Review Prompt/);
+  assert.equal(readJson(work, "prepare.json").step, "done");
+  const { meta } = readJson(work, "state.json").report;
+  assert.equal(meta.xpi, path.join(dir, "addon.xpi"));
+  assert.equal(meta.scaRoot, path.join(work, "sca"));
+  assert.deepEqual(meta.checksRun, ["unused-files"]);
+  // From here on the folder holds a review, and its hand-back is a pass of the loop.
+  const next = run(["--llm-handback", work]);
+  assert.doesNotMatch(next.stdout, /SCA Review Prompt/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// These lines are a command their reader types, and a submission folder is as likely to
-// hold a space as not. Quoted where it matters and nowhere else: an unquoted path with a
-// space in it is the second add-on argument a review refuses.
-test("--llm-sca-review quotes an argument that carries whitespace", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl sub mission-"));
-  fs.writeFileSync(path.join(dir, "addon.xpi"), "");
-  fs.writeFileSync(path.join(dir, "src.tar.gz"), "");
-  const out = fs.mkdtempSync(path.join(os.tmpdir(), "wl cache-"));
+// The flags the review is run with are this run's own, recorded as parsed: the same however
+// they were spelt and in the order OPTIONS declares them, a boolean never paired with what
+// follows it. The run's own --cache-clear and --verbose stay with it. A flag invented or
+// dropped here reviews a different submission than the reviewer asked about -
+// --allow-experiments most of all, which decides whether the review runs at all.
+test("the preparation records the flags its review is started with", () => {
+  const dir = submissionFolder();
+  const xpi = path.join(dir, "addon.xpi");
+  // The offline flags every run here is given are recorded too, and left out of what is
+  // compared.
+  const ownFlags = (work) =>
+    Object.fromEntries(
+      Object.entries(readJson(work, "prepare.json").flags).filter(
+        ([name]) => !/^(cache-|cdn-lib-lookup)/.test(name)
+      )
+    );
+  const prepared = (...flags) => {
+    const r = run([dir, "--llm-sca-review", ...PREPARE_FLAGS, ...flags]);
+    assert.equal(r.code, 0, r.stderr);
+    return r;
+  };
 
-  const r = run([dir, "--llm-sca-review", "--cache-schema-dir", out]);
-  assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, new RegExp(`--llm-review '${dir}/addon\\.xpi'`));
-  assert.match(r.stdout, new RegExp(`--cache-schema-dir '${out}'`));
-  // The values above the flags are read by eye, not typed, so they carry no quotes.
-  assert.match(r.stdout, new RegExp(`\n  FOLDER\n    ${dir}\n`));
+  const both = prepared("--allow-experiments", "--eslint");
+  assert.deepEqual(Object.entries(ownFlags(workOf(both.stdout))), [
+    ["eslint", true],
+    ["allow-experiments", true],
+  ]);
+  const only = prepared("--checks-only=unused-files");
+  assert.deepEqual(ownFlags(workOf(only.stdout)), {
+    "checks-only": "unused-files",
+  });
+  handBackRoots(only.stdout);
+  assert.deepEqual(
+    readJson(workOf(only.stdout), "state.json").report.meta.checksRun,
+    ["unused-files"],
+    "the started review runs with them"
+  );
+  const own = prepared("--eslint", "--verbose", "--cache-clear");
+  assert.deepEqual(ownFlags(workOf(own.stdout)), { eslint: true });
+
+  // With no Experiment shipped, the prompt neither asks for the Experiment folder nor
+  // records one - and the steps renumber over what survives.
+  const plain = prepared();
+  assert.doesNotMatch(plain.stdout, /SCA_EXP_SOURCE|Experiment/);
+  assert.match(plain.stdout, /\n5\. That run checks the source/);
+
+  // An add-on that ships an Experiment needs the folder, so the .xpi's own manifest.json
+  // decides: the prompt asks for it, the review file has a slot for it, and the started
+  // review reads it as the Experiment folder.
+  packAddon(xpi, { experiment_apis: { x: {} } });
+  const exp = prepared("--allow-experiments");
+  assert.match(exp.stdout, /SCA_EXP_SOURCE/);
+  handBackRoots(exp.stdout, { expSource: "experiment" });
+  const work = workOf(exp.stdout);
+  assert.equal(
+    readJson(work, "state.json").report.meta.scaExpSource,
+    path.join(work, "sca", "experiment")
+  );
   fs.rmSync(dir, { recursive: true, force: true });
-  fs.rmSync(out, { recursive: true, force: true });
+});
+
+// A skip names part of the prompt the PREPARED review will print, so it belongs to the
+// review the preparation starts rather than to this run - which prints no such prompt.
+test("--llm-sca-review hands a skip to the review it prepares", () => {
+  const dir = submissionFolder();
+  const r = run([
+    dir,
+    "--llm-sca-review",
+    ...PREPARE_FLAGS,
+    "--llm-skip-manual",
+  ]);
+  assert.equal(r.code, 0, r.stderr);
+  // The prompt itself is unchanged: the skip belongs to the review, not to this run, which
+  // asks nobody anything either way. Each run creates a work folder of its own, so the two
+  // prompts name two of them.
+  const prompt = (out) =>
+    out
+      .split("── SCA Review Prompt ──")[1]
+      .replace(/addon-\d{4}-\d{2}-\d{2}T[\d-]+Z/g, "<WORK>");
+  assert.equal(
+    prompt(r.stdout),
+    prompt(run([dir, "--llm-sca-review", ...PREPARE_FLAGS]).stdout)
+  );
+  handBackRoots(r.stdout);
+  assert.deepEqual(readJson(workOf(r.stdout), "state.json").run.skip, [
+    "llm-skip-manual",
+  ]);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A hand-back that cannot be read is refused to the agent, with the folder as it was.
+test("a preparation refuses an unanswered hand-back", () => {
+  const dir = submissionFolder();
+  const r = run([dir, "--llm-sca-review", ...PREPARE_FLAGS]);
+  assert.equal(r.code, 0, r.stderr);
+  const work = workOf(r.stdout);
+  const unanswered = run(["--llm-handback", work]);
+  assert.equal(unanswered.code, 2);
+  assert.match(
+    unanswered.stdout,
+    /The hand-back was refused: SCA_ROOT still has no "answer"/
+  );
+  assert.equal(readJson(work, "prepare.json").step, "extract");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+/** A work folder whose preparation is done, as a record the agent may have edited - and
+ *  then rehashed, so what is tested is the check behind the digest: the sca-unrescued
+ *  fixture's add-on and root, with `over` merged into the record. */
+function preparedFolder(over) {
+  const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
+  const work = freshWorkFolder();
+  const sca = workPaths(work).sca;
+  fs.cpSync(path.join(fixture, "src"), sca, { recursive: true });
+  writePrepare(work, {
+    ...startRecord({
+      submission: { xpi: path.join(fixture, "xpi"), experiments: false },
+      flags: {
+        "cache-schema-dir": CACHE,
+        "cache-hash-db-dir": CACHE,
+        "cache-experiments-dir": CACHE,
+        "cache-cdn-lookup-dir": CACHE,
+        "cdn-lib-lookup": "false",
+      },
+    }),
+    step: "done",
+    roots: { scaRoot: sca, scaExpSource: null },
+    ...(typeof over === "function" ? over(work) : over),
+  });
+  return work;
+}
+
+// The record a review is started from is a file the agent can write, so it is never taken
+// as it stands. Each of these is refused to the agent the way a hand-back is - the refusal
+// text, which has it redo the pass once - and nothing is claimed in the folder.
+test("a prepared review refuses a record it cannot start from", (t) => {
+  const refusedFor = (name, over, problem) =>
+    t.test(name, () => {
+      const work = preparedFolder(over);
+      const r = run(["--llm-handback", work]);
+      assert.equal(r.code, 2, r.stdout + r.stderr);
+      assert.match(r.stdout, problem);
+      assert.deepEqual(fs.readdirSync(work).sort(), ["prepare.json", "sca"]);
+    });
+  refusedFor(
+    "an unrescued record with no lock audit",
+    { unrescued: true },
+    /The hand-back was refused: the preparation's record says its rescue was given up/
+  );
+  refusedFor(
+    "an unrescued that is neither true nor false",
+    { unrescued: "yes" },
+    /The hand-back was refused: the preparation's record holds unrescued as neither true nor false/
+  );
+  refusedFor(
+    "an experiments that is neither true nor false",
+    { submission: { xpi: "x.xpi", experiments: 1 } },
+    /The hand-back was refused: the preparation's record holds submission\.experiments as neither true nor false/
+  );
+  refusedFor(
+    "no roots",
+    { roots: null },
+    /The hand-back was refused: the preparation's record names no settled source root\. /
+  );
+  refusedFor(
+    "no submission",
+    { submission: { xpi: "", experiments: false } },
+    /The hand-back was refused: the preparation's record names no submission to review\. /
+  );
+  refusedFor(
+    "neither",
+    { roots: null, submission: { xpi: "", experiments: false } },
+    /The hand-back was refused: the preparation's record names no submission to review and no settled source root\. /
+  );
+  refusedFor(
+    "a root that is gone",
+    (work) => ({
+      roots: { scaRoot: path.join(work, "sca", "gone"), scaExpSource: null },
+    }),
+    /The hand-back was refused: the preparation's record names a source root ".*gone" that is not a folder inside /
+  );
+  // The agent works in the folder between the step that settled the roots and the start,
+  // so each root is followed to where it really is, and must still be where it was put.
+  refusedFor(
+    "a root that is the work folder itself",
+    (work) => ({ roots: { scaRoot: work, scaExpSource: null } }),
+    /The hand-back was refused: the preparation's record names a source root ".*" that is not a folder inside ".*[/]sca"/
+  );
+  refusedFor(
+    "a root that links out of sca/",
+    (work) => {
+      const link = path.join(work, "sca", "out");
+      fs.symlinkSync(fs.mkdtempSync(path.join(os.tmpdir(), "wl-out-")), link);
+      return { roots: { scaRoot: link, scaExpSource: null } };
+    },
+    /The hand-back was refused: the preparation's record names a source root ".*out" that is not a folder inside /
+  );
+  refusedFor(
+    "an Experiment folder that links out of the root",
+    (work) => {
+      const link = path.join(work, "sca", "exp");
+      fs.symlinkSync(fs.mkdtempSync(path.join(os.tmpdir(), "wl-out-")), link);
+      return {
+        roots: { scaRoot: path.join(work, "sca"), scaExpSource: link },
+      };
+    },
+    /The hand-back was refused: the preparation's record names an Experiment folder ".*exp" that is not a folder inside /
+  );
+  refusedFor(
+    "an sca/ that is a link",
+    (work) => {
+      const sca = path.join(work, "sca");
+      const moved = fs.mkdtempSync(path.join(os.tmpdir(), "wl-sca-"));
+      fs.cpSync(sca, moved, { recursive: true });
+      fs.rmSync(sca, { recursive: true });
+      fs.symlinkSync(moved, sca);
+      return { roots: { scaRoot: sca, scaExpSource: null } };
+    },
+    /The hand-back was refused: ".*[/]sca" is not the folder the source was extracted into/
+  );
+  refusedFor(
+    "a flag of the wrong type",
+    { flags: { eslint: "yes" } },
+    /The hand-back was refused: the preparation's record holds --eslint as neither true nor false/
+  );
+});
+
+// Nor can a record name a folder for the linter to delete: --cache-clear is never forwarded,
+// and a key no option declares is dropped.
+test("a prepared review drops what a record must not say", () => {
+  const before = fs.readdirSync(CACHE).sort();
+  const work = preparedFolder({
+    flags: {
+      "cache-clear": true,
+      "cache-schema-dir": CACHE,
+      "cache-hash-db-dir": CACHE,
+      "cache-experiments-dir": CACHE,
+      "cache-cdn-lookup-dir": CACHE,
+      "cdn-lib-lookup": "false",
+      eslint: false,
+      "rm-rf": "/",
+    },
+  });
+  const r = run(["--llm-handback", work]);
+  assert.notEqual(r.code, 2, r.stdout + r.stderr);
+  assert.match(r.stdout, /── LLM Prompt ──/);
+  assert.deepEqual(
+    fs.readdirSync(CACHE).sort(),
+    before,
+    "no cache was cleared"
+  );
+});
+
+// The prompt's one command is typed by its reader, and a submission folder is as likely to
+// hold a space as not. Quoted where it matters and nowhere else: an unquoted path with a
+// space in it is a second argument the hand-back refuses.
+test("the preparation quotes an argument that carries whitespace", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl sub mission-"));
+  packAddon(path.join(dir, "addon  v2.xpi"));
+  fs.writeFileSync(path.join(dir, "src.tar.gz"), "");
+  const r = run([dir, "--llm-sca-review", ...PREPARE_FLAGS]);
+  assert.equal(r.code, 0, r.stderr);
+  // The values above the command are read by eye, not typed, so they carry no quotes, and
+  // keep the run of spaces the file name has.
+  assert.match(r.stdout, new RegExp(`\n  FOLDER\n    ${dir}\n`));
+  assert.equal(headerValue(r.stdout, "XPI"), path.join(dir, "addon  v2.xpi"));
+  assert.match(r.stdout, new RegExp(`--llm-handback '${dir}/addon__v2-`));
+  const handed = handBackRoots(r.stdout);
+  assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
+  assert.equal(
+    readJson(workOf(r.stdout), "state.json").report.meta.xpi,
+    path.join(dir, "addon  v2.xpi"),
+    "the review reads the file the block named"
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The work folder is recorded, a rescued copy goes beside it, and the next prompt names it,
+// so however it is typed - relative, with a trailing slash - it is taken as one absolute
+// name: the review starts in it, and the prompt names its files by that name.
+test("a hand-back takes its folder as one absolute name", () => {
+  const dir = submissionFolder();
+  const r = run([dir, "--llm-sca-review", ...PREPARE_FLAGS]);
+  assert.equal(r.code, 0, r.stderr);
+  const work = workOf(r.stdout);
+  const handed = handBackRoots(r.stdout, {
+    typed: (w) => `${path.relative(process.cwd(), w)}/`,
+  });
+  assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
+  assert.ok(fs.existsSync(workPaths(work).state), "the review starts in it");
+  assert.ok(
+    handed.stdout.includes(`[report.md](${work}/report.md)`),
+    handed.stdout
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // A check id nobody can run is a bad command line whatever the run does with it - and
-// --llm-sca-review would print it into the command it tells its reader to run, which then
-// exits 2 on that very line. Answered before any branch, so no prompt is printed at all.
+// --llm-sca-review would record it for the review it starts, which would then fail on it.
+// Answered before any branch, so no prompt is printed at all.
 test("an unknown check id is refused before a prompt is printed", () => {
   const dir = submissionFolder();
   const sca = run([dir, "--llm-sca-review", "--checks-only", "no-such-check"]);
@@ -1687,7 +2112,7 @@ test("--llm-sca-review refuses what it cannot be combined with", () => {
   const cases = [
     [["--sca-root", "src"], /works out --sca-root for you/],
     [["--llm-review"], /comes BEFORE a review/],
-    [["--llm-verdict", "answers.json"], /comes BEFORE a review/],
+    [["--llm-handback", "work"], /comes BEFORE a review/],
     [["--report-format", "json"], /--llm-sca-review is text only/],
     // A SECOND add-on argument: the flag reads the first one as the submission.
     [
@@ -1740,18 +2165,18 @@ test("an answer too long for settle() to apply fails cleanly, not as a crash", (
     "--llm-skip-sweep",
   ]);
   assert.equal(first.code, 0, first.stderr);
-  const file = first.stdout.match(/(\S+\.review\.json)/)[1];
+  const file = first.stdout.match(/(\S+\/review\.json)/)[1];
 
-  let out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+  let out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
   // Every prompt but the closing one ends on the command that hands it back.
-  while (/^\s+node verify\.js --llm-verdict /m.test(out.stdout)) {
+  while (/^\s+node verify\.js --llm-handback /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries = doc.entries.map((e) => ({
       ...e,
       answer: "answers".repeat(400),
     }));
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
-    out = run(["--llm-verdict", file, ...OFFLINE_FLAGS]);
+    out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
   }
   assert.equal(out.code, 2, out.stdout);
   assert.match(out.stderr, /carries a \d+-character answer and the limit is/);

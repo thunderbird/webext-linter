@@ -2,7 +2,8 @@
 // and the pairing between it and the REVIEW file the agent is handed.
 //
 // Does NOT belong here: what a phase asks (src/report/phases.js), what a hand-back must
-// look like (src/report/handback.js), or how a prompt is printed (src/report/format.js).
+// look like (src/report/handback.js), how a prompt is printed (src/report/format.js), or
+// where either file lives (src/util/dest.js workPaths).
 //
 // WHY A FILE AT ALL: the loop runs one deterministic review, in the first --llm-review
 // run, and every pass after it reads this. Nothing is re-derived - so anything the report
@@ -17,18 +18,10 @@ import path from "node:path";
 import { parseJson } from "../util/json.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 
-/** The two files share a stem, so a person sees them as a pair on disk. Nothing in the
- *  loop derives one from the other: the review file names its own state directly, in its
- *  `base` field (src/report/handback.js readHandback). */
-export const STATE_SUFFIX = ".state.json";
-export const REVIEW_SUFFIX = ".review.json";
-
 /**
  * @typedef {object} LoopState
  * @property {number} version  Refuses a file this build cannot read, rather than reading
  *   it wrongly.
- * @property {string} review  Where the agent's file goes. Stored, because the name carries
- *   the moment the review began and no later pass can recompute one.
  * @property {object} report  Everything formatText needs that the registry cannot
  *   recompute: findings, meta, mode, experiments, flags. NOT issueHeadings /
  *   verdictIntros - those are the registry's, and a stale copy here would outlive an edit
@@ -43,9 +36,10 @@ export const REVIEW_SUFFIX = ".review.json";
  *   record, read by everything that asks: a step prints by it, the routing drops entries by
  *   it, the registry is read under it, and both legs of a hand-over ask it the same question.
  * @property {object} paths  The values a step names: description, build, buildCopy,
- *   buildDiff, report,
- *   schemaCache, schema, the two artifact roots (scaRoot, xpiRoot) an entry's paths are
- *   resolved against, and `sweeps` - each tree's sweep request and answers file, by
+ *   buildDiff, report (all in the review's work folder, src/util/dest.js workPaths, which
+ *   also holds this file and the review file and is not recorded: the state is read from
+ *   it), schemaCache, schema, the two artifact roots
+ *   (scaRoot, xpiRoot) an entry's paths are resolved against, and `sweeps` - each tree's sweep request and answers file, by
  *   artifact, which is also what says WHICH trees this review asked about. Held here
  *   because a later pass prints them and cannot re-derive a moment - and `report` is also
  *   where a later pass WRITES, so losing it would leave the reviewer holding a link to a
@@ -122,5 +116,7 @@ export function readState(file) {
  *  conditions read - a v10 file's short names would match no step. Version 12 carries where a
  *  to-do item is asked on the item itself (`askedIn`), set by its check or by the agent's
  *  `ask` verdict, instead of in a `route` map keyed by index - a v11 file's routes would be
- *  read by nothing. */
-export const STATE_VERSION = 12;
+ *  read by nothing. Version 13 records no path to the state or the review file: both are in
+ *  the work folder the state is read from, by their fixed names - a v12 file's recorded
+ *  review path is read by nothing. */
+export const STATE_VERSION = 13;

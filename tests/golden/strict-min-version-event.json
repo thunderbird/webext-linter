@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/strict-min-version-event",
-    "xpiRoot": "<root>/tests/addons/strict-min-version-event/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "strict-min-version-event",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

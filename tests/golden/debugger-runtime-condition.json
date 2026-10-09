@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/debugger-runtime-condition",
-    "xpiRoot": "<root>/tests/addons/debugger-runtime-condition/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "debugger-runtime-condition",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

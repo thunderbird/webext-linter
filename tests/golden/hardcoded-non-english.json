@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/hardcoded-non-english",
-    "xpiRoot": "<root>/tests/addons/hardcoded-non-english/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "hardcoded-non-english",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

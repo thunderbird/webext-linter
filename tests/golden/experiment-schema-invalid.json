@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-schema-invalid",
-    "xpiRoot": "<root>/tests/addons/experiment-schema-invalid/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "experiment-schema-invalid",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

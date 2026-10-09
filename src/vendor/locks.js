@@ -1,13 +1,16 @@
-// Reads the project's lock file, for four questions. (1) Which exact version did
+// Reads the project's lock file, for six questions. (1) Which exact version did
 // a package.json range (e.g. "^3.10.0") actually install - lockedVersion, so a
-// declared dependency can still be pinned and audited. (2) What does the whole
+// declared dependency in a built XPI can still be pinned and audited. (2) What does the whole
 // installed tree contain - lockedPackages, which enumerates every package the
-// lock records, declared or pulled in by another package, so the OSV audit can
-// reach the ~90% of the tree nobody declares. (3) Can the lock be read at all -
+// lock records, declared or pulled in by another package, which is all a source-code review
+// audits. (3) Can the lock be read at all -
 // unreadableLock, since the audit reads the tree out of it; whether it matches package.json
 // is the package manager's question, answered when the build installs. (4) Where does the
 // install take each package from - lockSourceGaps, since the audit identifies a package by
-// name and version while the installer fetches the URL the lock records. Reads whichever lock the
+// name and version while the installer fetches the URL the lock records. (5) Which GitHub
+// repository does a package the lock installs from GitHub come from - githubInstalls, so it
+// can be popularity-gated by its stars. (6) Which installs does the lock take from a local
+// path the review does not hold as a folder - localInstalls. Reads whichever lock the
 // submission ships - npm (package-lock.json / npm-shrinkwrap.json, JSON) or pnpm
 // (pnpm-lock.yaml, YAML), the two supported package managers.
 //
@@ -17,7 +20,8 @@
 // present / first that resolves / first that yields) would allow.
 //
 // Belongs here: lockedVersion(addon, name), lockedPackages(addon), unreadableLock(addon),
-// lockSourceGaps(addon), governingLock, and the per-format readers. Does NOT belong here:
+// lockSourceGaps(addon), githubInstalls(addon), localInstalls(addon), governingLock, and the
+// per-format readers. Does NOT belong here:
 // reading or shaping package.json (-> ./package-file.js), deciding pinned/unpinned
 // (-> ./resolve.js), whether the lock matches package.json (the package manager's own
 // question, at install), and the verification that follows (-> ./verify.js).
@@ -54,7 +58,8 @@ import { cutAtFirst } from "../util/text.js";
  *   through another package. Read from the lock's OWN record of what was asked for,
  *   so it covers the declaration forms the root package.json parse does not
  *   (optionalDependencies, a workspace member's own package file) and stays true when
- *   package.json and the lock disagree about a version.
+ *   package.json and the lock disagree about a version. An npm lockfile v1 keeps no such
+ *   record, so every package in one is marked declared (-> npmV1Packages).
  * @property {string} file  The lock file it was read from (the finding's anchor).
  * @property {string} token  The string locating its entry in `file`.
  */
@@ -115,7 +120,7 @@ function installSource(url) {
   if (s === "" || s.startsWith(NPM_REGISTRY_TARBALLS)) {
     return "registry";
   }
-  if (GITHUB_INSTALL_SOURCE.test(s)) {
+  if (isGithubSource(s)) {
     return "github";
   }
   // A file:/link: spec or a bare relative path is the submission's own code.
@@ -124,6 +129,10 @@ function installSource(url) {
   }
   return "foreign";
 }
+
+// The path segment that marks an installed package in an npm lockfile v2/v3 `packages` key. A
+// key without one is the project root ("") or a workspace member - the submission's own code.
+const NODE_MODULES = "node_modules/";
 
 // A pnpm `packages:` key, across every format pnpm has used: v5 "/name/version",
 // v6-v8 "/name@version(peers)" and v9 "name@version".
@@ -271,23 +280,9 @@ function npmPackages(data, file) {
  */
 function npmTreePackages(packages, file) {
   const out = [];
-  const marker = "node_modules/";
-  // What the submission's own package files ask for. An entry with no node_modules
-  // segment IS one of those package files - the project root under "", a workspace
-  // member under its path - so its dependency maps are declarations, not installs.
-  const direct = new Set();
+  const direct = npmDeclaredNames(packages);
   for (const [key, entry] of Object.entries(packages)) {
-    if (key.includes(marker) || !entry || typeof entry !== "object") {
-      continue;
-    }
-    for (const map of DECLARATION_MAPS) {
-      for (const [name, spec] of Object.entries(entry[map] ?? {})) {
-        direct.add(declaredName(name, spec));
-      }
-    }
-  }
-  for (const [key, entry] of Object.entries(packages)) {
-    const at = key.lastIndexOf(marker);
+    const at = key.lastIndexOf(NODE_MODULES);
     if (at === -1 || !entry || typeof entry !== "object") {
       continue;
     }
@@ -303,7 +298,7 @@ function npmTreePackages(packages, file) {
     }
     // `name` is present when the installed package differs from its directory,
     // which is how npm records an alias - the real package is what to audit.
-    const name = String(entry.name ?? key.slice(at + marker.length));
+    const name = String(entry.name ?? key.slice(at + NODE_MODULES.length));
     if (!name) {
       continue;
     }
@@ -322,6 +317,29 @@ function npmTreePackages(packages, file) {
 }
 
 /**
+ * What the submission's own package files ask for, in a lockfileVersion 2/3 `packages` map.
+ * An entry with no node_modules segment IS one of those package files - the project root
+ * under "", a workspace member under its path - so its dependency maps are declarations,
+ * not installs.
+ * @param {Record<string, object>} packages
+ * @returns {Set<string>}
+ */
+function npmDeclaredNames(packages) {
+  const direct = new Set();
+  for (const [key, entry] of Object.entries(packages)) {
+    if (key.includes(NODE_MODULES) || !entry || typeof entry !== "object") {
+      continue;
+    }
+    for (const map of DECLARATION_MAPS) {
+      for (const [name, spec] of Object.entries(entry[map] ?? {})) {
+        direct.add(declaredName(name, spec));
+      }
+    }
+  }
+  return direct;
+}
+
+/**
  * lockfileVersion 1: a nested tree, each node carrying its own `dependencies`.
  *
  * Walked with an explicit stack rather than by recursion: the nesting depth is
@@ -330,8 +348,10 @@ function npmTreePackages(packages, file) {
  * abort the whole review.
  *
  * v1 keeps no record of which packages the project asked for (the top level is
- * the hoisted tree, not a package file), so nothing here is marked direct; the root
- * package.json names still reach the audit through resolveVendor.
+ * the hoisted tree, not a package file), so no package can be told apart from another as
+ * declared or pulled in. Every one is marked direct: what a declared dependency is held to
+ * (the popularity gate, and the checks that say "declares") is then asked of the whole
+ * tree, rather than of none of it.
  * @param {Record<string, object>|undefined} deps @param {string} file
  * @returns {LockedPackage[]}
  */
@@ -353,7 +373,7 @@ function npmV1Packages(deps, file) {
           name,
           version,
           dev: node.dev === true,
-          direct: false,
+          direct: true,
           file,
           token: name,
         });
@@ -379,16 +399,7 @@ function pnpmPackages(data, file) {
     return [];
   }
   const prod = data?.snapshots ? pnpmProdKeys(data) : null;
-  // The importers ARE the submission's package files, restated by pnpm - so what they
-  // ask for is what it declares.
-  const direct = new Set();
-  for (const importer of Object.values(data.importers ?? {})) {
-    for (const map of DECLARATION_MAPS) {
-      for (const [name, spec] of Object.entries(importer?.[map] ?? {})) {
-        direct.add(declaredName(name, spec));
-      }
-    }
-  }
+  const direct = pnpmDeclaredNames(data);
   const out = [];
   for (const [key, entry] of Object.entries(packages)) {
     const m = key.match(PNPM_KEY_RE);
@@ -410,6 +421,24 @@ function pnpmPackages(data, file) {
     });
   }
   return out;
+}
+
+/**
+ * What a pnpm lock's importers ask for. The importers ARE the submission's package files,
+ * restated by pnpm - so what they ask for is what it declares.
+ * @param {object} data  Parsed lock.
+ * @returns {Set<string>}
+ */
+function pnpmDeclaredNames(data) {
+  const direct = new Set();
+  for (const importer of Object.values(data.importers ?? {})) {
+    for (const map of DECLARATION_MAPS) {
+      for (const [name, spec] of Object.entries(importer?.[map] ?? {})) {
+        direct.add(declaredName(name, spec));
+      }
+    }
+  }
+  return direct;
 }
 
 /**
@@ -519,8 +548,7 @@ function declaredName(name, spec) {
 
 /**
  * @typedef {object} SourceGap  A lock entry the install takes from a source the review
- * cannot audit: neither the npm registry nor GitHub, or GitHub for a package the root
- * package.json declares as a registry release.
+ * cannot audit: neither the npm registry nor GitHub.
  * @property {string} file  The governing lock it was read from.
  * @property {string} token  The entry's key in that lock, locating its line.
  * @property {string} name  The package.
@@ -532,11 +560,11 @@ function declaredName(name, spec) {
  * Every lock entry the install takes from a source the dependency audit does not read.
  * The audit identifies a package by name and version, while `npm ci` and pnpm fetch it
  * from the URL the lock records - so an entry resolved anywhere else installs bytes the
- * audit vouched for under someone else's name. GitHub is a source a package.json may
- * declare, so it is accepted, except for a root dependency declared as a registry
- * release: that one is audited as the npm package and installed from GitHub. Read by
- * the lock-foreign-source check.
- * @param {Addon} addon  The SCA archive (the root package.json and its governing lock).
+ * audit vouched for under someone else's name. GitHub is accepted: a GitHub install is
+ * never audited under an npm name (lockedPackages takes registry entries alone), and its
+ * repository is popularity-gated instead (githubInstalls). A local path is not judged here
+ * either: localInstalls answers for it. Read by the lock-foreign-source check.
+ * @param {Addon} addon  The SCA archive (its governing lock).
  * @returns {SourceGap[]}
  */
 export function lockSourceGaps(addon) {
@@ -545,18 +573,9 @@ export function lockSourceGaps(addon) {
   if (!data) {
     return [];
   }
-  const pkg = readPackageFile(submissionFiles(addon));
-  const fromRegistry = new Set(
-    declaredDependencies(pkg)
-      .filter(({ spec }) => !/[:/]/.test(spec) || aliasTarget(spec))
-      .map(({ name }) => name)
-  );
   const gaps = [];
-  const judge = (token, name, version, source, kind, top) => {
-    if (
-      kind === "foreign" ||
-      (kind === "github" && top && fromRegistry.has(name))
-    ) {
+  const judge = (token, name, version, source, kind) => {
+    if (kind === "foreign") {
       gaps.push({ file, token, name, version, source });
     }
   };
@@ -571,58 +590,31 @@ export function lockSourceGaps(addon) {
       const source = String(
         entry.resolution?.tarball ?? entry.resolution?.repo ?? ""
       );
-      judge(token, name, version, source, pnpmSource(entry), false);
-    }
-    // A root registry declaration the importer records at a GitHub location.
-    const root = data.importers?.["."] ?? data;
-    for (const map of DECLARATION_MAPS) {
-      for (const [name, raw] of Object.entries(root?.[map] ?? {})) {
-        const v = typeof raw === "string" ? raw : String(raw?.version ?? "");
-        if (/^\d/.test(v) || !fromRegistry.has(name)) {
-          continue;
-        }
-        const kind = /github\.com\//i.test(v) ? "github" : installSource(v);
-        if (kind !== "registry" && kind !== "local") {
-          judge(
-            name,
-            name,
-            "",
-            v,
-            kind === "foreign" ? "foreign" : "github",
-            true
-          );
-        }
-      }
+      judge(token, name, version, source, pnpmSource(entry));
     }
     return gaps;
   }
   if (data.packages && typeof data.packages === "object") {
-    const marker = "node_modules/";
     for (const [token, entry] of Object.entries(data.packages)) {
-      const at = token.lastIndexOf(marker);
+      const at = token.lastIndexOf(NODE_MODULES);
       if (at === -1 || !entry || typeof entry !== "object" || entry.link) {
         continue;
       }
-      const written = token.slice(at + marker.length);
-      const top = token === `${marker}${written}`;
       const source = String(entry.resolved ?? "");
       judge(
         token,
-        written,
+        token.slice(at + NODE_MODULES.length),
         String(entry.version ?? ""),
         source,
-        installSource(source),
-        top
+        installSource(source)
       );
     }
     return gaps;
   }
-  // lockfileVersion 1: a nested tree, walked like npmV1Packages; its top level is the
-  // hoisted install that answers the root's declarations.
-  const stack = [[data.dependencies, true]];
+  // lockfileVersion 1: a nested tree, walked like npmV1Packages.
+  const stack = [data.dependencies];
   while (stack.length) {
-    const [deps, top] = stack.pop();
-    for (const [name, node] of Object.entries(deps ?? {})) {
+    for (const [name, node] of Object.entries(stack.pop() ?? {})) {
       if (!node || typeof node !== "object") {
         continue;
       }
@@ -632,15 +624,286 @@ export function lockSourceGaps(addon) {
         name,
         String(node.version ?? ""),
         source,
-        installSource(source),
-        top
+        installSource(source)
       );
       if (node.dependencies) {
-        stack.push([node.dependencies, false]);
+        stack.push(node.dependencies);
       }
     }
   }
   return gaps;
+}
+
+/**
+ * @typedef {object} GithubInstall  A package the lock installs from a GitHub repository.
+ * @property {string} name  The package.
+ * @property {string} version  The version the entry records, or its source when it records
+ *   none.
+ * @property {string} repo  The repository, "owner/repo".
+ * @property {boolean} direct  Declared by a package file in this submission, read from the
+ *   lock as LockedPackage.direct is (every package of an npm lockfile v1).
+ * @property {string} file  The governing lock it was read from.
+ * @property {string} token  The entry's key in that lock, locating its line.
+ */
+
+/**
+ * Every package the lock installs from GitHub, with the repository it comes from. Such a
+ * package is never audited by name and version (lockedPackages takes registry entries
+ * alone), so what a source review can ask of it is how widely used its repository is - a
+ * question for the declared ones, like the popularity gate on a registry package.
+ *
+ * The repository is read from any source isGithubSource recognises - the one classifier
+ * installSource and pnpmSource use too, so whatever they accept as GitHub is read here:
+ * npm's `resolved` (lockfile v1 records a git install in `version` instead), and pnpm's
+ * codeload `resolution.tarball` or git `resolution.repo`. A pnpm entry's key is not a package name
+ * for a git install, so the name is the one the entry records.
+ * @param {Addon} addon  The SCA archive (its governing lock).
+ * @returns {GithubInstall[]}
+ */
+export function githubInstalls(addon) {
+  const file = governingLock(addon);
+  const data = file ? parsedLock(addon, file) : null;
+  if (!data) {
+    return [];
+  }
+  const out = [];
+  // An entry the lock gives no name cannot be matched against what the project declares, so
+  // whether it is direct cannot be told - and what cannot be told apart is gated, so it
+  // counts as direct. Its repository still names it.
+  const take = (token, name, version, sources, direct) => {
+    const source = sources.map((v) => String(v ?? "")).find(isGithubSource);
+    const repo = source ? githubRepo(source) : null;
+    if (repo) {
+      out.push({
+        name: name || repo,
+        version: version || source,
+        repo,
+        direct: name ? direct : true,
+        file,
+        token,
+      });
+    }
+  };
+  if (!file.endsWith(".json")) {
+    const direct = pnpmDeclaredNames(data);
+    for (const [token, entry] of Object.entries(data.packages ?? {})) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const name = String(entry.name ?? "");
+      take(
+        token,
+        name,
+        String(entry.version ?? ""),
+        [entry.resolution?.tarball, entry.resolution?.repo],
+        direct.has(name)
+      );
+    }
+    return out;
+  }
+  if (data.packages && typeof data.packages === "object") {
+    const direct = npmDeclaredNames(data.packages);
+    for (const [token, entry] of Object.entries(data.packages)) {
+      const at = token.lastIndexOf(NODE_MODULES);
+      if (at === -1 || !entry || typeof entry !== "object" || entry.link) {
+        continue;
+      }
+      const name = String(entry.name ?? token.slice(at + NODE_MODULES.length));
+      take(
+        token,
+        name,
+        String(entry.version ?? ""),
+        [entry.resolved],
+        direct.has(name)
+      );
+    }
+    return out;
+  }
+  // lockfileVersion 1: every package counts as declared (-> npmV1Packages).
+  const stack = [data.dependencies];
+  while (stack.length) {
+    for (const [name, node] of Object.entries(stack.pop() ?? {})) {
+      if (!node || typeof node !== "object") {
+        continue;
+      }
+      take(name, name, "", [node.resolved, node.version], true);
+      if (node.dependencies) {
+        stack.push(node.dependencies);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether a recorded source installs from GitHub: GITHUB_INSTALL_SOURCE, and a repository
+ * it names (githubRepo). The ONE classifier for it - installSource, pnpmSource and
+ * githubInstalls all ask it - so what lock-foreign-source accepts as GitHub is exactly
+ * what the popularity gate reads a repository from. A source naming no repository is not
+ * GitHub, and stays foreign.
+ * @param {string} source
+ * @returns {boolean}
+ */
+function isGithubSource(source) {
+  return GITHUB_INSTALL_SOURCE.test(source) && githubRepo(source) !== null;
+}
+
+/**
+ * The "owner/repo" a GitHub install source names, or null when it names none: the two path
+ * segments after the host, without a ".git" suffix or a "#ref". The same two segments
+ * for a git URL (github.com/owner/repo.git#sha), a codeload tarball
+ * (codeload.github.com/owner/repo/tar.gz/sha) and the scp form (git@github.com:owner/repo).
+ * @param {string} source  A source GITHUB_INSTALL_SOURCE accepts.
+ * @returns {?string}
+ */
+function githubRepo(source) {
+  const host = "github.com";
+  const at = source.toLowerCase().indexOf(host);
+  if (at === -1) {
+    return null;
+  }
+  // One separator follows the host: "/" in a URL, ":" in the scp form.
+  const [owner, repo] = cutAtFirst(
+    source.slice(at + host.length + 1),
+    "#"
+  ).split("/");
+  const name = String(repo ?? "").replace(/\.git$/i, "");
+  return owner && name ? `${owner}/${name}` : null;
+}
+
+/**
+ * @typedef {object} LocalInstall  A package the lock installs from a local path that is
+ * not a folder of the submission.
+ * @property {string} name  The package.
+ * @property {string} spec  The path, as the lock records it.
+ * @property {string} file  The governing lock it was read from.
+ * @property {string} token  The string locating the entry in that lock.
+ */
+
+/**
+ * Every install the lock takes from a local path, other than a folder the submission
+ * holds. A folder inside the source root is the submission's own code, reviewed like any
+ * other file, so nothing is said about it. Anything else local cannot be reviewed: a path
+ * outside the root, one the submission does not hold, or a local tarball - which
+ * installSource counts as local, so lock-foreign-source never sees it. Read by the
+ * unsupported-dependency check in a source review.
+ *
+ * Where each format records the path: npm lockfile v2/v3 in a `link: true` entry's
+ * `resolved` (relative to the root) and in a `resolved: "file:..."` for a tarball; npm
+ * lockfile v1 in `version: "file:..."`; pnpm in an importer's `link:...` version (relative
+ * to that importer's folder) and in a package's `resolution.directory` or
+ * `resolution.tarball: "file:..."`.
+ *
+ * Whether a path is a folder is asked of what the LOADER saw (addon.directories): the key
+ * set names files, so a path that IS a file would pass a prefix test against it as a real
+ * folder does, and an empty folder would fail one although it is exactly what a local
+ * install may name.
+ * @param {Addon} addon  The SCA archive (its governing lock and the folders it holds).
+ * @returns {LocalInstall[]}
+ */
+export function localInstalls(addon) {
+  const file = governingLock(addon);
+  const data = file ? parsedLock(addon, file) : null;
+  if (!data) {
+    return [];
+  }
+  const directories = new Set(addon?.directories ?? []);
+  const out = [];
+  const judge = (token, name, spec, baseDir, target) => {
+    const dir = resolveLocalDir(baseDir, target);
+    // The source root itself ("") is always a folder the submission holds.
+    if (dir === null || (dir !== "" && !directories.has(dir))) {
+      out.push({ name, spec, file, token });
+    }
+  };
+  if (!file.endsWith(".json")) {
+    const importers = data.importers ?? { ".": data };
+    for (const [path, importer] of Object.entries(importers)) {
+      const baseDir = path === "." ? "" : path;
+      for (const map of DECLARATION_MAPS) {
+        for (const [name, raw] of Object.entries(importer?.[map] ?? {})) {
+          const v = typeof raw === "string" ? raw : String(raw?.version ?? "");
+          if (/^link:/i.test(v)) {
+            judge(name, name, v, baseDir, v.slice("link:".length));
+          }
+        }
+      }
+    }
+    for (const [token, entry] of Object.entries(data.packages ?? {})) {
+      const resolution = entry?.resolution;
+      const name = String(entry?.name ?? token);
+      if (typeof resolution?.directory === "string") {
+        judge(token, name, resolution.directory, "", resolution.directory);
+      } else if (/^file:/i.test(String(resolution?.tarball ?? ""))) {
+        const tarball = String(resolution.tarball);
+        judge(token, name, tarball, "", tarball.slice("file:".length));
+      }
+    }
+    return out;
+  }
+  if (data.packages && typeof data.packages === "object") {
+    for (const [token, entry] of Object.entries(data.packages)) {
+      const at = token.lastIndexOf(NODE_MODULES);
+      if (at === -1 || !entry || typeof entry !== "object") {
+        continue;
+      }
+      const name = String(entry.name ?? token.slice(at + NODE_MODULES.length));
+      const resolved = String(entry.resolved ?? "");
+      if (entry.link === true) {
+        judge(token, name, resolved, "", resolved);
+      } else if (/^file:/i.test(resolved)) {
+        judge(token, name, resolved, "", resolved.slice("file:".length));
+      }
+    }
+    return out;
+  }
+  // lockfileVersion 1: a nested tree, walked like npmV1Packages.
+  const stack = [data.dependencies];
+  while (stack.length) {
+    for (const [name, node] of Object.entries(stack.pop() ?? {})) {
+      if (!node || typeof node !== "object") {
+        continue;
+      }
+      const version = String(node.version ?? "");
+      if (/^file:/i.test(version)) {
+        judge(name, name, version, "", version.slice("file:".length));
+      }
+      if (node.dependencies) {
+        stack.push(node.dependencies);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Resolve `target` (a local path the lock records) against `baseDir` (the store-relative
+ * folder it is relative to, "" for the root) into a store-relative posix path, or null when
+ * it steps outside the store (a leading "/", or a ".." with nothing left to pop). Pure path
+ * arithmetic: it does not say whether anything is THERE.
+ * @param {string} baseDir @param {string} target
+ * @returns {?string}
+ */
+function resolveLocalDir(baseDir, target) {
+  const t = target.trim();
+  if (!t || t.startsWith("/")) {
+    return null;
+  }
+  const parts = [];
+  for (const seg of (baseDir ? `${baseDir}/${t}` : t).split("/")) {
+    if (seg === "" || seg === ".") {
+      continue;
+    }
+    if (seg === "..") {
+      if (parts.length === 0) {
+        return null; // escapes the store root
+      }
+      parts.pop();
+    } else {
+      parts.push(seg);
+    }
+  }
+  return parts.join("/"); // "" only when this names the store root itself
 }
 
 /**
@@ -656,9 +919,7 @@ function pnpmSource(entry) {
     return installSource(resolution.tarball);
   }
   if (resolution.type === "git" || resolution.repo !== undefined) {
-    return /github\.com[/:]/i.test(String(resolution.repo ?? ""))
-      ? "github"
-      : "foreign";
+    return isGithubSource(String(resolution.repo ?? "")) ? "github" : "foreign";
   }
   if (resolution.type === "directory") {
     return "local";

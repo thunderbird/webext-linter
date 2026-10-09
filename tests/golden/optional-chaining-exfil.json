@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/optional-chaining-exfil",
-    "xpiRoot": "<root>/tests/addons/optional-chaining-exfil/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "optional-chaining-exfil",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

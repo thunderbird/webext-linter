@@ -165,10 +165,13 @@ export const VENDOR_GITHUB_REPOS_API = "https://api.github.com/repos/";
  * Where a source review's install may take a package from: the npm registry, or GitHub
  * (the only non-registry source a package.json may declare). A lock entry resolved
  * anywhere else installs bytes the dependency audit never read (lock-foreign-source).
+ * GitHub is a URL on github.com or codeload.github.com, the scp form
+ * `[user@]github.com:owner/repo` git writes without a scheme, or that form with one
+ * (`git+ssh://git@github.com:owner/repo`, as pnpm writes a specifier).
  */
 export const NPM_REGISTRY_TARBALLS = "https://registry.npmjs.org/";
 export const GITHUB_INSTALL_SOURCE =
-  /^(?:git\+)?(?:https?|ssh|git):\/\/(?:[^@/]+@)?(?:codeload\.)?github\.com\//i;
+  /^(?:git\+)?(?:(?:https?|ssh|git):\/\/(?:[^@/]+@)?(?:codeload\.)?github\.com[/:]|(?:[^@/:]+@)?github\.com:)/i;
 
 /**
  * The smallest gap between two requests to the same host, for every request the tool
@@ -322,23 +325,13 @@ export const VENDOR_OSV_HYDRATE_MAX = 2000;
 export const VENDOR_LOCK_MAX_PACKAGES = 10000;
 
 /**
- * How deep a chain of file:/link: local packages is walked (the root's own target is depth
- * 1). A real monorepo-style split nests one, occasionally two levels; this is a runaway
- * bound, not a policy - a genuine cycle (A -> B -> A) is already stopped by the package files
- * already found, so this only stops a long CHAIN of distinct directories a submission could
- * otherwise make the walk follow indefinitely.
- */
-export const LOCAL_PACKAGE_FILE_MAX_DEPTH = 8;
-
-/**
- * The OSV bands a lock-tree advisory is reported at. A package nobody declared is
- * only worth the developer's attention when it would fail the review, so a
- * moderate or low one deep in the tree produces nothing at all. Declared
- * dependencies are reported at every band (src/lib/vuln-findings.js).
+ * The OSV bands a lock advisory is reported at, in a source review. Every package the lock
+ * installs is audited there, declared or not, and is only worth the developer's attention
+ * when it would fail the review, so a moderate or low one produces nothing at all. A built
+ * XPI's declared and vendored libraries are reported at every band
+ * (src/lib/vuln-findings.js).
  *
- * NOT the whole threshold: an advisory saying the package itself is malicious is
- * reported whatever its band, because those state none at all. Widening or
- * narrowing this list moves the band rule and nothing else (src/vendor/verify.js
- * reportableInTree).
+ * An advisory saying the package itself is malicious states no band at all, and is read
+ * as critical (src/vendor/verify.js vulnRecord), so this rule keeps it.
  */
 export const VENDOR_TREE_BANDS = ["high", "critical"];

@@ -37,10 +37,11 @@
 //     release that was never published; one that gets no answer ends the review
 //     (src/util/net.js), since "not shipped" would skip the audit.
 //   - the whole installed tree, in a source-code review only: every package the
-//     committed lock file records, declared or pulled in by another package, is
-//     OSV-audited in one batch (auditLockedPackages). This is where almost all of
-//     a submission's exposure sits, since a real tree is mostly packages nobody
-//     wrote down.
+//     committed lock file records, declared or pulled in by another package, is matched
+//     against the Mozilla policy blocklist and OSV-audited in one batch
+//     (auditLockedPackages), and the ones the lock marks as declared are popularity-gated.
+//     The lock is the only thing read: it is what the install follows, and a real tree is
+//     mostly packages nobody wrote down.
 //
 // The popularity lookups are MEMOIZED as well as made. They go to one host per kind,
 // which answers a burst by refusing. So the reading is taken once per package for the
@@ -271,31 +272,27 @@ export async function verifyVendorDeclarations(
 
 /**
  * SCA (source code archive) dependency audit: the network half for SCA mode,
- * the analogue of verifyVendor for XPI mode. It reads the archive's package.json alone -
- * a VENDOR file it may also carry is verified separately (verifyVendorDeclarations) - and
- * does no hash or CDN matching, because the built libraries are absent from the readable
- * source and mangled in the XPI.
- * For each pinned dependency it records (a) OSV advisories (auditNpm ->
- * vendor.vulnerabilities, read by vendor-vulnerable) and (b) a non-popular verdict
- * (-> vendor.unpopularDeps, read by unpopular-source-dependency): a dependency
- * that is not a confirmed widely-used library is pulled in at build and cannot be
- * reviewed, so the developer must ship its readable source in the archive. Each
- * pinned devDependency additionally gets (c) an OSV audit (-> vendor.devVulnerabilities,
- * read by vendor-vulnerable-dev), and is popularity-gated like the rest: the reviewer
- * installs and RUNS a build tool on their own machine, so refusing the vulnerabilities we
- * can name while waving through a package nobody has vetted would guard them against the
- * named risk alone. Finally (d) the whole installed tree from the
- * committed lock file is audited in one batch (auditLockedPackages ->
- * vendor.treeVulnerabilities / treeDevVulnerabilities), which is where almost all
- * of a submission's exposure actually sits.
+ * the analogue of verifyVendor for XPI mode. It reads the committed lock file alone - a
+ * VENDOR file the archive may also carry is verified separately (verifyVendorDeclarations),
+ * and package.json is not read, because the lock is what the install follows - and does no
+ * hash or CDN matching, because the built libraries are absent from the readable source and
+ * mangled in the XPI.
+ *
+ * Two questions are asked. (a) Is each package the lock marks as declared a confirmed
+ * widely-used library (-> vendor.unpopularDeps, read by unpopular-source-dependency)? One
+ * that is not is pulled in at build and cannot be reviewed, so the developer must ship its
+ * readable source in the archive. A build dependency is held to the same bar: the reviewer
+ * installs and RUNS it on their own machine. A registry package is asked about by its npm
+ * downloads, a GitHub install by its repository's stars. (b) Does any installed package
+ * carry a policy block or a high, critical or malicious advisory (auditLockedPackages)?
  *
  * Popularity uses a direct npm-downloads lookup (npmDownloads), not isPopular, so a
  * package npm has no reading for is skipped rather than false-rejected. A lookup that
  * gets no answer ends the review (src/util/net.js).
  * @param {Addon} addon  Must already carry `addon.vendor` from resolveVendor.
  * @param {VendorNet} [net]
- * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist, applied to
- *   the declared (shipped) dependencies - NOT to devDependencies (never shipped).
+ * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist, applied to every
+ *   installed package.
  * @returns {Promise<void>}
  */
 export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
@@ -303,122 +300,128 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
   if (!vendor) {
     return;
   }
-  for (const pkg of vendor.packages) {
-    await auditNpm(
-      pkg.name,
-      pkg.version,
-      pkg.file,
-      pkg.name,
-      vendor,
-      net,
-      vendor.vulnerabilities,
-      blocks
-    );
+  // Asked once per NAME: the lock may install two versions of one declared package, and
+  // its popularity is the package's, not a release's.
+  const asked = new Set();
+  for (const pkg of vendor.lockPackages ?? []) {
+    if (!pkg.direct || asked.has(pkg.name)) {
+      continue;
+    }
+    asked.add(pkg.name);
     const downloads = await npmDownloads(pkg.name, net);
     if (downloads !== null && downloads < VENDOR_NPM_MIN_DOWNLOADS) {
       vendor.unpopularDeps.push({
         name: pkg.name,
         version: pkg.version,
         file: pkg.file,
-        token: pkg.name,
+        token: pkg.token,
       });
     }
   }
-  // GitHub-sourced deps clear the bar by stars (or a trusted-org free pass) - the
-  // same popularity check a VENDOR.md github source gets. A repo GitHub has no reading
-  // for records nothing (like npmDownloads above).
-  for (const dep of vendor.githubDeps ?? []) {
-    const popular = await githubPopular(dep.repo, net);
-    if (popular === false) {
+  // A declared package the lock installs from GitHub clears the bar by stars (or a
+  // trusted-org free pass) - the same popularity check a VENDOR.md github source gets. A
+  // repo GitHub has no reading for records nothing (like npmDownloads above).
+  const repos = new Set();
+  for (const dep of vendor.lockGithubInstalls ?? []) {
+    const repo = dep.repo.toLowerCase();
+    if (!dep.direct || repos.has(repo)) {
+      continue;
+    }
+    repos.add(repo);
+    if ((await githubPopular(dep.repo, net)) === false) {
       vendor.unpopularDeps.push({
         name: dep.name,
-        version: dep.spec,
+        version: dep.version,
         file: dep.file,
-        token: dep.name,
+        token: dep.token,
       });
     }
   }
-  // Dev dependencies never ship, but the reviewer builds the add-on from source, so a
-  // build tool runs on THEIR machine. That is why each pinned npm dev dep is OSV-audited
-  // (recording hits on devVulnerabilities for the vendor-vulnerable-dev check) - and it is
-  // the same reason they are popularity-gated: a package too obscure for anyone to have
-  // vetted is code we ask a reviewer to execute on the strength of nobody's word. Refusing
-  // a known-vulnerable build tool while waving through an unknown one would protect them
-  // from the risk we can name and not from the one we cannot.
-  for (const pkg of vendor.devPackages ?? []) {
-    // No blocklist here: a devDependency is never shipped, so the shipped-library
-    // policy does not apply. It is OSV-audited (into devVulnerabilities) but never
-    // recorded as a banned-library - auditNpm is passed no `blocks`.
-    // Popularity IS applied, below, for the reason in the comment above.
-    await auditNpm(
-      pkg.name,
-      pkg.version,
-      pkg.file,
-      pkg.name,
-      vendor,
-      net,
-      vendor.devVulnerabilities
-    );
-    const downloads = await npmDownloads(pkg.name, net);
-    if (downloads !== null && downloads < VENDOR_NPM_MIN_DOWNLOADS) {
-      vendor.unpopularDeps.push({
-        name: pkg.name,
-        version: pkg.version,
-        file: pkg.file,
-        token: pkg.name,
-      });
-    }
-  }
-  // Last, so every declared package is already recorded and the tree audit can
-  // leave those out.
-  await auditLockedPackages(vendor, net);
+  await auditScaDependencies(addon, net, blocks);
 }
 
 /**
- * Audit the packages the lock file installs that NOTHING declares - the ~90% of
- * a real dependency tree that arrives because a declared package asked for it.
- * A reviewer running the install sees these advisories; without this the linter
- * would only ever see the handful of names in package.json.
+ * The half of the SCA dependency audit that decides whether the review can go on: every
+ * package the lock installs, against the policy blocklist and OSV (auditLockedPackages).
+ * verifyScaDependencies asks it after the popularity gate. The preparation of a source code
+ * review asks it on its own (src/prepare/audit.js), because no check that aborts a review
+ * reads popularity.
+ * @param {Addon} addon  Must already carry `addon.vendor` from resolveVendor.
+ * @param {VendorNet} [net]
+ * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist, applied to every
+ *   installed package.
+ * @returns {Promise<void>}
+ */
+export async function auditScaDependencies(addon, net = defaultNet, blocks) {
+  const vendor = addon?.vendor;
+  if (!vendor) {
+    return;
+  }
+  await auditLockedPackages(vendor, net, blocks);
+}
+
+/**
+ * Audit every package the lock file installs - the declared ones and the ~90% of a real
+ * dependency tree that arrives because a declared package asked for it. A reviewer
+ * running the install sees these advisories.
  *
- * Two things are deliberately NOT applied here, both of which the declared
- * dependencies do get:
- *   - the Mozilla policy blocklist, whose wording is about the library versions
- *     an add-on SHIPS, and whose banned verdict short-circuits the OSV query -
- *     control flow a batched request cannot express;
- *   - the popularity gate, which asks whether the developer chose a reputable
- *     library. Nobody chose these, so the question does not arise, and asking it
- *     would cost one request per package.
- * The single-package endpoint is likewise kept for declared dependencies: they
- * are reported at every severity, and it answers severity and fixed versions in
- * one request, while the batch endpoint returns bare ids that must be hydrated.
+ * Each package is first matched against the Mozilla policy blocklist, so `vendor.blocked`
+ * covers the whole installed tree. A banned release is recorded and left out of the OSV
+ * batch, as auditNpm skips one, so it is reported once; an unadvised one is recorded and
+ * still audited.
  *
- * Only high and critical are recorded (VENDOR_TREE_BANDS): a package nobody
- * declared is worth the developer's attention when it fails the review, not
- * when it merely appears in a report. A MALICIOUS-package advisory is the one
- * exception (isMaliciousAdvisory) - those state no severity at all, so a band
- * rule alone would discard exactly the records that matter most here.
+ * Only high and critical are recorded (VENDOR_TREE_BANDS): a package is worth the
+ * developer's attention here when it fails the review, not when it merely appears in a
+ * report. A MALICIOUS-package advisory is recorded as critical (vulnRecord), so the band
+ * rule keeps it.
+ *
+ * Each hit goes to one of four lists, by the lock's own two markers: whether a package file
+ * of the submission declares it (LockedPackage.direct) and whether it is installed for the
+ * build only (LockedPackage.dev). Declared and shipped is vendor.vulnerabilities, declared
+ * and build-only devVulnerabilities, pulled in and shipped treeVulnerabilities, pulled in
+ * and build-only treeDevVulnerabilities. Every record anchors at the package's lock entry.
  *
  * All-or-nothing: results are held until every chunk has answered, so a scan cut short
  * records NOTHING rather than a partial tree that reads like a clean one. A chunk OSV gives
  * no answer for ends the review (src/util/net.js); one it answers 404 for, or a net
- * without postJson (the golden harness), abandons the scan.
+ * without postJson, abandons the scan, and says so on `vendor.lockScanAbandoned`: a scan
+ * that recorded nothing reads the same as a clean tree to every check, and the preparation
+ * must not take it for one.
  * @param {VendorStore} vendor  Must carry lockPackages (resolveVendor).
  * @param {VendorNet} net
+ * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist.
  * @returns {Promise<void>}
  */
-async function auditLockedPackages(vendor, net) {
-  const queue = (vendor.lockPackages ?? []).filter(
-    (p) => !alreadyAudited(vendor, p)
-  );
+async function auditLockedPackages(vendor, net, blocks) {
+  const queue = [];
+  for (const pkg of vendor.lockPackages ?? []) {
+    if (alreadyAudited(vendor, pkg)) {
+      continue;
+    }
+    const block = matchLibraryBlock(blocks, pkg.name, pkg.version);
+    if (block) {
+      (vendor.blocked ??= []).push({
+        name: pkg.name,
+        version: pkg.version,
+        status: block.status,
+        reason: block.reason,
+        file: pkg.file,
+        token: pkg.token,
+      });
+      if (block.status === "banned") {
+        continue;
+      }
+    }
+    queue.push(pkg);
+  }
   if (!queue.length) {
     return;
   }
   /** @type {Map<string, ?OsvVuln>} */
   const advisories = new Map();
-  /** @type {VendorVuln[]} */
-  const shipped = [];
-  /** @type {VendorVuln[]} */
-  const buildTime = [];
+  /** @type {{declared: VendorVuln[], declaredDev: VendorVuln[], shipped: VendorVuln[],
+   *   buildTime: VendorVuln[]}} */
+  const found = { declared: [], declaredDev: [], shipped: [], buildTime: [] };
   for (let at = 0; at < queue.length; at += VENDOR_OSV_BATCH_SIZE) {
     const chunk = queue.slice(at, at + VENDOR_OSV_BATCH_SIZE);
     let results;
@@ -432,7 +435,9 @@ async function auditLockedPackages(vendor, net) {
       results = Array.isArray(res?.results) ? res.results : [];
     } catch (err) {
       rethrowIfFatal(err);
-      return; // OSV answered 404, or the net has no postJson - abandon the scan
+      // OSV answered 404, or the net has no postJson - abandon the scan
+      vendor.lockScanAbandoned = true;
+      return;
     }
     // The endpoint answers positionally, one result per query, and says nothing
     // about which package each answer is for - hence the index, and hence the
@@ -456,64 +461,34 @@ async function auditLockedPackages(vendor, net) {
         pkg.file,
         pkg.token
       );
-      if (!record || !reportableInTree(record, vulns)) {
+      if (!record || !VENDOR_TREE_BANDS.includes(record.severity)) {
         continue;
       }
-      (pkg.dev ? buildTime : shipped).push(record);
+      if (pkg.direct) {
+        (pkg.dev ? found.declaredDev : found.declared).push(record);
+      } else {
+        (pkg.dev ? found.buildTime : found.shipped).push(record);
+      }
     }
   }
-  vendor.treeVulnerabilities.push(...shipped);
-  vendor.treeDevVulnerabilities.push(...buildTime);
+  vendor.vulnerabilities.push(...found.declared);
+  vendor.devVulnerabilities.push(...found.declaredDev);
+  vendor.treeVulnerabilities.push(...found.shipped);
+  vendor.treeDevVulnerabilities.push(...found.buildTime);
 }
 
 /**
- * Whether this tree package has already been audited under another heading, so
- * the tree scan must leave it alone.
- *
- * Two different reasons, and both are needed. A package the submission DECLARES
- * belongs to vendor-vulnerable / -dev, which audit it at every severity and
- * anchor it at the line the developer wrote - and telling them it is "a package
- * this add-on does not declare" would be false. Directness is read from the lock
- * itself (LockedPackage.direct), because the root package.json parse misses the
- * forms a lock still records: an optionalDependency, a workspace member's own
- * package file, and a version the two files disagree about. Separately,
- * an exact name@version any earlier audit already recorded - an npm-sourced VENDOR
- * entry, a policy-blocked library - would simply be reported twice.
+ * Whether this lock package's exact name@version was already recorded by the VENDOR-file
+ * audit (verifyVendorDeclarations) - as an advisory, or as a policy hit - so the lock audit
+ * must leave it alone. A library the archive vendors AND installs would otherwise be
+ * reported twice.
  * @param {VendorStore} vendor
  * @param {import("./locks.js").LockedPackage} pkg
  * @returns {boolean}
  */
 function alreadyAudited(vendor, pkg) {
-  if (pkg.direct) {
-    return true;
-  }
-  if (
-    [...vendor.packages, ...(vendor.devPackages ?? [])].some(
-      (p) => p.name === pkg.name
-    )
-  ) {
-    return true;
-  }
-  return [
-    ...vendor.vulnerabilities,
-    ...(vendor.devVulnerabilities ?? []),
-    ...(vendor.blocked ?? []),
-  ].some((v) => v.name === pkg.name && v.version === pkg.version);
-}
-
-/**
- * Whether a tree advisory is worth reporting. The band decides
- * (VENDOR_TREE_BANDS), with one exception: OSV's malicious-package records carry
- * no severity field at all, so they aggregate to "unknown" and a band rule would
- * discard them - while "this package is malicious" outranks every band there is.
- * @param {VendorVuln} record  The aggregated record.
- * @param {OsvVuln[]} vulns  The advisories it was built from.
- * @returns {boolean}
- */
-function reportableInTree(record, vulns) {
-  return (
-    VENDOR_TREE_BANDS.includes(record.severity) ||
-    vulns.some(isMaliciousAdvisory)
+  return [...vendor.vulnerabilities, ...(vendor.blocked ?? [])].some(
+    (v) => v.name === pkg.name && v.version === pkg.version
   );
 }
 
@@ -611,34 +586,30 @@ async function npmDownloads(name, net) {
  * First consults the Mozilla policy blocklist `blocks` (when given): a banned
  * name@version is recorded on vendor.blocked and SKIPS the OSV query (rejected
  * regardless); an unadvised one is recorded but still audited (a live CVE on an
- * allowed library still matters). `blocks` is passed only for SHIPPED libraries, so
- * an SCA devDependency (never shipped) is audited but never policy-blocked.
+ * allowed library still matters).
  * A package with known advisories is recorded on `into` (one entry aggregating its
  * advisories, anchored at `file`/`token`). An OSV 404, or an injected net without
  * `postJson` (the golden harness), records nothing. A query OSV
  * does not answer ends the review (src/util/net.js): recording nothing for it would read
- * as a package with no advisories. Drives package.json deps and npm-sourced
- * VENDOR entries -> vendor.vulnerabilities (read by vendor-vulnerable), and SCA
- * devDependencies -> vendor.devVulnerabilities (read by vendor-vulnerable-dev); the
- * caller passes the target `into` array.
+ * as a package with no advisories. Drives a built XPI's package.json deps, npm-sourced
+ * VENDOR entries and hash-identified libraries -> vendor.vulnerabilities (read by
+ * vendor-vulnerable); the caller passes the target `into` array.
  * @param {string} name  npm package name.
  * @param {string} version  The bundled (pinned) version.
  * @param {string} file  Where the finding anchors (package.json / the VENDOR
  *   file).
  * @param {string} token  The string locating the declaration line in `file`.
  * @param {VendorStore} vendor @param {VendorNet} net
- * @param {VendorVuln[]} into  The array to record a hit on: vendor.vulnerabilities
- *   for shipped/declared deps, or vendor.devVulnerabilities for SCA dev deps.
+ * @param {VendorVuln[]} into  The array to record a hit on.
  *   Explicit - never defaulted - so a hit is never silently mis-bucketed.
  * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist to apply
- *   (assets/library-blocks.yaml); absent/null for an SCA devDependency (never
- *   shipped, so never policy-blocked).
+ *   (assets/library-blocks.yaml); absent/null applies none.
  * @returns {Promise<void>}
  */
 async function auditNpm(name, version, file, token, vendor, net, into, blocks) {
   // The Mozilla policy blocklist is consulted BEFORE the OSV query (see the JSDoc):
   // a banned version records a hit and returns (no OSV); an unadvised one records a
-  // hit and still audits. `blocks` is passed only for shipped libraries.
+  // hit and still audits.
   const block = matchLibraryBlock(blocks, name, version);
   if (block) {
     (vendor.blocked ??= []).push({
@@ -678,6 +649,12 @@ async function auditNpm(name, version, file, token, vendor, net, into, blocks) {
  * names for this package, and the worst severity among them. Null when there are
  * no advisories.
  *
+ * A MALICIOUS-package advisory (isMaliciousAdvisory) counts as critical. OSV's
+ * malicious-package records state no severity at all, so they would aggregate to
+ * "unknown" - while "this package is malicious" outranks every band there is. Read as
+ * critical, it is an error in every check that maps the band, and survives the source
+ * review's band rule (VENDOR_TREE_BANDS).
+ *
  * Shared by the two audits, which differ only in how they ASK: auditNpm queries
  * one package and is answered with whole advisory records, while
  * auditLockedPackages queries hundreds and hydrates the bare ids it gets back.
@@ -701,7 +678,10 @@ function vulnRecord(name, version, vulns, file, token) {
     for (const f of fixedVersions(v, name)) {
       fixed.add(f);
     }
-    severity = worseSeverity(severity, vulnSeverity(v));
+    severity = worseSeverity(
+      severity,
+      isMaliciousAdvisory(v) ? "critical" : vulnSeverity(v)
+    );
   }
   return {
     name,

@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/minified-stylesheet",
-    "xpiRoot": "<root>/tests/addons/minified-stylesheet/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "minified-stylesheet",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

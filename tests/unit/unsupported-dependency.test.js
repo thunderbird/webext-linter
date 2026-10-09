@@ -1,7 +1,9 @@
 // Unit tests for the unsupported-dependency check, which reads
-// addon.vendor.unsupportedDeps (a package.json dep from a source that is neither a
-// pinned npm package nor a GitHub URL - see src/vendor/resolve.js resolvePackages)
-// and rejects each, anchored at its package.json declaration line.
+// addon.vendor.unsupportedDeps (a built XPI's package.json dep from a source that is
+// neither a pinned npm package nor a GitHub URL - see src/vendor/resolve.js
+// resolvePackages), anchored at its package.json declaration line, and
+// addon.vendor.lockLocalInstalls (a source review's local install the archive does not
+// hold as a folder - see src/vendor/locks.js localInstalls), anchored at its lock entry.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -20,7 +22,7 @@ const ctxWith = (unsupportedDeps, pkgJson = PKG_JSON) =>
   withManifest({
     artifact: {
       files: new Map([["package.json", Buffer.from(pkgJson)]]),
-      vendor: { unsupportedDeps },
+      vendor: { unsupportedDeps, lockLocalInstalls: [] },
     },
     note() {},
   });
@@ -56,4 +58,59 @@ test("a spec with comparison signs stays readable in the item", () => {
     ctxWith([{ name: "weird", spec: ">=4.17.0 <5.0.0" }])
   ).findings;
   assert.equal(out[0].item, "weird (≥4.17.0 ＜5.0.0)");
+});
+
+// A source review reads the lock: each local install it reports anchors at its own entry,
+// a JSON key in an npm lock and a YAML key in a pnpm one.
+test("a lock local install anchors at its lock entry", () => {
+  const npmLock = `{
+  "packages": {
+    "": { "dependencies": { "helper": "file:../shared/helper" } },
+    "node_modules/helper": { "resolved": "../shared/helper", "link": true }
+  }
+}`;
+  const pnpmLock = [
+    "importers:",
+    "  .:",
+    "    dependencies:",
+    "      far:",
+    "        specifier: link:../far",
+    "        version: link:../far",
+    "",
+  ].join("\n");
+  const out = unsupportedDependency.run(
+    withManifest({
+      artifact: {
+        files: new Map([
+          ["package-lock.json", Buffer.from(npmLock)],
+          ["pnpm-lock.yaml", Buffer.from(pnpmLock)],
+        ]),
+        vendor: {
+          unsupportedDeps: [],
+          lockLocalInstalls: [
+            {
+              name: "helper",
+              spec: "../shared/helper",
+              file: "package-lock.json",
+              token: "node_modules/helper",
+            },
+            {
+              name: "far",
+              spec: "link:../far",
+              file: "pnpm-lock.yaml",
+              token: "far",
+            },
+          ],
+        },
+      },
+      note() {},
+    })
+  ).findings;
+  assert.deepEqual(
+    out.map((f) => [f.file, f.loc?.line, f.item]),
+    [
+      ["package-lock.json", 4, "helper (../shared/helper)"],
+      ["pnpm-lock.yaml", 4, "far (link:../far)"],
+    ]
+  );
 });

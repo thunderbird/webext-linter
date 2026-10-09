@@ -62,6 +62,8 @@ import {
   FINAL_SLOTS,
   LOOP_VERBS,
   SCA_PROMPT_FACTS,
+  SCA_PROMPT_STEPS,
+  SCA_PROMPT_COMMAND,
   REVIEW_PROMPT_FACTS,
 } from "./registry-vocabulary.js";
 import { rethrowIfFatal, wiringError } from "../lib/errors.js";
@@ -278,7 +280,7 @@ export class Registry {
    *
    * Shares `doc`: the yaml is what someone wrote, the policy is what this run was told, so
    * deriving one costs no re-parse and no second assert. For the pass that learns its
-   * policy after the registry was built - a --llm-verdict pass, which reads it off the
+   * policy after the registry was built - a --llm-handback pass, which reads it off the
    * review's own state rather than off a command line it was never given (src/cli.js).
    * @param {{warningsAsErrors?: boolean}} policy
    * @returns {Registry}
@@ -527,17 +529,7 @@ export class Registry {
    * @returns {{artifact: ?string, instruction: string}[]}
    */
   sweepTargets(ruleId) {
-    const entry = this.checkEntry(ruleId);
-    if (!entry) {
-      return [];
-    }
-    const flat = entry[SWEEP_INSTRUCTION];
-    if (typeof flat === "string" && flat !== "") {
-      return [{ artifact: null, instruction: flat }];
-    }
-    return Object.entries(SWEEP_INSTRUCTIONS)
-      .filter(([, key]) => typeof entry[key] === "string" && entry[key] !== "")
-      .map(([artifact, key]) => ({ artifact, instruction: entry[key] }));
+    return sweepTargetsOf(this.checkEntry(ruleId));
   }
 
   /**
@@ -690,22 +682,27 @@ export class Registry {
   }
 
   /**
-   * The texts of the --llm-sca-review prompt: the intro, and the ordered steps that turn a
-   * submission folder into the arguments an SCA review needs. Read only when that flag is
-   * set, and both are required then - a run whose whole output is this prompt has nothing
-   * to print without them.
+   * The texts of the preparation of a source code review: the intro the first prompt opens
+   * with, the reasons a rescue is for, and one list of steps per prompt (SCA_PROMPT_STEPS).
+   * Required, all of them: a run whose whole output is one of these has nothing to print
+   * without it. The reasons are read by the review of a folder whose rescue was given up,
+   * which runs the checks that name them and no other (src/pipeline.js).
    *
    * A step comes back with its `when` condition parsed, never filtered here: which steps a
    * run prints is layout, decided in src/report/format.js beside the flags themselves.
-   * `when: experiments` marks a step that asks for the Experiment folder, which only a
-   * review allowing Experiments reads - so it is printed only when one does.
-   * @returns {{intro: string, outcome: {when: ?object, text: string}[]}}
+   * `when: experiments` marks a step about the Experiment folder, which only the review of
+   * an add-on declaring Experiments reads - so it is printed only for one.
+   * @returns {{intro: string, rescueFor: string[],
+   *   steps: Record<string, {when: ?object, text: string}[]>}}
    */
   llmScaReviewPrompt() {
     const p = this.doc["llm-sca-review-prompt"];
     return {
       intro: p.intro,
-      outcome: p.outcome.map(loadedStep),
+      rescueFor: p["rescue-for"],
+      steps: Object.fromEntries(
+        SCA_PROMPT_STEPS.map((name) => [name, p[name].map(loadedStep)])
+      ),
     };
   }
 
@@ -1492,23 +1489,28 @@ export function assertPhases(registry, at) {
 }
 
 /**
- * The --llm-sca-review prompt, checked at load.
+ * The preparation's prompts, checked at load.
  *
- * Its whole output is that prompt - no review runs beside it - so a missing key is a run
- * with nothing to print, and it refuses rather than printing half an instruction.
+ * Each one is the whole output of its run - no review runs beside it - so a step it cannot
+ * print, or a list that never names the command its run prints, is a run that leaves its
+ * reader with nothing to do next. They refuse rather than printing half an instruction.
  * @param {Registry} registry
  * @param {string} at
  */
 export function assertScaPrompt(registry, at) {
-  registry.doc["llm-sca-review-prompt"].outcome.forEach((step, i) => {
-    assertStep(
-      step,
-      i,
-      `llm-sca-review-prompt (${at})`,
-      "`outcome` step",
-      SCA_PROMPT_FACTS
-    );
-  });
+  const prompt = registry.doc["llm-sca-review-prompt"];
+  const where = `llm-sca-review-prompt (${at})`;
+  for (const name of SCA_PROMPT_STEPS) {
+    prompt[name].forEach((step, i) => {
+      assertStep(step, i, where, `\`${name}\` step`, SCA_PROMPT_FACTS);
+    });
+    if (!prompt[name].some((step) => step.text.includes(SCA_PROMPT_COMMAND))) {
+      throw new Error(
+        `${where} \`${name}\` carries no ${SCA_PROMPT_COMMAND} - the linter prints the ` +
+          "command that carries the preparation on there, and nothing else names it"
+      );
+    }
+  }
 }
 
 /**
@@ -1617,7 +1619,8 @@ export function assertAskedIn(registry, at) {
  * abort a review and then print a bullet with nothing in it - the report would say the
  * submission could not be reviewed without saying why. A reason nothing references is
  * wording no report can reach, which is the same dead-prose failure a closed `prose-map`
- * refuses in the schema.
+ * refuses in the schema. The reasons the preparation rescues a review for
+ * (`llm-sca-review-prompt`'s `rescue-for`) are references too, and asked the same way.
  * @param {Registry} registry @param {string} at
  * @returns {void}
  */
@@ -1642,13 +1645,29 @@ export function assertEarlyExit(registry, at) {
           `only \`error\` or \`auto\` can report one at the band a halt is decided on (${at})`
       );
     }
-    if (!ids.includes(reason)) {
+    assertReasonDefined(
+      reason,
+      `\`${entry.check}\` aborts the review for`,
+      ids,
+      at
+    );
+    // A sweep's hints are merged into the review unverified, and an aborted review verifies
+    // nothing. A check whose sweep could abort the review would let one unaudited hint
+    // settle the submission, so it may do one or the other, never both.
+    if (sweepTargetsOf(entry).length) {
       throw new Error(
-        `\`${entry.check}\` aborts the review for \`${reason}\`, which ` +
-          `\`review-early-exit\` does not define (expected one of: ${ids.join(", ")}) (${at})`
+        `\`${entry.check}\` aborts the review and authors a sweep - a sweep's hints are ` +
+          `merged unverified, so they may not abort a review (${at})`
       );
     }
     named.add(reason);
+  }
+  // The review of a source whose rescue was given up runs the checks that name these
+  // reasons and no other (src/pipeline.js), so one that names nothing defined would select
+  // no check at all.
+  for (const reason of registry.doc["llm-sca-review-prompt"]?.["rescue-for"] ??
+    []) {
+    assertReasonDefined(reason, "`llm-sca-review-prompt` rescues for", ids, at);
   }
   for (const id of ids) {
     if (!named.has(id)) {
@@ -1657,6 +1676,41 @@ export function assertEarlyExit(registry, at) {
           `report can reach it (${at})`
       );
     }
+  }
+}
+
+/**
+ * The sweeps one registry entry authors (Registry sweepTargets): read off the entry itself,
+ * so an assertion that holds the entry already asks it without going through the id index.
+ * @param {?object} entry
+ * @returns {{artifact: ?string, instruction: string}[]}
+ */
+function sweepTargetsOf(entry) {
+  if (!entry) {
+    return [];
+  }
+  const flat = entry[SWEEP_INSTRUCTION];
+  if (typeof flat === "string" && flat !== "") {
+    return [{ artifact: null, instruction: flat }];
+  }
+  return Object.entries(SWEEP_INSTRUCTIONS)
+    .filter(([, key]) => typeof entry[key] === "string" && entry[key] !== "")
+    .map(([artifact, key]) => ({ artifact, instruction: entry[key] }));
+}
+
+/**
+ * Assert that a reason someone names is one `review-early-exit` defines.
+ * @param {string} reason  The id as it was named.
+ * @param {string} who  Who names it, as the message's subject.
+ * @param {string[]} ids  The defined reasons.
+ * @param {string} at  The registry path, for the message.
+ */
+function assertReasonDefined(reason, who, ids, at) {
+  if (!ids.includes(reason)) {
+    throw new Error(
+      `${who} \`${reason}\`, which \`review-early-exit\` does not define ` +
+        `(expected one of: ${ids.join(", ")}) (${at})`
+    );
   }
 }
 

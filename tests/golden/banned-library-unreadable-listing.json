@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/banned-library-unreadable-listing",
-    "xpiRoot": "<root>/tests/addons/banned-library-unreadable-listing/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "banned-library-unreadable-listing",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

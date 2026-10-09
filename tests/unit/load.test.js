@@ -6,6 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import AdmZip from "adm-zip";
+import { execFileSync } from "node:child_process";
 
 import { ADDON_MAX_UNPACKED_BYTES } from "../../src/config.js";
 
@@ -218,7 +219,7 @@ test("loadAddon(file) refuses an entry the archive stored as a link", () => {
   const file = path.join(dir, "addon.xpi");
   zip.writeZip(file);
 
-  const dest = path.join(dir, "addon.xpi.extracted");
+  const dest = path.join(dir, "xpi");
   assert.throws(
     () => loadAddon(file, dest, XPI),
     linkRefusal("libs/jquery.js")
@@ -242,7 +243,7 @@ test("loadAddon(file) treats an entry with no recorded mode as an ordinary file"
   const file = path.join(dir, "addon.xpi");
   zip.writeZip(file);
 
-  const addon = loadAddon(file, path.join(dir, "addon.xpi.extracted"), XPI);
+  const addon = loadAddon(file, path.join(dir, "xpi"), XPI);
   assert.deepEqual(addon.symlinks, []);
   assert.ok(addon.files.has("bg.js"));
 
@@ -312,7 +313,7 @@ test("loadAddon(file) records the extracted directories", () => {
   const file = path.join(dir, "addon.xpi");
   zip.writeZip(file);
 
-  const addon = loadAddon(file, path.join(dir, "addon.xpi.extracted"), XPI);
+  const addon = loadAddon(file, path.join(dir, "xpi"), XPI);
   assert.deepEqual(addon.directories.sort(), ["libs", "libs/widget"]);
 
   fs.rmSync(dir, { recursive: true, force: true });
@@ -844,7 +845,7 @@ test("a zip entry name that is not a plain path refuses the whole archive", () =
   refused.forEach((entryName, n) => {
     const file = packed(entryName, n);
     assert.throws(
-      () => loadAddon(file, undefined, XPI),
+      () => loadAddon(file, path.join(dir, "xpi"), XPI),
       (err) => {
         // Exactly one sentence, naming the archive. The entry name is the submission's
         // own text and stays out of it - a refusal is not a place to escape user data.
@@ -874,7 +875,7 @@ test("a leading ./ on a zip entry is repaired, not refused", () => {
   const file = path.join(dir, "leading-dot.xpi");
   zip.writeZip(file);
 
-  const addon = loadAddon(file, undefined, XPI);
+  const addon = loadAddon(file, path.join(dir, "xpi"), XPI);
   assert.ok(addon.files.has("a/b.js"), "keyed without the leading ./");
   assert.equal(readWebExtManifest(addon.store).json.name, "x");
 
@@ -890,7 +891,7 @@ test("an unreadable archive is refused in our own words", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-zipbad-"));
   const refuses = (file) =>
     assert.throws(
-      () => loadAddon(file, undefined, XPI),
+      () => loadAddon(file, path.join(dir, "xpi"), XPI),
       (err) => {
         assert.equal(err.message, `Could not read archive: ${file}`);
         assert.doesNotMatch(err.message, /ADM-ZIP|END header|CRC32|SECRET/i);
@@ -997,7 +998,7 @@ test("an archive declaring more than the unpacked cap is refused before inflatin
   }
   const file = path.join(dir, "big.xpi");
   fs.writeFileSync(file, buf);
-  const dest = path.join(dir, "big.xpi.extracted");
+  const dest = path.join(dir, "xpi");
   assert.throws(() => loadAddon(file, dest, XPI), /unpacked size exceeds/);
   assert.equal(fs.existsSync(dest), false, "the partial extraction is removed");
   fs.rmSync(dir, { recursive: true, force: true });
@@ -1018,7 +1019,7 @@ test("loadAddon(file) extracts to disk and reads the same content back", () => {
   const file = path.join(dir, "addon.xpi");
   zip.writeZip(file);
 
-  const dest = path.join(dir, "addon.xpi.extracted");
+  const dest = path.join(dir, "xpi");
   const addon = loadAddon(file, dest, XPI);
 
   // On disk: manifest.json included, and in addon.files too.
@@ -1048,9 +1049,10 @@ test("loadAddon(file) extracts to disk and reads the same content back", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// extractTo omitted: loadAddon defaults it itself (src/util/dest.js), beside the file.
-test("loadAddon(file) with no extractTo defaults beside the archive", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-extract-default-"));
+// A packed file is read by being extracted, and only the caller can say where: with no
+// copyTo it is a wiring error, refused before anything is written.
+test("loadAddon(file) with no copyTo is a wiring error", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-extract-nowhere-"));
   const zip = new AdmZip();
   zip.addFile(
     "manifest.json",
@@ -1059,10 +1061,105 @@ test("loadAddon(file) with no extractTo defaults beside the archive", () => {
   const file = path.join(dir, "addon.xpi");
   zip.writeZip(file);
 
-  loadAddon(file, undefined, XPI);
-  assert.ok(
-    fs.existsSync(path.join(dir, "addon.xpi.extracted", "manifest.json"))
+  assert.throws(() => loadAddon(file, undefined, XPI), {
+    name: "LinterError",
+    message: /no copyTo/,
+  });
+  assert.deepEqual(fs.readdirSync(dir), ["addon.xpi"]);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// An unpacked add-on given a copyTo is copied there and read from the copy, byte for byte,
+// so the review reads one tree whichever form was submitted - and the submitted folder is
+// left as it was.
+test("loadAddon(folder, copyTo) copies the folder and reads the copy", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-copy-"));
+  const addonDir = path.join(dir, "addon");
+  const files = {
+    "manifest.json": '{"manifest_version":3,"name":"x","version":"1"}',
+    "bg.js": "browser.runtime.id;\n",
+    "a/b/c.js": "nested();\n",
+    "icon.png": Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]),
+  };
+  for (const [name, content] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(addonDir, name)), { recursive: true });
+    fs.writeFileSync(path.join(addonDir, name), content);
+  }
+  fs.mkdirSync(path.join(addonDir, "_locales", "empty"), { recursive: true });
+
+  const dest = path.join(dir, "xpi");
+  const addon = loadAddon(addonDir, dest, XPI);
+  for (const [name, content] of Object.entries(files)) {
+    assert.deepEqual(
+      fs.readFileSync(path.join(dest, name)),
+      Buffer.from(content),
+      name
+    );
+    assert.deepEqual(addon.files.get(name), Buffer.from(content), name);
+  }
+  assert.ok(addon.directories.includes("_locales/empty"), "empty folder kept");
+  // Read from the copy: the store's bytes are the copy's, not the submission's.
+  fs.writeFileSync(path.join(addonDir, "bg.js"), "changed();\n");
+  assert.equal(
+    addon.files.get("bg.js").toString("utf8"),
+    "browser.runtime.id;\n"
   );
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The source folder is walked FIRST, so a refusal fires before anything is written: a
+// symbolic link, and a file the reviewer cannot read, leave no copy behind.
+test("loadAddon(folder, copyTo) refuses before writing anything", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-copy-refused-"));
+  const addonDir = path.join(dir, "addon");
+  fs.mkdirSync(addonDir);
+  fs.writeFileSync(
+    path.join(addonDir, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  fs.symlinkSync("manifest.json", path.join(addonDir, "link.js"));
+  const dest = path.join(dir, "xpi");
+  assert.throws(() => loadAddon(addonDir, dest, XPI), linkRefusal("link.js"));
+  assert.equal(fs.existsSync(dest), false, "nothing copied for a link");
+
+  fs.rmSync(path.join(addonDir, "link.js"));
+  const locked = path.join(addonDir, "locked.js");
+  fs.writeFileSync(locked, "1;\n");
+  fs.chmodSync(locked, 0o000);
+  try {
+    // access(R_OK) is bypassed for root, which reads anything.
+    if (process.getuid?.() !== 0) {
+      assert.throws(() => loadAddon(addonDir, dest, XPI), /cannot be read/);
+      assert.equal(fs.existsSync(dest), false, "nothing copied for a lock");
+    }
+  } finally {
+    fs.chmodSync(locked, 0o600);
+  }
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A FIFO is neither a file nor a folder: the walk passes over it, and the copy does too,
+// so the copy holds exactly what the review accounts for - and is never blocked opening it.
+test("loadAddon(folder, copyTo) copies only regular files and folders", (t) => {
+  if (process.platform === "win32") {
+    t.skip("no FIFOs on Windows");
+    return;
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-copy-fifo-"));
+  const addonDir = path.join(dir, "addon");
+  fs.mkdirSync(addonDir);
+  fs.writeFileSync(
+    path.join(addonDir, "manifest.json"),
+    '{"manifest_version":3,"name":"x","version":"1"}'
+  );
+  execFileSync("mkfifo", [path.join(addonDir, "pipe")]);
+  const dest = path.join(dir, "xpi");
+  const addon = loadAddon(addonDir, dest, XPI);
+  assert.deepEqual(fs.readdirSync(dest), ["manifest.json"]);
+  assert.equal(addon.files.has("pipe"), false);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -1105,7 +1202,7 @@ test("a refused archive leaves no partial extraction on disk", () => {
   const file = path.join(dir, "bad.xpi");
   zip.writeZip(file);
 
-  const dest = path.join(dir, "bad.xpi.extracted");
+  const dest = path.join(dir, "xpi");
   assert.throws(() => loadAddon(file, dest, XPI));
   assert.ok(!fs.existsSync(dest), "a partial extraction was left behind");
 
@@ -1122,7 +1219,7 @@ test("an archive with nothing but directories still leaves an empty extracted fo
   const file = path.join(dir, "addon.xpi");
   zip.writeZip(file);
 
-  const dest = path.join(dir, "addon.xpi.extracted");
+  const dest = path.join(dir, "xpi");
   const addon = loadAddon(file, dest, XPI);
   assert.ok(fs.existsSync(dest) && fs.statSync(dest).isDirectory());
   assert.equal(addon.files.size, 0);

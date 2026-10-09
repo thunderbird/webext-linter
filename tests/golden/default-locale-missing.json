@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/default-locale-missing",
-    "xpiRoot": "<root>/tests/addons/default-locale-missing/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "default-locale-missing",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

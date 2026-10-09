@@ -2,9 +2,9 @@
 // or JSON. Text goes to stdout so it can be read directly. JSON is
 // machine-consumable for CI.
 //
-// It also renders the two texts that are NOT a finished review: one pass of the review
-// loop (loopPromptLines) and the prompt that PREPARES a review (scaPromptLines, the whole
-// output of a run in which no review has happened and none can). Both are layout over
+// It also renders the two kinds of text that are NOT a finished review: one pass of the
+// review loop (loopPromptLines) and the prompts that PREPARE a review (scaPromptLines, the
+// whole output of each run in which no review has happened and none can). Both are layout over
 // values decided elsewhere, which is why they are here and not in the front-end.
 //
 // Belongs here: report LAYOUT and chrome - the ReviewMeta typedef, section
@@ -67,8 +67,7 @@ const SEV_COLOR = {
  *   review target" names a different one in each mode, and no reader can tell which. For
  *   the JSON report only - the text renderers print xpiFile and xpiRoot instead.
  * @property {string} xpiRoot  Where that artifact IS, readable, on disk - the folder this
- *   run extracted it into (src/addon/load.js), or the submission itself when it already
- *   was a folder. Always set, for every review: unlike summaryFile/buildFile below, this
+ *   run extracted or copied it into, `xpi/` in the work folder (src/addon/load.js). Always set, for every review: unlike summaryFile/buildFile below, this
  *   is not conditional on how the review is run.
  * @property {string} xpiFile  What was submitted, by name and not by path - the .xpi as
  *   ATN named it, or the folder's name where the submission arrived unpacked. It is what
@@ -87,15 +86,15 @@ const SEV_COLOR = {
  * @property {number} [manifestVersion]
  * @property {string[]} [checksRun]  Ids of the checks that ran.
  * @property {string} [summaryFile]  Where the --llm-review prompt's reader writes the
- *   add-on description for the reviewer - beside the submitted .xpi, sharing the item
- *   file's name. Named by this tool, written and read by neither.
+ *   add-on description for the reviewer - in the review's work folder, beside the item
+ *   file (src/util/dest.js workPaths). Named by this tool, written and read by neither.
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
  *   in a source code review, where the reviewer reproduces the build.
  * @property {string} [buildDiffFile]  Where the build phase's agent wrote how its build
  *   differs from the shipped XPI: set by the loop (src/report/loop.js reportMeta) only
  *   once that file exists, since the reviewer may decline the build.
  * @property {string} [reportFile]  Where the text the reviewer sends to the developer is
- *   written - beside the other two, sharing their name. Unlike them this tool WRITES it
+ *   written - in the work folder with the other two. Unlike them this tool WRITES it
  *   (src/report/report-file.js), which is why it is named for every review rather than
  *   only when some step prints.
  * @property {boolean} [prompting]  This run handed out a PHASE of the review loop, so
@@ -177,7 +176,7 @@ export function formatText(review) {
  *
  * The order, the entry grouping and the numbering all come from orderReview: this
  * function only draws what that sequence already decided, so the numbers a reader sees
- * are the numbers --llm-verdict resolves (src/report/order.js).
+ * are the numbers --llm-handback resolves (src/report/order.js).
  * @param {ReviewResult} review
  * @returns {string[]}
  */
@@ -280,28 +279,43 @@ function stepLines(n, text, blocks = []) {
  * @param {{name: string, intro: string}} phase
  * @param {{text: string}[]} steps  Already filtered by src/report/phases.js stepsOf.
  * @param {Object<string, string>} values  What the texts and steps name: review, command,
- *   schemaCache, description, build, scaRoot, schema, details. The last two are laid out
- *   as blocks rather than substituted into prose (BLOCK_VALUES).
+ *   schemaCache, description, build, scaRoot, schema, details, tally. The review file, the
+ *   command and the last three are laid out as blocks rather than substituted into prose
+ *   (BLOCK_VALUES).
  * @param {{text: string}[]} [preamble]  The preamble parts this prompt prints, already
  *   filtered by their conditions (src/report/loop.js issue) - none on every pass but the
  *   first.
  * @returns {string[]}
  */
 /** The prompt values that are handed to a step as a BLOCK rather than substituted into
- *  its prose: printed line for line, never re-wrapped. Each is a table, and a wrapped row is
- *  one nobody can read back - the schema block because its reader looks values up in it,
- *  the Review Details block and the closing tally because the reviewer is given them as
- *  they stand. */
-const BLOCK_VALUES = new Set(["schema", "details", "tally"]);
+ *  its prose: printed line for line, never re-wrapped. Three are tables, and a wrapped row
+ *  is one nobody can read back - the schema block because its reader looks values up in
+ *  it, the Review Details block and the closing tally because the reviewer is given them as
+ *  they stand. The hand-back command and the review file's path are the other two: the
+ *  command is run exactly as printed, and the path is the file the agent opens - a line
+ *  break inside either names a folder or a file that does not exist. */
+const BLOCK_VALUES = new Set([
+  "schema",
+  "details",
+  "tally",
+  "command",
+  "review",
+]);
 
 export function loopPromptLines(texts, phase, steps, values, preamble = []) {
-  // Everything BUT the value blocks, which stepLines lays out unwrapped below.
+  // Everything BUT the value blocks, which promptProse and stepLines lay out unwrapped.
   const fill = (text) =>
     Object.entries(values).reduce(
       (acc, [name, value]) =>
         BLOCK_VALUES.has(name) ? acc : acc.split(`{{${name}}}`).join(value),
       text
     );
+  // A block of named values is laid out rather than substituted into the prose: it must NOT
+  // be wrapped. A path split across two lines is a path nobody can copy, and the agent is
+  // being told where to look.
+  const blocks = [...BLOCK_VALUES]
+    .filter((name) => values[name])
+    .map((name) => ({ name: `{{${name}}}`, lines: values[name].split("\n") }));
   const lines = [...section("LLM Prompt"), ""];
   for (const part of preamble) {
     lines.push(...promptProse(fill(part.text)), "");
@@ -310,17 +324,11 @@ export function loopPromptLines(texts, phase, steps, values, preamble = []) {
   // review ends with it, so it names no file to re-read and carries no hand-back step.
   const closing = phase.answer === "end";
   if (!closing) {
-    lines.push(...promptProse(fill(texts.frame)));
+    lines.push(...promptProse(fill(texts.frame), blocks));
   }
   if (phase.intro) {
     lines.push("", ...promptProse(fill(phase.intro)));
   }
-  // A block of named values is handed to stepLines rather than substituted into the
-  // prose: it must NOT be wrapped. A path split across two lines is a path nobody can
-  // copy, and the agent is being told where to look.
-  const blocks = [...BLOCK_VALUES]
-    .filter((name) => values[name])
-    .map((name) => ({ name: `{{${name}}}`, lines: values[name].split("\n") }));
   // The handover is the last numbered step, not a trailer: the agent follows a numbered
   // list, and a hand-back tacked on as prose is the one instruction it can skim past.
   const all = [
@@ -378,13 +386,23 @@ function assertFilled(lines, phase) {
  *
  * A VALUE BLOCK is the exception, and is printed exactly as authored: every line of it is
  * a name and a path, or a path alone. Those must not be wrapped - a wrapped path is a path
- * nobody can copy - and must not be collapsed, or two values become one line.
+ * nobody can copy - and must not be collapsed, or two values become one line. So is a
+ * paragraph that is a placeholder alone and one of `blocks` (BLOCK_VALUES), printed as its
+ * value stands.
+ * @param {string} text
+ * @param {{name: string, lines: string[]}[]} [blocks]
+ * @returns {string[]}
  */
-function promptProse(text) {
+function promptProse(text, blocks = []) {
   const out = [];
   text.split("\n\n").forEach((paragraph, i) => {
     if (i > 0) {
       out.push("");
+    }
+    const block = blocks.find((b) => paragraph.trim() === b.name);
+    if (block) {
+      out.push(...block.lines);
+      return;
     }
     if (isValueBlock(paragraph)) {
       out.push(
@@ -409,14 +427,17 @@ function isValueBlock(paragraph) {
   return lines.every((l) => /^[A-Z][A-Z0-9_]*\s/.test(l.trim()));
 }
 
-/** The values --llm-sca-review hands its reader, in the order the steps use them. Named
- *  here because the prompt's steps name them: the facts are a table the reader looks up,
- *  never a sentence they have to extract a path from. */
+/** The values the first prompt of the preparation hands its reader, in the order the steps
+ *  use them. Named here because the prompt's steps name them: the facts are a table the
+ *  reader looks up, never a sentence they have to extract a path from. The first three are
+ *  read off the submission. EXTRACT_TO and ANSWERS are the work folder's own: where the
+ *  source archive is extracted, and the review file the roots are handed back in. */
 const SUBMISSION_VALUES = [
-  ["XPI", "xpi"],
-  ["SOURCE_ARCHIVE", "source"],
-  ["FOLDER", "folder"],
-  ["EXTRACT_TO", "extracted"],
+  ["XPI", (v) => v.submission.xpi],
+  ["SOURCE_ARCHIVE", (v) => v.submission.source],
+  ["FOLDER", (v) => v.submission.folder],
+  ["EXTRACT_TO", (v) => v.extractTo],
+  ["ANSWERS", (v) => v.answers],
 ];
 
 /**
@@ -443,56 +464,69 @@ function valueLines(entries) {
 }
 
 /**
- * The whole output of a --llm-sca-review run: the prompt that turns a submission folder
- * into an SCA review, the values it works from, and the flags to run it with.
+ * One prompt of the preparation of a source code review: the whole output of the run that
+ * prints it, since no review has run when it prints, and none can until its reader does what
+ * it says.
  *
- * Three parts on purpose. The VALUES are `NAME` with its value beneath it, never wrapped,
- * so a reader takes a path by looking up a name rather than by parsing a sentence -
- * SCA_ROOT among them: this tool cannot open a source archive itself, but it can still
- * name where one should land, the same way it names FOLDER or SOURCE_ARCHIVE. The STEPS
- * are prose, and they name those given values - and the ones the reader still has to work
- * out, <SCA_EXP_SOURCE> - instead of carrying paths themselves. The FLAGS
- * are the finished command, one flag per line, filled into the step that says to run it.
+ * One renderer for every one of them (SCA_PROMPT_STEPS), so they read alike. Three parts on
+ * purpose. The VALUES are `NAME` with its value beneath it, never wrapped, so a reader takes
+ * a path by looking up a name rather than by parsing a sentence: the Submission block on the
+ * first prompt - EXTRACT_TO among them: this tool cannot open a source archive itself, but
+ * it can still name where one should land - and RESCUE_ROOT on a rescued copy's. The STEPS
+ * are prose, and
+ * they name those given values - and the ones the reader still has to work out, <SCA_ROOT>
+ * and <SCA_EXP_SOURCE> - instead of carrying paths themselves. The FLAGS are the finished
+ * command, one flag per line, filled into the step that says to run it. The intro opens the
+ * first prompt only: it says what the preparation is, once.
  *
- * A step with `when: experiments` is dropped unless the built add-on declares
- * Experiments, and the surviving steps are numbered 1..N here, so no step may number
- * itself.
- *
- * No review has run when this prints, and none can until its reader answers it - so unlike
- * every other section here, this one describes work still to do rather than work done.
- * @param {{intro: string, outcome: {when: ?object, text: string}[]}} prompt  From
- *   registry.llmScaReviewPrompt().
- * @param {{folder: string, xpi: string, source: string, extracted: string}} submission
- *   From scaSubmission().
- * @param {{flags: string[], experiments: boolean}} review  What the review is to be run
- *   as, composed by the front-end (src/cli.js), which owns the flag names and holds the
- *   parser's answers: the finished flag lines, and whether the add-on declares Experiments.
- *   Laid out here, never added to, trimmed or second-guessed.
+ * A step whose `when:` does not hold is dropped, and the surviving steps are numbered 1..N
+ * here, so no step may number itself.
+ * @param {{intro: string, steps: Record<string, {when: ?object, text: string}[]>}} prompt
+ *   From registry.llmScaReviewPrompt().
+ * @param {string} list  Which prompt: one of SCA_PROMPT_STEPS.
+ * @param {object} values
+ * @param {{folder: string, xpi: string, source: string}} [values.submission]  From
+ *   scaSubmission(), on the first prompt alone, which also prints the intro.
+ * @param {string} [values.extractTo]  Beside `submission`: where the reader extracts the
+ *   source archive, the `sca` folder of the work folder (src/util/dest.js workPaths), ending
+ *   in a separator so it reads as the folder it is.
+ * @param {string} [values.answers]  Beside `submission`: the review file the roots are
+ *   handed back in.
+ * @param {string} [values.rescueRoot]  On a rescued copy's prompt: the copy's root.
+ * @param {string[]} values.flags  The command the prompt's run prints, composed by the
+ *   front-end (src/cli.js), which owns the flag names: the finished flag lines. Laid out
+ *   here, never added to, trimmed or second-guessed.
+ * @param {boolean} values.experiments  Whether the built add-on declares Experiments.
  * @returns {string[]}
  */
-export function scaPromptLines(prompt, submission, review) {
-  const lines = [
-    ...section("SCA Review Prompt"),
-    "",
-    ...wrapText(prompt.intro),
-    "",
-    "Submission:",
-  ];
-  lines.push(
-    ...valueLines(
-      SUBMISSION_VALUES.map(([name, key]) => [name, submission[key]])
-    )
-  );
+export function scaPromptLines(prompt, list, values) {
+  const lines = [...section("SCA Review Prompt")];
+  if (values.submission) {
+    lines.push(
+      "",
+      ...wrapText(prompt.intro),
+      "",
+      "Submission:",
+      ...valueLines(SUBMISSION_VALUES.map(([name, of]) => [name, of(values)]))
+    );
+  }
+  if (values.rescueRoot) {
+    lines.push(
+      "",
+      "Copy:",
+      ...valueLines([["RESCUE_ROOT", values.rescueRoot]])
+    );
+  }
   // The flags are a command, composed elsewhere - but they travel through a submission's
   // own file names, so they are made safe to show like every other line here. displayPath,
   // not displayLine: this command names the very files the block above it names, and its
   // reader RUNS it. Collapsing a run of spaces inside a quoted path hands them a command
   // for a file that does not exist - or, worse, for a different one that does.
-  const flags = review.flags.map(displayPath);
-  // The facts this prompt's conditions can name (SCA_PROMPT_FACTS): only whether the
+  const command = values.flags.map(displayPath);
+  // The facts these prompts' conditions can name (SCA_PROMPT_FACTS): only whether the
   // built add-on declares Experiments.
-  const facts = new Set(review.experiments ? ["experiments"] : []);
-  const steps = prompt.outcome.filter(
+  const facts = new Set(values.experiments ? ["experiments"] : []);
+  const steps = prompt.steps[list].filter(
     (step) => step.when === null || holds(step.when, facts)
   );
   steps.forEach((step, i) => {
@@ -500,7 +534,7 @@ export function scaPromptLines(prompt, submission, review) {
     // lines is a command to reassemble - so they are rendered here and slotted in.
     lines.push(
       "",
-      ...stepLines(i + 1, step.text, [{ name: "{{flags}}", lines: flags }])
+      ...stepLines(i + 1, step.text, [{ name: "{{flags}}", lines: command }])
     );
   });
   return lines;

@@ -15,7 +15,8 @@
 // a pattern like /[,;:]+$/ is retried from every position inside a long run - a loop walks
 // it once.
 //
-// Belongs here: wrapText (a generic width-wrapper), that guard family, and those scans.
+// Belongs here: wrapText (a generic width-wrapper), that guard family, those scans, and
+// shellArg, which quotes one argument of a command a prompt hands its reader to run.
 // Does NOT belong here: the report's section layout (src/report/format.js), the
 // activity-feed narration (src/checks/escalation.js) that call them, or the one door to the
 // terminal (src/util/log.js) that calls displayTerminal.
@@ -115,8 +116,8 @@ export function displayLine(text) {
 
 /**
  * The same guard again, for a one-line sink whose value is a PATH the reader COPIES -
- * a named value in the Review Details block or in the --llm-sca-review prompt's
- * Submission block.
+ * a named value in the Review Details block or in the Submission block of the prompt that
+ * prepares a source code review.
  *
  * Control characters go, like everywhere else: a path reaches us through a folder a
  * reviewer named and a file name a submission chose, and neither may forge a line. What
@@ -341,4 +342,16 @@ function isPathChar(c) {
     (c >= "0" && c <= "9") ||
     "_./@-".includes(c)
   );
+}
+
+/**
+ * One argument as it must be TYPED: quoted when it carries whitespace, because these lines
+ * are a command their reader runs, and a submission folder is as likely to be "/reviews/my
+ * add-on" as not. Single quotes, the shell's literal form, with the one escape that form
+ * needs.
+ * @param {string} value
+ * @returns {string}
+ */
+export function shellArg(value) {
+  return /\s/.test(value) ? `'${value.replaceAll("'", "'\\''")}'` : value;
 }

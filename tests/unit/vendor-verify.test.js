@@ -287,7 +287,6 @@ const store = (over = {}) => ({
   unparsedVendor: false,
   vendorFile: null,
   vulnerabilities: [],
-  devPackages: [],
   devVulnerabilities: [],
   unaudited: [],
   unpopularDeps: [],
@@ -339,36 +338,85 @@ test("missing-vendor-file: says nothing when every declared file is shipped", ()
 });
 
 // ---- verifyScaDependencies (SCA mode dependency audit) ----
+// A source review reads its dependencies from the lock alone: the store's lockPackages and
+// lockGithubInstalls, never the package.json buckets.
 
-test("verifyScaDependencies: a non-popular declared dep is recorded as unreviewable", async () => {
+/** A GitHub install as githubInstalls produces one. */
+const ghLocked = (name, repo, direct = true) => ({
+  name,
+  version: "1.0.0",
+  repo,
+  direct,
+  file: "package-lock.json",
+  token: `node_modules/${name}`,
+});
+
+test("verifyScaDependencies: a non-popular declared dep is recorded at its lock entry", async () => {
   const addon = addonWith(
-    { "package.json": '{"dependencies":{"niche":"1.0.0"}}' },
-    store({
-      packages: [{ name: "niche", version: "1.0.0", file: "package.json" }],
-    })
+    { "package-lock.json": "{}" },
+    store({ lockPackages: [locked("niche", "1.0.0", false, true)] })
   );
-  await verifyScaDependencies(
-    addon,
-    net({ downloads: 30, osv: { vulns: [] } })
-  );
+  await verifyScaDependencies(addon, net({ downloads: 30 }));
   assert.deepEqual(addon.vendor.unpopularDeps, [
-    { name: "niche", version: "1.0.0", file: "package.json", token: "niche" },
+    {
+      name: "niche",
+      version: "1.0.0",
+      file: "package-lock.json",
+      token: "node_modules/niche",
+    },
   ]);
 });
 
 test("verifyScaDependencies: a POPULAR declared dep is allowed (not recorded)", async () => {
   const addon = addonWith(
-    { "package.json": "{}" },
-    store({ packages: [{ name: "react", version: "18.0.0" }] })
+    { "package-lock.json": "{}" },
+    store({ lockPackages: [locked("react", "18.0.0", false, true)] })
   );
   await verifyScaDependencies(addon, net({ downloads: 5000 }));
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
+// Popularity asks whether the developer chose a reputable library. A package the lock
+// records nobody declaring was chosen by nobody, so the question does not arise.
+test("verifyScaDependencies: a pulled-in package is not popularity-gated", async () => {
+  const calls = { popularity: [] };
+  const addon = addonWith(
+    { "package-lock.json": "{}" },
+    store({
+      lockPackages: [locked("deep", "1.0.0")],
+      lockGithubInstalls: [ghLocked("ghdeep", "u/ghdeep", false)],
+    })
+  );
+  await verifyScaDependencies(addon, net({ calls, downloads: 1, stars: 1 }));
+  assert.deepEqual(calls.popularity, []);
+  assert.deepEqual(addon.vendor.unpopularDeps, []);
+});
+
+// One reading per package, not per release: a lock may install two versions of one
+// declared name.
+test("verifyScaDependencies: a declared name is looked up once", async () => {
+  const calls = { popularity: [] };
+  const addon = addonWith(
+    { "package-lock.json": "{}" },
+    store({
+      lockPackages: [
+        locked("twice", "1.0.0", false, true),
+        locked("twice", "2.0.0", true, true),
+      ],
+    })
+  );
+  await verifyScaDependencies(addon, net({ calls, downloads: 30 }));
+  assert.equal(calls.popularity.length, 1);
+  assert.equal(addon.vendor.unpopularDeps.length, 1);
+});
+
 test("verifyScaDependencies: lookups that find nothing (404) record nothing", async () => {
   const addon = addonWith(
-    { "package.json": "{}" },
-    store({ packages: [{ name: "niche", version: "1.0.0" }] })
+    { "package-lock.json": "{}" },
+    store({
+      lockPackages: [locked("niche", "1.0.0", false, true)],
+      lockGithubInstalls: [ghLocked("widget", "u/widget")],
+    })
   );
   const nothingFound = {
     fetchBytes: async () => {
@@ -385,59 +433,38 @@ test("verifyScaDependencies: lookups that find nothing (404) record nothing", as
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
-// GitHub-sourced deps are gated by stars (the same bar as a VENDOR.md github
-// source), needing no bundled file - so it works for an SCA submission.
-test("verifyScaDependencies: a low-star GitHub dep is recorded as unreviewable", async () => {
+// A declared package the lock installs from GitHub is gated by stars (the same bar as a
+// VENDOR.md github source) - it is never audited by name, so this is what is asked of it.
+test("verifyScaDependencies: a low-star GitHub install is recorded as unreviewable", async () => {
   const addon = addonWith(
-    { "package.json": "{}" },
-    store({
-      githubDeps: [
-        {
-          name: "widget",
-          spec: "u/widget",
-          repo: "u/widget",
-          ref: null,
-          file: "package.json",
-        },
-      ],
-    })
+    { "package-lock.json": "{}" },
+    store({ lockGithubInstalls: [ghLocked("widget", "u/widget")] })
   );
   await verifyScaDependencies(addon, net({ stars: 5 }));
   assert.deepEqual(addon.vendor.unpopularDeps, [
     {
       name: "widget",
-      version: "u/widget",
-      file: "package.json",
-      token: "widget",
+      version: "1.0.0",
+      file: "package-lock.json",
+      token: "node_modules/widget",
     },
   ]);
 });
 
-test("verifyScaDependencies: a popular (high-star) GitHub dep is allowed", async () => {
+test("verifyScaDependencies: a popular (high-star) GitHub install is allowed", async () => {
   const addon = addonWith(
-    { "package.json": "{}" },
-    store({
-      githubDeps: [
-        { name: "widget", spec: "u/widget", repo: "u/widget", ref: null },
-      ],
-    })
+    { "package-lock.json": "{}" },
+    store({ lockGithubInstalls: [ghLocked("widget", "u/widget")] })
   );
   await verifyScaDependencies(addon, net({ stars: 5000 }));
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
-test("verifyScaDependencies: a trusted-org (thunderbird) GitHub dep is a free pass", async () => {
+test("verifyScaDependencies: a trusted-org (thunderbird) GitHub install is a free pass", async () => {
   const addon = addonWith(
-    { "package.json": "{}" },
+    { "package-lock.json": "{}" },
     store({
-      githubDeps: [
-        {
-          name: "helper",
-          spec: "thunderbird/helper",
-          repo: "thunderbird/helper",
-          ref: null,
-        },
-      ],
+      lockGithubInstalls: [ghLocked("helper", "thunderbird/helper")],
     })
   );
   // stars:0 would fail the bar, but the trusted org never triggers the lookup.
@@ -445,93 +472,81 @@ test("verifyScaDependencies: a trusted-org (thunderbird) GitHub dep is a free pa
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
-test("verifyScaDependencies: a GitHub stars lookup failure records nothing", async () => {
+// Every installed package goes through one batch, and each hit lands in one of four lists
+// by the lock's own two markers. The two declared lists are what vendor-vulnerable and
+// vendor-vulnerable-dev read, anchored at the lock entry like the indirect pair.
+test("verifyScaDependencies: hits route by the lock's declared and dev markers", async () => {
   const addon = addonWith(
-    { "package.json": "{}" },
+    { "package-lock.json": "{}" },
     store({
-      githubDeps: [
-        { name: "widget", spec: "u/widget", repo: "u/widget", ref: null },
+      lockPackages: [
+        locked("build-tool", "1.0.0", true, true),
+        locked("lib", "2.0.0", false, true),
+        locked("pulled", "3.0.0"),
+        locked("pulled-dev", "4.0.0", true),
       ],
     })
   );
-  const nothingFound = {
-    fetchBytes: async () => {
-      throw notFound();
-    },
-    fetchJson: async () => {
-      throw notFound();
-    },
-    postJson: async () => {
-      throw notFound();
-    },
-  };
-  await verifyScaDependencies(addon, nothingFound);
-  assert.deepEqual(addon.vendor.unpopularDeps, []);
+  const hit = (id) => ({ vulns: [{ id }] });
+  await verifyScaDependencies(
+    addon,
+    net({
+      downloads: 5, // a build tool is held to the same bar as a shipped one
+      batch: {
+        results: [hit("A"), hit("B"), hit("C"), hit("D")],
+      },
+      advisories: {
+        A: advisory("A", "HIGH", "2.0.0", "build-tool"),
+        B: advisory("B", "CRITICAL", "2.0.1", "lib"),
+        C: advisory("C", "HIGH", "3.0.1", "pulled"),
+        D: advisory("D", "HIGH", "4.0.1", "pulled-dev"),
+      },
+    })
+  );
+  const names = (list) => list.map((v) => `${v.name}@${v.file}`);
+  assert.deepEqual(names(addon.vendor.devVulnerabilities), [
+    "build-tool@package-lock.json",
+  ]);
+  assert.deepEqual(names(addon.vendor.vulnerabilities), [
+    "lib@package-lock.json",
+  ]);
+  assert.deepEqual(names(addon.vendor.treeVulnerabilities), [
+    "pulled@package-lock.json",
+  ]);
+  assert.deepEqual(names(addon.vendor.treeDevVulnerabilities), [
+    "pulled-dev@package-lock.json",
+  ]);
+  // And the obscure build tool is flagged, for the reason it is audited at all: the
+  // reviewer installs and RUNS it.
+  assert.deepEqual(
+    addon.vendor.unpopularDeps.map((d) => d.name),
+    ["build-tool", "lib"]
+  );
 });
 
-// Dev dependencies never ship, but the SCA reviewer builds from source, so a
-// pinned npm dev dep is OSV-audited too - recorded on devVulnerabilities (a set
-// distinct from the prod/vendored `vulnerabilities`), and NOT popularity-gated (a
-// low-download build tool is fine, so nothing is recorded on unpopularDeps).
-test("verifyScaDependencies: a dev dependency is OSV-audited AND popularity-gated", async () => {
+// A declared dependency is held to the same band as the rest of the tree in a source
+// review: a moderate advisory does not fail it, so it is not reported.
+test("verifyScaDependencies: a declared package's moderate advisory is not recorded", async () => {
   const addon = addonWith(
-    { "package.json": '{"devDependencies":{"build-tool":"1.0.0"}}' },
+    { "package-lock.json": "{}" },
     store({
-      devPackages: [
-        { name: "build-tool", version: "1.0.0", file: "package.json" },
+      lockPackages: [
+        locked("lib", "2.0.0", false, true),
+        locked("tool", "1.0.0", true, true),
       ],
     })
   );
   await verifyScaDependencies(
     addon,
     net({
-      downloads: 5, // low: a build tool is held to the same bar as a shipped one
-      osv: {
-        vulns: [
-          {
-            id: "GHSA-dev0-0000-0000",
-            aliases: ["CVE-2021-0001"],
-            database_specific: { severity: "HIGH" },
-            affected: [
-              {
-                package: { ecosystem: "npm", name: "build-tool" },
-                ranges: [
-                  {
-                    type: "SEMVER",
-                    events: [{ introduced: "0" }, { fixed: "2.0.0" }],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
+      batch: {
+        results: [{ vulns: [{ id: "M" }] }, { vulns: [{ id: "M" }] }],
       },
+      advisories: { M: advisory("M", "MODERATE", "9.9.9", "lib") },
     })
   );
-  assert.deepEqual(addon.vendor.devVulnerabilities, [
-    {
-      name: "build-tool",
-      version: "1.0.0",
-      ids: ["CVE-2021-0001"],
-      severity: "high",
-      fixed: ["2.0.0"],
-      file: "package.json",
-      token: "build-tool",
-    },
-  ]);
-  // The prod/vendored set is untouched.
   assert.deepEqual(addon.vendor.vulnerabilities, []);
-  // And the obscure build tool is flagged, for the reason it is audited at all: the
-  // reviewer installs and RUNS it. Refusing only the vulnerabilities we can name would
-  // protect them from the named risk and leave the unnamed one.
-  assert.deepEqual(addon.vendor.unpopularDeps, [
-    {
-      name: "build-tool",
-      version: "1.0.0",
-      file: "package.json",
-      token: "build-tool",
-    },
-  ]);
+  assert.deepEqual(addon.vendor.devVulnerabilities, []);
 });
 
 test("verifyVendor: VENDOR entry that matches a popular pinned source -> verified", async () => {
@@ -1261,18 +1276,33 @@ test("blocklist: a declared-AND-bundled banned library is recorded once, not twi
   assert.equal(addon.vendor.blocked.length, 1); // not double-recorded
 });
 
-// A banned SCA devDependency is never shipped, so it must NOT be recorded
-// as a banned-library, and it must STILL be OSV-audited (into devVulnerabilities) -
-// verifyScaDependencies passes no `blocks` for the dev-dep audit.
-test("blocklist: a banned SCA devDependency is not blocked and is still OSV-audited", async () => {
+// In a source review every package the lock installs is matched against the policy,
+// declared or not, shipped or build-only: vendor.blocked covers the whole installed tree.
+// A banned release leaves the OSV batch, as auditNpm skips one, so it is reported once.
+test("blocklist: a banned package anywhere in the lock is recorded and leaves the batch", async () => {
+  const calls = { batch: [] };
   const addon = addonWith(
-    { "package.json": '{"devDependencies":{"jquery":"1.7.2"}}' },
-    store({ devPackages: [{ name: "jquery", version: "1.7.2" }] })
+    { "package-lock.json": "{}" },
+    store({
+      lockPackages: [
+        locked("jquery", "1.7.2", true), // pulled in, build-only
+        locked("other", "1.0.0"),
+      ],
+    })
   );
-  const c = { n: 0 };
-  await verifyScaDependencies(addon, countingNet(c), JQUERY_BLOCK);
-  assert.deepEqual(addon.vendor.blocked, []); // dev dep NOT policy-blocked
-  assert.equal(c.n, 1); // still OSV-audited (into devVulnerabilities)
+  await verifyScaDependencies(
+    addon,
+    net({ calls, batch: { results: [{ vulns: [] }] } }),
+    JQUERY_BLOCK
+  );
+  assert.deepEqual(
+    addon.vendor.blocked.map((b) => [b.name, b.status, b.file, b.token]),
+    [["jquery", "banned", "package-lock.json", "node_modules/jquery"]]
+  );
+  assert.deepEqual(
+    calls.batch[0].queries.map((q) => q.package.name),
+    ["other"]
+  );
 });
 
 // An npm-sourced VENDOR entry is audited the same way as a package.json dep, but
@@ -1718,8 +1748,17 @@ test("a NetworkGoneError propagates out of every vendor entry point", async () =
       },
     ],
     packages: [{ name: "x", version: "1.0.0" }],
-    devPackages: [],
     githubDeps: [],
+    lockPackages: [
+      {
+        name: "x",
+        version: "1.0.0",
+        dev: false,
+        direct: true,
+        file: "package-lock.json",
+        token: "node_modules/x",
+      },
+    ],
     results: [],
     vulnerabilities: [],
     devVulnerabilities: [],
@@ -1776,8 +1815,17 @@ test("a NoAnswerError propagates out of every vendor entry point", async () => {
       },
     ],
     packages: [{ name: "x", version: "1.0.0" }],
-    devPackages: [],
     githubDeps: [],
+    lockPackages: [
+      {
+        name: "x",
+        version: "1.0.0",
+        dev: false,
+        direct: true,
+        file: "package-lock.json",
+        token: "node_modules/x",
+      },
+    ],
     results: [],
     vulnerabilities: [],
     devVulnerabilities: [],
@@ -2277,7 +2325,6 @@ test("a 404 is read as an answer, not fatal", async () => {
         },
       ],
       packages: [],
-      devPackages: [],
       githubDeps: [],
       results: [],
       vulnerabilities: [],
@@ -2410,40 +2457,26 @@ test("auditLockedPackages: a build-time package routes to the dev set", async ()
   );
 });
 
-// A declared dependency is already audited by name, at every severity, anchored
-// at its package.json line. Sending it again would report it twice - the second
-// time as something nobody declared - so it never reaches the batch at all.
-test("auditLockedPackages: a declared package is not re-queried", async () => {
+// Declared and pulled-in packages are asked about in the same batch - the single-package
+// endpoint is never used in a source review.
+test("auditLockedPackages: declared packages share the one batch", async () => {
   const calls = { batch: [], query: [] };
   const addon = addonWith(
-    { "package.json": '{"dependencies":{"marked":"4.0.0"}}' },
+    { "package-lock.json": "{}" },
     store({
-      packages: [{ name: "marked", version: "4.0.0" }],
-      devPackages: [{ name: "webpack", version: "5.0.0" }],
       lockPackages: [
-        locked("marked", "4.0.0"),
-        locked("webpack", "5.0.0", true),
+        locked("marked", "4.0.0", false, true),
+        locked("webpack", "5.0.0", true, true),
         locked("deep", "1.0.0"),
       ],
     })
   );
-  await verifyScaDependencies(
-    addon,
-    net({
-      calls,
-      osv: { vulns: [] },
-      batch: { results: [{ vulns: [] }] },
-    })
-  );
+  await verifyScaDependencies(addon, net({ calls, batch: { results: [] } }));
   assert.deepEqual(
     calls.batch[0].queries.map((q) => q.package.name),
-    ["deep"]
+    ["marked", "webpack", "deep"]
   );
-  // The declared half still went through the single-package endpoint, once each.
-  assert.deepEqual(
-    calls.query.map((q) => q.package.name),
-    ["marked", "webpack"]
-  );
+  assert.deepEqual(calls.query, []);
 });
 
 // One request carrying a whole large tree is refused by the endpoint, so the
@@ -2580,8 +2613,9 @@ test("auditLockedPackages: an answered chunk is discarded when a later one fails
 
 // OSV's malicious-package records state no severity at all, so a band rule alone
 // discards them - and "this package is malicious" is the strongest thing the
-// advisory database can say about a package nobody chose to install.
-test("auditLockedPackages: a malicious-package advisory is kept at any band", async () => {
+// advisory database can say about a package nobody chose to install. It is read as
+// critical, so the band rule keeps it.
+test("auditLockedPackages: a malicious-package advisory is recorded as critical", async () => {
   const addon = addonWith(
     { "package.json": "{}" },
     store({ lockPackages: [locked("evil-pkg", "1.0.0")] })
@@ -2601,7 +2635,57 @@ test("auditLockedPackages: a malicious-package advisory is kept at any band", as
   );
   assert.deepEqual(
     addon.vendor.treeVulnerabilities.map((v) => [v.name, v.severity, v.ids]),
-    [["evil-pkg", "unknown", ["MAL-2023-462"]]]
+    [["evil-pkg", "critical", ["MAL-2023-462"]]]
+  );
+});
+
+// The same advisory on a package the lock marks as declared goes to vendor-vulnerable,
+// whose severity is auto - and critical maps to an error, so it rejects like any other
+// critical advisory rather than landing as info.
+test("a malicious advisory on a declared package is a vendor-vulnerable error", async () => {
+  const addon = addonWith(
+    { "package-lock.json": '{\n  "node_modules/evil-pkg": {}\n}' },
+    store({ lockPackages: [locked("evil-pkg", "1.0.0", false, true)] })
+  );
+  await verifyScaDependencies(
+    addon,
+    net({
+      batch: { results: [{ vulns: [{ id: "MAL-2023-462" }] }] },
+      advisories: { "MAL-2023-462": { id: "MAL-2023-462" } },
+    })
+  );
+  const out = vendorVulnerable.run(withManifest({ artifact: addon })).findings;
+  assert.deepEqual(
+    out.map((f) => [f.item, f.severity, f.data.severity]),
+    [["evil-pkg", "error", "critical"]]
+  );
+});
+
+// An XPI-shipped library is audited one package at a time (auditNpm), and a malicious
+// advisory there is an error too.
+test("a malicious advisory on an XPI-shipped library is a vendor-vulnerable error", async () => {
+  const body = "LIB\n";
+  const sri = `sha256-${createHash("sha256").update(body).digest("base64")}`;
+  const addon = addonWith(
+    {
+      "vendor/lib.js": body,
+      "package.json": '{"dependencies":{"evil-pkg":"1.0.0"}}',
+    },
+    store({ packages: [{ name: "evil-pkg", version: "1.0.0" }] })
+  );
+  const listing = { files: [{ path: "/dist/lib.js", integrity: sri }] };
+  await verifyVendor(
+    addon,
+    net({
+      listing,
+      osv: { vulns: [{ id: "MAL-2024-1" }] },
+      throwOnFetch: true,
+    })
+  );
+  const out = vendorVulnerable.run(withManifest({ artifact: addon })).findings;
+  assert.deepEqual(
+    out.map((f) => [f.item, f.severity, f.data.severity]),
+    [["evil-pkg", "error", "critical"]]
   );
 });
 
@@ -2619,33 +2703,53 @@ test("auditLockedPackages: a non-array vulns field does not abort the review", a
   assert.deepEqual(addon.vendor.treeVulnerabilities, []);
 });
 
-// Telling a developer their add-on "does not declare" a package they wrote down
-// is a false statement in a rejection. The lock records the declaration forms the
-// root package.json parse misses, so the enumeration's own `direct` flag settles
-// it - including when package.json and the lock disagree about the version, which
-// is what keeps the name@version comparison from being enough.
-test("auditLockedPackages: a package the lock says was declared is left alone", async () => {
+// A library the archive vendors (a VENDOR file entry) AND installs is reported once: the
+// VENDOR-file audit already recorded that exact release - as an advisory or as a policy
+// hit - so the lock audit leaves it alone. A different version of the same name is a
+// different release, and is still asked about.
+test("auditLockedPackages: a release the VENDOR-file audit recorded is reported once", async () => {
   const calls = { batch: [] };
+  const vendored = {
+    name: "lodash",
+    version: "4.17.20",
+    ids: ["CVE-1"],
+    severity: "high",
+    fixed: [],
+    file: "VENDOR.md",
+    token: "https://unpkg.com/lodash@4.17.20/lodash.js",
+  };
   const addon = addonWith(
-    { "package.json": '{"devDependencies":{"adm-zip":"0.5.17"}}' },
+    { "package-lock.json": "{}" },
     store({
-      // package.json pins 0.5.17; the lock installed 0.5.18.
-      devPackages: [{ name: "adm-zip", version: "0.5.17" }],
+      vulnerabilities: [vendored],
+      blocked: [
+        {
+          name: "jquery",
+          version: "1.7.2",
+          status: "banned",
+          reason: "old",
+          file: "VENDOR.md",
+          token: "x",
+        },
+      ],
       lockPackages: [
-        locked("adm-zip", "0.5.18", true, true),
-        locked("workspace-dep", "1.0.0", false, true),
-        locked("genuinely-pulled-in", "1.0.0"),
+        locked("jquery", "1.7.2", false, true),
+        locked("lodash", "4.17.20", false, true),
+        locked("lodash", "4.17.21"),
       ],
     })
   );
   await verifyScaDependencies(
     addon,
-    net({ calls, osv: { vulns: [] }, batch: { results: [{ vulns: [] }] } })
+    net({ calls, batch: { results: [{ vulns: [] }] } }),
+    JQUERY_BLOCK
   );
   assert.deepEqual(
-    calls.batch[0].queries.map((q) => q.package.name),
-    ["genuinely-pulled-in"]
+    calls.batch[0].queries.map((q) => `${q.package.name}@${q.version}`),
+    ["lodash@4.17.21"]
   );
+  assert.deepEqual(addon.vendor.vulnerabilities, [vendored]);
+  assert.equal(addon.vendor.blocked.length, 1);
 });
 
 // NetworkGoneError is not a flaky endpoint, it is the run having no network at
@@ -2681,23 +2785,37 @@ test("auditLockedPackages: NetworkGoneError propagates from both endpoints", asy
   );
 });
 
-// The blocklist's wording is about the library versions an add-on SHIPS, chosen
-// by its developer. A package pulled in three levels down was chosen by nobody,
-// so it is audited for advisories but never policy-blocked.
-test("auditLockedPackages: the policy blocklist is not applied to the tree", async () => {
+// A banned version three levels down is refused like a declared one: it is installed, and
+// the policy is about what the build pulls in, whoever chose it. An unadvised one is
+// recorded and still audited.
+test("auditLockedPackages: a transitive banned version is refused", async () => {
+  const calls = { batch: [] };
   const addon = addonWith(
-    { "package.json": "{}" },
-    store({ lockPackages: [locked("jquery", "1.7.1")] })
+    { "package-lock.json": "{}" },
+    store({
+      lockPackages: [locked("angular", "1.5.0"), locked("jquery", "1.7.1")],
+    })
   );
   const blocks = parseLibraryBlocks(
-    "jquery:\n  - versions: '<3.0.0'\n    status: banned\n    reason: Too old.\n"
+    `- name: jquery\n  banned_below: "3.0.0"\n  reason: "old jquery"\n` +
+      `- name: angular\n  unadvised_below: "1.6.0"\n  reason: "old angular"`
   );
   await verifyScaDependencies(
     addon,
-    net({ batch: { results: [{ vulns: [] }] } }),
+    net({ calls, batch: { results: [{ vulns: [] }] } }),
     blocks
   );
-  assert.deepEqual(addon.vendor.blocked, []);
+  assert.deepEqual(
+    addon.vendor.blocked.map((b) => [b.name, b.status, b.token]),
+    [
+      ["angular", "unadvised", "node_modules/angular"],
+      ["jquery", "banned", "node_modules/jquery"],
+    ]
+  );
+  assert.deepEqual(
+    calls.batch[0].queries.map((q) => q.package.name),
+    ["angular"]
+  );
 });
 
 // Nothing to audit must cost nothing: an XPI review, and every submission with

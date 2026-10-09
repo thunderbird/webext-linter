@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/bundled-files",
-    "xpiRoot": "<root>/tests/addons/bundled-files/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "bundled-files",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

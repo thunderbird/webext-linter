@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/banned-library-not-shipped",
-    "xpiRoot": "<root>/tests/addons/banned-library-not-shipped/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "banned-library-not-shipped",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

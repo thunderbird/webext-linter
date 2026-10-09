@@ -62,8 +62,9 @@ export function isOpen(item, state) {
  * what an absent one means.
  *
  * This is how an abort withholds what comes after it - the build that would run the
- * submission's code, the questions nobody should be asked - since a phase left with no
- * step is not issued.
+ * submission's code, the questions nobody should be asked, and in a review the
+ * deterministic checks already aborted, every pass but the close - since a phase left with
+ * no step is not issued.
  * @param {{answer?: string, steps: {when: ?object, text: string}[]}} phase
  * @param {{skip: string[], halted: boolean}} run  The run record: the flags it was given,
  *   whether the review was aborted, and each other fact by its own name.

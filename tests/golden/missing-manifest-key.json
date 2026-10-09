@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/missing-manifest-key",
-    "xpiRoot": "<root>/tests/addons/missing-manifest-key/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "missing-manifest-key",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

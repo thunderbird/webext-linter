@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/multiple-vendor-files",
-    "xpiRoot": "<root>/tests/addons/multiple-vendor-files/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "multiple-vendor-files",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

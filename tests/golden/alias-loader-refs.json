@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/alias-loader-refs",
-    "xpiRoot": "<root>/tests/addons/alias-loader-refs/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "alias-loader-refs",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

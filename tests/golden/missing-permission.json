@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/missing-permission",
-    "xpiRoot": "<root>/tests/addons/missing-permission/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "missing-permission",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

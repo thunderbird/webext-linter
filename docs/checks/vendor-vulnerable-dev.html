@@ -9,53 +9,56 @@
   <body>
     <main class="page">
       <header class="check-header">
-        <h1>Vulnerable build dependency <span class="badge auto">auto</span></h1>
+        <h1>Vulnerable build dependency <span class="badge error">error</span></h1>
         <div class="check-id">vendor-vulnerable-dev</div>
       </header>
 
       <h2>What it detects</h2>
       <p class="lead">
-        A pinned npm build dependency whose version has published security
-        advisories. Build dependencies are never shipped with the add-on, but
+        A build dependency the add-on declares whose installed version has
+        published security advisories. Build dependencies are never shipped with the add-on, but
         this check runs only for a source-code submission, where the reviewer
         builds the add-on from source — so a vulnerable build tool runs on the
         reviewer's own machine.
       </p>
       <p>
-        Before the review, every pinned npm development dependency is audited
-        once against the OSV vulnerability database over the network. Each
-        package with known advisories is recorded with the advisory ids, the
-        affected version, the fixed versions, and a severity band. This check
-        reads that result and emits one finding per vulnerable build dependency,
-        anchored at its declaration line. Its severity is <strong>auto</strong>:
-        rather than a fixed level, each finding takes its severity from the
-        advisory band — high or critical becomes an error, moderate or medium
-        becomes a warning, and anything else (low or unknown) is informational.
+        Before the review, the committed lock file is read in full - package.json
+        is not read for dependencies - and every package it records as installed
+        is queried against the OSV vulnerability database in one batch. This check
+        takes the ones the lock marks as declared by one of the submission's own
+        package files and installs for the build only (an npm lockfile v1 records
+        no declared set, so every package in one counts as declared). Only high and
+        critical advisories are kept, and an advisory saying the package itself is
+        malicious counts as critical, so every finding here is an error, and the advisory's own
+        band is still named in the text. Each finding anchors at the package's
+        entry in the lock file.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A pinned npm build dependency"] --> G{"Source-code submission?"}
+  A["A package the lock file installs"] --> G{"Source-code submission<br/>with an npm or pnpm lock?"}
   G -- no --> S([skip])
-  G -- yes --> B{"OSV audit found<br/>known advisories?"}
+  G -- yes --> D{"Declared by one of the<br/>submission's own package files?"}
+  D -- no --> S2([skip: an indirect check reports it])
+  D -- yes --> P{"Installed for the build only?"}
+  P -- "no, it ships" --> S3([skip: vendor-vulnerable reports it])
+  P -- yes --> B{"OSV audit found<br/>known advisories?"}
   B -- no --> OK([no finding])
   B -- yes --> C{"Highest advisory band?"}
-  C -- "high / critical" --> ERR([ERROR: vulnerable build dependency])
-  C -- "moderate / medium" --> WARN([WARNING: vulnerable build dependency])
-  C -- "low / unknown" --> INFO([INFO: vulnerable build dependency])
+  C -- "moderate / low" --> OK2([no finding])
+  C -- "high / critical<br/>(a malicious package counts as critical)" --> ERR([ERROR: vulnerable build dependency])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
-  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
-  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   class ERR err;
-  class WARN warn;
-  class INFO info;
   class OK ok;
+  class OK2 ok;
   class S skip;
+  class S2 skip;
+  class S3 skip;
         </pre>
       </div>
 
@@ -73,8 +76,7 @@ flowchart TD
         <strong>It aborts the review</strong>
         This check is one of the few that settle the submission on their own. When
         it reports at error severity, nothing further is put to a reviewer: the
-        report drops every to-do item they would have been asked, keeps the
-        code-review sections, and the developer&rsquo;s text ends on the reason it
+        report drops every to-do item they would have been asked, keeps the code-review sections of a printed report (an aborted <code>--llm-review</code> hands over no to-do item at all), and the developer&rsquo;s text ends on the reason it
         is incomplete (&ldquo;Known security vulnerabilities&rdquo;). The case it exists for is a
         reviewer being asked to reproduce a build from a dependency tree the
         review has already rejected.

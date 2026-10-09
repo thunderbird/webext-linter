@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-pristine",
-    "xpiRoot": "<root>/tests/addons/experiment-pristine/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "experiment-pristine",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

@@ -20,7 +20,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { SETUP_STEPS } from "../../src/pipeline.js";
-import { seedFixtureCache } from "../seed-caches.js";
+import { addonOutsideRepo, seedFixtureCache } from "../seed-caches.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..", "..");
@@ -34,11 +34,18 @@ const OFFLINE = [
   CACHE,
 ];
 
-/** The Setup section's lines, in order, as a reviewer sees them. */
+/** The Setup section's lines, in order, as a reviewer sees them. The add-on, `args[0]`, is
+ *  reviewed as a copy outside the repository, since its work folder is created beside it. */
 function setupFeed(args) {
+  const [target, ...rest] = args;
   const r = spawnSync(
     process.execPath,
-    [path.join(ROOT, "verify.js"), ...args, ...OFFLINE],
+    [
+      path.join(ROOT, "verify.js"),
+      addonOutsideRepo(target),
+      ...rest,
+      ...OFFLINE,
+    ],
     { encoding: "utf8", cwd: ROOT }
   );
   const block = r.stdout.split("── Setup ──")[1]?.split("── Activity ──")[0];
@@ -84,6 +91,7 @@ test("the narrated count per run is the total the feed shows", () => {
     sca: false,
     isExp: false,
     invalidExperiment: false,
+    unrescued: false,
     ...over,
   });
   assert.equal(narrated(facts()), 7, "an XPI review");
@@ -94,6 +102,21 @@ test("the narrated count per run is the total the feed shows", () => {
   // same conditions asked with it already decided say three, and the feed still counts
   // towards eight. That gap IS "the counter stops short".
   assert.equal(narrated(facts({ isExp: true, invalidExperiment: true })), 3);
+  // A source review its preparation could not rescue reads the add-on and the schema, and
+  // takes its dependency audit from the record: nothing else is narrated. A rejected
+  // Experiment is still decided by its reject check first.
+  assert.equal(narrated(facts({ sca: true, unrescued: true })), 2);
+  assert.equal(
+    narrated(
+      facts({
+        sca: true,
+        isExp: true,
+        unrescued: true,
+        invalidExperiment: true,
+      })
+    ),
+    3
+  );
 });
 
 // An XPI review: read the add-on, get the schema, fetch the library hashes, then the three

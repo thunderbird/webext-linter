@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/package-range-locked-shipped",
-    "xpiRoot": "<root>/tests/addons/package-range-locked-shipped/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "package-range-locked-shipped",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
@@ -125,7 +125,7 @@
       "item": "lodash",
       "hint": null,
       "artifact": "XPI",
-      "message": "A dependency this add-on bundles directly has known security vulnerabilities: lodash (4.17.21) is affected by published advisories of high severity (CVE-2021-23337). Update lodash to 4.17.22 or later."
+      "message": "A dependency this add-on bundles has known security vulnerabilities: lodash (4.17.21) is affected by published advisories of high severity (CVE-2021-23337). Update lodash to 4.17.22 or later."
     }
   ]
 }

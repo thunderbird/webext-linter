@@ -1,10 +1,10 @@
 {
   "meta": {
     "action": "review",
-    "xpi": "<root>/tests/addons/sca-nested-dependency/xpi",
-    "xpiRoot": "<root>/tests/addons/sca-nested-dependency/xpi/",
+    "xpi": "<root>/tests/addons/sca-dependencies-changed/xpi",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
-    "scaRoot": "<root>/tests/addons/sca-nested-dependency/src",
+    "scaRoot": "<root>/tests/addons/sca-dependencies-changed/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
@@ -64,6 +64,7 @@
       "sca-lock-file-invalid",
       "build-registry-redirect",
       "lock-foreign-source",
+      "sca-dependencies-changed",
       "committed-node-modules",
       "committed-build-artifact",
       "sca-invalid-symlink",
@@ -113,63 +114,24 @@
     ]
   },
   "summary": {
-    "error": 4,
+    "error": 0,
     "hold": 0,
     "warning": 0,
-    "info": 0,
+    "info": 1,
     "byRule": {
-      "unpopular-source-dependency": 2,
-      "unsupported-dependency": 2
+      "sca-dependencies-changed": 1
     }
   },
   "findings": [
     {
-      "ruleId": "unpopular-source-dependency",
-      "severity": "error",
-      "file": "nested-helper/package.json",
-      "loc": {
-        "line": 5
-      },
-      "item": "tiny-obscure-helper (1.0.0)",
-      "hint": null,
-      "artifact": "SCA",
-      "message": "The following dependencies could not be confirmed as widely used, so they can be neither shipped nor used in the build without being reviewed. Replace each with a widely-used equivalent, remove it if the add-on does not need it, or include its non-minified source in the archive and declare it as a local package (\"file:./path/to/it\") so it is reviewed as part of the submission. Its own dependencies are checked the same way.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
-    },
-    {
-      "ruleId": "unpopular-source-dependency",
-      "severity": "error",
-      "file": "nested-helper/package.json",
-      "loc": {
-        "line": 8
-      },
-      "item": "tiny-obscure-tool (1.0.0)",
-      "hint": null,
-      "artifact": "SCA",
-      "message": "The following dependencies could not be confirmed as widely used, so they can be neither shipped nor used in the build without being reviewed. Replace each with a widely-used equivalent, remove it if the add-on does not need it, or include its non-minified source in the archive and declare it as a local package (\"file:./path/to/it\") so it is reviewed as part of the submission. Its own dependencies are checked the same way.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
-    },
-    {
-      "ruleId": "unsupported-dependency",
-      "severity": "error",
-      "file": "nested-helper/package.json",
-      "loc": {
-        "line": 9
-      },
-      "item": "escape (file:../../outside)",
-      "hint": null,
-      "artifact": "SCA",
-      "message": "The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
-    },
-    {
-      "ruleId": "unsupported-dependency",
-      "severity": "error",
+      "ruleId": "sca-dependencies-changed",
+      "severity": "info",
       "file": "package.json",
-      "loc": {
-        "line": 7
-      },
-      "item": "laundered (https://attacker.example/evil.tgz)",
+      "loc": null,
+      "item": null,
       "hint": null,
       "artifact": "SCA",
-      "message": "The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+      "message": "Your source code was reviewed with changed dependencies, because the ones you submitted have known security vulnerabilities. Dependencies your release build does not use were removed, and where that was not enough, the lock file was updated to fixed releases. Your own package.json and lock file still have these vulnerabilities. Run `npm audit` (or `pnpm audit`) in your project and resolve them before your next submission."
     }
   ]
 }

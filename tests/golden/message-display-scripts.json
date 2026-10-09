@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/message-display-scripts",
-    "xpiRoot": "<root>/tests/addons/message-display-scripts/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "message-display-scripts",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

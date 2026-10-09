@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/vendor-ambiguous-source",
-    "xpiRoot": "<root>/tests/addons/vendor-ambiguous-source/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "vendor-ambiguous-source",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

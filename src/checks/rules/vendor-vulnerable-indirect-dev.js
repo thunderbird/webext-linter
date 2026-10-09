@@ -1,5 +1,6 @@
-// Flags a package the submission does NOT declare, but that one of its declared
-// build dependencies pulls in, whose installed version has known OSV advisories.
+// Flags a package the submission does NOT declare (by the lock file's own record), but
+// that one of its declared build dependencies pulls in, whose installed version has known
+// OSV advisories.
 // It is never shipped, but the SCA reviewer builds the add-on from source, so it
 // runs on the reviewer's machine during the build. The audit ran in the network
 // pre-step (src/vendor/verify.js verifyScaDependencies -> auditLockedPackages),

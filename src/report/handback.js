@@ -7,9 +7,9 @@
 // (src/report/verdicts.js).
 //
 // THE INVARIANT THAT MAKES ONE SHARED FILE SAFE: the linter never reads back anything it
-// wrote here - only `base` and the answers. The entries are write-only from its side,
-// regenerated from the STATE file every pass. So a mangled entry or a rewritten prompt in
-// the returned file costs nothing, because nothing reads them.
+// wrote here - only the answers. The entries are write-only from its side, regenerated
+// from the STATE file every pass. So a mangled entry or a rewritten prompt in the returned
+// file costs nothing, because nothing reads them.
 import fs from "node:fs";
 import path from "node:path";
 import { hasParentSegment } from "../addon/load.js";
@@ -25,17 +25,16 @@ import { rethrowIfFatal } from "../lib/errors.js";
 export const SLOT = "answer";
 
 /**
- * The file handed to the agent for one phase: where the state is, and what to fill in.
+ * The file handed to the agent for one phase: what to fill in.
  *
- * `base` is the linter's own bookkeeping, not the agent's - it is stateless between runs
- * and this is how it finds its way back. The agent never authors it, never names it, and
- * cannot get it wrong.
- * @param {string} stateFile
+ * It names nothing of the linter's own. The work folder it lies in is what a pass is
+ * handed back with (--llm-handback), and the state beside it is found there by its fixed
+ * name (src/util/dest.js workPaths), so the file carries the entries and nothing else.
  * @param {object[]} entries  Already rendered for THIS phase and this reader.
- * @returns {object}
+ * @returns {{entries: object[]}}
  */
-export function reviewFile(stateFile, entries) {
-  return { base: stateFile, entries };
+export function reviewFile(entries) {
+  return { entries };
 }
 
 /**
@@ -66,15 +65,9 @@ export class HandbackRefused extends Error {
 }
 
 /**
- * Read a returned REVIEW file and say which state it belongs to.
- *
- * `base` is the linter's own value, written into the file it handed out (`reviewFile`,
- * below), so it is where the state is looked up - a name a person or an agent supplied
- * has nowhere safer to come from. It is not taken on trust past that: the state names
- * the one review file it hands out, and the caller refuses a file that is not it
- * (src/cli.js runLoopPass).
- * @param {string} file  What the agent passed to --llm-verdict.
- * @returns {{state: string, entries: object[]}}
+ * Read a returned REVIEW file's entries.
+ * @param {string} file  The review file in the work folder the pass was handed back with.
+ * @returns {{entries: object[]}}
  */
 export function readHandback(file) {
   let raw;
@@ -88,15 +81,10 @@ export function readHandback(file) {
   if (parsed === null) {
     throw new HandbackRefused(`"${file}" is not readable JSON`);
   }
-  if (typeof parsed?.base !== "string" || parsed.base === "") {
-    throw new HandbackRefused(
-      `"${file}" names no "base" - hand back the file the prompt named, unedited`
-    );
-  }
-  if (!Array.isArray(parsed.entries)) {
+  if (!Array.isArray(parsed?.entries)) {
     throw new HandbackRefused('"entries" is missing or is not a list');
   }
-  return { state: parsed.base, entries: parsed.entries };
+  return { entries: parsed.entries };
 }
 
 /**

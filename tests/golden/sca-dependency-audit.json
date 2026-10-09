@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/sca-dependency-audit/xpi",
-    "xpiRoot": "<root>/tests/addons/sca-dependency-audit/xpi/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-dependency-audit/src",
     "reviewed": true,
@@ -64,6 +64,7 @@
       "sca-lock-file-invalid",
       "build-registry-redirect",
       "lock-foreign-source",
+      "sca-dependencies-changed",
       "committed-node-modules",
       "committed-build-artifact",
       "sca-invalid-symlink",
@@ -115,62 +116,24 @@
   "summary": {
     "error": 1,
     "hold": 0,
-    "warning": 3,
+    "warning": 0,
     "info": 0,
     "byRule": {
-      "unpopular-source-dependency": 1,
-      "vendor-vulnerable": 1,
-      "vendor-vulnerable-dev": 2
+      "unpopular-source-dependency": 1
     }
   },
   "findings": [
     {
       "ruleId": "unpopular-source-dependency",
       "severity": "error",
-      "file": "package.json",
+      "file": "package-lock.json",
       "loc": {
-        "line": 5
+        "line": 14
       },
       "item": "tiny-obscure-helper (1.0.0)",
       "hint": null,
       "artifact": "SCA",
       "message": "The following dependencies could not be confirmed as widely used, so they can be neither shipped nor used in the build without being reviewed. Replace each with a widely-used equivalent, remove it if the add-on does not need it, or include its non-minified source in the archive and declare it as a local package (\"file:./path/to/it\") so it is reviewed as part of the submission. Its own dependencies are checked the same way.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
-    },
-    {
-      "ruleId": "vendor-vulnerable",
-      "severity": "warning",
-      "file": "package.json",
-      "loc": {
-        "line": 5
-      },
-      "item": "tiny-obscure-helper",
-      "hint": null,
-      "artifact": "SCA",
-      "message": "A dependency this add-on bundles directly has known security vulnerabilities: tiny-obscure-helper (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). Update tiny-obscure-helper to a patched release or later."
-    },
-    {
-      "ruleId": "vendor-vulnerable-dev",
-      "severity": "warning",
-      "file": "package.json",
-      "loc": {
-        "line": 8
-      },
-      "item": "vitest",
-      "hint": null,
-      "artifact": "SCA",
-      "message": "A build dependency this add-on declares has known security vulnerabilities: vitest (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update vitest to a patched release or later."
-    },
-    {
-      "ruleId": "vendor-vulnerable-dev",
-      "severity": "warning",
-      "file": "package.json",
-      "loc": {
-        "line": 11
-      },
-      "item": "platform-binary",
-      "hint": null,
-      "artifact": "SCA",
-      "message": "A build dependency this add-on declares has known security vulnerabilities: platform-binary (2.3.3) is affected by published advisories of moderate severity (GHSA-fixture-example). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update platform-binary to a patched release or later."
     }
   ]
 }

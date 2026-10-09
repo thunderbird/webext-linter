@@ -107,20 +107,19 @@ test("two reasons produce two lines, in the order the registry authors them", ()
   assert.deepEqual(reasonsFor([...both].reverse()), reasonsFor(both));
 });
 
-// A finding the agent withdrew is not a finding. The review loop asks this again after
-// every pass for exactly this reason: a withdrawal puts the question block back.
-test("a withdrawn finding aborts nothing", () => {
+// A finding that aborts the review is never put to anyone to verify - an aborted review
+// hands out no such phase - so what decides it is the band it was reported at, and only
+// that: no recorded answer takes it back.
+test("a finding aborts the review at the band it was reported at", () => {
   const findings = [finding("vendor-vulnerable")];
   const ordered = orderReview(findings, []);
   const index = String(ordered[0].index);
-  assert.equal(earlyExitOf(ordered, { [index]: "withdrawn" }, registry), null);
-  // ...while any other verdict leaves it standing.
-  assert.deepEqual(
-    earlyExitOf(ordered, { [index]: "reported" }, registry).reasons.map(
-      (r) => r.text
-    ),
-    ["Known security vulnerabilities"]
-  );
+  for (const answers of [{}, { [index]: "withdrawn" }]) {
+    assert.deepEqual(
+      earlyExitOf(ordered, answers, registry).reasons.map((r) => r.text),
+      ["Known security vulnerabilities"]
+    );
+  }
 });
 
 // An ESCALATING check aborts a review too, but only from the far side of a verdict: it

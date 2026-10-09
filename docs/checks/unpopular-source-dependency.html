@@ -23,10 +23,13 @@
       </p>
       <p>
         Before the review begins, a network pre-step looks up the popularity of
-        each package.json dependency: monthly downloads for an npm package, or
-        stargazers for a GitHub source. A dependency below the trust bar is
-        recorded, and this check turns each one into a finding anchored at its
-        declaration line. The reject only ever fires on a confirmed reading below
+        each package the committed lock file marks as declared by one of the
+        submission's own package files (package.json is not read for
+        dependencies): monthly downloads for an npm package, or stargazers for
+        one the lock installs from GitHub. An npm lockfile v1 records no
+        declared set, so every package in one counts as declared. A dependency
+        below the trust bar is recorded, and this check turns each one into a
+        finding anchored at its entry in the lock file. The reject only ever fires on a confirmed reading below
         the bar: a package the registry has no reading for records nothing, and
         a lookup that gets no answer ends the review instead. A dependency that clears the bar is trusted by ubiquity
         and never reaches here.
@@ -48,7 +51,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A package.json dependency"] --> G{"Source-code submission?"}
+  A["A package the lock file marks as declared"] --> G{"Source-code submission?"}
   G -- no --> S([skip])
   G -- yes --> B{"Popularity reading available?"}
   B -- "no (registry has none)" --> S

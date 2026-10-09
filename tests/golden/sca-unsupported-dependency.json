@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/sca-unsupported-dependency/xpi",
-    "xpiRoot": "<root>/tests/addons/sca-unsupported-dependency/xpi/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-unsupported-dependency/src",
     "reviewed": true,
@@ -64,6 +64,7 @@
       "sca-lock-file-invalid",
       "build-registry-redirect",
       "lock-foreign-source",
+      "sca-dependencies-changed",
       "committed-node-modules",
       "committed-build-artifact",
       "sca-invalid-symlink",
@@ -136,11 +137,11 @@
     {
       "ruleId": "unsupported-dependency",
       "severity": "error",
-      "file": "package.json",
+      "file": "package-lock.json",
       "loc": {
-        "line": 5
+        "line": 12
       },
-      "item": "helper (file:../shared/helper)",
+      "item": "helper (../shared/helper)",
       "hint": null,
       "artifact": "SCA",
       "message": "The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"

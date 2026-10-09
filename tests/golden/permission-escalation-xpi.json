@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/permission-escalation-xpi",
-    "xpiRoot": "<root>/tests/addons/permission-escalation-xpi/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "permission-escalation-xpi",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

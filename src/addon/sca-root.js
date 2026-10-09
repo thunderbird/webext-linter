@@ -7,7 +7,7 @@
 // that rule - it runs before it.
 //
 // It exists because the root is NAMED by someone who has not looked inside yet. A source
-// archive is extracted by the reader of the --llm-sca-review prompt, into a destination this
+// archive is extracted by whoever prepares the review, into a destination this
 // tool worked out by path math alone, and an archive that carries its contents in one
 // directory of its own leaves the build files one level below that destination. The review
 // then reads a root holding nothing, reports a build it cannot reproduce, and never audits

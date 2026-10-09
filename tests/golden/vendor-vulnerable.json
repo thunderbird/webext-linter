@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/vendor-vulnerable",
-    "xpiRoot": "<root>/tests/addons/vendor-vulnerable/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "vendor-vulnerable",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
@@ -125,7 +125,7 @@
       "item": "marked",
       "hint": null,
       "artifact": "XPI",
-      "message": "A dependency this add-on bundles directly has known security vulnerabilities: marked (4.0.0) is affected by published advisories of high severity (CVE-2022-21680). Update marked to 4.0.10 or later."
+      "message": "A dependency this add-on bundles has known security vulnerabilities: marked (4.0.0) is affected by published advisories of high severity (CVE-2022-21680). Update marked to 4.0.10 or later."
     }
   ]
 }

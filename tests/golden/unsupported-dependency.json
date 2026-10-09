@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/unsupported-dependency",
-    "xpiRoot": "<root>/tests/addons/unsupported-dependency/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "unsupported-dependency",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

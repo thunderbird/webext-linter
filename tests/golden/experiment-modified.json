@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/experiment-modified",
-    "xpiRoot": "<root>/tests/addons/experiment-modified/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "experiment-modified",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

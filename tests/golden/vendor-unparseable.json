@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/vendor-unparseable",
-    "xpiRoot": "<root>/tests/addons/vendor-unparseable/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "vendor-unparseable",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

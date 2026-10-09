@@ -29,7 +29,7 @@
 // Belongs here: the shape of both files, the prose that goes in the request, and reading
 // an answers file back into results. Does NOT belong here: WHAT to look for (-> each
 // check's sweep instruction in assets/registry.yaml, carried through unchanged), where
-// the files live (-> src/report/items.js reviewFilePaths), what a result MEANS once read
+// the files live (-> src/util/dest.js workPaths), what a result MEANS once read
 // (-> src/report/sweep.js), or when they are written (-> src/pipeline.js).
 
 import fs from "node:fs";
@@ -172,7 +172,7 @@ function sweepAnswerSlots(sweeps) {
  * has no root for cannot be written - and cannot arise, because preSweepOf drops such a
  * sweep while the review still knows which trees it has.
  * @param {{sweep: (artifact: string) => {request: string, answers: string}}} files
- *   The review's paths (src/report/items.js reviewFilePaths).
+ *   The work folder's names (src/util/dest.js workPaths).
  * @param {?{items: {label: number, artifact: string, title: string,
  *   instruction: string}[]}} preSweep
  * @param {Record<string, ?string>} trees  This review's trees by artifact

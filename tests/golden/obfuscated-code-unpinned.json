@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/obfuscated-code-unpinned",
-    "xpiRoot": "<root>/tests/addons/obfuscated-code-unpinned/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "obfuscated-code-unpinned",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

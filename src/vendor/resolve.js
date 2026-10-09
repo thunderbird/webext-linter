@@ -1,34 +1,38 @@
 // Resolves the add-on's vendored declarations ONCE, at the top of the pipeline,
 // before anything reviews files. This is the OFFLINE half: it
-// parses the VENDOR file and the package.json dependency
-// declarations (pinning each via an exact spec, or against a committed lock file - either
-// artifact may carry one), enumerates what the lock file installs where the reviewer
-// installs from it, classifies each declared source, and builds the shared
-// `addon.vendor` store. The network half (fetch + compare + popularity) is verifyVendor
+// parses the VENDOR file and, for a built XPI, the package.json dependency
+// declarations (pinning each via an exact spec, or against a lock file it carries), and
+// classifies each declared source. Where the reviewer installs from the artifact (a source
+// review), the dependencies are read from the committed lock file alone - what it installs,
+// which of those it installs from GitHub, and which from a local path - and package.json is
+// not read for them. Either way it builds the shared `addon.vendor` store. The network half (fetch + compare + popularity) is verifyVendor
 // (src/vendor/verify.js), which fills in the per-file results. The review-phase checks only
 // read the store.
 //
-// Belongs here: combining the VENDOR + package.json declarations, and the
-// committed lock file's whole package list, into the offline `addon.vendor` (set,
-// entries, packages, unpinned, lockPackages, offline results). lockPackages is
-// the one field here that no check reads: it is the offline half of the tree
-// audit, handed to verify.js, which owns the network half.
+// Belongs here: combining the VENDOR + package.json declarations, or the VENDOR declarations
+// and the committed lock file's readings, into the offline `addon.vendor` (set, entries,
+// packages, unpinned, lockPackages, lockGithubInstalls, lockLocalInstalls, offline results).
+// lockPackages and lockGithubInstalls are read by no check: they are the offline half of the
+// lock audit, handed to verify.js, which owns the network half.
 // Does NOT belong here: the network verification (-> verify.js), the
 // deterministic VENDOR parse (-> src/normalize/vendor.js), lock parsing (->
 // src/vendor/locks.js), and URL classification (-> src/vendor/sources.js).
 
 import { readVendorDeclarations, readVendorFile } from "../normalize/vendor.js";
 import { classifySource } from "./sources.js";
-import { governingLock, lockedVersion, lockedPackages } from "./locks.js";
+import {
+  governingLock,
+  lockedVersion,
+  lockedPackages,
+  githubInstalls,
+  localInstalls,
+} from "./locks.js";
 import { SCHEME_RE } from "../lib/util.js";
 import { withExperiment } from "../addon/store.js";
 import {
-  declarationKey,
   declaredDependencies,
   readPackageFile,
   submissionFiles,
-  resolveLocalPackageFiles,
-  BUILD_TIME_MAPS,
   PACKAGE_FILE,
 } from "./package-file.js";
 
@@ -43,24 +47,19 @@ import {
  *   Per-file outcomes (offline ones now, network ones added by verifyVendor).
  * @property {(VendorEntry & {trusted: boolean, pinned: boolean})[]} entries
  *   Classified VENDOR-file entries.
- * @property {{name: string, version: string, file: string}[]} packages  Pinned deps. `file`
- *   is the declaring package file - "package.json" for the root, or a nested one reached by a
- *   file:/link: walk (SCA mode only - see resolveLocalPackageFiles).
+ * @property {{name: string, version: string, file: string}[]} packages  Pinned package.json
+ *   deps. `file` is the declaring package file, "package.json". Empty in a source review,
+ *   which reads its dependencies from the lock (lockPackages); so are the four below.
  * @property {{name: string, spec: string, file: string}[]} unpinned  Ranged deps a
  *   committed lock resolves nothing for.
  * @property {{name: string, spec: string, file: string}[]} unlocked  Ranged deps with no
  *   lock committed at all. Kept apart from `unpinned` because the two have different
  *   remedies.
  * @property {{name: string, spec: string, repo: string, ref: ?string, file: string}[]}
- *   githubDeps  GitHub-sourced package.json deps (popularity-gated like a
- *   VENDOR.md github source; audited by verifyScaDependencies in SCA mode).
+ *   githubDeps  GitHub-sourced package.json deps.
  * @property {{name: string, spec: string, file: string}[]} unsupportedDeps  package.json
  *   deps from an unsupported source (not npm, not GitHub), rejected by the
- *   unsupported-dependency check. devDependencies are included where the reviewer
- *   installs from this artifact: `npm ci` clones and runs them.
- * @property {{name: string, version: string, file: string}[]} devPackages  Pinned npm
- *   devDependencies. Never shipped, but OSV-audited in SCA mode because the
- *   reviewer builds from source (verifyScaDependencies).
+ *   unsupported-dependency check.
  * @property {VendorEntry[]} missing  VENDOR entries whose file is absent.
  * @property {{source: string, paths: string[]}[]} ambiguousSources  Source URLs
  *   paired with more than one bundled file (the developer must split them or use a
@@ -72,16 +71,23 @@ import {
  *   for this run, shared by every gate that asks (isPopular). Per-run and
  *   in-process only; never written to disk.
  * @property {import("./verify.js").VendorVuln[]} vulnerabilities  Pinned npm
- *   packages (package.json deps + npm VENDOR entries) with known OSV advisories
- *   (filled by verifyVendor's audit; empty offline).
+ *   packages (package.json deps + npm VENDOR entries in an XPI review, the lock's declared
+ *   production packages + npm VENDOR entries in a source review) with known OSV advisories
+ *   (filled by verifyVendor's or verifyScaDependencies' audit; empty offline).
  * @property {import("./verify.js").VendorVuln[]} devVulnerabilities  SCA mode
- *   only: pinned npm devDependencies with known OSV advisories (filled by
- *   verifyScaDependencies; empty in XPI mode / offline). Read by the
- *   vendor-vulnerable-dev check.
+ *   only: packages from lockPackages a package file declares, installed for the BUILD
+ *   only, carrying a high or critical advisory (filled by verifyScaDependencies; empty in
+ *   XPI mode / offline). Read by the vendor-vulnerable-dev check.
  * @property {import("./locks.js").LockedPackage[]} lockPackages  Every package
  *   the committed lock file records as installed - the declared dependencies and
  *   everything they pull in. Always empty for a built XPI: nothing is installed from one,
  *   so there is no tree to audit, even where its lock does pin a declared range.
+ * @property {import("./locks.js").GithubInstall[]} lockGithubInstalls  Every package the
+ *   lock installs from GitHub, with its repository, for the popularity gate. Empty for a
+ *   built XPI, like lockPackages.
+ * @property {import("./locks.js").LocalInstall[]} lockLocalInstalls  Every install the
+ *   lock takes from a local path that is not a folder of the submission. Read by the
+ *   unsupported-dependency check. Empty for a built XPI, like lockPackages.
  * @property {import("./verify.js").VendorVuln[]} treeVulnerabilities  SCA mode
  *   only: packages from lockPackages that NOTHING declares, carrying a high or
  *   critical advisory, installed for production (filled by verifyScaDependencies;
@@ -89,19 +95,22 @@ import {
  * @property {import("./verify.js").VendorVuln[]} treeDevVulnerabilities  The same
  *   for undeclared packages installed for the BUILD only. Read by the
  *   vendor-vulnerable-indirect-dev check.
+ * @property {boolean} lockScanAbandoned  The lock audit gave up on the tree, so the four
+ *   vulnerability lists hold nothing from it (auditLockedPackages).
  * @property {{path: string, source: ?string, repo: ?string}[]} unaudited
  *   GitHub-sourced VENDOR entries that could not be resolved to a verified npm
  *   identity for an OSV audit (filled by verifyVendor; empty offline). Read by
  *   the vendor-vuln-unknown check to surface them as info.
  * @property {{name: string, version: string, file: string, token: string}[]}
- *   unpopularDeps  SCA mode: declared dependencies that are not a confirmed
- *   widely-used library (filled by verifyScaDependencies; empty in XPI mode /
- *   offline). Read by the unpopular-source-dependency check.
+ *   unpopularDeps  SCA mode: packages the lock marks as declared that are not a confirmed
+ *   widely-used library, anchored at their lock entry (filled by verifyScaDependencies;
+ *   empty in XPI mode / offline). Read by the unpopular-source-dependency check.
  * @property {{name: string, version: string, status: string, reason: string,
  *   file: string, token: string}[]} blocked  Bundled library versions Mozilla
- *   add-on policy disallows (banned) or discourages (unadvised): auditNpm matches
- *   each audited (name, version) against the policy the audit is given and records a
- *   hit here (a banned one also skips the OSV query). Read by the banned-library check.
+ *   add-on policy disallows (banned) or discourages (unadvised): auditNpm, and in a
+ *   source review the lock audit, match each audited (name, version) against the policy
+ *   the audit is given and record a hit here (a banned one also skips the OSV query).
+ *   Read by the banned-library check.
  */
 
 // An exact semver (no range operators) - a concrete pinned version.
@@ -239,15 +248,14 @@ export function verifiedVendorSource(addon, file) {
  * @param {Addon} params.addon
  * @param {boolean} [params.reviewerInstalls]  Whether the reviewer INSTALLS from this
  *   artifact - true for a submitted source archive, false (the default, and the safe
- *   direction) for a built XPI, where nothing is installed at all. Two things follow, and
- *   both are about INSTALLING rather than about the lock. The whole installed TREE is
- *   enumerated, which is only meaningful where one is installed. And devDependencies are
- *   classified for source support: `npm ci` clones and RUNS them on the reviewer's
- *   machine, while in an XPI they install nothing and vendor nothing.
- *
- *   What a ranged spec RESOLVES to is not one of them: a developer shipping a range is
- *   asked to commit the lock beside it, and what that lock records is the version that was
- *   bundled, so classifyDeps reads it in either artifact.
+ *   direction) for a built XPI, where nothing is installed at all. Where the reviewer
+ *   installs, what is installed is what the lock records, and nothing else: package.json
+ *   is not read for the dependencies at all, since the lock is what the install follows
+ *   (an override, a workspace member's own declarations, an optional dependency are all in
+ *   it), and the six package.json buckets stay empty. The store is then the lock's
+ *   readings: its whole installed tree, its GitHub installs and its local ones. In a built
+ *   XPI nothing is installed, so none of those is read, and the package.json declarations
+ *   are classified instead (resolvePackages).
  * @returns {VendorStore}
  */
 export function resolveVendor({ addon, reviewerInstalls = false }) {
@@ -355,8 +363,16 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
     }
   }
 
-  const { packages, unpinned, unlocked, githubDeps, unsupported, devPackages } =
-    resolvePackages(addon, reviewerInstalls);
+  const { packages, unpinned, unlocked, githubDeps, unsupported } =
+    reviewerInstalls
+      ? {
+          packages: [],
+          unpinned: [],
+          unlocked: [],
+          githubDeps: [],
+          unsupported: [],
+        }
+      : resolvePackages(addon);
   return {
     set,
     folders,
@@ -365,15 +381,11 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
     packages,
     unpinned,
     unlocked,
-    // GitHub-sourced package.json deps (popularity-gated like a VENDOR.md github
-    // source). Audited by verifyScaDependencies in SCA mode.
+    // GitHub-sourced package.json deps.
     githubDeps,
     // package.json deps from an unsupported source (not npm, not GitHub). Read by
     // the unsupported-dependency check, which rejects them.
     unsupportedDeps: unsupported,
-    // Pinned npm devDependencies. Never shipped, but OSV-audited in SCA mode
-    // because the reviewer builds from source (verifyScaDependencies).
-    devPackages,
     missing,
     ambiguousSources,
     vendorFile: vendorFile?.name ?? null,
@@ -390,9 +402,9 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
     // the policy the audit is given (assets/library-blocks.yaml) and records a hit
     // here - a banned one also skips the OSV query. Read by the banned-library check.
     blocked: [],
-    // SCA mode only: pinned npm devDependencies with known OSV advisories (filled
-    // by verifyScaDependencies; empty in XPI mode / offline). Read by the
-    // vendor-vulnerable-dev check.
+    // SCA mode only: declared build-only packages from lockPackages carrying a high or
+    // critical advisory (filled by verifyScaDependencies; empty in XPI mode / offline).
+    // Read by the vendor-vulnerable-dev check.
     devVulnerabilities: [],
     // Every package the committed lock file records as installed, declared or
     // pulled in by another package. The offline half of the tree audit: what to
@@ -402,20 +414,30 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
     // what was bundled, so the tree its lock records was never installed for this review to
     // audit - and the only consumer (auditLockedPackages, via verifyScaDependencies) is
     // SCA-only, so it was never read back either. The version a declared range resolves to
-    // is a different question, and classifyDeps asks it in both artifacts.
+    // is a different question, and classifyDeps asks it of a built XPI.
     lockPackages: reviewerInstalls ? lockedPackages(addon) : [],
+    // The lock's GitHub installs, popularity-gated by verifyScaDependencies, and its local
+    // installs the submission does not hold as a folder, rejected by the
+    // unsupported-dependency check. Gated on installing, for the reason above.
+    lockGithubInstalls: reviewerInstalls ? githubInstalls(addon) : [],
+    lockLocalInstalls: reviewerInstalls ? localInstalls(addon) : [],
     // SCA mode only: undeclared packages from lockPackages carrying a high or
     // critical advisory (filled by verifyScaDependencies; empty in XPI mode /
     // offline), split by whether the build installs them for production or only
     // to build with. Read by the two vendor-vulnerable-indirect checks.
     treeVulnerabilities: [],
     treeDevVulnerabilities: [],
+    // Set when the lock audit gave up on the tree (an OSV 404, or a net that cannot post):
+    // the four lists above are then empty because nothing was asked, not because nothing was
+    // found. Read by the preparation's audit (src/prepare/audit.js), which must not take
+    // such a tree for a clean one.
+    lockScanAbandoned: false,
     // Filled by verifyVendor when a github source cannot be resolved to a
     // verified npm identity (network). Empty for offline runs.
     unaudited: [],
-    // SCA mode only: declared dependencies that are not a confirmed widely-used
-    // library (filled by verifyScaDependencies; empty in XPI mode / offline).
-    // Read by the unpopular-source-dependency check.
+    // SCA mode only: packages the lock marks as declared that are not a confirmed
+    // widely-used library (filled by verifyScaDependencies; empty in XPI mode /
+    // offline). Read by the unpopular-source-dependency check.
     unpopularDeps: [],
     // "Unparsed" only when we extracted nothing at all - neither a matched entry
     // nor a missing-file declaration. A parseable-but-missing VENDOR goes to the
@@ -428,16 +450,11 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
 /**
  * Classify one package.json dependency map (`dependencies` or `devDependencies`)
  * by each spec. Only two sources are supported: a pinned npm package (an exact
- * spec, or - where a lock is authoritative - a range that lock resolves) and a GitHub URL
- * (audited by popularity, like a VENDOR.md github source). The rest are surfaced, not
- * dropped: a range nothing resolves is `unpinned` (the dep is real but names no one
- * release to verify against), and any other non-registry spec
- * (file:/link:/workspace:/tarball/non-github git) is `unsupported` - UNLESS it is a
- * file:/link: spec that `resolvedLocal` already confirmed resolves to a real directory
- * inside this submission, in which case it names authored code, not a dependency: it is
- * dropped entirely (its own deps, if any, were classified separately - see
- * resolvePackages). An `npm:` alias is a registry install under another name, so it is
- * classified by what it INSTALLS.
+ * spec, or - where a lock is authoritative - a range that lock resolves) and a GitHub URL.
+ * The rest are surfaced, not dropped: a range nothing resolves is `unpinned` (the dep is
+ * real but names no one release to verify against), and any other non-registry spec
+ * (file:/link:/workspace:/tarball/non-github git) is `unsupported`. An `npm:` alias is a
+ * registry install under another name, so it is classified by what it INSTALLS.
  *
  * `packages` is what gets audited and byte-matched, so it must name an exact version. A range
  * that resolves to none is split by WHY, because the two have different remedies and a
@@ -448,26 +465,22 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
  * @param {import("./package-file.js").DeclaredDependency[]} deps  Declarations to classify,
  *   already normalized by declaredDependencies.
  * @param {Addon} addon  Needed to pin a range against a lock file (lockedVersion
- *   also reads the lock's devDependencies) - always the top-level addon, even when `deps`
- *   came from a nested package file: only the ROOT lock is ever consulted by `npm ci`.
- * @param {string} file  The declaring package file's own store-relative path - "package.json"
- *   for the root, or a nested one's own path. Carried on every produced item so a
- *   finding anchors at the file that actually declared it.
- * @param {?Set<string>} resolvedLocal  Names, declared in THIS package file, whose file:/link:
- *   spec already resolved to a real submission directory (from resolveLocalPackageFiles).
+ *   also reads the lock's devDependencies).
+ * @param {string} file  The declaring package file's own store-relative path, "package.json".
+ *   Carried on every produced item so a finding anchors at the file that declared it.
  * @returns {{packages: {name: string, version: string, file: string}[],
  *   unpinned: {name: string, spec: string, file: string}[],
  *   unlocked: {name: string, spec: string, file: string}[],
  *   githubDeps: {name: string, spec: string, repo: string, ref: ?string, file: string}[],
  *   unsupported: {name: string, spec: string, file: string}[]}}
  */
-function classifyDeps(deps, addon, file, resolvedLocal) {
+function classifyDeps(deps, addon, file) {
   const packages = [];
   const unpinned = [];
   const unlocked = [];
   const githubDeps = [];
   const unsupported = [];
-  for (const { map, name, spec, installs } of deps) {
+  for (const { name, spec, installs } of deps) {
     // Classified by what npm INSTALLS, reported by what the developer WROTE. The two come
     // apart for an `npm:` alias, where the spec names another package: the source, the pin
     // and the audited release are all the target's, while a finding has to quote the
@@ -480,22 +493,19 @@ function classifyDeps(deps, addon, file, resolvedLocal) {
         file,
       });
     } else if (/[:/]/.test(target.spec)) {
-      // A non-registry spec. A GitHub source is allowed (popularity-gated); a file:/link:
-      // spec that resolves inside the submission is authored code (dropped, see above);
-      // every other source (workspace:/tarball/non-github git, or a file:/link: that does
-      // NOT resolve) is not supported and is rejected rather than silently ignored.
+      // A non-registry spec. A GitHub source is allowed; every other source
+      // (file:/link:/workspace:/tarball/non-github git) is not supported and is rejected
+      // rather than silently ignored.
       const gh = parseGithubSpec(target.spec);
       if (gh) {
         githubDeps.push({ name, spec, repo: gh.repo, ref: gh.ref, file });
-      } else if (resolvedLocal?.has(declarationKey(map, name))) {
-        continue;
       } else {
         unsupported.push({ name, spec, file });
       }
     } else {
-      // A range, which names one release only through a lock. Read in EITHER artifact: a
-      // developer who ships a range is asked to commit the lock beside it, and what that
-      // lock records is the version that was bundled.
+      // A range, which names one release only through a lock. A developer who ships a
+      // range is asked to commit the lock beside it, and what that lock records is the
+      // version that was bundled.
       //
       // Looked up by the WRITTEN name, which is what keys the lock's entry - npm records
       // an alias under the name it is declared as and states the target inside it - while
@@ -514,56 +524,25 @@ function classifyDeps(deps, addon, file, resolvedLocal) {
 }
 
 /**
- * Classify one package file's `dependencies` (all buckets) and `devDependencies`
- * (pinned npm only -> `devPackages`, plus its SOURCE buckets when `includeDevSource`).
- * Dev deps never ship, but whoever installs from this package file runs them, so a pinned npm
- * dev dep is OSV-audited and popularity-gated like a production one (verifyScaDependencies)
- * and WHO it comes from is judged the same way. The one thing deliberately NOT kept is
- * pinning: nothing vendors from a dev dep, so no release is ever fetched to compare.
- * A name declared in several maps is classified once, as whichever copy npm installs:
- * `dependencies` over `devDependencies`, and `optionalDependencies` over `dependencies`.
- * So the audited spec is the resolved one, and the two vuln checks never double-report
- * one package.
+ * Classify the package file's production `dependencies`. Dev deps never ship, and in a
+ * built XPI they install nothing and vendor nothing, so they are not classified at all.
+ * Neither is an `optionalDependencies` entry: what it usually declares is a
+ * platform-specific binary rather than anything the add-on ships - and it overrides a
+ * `dependencies` entry of the same name, so that prod copy is not classified either.
  *
- * `optionalDependencies` is read as a BUILD-TIME dependency, alongside
- * `devDependencies`. npm installs it when the platform allows and records it in the lock,
- * so whoever installs from this package file runs it, which is the whole of the dev bucket's
- * reasoning; and what it usually declares is a platform-specific binary rather than
- * anything the add-on ships. Reading it here is also what closes it: the lock's own
- * direct-dependency set spans every declaration map (src/vendor/locks.js), so an entry the
- * tree audit skips as DECLARED has to be one a declared audit actually receives.
- *
- * `peerDependencies` is the one map not read at all - the host supplies those rather than
- * this build, so they are never a declaration this review acts on.
- * @param {object} pkg  A package file from readPackageFile (the root's, or a nested one's).
- * @param {Addon} addon  Always the TOP-LEVEL addon - only the root lock is ever consulted.
+ * `peerDependencies` is not read at all - the host supplies those rather than this build,
+ * so they are never a declaration this review acts on.
+ * @param {object} pkg  The package file from readPackageFile.
+ * @param {Addon} addon
  * @param {string} file  This package file's own store-relative path, carried on every item.
- * @param {?Set<string>} resolvedLocal  Names declared in THIS package file whose file:/link:
- *   spec already resolved (see classifyDeps).
- * @param {boolean} includeDevSource  Whether a devDependency is judged on its SOURCE
- *   (unsupported/githubDeps) as well as its pin. True for the root where the reviewer
- *   installs (see resolveVendor); always true for a nested package file, since `npm ci`
- *   installs a file:/link:-linked package's devDependencies unconditionally, regardless of
- *   what governs the root's own dev/prod split.
  * @returns {{packages: {name: string, version: string, file: string}[],
  *   unpinned: {name: string, spec: string, file: string}[],
  *   unlocked: {name: string, spec: string, file: string}[],
  *   githubDeps: {name: string, spec: string, repo: string, ref: ?string, file: string}[],
- *   unsupported: {name: string, spec: string, file: string}[],
- *   devPackages: {name: string, version: string, file: string}[]}}
+ *   unsupported: {name: string, spec: string, file: string}[]}}
  */
-function classifyPackageFile(
-  pkg,
-  addon,
-  file,
-  resolvedLocal,
-  includeDevSource
-) {
+function classifyPackageFile(pkg, addon, file) {
   const declared = declaredDependencies(pkg);
-  // One name may appear in several maps, and npm defines which copy it installs for
-  // each pair. Audit that copy alone, so a release is judged on the spec npm resolves
-  // and every name is reported once.
-  //
   // `optionalDependencies` overrides `dependencies` ("Entries in optionalDependencies
   // will override entries of the same name in dependencies", npm's package.json docs),
   // so the prod copy of such a name is the one npm discards.
@@ -573,55 +552,20 @@ function classifyPackageFile(
   const prod = declared.filter(
     (d) => d.map === "dependencies" && !optionalNames.has(d.name)
   );
-  // `dependencies` in turn overrides `devDependencies`, so a surviving prod name makes
-  // its dev copy the discarded one. devPackages is build-time-ONLY.
-  const prodNames = new Set(prod.map((d) => d.name));
-  const devOnly = declared.filter(
-    (d) =>
-      BUILD_TIME_MAPS.includes(d.map) &&
-      !prodNames.has(d.name) &&
-      (d.map === "optionalDependencies" || !optionalNames.has(d.name))
-  );
-  const prodBuckets = classifyDeps(prod, addon, file, resolvedLocal);
-  const devBuckets = classifyDeps(devOnly, addon, file, resolvedLocal);
-  return {
-    ...prodBuckets,
-    // Where the reviewer installs, a dev dependency is judged on WHO it comes from
-    // exactly as a production one is: `npm ci` clones and RUNS it on their machine, so an
-    // unidentifiable source is equally unverifiable and an obscure repo equally unvetted.
-    // Not where nothing installs from this package file, though - a dev entry installs and
-    // vendors nothing there, so rejecting it would reject a declaration that does nothing.
-    unsupported: includeDevSource
-      ? [...prodBuckets.unsupported, ...devBuckets.unsupported]
-      : prodBuckets.unsupported,
-    githubDeps: includeDevSource
-      ? [...prodBuckets.githubDeps, ...devBuckets.githubDeps]
-      : prodBuckets.githubDeps,
-    devPackages: devBuckets.packages,
-  };
+  return classifyDeps(prod, addon, file);
 }
 
 /**
- * Classify the submission's whole dependency graph: the root package file, plus - in SCA mode -
- * every one reached by a chain of file:/link: local packages (resolveLocalPackageFiles).
- * A linked package's code is authored, reviewed wherever it sits (its file:/link: entry is
- * dropped from `unsupported` entirely, not reported), but ITS OWN declared dependencies are
- * real external sources `npm ci` installs, so they are classified exactly like the root's -
- * always with BOTH `dependencies` and `devDependencies` in source scope, since a linked
- * package's devDependencies install unconditionally (verified: `npm ci` pulls them from the
- * registry regardless of what governs the root's own prod/dev split).
+ * Classify a built XPI's package.json dependency declarations. Only the root package file is
+ * read: nothing is installed from an XPI, so there is no local package to follow.
  * @param {Addon} addon
- * @param {boolean} reviewerInstalls  Whether the reviewer INSTALLS from this artifact - see
- *   resolveVendor. Also gates whether file:/link: targets are resolved at all: XPI mode
- *   never ships a local package source tree, so there is nothing to walk there.
  * @returns {{packages: {name: string, version: string, file: string}[],
  *   unpinned: {name: string, spec: string, file: string}[],
  *   unlocked: {name: string, spec: string, file: string}[],
  *   githubDeps: {name: string, spec: string, repo: string, ref: ?string, file: string}[],
- *   unsupported: {name: string, spec: string, file: string}[],
- *   devPackages: {name: string, version: string, file: string}[]}}
+ *   unsupported: {name: string, spec: string, file: string}[]}}
  */
-function resolvePackages(addon, reviewerInstalls) {
+function resolvePackages(addon) {
   const pkg = readPackageFile(submissionFiles(addon));
   if (!pkg) {
     return {
@@ -630,48 +574,9 @@ function resolvePackages(addon, reviewerInstalls) {
       unlocked: [],
       githubDeps: [],
       unsupported: [],
-      devPackages: [],
     };
   }
-  const { targets, packageFiles } = reviewerInstalls
-    ? resolveLocalPackageFiles(addon)
-    : { targets: [], packageFiles: [] };
-  // Keyed by DECLARATION, never by name: one name may be written in several maps with
-  // different specs, and a resolved file:/link: spec exempts the declaration that resolved
-  // and no other. Keyed by name, a harmless `"x": "file:."` under devDependencies would
-  // exempt whatever else the package file declares as `x` - and npm installs that one, since
-  // the dependencies copy wins over devDependencies.
-  const resolvedByFile = new Map();
-  for (const t of targets) {
-    if (!resolvedByFile.has(t.declaringFile)) {
-      resolvedByFile.set(t.declaringFile, new Set());
-    }
-    resolvedByFile.get(t.declaringFile).add(declarationKey(t.map, t.name));
-  }
-
-  const out = classifyPackageFile(
-    pkg,
-    addon,
-    PACKAGE_FILE,
-    resolvedByFile.get(PACKAGE_FILE),
-    reviewerInstalls
-  );
-  for (const m of packageFiles) {
-    const nested = classifyPackageFile(
-      m.pkg,
-      addon,
-      m.file,
-      resolvedByFile.get(m.file),
-      true
-    );
-    out.packages.push(...nested.packages);
-    out.unpinned.push(...nested.unpinned);
-    out.unlocked.push(...nested.unlocked);
-    out.githubDeps.push(...nested.githubDeps);
-    out.unsupported.push(...nested.unsupported);
-    out.devPackages.push(...nested.devPackages);
-  }
-  return out;
+  return classifyPackageFile(pkg, addon, PACKAGE_FILE);
 }
 
 /**

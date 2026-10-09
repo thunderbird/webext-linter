@@ -8,13 +8,19 @@ import os from "node:os";
 import path from "node:path";
 
 import { runPipeline, resolveReviewSchema } from "../../src/pipeline.js";
-import { fixtureCacheOpts } from "../seed-caches.js";
+import { fixtureCacheOpts, freshWorkFolder } from "../seed-caches.js";
 import { createHash } from "node:crypto";
 import { NoAnswerError, setNetworkPacing } from "../../src/util/net.js";
 
 // A cache pre-seeded from the fixtures, so the pipeline's schema / experiments /
 // library-hash fetches all hit disk - these runs stay offline.
 const OFFLINE = fixtureCacheOpts();
+
+/** runPipeline in a fresh work folder of its own, as every review gets one - unless the
+ *  test names the folder itself. */
+function runReview(opts) {
+  return runPipeline({ workFolder: freshWorkFolder(), ...opts });
+}
 
 function tmpAddon(files) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-"));
@@ -39,7 +45,7 @@ test("review: read-only; line numbers match the submitted source", async () => {
     "bg.js": "const x=1;debugger;\n",
   });
 
-  const result = await runPipeline({
+  const result = await runReview({
     addonPath: src,
     ...OFFLINE,
   });
@@ -83,7 +89,7 @@ test("invalid Experiment: only the reject check runs, nothing else", async () =>
     "impl.js": 'this.myApi = class { getAPI() { eval("y"); return {}; } };\n',
   });
 
-  const result = await runPipeline({
+  const result = await runReview({
     addonPath: src,
     ...OFFLINE,
   });
@@ -110,7 +116,7 @@ test("allowed Experiment: normal review runs, no reject", async () => {
     "impl.js": 'this.myApi = class { getAPI() { eval("y"); return {}; } };\n',
   });
 
-  const result = await runPipeline({
+  const result = await runReview({
     addonPath: src,
     ...OFFLINE,
     allowExperiments: true,
@@ -143,12 +149,26 @@ test("add-on: a node_modules symlink out of the package refuses the XPI", async 
     "dir"
   );
 
-  await assert.rejects(runPipeline({ addonPath: src, ...OFFLINE }), {
+  await assert.rejects(runReview({ addonPath: src, ...OFFLINE }), {
     message:
       "Invalid XPI: node_modules is a symbolic link (an add-on must contain regular files only).",
   });
 
   [src, outside].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+});
+
+// Every review has a work folder, named by its caller: a caller that forgot is a wiring
+// error, refused before anything is read or written, rather than a review put somewhere
+// nobody chose.
+test("a review with no work folder is a wiring error", async () => {
+  const src = tmpAddon({
+    "manifest.json": '{"manifest_version":3,"name":"No Work","version":"1.0"}',
+  });
+  await assert.rejects(runPipeline({ addonPath: src, ...OFFLINE }), {
+    name: "LinterError",
+    message: /no workFolder/,
+  });
+  fs.rmSync(src, { recursive: true, force: true });
 });
 
 // The other half: a real node_modules DIRECTORY in an add-on is shipped content, so its
@@ -166,7 +186,7 @@ test("add-on: a shipped node_modules folder is reviewed like any other folder", 
     "node_modules/dep/index.js": 'function f() { return eval("1 + 1"); }\n',
   });
 
-  const { findings } = await runPipeline({ addonPath: src, ...OFFLINE });
+  const { findings } = await runReview({ addonPath: src, ...OFFLINE });
 
   assert.ok(
     findings.some(
@@ -233,7 +253,7 @@ test("a listing unpkg does not answer ends the review instead of passing it", as
     },
   });
   await assert.rejects(
-    runPipeline({ addonPath: LODASH, ...OFFLINE }),
+    runReview({ addonPath: LODASH, ...OFFLINE }),
     (err) =>
       err instanceof NoAnswerError &&
       err.message.includes("unpkg.com") &&
@@ -251,7 +271,7 @@ test("an OSV query that gets no answer ends the review", async (t) => {
     [OSV_QUERY]: 502,
   });
   await assert.rejects(
-    runPipeline({ addonPath: LODASH, ...OFFLINE }),
+    runReview({ addonPath: LODASH, ...OFFLINE }),
     (err) => err instanceof NoAnswerError && err.message.includes("api.osv.dev")
   );
 });

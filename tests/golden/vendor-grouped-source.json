@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/vendor-grouped-source",
-    "xpiRoot": "<root>/tests/addons/vendor-grouped-source/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "vendor-grouped-source",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

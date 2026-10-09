@@ -1,36 +1,69 @@
-// extractionDestination: one check, no retry loop - see src/util/dest.js for why.
+// The work folder's naming convention (src/util/dest.js): the default folder a review gets,
+// read off the path it was given, and the bare names inside every work folder.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
-import { extractionDestination } from "../../src/util/dest.js";
+import {
+  defaultWorkFolder,
+  submissionLeaf,
+  workPaths,
+} from "../../src/util/dest.js";
 
-test("nothing at the base: returned unchanged", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "webext-linter-dest-"));
-  const base = path.join(dir, "a.xpi.extracted");
-  assert.equal(extractionDestination(base), base);
-  fs.rmSync(dir, { recursive: true, force: true });
+// The default folder is named after the submission and read off the PATH the run was
+// given - never off the manifest.json, whose name is submission data of any shape. It sits
+// beside the add-on argument, for a packed and an unpacked one alike.
+test("the default work folder is named after the submission, beside it", () => {
+  for (const p of ["/dl/foo.xpi", "/dl/foo"]) {
+    const work = defaultWorkFolder(p);
+    assert.equal(path.dirname(work), "/dl", p);
+    assert.match(path.basename(work), /^foo-\d{4}-\d{2}-\d{2}T[\d-]+Z$/, p);
+  }
+  // Escaped, not because a leaf could escape a directory - it cannot - but because an
+  // ordinary name like this one would otherwise upset a shell.
+  assert.match(
+    path.basename(defaultWorkFolder("/dl/My Add-on 1.0.xpi")),
+    /^My_Add-on_1\.0-/
+  );
 });
 
-test("something already at the base: a timestamp-suffixed sibling", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "webext-linter-dest-"));
-  const base = path.join(dir, "a.xpi.extracted");
-  fs.mkdirSync(base);
-  const dest = extractionDestination(base);
-  assert.notEqual(dest, base);
-  assert.ok(dest.startsWith(`${base}-`));
-  // Iso-ish, minute resolution at least - not just any suffix.
-  assert.match(dest, /-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}/);
-  fs.rmSync(dir, { recursive: true, force: true });
+// Only the .xpi it was packed as comes off: anything else is part of the name somebody
+// gave it.
+test("submissionLeaf takes off .xpi and nothing else", () => {
+  assert.equal(submissionLeaf("/dl/foo.xpi"), "foo");
+  assert.equal(submissionLeaf("/dl/foo"), "foo");
+  assert.equal(submissionLeaf("/dl/foo.xpi.extracted"), "foo.xpi.extracted");
+  assert.equal(submissionLeaf("/dl/foo.zip"), "foo.zip");
 });
 
-test("a plain file at the base collides too, not only a directory", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "webext-linter-dest-"));
-  const base = path.join(dir, "a.xpi.extracted");
-  fs.writeFileSync(base, "");
-  assert.notEqual(extractionDestination(base), base);
-  fs.rmSync(dir, { recursive: true, force: true });
+// Every review names the same files the same way, so a prompt, a test and a person all find
+// a file where the last review had it.
+test("the work folder's names are bare and fixed", () => {
+  const work = workPaths("/w");
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries(work).filter(([, v]) => typeof v === "string")
+    ),
+    {
+      xpi: "/w/xpi",
+      sca: "/w/sca",
+      prepare: "/w/prepare.json",
+      state: "/w/state.json",
+      review: "/w/review.json",
+      report: "/w/report.md",
+      summary: "/w/summary.md",
+      build: "/w/build.md",
+      buildDiff: "/w/build-diff.md",
+      buildCopy: "/w/build",
+    }
+  );
+  assert.deepEqual(work.sweep("XPI"), {
+    request: "/w/sweep-xpi.yaml",
+    answers: "/w/sweep-xpi.answers.json",
+  });
+  assert.deepEqual(work.sweep("SCA"), {
+    request: "/w/sweep-sca.yaml",
+    answers: "/w/sweep-sca.answers.json",
+  });
 });

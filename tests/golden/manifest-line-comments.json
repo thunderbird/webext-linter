@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/manifest-line-comments",
-    "xpiRoot": "<root>/tests/addons/manifest-line-comments/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "manifest-line-comments",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

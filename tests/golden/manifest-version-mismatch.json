@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/manifest-version-mismatch",
-    "xpiRoot": "<root>/tests/addons/manifest-version-mismatch/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "manifest-version-mismatch",
     "reviewed": true,
     "schemaSource": "cache:release-mv2",

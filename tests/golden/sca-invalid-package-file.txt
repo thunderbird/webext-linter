@@ -67,7 +67,7 @@ Suggested response: This add-on appears to send data through a page navigation -
 
 5) Unencrypted data transmission: A remote endpoint reached over http://, ws://
    or ftp://. Whatever the payload: the objection is the transport.
-Sweep: <root>/tests/addons/sca-invalid-package-file/xpi/
+Sweep: <work>/xpi/
 Suggested verdict: error
 Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
 
@@ -105,14 +105,14 @@ Suggested response: The following code location(s) appear to send data through a
     package - the name and description in manifest.json, or any bundled text,
     image or media - that is spam, inappropriate, misleading or low-effort, or
     that breaches Mozilla's Acceptable Use Policy.
-Sweep: <root>/tests/addons/sca-invalid-package-file/xpi/
+Sweep: <work>/xpi/
 Suggested verdict: error
 Suggested response: Content shipped inside this add-on does not meet our content requirements. It must not be spam, inappropriate, misleading, or low-effort, and it must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please correct the affected content and submit a new version.
 
 11) Check the shipped icons for trademark or logo imitation: An icon shipped
     inside the package that imitates or incorporates the Thunderbird, Firefox or
     Mozilla logo.
-Sweep: <root>/tests/addons/sca-invalid-package-file/xpi/
+Sweep: <work>/xpi/
 Suggested verdict: error
 Suggested response: An icon shipped inside this add-on imitates or incorporates a Mozilla trademark (the Thunderbird, Firefox or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please use a distinct icon and submit a new version.
 

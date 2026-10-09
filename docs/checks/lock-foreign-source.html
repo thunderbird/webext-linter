@@ -22,12 +22,10 @@
         records, so an entry resolved elsewhere installs bytes the audit never read.
       </p>
       <p>
-        GitHub is accepted, because a package.json may declare a GitHub dependency. A
-        root dependency declared as a registry release but locked to GitHub is reported
-        too: it is audited as the npm package and installed from somewhere else. An
-        entry with no recorded source is a registry install, and a local
-        <code>file:</code> or linked package is the submission's own code, judged by
-        other checks.
+        GitHub is accepted: a GitHub install is never audited under an npm name, and
+        its repository is gated on popularity instead. An entry with no recorded source
+        is a registry install, and a local <code>file:</code> or linked package is
+        judged by <a href="unsupported-dependency.html">unsupported-dependency</a>.
       </p>
 
       <h2>Decision flow</h2>
@@ -37,10 +35,8 @@ flowchart TD
   A["The governing lock file"] --> B{"For each installed entry:<br/>where does it resolve from?"}
   B -- "npm registry, or none recorded" --> OK([no finding])
   B -- "local file: / link" --> OK
-  B -- GitHub --> G{"A root dependency declared<br/>as a registry release?"}
-  G -- no --> OK
-  G -- yes --> ERR([ERROR: unsupported source])
-  B -- "any other host" --> ERR
+  B -- GitHub --> OK
+  B -- "any other host" --> ERR([ERROR: unsupported source])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -52,8 +48,8 @@ flowchart TD
       <div class="outcome">
         <strong>When it fires</strong>
         The add-on is told which packages its lock file installs from an unsupported
-        source, and that every dependency must install from the npm registry or, where
-        package.json declares one, from GitHub, with a regenerated lock file.
+        source, and that every dependency must install from the npm registry or from
+        GitHub, with a regenerated lock file.
       </div>
 
       <div class="outcome">

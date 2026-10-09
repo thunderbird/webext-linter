@@ -4,18 +4,7 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 
 1) The following dependencies could not be confirmed as widely used, so they can be neither shipped nor used in the build without being reviewed. Replace each with a widely-used equivalent, remove it if the add-on does not need it, or include its non-minified source in the archive and declare it as a local package ("file:./path/to/it") so it is reviewed as part of the submission. Its own dependencies are checked the same way.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
- - [SCA] package.json:5 - tiny-obscure-helper (1.0.0)
-
-We kindly ask you to resolve the following issues with your next release:
-
-2) A dependency this add-on bundles directly has known security vulnerabilities: tiny-obscure-helper (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). Update tiny-obscure-helper to a patched release or later.
- - [SCA] package.json:5
-
-3) A build dependency this add-on declares has known security vulnerabilities: vitest (1.0.0) is affected by published advisories of moderate severity (GHSA-fixture-example). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update vitest to a patched release or later.
- - [SCA] package.json:8
-
-4) A build dependency this add-on declares has known security vulnerabilities: platform-binary (2.3.3) is affected by published advisories of moderate severity (GHSA-fixture-example). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update platform-binary to a patched release or later.
- - [SCA] package.json:11
+ - [SCA] package-lock.json:14 - tiny-obscure-helper (1.0.0)
 
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
@@ -49,8 +38,11 @@ An example can be found here: https://github.com/thunderbird/webext-examples/tre
 Continue manual review for the following checks:
 
 1) Build failure: Did the build succeed? Follow the build process from a clean
-   copy of the source archive, or read the build diff where the review wrote
-   one. Clear only if every step completed.
+   copy of the source archive, installing the dependencies exactly as the lock
+   file pins them (npm ci, or pnpm install --frozen-lockfile), or read the build
+   diff where the review wrote one. Clear only if every step completed. An
+   install refused because package.json and the lock file disagree is a failed
+   build.
 Suggested verdict: error
 Suggested response: The submitted source could not be built by following its build instructions, so the review cannot continue. Please make sure the instructions are complete and that the build succeeds from a clean copy of the submitted archive.
  - [SCA] package.json
@@ -95,7 +87,7 @@ Suggested response: This add-on appears to send data through a page navigation -
 
 5) Unencrypted data transmission: A remote endpoint reached over http://, ws://
    or ftp://. Whatever the payload: the objection is the transport.
-Sweep: <root>/tests/addons/sca-dependency-audit/xpi/
+Sweep: <work>/xpi/
 Suggested verdict: error
 Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
 
@@ -133,14 +125,14 @@ Suggested response: The following code location(s) appear to send data through a
     package - the name and description in manifest.json, or any bundled text,
     image or media - that is spam, inappropriate, misleading or low-effort, or
     that breaches Mozilla's Acceptable Use Policy.
-Sweep: <root>/tests/addons/sca-dependency-audit/xpi/
+Sweep: <work>/xpi/
 Suggested verdict: error
 Suggested response: Content shipped inside this add-on does not meet our content requirements. It must not be spam, inappropriate, misleading, or low-effort, and it must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please correct the affected content and submit a new version.
 
 11) Check the shipped icons for trademark or logo imitation: An icon shipped
     inside the package that imitates or incorporates the Thunderbird, Firefox or
     Mozilla logo.
-Sweep: <root>/tests/addons/sca-dependency-audit/xpi/
+Sweep: <work>/xpi/
 Suggested verdict: error
 Suggested response: An icon shipped inside this add-on imitates or incorporates a Mozilla trademark (the Thunderbird, Firefox or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please use a distinct icon and submit a new version.
 
@@ -238,6 +230,6 @@ Because the original project is still active, your submission does not meet thes
 
 ── Summary ──
 
-1 error(s), 0 hold, 3 warning(s), 0 info,
+1 error(s), 0 hold, 0 warning(s), 0 info,
 2 extended code review item(s), 2 extended manual review item(s),
 11 standard code review item(s), 10 standard manual review item(s)

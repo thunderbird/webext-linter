@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/unrecognized-file-type",
-    "xpiRoot": "<root>/tests/addons/unrecognized-file-type/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "unrecognized-file-type",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

@@ -1,6 +1,6 @@
 // The ONE order of a finished review: every finding and every to-do item, in the
 // sequence the report lists them, each carrying the number the report lists it under.
-// The renderer prints this sequence and --llm-verdict indexes into it, so an item's
+// The renderer prints this sequence and --llm-handback indexes into it, so an item's
 // number is assigned once and nothing has to re-derive it.
 //
 // That is the whole point of this module. While the order lived inside the renderer and

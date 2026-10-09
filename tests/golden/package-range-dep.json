@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/package-range-dep",
-    "xpiRoot": "<root>/tests/addons/package-range-dep/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "package-range-dep",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

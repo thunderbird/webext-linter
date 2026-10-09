@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/deprecated",
-    "xpiRoot": "<root>/tests/addons/deprecated/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "deprecated",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

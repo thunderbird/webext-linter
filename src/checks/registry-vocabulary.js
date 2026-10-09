@@ -230,6 +230,17 @@ export const ITEMLESS_ANSWERS = ["hints", "none", "end"];
  *  is recorded when the phase comes back, and the Review Details block links it only then. */
 export const PHASE_PRODUCTS = ["buildDiff"];
 
-/** The one fact the SCA prompt's `when:` conditions can name: whether the built add-on
- *  declares Experiments, which decides whether it asks its reader for --sca-exp-source. */
+/** The one fact the preparation prompts' `when:` conditions can name: whether the built
+ *  add-on declares Experiments, which decides whether the first asks its reader for the
+ *  Experiment folder. */
 export const SCA_PROMPT_FACTS = ["experiments"];
+
+/** The preparation's prompts, one step list each, named for the step that prints it
+ *  (src/prepare/state.js PREPARE_STEP): `extract` first, then `reduce` and `fix` for a
+ *  rescued copy. Once the preparation is done, the hand-back starts the review instead. */
+export const SCA_PROMPT_STEPS = ["extract", "reduce", "fix"];
+
+/** The placeholder every one of those prompts carries: the command its run prints, which is
+ *  how the reader reaches the next run. A list without it would leave its reader with
+ *  nowhere to go. */
+export const SCA_PROMPT_COMMAND = "{{flags}}";

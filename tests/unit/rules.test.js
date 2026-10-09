@@ -1012,6 +1012,7 @@ test("every check's severity is pinned to its band", async () => {
       "vendor-ambiguous-source",
       "vendor-modified",
       "vendor-unparseable",
+      "vendor-vulnerable-dev",
       "vendor-vulnerable-indirect",
       "vendor-vulnerable-indirect-dev",
       "vendored-remote-resources",
@@ -1037,13 +1038,14 @@ test("every check's severity is pinned to its band", async () => {
       "find-lib-on-cdn",
       "minimize-host-permissions",
       "missing-library",
+      "sca-dependencies-changed",
       "unparsable-file",
       "unrecognized-manifest-key",
       "unsafe-html",
       "untrusted-library",
       "vendor-vuln-unknown",
     ],
-    auto: ["banned-library", "vendor-vulnerable", "vendor-vulnerable-dev"],
+    auto: ["banned-library", "vendor-vulnerable"],
     // Blocks the review without rejecting the add-on - the fix is on the ATN listing,
     // so no rebuild would help. Resolves to error only alongside a real one.
     "hold-or-error": ["native-messaging", "privacy-policy"],
@@ -1831,6 +1833,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "committed-build-artifact",
     "committed-node-modules",
     "lock-foreign-source",
+    "sca-dependencies-changed",
     "sca-invalid-symlink",
     "sca-lock-file-invalid",
     "sca-lock-file-missing",
@@ -5933,6 +5936,24 @@ test("a check naming a reason the registry does not define is refused", () => {
   assert.throws(
     () => checkEarlyExit(registry),
     /which `review-early-exit` does not define/
+  );
+});
+
+// A sweep's hints are merged into the review unverified, and an aborted review verifies
+// nothing - so a check that sweeps may not abort one, or one unaudited hint would settle the
+// submission.
+test("a check that sweeps and aborts the review is refused", () => {
+  const registry = loadRegistry();
+  const sweeping = registry.allEntries().find((e) => e["sweep-instruction"]);
+  const entry = Object.values(registry.doc)
+    .filter(Array.isArray)
+    .flat()
+    .find((e) => e?.check === sweeping.check);
+  entry["review-early-exit"] = "known-vulnerabilities";
+  entry.severity = "error";
+  assert.throws(
+    () => checkEarlyExit(registry),
+    new RegExp(`\`${sweeping.check}\` aborts the review and authors a sweep`)
   );
 });
 

@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/vendor-missing-file",
-    "xpiRoot": "<root>/tests/addons/vendor-missing-file/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "vendor-missing-file",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

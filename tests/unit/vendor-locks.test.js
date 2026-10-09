@@ -17,15 +17,18 @@ import {
   lockedPackages,
   unreadableLock,
   lockSourceGaps,
+  githubInstalls,
+  localInstalls,
 } from "../../src/vendor/locks.js";
 import { resolveVendor } from "../../src/vendor/resolve.js";
+import { verifyScaDependencies } from "../../src/vendor/verify.js";
 
-function fakeAddon(files) {
+function fakeAddon(files, directories = []) {
   const map = new Map();
   for (const [k, v] of Object.entries(files)) {
     map.set(k, Buffer.from(v));
   }
-  return { files: map };
+  return { files: map, directories };
 }
 
 // ---- lockedVersion ----
@@ -100,9 +103,9 @@ test("an exact-pinned dependency is a verify source", async () => {
 });
 
 // A range names one release only through the lock beside it, and the vendoring guide asks a
-// developer shipping a range to commit that lock - so it resolves in EITHER artifact. What
-// the artifact still decides is what the lock is read FOR: a source archive is installed
-// from, so its whole tree is enumerated and audited; an XPI is not.
+// developer shipping a range to commit that lock - so it resolves in a built XPI. A source
+// archive is installed from, so package.json is not read for its dependencies at all: the
+// lock's whole tree is enumerated and audited instead.
 const RANGE_WITH_LOCK = {
   "package.json": JSON.stringify({ dependencies: { jszip: "^3.10.0" } }),
   "package-lock.json": JSON.stringify({
@@ -110,12 +113,24 @@ const RANGE_WITH_LOCK = {
   }),
 };
 
-test("a range with an authoritative lock is pinned to the locked version", async () => {
-  const { packages, unpinned } = await resolvePackages(RANGE_WITH_LOCK, true);
-  assert.deepEqual(packages, [
-    { name: "jszip", version: "3.10.1", file: "package.json" },
-  ]);
-  assert.deepEqual(unpinned, []);
+test("a source review reads the version from the lock, not package.json", async () => {
+  const vendor = await resolveVendor({
+    addon: fakeAddon(RANGE_WITH_LOCK),
+    reviewerInstalls: true,
+  });
+  for (const bucket of [
+    "packages",
+    "unpinned",
+    "unlocked",
+    "githubDeps",
+    "unsupportedDeps",
+  ]) {
+    assert.deepEqual(vendor[bucket], [], bucket);
+  }
+  assert.deepEqual(
+    vendor.lockPackages.map((p) => `${p.name}@${p.version}`),
+    ["jszip@3.10.1"]
+  );
 });
 
 test("a lock shipped inside an XPI pins a range too", async () => {
@@ -180,26 +195,18 @@ test("an npm: alias is the package it installs, not the name it is written under
   });
 
   // Exact: a verify source under the TARGET's name, which is what npm and OSV know it by.
-  for (const reviewerInstalls of [false, true]) {
-    const { packages, unpinned } = await resolvePackages(
-      alias("npm:@types/web@0.0.353"),
-      reviewerInstalls
-    );
-    assert.deepEqual(packages, [
-      { name: "@types/web", version: "0.0.353", file: "package.json" },
-    ]);
-    assert.deepEqual(unpinned, []);
-  }
-
-  // The same declaration in devDependencies, where the reviewer installs from the
-  // artifact: still the target, never a rejected source.
-  const dev = await resolveVendor({
-    addon: fakeAddon(alias("npm:@types/web@0.0.353", true)),
-    reviewerInstalls: true,
-  });
-  assert.deepEqual(dev.devPackages, [
+  const { packages, unpinned } = await resolvePackages(
+    alias("npm:@types/web@0.0.353")
+  );
+  assert.deepEqual(packages, [
     { name: "@types/web", version: "0.0.353", file: "package.json" },
   ]);
+  assert.deepEqual(unpinned, []);
+
+  // The same declaration in devDependencies: never a rejected source.
+  const dev = await resolveVendor({
+    addon: fakeAddon(alias("npm:@types/web@0.0.353", true)),
+  });
   assert.deepEqual(dev.unsupportedDeps, []);
 
   // A ranged alias with no lock to resolve it pins nothing, so it is unlocked rather than
@@ -221,20 +228,17 @@ test("an npm: alias is the package it installs, not the name it is written under
   assert.equal(bare.unlocked.length, 1);
 
   // The lock keys its entry by the WRITTEN name, so that is what resolves the range.
-  const locked = await resolvePackages(
-    {
-      ...alias("npm:@types/web@^0.0.353"),
-      "package-lock.json": JSON.stringify({
-        packages: {
-          "node_modules/@typescript/lib-dom": {
-            name: "@types/web",
-            version: "0.0.353",
-          },
+  const locked = await resolvePackages({
+    ...alias("npm:@types/web@^0.0.353"),
+    "package-lock.json": JSON.stringify({
+      packages: {
+        "node_modules/@typescript/lib-dom": {
+          name: "@types/web",
+          version: "0.0.353",
         },
-      }),
-    },
-    true
-  );
+      },
+    }),
+  });
   assert.deepEqual(locked.packages, [
     { name: "@types/web", version: "0.0.353", file: "package.json" },
   ]);
@@ -853,27 +857,17 @@ test("an XPI's lock pins its ranges and nothing more", async () => {
   ]);
   assert.deepEqual(shipped.unpinned, []);
   assert.deepEqual(shipped.unlocked, []);
-  // A dev range resolves the same way an exact dev spec always has here. devPackages is
-  // read only where the reviewer builds (verifyScaDependencies), so in an XPI it is
-  // gathered and never asked for - the same as before a lock was consulted at all.
-  assert.deepEqual(shipped.devPackages, [
-    { name: "webpack", version: "5.88.0", file: "package.json" },
-  ]);
   // The tree is NOT enumerated: nothing was installed, so there is nothing to query.
   assert.deepEqual(shipped.lockPackages, []);
 
-  // The same bytes in a source archive, where the lock IS what the reviewer installs from.
+  // The same bytes in a source archive, where the lock IS what the reviewer installs from:
+  // the tree is read from it, and package.json is not read for dependencies at all.
   const source = await resolveVendor({
     addon: fakeAddon(files),
     reviewerInstalls: true,
     enabled: false,
   });
-  assert.deepEqual(source.packages, [
-    { name: "jszip", version: "3.10.1", file: "package.json" },
-  ]);
-  assert.deepEqual(source.devPackages, [
-    { name: "webpack", version: "5.88.0", file: "package.json" },
-  ]);
+  assert.deepEqual(source.packages, []);
   assert.deepEqual(source.unpinned, []);
   assert.deepEqual(source.unlocked, []);
   assert.deepEqual(source.lockPackages.map((p) => p.name).sort(), [
@@ -932,9 +926,10 @@ test("lockSourceGaps: an npm v3 entry resolved off the registry and GitHub is re
   );
 });
 
-// GitHub is a declarable source - except for a root dependency declared as a registry
-// release: that one is audited as the npm package and installed from GitHub.
-test("lockSourceGaps: GitHub is fine for a GitHub declaration, not for a registry one", () => {
+// GitHub is accepted whatever package.json says: package.json is not read, and a GitHub
+// install is never audited under an npm name, so a registry declaration the lock takes from
+// GitHub launders nothing.
+test("lockSourceGaps: GitHub is accepted whatever package.json declares", () => {
   const files = (spec) =>
     fakeAddon({
       "package.json": JSON.stringify({ dependencies: { g: spec } }),
@@ -950,10 +945,8 @@ test("lockSourceGaps: GitHub is fine for a GitHub declaration, not for a registr
       }),
     });
   assert.deepEqual(lockSourceGaps(files("github:o/g")), []);
-  assert.deepEqual(
-    lockSourceGaps(files("1.0.0")).map((g) => g.name),
-    ["g"]
-  );
+  assert.deepEqual(lockSourceGaps(files("1.0.0")), []);
+  assert.deepEqual(lockedPackages(files("1.0.0")), []);
 });
 
 test("lockSourceGaps: npm v1 walks the nested tree", () => {
@@ -1054,5 +1047,374 @@ test("an overridden version is the one the tree audit reads, for npm and pnpm", 
     lockedPackages(pnpm).some(
       (p) => p.name === "lodash" && p.version === "4.17.21"
     )
+  );
+});
+
+// The override case end to end: package.json pins lodash 4.17.20, pnpm's override installs
+// 4.17.21, and a source review asks OSV about the release that is installed - package.json
+// is not read for it at all.
+test("a pnpm override is audited at the installed version", async () => {
+  const addon = overrideFixture("pnpm");
+  addon.vendor = resolveVendor({ addon, reviewerInstalls: true });
+  const asked = [];
+  await verifyScaDependencies(addon, {
+    fetchBytes: async () => Buffer.alloc(0),
+    fetchJson: async () => ({ downloads: 1e9 }),
+    postJson: async (_url, body) => {
+      asked.push(...body.queries.map((q) => `${q.package.name}@${q.version}`));
+      return { results: [] };
+    },
+  });
+  assert.ok(asked.includes("lodash@4.17.21"), asked.join(" "));
+  assert.ok(!asked.includes("lodash@4.17.20"), asked.join(" "));
+});
+
+// ---- npm lockfile v1: no declared set ----
+
+// v1 keeps no record of what the project asked for, so no package can be told apart from
+// another. Every one counts as declared: it is popularity-gated and reported by the two
+// declared vulnerability checks, rather than none of it being gated at all.
+test("npm v1 counts every package as declared", async () => {
+  const addon = fakeAddon({
+    "package-lock.json": JSON.stringify({
+      lockfileVersion: 1,
+      dependencies: {
+        top: {
+          version: "1.0.0",
+          dependencies: { deep: { version: "2.0.0", dev: true } },
+        },
+      },
+    }),
+  });
+  assert.deepEqual(declared(addon).sort(), ["deep", "top"]);
+
+  addon.vendor = resolveVendor({ addon, reviewerInstalls: true });
+  const popularity = [];
+  await verifyScaDependencies(addon, {
+    fetchBytes: async () => Buffer.alloc(0),
+    fetchJson: async (url) => {
+      if (url.includes("/v1/vulns/")) {
+        return {
+          id: "GHSA-v1",
+          database_specific: { severity: "HIGH" },
+        };
+      }
+      popularity.push(url.slice(url.lastIndexOf("/") + 1));
+      return { downloads: 5 };
+    },
+    postJson: async (_url, body) => ({
+      results: body.queries.map(() => ({ vulns: [{ id: "GHSA-v1" }] })),
+    }),
+  });
+  assert.deepEqual(popularity.sort(), ["deep", "top"]);
+  assert.deepEqual(
+    addon.vendor.vulnerabilities.map((v) => v.name),
+    ["top"]
+  );
+  assert.deepEqual(
+    addon.vendor.devVulnerabilities.map((v) => v.name),
+    ["deep"]
+  );
+  assert.deepEqual(addon.vendor.treeVulnerabilities, []);
+  assert.deepEqual(addon.vendor.treeDevVulnerabilities, []);
+});
+
+// ---- githubInstalls ----
+
+// A GitHub install is never audited under an npm name, so its repository is what the
+// popularity gate asks about. Each format records it somewhere else.
+test("githubInstalls reads owner/repo from npm v3, v1 and pnpm", () => {
+  const npm3 = fakeAddon({
+    "package-lock.json": JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "": { dependencies: { widget: "github:Owner/widget" } },
+        "node_modules/widget": {
+          version: "1.2.0",
+          resolved: "git+ssh://git@github.com/Owner/widget.git#abc123",
+        },
+        "node_modules/pulled": {
+          version: "0.1.0",
+          resolved: "git+https://github.com/other/pulled.git#def",
+        },
+        "node_modules/reg": { version: "1.0.0" },
+      },
+    }),
+  });
+  assert.deepEqual(
+    githubInstalls(npm3).map((g) => [g.name, g.repo, g.direct, g.token]),
+    [
+      ["widget", "Owner/widget", true, "node_modules/widget"],
+      ["pulled", "other/pulled", false, "node_modules/pulled"],
+    ]
+  );
+
+  const npm1 = fakeAddon({
+    "package-lock.json": JSON.stringify({
+      lockfileVersion: 1,
+      dependencies: {
+        widget: { version: "git+https://github.com/o/widget.git#abc" },
+      },
+    }),
+  });
+  assert.deepEqual(
+    githubInstalls(npm1).map((g) => [g.name, g.repo, g.direct]),
+    [["widget", "o/widget", true]]
+  );
+
+  const pnpm = fakeAddon({
+    "pnpm-lock.yaml": [
+      "lockfileVersion: '9.0'",
+      "importers:",
+      "  .:",
+      "    dependencies:",
+      "      widget:",
+      "        specifier: github:o/widget",
+      "        version: https://codeload.github.com/o/widget/tar.gz/abc",
+      "packages:",
+      "  widget@https://codeload.github.com/o/widget/tar.gz/abc:",
+      "    resolution: {tarball: https://codeload.github.com/o/widget/tar.gz/abc}",
+      "    name: widget",
+      "    version: 1.0.0",
+      "  gadget@git+https://github.com/o/gadget.git#def:",
+      "    resolution: {type: git, repo: https://github.com/o/gadget.git, commit: def}",
+      "    name: gadget",
+      "    version: 2.0.0",
+      "",
+    ].join("\n"),
+  });
+  assert.deepEqual(
+    githubInstalls(pnpm).map((g) => [g.name, g.repo, g.direct, g.version]),
+    [
+      ["widget", "o/widget", true, "1.0.0"],
+      ["gadget", "o/gadget", false, "2.0.0"],
+    ]
+  );
+});
+
+// A declared GitHub install end to end: read from the lock, gated by its stars.
+test("a direct GitHub dependency is popularity-gated", async () => {
+  const addon = fakeAddon({
+    "package-lock.json": JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        "": { dependencies: { widget: "github:o/widget" } },
+        "node_modules/widget": {
+          version: "1.0.0",
+          resolved: "git+ssh://git@github.com/o/widget.git#abc",
+        },
+      },
+    }),
+  });
+  addon.vendor = resolveVendor({ addon, reviewerInstalls: true });
+  const asked = [];
+  await verifyScaDependencies(addon, {
+    fetchBytes: async () => Buffer.alloc(0),
+    fetchJson: async (url) => {
+      asked.push(url);
+      return { stargazers_count: 3 };
+    },
+    postJson: async () => ({ results: [] }),
+  });
+  assert.ok(
+    asked.some((u) => u.endsWith("/repos/o/widget")),
+    asked.join()
+  );
+  assert.deepEqual(addon.vendor.unpopularDeps, [
+    {
+      name: "widget",
+      version: "1.0.0",
+      file: "package-lock.json",
+      token: "node_modules/widget",
+    },
+  ]);
+});
+
+// ---- localInstalls ----
+
+// A local install is reviewed code only when it is a folder the submission holds. A path
+// outside the root, one the submission lacks, and a local tarball cannot be reviewed - and
+// installSource counts a tarball as local, so lock-foreign-source never sees it.
+test("localInstalls: npm v3 links and file: tarballs", () => {
+  const addon = fakeAddon(
+    {
+      "package-lock.json": JSON.stringify({
+        lockfileVersion: 3,
+        packages: {
+          "": {},
+          "node_modules/inside": { resolved: "packages/inside", link: true },
+          "node_modules/outside": { resolved: "../outside", link: true },
+          "node_modules/absent": { resolved: "packages/absent", link: true },
+          "node_modules/tarball": {
+            version: "1.0.0",
+            resolved: "file:vendor/tarball-1.0.0.tgz",
+          },
+          "packages/inside": { name: "inside" },
+          "node_modules/registry": { version: "1.0.0" },
+        },
+      }),
+      "vendor/tarball-1.0.0.tgz": "x",
+    },
+    ["packages", "packages/inside", "vendor"]
+  );
+  assert.deepEqual(
+    localInstalls(addon).map((l) => [l.name, l.spec, l.token]),
+    [
+      ["outside", "../outside", "node_modules/outside"],
+      ["absent", "packages/absent", "node_modules/absent"],
+      ["tarball", "file:vendor/tarball-1.0.0.tgz", "node_modules/tarball"],
+    ]
+  );
+});
+
+test("localInstalls: npm v1 file: versions", () => {
+  const addon = fakeAddon(
+    {
+      "package-lock.json": JSON.stringify({
+        lockfileVersion: 1,
+        dependencies: {
+          inside: { version: "file:packages/inside" },
+          outside: { version: "file:../outside" },
+          tarball: { version: "file:vendor/tarball-1.0.0.tgz" },
+          registry: { version: "1.0.0" },
+        },
+      }),
+      "vendor/tarball-1.0.0.tgz": "x",
+    },
+    ["packages", "packages/inside", "vendor"]
+  );
+  assert.deepEqual(
+    localInstalls(addon).map((l) => [l.name, l.spec]),
+    [
+      ["outside", "file:../outside"],
+      ["tarball", "file:vendor/tarball-1.0.0.tgz"],
+    ]
+  );
+});
+
+// pnpm records a link relative to the importer that declares it, so the same "../b" is a
+// folder inside the root from packages/a and a path outside it from the root.
+test("localInstalls: pnpm importer links, directories and file: tarballs", () => {
+  const addon = fakeAddon(
+    {
+      "pnpm-lock.yaml": [
+        "lockfileVersion: '9.0'",
+        "importers:",
+        "  .:",
+        "    dependencies:",
+        "      far:",
+        "        specifier: link:../b",
+        "        version: link:../b",
+        "  packages/a:",
+        "    dependencies:",
+        "      b:",
+        "        specifier: link:../b",
+        "        version: link:../b",
+        "packages:",
+        "  dir@file:packages/dir:",
+        "    resolution: {directory: packages/dir, type: directory}",
+        "    name: dir",
+        "  gone@file:packages/gone:",
+        "    resolution: {directory: packages/gone, type: directory}",
+        "    name: gone",
+        "  tgz@file:vendor/tgz-1.0.0.tgz:",
+        "    resolution: {tarball: file:vendor/tgz-1.0.0.tgz}",
+        "    name: tgz",
+        "",
+      ].join("\n"),
+    },
+    ["packages", "packages/a", "packages/b", "packages/dir", "vendor"]
+  );
+  assert.deepEqual(
+    localInstalls(addon).map((l) => [l.name, l.spec]),
+    [
+      ["far", "link:../b"],
+      ["gone", "packages/gone"],
+      ["tgz", "file:vendor/tgz-1.0.0.tgz"],
+    ]
+  );
+});
+
+// One classifier decides "installs from GitHub" for lock-foreign-source and for the
+// popularity gate alike, so the scp form git writes without a scheme is both accepted and
+// gated - never accepted while the gate cannot read a repository from it.
+test("an scp-form GitHub repo in a pnpm lock is popularity-gated", async () => {
+  const addon = fakeAddon({
+    "pnpm-lock.yaml": [
+      "lockfileVersion: '9.0'",
+      "importers:",
+      "  .:",
+      "    dependencies:",
+      "      gadget:",
+      "        specifier: git+ssh://git@github.com:o/gadget.git",
+      "        version: git+ssh://git@github.com:o/gadget.git#def",
+      "packages:",
+      "  gadget@git+ssh://git@github.com:o/gadget.git#def:",
+      "    resolution: {type: git, repo: 'git@github.com:o/gadget.git', commit: def}",
+      "    name: gadget",
+      "    version: 2.0.0",
+      "",
+    ].join("\n"),
+  });
+  assert.deepEqual(lockSourceGaps(addon), []);
+  addon.vendor = resolveVendor({ addon, reviewerInstalls: true });
+  const asked = [];
+  await verifyScaDependencies(addon, {
+    fetchBytes: async () => Buffer.alloc(0),
+    fetchJson: async (url) => {
+      asked.push(url);
+      return { stargazers_count: 3 };
+    },
+    postJson: async () => ({ results: [] }),
+  });
+  assert.ok(
+    asked.some((u) => u.endsWith("/repos/o/gadget")),
+    asked.join()
+  );
+  assert.deepEqual(
+    addon.vendor.unpopularDeps.map((d) => [d.name, d.version, d.token]),
+    [["gadget", "2.0.0", "gadget@git+ssh://git@github.com:o/gadget.git#def"]]
+  );
+});
+
+// The same form with a scheme in front (git+ssh://git@github.com:owner/repo), as pnpm
+// writes a specifier, is GitHub too - and so gated, never refused as a foreign source.
+// An entry the lock gives no name cannot be told direct or not, so it counts as direct and
+// is gated by the repository its source names.
+test("a scheme-and-colon GitHub source, and a nameless entry, are gated", async () => {
+  const addon = fakeAddon({
+    "pnpm-lock.yaml": [
+      "lockfileVersion: '9.0'",
+      "importers:",
+      "  .:",
+      "    dependencies:",
+      "      widget:",
+      "        specifier: github:o/widget",
+      "        version: https://codeload.github.com/o/widget/tar.gz/abc",
+      "packages:",
+      "  https://codeload.github.com/o/widget/tar.gz/abc:",
+      "    resolution: {type: git, repo: 'git+ssh://git@github.com:o/widget.git', commit: abc}",
+      "    version: 1.0.0",
+      "",
+    ].join("\n"),
+  });
+  assert.deepEqual(lockSourceGaps(addon), []);
+  addon.vendor = resolveVendor({ addon, reviewerInstalls: true });
+  const asked = [];
+  await verifyScaDependencies(addon, {
+    fetchBytes: async () => Buffer.alloc(0),
+    fetchJson: async (url) => {
+      asked.push(url);
+      return { stargazers_count: 3 };
+    },
+    postJson: async () => ({ results: [] }),
+  });
+  assert.ok(
+    asked.some((u) => u.endsWith("/repos/o/widget")),
+    asked.join()
+  );
+  assert.deepEqual(
+    addon.vendor.unpopularDeps.map((d) => d.name),
+    ["o/widget"]
   );
 });

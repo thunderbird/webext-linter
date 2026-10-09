@@ -16,8 +16,11 @@
       <h2>What it asks</h2>
       <p class="lead">
         Every source-code submission asks the reviewer whether the build succeeded:
-        following the build process from a clean copy of the source archive, did every
-        step complete?
+        following the build process from a clean copy of the source archive, with the
+        dependencies installed exactly as the lock file pins them (<code>npm ci</code>,
+        or <code>pnpm install --frozen-lockfile</code>), did every step complete? Both
+        refuse to install when package.json and the lock file disagree, and that refusal
+        is a failed build.
       </p>
       <p>
         Nothing in the files can answer that - only a build can - so the question is
@@ -58,8 +61,7 @@ flowchart TD
       <div class="outcome">
         <strong>It aborts the review</strong>
         A &ldquo;no&rdquo; settles the submission on its own. Nothing further is put to a
-        reviewer: the report drops every to-do item they would have been asked, keeps the
-        code-review sections, and the developer&rsquo;s text ends on the reason it is
+        reviewer: the report drops every to-do item they would have been asked, keeps the code-review sections of a printed report (an aborted <code>--llm-review</code> hands over no to-do item at all), and the developer&rsquo;s text ends on the reason it is
         incomplete (&ldquo;Build process issues&rdquo;). Under <code>--llm-review</code> the
         question is asked ALONE, in the <code>built</code> phase, after the build and
         before any other question - <code>ask</code> batches, and nobody may be asked to

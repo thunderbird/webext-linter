@@ -26,25 +26,17 @@
 // one is then in one place, and a reader assembling a question from two places is a reader
 // that can assemble it from one of them alone.
 //
-// Belongs here: what an item carries, and the paths this run names - the two loop files,
-// the description and build-report files its agents write, and a request/answers pair for
-// each tree a sweeping agent is sent at (reviewFilePaths), which share one name so none
-// can drift from the review it belongs to.
+// Belongs here: what an item carries.
 //
 // Does NOT belong here: WHICH of the two wordings an entry is handed over with, and the
 // progress label counting what a hand-over puts to a person - both are the phase's, at the
 // moment it hands out (src/report/handback.js entriesFor). Nor the ORDER and the numbering
 // (src/report/order.js), WHICH entries a phase asks about (src/report/phases.js), the
-// wording (assets/registry.yaml, resolved before this runs), or when the files are claimed
-// (src/pipeline.js).
-
-import os from "node:os";
-import { pathStamp, submissionLeaf } from "../util/dest.js";
-import path from "node:path";
+// wording (assets/registry.yaml, resolved before this runs), or the files a review names
+// (src/util/dest.js workPaths) and when they are claimed (src/pipeline.js).
 
 import { orderReview } from "./order.js";
 import { SECTION_TITLES, manualQuestion } from "./format.js";
-import { STATE_SUFFIX, REVIEW_SUFFIX } from "./state.js";
 
 /**
  * The item array for a finished review.
@@ -141,108 +133,4 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
         };
   });
   return items;
-}
-
-/**
- * The five paths this run names, sharing one name and one moment:
- *
- * - `state`, the linter's own record of the review, and `review`, the file it hands the
- *   agent one phase at a time. Both in the system temp directory. They SHARE A STEM, which
- *   is what makes the pointer in the handed-back file checkable rather than trusted.
- * - `summary`, where a sub-agent writes the add-on description for the reviewer.
- * - `build`, where another writes what building the add-on takes, in a source code review.
- * - `report`, the text the reviewer sends to the developer.
- *
- * The latter three sit BESIDE the submitted .xpi, in the folder the reviewer is working out
- * of, so what they are handed opens where they are looking - a path outside it is one their
- * client will not follow. Of those three the linter writes only `report`, and reads none of
- * them; for the other two it says where they go and nothing more, so a name cannot drift
- * from the review it belongs to.
- *
- * One base for all of them: the submission's name does not identify a review - the same file can
- * be reviewed twice in a session, and a fork carries the name of what it forked - so the
- * run's own moment separates them, and a later run does not open what an earlier one left
- * behind. Millisecond resolution, which separates reviews a person runs; two started in
- * the same millisecond would still collide, and nothing here pretends otherwise.
- * A review is named ONCE, by the run that builds it. Every pass after that is handed the
- * review file's path and finds the rest from it, so no later run has to recompute a moment
- * it does not have.
- *
- * Where the shipped package is unpacked (XPI_ROOT) is NOT one of these: unlike the rest,
- * the linter itself writes there (src/addon/load.js), before this is ever called, and it
- * keeps the suffix this stem drops - see src/util/dest.js.
- *
- * Nothing the SUBMISSION declares reaches this. The stem is read off the path instead, which
- * is what a reviewer recognises and, unlike a manifest value, is a string because argv is.
- * @param {string} xpiPath  Where the add-on IS, absolute. An Addon carries no path of its
- *   own, so the caller passes the one the run was given (src/pipeline.js), which resolved
- *   it - nothing re-resolves it here.
- * @returns {{summary: string, build: string, buildDiff: string, report: string,
- *   state: string, review: string, buildCopy: string,
- *   sweep: (artifact: string) => {request: string, answers: string}}}
- */
-export function reviewFilePaths(xpiPath) {
-  const base = reviewFileBase(xpiPath);
-  // Beside the .xpi, which is the folder a reviewer downloaded it into. For an unpacked
-  // submission that is the folder holding it, for the same reason: not inside what is being
-  // reviewed. Taken once, so the three cannot land in different folders.
-  const beside = path.dirname(xpiPath);
-  return {
-    summary: path.join(beside, `${base}.summary.md`),
-    build: path.join(beside, `${base}.build.md`),
-    // What the build phase's agent writes when the reviewer lets it build: the difference
-    // between its build and the shipped XPI, for the reviewer to read.
-    buildDiff: path.join(beside, `${base}.build-diff.md`),
-    // The one of these the linter writes itself (src/report/report-file.js): the reviewer
-    // reads it while answering, so it is refreshed before the questions are put to them and
-    // rewritten once they are answered.
-    report: path.join(beside, `${base}.report.md`),
-    // The REVIEW LOOP's pair. They share this stem so `base` in the file the agent hands
-    // back is CHECKABLE rather than trusted: the linter derives the state path from the
-    // review path it was given and compares the two.
-    state: path.join(os.tmpdir(), `${base}${STATE_SUFFIX}`),
-    review: path.join(os.tmpdir(), `${base}${REVIEW_SUFFIX}`),
-    // Where that agent copies the source archive to build it: never the archive itself,
-    // which the reviewer and the other agents read as submitted.
-    buildCopy: path.join(os.tmpdir(), `${base}.build`),
-    // One sweeping agent's pair, per artifact it is asked about. Beside the loop's pair
-    // rather than beside the submission, because they are machinery and not something the
-    // reviewer is handed: the linter writes the request, one sub-agent writes the
-    // answers, and the review reads them back within the same loop.
-    //
-    // A FUNCTION, because how many there are is the review's answer and not this
-    // module's - an XPI review has one tree with sweeps and a source review may have two,
-    // and naming a fixed pair of fields here would invent a path for a tree that does not
-    // exist.
-    sweep: (artifact) => {
-      const tag = String(artifact).toLowerCase();
-      return {
-        request: path.join(os.tmpdir(), `${base}.sweep-${tag}.yaml`),
-        answers: path.join(os.tmpdir(), `${base}.sweep-${tag}.answers.json`),
-      };
-    },
-  };
-}
-
-/**
- * The shared name: what the submission is called, and the moment - made safe to put in a
- * path.
- *
- * Taken from the PATH this run was given, not from the manifest. The manifest's name is
- * submission data of any shape, and the one thing this stem is for is being recognised by
- * whoever opens the file - which the name of the thing they downloaded does better anyway.
- * The path came from argv, so it is a string by construction and there is no type left to
- * ask about.
- *
- * Still escaped: a leaf cannot contain a separator, so nothing here can escape a directory,
- * but `My Add-on 1.0.xpi` is an ordinary name and anything outside [A-Za-z0-9._@-] can
- * still upset a shell.
- * @param {string} xpiPath  Where the submission is, as the run was given it.
- * @returns {string}
- */
-function reviewFileBase(xpiPath) {
-  return `${submissionLeaf(xpiPath)}-${pathStamp()}`.replace(
-    /[^A-Za-z0-9._@-]/g,
-    "_"
-  );
 }

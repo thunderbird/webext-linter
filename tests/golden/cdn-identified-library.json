@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/cdn-identified-library",
-    "xpiRoot": "<root>/tests/addons/cdn-identified-library/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "cdn-identified-library",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

@@ -10,7 +10,7 @@
 // That is what makes this half of the tool testable without talking to an agent.
 import { orderReview } from "./order.js";
 import { nextPhase, openIn, phaseOf, stepsOf } from "./phases.js";
-import { earlyExitOf, withoutQuestions } from "./early-exit.js";
+import { earlyExitOf } from "./early-exit.js";
 import {
   HandbackRefused,
   answersOf,
@@ -21,6 +21,8 @@ import {
   writeReviewFile,
 } from "./handback.js";
 import { writeState } from "./state.js";
+import { workPaths } from "../util/dest.js";
+import { shellArg } from "../util/text.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 import { writeReportFile } from "./report-file.js";
 import { reviewItems } from "./items.js";
@@ -44,9 +46,9 @@ import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
  * What this run was told, plus what the review has since decided for itself.
  *
  * `state.run` records the flags the review was STARTED with, and never changes. Whether
- * the review was aborted early is not one of those: it is derived from the findings that
- * still stand, so it can change with every verdict - a pass that withdraws the finding
- * which aborted the review puts its question block back.
+ * the review was aborted early is not one of those: it is derived from what stands so far,
+ * so a pass can abort it - a case reported that aborts the review, a build that did not
+ * reproduce - and the passes after it are cut short.
  *
  * Derived in ONE place, every pass, and read by `issue` to decide which phase goes out
  * and which of its steps it prints (src/report/phases.js stepsOf). What a phase asks
@@ -70,9 +72,20 @@ function runOf(state, ordered, registry) {
     // an agent was started that may still be running, and whether the agent has judged
     // anything it would account for when the review closes.
     first: !state.phase,
-    spawned: issued.includes("spawn"),
+    spawned: spawnIssued(state),
     decided: issued.includes("verify") || issued.includes("settle"),
   };
+}
+
+/**
+ * Whether the phase that starts the review's own agents - the add-on description, the build
+ * report, the sweeps - went out. A review that never issued it started none of them, and so
+ * has none of their files to wait for or to name.
+ * @param {import("./state.js").LoopState} state
+ * @returns {boolean}
+ */
+function spawnIssued(state) {
+  return (state.issued ?? []).includes("spawn");
 }
 
 /**
@@ -132,7 +145,9 @@ function askedByPerson(registry) {
  * Writes both files: the state (the linter's, overwritten so the agent can never hand back
  * an older one) and the review file (the agent's, at one path for the whole review).
  * @param {import("./state.js").LoopState} state  Mutated: it records which phase went out.
- * @param {string} stateFile
+ * @param {string} work  The review's work folder, which holds both files by their fixed
+ *   names (src/util/dest.js workPaths). Not recorded in the state: the state is read from
+ *   it, so the folder is always the one in hand.
  * @param {{name: string, answer: string, verbs: string[], intro: string,
  *   steps: object[]}[]} phases
  * @param {import("../checks/registry.js").Registry} registry  Renders each entry for
@@ -142,7 +157,7 @@ function askedByPerson(registry) {
  *   settled: ?ReturnType<typeof settle>}}  `preamble` is the parts of it this prompt
  *   prints; `settled` is the finished review, for the closing phase only.
  */
-export function issue(state, stateFile, phases, registry) {
+export function issue(state, work, phases, registry) {
   const ordered = orderReview(state.report.findings, state.manual);
   const run = runOf(state, ordered, registry);
   const next = nextPhase(phases, ordered, state, run);
@@ -194,8 +209,8 @@ export function issue(state, stateFile, phases, registry) {
       settle(structuredClone(state), registry).report
     );
   }
-  writeState(stateFile, state);
-  writeReviewFile(state.review, reviewFile(stateFile, entries));
+  writeState(workPaths(work).state, state);
+  writeReviewFile(workPaths(work).review, reviewFile(entries));
   return { phase, steps, preamble, entries, settled };
 }
 
@@ -205,13 +220,17 @@ export function issue(state, stateFile, phases, registry) {
  * @param {import("./state.js").LoopState} state
  * @param {{settled: ?object}} issued  What `issue` handed out: the closing phase carries the
  *   finished review, whose Review Details and tally it hands over.
+ * @param {string} work  The review's work folder.
  * @returns {Object<string, string>}
  */
-export function loopSlots(state, issued) {
+export function loopSlots(state, issued, work) {
   const paths = state.paths ?? {};
   return {
-    review: state.review,
-    command: `node verify.js --llm-verdict ${state.review}`,
+    // The file the agent fills in, and the work folder it is handed back with: the one
+    // folder a later pass finds the state and the review file in, each by its fixed name.
+    // Quoted like any argument of a command its reader runs.
+    review: workPaths(work).review,
+    command: `node verify.js --llm-handback ${shellArg(work)}`,
     schemaCache: paths.schemaCache ?? "",
     description: paths.description ?? "",
     build: paths.build ?? "",
@@ -236,8 +255,10 @@ export function loopSlots(state, issued) {
  * Nothing in the state changes when this throws, so a corrected hand-back resumes exactly
  * where it was - which is why the caller does not re-print the prompt. The agent still has
  * it, and re-issuing the same text against the same input invites a loop.
+ * The answers are read from the review file in the review's work folder, the one `issue`
+ * wrote them into.
  * @param {import("./state.js").LoopState} state  Mutated on success only.
- * @param {string} file  What the agent passed to --llm-verdict.
+ * @param {string} work  The review's work folder, the one the state was read from.
  * @param {{name: string, answer: string, verbs: string[]}[]} phases
  * @param {import("../checks/registry.js").Registry} registry  Renders the entries this
  *   phase asked about, so a hand-back is checked against the same question that went out,
@@ -246,7 +267,7 @@ export function loopSlots(state, issued) {
  * @returns {{phase: object, answers: Map<string, *>, swept?: string[]}}
  * @throws {HandbackRefused}
  */
-export function accept(state, file, phases, registry) {
+export function accept(state, work, phases, registry) {
   const phase = phases.find((p) => p.name === state.phase);
   if (!phase) {
     throw new HandbackRefused(
@@ -258,7 +279,7 @@ export function accept(state, file, phases, registry) {
       "this review is finished - nothing is handed back after its closing prompt"
     );
   }
-  const { entries } = readHandback(file);
+  const { entries } = readHandback(workPaths(work).review);
   // What went out: the same question `issue` answered, asked again through the same
   // helper rather than stored, so the two cannot disagree about what was asked. An
   // itemless phase asks about no entry at all - its work is what its steps do, and each
@@ -427,14 +448,14 @@ export function settle(state, registry) {
   // the registry like any other - the same text either way.
   renderFindings(findings, registry, mode);
   resolveHolds(findings);
-  // Decided HERE, on the findings that survived every verdict, rather than carried over
-  // from the run that produced them: the agent may have withdrawn the very finding that
-  // aborted the review, and then nothing aborted it. What remains is what the reviewer
-  // is left with - the questions were never put to anyone, so the report drops them
-  // instead of listing work under a line saying the review did not finish.
+  // Decided HERE, on the review with every answer applied: a review the deterministic
+  // checks did not abort can still be aborted by what a pass reported - a case settled as
+  // reported, a build that did not reproduce. An aborted review hands over no to-do item at
+  // all: nothing was put to anyone, and nobody is asked to carry on with a submission it
+  // already settles.
   const ordered = orderReview(findings, state.manual);
   const earlyExit = earlyExitOf(ordered, {}, registry);
-  const manual = earlyExit ? withoutQuestions(ordered) : state.manual;
+  const manual = earlyExit ? [] : state.manual;
   return {
     applied,
     // Which hand-over text the last prompt carries. Telling an agent the review is
@@ -463,8 +484,9 @@ export function settle(state, registry) {
     review: {
       findings,
       // The sweep list is not handed on. Either agents swept, and its results are in the
-      // report above, or the run was told to leave the sweep out (--llm-skip-sweep), and
-      // then it is left out for the reviewer too.
+      // report above, or nothing swept - the run was told to leave the sweep out
+      // (--llm-skip-sweep), or the review was aborted before it - and then it is left out
+      // for the reviewer too.
       meta: {
         ...state.report.meta,
         manualReview: manual,
@@ -483,19 +505,20 @@ export function settle(state, registry) {
 }
 
 /** The meta the Review Details block names: which add-on this is and where it can be read
- *  (the unpacked package), plus the files written for the reviewer - the description, the
- *  build report, and the build diff where the build phase wrote one. Those are what the
- *  block exists to hand over. The loop's own bookkeeping is not: the state and review
- *  files are the linter talking to itself, and a reviewer has no use for either. */
+ *  (the unpacked package), plus the files written for the reviewer - the description and the
+ *  build report where the phase that starts their agents went out, and the build diff where
+ *  the build phase wrote one. Those are what the block exists to hand over, and a file no
+ *  agent was ever asked to write is not one of them. */
 function reportMeta(state) {
   const {
     prompting: _prompting,
-    stateFile: _state,
-    reviewFile: _review,
+    summaryFile,
+    buildFile,
     ...rest
   } = state.report.meta;
   return {
     ...rest,
+    ...(spawnIssued(state) ? { summaryFile, buildFile } : {}),
     ...(state.products?.includes("buildDiff")
       ? { buildDiffFile: state.paths.buildDiff }
       : {}),

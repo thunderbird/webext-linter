@@ -25,6 +25,7 @@ import {
   reviewDetails,
   HandbackRefused,
 } from "../../src/report/loop.js";
+import { workPaths } from "../../src/util/dest.js";
 
 const REGISTRY = loadRegistry();
 const PHASES = REGISTRY.llmPhases().phases;
@@ -37,7 +38,8 @@ function review(
   dir,
   { sweep = true, findings = true, code = true, questions = true } = {}
 ) {
-  const base = path.join(dir, "r");
+  // The work folder's own names, as a review lays them out (src/util/dest.js).
+  const files = workPaths(dir);
   const finding = (i, ruleId) => ({
     ruleId,
     severity: "error",
@@ -69,21 +71,20 @@ function review(
     ...extra,
   });
   return {
-    stateFile: `${base}.state.json`,
+    work: dir,
     state: {
       version: STATE_VERSION,
-      review: `${base}.review.json`,
       report: {
         findings: findings ? [finding(1, "a"), finding(2, "b")] : [],
         // What the Review Details block is built from - the artifacts this review is of,
         // which is the whole reason a phase hands that block over.
         meta: {
           xpi: `${dir}/a.xpi`,
-          xpiRoot: `${dir}/a.xpi.extracted/`,
+          xpiRoot: `${files.xpi}/`,
           xpiFile: "a.xpi",
           // The report the reviewer sends. Named here because it is a row of that block
           // like any other, and the one the last prompt exists to leave them holding.
-          reportFile: `${base}.report.md`,
+          reportFile: files.report,
         },
         mode: "xpi",
       },
@@ -129,22 +130,19 @@ function review(
       // One condition per tree with a sweep to run, named the way the step naming it is.
       run: { skip: [], sca: false, ...(sweep ? { "sweep-xpi": true } : {}) },
       paths: {
-        description: `${base}.summary.md`,
+        description: files.summary,
         build: null,
-        report: `${base}.report.md`,
+        report: files.report,
         // The roots an entry's paths are resolved against (handback.js entriesFor). A v6
         // state carries both; without xpiRoot the loop would hand out relative paths.
-        xpiRoot: "/tmp/pkg.xpi.extracted/",
+        xpiRoot: "/tmp/work/xpi/",
         scaRoot: null,
         // Each tree's sweep pair, which is also what says WHICH trees were asked. The
         // request is never read back; the answers file is the one this loop opens.
         ...(sweep
           ? {
               sweeps: {
-                [ARTIFACT_XPI]: {
-                  request: `${base}.sweep-xpi.yaml`,
-                  answers: `${base}.sweep-xpi.answers.json`,
-                },
+                [ARTIFACT_XPI]: files.sweep(ARTIFACT_XPI),
               },
             }
           : {}),
@@ -163,7 +161,7 @@ function review(
 // chat is what this replaced, so the two writes are what the reviewer actually gets.
 test("the report file is written for the questions and rewritten once they are answered", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir);
+  const { state, work } = review(dir);
   const file = state.paths.report;
 
   // Nothing yet: the path is named, but no phase has handed it to anyone.
@@ -171,7 +169,7 @@ test("the report file is written for the questions and rewritten once they are a
 
   const seen = [];
   for (let pass = 0; pass < 10; pass++) {
-    const out = issue(state, stateFile, PHASES, REGISTRY);
+    const out = issue(state, work, PHASES, REGISTRY);
     if (out.phase.answer === "end") {
       break;
     }
@@ -185,13 +183,13 @@ test("the report file is written for the questions and rewritten once they are a
     if (out.phase.name === "spawn") {
       swept(state, ARTIFACT_XPI);
     }
-    const handed = handBack(state, (e) => {
+    handBack(work, (e) => {
       if (out.phase.name === "verify")
         return e.index === 1 ? "withdrawn" : "reported";
       if (out.phase.name === "settle") return "ask";
       return "Clear";
     });
-    accept(state, handed, PHASES, REGISTRY);
+    accept(state, work, PHASES, REGISTRY);
   }
   assert.ok(seen.includes("ask"), "the fixture reaches the ask phase");
 
@@ -208,13 +206,18 @@ test("the report file is written for the questions and rewritten once they are a
   assert.notEqual(asked, "", "the copy handed to the reviewer is not empty");
 });
 
-/** Fill every slot the way an obedient agent would, and hand it back. */
-function handBack(state, answerFor) {
-  const file = state.review;
+/** The review file in the review's work folder, where `issue` writes it and `accept`
+ *  reads it back. */
+function reviewFileOf(work) {
+  return workPaths(work).review;
+}
+
+/** Fill every slot the way an obedient agent would, in the review's own file. */
+function handBack(work, answerFor) {
+  const file = reviewFileOf(work);
   const doc = JSON.parse(fs.readFileSync(file, "utf8"));
   doc.entries = doc.entries.map((e) => ({ ...e, answer: answerFor(e) }));
   fs.writeFileSync(file, JSON.stringify(doc, null, 1));
-  return file;
 }
 
 /**
@@ -242,23 +245,23 @@ function swept(state, artifact, found = {}) {
 // words coming back.
 test("a review runs spawn -> verify -> settle -> details -> ask and then settles", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir);
+  const { state, work } = review(dir);
   const seen = [];
   const answered = [];
   for (let pass = 0; pass < 10; pass++) {
-    const out = issue(state, stateFile, PHASES, REGISTRY);
+    const out = issue(state, work, PHASES, REGISTRY);
     if (out.phase.answer === "end") break;
     seen.push(out.phase.name);
     if (out.phase.name === "spawn") {
       swept(state, ARTIFACT_XPI);
     }
-    const file = handBack(state, (e) => {
+    handBack(work, (e) => {
       if (out.phase.name === "verify")
         return e.index === 1 ? "withdrawn" : "reported";
       if (out.phase.name === "settle") return "ask"; // -> becomes a question
       return "Clear"; // the reviewer's own word
     });
-    const { answers } = accept(state, file, PHASES, REGISTRY);
+    const { answers } = accept(state, work, PHASES, REGISTRY);
     answered.push([out.phase.name, [...answers.keys()].join(",")]);
   }
   assert.deepEqual(seen, ["spawn", "verify", "settle", "details", "ask"]);
@@ -287,7 +290,7 @@ test("a review runs spawn -> verify -> settle -> details -> ask and then settles
 // that raised it withheld.
 test("an entry is answered from its own answers, not its phase's verbs", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir, { sweep: false, findings: false });
+  const { state, work } = review(dir, { sweep: false, findings: false });
   // --llm-skip-summary with no sweep leaves spawn with nothing to start, so settle is
   // first once it has been issued.
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
@@ -298,9 +301,10 @@ test("an entry is answered from its own answers, not its phase's verbs", () => {
   // What the 14 screened checks declare: settle it, or clear it. No handing it on.
   state.manual[0].settleVerbs = ["reported", "cleared"];
 
-  const out = issue(state, stateFile, PHASES, REGISTRY);
+  const out = issue(state, work, PHASES, REGISTRY);
   assert.equal(out.phase.name, "settle");
-  const entry = JSON.parse(fs.readFileSync(state.review, "utf8")).entries[0];
+  const entry = JSON.parse(fs.readFileSync(reviewFileOf(work), "utf8"))
+    .entries[0];
   assert.deepEqual(
     entry.answers.map((a) => a.label),
     ["reported", "cleared"],
@@ -308,24 +312,14 @@ test("an entry is answered from its own answers, not its phase's verbs", () => {
   );
   // `ask` is one of the phase's own verbs, and still refused here.
   assert.ok(PHASES.find((p) => p.name === "settle").verbs.includes("ask"));
-  assert.throws(
-    () =>
-      accept(
-        state,
-        handBack(state, () => "ask"),
-        PHASES,
-        REGISTRY
-      ),
-    /this entry does not accept \(expected one of: reported, cleared\)/
-  );
+  assert.throws(() => {
+    handBack(work, () => "ask");
+    return accept(state, work, PHASES, REGISTRY);
+  }, /this entry does not accept \(expected one of: reported, cleared\)/);
   assert.deepEqual(state.answers, {}, "a refusal settles nothing");
 
-  accept(
-    state,
-    handBack(state, () => "reported"),
-    PHASES,
-    REGISTRY
-  );
+  handBack(work, () => "reported");
+  accept(state, work, PHASES, REGISTRY);
   assert.deepEqual(state.answers, { 1: "reported" });
 });
 
@@ -342,8 +336,8 @@ test("reporting reads as the last resort only where clearing was the way out", (
   const offered = (verbs) => {
     const fresh = skipSetup(review(dir, { sweep: false, findings: false }));
     fresh.state.manual[0].settleVerbs = verbs;
-    issue(fresh.state, fresh.stateFile, PHASES, REGISTRY);
-    const e = JSON.parse(fs.readFileSync(fresh.state.review, "utf8"))
+    issue(fresh.state, fresh.work, PHASES, REGISTRY);
+    const e = JSON.parse(fs.readFileSync(reviewFileOf(fresh.work), "utf8"))
       .entries[0];
     return Object.fromEntries(e.answers.map((a) => [a.label, a.description]));
   };
@@ -366,8 +360,8 @@ test("reporting reads as the last resort only where clearing was the way out", (
   const findings = skipSetup(
     review(dir, { code: false, questions: false, sweep: false })
   );
-  issue(findings.state, findings.stateFile, PHASES, REGISTRY);
-  const audit = JSON.parse(fs.readFileSync(findings.state.review, "utf8"))
+  issue(findings.state, findings.work, PHASES, REGISTRY);
+  const audit = JSON.parse(fs.readFileSync(reviewFileOf(findings.work), "utf8"))
     .entries[0];
   assert.deepEqual(
     audit.answers.map((a) => a.label),
@@ -387,17 +381,17 @@ test("reporting reads as the last resort only where clearing was the way out", (
 // other phase with nothing to do.
 test("spawn with nothing to start is skipped, not issued empty", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir, { sweep: false });
+  const { state, work } = review(dir, { sweep: false });
   // --llm-skip-summary on an XPI review with no sweep starts no agent at all, so spawn
   // has nothing left to do.
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
-  const out = issue(state, stateFile, PHASES, REGISTRY);
+  const out = issue(state, work, PHASES, REGISTRY);
   assert.equal(out.phase.name, "verify");
 });
 
 test("nothing to ask: the review settles after the last settle", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir, { sweep: false });
+  const { state, work } = review(dir, { sweep: false });
   state.manual = state.manual.filter((m) => m.extended);
   // skip:manual drops only the questions. spawn is skipped too (nothing to start) - so
   // what this pins is that `ask` is not issued either, once it has nothing to put to
@@ -409,25 +403,21 @@ test("nothing to ask: the review settles after the last settle", () => {
   };
   const seen = [];
   for (let pass = 0; pass < 10; pass++) {
-    const out = issue(state, stateFile, PHASES, REGISTRY);
+    const out = issue(state, work, PHASES, REGISTRY);
     if (out.phase.answer === "end") break;
     seen.push(out.phase.name);
-    accept(
-      state,
-      handBack(state, () =>
-        out.phase.name === "spawn"
-          ? []
-          : out.phase.name === "verify"
-            ? "reported"
-            : "cleared"
-      ),
-      PHASES,
-      REGISTRY
+    handBack(work, () =>
+      out.phase.name === "spawn"
+        ? []
+        : out.phase.name === "verify"
+          ? "reported"
+          : "cleared"
     );
+    accept(state, work, PHASES, REGISTRY);
   }
   assert.deepEqual(seen, ["verify", "settle"]);
   assert.equal(
-    issue(state, stateFile, PHASES, REGISTRY).phase.name,
+    issue(state, work, PHASES, REGISTRY).phase.name,
     "close",
     "settled"
   );
@@ -438,7 +428,7 @@ test("nothing to ask: the review settles after the last settle", () => {
 // caller does not re-print the prompt.
 test("a wrong hand-back is refused, and changes nothing", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir, { sweep: false });
+  const { state, work } = review(dir, { sweep: false });
   // --llm-skip-summary as well, so spawn starts nothing and verify is the phase in
   // flight: a refusal needs a pass that actually asked for something.
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
@@ -446,63 +436,47 @@ test("a wrong hand-back is refused, and changes nothing", () => {
   // so both are issued in every review; marked done here so this test starts where it
   // means to.
   state.issued = ["spawn", "details"];
-  assert.equal(issue(state, stateFile, PHASES, REGISTRY).phase.name, "verify");
+  assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "verify");
   const before = JSON.stringify(state);
   // Each case starts from the file as it was HANDED OUT: mangling the last mangle would
   // test a file no pass ever produced.
-  const handed = fs.readFileSync(state.review, "utf8");
+  const handed = fs.readFileSync(reviewFileOf(work), "utf8");
   const mangle = (fn) => {
     const doc = JSON.parse(handed);
     fn(doc);
-    fs.writeFileSync(state.review, JSON.stringify(doc, null, 1));
-    return state.review;
+    fs.writeFileSync(reviewFileOf(work), JSON.stringify(doc, null, 1));
   };
 
-  const unfilled = mangle((d) =>
+  mangle((d) =>
     d.entries.forEach((e, i) => (e.answer = i ? "reported" : null))
   );
   assert.throws(
-    () => accept(state, unfilled, PHASES, REGISTRY),
+    () => accept(state, work, PHASES, REGISTRY),
     /still has no "answer"/
   );
 
-  const extra = mangle((d) => {
+  mangle((d) => {
     d.entries.forEach((e) => (e.answer = "reported"));
     d.entries.push({ index: 99, answer: "reported" });
   });
   assert.throws(
-    () => accept(state, extra, PHASES, REGISTRY),
+    () => accept(state, work, PHASES, REGISTRY),
     /99 is not one of the entries/
   );
 
-  const dropped = mangle((d) => {
+  mangle((d) => {
     d.entries.forEach((e) => (e.answer = "reported"));
     d.entries.pop();
   });
   assert.throws(
-    () => accept(state, dropped, PHASES, REGISTRY),
+    () => accept(state, work, PHASES, REGISTRY),
     /missing from the file/
   );
 
-  const wrongVerb = mangle((d) =>
-    d.entries.forEach((e) => (e.answer = "cleared"))
-  );
+  mangle((d) => d.entries.forEach((e) => (e.answer = "cleared")));
   assert.throws(
-    () => accept(state, wrongVerb, PHASES, REGISTRY),
+    () => accept(state, work, PHASES, REGISTRY),
     /this entry does not accept \(expected one of: reported, withdrawn\)/
-  );
-
-  // `base` is the linter's own value, so nothing checks it against anything else - only
-  // that it is still there. `accept` never reads it (it wants `entries` alone), but
-  // `readHandback` refuses before it gets that far, on the same file any other caller
-  // would open.
-  const noBase = mangle((d) => {
-    d.entries.forEach((e) => (e.answer = "reported"));
-    delete d.base;
-  });
-  assert.throws(
-    () => accept(state, noBase, PHASES, REGISTRY),
-    /names no "base"/
   );
 
   assert.equal(
@@ -518,8 +492,8 @@ test("a wrong hand-back is refused, and changes nothing", () => {
 // and a null is not, which is the distinction a sweep quietly skipped would otherwise hide.
 test("the sweep phase asks for nothing in the review file, and answers in its own", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir);
-  const out = issue(state, stateFile, PHASES, REGISTRY);
+  const { state, work } = review(dir);
+  const out = issue(state, work, PHASES, REGISTRY);
   assert.equal(out.phase.name, "spawn");
   assert.deepEqual(out.entries, [], "nothing to fill in here");
   // It does hand over the steps that start the agents - a phase with no entries is
@@ -528,9 +502,9 @@ test("the sweep phase asks for nothing in the review file, and answers in its ow
 
   // Nothing written yet: the pass cannot be accepted, and the refusal names the file the
   // agent has to go and produce rather than anything in the hand-back.
-  const empty = handBack(state, () => null);
+  handBack(work, () => null);
   assert.throws(
-    () => accept(state, empty, PHASES, REGISTRY),
+    () => accept(state, work, PHASES, REGISTRY),
     /sweep-xpi\.answers\.json could not be read/
   );
 
@@ -541,13 +515,13 @@ test("the sweep phase asks for nothing in the review file, and answers in its ow
     JSON.stringify({ answers: { 1: [], 2: null } })
   );
   assert.throws(
-    () => accept(state, empty, PHASES, REGISTRY),
+    () => accept(state, work, PHASES, REGISTRY),
     /leaves label 2 unanswered/
   );
   assert.equal(JSON.stringify(state), before, "a refusal changes nothing");
 
   swept(state, ARTIFACT_XPI);
-  accept(state, empty, PHASES, REGISTRY);
+  accept(state, work, PHASES, REGISTRY);
   assert.deepEqual(state.sweep, [], "both ran, neither found anything");
 });
 
@@ -562,7 +536,7 @@ test("the sweep phase asks for nothing in the review file, and answers in its ow
 // the artifacts still existed, and the label carries it back.
 test("one check sweeping both trees answers per tree, and each is filed there", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir, {
+  const { state, work } = review(dir, {
     findings: false,
     questions: false,
   });
@@ -585,7 +559,7 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
     })),
   };
 
-  const out = issue(state, stateFile, PHASES, REGISTRY);
+  const out = issue(state, work, PHASES, REGISTRY);
   assert.equal(out.phase.name, "spawn");
   // Two steps, one per tree, each starting an agent of its own.
   assert.equal(out.steps.filter((x) => /sweep/i.test(x.text)).length, 2);
@@ -596,12 +570,8 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
   ];
   swept(state, ARTIFACT_XPI, { 1: hit(ARTIFACT_XPI) });
   swept(state, ARTIFACT_SCA, { 2: hit(ARTIFACT_SCA) });
-  accept(
-    state,
-    handBack(state, () => null),
-    PHASES,
-    REGISTRY
-  );
+  handBack(work, () => null);
+  accept(state, work, PHASES, REGISTRY);
 
   assert.deepEqual(
     state.sweep.map((r) => [r.check, r.artifact, r.file]),
@@ -624,10 +594,11 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
 
 test("a refusal is its own class, so the caller can answer it differently", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir, { sweep: false });
-  issue(state, stateFile, PHASES, REGISTRY);
+  const { state, work } = review(dir, { sweep: false });
+  issue(state, work, PHASES, REGISTRY);
+  fs.rmSync(reviewFileOf(work));
   try {
-    accept(state, path.join(dir, "not-a-review-file.json"), PHASES);
+    accept(state, work, PHASES);
     assert.fail("expected a refusal");
   } catch (e) {
     assert.ok(e instanceof HandbackRefused);
@@ -645,21 +616,17 @@ test("a refusal is its own class, so the caller can answer it differently", () =
 // instead.
 test("--llm-skip-manual withholds the entries, so the ask phase is not issued", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir, { sweep: false });
+  const { state, work } = review(dir, { sweep: false });
   state.run = { skip: ["llm-skip-manual"], sca: false, sweep: false };
   const seen = [];
   for (let pass = 0; pass < 8; pass++) {
-    const out = issue(state, stateFile, PHASES, REGISTRY);
+    const out = issue(state, work, PHASES, REGISTRY);
     if (out.phase.answer === "end") break;
     seen.push(out.phase.name);
-    accept(
-      state,
-      handBack(state, () =>
-        out.phase.name === "verify" ? "reported" : "cleared"
-      ),
-      PHASES,
-      REGISTRY
+    handBack(work, () =>
+      out.phase.name === "verify" ? "reported" : "cleared"
     );
+    accept(state, work, PHASES, REGISTRY);
   }
   assert.ok(!seen.includes("ask"), `ask was issued: ${seen.join(", ")}`);
   // The two findings and the code-review case were settled; NEITHER question was. They
@@ -672,22 +639,18 @@ test("--llm-skip-manual withholds the entries, so the ask phase is not issued", 
 // report. Driven by the REVIEW having no questions, not by a flag emptying it.
 test("no questions at all: the ask phase is not issued either", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir, { sweep: false });
+  const { state, work } = review(dir, { sweep: false });
   state.manual = state.manual.filter((m) => m.extended);
   state.run = { skip: [], sca: false, sweep: false };
   const seen = [];
   for (let pass = 0; pass < 8; pass++) {
-    const out = issue(state, stateFile, PHASES, REGISTRY);
+    const out = issue(state, work, PHASES, REGISTRY);
     if (out.phase.answer === "end") break;
     seen.push(out.phase.name);
-    accept(
-      state,
-      handBack(state, () =>
-        out.phase.name === "verify" ? "reported" : "cleared"
-      ),
-      PHASES,
-      REGISTRY
+    handBack(work, () =>
+      out.phase.name === "verify" ? "reported" : "cleared"
     );
+    accept(state, work, PHASES, REGISTRY);
   }
   assert.ok(!seen.includes("ask"), `ask was issued: ${seen.join(", ")}`);
 });
@@ -701,13 +664,13 @@ test("no questions at all: the ask phase is not issued either", () => {
 // exactly what the flag withheld.
 test("--llm-skip-sweep asks for no sweep, though the instructions still exist", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir);
+  const { state, work } = review(dir);
   assert.ok(state.preSweep, "the instructions are still there");
   // What the flag does in the pipeline: no request is written, so no condition names one
   // and there is no answers file for the pass to read.
   state.run = { skip: [], sca: false };
   delete state.paths.sweeps;
-  const first = issue(state, stateFile, PHASES, REGISTRY);
+  const first = issue(state, work, PHASES, REGISTRY);
   assert.deepEqual(first.entries, [], "no rows to fill in");
   const prose = first.steps.map((s) => s.text).join("\n");
   assert.doesNotMatch(prose, /sweep/i, "and no step mentions one");
@@ -715,17 +678,13 @@ test("--llm-skip-sweep asks for no sweep, though the instructions still exist", 
 
   // And the empty file IS the right hand-back. Both legs read the same fact, so the pass
   // that asked for nothing accepts nothing.
-  const { answers } = accept(
-    state,
-    handBack(state, () => null),
-    PHASES,
-    REGISTRY
-  );
+  handBack(work, () => null);
+  const { answers } = accept(state, work, PHASES, REGISTRY);
   assert.equal(answers.size, 0);
   // Null, not an empty list: no tree was asked, which is not every tree answering with
   // nothing - the same distinction the answers files themselves are built around.
   assert.equal(state.sweep, null, "and still nothing was swept");
-  assert.ok(issue(state, stateFile, PHASES, REGISTRY), "the review goes on");
+  assert.ok(issue(state, work, PHASES, REGISTRY), "the review goes on");
 });
 
 /**
@@ -737,10 +696,10 @@ test("--llm-skip-sweep asks for no sweep, though the instructions still exist", 
  * @returns {{seen: string[], details: string}}  The phases issued, and the Review Details
  *   block the settled review hands over.
  */
-function phasesOf(state, stateFile) {
+function phasesOf(state, work) {
   const seen = [];
   for (let pass = 0; pass < 10; pass++) {
-    const out = issue(state, stateFile, PHASES, REGISTRY);
+    const out = issue(state, work, PHASES, REGISTRY);
     if (out.phase.answer === "end") break;
     seen.push(out.phase.name);
     // Whatever trees this run asked about, answered clean - the sweeping agents' part of
@@ -748,18 +707,14 @@ function phasesOf(state, stateFile) {
     for (const artifact of Object.keys(state.paths.sweeps ?? {})) {
       swept(state, artifact);
     }
-    accept(
-      state,
-      handBack(state, (e) =>
-        out.phase.name === "verify"
-          ? "reported"
-          : out.phase.name === "settle"
-            ? "cleared"
-            : "Clear"
-      ),
-      PHASES,
-      REGISTRY
+    handBack(work, (e) =>
+      out.phase.name === "verify"
+        ? "reported"
+        : out.phase.name === "settle"
+          ? "cleared"
+          : "Clear"
     );
+    accept(state, work, PHASES, REGISTRY);
   }
   const { details } = settle(state, REGISTRY);
   return { seen, details };
@@ -793,9 +748,9 @@ test("a phase with no entries is not issued, whichever phase it is", () => {
   ];
   for (const [holds, expected] of cases) {
     const dir = tmp();
-    const { state, stateFile } = review(dir, { ...holds, sweep: true });
+    const { state, work } = review(dir, { ...holds, sweep: true });
     assert.deepEqual(
-      phasesOf(state, stateFile).seen,
+      phasesOf(state, work).seen,
       expected,
       JSON.stringify(holds)
     );
@@ -815,7 +770,7 @@ test("every combination of the skips issues exactly the phases it should", () =>
     const skip = SKIPS.filter((_, i) => bits & (1 << i));
     const sweeps = !skip.includes("llm-skip-sweep");
     const dir = tmp();
-    const { state, stateFile } = review(dir, { sweep: sweeps });
+    const { state, work } = review(dir, { sweep: sweeps });
     state.run = {
       skip: skip.filter((x) => x !== "llm-skip-sweep"),
       sca: false,
@@ -842,7 +797,7 @@ test("every combination of the skips issues exactly the phases it should", () =>
       // details block to serve and no entry for `ask`.
       ...(skip.includes("llm-skip-manual") ? [] : ["details", "ask"]),
     ];
-    const { seen, details } = phasesOf(state, stateFile);
+    const { seen, details } = phasesOf(state, work);
     const where = `skips: ${skip.join(",") || "none"}`;
     assert.deepEqual(seen, expected, where);
 
@@ -878,21 +833,17 @@ test("every combination of the skips issues exactly the phases it should", () =>
 // "answers", and the entry has neither.
 test("a case sent on with `ask` arrives as a question, worded and answerable", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir, { sweep: false, findings: false });
+  const { state, work } = review(dir, { sweep: false, findings: false });
   // Nothing for spawn to start either, so `settle` is the phase in flight.
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
   // spawn has nothing to start in this config and is never issued, and `details` comes
   // after `settle` - both marked done here anyway, so this test starts where it means to.
   state.issued = ["spawn", "details"];
-  assert.equal(issue(state, stateFile, PHASES, REGISTRY).phase.name, "settle");
-  accept(
-    state,
-    handBack(state, () => "ask"),
-    PHASES,
-    REGISTRY
-  );
+  assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "settle");
+  handBack(work, () => "ask");
+  accept(state, work, PHASES, REGISTRY);
 
-  const out = issue(state, stateFile, PHASES, REGISTRY);
+  const out = issue(state, work, PHASES, REGISTRY);
   assert.equal(out.phase.name, "ask");
   // The code-review case and the two standard questions, all askable.
   assert.equal(out.entries.length, 3);
@@ -914,37 +865,29 @@ test("a case sent on with `ask` arrives as a question, worded and answerable", (
 // at accept passes while the review still refuses the reviewer at the end of the run.
 test("a case sent on with `ask` is settled by the reviewer's own answer", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir, { sweep: false, findings: false });
+  const { state, work } = review(dir, { sweep: false, findings: false });
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
   // Spawn unpacks the package whatever else it does, and `details` hands over the block,
   // so both are issued in every review; marked done here so this test starts where it
   // means to.
   state.issued = ["spawn", "details"];
 
-  const sent = issue(state, stateFile, PHASES, REGISTRY);
+  const sent = issue(state, work, PHASES, REGISTRY);
   assert.equal(sent.phase.name, "settle");
   // The case the agent gives up on, by the index it will keep.
   const moved = sent.entries[0].index;
-  accept(
-    state,
-    handBack(state, () => "ask"),
-    PHASES,
-    REGISTRY
-  );
+  handBack(work, () => "ask");
+  accept(state, work, PHASES, REGISTRY);
 
-  const out = issue(state, stateFile, PHASES, REGISTRY);
+  const out = issue(state, work, PHASES, REGISTRY);
   assert.equal(out.phase.name, "ask");
   assert.ok(
     out.entries.some((e) => e.index === moved),
     "the moved case is asked under the index the agent saw"
   );
   const [clear, report] = REGISTRY.manualReviewChoices().map((c) => c.label);
-  accept(
-    state,
-    handBack(state, (e) => (e.index === moved ? report : clear)),
-    PHASES,
-    REGISTRY
-  );
+  handBack(work, (e) => (e.index === moved ? report : clear));
+  accept(state, work, PHASES, REGISTRY);
 
   // The reviewer's label reaches applyVerdicts as a reviewer's answer. Reading the section
   // it was filed under instead would demand a verb here and refuse them.
@@ -971,7 +914,7 @@ test("a case sent on with `ask` is settled by the reviewer's own answer", () => 
 // `words` never makes that crossing, so its answers are text and text is never a verb.
 test("a reviewer who writes `ask` has answered, not asked for a move", () => {
   const dir = tmp();
-  const { state, stateFile } = review(dir, {
+  const { state, work } = review(dir, {
     sweep: false,
     findings: false,
     code: false,
@@ -987,19 +930,15 @@ test("a reviewer who writes `ask` has answered, not asked for a move", () => {
     m.ruleId = ["testing-information", "no-surprises-policy"][i];
   });
 
-  const out = issue(state, stateFile, PHASES, REGISTRY);
+  const out = issue(state, work, PHASES, REGISTRY);
   assert.equal(out.phase.name, "ask");
-  accept(
-    state,
-    handBack(state, () => "ask"),
-    PHASES,
-    REGISTRY
-  );
+  handBack(work, () => "ask");
+  accept(state, work, PHASES, REGISTRY);
 
   assert.deepEqual(state.route, {}, "nobody was moved");
   assert.deepEqual(state.answers, { 1: "ask", 2: "ask" }, "both were answered");
   assert.equal(
-    issue(state, stateFile, PHASES, REGISTRY).phase.name,
+    issue(state, work, PHASES, REGISTRY).phase.name,
     "close",
     "and it is over"
   );
@@ -1020,31 +959,27 @@ test("a reviewer who writes `ask` has answered, not asked for a move", () => {
  *
  * `settle` is called ONCE, here: it applies every recorded verdict to the findings and the
  * manual list in place, so a second call would apply them all again.
- * @param {object} state @param {string} stateFile
+ * @param {object} state @param {string} work
  * @param {(phase: string) => string} answer
  * @returns {{seen: string[], settled: object}}
  */
-function driveLoop(state, stateFile, answer, reg = REGISTRY) {
+function driveLoop(state, work, answer, reg = REGISTRY) {
   const seen = [];
   // `ask` takes a REVIEWER's answer, not a verb: the phase that asks declares none, and
   // handing it one would be refused where it is applied rather than where it is taken.
   const [clear] = REGISTRY.manualReviewChoices().map((c) => c.label);
   let closing = null;
   for (let pass = 0; pass < 8; pass++) {
-    const out = issue(state, stateFile, PHASES, reg);
+    const out = issue(state, work, PHASES, reg);
     if (out.phase.answer === "end") {
       closing = out;
       break;
     }
     seen.push(out.phase.name);
-    accept(
-      state,
-      handBack(state, () =>
-        out.phase.name === "ask" ? clear : answer(out.phase.name)
-      ),
-      PHASES,
-      reg
+    handBack(work, () =>
+      out.phase.name === "ask" ? clear : answer(out.phase.name)
     );
+    accept(state, work, PHASES, reg);
   }
   return { seen, closing, settled: settle(state, reg) };
 }
@@ -1060,31 +995,28 @@ function blockingReview(dir) {
 }
 
 // The case this exists for: the very next thing the loop would do is ask a reviewer to
-// reproduce a build the review has already rejected. It must not get that far - and the
-// phases BEFORE it still run, because what they settle is what the report is made of.
-test("a blocking finding aborts the loop before the question block", () => {
+// reproduce a build the review has already rejected. A review the deterministic checks
+// aborted asks nothing at all: what it hands over is decided before any pass, so its first
+// prompt is the closing one - no preamble, no agent started, nothing verified or settled -
+// and it names no file an agent was never asked to write.
+test("a blocking finding closes the review on its first prompt", () => {
   const dir = tmp();
-  const { state, stateFile } = blockingReview(dir);
-  const { seen, settled } = driveLoop(state, stateFile, (phase) =>
-    phase === "verify" ? "reported" : "cleared"
+  const { state, work } = blockingReview(dir);
+  state.report.meta.summaryFile = path.join(dir, "summary.md");
+  state.report.meta.buildFile = path.join(dir, "build.md");
+  const first = issue(state, work, PHASES, REGISTRY);
+  assert.equal(first.phase.name, "close");
+  assert.deepEqual(first.preamble, []);
+  assert.match(first.steps[0].text, /^The review was aborted/);
+  assert.ok(
+    !first.steps.some((step) => /Wait for every agent/.test(step.text)),
+    "no agent was started to wait for"
   );
-  assert.ok(!seen.includes("ask"), `ask was issued: ${seen.join(", ")}`);
-  assert.ok(seen.includes("verify"), "the findings were still audited");
-  assert.ok(seen.includes("settle"), "the cases were still settled");
-  assert.equal(settled.earlyExit, true);
-});
-
-// The mirror image, and the reason the halt is derived every pass rather than recorded
-// once: the agent audits those findings, and an agent that withdraws them has removed the
-// thing that aborted the review. The question block comes back.
-test("withdrawing the blocking findings puts the question block back", () => {
-  const dir = tmp();
-  const { state, stateFile } = blockingReview(dir);
-  const { seen, settled } = driveLoop(state, stateFile, (phase) =>
-    phase === "verify" ? "withdrawn" : "cleared"
-  );
-  assert.ok(seen.includes("ask"), `ask was not issued: ${seen.join(", ")}`);
-  assert.equal(settled.earlyExit, false);
+  assert.equal(first.settled.earlyExit, true);
+  assert.deepEqual(first.settled.review.meta.manualReview, []);
+  assert.match(first.settled.tally, /0 extended code review item\(s\)/);
+  assert.doesNotMatch(first.settled.details, /summary\.md|build\.md/);
+  assert.match(first.settled.details, /- Known security vulnerabilities$/);
 });
 
 // The Review Details block goes out once, in a phase of its own, before the questions - and
@@ -1094,22 +1026,18 @@ test("the details block is handed over by its own phase, before the questions", 
   const blocks = (made) => {
     const shown = [];
     for (let pass = 0; pass < 10; pass++) {
-      const out = issue(made.state, made.stateFile, PHASES, REGISTRY);
+      const out = issue(made.state, made.work, PHASES, REGISTRY);
       if (out.phase.answer === "end") {
         break;
       }
       if (out.steps.some((step) => step.text.includes("{{details}}"))) {
         shown.push(out.phase.name);
       }
-      accept(
-        made.state,
-        handBack(made.state, () => {
-          if (out.phase.name === "verify") return "withdrawn";
-          return out.phase.name === "settle" ? "cleared" : "Clear";
-        }),
-        PHASES,
-        REGISTRY
-      );
+      handBack(made.work, () => {
+        if (out.phase.name === "verify") return "withdrawn";
+        return out.phase.name === "settle" ? "cleared" : "Clear";
+      });
+      accept(made.state, made.work, PHASES, REGISTRY);
     }
     return shown;
   };
@@ -1126,19 +1054,15 @@ test("the details block is handed over by its own phase, before the questions", 
   const aborted = blockingReview(tmp());
   const shown = [];
   for (let pass = 0; pass < 10; pass++) {
-    const out = issue(aborted.state, aborted.stateFile, PHASES, REGISTRY);
+    const out = issue(aborted.state, aborted.work, PHASES, REGISTRY);
     if (out.phase.answer === "end") {
       break;
     }
     shown.push(out.phase.name);
-    accept(
-      aborted.state,
-      handBack(aborted.state, () =>
-        out.phase.name === "verify" ? "reported" : "cleared"
-      ),
-      PHASES,
-      REGISTRY
+    handBack(aborted.work, () =>
+      out.phase.name === "verify" ? "reported" : "cleared"
     );
+    accept(aborted.state, aborted.work, PHASES, REGISTRY);
   }
   assert.ok(!shown.includes("details"), shown.join(", "));
 });
@@ -1146,29 +1070,31 @@ test("the details block is handed over by its own phase, before the questions", 
 // The review ends with the closing phase, which carries the settled review and opens on
 // what happened to it: settled, or aborted. Nothing is handed back after it.
 test("the closing phase opens on how the review ended, and takes nothing back", () => {
-  const ran = blockingReview(tmp());
-  const { closing: settledClose } = driveLoop(
-    ran.state,
-    ran.stateFile,
-    (phase) => (phase === "verify" ? "withdrawn" : "cleared")
+  // The same review, its findings reported by checks that abort nothing.
+  const ran = review(tmp(), { sweep: false });
+  ran.state.run = { skip: [], sca: true, sweep: false };
+  const { closing: settledClose } = driveLoop(ran.state, ran.work, (phase) =>
+    phase === "verify" ? "reported" : "cleared"
   );
   assert.match(settledClose.steps[0].text, /^The review is settled\./);
   assert.equal(settledClose.settled.earlyExit, false);
   assert.throws(
-    () => accept(ran.state, ran.state.review, PHASES, REGISTRY),
+    () => accept(ran.state, ran.work, PHASES, REGISTRY),
     /nothing is handed back after its closing prompt/
   );
 
   const aborted = blockingReview(tmp());
   const { closing: abortedClose } = driveLoop(
     aborted.state,
-    aborted.stateFile,
+    aborted.work,
     (phase) => (phase === "verify" ? "reported" : "cleared")
   );
   assert.match(abortedClose.steps[0].text, /^The review was aborted/);
   assert.equal(abortedClose.settled.earlyExit, true);
   // The same body either way: the abort rides in the details block.
-  assert.equal(abortedClose.steps[1].text, settledClose.steps[1].text);
+  const handover = (close) =>
+    close.steps.find((step) => /^Give the reviewer/.test(step.text)).text;
+  assert.equal(handover(abortedClose), handover(settledClose));
   assert.match(
     abortedClose.settled.details,
     /- Known security vulnerabilities$/
@@ -1177,14 +1103,14 @@ test("the closing phase opens on how the review ended, and takes nothing back", 
 
 // A review with nothing to do at all still closes: its first pass is the closing one.
 test("a review with no other work is closed on its first pass", () => {
-  const { state, stateFile } = review(tmp(), {
+  const { state, work } = review(tmp(), {
     sweep: false,
     findings: false,
     code: false,
     questions: false,
   });
   state.run = { skip: ["llm-skip-summary", "llm-skip-manual"], sca: false };
-  const out = issue(state, stateFile, PHASES, REGISTRY);
+  const out = issue(state, work, PHASES, REGISTRY);
   assert.equal(out.phase.name, "close");
   assert.ok(out.settled, "it carries the settled review");
 });
@@ -1194,8 +1120,8 @@ test("a review with no other work is closed on its first pass", () => {
 // block can list the reasons that aborted THIS review.
 test("an aborted review closes its details block with the reason", () => {
   const dir = tmp();
-  const { state, stateFile } = blockingReview(dir);
-  const { settled } = driveLoop(state, stateFile, (phase) =>
+  const { state, work } = blockingReview(dir);
+  const { settled } = driveLoop(state, work, (phase) =>
     phase === "verify" ? "reported" : "cleared"
   );
   const lines = settled.details.split("\n");
@@ -1212,9 +1138,9 @@ test("an aborted review closes its details block with the reason", () => {
 
   // ... and a review that ran to the end closes with the block itself. Nothing says a
   // review was aborted unless one was.
-  const clean = blockingReview(tmp());
-  const ran = driveLoop(clean.state, clean.stateFile, (phase) =>
-    phase === "verify" ? "withdrawn" : "cleared"
+  const clean = review(tmp(), { sweep: false });
+  const ran = driveLoop(clean.state, clean.work, (phase) =>
+    phase === "verify" ? "reported" : "cleared"
   );
   assert.doesNotMatch(ran.settled.details, /review was not completed/);
   assert.match(
@@ -1224,64 +1150,23 @@ test("an aborted review closes its details block with the reason", () => {
   );
 });
 
-// What an aborted review hands the reviewer: the closing line in the developer's text, no
-// questions left listed under it, and a tally that does not advertise work nobody was
-// asked to do. The code-review items it settled are still there.
+// What an aborted review hands the reviewer: the closing line in the developer's text, and
+// no to-do item - neither the questions nobody was asked nor the code-review cases nobody
+// settled - so the tally does not advertise work nobody was asked to do.
 test("an aborted review hands over the reason and drops the questions", () => {
   const dir = tmp();
-  const { state, stateFile } = blockingReview(dir);
+  const { state, work } = blockingReview(dir);
   const {
     settled: { report, tally, review: settled },
-  } = driveLoop(state, stateFile, (phase) =>
+  } = driveLoop(state, work, (phase) =>
     phase === "verify" ? "reported" : "cleared"
   );
   assert.match(report, /The review was not completed/);
   assert.match(report, /- Known security vulnerabilities/);
   assert.match(tally, /0 extended manual review item\(s\)/);
   assert.match(tally, /0 standard manual review item\(s\)/);
-  assert.equal(
-    settled.meta.manualReview.some((m) => !m.extended),
-    false,
-    "the standard questions are gone"
-  );
-});
-
-// The case the item's SECTION cannot answer. A code-review case the agent could not
-// settle is sent on to a reviewer keeping that section, so the halt has to ask where the
-// item is answered NOW - otherwise it stays listed as reviewer work under a closing line
-// saying nobody was asked.
-test("a case the agent routed to a reviewer is dropped by the halt too", () => {
-  const dir = tmp();
-  const { state, stateFile } = blockingReview(dir);
-  const [clear] = REGISTRY.manualReviewChoices().map((c) => c.label);
-  const seen = [];
-  for (let pass = 0; pass < 8; pass++) {
-    const out = issue(state, stateFile, PHASES, REGISTRY);
-    if (out.phase.answer === "end") {
-      break;
-    }
-    seen.push(out.phase.name);
-    accept(
-      state,
-      handBack(state, () => {
-        if (out.phase.name === "verify") {
-          return "reported";
-        }
-        // The agent gives up on the code-review case and sends it to a reviewer.
-        return out.phase.name === "settle" ? "ask" : clear;
-      }),
-      PHASES,
-      REGISTRY
-    );
-  }
-  assert.ok(!seen.includes("ask"), `ask was issued: ${seen.join(", ")}`);
-  const { tally, review: settled } = settle(state, REGISTRY);
-  assert.deepEqual(
-    settled.meta.manualReview,
-    [],
-    "the routed case is not left listed as reviewer work"
-  );
   assert.match(tally, /0 extended code review item\(s\)/);
+  assert.deepEqual(settled.meta.manualReview, []);
 });
 
 /** The small review as a source code review: the build phase's two paths named, as the
@@ -1335,7 +1220,7 @@ function driveBuild(made, answer) {
   const handed = {};
   let closing = null;
   for (let pass = 0; pass < 12; pass++) {
-    const out = issue(made.state, made.stateFile, PHASES, REGISTRY);
+    const out = issue(made.state, made.work, PHASES, REGISTRY);
     if (out.phase.answer === "end") {
       closing = out;
       break;
@@ -1343,12 +1228,8 @@ function driveBuild(made, answer) {
     seen.push(out.phase.name);
     // Named at hand-out, while the numbers still mean what they meant to this pass.
     handed[out.phase.name] = out.entries.map((e) => ruleAt(made, e.index));
-    accept(
-      made.state,
-      handBack(made.state, (e) => answer(out.phase.name, e)),
-      PHASES,
-      REGISTRY
-    );
+    handBack(made.work, (e) => answer(out.phase.name, e));
+    accept(made.state, made.work, PHASES, REGISTRY);
   }
   return {
     seen,
@@ -1524,7 +1405,7 @@ test("a case sent on with ask is dropped by an abort even after a renumbering", 
 function promptsOf(made) {
   const prompts = {};
   for (let pass = 0; pass < 12; pass++) {
-    const out = issue(made.state, made.stateFile, PHASES, REGISTRY);
+    const out = issue(made.state, made.work, PHASES, REGISTRY);
     prompts[out.phase.name] = {
       steps: out.steps.map((x) => x.text.split("\n")[0]),
       preamble: out.preamble.length,
@@ -1535,18 +1416,14 @@ function promptsOf(made) {
     for (const artifact of Object.keys(made.state.paths.sweeps ?? {})) {
       swept(made.state, artifact);
     }
-    accept(
-      made.state,
-      handBack(made.state, () =>
-        out.phase.name === "verify"
-          ? "withdrawn"
-          : out.phase.name === "settle"
-            ? "cleared"
-            : "Clear"
-      ),
-      PHASES,
-      REGISTRY
+    handBack(made.work, () =>
+      out.phase.name === "verify"
+        ? "withdrawn"
+        : out.phase.name === "settle"
+          ? "cleared"
+          : "Clear"
     );
+    accept(made.state, made.work, PHASES, REGISTRY);
   }
   return prompts;
 }
@@ -1557,14 +1434,14 @@ const WAIT = "Wait for every agent you spawned to come back.";
 // prompt says nothing about passes, agents or decisions: no preamble, no "settled", no
 // wait, no "LLM decisions" - just what to give the reviewer.
 test("a one-pass review's only prompt says only what applies", () => {
-  const { state, stateFile } = review(tmp(), {
+  const { state, work } = review(tmp(), {
     sweep: false,
     findings: false,
     code: false,
     questions: false,
   });
   state.run = { skip: ["llm-skip-summary", "llm-skip-manual"], sca: false };
-  const prompts = promptsOf({ state, stateFile });
+  const prompts = promptsOf({ state, work });
   assert.deepEqual(Object.keys(prompts), ["close"]);
   assert.equal(prompts.close.preamble, 0, "no preamble above it");
   assert.deepEqual(prompts.close.steps, [
@@ -1629,8 +1506,8 @@ test("the agent wait prints only where an agent was started, and never alone", (
 // Building runs the submission's own code, so it comes after `settle` has had its say on
 // every case that could abort the review, and before the questions the diff is read for.
 test("a source code review builds once, after settle and before ask", () => {
-  const { state, stateFile } = buildReview(tmp());
-  const { seen } = driveLoop(state, stateFile, (phase) =>
+  const { state, work } = buildReview(tmp());
+  const { seen } = driveLoop(state, work, (phase) =>
     phase === "verify" ? "withdrawn" : "cleared"
   );
   assert.deepEqual(seen, [
@@ -1644,16 +1521,16 @@ test("a source code review builds once, after settle and before ask", () => {
 });
 
 test("an XPI review never builds", () => {
-  const { state, stateFile } = review(tmp(), { sweep: false });
-  const { seen } = driveLoop(state, stateFile, (phase) =>
+  const { state, work } = review(tmp(), { sweep: false });
+  const { seen } = driveLoop(state, work, (phase) =>
     phase === "verify" ? "withdrawn" : "cleared"
   );
   assert.ok(!seen.includes("build"), seen.join(", "));
 });
 
 test("an aborted review never builds", () => {
-  const { state, stateFile } = blockingReview(tmp());
-  const { seen } = driveLoop(state, stateFile, (phase) =>
+  const { state, work } = blockingReview(tmp());
+  const { seen } = driveLoop(state, work, (phase) =>
     phase === "verify" ? "reported" : "cleared"
   );
   assert.ok(!seen.includes("build"), seen.join(", "));
@@ -1662,18 +1539,18 @@ test("an aborted review never builds", () => {
 // The build phase asks about no entry, so a hand-back that adds one is answering a
 // question nobody asked.
 test("the build phase is handed back empty, or refused", () => {
-  const { state, stateFile } = buildReview(tmp());
-  driveLoop(state, stateFile, (phase) =>
+  const { state, work } = buildReview(tmp());
+  driveLoop(state, work, (phase) =>
     phase === "verify" ? "withdrawn" : "cleared"
   );
   const fresh = buildReview(tmp());
   fresh.state.phase = "build";
   fs.writeFileSync(
-    fresh.state.review,
-    JSON.stringify({ base: "r", entries: [{ index: 1, answer: "x" }] })
+    reviewFileOf(fresh.work),
+    JSON.stringify({ entries: [{ index: 1, answer: "x" }] })
   );
   assert.throws(
-    () => accept(fresh.state, fresh.state.review, PHASES, REGISTRY),
+    () => accept(fresh.state, fresh.work, PHASES, REGISTRY),
     HandbackRefused
   );
 });
@@ -1684,9 +1561,9 @@ test("the build phase is handed back empty, or refused", () => {
 test("the details link the build diff only when the build phase wrote one", () => {
   // A folder at the diff's path is not a diff the agent wrote.
   for (const wrote of ["file", "folder", null]) {
-    const { state, stateFile } = buildReview(tmp());
+    const { state, work } = buildReview(tmp());
     for (let pass = 0; pass < 8; pass++) {
-      const out = issue(state, stateFile, PHASES, REGISTRY);
+      const out = issue(state, work, PHASES, REGISTRY);
       if (!out || out.phase.name === "ask") {
         break;
       }
@@ -1696,14 +1573,10 @@ test("the details link the build diff only when the build phase wrote one", () =
       if (out.phase.name === "build" && wrote === "folder") {
         fs.mkdirSync(state.paths.buildDiff);
       }
-      accept(
-        state,
-        handBack(state, () =>
-          out.phase.name === "verify" ? "withdrawn" : "cleared"
-        ),
-        PHASES,
-        REGISTRY
+      handBack(work, () =>
+        out.phase.name === "verify" ? "withdrawn" : "cleared"
       );
+      accept(state, work, PHASES, REGISTRY);
     }
     const linked = /^\* BUILD_DIFF: \[build-diff\.md\]/m;
     const { details } = settle(state, REGISTRY);
@@ -1725,7 +1598,7 @@ test("a skip and a halt suppress the same phase and leave different reports", ()
   skipped.state.run = { skip: ["llm-skip-manual"], sca: false, sweep: false };
   const { settled: skippedOut } = driveLoop(
     skipped.state,
-    skipped.stateFile,
+    skipped.work,
     (phase) => (phase === "verify" ? "reported" : "cleared")
   );
   assert.equal(skippedOut.earlyExit, false);
@@ -1736,7 +1609,7 @@ test("a skip and a halt suppress the same phase and leave different reports", ()
 
   const halted = blockingReview(tmp());
   halted.state.run = { skip: ["llm-skip-manual"], sca: true, sweep: false };
-  const { settled } = driveLoop(halted.state, halted.stateFile, (phase) =>
+  const { settled } = driveLoop(halted.state, halted.work, (phase) =>
     phase === "verify" ? "reported" : "cleared"
   );
   assert.equal(settled.earlyExit, true);
@@ -1763,7 +1636,7 @@ test("settle words a per-mode response from the state's review mode", () => {
   entry["response-for-sca"] = "worded for a source code review";
   {
     const worded = (sca) => {
-      const { state, stateFile } = review(tmp(), {
+      const { state, work } = review(tmp(), {
         sweep: false,
         code: false,
         questions: false,
@@ -1782,7 +1655,7 @@ test("settle words a per-mode response from the state's review mode", () => {
           message: null,
         },
       ];
-      const { settled } = driveLoop(state, stateFile, () => "reported", reg);
+      const { settled } = driveLoop(state, work, () => "reported", reg);
       return settled.review.findings[0].message;
     };
 

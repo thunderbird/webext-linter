@@ -4,17 +4,18 @@
 // the readable source (it is pulled in at build) and is mangled in the built XPI,
 // so a non-popular one cannot be reviewed. Either kind can be replaced, dropped where the
 // add-on never needed it, or included readable in the archive as a local file: package,
-// which is authored code (src/vendor/resolve.js). Build dependencies are
+// which is authored code. Build dependencies are
 // held to the same bar for the reason they are OSV-audited - the reviewer installs and
 // RUNS them - so the pre-step (src/vendor/verify.js verifyScaDependencies) looks up the
-// popularity of every declared dependency, production and build alike, and records the
-// ones below the trust bar on artifact.vendor.unpopularDeps.
+// popularity of every package the committed lock file marks as declared, production and
+// build alike (by npm downloads, or by stars for one the lock installs from GitHub), and
+// records the ones below the trust bar on artifact.vendor.unpopularDeps.
 // This check only reads that and emits one error finding per such dependency,
-// anchored at its package.json declaration line. Deterministic, no network.
+// anchored at its entry in the lock file. Deterministic, no network.
 //
 // A POPULAR dependency is not recorded (trusted by ubiquity), so it never reaches
-// here. OSV vulnerability auditing of every declared dependency is separate (->
-// auditNpm -> vendor-vulnerable).
+// here. OSV vulnerability auditing of every installed package is separate (->
+// auditLockedPackages -> the vendor-vulnerable family).
 //
 // Belongs here: turning each recorded unpopular dependency into a finding (+ a
 // feed note). Does NOT belong here: the popularity lookup (-> src/vendor/
@@ -38,12 +39,12 @@ export default {
     const findings = [];
     for (const { name, version, file, token } of deps) {
       const text = anchorText(artifact, file);
-      // Anchor at the dependency's declaration line (a quoted JSON key in
-      // package.json); fall back to a plain substring, then to no line.
+      // Anchor at the dependency's lock entry (a quoted JSON key, or a YAML key); fall
+      // back to a plain substring, then to no line.
       const line = token ? declarationLine(text, token) : null;
       const loc = line ? { line } : undefined;
       // The response is collapsible (no {{item}}), so `item` renders on the
-      // location line as "package.json:<line> - <name> (<version>)".
+      // location line as "<lock file>:<line> - <name> (<version>)".
       const item = `${name} (${version})`;
       ctx.note?.(
         ctx.artifact.at(file, loc),

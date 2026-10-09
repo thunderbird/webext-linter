@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/manifest-latin1",
-    "xpiRoot": "<root>/tests/addons/manifest-latin1/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "manifest-latin1",
     "reviewed": true,
     "schemaSource": "cache:release-mv2",

@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/vendored-remote-load",
-    "xpiRoot": "<root>/tests/addons/vendored-remote-load/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "vendored-remote-load",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

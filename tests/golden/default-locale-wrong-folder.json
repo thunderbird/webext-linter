@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/default-locale-wrong-folder",
-    "xpiRoot": "<root>/tests/addons/default-locale-wrong-folder/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "default-locale-wrong-folder",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

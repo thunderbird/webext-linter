@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/manifest-utf16",
-    "xpiRoot": "<root>/tests/addons/manifest-utf16/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "manifest-utf16",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

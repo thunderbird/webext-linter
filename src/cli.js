@@ -7,9 +7,10 @@
 //
 // Belongs here: the front-end only - the OPTIONS table, usage/help text, argv
 // parse and flag validation, the values -> PipelineOpts mapping, stream
-// routing, exit codes, and the COMMAND a prompt hands back: which flags a
-// prepared review is to be run with is a fact about this run's own arguments,
-// known here and nowhere else, so it is composed here and laid out there.
+// routing, exit codes, and the COMMAND a prompt hands back (the hand-back of a work
+// folder). Also creating the work folder a source code review is prepared in, recording the
+// flags its review is to run with, and starting that review from them - checked again, as
+// a command line is - when the preparation's hand-back finds it done.
 //
 // Does NOT belong here: running the stages (opts -> Review is pipeline.js
 // runPipeline); report layout and rendering (src/report/format.js formatReview
@@ -23,11 +24,10 @@ import { parseArgs } from "node:util";
 import { runPipeline } from "./pipeline.js";
 import { loadRegistry } from "./checks/registry.js";
 import { scaSubmission } from "./addon/submission.js";
-import {
-  hasParentSegment,
-  readPackedManifest,
-  relativeInside,
-} from "./addon/load.js";
+import { defaultWorkFolder, workPaths } from "./util/dest.js";
+import { recordBoolean, startRecord } from "./prepare/state.js";
+import { handBack, recordedRoots, startPreparation } from "./prepare/steps.js";
+import { readPackedManifest, relativeInside } from "./addon/load.js";
 import { hasErrors } from "./report/finding.js";
 import {
   formatReview,
@@ -36,7 +36,6 @@ import {
 } from "./report/format.js";
 import { readState } from "./report/state.js";
 import { accept, issue, loopSlots, HandbackRefused } from "./report/loop.js";
-import { readHandback } from "./report/handback.js";
 import {
   DEFAULT_CACHE,
   EXPERIMENTS_CACHE,
@@ -56,7 +55,7 @@ import {
   writeToStdout,
 } from "./util/log.js";
 import { setColor, red } from "./util/color.js";
-import { wrapText } from "./util/text.js";
+import { shellArg, wrapText } from "./util/text.js";
 import { parseJson } from "./util/json.js";
 import { rethrowIfFatal } from "./lib/errors.js";
 import { isExperiment } from "./lib/util.js";
@@ -183,13 +182,13 @@ function helpText(checkIds) {
 
   // What an LLM agent runs, in the order it runs: --llm-sca-review prepares a source code
   // review (and is over before one starts), then --llm-review asks - leaving out whatever
-  // its two --llm-skip-* flags name, given to either - and --llm-verdict applies the
+  // its two --llm-skip-* flags name, given to either - and --llm-handback applies the
   // answers. They get a section of their own, because none is a report format: the first
   // two replace the report with a prompt, the last rebuilds it from settled verdicts.
   const llm = [
     [
       "--llm-review",
-      "Start the review loop instead of printing the report: print the first prompt and write the file it names to a temp directory. Each pass fills that file in and hands it back with --llm-verdict, which answers with the next prompt. Refused with --report-format json.",
+      "Start the review loop instead of printing the report: print the first prompt and write the file it names to the work folder. Each pass fills that file in and hands it back with --llm-handback and the work folder, which answers with the next prompt. Refused with --report-format json.",
     ],
     [
       "--llm-skip-summary",
@@ -205,18 +204,18 @@ function helpText(checkIds) {
     ],
     [
       "--llm-sca-review",
-      "Read the add-on argument as a submission FOLDER - one built .xpi and one archive of the source it was built from - and print the prompt for preparing a source code review of it, then exit without reviewing anything. The prompt says how to reach the source and hands back this command with --llm-review in place of this flag, for the reader to run with the --sca-* arguments they worked out. Refused beside any --sca-* flag, which is what it exists to produce.",
+      "Read the add-on argument as a submission FOLDER - one built .xpi and one archive of the source it was built from - and print the prompt for preparing a source code review of it, then exit without reviewing anything. It creates the review's work folder at its default place, beside the .xpi, and the prompt has the source extracted into it and the roots its reader worked out handed back with --llm-handback and that work folder. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the work folder (<work folder>-rescued) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags: of the copy, or of the source as submitted, whose review the vulnerabilities then abort. Refused beside any --sca-* flag, which is what it exists to produce.",
     ],
     [
-      "--llm-verdict <file>",
-      "Take one pass of the review loop: apply what the file carries and print the next prompt - the last one, once nothing else is left, hands over the settled review. The file is the one --llm-review named, and no add-on is named again. Normally run by the agent working through the review rather than by a person.",
+      "--llm-handback <dir>",
+      "Take one pass of the review loop, or one step of preparing a source code review: apply what the review file in this work folder carries and print the next prompt - the last one, once nothing else is left, hands over the settled review. A preparation that is done starts its review here, and prints that review's first prompt. The folder is the work folder the review or its preparation started in, and no add-on is named again. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person.",
     ],
   ];
 
   const sca = [
     [
       "--sca-root <folder>",
-      "The extracted source root, holding package.json and the lock file. A folder, not a packed archive: a source archive comes in too many formats for this tool to open, so extract it yourself - unlike the submitted .xpi, which this tool extracts. Setting it switches the review to SCA mode.",
+      "The extracted source root, holding package.json and the lock file. A folder, not a packed archive: a source archive comes in too many formats for this tool to open, so extract it yourself - unlike the submitted .xpi, which this tool extracts. Setting it switches the review to SCA mode. It must not include the add-on.",
     ],
     [
       "--sca-exp-source <path>",
@@ -242,14 +241,14 @@ function helpText(checkIds) {
     ["--verbose", "Verbose logging."],
     [
       "--warnings-as-errors",
-      "Read every warning as an error for this review (off by default): each one is reported in the rejection list rather than as something to resolve with the next release, and the run exits 1. Set once, by the run that starts a review - a --llm-verdict pass reads it back from the review.",
+      "Read every warning as an error for this review (off by default): each one is reported in the rejection list rather than as something to resolve with the next release, and the run exits 1. Set once, by the run that starts a review - a --llm-handback pass reads it back from the review.",
     ],
   ];
 
   const commands = [
     [
       "node verify.js <xpi|folder> [options]",
-      "verify an .xpi or source folder against the Thunderbird schema and review policies",
+      "verify an .xpi or source folder against the Thunderbird schema and review policies. The .xpi must be the file itself, never a symlink to one.",
     ],
   ];
 
@@ -299,7 +298,7 @@ const OPTIONS = {
   "llm-skip-summary": { type: "boolean" },
   "llm-skip-manual": { type: "boolean" },
   "llm-skip-sweep": { type: "boolean" },
-  "llm-verdict": { type: "string" },
+  "llm-handback": { type: "string" },
   "warnings-as-errors": { type: "boolean" },
   verbose: { type: "boolean" },
   help: { type: "boolean" },
@@ -320,64 +319,60 @@ function reviewSkips(values) {
 /** The --sca-* flags, which --llm-sca-review exists to work out and so refuses to be given. */
 const SCA_FLAGS = ["sca-root", "sca-exp-source"];
 
+/** The flags that name a folder on this machine, each taken to be its real target before
+ *  anything reads it (main). --sca-exp-source is not one of them: it names a folder INSIDE
+ *  --sca-root, and is followed from there. */
+const FOLDER_FLAGS = [
+  "sca-root",
+  "llm-handback",
+  "cache-schema-dir",
+  "cache-hash-db-dir",
+  "cache-cdn-lookup-dir",
+  "cache-experiments-dir",
+];
+
+/** The flags the preparation of a source code review is given and never hands on to the
+ *  review it starts: it is itself, the work folder and the roots are the preparation's own
+ *  to name, two run or carry on a review rather than describing one, and two are this run's
+ *  alone - its caches are cleared now (--cache-clear), and its feed is its own (--verbose).
+ *  A record naming a folder for a later run to delete is the one thing it must not be able
+ *  to say. */
+const NOT_FORWARDED = new Set([
+  "llm-sca-review",
+  "llm-review",
+  "llm-handback",
+  "cache-clear",
+  "verbose",
+  ...SCA_FLAGS,
+]);
+
 /**
- * One argument as it must be TYPED: quoted when it carries whitespace, because these lines
- * are a command their reader runs, and a submission folder is as likely to be "/reviews/my
- * add-on" as not. Single quotes, the shell's literal form, with the one escape that form
- * needs.
- * @param {string} value
- * @returns {string}
+ * The flags --llm-sca-review was given that the REVIEW is to be run with, as parsed and
+ * named without their dashes, for the preparation's record (src/prepare/state.js), from
+ * which the hand-back that finds the preparation done starts that review (preparedReview).
+ * A folder among them is already the real folder (main), so it means the same wherever the
+ * review is started.
+ *
+ * Read from the PARSED values against OPTIONS, which is what knows a flag from its value.
+ * Reading argv again instead means guessing that pairing from the token shapes.
+ * @param {Record<string, string|boolean>} values
+ * @returns {Record<string, string|boolean>}
  */
-function shellArg(value) {
-  return /\s/.test(value) ? `'${value.replaceAll("'", "'\\''")}'` : value;
+function forwardedFlags(values) {
+  return Object.fromEntries(
+    Object.keys(OPTIONS)
+      .filter((name) => !NOT_FORWARDED.has(name) && values[name])
+      .map((name) => [name, values[name]])
+  );
 }
 
 /**
- * What --llm-sca-review hands its reader: the flags the REVIEW is run with, one finished
- * line each, and whether it reviews an Experiment.
- *
- * The whole command, not a template to assemble: the flags are known here, so printing
- * them saves its reader the one step where a flag can go missing. This run's own flags
- * first - with --llm-sca-review replaced by --llm-review and the add-on the submission
- * folder holds - then the ones the reader works out. Anything dropped or invented here
- * reviews a different submission than the reviewer asked about, --allow-experiments above
- * all. --sca-exp-source is named when the built add-on's manifest.json declares
- * Experiments, read from the .xpi here.
- *
- * Composed from the PARSED values against OPTIONS, which is what knows a flag from its
- * value. Reading argv again instead means guessing that pairing from the token shapes, and
- * the guess lives in whichever file prints the command - so both spellings of every flag
- * collapse here, once, and the renderer lays out what it is handed.
- *
- * A flag given no value never reaches here - main() refuses one before any branch - so
- * the truth test below only skips the flags this run was not given.
- *
- * --sca-root is a placeholder, because only its reader can settle it. The "Submission" block names EXTRACT_TO, which is where this run asks for the
- * archive to be unpacked - path math, decided before anything has been extracted. Which
- * folder inside it is the source ROOT is a fact about what the archive turned out to hold,
- * and naming the destination as though it were the root is what sent a review at a folder
- * holding none of the build. The review settles the root again from what it finds
- * (src/addon/sca-root.js), so a near miss here costs nothing.
- * @param {Record<string, string|boolean>} values
- * @param {{xpi: string, extracted: string}} submission  From scaSubmission().
- * @returns {{flags: string[], experiments: boolean}}
+ * The command that carries a preparation on: a hand-back of the work folder named.
+ * @param {string} work
+ * @returns {string[]}
  */
-function reviewCommand(values, submission) {
-  const flags = [`--llm-review ${shellArg(submission.xpi)}`];
-  for (const [name, { type }] of Object.entries(OPTIONS)) {
-    if (name === "llm-sca-review" || !values[name]) {
-      continue;
-    }
-    flags.push(
-      type === "string" ? `--${name} ${shellArg(values[name])}` : `--${name}`
-    );
-  }
-  flags.push("--sca-root <SCA_ROOT>");
-  const experiments = isExperiment(readPackedManifest(submission.xpi).json);
-  if (experiments) {
-    flags.push("--sca-exp-source <SCA_EXP_SOURCE>");
-  }
-  return { flags, experiments };
+function handbackCommand(work) {
+  return [`--llm-handback ${shellArg(work)}`];
 }
 
 /**
@@ -411,18 +406,66 @@ function pointsAtFolder(p) {
 }
 
 /**
+ * Whether `p` is a symbolic link that does not lead to a folder - a file named through a
+ * link, or a link leading nowhere, which is refused rather than followed. A path that is no
+ * link at all, missing or not, is the reader's to report in its own words.
+ * @param {string} p
+ * @returns {boolean}
+ */
+function linkedFile(p) {
+  const full = path.resolve(p);
+  try {
+    if (!fs.lstatSync(full).isSymbolicLink()) {
+      return false;
+    }
+  } catch (err) {
+    rethrowIfFatal(err);
+    return false;
+  }
+  return !pointsAtFolder(full);
+}
+
+/**
+ * The FOLDER `p` really is, links followed - or `p` as it was written, where no link
+ * touches it, so a message still quotes what was typed. Read for folders only: a file named
+ * through a link is refused before this is asked (linkedFile). A path that does not exist yet (a
+ * work folder or a cache folder the run creates) is followed as far as it exists, and the
+ * rest joined back on. A path that cannot be followed is left as written, for the check
+ * that reads it to report in its own words.
+ * @param {string} p
+ * @returns {string}
+ */
+function realFolder(p) {
+  const full = path.resolve(p);
+  const rest = [];
+  let at = full;
+  try {
+    while (!fs.existsSync(at)) {
+      const up = path.dirname(at);
+      if (up === at) {
+        return p;
+      }
+      rest.unshift(path.basename(at));
+      at = up;
+    }
+    const real = path.join(fs.realpathSync(at), ...rest);
+    return real === full ? p : real;
+  } catch (err) {
+    rethrowIfFatal(err);
+    return p;
+  }
+}
+
+/**
  * What is wrong with a value that must name a folder, as the message saying so - or null
- * when nothing is. Two questions, asked of every such flag (that a value was given at all
- * is main()'s, asked of every flag that takes one):
+ * when nothing is. Asked of the folder the value names, already followed to its real target
+ * (main), so how it was spelled - a link, a ".." segment - makes no difference; only where
+ * it lands does. Two questions (that a value was given at all is main()'s, asked of every
+ * flag that takes one):
  *
- * Does it stay INSIDE the tree it names? A ".." segment names a folder by the way out of
- * another, which is a value someone will misread whether or not it lands back inside;
- * hasParentSegment is the same test the loader applies to every value it resolves, so the
- * two cannot part company. A flag that names a folder INSIDE --sca-root (`inRoot`) is
- * asked one more: does it LAND inside that root? Written relative or absolute makes no
- * difference - a value resolving outside names a folder on the reviewing machine, which
- * can be anywhere, so what it names is not part of the submission and cannot be shown
- * to be.
+ * Does a flag that names a folder INSIDE --sca-root (`inRoot`) LAND inside that root?
+ * A value resolving outside names a folder on the reviewing machine, which can be
+ * anywhere, so what it names is not part of the submission and cannot be shown to be.
  *
  * Does it point at a FOLDER? Asked of the resolved path, so a trailing slash cannot answer
  * it differently. A file, a missing path and an unreadable one are all "no".
@@ -432,20 +475,11 @@ function pointsAtFolder(p) {
  *   folder inside it, and the value's own path otherwise.
  * @param {boolean} [inRoot]  Whether the flag names a folder inside --sca-root, which the
  *   value must resolve into however it was written.
- * @returns {?{text: string, escape: boolean}}  `escape` marks the ".." refusal, which says
- *   what to do on its own - the others are worth telling what the folder is FOR.
+ * @returns {?{text: string, escape: boolean}}  `escape` marks the outside-the-root
+ *   refusal, which says what to do on its own - the other is worth telling what the folder
+ *   is FOR.
  */
 function folderProblem(flag, value, base, inRoot = false) {
-  // Kept as its own refusal even though the containment test below would catch most of
-  // them, because the message can say what is wrong with what was typed.
-  if (hasParentSegment(value)) {
-    return {
-      text:
-        `--${flag} names a folder, never a way out of one: "${value}" carries a ".." ` +
-        "segment. Name the folder itself.",
-      escape: true,
-    };
-  }
   // Resolved exactly as the arg-array reader resolves it (pipelineOptsFromValues): against
   // --sca-root for a flag that names a folder inside it, against the working directory
   // otherwise. One expression in both places, so the folder asked about here is the folder
@@ -513,19 +547,20 @@ export async function main(argv) {
   setQuiet(format === "json");
   setVerbose(values.verbose);
   setProgress(format === "text");
-  // A review flag hands the report to a model and --llm-verdict produces the settled
-  // report a reviewer sends on. Either way the output IS the document, so the record of
-  // how it was produced - the Setup and Activity sections - is noise in it. The report's
-  // own header and prompt are not feed and still print.
-  setFeed(!values["llm-review"] && !values["llm-verdict"]);
-  // The runs that print a prompt for an agent hold their stderr messages back and write
-  // them as one block at exit: the agent's harness merges both streams, and a message
-  // printed in place would read as part of the prompt it is following.
-  setRecording(
-    Boolean(
-      values["llm-review"] || values["llm-verdict"] || values["llm-sca-review"]
-    )
+  // The runs that print a prompt for an agent: --llm-sca-review prepares a review,
+  // --llm-review starts one, and --llm-handback carries it on, down to the settled report
+  // a reviewer sends on. Asked once, so every such mode is treated alike.
+  const prompts = Boolean(
+    values["llm-review"] || values["llm-handback"] || values["llm-sca-review"]
   );
+  // Their output IS the document, so the record of how it was produced - the Setup and
+  // Activity sections - is noise in it. The report's own header and prompt are not feed
+  // and still print.
+  setFeed(!prompts);
+  // They also hold their stderr messages back and write them as one block at exit: the
+  // agent's harness merges both streams, and a message printed in place would read as part
+  // of the prompt it is following.
+  setRecording(prompts);
   // Color only on an interactive text screen. Piped/redirected runs and JSON
   // stay plain, so nothing downstream has to undo it.
   setColor(format === "text" && Boolean(process.stdout.isTTY));
@@ -555,67 +590,76 @@ export async function main(argv) {
     return 2;
   }
 
-  // The other flag whose value is a closed set, asked the same way. It reads as a boolean
-  // but arrives as a string, and the derivation below disables the lookup on the exact
-  // lowercase "false" alone - so "False", "no" and "flase" would all leave it ON. The
-  // lookup sends content hashes of the submission to a third party, which is the thing a
-  // reviewer turning it off for a sensitive submission, or to work offline, asked it not to
-  // do. There is no reading of a misspelt value that is safe to guess.
-  const cdnLookup = values["cdn-lib-lookup"];
-  if (
-    cdnLookup !== undefined &&
-    cdnLookup !== "true" &&
-    cdnLookup !== "false"
-  ) {
-    writeToStderr(
-      `Invalid --cdn-lib-lookup "${cdnLookup}" (expected true or false).\n`
-    );
+  // The other flag whose value is a closed set, asked the same way (cdnLookupProblem).
+  const cdnProblem = cdnLookupProblem(values);
+  if (cdnProblem) {
+    writeToStderr(`${cdnProblem}\n`);
     return 2;
   }
 
-  // A flag given with no value names something and says nothing, so it is refused before
-  // any branch reads one. Asked HERE, once, for every option that takes a value: what a
-  // value MEANS is each reader's question - a report format is checked where the format is
-  // read, a folder where the folder is opened - but whether one was given at all is the
-  // parser's, and a run that returns early must not be able to skip it. parseArgs hands
-  // "--flag=" down as "", which every reader below tests for truth and so reads as "not
-  // given": a named cache would silently be the default one, a named verdict file would
-  // print an unsettled report, and a named format would fall back to text.
-  {
-    const empty = Object.entries(OPTIONS).find(
-      ([name, opt]) =>
-        opt.type === "string" &&
-        values[name] !== undefined &&
-        !values[name].trim()
-    );
-    if (empty) {
-      writeToStderr(`--${empty[0]} needs a value, and none was given.\n`);
+  // A flag given with no value is refused before any branch reads one (emptyFlagProblem):
+  // asked HERE, once, so a run that returns early cannot skip it.
+  const emptyProblem = emptyFlagProblem(values);
+  if (emptyProblem) {
+    writeToStderr(`${emptyProblem}\n`);
+    return 2;
+  }
+
+  // Every FOLDER named here is taken to be the folder it really is, links followed, before
+  // anything reads it: every condition below is asked of that target, and the review reads
+  // it. So a folder named through a link is the folder it names, and no link anywhere in a
+  // path can carry it past a guard that compares paths. Asked before any branch returns,
+  // so the preparation and the review alike see only real folders.
+  //
+  // A FILE is never followed: the .xpi named here, like the files of a submission folder
+  // (src/addon/submission.js), must be the file itself, so a link to one is refused.
+  //
+  // The work folder a --llm-handback names is also taken as one absolute name: it is
+  // recorded, a rescued copy is placed beside it, and the command handed to the agent names
+  // it, so a relative path or a trailing slash would make each of those mean something else.
+  for (const flag of FOLDER_FLAGS) {
+    if (values[flag] !== undefined) {
+      values[flag] = realFolder(values[flag]);
+    }
+  }
+  if (values["llm-handback"] !== undefined) {
+    values["llm-handback"] = path.resolve(values["llm-handback"]);
+  }
+  if (positionals[0] !== undefined) {
+    const linked = linkedFile(positionals[0]);
+    if (linked) {
+      writeToStderr(
+        `The add-on "${positionals[0]}" is a symlink. Name the .xpi file itself.\n`
+      );
       return 2;
+    }
+    positionals[0] = realFolder(positionals[0]);
+  }
+  // Named inside --sca-root, so followed from there - the folder the review resolves it to.
+  if (values["sca-exp-source"] !== undefined) {
+    const inRoot = path.resolve(
+      values["sca-root"] ?? ".",
+      values["sca-exp-source"]
+    );
+    const real = realFolder(inRoot);
+    if (real !== inRoot) {
+      values["sca-exp-source"] = real;
     }
   }
 
   // A bad --checks-only/--checks-skip id is a bad command line whatever the run does with
   // it, so it is answered before any branch below - including the two that print a prompt.
-  // --llm-sca-review hands its reader a command built from these very flags: an id nobody
-  // can run would travel into it, and the review it starts would exit 2 on a line the
-  // prompt told them to run.
-  const badCheck = unknownId(
-    [
-      ...(splitList(values["checks-only"]) ?? []),
-      ...(splitList(values["checks-skip"]) ?? []),
-    ],
-    checkIds
-  );
-  if (badCheck) {
-    writeToStderr(
-      `Unknown check "${badCheck}" (--checks-only/--checks-skip). Available: ${checkIds.join(", ")}.\n`
-    );
+  // --llm-sca-review records these very flags for the review it prepares: an id nobody can
+  // run would travel into it, and the review the preparation starts would fail on it.
+  const checkProblem = checkIdProblem(values, checkIds);
+  if (checkProblem) {
+    writeToStderr(`${checkProblem}\n`);
     return 2;
   }
 
   // A skip names part of the --llm-review prompt to leave out, so it says nothing without a
   // review to cut down. Two flags take them, not one: --llm-sca-review prepares a review
-  // and hands them back in the command it prints. The loop's later passes need none - the
+  // and records them for the review its hand-back starts. The loop's later passes need none - the
   // run they belong to recorded them, and every pass after reads that. Refused FIRST, so
   // every guard below can assume a skip implies one of the two.
   // Not collected by reviewSkips - no `when:` names it - so the rule the others get
@@ -653,10 +697,10 @@ export async function main(argv) {
   // started it (state.run) and read back by every pass after. Accepting it here too would put
   // the same fact in two places, and a pass given it where the review was not would settle a
   // case in a band the rest of that review does not use.
-  if (values["warnings-as-errors"] && values["llm-verdict"]) {
+  if (values["warnings-as-errors"] && values["llm-handback"]) {
     writeToStderr(
       "--warnings-as-errors belongs to the review, which recorded it when it started, so " +
-        "a --llm-verdict pass reads it back rather than being told it again. Drop it, or " +
+        "a --llm-handback pass reads it back rather than being told it again. Drop it, or " +
         "start the review again with it.\n"
     );
     return 2;
@@ -674,7 +718,7 @@ export async function main(argv) {
       );
       return 2;
     }
-    if (values["llm-review"] || values["llm-verdict"]) {
+    if (values["llm-review"] || values["llm-handback"]) {
       writeToStderr(
         "--llm-sca-review comes BEFORE a review: it prints how to start one and runs " +
           "none, so it cannot be combined with the flags that run or settle one.\n"
@@ -708,9 +752,7 @@ export async function main(argv) {
     }
     const folder = positionals[0];
     // Asked before scaSubmission reads it, so a path that is not a folder at all is
-    // answered in this tool's words rather than through a readdir errno. No ".." rule
-    // here, unlike the --sca-* flags: this is the add-on argument, and no positional is
-    // refused for the way it was spelled.
+    // answered in this tool's words rather than through a readdir errno.
     if (!pointsAtFolder(path.resolve(folder))) {
       writeToStderr(
         `--llm-sca-review reads the add-on argument as a folder, and "${folder}" is not ` +
@@ -727,12 +769,53 @@ export async function main(argv) {
       writeToStderr(`--llm-sca-review "${folder}": ${err.message}\n`);
       return 2;
     }
+    // The review's work folder, created here because the source is extracted into it before
+    // the review starts: at its default place, beside the .xpi, as every review's is. Not
+    // recursive, and an existing one is refused: the folder is fresh by its moment, so one
+    // already there belongs to another review.
+    const work = defaultWorkFolder(submission.xpi);
+    try {
+      fs.mkdirSync(work);
+    } catch (err) {
+      rethrowIfFatal(err);
+      writeToStderr(
+        err.code === "EEXIST"
+          ? `--llm-sca-review creates a fresh work folder, and "${work}" is already there. ` +
+              "Run it again for a folder of its own.\n"
+          : `--llm-sca-review could not create the work folder "${work}" (${err.code ?? err.message}).\n`
+      );
+      return 2;
+    }
+    // The preparation's record and the review file the roots come back in, written before
+    // the prompt that names them. Whether the add-on declares Experiments is read from the
+    // .xpi here: it decides whether the roots include the Experiment folder.
+    const experiments = isExperiment(readPackedManifest(submission.xpi).json);
+    // The caches are cleared by the run that was given --cache-clear, never by a later one:
+    // the review this preparation starts reads its flags from a record the agent can write,
+    // and a record that could name a folder for the linter to delete is one too many.
+    if (values["cache-clear"]) {
+      clearCaches(cacheDirs(pipelineOptsFromValues(values)));
+    }
+    startPreparation(
+      work,
+      startRecord({
+        submission: { xpi: submission.xpi, experiments },
+        flags: forwardedFlags(values),
+      })
+    );
     // The prompt IS the output: no review has run, and none can until its reader answers
     // it. Printed as the report is, and to the screen only.
+    const paths = workPaths(work);
     for (const line of scaPromptLines(
       registry.llmScaReviewPrompt(),
-      submission,
-      reviewCommand(values, submission)
+      "extract",
+      {
+        submission,
+        extractTo: `${paths.sca}${path.sep}`,
+        answers: paths.review,
+        flags: handbackCommand(work),
+        experiments,
+      }
     )) {
       report(line);
     }
@@ -740,10 +823,10 @@ export async function main(argv) {
     return 0;
   }
 
-  if (values["llm-review"] && values["llm-verdict"]) {
+  if (values["llm-review"] && values["llm-handback"]) {
     writeToStderr(
-      "--llm-review and --llm-verdict are the two ends of one review and cannot share a " +
-        "run: --llm-review starts it, --llm-verdict carries it on.\n"
+      "--llm-review and --llm-handback are the two ends of one review and cannot share a " +
+        "run: --llm-review starts it, --llm-handback carries it on.\n"
     );
     return 2;
   }
@@ -751,12 +834,12 @@ export async function main(argv) {
   // A review flag's whole output is a prompt. JSON is the machine contract for ATN, which
   // wants neither, and asking for both leaves nothing coherent to print - so say so rather
   // than silently favouring one. Asked of BOTH ends of the loop, and before either one
-  // branches away: --llm-verdict returns just below without reading another guard, so a
+  // branches away: --llm-handback returns just below without reading another guard, so a
   // test further down is a test it never takes - which is how it came to accept a format
   // it then ignored. The flag that was actually used is the one named, since a run that
-  // said --llm-verdict is not helped by being told about --llm-review.
-  if ((values["llm-review"] || values["llm-verdict"]) && format === "json") {
-    const flag = values["llm-review"] ? "--llm-review" : "--llm-verdict";
+  // said --llm-handback is not helped by being told about --llm-review.
+  if ((values["llm-review"] || values["llm-handback"]) && format === "json") {
+    const flag = values["llm-review"] ? "--llm-review" : "--llm-handback";
     writeToStderr(
       `${flag} is text only: it prints a prompt and writes the files the review names, ` +
         "which is not what --report-format json produces.\n"
@@ -766,10 +849,10 @@ export async function main(argv) {
 
   // THE REVIEW LOOP, every pass after the first. No add-on is named and none is read: the
   // deterministic review ran ONCE, in the --llm-review run, and its result is in the state
-  // the file handed back points at. That is why there is no add-on path here, and why
+  // in the work folder handed back. That is why there is no add-on path here, and why
   // nothing can shift under an index between passes.
-  if (values["llm-verdict"]) {
-    return runLoopPass(values["llm-verdict"], registry);
+  if (values["llm-handback"]) {
+    return runHandback(values["llm-handback"], registry);
   }
 
   // No add-on to review: the usage text answers what was missing, and the exit code says
@@ -789,11 +872,6 @@ export async function main(argv) {
     );
     return 2;
   }
-
-  // The two ENDS of the loop: --llm-review starts one, --llm-verdict continues one. Each
-  // run is one or the other. Together they would start a review and answer a different one
-  // in the same breath, so the file handed back would belong to neither. Refuse rather
-  // than pick one.
 
   // --sca-root is the SCA-mode switch. --sca-exp-source names a location INSIDE it, so it
   // is meaningless on its own - and unresolvable, since this layer resolves it against the
@@ -820,8 +898,7 @@ export async function main(argv) {
     }
     // --sca-root stands on its own; --sca-exp-source names a folder INSIDE it, so it is
     // asked about after being resolved against it - the same resolution the reader applies
-    // a moment later. The ".." refusal before that is about the SPELLING the user chose,
-    // which is the only place that is still visible.
+    // a moment later.
     const inRoot = flag !== "sca-root";
     const problem = folderProblem(
       flag,
@@ -840,30 +917,33 @@ export async function main(argv) {
     }
   }
 
+  // Everything under --sca-root is reviewed as the source, so the add-on cannot lie inside
+  // it: the review would read the shipped XPI, and the work folder created beside it, as
+  // files of the source. Asked of the root as given, which the review only ever settles
+  // further down into, and of both paths already followed to what they really are.
+  const addonPath = path.resolve(positionals[0]);
+  if (
+    values["sca-root"] &&
+    relativeInside(addonPath, values["sca-root"]) !== null
+  ) {
+    writeToStderr(
+      `--sca-root "${values["sca-root"]}" must not include the add-on "${addonPath}".\n`
+    );
+    return 2;
+  }
+  // The work folder is always the default, beside the add-on, and must not exist: it is
+  // stamped with the moment the run starts, so only two runs started in the same moment
+  // reach this, and the second is refused before it reads anything.
+  const workFolder = defaultWorkFolder(addonPath);
+  if (fs.lstatSync(workFolder, { throwIfNoEntry: false })) {
+    writeToStderr(`The work folder "${workFolder}" must not exist.\n`);
+    return 2;
+  }
+
   let result;
   try {
-    // Reading the options can fail the same way the review can - a bad option value
-    // is a bad config, not a bad add-on - so it is inside the catch below and reported
-    // like one, rather than as a stack trace from verify.js's last-resort handler.
-    const opts = pipelineOptsFromValues(values);
-    // --cache-clear: wipe every cache dir up front so the resolvers re-fetch each
-    // source from scratch during this review, exactly as on a first run. Lists every
-    // cache dir opt - a new cache added to pipelineOptsFromValues must be added here
-    // too, or --cache-clear would silently skip it.
-    if (values["cache-clear"]) {
-      clearCaches([
-        opts.schemaCache,
-        opts.libraryHashesCache,
-        opts.cdnLookupCache,
-        opts.experimentsCache,
-      ]);
-    }
-    result = await runPipeline({
-      // Absolute from here on, like every other path opt (pipelineOptsFromValues).
-      addonPath: path.resolve(positionals[0]),
-      ...opts,
-      registry,
-    });
+    // Settled above, once: the default is stamped with the moment it is named.
+    result = await startReview(values, addonPath, workFolder, registry);
   } catch (err) {
     // A pipeline throw is a tool failure the review could not run through (no network, a
     // host that gave no answer, an unusable schema, a bad review config, an unreadable
@@ -872,20 +952,132 @@ export async function main(argv) {
     writeToStderr(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
+  return printReview(result, format);
+}
 
-  // The full report comes from the report layer: formatReview assembles the body - Found
-  // Issues and the to-do sections - and the verdict tally LAST. The CLI just writes it.
-  //
-  // Except under --llm-review, which hands out the first PHASE instead: the prompt tells
-  // its reader to work from the file it names, and printing the same review as prose
-  // alongside it would invite them to settle the report they can see rather than the
-  // entries they can address. The settled report comes from the last pass of the loop.
+/**
+ * Run a review from parsed values: the one start both of its callers share - a command
+ * line naming an add-on (main), and the hand-back that finds a source code review prepared
+ * (runPreparePass), which builds the values from the preparation's record.
+ *
+ * Reading the options can fail the same way the review can - a bad option value is a bad
+ * config, not a bad add-on - so it is inside the caller's catch and reported like one.
+ * @param {Record<string, string|boolean>} values  Parsed, and checked by the caller.
+ * @param {string} addonPath  The add-on, absolute.
+ * @param {string} workFolder  The work folder, absolute.
+ * @param {import("./checks/registry.js").Registry} registry
+ * @returns {Promise<import("./pipeline.js").PipelineResult>}
+ */
+async function startReview(values, addonPath, workFolder, registry) {
+  const opts = pipelineOptsFromValues(values);
+  // --cache-clear: wipe every cache dir up front so the resolvers re-fetch each source from
+  // scratch during this review, exactly as on a first run. Lists every cache dir opt - a new
+  // cache added to pipelineOptsFromValues must be added here too, or --cache-clear would
+  // silently skip it.
+  if (values["cache-clear"]) {
+    clearCaches(cacheDirs(opts));
+  }
+  return runPipeline({
+    // Absolute from here on, like every other path opt (pipelineOptsFromValues).
+    addonPath,
+    ...opts,
+    workFolder,
+    registry,
+  });
+}
+
+/**
+ * Print what a review hands its reader, and answer with the run's exit code.
+ *
+ * The full report comes from the report layer: formatReview assembles the body - Found
+ * Issues and the to-do sections - and the verdict tally LAST. The CLI just writes it.
+ *
+ * Except under --llm-review, which hands out the first PHASE instead (printed by the
+ * pipeline): the prompt tells its reader to work from the file it names, and printing the
+ * same review as prose alongside it would invite them to settle the report they can see
+ * rather than the entries they can address. The settled report comes from the last pass of
+ * the loop.
+ * @param {import("./pipeline.js").PipelineResult} result
+ * @param {string} format
+ * @returns {number}
+ */
+function printReview(result, format) {
   const rendered = result.meta.prompting ? "" : formatReview(result, format);
   if (rendered) {
     writeToStdout(rendered + "\n");
   }
-
   return hasErrors(result.findings) ? 1 : 0;
+}
+
+/**
+ * Every cache folder a review reads, for --cache-clear.
+ * @param {Partial<PipelineOpts>} opts  From pipelineOptsFromValues.
+ * @returns {string[]}
+ */
+function cacheDirs(opts) {
+  return [
+    opts.schemaCache,
+    opts.libraryHashesCache,
+    opts.cdnLookupCache,
+    opts.experimentsCache,
+  ];
+}
+
+/**
+ * --cdn-lib-lookup is the one flag whose value is a closed set besides the report format.
+ * It reads as a boolean but arrives as a string, and the derivation disables the lookup on
+ * the exact lowercase "false" alone - so "False", "no" and "flase" would all leave it ON.
+ * The lookup sends content hashes of the submission to a third party, which is the thing a
+ * reviewer turning it off for a sensitive submission, or to work offline, asked it not to
+ * do. There is no reading of a misspelt value that is safe to guess.
+ * @param {Record<string, string|boolean>} values
+ * @returns {?string}  The problem, or null.
+ */
+function cdnLookupProblem(values) {
+  const cdnLookup = values["cdn-lib-lookup"];
+  return cdnLookup !== undefined &&
+    cdnLookup !== "true" &&
+    cdnLookup !== "false"
+    ? `Invalid --cdn-lib-lookup "${cdnLookup}" (expected true or false).`
+    : null;
+}
+
+/**
+ * A flag given with no value names something and says nothing, so it is refused before any
+ * reader takes it. What a value MEANS is each reader's question, but whether one was given
+ * at all is the parser's. parseArgs hands "--flag=" down as "", which every reader tests for
+ * truth and so reads as "not given": a named cache would silently be the default one, and
+ * a named format would fall back to text.
+ * @param {Record<string, string|boolean>} values
+ * @returns {?string}  The problem, or null.
+ */
+function emptyFlagProblem(values) {
+  const empty = Object.entries(OPTIONS).find(
+    ([name, opt]) =>
+      opt.type === "string" &&
+      values[name] !== undefined &&
+      !values[name].trim()
+  );
+  return empty ? `--${empty[0]} needs a value, and none was given.` : null;
+}
+
+/**
+ * A --checks-only/--checks-skip id no check has.
+ * @param {Record<string, string|boolean>} values
+ * @param {string[]} checkIds
+ * @returns {?string}  The problem, or null.
+ */
+function checkIdProblem(values, checkIds) {
+  const badCheck = unknownId(
+    [
+      ...(splitList(values["checks-only"]) ?? []),
+      ...(splitList(values["checks-skip"]) ?? []),
+    ],
+    checkIds
+  );
+  return badCheck
+    ? `Unknown check "${badCheck}" (--checks-only/--checks-skip). Available: ${checkIds.join(", ")}.`
+    : null;
 }
 
 /**
@@ -942,7 +1134,6 @@ function pipelineOptsFromValues(values) {
     // sweep REQUEST, and with them the per-tree conditions derived from the requests - so
     // no step that starts a sweeping agent prints (src/report/phases.js stepsOf).
     llmSkipSweep: Boolean(values["llm-skip-sweep"]),
-    llmVerdict: values["llm-verdict"],
   };
 }
 
@@ -989,6 +1180,177 @@ function splitList(value) {
 }
 
 /**
+ * One hand-back of a work folder: a step of preparing a source code review, while the folder
+ * holds the preparation's record and no review has started there, and otherwise a pass of
+ * the review loop. The folder decides, so the agent runs one command whichever it is.
+ * @param {string} work  The work folder, the real folder (main).
+ * @param {import("./checks/registry.js").Registry} registry  The authored registry.
+ * @returns {Promise<number>}
+ */
+function runHandback(work, registry) {
+  const paths = workPaths(work);
+  return fs.existsSync(paths.prepare) && !fs.existsSync(paths.state)
+    ? runPreparePass(work, registry)
+    : runLoopPass(work, registry);
+}
+
+/**
+ * One step of preparing a source code review (src/prepare/steps.js), then what it hands out
+ * next: a rescued copy's step, or - once the preparation is done - the review itself, which
+ * this hand-back starts, so the agent runs no command but this one. The review's first
+ * prompt is then printed by the pipeline, and the run exits as a started review does.
+ *
+ * A refusal is answered as the review loop answers one: the prompt is not re-printed, and
+ * nothing changed, so a corrected hand-back resumes where it was.
+ * @param {string} work
+ * @param {import("./checks/registry.js").Registry} registry
+ * @returns {Promise<number>}
+ */
+async function runPreparePass(work, registry) {
+  let out;
+  try {
+    out = await handBack(work);
+  } catch (err) {
+    return refusedOrFailed(err, registry);
+  }
+  const { record } = out;
+  if (out.next === "step") {
+    const lines = scaPromptLines(registry.llmScaReviewPrompt(), record.step, {
+      rescueRoot: record.roots.scaRoot,
+      flags: handbackCommand(out.work),
+      experiments: record.submission.experiments,
+    });
+    for (const line of lines) {
+      writeToStdout(`${line}\n`);
+    }
+    writeToStdout("\n");
+    return 0;
+  }
+  let result;
+  try {
+    const values = preparedReview(record, registry.checkIds(), out.work);
+    result = await startReview(
+      values,
+      record.submission.xpi,
+      out.work,
+      registry
+    );
+  } catch (err) {
+    return refusedOrFailed(err, registry);
+  }
+  return printReview(result, "text");
+}
+
+/**
+ * The fields of a preparation's record the review it starts cannot do without, each with
+ * the phrase a refusal names it by. A list, so a field the start comes to depend on is one
+ * more entry - and a record missing several is told all of them at once.
+ * @type {{holds: (record: object) => boolean, missing: string}[]}
+ */
+const RECORD_FIELDS = [
+  {
+    holds: (r) =>
+      typeof r.submission?.xpi === "string" && r.submission.xpi !== "",
+    missing: "no submission to review",
+  },
+  {
+    holds: (r) => typeof r.roots?.scaRoot === "string",
+    missing: "no settled source root",
+  },
+];
+
+/**
+ * The values a prepared review is started with, rebuilt from the preparation's record.
+ *
+ * The record is a file the agent can write, so nothing is taken from it as it stands: only
+ * the flags the preparation forwards (NOT_FORWARDED) and OPTIONS declares, each of its
+ * declared type - a boolean `true` or `false` (recordBoolean), `false` being a flag not
+ * given - and then checked as a command line is. The add-on and the roots are set
+ * last, from the record's own fields, so no flag can name another; and the roots are asked
+ * again as the extract step asked them (recordedRoots): followed to the folders they really
+ * are, the root inside the work folder's `sca/` and the Experiment folder inside the root,
+ * because the agent works in the folder between the step that settled them and this one.
+ * The review reads the real folders that answered.
+ * @param {import("./prepare/state.js").PrepareRecord} record  At `done`.
+ * @param {string[]} checkIds
+ * @param {string} work  The work folder the review starts in.
+ * @returns {Record<string, string|boolean>}
+ * @throws {HandbackRefused}
+ */
+function preparedReview(record, checkIds, work) {
+  const missing = RECORD_FIELDS.filter((field) => !field.holds(record)).map(
+    (field) => field.missing
+  );
+  if (missing.length) {
+    throw new HandbackRefused(
+      `the preparation's record names ${listOf(missing)}`
+    );
+  }
+  const roots = recordedRoots(work, record.roots);
+  const flags =
+    record.flags && typeof record.flags === "object" ? record.flags : {};
+  const values = {};
+  for (const [name, { type }] of Object.entries(OPTIONS)) {
+    if (NOT_FORWARDED.has(name) || !Object.hasOwn(flags, name)) {
+      continue;
+    }
+    const value = flags[name];
+    if (type === "boolean") {
+      // `false` is a flag not given, so it is left out.
+      if (recordBoolean(value, `--${name}`)) {
+        values[name] = true;
+      }
+      continue;
+    }
+    if (typeof value !== "string") {
+      throw new HandbackRefused(
+        `the preparation's record holds --${name} as a value it does not take`
+      );
+    }
+    values[name] = value;
+  }
+  values["llm-review"] = true;
+  values["sca-root"] = roots.scaRoot;
+  if (roots.scaExpSource !== null) {
+    values["sca-exp-source"] = roots.scaExpSource;
+  }
+  const problem =
+    cdnLookupProblem(values) ??
+    emptyFlagProblem(values) ??
+    checkIdProblem(values, checkIds) ??
+    SCA_FLAGS.map((flag) =>
+      values[flag] === undefined
+        ? null
+        : folderProblem(flag, values[flag], roots.scaRoot, flag !== "sca-root")
+    ).find(Boolean)?.text;
+  if (problem) {
+    // Without its full stop: the refusal text goes on after it.
+    throw new HandbackRefused(
+      problem.endsWith(".") ? problem.slice(0, -1) : problem
+    );
+  }
+  return values;
+}
+
+/**
+ * Answer a failed hand-back: a refusal goes to the agent as the `refused` text, which has
+ * it redo the pass once, and anything else ends the run as the tool's own failure.
+ * @param {unknown} err
+ * @param {import("./checks/registry.js").Registry} registry
+ * @returns {number}  The exit code, 2 either way.
+ */
+function refusedOrFailed(err, registry) {
+  if (err instanceof HandbackRefused) {
+    writeToStdout(
+      `${fillSlots(registry.llmPhases().refused, { problem: err.problem })}\n`
+    );
+  } else {
+    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
+  }
+  return 2;
+}
+
+/**
  * One pass of the review loop: take a phase back, then hand out the next - the closing
  * phase, once nothing else has work, which carries the finished review.
  *
@@ -1000,27 +1362,29 @@ function splitList(value) {
  * report out of half a pass.
  * The report format is not a parameter: every pass of the loop prints a prompt, and the
  * one format that is not a prompt is refused before the loop is entered.
- * @param {string} file  The review file the agent handed back.
+ * The work folder is the review: its state and its review file are read there, each by
+ * its fixed name (src/util/dest.js workPaths), so nothing the agent edits says where the
+ * review is.
+ * @param {string} work  The work folder the review started in, as --llm-handback named it.
  * @param {import("./checks/registry.js").Registry} base  The authored registry. Read under
  *   the REVIEW's own band policy below, which only the state can say.
  * @returns {Promise<number>}
  */
-async function runLoopPass(file, base) {
+async function runLoopPass(work, base) {
   const texts = base.llmPhases();
-  const handed = path.resolve(file);
-  let state, stateFile, registry;
+  const folder = path.resolve(work);
+  const stateFile = workPaths(folder).state;
+  let state, registry;
   try {
-    // `readHandback` names the state before accept() re-reads the same file for its
-    // entries - two reads of what the agent handed back, not two ways of finding it.
-    ({ state: stateFile } = readHandback(handed));
-    state = readState(stateFile);
-    // `base` leads to a state, and the state names the one review file it hands out. A
-    // file that is not that one belongs to a different review: applying it here would
-    // advance a review with another's answers. Nothing else catches it - a pass that asks
-    // for no entry has nothing in the file that could disagree.
-    if (path.resolve(state.review) !== handed) {
+    // A folder holding no review this pass can read is a hand-back gone wrong - the agent
+    // ran the command with another folder, or before the review was started - so it is
+    // refused to the agent, who has the prompt it was following and can run it again.
+    try {
+      state = readState(stateFile);
+    } catch (err) {
+      rethrowIfFatal(err);
       throw new HandbackRefused(
-        "this file belongs to a different review - hand back the file the prompt named, unedited"
+        `"${work}" holds no review this command can carry on (${err.message})`
       );
     }
     // The band policy is the REVIEW's, recorded by the run that started it: this pass was
@@ -1030,7 +1394,7 @@ async function runLoopPass(file, base) {
     registry = base.withPolicy({
       warningsAsErrors: state.run.warningsAsErrors,
     });
-    accept(state, handed, texts.phases, registry);
+    accept(state, folder, texts.phases, registry);
   } catch (err) {
     if (err instanceof HandbackRefused) {
       writeToStdout(`${fillSlots(texts.refused, { problem: err.problem })}\n`);
@@ -1047,12 +1411,12 @@ async function runLoopPass(file, base) {
   // no half a prompt behind.
   let next, lines;
   try {
-    next = issue(state, stateFile, texts.phases, registry);
+    next = issue(state, folder, texts.phases, registry);
     lines = loopPromptLines(
       texts,
       next.phase,
       next.steps,
-      loopSlots(state, next),
+      loopSlots(state, next, folder),
       next.preamble
     );
   } catch (err) {

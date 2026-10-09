@@ -420,7 +420,10 @@ deterministic-phase:
     The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies and are reviewed as authored code, so a finding may be reported against library code.
 
 # A source-code review (`input: sca` - the archive exists in no other kind of review): a
-# declared dependency that is not a confirmed widely-used library cannot be reviewed - its
+# dependency the committed lock file marks as declared (every package of an npm lockfile
+# v1, which records no declared set) that is not a confirmed widely-used library - by its
+# npm downloads, or by its repository's stars where the lock installs it from GitHub -
+# cannot be reviewed - its
 # code is pulled in at build, absent from the readable source and mangled in the built XPI -
 # so a SHIPPED one must be included readable in the archive. BUILD dependencies are held to
 # the same bar, for the reason they are OSV-audited: the reviewer installs and runs them, so
@@ -428,7 +431,7 @@ deterministic-phase:
 # the vulnerabilities we can name would protect them from the named risk alone. Either kind
 # can instead be included readable in the archive as a local file: package, which the review
 # treats as authored code; or replaced, or removed where the add-on does not need it.
-# verifyScaDependencies records both (vendor.unpopularDeps).
+# verifyScaDependencies records both (vendor.unpopularDeps), anchored at the lock entry.
 - title: Unreviewable dependency
   severity: error
   check: unpopular-source-dependency
@@ -611,11 +614,15 @@ deterministic-phase:
   response: |-
     The following dependencies are declared as a version range, and the lock file the add-on ships records no version for them. A range names no single release, so there is nothing to verify the bundled copy against. Regenerate the lock file so it records what was bundled, or pin each dependency in package.json to a bare version like "4.17.21".
 
-# A package.json dependency from a source the review cannot identify or verify - only npm
-# and GitHub URLs are supported. Rejects everything else. This is the SOURCE axis alone:
+# A dependency from a source the review cannot identify or verify - only npm and GitHub
+# URLs are supported. Rejects everything else. This is the SOURCE axis alone:
 # whether the release a spec names can be pinned is a separate question, answered per
 # submission type (xpi-lock-file-missing / xpi-lock-file-invalid, sca-lock-file-missing /
-# sca-lock-file-invalid).
+# sca-lock-file-invalid). A built XPI's package.json declarations are judged; in a source
+# review the committed lock file is read instead, and what it reports is an install from a
+# local path the archive does not hold as a folder (outside the source root, absent, or a
+# local tarball). A remote tarball or a non-GitHub git source in the lock is
+# lock-foreign-source's.
 - title: Unsupported dependency source
   severity: error
   check: unsupported-dependency
@@ -627,10 +634,12 @@ deterministic-phase:
     The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# Each pinned npm name@version - a package.json dependency or an npm-sourced
-# VENDOR entry - is audited against the OSV database (src/vendor/verify.js); a
-# package with known advisories is reported here. The packages nobody declares,
-# pulled in by these, are vendor-vulnerable-indirect below.
+# Each pinned npm name@version - a package.json dependency of a built XPI, a package the
+# lock file of a source archive marks as declared and installs for production, or an
+# npm-sourced VENDOR entry - is audited against the OSV database (src/vendor/verify.js); a
+# package with known advisories is reported here. In a source review only high and
+# critical advisories (and malicious-package ones) are recorded. The packages nobody
+# declares, pulled in by these, are vendor-vulnerable-indirect below.
 # severity:auto - the check sets each finding's severity from the advisory's OSV
 # band (high/critical -> error, moderate/medium -> warning, else info).
 - title: Vulnerable dependency
@@ -639,11 +648,12 @@ deterministic-phase:
   check: vendor-vulnerable
   input: source
   response: |-
-    A dependency this add-on bundles directly has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). Update {{item}} to {{fixed}} or later.
+    A dependency this add-on bundles has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). Update {{item}} to {{fixed}} or later.
 
 # A bundled library version Mozilla's add-on policy disallows (banned) or discourages
 # (unadvised), matched against the curated assets/library-blocks.yaml BEFORE the OSV
-# audit (src/vendor/verify.js) - a banned version also skips the OSV request. Distinct
+# audit (src/vendor/verify.js) - a banned version also skips the OSV request. In a source
+# review every package the lock file installs is matched, declared or not. Distinct
 # from vendor-vulnerable (published CVE advisories); this is Mozilla policy, which can
 # ban a version with no formal advisory.
 # severity:auto - banned -> error, unadvised -> warning (set by the banned-library check).
@@ -653,16 +663,18 @@ deterministic-phase:
   check: banned-library
   input: source
   response: |-
-    A bundled library version is {{status}} by Mozilla's add-on policy: {{item}} ({{version}}) - {{reason}} Update to a permitted version.
+    A library version this add-on uses is {{status}} by Mozilla's add-on policy: {{item}} ({{version}}) - {{reason}} Update to a permitted version.
 
-# Each pinned npm devDependency is OSV-audited in SCA mode too (src/vendor/verify.js
-# verifyScaDependencies): the reviewer builds the add-on from source, so a
-# vulnerable build-time dependency runs on the reviewer's machine even though it is
-# never shipped. Mirrors vendor-vulnerable (same severity:auto band mapping) for the
-# dev set; `input: sca` - dev deps only exist in a source review. The build-time packages
-# nobody declares are vendor-vulnerable-indirect-dev below.
+# Each package the lock file marks as declared and installs for the build only is
+# OSV-audited in SCA mode too (src/vendor/verify.js verifyScaDependencies): the reviewer
+# builds the add-on from source, so a vulnerable build-time dependency runs on the
+# reviewer's machine even though it is never shipped. Mirrors vendor-vulnerable for the
+# dev set; `input: sca` - a lock is only read in a source review. Only high and critical
+# are recorded - an advisory saying the package IS malicious counts as critical - so the
+# severity is flat rather than auto. The build-time packages nobody declares are
+# vendor-vulnerable-indirect-dev below.
 - title: Vulnerable build dependency
-  severity: auto
+  severity: error
   review-early-exit: known-vulnerabilities
   check: vendor-vulnerable-dev
   input: sca
@@ -670,14 +682,15 @@ deterministic-phase:
     A build dependency this add-on declares has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update {{item}} to {{fixed}} or later.
 
 # The other half of the two entries above: the packages the submission does NOT
-# declare, pulled in because a declared dependency asked for them. The committed
+# declare, pulled in because a declared dependency asked for them - whether one is
+# declared is the lock file's own record. The committed
 # lock file is enumerated (src/vendor/locks.js) and the whole tree audited in one
 # batch (src/vendor/verify.js auditLockedPackages), which is where almost all of a
 # real submission's exposure sits. Only high and critical are recorded - a package
-# nobody chose is worth reporting when it fails the review, not when it merely
-# appears - plus any advisory saying the package IS malicious, which states no
-# severity at all. So the severity is flat rather than auto. The raw band still
-# fills the {{severity}} slot. `input: sca` - a lock only exists in a source submission.
+# is worth reporting when it fails the review, not when it merely
+# appears - and an advisory saying the package IS malicious, which states no severity
+# at all, counts as critical. So the severity is flat rather than auto. The raw band still
+# fills the {{severity}} slot. `input: sca` - a lock is only read in a source review.
 - title: Vulnerable indirect dependency
   severity: error
   review-early-exit: known-vulnerabilities
@@ -691,8 +704,9 @@ deterministic-phase:
 # build, so it runs on their machine. Same audit, same threshold; the dev/production
 # split comes from the lock file itself (npm's dev flags, or reachability from the
 # pnpm importers), as does the question of what counts as declared - the lock
-# records the optionalDependencies, workspace package files and npm: aliases that
-# reading the root package.json alone would miss.
+# records the optionalDependencies, workspace package files and npm: aliases. An npm
+# lockfile v1 records no declared set, so every package in one counts as declared and is
+# reported by the two entries above instead.
 - title: Vulnerable indirect build dependency
   severity: error
   review-early-exit: known-vulnerabilities
@@ -807,8 +821,7 @@ deterministic-phase:
 # Deterministic (SCA only): a lock entry the install takes from a source the review cannot
 # audit. The dependency audit identifies a package by name and version, while the installer
 # fetches the URL the lock records - so an entry resolved anywhere but the npm registry or
-# GitHub (or a root registry declaration the lock takes from GitHub) installs bytes the
-# audit vouched for under another name. Read from the governing lock
+# GitHub installs bytes the audit vouched for under another name. Read from the governing lock
 # (src/vendor/locks.js lockSourceGaps); {{item}} names the package and the recorded source.
 - title: Lock file installs from an unsupported source
   severity: error
@@ -816,8 +829,23 @@ deterministic-phase:
   check: lock-foreign-source
   input: sca
   response: |-
-    The committed lock file installs the following package(s) from a source the review does not support. Every dependency must install from the npm registry (registry.npmjs.org) or, where package.json declares one, from GitHub. Please install the dependencies from those sources and commit the regenerated lock file.
+    The committed lock file installs the following package(s) from a source the review does not support. Every dependency must install from the npm registry (registry.npmjs.org) or from GitHub. Please install the dependencies from those sources and commit the regenerated lock file.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
+# Deterministic (SCA only), and never a reason to stop: the source reviewed is a RESCUED COPY
+# of the submission (src/prepare/steps.js), whose dependencies were reduced to what the
+# release build uses, then audit-fixed where that was not enough, to get past known
+# vulnerabilities. The developer's own package.json and lock still carry them, so the next
+# submission would stop where this one would have. Says so once, without a list: the
+# developer's own audit names what to fix, against their own lock. Compared against the lock
+# of the root the copy was made from (src/prepare/state.js originalPackages), and silent
+# where the source is no rescued copy, or the copy's lock installs what the original's did.
+- title: Dependencies changed for the review
+  severity: info
+  check: sca-dependencies-changed
+  input: sca
+  response: |-
+    Your source code was reviewed with changed dependencies, because the ones you submitted have known security vulnerabilities. Dependencies your release build does not use were removed, and where that was not enough, the lock file was updated to fixed releases. Your own package.json and lock file still have these vulnerabilities. Run `npm audit` (or `pnpm audit`) in your project and resolve them before your next submission.
 
 # Deterministic (SCA only): a node_modules folder anywhere in --sca-root is a hard
 # reject. Installed dependencies are build output - the reviewer installs them from the
@@ -937,8 +965,10 @@ deterministic-phase:
   review-early-exit: unreproducible-build
   instructions-for-human: |-
     Did the build succeed? Follow the build process from a clean copy of the
-    source archive, or read the build diff where the review wrote one. Clear
-    only if every step completed.
+    source archive, installing the dependencies exactly as the lock file pins
+    them (npm ci, or pnpm install --frozen-lockfile), or read the build diff
+    where the review wrote one. Clear only if every step completed. An install
+    refused because package.json and the lock file disagree is a failed build.
   response: |-
     The submitted source could not be built by following its build instructions, so the review cannot continue. Please make sure the instructions are complete and that the build succeeds from a clean copy of the submitted archive.
 
@@ -1995,31 +2025,54 @@ review-early-exit:
 # Authored twice rather than shared-plus-addendum, so each reads as one text to its own
 # reader. The cost is that the shared rule lives in two places: change it in one and
 # change it in the other, or the reviewer and the agent are told different things.
-# The prompt --llm-sca-review prints, above the Submission section naming the two files it
-# found. It is the WHOLE output of such a run: no review is possible until someone has
-# opened the source archive, so this text and those paths are all its reader gets.
+# The prompts that PREPARE a source code review: what --llm-sca-review prints, and what each
+# --llm-handback run on the work folder it created prints after it, until the preparation is
+# done and that run starts the review itself (src/prepare/steps.js, src/cli.js), whose first
+# prompt it prints in place of one of these. No review is possible until someone has opened the
+# source archive, so these texts and the values beside them are all their reader gets.
 #
-# The division of labour it encodes: the linter states what is true about the folder AND
-# where the source archive's own extraction goes (SCA_ROOT - path math, not archive
-# reading), and the reader does what only opening the archive can settle: extracting it
-# there, and deciding where the code root is and which folder holds the Experiment
-# implementation.
+# The division of labour they encode: the linter states what is true about the folder AND
+# where the source archive's own extraction goes (EXTRACT_TO, the work folder's sca/ -
+# path math, not archive reading), and the reader does what only opening the archive can
+# settle: extracting it there, and deciding where the code root is and which folder holds the
+# Experiment implementation. They hand those two paths back in ANSWERS, and the linter
+# audits that root's lock (src/prepare/audit.js). Where the lock installs a package with a
+# known high or critical advisory, the linter copies the work folder, and the reader REDUCES
+# the copy's dependencies to what the release build uses, then, where that is not enough,
+# applies the package manager's audit FIX. Both change the dependencies and nothing else,
+# with no install script run, so no submission code runs. Each step's reader may fail to do
+# it and run the next command anyway (the way out both say). A clean copy is reviewed. A copy
+# the audit still finds vulnerable after the fix is deleted, and the source as submitted is
+# reviewed, decided by the lock audit already recorded (src/pipeline.js): it runs only the
+# checks that name a reason `rescue-for` lists, which report the vulnerabilities and so abort
+# the review.
+#
+# `rescue-for` names the review-early-exit reasons a rescue is for (validated against them at
+# load): the checks that name them are the ones such a review runs.
+#
+# The step lists are prompts. `extract` is printed by --llm-sca-review with the intro and
+# the Submission values; `reduce` and `fix` by the run that hands the copy a step, with the
+# copy's root as RESCUE_ROOT. Each of them ends in the one command its reader ever runs,
+# {{flags}}: the hand-back of a work folder.
 llm-sca-review-prompt:
   intro: |-
-    This is the first half of a source code review. The add-on was submitted in two parts: the built XPI users install, and an archive of the source it was built from. A source archive has no fixed shape - the developer lays it out however they like - so where the add-on's own code sits inside it can only be found by looking. Work that out from the values below, then run the review yourself.
+    This is the first half of a source code review. The add-on was submitted in two parts: the built XPI users install, and an archive of the source it was built from. A source archive has no fixed shape - the developer lays it out however they like - so where the add-on's own code sits inside it can only be found by looking. Work that out from the values below, then run the command the steps name. That run prints what to do next, until it starts the review itself and prints the review's first prompt.
 
     A name in <angle brackets> is a value you work out. The rest are given under "Submission".
+  rescue-for:
+    - known-vulnerabilities
   # A step with `when: experiments` is printed when the built XPI's manifest.json declares
-  # Experiments. Absent means every run prints it. `when:` is the same condition language
-  # the review loop's steps use (src/checks/condition.js), checked against the one fact this
-  # prompt can evaluate (SCA_PROMPT_FACTS).
-  outcome:
+  # Experiments, and one with `when: NOT experiments` when it does not. Absent means every
+  # run prints it. `when:` is the same condition language the review loop's steps use
+  # (src/checks/condition.js), checked against the one fact these prompts can evaluate
+  # (SCA_PROMPT_FACTS).
+  extract:
     - text: |-
         Extract SOURCE_ARCHIVE into EXTRACT_TO, given above.
 
         Unpack until the add-on's own files appear, which is TWICE for an archive packed twice - a .tar.gz is a tar inside a gzip. Then stop. Anything you find INSIDE the extracted tree is part of the source and stays packed: the review reports those as committed build artifacts, and unpacking one deletes a finding.
 
-        Move nothing and rename nothing. Where the files land is where they were submitted, and the two steps below read them as they lie.
+        Move nothing and rename nothing. Where the files land is where they were submitted, and the steps below read them as they lie.
     - text: |-
         In EXTRACT_TO, find the directory holding package.json. That directory is <SCA_ROOT>, absolute.
 
@@ -2027,14 +2080,47 @@ llm-sca-review-prompt:
     - when: experiments
       text: |-
         Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under <SCA_ROOT>. Its path relative to <SCA_ROOT> is <SCA_EXP_SOURCE>.
+    - when: NOT experiments
+      text: |-
+        Open ANSWERS, given above. Write <SCA_ROOT> as the "answer" of the entry whose "index" is SCA_ROOT, and change nothing else in the file.
+    - when: experiments
+      text: |-
+        Open ANSWERS, given above. Write <SCA_ROOT> as the "answer" of the entry whose "index" is SCA_ROOT, and <SCA_EXP_SOURCE> as the "answer" of the entry whose "index" is SCA_EXP_SOURCE. Change nothing else in the file.
     - text: |-
         Run the linter with exactly these flags, and nothing else:
 
         {{flags}}
     - text: |-
-        That review prints a prompt of its own. Follow it from there - this one is done.
+        That run checks the source and prints the next prompt. Follow it from there - this one is done.
+  # The copy's dependencies, reduced to what the release build uses. The release build is
+  # worked out from the copy itself: no build report exists yet, because no review has run.
+  reduce:
+    - text: |-
+        RESCUE_ROOT, given above, is a copy of the source the linter made for this step. Work only there, never in the source archive itself. The review of the source as submitted would stop on known vulnerabilities in its dependencies, and often the vulnerable package is one the release build does not use.
 
-# The REVIEW LOOP's prompts: what --llm-review prints, and what each --llm-verdict run
+        Work out from the scripts in its package.json and its build configuration which dependencies the release build uses. Remove from package.json every dependency the release build does not use (tests, linters, type checking, formatting, git hooks), keep every dependency it uses, and change nothing else in package.json. Then regenerate the lock file without running any install script: `npm install --package-lock-only --ignore-scripts`, or `pnpm install --lockfile-only --ignore-scripts` where RESCUE_ROOT has a pnpm-lock.yaml.
+
+        Use only these commands: never install, update or upgrade a package by name, never delete the lock file, and change no other file. If you cannot run these commands, run the next command without changing anything.
+    - text: |-
+        Run the linter with exactly these flags, and nothing else:
+
+        {{flags}}
+    - text: |-
+        That run checks the copy and prints the next prompt. Follow it from there - this one is done.
+  # Issued only where `reduce` left the copy short of clean.
+  fix:
+    - text: |-
+        In RESCUE_ROOT, given above, the dependencies the release build uses still have known vulnerabilities. Update the lock file to fixed releases without running any install script: `npm audit fix --package-lock-only --ignore-scripts`, or where RESCUE_ROOT has a pnpm-lock.yaml, `pnpm audit --fix` followed by `pnpm install --lockfile-only --ignore-scripts`.
+
+        Use only these commands: never install, update or upgrade a package by name, never delete the lock file, and change nothing in package.json or in any other file beyond what these commands write. If you cannot run these commands, run the next command without changing anything.
+    - text: |-
+        Run the linter with exactly these flags, and nothing else:
+
+        {{flags}}
+    - text: |-
+        That run checks the copy and prints the next prompt. Follow it from there - this one is done.
+
+# The REVIEW LOOP's prompts: what --llm-review prints, and what each --llm-handback run
 # prints back, until the review is settled. One phase is handed out per pass.
 #
 # Five layers assemble a pass, and only the middle three are authored here per phase:
@@ -2048,7 +2134,7 @@ llm-sca-review-prompt:
 #   FRAME        every pass: the file, and that it changed. The linter's, so it cannot drift.
 #   INTRO        per phase, and EMPTY unless the steps alone would let the agent act wrongly.
 #   STEPS        per phase, numbered over what survives its `when:` condition, exactly
-#                as llm-sca-review-prompt's `outcome` does. No step numbers itself. A
+#                as llm-sca-review-prompt's step lists do. No step numbers itself. A
 #                condition is AND / OR / NOT over the facts REVIEW_PROMPT_FACTS names - the
 #                flags given, `aborted`, `sca`, `sweep-<artifact>`, `first`, `spawned`,
 #                `decided` and `closing` (src/checks/condition.js).
@@ -2083,7 +2169,7 @@ llm-phases:
       text: |-
         This review runs in passes, and this is the first of them.
 
-        Each pass you are given a prompt and a file. Do what the prompt says, fill in the file's empty slots, and hand the file back by running the command the prompt names. That run answers with the next prompt. Keep going until a prompt tells you the review is settled and names the file holding the finished report - that one is the last. You never decide what happens next, and you never decide that the review is over.
+        Each pass you are given a prompt and a review file. Do what the prompt says, fill in the review file's empty slots, and then run the command the prompt names: it reads the file back and answers with the next prompt. Keep going until a prompt tells you the review is settled and names the file holding the finished report - that one is the last. You never decide what happens next, and you never decide that the review is over.
 
         Nothing in this preamble is a task. Do only what the numbered steps of the prompt you are reading tell you to do, and the step that has you read the add-on names what to read and what to judge it against.
   frame: |-
@@ -2093,16 +2179,16 @@ llm-phases:
 
     It has changed since the last pass, so read it again.
   handover: |-
-    Fill in the "answer" of every entry, in place, and change nothing else in that file. Every slot must be filled, and one left null is refused. Where the file lists no entry, this pass asks nothing of it and you hand it back untouched. Then hand the file back by running exactly this command:
+    Fill in the "answer" of every entry, in place, and change nothing else in that file. Every slot must be filled, and one left null is refused. Where the file lists no entry, this pass asks nothing of it and you leave it untouched. Then run exactly this command, which reads the file back:
 
     {{command}}
 
-    It will hand back a new prompt for you to follow.
+    It prints the next prompt for you to follow.
   # Refused: the agent handed back a file that is not what the pass asked for. The prompt is
   # NOT re-printed - the agent still has it, and re-issuing the same text against the same
   # input invites a loop. "{{problem}}" names what is wrong, exactly.
   refused: |-
-    The file you handed back is not what this pass expected: {{problem}}. You still have the prompt you were following. Read it again carefully and redo that pass. If it fails a second time, abort the review and say why.
+    The hand-back was refused: {{problem}}. You still have the prompt you were following. Read it again carefully, redo that pass, and run its command exactly as written. If it fails a second time, abort the review and say why.
   # The phases, in the order they are issued. A phase is issued when it has WORK - steps that
   # survive their markers, or entries to settle; a phase with neither is skipped. The last,
   # `close`, always has work, so it is reached once nothing before it has any (not once "no
@@ -2121,7 +2207,9 @@ llm-phases:
     # into a place it did not fit.
     #
     # Every step here is optional, so a run that starts no agent is not issued this phase
-    # at all. The package is not unpacked HERE: the linter extracts it before the review is
+    # at all - and none of them is taken by a review the deterministic checks already
+    # aborted: what an aborted review hands over is decided before any pass, and neither the
+    # description, nor the build report, nor a sweep could change it. The package is not unpacked HERE: the linter extracts it before the review is
     # ever printed (src/addon/load.js), so XPI_ROOT is already there by the time any phase
     # is issued.
     #
@@ -2140,7 +2228,7 @@ llm-phases:
       verbs: []
       intro: ""
       steps:
-        - when: NOT llm-skip-summary
+        - when: NOT llm-skip-summary AND NOT aborted
           text: |-
             Spawn an independent sub-agent NOW to describe the add-on for the reviewer, so they can read it while you work. That file is the reviewer's and yours only to name: do not open it, read it, summarise it, or print what is in it.
 
@@ -2155,7 +2243,7 @@ llm-phases:
             and to nothing else: not to the chat, not to a file of your own choosing.
 
             Do not wait for it. What it writes is the reviewer's, and it is not needed until they are handed the review details.
-        - when: sca
+        - when: sca AND NOT aborted
           text: |-
             Spawn an independent sub-agent NOW to work out what building this add-on takes. This is a source code review, so the reviewer reproduces the build themselves, and nothing in the report says what that takes. That file is the reviewer's and yours only to name: do not open it, read it, summarise it, or print what is in it.
 
@@ -2184,7 +2272,7 @@ llm-phases:
             and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision, on the reviewer's machine.
 
             Do not wait for it. What it writes is the reviewer's, and it is not needed until they are handed the review details.
-        - when: sweep-xpi
+        - when: sweep-xpi AND NOT aborted
           text: |-
             Spawn an independent sub-agent NOW to sweep the built add-on.
 
@@ -2195,7 +2283,7 @@ llm-phases:
             Tell it to do what the "instructions" in that file say, and tell it nothing more: the file names the folder to read, what to look for there, and the file to write its answers into. Do not open it yourself, do not summarise it, and do not add to it.
 
             Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. Any other agent this prompt started keeps running meanwhile. Leave it be.
-        - when: sweep-sca
+        - when: sweep-sca AND NOT aborted
           text: |-
             Spawn an independent sub-agent NOW to sweep the source archive.
 
@@ -2209,7 +2297,8 @@ llm-phases:
 
     # Audits what the deterministic checks proved. Its intro earns its text: without it the
     # entries alone would let the agent hunt for new problems instead of checking the ones it
-    # was given.
+    # was given. Not in a review those checks aborted: the abort is decided by them, before
+    # any pass, and a review that already stopped is handed over as it stands.
     - name: verify
       answer: verdict
       verbs: [reported, withdrawn]
@@ -2224,7 +2313,8 @@ llm-phases:
       intro: |-
         The file's entries are what the deterministic checks proved against the package, together with what the sweep returned. Each one that stands will be reported to the developer. You are auditing those claims here, not looking for anything new.
       steps:
-        - text: |-
+        - when: NOT aborted
+          text: |-
             Verify every entry in ONE pass. Answer with the "label" of one of the answers that entry lists under "answers", and with nothing else - each answer's "description" says when it applies. Judge only whether each entry is right, never whether it matters, and never put any of them to the reviewer.
 
             {{schema}}
@@ -2233,7 +2323,8 @@ llm-phases:
 
     # Settles what a check could not. Its intro earns its text too: "your job here, not the
     # reviewer's" is what stops the agent deferring, and it is in tension with the entries
-    # that offer "ask", which the intro is what resolves.
+    # that offer "ask", which the intro is what resolves. Not in an aborted review, which
+    # hands over no to-do item at all.
     - name: settle
       answer: verdict
       verbs: [reported, cleared, ask]
@@ -2253,7 +2344,8 @@ llm-phases:
       intro: |-
         The file's entries are cases a deterministic check could not settle, so it marked them unsure and left them for inspection. They are settled by reading the add-on, which is your job here, not the reviewer's.
       steps:
-        - text: |-
+        - when: NOT aborted
+          text: |-
             Settle each entry yourself, following that entry's "instructions". Answer with the "label" of one of the answers that entry lists under "answers", and with nothing else - each answer's "description" says when it applies, and entries do not all offer the same ones.
 
             {{schema}}
@@ -2296,6 +2388,8 @@ llm-phases:
 
             {{build}}
 
+            Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci`, or `pnpm install --frozen-lockfile` where the copy has a pnpm-lock.yaml, and with no flag that leaves dependencies out. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
+
             Then compare the built XPI with the shipped one, extracted in
 
             {{xpiRoot}}
@@ -2304,7 +2398,7 @@ llm-phases:
 
             {{buildDiff}}
 
-            and to nothing else. Open it with one line saying the outcome: the build is identical, the build differs, or the build failed. Where it differs, list the files only one side has, give a unified diff for every text file whose content differs, and name every binary file that differs. Where the build failed, say which step failed and quote its error output. That file is the reviewer's: write what you found, never a verdict.
+            and to nothing else. Open it with one line saying the outcome: the build is identical, the build differs, or the build failed. Where it differs, list the files only one side has, give a unified diff for every text file whose content differs, and name every binary file that differs. Where the build failed, say which step failed and quote its error output, and where it failed because package.json and the lock file disagree, say that this was the cause. That file is the reviewer's: write what you found, never a verdict.
 
     # Hands the reviewer the Review Details block, once, before anything is put to them:
     # what this review is, and where to read it while answering - the build diff among it.

@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/strict-max-not-experiment",
-    "xpiRoot": "<root>/tests/addons/strict-max-not-experiment/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "strict-max-not-experiment",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

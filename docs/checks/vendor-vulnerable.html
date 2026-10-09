@@ -16,7 +16,9 @@
       <h2>What it detects</h2>
       <p class="lead">
         A third-party library whose bundled version has published security
-        advisories. This covers a package.json dependency, an npm-sourced VENDOR
+        advisories. This covers a package.json dependency of a built XPI, a
+        package the committed lock file of a source-code submission marks as
+        declared and installs for production, an npm-sourced VENDOR
         entry, and — even when it was never declared — a library the linter
         identified by content hash (so a developer who bundled a vulnerable
         release without declaring it is still caught).
@@ -31,7 +33,17 @@
         identified library, at the bundled file). Its severity is <strong>auto</strong>: rather than a
         fixed level, each finding takes its severity from the advisory band —
         high or critical becomes an error, moderate or medium becomes a warning,
-        and anything else (low or unknown) is informational.
+        and anything else (low or unknown) is informational. An advisory saying
+        the package itself is malicious states no band, and counts as critical.
+      </p>
+      <p>
+        In a source-code submission, package.json is not read for dependencies:
+        the lock file is read in full and every package it installs is queried
+        in one batch, keeping only high and critical advisories (plus any
+        advisory saying the package itself is malicious). Each finding anchors
+        at the package's entry in the lock file. An npm lockfile v1 records no
+        declared set, so every package in one counts as declared and is reported
+        here or by the build-dependency check.
       </p>
 
       <h2>Decision flow</h2>
@@ -69,8 +81,7 @@ flowchart TD
         <strong>It aborts the review</strong>
         This check is one of the few that settle the submission on their own. When
         it reports at error severity, nothing further is put to a reviewer: the
-        report drops every to-do item they would have been asked, keeps the
-        code-review sections, and the developer&rsquo;s text ends on the reason it
+        report drops every to-do item they would have been asked, keeps the code-review sections of a printed report (an aborted <code>--llm-review</code> hands over no to-do item at all), and the developer&rsquo;s text ends on the reason it
         is incomplete (&ldquo;Known security vulnerabilities&rdquo;). The case it exists for is a
         reviewer being asked to reproduce a build from a dependency tree the
         review has already rejected.

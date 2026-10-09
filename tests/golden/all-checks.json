@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/all-checks",
-    "xpiRoot": "<root>/tests/addons/all-checks/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "all-checks",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

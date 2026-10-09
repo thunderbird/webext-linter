@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/clean",
-    "xpiRoot": "<root>/tests/addons/clean/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "clean",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

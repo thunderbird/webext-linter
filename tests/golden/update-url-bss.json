@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/update-url-bss",
-    "xpiRoot": "<root>/tests/addons/update-url-bss/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "update-url-bss",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

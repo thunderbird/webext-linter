@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/package-range-locked",
-    "xpiRoot": "<root>/tests/addons/package-range-locked/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "package-range-locked",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

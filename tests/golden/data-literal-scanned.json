@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/data-literal-scanned",
-    "xpiRoot": "<root>/tests/addons/data-literal-scanned/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "data-literal-scanned",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

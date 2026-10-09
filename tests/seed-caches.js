@@ -116,3 +116,48 @@ export function fixtureCacheOpts() {
     cdnLookupCache: dir,
   };
 }
+
+/** Every temporary parent freshWorkFolder and addonOutsideRepo made in this process,
+ *  removed by one exit listener rather than one listener each - a suite makes hundreds. */
+const workFolders = [];
+
+/** A fresh, empty temporary folder, removed when the process exits. */
+function freshParent() {
+  if (!workFolders.length) {
+    process.on("exit", () => {
+      for (const dir of workFolders) {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+  const parent = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "webext-linter-work-"))
+  );
+  workFolders.push(parent);
+  return parent;
+}
+
+/**
+ * A fresh work folder for one review run through runPipeline (its `workFolder`), removed
+ * when the process exits. The folder itself does not exist yet, as a work folder a review
+ * starts in must not: the review creates it. Its parent is a fresh temporary folder of its
+ * own, so the path is free.
+ * @returns {string} The folder's absolute path.
+ */
+export function freshWorkFolder() {
+  return path.join(freshParent(), "work");
+}
+
+/**
+ * A copy of an add-on - a file or a folder - in a fresh temporary folder of its own, under
+ * the same name, removed when the process exits. A command-line review creates its work
+ * folder beside the add-on, so a review of a fixture as it stands would write into
+ * tests/addons, where the harness reads every folder as a fixture.
+ * @param {string} addon
+ * @returns {string} The copy's absolute path.
+ */
+export function addonOutsideRepo(addon) {
+  const copy = path.join(freshParent(), path.basename(addon));
+  fs.cpSync(addon, copy, { recursive: true, verbatimSymlinks: true });
+  return copy;
+}

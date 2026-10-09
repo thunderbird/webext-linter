@@ -1,7 +1,7 @@
 // The one review document this tool WRITES: the text the reviewer sends to the developer.
 //
-// The other two beside the submitted .xpi are written by sub-agents and only NAMED here
-// (src/report/items.js reviewFilePaths). This one is asked of nobody: a model that rewords
+// The other two documents in the review's work folder, the description and the build
+// report, are written by sub-agents and only NAMED (src/util/dest.js workPaths). This one is asked of nobody: a model that rewords
 // its input would corrupt the one text a developer actually receives, and a file the linter
 // writes itself cannot be reworded.
 //
@@ -13,7 +13,7 @@
 //  - once those answers are in, rewritten from the settled review.
 //
 // Belongs here: turning a review into that file's bytes and putting them on disk. Does NOT
-// belong here: deciding the path (-> src/report/items.js), when to call this (-> the two
+// belong here: deciding the path (-> src/util/dest.js workPaths), when to call this (-> the two
 // sites in src/report/loop.js), or what the report SAYS, which is the registry's wording
 // rendered by src/report/format.js.
 

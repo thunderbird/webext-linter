@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/unsafe-html",
-    "xpiRoot": "<root>/tests/addons/unsafe-html/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "unsafe-html",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

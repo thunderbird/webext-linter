@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/manifest-not-object",
-    "xpiRoot": "<root>/tests/addons/manifest-not-object/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "manifest-not-object",
     "reviewed": true,
     "schemaSource": "cache:release-mv2",

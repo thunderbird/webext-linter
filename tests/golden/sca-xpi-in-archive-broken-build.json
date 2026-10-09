@@ -2,7 +2,7 @@
   "meta": {
     "action": "review",
     "xpi": "<root>/tests/addons/sca-xpi-in-archive-broken-build/xpi",
-    "xpiRoot": "<root>/tests/addons/sca-xpi-in-archive-broken-build/xpi/",
+    "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
     "scaRoot": "<root>/tests/addons/sca-xpi-in-archive-broken-build/src",
     "reviewed": true,
@@ -64,6 +64,7 @@
       "sca-lock-file-invalid",
       "build-registry-redirect",
       "lock-foreign-source",
+      "sca-dependencies-changed",
       "committed-node-modules",
       "committed-build-artifact",
       "sca-invalid-symlink",
