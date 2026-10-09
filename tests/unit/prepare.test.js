@@ -524,7 +524,7 @@ test("a copy the audit cannot vouch for is not clean", async (t) => {
       }),
     });
     assert.equal(
-      (await later(copy, net({}, { postJson: false }))).record.step,
+      (await later(copy, net({}, { batch: false }))).record.step,
       PREPARE_STEP.fix
     );
     cleanup(work);

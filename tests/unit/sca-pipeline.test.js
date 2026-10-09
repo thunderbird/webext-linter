@@ -416,7 +416,7 @@ test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-au
           file: "/lib.min.js",
         };
       }
-      throw new Error("HTTP 404");
+      throw Object.assign(new Error("HTTP 404"), { status: 404 });
     },
     postJson: async (_url, body) =>
       body?.package?.name === "leftpad"

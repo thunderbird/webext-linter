@@ -1498,7 +1498,7 @@ function extractReview(addon, { schema, webExtManifestRecord }) {
  * not-popular declared (VENDOR/package) results into the untrusted family, then match the
  * still-unrecognized bundles against jsDelivr by content hash. Reads/writes addon.bundled
  * and addon.vendor. A lookup jsDelivr does not answer ends the review (src/util/net.js); with
- * the lookup off, or a net with no fetchJson, no request is made. Runs AFTER classification
+ * the lookup off, no request is made. Runs AFTER classification
  * (so the Mozilla-hash matches and tag.obfuscation are final), and before the OSV audit of what
  * it identified (auditIdentifiedLibraries), which is the setup step after it.
  * @param {import("./addon/load.js").Addon} addon

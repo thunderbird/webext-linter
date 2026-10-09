@@ -2579,7 +2579,7 @@ test("auditLockedPackages: a failing batch or hydration records nothing", async 
 });
 
 // The case the test above cannot reach: enough packages to need a SECOND chunk,
-// with the failure after the first has already answered. A scan that kept those
+// with OSV answering 404 for it after the first has already answered. A scan that kept those
 // answers would publish a partial tree that reads exactly like a clean one.
 test("auditLockedPackages: an answered chunk is discarded when a later one fails", async () => {
   const lockPackages = Array.from({ length: 250 }, (_, i) =>
@@ -2595,7 +2595,7 @@ test("auditLockedPackages: an answered chunk is discarded when a later one fails
   const answer = flaky.postJson;
   flaky.postJson = async (url, body) => {
     if (url.includes("querybatch") && ++chunks === 2) {
-      throw new Error("the network went away mid-scan");
+      throw Object.assign(new Error("HTTP 404"), { status: 404 });
     }
     return url.includes("querybatch")
       ? {

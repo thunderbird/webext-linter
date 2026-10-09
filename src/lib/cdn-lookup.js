@@ -31,8 +31,8 @@
 // Results are cached on disk so a repeat review of the same bundle makes no request. A hit
 // is kept for good: a file hash names one release, and that never changes. A miss is kept
 // for a day only (CACHE_MAX_AGE_DAYS), because a file absent from the CDN today can be
-// published tomorrow. With the lookup off, or an injected net with no fetchJson (the
-// golden harness), every tag is left untouched, so a minified file falls through to
+// published tomorrow. With the lookup off, every tag is left untouched, so a minified file
+// falls through to
 // minified-code and a readable one is scanned as authored source. A lookup jsDelivr does
 // not answer ends the review (src/util/net.js), like every other question the review asks
 // a host.
@@ -100,9 +100,8 @@ export async function resolveCdnLibraries(
   { net = defaultNet, cacheDir = CDN_LOOKUP_CACHE, enabled = true } = {}
 ) {
   const classified = addon?.bundled?.classified;
-  // Disabled, a net with no fetchJson, or nothing to do: skip entirely, making no
-  // request.
-  if (!enabled || !classified || typeof net?.fetchJson !== "function") {
+  // Disabled, or nothing to do: skip entirely, making no request.
+  if (!enabled || !classified) {
     return;
   }
   const nonAuthored = addon.bundled.nonAuthored;
@@ -150,12 +149,7 @@ export async function resolveCdnLibraries(
     } else {
       // Not asked yet, a miss older than a day, or an entry this cache does not recognise
       // (a legacy bare null, a corrupt or foreign value): asked again.
-      const { state, hit: looked } = await lookupHash(net, hash);
-      if (state === "error") {
-        // A failure that says nothing about these bytes: do NOT cache it. Only a
-        // genuine 404 - a stable, content-addressed negative - and a hit are cached.
-        continue;
-      }
+      const { hit: looked } = await lookupHash(net, hash);
       hit = looked ?? null; // null for a confirmed 404 miss (JSON drops undefined)
       cache[hash] = hit ?? { missedAt: Date.now() };
       dirty = true;
@@ -279,21 +273,19 @@ const BUILD_SUFFIXES = [
 ].map((w) => `.${w}`);
 
 /**
- * One hash lookup against jsDelivr, as a tri-state so the caller can cache only
- * STABLE outcomes:
+ * One hash lookup against jsDelivr, as one of two STABLE outcomes, both cached:
  *   - "hit"   {hit}  - identified; cache it (a file hash maps to one release
  *                      forever, so a positive is immutable).
  *   - "miss"         - a genuine HTTP 404 ("Couldn't find <hash>"): the bytes are
  *                      not published, a content-addressed and therefore stable
  *                      negative; cache it.
- *   - "error"        - a failure that is neither (an injected net's own error): not a
- *                      statement about these bytes, so do NOT cache it.
+ * Any other failure is a fault of our own, and propagates.
  * No answer at all - offline, a refusal past the retries, a timeout, a body that is not
  * JSON - is not an outcome here: it ends the review (src/util/net.js), because a lookup
  * that went unanswered would leave a library unidentified for no reason the reviewer is
  * told. A 404 is read off the status the fetch stamps on its error.
  * @param {VendorNet} net @param {string} hash
- * @returns {Promise<{state: "hit"|"miss"|"error", hit?: CdnHit}>}
+ * @returns {Promise<{state: "hit"|"miss", hit?: CdnHit}>}
  */
 async function lookupHash(net, hash) {
   try {
@@ -319,10 +311,13 @@ async function lookupHash(net, hash) {
     debug(`CDN lookup unexpected response for ${hash}`);
     return { state: "miss" };
   } catch (err) {
-    rethrowIfFatal(err);
-    const miss = err.status === 404;
-    debug(`CDN lookup ${miss ? "miss" : "error"} for ${hash}: ${err.message}`);
-    return { state: miss ? "miss" : "error" };
+    // A 404 is jsDelivr's answer that it has no such file. Anything else here is no answer
+    // (thrown fatal by src/util/net.js) or a fault of our own, and neither may read as one.
+    if (err.status !== 404) {
+      throw err;
+    }
+    debug(`CDN lookup miss for ${hash}: ${err.message}`);
+    return { state: "miss" };
   }
 }
 

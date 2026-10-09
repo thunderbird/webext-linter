@@ -383,8 +383,7 @@ export async function auditScaDependencies(addon, net = defaultNet, blocks) {
  *
  * All-or-nothing: results are held until every chunk has answered, so a scan cut short
  * records NOTHING rather than a partial tree that reads like a clean one. A chunk OSV gives
- * no answer for ends the review (src/util/net.js); one it answers 404 for, or a net
- * without postJson, abandons the scan, and says so on `vendor.lockScanAbandoned`: a scan
+ * no answer for ends the review (src/util/net.js); one it answers 404 for abandons the scan, and says so on `vendor.lockScanAbandoned`: a scan
  * that recorded nothing reads the same as a clean tree to every check, and the preparation
  * must not take it for one.
  * @param {VendorStore} vendor  Must carry lockPackages (resolveVendor).
@@ -434,8 +433,11 @@ async function auditLockedPackages(vendor, net, blocks) {
       });
       results = Array.isArray(res?.results) ? res.results : [];
     } catch (err) {
-      rethrowIfFatal(err);
-      // OSV answered 404, or the net has no postJson - abandon the scan
+      // OSV answered 404: abandon the scan. Anything else is no answer (fatal already) or a
+      // fault of our own, and must not pass for one.
+      if (err.status !== 404) {
+        throw err;
+      }
       vendor.lockScanAbandoned = true;
       return;
     }
@@ -525,7 +527,10 @@ async function hydrateAdvisory(id, cache, net) {
   try {
     record = await net.fetchJson(`${VENDOR_OSV_VULN_API}${id}`);
   } catch (err) {
-    rethrowIfFatal(err);
+    // OSV answered 404: no such advisory. Anything else must not read as one.
+    if (err.status !== 404) {
+      throw err;
+    }
   }
   cache.set(id, record);
   return record;
@@ -554,7 +559,10 @@ async function githubPopular(repo, net) {
     const n = Number(j?.stargazers_count);
     return Number.isFinite(n) ? n >= VENDOR_GITHUB_MIN_STARS : null;
   } catch (err) {
-    rethrowIfFatal(err);
+    // GitHub answered 404: no such repository. Anything else must not read as one.
+    if (err.status !== 404) {
+      throw err;
+    }
     return null;
   }
 }
@@ -576,7 +584,10 @@ async function npmDownloads(name, net) {
     const n = Number(j?.downloads);
     return Number.isFinite(n) ? n : null;
   } catch (err) {
-    rethrowIfFatal(err);
+    // npm answered 404: no such package. Anything else must not read as one.
+    if (err.status !== 404) {
+      throw err;
+    }
     return null;
   }
 }
@@ -588,8 +599,7 @@ async function npmDownloads(name, net) {
  * regardless); an unadvised one is recorded but still audited (a live CVE on an
  * allowed library still matters).
  * A package with known advisories is recorded on `into` (one entry aggregating its
- * advisories, anchored at `file`/`token`). An OSV 404, or an injected net without
- * `postJson` (the golden harness), records nothing. A query OSV
+ * advisories, anchored at `file`/`token`). An OSV 404 records nothing. A query OSV
  * does not answer ends the review (src/util/net.js): recording nothing for it would read
  * as a package with no advisories. Drives a built XPI's package.json deps, npm-sourced
  * VENDOR entries and hash-identified libraries -> vendor.vulnerabilities (read by
@@ -634,8 +644,11 @@ async function auditNpm(name, version, file, token, vendor, net, into, blocks) {
     });
     vulns = Array.isArray(res?.vulns) ? res.vulns : [];
   } catch (err) {
-    rethrowIfFatal(err);
-    return; // OSV answered 404, or the net has no postJson
+    // OSV answered 404: no record. Anything else must not read as "no advisories".
+    if (err.status !== 404) {
+      throw err;
+    }
+    return;
   }
   const record = vulnRecord(name, version, vulns, file, token);
   if (record) {
@@ -832,7 +845,7 @@ async function auditGithub(entry, src, addon, vendor, net, blocks) {
  * name@version - a path-independent Subresource-Integrity match from the package
  * "?meta" listing (the same proof verifyPackage uses, but for one buffer and
  * fetching only the listing, no file bodies). A candidate package unpkg does not have (a
- * 404), or a net without fetchJson (the golden harness), returns false, so the caller
+ * 404) returns false, so the caller
  * falls back / records the entry as unaudited rather than guessing. A listing unpkg does
  * not answer ends the review (src/util/net.js).
  * @param {string} name @param {string} version @param {Buffer} bytes
@@ -844,7 +857,10 @@ async function npmHashMatches(name, version, bytes, net) {
   try {
     listing = await net.fetchJson(`https://unpkg.com/${name}@${version}/?meta`);
   } catch (err) {
-    rethrowIfFatal(err);
+    // unpkg answered 404: no such package, so no match. Anything else must not read as one.
+    if (err.status !== 404) {
+      throw err;
+    }
     return false;
   }
   const byHash = indexBySri(listing);

@@ -33,11 +33,11 @@ export const advisory = (id, severity, name, fixed) => ({
  * that release has. The single-package query answers with them whole; the batch answers with
  * their ids, positionally, and each id is served on its own. Everything else 404s, so a
  * request the audit should not make is not answered. `batch: false` has the batch endpoint
- * answer 404, and `postJson: false` leaves out every query, the way a net without it is.
+ * answer 404.
  * @param {Record<string, object[]>} [vulns]
- * @param {{postJson?: boolean, batch?: boolean}} [opts]
+ * @param {{batch?: boolean}} [opts]
  */
-export function net(vulns = {}, { postJson = true, batch = true } = {}) {
+export function net(vulns = {}, { batch = true } = {}) {
   const byId = new Map(
     Object.values(vulns)
       .flat()
@@ -57,21 +57,19 @@ export function net(vulns = {}, { postJson = true, batch = true } = {}) {
       throw notFound();
     },
   };
-  if (postJson) {
-    answer.postJson = async (url, body) => {
-      if (!url.includes("querybatch")) {
-        return { vulns: vulns[key(body)] ?? [] };
-      }
-      if (!batch) {
-        throw notFound();
-      }
-      return {
-        results: body.queries.map((q) => ({
-          vulns: (vulns[key(q)] ?? []).map((v) => ({ id: v.id })),
-        })),
-      };
+  answer.postJson = async (url, body) => {
+    if (!url.includes("querybatch")) {
+      return { vulns: vulns[key(body)] ?? [] };
+    }
+    if (!batch) {
+      throw notFound();
+    }
+    return {
+      results: body.queries.map((q) => ({
+        vulns: (vulns[key(q)] ?? []).map((v) => ({ id: v.id })),
+      })),
     };
-  }
+  };
   return answer;
 }
 
