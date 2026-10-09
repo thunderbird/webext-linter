@@ -16,15 +16,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runPipeline } from "../src/pipeline.js";
-import {
-  PREPARE_STEP,
-  startRecord,
-  writePrepare,
-} from "../src/prepare/state.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
 import { formatReview } from "../src/report/format.js";
 import { setNetworkPacing } from "../src/util/net.js";
 import { fixtureCacheOpts, freshWorkFolder } from "./seed-caches.js";
+import { advisory, realPreparation } from "./prepared.js";
 import { makeTgz } from "./unit/tarball-fixture.js";
 
 // Every request paces itself against a live host's request budget
@@ -167,13 +163,13 @@ function installFetchMock(dir, network) {
 // where the source IS the root. The block is the only way a fixture can express a NESTED
 // submission, and the keyspaces only differ there - flat means the prefix is empty, so the
 // review source and the archive key a file identically.
-// An SCA spec may also name an "original" folder of the fixture: the source root the src/
-// tree is a RESCUED COPY of (src/prepare/steps.js). The harness then records that in the
-// fixture's work folder, the way a preparation that came out clean does (seedPreparation),
-// and the review reads the original's package files from there. An SCA spec may instead
-// carry an "unrescued" lock audit: the four lists a preparation records before it gives its
-// rescue up. The harness records them as that preparation does, and the review takes them as
-// its own dependency audit.
+// An SCA spec may also carry a "preparation" block: the review is then started the way a
+// prepared source code review is, in the work folder a REAL preparation (src/prepare/steps.js)
+// leaves - run here, step by step, against a fake OSV network answering `advisories`
+// ("name@version" -> [{id, severity, fixed}]). It starts from the fixture's `from` folder
+// (src/ by default). With `rescued`, the agent's work in the rescued copy is the fixture's
+// src/ tree, and the copy's review runs; without, the rescue is given up, and the original's
+// review runs, decided by the lock audit the preparation recorded.
 function loadFixture(dir) {
   const file = path.join(EXPECTED_DIR, `${path.basename(dir)}.json`);
   const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -182,29 +178,38 @@ function loadFixture(dir) {
     options: parsed.options ?? {},
     network: parsed.network ?? {},
     sca: parsed.sca ?? {},
-    original: parsed.original ?? null,
-    unrescued: parsed.unrescued ?? null,
+    preparation: parsed.preparation ?? null,
   };
 }
 
 /**
- * Record in a fixture's work folder what a finished preparation leaves there: done, and
- * either a rescued copy of `original` (naming the root it was copied from), or an original
- * whose rescue was given up (with the lock audit it recorded). Only what a review reads is
- * filled in, with the rest of the record in the shape the preparation writes it.
- * @param {string} work  The fixture's work folder.
- * @param {{original?: string, lockAudit?: object}} done  The original source root,
- *   absolute, or the recorded lock audit.
+ * The work folder a fixture's "preparation" block leaves, prepared for real: the folder whose
+ * review starts, and the source root in it.
+ * @param {string} dir  The fixture.
+ * @param {{advisories?: Record<string, {id: string, severity: string, fixed: string}[]>,
+ *   from?: string, rescued?: boolean}} preparation
+ * @returns {Promise<{workFolder: string, scaRoot: string}>}
  */
-function seedPreparation(work, { original, lockAudit }) {
-  writePrepare(work, {
-    ...startRecord({ submission: { xpi: "", experiments: false }, flags: {} }),
-    step: PREPARE_STEP.done,
-    ...(original
-      ? { original: { work: path.dirname(original), scaRoot: original } }
-      : {}),
-    ...(lockAudit ? { lockAudit, unrescued: true } : {}),
+async function preparedFixture(dir, preparation) {
+  const vulns = Object.fromEntries(
+    Object.entries(preparation.advisories ?? {}).map(([release, list]) => {
+      const name = release.slice(0, release.lastIndexOf("@"));
+      return [
+        release,
+        list.map((a) => advisory(a.id, a.severity, name, a.fixed)),
+      ];
+    })
+  );
+  const at = await realPreparation({
+    source: path.join(dir, preparation.from ?? "src"),
+    xpi: path.join(dir, "xpi"),
+    vulns,
+    rescue: preparation.rescued
+      ? (copyRoot) =>
+          fs.cpSync(path.join(dir, "src"), copyRoot, { recursive: true })
+      : null,
   });
+  return { workFolder: at.work, scaRoot: at.record.roots.scaRoot };
 }
 
 // A fixture is an SCA (source-code archive) review when it holds two artifacts as
@@ -321,8 +326,7 @@ async function main() {
       options,
       network,
       sca,
-      original,
-      unrescued,
+      preparation,
     } = loadFixture(dir);
     let problems;
     const restoreFetch = installFetchMock(dir, network);
@@ -344,6 +348,8 @@ async function main() {
         cdnLookup: String(options["--cdn-lib-lookup"]) === "true",
         workFolder: freshWorkFolder(),
       };
+      // The folder the review runs in: the fresh one, or the one a preparation left.
+      let { workFolder } = base;
       let review;
       if (isScaFixture(dir)) {
         // SCA mode: the shipped XPI is the authoritative artifact (addonPath), the
@@ -351,17 +357,15 @@ async function main() {
         // Experiment sit inside it comes from the spec's "sca" block; with none, the
         // source IS the root - the flat layout. Named absolutely, like every other path
         // opt, since that is what the arg reader hands the pipeline.
-        const scaRoot = path.join(dir, "src");
-        if (original || unrescued) {
-          seedPreparation(base.workFolder, {
-            original: original ? path.join(dir, original) : undefined,
-            lockAudit: unrescued ?? undefined,
-          });
+        let scaRoot = path.join(dir, "src");
+        if (preparation) {
+          ({ workFolder, scaRoot } = await preparedFixture(dir, preparation));
         }
         const inRoot = (value) =>
           value ? path.join(scaRoot, value) : undefined;
         review = await runPipeline({
           ...base,
+          workFolder,
           addonPath: path.join(dir, "xpi"),
           scaRoot,
           scaExpSource: inRoot(sca.expSource),
@@ -379,7 +383,7 @@ async function main() {
         // formatReview is the single source of the shipped report - the same string the
         // CLI writes.
         const body = formatReview(review, fmt);
-        const p = checkGolden(name, ext, normalize(body, base.workFolder));
+        const p = checkGolden(name, ext, normalize(body, workFolder));
         if (p) {
           problems.push(p);
         }

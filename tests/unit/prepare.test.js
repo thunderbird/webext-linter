@@ -23,75 +23,10 @@ import { HandbackRefused } from "../../src/report/handback.js";
 import { workPaths } from "../../src/util/dest.js";
 import { loadSourceArchive } from "../../src/addon/load.js";
 import depsChanged from "../../src/checks/rules/sca-dependencies-changed.js";
+import { advisory, answer, net, noNet, writeTree } from "../prepared.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..", "..");
-
-/** An OSV advisory as the API serves it. */
-const advisory = (id, severity, name, fixed) => ({
-  id,
-  database_specific: { severity },
-  affected: [
-    {
-      package: { ecosystem: "npm", name },
-      ranges: [{ events: [{ fixed }] }],
-    },
-  ],
-});
-
-/**
- * The network the audit asks, answering OSV from `vulns`: "name@version" -> the advisories
- * that release has. The single-package query answers with them whole; the batch answers with
- * their ids, positionally, and each id is served on its own. Everything else 404s, so a
- * request the audit should not make is not answered. `batch: false` has the batch endpoint
- * answer 404, and `postJson: false` leaves out every query, the way a net without it is.
- * @param {Record<string, object[]>} [vulns]
- * @param {{postJson?: boolean, batch?: boolean}} [opts]
- */
-function net(vulns = {}, { postJson = true, batch = true } = {}) {
-  const byId = new Map(
-    Object.values(vulns)
-      .flat()
-      .map((v) => [v.id, v])
-  );
-  const key = (q) => `${q.package.name}@${q.version}`;
-  const notFound = () => Object.assign(new Error("HTTP 404"), { status: 404 });
-  const answer = {
-    fetchBytes: async () => {
-      throw notFound();
-    },
-    fetchJson: async (url) => {
-      const id = url.slice(url.lastIndexOf("/") + 1);
-      if (url.includes("/v1/vulns/") && byId.has(id)) {
-        return byId.get(id);
-      }
-      throw notFound();
-    },
-  };
-  if (postJson) {
-    answer.postJson = async (url, body) => {
-      if (!url.includes("querybatch")) {
-        return { vulns: vulns[key(body)] ?? [] };
-      }
-      if (!batch) {
-        throw notFound();
-      }
-      return {
-        results: body.queries.map((q) => ({
-          vulns: (vulns[key(q)] ?? []).map((v) => ({ id: v.id })),
-        })),
-      };
-    };
-  }
-  return answer;
-}
-
-/** A network that fails the test on any request: for a step that must not audit. */
-const noNet = {
-  fetchBytes: async () => assert.fail("no request expected"),
-  fetchJson: async () => assert.fail("no request expected"),
-  postJson: async () => assert.fail("no request expected"),
-};
 
 /** A HIGH advisory on the build tool every source below declares. */
 const TOOL_HIGH = {
@@ -134,14 +69,6 @@ function npmLock(tool = "0.4.0", extraPackages = {}) {
   );
 }
 
-/** Write files under a folder, creating what is missing. */
-function writeTree(dir, files) {
-  for (const [rel, content] of Object.entries(files)) {
-    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
-    fs.writeFileSync(path.join(dir, rel), content);
-  }
-}
-
 /**
  * A work folder as the run that starts a preparation leaves it, its source extracted into
  * sca/ (`files`, relative to sca/) - inside a fresh parent, so its rescued copy lands beside
@@ -169,14 +96,6 @@ function workFolder(files, { experiments = false } = {}) {
     ...files,
   });
   return work;
-}
-
-/** Fill in the review file the way the agent does: each entry's answer by its index. */
-function answer(work, answers) {
-  const file = workPaths(work).review;
-  const doc = JSON.parse(fs.readFileSync(file, "utf8"));
-  doc.entries = doc.entries.map((e) => ({ ...e, answer: answers[e.index] }));
-  fs.writeFileSync(file, JSON.stringify(doc));
 }
 
 /** The first step: the extracted source handed back as the root, sca/ itself. */

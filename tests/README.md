@@ -86,13 +86,14 @@ shipped built add-on, the authoritative manifest.json) and `src/` (the readable 
 tree, e.g. a Vue `.vue`) - is run in **SCA** mode (source-code archive) rather than
 XPI mode. The layout is auto-detected (no flag needed), and its spec sits in
 `expected/` like every other. Use one when a check depends on the source/shipped split
-or on a source format that only exists pre-build. An SCA spec may also name an
-`"original"` folder of the fixture: the source root `src/` is a rescued copy of. The
-harness records it in the fixture's work folder the way a preparation that came out clean
-does, so the review reports what the rescue changed (`sca-dependencies-changed`). Or it
-may carry an `"unrescued"` lock audit - the four lists a preparation records before it gives
-its rescue up - which the harness records the same way, so the review is decided by it
-(`sca-unrescued`).
+or on a source format that only exists pre-build. An SCA spec may also carry a
+`"preparation"` block: the harness then prepares the review for real, step by step, against
+a fake OSV network answering its `"advisories"` (`"name@version"` to a list of `id`,
+`severity` and `fixed`), starting from the fixture's `"from"` folder (`src/` by default),
+and the review runs in the folder the preparation leaves. With `"rescued": true` the
+rescued copy is given the fixture's `src/` tree and comes out clean, so the review reports
+what the rescue changed (`sca-dependencies-changed`). Without it the rescue is given up, and
+the review is decided by the lock audit the preparation recorded (`sca-unrescued`).
 
 A selection, not the catalogue - every folder under `addons/` is a fixture:
 

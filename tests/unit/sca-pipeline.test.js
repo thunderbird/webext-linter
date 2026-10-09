@@ -17,11 +17,8 @@ import { formatText } from "../../src/report/format.js";
 import { loadRegistry } from "../../src/checks/registry.js";
 import { fixtureCacheOpts, freshWorkFolder } from "../seed-caches.js";
 import { defaultWorkFolder } from "../../src/util/dest.js";
-import {
-  PREPARE_STEP,
-  startRecord,
-  writePrepare,
-} from "../../src/prepare/state.js";
+import { readPrepare, writePrepare } from "../../src/prepare/state.js";
+import { advisory, realPreparation } from "../prepared.js";
 import { HandbackRefused } from "../../src/report/handback.js";
 
 // A cache pre-seeded from the fixtures so the schema / experiments / library-hash
@@ -1677,15 +1674,23 @@ const recordedAudit = (over = {}) => ({
   treeDevVulnerabilities: [],
 });
 
-/** A work folder whose preparation gave its rescue up, recording `lockAudit`. */
-function unrescuedFolder(lockAudit) {
-  const work = freshWorkFolder();
-  writePrepare(work, {
-    ...startRecord({ submission: { xpi: "", experiments: false }, flags: {} }),
-    step: PREPARE_STEP.done,
-    unrescued: true,
-    lockAudit,
+/** A work folder whose preparation gave its rescue up, made for real: the unrescued
+ *  fixture's source, whose lock carries a critical advisory on the build tool, prepared
+ *  through its rescue to the give-up. A `lockAudit` given is then written into that real
+ *  record, the way an agent that edited it and recomputed its hash would. */
+async function unrescuedFolder(lockAudit) {
+  const { work } = await realPreparation({
+    source: path.join(UNRESCUED_FIXTURE, "src"),
+    xpi: path.join(UNRESCUED_FIXTURE, "xpi"),
+    vulns: {
+      "lint-pebble@0.4.0": [
+        advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
+      ],
+    },
   });
+  if (lockAudit !== undefined) {
+    writePrepare(work, { ...readPrepare(work), lockAudit });
+  }
   return work;
 }
 
@@ -1700,7 +1705,7 @@ test("an unrescued review is decided by the recorded lock audit, asking no netwo
   const { findings, meta } = await runReview({
     addonPath: path.join(UNRESCUED_FIXTURE, "xpi"),
     scaRoot: path.join(UNRESCUED_FIXTURE, "src"),
-    workFolder: unrescuedFolder(recordedAudit()),
+    workFolder: await unrescuedFolder(),
     vendorNet: noNet,
     ...OFFLINE,
     cdnLookup: true,
@@ -1741,7 +1746,7 @@ test("an unrescued record that would let its review pass is refused", async (t) 
   };
   for (const [name, lockAudit] of Object.entries(forged)) {
     await t.test(name, async () => {
-      const work = unrescuedFolder(lockAudit);
+      const work = await unrescuedFolder(lockAudit);
       await assert.rejects(
         runReview({
           addonPath: path.join(UNRESCUED_FIXTURE, "xpi"),
@@ -1759,8 +1764,8 @@ test("an unrescued record that would let its review pass is refused", async (t) 
           return true;
         }
       );
-      // Refused before anything was claimed: the folder holds the record alone.
-      assert.deepEqual(fs.readdirSync(work), ["prepare.json"]);
+      // Refused before anything was claimed: the folder holds what the preparation left.
+      assert.deepEqual(fs.readdirSync(work).sort(), ["prepare.json", "sca"]);
     });
   }
 });

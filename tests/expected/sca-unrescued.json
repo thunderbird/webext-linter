@@ -1,30 +1,23 @@
 {
-  "_comment": "A source-code submission whose preparation could not rescue its dependencies: its work folder's record is done and unrescued, and holds the lock audit the preparation ran (a high advisory on a package the lock pulls in for production, a critical one on a declared build tool). The review takes that audit as its own and asks no network for it, runs only the checks the registry's rescue-for reasons name, reports each recorded entry at its lock line, and is aborted for known vulnerabilities. Nothing else is checked: the preparation already decided.",
-  "unrescued": {
-    "vulnerabilities": [],
-    "devVulnerabilities": [
-      {
-        "name": "lint-pebble",
-        "version": "0.4.0",
-        "ids": ["GHSA-fixture-pebble"],
-        "severity": "critical",
-        "fixed": ["0.4.1"],
-        "file": "package-lock.json",
-        "token": "node_modules/lint-pebble"
-      }
-    ],
-    "treeVulnerabilities": [
-      {
-        "name": "wick-trim",
-        "version": "1.0.1",
-        "ids": ["CVE-2026-11111"],
-        "severity": "high",
-        "fixed": ["1.0.3"],
-        "file": "package-lock.json",
-        "token": "node_modules/wick-trim"
-      }
-    ],
-    "treeDevVulnerabilities": []
+  "_comment": "A source-code submission whose preparation could not rescue its dependencies: its preparation is run for real and gives the rescue up, recording the lock audit it ran (a high advisory on a package the lock pulls in for production, a critical one on a declared build tool). The review takes that audit as its own and asks no network for it, runs only the checks the registry's rescue-for reasons name, reports each recorded entry at its lock line, and is aborted for known vulnerabilities. Nothing else is checked: the preparation already decided.",
+  "preparation": {
+    "advisories": {
+      "lint-pebble@0.4.0": [
+        {
+          "id": "GHSA-fixture-pebble",
+          "severity": "CRITICAL",
+          "fixed": "0.4.1"
+        }
+      ],
+      "wick-trim@1.0.1": [
+        {
+          "id": "CVE-2026-11111",
+          "severity": "HIGH",
+          "fixed": "1.0.3"
+        }
+      ]
+    },
+    "rescued": false
   },
   "expect": {
     "vendor-vulnerable-dev": ["package-lock.json:13"],

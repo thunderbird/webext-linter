@@ -13,7 +13,8 @@ import AdmZip from "adm-zip";
 import YAML from "yaml";
 
 import { pipelineOptsFromArgv } from "../../src/cli.js";
-import { startRecord, writePrepare } from "../../src/prepare/state.js";
+import { readPrepare, writePrepare } from "../../src/prepare/state.js";
+import { advisory, realPreparation } from "../prepared.js";
 import {
   addonOutsideRepo,
   freshFixtureCache,
@@ -1892,27 +1893,31 @@ test("a preparation refuses an unanswered hand-back", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-/** A work folder whose preparation is done, as a record the agent may have edited - and
- *  then rehashed, so what is tested is the check behind the digest: the sca-unrescued
- *  fixture's add-on and root, with `over` merged into the record. */
-function preparedFolder(over) {
+/** A work folder whose preparation is done, made for real: the sca-unrescued fixture's
+ *  source, whose lock carries a critical advisory, prepared through its rescue to the
+ *  give-up, so the folder is unrescued as a real preparation leaves it. Then `over` is
+ *  written into that real record, the way an agent that edited the record and recomputed
+ *  its hash would, so what is tested is the check behind the digest. */
+async function preparedFolder(over = {}) {
   const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
-  const work = freshWorkFolder();
-  const sca = workPaths(work).sca;
-  fs.cpSync(path.join(fixture, "src"), sca, { recursive: true });
+  const { work } = await realPreparation({
+    source: path.join(fixture, "src"),
+    xpi: path.join(fixture, "xpi"),
+    flags: {
+      "cache-schema-dir": CACHE,
+      "cache-hash-db-dir": CACHE,
+      "cache-experiments-dir": CACHE,
+      "cache-cdn-lookup-dir": CACHE,
+      "cdn-lib-lookup": "false",
+    },
+    vulns: {
+      "lint-pebble@0.4.0": [
+        advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
+      ],
+    },
+  });
   writePrepare(work, {
-    ...startRecord({
-      submission: { xpi: path.join(fixture, "xpi"), experiments: false },
-      flags: {
-        "cache-schema-dir": CACHE,
-        "cache-hash-db-dir": CACHE,
-        "cache-experiments-dir": CACHE,
-        "cache-cdn-lookup-dir": CACHE,
-        "cdn-lib-lookup": "false",
-      },
-    }),
-    step: "done",
-    roots: { scaRoot: sca, scaExpSource: null },
+    ...readPrepare(work),
     ...(typeof over === "function" ? over(work) : over),
   });
   return work;
@@ -1923,8 +1928,8 @@ function preparedFolder(over) {
 // text, which has it redo the pass once - and nothing is claimed in the folder.
 test("a prepared review refuses a record it cannot start from", (t) => {
   const refusedFor = (name, over, problem) =>
-    t.test(name, () => {
-      const work = preparedFolder(over);
+    t.test(name, async () => {
+      const work = await preparedFolder(over);
       const r = run(["--llm-handback", work]);
       assert.equal(r.code, 2, r.stdout + r.stderr);
       assert.match(r.stdout, problem);
@@ -1932,7 +1937,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
     });
   refusedFor(
     "an unrescued record with no lock audit",
-    { unrescued: true },
+    { lockAudit: null },
     /The hand-back was refused: the preparation's record says its rescue was given up/
   );
   refusedFor(
@@ -2015,9 +2020,9 @@ test("a prepared review refuses a record it cannot start from", (t) => {
 
 // Nor can a record name a folder for the linter to delete: --cache-clear is never forwarded,
 // and a key no option declares is dropped.
-test("a prepared review drops what a record must not say", () => {
+test("a prepared review drops what a record must not say", async () => {
   const before = fs.readdirSync(CACHE).sort();
-  const work = preparedFolder({
+  const work = await preparedFolder({
     flags: {
       "cache-clear": true,
       "cache-schema-dir": CACHE,
