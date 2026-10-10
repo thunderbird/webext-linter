@@ -36,12 +36,12 @@
         loaded code is remote.
       </p>
       <p>
-        One kind of remote load is not a finding, and not a question about whether
-        it is remote: one inside an HTML or CSS file whose content matches a published
+        One kind of remote load is not this check's: one inside an HTML or CSS file whose content matches a published
         file of a known upstream library release. That line is the release's,
-        not something the developer wrote — so it goes to the reviewer (is
-        shipping it as published acceptable here?) as a manual-review case, since
-        no verdict on where the URL points would change that. It turns on the
+        not something the developer wrote,
+        so the
+        <em>vendored-remote-resources</em> check asks the reviewer whether
+        shipping it as published is acceptable here. It turns on the
         content match, not on the declaration: a file that was declared but
         could not be matched is reviewed as the developer's own code, so its
         remote loads stay findings.
@@ -50,8 +50,7 @@
         That match is EOL-normalized, and can be earned without any declaration by a
         content-hash match against a published file of a pinned
         <em>package.json</em> dependency — so it says the content is the release's,
-        never that the add-on needs the file. Only the shipped XPI is matched, so a
-        source-code (SCA) review never reaches that lane. Such an item reaches the
+        never that the add-on needs the file. Only an XPI review makes that <em>package.json</em> match. Such an item reaches the
         human report only: the JSON report carries just what the tool is certain of,
         so a case that would otherwise be an error there stops being grounds to
         reject the submission before anyone has read it.
@@ -65,7 +64,7 @@ flowchart TD
   B -- "skipped JS<br/>(includes every vendored .js)" --> S([skip])
   B -- yes --> C{"Definite remote load?<br/>remote script/link/iframe/media,<br/>@import/url, import/importScripts,<br/>script injection, WASM, or CSP host"}
   C -- yes --> V{"HTML/CSS file whose content<br/>matches a published<br/>upstream release?"}
-  V -- yes --> DEC([reviewer decides: ship the<br/>release as published?])
+  V -- yes --> DEC([left to vendored-remote-resources:<br/>ship the release as published?])
   V -- no --> ERR([ERROR: remote code loaded])
   C -- no --> D{"Statically resolvable<br/>to a bundled file?"}
   D -- yes --> OK([no finding — bundled load])

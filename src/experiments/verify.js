@@ -1,6 +1,6 @@
 // Classifies each bundled Experiment against the allowed upstream set
-// (github.com/thunderbird/webext-experiments) so the pipeline can decide whether
-// to relax the gate, continue-and-flag, or abort. Two phases, like the vendor
+// (github.com/thunderbird/webext-experiments) and marks the groups the review rejects
+// (experimentVerdict). Two phases, like the vendor
 // verifier: resolve+load the allow-list (network, once), then a deterministic
 // content-hash + name comparison.
 //
@@ -10,11 +10,10 @@
 // (modulo EOL) to the latest upstream is `pristine`, otherwise `modified`; an
 // unrecognised API name (or a file-less declaration) is `unsupported`.
 //
-// Belongs here: the allow-list (file hashes + API namespaces) and the per-group
-// status. Does NOT belong here: fetching the zip (src/experiments/fetch.js),
-// manifest.json parsing (src/lib/experiments.js), the relax/abort wiring
-// (src/pipeline.js), or the shadowing reason (experiment-not-allowed, which has
-// the schema).
+// Belongs here: the allow-list (file hashes + API namespaces), the per-group
+// status, and which groups are rejected. Does NOT belong here: fetching the zip
+// (src/experiments/fetch.js), manifest.json parsing (src/lib/experiments.js), the
+// abort and the shadowing reason (experiment-not-allowed, which has the schema).
 
 import fs from "node:fs";
 import path from "node:path";

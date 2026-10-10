@@ -518,7 +518,7 @@ flowchart LR
             <td>
               <code>permissionAnalysis</code>, <code>apiResolution</code>,
               <code>evalScan</code>, <code>outboundSinks</code>,
-              <code>locales</code> … - derived on demand by whichever check asks
+              <code>localeMessages</code> … - derived on demand by whichever check asks
               first <strong>from the precomputed stores</strong> (no re-parse),
               then shared with the rest.
             </td>
@@ -530,8 +530,7 @@ flowchart LR
         Which stores a check may reach is not open either. Every check declares
         an
         <code>input</code>, and <code>routeCtx</code> - the single place routing
-        is decided, shared by the main loop and the deferred loop so they can
-        never drift - hands it the sibling ctx for that <code>input</code>.
+        is decided - hands it the sibling ctx for that <code>input</code>.
         Routing is <strong>total</strong>: <code>source</code> is a first-class
         sibling like the rest, there is no default artifact to fall through to,
         and a declared <code>input</code> with no sibling (a stray
@@ -695,10 +694,10 @@ flowchart TB
 
   ROUTE --> RUN["runOneCheck(checkCtx, check) → check.run()"]
   RUN -. throws .-> CF["one check-failed finding"]
-  RUN -.-> LZ["the lazy caches are computed here, inside run():<br/>permissionAnalysis · apiResolution · outboundSinks ·<br/>evalScan · locales · reachability"]
+  RUN -.-> LZ["the lazy caches are computed here, inside run():<br/>permissionAnalysis · apiResolution · outboundSinks ·<br/>evalScan · localeMessages · reachability"]
   RUN --> QLANE{{"what did run() return?"}}
   QLANE -- "escalations" --> ME["manualEscalations()<br/>repack the escalations as to-do items<br/>stamping the section the check's reader implies"]
-  QLANE -- "a plain Finding[]" --> STAMP
+  QLANE -- "findings only" --> STAMP
 
   ME --> STAMP["stamp the findings —<br/>ruleId + severity (auto → the check sets it)"]
   STAMP --> PUSHF["findings.push(out.findings)"]

@@ -75,7 +75,7 @@ function flatten(node) {
  * @param {string} code  The source to scan.
  * @param {WebApiSignature[]} signatures  Receiver+methods per permission.
  * @param {import("./ast.js").ParseResult} [parsed]  A pre-parsed AST to reuse
- *   (re-parses when absent, e.g. non-authored files whose AST was dropped).
+ *   (re-parses when absent).
  * @returns {Set<string>}  Permission names with a matching call.
  */
 export function scanWebApiCalls(code, signatures, parsed) {

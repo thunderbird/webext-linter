@@ -472,15 +472,6 @@ export class Registry {
   }
 
   /**
-   * The severity a REPORTED case of this check carries: its entry's `severity`, or
-   * null when that is `none` (nothing to suggest - settling the case produces no
-   * finding) or a value no finding can carry. The report prints it beside the
-   * escalation's suggested response, so whoever settles the case can see which band
-   * it lands in before they send that text.
-   * @param {string} ruleId
-   * @returns {?string}
-   */
-  /**
    * How this check's repeated cases are listed - its entry's `collapse`, or null for the
    * default of one line per case. Read once per item when the review is rendered
    * (src/report/responses.js) and carried on the item, so the sequence that numbers the
@@ -493,6 +484,15 @@ export class Registry {
     return this.checkEntry(ruleId)?.collapse ?? null;
   }
 
+  /**
+   * The severity a REPORTED case of this check carries: its entry's `severity`, or
+   * null when that is `none` (nothing to suggest - settling the case produces no
+   * finding) or a value no finding can carry. The report prints it beside the
+   * escalation's suggested response, so whoever settles the case can see which band
+   * it lands in before they send that text.
+   * @param {string} ruleId
+   * @returns {?string}
+   */
   suggestedVerdict(ruleId) {
     const s = this.checkEntry(ruleId)?.severity;
     // A hold-or-error case is suggested as the hold it is on its own. It only becomes
@@ -1105,12 +1105,8 @@ function assertSettleVerbs(entry, where, screened) {
  * ONCE PER mode (`response-for-xpi` AND `response-for-sca`, and no `response`). The two
  * forms are exclusive, because a mix leaves no reader able to say from the entry which
  * text a review prints - and the key that loses is prose nobody sees and nobody keeps
- * current.
- *
- * The stray-key rule is the one that pays for itself: an entry takes any key without
- * complaint (only prompt STEPS are screened, assertStep), so a misspelled
- * `response-for-sac` would load, never be read, and leave every review wording the check
- * from the other key - with the misspelled one sitting in the file looking authoritative.
+ * current. A misspelled key such as `response-for-sac` never reaches here: the registry
+ * schema refuses any key it does not declare (src/checks/registry-schema.js).
  * @param {object} entry
  * @param {string} where  How the entry is named in a message.
  */
@@ -1248,10 +1244,6 @@ export function assertPhaseVerbSubsets(registry, at) {
  * @param {string} at  The registry path, for the message.
  */
 export function assertEntries(registry, at) {
-  // The id first, and asked of the RAW lists: allEntries() drops an entry that authors no
-  // `check`, so asking this of its result asks it only of the entries that already passed.
-  // An entry with no id is a check that never runs - or, in manual-checks, a to-do printed
-  // in every review that no verdict can name and no reviewer can settle into anything.
   // The registry's SHAPE, declared once (src/checks/registry-schema.js): which sections
   // exist, which keys each accepts, what each key holds, what it requires, and what it
   // recognizes only to refuse. Asked FIRST - an undeclared key is dropped by everything
@@ -1372,15 +1364,8 @@ function loadedStep(step) {
   };
 }
 
-/** What one entry of a phase is answered WITH, which decides the shape the entry is handed
- *  over in and what the linter accepts back: `hints` is what a sweep found, a list per
- *  check; `verdict` is one of the phase's own verbs; `words` is a person's answer, theirs
- *  to write and not ours to judge. Named as data because the loop reads it rather than the
- *  phase's name - a phase carries its vocabulary AND the kind of answer that vocabulary
- *  belongs to, and neither is inferred from what it is called. */
 // The phase whose answers a check may narrow: the one that settles what a check could not.
-// Named here because two things need it and neither should spell it - the subset check
-// below, and nothing else in this file.
+// Read by assertPhaseVerbSubsets.
 const SETTLE_PHASE = "settle";
 
 /**
@@ -1789,9 +1774,9 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
       "skip-in-sca-review":
         entry["skip-in-sca-review"] === true ? true : undefined,
       section: registry.sectionFor(id),
-      // The permission-prompts token entries, like `instructions` above: registry
-      // data every check carries, read by the one that scans for them. It version-filters at run time (versionInBounds) with the reviewed
-      // manifest.json, so every entry is handed over here.
+      // The permission-prompts token entries: registry data every check carries, read by
+      // the one that scans for them. It version-filters at run time (versionInBounds) with
+      // the reviewed manifest.json, so every entry is handed over here.
       permissionTokens: registry.permissionTokens(),
       run,
     });

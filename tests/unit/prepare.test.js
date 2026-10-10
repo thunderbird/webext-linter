@@ -72,8 +72,7 @@ function npmLock(tool = "0.4.0", extraPackages = {}) {
 
 /**
  * A work folder as the run that starts a preparation leaves it, its source extracted into
- * sca/ (`files`, relative to sca/) - inside a fresh parent, so its rescued copy lands beside
- * it there. Real, as the hand-back is given it.
+ * sca/ (`files`, relative to sca/), inside a fresh parent. Real, as the hand-back is given it.
  * @param {Record<string, string>} files
  * @param {{experiments?: boolean}} [opts]
  * @returns {string} The work folder.

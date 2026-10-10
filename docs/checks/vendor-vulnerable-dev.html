@@ -22,7 +22,7 @@
         reviewer's own machine.
       </p>
       <p>
-        Before the review, the committed lock file is read in full - package.json
+        When a check first asks for the vendor reading, the committed lock file is read in full - package.json
         is not read for dependencies - and every package it records as installed
         is queried against the OSV vulnerability database in one batch. This check
         takes the ones the lock marks as declared by one of the submission's own

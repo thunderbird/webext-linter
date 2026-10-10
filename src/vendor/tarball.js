@@ -1,9 +1,8 @@
-// Reads an npm-registry package tarball (.tgz) into the set of EOL-normalized
-// content hashes of its files, so a vendored copy can be verified by membership -
-// the same shape as the experiment allow-list (src/experiments/verify.js). The
-// tarball is the whole package, so we hash every regular file and never rely on the
-// in-archive path: a bundled file is "from this package" when its content hash is in
-// the set, regardless of where it sits inside.
+// Reads an npm-registry package tarball (.tgz) into the EOL-normalized content hashes
+// of its regular files, keyed by their path inside the package (tarballFileHashes) or
+// as a plain set (tarballHashes). The set verifies a vendored copy by membership, the
+// same shape as the experiment allow-list (src/experiments/verify.js): a bundled file
+// is "from this package" when its hash is in it, wherever it sits inside.
 //
 // gzip is node:zlib; the tar layer is a small ustar reader (the repo has adm-zip for
 // ZIP but no tar lib). We only need file CONTENT, so metadata entries (PAX 'x'/'g',
@@ -65,8 +64,7 @@ function isZeroBlock(block) {
  * The EOL-normalized SHA-256 of every regular file in a gzipped npm tarball, KEYED
  * BY ITS PATH INSIDE THE PACKAGE.
  *
- * The walk always read the name; only the membership caller had no use for it. A
- * caller that knows which file a declaration points AT wants the path back, so it
+ * A caller that knows which file a declaration points AT wants the path back, so it
  * can ask "are these the bytes published at THAT path" rather than the weaker "are
  * these bytes published anywhere in this package" - the difference between a
  * declaration that checks out and one that merely names the right package.

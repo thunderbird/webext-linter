@@ -2,11 +2,11 @@
 // from the manifest.json entry points, following references in HTML
 // (<script>/<link>/<img>), CSS (@import/url()), and JS (import/require/importScripts,
 // plus every file-loading API call - getURL, executeScript/insertCSS, the register
-// family, setIcon, tabs.create, ... - extracted by loader-files.js). Two checks share
-// this: unused-files (files reachable from ANY entry point) and
-// minimize-web-accessible-resources (resources reachable from a WEB-FACING entry point,
-// i.e. a content script). Library, minified and vendored JS is parsed for edges like any
-// other: skipping it would hide a loader and wrongly orphan what it loads.
+// family, setIcon, tabs.create, ... - extracted by loader-files.js). unused-files reads
+// the files reachable from ANY entry point, and minimize-web-accessible-resources the
+// resources reachable from a WEB-FACING entry point (a content script). Library,
+// minified and vendored JS is parsed for edges like any other: skipping it would hide
+// a loader and wrongly orphan what it loads.
 // `hasDynamicLoaders` is set when a LIVE (reachable) file builds a load path at runtime
 // (dynamic import/getURL) that static analysis can't follow - a loader in dead code never
 // runs, so it is dropped. `isLive` says whether a file is reached
@@ -109,9 +109,9 @@ const PLAIN_HTML = new Set([".html", ".htm"]);
  *   by target. Read by the unrecognized-file-type check.
  */
 
-// One reachability graph per RunContext - both consuming checks share the
-// build. Cached in a WeakMap keyed by ctx so the cache stays out of the
-// RunContext contract (and dies with the ctx).
+// One reachability graph per RunContext, shared by every check that reads it. Cached
+// in a WeakMap keyed by ctx so the cache stays out of the RunContext contract (and dies
+// with the ctx).
 const graphs = new WeakMap();
 
 /**
@@ -244,8 +244,7 @@ async function compute(ctx) {
 
   for (const src of jsSources) {
     // JS import/require/importScripts are relative to the importing file.
-    // localImportsOf returns the pass's precomputed refs, or re-scans for a
-    // shipped-view source the pass never ran on.
+    // localImportsOf returns the extraction pass's refs.
     const imp = localImportsOf(src);
     for (const r of imp.refs) {
       addEdge(src.file, resolveRef(files, src.file, r.path));
@@ -457,8 +456,7 @@ function refersTo(line, base, fromFile, target, files) {
  */
 function makeMentions(files) {
   // Documentation files are not code: a README image link is not a runtime load, so
-  // it must not make a declared resource look mentioned. (The manifest.json is not here
-  // to exclude - the loader keeps it out of the store entirely, see addon/load.js.)
+  // it must not make a declared resource look mentioned.
   /** @type {Map<string, string[]>} */
   const lines = new Map();
   for (const [file, buf] of files) {

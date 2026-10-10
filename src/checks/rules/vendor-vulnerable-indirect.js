@@ -2,7 +2,7 @@
 // dependencies pulls in, whose installed version has known OSV advisories and
 // which the build installs for production - so it ends up in the shipped code.
 // Almost all of a real submission's exposure sits here rather than in its declared
-// dependencies. Whether a package is declared is the lock file's own record. The audit ran in the network pre-step (src/vendor/verify.js
+// dependencies. Whether a package is declared is the lock file's own record. The audit ran behind ctx.vendor() (src/vendor/verify.js
 // verifyScaDependencies -> auditLockedPackages), which enumerated the committed
 // lock file and recorded each hit on addon.vendor.treeVulnerabilities; this check
 // maps that set to findings via the shared lib/vuln-findings.js mapper, anchored

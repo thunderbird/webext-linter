@@ -213,7 +213,7 @@ test("classification done before normalize survives reformatting", async () => {
 });
 
 test("without the pre-step, classifying the reformatted bytes misses it", async () => {
-  // No addon.bundled: the reader recomputes over the already-pretty bytes, which
+  // No addon.bundled: the test helper classifies the already-pretty bytes, which
   // do not look minified - the build/lint false negative the pre-step fixes.
   const flagged = (
     await minifiedCode.run(

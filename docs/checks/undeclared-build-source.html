@@ -22,8 +22,8 @@
         dependencies a clean decoy.
       </p>
       <p>
-        The build files are collected once, up front, by the build analysis, in
-        the setup phase over the build-relevant files (collected by following the package file,
+        The build analysis collects the build files once, when this check first
+        asks for them, over the build-relevant files (collected by following the package file,
         so build output and tooling the build never runs are never sent). Nothing in them says
         for certain what that build <em>does</em>, so this check emits no finding of its own and
         escalates EVERY source-code submission - one whose source documents no build at all
@@ -47,7 +47,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Build files<br/>(build analysis, setup phase)"] --> B{"a source-code<br/>submission?"}
+  A["Build files<br/>(build analysis)"] --> B{"a source-code<br/>submission?"}
   B -- no --> OK([nothing to review<br/>— an XPI submission has no build])
   B -- yes --> M{"does any build step reach outside<br/>the declared dependencies?<br/>(agent in settle, or the reviewer)"}
   A --> D["steps the linter could not follow<br/>ride along with the entry"]
@@ -80,7 +80,7 @@ flowchart TD
 
       <p class="source-note">
         Source of truth: <code>src/checks/rules/undeclared-build-source.js</code>
-        (fed by the setup build analysis, <code>src/build/analyze.js</code>) and its
+        (fed by the build analysis, <code>src/build/analyze.js</code>) and its
         entry in <code>assets/registry.yaml</code>.
       </p>
     </main>

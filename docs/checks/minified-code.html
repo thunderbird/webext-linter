@@ -38,8 +38,8 @@
 flowchart TD
   A["A JavaScript or CSS file, or an<br/>inline &lt;script&gt; in a page"] --> Z{"Declared in a VENDOR file?<br/>(CSS only: too small to judge)"}
   Z -- yes --> S([skip])
-  Z -- no --> L{"Recognized third-party library?"}
-  L -- yes --> S2([skip — missing-library's concern])
+  Z -- no --> L{"Recognized third-party library?<br/>(hash or CDN match)"}
+  L -- yes --> S2([skip: missing-library's or<br/>the untrusted-library checks' concern])
   L -- no --> O{"Obfuscated?"}
   O -- yes --> S3([skip — obfuscated-code's concern])
   O -- no --> B{"Minified?<br/>one line packing many statements"}
@@ -70,7 +70,7 @@ flowchart TD
         packed code in the built add-on, and in a source code archive review
         (<code>--sca-root</code>) a packed file in the readable source, which defeats
         that submission's whole purpose. A stylesheet packed the same way, and an
-        inline &lt;script&gt; in a packaged page, are flagged alike; a .js file that
+        inline &lt;script&gt; in a packaged page, are flagged alike; a .js file with a long line that
         will not parse or walk counts as packed, since nothing there can be reviewed
         either.
       </p>

@@ -9,7 +9,7 @@
 // refused at load (src/addon/load.js symlinkError).
 //
 // The links are recorded at load (addon.symlinks) with the cause as a FACT - loadAddon
-// classifies, it does not judge - and scaViews passes the list onto the input: sca addon.
+// classifies, it does not judge - on the archive, which is the input: sca artifact.
 // The cause rides as the finding's hint, so one entry collapses every link and each locus
 // line still says which kind it was.
 //

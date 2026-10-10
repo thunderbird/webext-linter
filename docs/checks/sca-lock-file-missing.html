@@ -15,7 +15,7 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        A source-code submission whose build installs dependencies but ships no
+        A source-code submission that ships a package.json but no
         lock file. Reviewers reproduce the build with the package manager's
         strict install, and that refuses to run without a lock file, so the
         submitted source cannot be shown to produce the submitted add-on.
@@ -71,8 +71,7 @@ flowchart TD
         This check is one of the few that settle the submission on their own. When it
         reports, nothing further is put to a reviewer: the report drops every to-do item
         they would have been asked, keeps the code-review sections of a printed report (an aborted <code>--llm-review</code> hands over no to-do item at all), and the
-        developer&rsquo;s text ends on the reason it is incomplete (&ldquo;A build that
-        cannot be reproduced&rdquo;). Every question that remains would depend on
+        developer&rsquo;s text ends on the reason it is incomplete (&ldquo;Build process issues&rdquo;). Every question that remains would depend on
         installing and building the add-on, which cannot succeed, so the work it would
         otherwise put to a reviewer cannot change the outcome.
       </div>

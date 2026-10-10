@@ -137,7 +137,7 @@ const jsCtx = (code, manifest = {}) => ({
 
 // ctx whose addon.files is a path->content map (for the file-level bundled /
 // obfuscated checks, which read raw file bytes rather than parsed sources). The
-// vendored set is resolved deterministically, as the pipeline does once up front.
+// vendored set is resolved deterministically, as the review does.
 const filesCtx = (files, { libs = [] } = {}) => {
   const addon = {
     files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
@@ -358,7 +358,7 @@ test("sync-xhr / debugger / async-onmessage skip non-authored code", async () =>
       files: new Map([[file, Buffer.from(code)]]),
       manifest: manifestOf({}),
     };
-    // A hash-identified library is classified so, as setup's classifyReview does.
+    // A hash-identified library is classified so, as the review's classification does.
     artifact.bundled = classifyBundled(artifact, {
       libraryHashes: lib
         ? new Map([
@@ -467,7 +467,7 @@ test("code-sanity skips non-authored code, lints authored code", async () => {
       files: new Map([[file, Buffer.from(redecl)]]),
       manifest: manifestOf({}),
     };
-    // A hash-identified library is classified so, as setup's classifyReview does.
+    // A hash-identified library is classified so, as the review's classification does.
     artifact.bundled = classifyBundled(artifact, {
       libraryHashes: lib
         ? new Map([
@@ -839,10 +839,9 @@ test("code-sanity is gated by the --eslint flag", async () => {
   );
 });
 
-// The SCA mode gate (scaEligible, mirrors the diff gate): the build and dependency
-// checks are sca:true (they review an archive, absent from an XPI-only submission), and
-// most others are untagged - they run in both modes and the orchestrator switches the
-// review SOURCE under them. Exactly one is sca:false, and the gate is there for a check
+// The SCA mode gate (modeEligible): the build and dependency checks read the archive, so
+// their route keeps them to a source review, and the other routes run in both modes. Only
+// the two XPI lock checks declare `skip-in-sca-review`, and the flag is there for a check
 // that genuinely cannot run on a source archive - never to exempt a source archive's
 // declared files from review, which a declaration nothing verified cannot buy.
 test("where a check runs: the route says it, or the flag says what a route cannot", async () => {
@@ -1888,8 +1887,8 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "xpi-lock-file-missing",
   ]);
   // input: sca reads the submitted source archive (minus the Experiment and a recorded
-  // node_modules). The one build-review check (undeclared-build-source, which reads the setup
-  // record off ctx.artifact.buildReview) plus the deterministic build-policy checks; extending
+  // node_modules). The one build-review check (undeclared-build-source, which reads
+  // ctx.buildReview()) plus the deterministic build-policy checks; extending
   // this set is deliberate too.
   const sca = checks
     .filter((c) => c.input === "sca")
@@ -1962,8 +1961,8 @@ test("an input:xpi check escalates over its routed (XPI) addon", async () => {
   );
 });
 
-// ---- build review: undeclared-build-source (SCA; reads the setup record on
-// ctx.artifact.buildReview, produced by analyzeBuild) ----
+// ---- build review: undeclared-build-source (SCA; reads ctx.buildReview(), produced by
+// analyzeBuild) ----
 
 const scaCtx = (review) =>
   withManifest({
@@ -2721,7 +2720,7 @@ test("unused-permission lists the unprovable declared named permissions", async 
 // escalation. Everything the tokens cannot decide keeps escalating: a found
 // token, an entry without tokens (unlimitedStorage), or no entry at all.
 // Shaped exactly like production LoadedCheck.permissionTokens
-// (permissionTokensFor): token entries only, no prose.
+// (registry.permissionTokens()): token entries only, no prose.
 const PERMISSION_TOKENS = [
   {
     permissions: ["compose"],

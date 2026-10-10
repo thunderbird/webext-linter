@@ -103,7 +103,7 @@ A selection, not the catalogue - every folder under `addons/` is a fixture:
 | `all-checks` | Triggers every deterministic violation check at once - the broad smoke test. (`missing-library` / `obfuscated-code` need a bundled or minified file, so neither shows here.) |
 | `clean` | A well-formed add-on - expects zero findings. |
 | `unknown-api` | `unknown-api`: an unknown namespace + an unknown member. |
-| `deprecated` | `deprecated-api`: a deprecated member + an API newer than the target Thunderbird. |
+| `deprecated` | `deprecated-api`: a deprecated member. Its API newer than `strict_min_version` escalates to `strict-min-version-api`. |
 | `deprecated-namespace` | `deprecated-api` via a namespace-level annotation. |
 | `missing-permission` | `missing-permission`: a called API needs permissions that aren't declared. |
 | `storage-permission` | `missing-permission` for the namespace-level `storage` permission. |
@@ -185,7 +185,7 @@ key off:
 | --- | --- | --- |
 | `permissions` (namespace / function) | `missing-permission`, `unused-permission` | `messages` → `messagesRead`; `messages.move` → `accountsRead` + `messagesMove` |
 | `deprecated` | `deprecated-api` | the whole `legacy` namespace; `messages.oldOne` |
-| `version_added` vs `manifest.applicationVersion` | `deprecated-api` (API newer than the target) | target `128.0`, so `messages.future` (added `200`) is too new |
+| `version_added` vs the add-on's `strict_min_version` | `strict-min-version-api` | `messages.future` (added `200`) is newer than the `deprecated` add-on's `128.0` |
 | `$extend` of `manifest` types | the valid permission + manifest-key sets for `missing-permission` / `manifest-unknown-permission` | the `Permission` enum; `manifest:action` |
 
 To exercise a new schema shape, add or extend a file here (and update the

@@ -172,31 +172,10 @@ export function answersOf(handed, asked, phase, keyOf) {
 }
 
 /**
- * The entries one phase hands over: this phase's open items, each stripped to what its
- * steps actually name, plus the one empty slot.
- *
- * Stripped rather than handed whole because the REVIEW file holds what the prompt needs in
- * order to be followed, and nothing that merely decided what the prompt says. A finding's
- * severity, a to-do's suggested verdict: both are the linter's, and neither is a step's
- * business.
- *
- * Rendered HERE, when the phase is handed out - never stored - so the same item can be
- * worded one way for the agent and another for the reviewer without either being baked in.
- * @param {object[]} items  From reviewItems, filtered to this phase.
- * @param {{answer: string}} phase  The phase handing them over. Its `answer` says what one
- *   of its entries is answered WITH, and so which of the two wordings an entry carries -
- *   read as data, never off the phase's name, so a phase's shape is authored beside its
- *   verbs rather than spelled again here.
- * @param {{XPI: ?string, SCA: ?string}} [roots]  Where each artifact is on disk, keyed by
- *   the value a finding's `artifact` carries. An entry's paths are resolved against the
- *   one its own artifact names, so nothing the agent is handed has to be joined by hand.
- * @returns {object[]}
- */
-/**
  * One entry's file, as a path the agent can open.
  *
  * Two things can go wrong here and neither may pass quietly. A root missing from a table
- * that was GIVEN is WIRING: the state carries both roots from v6 (src/report/state.js), so
+ * that was GIVEN is WIRING: the state carries both roots (src/report/state.js paths), so
  * its absence means the table was built wrongly, and handing out a relative path instead
  * would leave the agent resolving it against its own directory. A caller that passes no
  * table is not resolving at all, which is a different thing and is left alone.
@@ -227,6 +206,27 @@ function resolvedIn(root, file, ruleId, resolving) {
   return at;
 }
 
+/**
+ * The entries one phase hands over: this phase's open items, each stripped to what its
+ * steps actually name, plus the one empty slot.
+ *
+ * Stripped rather than handed whole because the REVIEW file holds what the prompt needs in
+ * order to be followed, and nothing that merely decided what the prompt says. A finding's
+ * severity, a to-do's suggested verdict: both are the linter's, and neither is a step's
+ * business.
+ *
+ * Rendered HERE, when the phase is handed out - never stored - so the same item can be
+ * worded one way for the agent and another for the reviewer without either being baked in.
+ * @param {object[]} items  From reviewItems, filtered to this phase.
+ * @param {{answer: string}} phase  The phase handing them over. Its `answer` says what one
+ *   of its entries is answered WITH, and so which of the two wordings an entry carries -
+ *   read as data, never off the phase's name, so a phase's shape is authored beside its
+ *   verbs rather than spelled again here.
+ * @param {{XPI: ?string, SCA: ?string}} [roots]  Where each artifact is on disk, keyed by
+ *   the value a finding's `artifact` carries. An entry's paths are resolved against the
+ *   one its own artifact names, so nothing the agent is handed has to be joined by hand.
+ * @returns {object[]}
+ */
 export function entriesFor(items, phase, roots) {
   return items.map((item, i) => {
     const base = { index: item.index };

@@ -461,8 +461,8 @@ test("a folder add-on is copied into the work folder and its parent left alone",
   ]);
 });
 
-// A start that fails after the add-on was copied - here the Experiment refusal, which a
-// source review of an Experiment reaches once its XPI is read - gives back the folder it
+// A start that fails after the add-on was copied - here a source review of an Experiment
+// without --sca-exp-source, which fails once its XPI is read - gives back the folder it
 // created, so the same command can simply run again.
 test("a failed start leaves the work folder as it found it", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-failed-start-"));
@@ -1508,11 +1508,6 @@ function sweepBack(reviewFile, found = {}) {
   }
 }
 
-// The sweep path end to end: a swept case enters through --llm-sweep-results, is settled
-// through --llm-handback, and comes out the far side as a finding of the check that owns
-// it, worded by that check's registry response. This is the chain the unit tests cannot
-// see - mergeSweepResults -> reviewItems -> applyVerdicts -> renderFindings -> formatText
-// - and it is where a check whose response carried a placeholder, or whose band could not
 // A sweep, end to end through the loop. The blind spot the sweep covers is the one thing
 // the deterministic checks cannot find for themselves, so what it hands back has to become
 // an item of the check it names - routed, numbered, and settled like any other.
@@ -2094,7 +2089,7 @@ test("the preparation quotes an argument that carries whitespace", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The work folder is recorded, a rescued copy goes beside it, and the next prompt names it,
+// The work folder is recorded, a rescued copy goes inside it, and the next prompt names it,
 // so however it is typed - relative, with a trailing slash - it is taken as one absolute
 // name: the review starts in it, and the prompt names its files by that name.
 test("a hand-back takes its folder as one absolute name", () => {
@@ -2252,14 +2247,14 @@ test("an unknown check id is refused before a prompt is printed", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// Each way the flag cannot be used, refused before it prints anything - it prepares a
-// review rather than running one, so it shares no run with the flags that do.
+// Each way the flag cannot be used, refused before it prints anything - it starts its own
+// review, so it shares no run with the flags that do.
 test("--llm-sca-review refuses what it cannot be combined with", () => {
   const dir = submissionFolder();
   const cases = [
     [["--sca-root", "src"], /works out --sca-root for you/],
-    [["--llm-review"], /comes BEFORE a review/],
-    [["--llm-handback", "work"], /comes BEFORE a review/],
+    [["--llm-review"], /starts its own review/],
+    [["--llm-handback", "work"], /starts its own review/],
     [["--report-format", "json"], /--llm-sca-review is text only/],
     // A SECOND add-on argument: the flag reads the first one as the submission.
     [

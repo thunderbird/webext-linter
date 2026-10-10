@@ -12,7 +12,7 @@
 // Belongs here: the version_added vs strict_max_version comparison and per-api
 // dedup. Does NOT belong here: resolving usage against the schema over the
 // WebExtension tree (-> src/lib/api-resolution.js), extracting browser.* usage
-// (src/parse/api-usage.js via ctx.apiUsages), reading schema annotations
+// (src/parse/api-usage.js via ctx.apiUsages()), reading schema annotations
 // (SchemaIndex.versionAdded), the wording (assets/registry.yaml) or severity (its
 // registry entry, stamped by runChecks).
 

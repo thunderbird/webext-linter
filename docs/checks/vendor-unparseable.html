@@ -71,6 +71,10 @@ flowchart TD
         jsDelivr, the npm registry, or GitHub as a raw file or release asset). The message shows the
         accepted shapes and links the vendoring guide; the wording itself lives in
         <code>assets/registry.yaml</code>.
+      A source-code submission is asked
+        instead to declare each library in package.json and let the build copy
+        it from node_modules, keeping a single VENDOR.md only for what that
+        cannot cover.
       </div>
 
       <p class="source-note">

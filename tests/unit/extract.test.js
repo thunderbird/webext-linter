@@ -86,9 +86,9 @@ test("results still match a direct scan for pathological input", () => {
 });
 
 // A CHECK IS A PURE READER: the accessors return what a pass precomputed, and NEVER parse.
-// A source that reaches one without having been through a pass is a wiring bug in setup -
+// A source that reaches one without having been through a pass is a wiring bug in the review -
 // parsing it here would put an AST in the check's call stack, and (far worse) an accessor
-// that quietly recomputes cannot tell "setup forgot this artifact" from "there is nothing
+// that quietly recomputes cannot tell "the review forgot this artifact" from "there is nothing
 // here", so a whole artifact could go unreviewed with no symptom. Fail loudly instead.
 test("accessors read the precomputed result, and throw when no pass ran", () => {
   const withPass = src("a.js", RICH);
@@ -125,7 +125,7 @@ test("extracts experimentRefs only when Experiment namespaces are supplied", () 
   assert.equal(withoutNs.extracted.experimentRefs, undefined);
 });
 
-// The pipeline's setup ORDER is load-bearing, and this is why: identifyBundledLibraries
+// The review's stage ORDER is load-bearing, and this is why: the CDN identification
 // FINALIZES the non-authored skip set, and it REMOVES as well as adds. applyUnverifiedVendor
 // drops a READABLE vendored library whose package turns out not to be popular, so the library
 // is reviewed as the developer's OWN code. Run the extraction pass before that removal and the
@@ -153,7 +153,7 @@ test("a vendored library dropped from the skip set is still content-scanned", ()
     },
   };
 
-  // Phase 3, in the pipeline's order: classify -> identify (reconciles) -> parse.
+  // In the review's order (src/review/products.js): classify -> identify (reconciles) -> parse.
   addon.bundled = classifyBundled(addon);
   assert.ok(
     addon.bundled.nonAuthored.has("lib/mylib.js"),

@@ -467,7 +467,7 @@ test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-au
       !has(findings, "minified-code", (f) => /lib\.min\.js/.test(f.file)),
       "the CDN-identified source library is not rejected as minified"
     );
-    // OSV-audited on the SOURCE -> vendor-vulnerable (would not fire on HEAD).
+    // OSV-audited on the SOURCE -> vendor-vulnerable.
     assert.ok(
       has(findings, "vendor-vulnerable", (f) => /leftpad/.test(f.item ?? "")),
       "the undeclared source-bundled library is OSV-audited"
@@ -980,7 +980,7 @@ test("SCA e2e: trademark-violation resolves a localized name via the XPI's _loca
 });
 
 // A vulnerable devDependency is a real risk in SCA because the reviewer builds the
-// add-on from source. The dedicated vendor-vulnerable-dev check (sca:true) runs
+// add-on from source. The dedicated vendor-vulnerable-dev check (input: sca) runs
 // only here - it takes the packages the lock marks as declared and build-only and
 // surfaces the hit, while the prod vendor-vulnerable check stays silent for a dev-only dep.
 test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", async () => {
@@ -1018,10 +1018,9 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
   }
 });
 
-// The build files (the archive's tooling) are reviewed by the setup
-// build analysis (analyzeBuild) + the deterministic undeclared-build-source check. This proves
-// the pipeline wires collectBuildFiles -> addon.buildReview -> scaCtx (ctx.artifact) ->
-// the check: analyzeBuild stores the unresolved signals and the anchor, and the check escalates
+// The build files (the archive's tooling) are reviewed by the build analysis (analyzeBuild)
+// + the deterministic undeclared-build-source check. This proves the pipeline wires
+// analyzeBuild -> scaCtx (ctx.buildReview()) -> the check: analyzeBuild stores the unresolved signals and the anchor, and the check escalates
 // the build to Extended Manual Review, which every source-code submission reaches.
 test("SCA e2e: a build script outside the source is reviewed by undeclared-build-source", async () => {
   const xpi = tmpDir(XPI_FILES);
@@ -1170,7 +1169,7 @@ test("SCA e2e: a minified file in the source is rejected by minified-code", asyn
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
-    // The prefix is stripped by loadScaAddon, so the review file is "blob.min.js".
+    // The flat layout: the source IS the root, so the file keeps its path in the archive.
     assert.ok(
       has(findings, "minified-code", (f) => f.file === "src/blob.min.js"),
       "a minified source file is rejected by minified-code in SCA"
@@ -1699,7 +1698,7 @@ test("a manifest whose name and version are not strings still reviews", async ()
 });
 
 // ---- a source review its preparation could not rescue ----
-// The work folder's record is done and unrescued. The review is an ordinary one, and its
+// The work folder's record is done, its roots back in sca/. The review is an ordinary one, and its
 // vulnerability checks stop it.
 
 const UNRESCUED_FIXTURE = path.join(

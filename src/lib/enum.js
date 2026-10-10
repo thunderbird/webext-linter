@@ -187,8 +187,7 @@ export const REVIEW_MODE = makeEnum(["sca", "xpi"], "review_mode");
  * (a submission file that changed during the run and can no longer be read) or WALK (Babel
  * could not walk the AST of one submission file). All but WALK end the run. WALK is about
  * one file: the per-file loops that walk submission code catch it and carry on, and only
- * one escaping them ends the run. The class is what a catch reads to decide, and what the
- * exit names.
+ * one escaping them ends the run. The class is what a catch reads to decide.
  * @type {{NETWORK_GONE: ErrorClass, NO_ANSWER: ErrorClass, WIRING: ErrorClass,
  *   IO: ErrorClass, WALK: ErrorClass}}
  */

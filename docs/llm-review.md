@@ -117,12 +117,14 @@ loop would do is ask a reviewer to **reproduce the build** - running that tree o
 machine, on the strength of a question the linter issued knowing better.
 
 A check declares that it aborts the review by naming the reason the report gives
-(`review-early-exit:` in the registry). Today fifteen do, across three reasons: the four
+(`review-early-exit:` in the registry). Today eighteen do, across five reasons:
+`experiment-not-allowed` names _Experiment APIs not accepted_, `lockfile-injection` names
+_lock file entries that install another release_, the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
-names *disallowed library versions*, and the ten that decide a source submission cannot
+names *disallowed library versions*, and the eleven that decide a source submission cannot
 be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
-`build-registry-redirect`, `lock-foreign-source`, `build-lifecycle-hook`,
+`sca-lock-file-multiple`, `build-registry-redirect`, `lock-foreign-source`, `build-lifecycle-hook`,
 `undeclared-build-source`, `build-succeeds` and `build-reproduces-xpi` - name *a build
 that cannot be reproduced*. The threshold is the finding's severity, so an advisory
 that lands as a warning aborts nothing.
@@ -323,8 +325,8 @@ is refused.
 ## Preparing a source code review
 
 A source code submission arrives as two files - the built `.xpi` and an archive of the
-source it was built from - and reviewing it needs three `--sca-*` arguments, two of which
-nobody can write without opening that archive. `--llm-sca-review` reads the add-on
+source it was built from - and reviewing it needs two `--sca-*` arguments that nobody can
+write without opening that archive. `--llm-sca-review` reads the add-on
 argument as that submission folder instead of as an add-on: it does the half a program
 can do, and hands those two to a reader who can open the archive.
 
@@ -453,7 +455,7 @@ The caches are not part of it: they stay in `WEBEXT-LINTER-CACHE/`.
 | --- | --- |
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Refused with `--report-format json`. |
 | `--llm-handback <dir>` | Take a phase back and hand out the next, from the review file in the work folder the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file in that folder. On a folder a source code review is being prepared in (`prepare.json`, and no review started), take the next step of the preparation instead, and once it is done, start its review. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person. |
-| `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - print the first prompt for preparing a source code review of it, and exit without reviewing anything. It creates the review's work folder beside the `.xpi`, records there how the review is to be run, and its prompt ends in `--llm-handback` on that folder (see [Preparing a source code review](#preparing-a-source-code-review)). Refused beside any `--sca-*` flag, which is what the preparation works out. |
+| `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - and print the first prompt for preparing a source code review of it. It creates the review's work folder beside the `.xpi`, records there how the review is to be run, and its prompt ends in `--llm-handback` on that folder (see [Preparing a source code review](#preparing-a-source-code-review)). Refused beside any `--sca-*` flag, which is what the preparation works out. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
 | `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted early, which takes them out. The two build questions are still asked. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
 | `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. No sweeping agent is spawned, and the sweep is not handed to the reviewer either. |

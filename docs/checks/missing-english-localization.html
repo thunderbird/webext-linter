@@ -38,9 +38,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The loaded add-on"] --> B{"Are the add-on files<br/>available?"}
-  B -- no --> S([skip])
-  B -- yes --> C{"Does it ship localization<br/>directories?"}
+  A["The shipped XPI"] --> C{"Does it ship localization<br/>directories?"}
   C -- yes --> D{"Is one of them an<br/>English directory?"}
   D -- yes --> OK([no finding])
   D -- no --> ERR([WARNING: missing<br/>English localization])
@@ -60,7 +58,6 @@ flowchart TD
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
   class ERR warn;
   class OK ok;
-  class S skip;
   class MAN manual;
         </pre>
       </div>

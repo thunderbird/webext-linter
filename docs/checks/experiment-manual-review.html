@@ -23,7 +23,7 @@
         This check makes no automated decision. When the add-on is an
         Experiment it emits a single whole-add-on escalation with no specific
         location, which surfaces as a manual-review reminder. It is silent for
-        non-Experiments, and an unsupported experiment never reaches it because
+        non-Experiments. Without --allow-experiments an unsupported experiment never reaches it, because
         such a submission is aborted earlier by the experiment-not-allowed check,
         the first check of the review.
       </p>

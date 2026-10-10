@@ -30,8 +30,8 @@
 // file is the same class of gap. Everything undecided escalates to a reviewer.
 //
 // The schema expresses "this API needs a manifest.json key" via pseudo-permissions
-// of the form "manifest.json:<key>" (e.g. browserAction needs "manifest.json:action" OR
-// "manifest.json:browser_action"). Those are not declarable permissions - the
+// of the form "manifest:<key>" (e.g. browserAction needs "manifest:action" OR
+// "manifest:browser_action"). Those are not declarable permissions - the
 // manifest.json must declare at least one of the named keys.
 //
 // Belongs here: analyzePermissions (memoized via getPermissionAnalysis), the
@@ -443,7 +443,7 @@ export async function enumerateUnusedPermissions(ctx, prompts) {
  * escalate - and a matched entry WITHOUT tokens (unlimitedStorage) poisons its
  * permissions to [] even when another entry contributes tokens, because that
  * entry's usages are declared token-undetectable.
- * @param {?object} manifest.json
+ * @param {?object} manifest  The manifest.json's parse.
  * @param {?object[]} prompts  LoadedCheck.permissionTokens.
  * @returns {Map<string, string[]>}
  */

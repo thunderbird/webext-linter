@@ -311,7 +311,7 @@ async function lookupHash(net, hash) {
         },
       };
     }
-    // 2xx with an unexpected shape: a stable "nothing here", cacheable as a miss.
+    // 2xx with an unexpected shape: read as a miss.
     debug(`CDN lookup unexpected response for ${hash}`);
     return { state: "miss" };
   } catch (err) {

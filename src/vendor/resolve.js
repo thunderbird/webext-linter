@@ -1,5 +1,5 @@
-// Resolves the add-on's vendored declarations ONCE, at the top of the pipeline,
-// before anything reviews files. This is the OFFLINE half: it
+// Resolves an artifact's vendored declarations ONCE, before its vendor data is verified
+// (src/review/products.js, src/prepare/audit.js). This is the OFFLINE half: it
 // parses the VENDOR file and, for a built XPI, the package.json dependency
 // declarations (pinning each via an exact spec, or against a lock file it carries), and
 // classifies each declared source. Where the reviewer installs from the artifact (a source
@@ -117,7 +117,7 @@ const EXACT = /^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/;
 /**
  * Whether a packaged file is vendored: an exact VENDOR-file entry, or a file under
  * a vendored folder declaration (prefix). The single test for "skip this file" used
- * by bundled.js, unused-files.js and verifyPackage.
+ * by bundled.js and verifyPackage.
  * @param {?{set?: Set<string>, folders?: Set<string>}} vendor  The vendor store.
  * @param {string} file  Add-on-relative path.
  * @returns {boolean}
@@ -251,7 +251,7 @@ export function verifiedVendorSource(addon, file) {
  *   installs, what is installed is what the lock records, and nothing else: package.json
  *   is not read for the dependencies at all, since the lock is what the install follows
  *   (an override, a workspace member's own declarations, an optional dependency are all in
- *   it), and the six package.json buckets stay empty. The store is then the lock's
+ *   it), and the five package.json buckets stay empty. The store is then the lock's
  *   readings: its whole installed tree, its GitHub installs and its local ones. In a built
  *   XPI nothing is installed, so none of those is read, and the package.json declarations
  *   are classified instead (resolvePackages).
@@ -394,7 +394,7 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
     // persisted - popularity is time-varying, the same reason the CDN identifier
     // keeps it out of its on-disk cache (src/lib/cdn-lookup.js).
     popularity: new Map(),
-    // Filled by verifyVendor's OSV audit (network). Empty for offline runs.
+    // Filled by the OSV audits (verify.js). Empty for offline runs.
     vulnerabilities: [],
     // Bundled library versions Mozilla add-on policy disallows (banned) or
     // discourages (unadvised): auditNpm matches each audited (name, version) against

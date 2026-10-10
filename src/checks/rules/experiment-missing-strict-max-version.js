@@ -1,5 +1,5 @@
 // A valid Experiment (declares experiment_apis and is reviewed rather than
-// rejected - allowed via --allow-experiments or a pristine upstream copy) must
+// rejected - allowed via --allow-experiments, or a recognised upstream draft) must
 // pin a strict_max_version. Experiments call internal APIs that change between
 // major Thunderbird versions, so without a maximum they break silently on
 // upgrade. It runs only when the experiment is valid: an invalid one aborts the review at

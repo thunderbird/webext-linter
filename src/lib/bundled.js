@@ -7,14 +7,14 @@
 // obfuscator family (see src/lib/obfuscation.js).
 //
 // The classification keys off the raw shipped bytes (the library hash, and each
-// detector's parse of the shipped source), so it is resolved ONCE up front by the pipeline
-// into addon.bundled (classifyBundled), the same "compute once, checks read it" pattern as
-// addon.vendor: one answer per artifact, taken from the bytes the add-on ships and shared
-// by every check that asks.
+// detector's parse of the shipped source), so it is computed ONCE per artifact, on first
+// ask (src/review/products.js), into addon.bundled (classifyBundled), like addon.vendor:
+// one answer per artifact, taken from the bytes the add-on ships and shared by every check
+// that asks.
 //
 // Belongs here: classifyBundled (the one-shot classification + non-authored skip
 // set) and the per-file tagging it uses. classifyAddonJs / nonAuthoredJs are thin
-// readers of the memoized store. The known-library hash DB itself is fetched and
+// readers of ctx.bundled(). The known-library hash DB itself is fetched and
 // parsed in src/lib/library-hashes.js.
 //
 // Does NOT belong here: the rule verdicts and findings - those live in the
@@ -63,8 +63,8 @@ import { isMinified, isMinifiedJs } from "./minified.js";
 
 /**
  * Classify the add-on's JS and CSS once: per-file library/minified/obfuscated tags
- * plus the not-the-developer's-source skip set. Pure and addon-keyed, so the pipeline can
- * run it before normalize. The result is stored on addon.bundled.
+ * plus the not-the-developer's-source skip set. The result is stored on addon.bundled
+ * (src/review/products.js).
  *
  * `nonAuthored` is the VENDOR.md-declared third-party files plus any JS or CSS
  * tagged library / minified / obfuscated. The source-level finding scanners (the
@@ -184,7 +184,7 @@ const UNVERIFIED_OUTCOMES = new Set([
  * the trusted/exempt family: a readable one is reviewed as authored code (removed
  * from the non-authored skip set), an unreadable (minified/obfuscated) one stays
  * skipped and is rejected by untrusted-minified-library. The untrusted-library /
- * untrusted-minified-library checks read addon.bundled.untrusted. Defensive (no-op
+ * untrusted-minified-library checks read the list through untrustedLibs. Defensive (no-op
  * without a bundled store, e.g. some unit harnesses). One call, one entry: two
  * declarations covering the same file list it twice, which the report shows and no
  * consumer minds - the readability routing below is what decides its status, and it
@@ -220,10 +220,11 @@ export function markUntrusted(addon, { file, source, name, unreadable }) {
  * All four say the same thing: the claim is unsupported, so markUntrusted routes the file
  * by readability. A declaration cannot exempt a file the tool was never able to check.
  *
- * Runs as a pipeline step AFTER classifyBundled (which builds addon.bundled), since
- * verifyVendor runs before it. A reconciled result is REMOVED from vendor.results:
- * the untrusted family is where that file's status is read, so leaving the row
- * would let a second consumer reach its own conclusion about it. The CDN not-popular
+ * Runs in the identification stage (src/review/products.js) AFTER classifyBundled (which
+ * builds addon.bundled), since verifyVendor runs before it. A reconciled result is
+ * REMOVED from vendor.results: the untrusted family is where that file's status is
+ * read, so leaving the row would let a second consumer reach its own conclusion about
+ * it. The CDN not-popular
  * case is handled in cdn-lookup.js, which already runs after classifyBundled. No-op
  * without a bundled store or vendor results.
  * @param {Addon} addon

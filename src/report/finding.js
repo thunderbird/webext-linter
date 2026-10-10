@@ -36,7 +36,7 @@ export const SECTION = Object.freeze({
   MANUAL_REVIEW: "manual-review",
 });
 
-/** @typedef {"error" | "warning" | "info"} Severity */
+/** @typedef {"error" | "hold" | "warning" | "info"} Severity */
 
 export const SEVERITY = Object.freeze({
   ERROR: "error",
@@ -311,7 +311,7 @@ export function sortFindings(findings) {
  * @property {boolean} [listItem]  Surface the SUBJECT (`item`) on the location line
  *   (the instructions did not consume `{{item}}`); set by the resolver.
  * @property {boolean} [extended]  True for a check that escalated to manual
- *   review (rendered under "Extended Manual Review"); false/absent for a
+ *   review (rendered under "Extended Code Review" or "Extended Manual Review"); false/absent for a
  *   registry manual-checks entry (rendered under "Standard Manual Review"). Set
  *   by the pipeline when it assembles the list.
  */

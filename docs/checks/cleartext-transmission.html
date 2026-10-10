@@ -27,7 +27,7 @@
         The check looks only at the developer's own JavaScript and only at overt
         transmission APIs — fetch and its relatives such as XMLHttpRequest,
         WebSocket, EventSource and sendBeacon — aimed at a remote host. Covert
-        loads that smuggle data through a URL are already a hard error in the
+        loads that smuggle data through a URL are already reported by the
         disguised-* checks, so they are deliberately not reported here to avoid
         double-reporting the same line. An encrypted remote transmission over
         https://, wss:// or ftps:// is fine.
@@ -57,8 +57,8 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told that data is sent over an unencrypted connection to
-        the named host, and that all data must travel over an encrypted channel —
+        The add-on is told that data is sent over an unencrypted connection,
+        listing each line that sends it, and that all data must travel over an encrypted channel —
         use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
       </div>
 

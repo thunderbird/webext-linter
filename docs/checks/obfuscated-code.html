@@ -24,8 +24,8 @@
         AST against the <code>obfuscation-detector</code> library.
       </p>
       <p>
-        A file that looks like a recognised third-party library is excluded here,
-        because that is the missing-library check's concern, and a file that is
+        A file identified as a third-party library is excluded here,
+        because the library checks handle it, and a file that is
         merely minified (not obfuscated) is the minified-code check's concern. The
         detection has high precision but partial recall, so it cannot catch every
         obfuscator.
@@ -37,8 +37,8 @@
 flowchart TD
   A["A JavaScript file, or an inline<br/>&lt;script&gt; in a page"] --> Z{"Declared in a VENDOR file,<br/>or too small to be a bundle?"}
   Z -- yes --> S([skip])
-  Z -- no --> L{"Recognized third-party library?"}
-  L -- yes --> S2([skip — missing-library's concern])
+  Z -- no --> L{"Identified third-party library,<br/>popular or not?"}
+  L -- yes --> S2([skip: a library check's concern])
   L -- no --> B{"Obfuscated?"}
   B -- no --> OK([no finding — a merely-minified<br/>file is minified-code's concern])
   B -- yes --> ERR([ERROR: obfuscated code])
@@ -60,8 +60,9 @@ flowchart TD
         <strong>When it fires</strong>
         The add-on is told the named files are obfuscated and that obfuscated code is
         not permitted — whether or not the add-on is hosted on addons.thunderbird.net
-        — as it violates the Add-on Policy and is subject to being blocked. It is
-        asked to ship the original, human-readable code directly.
+        — as it violates the Add-on Policy and is subject to being blocked. A source code submission is
+        also told the archive must
+        carry these files readable.
       </div>
 
       <p class="source-note">

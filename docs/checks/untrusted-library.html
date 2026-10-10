@@ -18,21 +18,19 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        A bundled file the tool could not confirm as a known dependency.
-        Either its bytes match a pinned upstream release — recognised via the
-        jsDelivr CDN or a declared VENDOR source — whose package is not a
-        widely-used library, or its declared source was never checked at all:
-        none was given, it is on a host we do not fetch from, or it has no such
-        release. A claim nobody could check earns no more trust than one that
-        failed.
+        A bundled file the tool could not confirm as a known dependency. Either
+        its bytes match a pinned upstream release — recognised via the jsDelivr
+        CDN or a declared VENDOR source — whose package is not a widely-used
+        library, or its declared source was never checked at all: none was
+        given, it is on a host we do not fetch from, or it has no such release.
+        A claim nobody could check earns no more trust than one that failed.
       </p>
       <p>
         Because it does not earn the trusted-library review exemption, and
         because it is readable, it is put back into the ordinary review: the
         standard source-level checks scan it exactly like the developer's own
         code, so a finding may be raised against library code. This notice
-        explains why a file that looks like a library is being reviewed, and
-        asks the developer to confirm each one is a legitimate dependency.
+        explains why a file that looks like a library is being reviewed.
       </p>
 
       <h2>Decision flow</h2>

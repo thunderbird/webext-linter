@@ -24,11 +24,11 @@
         user upgrades.
       </p>
       <p>
-        This is a deterministic-phase check, so it runs only once an experiment has
-        been accepted onto the normal review path — either because experiments
-        are allowed or because the bundled copy is a pristine upstream draft. An
-        unsupported experiment never reaches here, because it short-circuits to
-        the experiment-not-allowed check. The check is silent for
+        It runs only when the Experiment was not rejected: experiments are
+        allowed, or every bundled experiment is a recognised upstream draft
+        (unmodified or not). Without --allow-experiments an unsupported
+        experiment never reaches it, because experiment-not-allowed, the first
+        check of the review, aborts the review. The check is silent for
         non-Experiments and for Experiments that already declare a maximum.
       </p>
 

@@ -14,8 +14,8 @@ import { experimentApiNamespaces } from "../../src/lib/experiments.js";
 /**
  * The add-on's JS sources, through the extraction pass - the state a check may read them in.
  * A CHECK IS A PURE READER: the accessors in src/checks/extract.js throw on a source that
- * never went through a pass, so a hand-built ctx must run it exactly as setup does (the
- * pipeline does this in Phase 3). Use this instead of handing raw collectJsSources()
+ * never went through a pass, so a hand-built ctx must run it exactly as the review does
+ * (src/review/products.js). Use this instead of handing raw collectJsSources()
  * output to a ctx.
  * @param {object} addon
  * @param {object} [opts]
@@ -153,16 +153,14 @@ export function withManifest(ctx) {
   if (ctx.artifact.files && ctx.artifact.bundled === undefined) {
     ctx.artifact.bundled = classifyBundled(ctx.artifact);
   }
-  // The other shipped-authoritative field the pipeline attaches to the review addon and
-  // the ctx builders hoist onto ctx: the Experiment classification. Mirror that hoist here
-  // for a hand-built ctx (don't clobber a value a test set directly on ctx).
+  // The other shipped-authoritative field every ctx carries: the Experiment classification,
+  // which projectCtx copies from the review env. A hand-built ctx takes it from its artifact
+  // (don't clobber a value a test set directly on ctx).
   if (ctx.experiments === undefined) {
     ctx.experiments = addon.experiments ?? null;
   }
   // projectCtx puts the review options on every sibling, so they are never absent when a
-  // check runs. A hand-built ctx that omitted them used to work only because the readers
-  // guarded the field's existence; they no longer do, because a check cannot legitimately
-  // be missing one.
+  // check runs, and the readers do not guard against a missing one.
   if (ctx.options === undefined) {
     ctx.options = {};
   }

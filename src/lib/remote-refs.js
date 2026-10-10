@@ -3,8 +3,8 @@
 // importScripts() / injected-<script> hits in JS, and the manifest.json CSP's remote script
 // hosts. Two checks read this one result - remote-resources (what the developer ships)
 // and vendored-remote-resources (what an upstream release ships) - so the walk happens
-// once per review, the same "compute once, checks read it" pattern as
-// artifact.evalScan / artifact.outboundSinks.
+// once per review, the same "compute once, checks read it" pattern as getEvalScan /
+// getOutboundSinks.
 //
 // The scan CLASSIFIES and records; it does not report. Each site carries the text the
 // Activity feed narrates it with, and the owning check emits the note - so the feed

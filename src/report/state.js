@@ -11,8 +11,8 @@
 // report byte for byte) is really a completeness check on this shape.
 //
 // WHY THE AGENT NEVER SEES IT: what the linter needs across passes would otherwise become
-// a contract. `wantsBuild` only decided whether a step printed; BUILD_PROCESS is named by
-// a step, so that one is handed over and this one is not.
+// a contract. A value a step names (BUILD_PROCESS, say) is handed over in the prompt, and
+// the rest stays here.
 import fs from "node:fs";
 import path from "node:path";
 import { parseJson } from "../util/json.js";
@@ -23,7 +23,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
  * @property {number} version  Refuses a file this build cannot read, rather than reading
  *   it wrongly.
  * @property {object} report  Everything formatText needs that the registry cannot
- *   recompute: findings, meta, mode, experiments, flags. NOT issueHeadings /
+ *   recompute: findings, meta, and whether it is a source code review (`sca`). NOT issueHeadings /
  *   verdictIntros - those are the registry's, and a stale copy here would outlive an edit
  *   to it.
  * @property {object[]} manual  The to-do items, kept beside the findings because

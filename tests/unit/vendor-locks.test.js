@@ -568,8 +568,6 @@ test("an absent, empty, malformed or unsupported lock enumerates nothing", () =>
   assert.deepEqual(lockedPackages({}), []);
 });
 
-// Two locks describe the same install. Reading both would report every package
-// twice, so only the first that yields anything is enumerated.
 // The GOVERNING lock is the one present first in TREE_LOCKS order, and it is the only one
 // read - not the first that happens to answer. All three readers here share that choice, so
 // a submission cannot be rejected over one lock while a version is pinned and a tree

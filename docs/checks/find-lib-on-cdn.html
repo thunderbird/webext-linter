@@ -59,8 +59,7 @@
       </p>
       <p>
         The lookup runs by default and caches its results on disk: a hit is kept for
-        good, since a file hash names one release, and a miss is asked again after a
-        day, since the file may have been published since. A lookup
+        good, since a file hash names one release. A miss is never kept and is asked again on the next run, since the file may have been published since. A lookup
         jsDelivr does not answer ends the review, like any other question the
         review cannot get answered. Pass <code>--cdn-lib-lookup false</code> to
         disable it.
@@ -70,7 +69,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["An unrecognized bundled JS/CSS file<br/>(minified, or a large readable file)"] --> Z{"CDN lookup enabled<br/>and online?"}
+  A["An unrecognized bundled JS/CSS file<br/>(minified, or a large readable file)"] --> Z{"CDN lookup enabled?"}
   Z -- no --> OK([no CDN finding])
   Z -- yes --> L{"Raw content hash<br/>published on jsDelivr?"}
   L -- no --> OK

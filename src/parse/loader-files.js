@@ -16,7 +16,7 @@
 //     data lives in assets/webext-facts.yaml). Each entry is removed once the
 //     schema tags that method's path parameter with a relativeUrl format: the
 //     method then falls to the schema-directed branch and the bridge entry is
-//     dead. See assets/webext-facts.yaml and TODO.md.
+//     dead. See assets/webext-facts.yaml.
 //
 // Belongs here: extracting the local file paths referenced by file-loading API
 // calls, both schema-directed and via the temporary BRIDGE scaffolding.

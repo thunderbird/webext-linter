@@ -15,11 +15,11 @@
 // separates entries in a nested list written with no blank lines between them.
 //
 // The file is read whole and any fault discards ALL of it, so the developer is told
-// their VENDOR file is unparseable (and a reviewer fallback in src/vendor/resolve.js gets
-// the text) instead of the review proceeding on half a VENDOR file. Half of one is the
-// worse outcome by far: the declarations that were missed simply look undeclared, and
-// come back to the developer as "undeclared third-party library" for a library they
-// did declare, with nothing pointing at the file that says so.
+// their VENDOR file is unparseable instead of the review proceeding on half a VENDOR
+// file. Half of one is the worse outcome by far: the declarations that were missed
+// simply look undeclared, and come back to the developer as "undeclared third-party
+// library" for a library they did declare, with nothing pointing at the file that
+// says so.
 //
 // What a shipped VENDOR file may look like is in
 // https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html, and the
@@ -30,12 +30,12 @@
 // readVendorDeclarations into what resolved and what is absent. It is review-free and
 // pure.
 //
-// Does NOT belong here: a reviewer parse fallback and the canonical resolved set
-// (-> src/vendor/resolve.js). Nor any verdict about what was parsed: ONE source
-// covering several files is reported faithfully here and judged by
-// vendor-ambiguous-source. The consumers of the set: bundled.js skips them
-// from scanning, and unused-files exempts them. Fetching/verifying the declared source is the
-// vendor verification pre-step + the vendor checks. This file makes no verdict.
+// Does NOT belong here: the canonical resolved set (-> src/vendor/resolve.js). Nor any
+// verdict about what was parsed: ONE source covering several files is reported
+// faithfully here and judged by vendor-ambiguous-source. The consumers of the set:
+// bundled.js skips them from scanning, and unused-files exempts them. Fetching and
+// verifying the declared source is verifyVendor (src/vendor/verify.js) and the vendor
+// checks. This file makes no verdict.
 
 import { basename, dirname } from "../util/files.js";
 import { trimEndOf, trimStartOf } from "../util/text.js";
@@ -120,8 +120,8 @@ function normalizeToken(token) {
 
 // Any extension - a loose "could name a file" gate (so a real ".7z" still
 // matches). A letter-led extension (.js, .css, .min.js) is the stricter gate for
-// picking a MISSING candidate, so a version token like "2.2.1" is not mistaken
-// for a filename.
+// reading a token as a path (isPathToken), so a version token like "2.2.1" is not
+// mistaken for a filename.
 const LOOSE_EXT = /\.[a-z0-9]+$/i;
 const STRONG_EXT = /\.[a-z][a-z0-9]*$/i;
 
@@ -235,8 +235,7 @@ const SRC_KEYS = new Set([
 const MD_LINK_RE = /^\[([^\]]+)\]\(\s*<?([^)\s>]+)>?\s*\)/;
 // A path may hold only these characters. Decoration is stripped in MATCHED pairs, so
 // a leftover bracket or quote means the token was never a path ("[lib/x.js" is
-// malformed, not a declaration) - which matters because the packaged-file lookup
-// falls back to the basename and would otherwise resolve it.
+// malformed, not a declaration).
 const PATH_CHARS = /^[A-Za-z0-9._/\\@+-]+$/;
 
 /**
@@ -626,7 +625,7 @@ function readBlock(block) {
 /**
  * The declarations a VENDOR file makes, with each path AS WRITTEN. Nothing here
  * consults the submission: resolving a declared path against the packaged files is
- * resolveDeclarations, one step later, so a path the add-on does not hold is
+ * readVendorDeclarations, one step later, so a path the add-on does not hold is
  * REPORTED as missing rather than quietly failing to parse.
  * @param {Addon} addon
  * @returns {{token: string, kind: ?string, sourceUrl: ?string}[]}
@@ -658,7 +657,7 @@ function scanVendorRecords(addon) {
   // One file, one source. A path declared twice with DIFFERENT sources is a
   // contradiction only the developer can settle: whichever we kept, the other would
   // never be verified and they would not be told which. Stating one origin twice is
-  // no contradiction, so an identical repeat collapses (resolveDeclarations).
+  // no contradiction, so an identical repeat collapses (readVendorDeclarations).
   const sourceOf = new Map();
   for (const r of records) {
     const path = normalizeToken(r.token);
@@ -672,10 +671,10 @@ function scanVendorRecords(addon) {
 }
 
 /**
- * Match each declared path against the submission, exactly, from the package root.
- * A declaration is a PATH: a bare filename that is not at the root does not name a
- * packaged file, and is reported missing rather than hunted for by basename. A
- * folder resolves when the package holds anything beneath it.
+ * Match each declared path against the submission, exactly, from the VENDOR file's own
+ * directory. A declaration is a PATH: a bare filename that is not beside the VENDOR file
+ * does not name a packaged file, and is reported missing rather than hunted for by
+ * basename. A folder resolves when the package holds anything beneath it.
  *
  * The one place the parse output meets the submission, so the rule is stated once
  * and both halves - what resolved and what did not - come from the same reading.

@@ -28,7 +28,8 @@
         getURL, HTML and CSS references, and file-loading APIs — to decide what
         is reachable. Clear junk by name is reported first, so a leaked
         <code>.git/</code> or <code>.vscode/</code> is surfaced whatever it holds.
-        Past that, package files, the manifest, locale catalogs and
+        Past that, the root package.json (and the lock file beside it),
+        the manifest, locale catalogs and
         documentation are exempt — a documentation extension such as
         <code>.md</code> or <code>.rst</code> settles it on its own, while a
         <code>.txt</code> or an extensionless file must also be named like
@@ -47,7 +48,7 @@
 flowchart TD
   A["A packaged file"] --> C{"Hidden/junk by name?<br/>dotfile, source map, archive,<br/>editor backup"}
   C -- yes --> ERR([WARNING: hidden/junk file])
-  C -- no --> B{"Vendored, documentation,<br/>dependency/lock, manifest,<br/>or a locale catalog?"}
+  C -- no --> B{"Vendored, documentation,<br/>root package.json/lock, manifest,<br/>or a locale catalog?"}
   B -- yes --> S([skip])
   B -- no --> D{"Is the add-on an Experiment?"}
   D -- yes --> S2([skip — reachability<br/>unreliable for Experiments])

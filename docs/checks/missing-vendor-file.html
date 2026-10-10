@@ -19,8 +19,7 @@
         submission — a stale entry or a file someone forgot to include.
       </p>
       <p>
-        Before the review, the VENDOR file is parsed and each declared path is
-        checked against the packaged files; the absent ones are recorded. This is
+        The vendor reading parses the VENDOR file, checks each declared path against the packaged files and records the absent ones. This is
         deliberately different from the package.json side, where a declared
         dependency whose file is missing is ignored on purpose — dependencies are
         installed or bundled at build time, so a not-yet-built submission may

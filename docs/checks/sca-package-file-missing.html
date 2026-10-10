@@ -39,8 +39,7 @@
         shipped bytes are readable says nothing about whether this source
         produces them, which is what reproducing the build establishes, and with
         no build there is nothing to reproduce. Whether the developer could have
-        shipped the XPI alone is a separate question, so Source archive not
-        required prints beside this rejection rather than in place of it.
+        shipped the XPI alone is a separate question.
       </p>
 
       <h2>Decision flow</h2>
@@ -71,8 +70,7 @@ flowchart TD
         This check is one of the few that settle the submission on their own. When it
         reports, nothing further is put to a reviewer: the report drops every to-do item
         they would have been asked, keeps the code-review sections of a printed report (an aborted <code>--llm-review</code> hands over no to-do item at all), and the
-        developer&rsquo;s text ends on the reason it is incomplete (&ldquo;A build that
-        cannot be reproduced&rdquo;). Every remaining question depends on reproducing a
+        developer&rsquo;s text ends on the reason it is incomplete (&ldquo;Build process issues&rdquo;). Every remaining question depends on reproducing a
         build that is not there, so the work it would otherwise put to a reviewer cannot
         change the outcome.
       </div>

@@ -6,7 +6,7 @@
 // add-on never needed it, or included readable in the archive as a local file: package,
 // which is authored code. Build dependencies are
 // held to the same bar for the reason they are OSV-audited - the reviewer installs and
-// RUNS them - so the pre-step (src/vendor/verify.js verifyScaDependencies) looks up the
+// RUNS them - so the audit behind ctx.vendor() (src/vendor/verify.js verifyScaDependencies) looks up the
 // popularity of every package the committed lock file marks as declared, production and
 // build alike (by npm downloads, or by stars for one the lock installs from GitHub), and
 // records the ones below the trust bar on the vendor reading's `unpopularDeps`.

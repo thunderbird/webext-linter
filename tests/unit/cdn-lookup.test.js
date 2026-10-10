@@ -1,7 +1,7 @@
 // Unit tests for the jsDelivr CDN hash-lookup identifier (resolveCdnLibraries): a
 // hit promotes an unrecognized bundle - minified, or a large readable one - into the
 // vendored family (library + libraryId + cdn + nonAuthored), a miss leaves it
-// as classified, and results are cached on disk so a second run makes no request. All
+// as classified, and a hit is cached on disk so a second run makes no request. All
 // via an injected `net` - no real network.
 
 import { test } from "node:test";
@@ -321,8 +321,8 @@ test("a discarded hit stays cached; a later popularity flip promotes it from cac
 });
 
 // The on-disk cache is foreign-tolerant: an entry whose name/version is not a
-// non-empty string (corrupt, or written by something else) is treated as a miss -
-// it must never reach the name test or the tag promotion, let alone throw.
+// non-empty string (corrupt, or written by something else) is asked again, never read as
+// a hit - it must never reach the name test or the tag promotion, let alone throw.
 test("a corrupt cache entry with a non-string name is treated as a miss", async () => {
   const cacheDir = tmpCacheDir();
   const addon = classify(addonWith({ "x.min.js": MINIFIED }));
@@ -743,11 +743,10 @@ test("cdnUrl builds npm and gh source URLs", async () => {
   );
 });
 
-// A dead network aborts here too. The CDN identifier's catch turns a lookup failure into
-// "no match", which for a dead route would mean a shipped jQuery is reviewed as the
-// developer's own code and the report reads like a clean review of a different add-on.
-// A dead network and a host that gave no answer stop the review, and so does any other
-// failure: only a 404 means no match.
+// A dead network aborts here too. Read as "no match", a dead route would review a shipped
+// jQuery as the developer's own code, and the report would read like a clean review of a
+// different add-on. A dead network, a host that gave no answer and any other failure stop
+// the review: only a 404 means no match.
 test("resolveCdnLibraries propagates every failure but a 404", async () => {
   const addon = classify(addonWith({ "app/lib.min.js": MINIFIED }));
   const gone = {

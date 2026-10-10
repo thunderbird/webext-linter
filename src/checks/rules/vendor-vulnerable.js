@@ -1,7 +1,7 @@
 // Flags a pinned npm library whose bundled version has known security
 // advisories - a package.json dependency of a built XPI, a package the committed lock file
 // of a source archive marks as declared and installs for production, OR an npm-sourced
-// VENDOR entry. The OSV audit ran once in the network pre-step (src/vendor/verify.js
+// VENDOR entry. The OSV audit ran once behind ctx.vendor() (src/vendor/verify.js
 // auditNpm, or auditLockedPackages in a source review, which records only high, critical
 // and malicious advisories), which recorded each vulnerable package on
 // addon.vendor.vulnerabilities with the file + token to anchor it; this check maps that

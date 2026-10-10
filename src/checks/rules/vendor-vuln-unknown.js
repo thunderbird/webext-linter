@@ -1,5 +1,5 @@
 // Flags a vendored library that could not be checked for known vulnerabilities.
-// The network pre-step (src/vendor/verify.js auditGithub) already tried to prove
+// The vendor audit behind ctx.vendor() (src/vendor/verify.js auditGithub) tried to prove
 // an npm identity for every github-sourced VENDOR entry, by content-hash matching
 // the bundled bytes against the repo-name candidate, and audited the ones it could. The entries
 // it could NOT resolve are recorded on the vendor reading's `unaudited`; this check just

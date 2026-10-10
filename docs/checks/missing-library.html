@@ -32,8 +32,10 @@
         genuinely undeclared. Since a match is a precise, byte-verified
         release, the finding is advisory (<span class="badge info">info</span>),
         not a blocker. A bundled file the database does not recognise is
-        <em>not</em> treated as a library here — if minified it is reported by
-        minified-code, if obfuscated by obfuscated-code, and otherwise it is
+        <em>not</em> treated as a library here. The jsDelivr CDN lookup may
+        still identify it (find-lib-on-cdn, or the untrusted-library checks).
+        Otherwise, if minified it is reported by
+        minified-code, if obfuscated by obfuscated-code, and else it is
         scanned as the developer's own source.
       </p>
       <p>
@@ -51,8 +53,8 @@ flowchart TD
   A["A JavaScript or CSS file<br/>in the add-on"] --> Z{"Declared in a VENDOR file,<br/>or too small to be a bundle?"}
   Z -- yes --> S([skip])
   Z -- no --> L{"Raw content hash in the<br/>known-library database?"}
-  L -- no --> OK([no finding — minified-code /<br/>obfuscated-code, or scanned])
-  L -- yes --> ERR([INFO: undeclared library,<br/>named name@version])
+  L -- no --> OK([no finding: CDN lookup, minified-code /<br/>obfuscated-code, or scanned])
+  L -- yes --> ERR([INFO: undeclared library,<br/>named name and version])
 
   classDef err fill:#eaf1fb,stroke:#2c5aa0,color:#1b3a6b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;

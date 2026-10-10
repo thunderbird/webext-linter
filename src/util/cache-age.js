@@ -4,8 +4,8 @@
 //
 // Belongs here: the one age rule every cached download is held to (CACHE_MAX_AGE_DAYS).
 // Does NOT belong here: what is downloaded, or what a stale cache triggers - each resolver
-// decides that (src/schema/fetch.js, src/experiments/fetch.js, src/lib/library-hashes.js),
-// and the per-entry ages inside the CDN lookup cache (src/lib/cdn-lookup.js).
+// decides that (src/pipeline.js for the schemas, src/experiments/fetch.js,
+// src/lib/library-hashes.js).
 
 import fs from "node:fs";
 import { CACHE_MAX_AGE_DAYS } from "../config.js";

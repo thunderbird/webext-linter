@@ -20,12 +20,12 @@
         upstream release.
       </p>
       <p>
-        Before the review, every trusted and pinned VENDOR source is fetched once
+        When a check first asks for the vendor reading, every trusted and pinned VENDOR source is fetched once
         and compared against the packaged file. The comparison tolerates
         end-of-line differences. A single-file source is byte-compared against
         the fetched copy; a whole-package tarball source is matched by hashing
-        each file inside it. A file that matches is recorded as verified; one
-        that does not match is recorded as modified. This check reads those
+        each file inside it. A file that matches is recorded as verified, or as untrusted when its package is not widely
+        used. One that does not match is recorded as modified. This check reads those
         results, narrates the verified files as passes, and turns each modified
         result into a finding.
       </p>
@@ -35,7 +35,7 @@
         <pre class="mermaid">
 flowchart TD
   A["A trusted, pinned vendored file"] --> B{"Could the source<br/>be fetched?"}
-  B -- no --> X([reviewed as authored code —<br/>untrusted library])
+  B -- no --> X([untrusted-library, or<br/>untrusted-minified-library if minified])
   B -- yes --> C{"Bytes match the source<br/>(EOL-tolerant)?"}
   C -- yes --> OK([no finding — verified])
   C -- no --> ERR([ERROR: modified<br/>vendored library])

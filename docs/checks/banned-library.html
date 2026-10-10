@@ -29,9 +29,10 @@
         The policy is a small curated list —
         <code>assets/library-blocks.yaml</code> — because Mozilla publishes no
         machine-readable block database; it is kept in sync by hand from the
-        addons-linter documentation. Before the review, every pinned or identified
+        addons-linter documentation. When a check first asks for the vendor
+        reading, every pinned or identified
         <em>shipped</em> library is matched against this policy, once, in the same
-        network pre-step as the OSV audit. A hit is recorded with its version and
+        step as the OSV audit. A hit is recorded with its version and
         the policy reason; a <strong>banned</strong> hit also skips the OSV query
         for that library (it is rejected regardless). This check reads that result
         and emits one finding per hit, anchored at the declaration line or the

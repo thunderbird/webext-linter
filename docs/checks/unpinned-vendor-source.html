@@ -21,7 +21,7 @@
         review, so the bundled bytes cannot be verified against it.
       </p>
       <p>
-        Before the review, each declared source URL is classified offline. A
+        When the review first reads the vendored files, each declared source URL is classified offline. A
         source on a trusted host counts as pinned only when it names a specific
         version, tag, or full commit hash; a branch or an unversioned link does
         not. Sources that are pinned move on to the byte comparison, and sources
@@ -34,7 +34,7 @@
         <pre class="mermaid">
 flowchart TD
   A["A VENDOR entry's source URL"] --> B{"On a trusted host?"}
-  B -- no --> X([reviewed as authored code —<br/>untrusted library])
+  B -- no --> X([untrusted-library, or<br/>untrusted-minified-library if minified])
   B -- yes --> C{"Pinned to a version,<br/>tag, or commit?"}
   C -- yes --> OK([no finding — fetched<br/>and byte-compared])
   C -- no --> ERR([ERROR: unpinned<br/>vendored source])

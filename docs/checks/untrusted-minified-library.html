@@ -30,8 +30,8 @@
         review exemption, and unreviewable in this form, because the shipped
         bytes are machine-generated rather than readable. It cannot be reviewed
         as authored code the way a readable untrusted library can, so the
-        developer must ship the original, human-readable code or upload a source
-        code archive with build instructions.
+        developer must ship the library's readable build instead (in a source
+        review, include it in the archive).
       </p>
 
       <h2>Decision flow</h2>
@@ -63,7 +63,7 @@ flowchart TD
         be checked at all — so it is not trusted as a known dependency, and that
         because it is minified or otherwise machine-generated it cannot be
         reviewed in this form. It is asked to ship the library's readable build
-        instead, which need not be minified, or to drop the dependency.
+        instead, which is then reviewed as authored code.
       </div>
 
       <p class="source-note">

@@ -205,13 +205,6 @@ test("the loop's phases are refused outright when absent", () => {
   assert.throws(() => check(noPhases), /authors no `phases`/);
 });
 
-// A phase declares what one of its entries is answered WITH, beside the vocabulary that
-// answer may use. The two are one decision in two halves - a `verdict` phase names the
-// verbs it accepts, and the other two accept none - so a pair that disagrees is refused
-// here rather than when a hand-back first arrives, which may be never.
-//
-// It is read as DATA everywhere the loop asks "what shape is this entry, and what may come
-// back": src/report/handback.js entriesFor and answersOf, src/report/loop.js issue and
 // Every step that starts a sub-agent says whether to wait for it, and the two that are not
 // waited for say it in the SAME words. Two spellings of one instruction is a difference for
 // the agent to interpret, and it would interpret it - the files are named side by side in
@@ -264,6 +257,13 @@ test("the steps that start an agent each say whether it is waited for", () => {
   }
 });
 
+// A phase declares what one of its entries is answered WITH, beside the vocabulary that
+// answer may use. The two are one decision in two halves - a `verdict` phase names the
+// verbs it accepts, and the other two accept none - so a pair that disagrees is refused
+// here rather than when a hand-back first arrives, which may be never.
+//
+// It is read as DATA everywhere the loop asks "what shape is this entry, and what may come
+// back": src/report/handback.js entriesFor and answersOf, src/report/loop.js issue and
 // accept. A phase renamed in the yaml keeps its shape; nothing infers it from the name.
 test("a phase declares the kind of answer its entries take", () => {
   assert.deepEqual(

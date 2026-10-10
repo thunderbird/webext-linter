@@ -174,7 +174,7 @@ test("the feed of an XPI review", () => {
 });
 
 // A source code review computes the shipped XPI's data and the source's own as its checks
-// ask for each: the lock's install sources first, for the second check, then the source's
+// ask for each: the lock's install sources first, for lockfile-injection, then the source's
 // vendor reading and audits for the vulnerability checks, then both artifacts' parsed
 // sources, the XPI's first.
 test("the feed of a source code review", () => {
@@ -206,8 +206,8 @@ test("the feed of a source code review", () => {
   );
 });
 
-// A forged lock stops the review at the second check, which reads the lock's install sources
-// and nothing else: no library is audited, nothing is looked up on a CDN, nothing is parsed.
+// A forged lock stops the review at lockfile-injection, the first check to read any of the
+// review's data, which reads the lock's install sources alone: no library is audited, nothing is looked up on a CDN, nothing is parsed.
 test("a forged lock computes nothing but the lock's install sources", () => {
   const dir = addon("sca-lockfile-injection");
   assert.deepEqual(

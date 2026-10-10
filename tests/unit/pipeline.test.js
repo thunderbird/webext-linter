@@ -230,7 +230,7 @@ test("add-on: a shipped node_modules folder is reviewed like any other folder", 
     ),
     "code inside the shipped folder is reviewed at its own path"
   );
-  // committed-node-modules is sca:true: an installed tree is build output only where a
+  // committed-node-modules is input: sca: an installed tree is build output only where a
   // reviewer installs one, so it says nothing about a packaged add-on.
   assert.ok(
     !findings.some((f) => f.ruleId === "committed-node-modules"),
@@ -279,8 +279,8 @@ const lodashListing = () => {
   };
 };
 
-// AUDITS #49: unpkg refusing the listing used to read as "lodash is not shipped", which
-// dropped the declaration before its audit and passed the add-on clean.
+// AUDITS #49: a refused listing read as "lodash is not shipped" would drop the declaration
+// before its audit and pass the add-on clean.
 test("a listing unpkg does not answer ends the review instead of passing it", async (t) => {
   answering(t, {
     [LISTING]: 503,
@@ -297,7 +297,7 @@ test("a listing unpkg does not answer ends the review instead of passing it", as
   );
 });
 
-// An OSV outage used to record nothing, which reads as a release with no advisories.
+// An OSV outage that recorded nothing would read as a release with no advisories.
 test("an OSV query that gets no answer ends the review", async (t) => {
   answering(t, {
     [LISTING]: lodashListing(),

@@ -166,7 +166,7 @@ function aliasIsResolved(path) {
  * The call-argument form matters as much as the declarator one and is the same event:
  * the root leaves for a parameter whose uses are resolved nowhere, so every check
  * reading the usage set is blind to whatever happens to it. Recording it is what lets
- * those checks know they are blind - permissions.js fails open on a limitation, so a
+ * those checks know they are blind - permissions.js reads a limitation as blindness, so a
  * permission used only through such a parameter escalates instead of being called
  * unused. Left unrecorded, the two forms differ only in syntax and the scan believes
  * itself fully sighted.

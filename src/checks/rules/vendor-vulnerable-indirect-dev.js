@@ -2,8 +2,8 @@
 // that one of its declared build dependencies pulls in, whose installed version has known
 // OSV advisories.
 // It is never shipped, but the SCA reviewer builds the add-on from source, so it
-// runs on the reviewer's machine during the build. The audit ran in the network
-// pre-step (src/vendor/verify.js verifyScaDependencies -> auditLockedPackages),
+// runs on the reviewer's machine during the build. The audit ran behind ctx.vendor()
+// (src/vendor/verify.js verifyScaDependencies -> auditLockedPackages),
 // which enumerated the committed lock file and recorded each hit on
 // addon.vendor.treeDevVulnerabilities; this check maps that set to findings via
 // the shared lib/vuln-findings.js mapper, anchored at the lock-file line.

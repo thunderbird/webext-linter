@@ -48,10 +48,10 @@
         since every shipped file is its subject, so the entry carries no location line.
       </p>
       <p>
-        Nothing about the build enters into it. A submission can be rejected for a build
-        that cannot be reproduced &mdash; a missing <code>package.json</code>, an unusable
-        lock &mdash; and still be told its archive holds the whole XPI: the two answer
-        different questions, and a rejection printed beside this takes nothing back.
+        Nothing about the build enters into it. A submission whose build
+        cannot be reproduced (a missing <code>package.json</code>, an unusable
+        lock) is
+        rejected, and its review stops before this check runs.
       </p>
 
       <h2>Decision flow</h2>

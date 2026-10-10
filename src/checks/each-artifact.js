@@ -46,12 +46,11 @@ export function perArtifact(fn) {
     const findings = [];
     const escalations = [];
     for (const one of [ctx.xpi, ctx.sca].filter(Boolean)) {
-      // The feed note carries the id of the check that is running, and runChecks binds it
-      // to the ROUTED ctx only - which here is the `all` ctx, not these. Without this the
-      // per-artifact ctxs would carry whatever note a previously routed check left on them,
-      // filing this check's verdicts under that one. Assigned rather than projected onto a
-      // copy: buildReachability memoizes in a WeakMap keyed on the ctx OBJECT, so a fresh
-      // object per check would recompute the reachability graph every time.
+      // runChecks sets the feed note on the ROUTED ctx only, which here is the `all` ctx.
+      // A per-artifact ctx no check was routed to has none, and this check's notes would
+      // be dropped. Assigned rather than projected onto a copy: buildReachability memoizes
+      // in a WeakMap keyed on the ctx OBJECT, so a fresh object per check would recompute
+      // the reachability graph every time.
       one.note = ctx.note;
       const out = (await fn(one, check)) ?? {};
       findings.push(...(out.findings ?? []));

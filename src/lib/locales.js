@@ -1,8 +1,8 @@
 // The add-on's _locales state, scanned once and shared. The locale-messages-invalid,
 // default-locale-missing, default-locale-unused and trademark checks read these
 // results (missing-english-localization takes isEnglishLocale only), so each file
-// scan runs a single time per review - the same "compute
-// once, checks read it" pattern as addon.outboundSinks / addon.bundled.
+// scan runs a single time per review - the same "compute once, checks read it"
+// pattern as getOutboundSinks.
 //
 // Belongs here: localeMessages - each _locales/<lang> folder and its messages.json, read
 // the way Thunderbird reads them; localeKey - the key Thunderbird files a locale under;

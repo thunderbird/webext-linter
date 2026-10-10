@@ -57,7 +57,7 @@ export const CODE_EXTENSIONS = new Set([
 
 /** Binary archive extensions. A committed archive in a source submission is build
  *  output / a decoy, never authored source; the committed-build-artifact check rejects
- *  one anywhere in --sca-root, unused-files flags one shipped in the XPI, and the build
+ *  one anywhere in --sca-root, unused-files flags one shipped in the XPI, and the
  *  build trace never collects one (binary, not build input). */
 export const ARCHIVE_EXTENSIONS = new Set([
   ".zip",

@@ -133,9 +133,8 @@ export const MAX_NOTE = 2000;
  */
 export const PROMPT_SKIPS = ["llm-skip-summary", "llm-skip-manual"];
 
-// Vendor verification (src/vendor/verify.js) is the only stage that makes
-// outbound network requests. It runs once, before the review, and the checks
-// read its result.
+// Vendor verification and the dependency audits (src/vendor/verify.js), and the network
+// gate every request passes through (src/util/net.js).
 
 /**
  * The hosts vendor verification fetches a declared source from. A source on any

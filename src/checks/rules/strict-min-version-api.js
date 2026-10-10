@@ -22,7 +22,7 @@
 // Belongs here: the version_added vs strict_min comparison. Does NOT
 // belong here: resolving usage against the schema over the WebExtension tree (->
 // src/lib/api-resolution.js), extracting browser.* usage (src/parse/api-usage.js via
-// ctx.apiUsages), reading schema annotations (SchemaIndex), or the wording /
+// ctx.apiUsages()), reading schema annotations (SchemaIndex), or the wording /
 // severity (assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";

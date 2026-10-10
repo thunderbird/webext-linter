@@ -105,8 +105,8 @@ export const DEPENDENCY_FILE_RE =
   /(^|\/)(package\.json|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml)$/i;
 
 /**
- * Broader doc test for reachability's mention net: a named doc, a dependency
- * manifest.json / lock file, or ANY doc-extension file (even unnamed, e.g. data.txt) -
+ * Broader doc test for reachability's mention net: a named doc, a package.json or
+ * lock file, or ANY doc-extension file (even unnamed, e.g. data.txt) -
  * all prose / metadata, never a runtime loader. Wider than isDocMetadataFile on
  * purpose: being an unnamed doc TYPE is reason enough to keep a file out of the
  * mention scan set, but not always reason enough to stop reporting it unused.
@@ -305,7 +305,7 @@ export function cmpVersion(a, b) {
  * strict_min_version counts as oldest: it fails any min but satisfies any max.
  * Shared by the manifest-key permission grounding, the permission-prompts filter,
  * and the unused-permission producer's token selection.
- * @param {?object} manifest.json
+ * @param {?object} manifest  The manifest.json's parse.
  * @param {?string} min  Inclusive lower bound, or null.
  * @param {?string} max  Inclusive upper bound, or null.
  * @returns {boolean}

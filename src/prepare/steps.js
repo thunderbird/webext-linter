@@ -9,8 +9,8 @@
 // of its source in the same work folder (`rescued/`, beside `sca/`), whose dependencies an
 // agent reduces to what the release build uses, and then, where that is not enough,
 // audit-fixes. The copy is audited after each, and a clean one is reviewed instead of the
-// original. A copy still vulnerable after both is deleted, and the original is done, marked
-// UNRESCUED: it is reviewed like any other source, and its vulnerability checks stop it.
+// original. A copy still vulnerable after both is deleted, and the original is done: it is
+// reviewed like any other source, and its vulnerability checks stop it.
 //
 // Nothing the agent did is verified except by that audit. A dependency edit the build
 // cannot use fails the build, and one that changed shipped code fails the question whether

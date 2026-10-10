@@ -1,6 +1,6 @@
 // Reports a bundled third-party library that the Mozilla hash DB did not recognize
 // but whose exact bytes were found on the jsDelivr CDN (src/lib/cdn-lookup.js,
-// run in the pipeline before this check). A CDN match is promoted into the vendored
+// run before ctx.bundled() answers). A CDN match is promoted into the vendored
 // family - tagged `library` with a `libraryId` and a `cdn` source URL - so it is
 // excluded from minified-code and OSV-audited like a hash-DB library; this check is
 // the advisory "you shipped a known library undeclared - here is the VENDOR entry to

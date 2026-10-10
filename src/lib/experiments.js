@@ -1,7 +1,8 @@
 // Manifest-derived helpers for Thunderbird Experiment add-ons (experiment_apis).
 // Pure readers of the manifest.json, shared by the pipeline (schema registration),
-// the experiment verifier (src/experiments/verify.js), reachability seeding, and
-// the experiment-overrides-api check.
+// the extraction pass (src/review/products.js), the experiment verifier
+// (src/experiments/verify.js), and the experiment-overrides-api and
+// unrecognized-manifest-key checks.
 //
 // Belongs here: extracting the declared API paths, the API namespaces, members and
 // manifest.json keys the bundled schemas declare, the implementation file refs, and the

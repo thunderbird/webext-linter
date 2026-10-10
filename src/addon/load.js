@@ -517,10 +517,11 @@ export function scaRootRelative(value, scaRoot, flag = "SCA path") {
  * The same question without the throw: where `value` sits inside `scaRoot`, or null when it
  * sits outside it.
  *
- * Two layers ask it - the CLI guard, which turns the answer into a usage line naming the
- * flag, and the loader, which turns it into an archive key - and they must not be able to
- * disagree, so both ask HERE. Either path may be written absolute or relative; both are
- * resolved first, so "inside" is a fact about the filesystem rather than about spelling.
+ * Every layer that asks it - the CLI guard, which turns the answer into a usage line naming
+ * the flag, the loader, which turns it into an archive key, and the preparation
+ * (src/prepare/steps.js, ./sca-root.js) - must not be able to disagree, so all ask HERE.
+ * Either path may be written absolute or relative. Both are resolved first, so "inside" is
+ * a fact about the filesystem rather than about spelling.
  * @param {string} value
  * @param {string} scaRoot
  * @returns {?string} A posix path relative to scaRoot ("" for the root itself), or null.
@@ -537,15 +538,14 @@ export function relativeInside(value, scaRoot) {
 }
 
 /**
- * Whether a path, as WRITTEN, steps out of the tree it is relative to: any segment that is
- * "..", not only a leading one.
+ * Whether a path steps out of the tree it is relative to: any segment that is "..", not
+ * only a leading one.
  *
- * Named once because two layers ask it of two different things - src/cli.js of the folder
- * flags it is handed (including --sca-root, which never reaches the path math here), and
- * scaRootRelative of every value it resolves, for the callers that never pass a CLI at all.
- * Asked of the written form rather than of the resolved one, so "src/../other" is refused
- * as surely as "../other": a value that names a folder by the way out of another is a
- * value someone will misread, whether or not it lands back inside.
+ * Named once because several layers ask it: relativeInside and src/report/handback.js of a
+ * path already made relative, and src/report/sweep.js of a path as an agent WROTE it. Asked
+ * of the written form there, so "src/../other" is refused as surely as "../other": a value
+ * that names a file by the way out of a folder is one someone will misread, whether or not
+ * it lands back inside.
  * @param {string} value
  * @returns {boolean}
  */

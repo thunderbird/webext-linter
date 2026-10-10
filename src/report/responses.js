@@ -111,7 +111,7 @@ export function renderFindings(findings, registry, mode) {
       f.item != null && template != null && !template.includes(PLACEHOLDER);
     // How its entry asks for repeats to be LISTED, resolved here beside the other two
     // display decisions rather than where the review is numbered - orderReview reads it
-    // off the item and needs no registry, so its six callers cannot order differently.
+    // off the item and needs no registry, so its callers cannot order differently.
     f.collapse = registry.collapseOf(f.ruleId);
   }
 }

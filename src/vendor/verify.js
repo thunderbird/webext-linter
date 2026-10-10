@@ -1,10 +1,10 @@
-// The network half of vendor resolution, run ONCE before normalize and review.
-// resolveVendor (offline) settled the no-url / untrusted / unpinned cases into
-// addon.vendor.results. This step does the work that needs the network and
-// writes its results into the same shared store, so the review-phase checks
-// only read it (nothing is fetched twice).
+// The network half of vendor resolution, run once per artifact when a check first asks
+// for its vendor data (src/review/products.js). resolveVendor (offline) settled the
+// no-url / untrusted / unpinned cases into addon.vendor.results. This step does the work
+// that needs the network and writes its results into the same shared store, so the
+// checks only read it (nothing is fetched twice).
 //
-// Three sources are verified:
+// Four sources are verified:
 //   - a VENDOR entry declaring a DIRECTORY: fetch the upstream release as one
 //     archive - a github /tree/ repo ZIP, or a pinned npm package's registry
 //     tarball - and match every packaged file under the directory against its
@@ -176,7 +176,7 @@ export async function verifyVendor(addon, net = defaultNet, blocks) {
   // is what makes this match possible on the next submission.
   // A `not-popular` outcome is reconciled into addon.bundled.untrusted later, by
   // applyUnverifiedVendor (src/lib/bundled.js), because addon.bundled is
-  // built AFTER this step in the pipeline. It stays in vendor.results until then.
+  // built AFTER this step (src/review/products.js). It stays in vendor.results until then.
 }
 
 /**
@@ -952,7 +952,7 @@ function vulnSeverity(v) {
   if (typeof ds === "string" && ds) {
     return ds.toLowerCase();
   }
-  // A CVSS vector string under severity[]: map its base score band if present.
+  // A CVSS vector string under severity[] carries no numeric base score to band.
   const score = (v?.severity ?? []).find((s) => s?.score)?.score;
   if (typeof score === "string" && /^CVSS:/i.test(score)) {
     return "unknown"; // a vector without a numeric base - leave unlabelled
@@ -1310,7 +1310,7 @@ async function verifyFolder(entry, addon, vendor, net) {
  *
  * It also ANSWERS whether the declaration describes this artifact at all, which is
  * what the return value carries. The question is decidable here because this runs on
- * the shipped XPI alone (verifyVendor's only caller is the shipped-artifact phase),
+ * the shipped XPI alone (verifyVendor runs only in an XPI review, src/review/products.js),
  * and an XPI carries its vendored libraries as-is - a submission that bundles or
  * minifies them belongs in a source-code review instead. So a release none of the
  * packaged files came from is a release this add-on does not carry, and the caller

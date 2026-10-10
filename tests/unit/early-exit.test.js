@@ -58,9 +58,9 @@ test("a warning or info from a blocking check aborts nothing", () => {
 // check is what aborts a review. Under that policy the submission is rejected, so not asking
 // a reviewer to reproduce its build is the whole point of aborting.
 //
-// Three checks can reach here this way, and only three: no check declared `warning` may
-// declare `review-early-exit` at all (assertEarlyExit refuses it), so the ones that do are
-// the severity:auto pair plus banned-library, whose band is their own.
+// Two checks can reach here this way, and only two: no check declared `warning` may declare
+// `review-early-exit` at all (assertEarlyExit refuses it), so the ones that do are the
+// severity:auto pair, vendor-vulnerable and banned-library, whose band is their own.
 test("--warnings-as-errors makes a moderate advisory abort the review", () => {
   const strict = registry.withPolicy({ warningsAsErrors: true });
   const moderate = finding("vendor-vulnerable", SEVERITY.WARNING);

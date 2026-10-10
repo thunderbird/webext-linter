@@ -20,7 +20,7 @@
       <p class="lead">
         The VENDOR file may be named <code>VENDOR</code>, <code>VENDOR.md</code>,
         <code>VENDORS</code> or <code>VENDORS.md</code>, matched without regard to
-        case, and it lives in the package root. This check fires when more than one
+        case, at any depth in the package. This check fires when more than one
         of them is present.
       </p>
       <p>
@@ -36,7 +36,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Files in the package root"] --> B{"How many name themselves<br/>the VENDOR file?"}
+  A["Files in the package,<br/>at any depth"] --> B{"How many name themselves<br/>the VENDOR file?"}
   B -- none --> S([skip — no VENDOR file])
   B -- one --> OK([no finding — it is read<br/>by the other vendor checks])
   B -- "more than one" --> ERR([ERROR: more than one<br/>VENDOR file])

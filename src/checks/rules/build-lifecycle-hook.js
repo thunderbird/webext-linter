@@ -7,9 +7,6 @@
 // is, so the scan cannot settle it: each hook escalates for a reviewer to read. The hook
 // and its command ride the locus, so the hooks collapse into one entry.
 //
-// The setup build analysis (analyzeBuild) also looks at hooks, but only
-// with a token; this is the deterministic, always-on backstop.
-//
 // Belongs here: reading the install-hook scripts and escalating each. Does NOT
 // belong here: parsing package.json for anything else (build "scripts" reachability is
 // src/build/collect.js), or the wording (-> assets/registry.yaml).

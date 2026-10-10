@@ -91,7 +91,7 @@ export const TREE_LOCKS = [
 /**
  * The lock this submission installs from, or null when it commits none.
  *
- * ONE selection, shared by all three readers here, so a submission cannot be rejected over
+ * ONE selection, shared by every reader here, so a submission cannot be rejected over
  * one lock while a version is pinned and a tree audited out of another. Chosen by NAME in
  * TREE_LOCKS order and never by whether the file parses or yields anything: that is what
  * the package managers do - npm reads the one it prefers and fails on it rather than
@@ -162,9 +162,9 @@ const NODE_MODULES = "node_modules/";
 // v6-v8 "/name@version(peers)" and v9 "name@version".
 const PNPM_KEY_RE = /^\/?(@?[^@/]+(?:\/[^@/]+)?)[@/]([0-9][^()/]*)/;
 
-// Parsed lock files, per add-on, per file. Both questions above read the same
-// lock, and classifyDeps asks the first one once per unpinned dependency, so the
-// parse is memoized rather than repeated. Keyed weakly: the cache dies with the
+// Parsed lock files, per add-on, per file. Every reader here reads the same lock,
+// and classifyDeps asks lockedVersion once per unpinned dependency, so the parse is
+// memoized rather than repeated. Keyed weakly: the cache dies with the
 // add-on it describes.
 /** @type {WeakMap<Addon, Map<string, ?object>>} */
 const parseCache = new WeakMap();
@@ -200,8 +200,7 @@ function parsedLock(addon, file) {
 }
 
 /**
- * The exact version a lock file pins `name` to, or null if no lock present
- * resolves it. Tries npm, then pnpm.
+ * The exact version the governing lock pins `name` to, or null when it does not.
  *
  * Deliberately NOT rebuilt on lockedPackages: this consults the HOISTED
  * top-level entry only, so a nested copy of a package cannot pin a declared

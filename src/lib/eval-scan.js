@@ -3,8 +3,7 @@
 // fetch().then(eval) hits) over authored sources, plus the manifest.json CSP flags.
 // The eval-call / function-constructor / string-timer / csp-unsafe-* checks and
 // remote-eval all read this one result, so the AST scan runs a single time per
-// review - the same "compute once, checks read it" pattern as
-// addon.outboundSinks / addon.bundled.
+// review - the same "compute once, checks read it" pattern as getOutboundSinks.
 //
 // The `hits` are scoped to files OUTSIDE the pure WebExtension tree. A
 // WebExtension sandbox cannot execute eval / the Function constructor /
@@ -18,7 +17,7 @@
 //
 // Belongs here: getEvalScan - reading each authored source's precomputed
 // remote-js scan (remoteJsOf) outside the pure WebExtension tree, skipping
-// non-authored code, and reading the manifest.json CSP, memoized on the addon.
+// non-authored code, and reading the manifest.json CSP, memoized on ctx.cache.
 //
 // Does NOT belong here: the AST walk (-> src/parse/remote-js.js), CSP parsing
 // (-> src/scan/csp.js), the WebExtension vs Experiment partition (->
@@ -46,7 +45,7 @@ import { buildReachability } from "./reachability.js";
  */
 
 /**
- * Dynamic-code-execution signals, scanned once and memoized on the addon so the
+ * Dynamic-code-execution signals, scanned once and memoized on ctx.cache so the
  * eval-related checks share the result.
  * @param {RunContext} ctx
  * @returns {Promise<EvalScan>}

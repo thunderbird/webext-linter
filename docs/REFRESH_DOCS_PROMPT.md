@@ -140,8 +140,8 @@ that no longer exist.
      ERROR/WARNING/INFO terminal.
    - `manual-checks` entries have no rule module and no branches at all: the entry is
      emitted unconditionally for every review. Give those pages no invented decision
-     gate and no `no finding` terminal - the only real gate is that an invalid
-     Experiment drops the whole list.
+     gate and no `no finding` terminal - the only real gate is that an aborted
+     review drops the whole list.
 5. **Update the sidebar.** Rebuild the `CHECKS` array in `docs/index.html` so it
    lists every check in registry order, grouped by category; `NAV` combines
    `GUIDE_PAGES` with `CHECKS`. If there are multiple categories, add the

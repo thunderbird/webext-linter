@@ -142,7 +142,7 @@ function globalRootOf(node, scope) {
 /**
  * Resolve a call's callee member chain through the index: the full segment path
  * from the API root ([...base.prefix, ...chain property names]), or null when any
- * link is dynamic (memberName) or the base does not denote an API object. So
+ * link is dynamic (memberPropName is null) or the base does not denote an API object. So
  * `rt.getURL(x)` with `const rt = messenger.runtime` resolves to
  * {root: "messenger", segments: ["runtime", "getURL"]}, same as the direct call.
  * Deliberately all-or-nothing, in contrast to api-usage's upward chain climb

@@ -1,7 +1,7 @@
 // Flags a package the committed lock file marks as declared and installs for the build
 // only, whose version has known OSV advisories. Build dependencies are never shipped, but
 // in SCA mode the reviewer builds the add-on from source, so a vulnerable build tool runs on
-// the reviewer's machine. The OSV audit ran in the network pre-step (src/vendor/verify.js
+// the reviewer's machine. The OSV audit ran behind ctx.vendor() (src/vendor/verify.js
 // verifyScaDependencies -> auditLockedPackages), recording each hit on
 // addon.vendor.devVulnerabilities, anchored at the lock entry; this check maps that set to
 // findings via the shared lib/vuln-findings.js mapper - identical to vendor-vulnerable, but

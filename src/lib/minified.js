@@ -105,7 +105,7 @@ function longestLine(text) {
 }
 
 /**
- * The most statement starts on any single line of `text`. Fail-open: source we cannot
+ * The most statement starts on any single line of `text`. Fail-closed: source we cannot
  * parse (already past the long-line gate) stays minified, so unparseable packed code is
  * not waved through - errorRecovery makes this rare. Source Babel parses but cannot walk
  * (a walkError, src/parse/ast.js) is answered the same way; the extraction pass, which

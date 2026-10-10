@@ -2,11 +2,11 @@
 // and shared. The disguised-* and cleartext-transmission (deterministic),
 // privacy-policy, and data-exfiltration (review) checks read this one list, so the
 // AST scan runs a single time per review - the same "compute once, checks read
-// it" pattern as addon.bundled / addon.vendor.
+// it" pattern as ctx.bundled() / ctx.vendor().
 //
 // Belongs here: getOutboundSinks - reading each authored source's precomputed
 // network-sinks scan (networkSinksOf), skipping non-authored code, and
-// memoizing the result on the addon - plus sinkLabel, the one way a sink names
+// memoizing the result on ctx.cache - plus sinkLabel, the one way a sink names
 // itself on a locus line, so the checks that share the list also share how it
 // reads.
 //
@@ -24,7 +24,7 @@ import { trunc } from "./util.js";
 /** @typedef {SinkHit & {file: string}} FileSink */
 
 /**
- * The add-on's outbound network sinks, scanned once and memoized on the addon
+ * The add-on's outbound network sinks, scanned once and memoized on ctx.cache
  * so every check shares the result.
  * @param {RunContext} ctx
  * @returns {Promise<FileSink[]>}

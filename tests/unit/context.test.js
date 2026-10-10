@@ -132,8 +132,8 @@ test("buildXpiCtx carries the XPI's own sources", async () => {
 // so the WebExtension API/permission/eval checks never false-positive on Services or
 // ChromeUtils - but a check that reviews a file for what it IS (minified, obfuscated, a
 // known library) must still see it: privileged code shipped unreadable is worse, not
-// better. Such a check reads ctx.artifact.files and ctx.artifact.experiment as one set of files, us, which
-// is only possible because both are allowlisted and, for an Experiment inside the add-on,
+// better. Such a check reads ctx.artifact.files and ctx.artifact.experiment as one set of
+// files, which is only possible because both are allowlisted and, for an Experiment inside the add-on,
 // keyed in the same frame.
 test("a check can merge the source and Experiment views off ctx.artifact", () => {
   const source = addonWith({ "app.js": "export const x = 1;" });
@@ -182,7 +182,7 @@ test("buildScaCtx puts the archive on ctx.artifact, with its sources", async () 
   });
   // ONE ctx over the archive: the build checks and the code checks read the same object,
   // and what separates them is the route each declared. Everything the archive carries is
-  // reachable, buildReview (what setup found in the build) included - the input:sca checks
+  // reachable, buildReview (the build trace) included - the input:sca checks
   // read it.
   const archive = {
     ...source,

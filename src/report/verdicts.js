@@ -64,7 +64,7 @@ const VERBS = new Set(VERB_NAMES.filter((v) => v !== String(VERB.ask)));
  * answering for a reviewer. The other way needs no refusal - `picked` already found
  * every answer a label spells, so anything left is a sentence, whatever it happens to
  * read like.
- * @param {string} answer  The value the verdict file carries for this item.
+ * @param {string} answer  The answer recorded for this item.
  * @param {boolean} asked  Whether the phase that answered this item is the one that puts
  *   a question to a person. The PHASE decides it, never the item: a case the agent sent
  *   on with `ask` is answered by a reviewer while keeping the section it was filed under.
@@ -159,15 +159,14 @@ function reviewerNote(text) {
  * Settle the review against `verdicts`, in place: withdraw findings, clear to-do items,
  * and turn a reported one into a finding of its own check.
  *
- * Every answer must land. An index past the end of the list throws: it means the file was
- * written against a different review, and applying the rest of it would settle cases
- * nobody looked at. The caller has already checked the file names this add-on
- * (src/pipeline.js).
+ * Every answer must land. An index past the end of the list throws: it means the answers
+ * were recorded against a different review, and applying the rest would settle cases
+ * nobody looked at.
  * @param {object} args
  * @param {import("./finding.js").Finding[]} args.findings  Mutated in place.
  * @param {import("./finding.js").ManualItem[]} args.manual  Mutated in place.
  * @param {Map<number, string>} args.verdicts  Index to the answer that settles it, as the
- *   verdict file carries it: a reviewer's answer for a question, a verb for anything else.
+ *   state records it: a reviewer's answer for a question, a verb for anything else.
  * @param {import("../checks/registry.js").Registry} args.registry
  * @param {(x: object) => string} [args.labelOf]
  * @param {(x: import("./order.js").OrderedItem) => boolean} args.asking  Whether a person

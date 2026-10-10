@@ -191,7 +191,7 @@ function helpText(checkIds) {
   ];
 
   // What an LLM agent runs, in the order it runs: --llm-sca-review prepares a source code
-  // review (and is over before one starts), then --llm-review asks - leaving out whatever
+  // review, then --llm-review asks - leaving out whatever
   // its two --llm-skip-* flags name, given to either - and --llm-handback applies the
   // answers. They get a section of their own, because none is a report format: the first
   // two replace the report with a prompt, the last rebuilds it from settled verdicts.
@@ -214,7 +214,7 @@ function helpText(checkIds) {
     ],
     [
       "--llm-sca-review",
-      "Read the add-on argument as a submission FOLDER - one built .xpi and one archive of the source it was built from - and print the prompt for preparing a source code review of it, then exit without reviewing anything. It creates the review's work folder at its default place, beside the .xpi, and the prompt has the source extracted into it and the roots its reader worked out handed back with --llm-handback and that work folder. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the source (rescued/ in the work folder) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags: of the copy, or of the source as submitted, whose review the vulnerabilities then abort. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any --sca-* flag, which is what it exists to produce.",
+      "Read the add-on argument as a submission FOLDER - one built .xpi and one archive of the source it was built from - and print the prompt for preparing a source code review of it. It creates the review's work folder at its default place, beside the .xpi, and the prompt has the source extracted into it and the roots its reader worked out handed back with --llm-handback and that work folder. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the source (rescued/ in the work folder) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags: of the copy, or of the source as submitted, whose review the vulnerabilities then abort. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any --sca-* flag, which is what it exists to produce.",
     ],
     [
       "--llm-handback <dir>",
@@ -721,8 +721,8 @@ export async function main(argv) {
     return 2;
   }
 
-  // --llm-sca-review prepares a review rather than running one, so it shares nothing with
-  // the flags below and is settled here, in full, before any of them are read.
+  // --llm-sca-review prepares a review and starts it itself, so it shares nothing with the
+  // flags below and is settled here, in full, before any of them are read.
   if (values["llm-sca-review"]) {
     const given = SCA_FLAGS.filter((f) => values[f]);
     if (given.length) {
@@ -735,8 +735,8 @@ export async function main(argv) {
     }
     if (values["llm-review"] || values["llm-handback"]) {
       writeToStderr(
-        "--llm-sca-review comes BEFORE a review: it prints how to start one and runs " +
-          "none, so it cannot be combined with the flags that run or settle one.\n"
+        "--llm-sca-review starts its own review, so it cannot be combined with the " +
+          "flags that run or settle one.\n"
       );
       return 2;
     }
@@ -906,10 +906,11 @@ export async function main(argv) {
     return 2;
   }
 
-  // THE REVIEW LOOP, every pass after the first. No add-on is named and none is read: the
-  // deterministic review ran ONCE, in the --llm-review run, and its result is in the state
-  // in the work folder handed back. That is why there is no add-on path here, and why
-  // nothing can shift under an index between passes.
+  // A HAND-BACK: a step of preparing a source code review, or a pass of the review loop
+  // after the first (runHandback). No add-on is named: a preparation's record holds it, and
+  // a loop pass reads the review from the state in the work folder, because the
+  // deterministic review ran ONCE, when the review started. So nothing can shift under an
+  // index between passes.
   if (values["llm-handback"]) {
     return runHandback(values["llm-handback"], registry);
   }
@@ -1015,9 +1016,10 @@ export async function main(argv) {
 }
 
 /**
- * Run a review from parsed values: the one start both of its callers share - a command
- * line naming an add-on (main), and the hand-back that finds a source code review prepared
- * (runPreparePass), which builds the values from the preparation's record.
+ * Run a review from parsed values: the one start every caller shares. A command line naming
+ * an add-on (main), --llm-sca-review for an Experiment the review rejects (main), and the
+ * hand-back that finds a source code review prepared (runPreparePass), which builds the
+ * values from the preparation's record.
  *
  * Reading the options can fail the same way the review can - a bad option value is a bad
  * config, not a bad add-on - so it is inside the caller's catch and reported like one.
@@ -1030,9 +1032,9 @@ export async function main(argv) {
 async function startReview(values, addonPath, workFolder, registry) {
   const opts = pipelineOptsFromValues(values);
   // --cache-clear: wipe every cache dir up front so the resolvers re-fetch each source from
-  // scratch during this review, exactly as on a first run. Lists every cache dir opt - a new
-  // cache added to pipelineOptsFromValues must be added here too, or --cache-clear would
-  // silently skip it.
+  // scratch during this review, exactly as on a first run. cacheDirs lists every cache dir
+  // opt - a new cache added to pipelineOptsFromValues must be added there too, or
+  // --cache-clear would silently skip it.
   if (values["cache-clear"]) {
     clearCaches(cacheDirs(opts));
   }
@@ -1158,8 +1160,8 @@ function clearCaches(dirs) {
  * Does not include `addonPath` (that comes from the positional path).
  *
  * Every path opt leaves here ABSOLUTE. This is the one layer that knows what each flag is
- * written relative to - the working directory for --sca-root, and --sca-root itself for the
- * two that name a folder inside it - so it is the layer that resolves them. Downstream then
+ * written relative to - the working directory for --sca-root, and --sca-root itself for
+ * --sca-exp-source, which names a folder inside it - so it is the layer that resolves them. Downstream then
  * derives what it needs (an archive key, a containment test) from real paths rather than
  * re-deciding what a relative string meant: one spelling reaching several functions is one
  * spelling answered several ways.
@@ -1167,7 +1169,7 @@ function clearCaches(dirs) {
  * @returns {Partial<PipelineOpts>}
  */
 function pipelineOptsFromValues(values) {
-  // Resolved FIRST, because the other two are resolved against it.
+  // Resolved FIRST, because --sca-exp-source is resolved against it.
   const scaRoot = values["sca-root"]
     ? path.resolve(values["sca-root"])
     : undefined;

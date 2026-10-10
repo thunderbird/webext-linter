@@ -38,7 +38,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The reviewed source archive"] --> B{"Is it a rescued copy?<br/>(its work folder's preparation<br/>names an original)"}
+  A["The reviewed source archive"] --> B{"Is it a rescued copy?<br/>(its root lies in the work<br/>folder's rescued/)"}
   B -- no --> OK([no finding])
   B -- yes --> C{"Compare the lock<br/>with the original's"}
   C -- "the same releases, declared the same" --> OK

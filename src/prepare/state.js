@@ -54,7 +54,7 @@ const READ_ONLY = 0o444;
  *   review file, and the next hand-back settles and audits them;
  * - `reduce` and `fix`: the rescued copy in `rescued/`, waiting for its dependencies to be
  *   reduced, then audit-fixed, and audited again after each;
- * - `done`: the review may start here, and the record holds what its command is built from.
+ * - `done`: the review may start here, and the record holds the flags it starts with.
  *   A folder whose rescue was given up is `done` too, its roots back in `sca/`.
  */
 export const PREPARE_STEP = Object.freeze({
@@ -73,7 +73,7 @@ export const PREPARE_STEP = Object.freeze({
  *   include the Experiment folder.
  * @property {Record<string, string|boolean>} flags  The flags the review is to be run with,
  *   as parsed (src/cli.js), named without their dashes. A folder among them is absolute, so
- *   the command means the same wherever it is run.
+ *   it names the same folder wherever the review starts.
  * @property {?{scaRoot: string, scaExpSource: ?string}} roots  The settled roots, absolute
  *   and real, once known: inside `sca/`, or inside `rescued/` while a rescue runs and once it
  *   came out clean - the tree the next step, or the review, reads.

@@ -215,6 +215,12 @@ export const FINAL_SLOTS = ["{{details}}", "{{tally}}"];
  */
 export const LOOP_VERBS = VERB_NAMES;
 
+/** What one entry of a phase is answered WITH, which decides the shape the entry is handed
+ *  over in and what the linter accepts back: `hints` is what a sweep found, a list per
+ *  check; `verdict` is one of the phase's own verbs; `words` is a person's answer, theirs
+ *  to write and not ours to judge. Named as data because the loop reads it rather than the
+ *  phase's name - a phase carries its vocabulary AND the kind of answer that vocabulary
+ *  belongs to, and neither is inferred from what it is called. */
 export const ANSWER_KINDS = ["hints", "verdict", "words", "none", "end"];
 
 /** The answer kinds of a phase that asks about no entry: its work is what its steps do, so

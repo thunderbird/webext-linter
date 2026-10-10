@@ -84,7 +84,7 @@ export default {
 /**
  * Does a packaged JS file use ES module syntax? Reads the precomputed moduleSyntaxOf
  * verdict; a target the extraction pass never saw is not a .js script (see run()).
- * @param {Map<string, object>} sources  ctx.jsSources keyed by file.
+ * @param {Map<string, object>} sources  ctx.jsSources() keyed by file.
  * @param {string} file  Add-on-relative path.
  * @returns {boolean}
  */

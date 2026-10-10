@@ -1,6 +1,6 @@
 // Rejects a declared third-party file whose bytes do not match what its pinned
 // source serves: it appears modified from the upstream release. The byte
-// comparison (EOL-tolerant) ran once in the pre-step (src/vendor/verify.js),
+// comparison (EOL-tolerant) ran once behind ctx.vendor() (src/vendor/verify.js),
 // which recorded each fetched file as `verified` or `modified` on addon.vendor;
 // this check only reads those results. It narrates every verified file to the
 // feed as a [pass] and turns each `modified` result into a finding.

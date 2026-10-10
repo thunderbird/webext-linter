@@ -57,11 +57,11 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told that HTML is written via the named sink and that the
-        only sanctioned way to insert markup is the Sanitizer API
-        (<code>Element.setHTML()</code>, Thunderbird 148+) — sanitizing the content
-        is not a pass — with textContent for plain text or a template/CSS for
-        existing markup, and a link to the guide.
+        The add-on is told that inserting markup via the named sink will soon no
+        longer be permitted, that the
+        only supported way is the Sanitizer API
+        (<code>Element.setHTML()</code>, Thunderbird 148+), and to consider
+        textContent, a template element or CSS instead, with a link to the guide.
       </div>
 
       <p class="source-note">

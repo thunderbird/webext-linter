@@ -13,17 +13,16 @@
 // REVIEWER would have been asked. Tying the second to the first would mean a table of
 // items to strip, maintained beside the table of checks that strip them, drifting apart.
 //
-// Asked of the ITEM, and not only of the section it was filed under: a case the agent
-// could not settle is sent on to a reviewer KEEPING its section, so asking where it was
-// filed would leave it listed as reviewer work under a closing line saying nobody was
-// asked. The item carries where it is asked (`askedIn`, src/report/phases.js phaseOf).
+// Asked of the ITEM, and not only of the section it was filed under: a check can ask its
+// question in a phase of its own, which the item carries (`askedIn`, src/report/phases.js
+// phaseOf), and such an item is reviewer work whatever section lists it.
 //
 // Read from BOTH renderers, which is why it lives here rather than in either: the plain
-// review applies it in src/pipeline.js, and the --llm-review loop asks it again on every
-// phase (src/report/loop.js), because what settles a submission is not fixed when the
-// checks run: a pass may report a case no check had judged yet. A finding that aborts the
-// review is never put to anyone - an aborted review verifies nothing - so what aborted a
-// review stays aborting it.
+// review asks it in src/pipeline.js, and the --llm-review loop asks it again on every pass
+// (src/report/loop.js), because a pass may report a case no check had judged yet. Only the
+// plain report keeps the items nobody would be asked (withoutQuestions). An aborted loop
+// hands over no to-do item at all. A finding that aborts the review is never put to
+// anyone, as an aborted review verifies nothing, so what aborted it stays aborting it.
 //
 // Belongs here: whether a review was aborted, and what an aborted review withholds. Does NOT
 // belong here: how the closing block is drawn (-> src/report/format.js), which items a
@@ -157,11 +156,9 @@ export function earlyExitOf(ordered, answers, registry) {
  * abortsReview).
  *
  * A reviewer would have been asked an item that is a question by its section, or that
- * names the phase a person is asked it in (`askedIn`): a check that asks its question in
- * a phase of its own, or a case the agent sent on to a reviewer while it keeps the section
- * it was filed under. Both are facts about the item itself, so this answers the same
- * whichever ordering it is handed - including one taken after verdicts renumbered the
- * review.
+ * names the phase a person is asked it in (`askedIn`), as a check that asks its question in
+ * a phase of its own does. Only the plain report calls this (src/pipeline.js): an aborted
+ * --llm-review hands over no to-do item at all (src/report/loop.js settle).
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
  * @returns {ManualItem[]}
  */

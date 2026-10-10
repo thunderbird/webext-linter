@@ -18,7 +18,7 @@
 deterministic-phase:
 # THE HEAD OF THE PHASE: every check that can stop a review on its own, ordered so a
 # submission they reject stops before the rest of the review is computed - a check that
-# reports an error ends the run (src/checks/registry.js abortsReview). The Experiment verdict
+# reports an error stops the review (src/checks/registry.js abortsReview). The Experiment verdict
 # first, read from records alone; then the source archive's package.json and lock and where
 # the lock installs from, which read nothing the review computes; then lockfile-injection,
 # which may ask the npm registry; then the checks that need the vendor reading (the OSV audit,
@@ -49,10 +49,7 @@ deterministic-phase:
 # sca-lock-file-invalid, the other file this build cannot run without.
 # NOT silent when the shipped XPI IS the archive's own code: that the shipped
 # bytes are readable says nothing about whether this source produces them, which is what
-# reproducing the build establishes, and with no build there is nothing to reproduce. The
-# question of whether the archive held the whole XPI is a separate one
-# (sca-xpi-fully-included-in-archive), and prints beside this rejection rather than in
-# place of it.
+# reproducing the build establishes, and with no build there is nothing to reproduce.
 - title: Missing package.json
   severity: error
   review-early-exit: unreproducible-build
@@ -934,8 +931,8 @@ deterministic-phase:
 # BEFORE the build - a known supply-chain vector (a postinstall that fetches and runs
 # remote code). Legitimate uses exist (a husky `prepare`), and only the command itself
 # says which this is, so every hook escalates for a reviewer to read rather than being
-# asserted as a finding. The setup build analysis also covers hooks, but only with a
-# token; this is the offline backstop. The hook and its command ride the locus.
+# asserted as a finding. undeclared-build-source asks about hooks too, among every other
+# build step, while this check names each hook. The hook and its command ride the locus.
 # review-early-exit, and the first ESCALATING check to carry one - which works because only
 # a FINDING halts a review, and an escalated case becomes one only when it is reported at
 # this check's severity (src/report/verdicts.js). So a benign `husky prepare` that is
@@ -1109,7 +1106,7 @@ deterministic-phase:
   response: |-
     One or more files listed in "{{item}}" are not present in the submission. Add each file to the submission, or remove its entry from "{{item}}".
 
-# More than one file in the package root names itself the VENDOR file, so which
+# More than one file, at any depth, names itself the VENDOR file, so which
 # one the review reads would be decided by the archive's order rather than by the
 # developer.
 - title: More than one VENDOR file

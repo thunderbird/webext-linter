@@ -136,7 +136,7 @@ export class SchemaIndex {
     this.globalTypes = new Map();
     /** @type {Set<string>} "<namespace>.<method>" of file-loading functions */
     this.fileLoaderMethods = new Set();
-    /** @type {Map<string, ?Set<string>>} the API namespaces a valid Experiment adds
+    /** @type {Map<string, ?Set<string>>} the API namespaces an Experiment adds
      * (e.g. "calendar", "calendar.items"), each mapped to the members its own schema
      * declares - or null where no schema could be read, which leaves the namespace
      * OPAQUE and everything under it known. Filled by registerExperimentApis,
@@ -518,7 +518,7 @@ export class SchemaIndex {
   }
 
   /**
-   * Register what a valid Experiment adds: each namespace it declares (dotted, e.g.
+   * Register what an Experiment adds: each namespace it declares (dotted, e.g.
    * "calendar.items"), mapped to the members its own schema declares.
    *
    * A null member set leaves the namespace OPAQUE - the namespace and everything under

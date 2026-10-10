@@ -86,7 +86,7 @@ const SEV_COLOR = {
  * @property {number} [manifestVersion]
  * @property {string[]} [checksRun]  Ids of the checks that ran.
  * @property {string} [summaryFile]  Where the --llm-review prompt's reader writes the
- *   add-on description for the reviewer - in the review's work folder, beside the item
+ *   add-on description for the reviewer - in the review's work folder, beside the review
  *   file (src/util/dest.js workPaths). Named by this tool, written and read by neither.
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
  *   in a source code review, where the reviewer reproduces the build.
@@ -171,7 +171,7 @@ export function formatText(review) {
 }
 
 /**
- * The report body lines - Found Issues, the three to-do sections, and the ATN tail -
+ * The report body lines - Found Issues and the four to-do sections -
  * WITHOUT the trailing Summary tally.
  *
  * The order, the entry grouping and the numbering all come from orderReview: this
@@ -254,6 +254,21 @@ function stepLines(n, text, blocks = []) {
   return out;
 }
 
+/** The prompt values that are handed to a step as a BLOCK rather than substituted into
+ *  its prose: printed line for line, never re-wrapped. Three are tables, and a wrapped row
+ *  is one nobody can read back - the schema block because its reader looks values up in
+ *  it, the Review Details block and the closing tally because the reviewer is given them as
+ *  they stand. The hand-back command and the review file's path are the other two: the
+ *  command is run exactly as printed, and the path is the file the agent opens - a line
+ *  break inside either names a folder or a file that does not exist. */
+const BLOCK_VALUES = new Set([
+  "schema",
+  "details",
+  "tally",
+  "command",
+  "review",
+]);
+
 /**
  * One pass of the REVIEW LOOP, printed: the prompt the agent reads this time round.
  *
@@ -287,21 +302,6 @@ function stepLines(n, text, blocks = []) {
  *   first.
  * @returns {string[]}
  */
-/** The prompt values that are handed to a step as a BLOCK rather than substituted into
- *  its prose: printed line for line, never re-wrapped. Three are tables, and a wrapped row
- *  is one nobody can read back - the schema block because its reader looks values up in
- *  it, the Review Details block and the closing tally because the reviewer is given them as
- *  they stand. The hand-back command and the review file's path are the other two: the
- *  command is run exactly as printed, and the path is the file the agent opens - a line
- *  break inside either names a folder or a file that does not exist. */
-const BLOCK_VALUES = new Set([
-  "schema",
-  "details",
-  "tally",
-  "command",
-  "review",
-]);
-
 export function loopPromptLines(texts, phase, steps, values, preamble = []) {
   // Everything BUT the value blocks, which promptProse and stepLines lay out unwrapped.
   const fill = (text) =>
@@ -1134,10 +1134,6 @@ function preSweepSection(sweep, trees) {
  * Summary: issue counts by severity plus one count per to-do section, in the body's
  * section order (the two extended sections, then the two standard ones - which every
  * submission gets unless the review was aborted early, src/report/early-exit.js).
- *
- * Also printed on its own by a --llm-review run, which has no report body for it to close:
- * without it that run's output would not say whether the add-on is ready to sign off or
- * still has work waiting.
  * @param {import("./finding.js").Finding[]} issues
  * @param {import("./finding.js").ManualItem[]} [manual]
  * @param {?object} [preSweep]  The blind-spot sweep this review carries, counted with the

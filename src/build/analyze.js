@@ -1,7 +1,6 @@
-// The SCA build review's ONE look at the build, run in the setup phase (like resolveVendor
-// for dependencies): it narrows the source view to the files the build reaches
-// (collectBuildFiles) and returns what it found, which the pipeline stores on
-// addon.buildReview for the input:sca checks to read deterministically.
+// The SCA build review's ONE look at the build, run when a check first asks for it
+// (src/review/products.js, ctx.buildReview()): it traces the files the build reaches
+// (collectBuildFiles) and returns what it found for the input:sca checks to read.
 //
 // Nothing here says what a build DOES. Reproducing it is the reviewer's attestation and no
 // analysis substitutes for it, so every build routes to them and this records only what the

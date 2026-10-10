@@ -123,9 +123,9 @@ export function displayLine(text) {
  * reviewer named and a file name a submission chose, and neither may forge a line. What
  * stays is every ordinary space, because a path is a NAME - "/reviews/my  add-on" is not
  * the same folder as "/reviews/my add-on", and displayLine's collapse would print one for
- * the other. The reader hands that path back (the verdict file names the add-on it
- * settled, and the review compares it), so a printed path that is not the path is a round
- * trip that fails on a line nobody wrote wrong.
+ * the other. The reader hands that path back (--llm-handback names the work folder), so a
+ * printed path that is not the path is a round trip that fails on a line nobody wrote
+ * wrong.
  *
  * What goes is everything some renderer ENDS A LINE on, not just the three ASCII ones.
  * Every such character that is also a control - vertical tab, form feed, NEL - displayText

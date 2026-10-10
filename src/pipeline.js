@@ -263,8 +263,7 @@ export async function runPipeline(opts) {
 async function reviewSubmission(opts, work, prepared) {
   const { addonPath } = opts;
   // `addonPath` IS the shipped add-on's path, absolute, and the single value the run has
-  // for "which add-on": what the report names, what a verdict file is checked against, and
-  // where the description file goes. An Addon carries no path of its own
+  // for "which add-on": what the report names, and where the work folder and its files go. An Addon carries no path of its own
   // (src/addon/load.js), and nothing here resolves one - the arg-array reader did.
   // SCA (source code archive) mode is on when --sca-root is set, and the whole of that
   // root is the review source. It splits the review across TWO add-on artifacts with a fixed
@@ -379,8 +378,7 @@ async function reviewSubmission(opts, work, prepared) {
   /** The review target (it becomes ctx.artifact): the readable source, or the shipped .xpi - whichever
    * of `target-source` / `target-xpi` this review runs. */
   let reviewTarget;
-  /** The submitted source archive: read by `source-archive`, reused by `target-source`
-   * and `build`. */
+  /** The submitted source archive: read by `source-archive`, reused by `target-source`. */
   let scaArchive;
   /** The review schema (indexed) and the stamps meta publishes for it. */
   let schema;
@@ -474,10 +472,8 @@ async function reviewSubmission(opts, work, prepared) {
     },
 
     // The submitted source archive, walked ONCE and split here into the two views every
-    // later reader takes its part from (src/addon/load.js scaViews). It is done here
-    // because the XPI-only ADVICE below asks both what KIND of source the archive carries
-    // and whether the shipped scripts ARE that source - which needs bytes, not just names.
-    // Reading them costs nothing extra: the store reads a file once and the views share it.
+    // later reader takes its part from (src/addon/load.js scaViews). Reading them costs
+    // nothing extra: the store reads a file once and the views share it.
     "source-archive": () => {
       if (setupFacts.sca) {
         // Said where the source archive is read, because that is what it is about, and said
@@ -728,7 +724,7 @@ async function reviewSubmission(opts, work, prepared) {
     applicationVersion: schema.applicationVersion,
     manifestVersion: webExtManifestRecord?.json?.manifest_version ?? null,
     checksRun: checksRun.map((c) => c.id),
-    // The three to-do origins as ONE list, each carrying its own `default-note` where the
+    // The two to-do origins as ONE list, each carrying its own `default-note` where the
     // check authors one: a case a check escalated and a by-hand manual check are the same
     // item to whoever answers it, so the note is appended to both in one place.
     manualReview: withDefaultNotes(
