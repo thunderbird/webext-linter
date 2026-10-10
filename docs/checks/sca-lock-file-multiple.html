@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>More than one lock file</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>More than one lock file <span class="badge error">error</span></h1>
+        <div class="check-id">sca-lock-file-multiple</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission that commits more than one lock file at its
+        root: any two of <code>npm-shrinkwrap.json</code>,
+        <code>package-lock.json</code> and <code>pnpm-lock.yaml</code>.
+      </p>
+      <p>
+        Every check reads one lock file, the first of those three that is
+        present. The build, though, picks its package manager by the lock file
+        it finds: a <code>pnpm-lock.yaml</code> means
+        <code>pnpm install --frozen-lockfile</code>. With two, the dependency
+        tree the review audits need not be the tree the reviewer installs: a
+        harmless npm lock beside a vulnerable pnpm one would pass the audit. So
+        only one package manager&rsquo;s lock file may be committed.
+      </p>
+      <p>
+        An <code>npm-shrinkwrap.json</code> beside a
+        <code>package-lock.json</code> counts too, although npm itself reads that
+        pair consistently: the rule is simply one lock file, and keeping one is
+        all the developer is asked. A <code>yarn.lock</code>, or a lock file in a
+        subfolder, is read by nothing and does not count.
+      </p>
+      <p>
+        The preparation of a source code review (<code>--llm-sca-review</code>)
+        asks the same question before it audits the lock, and neither audits nor
+        rescues such a source.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The submitted source archive"] --> B{"How many of npm-shrinkwrap.json,<br/>package-lock.json, pnpm-lock.yaml<br/>at its root?"}
+  B -- "none or one" --> OK([no finding])
+  B -- "two or more" --> ERR([ERROR: one finding per lock file])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told it commits more than one lock file, which lock file
+        each package manager uses, and to remove the others. Each lock file is
+        listed on its own location line.
+      </div>
+
+      <div class="outcome">
+        <strong>It aborts the review</strong>
+        This check settles the submission on its own (&ldquo;Build process
+        issues&rdquo;), and runs right after the other lock file checks, before
+        anything reads either lock. Nothing further is put to a reviewer, and no
+        build step is handed out.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/sca-lock-file-multiple.js</code>,
+        <code>src/vendor/locks.js</code> (<code>committedLocks</code>) and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

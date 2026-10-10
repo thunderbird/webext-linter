@@ -122,6 +122,24 @@ deterministic-phase:
     The committed lock file cannot be read, so the dependencies it installs cannot be checked. Please run the install again and commit the lock file it writes. The supported package managers are npm and pnpm.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
+# Deterministic (SCA only): more than one lock file at the source root. Every check reads the
+# governing lock - the first in TREE_LOCKS order (src/vendor/locks.js committedLocks) - while
+# the build picks its package manager by the lock it finds (a pnpm-lock.yaml means pnpm). With
+# two, the tree the review audits need not be the tree the reviewer installs: a harmless npm
+# lock beside a vulnerable pnpm one would pass the audit. So more than one aborts the review,
+# and the preparation neither audits nor rescues such a source (src/prepare/audit.js). This
+# includes npm-shrinkwrap.json beside package-lock.json, which npm itself reads consistently:
+# the rule is literal, and keeping one is all the developer is asked. One location line per
+# lock, so the report names them all.
+- title: More than one lock file
+  severity: error
+  review-early-exit: unreproducible-build
+  check: sca-lock-file-multiple
+  input: sca
+  response: |-
+    The submitted source includes more than one lock file. The review checks one lock file and the build installs from one, so only the lock file of the package manager you use may be committed: package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm. Please remove the others and commit only that one.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
 # Deterministic (SCA only): a committed .npmrc that SETS a package registry (registry=
 # or @scope:registry=, case-insensitive) is rejected outright - a legitimate build never
 # needs to set the registry (npm defaults to the public one), and any setting can only

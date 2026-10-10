@@ -1,0 +1,23 @@
+── Found Issues ──
+
+Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
+
+1) The submitted source includes more than one lock file. The review checks one lock file and the build installs from one, so only the lock file of the package manager you use may be committed: package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm. Please remove the others and commit only that one.
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+ - [SCA] package-lock.json
+ - [SCA] pnpm-lock.yaml
+
+[XPI] = source file in the submitted XPI
+[SCA] = source file in the submitted source code archive
+
+You can run an automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
+The review was not completed and the report is incomplete due to the following issues:
+- Build process issues
+
+── Summary ──
+
+2 error(s), 0 hold, 0 warning(s), 0 info,
+0 extended code review item(s), 0 extended manual review item(s),
+0 standard code review item(s), 0 standard manual review item(s)

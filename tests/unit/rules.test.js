@@ -78,6 +78,7 @@ import scaXpiFullyIncluded from "../../src/checks/rules/sca-xpi-fully-included-i
 import scaPackageFileInvalid from "../../src/checks/rules/sca-package-file-invalid.js";
 import scaLockFileMissing from "../../src/checks/rules/sca-lock-file-missing.js";
 import scaLockFileInvalid from "../../src/checks/rules/sca-lock-file-invalid.js";
+import scaLockFileMultiple from "../../src/checks/rules/sca-lock-file-multiple.js";
 import cleartextTransmission from "../../src/checks/rules/cleartext-transmission.js";
 import privacyPolicy from "../../src/checks/rules/privacy-policy.js";
 import nativeMessaging from "../../src/checks/rules/native-messaging.js";
@@ -872,6 +873,7 @@ test("where a check runs: the route says it, or the flag says what a route canno
     "sca-package-file-invalid",
     "sca-lock-file-missing",
     "sca-lock-file-invalid",
+    "sca-lock-file-multiple",
     "unpopular-source-dependency",
     "vendor-vulnerable-dev",
     "vendor-vulnerable-indirect",
@@ -1055,6 +1057,7 @@ test("every check's severity is pinned to its band", async () => {
       "sca-invalid-symlink",
       "sca-lock-file-invalid",
       "sca-lock-file-missing",
+      "sca-lock-file-multiple",
       "sca-package-file-invalid",
       "sca-package-file-missing",
       "shipped-icon-trademark-imitation",
@@ -1908,6 +1911,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "sca-invalid-symlink",
     "sca-lock-file-invalid",
     "sca-lock-file-missing",
+    "sca-lock-file-multiple",
     "sca-package-file-invalid",
     "sca-package-file-missing",
     "undeclared-build-source",
@@ -2571,6 +2575,32 @@ test("sca-lock-file-missing fires whenever a source ships a package.json and no 
   );
   // No package.json -> nothing to pin.
   assert.deepEqual(await run({}), []);
+});
+
+// ---- sca-lock-file-multiple (SCA deterministic: one lock, so the audit and the build agree) ----
+
+// Every check reads the governing lock while the build installs from the lock it finds, so a
+// source that commits more than one is reported at each of them; one lock, or none, is not.
+test("sca-lock-file-multiple reports each lock when more than one is committed", async () => {
+  const run = async (names) => {
+    const files = Object.fromEntries(names.map((n) => [n, "{}"]));
+    return (
+      await scaLockFileMultiple.run(
+        withManifest({ artifact: addonOf(files, ARTIFACT_SCA) })
+      )
+    ).findings.map((f) => f.file);
+  };
+  assert.deepEqual(await run(["pnpm-lock.yaml", "package-lock.json"]), [
+    "package-lock.json",
+    "pnpm-lock.yaml",
+  ]);
+  assert.deepEqual(await run(["npm-shrinkwrap.json", "package-lock.json"]), [
+    "npm-shrinkwrap.json",
+    "package-lock.json",
+  ]);
+  assert.deepEqual(await run(["package-lock.json"]), []);
+  assert.deepEqual(await run(["yarn.lock", "package-lock.json"]), []);
+  assert.deepEqual(await run([]), []);
 });
 
 // ---- sca-lock-file-invalid (SCA deterministic: the lock must be readable) ----

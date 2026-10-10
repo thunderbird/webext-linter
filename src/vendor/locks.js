@@ -23,8 +23,8 @@
 //
 // Belongs here: lockedVersion(addon, name), lockedPackages(addon), unreadableLock(addon),
 // lockSourceGaps(addon), githubInstalls(addon), localInstalls(addon),
-// lockInstallTargets(addon), findLockInjections(addon), governingLock, and the per-format
-// readers. Does NOT belong here:
+// lockInstallTargets(addon), findLockInjections(addon), governingLock, committedLocks, and
+// the per-format readers. Does NOT belong here:
 // reading or shaping package.json (-> ./package-file.js), deciding pinned/unpinned
 // (-> ./resolve.js), whether the lock matches package.json (the package manager's own
 // question, at install), and the verification that follows (-> ./verify.js).
@@ -109,8 +109,21 @@ export const TREE_LOCKS = [
  * @returns {?string}  A TREE_LOCKS filename, or null.
  */
 export function governingLock(addon) {
+  return committedLocks(addon)[0] ?? null;
+}
+
+/**
+ * Every lock this submission commits at its root, in TREE_LOCKS order - the files
+ * governingLock chooses from, so the two never disagree about which files count. A source
+ * review refuses more than one (sca-lock-file-multiple, and the preparation's audit): the
+ * checks read the governing lock, while the build picks its package manager by the lock it
+ * finds, so with two of them the tree audited need not be the tree installed.
+ * @param {?Addon} addon
+ * @returns {string[]}  TREE_LOCKS filenames.
+ */
+export function committedLocks(addon) {
   const files = submissionFiles(addon);
-  return TREE_LOCKS.find((file) => files?.has(file)) ?? null;
+  return TREE_LOCKS.filter((file) => files?.has(file));
 }
 
 // A concrete released version. Anything else in a `version` field (a git ref, a

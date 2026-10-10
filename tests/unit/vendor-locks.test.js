@@ -19,6 +19,8 @@ import {
   lockSourceGaps,
   githubInstalls,
   localInstalls,
+  committedLocks,
+  governingLock,
 } from "../../src/vendor/locks.js";
 import { resolveVendor } from "../../src/vendor/resolve.js";
 import { verifyScaDependencies } from "../../src/vendor/verify.js";
@@ -30,6 +32,30 @@ function fakeAddon(files, directories = []) {
   }
   return { files: map, directories };
 }
+
+// ---- committedLocks / governingLock ----
+
+// The locks a submission commits are its root's TREE_LOCKS names, in TREE_LOCKS order whatever
+// order the archive lists them in, and the governing lock is the first: the two answer from
+// one lookup, so they never disagree about which files count. Anything else - a yarn.lock, a
+// lock in a subfolder - is read by nothing, so it is not a lock here either.
+test("committedLocks lists the root's locks in TREE_LOCKS order; the first governs", () => {
+  const addon = fakeAddon({
+    "pnpm-lock.yaml": "",
+    "yarn.lock": "",
+    "sub/package-lock.json": "{}",
+    "package-lock.json": "{}",
+    "npm-shrinkwrap.json": "{}",
+  });
+  assert.deepEqual(committedLocks(addon), [
+    "npm-shrinkwrap.json",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+  ]);
+  assert.equal(governingLock(addon), "npm-shrinkwrap.json");
+  assert.deepEqual(committedLocks(fakeAddon({ "yarn.lock": "" })), []);
+  assert.equal(governingLock(fakeAddon({})), null);
+});
 
 // ---- lockedVersion ----
 

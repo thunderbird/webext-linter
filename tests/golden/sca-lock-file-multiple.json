@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "action": "review",
+    "xpi": "<root>/tests/addons/sca-lock-file-multiple/xpi",
+    "xpiRoot": "<work>/xpi/",
+    "xpiFile": "xpi",
+    "scaRoot": "<root>/tests/addons/sca-lock-file-multiple/src",
+    "reviewed": true,
+    "schemaSource": "cache:release-mv3",
+    "schemaBranch": "release-mv3",
+    "schemaChannel": "release",
+    "applicationVersion": "128.0",
+    "manifestVersion": 3,
+    "checksRun": [
+      "experiment-not-allowed",
+      "sca-package-file-missing",
+      "sca-package-file-invalid",
+      "sca-lock-file-missing",
+      "sca-lock-file-invalid",
+      "sca-lock-file-multiple"
+    ],
+    "earlyExit": {
+      "intro": "The review was not completed and the report is incomplete due to the following issues:",
+      "reasons": [
+        {
+          "id": "unreproducible-build",
+          "text": "Build process issues"
+        }
+      ]
+    }
+  },
+  "summary": {
+    "error": 2,
+    "hold": 0,
+    "warning": 0,
+    "info": 0,
+    "byRule": {
+      "sca-lock-file-multiple": 2
+    }
+  },
+  "findings": [
+    {
+      "ruleId": "sca-lock-file-multiple",
+      "severity": "error",
+      "file": "package-lock.json",
+      "loc": null,
+      "item": null,
+      "hint": null,
+      "artifact": "SCA",
+      "message": "The submitted source includes more than one lock file. The review checks one lock file and the build installs from one, so only the lock file of the package manager you use may be committed: package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm. Please remove the others and commit only that one.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+    },
+    {
+      "ruleId": "sca-lock-file-multiple",
+      "severity": "error",
+      "file": "pnpm-lock.yaml",
+      "loc": null,
+      "item": null,
+      "hint": null,
+      "artifact": "SCA",
+      "message": "The submitted source includes more than one lock file. The review checks one lock file and the build installs from one, so only the lock file of the package manager you use may be committed: package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm. Please remove the others and commit only that one.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+    }
+  ]
+}

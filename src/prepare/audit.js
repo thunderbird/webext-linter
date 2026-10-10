@@ -9,12 +9,13 @@
 // about its work is read: this audit is the whole judgement, and a copy it cannot read in full
 // is not clean.
 //
-// It is the lock audit and nothing else. A lock it cannot trust to say what is installed - an
-// entry installed from a source the audit does not read, or one that installs another
-// release than it names - is not audited at all: its tree is not read in full, so it is
-// neither clean nor rescuable, and the review it is handed to stops on it. Whatever else a
-// review can stop for - another abort reason, an Experiment, the run's --checks-* or band
-// policy - is the review's to decide, never predicted here. It reads the lock the way the review reads it (src/pipeline.js loads
+// It is the lock audit and nothing else. A lock it cannot trust to say what is installed - one
+// of several committed, an entry installed from a source the audit does not read, or one that
+// installs another release than it names - is not audited at all: its tree is not read in
+// full, so it is neither clean nor rescuable, and the review it is handed to stops on it.
+// Whatever else a review can stop for - another abort reason, an Experiment, the run's
+// --checks-* or band policy - is the review's to decide, never predicted here. It reads the
+// lock the way the review reads it (src/pipeline.js loads
 // the archive, src/review/products.js audits its dependencies), with the same functions,
 // so the lists it answers with are the ones the review's vulnerability checks read.
 //
@@ -27,6 +28,7 @@ import { loadSourceArchive, scaViews } from "../addon/load.js";
 import { resolveVendor } from "../vendor/resolve.js";
 import { auditScaDependencies } from "../vendor/verify.js";
 import {
+  committedLocks,
   findLockInjections,
   governingLock,
   lockSourceGaps,
@@ -83,8 +85,11 @@ export async function auditRoot(roots, { net, cacheDir } = {}) {
     scaExpSource: roots.scaExpSource ?? undefined,
   });
   // Asked before the audit, which would otherwise vouch for releases the install does not
-  // fetch: the review stops on either, and nothing is asked of OSV for such a lock.
+  // fetch: the review stops on each of these, and nothing is asked of OSV for such a lock.
+  // More than one lock comes first, since it needs no network: the audit would read one while
+  // the build installs from another.
   if (
+    committedLocks(archive).length > 1 ||
     lockSourceGaps(archive).length > 0 ||
     (await findLockInjections(archive, { net, cacheDir })).length > 0
   ) {

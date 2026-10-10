@@ -283,14 +283,14 @@ not the developer's, so accepting it is a judgement a person owns), and
 so no scan of its surface settles what it does).
 
 Some findings abort the review outright. A check can declare that it does by naming the
-reason the report gives (`review-early-exit:` in the registry) - today seventeen do, across
+reason the report gives (`review-early-exit:` in the registry) - today eighteen do, across
 five reasons: `experiment-not-allowed` names *Experiment APIs not accepted*,
 `lockfile-injection` names *lock file entries that install another release*, the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
-names *disallowed library versions*, and the ten that
+names *disallowed library versions*, and the eleven that
 decide a source submission cannot be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
-`lock-foreign-source`, `build-registry-redirect`, `build-lifecycle-hook`,
+`sca-lock-file-multiple`, `lock-foreign-source`, `build-registry-redirect`, `build-lifecycle-hook`,
 `undeclared-build-source`, `build-succeeds` and `build-reproduces-xpi` - name *a build that
 cannot be reproduced*. These lead the review, ordered so a submission they reject stops
 before the rest is computed: `experiment-not-allowed`; then the source archive's package.json
@@ -380,6 +380,7 @@ machine.
 | `privacy-policy` | Data transmitted by an overt API to a remote host the developer chose (fixed in the add-on, not entered by the user) - one case per transmission site, naming its host. A host the add-on assembles while it runs is reported too, marked rather than named, since dropping it would hide the site the tool can say least about. Routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
 | `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, aborts the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce. Whether the archive held the whole XPI is a separate question, so `sca-xpi-fully-included-in-archive` prints beside this rejection rather than in place of it. |
 | `sca-package-file-invalid` | A `package.json` that is present but unusable - it does not parse, or it parses to something other than a JSON object - so the build it defines cannot be run (error, aborts the review). Presence is decided by name and usability by reading, so exactly one of this and the check above ever speaks. |
+| `sca-lock-file-multiple` | A source submission that commits more than one lock file at its root (any two of `npm-shrinkwrap.json`, `package-lock.json`, `pnpm-lock.yaml`) (error, aborts the review). Every check reads one lock, while the build picks its package manager by the lock it finds, so with two the tree audited need not be the tree installed. The preparation neither audits nor rescues such a source. |
 | `sca-lock-file-invalid` | A committed lock file that cannot be read: it does not parse, or it is not a recognisable npm or pnpm lock (error). The dependency audit reads the installed tree from it, so the review is aborted. Whether a readable lock matches `package.json` is left to `npm ci` / `pnpm install --frozen-lockfile` at the build. |
 | `sca-dependencies-changed` | The source reviewed is a rescued copy (see [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review)): its dependencies were reduced to what the release build uses, or audit-fixed, to get past known vulnerabilities. Says so once, at `package.json`, and tells the developer to run their package manager's audit, since their own files still have the vulnerabilities (info). Compared lock to lock: silent for a source that is no rescued copy, or a copy whose lock installs what the original's did. |
 | `lockfile-injection` | A lock entry that names one release and installs another: its `version` says 1.2.2 while its `resolved` URL (or pnpm's `resolution.tarball`) fetches 1.2.1, or another package (error, aborts the review). The audit asks about the name and version, the install fetches the URL. A URL on the registry's tarball path is compared offline, any other registry URL is asked of the registry once and cached (`--cache-npm-registry-dir`). The second check, so a forged lock stops the review before the lock is audited, and the preparation does not audit or rescue such a lock. |

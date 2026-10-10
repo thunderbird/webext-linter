@@ -376,6 +376,22 @@ test("a forged lock is neither audited nor rescued", async () => {
   cleanup(work);
 });
 
+// More than one lock is a source the audit cannot trust either: it would read one while the
+// build installs from another. Not audited - no request reaches OSV - and not rescued, and
+// the review it is handed to stops on it (sca-lock-file-multiple).
+test("a source with more than one lock is neither audited nor rescued", async () => {
+  const work = workFolder({
+    "package.json": packageFile(),
+    "package-lock.json": npmLock(),
+    "pnpm-lock.yaml": "lockfileVersion: '9.0'\nimporters:\n  .: {}\n",
+  });
+  const at = await first(work, noNet);
+  assert.equal(at.next, "review");
+  assert.equal(at.record.step, PREPARE_STEP.done);
+  assert.ok(!fs.existsSync(workPaths(work).rescued), "no copy is made");
+  cleanup(work);
+});
+
 test("a source the audit cannot read in full is not rescued", async (t) => {
   await t.test("no lock at all", async () => {
     const work = workFolder({ "package.json": packageFile() });

@@ -1,0 +1,6 @@
+{
+  "_comment": "SCA (src/ + xpi/) whose source commits both a package-lock.json and a pnpm-lock.yaml. Every check reads the governing lock (the npm one, first in TREE_LOCKS order) while the build would install with pnpm from pnpm-lock.yaml, so the tree audited need not be the tree installed. sca-lock-file-multiple reports each lock at its file and stops the review there, before anything reads either lock. Decided offline, no fetch.",
+  "expect": {
+    "sca-lock-file-multiple": ["package-lock.json", "pnpm-lock.yaml"]
+  }
+}
