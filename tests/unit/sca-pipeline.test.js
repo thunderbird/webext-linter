@@ -382,12 +382,9 @@ test("SCA e2e: a flat layout audits the root lock file's dependencies", async ()
 });
 
 // A third-party library bundled into the readable SOURCE (a committed copy the Mozilla
-// hash DB misses) that is NOT declared in package.json gets the full identification the
-// XPI review runs: a jsDelivr content-hash match (so it is recognized as a library -
-// excluded from content review, not rejected by minified-code) and an OSV audit (so a
-// vulnerable one is caught by vendor-vulnerable). Without that pass over the SCA source
-// this file would be rejected as minified and its vulnerability missed.
-test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-audited", async () => {
+// hash DB misses) that is NOT declared in package.json is identified by its jsDelivr
+// content hash and audited on OSV, so a vulnerable one is caught by vendor-vulnerable.
+test("SCA e2e: an undeclared source-bundled library is OSV-audited", async () => {
   const LIB = `var s=0;${"s=s+1;".repeat(240)}`; // one dense line of statements -> minified
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const libHash = rawSha256(Buffer.from(LIB));
@@ -461,16 +458,79 @@ test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-au
       vendorNet,
       cdnLookupCache: cdnCache,
     });
-    // Identified on the CDN -> library -> exempt from minified-code (which would reject an
-    // unrecognized minified file in the readable source).
-    assert.ok(
-      !has(findings, "minified-code", (f) => /lib\.min\.js/.test(f.file)),
-      "the CDN-identified source library is not rejected as minified"
-    );
-    // OSV-audited on the SOURCE -> vendor-vulnerable.
     assert.ok(
       has(findings, "vendor-vulnerable", (f) => /leftpad/.test(f.item ?? "")),
       "the undeclared source-bundled library is OSV-audited"
+    );
+  } finally {
+    [xpi, src, cdnCache].forEach((d) =>
+      fs.rmSync(d, { recursive: true, force: true })
+    );
+  }
+});
+
+// The same undeclared library, identified on jsDelivr, is a library and not authored
+// code, so minified-code leaves it alone. "a minified file in the source is rejected by
+// minified-code" below is the miss case with the same bytes.
+test("SCA e2e: an undeclared source-bundled library the CDN identifies is not rejected as minified", async () => {
+  const LIB = `var s=0;${"s=s+1;".repeat(240)}`; // one dense line of statements -> minified
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const libHash = rawSha256(Buffer.from(LIB));
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir({
+    "manifest.json": JSON.stringify({
+      manifest_version: 3,
+      name: "L",
+      version: "1.0",
+      background: { scripts: ["app.js"] },
+    }),
+    "app.js": "console.log('app');\n",
+    "vendor/lib.min.js": LIB, // undeclared: not in package.json
+    "package.json": JSON.stringify({ name: "l", version: "1.0.0" }),
+    "package-lock.json": JSON.stringify({
+      lockfileVersion: 3,
+      packages: { "": {} },
+    }),
+  });
+  // A net that recognizes the vendored file's hash on jsDelivr (popular) and finds no
+  // advisory for it, so the review runs to minified-code.
+  const vendorNet = {
+    fetchBytes: async () => Buffer.from(""),
+    fetchJson: async (url) => {
+      if (url.includes("api.npmjs.org/downloads/")) {
+        return { downloads: 50000 };
+      }
+      if (url.includes("api.github.com/repos/")) {
+        return { stargazers_count: 5000 };
+      }
+      if (url.split("/").pop() === libHash) {
+        return {
+          type: "npm",
+          name: "leftpad",
+          version: "1.0.0",
+          file: "/lib.min.js",
+        };
+      }
+      throw Object.assign(new Error("HTTP 404"), { status: 404 });
+    },
+    postJson: async () => ({ vulns: [] }),
+  };
+  const cdnCache = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-cdn-"));
+  try {
+    const { findings, meta } = await runReview({
+      addonPath: xpi,
+      scaRoot: src,
+      ...OFFLINE,
+      vendorNet,
+      cdnLookupCache: cdnCache,
+    });
+    assert.ok(
+      meta.checksRun.includes("minified-code"),
+      "the review reaches minified-code"
+    );
+    assert.ok(
+      !has(findings, "minified-code", (f) => /lib\.min\.js/.test(f.file)),
+      "the CDN-identified source library is not rejected as minified"
     );
   } finally {
     [xpi, src, cdnCache].forEach((d) =>
