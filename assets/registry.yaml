@@ -673,17 +673,18 @@ deterministic-phase:
 # and a lock was but it resolves nothing for that name. resolveVendor decides which
 # (classifyDeps), so a dependency is never reported by both.
 #
-# skip-in-sca-review on both - the XPI type's half of the pinnability question. It is the one
-# thing a route cannot say: `input: source` names the review target without saying which
-# artifact that is, and these two need it to BE the XPI. A source archive asks the question of
-# the tree it installs instead (sca-lock-file-missing / sca-lock-file-invalid).
+# `input: xpi`, and skip-in-sca-review on both - the XPI type's half of the pinnability
+# question. The route names the artifact they judge, the shipped XPI, but the XPI is reviewed
+# in both modes; the flag says the one thing a route cannot, that they run only when the XPI
+# is the review target. A source archive asks the question of the tree it installs instead
+# (sca-lock-file-missing / sca-lock-file-invalid).
 # Whether the SOURCE a declaration names is supported is a separate axis
 # (unsupported-dependency), which applies to both types.
 - title: Missing lock file for a ranged dependency
   severity: error
   skip-in-sca-review: true
   check: xpi-lock-file-missing
-  input: source
+  input: xpi
   response: |-
     The following dependencies are declared as a version range, and the add-on ships no lock file to resolve them. A range names no single release, so there is nothing to verify the bundled copy against. Commit the lock file your package manager wrote alongside package.json - package-lock.json, npm-shrinkwrap.json or pnpm-lock.yaml - which records the exact version that was bundled. Pinning each dependency in package.json to a bare version like "4.17.21" instead also works.
 
@@ -695,7 +696,7 @@ deterministic-phase:
   severity: error
   skip-in-sca-review: true
   check: xpi-lock-file-invalid
-  input: source
+  input: xpi
   response: |-
     The following dependencies are declared as a version range, and the lock file the add-on ships records no version for them. A range names no single release, so there is nothing to verify the bundled copy against. Regenerate the lock file so it records what was bundled, or pin each dependency in package.json to a bare version like "4.17.21".
 

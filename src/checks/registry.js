@@ -1848,12 +1848,13 @@ export function formatNote(file, loc, item, verdict, label = "") {
  * else. Nothing is declared for that case, so nothing can be declared wrongly.
  *
  * `skip-in-sca-review` says the one thing a route cannot: that the review TARGET must be the
- * built XPI. `input: source` names the target without saying which artifact that is, and two
- * checks need it to be the XPI - xpi-lock-file-missing and xpi-lock-file-invalid ask what pins
- * a shipped vendored copy. That is not the question their sca-side counterparts ask: a source
- * archive ships no copy and installs at build time, so its lock pins what will be INSTALLED
- * rather than what was shipped. `input: xpi` would not serve them either, because the built
- * XPI is analysed in BOTH modes.
+ * built XPI. Two checks need that - xpi-lock-file-missing and xpi-lock-file-invalid ask what
+ * pins a shipped vendored copy. Their route is `input: xpi`, the artifact they judge, but the
+ * built XPI is analysed in BOTH modes, and only the review target has a vendor reading
+ * (src/review/products.js). `input: source` would not say it either: it names the target
+ * without saying which artifact that is. Nor is it the question their sca-side counterparts
+ * ask: a source archive ships no copy and installs at build time, so its lock pins what will
+ * be INSTALLED rather than what was shipped.
  *
  * It is for a check that genuinely cannot run on a source archive, never a way to exempt a
  * source archive's declared files from review: a declaration nothing verified exempts

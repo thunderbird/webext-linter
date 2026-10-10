@@ -886,11 +886,11 @@ test("where a check runs: the route says it, or the flag says what a route canno
     assert.deepEqual(runsIn(id), SCA_ONLY, id);
   }
 
-  // Said by the FLAG, because `input: source` names the review target without saying which
-  // artifact that is. The pinnability requirement is worded per submission type, so its
-  // XPI half must NOT run on a source archive, which asks the same question of the tree it
-  // installs instead. Two checks, because a range with no lock and a range the committed
-  // lock does not cover have different remedies.
+  // Said by the FLAG, because no route says "the built XPI, only when it is the review
+  // target": `input: xpi` is analysed in both modes. The pinnability requirement is worded
+  // per submission type, so its XPI half must NOT run on a source archive, which asks the
+  // same question of the tree it installs instead. Two checks, because a range with no lock
+  // and a range the committed lock does not cover have different remedies.
   assert.deepEqual(
     checks.filter((c) => c["skip-in-sca-review"]).map((c) => c.id),
     ["xpi-lock-file-missing", "xpi-lock-file-invalid"]
@@ -1879,6 +1879,10 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "unused-files",
     "unused-permission",
     "update-url",
+    // The XPI type's lock checks: they judge the shipped XPI's own package.json and lock,
+    // and skip-in-sca-review keeps them to a review whose target that XPI is.
+    "xpi-lock-file-invalid",
+    "xpi-lock-file-missing",
   ]);
   // input: sca reads the submitted source archive (minus the Experiment and a recorded
   // node_modules). The one build-review check (undeclared-build-source, which reads the setup
