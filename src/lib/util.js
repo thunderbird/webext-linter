@@ -361,9 +361,9 @@ export function isMatchPattern(p) {
  * lifecycle hooks and a lock file's entries as much as a manifest.json key, which is why it
  * names neither. Best-effort: a token appearing more than once resolves to its first line.
  *
- * NOT for pointing into the shipped manifest.json. That file has one holder and one way in
- * (src/addon/load.js, the record's `locus`), which resolves a JSON path rather than
- * searching for text and cannot be asked about the wrong copy.
+ * A manifest.json value is located by the record's `locus` (src/addon/load.js), which
+ * resolves its JSON path. This is for a word that has no path, such as a permission token
+ * found in the manifest.json text (src/lib/permissions.js locateTokens).
  * @param {?string} text  The JSON source to search.
  * @param {string} token  The bare key/value, without surrounding quotes.
  * @returns {number|null}
