@@ -71,7 +71,9 @@ A cached download older than a day is downloaded again before it is used: the sc
 (all six together, once any of them is that old), the library-hash DB and the
 allowed-experiments list each move upstream, and a stale copy would review against what
 was true when it was fetched. The CDN lookup cache keeps a hit for good - a file hash
-names one release - and asks again about a miss after a day. A review needs every host it
+names one release - and never keeps a miss: a 404 can be a passing fault as well as an
+answer, so it is asked again on the next run. The npm registry cache behind
+`lockfile-injection` does the same. A review needs every host it
 asks to answer: a request that gets no answer (still refused after the retries, timed out,
 not accepted) ends the review with exit 2, like no network, rather than reading the
 silence as a result - so an offline machine needs the network once a day.

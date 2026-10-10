@@ -616,10 +616,10 @@ test("a lookup failure short of a 404 propagates", async () => {
   );
 });
 
-// Only a genuine 404 is a stable, content-addressed negative, so it is cached and not
-// re-queried. No answer at all ends the review rather than leaving the file unidentified,
-// and caches nothing.
-test("no answer is never cached; a 404 is", async () => {
+// Only a hit is kept. No answer at all ends the review rather than leaving the file
+// unidentified, and a 404 - a passing fault of the host as well as "no such file" - is asked
+// again on the next run. Neither is written.
+test("neither no answer nor a 404 is cached", async () => {
   const cacheDir = tmpCacheDir();
 
   // No answer: the review stops, and nothing is cached.
@@ -649,7 +649,7 @@ test("no answer is never cached; a 404 is", async () => {
   });
   assert.equal(secondAsked, 1, "asked again after no answer");
 
-  // The 404 is now cached -> no request.
+  // The 404 was not kept either -> asked again, and nothing was written.
   const third = classify(addonWith({ "x.js": MINIFIED }));
   let thirdAsked = 0;
   await resolveCdnLibraries(third, {
@@ -661,7 +661,12 @@ test("no answer is never cached; a 404 is", async () => {
       },
     },
   });
-  assert.equal(thirdAsked, 0, "the 404 miss was cached");
+  assert.equal(thirdAsked, 1, "the 404 was asked again");
+  assert.equal(
+    fs.existsSync(path.join(cacheDir, "jsdelivr-hash-lookup.json")),
+    false,
+    "no cache file: nothing was answered to keep"
+  );
 });
 
 test("disabled is a no-op (offline-safe)", async () => {
@@ -784,11 +789,12 @@ test("resolveCdnLibraries propagates every failure but a 404", async () => {
   );
 });
 
-// A miss is kept for a day only: a file absent from jsDelivr today can be published
-// tomorrow. A hit is kept for good, since a file hash names one release.
-test("a cached miss is asked again after a day, a hit never is", async () => {
+// A hit is kept for good, since a file hash names one release. A miss is never kept, so the
+// only miss a cache answers with is one a test pre-filled (`{notFound: true}`), read with the
+// network switched off as every test runs. Anything else - an older version's miss included -
+// is asked again.
+test("a cached hit is never asked again; only a pre-filled 404 answers a miss", async () => {
   const { rawSha256 } = await import("../../src/normalize/hash.js");
-  const now = Date.now();
   const lookups = async (entry) => {
     const cacheDir = tmpCacheDir();
     const addon = classify(addonWith({ "x.min.js": MINIFIED }));
@@ -799,33 +805,15 @@ test("a cached miss is asked again after a day, a hit never is", async () => {
     );
     const net = netFor(new Map());
     await resolveCdnLibraries(addon, { net, cacheDir });
-    const written = JSON.parse(
-      fs.readFileSync(path.join(cacheDir, "jsdelivr-hash-lookup.json"), "utf8")
-    )[hash];
-    return { asked: net.lookupCalls.length, written };
+    return net.lookupCalls.length;
   };
-
+  assert.equal(await lookups({ notFound: true }), 0, "a pre-filled 404");
   assert.equal(
-    (await lookups({ missedAt: now - 3600000 })).asked,
-    0,
-    "recent miss"
-  );
-  const old = await lookups({ missedAt: now - 2 * 86400000 });
-  assert.equal(old.asked, 1, "a miss older than a day is asked again");
-  assert.ok(
-    Number.isFinite(old.written.missedAt),
-    "and recorded with its time"
-  );
-  assert.equal(
-    (await lookups(null)).asked,
+    await lookups({ missedAt: Date.now() }),
     1,
-    "a legacy bare miss is asked again"
+    "an older version's miss is asked again"
   );
-  assert.equal(
-    (await lookups({ missedAt: now + 2 * 86400000 })).asked,
-    1,
-    "a miss dated in the future is not trusted"
-  );
+  assert.equal(await lookups(null), 1, "a legacy bare miss is asked again");
   const hit = { type: "npm", name: "lib", version: "1.0.0", file: "/x.min.js" };
-  assert.equal((await lookups(hit)).asked, 0, "a hit is never asked again");
+  assert.equal(await lookups(hit), 0, "a hit is never asked again");
 });

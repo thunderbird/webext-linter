@@ -176,7 +176,9 @@ export function addonOutsideRepo(addon) {
 
 /**
  * A CDN lookup cache that already holds the lookup's answer for every file under `folders`:
- * a miss, recorded now, so the lookup reads that the CDN has none of them and asks no host.
+ * the host's 404, pre-filled (`{notFound: true}`), so the lookup reads that the CDN has none
+ * of them and asks no host. The lookup never writes such an entry, and reads one only with
+ * the network switched off, as every test runs (src/lib/cdn-lookup.js).
  * For a review of files a test wrote itself, which no seeded cache can know in advance.
  * Removed when the process exits.
  * @param {...string} folders
@@ -190,7 +192,7 @@ export function cdnMissCache(...folders) {
       const hash = createHash("sha256")
         .update(fs.readFileSync(path.join(folder, rel)))
         .digest("hex");
-      misses[hash] = { missedAt: Date.now() };
+      misses[hash] = { notFound: true };
     }
   }
   fs.writeFileSync(

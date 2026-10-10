@@ -45,7 +45,9 @@
 // instead. Two kinds still pass, since neither can leave this one: a loopback host (the tests
 // of this module run their own server there), and a URL that does not parse, which fetch
 // refuses itself with the same parser before it connects anywhere. It only takes the network
-// away: unset, as in every real run, nothing changes.
+// away: unset, as in every real run, nothing changes. The one other thing it decides is
+// whether a cache may answer with a host's 404 a test pre-filled (networkSwitchedOff): no
+// cache writes a 404, and in a real run none is ever read.
 //
 // Belongs here: the abort-timeout wrapper, that decision, and the rate gate (the
 // per-host interval, the status a refusal is recognised by, and the two ways a refusal
@@ -71,6 +73,17 @@ import { displayLine } from "./text.js";
 
 /** Whether the tests switched the network off. Read once: no setter, nothing to undo. */
 const NO_NETWORK = process.env.WEBEXT_LINTER_NO_NETWORK === "1";
+
+/**
+ * Whether the network is switched off - which only the tests do. A cache asks this before it
+ * answers with a pre-filled 404 entry (`{notFound: true}`): no cache writes one, so such an
+ * entry is a test's offline stand-in for the host's 404, and in a real run it is ignored and
+ * the host asked.
+ * @returns {boolean}
+ */
+export function networkSwitchedOff() {
+  return NO_NETWORK;
+}
 /** The fetch this process started with: the one that reaches a real host. */
 const BUILTIN_FETCH = globalThis.fetch;
 /** The hosts that are this machine, as the URL parser spells them. */

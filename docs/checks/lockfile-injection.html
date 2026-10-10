@@ -28,9 +28,10 @@
         A URL on the registry's tarball path
         (<code>&lt;package&gt;/-/&lt;name&gt;-&lt;version&gt;.tgz</code>) names its
         release, so it is compared offline. Any other URL on the registry is asked of
-        the registry itself, once: where it serves that release's tarball is cached for
+        the registry itself: where it serves that release's tarball is cached for
         good (<code>--cache-npm-registry-dir</code>), and a release it does not have
-        counts as installing another. An entry with no URL is the registry's own
+        counts as installing another. That 404 is never cached - it can be a passing
+        fault of the registry too - so it is asked again on the next run. An entry with no URL is the registry's own
         tarball for its name and version, and a package bundled inside another fetches
         nothing of its own. A URL off the registry and GitHub is
         <a href="lock-foreign-source.html">lock-foreign-source</a>'s.

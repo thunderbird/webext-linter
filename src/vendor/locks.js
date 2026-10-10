@@ -44,6 +44,7 @@ import { writeFileAtomic } from "../util/atomic.js";
 import { debug } from "../util/log.js";
 import { classifySource } from "./sources.js";
 import { defaultNet } from "./verify.js";
+import { networkSwitchedOff } from "../util/net.js";
 
 import {
   DECLARATION_MAPS,
@@ -796,7 +797,8 @@ function tarballRelease(url) {
  * offline. One on the registry but off that path is asked of the registry itself
  * (`GET <registry>/<package>/<version>`, whose `dist.tarball` is where that release is), and
  * the answer is cached for good in `cacheDir`: a published release's tarball never moves. A
- * release the registry does not have (404) is cached as missing, and its entry is forged.
+ * release the registry does not have (404) makes its entry forged, and is never cached: a 404
+ * can be a passing fault of the registry too, so it is asked again on the next run.
  * @param {Addon} addon  The SCA archive (its governing lock).
  * @param {object} [opts]
  * @param {import("./verify.js").VendorNet} [opts.net]  The network the registry is asked on.
@@ -823,11 +825,14 @@ export async function findLockInjections(
     }
     cache ??= loadRegistryCache(cacheDir);
     const key = `${name}@${version}`;
-    if (!Object.hasOwn(cache, key) || !isRegistryAnswer(cache[key])) {
-      cache[key] = await registryTarball(net, name, version);
-      dirty = true;
+    let tarball = cachedTarball(Object.hasOwn(cache, key) ? cache[key] : null);
+    if (tarball === undefined) {
+      tarball = await registryTarball(net, name, version);
+      if (tarball !== null) {
+        cache[key] = tarball;
+        dirty = true;
+      }
     }
-    const tarball = cache[key];
     if (
       tarball === null ||
       plainTarballUrl(tarball) !== plainTarballUrl(target.url)
@@ -865,16 +870,23 @@ async function registryTarball(net, name, version) {
 }
 
 /**
- * Whether a cache entry is an answer this cache records: a tarball URL, or null for a
- * release the registry does not have.
+ * What a cache entry answers: the tarball URL it keeps; null for a pre-filled 404
+ * (`{notFound: true}`), read only with the network switched off (src/util/net.js
+ * networkSwitchedOff), since no lookup writes one and it is how a test is given that answer
+ * offline; and undefined for anything else - none yet, a pre-filled 404 in a real run, an
+ * older version's entry, a corrupt value - which is asked again.
  * @param {unknown} entry
- * @returns {boolean}
+ * @returns {string|null|undefined}
  */
-function isRegistryAnswer(entry) {
-  return entry === null || (typeof entry === "string" && entry !== "");
+function cachedTarball(entry) {
+  if (typeof entry === "string" && entry !== "") {
+    return entry;
+  }
+  return entry?.notFound === true && networkSwitchedOff() ? null : undefined;
 }
 
-/** The on-disk cache file: a `{ "<package>@<version>": <tarball URL> | null }` JSON map. */
+/** The on-disk cache file: a `{ "<package>@<version>": <tarball URL> | {notFound: true} }`
+ *  JSON map. */
 function registryCacheFile(cacheDir) {
   return path.join(cacheDir, "npm-registry.json");
 }
@@ -882,7 +894,7 @@ function registryCacheFile(cacheDir) {
 /**
  * Load the registry's cached answers, or an empty map when absent or corrupt.
  * @param {string} cacheDir
- * @returns {Record<string, ?string>}
+ * @returns {Record<string, string|{notFound: true}>}
  */
 function loadRegistryCache(cacheDir) {
   try {
@@ -900,7 +912,7 @@ function loadRegistryCache(cacheDir) {
  * Persist the cache. Best-effort: a write failure is non-fatal (the answers are just asked
  * again next run).
  * @param {string} cacheDir
- * @param {Record<string, ?string>} cache
+ * @param {Record<string, string|{notFound: true}>} cache
  */
 function saveRegistryCache(cacheDir, cache) {
   try {

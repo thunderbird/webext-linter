@@ -200,7 +200,7 @@ test("an encoded scope slash and a query string read as the URL the install fetc
   ]);
 });
 
-test("a registry URL off the tarball path is asked of the registry, and cached", async () => {
+test("a registry URL off the tarball path is asked of the registry, and its tarball cached", async () => {
   const odd = `${REG}tinylib/-/release.tgz`;
   const addon = npmV3({
     "node_modules/tinylib": { version: "1.2.1", resolved: odd },
@@ -239,8 +239,33 @@ test("a registry URL off the tarball path is asked of the registry, and cached",
     `${REG}mismatch/1.0.0`,
     `${REG}@scope%2fgone/0.0.1`,
   ]);
-  // The second run is answered from the cache, the 404 included.
+  // The second run is answered from the cache - except the 404, which is never kept (it can
+  // be a passing fault of the registry) and so is asked again.
+  const again = [];
+  const recording = {
+    fetchJson: async (url) => {
+      again.push(url);
+      return net.fetchJson(url);
+    },
+  };
+  assert.deepEqual(await forged(addon, { net: recording, cacheDir }), expected);
+  assert.deepEqual(again, [`${REG}@scope%2fgone/0.0.1`]);
+  // A pre-filled 404 (`{notFound: true}`) is read, as every test runs with the network
+  // switched off; an older version's `null` is not, and is asked again.
+  const file = path.join(cacheDir, "npm-registry.json");
+  const kept = JSON.parse(fs.readFileSync(file, "utf8"));
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ ...kept, "@scope/gone@0.0.1": { notFound: true } })
+  );
   assert.deepEqual(await forged(addon, { net: noNet, cacheDir }), expected);
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ ...kept, "@scope/gone@0.0.1": null })
+  );
+  again.length = 0;
+  assert.deepEqual(await forged(addon, { net: recording, cacheDir }), expected);
+  assert.deepEqual(again, [`${REG}@scope%2fgone/0.0.1`]);
   fs.rmSync(cacheDir, { recursive: true, force: true });
 });
 
