@@ -2,8 +2,8 @@
 // rejected - allowed via --allow-experiments or a pristine upstream copy) must
 // pin a strict_max_version. Experiments call internal APIs that change between
 // major Thunderbird versions, so without a maximum they break silently on
-// upgrade. This is a deterministic-phase check, so it runs only when the experiment
-// is valid (an invalid one short-circuits to the invalid-experiment phase). Silent for
+// upgrade. It runs only when the experiment is valid: an invalid one aborts the review at
+// experiment-not-allowed, the first check. Silent for
 // non-Experiments and for Experiments that already declare a max.
 //
 // Belongs here: flagging an allowed Experiment that omits strict_max_version.

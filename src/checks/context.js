@@ -22,14 +22,12 @@ import { wiringError } from "../lib/errors.js";
  * @typedef {object} ReviewEnv  The review-level state shared by every sibling ctx, built ONCE
  *   by the pipeline (src/pipeline.js) and handed to every ctx builder. It carries only what is
  *   the SAME across artifacts, so a sibling can never drift from another: the schema, the
- *   shipped manifest.json and experiments, the review mode and the
- *   invalid-Experiment flag. Where the source and the Experiment sit on disk is NOT here: it
- *   is settled once, when the archive is split into views (src/addon/load.js scaViews), and a
+ *   shipped manifest.json and experiments, and the review mode. Where the source and the
+ *   Experiment sit on disk is NOT here: it is settled once, when the archive is split into views (src/addon/load.js scaViews), and a
  *   check reads the files it was routed rather than a path.
  * @property {import("../schema/index.js").SchemaIndex} schema
  * @property {{allowExperiments?: boolean}} options
  * @property {object} mode  The REVIEW_MODE enum member (XPI/SCA); read as `mode?.sca`.
- * @property {boolean} invalidExperiment
  * @property {?import("../addon/load.js").WebExtManifestRecord} manifest
  * @property {?object} experiments
  */
@@ -70,7 +68,6 @@ function projectCtx(env, { artifact, data }) {
     apiUsages: data.apiUsages,
     buildReview: data.buildReview,
     options: env.options,
-    invalidExperiment: env.invalidExperiment,
     // "xpi" (a built add-on) or "sca" (a source-code archive review, --sca-root). Gates checks
     // via modeEligible.
     mode: env.mode,

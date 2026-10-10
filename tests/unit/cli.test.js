@@ -2101,7 +2101,8 @@ test("a hand-back takes its folder as one absolute name", () => {
 
 // An Experiment the review would reject is not worth preparing: --llm-sca-review asks the
 // review's own verdict of the .xpi first, and where it rejects, starts that review at once -
-// the same review --llm-review of the .xpi starts, ending where it always does. An Experiment
+// the same review --llm-review of the .xpi starts, which the reject aborts, so its first
+// prompt is the close. An Experiment
 // the review accepts is prepared as any submission is.
 test("--llm-sca-review starts the review of an Experiment it would reject", () => {
   const submission = (fixture) => {
@@ -2118,11 +2119,14 @@ test("--llm-sca-review starts the review of an Experiment it would reject", () =
   assert.doesNotMatch(r.stdout, /SCA Review Prompt/);
   assert.match(r.stdout, /── LLM Prompt ──/);
   const work = defaultFolderOf(path.join(dir, "addon.xpi"));
+  // The reject aborts the review, so its first prompt is the close, with the report.
   assert.deepEqual(fs.readdirSync(work).sort(), [
+    "report.md",
     "review.json",
     "state.json",
     "xpi",
   ]);
+  assert.ok(r.stdout.includes(`[report.md](${work}/report.md)`), r.stdout);
   assert.deepEqual(readJson(work, "state.json").report.meta.checksRun, [
     "experiment-not-allowed",
   ]);

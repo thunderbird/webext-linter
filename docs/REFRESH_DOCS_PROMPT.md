@@ -58,13 +58,13 @@ that no longer exist.
    which names no tree of its own and so says which per sweep), `default-note` (the marker a reported case carries when the reviewer wrote
    nothing) or `review-early-exit` (the id of a reason in the top-level
    `review-early-exit:` section: a check naming one STOPS the review when it
-   reports at error severity, so the report puts nothing further to a reviewer -
-   such a check's page must say so, and so must the page of any check whose
-   escalation is thereby withheld). The check-bearing sections ARE
-   the phases - a check's phase IS the section it lives in, never a field on the
-   entry: `invalid-experiment-phase` (the only phase that runs for an invalid
-   Experiment) and `deterministic-phase` (every other check). `manual-checks` is NOT
-   a phase: it is the static by-hand to-do list, never run as checks.
+   reports at error severity, so no check after it runs and the report puts nothing
+   further to a reviewer - such a check's page must say so, and so must the page of
+   any check whose escalation is thereby withheld). The check-bearing section IS
+   the phase - a check's phase IS the section it lives in, never a field on the
+   entry: `deterministic-phase`, whose first check, `experiment-not-allowed`, stops a
+   rejected Experiment before any other runs. `manual-checks` is NOT a phase: it is
+   the static by-hand to-do list, never run as checks.
 2. `src/checks/rules/<id>.js` - the implementation of each check. The header
    comment block describes the decision logic in prose; the `run()` body is the
    ground truth for the branches. Shared logic lives in `src/lib/`
@@ -96,8 +96,8 @@ that no longer exist.
 ## Steps
 
 1. **Enumerate checks.** Parse `assets/registry.yaml` to get the full ordered
-   list of checks and their metadata. Cover ALL check-bearing sections (= the phases) -
-   `invalid-experiment-phase` and `deterministic-phase` - plus the static
+   list of checks and their metadata. Cover the check-bearing section (= the phase) -
+   `deterministic-phase` - plus the static
    `manual-checks` list - noting the section each lives under (that IS its phase, and
    the sidebar group).
 2. **Diff against the site.** Compare that list to the `CHECKS` array in

@@ -21,14 +21,14 @@
         An Experiment add-on whose experiment is not a recognised published
         Thunderbird API draft — an unknown API name, including one that shadows a
         built-in. Submissions like this are currently rejected, and the finding
-        short-circuits the rest of the review.
+        aborts the review.
       </p>
       <p>
-        This is the only check that runs in the invalid-experiment phase: when
-        the pipeline decides an experiment is unsupported, it runs this check
-        alone and nothing else. Recognised but locally modified drafts do not
-        land here — they stay on the normal review path and are flagged by the
-        experiment-modified check instead. The check stays silent when
+        This is the first check of every review. Its error aborts the review,
+        so when an experiment is unsupported no other check runs, and the report
+        ends on the reason "Experiment APIs not accepted". Recognised but locally
+        modified drafts pass here — they stay on the normal review path and are
+        flagged by the experiment-modified check instead. The check stays silent when
         experiments are explicitly allowed and when the add-on is not an
         Experiment. For each unsupported experiment the reason is refined to
         "shadows a built-in" when its declared path actually resolves to a real
@@ -66,7 +66,8 @@ flowchart TD
         The developer is told that new submissions using Experiment APIs are not
         currently being accepted, except unmodified copies of the latest
         published API drafts, with a link to the upstream drafts and to the
-        policy announcement.
+        policy announcement. The review ends there: the report says it was not
+        completed, with the reason "Experiment APIs not accepted".
       </div>
 
       <p class="source-note">

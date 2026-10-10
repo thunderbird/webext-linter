@@ -1,11 +1,10 @@
-// registry.yaml is the check registry. Its check-bearing sections ARE the phases -
-// `invalid-experiment-phase` and `deterministic-phase`
-// (PHASE_SECTIONS) - so a check's phase IS the section it lives in, and no entry declares
-// one. Every entry there that carries a `check:` field links to a module in ./rules/ that
+// registry.yaml is the check registry. Its check-bearing section IS the phase -
+// `deterministic-phase` (PHASE_SECTIONS) - so a check's phase IS the section it lives in,
+// and no entry declares one. Every entry there that carries a `check:` field links to a module in ./rules/ that
 // implements that test. This loader reads the yaml, imports the linked module for each
 // (selected) entry, runs it, and stamps each returned finding with the entry's id (the
-// check filename stem) and its severity. runChecks names the phases it runs, in order, so
-// a section it never asks for is inert.
+// check filename stem) and its severity. runChecks names the phase it runs, so a section it
+// never asks for is inert.
 //
 // A check is a pure detector: it decides verdicts and emits findings carrying
 // only `file`/`loc`/`item`/`hint` - never prose. The registry entry is the
@@ -104,7 +103,6 @@ function bandUnder(severity, warningsAsErrors) {
 // sections (permission-prompts, messages, manual-checks, ...) are exactly that - never
 // asked for here, and so not phases.
 const PHASE_SECTIONS = Object.freeze({
-  "invalid-experiment": "invalid-experiment-phase",
   deterministic: "deterministic-phase",
 });
 
@@ -207,9 +205,6 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   route: a check has no way to reach the artifact it was not routed to. The orchestrator builds a
  *   separate shipped context (buildXpiCtx, src/checks/context.js) and routes each
  *   `input: xpi` check to it - see runChecks / runOneCheck.
- * @property {boolean} [invalidExperiment]  The add-on uses Experiment APIs and
- *   --allow-experiments is off: the review short-circuits to the reject check
- *   only (see runChecks and buildXpiCtx).
  * @property {Function} [note]  Narrate an investigation note to the feed:
  *   (locus, item, verdict) -> void, where the locus is the one a holder minted
  *   (ctx.artifact.at(file, loc)) and is refused if it cannot say which artifact it is
@@ -2015,14 +2010,9 @@ export async function runChecks(registry, opts = {}, siblings) {
   // The mode gate (modeEligible) reads the route, then the flag. A gated-out check never runs
   // and never appears in the feed or meta.checksRun.
   const inScaMode = targetCtx.mode?.sca;
-  // An invalid Experiment short-circuits the whole review to the reject phase and
-  // nothing else; a normal review runs the deterministic phase. The gates apply within
-  // each phase.
-  const inPhase = (phase) =>
-    (byPhase.get(phase) ?? []).filter((c) => modeEligible(c, inScaMode));
-  const checks = targetCtx.invalidExperiment
-    ? inPhase("invalid-experiment")
-    : inPhase("deterministic");
+  const checks = (byPhase.get("deterministic") ?? []).filter((c) =>
+    modeEligible(c, inScaMode)
+  );
   // The whole-review count, for the [i/total] feed counter. A review an early exit stops
   // ends short of it, and the counter says where.
   const total = checks.length;

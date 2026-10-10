@@ -13,6 +13,7 @@
     "applicationVersion": "128.0",
     "manifestVersion": 3,
     "checksRun": [
+      "experiment-not-allowed",
       "core-symbol-in-webext",
       "trademark-violation",
       "trademark-thunderbird-locale",

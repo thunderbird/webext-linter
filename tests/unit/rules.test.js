@@ -4966,28 +4966,27 @@ test("loadChecks throws hard when a check: names a missing module", async () => 
   }
 });
 
-// A check's phase IS the section it came from - never declared per entry. The reject
-// check lives in the invalid-experiment phase, everything else in the deterministic one.
+// A check's phase IS the section it came from - never declared per entry. The Experiment
+// reject check runs first, so a rejected Experiment stops the review before any other.
 test("a check's phase is the section it came from", async () => {
   const byPhase = await loadChecks(loadRegistry());
-  const idsIn = (phase) => byPhase.get(phase).map((c) => c.id);
-  assert.ok(idsIn("deterministic").includes("unused-permission"));
-  assert.ok(idsIn("invalid-experiment").includes("experiment-not-allowed"));
-  // ...and the reject check is in NO other phase - it only runs when short-circuiting.
-  assert.ok(!idsIn("deterministic").includes("experiment-not-allowed"));
+  assert.deepEqual([...byPhase.keys()], ["deterministic"]);
+  const ids = byPhase.get("deterministic").map((c) => c.id);
+  assert.ok(ids.includes("unused-permission"));
+  assert.equal(ids[0], "experiment-not-allowed");
+  assert.ok(loadRegistry().earlyExitFor("experiment-not-allowed"));
 });
 
 // ONE rule module = ONE entry = ONE phase. A check's id IS its module's filename stem, so a
 // second entry naming the same module is the SAME check declared twice: it runs once per
 // entry, and the id -> entry Map (how every finding reaches its severity and response) keeps
 // only the LAST - so a duplicate can silently restamp a real check's severity.
-test("loadRegistry rejects a check declared in two phases", async () => {
+test("loadRegistry rejects a check declared twice", async () => {
   const tmp = path.join(os.tmpdir(), `dup-registry-${process.pid}.yaml`);
   fs.writeFileSync(
     tmp,
     "deterministic-phase:\n" +
       "- title: Sync XHR\n  severity: warning\n  check: sync-xhr\n  input: source\n" +
-      "invalid-experiment-phase:\n" +
       "- title: Sync XHR again\n  severity: info\n  check: sync-xhr\n  input: source\n"
   );
   try {
@@ -5007,7 +5006,7 @@ test("loadRegistry rejects a check declared in two phases", async () => {
 // typo makes loadRegistry throw, and this test fail).
 test("every phase of the shipped registry is declared and populated", async () => {
   const byPhase = await loadChecks(loadRegistry());
-  for (const phase of ["invalid-experiment", "deterministic"]) {
+  for (const phase of ["deterministic"]) {
     assert.ok(
       (byPhase.get(phase) ?? []).length > 0,
       `phase "${phase}" loaded no checks - its registry.yaml section is missing or renamed`

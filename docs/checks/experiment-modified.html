@@ -31,8 +31,8 @@
         experiment marked as modified, and stays silent for non-Experiments and
         pristine experiments. An unsupported experiment (not a known upstream
         draft) is skipped here — there is nothing to compare against; without
-        <em>--allow-experiments</em> it is rejected in the invalid-experiment
-        phase by the experiment-not-allowed check.
+        <em>--allow-experiments</em> it is rejected by the experiment-not-allowed
+        check, which runs first and aborts the review.
       </p>
 
       <h2>Decision flow</h2>

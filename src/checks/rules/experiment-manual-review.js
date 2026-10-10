@@ -3,8 +3,8 @@
 // so they need a careful human code review beyond the automated checks. Emits one
 // locus-less manual-review reminder; it raises no finding, and a reported case
 // carries its registry entry's error severity. Silent for non-Experiments. Without
-// --allow-experiments an unsupported experiment never reaches here (it aborts via
-// experiment-not-allowed in the invalid-experiment phase).
+// --allow-experiments an unsupported experiment never reaches here (it aborts the review
+// at experiment-not-allowed, the first check).
 //
 // Belongs here: the isExperiment gate and the single escalation. Does NOT belong
 // here: the deterministic->manual routing (registry.js + escalation.js) or the

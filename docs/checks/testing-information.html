@@ -37,8 +37,8 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Every review"] --> X{"A rejected Experiment?<br/>(bundles an unsupported draft,<br/>no --allow-experiments)"}
-  X -- yes --> S([skip — the reject phase<br/>runs alone, the whole<br/>to-do list is dropped])
+  A["Every review"] --> X{"An aborted review?<br/>(an early-exit check reported,<br/>e.g. a rejected Experiment)"}
+  X -- yes --> S([skip — an aborted review<br/>asks the reviewer nothing])
   X -- no --> M(["listed as a to-do for the reviewer<br/>to settle by hand"])
 
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;

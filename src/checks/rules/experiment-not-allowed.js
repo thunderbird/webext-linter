@@ -1,9 +1,8 @@
-// Rejects (and short-circuits the review for) an Experiment add-on whose
+// Rejects (and, as the first check, aborts the review for) an Experiment add-on whose
 // experiment is NOT a recognised published Thunderbird API draft - i.e. an
 // `unsupported` experiment (an unknown API name, which includes one that shadows
-// a built-in). Recognised-but-modified experiments do NOT reach this check: the
-// pipeline keeps them on the normal review path, where experiment-modified flags
-// them. Silent when experiments are allowed (--allow-experiments) or the add-on
+// a built-in). Recognised-but-modified experiments pass here and are reviewed
+// normally, where experiment-modified flags them. Silent when experiments are allowed (--allow-experiments) or the add-on
 // is not an Experiment.
 //
 // Belongs here: turning the per-experiment classification
@@ -48,7 +47,7 @@ export default {
     }
     const groups = ctx.experiments?.groups;
     if (!Array.isArray(groups) || groups.length === 0) {
-      // Defensive: the pipeline populates groups before short-circuiting here.
+      // Defensive: the pipeline populates groups before any check runs.
       const at = ctx.manifest.locus("experiment_apis");
       ctx.note?.(at, "experiment_apis declared", VERDICT.FAIL);
       return {

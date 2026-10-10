@@ -120,7 +120,7 @@ A selection, not the catalogue - every folder under `addons/` is a fixture:
 | `bundled-files` | `bundled-files`: a referenced file (`content_scripts`) isn't packaged. |
 | `remote-code` | `remote-resources` (remote `<script src>` + remote `@import`) and `eval-call`. |
 | `unsafe-html` | `unsafe-html`: every `innerHTML` write is flagged (static and dynamic alike); only an empty/null clear is exempt. |
-| `experiment-disallowed` | An Experiment (`experiment_apis`) reviewed with experiments off (default): `experiment-not-allowed` on the `experiment_apis` line. |
+| `experiment-disallowed` | An Experiment (`experiment_apis`) reviewed with experiments off (default): `experiment-not-allowed` on the `experiment_apis` line, which aborts the review. |
 | `experiment-allowed-no-strict-max` | An Experiment with no `strict_max_version`, reviewed with `"options": { "--allow-experiments": true }`: `experiment-missing-strict-max-version` (and `experiment-not-allowed` stays silent). |
 | `strict-max-not-experiment` | `non-experiment-strict-max-version`: a non-Experiment that pins `strict_max_version` (warning). |
 | `vue-sca-handler` | SCA mode (`xpi/`+`src/` layout): a Vue `.vue` whose multi-statement `@` handler carries an `innerHTML` sink - `unsafe-html` fires on the handler line, proving the handler is parsed (no `unparsable-file` coverage gap) and still scanned. |

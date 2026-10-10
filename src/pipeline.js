@@ -139,11 +139,6 @@ export const SETUP_STEPS = Object.freeze([
   { key: "meta", when: () => true },
 ]);
 
-/** Either review decided before its checks run: a rejected Experiment, which runs its one
- *  reject check, or an unrescued source review, which runs the checks its preparation's
- *  rescue was for. Neither carries reviewer to-do items. */
-const DECIDED = (f) => f.invalidExperiment || f.unrescued;
-
 /**
  * Every path opt is ABSOLUTE. The arg-array reader resolves them (pipelineOptsFromValues,
  * src/cli.js), which is the one layer that knows what each flag was written relative to -
@@ -384,7 +379,7 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
       return invalidExperiment;
     },
     // The preparation gave its rescue up, and recorded the lock audit that decides this
-    // review. A rejected Experiment's one reject check comes first, so it is never one.
+    // review. A rejected Experiment is reviewed as its XPI, so it is never one.
     get unrescued() {
       return Boolean(lockAudit) && !invalidExperiment;
     },
@@ -694,7 +689,6 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     schema,
     options: { allowExperiments: opts.allowExperiments },
     mode,
-    invalidExperiment,
     manifest: webExtManifestRecord,
     experiments: experimentVerification ?? null,
   };
@@ -736,10 +730,10 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     all: buildAllCtx(env, { xpi: xpiCtx, sca: scaCtx }),
   };
 
-  // Run the review, then finalize. runChecks runs the phase this review calls
-  // for - invalid-experiment for a rejected Experiment, deterministic otherwise - and
-  // returns the finished findings, manual items and the checks that ran. Each throwing
-  // check is isolated so one failure can't abort all.
+  // Run the review, then finalize. runChecks runs the deterministic phase and returns the
+  // finished findings, manual items and the checks that ran. Each throwing check is
+  // isolated so one failure can't abort all. A rejected Experiment stops at its first
+  // check, experiment-not-allowed, as any review stops at a check that aborts it.
   //
   // An unrescued review runs the checks the preparation's rescue was for, and no other:
   // those whose `review-early-exit` reason the registry's `rescue-for` names. They read
@@ -765,8 +759,8 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
   // step's): the schema stamps, the checks that ran, and the manual-review to-do list.
   // Its `extended` items are the orchestrator's escalations (resolved to their registry
   // text); the rest are the by-hand manual-checks entries, which every review carries
-  // unconditionally. A decided review - an Experiment reject, an unrescued source review -
-  // carries none.
+  // unconditionally. An aborted review withholds the ones a reviewer would be asked
+  // (src/report/early-exit.js), here as in any other review.
   const ranIds = new Set(checksRun.map((c) => c.id));
   Object.assign(meta, {
     schemaSource,
@@ -778,20 +772,16 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     // The three to-do origins as ONE list, each carrying its own `default-note` where the
     // check authors one: a case a check escalated and a by-hand manual check are the same
     // item to whoever answers it, so the note is appended to both in one place.
-    manualReview: DECIDED(setupFacts)
-      ? []
-      : withDefaultNotes(
-          [
-            ...renderManualItems(manualItems, registry, mode).map((m) => ({
-              ...m,
-              extended: true,
-            })),
-            ...registry
-              .manualChecks(mode)
-              .map((m) => ({ ...m, extended: false })),
-          ],
-          registry
-        ),
+    manualReview: withDefaultNotes(
+      [
+        ...renderManualItems(manualItems, registry, mode).map((m) => ({
+          ...m,
+          extended: true,
+        })),
+        ...registry.manualChecks(mode).map((m) => ({ ...m, extended: false })),
+      ],
+      registry
+    ),
     // The blind-spot sweeps to run BEFORE settling this review: one bare item per sweep a
     // check that ran authors, asked as one request per tree rather than one per item - the
     // sweeps of a tree read the same files, so what is learned on one is already in hand
@@ -801,11 +791,8 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     //
     // Gated on the checks that actually RAN: sweeping the blind spot of a scan that did
     // not happen asks a reader to cover for nothing, and this is what makes
-    // --checks-only/--checks-skip carry through. An Experiment reject carries none, for
-    // the same reason it carries no manual review.
-    preSweep: DECIDED(setupFacts)
-      ? null
-      : preSweepOf(registry, ranIds, mode, siblings, artifactRoots(meta)),
+    // --checks-only/--checks-skip carry through.
+    preSweep: preSweepOf(registry, ranIds, mode, siblings, artifactRoots(meta)),
   });
 
   // What this run was told to leave out (--llm-skip-summary / --llm-skip-manual). Read

@@ -26,9 +26,8 @@
       // Generated from assets/registry.yaml (regenerate via docs/REFRESH_DOCS_PROMPT.md).
       // Order and grouping follow the registry's check-bearing sections.
       const CHECKS = [
-        // Invalid-experiment phase - the ONLY phase that runs for an invalid Experiment
-        { id: "experiment-not-allowed", group: "Invalid-experiment phase", title: "Experiment APIs not accepted", severity: "error" },
         // Deterministic phase
+        { id: "experiment-not-allowed", group: "Deterministic phase", title: "Experiment APIs not accepted", severity: "error" },
         { id: "core-symbol-in-webext", group: "Deterministic phase", title: "Privileged core symbol in WebExtension code", severity: "error" },
         { id: "trademark-violation", group: "Deterministic phase", title: "Trademark violation", severity: "error" },
         { id: "trademark-thunderbird-locale", group: "Deterministic phase", title: "Thunderbird in a localized add-on name", severity: "error" },

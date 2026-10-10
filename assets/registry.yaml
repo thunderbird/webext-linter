@@ -11,27 +11,25 @@
 #
 # The check-bearing sections below ARE the phases: a check's phase IS the section it
 # lives in, so no entry declares one. The orchestrator (runChecks) knows this closed set
-# and looks up the phases it wants, in the order it runs them - invalid-experiment (which
-# short-circuits the whole review), then deterministic. A section it never asks for is inert, so
+# and looks up the phase it runs: deterministic. A section it never asks for is inert, so
 # every other top-level section here (permission-prompts, manual-checks, messages, ...) is
 # simply not a phase.
 
-# The reject phase: when the add-on is an invalid Experiment, this is the ONLY phase that
-# runs - no other check, no manual list.
-invalid-experiment-phase:
+deterministic-phase:
 # Aborts the review of an Experiment that uses an UNSUPPORTED experiment (an
 # unknown API draft, or one shadowing a built-in). A recognised but modified draft
 # does NOT land here; it is reviewed normally and flagged by experiment-modified.
-# The per-experiment reason is appended to each location line.
+# The per-experiment reason is appended to each location line. First in the phase, so a
+# rejected Experiment stops the review before any other check runs.
 - title: Experiment APIs not accepted
   severity: error
   check: experiment-not-allowed
   input: xpi
+  review-early-exit: experiment-not-allowed
   response: |-
-    We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). This ends the review, so no other check ran and this report says nothing about the rest of the add-on. A resubmission without them is reviewed in full. The following cannot be accepted:
+    We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). A resubmission without them is reviewed in full. The following cannot be accepted:
     Read more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews
 
-deterministic-phase:
 # Flags a privileged core global (Services, ChromeUtils, Components/Cc/Ci/Cu, ...)
 # referenced in pure WebExtension code, where the sandbox does not provide it. The
 # Experiment dependency tree (and its mixed/unsure files) is exempt.
@@ -2011,6 +2009,7 @@ review-early-exit:
   intro: |-
     The review was not completed and the report is incomplete due to the following issues:
   reasons:
+    experiment-not-allowed: Experiment APIs not accepted
     known-vulnerabilities: Known security vulnerabilities
     disallowed-library-versions: Disallowed library versions
     unreproducible-build: Build process issues

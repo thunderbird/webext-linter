@@ -123,8 +123,8 @@ export const SCA_ONLY_INPUTS = new Set(["sca"]);
 // producers (findings, manual items, sweep entries) and stops there.
 //
 // The mode is DERIVED, not the flag: a rejected Experiment takes an --sca-root run back
-// to REVIEW_MODE.XPI (src/pipeline.js), so an invalid-experiment-phase check that words
-// itself per mode prints its XPI text for a source-code submission.
+// to REVIEW_MODE.XPI (src/pipeline.js), so experiment-not-allowed, were it to word itself
+// per mode, would print its XPI text for a source-code submission.
 export const MODE_RESPONSES = Object.freeze({
   sca: "response-for-sca",
   xpi: "response-for-xpi",

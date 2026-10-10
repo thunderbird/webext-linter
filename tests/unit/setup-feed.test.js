@@ -197,8 +197,8 @@ test("the feed of an accepted Experiment review", () => {
   );
 });
 
-// A REJECTED Experiment runs its one reject check, which reads the manifest.json, the
-// Experiment verdict and the schema - none of the review's data. So none of it is computed:
+// A REJECTED Experiment stops at its first check, experiment-not-allowed, which reads the
+// manifest.json, the Experiment verdict and the schema - none of the review's data. So none of it is computed:
 // no library hashes, no vendor reading, no parse.
 test("a rejected Experiment computes none of the review's data", () => {
   assert.deepEqual(feed([addon("experiment-disallowed")]), {

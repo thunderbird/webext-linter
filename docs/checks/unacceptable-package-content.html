@@ -53,8 +53,8 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["Every review"] --> X{"A rejected Experiment?<br/>(bundles an unsupported draft,<br/>no --allow-experiments)"}
-  X -- yes --> S([skip — the reject phase<br/>runs alone])
+  A["Every review"] --> X{"Did an earlier check<br/>abort the review?<br/>(e.g. a rejected Experiment)"}
+  X -- yes --> S([skip — this check<br/>never runs])
   X -- no --> B(["listed under Standard Code Review:<br/>what to look for in the package"])
   B --> C{"Is an agent sweeping?"}
   C -- no --> M([the reviewer covers it by hand])

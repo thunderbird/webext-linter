@@ -346,7 +346,7 @@ rejects it from the `.xpi` alone, before it reads any source. Without `--allow-e
 `--llm-sca-review` first asks the Experiment verdict of the `.xpi`, by the rule the review
 itself asks it by, and where the verdict rejects, it starts that review at once instead of
 printing the preparation's prompt. That review is the one `--llm-review` of the `.xpi`
-starts, and it ends the way it always does.
+starts: `experiment-not-allowed` aborts it, so its first prompt is the `close` phase.
 
 Where the archive is extracted and where its build runs are two different places, which is
 why `EXTRACT_TO` is not `<SCA_ROOT>`: an archive that carries its contents in a directory

@@ -125,8 +125,8 @@
         final data: the stages behind it run in their fixed order, and the ones
         that revise an earlier answer (the CDN identification, the audits) finish
         before it is handed over. A review computes what its checks read and
-        nothing more - a rejected Experiment, whose one check reads none of it,
-        computes none of it. Each stage prints its line in the Activity feed,
+        nothing more - a rejected Experiment, which stops at a first check that
+        reads none of it, computes none of it. Each stage prints its line in the Activity feed,
         under the check that first needed it.
       </p>
       <p>
@@ -211,7 +211,7 @@ flowchart TB
   end
 
   subgraph P6 ["runPipeline() · run the review, then render the findings"]
-    RCBOX[["runChecks()<br/>detailed under The orchestrator below"]] --> META["merge findings + assemble meta<br/>manual-review list = a decided review ? [ ]<br/>: renderManualItems(manualItems) + registry.manualChecks() (every review)"]
+    RCBOX[["runChecks()<br/>detailed under The orchestrator below"]] --> META["merge findings + assemble meta<br/>manual-review list = renderManualItems(manualItems)<br/>+ registry.manualChecks() (every review)"]
     META --> RFIND["renderFindings()<br/>fill each finding's message from its registry response"]
   end
 
@@ -268,13 +268,13 @@ flowchart TB
         <code>--sca-root</code> run an XPI review.
       </div>
       <p>
-        The invalid-Experiment path runs on to the orchestrator, which reviews the
-        shipped XPI with the single reject check. Setting
-        <code>invalidExperiment</code> pins the mode and leaves the source archive
-        unread; the reject check judges from the manifest, the experiment
-        classification and the schema - which is resolved <em>before</em> the
-        decision because the check resolves API paths through it - and asks for
-        none of the review's data, so not one line of the add-on's code is read.
+        The invalid-Experiment path runs on to the orchestrator like any other
+        review. Setting <code>invalidExperiment</code> pins the mode and leaves the
+        source archive unread. The first check, <code>experiment-not-allowed</code>,
+        judges from the manifest, the experiment classification and the schema -
+        which is resolved <em>before</em> the decision because the check resolves
+        API paths through it - and its error aborts the review, so no other check
+        runs and not one line of the add-on's code is read.
       </p>
 
       <h2>The stores</h2>
@@ -606,8 +606,8 @@ flowchart LR
         With the stores in place <code>runChecks()</code> takes over. A check's
         <strong>phase</strong> is simply the <code>registry.yaml</code> section
         it lives in - never declared on the entry, so the two cannot disagree.
-        The orchestrator looks up the phases it wants, in the order it runs
-        them, which makes any section it never asks for inert.
+        The orchestrator looks up the one phase it runs, which makes any section
+        it never asks for inert.
       </p>
       <table class="phases">
         <thead>
@@ -620,19 +620,12 @@ flowchart LR
         </thead>
         <tbody>
           <tr>
-            <td><code>invalid-experiment-phase</code></td>
-            <td>
-              ONLY when the add-on is an invalid Experiment
-              (<code>ctx.invalidExperiment</code>) - and then it is the
-              <em>only</em> phase that runs at all: the whole rest of the review
-              is skipped.
-            </td>
-            <td><code>runChecks</code></td>
-            <td><code>experiment-not-allowed</code></td>
-          </tr>
-          <tr>
             <td><code>deterministic-phase</code></td>
-            <td>Every check of a normal review.</td>
+            <td>
+              Every check, in order, until one aborts the review. The first is
+              <code>experiment-not-allowed</code>, which stops a rejected
+              Experiment before any other check runs.
+            </td>
             <td><code>runChecks</code></td>
             <td><code>missing-permission</code></td>
           </tr>
@@ -652,13 +645,9 @@ title: runChecks()
 ---
 flowchart TB
   IN(["called by runPipeline() with<br/>registry · opts (only · skip · eslint) · siblings"]) --> LC["loadChecks()<br/>one list per phase section · the --eslint gate drops code-sanity before import (eslintEligible)"]
-  LC --> GATE["select each phase's eligible checks<br/>the mode gate reads ctx.mode; the --eslint gate ran in loadChecks"]
-  GATE --> QIE{{"ctx.invalidExperiment?"}}
+  LC --> GATE["select the phase's eligible checks<br/>the mode gate reads ctx.mode; the --eslint gate ran in loadChecks"]
+  GATE --> RDET[["run the deterministic-phase"]]
 
-  QIE -- yes --> RIE[["run the invalid-experiment-phase"]]
-  QIE -- no --> RDET[["run the deterministic-phase"]]
-
-  RIE --> COLL1
   RDET --> COLL1
   COLL1["collapseUnusedFolders(findings)<br/>src/lib/unused-folders.js"] --> COLL2["collapseUnusedFolders(manualItems)<br/>src/lib/unused-folders.js"]
   COLL2 --> RET(["return findings · manualItems · checksRun<br/>→ runPipeline()"])
@@ -667,7 +656,7 @@ flowchart TB
   classDef term fill:#eef2f8,stroke:#5b6b8c,color:#2a3550;
   classDef module fill:#f3eefb,stroke:#7c4dbc,color:#3d2a5c,stroke-dasharray:5 3;
   class LC,GATE,COLL1,COLL2 work;
-  class RIE,RDET module;
+  class RDET module;
   class IN,RET term;
         </pre>
       </div>
@@ -697,7 +686,7 @@ flowchart TB
 title: phase runner - the main loop that runs a phase's checks
 ---
 flowchart TB
-  IN(["a phase's gated checks<br/>deterministic (or invalid-experiment only)"]) --> HEAD
+  IN(["the deterministic phase's gated checks"]) --> HEAD
 
   HEAD{{"more checks<br/>in the list?"}}
   HEAD -- no --> DONE(["return<br/>findings · manualItems"])

@@ -79,9 +79,9 @@ const EXPERIMENT_MANIFEST =
 // separately by csp-unsafe-*).
 
 // An Experiment add-on submitted without --allow-experiments rejects outright:
-// the review runs ONLY the experiment-not-allowed check (the eval in impl.js that
-// would otherwise fire is never scanned), with no manual-review reminders and no
-// AI summaries.
+// experiment-not-allowed runs first and aborts the review, so no other check runs (the
+// eval in impl.js that would otherwise fire is never scanned), with no manual-review
+// reminders and no AI summaries.
 test("invalid Experiment: only the reject check runs, nothing else", async () => {
   const src = tmpAddon({
     "manifest.json": EXPERIMENT_MANIFEST,

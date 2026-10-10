@@ -97,11 +97,16 @@ test("several findings for one reason produce one line", () => {
 // Two causes produce two lines - which is why a check names a REASON rather than setting
 // a flag - and in the registry's order, never the order the add-on happened to trip them.
 test("two reasons produce two lines, in the order the registry authors them", () => {
-  const ids = Object.keys(registry.earlyExitProse().reasons);
+  const { reasons } = registry.earlyExitProse();
+  const ids = Object.keys(reasons);
+  assert.ok(
+    ids.indexOf("known-vulnerabilities") <
+      ids.indexOf("disallowed-library-versions")
+  );
   const both = [finding("banned-library"), finding("vendor-vulnerable")];
   assert.deepEqual(reasonsFor(both), [
-    registry.earlyExitProse().reasons[ids[0]],
-    registry.earlyExitProse().reasons[ids[1]],
+    reasons["known-vulnerabilities"],
+    reasons["disallowed-library-versions"],
   ]);
   // The same two the other way round give the same answer.
   assert.deepEqual(reasonsFor([...both].reverse()), reasonsFor(both));

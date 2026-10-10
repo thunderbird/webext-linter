@@ -12,7 +12,16 @@
     "manifestVersion": 3,
     "checksRun": [
       "experiment-not-allowed"
-    ]
+    ],
+    "earlyExit": {
+      "intro": "The review was not completed and the report is incomplete due to the following issues:",
+      "reasons": [
+        {
+          "id": "experiment-not-allowed",
+          "text": "Experiment APIs not accepted"
+        }
+      ]
+    }
   },
   "summary": {
     "error": 1,
@@ -34,7 +43,7 @@
       "item": null,
       "hint": "the messages.evil API shadows the built-in messages API",
       "artifact": "XPI",
-      "message": "We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). This ends the review, so no other check ran and this report says nothing about the rest of the add-on. A resubmission without them is reviewed in full. The following cannot be accepted:\nRead more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews"
+      "message": "We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). A resubmission without them is reviewed in full. The following cannot be accepted:\nRead more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews"
     }
   ]
 }

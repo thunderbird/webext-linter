@@ -272,9 +272,6 @@ sections:
   deterministic-phase:
     kind: entries
     shape: rule-entry
-  invalid-experiment-phase:
-    kind: entries
-    shape: rule-entry
   manual-checks:
     kind: entries
     shape: manual-entry

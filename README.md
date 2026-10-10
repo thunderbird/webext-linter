@@ -235,13 +235,12 @@ which means either nothing was built or the build output was committed beside th
 ## Review checks
 
 Every check is declared in [assets/registry.yaml](assets/registry.yaml), and the
-section it lives in **is** its phase: the orchestrator looks up the phases it runs,
-in order. A section it never asks for is inert.
+section it lives in **is** its phase: the orchestrator looks up the one phase it runs.
+A section it never asks for is inert.
 
-- **`invalid-experiment-phase`** - the single reject check. An Experiment bundling an
-  unsupported API draft (without `--allow-experiments`) is rejected outright, and this
-  phase runs ALONE - no other check, no manual reminders.
-- **`deterministic-phase`** - every check. Each case is decided in code, offline apart
+- **`deterministic-phase`** - every check, in order. The first, `experiment-not-allowed`,
+  rejects an Experiment bundling an unsupported API draft (without `--allow-experiments`)
+  and aborts the review, so no other check runs. Each case is decided in code, offline apart
   from the one-time vendor source fetch, and becomes either a finding or an escalation
   of a case the code cannot settle. A check's `input` mostly settles where it runs, and
   `skip-in-sca-review: true` keeps the few that judge the shipped XPI out of a source review.
@@ -281,9 +280,10 @@ not the developer's, so accepting it is a judgement a person owns), and
 so no scan of its surface settles what it does).
 
 Some findings abort the review outright. A check can declare that it does by naming the
-reason the report gives (`review-early-exit:` in the registry) - today fifteen do, across
-three reasons: the four dependency-vulnerability checks name *known security
-vulnerabilities*, `banned-library` names *disallowed library versions*, and the ten that
+reason the report gives (`review-early-exit:` in the registry) - today sixteen do, across
+four reasons: `experiment-not-allowed` names *Experiment APIs not accepted*, the four
+dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
+names *disallowed library versions*, and the ten that
 decide a source submission cannot be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
 `lock-foreign-source`, `build-registry-redirect`, `build-lifecycle-hook`,
