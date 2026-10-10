@@ -4443,7 +4443,6 @@ test("experiment-missing-strict-max-version flags an allowed Experiment lacking 
       await experimentMissingMax.run(
         withManifest({
           artifact: { manifest: manifestOf(manifest) },
-          options: { allowExperiments: true },
         })
       )
     ).findings;
@@ -4458,16 +4457,14 @@ test("experiment-missing-strict-max-version flags an allowed Experiment lacking 
     0 // experiment WITH a max -> ok
   );
   assert.equal((await run({ name: "x" })).length, 0); // not an experiment -> silent
-  // The check does not gate on allowExperiments: whether it runs at all is the
-  // orchestrator's job (phase: default runs only for a VALID experiment - allowed
-  // via the flag or a pristine upstream copy). Reached directly without the flag,
-  // it still flags an experiment lacking a max.
+  // The check does not gate on --allow-experiments: a rejected Experiment's review stops at
+  // experiment-not-allowed before it runs. Reached directly, it still flags an experiment
+  // lacking a max.
   assert.equal(
     (
       await experimentMissingMax.run(
         withManifest({
           artifact: { manifest: manifestOf({ experiment_apis: { a: {} } }) },
-          options: {},
         })
       )
     ).findings.length,
@@ -4607,40 +4604,40 @@ test("non-experiment-strict-max-version flags only a non-Experiment that pins a 
   assert.equal((await run({ name: "x" })).length, 0); // no max -> silent
 });
 
-// With experiments disabled (the default), an Experiment errors on the
-// experiment_apis manifest.json line; --allow-experiments silences it, and a
-// non-Experiment is silent regardless.
-test("experiment-not-allowed errors on the experiment_apis line unless allowed", async () => {
-  const manifestText = '{\n  "experiment_apis": { "x": {} }\n}\n';
-  const ctx = (manifest, allowExperiments) => ({
+// The check reports the groups the Experiment verdict rejected, at the group's own
+// experiment_apis entry, and reads no flag: with --allow-experiments the verdict rejects
+// nothing, and the check is silent. A non-Experiment is silent regardless.
+test("experiment-not-allowed reports the groups the verdict rejected", async () => {
+  const manifestText = '{\n  "experiment_apis": {\n    "x": {}\n  }\n}\n';
+  const group = (rejected) => ({
+    name: "x",
+    key: "x",
+    status: "unsupported",
+    rejected,
+    apiPaths: ["x"],
+  });
+  const ctx = (manifest, groups) => ({
+    // A new API, not a built-in: the reason is "not a published draft".
+    schema: { resolveApi: () => ({ kind: "unknown-namespace" }) },
     artifact: {
       manifest: manifestOf(manifest, manifestText),
       files: new Map([["manifest.json", Buffer.from(manifestText)]]),
     },
-    options: { allowExperiments },
+    experiments: { groups },
   });
-  const out = (
-    await experimentNotAllowed.run(
-      withManifest(ctx({ experiment_apis: { x: {} } }, false))
-    )
-  ).findings;
+  const run = async (manifest, groups) =>
+    (await experimentNotAllowed.run(withManifest(ctx(manifest, groups))))
+      .findings;
+  const out = await run({ experiment_apis: { x: {} } }, [group(true)]);
   assert.equal(out.length, 1);
-  assert.equal(out[0].loc.line, 2); // attached to the experiment_apis line
-  // --allow-experiments silences it.
-  assert.equal(
-    (
-      await experimentNotAllowed.run(
-        withManifest(ctx({ experiment_apis: { x: {} } }, true))
-      )
-    ).findings.length,
-    0
+  assert.equal(out[0].loc.line, 3); // attached to the group's own entry
+  // Unsupported but not rejected (the verdict ran with --allow-experiments): silent.
+  assert.deepEqual(
+    await run({ experiment_apis: { x: {} } }, [group(false)]),
+    []
   );
   // Not an Experiment -> silent regardless.
-  assert.equal(
-    (await experimentNotAllowed.run(withManifest(ctx({ name: "x" }, false))))
-      .findings.length,
-    0
-  );
+  assert.deepEqual(await run({ name: "x" }, null), []);
 });
 
 // ---- activity feed (ctx.note) ----
@@ -4714,25 +4711,30 @@ test("missing-library / obfuscated-code note a verdict per classified file", asy
 // outcome to the feed - pass/fail, or skipped-with-reason when it does not apply
 // (so a bare check header is never ambiguous). unsure = the deterministic
 // decision to escalate, never an answer to it.
-test("experiment-not-allowed notes pass / fail / skipped", async () => {
+test("experiment-not-allowed notes pass / fail", async () => {
   const manifestText = '{\n  "experiment_apis": {}\n}\n';
-  const ctxFor = (manifest, allowExperiments) => ({
+  const ctxFor = (manifest, rejected) => ({
     artifact: {
       manifest: manifestOf(manifest, manifestText),
       files: new Map([["manifest.json", Buffer.from(manifestText)]]),
     },
-    options: { allowExperiments },
+    experiments: {
+      groups: [
+        { name: "a", key: "a", status: "unsupported", rejected, apiPaths: [] },
+      ],
+    },
   });
-  const v = async (m, allow) =>
-    await notesFrom(experimentNotAllowed, ctxFor(m, allow));
+  const v = async (m, rejected) =>
+    await notesFrom(experimentNotAllowed, ctxFor(m, rejected));
   assert.equal((await v({ name: "x" }, false))[0].verdict, VERDICT.PASS); // not an Experiment
   assert.equal(
-    (await v({ experiment_apis: { a: {} } }, false))[0].verdict,
+    (await v({ experiment_apis: { a: {} } }, true))[0].verdict,
     VERDICT.FAIL
   );
+  // Nothing rejected (allowed, or every group recognised).
   assert.equal(
-    (await v({ experiment_apis: { a: {} } }, true))[0].verdict,
-    VERDICT.SKIPPED
+    (await v({ experiment_apis: { a: {} } }, false))[0].verdict,
+    VERDICT.PASS
   );
 });
 
@@ -4740,7 +4742,6 @@ test("experiment-missing-strict-max-version notes pass / fail / skipped", async 
   const v = async (manifest) =>
     await notesFrom(experimentMissingMax, {
       artifact: { manifest: manifestOf(manifest) },
-      options: { allowExperiments: true },
     });
   assert.equal(
     (await v({ experiment_apis: { a: {} } }))[0].verdict,
@@ -5357,6 +5358,29 @@ test("checks and their accessors read computed data only through the getters", a
         .join("\n");
       if (/\bartifact\??\.(vendor|bundled|buildReview)\b/.test(code)) {
         offenders.push(rel);
+      }
+    }
+  }
+  assert.deepEqual(offenders, []);
+});
+
+// --allow-experiments is read by the Experiment verdict alone (src/experiments/verify.js
+// experimentVerdict). A check that read the flag, or any run option, could decide against
+// the mode the review was given, so no check module and no accessor reads one.
+test("no check reads a run option", () => {
+  const offenders = [];
+  for (const dir of ["src/checks/rules", "src/lib"]) {
+    for (const name of fs.readdirSync(path.join(ROOT, dir))) {
+      if (!name.endsWith(".js")) {
+        continue;
+      }
+      const code = fs
+        .readFileSync(path.join(ROOT, dir, name), "utf8")
+        .split("\n")
+        .filter((line) => !/^\s*(\/\/|\*)/.test(line))
+        .join("\n");
+      if (/\.options\b|allowExperiments/.test(code)) {
+        offenders.push(`${dir}/${name}`);
       }
     }
   }

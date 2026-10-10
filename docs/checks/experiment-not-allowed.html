@@ -28,11 +28,12 @@
         so when an experiment is unsupported no other check runs, and the report
         ends on the reason "Experiment APIs not accepted". Recognised but locally
         modified drafts pass here — they stay on the normal review path and are
-        flagged by the experiment-modified check instead. The check stays silent when
-        experiments are explicitly allowed and when the add-on is not an
-        Experiment. For each unsupported experiment the reason is refined to
-        "shadows a built-in" when its declared path actually resolves to a real
-        API.
+        flagged by the experiment-modified check instead. Which experiments are
+        rejected is the Experiment verdict's to say, the one place that reads
+        <em>--allow-experiments</em>: with it, nothing is rejected and the check
+        stays silent, as it does when the add-on is not an Experiment. The check
+        reports the groups the verdict rejected, and refines the reason to
+        "shadows a built-in" when a declared path actually resolves to a real API.
       </p>
 
       <h2>Decision flow</h2>
@@ -43,9 +44,7 @@ flowchart TD
   P -- no --> S([skip])
   P -- yes --> E{"Is it an Experiment?<br/>(declares experiment_apis)"}
   E -- no --> OK([no finding])
-  E -- yes --> F{"Are experiments allowed?<br/>--allow-experiments"}
-  F -- yes --> S
-  F -- no --> G{"Any experiment classified<br/>as unsupported?"}
+  E -- yes --> G{"Did the Experiment verdict reject a group?<br/>(unsupported, and no --allow-experiments)"}
   G -- no --> OK
   G -- yes --> H{"Does its declared path<br/>resolve to a built-in API?"}
   H -- yes --> ERR2([ERROR: API shadows<br/>a built-in API])

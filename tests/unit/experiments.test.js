@@ -456,10 +456,9 @@ const EXP_MANIFEST_TEXT = `{
 `;
 
 // ---- experiment-not-allowed: per-group abort reasons ----
-test("experiment-not-allowed reports shadowing vs unsupported per unsupported group", () => {
+test("experiment-not-allowed reports shadowing vs unsupported per rejected group", () => {
   const ctx = {
     schema,
-    options: {},
     artifact: {
       // Real bytes, so each group's locus resolves to the line its own key sits on -
       // which is what the per-group anchoring below is checking.
@@ -473,12 +472,14 @@ test("experiment-not-allowed reports shadowing vs unsupported per unsupported gr
             name: "weather",
             key: "weather",
             status: "unsupported",
+            rejected: true,
             apiPaths: ["weather"],
           },
           {
             name: "messages",
             key: "messages",
             status: "unsupported",
+            rejected: true,
             apiPaths: ["messages.evil"],
           },
           { name: "demo", key: "demo", status: "modified", apiPaths: ["demo"] },
@@ -488,7 +489,7 @@ test("experiment-not-allowed reports shadowing vs unsupported per unsupported gr
     },
   };
   const out = experimentNotAllowed.run(withManifest(ctx)).findings;
-  assert.equal(out.length, 2); // only the two unsupported groups (not the modified one)
+  assert.equal(out.length, 2); // only the two rejected groups (not the modified one)
   // Each finding anchors on its OWN experiment_apis key, not on the block they share.
   const weather = out.find((f) => f.loc.line === 3);
   assert.match(weather.hint, /not a published Thunderbird API draft/);
@@ -580,16 +581,32 @@ test("experimentVerdict reads an extracted .xpi as the review would", async () =
         fs.readdirSync(folder).sort(),
         fs.readdirSync(path.join(fixtures, name)).sort()
       );
-      return (await experimentVerdict(folder, { ...opts, ...extra })).invalid;
+      const { verification, invalid } = await experimentVerdict(folder, {
+        ...opts,
+        ...extra,
+      });
+      return {
+        invalid,
+        groups: verification.groups.map((g) => [g.status, g.rejected]),
+      };
     } finally {
       fs.rmSync(folder, { recursive: true, force: true });
     }
   };
-  assert.equal(await verdictOf("experiment-disallowed"), true);
-  assert.equal(await verdictOf("experiment-pristine"), false);
-  assert.equal(
+  // The verdict is the one reader of --allow-experiments: it marks each group it rejects,
+  // and `invalid` is whether any is. Allowed, the unsupported group is still classified
+  // as one, and rejected by nobody.
+  assert.deepEqual(await verdictOf("experiment-disallowed"), {
+    invalid: true,
+    groups: [["unsupported", true]],
+  });
+  assert.deepEqual(await verdictOf("experiment-pristine"), {
+    invalid: false,
+    groups: [["pristine", false]],
+  });
+  assert.deepEqual(
     await verdictOf("experiment-disallowed", { allowExperiments: true }),
-    false
+    { invalid: false, groups: [["unsupported", false]] }
   );
   fs.rmSync(dir, { recursive: true, force: true });
 });

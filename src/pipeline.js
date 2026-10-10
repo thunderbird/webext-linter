@@ -114,9 +114,11 @@ import { reviewData } from "./review/products.js";
  * `when` decides whether this run has the step. It is asked as the loop ARRIVES, because
  * one fact - `invalidExperiment` - is decided by a step of this list: a REJECTED Experiment is
  * reviewed as its shipped XPI alone, even with --sca-root, so its Experiment APIs are not
- * registered and the source archive is not read.
+ * registered and the source archive is not read. That is the review MODE, and a step that
+ * depends on it reads `mode` rather than spelling out what makes one.
  * @type {{key: string, label?: ?string,
- *   when: (facts: {sca: boolean, isExp: boolean, invalidExperiment: boolean}) => boolean}[]}
+ *   when: (facts: {sca: boolean, isExp: boolean, invalidExperiment: boolean,
+ *     mode: import("./lib/enum.js").ReviewMode}) => boolean}[]}
  */
 export const SETUP_STEPS = Object.freeze([
   { key: "read", label: "Reading add-on", when: () => true },
@@ -133,9 +135,9 @@ export const SETUP_STEPS = Object.freeze([
   // The target is two entries rather than one arm each side of an `if`, so the list - not a
   // branch inside a step - holds the pin that a REJECTED Experiment is reviewed as its
   // shipped XPI even with --sca-root, and `meta` is reached on every path.
-  { key: "source-archive", when: (f) => f.sca && !f.invalidExperiment },
-  { key: "target-source", when: (f) => f.sca && !f.invalidExperiment },
-  { key: "target-xpi", when: (f) => !f.sca || f.invalidExperiment },
+  { key: "source-archive", when: (f) => f.mode.sca },
+  { key: "target-source", when: (f) => f.mode.sca },
+  { key: "target-xpi", when: (f) => !f.mode.sca },
   { key: "meta", when: () => true },
 ]);
 
@@ -381,12 +383,13 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
       return invalidExperiment;
     },
     // The preparation gave its rescue up, and recorded the lock audit that decides this
-    // review. A rejected Experiment is reviewed as its XPI, so it is never one.
+    // review. Only a source review is one: a rejected Experiment is reviewed as its XPI.
     get unrescued() {
-      return Boolean(lockAudit) && !invalidExperiment;
+      return Boolean(lockAudit) && this.mode.sca;
     },
-    // What the review IS, from the two above. Read after setup, by the ctx builders and the
-    // report; no step reads it, because a step says which FACTS it needs.
+    // What the review IS, from `sca` and `invalidExperiment`, derived here and nowhere else.
+    // Live like `invalidExperiment`: the steps that depend on it, the ctx builders and the
+    // report all read it, so none of them re-spells the rule.
     get mode() {
       return this.sca && !invalidExperiment ? REVIEW_MODE.SCA : REVIEW_MODE.XPI;
     },
@@ -486,14 +489,12 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     // failure throws so the run hard-exits (2) rather than letting a missing allow-list
     // masquerade as a verdict - we cannot verify identity without it.
     //
-    // Without
-    // --allow-experiments an Experiment add-on is rejected outright (the review
-    // short-circuits to the single experiment-not-allowed check, no other checks,
-    // no judgement, no manual reminders, and every step below is dropped)
-    // UNLESS every bundled experiment is a recognised upstream draft - a
-    // recognised-but-modified one does NOT abort, so the full review runs and
-    // experiment-modified flags it. With --allow-experiments the reviewer accepts
-    // them, so the full review always runs.
+    // The verdict is the one reader of --allow-experiments. Without it, an unsupported
+    // experiment is rejected: `invalidExperiment` makes the review an XPI review of the
+    // shipped add-on, the Experiment APIs are not registered, and the review's first check,
+    // experiment-not-allowed, reports the rejected groups and aborts. A recognised but
+    // modified one is not rejected, so the full review runs and experiment-modified flags
+    // it. With --allow-experiments nothing is rejected, and the full review always runs.
     // Experiments are reviewed from the XPI (its shipped-artifact role; xpiAddon ===
     // reviewTarget in XPI mode). They are privileged, non-bundled, readable code, and the
     // manifest.json's experiment paths resolve against the XPI's own files (no
@@ -686,10 +687,11 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
 
   // The shared review env every sibling ctx projects (buildXpiCtx / buildScaCtx). The
   // manifest.json and experiments are the SHIPPED artifact's - authoritative like the schema, so no
-  // artifact's own template can shadow them. Only what a check reads goes on `options`.
+  // artifact's own template can shadow them. No run option is on it: what a flag decides is
+  // decided before the checks (--allow-experiments by the Experiment verdict), and a check
+  // reads the decision.
   const env = {
     schema,
-    options: { allowExperiments: opts.allowExperiments },
     mode,
     manifest: webExtManifestRecord,
     experiments: experimentVerification ?? null,

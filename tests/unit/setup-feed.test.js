@@ -21,6 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { SETUP_STEPS } from "../../src/pipeline.js";
+import { REVIEW_MODE } from "../../src/lib/enum.js";
 import {
   addonOutsideRepo,
   cdnMissCache,
@@ -113,17 +114,39 @@ test("every declared step is narratable and named once", () => {
 test("the narrated count per run is the total the feed shows", () => {
   const narrated = (facts) =>
     SETUP_STEPS.filter((s) => "label" in s && s.when(facts)).length;
+  // The mode derived as the pipeline derives it (setupFacts.mode).
   const facts = (over) => ({
     sca: false,
     isExp: false,
     invalidExperiment: false,
     ...over,
+    get mode() {
+      return this.sca && !this.invalidExperiment
+        ? REVIEW_MODE.SCA
+        : REVIEW_MODE.XPI;
+    },
   });
   assert.equal(narrated(facts()), 2, "an XPI review");
   assert.equal(narrated(facts({ sca: true })), 2, "a source code review");
   assert.equal(narrated(facts({ isExp: true })), 3, "an Experiment review");
   assert.equal(narrated(facts({ sca: true, isExp: true })), 3, "both");
   assert.equal(narrated(facts({ isExp: true, invalidExperiment: true })), 3);
+  // The steps follow the mode: a rejected Experiment submitted as source has the XPI
+  // review's target and no source archive.
+  const keys = (f) => SETUP_STEPS.filter((s) => s.when(f)).map((s) => s.key);
+  assert.deepEqual(keys(facts({ sca: true, isExp: true })), [
+    "read",
+    "schema",
+    "experiments",
+    "experiment-schema",
+    "source-archive",
+    "target-source",
+    "meta",
+  ]);
+  assert.deepEqual(
+    keys(facts({ sca: true, isExp: true, invalidExperiment: true })),
+    ["read", "schema", "experiments", "target-xpi", "meta"]
+  );
 });
 
 // An XPI review: read the add-on, get the schema - the eager steps. Then its checks ask for

@@ -196,11 +196,9 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   own, because loading derives none - it is read off the shipped store when the review asks
  *   (readWebExtManifest), and a source archive is never asked, its root manifest.json being a
  *   pre-build template no check reviews.
- * @property {?object} experiments  The Experiment classification (verifyExperiments),
- *   computed from the SHIPPED XPI, shared like the manifest.json. Null for a non-Experiment
- *   add-on.
- * @property {{allowExperiments?: boolean}} options  The only run option a check reads
- *   (experiment-not-allowed).
+ * @property {?object} experiments  The Experiment verdict's classification
+ *   (experimentVerdict): each group's status, and whether the review rejects it. Computed
+ *   from the SHIPPED XPI, shared like the manifest.json. Null for a non-Experiment add-on.
  * @property {import("../lib/enum.js").ReviewMode} [mode]  Review mode: "xpi" (a built add-on, default) or
  *   "sca" (a source code archive). Gates checks via modeEligible.
  *

@@ -229,10 +229,7 @@ test("buildScaCtx puts the archive on ctx.artifact, with its sources", async () 
 // no credentials are on the ctx: the token stays in the pipeline (it builds the client).
 test("ctx.artifact is the loaded artifact itself; the shipped answers come from env", () => {
   const xpi = addonWith({ "app.js": "export const x = 1;" });
-  const env = envWith({
-    options: { allowExperiments: true },
-    manifest: shippedRecord,
-  });
+  const env = envWith({ manifest: shippedRecord });
   const xpiCtx = buildXpiCtx(xpi, dataFor(xpi), env);
   assert.equal(xpiCtx.artifact, xpi, "the same object the loader produced");
   // The two shipped-authoritative answers are asked of the XPI once and shared, so they sit
@@ -241,9 +238,10 @@ test("ctx.artifact is the loaded artifact itself; the shipped answers come from 
   assert.equal(xpiCtx.experiments, env.experiments);
   // And what a review DERIVES has its own home, empty until something asks.
   assert.deepEqual(xpiCtx.cache, {});
-  // No secret token anywhere on the check-facing ctx (the builder never receives one).
-  assert.equal("apiKey" in xpiCtx.options, false);
-  assert.equal(xpiCtx.options.allowExperiments, true); // a real option stays
+  // No secret token and no run option on the check-facing ctx: what a flag decides is
+  // decided before the checks, and a check reads the decision.
+  assert.equal("apiKey" in xpiCtx, false);
+  assert.equal("options" in xpiCtx, false);
 });
 
 // A manifest.json check's verdict comes from the RECORD, not from the files it is routed to:

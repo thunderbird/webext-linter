@@ -799,10 +799,11 @@ export async function main(argv) {
     // from the .xpi alone, before it reads a line of the source. So its verdict is asked
     // here, by the rule the review asks it by (experimentVerdict), of a temporary
     // extraction of the .xpi - and where it rejects, the review starts at once, decides
-    // the same, and ends where it always does. A run that allows Experiments, or a
-    // submission with none, has nothing to ask.
+    // the same, and ends where it always does. A submission with no Experiment has nothing
+    // to ask. --allow-experiments is not asked here: the verdict reads it, and with it
+    // rejects nothing.
     let rejected = false;
-    if (experiments && !values["allow-experiments"]) {
+    if (experiments) {
       let folder;
       try {
         folder = extractXpiToTemp(submission.xpi);

@@ -132,6 +132,9 @@ function walkDir(root) {
  * @property {?string} key  The experiment_apis key this group was declared under, so a
  *   reader can ask the manifest.json record where that is. Null when it has none.
  * @property {"pristine"|"modified"|"unsupported"} status
+ * @property {boolean} [rejected]  The review rejects the add-on for this group: it is
+ *   unsupported and the reviewer did not allow Experiments. Set by experimentVerdict, the
+ *   one reader of --allow-experiments.
  * @property {string[]} apiPaths  All API paths the group declares (for the
  *   shadowing reason).
  */
@@ -150,11 +153,16 @@ function walkDir(root) {
 
 /**
  * The Experiment verdict on an extracted XPI folder, read where it is: the classification
- * of every bundled Experiment, and whether the review rejects the add-on for one
- * (`invalid`) - an Experiment upstream does not publish, or one with no files, and the
- * reviewer did not allow Experiments. One rule for both of its readers: the review's own
- * step on its `xpi/`, and --llm-sca-review, which asks before it prepares a review the
- * verdict would reject (src/cli.js).
+ * of every bundled Experiment, each group the review rejects (`rejected` - an Experiment
+ * upstream does not publish, or one with no files, and the reviewer did not allow
+ * Experiments), and whether it rejects the add-on (`invalid`). One rule for every reader:
+ * the review's own step on its `xpi/`, --llm-sca-review, which asks before it prepares a
+ * review the verdict would reject (src/cli.js), and experiment-not-allowed, which reports
+ * the rejected groups.
+ *
+ * The ONLY place --allow-experiments is read. With it, nothing is rejected, and every group
+ * is still classified: experiment-modified and experiment-manual-review read the
+ * classification in an allowed review.
  * @param {string} xpiRoot  The extracted XPI folder.
  * @param {VerifyExperimentsOpts & {allowExperiments?: boolean}} [opts]
  * @returns {Promise<{verification: ExperimentVerification, invalid: boolean}>}
@@ -166,11 +174,12 @@ export async function experimentVerdict(xpiRoot, opts = {}) {
     readWebExtManifest(addon.store),
     opts
   );
+  for (const g of verification.groups) {
+    g.rejected = !opts.allowExperiments && g.status === "unsupported";
+  }
   return {
     verification,
-    invalid:
-      !opts.allowExperiments &&
-      verification.groups.some((g) => g.status === "unsupported"),
+    invalid: verification.groups.some((g) => g.rejected),
   };
 }
 

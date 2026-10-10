@@ -27,7 +27,6 @@ import { wiringError } from "../lib/errors.js";
  *   Experiment sit on disk is NOT here: it is settled once, when the archive is split into views (src/addon/load.js scaViews), and a
  *   check reads the files it was routed rather than a path.
  * @property {import("../schema/index.js").SchemaIndex} schema
- * @property {{allowExperiments?: boolean}} options
  * @property {object} mode  The REVIEW_MODE enum member (XPI/SCA); read as `mode?.sca`.
  * @property {?import("../addon/load.js").WebExtManifestRecord} manifest
  * @property {?object} experiments
@@ -69,7 +68,6 @@ function projectCtx(env, { artifact, data }) {
     apiUsages: data.apiUsages,
     buildReview: data.buildReview,
     lockInstalls: data.lockInstalls,
-    options: env.options,
     // "xpi" (a built add-on) or "sca" (a source-code archive review, --sca-root). Gates checks
     // via modeEligible.
     mode: env.mode,
