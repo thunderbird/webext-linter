@@ -174,8 +174,8 @@ function installFetchMock(dir, network) {
 // leaves - run here, step by step, against a fake OSV network answering `advisories`
 // ("name@version" -> [{id, severity, fixed}]). It starts from the fixture's `from` folder
 // (src/ by default). With `rescued`, the agent's work in the rescued copy is the fixture's
-// src/ tree, and the copy's review runs; without, the rescue is given up, and the original's
-// review runs, decided by the lock audit the preparation recorded.
+// src/ tree, and the copy's review runs; without, the rescue is given up, and the original
+// is reviewed like any other source, its lock audit answered from the run's OSV cache.
 function loadFixture(dir) {
   const file = path.join(EXPECTED_DIR, `${path.basename(dir)}.json`);
   const parsed = JSON.parse(fs.readFileSync(file, "utf8"));

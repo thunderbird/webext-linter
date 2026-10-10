@@ -6,28 +6,22 @@
 // settles them as the review settles them (src/addon/sca-root.js) and audits the root's lock
 // (./audit.js). A root whose lock is clean, or that the audit cannot read in full, is done:
 // the review starts there, and decides everything else. A vulnerable lock gets a RESCUED COPY
-// of its source in a work folder of its own (`<work>-rescued`), whose dependencies an agent
-// reduces to what the release build uses, and then, where that is not enough, audit-fixes.
-// The copy is audited after each, and a clean one is reviewed instead of the original. A copy
-// still vulnerable after both is deleted, and the original is done, marked UNRESCUED: its
-// review takes the lock audit recorded here as its own, and is aborted by it
-// (src/pipeline.js).
+// of its source in the same work folder (`rescued/`, beside `sca/`), whose dependencies an
+// agent reduces to what the release build uses, and then, where that is not enough,
+// audit-fixes. The copy is audited after each, and a clean one is reviewed instead of the
+// original. A copy still vulnerable after both is deleted, and the original is done, marked
+// UNRESCUED: it is reviewed like any other source, and its vulnerability checks stop it.
 //
 // Nothing the agent did is verified except by that audit. A dependency edit the build
 // cannot use fails the build, and one that changed shipped code fails the question whether
 // the build reproduces the XPI - both asked by the review itself.
 //
-// ORDER. Every step moves a folder's record (./state.js) on, and the records are written in
-// the order that leaves an interrupted run somewhere the next hand-back can go on from. The
-// original is marked as handed to its copy only once the copy is complete, and a copy that
-// cannot be made ends the run: a retry is a new preparation, under new names. Giving a copy
-// up marks the original done before the copy is deleted, so the original never points at a
-// copy that is gone, and a hand-back of either finishes what was cut short.
-//
-// TRUST. The agent can write any file, these records included, so a record alone never
-// decides what is deleted. The one folder this file ever removes is a rescued copy at the
-// path computed from its original (rescuedWorkFolder), and only where both records name
-// each other.
+// ONE FOLDER. The work folder is the whole run: one record (./state.js), one cache, one
+// review. Each step writes the record first and changes the folder after, so a run cut short
+// is somewhere the next hand-back goes on from: a copy whose record was never moved on is made
+// again, and a give-up whose copy was not yet removed is finished. The one thing this file
+// ever removes is `rescued/`, a fixed name inside the work folder, so no record can point a
+// delete anywhere else.
 //
 // Belongs here: one step (handBack), the review file the first step reads its roots from,
 // the copy, the records each step writes, and the delete. Does NOT belong here: the command
@@ -47,7 +41,7 @@ import {
 import { auditRoot, isClean, isRescuable } from "./audit.js";
 import { settleScaRoot } from "../addon/sca-root.js";
 import { relativeInside } from "../addon/load.js";
-import { rescuedWorkFolder, runCache, workPaths } from "../util/dest.js";
+import { runCache, workPaths } from "../util/dest.js";
 import { defaultNet } from "../vendor/verify.js";
 import { withOsvCache } from "../vendor/osv-cache.js";
 import { rethrowIfFatal } from "../lib/errors.js";
@@ -67,8 +61,7 @@ const EXP_SOURCE = "SCA_EXP_SOURCE";
 
 /**
  * What a hand-back hands out next: the prompt for a rescued copy's step (`step`), or the
- * review (`review`), which the hand-back starts in that folder from that record - never
- * simply the folder handed back: a copy given up hands its original's review out.
+ * review (`review`), which the hand-back starts in that folder from that record.
  * @typedef {{next: "step"|"review", work: string,
  *   record: import("./state.js").PrepareRecord}} Handout
  */
@@ -113,7 +106,7 @@ export async function handBack(work, { net } = {}) {
   // The audit reads the npm registry cache the review it starts will read, and asks OSV
   // through the run's cache, which every step of the preparation and its review share.
   const context = {
-    net: withOsvCache(net ?? defaultNet, runCache(work, record).osv),
+    net: withOsvCache(net ?? defaultNet, runCache(work).osv),
     cacheDir: record.flags?.["cache-npm-registry-dir"] || undefined,
   };
   switch (record.step) {
@@ -122,8 +115,6 @@ export async function handBack(work, { net } = {}) {
     case PREPARE_STEP.reduce:
     case PREPARE_STEP.fix:
       return rescueStep(work, record, context);
-    case PREPARE_STEP.handed:
-      return handedOn(work, record);
     default:
       return doneAgain(work, record);
   }
@@ -213,7 +204,8 @@ function answeredRoots(work, record) {
  * The roots a review is started with, asked again of the folder it starts in: the agent
  * works there between the step that settled them and the start, and can swap a folder for
  * a link. So each is followed to the folder it really is, and must still be one where the
- * extract step put it - the root inside `sca/`, the Experiment folder inside the root.
+ * preparation put it - the root inside `sca/`, or inside `rescued/` for a rescued copy, and
+ * the Experiment folder inside the root.
  * @param {string} work  The work folder the review starts in.
  * @param {{scaRoot: string, scaExpSource: ?string}} roots  As the record holds them.
  * @returns {{scaRoot: string, scaExpSource: ?string}}  The real folders, which the review
@@ -221,12 +213,15 @@ function answeredRoots(work, record) {
  * @throws {HandbackRefused}
  */
 export function recordedRoots(work, roots) {
-  const sca = realSca(workPaths(work));
+  const paths = workPaths(work);
+  const sca = realSca(paths);
+  const copy = realFolder(paths.rescued);
   const root = realFolder(roots.scaRoot);
-  if (!root || relativeInside(root, sca) === null) {
+  const inside = (tree) => tree !== null && relativeInside(root, tree) !== null;
+  if (!root || !(inside(sca) || inside(copy))) {
     throw new HandbackRefused(
       `the preparation's record names a source root "${displayLine(roots.scaRoot)}" ` +
-        `that is not a folder inside "${sca}"`
+        `that is not a folder inside "${sca}" or its rescued copy`
     );
   }
   if (typeof roots.scaExpSource !== "string") {
@@ -289,182 +284,97 @@ function done(work, record) {
 }
 
 /**
- * Make the rescued copy of `work`'s source and hand it the first step.
+ * Make the rescued copy of the work folder's source, in its `rescued/`, and hand it the
+ * first step.
  *
- * In this order: the copy's folder is created with its own record naming the original, the
- * source is copied in, and only then is the original marked as handed to the copy. Symbolic
- * links are copied as they are written: one the submission points out of itself stays
- * pointing out, for the review to report, rather than being followed into a copy of
- * whatever it names.
+ * The copy is made first and the record moved on after, so a run cut short in between
+ * leaves the record at `extract`, and handing the folder back makes the copy again - over
+ * whatever the cut-short run left there, which is this run's own. Symbolic links are copied
+ * as they are written: one the submission points out of itself stays pointing out, for the
+ * review to report, rather than being followed into a copy of whatever it names.
  *
- * A copy that cannot be made - its folder already there, or not created, or the source not
- * copied into it - ends the run as the tool's failure, before any prompt names the copy. A
- * retry is a new preparation (--llm-sca-review), whose work folder and copy are new names,
- * so nothing here is left for a later run to replace or work around.
+ * A copy that cannot be made ends the run as the tool's failure, before any prompt names it.
  * @param {string} work
- * @param {import("./state.js").PrepareRecord} record  Settled, with its lock audit.
+ * @param {import("./state.js").PrepareRecord} record  Settled.
  * @returns {Handout}
  * @throws {Error}  The copy could not be made.
  */
 function rescue(work, record) {
-  const copy = rescuedWorkFolder(work);
-  const from = workPaths(work).sca;
-  const to = workPaths(copy).sca;
-  const into = (p) => (p ? path.join(to, path.relative(from, p)) : p);
-  let copied;
+  const { sca: from, rescued: to } = workPaths(work);
+  const real = fs.realpathSync(from);
+  const into = (p) => (p ? path.join(to, path.relative(real, p)) : p);
   try {
-    fs.mkdirSync(copy);
-    copied = writePrepare(copy, {
-      ...record,
-      step: PREPARE_STEP.reduce,
-      roots: {
-        scaRoot: into(record.roots.scaRoot),
-        scaExpSource: into(record.roots.scaExpSource),
-      },
-      original: { work, scaRoot: record.roots.scaRoot },
-      rescued: null,
-      unrescued: false,
-    });
+    fs.rmSync(to, { recursive: true, force: true });
     fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true });
   } catch (err) {
     rethrowIfFatal(err);
     throw new Error(
-      `The rescued copy "${copy}" could not be made (${err.code ?? err.message}). ` +
-        "Start the preparation again with --llm-sca-review."
+      `The rescued copy "${to}" could not be made (${err.code ?? err.message}). ` +
+        "Hand the work folder back once that is fixed."
     );
   }
-  markPrepare(work, { ...record, step: PREPARE_STEP.handed, rescued: copy });
-  return { next: "step", work: copy, record: copied };
-}
-
-/**
- * Whether `copy` is a rescued copy of `work` that no review started in: its record names
- * `work` as its original - the copy a give-up cut short leaves behind.
- * @param {string} copy
- * @param {string} work
- * @returns {boolean}
- */
-function interruptedCopyOf(copy, work) {
-  return (
-    copyRecord(copy, work) !== null && !fs.existsSync(workPaths(copy).state)
-  );
-}
-
-/**
- * The record of the rescued copy at `copy`, where it names `work` as its original - or null
- * where there is none, it cannot be read, or it names another folder.
- * @param {string} copy
- * @param {string} work
- * @returns {?import("./state.js").PrepareRecord}
- */
-function copyRecord(copy, work) {
-  let record;
-  try {
-    record = readPrepare(copy);
-  } catch (err) {
-    rethrowIfFatal(err);
-    return null;
-  }
-  return record?.original?.work === work ? record : null;
+  const copied = markPrepare(work, {
+    ...record,
+    step: PREPARE_STEP.reduce,
+    roots: {
+      scaRoot: fs.realpathSync(into(record.roots.scaRoot)),
+      scaExpSource: record.roots.scaExpSource
+        ? fs.realpathSync(into(record.roots.scaExpSource))
+        : null,
+    },
+  });
+  return { next: "step", work, record: copied };
 }
 
 /**
  * A rescued copy's step, handed back: audited, then done when clean, on to `fix` after a
  * `reduce` that was not enough, and given up after a `fix` that was not either - the
- * original is then done and marked unrescued, before the copy is deleted.
- *
- * Refused unless the copy is the one its original handed its source to: at the path
- * computed from that original, which names it back. A copy whose original already gave it
- * up is one a give-up was cut short in, and its removal is finished.
- * @param {string} copy
+ * folder is then done and marked unrescued, its roots back in `sca/`, before the copy is
+ * removed.
+ * @param {string} work
  * @param {import("./state.js").PrepareRecord} record
  * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} context
  * @returns {Promise<Handout>}
  */
-async function rescueStep(copy, record, context) {
-  const work = record.original?.work;
-  if (!work || copy !== rescuedWorkFolder(work)) {
-    throw new HandbackRefused(`"${copy}" is not a copy this preparation made`);
-  }
-  const original = readPrepare(work);
-  if (gaveUp(original, copy)) {
-    fs.rmSync(copy, { recursive: true, force: true });
-    return { next: "review", work, record: original };
-  }
-  if (original?.step !== PREPARE_STEP.handed || original.rescued !== copy) {
-    throw new HandbackRefused(
-      `"${work}" does not name "${copy}" as its rescue`
-    );
-  }
+async function rescueStep(work, record, context) {
   const found = await auditRoot(record.roots, context);
   if (isClean(found)) {
-    return done(copy, record);
+    return done(work, record);
   }
   if (record.step === PREPARE_STEP.reduce) {
-    const fix = writePrepare(copy, { ...record, step: PREPARE_STEP.fix });
-    return { next: "step", work: copy, record: fix };
+    const fix = markPrepare(work, { ...record, step: PREPARE_STEP.fix });
+    return { next: "step", work, record: fix };
   }
+  const { sca, rescued } = workPaths(work);
+  const real = fs.realpathSync(rescued);
+  const back = (p) =>
+    p ? path.join(fs.realpathSync(sca), path.relative(real, p)) : p;
   const unrescued = markPrepare(work, {
-    ...original,
+    ...record,
     step: PREPARE_STEP.done,
     unrescued: true,
+    roots: {
+      scaRoot: back(record.roots.scaRoot),
+      scaExpSource: back(record.roots.scaExpSource),
+    },
   });
-  fs.rmSync(copy, { recursive: true, force: true });
+  fs.rmSync(rescued, { recursive: true, force: true });
   return { next: "review", work, record: unrescued };
 }
 
 /**
- * Whether `record`, an original's, gave up the rescue in `copy`: done, unrescued, and still
- * naming that copy.
- * @param {?import("./state.js").PrepareRecord} record
- * @param {string} copy
- * @returns {boolean}
- */
-function gaveUp(record, copy) {
-  return (
-    record?.step === PREPARE_STEP.done &&
-    record.unrescued === true &&
-    record.rescued === copy
-  );
-}
-
-/**
- * A folder that handed its source to a rescued copy, handed back itself: the copy's prompt
- * again, while the copy is still at a step - a run cut short after the copy was made can
- * lose the prompt that named it. Anything else is refused, and points at the copy, whose own
- * hand-back carries the preparation or its review on.
- * @param {string} work
- * @param {import("./state.js").PrepareRecord} record
- * @returns {Handout}
- */
-function handedOn(work, record) {
-  const copy = rescuedWorkFolder(work);
-  const copied = record.rescued === copy ? copyRecord(copy, work) : null;
-  if (
-    copied?.step === PREPARE_STEP.reduce ||
-    copied?.step === PREPARE_STEP.fix
-  ) {
-    return { next: "step", work: copy, record: copied };
-  }
-  throw new HandbackRefused(
-    `"${work}" handed its source to "${record.rescued}"`
-  );
-}
-
-/**
  * A done folder handed back again before its review started - the start before was refused,
- * failed, or was cut short: its review is started once more.
- * Where it gave up a rescue and the copy is still there - the give-up was cut short - the
- * copy's removal is finished first. And the review file the review claims is deleted again,
- * in case the run that marked the folder was cut short before it could.
+ * failed, or was cut short: its review is started once more. Where it gave its rescue up and
+ * the copy is still there - the give-up was cut short - the copy's removal is finished first.
+ * And the review file the review claims is deleted again, in case the run that marked the
+ * folder was cut short before it could.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record
  * @returns {Handout}
  */
 function doneAgain(work, record) {
-  const copy = rescuedWorkFolder(work);
-  if (gaveUp(record, copy) && interruptedCopyOf(copy, work)) {
-    fs.rmSync(copy, { recursive: true, force: true });
+  if (record.unrescued === true) {
+    fs.rmSync(workPaths(work).rescued, { recursive: true, force: true });
   }
   return { next: "review", work, record: markPrepare(work, record) };
 }

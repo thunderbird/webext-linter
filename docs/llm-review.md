@@ -373,7 +373,8 @@ the review. Three outcomes:
   parse, an entry from a source the audit cannot read, an entry that installs another
   release than it names, a scan OSV refused with a 404): the folder is done, and the same hand-back starts its review. The review decides the rest.
 - **The lock installs a package with a known high or critical advisory**: the linter copies
-  the work folder to `<work folder>-rescued` and hands the copy two steps. First the reader
+  the source into `rescued/` beside `sca/` in the same work folder, and hands the copy two
+  steps. First the reader
   **reduces** the copy's dependencies to what the release build uses, then, where that is not
   enough, applies the package manager's **audit fix** - lock-only commands with
   `--ignore-scripts`, so no submission code runs. The copy is audited after each step, and a
@@ -416,6 +417,7 @@ lives in one **work folder**, under a name that is the same in every review:
 | --- | --- | --- |
 | `xpi/` | The shipped add-on, extracted (or, for an unpacked one, copied): `XPI_ROOT` | the linter, as the review starts |
 | `sca/` | The source archive, extracted: `EXTRACT_TO`, holding `SCA_ROOT` | the reader of the `--llm-sca-review` prompt |
+| `rescued/` | The copy of the source a rescue works in (`RESCUE_ROOT` lies inside it), reviewed instead when the rescue comes out clean, and removed when it is given up | the linter, and the reader of the rescue's steps |
 | `prepare.json` | Where the preparation of a source code review stands, and how its review is to be run - read-only, and hashed | the linter, at each step of the preparation |
 | `state.json` | The review itself, which every pass reads | the linter |
 | `review.json` | The file the agent fills in and hands back (`ANSWERS` while a source code review is prepared) | the linter, each pass |
@@ -425,7 +427,7 @@ lives in one **work folder**, under a name that is the same in every review:
 | `build/` | The copy of the source the agent builds in, never the archive itself | the agent, when the reviewer lets it build |
 | `build-diff.md` | `BUILD_DIFF` | the agent, after building |
 | `sweep-<artifact>.yaml` and `sweep-<artifact>.answers.json` | One tree's sweep request and answers | the linter, and a sweeping agent |
-| `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again. A rescued copy uses the original's | the linter, whenever it audits |
+| `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again | the linter, whenever it audits |
 
 The folder is always `<add-on name>-<timestamp>` beside the add-on argument, named by the
 run that starts the review: no flag names another. It must not exist: the run that starts a

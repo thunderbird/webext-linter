@@ -136,21 +136,22 @@ export async function realPreparation({
     PREPARE_STEP.reduce,
     "a vulnerable source is rescued"
   );
-  const copy = at.work;
+  assert.equal(at.work, work, "the copy is made in the same work folder");
+  const copy = workPaths(work).rescued;
   if (rescue) {
     rescue(at.record.roots.scaRoot);
-    at = await step(copy);
+    at = await step(work);
     assert.equal(at.next, "review", "the rescued copy came out clean");
-    assert.equal(at.work, copy);
+    assert.equal(at.work, work);
     return at;
   }
-  at = await step(copy);
+  at = await step(work);
   assert.equal(
     at.record.step,
     PREPARE_STEP.fix,
     "a reduce that changed nothing"
   );
-  at = await step(copy);
+  at = await step(work);
   assert.equal(
     at.next,
     "review",

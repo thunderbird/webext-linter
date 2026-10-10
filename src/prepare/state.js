@@ -15,15 +15,14 @@
 // is caught on the next read; an integrity check, not proof of who wrote it. And what a
 // changed record could still decide is checked as the linter would write it (recordBoolean).
 //
-// One record per work folder. The folder the source was extracted into holds one from the
-// start; a rescued copy (`<work>-rescued`) holds its own, which names the folder it was
-// copied from. The hand-back that finds a folder done starts its review from this record
-// (src/cli.js), and that review reads it too (src/pipeline.js): a rescued review reads the
-// original's package files from the root it names, to tell the developer the rescue changed
-// them (originalPackages).
+// One record per work folder, which is the whole run: the source is extracted into its `sca/`,
+// and a rescue copies that into `rescued/` beside it. The hand-back that finds the folder
+// done starts its review from this record (src/cli.js), and that review reads it too
+// (src/pipeline.js): a rescued review reads the package files of the root it was copied
+// from, in `sca/`, to tell the developer the rescue changed them (originalPackages).
 //
 // Belongs here: the record's shape and version, reading and writing it, marking a folder at
-// a step, and reading the package files of the original root it names. Does NOT belong
+// a step, and reading the package files of the root a rescue copied. Does NOT belong
 // here: what each step does and when the record moves on (-> ./steps.js), the audit that
 // decides it (-> ./audit.js), the folder's names (-> src/util/dest.js workPaths), or how a
 // prompt is printed (-> src/report/format.js).
@@ -43,7 +42,7 @@ import { HandbackRefused } from "../report/handback.js";
 /** Bumped when the record's shape, or what a step does with it, changes in a way an older
  *  file cannot satisfy. A preparation in flight does not survive the upgrade, and saying so
  *  beats reading it wrongly. */
-export const PREPARE_VERSION = 2;
+export const PREPARE_VERSION = 3;
 
 /** The mode every write leaves the record at: readable, and writable by nobody. */
 const READ_ONLY = 0o444;
@@ -53,10 +52,8 @@ const READ_ONLY = 0o444;
  *
  * - `extract`: the source is to be extracted into `sca/` and its roots handed back in the
  *   review file, and the next hand-back settles and audits them;
- * - `reduce` and `fix`: a rescued copy, waiting for its dependencies to be reduced, then
- *   audit-fixed, and audited again after each;
- * - `handed`: the folder handed its source to a rescued copy (`rescued`), which carries the
- *   preparation on;
+ * - `reduce` and `fix`: the rescued copy in `rescued/`, waiting for its dependencies to be
+ *   reduced, then audit-fixed, and audited again after each;
  * - `done`: the review may start here, and the record holds what its command is built from.
  *   A folder whose rescue was given up is `done` too, marked `unrescued`.
  */
@@ -64,7 +61,6 @@ export const PREPARE_STEP = Object.freeze({
   extract: "extract",
   reduce: "reduce",
   fix: "fix",
-  handed: "handed",
   done: "done",
 });
 
@@ -79,14 +75,10 @@ export const PREPARE_STEP = Object.freeze({
  *   as parsed (src/cli.js), named without their dashes. A folder among them is absolute, so
  *   the command means the same wherever it is run.
  * @property {?{scaRoot: string, scaExpSource: ?string}} roots  The settled roots, absolute
- *   and real, once known.
- * @property {?{work: string, scaRoot: string}} original  In a rescued copy: the work folder
- *   it was copied from, and that folder's settled root. Null otherwise.
- * @property {?string} rescued  In a folder that handed its source to a rescued copy: that
- *   copy. Kept once the folder is `done` again after a rescue was given up, so the pair can
- *   still be proven while the copy is removed. Null otherwise.
- * @property {boolean} unrescued  The rescue was given up: the folder's own source is
- *   reviewed, like any other, and its vulnerability checks stop it.
+ *   and real, once known: inside `sca/`, or inside `rescued/` while a rescue runs and once it
+ *   came out clean - the tree the next step, or the review, reads.
+ * @property {boolean} unrescued  The rescue was given up: the source as submitted, in
+ *   `sca/`, is reviewed like any other, and its vulnerability checks stop it.
  * @property {string} digest  The hash over every other field, as writePrepare stored it
  *   (recordDigest). A record whose digest does not match was changed after it was written.
  *
@@ -179,8 +171,6 @@ export function startRecord({ submission, flags }) {
     submission,
     flags,
     roots: null,
-    original: null,
-    rescued: null,
     unrescued: false,
   };
 }
@@ -226,9 +216,6 @@ function relativeFolders(record) {
     ["submission.xpi", record.submission?.xpi],
     ["roots.scaRoot", record.roots?.scaRoot],
     ["roots.scaExpSource", record.roots?.scaExpSource],
-    ["original.work", record.original?.work],
-    ["original.scaRoot", record.original?.scaRoot],
-    ["rescued", record.rescued],
     ...Object.entries(record.flags ?? {})
       .filter(([flag]) => flag.endsWith("-dir"))
       .map(([flag, value]) => [`flags.${flag}`, value]),
@@ -252,8 +239,8 @@ function recordDigest(body) {
 }
 
 /**
- * Move a folder on to a step its agent is no longer handed a review file at: `handed` or
- * `done`. The record is written FIRST and the review file deleted after, so a
+ * Move a folder on to a step its agent is no longer handed a review file at: the rescue's
+ * `reduce` and `fix`, or `done`. The record is written FIRST and the review file deleted after, so a
  * run cut short in between leaves a folder already at its new step, and the next hand-back
  * of it deletes the file again. The review file has to go: the review that starts in a
  * `done` folder claims that name for its own (src/pipeline.js), and refuses a folder where
@@ -276,17 +263,25 @@ const PACKAGE_FILES = [PACKAGE_FILE, ...TREE_LOCKS];
  * artifact (`files`, src/vendor/locks.js lockedPackages): what the developer submitted,
  * beside which the rescued copy's own are compared (sca-dependencies-changed).
  *
- * Null for a folder that is not a rescued copy. A root that is gone ends the review: the
- * report of a rescued review says what the rescue changed, and without the original there
- * is nothing to say it against.
- * @param {?PrepareRecord} record  The review's work folder's record.
+ * A review whose root lies in the work folder's `rescued/` reviews the copy, and the root it
+ * was copied from is the same place in `sca/`. Null for every other review. A root that is
+ * gone ends the review: the report of a rescued review says what the rescue changed, and
+ * without the original there is nothing to say it against.
+ * @param {string} work  The review's work folder.
+ * @param {?PrepareRecord} record  Its record.
  * @returns {?{files: Map<string, Buffer>}}
  */
-export function originalPackages(record) {
-  const root = record?.original?.scaRoot;
-  if (!root) {
+export function originalPackages(work, record) {
+  const reviewed = record?.roots?.scaRoot;
+  const paths = workPaths(work);
+  if (!reviewed || !fs.existsSync(paths.rescued)) {
     return null;
   }
+  const inCopy = path.relative(fs.realpathSync(paths.rescued), reviewed);
+  if (inCopy.startsWith("..") || path.isAbsolute(inCopy)) {
+    return null;
+  }
+  const root = path.join(paths.sca, inCopy);
   if (!fs.statSync(root, { throwIfNoEntry: false })?.isDirectory()) {
     throw new Error(
       `The source root this rescued copy was made from is gone: ${root}. The review ` +

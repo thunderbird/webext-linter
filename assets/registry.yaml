@@ -2059,8 +2059,8 @@ review-early-exit:
 # settle: extracting it there, and deciding where the code root is and which folder holds the
 # Experiment implementation. They hand those two paths back in ANSWERS, and the linter
 # audits that root's lock (src/prepare/audit.js). Where the lock installs a package with a
-# known high or critical advisory, the linter copies the work folder, and the reader REDUCES
-# the copy's dependencies to what the release build uses, then, where that is not enough,
+# known high or critical advisory, the linter copies the source into the work folder's
+# rescued/, and the reader REDUCES the copy's dependencies to what the release build uses, then, where that is not enough,
 # applies the package manager's audit FIX. Both change the dependencies and nothing else,
 # with no install script run, so no submission code runs. Each step's reader may fail to do
 # it and run the next command anyway (the way out both say). A clean copy is reviewed. A copy

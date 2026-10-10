@@ -66,29 +66,16 @@ export function defaultWorkFolder(addonPath) {
 }
 
 /**
- * The work folder a rescued copy of `work` is made in (src/prepare/steps.js): beside it,
- * under its name with `-rescued` after it. Always computed from the folder it copies, never
- * read from a record, because it is also the one folder the preparation ever deletes.
- * @param {string} work  The work folder, absolute and real.
- * @returns {string}
- */
-export function rescuedWorkFolder(work) {
-  return `${work}-rescued`;
-}
-
-/**
- * Where one RUN of a review keeps what it caches: a dot folder in the run's ROOT work folder.
- * A source review is one run over several work folders - the original's, and a rescued
- * copy's, whose record names the original - so the root is the original's, and the copy
- * reads and writes the same cache. Not one of workPaths' names: a run claims those afresh,
- * while this one is there to be found again by every invocation of the run.
- * @param {string} work  The work folder this invocation runs in, absolute.
- * @param {?{original?: ?{work?: string}}} [record]  Its preparation's record, if it has one.
+ * Where one RUN of a review keeps what it caches: a dot folder in its work folder. Every
+ * invocation of the run - the preparation's hand-backs and the review - works in that one
+ * folder, so they all find the same cache. Not one of workPaths' names: a run claims those
+ * afresh, while this one is there to be found again by every invocation of the run.
+ * @param {string} work  The work folder, absolute.
  * @returns {{dir: string, osv: string}}  The folder, and OSV's answers in it
  *   (src/vendor/osv-cache.js).
  */
-export function runCache(work, record) {
-  const dir = path.join(record?.original?.work ?? work, ".cache");
+export function runCache(work) {
+  const dir = path.join(work, ".cache");
   return { dir, osv: path.join(dir, "osv.json") };
 }
 
@@ -99,6 +86,9 @@ export function runCache(work, record) {
  *   so every reader - the checks, a reviewer, an agent - reads one unpacked tree.
  * - `sca`, where the source archive is extracted when the review is prepared. An INPUT to
  *   the review, never written by it.
+ * - `rescued`, the preparation's copy of that source, made where its lock needs a rescue
+ *   (src/prepare/steps.js). An input like `sca`: the review reads it when the rescue came
+ *   out clean, and never writes it.
  * - `prepare`, reserved for the preparation of a source code review. An input like `sca`,
  *   so no review claims it.
  * - `state`, the linter's own record of the review, and `review`, the file it hands the
@@ -115,7 +105,8 @@ export function runCache(work, record) {
  *   XPI review has one tree with sweeps and a source review may have two, and a fixed pair
  *   of fields here would invent a path for a tree that does not exist.
  * @param {string} work  The work folder, absolute.
- * @returns {{xpi: string, sca: string, prepare: string, state: string, review: string,
+ * @returns {{xpi: string, sca: string, rescued: string, prepare: string, state: string,
+ *   review: string,
  *   report: string, summary: string, build: string, buildDiff: string, buildCopy: string,
  *   sweep: (artifact: string) => {request: string, answers: string}}}
  */
@@ -124,6 +115,7 @@ export function workPaths(work) {
   return {
     xpi: at("xpi"),
     sca: at("sca"),
+    rescued: at("rescued"),
     prepare: at("prepare.json"),
     state: at("state.json"),
     review: at("review.json"),

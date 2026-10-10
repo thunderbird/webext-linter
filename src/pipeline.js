@@ -529,7 +529,10 @@ async function reviewSubmission(opts, work, prepared) {
         // Where the source is a rescued copy, the package files of the root it was copied
         // from - what the developer submitted - for the check that tells them the review
         // ran on changed dependencies. Null for every other source.
-        scaArchive.originalPackages = originalPackages(prepared);
+        scaArchive.originalPackages = originalPackages(
+          opts.workFolder,
+          prepared
+        );
       }
     },
 
@@ -675,7 +678,7 @@ async function reviewSubmission(opts, work, prepared) {
       ...opts,
       vendorNet: withOsvCache(
         opts.vendorNet ?? defaultNet,
-        runCache(opts.workFolder, prepared).osv
+        runCache(opts.workFolder).osv
       ),
     },
     schema,
@@ -997,9 +1000,10 @@ async function reviewSubmission(opts, work, prepared) {
 }
 
 /** The work folder's names a review never writes: the source archive's extraction, put
- *  there when a source code review is prepared, and that preparation's record. A review
- *  claiming them would refuse the very folder it was prepared in. */
-const WORK_INPUTS = new Set(["sca", "prepare"]);
+ *  there when a source code review is prepared, the copy of it a rescue makes, and that
+ *  preparation's record. A review claiming them would refuse the very folder it was
+ *  prepared in. */
+const WORK_INPUTS = new Set(["sca", "rescued", "prepare"]);
 
 /**
  * The names a run will create in its work folder (src/util/dest.js workPaths).

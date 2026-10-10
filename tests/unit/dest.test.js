@@ -48,6 +48,7 @@ test("the work folder's names are bare and fixed", () => {
     {
       xpi: "/w/xpi",
       sca: "/w/sca",
+      rescued: "/w/rescued",
       prepare: "/w/prepare.json",
       state: "/w/state.json",
       review: "/w/review.json",

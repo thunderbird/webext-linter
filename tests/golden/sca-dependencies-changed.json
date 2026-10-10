@@ -4,7 +4,7 @@
     "xpi": "<root>/tests/addons/sca-dependencies-changed/xpi",
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
-    "scaRoot": "<work>/sca",
+    "scaRoot": "<work>/rescued",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
