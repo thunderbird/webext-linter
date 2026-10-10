@@ -377,6 +377,29 @@ test("a vulnerable lock beside another reason to stop is rescued", async () => {
   cleanup(work);
 });
 
+// A lock entry that names one release and installs another is a lock the audit cannot trust
+// to say what is installed: it is not audited at all - no request reaches OSV - and not
+// rescued, and the review it is handed to stops on it.
+test("a forged lock is neither audited nor rescued", async () => {
+  const work = workFolder({
+    "package.json": packageFile(),
+    "package-lock.json": npmLock("0.4.0", {
+      "node_modules/lint-pebble": {
+        version: "0.4.0",
+        dev: true,
+        resolved:
+          "https://registry.npmjs.org/lint-pebble/-/lint-pebble-0.3.9.tgz",
+      },
+    }),
+  });
+  const at = await first(work, noNet);
+  assert.equal(at.next, "review");
+  assert.equal(at.work, work);
+  assert.equal(at.record.step, PREPARE_STEP.done);
+  assert.ok(!fs.existsSync(`${work}-rescued`), "no copy is made");
+  cleanup(work);
+});
+
 test("a source the audit cannot read in full is not rescued", async (t) => {
   await t.test("no lock at all", async () => {
     const work = workFolder({ "package.json": packageFile() });
@@ -491,6 +514,17 @@ test("a copy the audit cannot vouch for is not clean", async (t) => {
             version: "0.4.0",
             dev: true,
             resolved: "git+ssh://git@example.invalid/pebble.git#abc",
+          },
+        }),
+      }),
+    "its lock forged to name a fixed release": (root) =>
+      writeTree(root, {
+        "package-lock.json": npmLock("0.4.0", {
+          "node_modules/lint-pebble": {
+            version: "0.4.1",
+            dev: true,
+            resolved:
+              "https://registry.npmjs.org/lint-pebble/-/lint-pebble-0.4.0.tgz",
           },
         }),
       }),

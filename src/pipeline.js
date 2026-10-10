@@ -185,6 +185,8 @@ export const SETUP_STEPS = Object.freeze([
  *   --cdn-lib-lookup false disables). Set false to skip the per-file CDN request
  *   (offline/privacy).
  * @property {string} [cdnLookupCache]  Where to cache the CDN hash-lookup results.
+ * @property {string} [npmRegistryCache]  Where to cache the npm registry's answers about
+ *   a lock file's tarball URLs.
  * @property {import("./vendor/verify.js").VendorNet} [vendorNet]  Injectable
  *   network transport for every review fetch that is not a cached asset - vendor
  *   verification, the CDN lookup, the OSV audit (a unit test injects its own);

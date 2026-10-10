@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "action": "review",
+    "xpi": "<root>/tests/addons/sca-lockfile-injection/xpi",
+    "xpiRoot": "<work>/xpi/",
+    "xpiFile": "xpi",
+    "scaRoot": "<root>/tests/addons/sca-lockfile-injection/src",
+    "reviewed": true,
+    "schemaSource": "cache:release-mv3",
+    "schemaBranch": "release-mv3",
+    "schemaChannel": "release",
+    "applicationVersion": "128.0",
+    "manifestVersion": 3,
+    "checksRun": [
+      "experiment-not-allowed",
+      "lockfile-injection"
+    ],
+    "earlyExit": {
+      "intro": "The review was not completed and the report is incomplete due to the following issues:",
+      "reasons": [
+        {
+          "id": "lockfile-injection",
+          "text": "Lock file entries that install another release"
+        }
+      ]
+    }
+  },
+  "summary": {
+    "error": 1,
+    "hold": 0,
+    "warning": 0,
+    "info": 0,
+    "byRule": {
+      "lockfile-injection": 1
+    }
+  },
+  "findings": [
+    {
+      "ruleId": "lockfile-injection",
+      "severity": "error",
+      "file": "package-lock.json",
+      "loc": {
+        "line": 14
+      },
+      "item": "tinylib 1.2.2 - installs tinylib@1.2.1",
+      "hint": null,
+      "artifact": "SCA",
+      "message": "The committed lock file records the following package(s) at one release but installs another, so the release the review would audit is not the one the build installs. Please regenerate the lock file with your package manager and commit it as it writes it.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+    }
+  ]
+}

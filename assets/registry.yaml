@@ -30,6 +30,22 @@ deterministic-phase:
     We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). A resubmission without them is reviewed in full. The following cannot be accepted:
     Read more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews
 
+# Deterministic (SCA only): a lock entry that names one release while its URL installs
+# another - a `version` of 1.2.2 beside the 1.2.1 tarball, or another package entirely. The
+# audit asks about the name and version, the install fetches the URL, so the audit would vouch
+# for a release the build never installs. Second in the phase, so a forged lock stops the
+# review before anything reads the lock to audit it. A URL on the registry's tarball path is
+# compared offline, any other registry URL is asked of the registry, once and cached
+# (src/vendor/locks.js findLockInjections); {{item}} names the entry and what it installs.
+- title: Lock file entries that install another release
+  severity: error
+  check: lockfile-injection
+  input: sca
+  review-early-exit: lockfile-injection
+  response: |-
+    The committed lock file records the following package(s) at one release but installs another, so the release the review would audit is not the one the build installs. Please regenerate the lock file with your package manager and commit it as it writes it.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
 # Flags a privileged core global (Services, ChromeUtils, Components/Cc/Ci/Cu, ...)
 # referenced in pure WebExtension code, where the sandbox does not provide it. The
 # Experiment dependency tree (and its mixed/unsure files) is exempt.
@@ -2010,6 +2026,7 @@ review-early-exit:
     The review was not completed and the report is incomplete due to the following issues:
   reasons:
     experiment-not-allowed: Experiment APIs not accepted
+    lockfile-injection: Lock file entries that install another release
     known-vulnerabilities: Known security vulnerabilities
     disallowed-library-versions: Disallowed library versions
     unreproducible-build: Build process issues

@@ -37,6 +37,8 @@ const OFFLINE = [
   CACHE,
   "--cache-experiments-dir",
   CACHE,
+  "--cache-npm-registry-dir",
+  CACHE,
 ];
 
 /**
@@ -146,7 +148,8 @@ test("the feed of an XPI review", () => {
 });
 
 // A source code review computes the shipped XPI's data and the source's own as its checks
-// ask for each: the first check reads both artifacts' parsed sources, the XPI's first.
+// ask for each: the lock's install sources first, for the second check, then both
+// artifacts' parsed sources, the XPI's first.
 test("the feed of a source code review", () => {
   assert.deepEqual(
     feed([
@@ -160,6 +163,7 @@ test("the feed of a source code review", () => {
         "[2/2] Fetching review schemas (release-mv3)",
       ],
       data: [
+        "Checking the lock file's sources",
         "Fetching library hashes",
         "Verifying vendored libraries",
         "Identifying bundled libraries on a CDN",
@@ -171,6 +175,22 @@ test("the feed of a source code review", () => {
         "Auditing libraries",
         "Analyzing the build",
       ],
+    }
+  );
+});
+
+// A forged lock stops the review at the second check, which reads the lock's install sources
+// and nothing else: no library is audited, nothing is looked up on a CDN, nothing is parsed.
+test("a forged lock computes nothing but the lock's install sources", () => {
+  const dir = addon("sca-lockfile-injection");
+  assert.deepEqual(
+    feed([path.join(dir, "xpi"), "--sca-root", path.join(dir, "src")]),
+    {
+      setup: [
+        "[1/2] Reading add-on",
+        "[2/2] Fetching review schemas (release-mv3)",
+      ],
+      data: ["Checking the lock file's sources"],
     }
   );
 });

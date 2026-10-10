@@ -4,7 +4,8 @@
 // the review mode makes the target. They all project ONE shared review env: the schema,
 // the shipped manifest.json and experiments, and the mode. Each per-artifact ctx also carries
 // that artifact's DATA getters (ctx.vendor(), ctx.bundled(), ctx.jsSources(),
-// ctx.apiUsages(), ctx.buildReview()), which compute on first ask (src/review/products.js).
+// ctx.apiUsages(), ctx.buildReview(), ctx.lockInstalls()), which compute on first ask
+// (src/review/products.js).
 //
 // Belongs here: assembling the per-artifact sibling ctxs from the shared review env and the
 // artifact's data getters, in the RunContext shape registry.js documents.
@@ -67,6 +68,7 @@ function projectCtx(env, { artifact, data }) {
     jsSources: data.jsSources,
     apiUsages: data.apiUsages,
     buildReview: data.buildReview,
+    lockInstalls: data.lockInstalls,
     options: env.options,
     // "xpi" (a built add-on) or "sca" (a source-code archive review, --sca-root). Gates checks
     // via modeEligible.
@@ -173,6 +175,7 @@ export function buildAllCtx(env, { xpi, sca = null }) {
       jsSources: none("The parsed sources"),
       apiUsages: none("The API usage"),
       buildReview: none("The build trace"),
+      lockInstalls: none("The lock file's install sources"),
     },
   });
   ctx.xpi = xpi;

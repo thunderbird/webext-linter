@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lock file entries that install another release</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Lock file entries that install another release <span class="badge error">error</span></h1>
+        <div class="check-id">lockfile-injection</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A source-code submission whose committed lock file names one release of a
+        package and installs another: an entry recording <code>"version": "1.2.2"</code>
+        while its <code>resolved</code> URL (pnpm's <code>resolution.tarball</code>)
+        fetches the 1.2.1 tarball, or another package entirely. The dependency audit
+        asks about the name and version the entry records, while <code>npm ci</code>
+        and <code>pnpm install --frozen-lockfile</code> fetch the URL, so the audit
+        would vouch for a release the build never installs.
+      </p>
+      <p>
+        Every registry entry of the lock is compared, whatever its version looks like.
+        A URL on the registry's tarball path
+        (<code>&lt;package&gt;/-/&lt;name&gt;-&lt;version&gt;.tgz</code>) names its
+        release, so it is compared offline. Any other URL on the registry is asked of
+        the registry itself, once: where it serves that release's tarball is cached for
+        good (<code>--cache-npm-registry-dir</code>), and a release it does not have
+        counts as installing another. An entry with no URL is the registry's own
+        tarball for its name and version, and a package bundled inside another fetches
+        nothing of its own. A URL off the registry and GitHub is
+        <a href="lock-foreign-source.html">lock-foreign-source</a>'s.
+      </p>
+      <p>
+        It is the second check of a source review, so a forged lock stops the review
+        before anything reads the lock to audit it. The preparation of a source code
+        review (<code>--llm-sca-review</code>) asks the same question first, and does
+        not audit or rescue such a lock.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The governing lock file"] --> B{"For each registry entry:<br/>which URL does it install?"}
+  B -- "none recorded" --> OK([no finding])
+  B -- "the registry's tarball path" --> C{"Is it the release<br/>the entry names?"}
+  C -- yes --> OK
+  C -- no --> ERR([ERROR: installs another release])
+  B -- "another registry URL" --> D{"Does the registry serve<br/>that release at this URL?"}
+  D -- yes --> OK
+  D -- "no, or no such release" --> ERR
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  class ERR err;
+  class OK ok;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told which lock entries record one release but install another,
+        and to regenerate the lock file with its package manager and commit it as the
+        package manager writes it.
+      </div>
+
+      <div class="outcome">
+        <strong>It aborts the review</strong>
+        It settles the submission on its own (&ldquo;Lock file entries that install
+        another release&rdquo;): what the audit would read is not what the build
+        installs, so no audit of the lock could be trusted, and no check after it runs.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/lockfile-injection.js</code>,
+        <code>src/vendor/locks.js</code> (<code>findLockInjections</code>) and its entry
+        in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

@@ -120,6 +120,7 @@
         async getter on the check's ctx (<code>ctx.vendor()</code>,
         <code>ctx.bundled()</code>, <code>ctx.jsSources()</code>,
         <code>ctx.apiUsages()</code>, <code>ctx.buildReview()</code>,
+        <code>ctx.lockInstalls()</code>,
         <code>src/review/products.js</code>). A getter computes once per artifact
         and answers every later check from the same result, and it answers only
         final data: the stages behind it run in their fixed order, and the ones
@@ -208,6 +209,7 @@ flowchart TB
     XI --> XE["extractReview(): parse each source ONCE, drop the AST<br/>→ ctx.jsSources() · ctx.apiUsages()"]
     XI --> AUD["auditIdentifiedLibraries(review target)<br/>→ the final ctx.vendor()"]
     SB["analyzeBuild() → ctx.buildReview()<br/>the source archive only"]
+    LI["findLockInjections() → ctx.lockInstalls()<br/>the source archive only · a registry URL off<br/>the tarball path asked of the registry, cached"]
   end
 
   subgraph P6 ["runPipeline() · run the review, then render the findings"]
@@ -235,7 +237,7 @@ flowchart TB
   classDef pass fill:#e9f7ec,stroke:#2e8b57,color:#1c5334;
   classDef producer fill:#fce4ec,stroke:#ad1457,color:#7a1338;
   classDef hidden fill:transparent,stroke:transparent,color:transparent;
-  class LOAD,EXP,XNS,HASH,LSRC,SB,ENV,DATA,XB,SB2,SIB,META,RFIND setup;
+  class LOAD,EXP,XNS,HASH,LSRC,SB,LI,ENV,DATA,XB,SB2,SIB,META,RFIND setup;
   class SCH,XV,XC,XI,XE,AUD producer;
   class SETINV,MX2,SIBS state;
   class P1F,EXIT1 fail;

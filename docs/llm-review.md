@@ -363,26 +363,29 @@ the root, is refused, and the reader corrects the file and hands it back again.
 
 That hand-back settles the roots as the review would, and then **audits the root's lock**
 (`src/prepare/audit.js`): every package it installs, against OSV and the policy blocklist,
-exactly as the review's own dependency audit reads it. Nothing else is judged here -
-another reason to stop, an Experiment, `--checks-*`, the band policy: all of that stays with
+exactly as the review's own dependency audit reads it. Before that it asks whether every
+registry entry installs the release it names (`lockfile-injection`'s question): a lock that
+names one release and installs another is not audited at all, since what OSV would be asked
+about is not what the build installs. Nothing else is judged here - another reason to stop, an Experiment, `--checks-*`, the band policy: all of that stays with
 the review. Three outcomes:
 
 - **The lock is clean**, or the audit cannot read it in full (no lock, one that does not
-  parse, an entry from a source the audit cannot read, a scan OSV refused with a 404): the
-  folder is done, and the same hand-back starts its review. The review decides the rest.
+  parse, an entry from a source the audit cannot read, an entry that installs another
+  release than it names, a scan OSV refused with a 404): the folder is done, and the same hand-back starts its review. The review decides the rest.
 - **The lock installs a package with a known high or critical advisory**: the linter copies
   the work folder to `<work folder>-rescued` and hands the copy two steps. First the reader
   **reduces** the copy's dependencies to what the release build uses, then, where that is not
   enough, applies the package manager's **audit fix** - lock-only commands with
   `--ignore-scripts`, so no submission code runs. The copy is audited after each step, and a
-  clean one is reviewed instead of the original. A reader that cannot run the commands hands
+  clean one is reviewed instead of the original. A copy whose lock names one release and
+  installs another is not clean. A reader that cannot run the commands hands
   back without changing anything. The hand-back that finds the copy clean starts its review.
 - **The copy is still vulnerable after the fix**: the copy is deleted, and the original is
   reviewed, **unrescued**. Its record holds the lock audit the preparation ran, and its
   review takes that as its own: it reads the add-on, the schema and the source archive, asks
   no network for the dependencies, and runs only the checks whose early-exit reason the
-  registry's `rescue-for` names. They report each vulnerable lock entry, which aborts the
-  review for known vulnerabilities, and it closes as any aborted review does. A record that
+  registry's `rescue-for` names. The first of them to report a vulnerable lock entry aborts
+  the review for known vulnerabilities, and it closes as any aborted review does. A record that
   says the rescue was given up but holds no high or critical entry was edited, and the
   review refuses it before it starts.
 

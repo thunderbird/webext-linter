@@ -83,6 +83,13 @@ export const CDN_LOOKUP_URL = "https://data.jsdelivr.com/v1/lookup/hash/";
 export const CDN_LOOKUP_CACHE = path.join(CACHE_ROOT, "cdn-lookup");
 
 /**
+ * Directory where the npm registry's answers about a release's tarball are cached
+ * (--cache-npm-registry-dir). A published release's tarball never moves, so an answer is
+ * kept for good. See src/vendor/locks.js findLockInjections.
+ */
+export const NPM_REGISTRY_CACHE = path.join(CACHE_ROOT, "npm-registry");
+
+/**
  * Minimum size (bytes) for a READABLE file to earn a CDN identification attempt - a
  * library shipped un-minified (e.g. pdf.mjs) is large, while the developer's own files
  * are typically small, so this targets likely libraries and avoids a CDN lookup (and a

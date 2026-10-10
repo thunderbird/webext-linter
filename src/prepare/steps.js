@@ -108,12 +108,17 @@ export async function handBack(work, { net } = {}) {
   if (!record) {
     throw new HandbackRefused(`"${work}" holds no preparation`);
   }
+  // The audit reads the npm registry cache the review it starts will read.
+  const context = {
+    net,
+    cacheDir: record.flags?.["cache-npm-registry-dir"] || undefined,
+  };
   switch (record.step) {
     case PREPARE_STEP.extract:
-      return extract(work, record, net);
+      return extract(work, record, context);
     case PREPARE_STEP.reduce:
     case PREPARE_STEP.fix:
-      return rescueStep(work, record, net);
+      return rescueStep(work, record, context);
     case PREPARE_STEP.handed:
       return handedOn(work, record);
     default:
@@ -125,13 +130,13 @@ export async function handBack(work, { net } = {}) {
  * The first step: the roots the reader handed back, settled, and their lock audited.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record
- * @param {import("../vendor/verify.js").VendorNet} [net]
+ * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} context
  * @returns {Promise<Handout>}
  */
-async function extract(work, record, net) {
+async function extract(work, record, context) {
   const roots = answeredRoots(work, record);
   const settled = { ...record, roots };
-  const found = await auditRoot(roots, { net });
+  const found = await auditRoot(roots, context);
   if (!isRescuable(found)) {
     return done(work, settled);
   }
@@ -371,10 +376,10 @@ function copyRecord(copy, work) {
  * up is one a give-up was cut short in, and its removal is finished.
  * @param {string} copy
  * @param {import("./state.js").PrepareRecord} record
- * @param {import("../vendor/verify.js").VendorNet} [net]
+ * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} context
  * @returns {Promise<Handout>}
  */
-async function rescueStep(copy, record, net) {
+async function rescueStep(copy, record, context) {
   const work = record.original?.work;
   if (!work || copy !== rescuedWorkFolder(work)) {
     throw new HandbackRefused(`"${copy}" is not a copy this preparation made`);
@@ -389,7 +394,7 @@ async function rescueStep(copy, record, net) {
       `"${work}" does not name "${copy}" as its rescue`
     );
   }
-  const found = await auditRoot(record.roots, { net });
+  const found = await auditRoot(record.roots, context);
   if (isClean(found)) {
     return done(copy, record);
   }

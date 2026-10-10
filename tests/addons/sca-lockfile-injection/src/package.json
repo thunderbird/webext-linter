@@ -1,0 +1,10 @@
+{
+  "name": "sca-lockfile-injection",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "web-ext build"
+  },
+  "dependencies": {
+    "tinylib": "1.2.2"
+  }
+}

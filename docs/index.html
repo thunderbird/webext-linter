@@ -28,6 +28,7 @@
       const CHECKS = [
         // Deterministic phase
         { id: "experiment-not-allowed", group: "Deterministic phase", title: "Experiment APIs not accepted", severity: "error" },
+        { id: "lockfile-injection", group: "Deterministic phase", title: "Lock file entries that install another release", severity: "error" },
         { id: "core-symbol-in-webext", group: "Deterministic phase", title: "Privileged core symbol in WebExtension code", severity: "error" },
         { id: "trademark-violation", group: "Deterministic phase", title: "Trademark violation", severity: "error" },
         { id: "trademark-thunderbird-locale", group: "Deterministic phase", title: "Thunderbird in a localized add-on name", severity: "error" },

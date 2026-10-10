@@ -1,4 +1,4 @@
-// Reads the project's lock file, for six questions. (1) Which exact version did
+// Reads the project's lock file, for seven questions. (1) Which exact version did
 // a package.json range (e.g. "^3.10.0") actually install - lockedVersion, so a
 // declared dependency in a built XPI can still be pinned and audited. (2) What does the whole
 // installed tree contain - lockedPackages, which enumerates every package the
@@ -10,7 +10,9 @@
 // name and version while the installer fetches the URL the lock records. (5) Which GitHub
 // repository does a package the lock installs from GitHub come from - githubInstalls, so it
 // can be popularity-gated by its stars. (6) Which installs does the lock take from a local
-// path the review does not hold as a folder - localInstalls. Reads whichever lock the
+// path the review does not hold as a folder - localInstalls. (7) Does every registry entry
+// install the release it names - findLockInjections, since the audit asks about the name and
+// version while the installer fetches the URL. Reads whichever lock the
 // submission ships - npm (package-lock.json / npm-shrinkwrap.json, JSON) or pnpm
 // (pnpm-lock.yaml, YAML), the two supported package managers.
 //
@@ -20,20 +22,28 @@
 // present / first that resolves / first that yields) would allow.
 //
 // Belongs here: lockedVersion(addon, name), lockedPackages(addon), unreadableLock(addon),
-// lockSourceGaps(addon), githubInstalls(addon), localInstalls(addon), governingLock, and the
-// per-format readers. Does NOT belong here:
+// lockSourceGaps(addon), githubInstalls(addon), localInstalls(addon),
+// lockInstallTargets(addon), findLockInjections(addon), governingLock, and the per-format
+// readers. Does NOT belong here:
 // reading or shaping package.json (-> ./package-file.js), deciding pinned/unpinned
 // (-> ./resolve.js), whether the lock matches package.json (the package manager's own
 // question, at install), and the verification that follows (-> ./verify.js).
 
+import fs from "node:fs";
+import path from "node:path";
 import YAML from "yaml";
 import {
   VENDOR_LOCK_MAX_PACKAGES,
   NPM_REGISTRY_TARBALLS,
+  NPM_REGISTRY_CACHE,
   GITHUB_INSTALL_SOURCE,
 } from "../config.js";
 import { stripBom } from "../util/json.js";
 import { parseJson } from "../util/json.js";
+import { writeFileAtomic } from "../util/atomic.js";
+import { debug } from "../util/log.js";
+import { classifySource } from "./sources.js";
+import { defaultNet } from "./verify.js";
 
 import {
   DECLARATION_MAPS,
@@ -632,6 +642,281 @@ export function lockSourceGaps(addon) {
     }
   }
   return gaps;
+}
+
+/**
+ * @typedef {object} LockInstallTarget  One registry entry of the governing lock.
+ * @property {string} file  The governing lock.
+ * @property {string} token  The entry's key in that lock, locating its line.
+ * @property {string} name  The package the entry names: what the audit asks about.
+ * @property {string} version  The version the entry names.
+ * @property {string} url  The tarball URL the install fetches, "" when the entry records
+ *   none (the registry's own tarball for the name and version, found by integrity).
+ * @property {?{name: string, version: string}} installs  The release that URL is, read from
+ *   the registry's tarball path; the entry's own name and version when it records no URL;
+ *   null when the URL is on the registry but off that path.
+ */
+
+/**
+ * Every registry entry of the governing lock, with the release its URL installs. The audit
+ * identifies a package by the name and version the entry records, while `npm ci` and pnpm
+ * fetch the URL, so the two have to name the same release. Every registry entry is listed,
+ * whatever its version looks like: a version that is no release at all, beside a registry
+ * URL, installs something the audit never asks about. A package bundled inside another
+ * (`inBundle`, or `bundled` in a lockfile v1) is installed with it and fetches nothing.
+ * @param {Addon} addon  The SCA archive (its governing lock).
+ * @returns {LockInstallTarget[]}
+ */
+export function lockInstallTargets(addon) {
+  const file = governingLock(addon);
+  const data = file ? parsedLock(addon, file) : null;
+  if (!plainObject(data)) {
+    return [];
+  }
+  const out = [];
+  const add = (token, name, version, url) => {
+    out.push({
+      file,
+      token,
+      name,
+      version,
+      url,
+      installs: url ? tarballRelease(url) : { name, version },
+    });
+  };
+  if (!file.endsWith(".json")) {
+    for (const [token, entry] of Object.entries(objectOr(data.packages))) {
+      if (!plainObject(entry) || pnpmSource(entry) !== "registry") {
+        continue;
+      }
+      const m = token.match(PNPM_KEY_RE);
+      add(
+        token,
+        String(entry.name ?? m?.[1] ?? token),
+        String(entry.version ?? (m ? cleanVersion(m[2]) : "")),
+        String(entry.resolution?.tarball ?? "")
+      );
+    }
+    return out;
+  }
+  if (plainObject(data.packages)) {
+    for (const [token, entry] of Object.entries(data.packages)) {
+      const at = token.lastIndexOf(NODE_MODULES);
+      if (at === -1 || !plainObject(entry) || entry.link || entry.inBundle) {
+        continue;
+      }
+      const url = String(entry.resolved ?? "");
+      if (installSource(url) !== "registry") {
+        continue;
+      }
+      // `name` is present when the installed package differs from its directory: an alias.
+      add(
+        token,
+        String(entry.name ?? token.slice(at + NODE_MODULES.length)),
+        String(entry.version ?? ""),
+        url
+      );
+    }
+    return out;
+  }
+  // lockfileVersion 1: a nested tree, walked like npmV1Packages.
+  const stack = [data.dependencies];
+  while (stack.length) {
+    for (const [key, node] of Object.entries(objectOr(stack.pop()))) {
+      if (!plainObject(node)) {
+        continue;
+      }
+      if (node.dependencies) {
+        stack.push(node.dependencies);
+      }
+      const url = String(node.resolved ?? "");
+      if (node.bundled === true || installSource(url) !== "registry") {
+        continue;
+      }
+      const { name, version } = v1Label(key, String(node.version ?? ""));
+      add(key, name, version, url);
+    }
+  }
+  return out;
+}
+
+/**
+ * The package and version a lockfile v1 entry names. An npm alias records the real package
+ * in `version` itself, as `npm:<package>@<version>`, under the alias's key.
+ * @param {string} key  The entry's key.
+ * @param {string} version  Its `version` field.
+ * @returns {{name: string, version: string}}
+ */
+function v1Label(key, version) {
+  if (version.startsWith("npm:")) {
+    const spec = version.slice("npm:".length);
+    const at = spec.lastIndexOf("@");
+    if (at > 0) {
+      return { name: spec.slice(0, at), version: spec.slice(at + 1) };
+    }
+  }
+  return { name: key, version };
+}
+
+/**
+ * A tarball URL as the installer fetches it: its query and fragment dropped, and a scoped
+ * name's encoded slash (`@scope%2fname`) decoded, so two spellings of one URL read the same.
+ * @param {string} url
+ * @returns {string}
+ */
+function plainTarballUrl(url) {
+  return cutAtFirst(cutAtFirst(url, "#"), "?").replace(/%2f/gi, "/");
+}
+
+/**
+ * The release a registry tarball URL is, read from its path
+ * (`<package>/-/<name>-<version>.tgz`), or null when the URL is off that path.
+ * @param {string} url
+ * @returns {?{name: string, version: string}}
+ */
+function tarballRelease(url) {
+  const src = classifySource(plainTarballUrl(url));
+  return src.trusted && src.tarball
+    ? { name: src.pkg, version: src.version }
+    : null;
+}
+
+/**
+ * @typedef {LockInstallTarget & {installed: string}} LockInjection  A registry entry that
+ *   installs another release than it names. `installed` is that release as
+ *   `<package>@<version>`, or the URL itself when its path does not say.
+ */
+
+/**
+ * Every registry entry of the governing lock that installs another release than the one it
+ * names - a forged lock, where the audit would vouch for one release while the install
+ * fetches another.
+ *
+ * A URL on the registry's tarball path names its release, and is compared with the entry
+ * offline. One on the registry but off that path is asked of the registry itself
+ * (`GET <registry>/<package>/<version>`, whose `dist.tarball` is where that release is), and
+ * the answer is cached for good in `cacheDir`: a published release's tarball never moves. A
+ * release the registry does not have (404) is cached as missing, and its entry is forged.
+ * @param {Addon} addon  The SCA archive (its governing lock).
+ * @param {object} [opts]
+ * @param {import("./verify.js").VendorNet} [opts.net]  The network the registry is asked on.
+ * @param {string} [opts.cacheDir]  Where the registry's answers are cached.
+ * @returns {Promise<LockInjection[]>}
+ */
+export async function findLockInjections(
+  addon,
+  { net = defaultNet, cacheDir = NPM_REGISTRY_CACHE } = {}
+) {
+  const forged = [];
+  let cache = null;
+  let dirty = false;
+  for (const target of lockInstallTargets(addon)) {
+    const { name, version, installs } = target;
+    if (installs) {
+      if (installs.name !== name || installs.version !== version) {
+        forged.push({
+          ...target,
+          installed: `${installs.name}@${installs.version}`,
+        });
+      }
+      continue;
+    }
+    cache ??= loadRegistryCache(cacheDir);
+    const key = `${name}@${version}`;
+    if (!Object.hasOwn(cache, key) || !isRegistryAnswer(cache[key])) {
+      cache[key] = await registryTarball(net, name, version);
+      dirty = true;
+    }
+    const tarball = cache[key];
+    if (
+      tarball === null ||
+      plainTarballUrl(tarball) !== plainTarballUrl(target.url)
+    ) {
+      forged.push({ ...target, installed: target.url });
+    }
+  }
+  if (dirty) {
+    saveRegistryCache(cacheDir, cache);
+  }
+  return forged;
+}
+
+/**
+ * Where the registry serves one release's tarball, or null when it has no such release.
+ * Only a 404 is that answer: anything else that is no answer ends the review
+ * (src/util/net.js), like every other question the review asks a host.
+ * @param {import("./verify.js").VendorNet} net
+ * @param {string} name  The package, possibly scoped.
+ * @param {string} version
+ * @returns {Promise<?string>}
+ */
+async function registryTarball(net, name, version) {
+  const url = `${NPM_REGISTRY_TARBALLS}${name.replace("/", "%2f")}/${encodeURIComponent(version)}`;
+  try {
+    const j = await net.fetchJson(url);
+    const tarball = j?.dist?.tarball;
+    return typeof tarball === "string" && tarball !== "" ? tarball : null;
+  } catch (err) {
+    if (err.status !== 404) {
+      throw err;
+    }
+    return null;
+  }
+}
+
+/**
+ * Whether a cache entry is an answer this cache records: a tarball URL, or null for a
+ * release the registry does not have.
+ * @param {unknown} entry
+ * @returns {boolean}
+ */
+function isRegistryAnswer(entry) {
+  return entry === null || (typeof entry === "string" && entry !== "");
+}
+
+/** The on-disk cache file: a `{ "<package>@<version>": <tarball URL> | null }` JSON map. */
+function registryCacheFile(cacheDir) {
+  return path.join(cacheDir, "npm-registry.json");
+}
+
+/**
+ * Load the registry's cached answers, or an empty map when absent or corrupt.
+ * @param {string} cacheDir
+ * @returns {Record<string, ?string>}
+ */
+function loadRegistryCache(cacheDir) {
+  try {
+    const cache = parseJson(
+      fs.readFileSync(registryCacheFile(cacheDir), "utf8")
+    );
+    return plainObject(cache) ? cache : {};
+  } catch (err) {
+    rethrowIfFatal(err);
+    return {};
+  }
+}
+
+/**
+ * Persist the cache. Best-effort: a write failure is non-fatal (the answers are just asked
+ * again next run).
+ * @param {string} cacheDir
+ * @param {Record<string, ?string>} cache
+ */
+function saveRegistryCache(cacheDir, cache) {
+  try {
+    writeFileAtomic(registryCacheFile(cacheDir), JSON.stringify(cache));
+  } catch (err) {
+    debug(`Could not write npm registry cache: ${err.message}`);
+  }
+}
+
+/**
+ * A lock map's value when it is a plain object, and an empty one otherwise.
+ * @param {unknown} value
+ * @returns {object}
+ */
+function objectOr(value) {
+  return plainObject(value) ? value : {};
 }
 
 /**

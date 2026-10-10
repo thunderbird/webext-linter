@@ -183,6 +183,9 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   addon/sources.js).
  * @property {() => Promise<object[]>} apiUsages  Per-source extracted API usage.
  * @property {() => Promise<object>} buildReview  The build trace - the source archive only.
+ * @property {() => Promise<object[]>} lockInstalls  The lock entries that install another
+ *   release than they name (src/vendor/locks.js findLockInjections) - the source archive
+ *   only.
  * @property {?import("../addon/load.js").WebExtManifestRecord} manifest  The authoritative,
  *   SHIPPED manifest.json (the built XPI's - what Thunderbird loads), read once like `schema`:
  *   `json` the parse, `text` the manifest.json text (tokenLine reads it), `error` why

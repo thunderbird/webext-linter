@@ -2,7 +2,7 @@
 // beyond the artifact's own files - its vendor reading and audits, the classification of its
 // bundled code, its parsed sources and their API usage, the build trace - sits behind an
 // async getter on the check's context (ctx.vendor(), ctx.bundled(), ctx.jsSources(),
-// ctx.apiUsages(), ctx.buildReview()). A getter answers from what was already computed, or
+// ctx.apiUsages(), ctx.buildReview(), ctx.lockInstalls()). A getter answers from what was already computed, or
 // computes it first, once per artifact. So a review computes what its checks read and
 // nothing else: a check that never runs - one after an abort, one left out by
 // --checks-only - costs nothing.
@@ -20,7 +20,8 @@
 //
 // Belongs here: the stages, their order and dependencies, memoizing them, and narrating each
 // as it runs. Does NOT belong here: what a stage computes (src/vendor/*, src/lib/bundled.js,
-// src/lib/cdn-lookup.js, src/checks/extract.js, src/build/analyze.js), which data stays
+// src/lib/cdn-lookup.js, src/checks/extract.js, src/build/analyze.js,
+// src/vendor/locks.js), which data stays
 // eager (src/pipeline.js: the schema, the Experiment verdict, loading the archive), or how a
 // check reads it (src/checks/context.js).
 
@@ -44,6 +45,7 @@ import {
 import { collectJsSources } from "../addon/sources.js";
 import { runExtractionPass, apiUsageOf } from "../checks/extract.js";
 import { analyzeBuild } from "../build/analyze.js";
+import { findLockInjections } from "../vendor/locks.js";
 import { withExperiment } from "../addon/store.js";
 import { isExperiment } from "../lib/util.js";
 import { experimentApiNamespaces } from "../lib/experiments.js";
@@ -147,6 +149,8 @@ export function deriveApiUsages(jsSources) {
  * @property {() => Promise<import("../addon/sources.js").JsSource[]>} jsSources
  * @property {() => Promise<object[]>} apiUsages
  * @property {() => Promise<object>} buildReview
+ * @property {() => Promise<import("../vendor/locks.js").LockInjection[]>} lockInstalls
+ *   The lock entries that install another release than they name.
  */
 
 /**
@@ -159,7 +163,7 @@ export function deriveApiUsages(jsSources) {
  *   unverified answer nothing reads;
  * - the classification and the parse exist on every artifact: what an artifact's bytes ARE
  *   is a fact about it, and the input:xpi checks read the shipped XPI in both modes;
- * - the build trace exists on the archive only.
+ * - the build trace and the check of the lock's install sources exist on the archive only.
  * A getter for data an artifact never has throws: a check that reads it was routed wrong,
  * and a silent empty answer would read as a clean submission.
  *
@@ -272,6 +276,9 @@ export function reviewData({
   const scaBuild = stage("Analyzing the build", [], () =>
     analyzeBuild({ build: { files: withExperiment(archive) } })
   );
+  const scaLockInstalls = stage("Checking the lock file's sources", [], () =>
+    findLockInjections(archive, { net, cacheDir: opts.npmRegistryCache })
+  );
   const scaRecorded = stage(null, [], () => {
     archive.vendor = resolveVendor({ addon: archive, reviewerInstalls: true });
     Object.assign(archive.vendor, lockAudit);
@@ -326,6 +333,12 @@ export function reviewData({
             throw absent("A build trace", artifact);
           }
           return scaBuild();
+        },
+        lockInstalls: async () => {
+          if (artifact === xpi) {
+            throw absent("The lock file's install sources", artifact);
+          }
+          return scaLockInstalls();
         },
       });
     }

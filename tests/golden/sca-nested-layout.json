@@ -14,6 +14,7 @@
     "manifestVersion": 3,
     "checksRun": [
       "experiment-not-allowed",
+      "lockfile-injection",
       "core-symbol-in-webext",
       "trademark-violation",
       "trademark-thunderbird-locale",

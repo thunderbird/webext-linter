@@ -109,7 +109,7 @@ export function freshFixtureCache() {
  * The seeded cache as runPipeline opts - the same dir pointed at every fetchable
  * source, so a review runs offline. Spread into a runPipeline() call.
  * @returns {{schemaCache: string, experimentsCache: string, libraryHashesCache: string,
- *   cdnLookupCache: string}}
+ *   cdnLookupCache: string, npmRegistryCache: string}}
  */
 export function fixtureCacheOpts() {
   const dir = seedFixtureCache();
@@ -123,6 +123,9 @@ export function fixtureCacheOpts() {
     experimentsCache: dir,
     libraryHashesCache: dir,
     cdnLookupCache: dir,
+    // Empty: no fixture's lock is off the registry's tarball path, so nothing is asked,
+    // and the network switch names any request that slips through.
+    npmRegistryCache: dir,
   };
 }
 

@@ -48,6 +48,8 @@ const cacheFlags = (cache, cdnCache = CDN_CACHE) => [
   cache,
   "--cache-cdn-lookup-dir",
   cdnCache,
+  "--cache-npm-registry-dir",
+  cache,
 ];
 const OFFLINE_FLAGS = cacheFlags(CACHE);
 
@@ -186,15 +188,18 @@ test("cache/cdn flags map to the pipeline opts", () => {
     "/c",
     "--cache-experiments-dir",
     "/d",
+    "--cache-npm-registry-dir",
+    "/e",
   ]);
   assert.equal(o.schemaCache, "/a");
   assert.equal(o.libraryHashesCache, "/b");
   assert.equal(o.cdnLookupCache, "/c");
   assert.equal(o.experimentsCache, "/d");
+  assert.equal(o.npmRegistryCache, "/e");
 });
 
 // --cache-clear wipes the cache directories before the review (so every source
-// re-fetches from scratch). ALL FOUR --cache-*-dir point at one temp dir so the
+// re-fetches from scratch). ALL FIVE --cache-*-dir point at one temp dir so the
 // delete touches nothing else, and a nonexistent add-on makes runPipeline fail at
 // load (before any network) - we assert only that the stale cache file was deleted.
 test("--cache-clear deletes the cache directories before the review", () => {
@@ -211,6 +216,8 @@ test("--cache-clear deletes the cache directories before the review", () => {
     "--cache-cdn-lookup-dir",
     cacheDir,
     "--cache-experiments-dir",
+    cacheDir,
+    "--cache-npm-registry-dir",
     cacheDir,
   ]);
   assert.ok(!fs.existsSync(stale), "the stale cache file was cleared");
@@ -2197,6 +2204,11 @@ test("the preparation records every cache as an absolute path", () => {
         cwd,
         "WEBEXT-LINTER-CACHE",
         "cdn-lookup"
+      ),
+      "cache-npm-registry-dir": path.join(
+        cwd,
+        "WEBEXT-LINTER-CACHE",
+        "npm-registry"
       ),
       "cache-experiments-dir": path.join(
         cwd,

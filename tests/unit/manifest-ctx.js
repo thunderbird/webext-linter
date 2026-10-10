@@ -172,8 +172,9 @@ export function withManifest(ctx) {
 /**
  * Give a hand-built ctx the data getters production gives every per-artifact ctx
  * (src/review/products.js): ctx.vendor(), ctx.bundled(), ctx.jsSources(), ctx.apiUsages(),
- * ctx.buildReview(). A test states the data as plain values - `jsSources` / `apiUsages` on
- * the ctx, `vendor` / `bundled` / `buildReview` on its artifact - and each getter answers
+ * ctx.buildReview(), ctx.lockInstalls(). A test states the data as plain values -
+ * `jsSources` / `apiUsages` on the ctx, `vendor` / `bundled` / `buildReview` /
+ * `lockInstalls` on its artifact - and each getter answers
  * the value as it stands when a check asks, so a test that fills a field in after building
  * the ctx is still read. A getter the test already supplied is left alone.
  * @param {object} ctx
@@ -191,6 +192,7 @@ export function withData(ctx) {
   ctx.vendor ??= async () => ctx.artifact?.vendor;
   ctx.bundled ??= async () => ctx.artifact?.bundled;
   ctx.buildReview ??= async () => ctx.artifact?.buildReview;
+  ctx.lockInstalls ??= async () => ctx.artifact?.lockInstalls ?? [];
   return ctx;
 }
 

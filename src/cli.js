@@ -46,6 +46,7 @@ import {
   EXPERIMENTS_CACHE,
   LIBRARY_HASHES_CACHE,
   CDN_LOOKUP_CACHE,
+  NPM_REGISTRY_CACHE,
   PROMPT_SKIPS,
 } from "./config.js";
 import {
@@ -157,7 +158,7 @@ function helpText(checkIds) {
   const cache = [
     [
       "--cache-clear",
-      "Delete every cache directory before the review, so all fetched sources (schema, library-hash DB, CDN lookups, allowed-experiments) are re-downloaded from scratch - as on a first run.",
+      "Delete every cache directory before the review, so all fetched sources (schema, library-hash DB, CDN lookups, npm registry answers, allowed-experiments) are re-downloaded from scratch - as on a first run.",
     ],
     [
       "--cache-schema-dir <dir>",
@@ -170,6 +171,10 @@ function helpText(checkIds) {
     [
       "--cache-cdn-lookup-dir <dir>",
       `Where the CDN hash-lookup results are cached, backing --cdn-lib-lookup (default: ${CDN_LOOKUP_CACHE}).`,
+    ],
+    [
+      "--cache-npm-registry-dir <dir>",
+      `Where the npm registry's answers about a lock file's tarball URLs are cached (default: ${NPM_REGISTRY_CACHE}).`,
     ],
     [
       "--cache-experiments-dir <dir>",
@@ -289,6 +294,7 @@ const OPTIONS = {
   "cache-schema-dir": { type: "string" },
   "cache-hash-db-dir": { type: "string" },
   "cache-cdn-lookup-dir": { type: "string" },
+  "cache-npm-registry-dir": { type: "string" },
   "cache-experiments-dir": { type: "string" },
   "cdn-lib-lookup": { type: "string" },
   "checks-only": { type: "string" },
@@ -329,6 +335,7 @@ const CACHE_DIR_DEFAULTS = Object.freeze({
   "cache-schema-dir": DEFAULT_CACHE,
   "cache-hash-db-dir": LIBRARY_HASHES_CACHE,
   "cache-cdn-lookup-dir": CDN_LOOKUP_CACHE,
+  "cache-npm-registry-dir": NPM_REGISTRY_CACHE,
   "cache-experiments-dir": EXPERIMENTS_CACHE,
 });
 
@@ -341,6 +348,7 @@ const FOLDER_FLAGS = [
   "cache-schema-dir",
   "cache-hash-db-dir",
   "cache-cdn-lookup-dir",
+  "cache-npm-registry-dir",
   "cache-experiments-dir",
 ];
 
@@ -1069,6 +1077,7 @@ function cacheDirs(opts) {
     opts.schemaCache,
     opts.libraryHashesCache,
     opts.cdnLookupCache,
+    opts.npmRegistryCache,
     opts.experimentsCache,
   ];
 }
@@ -1171,6 +1180,9 @@ function pipelineOptsFromValues(values) {
     cdnLookupCache:
       values["cache-cdn-lookup-dir"] ||
       CACHE_DIR_DEFAULTS["cache-cdn-lookup-dir"],
+    npmRegistryCache:
+      values["cache-npm-registry-dir"] ||
+      CACHE_DIR_DEFAULTS["cache-npm-registry-dir"],
     experimentsCache:
       values["cache-experiments-dir"] ||
       CACHE_DIR_DEFAULTS["cache-experiments-dir"],
