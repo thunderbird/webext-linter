@@ -2004,8 +2004,9 @@ verdict-intros:
 #
 # What is withheld is not listed here and is not a property of these entries: it is every
 # to-do item a REVIEWER would have been asked: a question by its section, or one that
-# carries the phase a person is asked it in (src/report/early-exit.js withoutQuestions). The
-# code-review sections stay, because reading code is safe and is the evidence for the halt.
+# carries the phase a person is asked it in (src/report/early-exit.js withoutQuestions). An
+# error from such a check also stops the review: no check after it runs. The code-review
+# sections keep what the checks up to it authored, because reading code is safe.
 review-early-exit:
   intro: |-
     The review was not completed and the report is incomplete due to the following issues:

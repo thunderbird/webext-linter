@@ -152,8 +152,9 @@ export function earlyExitOf(ordered, answers, registry) {
  * Filtering the manual list is the whole of the strip. Three of the report's four to-do
  * sections are rendered from it, and the Summary re-orders the same array for its counts
  * (src/report/format.js), so the sections and the tally cannot disagree about what is
- * left. The sweep list is untouched: reading code is safe, and what it turns up is the
- * evidence for the halt rather than work the halt makes pointless.
+ * left. The sweep list is untouched: reading code is safe. It holds what the checks up to
+ * the aborting one authored, because no check after it runs (src/checks/registry.js
+ * abortsReview).
  *
  * A reviewer would have been asked an item that is a question by its section, or that
  * names the phase a person is asked it in (`askedIn`): a check that asks its question in

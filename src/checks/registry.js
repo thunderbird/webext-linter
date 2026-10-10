@@ -2023,7 +2023,8 @@ export async function runChecks(registry, opts = {}, siblings) {
   const checks = targetCtx.invalidExperiment
     ? inPhase("invalid-experiment")
     : inPhase("deterministic");
-  // The whole-review count, for the [i/total] feed counter.
+  // The whole-review count, for the [i/total] feed counter. A review an early exit stops
+  // ends short of it, and the counter says where.
   const total = checks.length;
   const findings = [];
   const manualItems = [];
@@ -2074,6 +2075,7 @@ export async function runChecks(registry, opts = {}, siblings) {
   // unaffected.
   progress("── Activity ──");
   progress("");
+  const checksRun = [];
   for (const [i, check] of checks.entries()) {
     // Route the check to its declared input artifact - the ONE place the choice is
     // made (routeCtx, also asked directly by the routing tests). The check reads
@@ -2085,8 +2087,12 @@ export async function runChecks(registry, opts = {}, siblings) {
     const out = await runOneCheck(checkCtx, check, `[${i + 1}/${total}]`);
     findings.push(...out.findings);
     manualItems.push(...out.manualItems);
+    checksRun.push(check);
+    // No check after an aborting one runs, and nothing it would have asked for is computed.
+    if (abortsReview(registry, check.id, out.findings)) {
+      break;
+    }
   }
-  const checksRun = [...checks];
 
   // Condense the unused-files report: when every packaged file under a folder is unused,
   // collapse it to the top-most such folder. Output-only, after every check has scanned every
@@ -2101,6 +2107,19 @@ export async function runChecks(registry, opts = {}, siblings) {
   collapseUnusedFolders(manualItems, filesOfRule);
 
   return { findings, manualItems, checksRun };
+}
+
+/**
+ * Whether a check's findings stop the review: an error from a check naming an early-exit
+ * reason (src/report/early-exit.js) settles the submission. Read off the stamped severity,
+ * the band the report will show. A case a check only escalates aborts later, if at all,
+ * once someone reports it - that is the review loop's to decide (src/report/loop.js).
+ */
+export function abortsReview(registry, checkId, findings) {
+  return Boolean(
+    registry.earlyExitFor(checkId) &&
+    findings.some((f) => f.severity === SEVERITY.ERROR)
+  );
 }
 
 /**

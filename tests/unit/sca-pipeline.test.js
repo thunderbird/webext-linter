@@ -893,7 +893,8 @@ test("SCA e2e: background-module judges the XPI's background script, not the ESM
     "background.js": `(function () { console.log("bundled classic"); })();`,
   });
   const srcEsm = tmpDir({
-    "package.json": "{}",
+    "package.json": SRC_FILES["package.json"],
+    "package-lock.json": SRC_FILES["package-lock.json"],
     "src/background.js": `import { x } from "./util.js";\nconsole.log(x);`,
     "src/util.js": `export const x = 1;`,
   });
@@ -1732,6 +1733,31 @@ async function unrescuedFolder(lockAudit) {
   return work;
 }
 
+// A check that aborts stops the review: the missing lock is reported, and no check after it
+// in the registry runs.
+test("an aborting check is the last check the review runs", async () => {
+  const fixture = path.join(UNRESCUED_FIXTURE, "..", "missing-lock-sca");
+  const { findings, meta } = await runReview({
+    addonPath: path.join(fixture, "xpi"),
+    scaRoot: path.join(fixture, "src"),
+    ...OFFLINE,
+    cdnLookupCache: cdnMissCache(
+      path.join(fixture, "xpi"),
+      path.join(fixture, "src")
+    ),
+  });
+  const ids = loadRegistry().checkIds();
+  const stop = ids.indexOf("sca-lock-file-missing");
+  assert.equal(meta.checksRun.at(-1), "sca-lock-file-missing");
+  assert.ok(meta.checksRun.length < ids.length);
+  assert.ok(ids.slice(stop + 1).every((id) => !meta.checksRun.includes(id)));
+  assert.ok(has(findings, "sca-lock-file-missing"));
+  assert.deepEqual(
+    meta.earlyExit.reasons.map((r) => r.id),
+    [loadRegistry().earlyExitFor("sca-lock-file-missing")]
+  );
+});
+
 /** A network that fails the test on any request. */
 const noNet = {
   fetchBytes: async () => assert.fail("no request expected"),
@@ -1748,13 +1774,15 @@ test("an unrescued review is decided by the recorded lock audit, asking no netwo
     ...OFFLINE,
     cdnLookup: true,
   });
+  // The rescue checks run in registry order, and the first one that aborts stops the review.
   const registry = loadRegistry();
   const { rescueFor } = registry.llmScaReviewPrompt();
+  const rescue = registry
+    .checkIds()
+    .filter((id) => rescueFor.includes(registry.earlyExitFor(id)));
   assert.deepEqual(
     meta.checksRun,
-    registry
-      .checkIds()
-      .filter((id) => rescueFor.includes(registry.earlyExitFor(id)))
+    rescue.slice(0, rescue.indexOf("vendor-vulnerable-dev") + 1)
   );
   assert.deepEqual(
     findings.map((f) => [f.ruleId, f.file, f.loc?.line]),

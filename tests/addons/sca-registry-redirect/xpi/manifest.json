@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "Build Hygiene SCA",
+  "version": "1.0",
+  "background": { "scripts": ["background.js"] },
+  "icons": { "16": "icon.png", "48": "icon.png" }
+}

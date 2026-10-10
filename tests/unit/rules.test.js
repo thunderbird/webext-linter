@@ -98,7 +98,7 @@ import {
   loadRegistry,
   assertEarlyExit,
   runOneCheck,
-  runChecks,
+  abortsReview,
   assertRequiredSections,
   Registry,
   modeEligible,
@@ -6617,4 +6617,20 @@ test("experiment-schema-invalid reports a packaged schema Thunderbird cannot rea
     (await experimentSchemaInvalid.run(ctx)).findings.map((f) => f.file),
     ["api/broken.json", "api/other.json"]
   );
+});
+
+// An aborting check stops the review (runChecks breaks after it): an ERROR from a check that
+// names an early-exit reason. A warning from that check, or an error from a check with no
+// reason, lets the review go on.
+test("abortsReview: only an error from a check naming an early-exit reason stops the review", () => {
+  const registry = loadRegistry();
+  const aborting = "vendor-vulnerable";
+  const plain = "sync-xhr";
+  assert.ok(registry.earlyExitFor(aborting));
+  assert.ok(!registry.earlyExitFor(plain));
+  const at = (severity) => [{ ruleId: "x", severity }];
+  assert.equal(abortsReview(registry, aborting, at(SEVERITY.ERROR)), true);
+  assert.equal(abortsReview(registry, aborting, at(SEVERITY.WARNING)), false);
+  assert.equal(abortsReview(registry, aborting, []), false);
+  assert.equal(abortsReview(registry, plain, at(SEVERITY.ERROR)), false);
 });

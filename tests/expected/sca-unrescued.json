@@ -1,5 +1,5 @@
 {
-  "_comment": "A source-code submission whose preparation could not rescue its dependencies: its preparation is run for real and gives the rescue up, recording the lock audit it ran (a high advisory on a package the lock pulls in for production, a critical one on a declared build tool). The review takes that audit as its own and asks no network for it, runs only the checks the registry's rescue-for reasons name, reports each recorded entry at its lock line, and is aborted for known vulnerabilities. Nothing else is checked: the preparation already decided.",
+  "_comment": "A source-code submission whose preparation could not rescue its dependencies: its preparation is run for real and gives the rescue up, recording the lock audit it ran (a high advisory on a package the lock pulls in for production, a critical one on a declared build tool). The review takes that audit as its own and asks no network for it, runs only the checks the registry's rescue-for reasons name, and is aborted for known vulnerabilities by the first of them that reports: the declared build tool's critical advisory, at its lock line. The check that would report the production package's advisory comes after it, so it never runs. Nothing else is checked: the preparation already decided.",
   "preparation": {
     "advisories": {
       "lint-pebble@0.4.0": [
@@ -20,7 +20,6 @@
     "rescued": false
   },
   "expect": {
-    "vendor-vulnerable-dev": ["package-lock.json:13"],
-    "vendor-vulnerable-indirect": ["package-lock.json:26"]
+    "vendor-vulnerable-dev": ["package-lock.json:13"]
   }
 }

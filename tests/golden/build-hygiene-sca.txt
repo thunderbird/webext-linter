@@ -2,30 +2,19 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
-Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
- - [SCA] .npmrc:1 - https://npm.internal.example/
-
-2) The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them.
+1) The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them.
  - [SCA] dist/addon.zip
  - [SCA] dist/legacy.xpi
 
-3) The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them.
+2) The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them.
  - [SCA] node_modules
  - [SCA] tools/node_modules
-
-4) The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
-Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
- - [SCA] package.json
 
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
 
 You can run an automated review yourself before submitting:
 https://github.com/thunderbird/webext-linter
-
-The review was not completed and the report is incomplete due to the following issues:
-- Build process issues
 
 ── Extended Code Review ──
 
@@ -61,6 +50,29 @@ Suggested verdict: warning
 Suggested response: Please include an English localization. English serves as the default language in Thunderbird, and most users who do not understand the hardcoded language will most likely be able to read English. The i18n API allows defining strings for multiple locales, and Thunderbird automatically selects the one that best matches the user’s interface language.
 An example can be found here: https://github.com/thunderbird/webext-examples/tree/master/manifest_v2/i18n
  - [XPI] manifest.json
+
+── Extended Manual Review ──
+
+Continue manual review for the following checks:
+
+1) Build failure: Did the build succeed? Follow the build process from a clean
+   copy of the source archive, installing the dependencies exactly as the lock
+   file pins them (npm ci, or pnpm install --frozen-lockfile), or read the build
+   diff where the review wrote one. Clear only if every step completed. An
+   install refused because package.json and the lock file disagree is a failed
+   build.
+Suggested verdict: error
+Suggested response: The submitted source could not be built by following its build instructions, so the review cannot continue. Please make sure the instructions are complete and that the build succeeds from a clean copy of the submitted archive.
+ - [SCA] package.json
+
+2) Build does not reproduce the XPI: Does the built XPI reproduce the submitted
+   XPI? Read the build diff where the review wrote one, or compare your own
+   build's result with the submitted XPI. Clear only if they match. Files that
+   differ only by what every build changes (a timestamp, a build id) still
+   match.
+Suggested verdict: error
+Suggested response: The XPI built from the submitted source differs from the submitted XPI, so the review cannot continue. Please make sure the submitted XPI is built from exactly the submitted source, by the build instructions it contains.
+ - [SCA] package.json
 
 ── Standard Code Review ──
 
@@ -142,8 +154,100 @@ Sweep: <work>/xpi/
 Suggested verdict: error
 Suggested response: An icon shipped inside this add-on imitates or incorporates a Mozilla trademark (the Thunderbird, Firefox or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please use a distinct icon and submit a new version.
 
+── Standard Manual Review ──
+
+Continue manual review for the following checks:
+
+1) Check suitability for listing: Judge whether the add-on targets a limited or
+   non-public audience (for example an internal, single-organization, or
+   test-only add-on) and should better self-hosted than publicly listed on ATN.
+Suggested verdict: error
+Suggested response: Due to its limited or non-public audience, this add-on is not suitable for listing on ATN (addons.thunderbird.net). Please consider self-hosting and distributing it yourself.
+
+2) Check the listing for unacceptable content: Inspect the add-on listing page
+   on ATN: its summary, description and screenshots. Determine whether any of it
+   is spam, inappropriate, or misleading, or breaches Mozilla's Acceptable Use
+   Policy (https://www.mozilla.org/about/legal/acceptable-use/). The description
+   here is the one on the listing page, not the one in manifest.json. Only the
+   listing belongs here. What the package itself ships is a separate check.
+Suggested verdict: hold
+Suggested response: The add-on listing page on ATN (addons.thunderbird.net) does not meet our content requirements. Its summary, description and screenshots must not be spam, inappropriate, or misleading, and they must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please update the listing.
+
+3) Missing ATN description or details: Verify that the add-on listing page on
+   ATN includes detailed instructions on how to use the add-on and where to find
+   its entry points. It should also include screenshots to help users quickly
+   understand how the add-on works.
+Suggested verdict: hold
+Suggested response: The add-on listing page on ATN (addons.thunderbird.net) should include detailed instructions on how to use the add-on and where to find its entry points. It should also include screenshots to help users quickly understand how the add-on works. Please update the listing.
+
+4) Missing English ATN localization: Verify that the ATN listing page also has
+   an English version.
+Suggested verdict: info
+Suggested response: The add-on listing page on ATN (addons.thunderbird.net) should also have an English localization. English serves as the default language in Thunderbird, and most users who do not understand the available non-English version will most likely be able to read English. Please update the listing.
+
+5) Check the icon for trademark or logo imitation: Inspect the add-on’s icon as
+   it is shown on the add-on listing page on ATN. Decide whether it imitates or
+   incorporates the Thunderbird, Firefox or Mozilla logo.
+Suggested verdict: error
+Suggested response: The icon on this add-on’s listing page on ATN (addons.thunderbird.net) imitates or incorporates a Mozilla trademark (the Thunderbird, Firefox or Mozilla logo), which is not allowed under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). Please update the listing with a distinct icon.
+
+6) Test the add-on: Install the add-on in a separate test profile and spend
+   about 5 minutes exercising it. You are not expected to test every feature.
+   Does it act as described in its ATN summary and description? Does it
+   generally work - do its action button and options page open? Where it signs
+   in, do the developer’s credentials reach the described functionality? Where
+   it sends data to a remote server, is it clear which data? And is there
+   anything the code review raised that you want to see for yourself? The
+   browser console and network monitor may help.
+Suggested verdict: info
+Suggested response: We observed the following while testing the submitted extension:
+
+- ...
+
+7) Request testing information if needed: Check whether reviewing this add-on
+   needs anything the submission does not provide: credentials for a service it
+   signs in to, a test account, or instructions for reaching a feature. A
+   developer must supply testing credentials where the add-on relies on a
+   service.
+Suggested verdict: hold
+Suggested response: Please provide us with detailed information on how to test this add-on. If authentication to a website is necessary, give us a test username and password to facilitate our work. This can be provided in the Whiteboard field, which can be found in the Edit Listing page under the Technical Details section. This information is only available to reviewers.
+
+8) Check for "No Surprises" policy violations: Test the add-on’s functionality
+   in a test profile and inspect the code for any unexpected features or
+   behavior that is not documented on the ATN listing page and could be a
+   surprise to the user. A diff against the last accepted version may be
+   helpful.
+Suggested verdict: error
+Suggested response: Your add-on includes a feature that is not related to its primary function and is not mentioned in the description of your add-on listing page on ATN (addons.thunderbird.net). Such a feature must be strictly opt-in. The following need to be addressed:
+
+- ...
+
+9) Check for a missing payment disclosure: Test the add-on’s functionality in a
+   test profile. Verify whether the add-on requires a subscription or other form
+   of payment to function but the "needs payment" flag on the add-on’s ATN
+   listing page is not enabled.
+Suggested verdict: hold
+Suggested response: It looks like a payment is required to use this add-on or the service this add-on relies on, either upfront, after a trial period or in conjunction with a paid software. If so, please update the payment status on the listing to yes.
+
+10) Forked add-on: Check if the submission is a fork of an existing add-on. Such
+    forks are only allowed on ATN if they are clearly distinguished from the
+    original and provide a significant difference in functionality and/or code.
+    Exceptions may be made where the add-on is no longer maintained by its
+    original author. The primary goal, however, should be to connect the two
+    developers and let the new developer help maintain or take over the existing
+    add-on. In general, small-change forks of still-active projects cause
+    confusion for users and unnecessary overlap for developers. We encourage
+    developers to contribute their improvements directly to the original
+    project.
+Suggested verdict: error
+Suggested response: The submission appears to be a fork of an existing add-on that is still being actively maintained. According to our review policies (https://thunderbird.github.io/atn-review-policy/):
+
+"If the add-on is a fork of another add-on, the name must clearly distinguish it from the original and provide a significant difference in functionality and/or code. Exceptions may be made in instances where the add-on is no longer maintained by the original author."
+
+Because the original project is still active, your submission does not meet these requirements. Small-change forks can sometimes cause confusion for users and unnecessary overlap for developers. We encourage you to consider contributing your improvements directly to the original project so that all existing users can benefit from your ideas.
+
 ── Summary ──
 
-6 error(s), 0 hold, 0 warning(s), 0 info,
-4 extended code review item(s), 0 extended manual review item(s),
-11 standard code review item(s), 0 standard manual review item(s)
+4 error(s), 0 hold, 0 warning(s), 0 info,
+4 extended code review item(s), 2 extended manual review item(s),
+11 standard code review item(s), 10 standard manual review item(s)

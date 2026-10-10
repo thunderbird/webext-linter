@@ -1,0 +1,7 @@
+{
+  "name": "sca-registry-redirect",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "web-ext build"
+  }
+}

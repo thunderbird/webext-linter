@@ -111,42 +111,19 @@
       "disguised-transmission",
       "unacceptable-package-content",
       "shipped-icon-trademark-imitation"
-    ],
-    "earlyExit": {
-      "intro": "The review was not completed and the report is incomplete due to the following issues:",
-      "reasons": [
-        {
-          "id": "unreproducible-build",
-          "text": "Build process issues"
-        }
-      ]
-    }
+    ]
   },
   "summary": {
-    "error": 6,
+    "error": 4,
     "hold": 0,
     "warning": 0,
     "info": 0,
     "byRule": {
-      "sca-lock-file-missing": 1,
-      "build-registry-redirect": 1,
       "committed-node-modules": 2,
       "committed-build-artifact": 2
     }
   },
   "findings": [
-    {
-      "ruleId": "build-registry-redirect",
-      "severity": "error",
-      "file": ".npmrc",
-      "loc": {
-        "line": 1
-      },
-      "item": "https://npm.internal.example/",
-      "hint": null,
-      "artifact": "SCA",
-      "message": "The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
-    },
     {
       "ruleId": "committed-build-artifact",
       "severity": "error",
@@ -176,16 +153,6 @@
       "hint": null,
       "artifact": "SCA",
       "message": "The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them."
-    },
-    {
-      "ruleId": "sca-lock-file-missing",
-      "severity": "error",
-      "file": "package.json",
-      "loc": null,
-      "item": null,
-      "hint": null,
-      "artifact": "SCA",
-      "message": "The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     },
     {
       "ruleId": "committed-node-modules",

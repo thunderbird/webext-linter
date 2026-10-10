@@ -1,0 +1,6 @@
+{
+  "_comment": "SCA (src/ + xpi/) with a committed lock whose ROOT .npmrc sets a package registry: build-registry-redirect reports it (error, the raw value is not parsed) and the review stops there. The committed tools/.npmrc is deliberately left in the fixture as the negative: npm reads its config from the directory the install runs in, which is --sca-root, so a config deeper in the tree is not read and not reported. The shipped background.js is minified, so sca-xpi-fully-included-in-archive stays silent.",
+  "expect": {
+    "build-registry-redirect": [".npmrc:1"]
+  }
+}

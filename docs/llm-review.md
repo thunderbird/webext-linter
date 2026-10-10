@@ -148,9 +148,11 @@ A finding that aborts the review is never put to the agent to verify, so no verd
 back. That is also why a check that authors a sweep may not abort a review: a sweep's hints
 are merged unverified, and the registry refuses a check that does both.
 
-A review run without `--llm-review` is aborted on the same terms. Its printed report drops
-every to-do item a reviewer would have been **asked**, and keeps both code-review sections:
-reading code is safe, and what it turns up is the evidence for the halt.
+A review run without `--llm-review` is aborted on the same terms. A check that aborts it is
+the last check that runs: nothing after it is checked, and nothing it would have needed is
+computed. The printed report holds what the checks up to the abort found, drops every to-do
+item a reviewer would have been **asked**, and keeps the code-review items those checks
+authored, because reading code is safe.
 
 
 ## What an answer may say

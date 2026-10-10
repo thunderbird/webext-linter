@@ -5,9 +5,6 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) A build dependency this add-on declares has known security vulnerabilities: lint-pebble (0.4.0) is affected by published advisories of critical severity (GHSA-fixture-pebble). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update lint-pebble to 0.4.1 or later.
  - [SCA] package-lock.json:13
 
-2) A package this add-on does not declare, but that one of its dependencies pulls in, has known security vulnerabilities: wick-trim (1.0.1) is affected by published advisories of high severity (CVE-2026-11111). It ends up in the code you ship. Update the declared dependency that pulls it in, which usually resolves this because a newer release often already depends on a fixed version (1.0.3 or later for wick-trim). If no update resolves it, consider moving to a different or simpler build chain.
- - [SCA] package-lock.json:26
-
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
 
@@ -19,6 +16,6 @@ The review was not completed and the report is incomplete due to the following i
 
 ── Summary ──
 
-2 error(s), 0 hold, 0 warning(s), 0 info,
+1 error(s), 0 hold, 0 warning(s), 0 info,
 0 extended code review item(s), 0 extended manual review item(s),
 0 standard code review item(s), 0 standard manual review item(s)

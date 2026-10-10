@@ -1,0 +1,100 @@
+{
+  "meta": {
+    "action": "review",
+    "xpi": "<root>/tests/addons/sca-registry-redirect/xpi",
+    "xpiRoot": "<work>/xpi/",
+    "xpiFile": "xpi",
+    "scaRoot": "<root>/tests/addons/sca-registry-redirect/src",
+    "reviewed": true,
+    "schemaSource": "cache:release-mv3",
+    "schemaBranch": "release-mv3",
+    "schemaChannel": "release",
+    "applicationVersion": "128.0",
+    "manifestVersion": 3,
+    "checksRun": [
+      "core-symbol-in-webext",
+      "trademark-violation",
+      "trademark-thunderbird-locale",
+      "trademark-thunderbird-name",
+      "unknown-api",
+      "deprecated-api",
+      "strict-max-version-api",
+      "missing-permission",
+      "missing-manifest-key",
+      "manifest-invalid-json",
+      "manifest-missing",
+      "manifest-missing-key",
+      "manifest-version-mismatch",
+      "manifest-unknown-permission",
+      "update-url",
+      "unrecognized-manifest-key",
+      "mistyped-manifest-value",
+      "bundled-files",
+      "unrecognized-file-type",
+      "sync-xhr",
+      "unsafe-html",
+      "debugger-statement",
+      "async-onmessage",
+      "minimize-host-permissions",
+      "unused-permission",
+      "missing-library",
+      "find-lib-on-cdn",
+      "minified-code",
+      "untrusted-minified-library",
+      "untrusted-library",
+      "unpopular-source-dependency",
+      "unparsable-file",
+      "unanalysable-file",
+      "experiment-schema-invalid",
+      "experiment-modified",
+      "experiment-missing-strict-max-version",
+      "experiment-overrides-api",
+      "experiment-manual-review",
+      "experiment-unknown-api",
+      "non-experiment-strict-max-version",
+      "unsupported-dependency",
+      "vendor-vulnerable",
+      "banned-library",
+      "vendor-vulnerable-dev",
+      "vendor-vulnerable-indirect",
+      "vendor-vulnerable-indirect-dev",
+      "sca-package-file-missing",
+      "sca-package-file-invalid",
+      "sca-lock-file-missing",
+      "sca-lock-file-invalid",
+      "build-registry-redirect"
+    ],
+    "earlyExit": {
+      "intro": "The review was not completed and the report is incomplete due to the following issues:",
+      "reasons": [
+        {
+          "id": "unreproducible-build",
+          "text": "Build process issues"
+        }
+      ]
+    }
+  },
+  "summary": {
+    "error": 1,
+    "hold": 0,
+    "warning": 0,
+    "info": 0,
+    "byRule": {
+      "build-registry-redirect": 1
+    }
+  },
+  "findings": [
+    {
+      "ruleId": "build-registry-redirect",
+      "severity": "error",
+      "file": ".npmrc",
+      "loc": {
+        "line": 1
+      },
+      "item": "https://npm.internal.example/",
+      "hint": null,
+      "artifact": "SCA",
+      "message": "The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+    }
+  ]
+}

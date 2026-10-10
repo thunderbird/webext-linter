@@ -1652,7 +1652,7 @@ const NO_LOCK_SOURCE = path.join(
   ROOT,
   "tests",
   "addons",
-  "build-hygiene-sca",
+  "missing-lock-sca",
   "src"
 );
 

@@ -289,10 +289,12 @@ decide a source submission cannot be built from - `sca-package-file-missing`,
 `lock-foreign-source`, `build-registry-redirect`, `build-lifecycle-hook`,
 `undeclared-build-source`, `build-succeeds` and `build-reproduces-xpi` - name *a build that
 cannot be reproduced*. When one of them reports at error
-severity, nothing further is put to a reviewer: the report drops every to-do item they
-would have been **asked** - the two manual-review sections and their tally counts, plus
-any case an agent had routed onward to a reviewer - keeps both code-review sections, and
-the developer's text ends on the reason it is incomplete. The case it exists for is a
+severity, the review stops there: no check after it runs, and nothing further is put to a
+reviewer. The report holds what the checks up to it found, drops every to-do item a
+reviewer would have been **asked** - the two manual-review sections and their tally
+counts, plus any case an agent had routed onward to a reviewer - keeps the code-review
+items those checks authored, and the developer's text ends on the reason it is
+incomplete. The case it exists for is a
 dependency tree with known high or critical advisories, where the next thing the review
 would otherwise ask is for the reviewer to reproduce the build from it. It is not limited
 to that case: an XPI-only review halts on the same terms, and cancels the by-hand listing

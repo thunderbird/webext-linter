@@ -683,7 +683,10 @@ flowchart TB
         the <strong>shape its <code>run()</code> returned</strong> - never its
         phase; a check that throws becomes a single
         <code>check-failed</code> finding so the rest still run; and only the
-        orchestrator routes anything to manual review. This loop is also where
+        orchestrator routes anything to manual review. A check whose error aborts
+        the review (<code>abortsReview</code>: it names a
+        <code>review-early-exit</code> reason) is the last one the loop runs: no
+        check after it runs, and nothing it would have read is computed. This loop is also where
         the <strong>lazy caches</strong> are computed - the first check to read
         one builds it inside its <code>run()</code> and memoizes it for every later
         check (see <em>The stores</em>).
@@ -711,7 +714,9 @@ flowchart TB
   STAMP --> PUSHF["findings.push(out.findings)"]
   CF --> PUSHF
   PUSHF --> PUSHM["manualItems.push(out.manualItems)<br/>→ the section the check declares:<br/>Extended Code Review or Extended Manual Review"]
-  PUSHM --> NEXT
+  PUSHM --> QAB{{"abortsReview?<br/>an error from a check<br/>naming a review-early-exit reason"}}
+  QAB -- yes --> DONE
+  QAB -- no --> NEXT
   NEXT(["next check"]) --> HEAD
 
   classDef work fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
