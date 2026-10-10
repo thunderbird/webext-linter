@@ -15,7 +15,7 @@ const ctxWith = (untrusted) => ({
 });
 
 // A readable untrusted lib is the info check's; the reject check stays silent.
-test("untrusted-library (info) reports the readable entries only", () => {
+test("untrusted-library (info) reports the readable entries only", async () => {
   const ctx = ctxWith([
     {
       file: "vendor/x.js",
@@ -30,15 +30,18 @@ test("untrusted-library (info) reports the readable entries only", () => {
       unreadable: true,
     },
   ]);
-  const info = untrustedLibrary.run(withManifest(ctx)).findings;
+  const info = (await untrustedLibrary.run(withManifest(ctx))).findings;
   assert.equal(info.length, 1);
   assert.equal(info[0].file, "vendor/x.js");
   assert.equal(info[0].item, "x 1.0.0");
-  assert.equal(untrustedMinified.run(withManifest(ctx)).findings.length, 1); // the .min.js is the reject check's
+  assert.equal(
+    (await untrustedMinified.run(withManifest(ctx))).findings.length,
+    1
+  ); // the .min.js is the reject check's
 });
 
 // An unreadable untrusted lib is the reject check's; the info check stays silent.
-test("untrusted-minified-library (reject) reports the unreadable entries only", () => {
+test("untrusted-minified-library (reject) reports the unreadable entries only", async () => {
   const ctx = ctxWith([
     {
       file: "vendor/y.min.js",
@@ -47,16 +50,19 @@ test("untrusted-minified-library (reject) reports the unreadable entries only", 
       unreadable: true,
     },
   ]);
-  const rejects = untrustedMinified.run(withManifest(ctx)).findings;
+  const rejects = (await untrustedMinified.run(withManifest(ctx))).findings;
   assert.equal(rejects.length, 1);
   assert.equal(rejects[0].file, "vendor/y.min.js");
   assert.equal(rejects[0].item, "y 2.0.0");
-  assert.equal(untrustedLibrary.run(withManifest(ctx)).findings.length, 0);
+  assert.equal(
+    (await untrustedLibrary.run(withManifest(ctx))).findings.length,
+    0
+  );
 });
 
 // With no name (e.g. a VENDOR source whose release id was not parsed), the item
 // falls back to the file path; both checks are silent on an empty list.
-test("item falls back to the file path; empty list yields nothing", () => {
+test("item falls back to the file path; empty list yields nothing", async () => {
   const ctx = ctxWith([
     {
       file: "dep/extract-time.js",
@@ -65,15 +71,15 @@ test("item falls back to the file path; empty list yields nothing", () => {
     },
   ]);
   assert.equal(
-    untrustedLibrary.run(withManifest(ctx)).findings[0].item,
+    (await untrustedLibrary.run(withManifest(ctx))).findings[0].item,
     "dep/extract-time.js"
   );
   assert.equal(
-    untrustedMinified.run(withManifest(ctxWith([]))).findings.length,
+    (await untrustedMinified.run(withManifest(ctxWith([])))).findings.length,
     0
   );
   assert.equal(
-    untrustedLibrary.run(withManifest(ctxWith([]))).findings.length,
+    (await untrustedLibrary.run(withManifest(ctxWith([])))).findings.length,
     0
   );
 });

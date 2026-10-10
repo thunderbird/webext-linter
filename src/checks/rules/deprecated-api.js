@@ -23,11 +23,11 @@ import { SchemaIndex } from "../../schema/index.js";
 import { resolveApiUsages } from "../../lib/api-resolution.js";
 
 export default {
-  run(ctx) {
+  async run(ctx) {
     const findings = [];
     const seen = new Set(); // report each deprecated api once
 
-    for (const { file, usage, res } of resolveApiUsages(ctx)) {
+    for (const { file, usage, res } of await resolveApiUsages(ctx)) {
       if (
         res.kind !== "function" &&
         res.kind !== "event" &&

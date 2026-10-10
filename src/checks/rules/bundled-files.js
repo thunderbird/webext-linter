@@ -35,7 +35,7 @@ import { scriptHostDirs, resolvePageRelative } from "../../lib/script-hosts.js";
 import { SCHEME_RE } from "../../lib/util.js";
 
 export default {
-  run(ctx) {
+  async run(ctx) {
     // Registry `input: xpi`: ctx.artifact is the built XPI. File-completeness is a
     // property of what actually ships - declared paths resolve against the XPI's OWN
     // files. In a source submission the built layout legitimately renames/relocates
@@ -107,10 +107,10 @@ export default {
     // file is dead-code noise (an unused-files matter), not a missing bundled
     // file. isLive covers general + content-script reachability, so background,
     // content, and page-hosted scripts stay checked; only true orphans are skipped.
-    const { isLive } = buildReachability(ctx);
-    const hostDirs = scriptHostDirs(ctx);
+    const { isLive } = await buildReachability(ctx);
+    const hostDirs = await scriptHostDirs(ctx);
     const seen = new Set();
-    for (const src of ctx.jsSources) {
+    for (const src of await ctx.jsSources()) {
       if (!isLive(src.file)) {
         continue;
       }

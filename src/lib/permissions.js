@@ -103,9 +103,9 @@ const GATED_KINDS = new Set(["function", "event", "property", "namespace"]);
  * Cross-check the permissions/manifest.json keys the called APIs require against what
  * the manifest.json declares. Use getPermissionAnalysis (memoized) from the rules.
  * @param {RunContext} ctx  The shared check context.
- * @returns {PermissionAnalysis}
+ * @returns {Promise<PermissionAnalysis>}
  */
-function analyzePermissions(ctx) {
+async function analyzePermissions(ctx) {
   const { schema } = ctx;
   const missingPermissions = [];
   const missingManifestKeys = [];
@@ -133,7 +133,7 @@ function analyzePermissions(ctx) {
   // Only usages in the pure WebExtension tree count: dead code and privileged
   // Experiment/core code (which uses no manifest.json permissions) are outside it, so they
   // bear on neither used nor missing permissions (resolveApiUsages applies the filter).
-  for (const { file, usage, res } of resolveApiUsages(ctx)) {
+  for (const { file, usage, res } of await resolveApiUsages(ctx)) {
     if (!GATED_KINDS.has(res.kind)) {
       continue;
     }
@@ -176,7 +176,7 @@ function analyzePermissions(ctx) {
   // consumed via navigator.* calls the schema names in its `web_api` annotation.
   // These feed only the USED set (so the unused-permission check stops flagging a
   // genuinely-used one); they never enter missingPermissions above.
-  for (const perm of groundWebApiPermissions(ctx, declared.named)) {
+  for (const perm of await groundWebApiPermissions(ctx, declared.named)) {
     usedPermissions.add(perm);
   }
 
@@ -264,7 +264,7 @@ function analyzePermissions(ctx) {
  * The permission analysis, computed once and memoized on the artifact so the
  * missing-permission and missing-manifest-key checks share one pass.
  * @param {RunContext} ctx
- * @returns {PermissionAnalysis}
+ * @returns {Promise<PermissionAnalysis>}
  */
 export function getPermissionAnalysis(ctx) {
   return ((ctx.cache ??= {}).permissionAnalysis ??= analyzePermissions(ctx));
@@ -284,16 +284,16 @@ export function getPermissionAnalysis(ctx) {
  * declares no Web/DOM permission early-out before scanning any file.
  * @param {RunContext} ctx
  * @param {Set<string>} declaredNamed  The declared named permissions.
- * @returns {Set<string>}  Grounded permission names.
+ * @returns {Promise<Set<string>>}  Grounded permission names.
  */
-function groundWebApiPermissions(ctx, declaredNamed) {
+async function groundWebApiPermissions(ctx, declaredNamed) {
   const signatures = webApiSignatures(ctx.schema, declaredNamed);
   const grounded = new Set();
   if (!signatures.length) {
     return grounded;
   }
-  const webext = buildReachability(ctx).pureWebExtensionReachable;
-  for (const src of ctx.jsSources ?? []) {
+  const webext = (await buildReachability(ctx)).pureWebExtensionReachable;
+  for (const src of await ctx.jsSources()) {
     if (!webext.has(src.file)) {
       continue;
     }
@@ -315,21 +315,17 @@ function groundWebApiPermissions(ctx, declaredNamed) {
  * deterministic unused-permission finding. Obfuscation can build an API name at runtime or mangle
  * a property read, hiding a gated call from both the api-usage walker and the token scan, so a
  * permission whose token is found nowhere may still be used. Defensive: returns false when the
- * artifact carries no classifiable files (a hand-built ctx / a sibling with none), so it
- * never throws inside the unconditional `decidable` computation.
+ * artifact carries no files (a hand-built ctx), so it never throws inside the unconditional
+ * `decidable` computation.
  * @param {RunContext} ctx
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-function scanIsBlindToObfuscation(ctx) {
-  const artifact = ctx.artifact;
-  // Nothing classifiable (a hand-built ctx / a sibling with no files and no pre-classification):
-  // not blind. A pre-set artifact.bundled is used as-is; otherwise a files Map is classified (an
-  // empty Map classifies to nothing). Only a MISSING files map with no bundle is skipped, so
-  // getBundled never iterates undefined.
-  if (!artifact || (!artifact.bundled && !artifact.files)) {
+async function scanIsBlindToObfuscation(ctx) {
+  // Nothing classifiable (a hand-built ctx with no files): not blind.
+  if (!ctx.artifact?.files) {
     return false;
   }
-  const classified = classifyAddonJs(ctx);
+  const classified = await classifyAddonJs(ctx);
   return Array.isArray(classified) && classified.some(isObfuscatedFirstParty);
 }
 
@@ -348,12 +344,12 @@ function scanIsBlindToObfuscation(ctx) {
  * @param {?object[]} [prompts]  LoadedCheck.permissionTokens: the permission-prompts entries
  *   carrying the usage tokens. Absent/empty -> no deterministic verdicts,
  *   escalate all.
- * @returns {{findings: import("../report/finding.js").Finding[], escalations:
+ * @returns {Promise<{findings: import("../report/finding.js").Finding[], escalations:
  *   {item: string, file: string, loc: ?object,
- *   occurrences: {id: string, file: string, line: ?number, token: string}[]}[]}}
+ *   occurrences: {id: string, file: string, line: ?number, token: string}[]}[]}>}
  */
-export function enumerateUnusedPermissions(ctx, prompts) {
-  const used = getPermissionAnalysis(ctx).usedPermissions;
+export async function enumerateUnusedPermissions(ctx, prompts) {
+  const used = (await getPermissionAnalysis(ctx)).usedPermissions;
   // A deterministic "unused" FINDING claims "nothing this permission gates can be in
   // use" - only tenable when the scan can see every usage in the SHIPPED add-on (the
   // built XPI, the bytes that actually run - so a build-time dependency IS in view),
@@ -368,28 +364,32 @@ export function enumerateUnusedPermissions(ctx, prompts) {
   //  - unresolved API surface (a computed/dynamic member chain, a destructured
   //    alias - the apiUsage limitations) could spell a gated call without its
   //    token appearing anywhere;
-  //  - an ABSENT ctx.apiUsages is a view with no visibility into the artifact's
-  //    API surface (the sibling-ctx marker) - maximally blind, so it fails
-  //    closed rather than reading as fully sighted.
+  //  - an ABSENT API usage is a view with no visibility into the artifact's
+  //    API surface - maximally blind, so it fails closed rather than reading as
+  //    fully sighted.
   // This gates only the finding: token PRESENCE is always trustworthy (a located
   // occurrence IS a real site), so occurrences are collected regardless and a
   // reviewer judges them the same in every mode. The obfuscation check is LAST so it
   // is only reached when the cheap conditions already hold.
+  const apiUsages = await ctx.apiUsages();
   const decidable =
-    Array.isArray(ctx.apiUsages) &&
-    !ctx.apiUsages.some(
+    Array.isArray(apiUsages) &&
+    !apiUsages.some(
       (u) =>
         u.parseError ||
         u.limitations?.length ||
         u.usages?.some((x) => x.dynamicTail)
     ) &&
-    !scanIsBlindToObfuscation(ctx);
+    !(await scanIsBlindToObfuscation(ctx));
   const tokensFor = permissionTokens(ctx.manifest?.json, prompts);
   // One scan over the live code + manifest.json for the union of every permission's
   // tokens, recording WHERE each occurs; each permission then reads its own subset,
   // both to decide presence (no occurrence, when decidable = unused) and to hand
   // the reviewer the sites to judge.
-  const located = locateTokens(ctx, new Set([...tokensFor.values()].flat()));
+  const located = await locateTokens(
+    ctx,
+    new Set([...tokensFor.values()].flat())
+  );
   const m = ctx.manifest?.json ?? {};
   const seen = new Set();
   const findings = [];
@@ -499,9 +499,9 @@ function permissionTokens(manifest, prompts) {
  * listed explicitly in the registry rather than caught by a broad substring.
  * @param {RunContext} ctx
  * @param {Set<string>} tokens
- * @returns {Map<string, {file: string, line: ?number}[]>}
+ * @returns {Promise<Map<string, {file: string, line: ?number}[]>>}
  */
-function locateTokens(ctx, tokens) {
+async function locateTokens(ctx, tokens) {
   const located = new Map([...tokens].map((t) => [t, []]));
   if (!tokens.size) {
     return located;
@@ -514,7 +514,7 @@ function locateTokens(ctx, tokens) {
       const dot = t.lastIndexOf(".");
       return { token: t, ns: t.slice(0, dot), member: t.slice(dot + 1) };
     });
-    for (const { file, usage, res } of resolveApiUsages(ctx)) {
+    for (const { file, usage, res } of await resolveApiUsages(ctx)) {
       if (!res) {
         continue;
       }
@@ -537,7 +537,7 @@ function locateTokens(ctx, tokens) {
         });
       }
     }
-    for (const src of ctx.jsSources ?? []) {
+    for (const src of await ctx.jsSources()) {
       const atoms = codeAtomsOf(src);
       if (atoms) {
         for (const a of atoms) {

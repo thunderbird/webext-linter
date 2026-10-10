@@ -30,7 +30,7 @@ import { SchemaIndex } from "../schema/index.js";
  * one resolution. Only usages in the pure-WebExtension tree are included, and bare
  * `browser` references (no segments) are dropped.
  * @param {RunContext} ctx
- * @returns {ResolvedUsage[]}
+ * @returns {Promise<ResolvedUsage[]>}
  */
 export function resolveApiUsages(ctx) {
   return ((ctx.cache ??= {}).apiResolution ??= resolve(ctx));
@@ -38,12 +38,12 @@ export function resolveApiUsages(ctx) {
 
 /**
  * @param {RunContext} ctx
- * @returns {ResolvedUsage[]}
+ * @returns {Promise<ResolvedUsage[]>}
  */
-function resolve(ctx) {
-  const webext = buildReachability(ctx).pureWebExtensionReachable;
+async function resolve(ctx) {
+  const webext = (await buildReachability(ctx)).pureWebExtensionReachable;
   const out = [];
-  for (const src of ctx.apiUsages || []) {
+  for (const src of await ctx.apiUsages()) {
     if (!webext.has(src.file)) {
       continue;
     }
@@ -68,10 +68,10 @@ function resolve(ctx) {
  * a manual review item. Shared with experiment-unknown-api, which gates a manual
  * review on whether an Experiment has any.
  * @param {RunContext} ctx
- * @returns {ResolvedUsage[]}
+ * @returns {Promise<ResolvedUsage[]>}
  */
-export function unknownApis(ctx) {
-  return resolveApiUsages(ctx).filter(
+export async function unknownApis(ctx) {
+  return (await resolveApiUsages(ctx)).filter(
     ({ res }) =>
       res.kind === "unknown-namespace" ||
       res.kind === "unknown-member" ||

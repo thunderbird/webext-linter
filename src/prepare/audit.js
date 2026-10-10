@@ -11,8 +11,8 @@
 //
 // It is the lock audit and nothing else. Whatever else a review can stop for - another abort
 // reason, an Experiment, the run's --checks-* or band policy - is the review's to decide,
-// never predicted here. It reads the lock the way the review's own setup reads it
-// (src/pipeline.js, the `source-archive` and `deps-source` steps), with the same functions,
+// never predicted here. It reads the lock the way the review reads it (src/pipeline.js loads
+// the archive, src/review/products.js audits its dependencies), with the same functions,
 // so the lists it answers with are the ones the review's vulnerability checks read.
 //
 // Belongs here: reading a root's lock into those lists, and the two answers the preparation

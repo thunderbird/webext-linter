@@ -27,7 +27,7 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     // Registry `input: xpi`: ctx.artifact is the built XPI. Module-ness is a runtime-
     // loading property of what ships (Thunderbird loads the XPI's page and its
     // scripts), and the build can transform it. So the page, its <script src>
@@ -49,7 +49,7 @@ export default {
     // target NOT among the files is a non-JS suffix executed as code - unrecognized-file-type
     // reports that (more usefully than a module-syntax nuance), so here it is simply not a
     // classic .js script to flag.
-    const sources = new Map((ctx.jsSources ?? []).map((s) => [s.file, s]));
+    const sources = new Map((await ctx.jsSources()).map((s) => [s.file, s]));
     const out = [];
     eachElement(buf.toString("utf8"), (el) => {
       if (el.tag !== "script") {

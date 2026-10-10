@@ -98,14 +98,14 @@ function configFor(sourceType, rules) {
 }
 
 export default {
-  run(ctx) {
+  async run(ctx) {
     // Don't lint third-party / minified / obfuscated / VENDOR.md-declared code:
     // it is not the developer's authored source, so its (often thousands of)
     // quality findings are noise. missing-library / obfuscated-code flag those
     // files and request the original sources, which are reviewed when provided.
-    const skip = nonAuthoredJs(ctx);
+    const skip = await nonAuthoredJs(ctx);
     const out = [];
-    for (const src of ctx.jsSources) {
+    for (const src of await ctx.jsSources()) {
       if (skip.has(src.file)) {
         continue;
       }

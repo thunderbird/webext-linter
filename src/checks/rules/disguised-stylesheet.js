@@ -16,9 +16,9 @@ import {
 import { finding } from "../../report/finding.js";
 
 export default {
-  run(ctx) {
+  async run(ctx) {
     const out = [];
-    for (const sink of getOutboundSinks(ctx)) {
+    for (const sink of await getOutboundSinks(ctx)) {
       if (sink.type !== "style-url" || !isStrongCovertExfil(sink)) {
         continue;
       }

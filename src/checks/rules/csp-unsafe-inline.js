@@ -11,8 +11,8 @@ import { finding } from "../../report/finding.js";
 import { getEvalScan } from "../../lib/eval-scan.js";
 
 export default {
-  run(ctx) {
-    if (!getEvalScan(ctx).unsafeInline) {
+  async run(ctx) {
+    if (!(await getEvalScan(ctx)).unsafeInline) {
       return { findings: [] };
     }
     ctx.note?.(ctx.manifest.locus(), "CSP 'unsafe-inline'", VERDICT.FAIL);

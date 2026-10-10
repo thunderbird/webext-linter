@@ -36,7 +36,7 @@ export default {
    * @returns {{findings: object[],
    *   escalations?: import("../escalation.js").Escalation[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const json = ctx.manifest?.json;
     const minStr = json ? strictMinVersion(json) : undefined;
     const min = parseVersion(minStr);
@@ -54,7 +54,7 @@ export default {
     // next, and a reader cannot settle a site they were never shown. Each one gets its
     // own index and so its own verdict.
     const sites = [];
-    for (const { file, usage, res } of resolveApiUsages(ctx)) {
+    for (const { file, usage, res } of await resolveApiUsages(ctx)) {
       if (res.kind !== "function" && res.kind !== "event") {
         continue;
       }

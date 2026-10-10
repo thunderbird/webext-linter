@@ -27,9 +27,11 @@ const ctxWith = (unsupportedDeps, pkgJson = PKG_JSON) =>
     note() {},
   });
 
-test("reports one finding per dep, anchored at its package.json line", () => {
-  const out = unsupportedDependency.run(
-    ctxWith([{ name: "local", spec: "file:../x" }])
+test("reports one finding per dep, anchored at its package.json line", async () => {
+  const out = (
+    await unsupportedDependency.run(
+      ctxWith([{ name: "local", spec: "file:../x" }])
+    )
   ).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "package.json");
@@ -39,13 +41,18 @@ test("reports one finding per dep, anchored at its package.json line", () => {
   assert.equal(out[0].severity, null); // stamped from the registry (error)
 });
 
-test("an empty list yields no findings", () => {
-  assert.equal(unsupportedDependency.run(ctxWith([])).findings.length, 0);
+test("an empty list yields no findings", async () => {
+  assert.equal(
+    (await unsupportedDependency.run(ctxWith([]))).findings.length,
+    0
+  );
 });
 
-test("a dep whose token is absent from package.json anchors at the file, no line", () => {
-  const out = unsupportedDependency.run(
-    ctxWith([{ name: "ghost", spec: "file:../y" }])
+test("a dep whose token is absent from package.json anchors at the file, no line", async () => {
+  const out = (
+    await unsupportedDependency.run(
+      ctxWith([{ name: "ghost", spec: "file:../y" }])
+    )
   ).findings;
   assert.equal(out.length, 1);
   assert.ok(!out[0].loc);
@@ -53,16 +60,18 @@ test("a dep whose token is absent from package.json anchors at the file, no line
 
 // A comparison-sign-bearing spec reads correctly, not squared() 's unreadable brackets -
 // see utf8ComparisonSigns (src/lib/util.js).
-test("a spec with comparison signs stays readable in the item", () => {
-  const out = unsupportedDependency.run(
-    ctxWith([{ name: "weird", spec: ">=4.17.0 <5.0.0" }])
+test("a spec with comparison signs stays readable in the item", async () => {
+  const out = (
+    await unsupportedDependency.run(
+      ctxWith([{ name: "weird", spec: ">=4.17.0 <5.0.0" }])
+    )
   ).findings;
   assert.equal(out[0].item, "weird (≥4.17.0 ＜5.0.0)");
 });
 
 // A source review reads the lock: each local install it reports anchors at its own entry,
 // a JSON key in an npm lock and a YAML key in a pnpm one.
-test("a lock local install anchors at its lock entry", () => {
+test("a lock local install anchors at its lock entry", async () => {
   const npmLock = `{
   "packages": {
     "": { "dependencies": { "helper": "file:../shared/helper" } },
@@ -78,33 +87,35 @@ test("a lock local install anchors at its lock entry", () => {
     "        version: link:../far",
     "",
   ].join("\n");
-  const out = unsupportedDependency.run(
-    withManifest({
-      artifact: {
-        files: new Map([
-          ["package-lock.json", Buffer.from(npmLock)],
-          ["pnpm-lock.yaml", Buffer.from(pnpmLock)],
-        ]),
-        vendor: {
-          unsupportedDeps: [],
-          lockLocalInstalls: [
-            {
-              name: "helper",
-              spec: "../shared/helper",
-              file: "package-lock.json",
-              token: "node_modules/helper",
-            },
-            {
-              name: "far",
-              spec: "link:../far",
-              file: "pnpm-lock.yaml",
-              token: "far",
-            },
-          ],
+  const out = (
+    await unsupportedDependency.run(
+      withManifest({
+        artifact: {
+          files: new Map([
+            ["package-lock.json", Buffer.from(npmLock)],
+            ["pnpm-lock.yaml", Buffer.from(pnpmLock)],
+          ]),
+          vendor: {
+            unsupportedDeps: [],
+            lockLocalInstalls: [
+              {
+                name: "helper",
+                spec: "../shared/helper",
+                file: "package-lock.json",
+                token: "node_modules/helper",
+              },
+              {
+                name: "far",
+                spec: "link:../far",
+                file: "pnpm-lock.yaml",
+                token: "far",
+              },
+            ],
+          },
         },
-      },
-      note() {},
-    })
+        note() {},
+      })
+    )
   ).findings;
   assert.deepEqual(
     out.map((f) => [f.file, f.loc?.line, f.item]),

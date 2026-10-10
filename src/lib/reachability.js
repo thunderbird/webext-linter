@@ -117,7 +117,7 @@ const graphs = new WeakMap();
 /**
  * Build the reference graph (computed once per ctx, then shared).
  * @param {RunContext} ctx
- * @returns {Reachability}
+ * @returns {Promise<Reachability>}
  */
 export function buildReachability(ctx) {
   let graph = graphs.get(ctx);
@@ -130,9 +130,9 @@ export function buildReachability(ctx) {
 
 /**
  * @param {RunContext} ctx
- * @returns {Reachability}
+ * @returns {Promise<Reachability>}
  */
-function compute(ctx) {
+async function compute(ctx) {
   // Reachability describes whatever artifact the orchestrator routed into ctx.artifact:
   // the built XPI for the structure checks (registry `input: xpi` - bundled-files,
   // unused-files, minimize-web-accessible-resources), the review target for the
@@ -167,11 +167,12 @@ function compute(ctx) {
   // runtime-built loaders are NOT add-on loader sites: a third-party library
   // does not load the add-on's own files, so its dynamic loads must not make
   // every unreferenced add-on file look ambiguous.
-  const nonAuthored = nonAuthoredJs(ctx);
+  const nonAuthored = await nonAuthoredJs(ctx);
 
   // Host-page directories per script, for resolving page-relative loader paths
   // (computed once, shared with bundled-files via the per-ctx cache).
-  const hostDirs = scriptHostDirs(ctx);
+  const hostDirs = await scriptHostDirs(ctx);
+  const jsSources = await ctx.jsSources();
 
   // Outgoing edges: each file -> the resolved package paths it references.
   const outEdges = new Map();
@@ -241,7 +242,7 @@ function compute(ctx) {
     }
   }
 
-  for (const src of ctx.jsSources || []) {
+  for (const src of jsSources) {
     // JS import/require/importScripts are relative to the importing file.
     // localImportsOf returns the pass's precomputed refs, or re-scans for a
     // shipped-view source the pass never ran on.
@@ -343,7 +344,7 @@ function compute(ctx) {
   // an experiment loads stays outside it. Deterministic, no classification, no judgement.
   const htmlInjectedSeeds = new Set();
   if (isExperiment(manifest)) {
-    for (const src of ctx.jsSources || []) {
+    for (const src of jsSources) {
       for (const r of experimentRefsOf(src).refs) {
         for (const t of refTargets(r)) {
           if (PLAIN_HTML.has(extname(t))) {

@@ -40,10 +40,10 @@ export default {
    * @returns {{findings: [], escalations:
    *   import("../escalation.js").Escalation[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const escalations = [];
     const seen = new Set();
-    for (const sink of getOutboundSinks(ctx)) {
+    for (const sink of await getOutboundSinks(ctx)) {
       if (!isWeakCovertExfil(sink)) {
         continue;
       }

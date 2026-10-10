@@ -27,7 +27,7 @@ export default {
    * @param {import("../registry.js").RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const json = ctx.manifest?.json;
     const maxStr = json ? strictMaxVersion(json) : undefined;
     const maxMajor = maxStr ? parseInt(maxStr, 10) : NaN;
@@ -43,7 +43,7 @@ export default {
     const findings = [];
     const seen = new Set(); // report each api once, at its first call site
 
-    for (const { file, usage, res } of resolveApiUsages(ctx)) {
+    for (const { file, usage, res } of await resolveApiUsages(ctx)) {
       if (res.kind !== "function" && res.kind !== "event") {
         continue;
       }

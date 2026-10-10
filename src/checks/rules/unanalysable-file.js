@@ -29,9 +29,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run: perArtifact((ctx) => {
+  run: perArtifact(async (ctx) => {
     const findings = [];
-    for (const src of ctx.jsSources) {
+    for (const src of await ctx.jsSources()) {
       const failure = walkFailureOf(src);
       if (failure && src.declaredJs !== false) {
         const loc =

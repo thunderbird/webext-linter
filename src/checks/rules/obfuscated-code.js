@@ -37,9 +37,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run: perArtifact((ctx) => {
+  run: perArtifact(async (ctx) => {
     const findings = [];
-    for (const c of classifyAddonJs(ctx)) {
+    for (const c of await classifyAddonJs(ctx)) {
       if (c.library || c.untrusted) {
         // a recognized library is missing-library's concern; an untrusted (not-popular)
         // identified match is untrusted-library / untrusted-minified-library's.
@@ -60,7 +60,7 @@ export default {
     // like a file's, and classifyAddonJs only tags files. No library/untrusted branch
     // here - those come from hashing a FILE, so an inline body is always the
     // developer's own code (see classifyInlineScripts).
-    for (const site of classifyInlineScripts(ctx)) {
+    for (const site of await classifyInlineScripts(ctx)) {
       // The LINE is what distinguishes two scripts in one page: without it both
       // bodies render as the same subject and the reader cannot tell which one the
       // finding means.

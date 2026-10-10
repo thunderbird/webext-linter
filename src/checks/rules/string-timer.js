@@ -18,9 +18,9 @@ import { getEvalScan } from "../../lib/eval-scan.js";
 
 import { perArtifact } from "../each-artifact.js";
 export default {
-  run: perArtifact((ctx) => {
+  run: perArtifact(async (ctx) => {
     const out = [];
-    for (const hit of getEvalScan(ctx).hits) {
+    for (const hit of (await getEvalScan(ctx)).hits) {
       if (hit.type !== "string-timer") {
         continue;
       }

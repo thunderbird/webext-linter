@@ -9,7 +9,7 @@
 // RUNS them - so the pre-step (src/vendor/verify.js verifyScaDependencies) looks up the
 // popularity of every package the committed lock file marks as declared, production and
 // build alike (by npm downloads, or by stars for one the lock installs from GitHub), and
-// records the ones below the trust bar on artifact.vendor.unpopularDeps.
+// records the ones below the trust bar on the vendor reading's `unpopularDeps`.
 // This check only reads that and emits one error finding per such dependency,
 // anchored at its entry in the lock file. Deterministic, no network.
 //
@@ -33,9 +33,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const { artifact } = ctx;
-    const deps = artifact.vendor.unpopularDeps ?? [];
+    const deps = (await ctx.vendor()).unpopularDeps ?? [];
     const findings = [];
     for (const { name, version, file, token } of deps) {
       const text = anchorText(artifact, file);

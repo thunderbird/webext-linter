@@ -32,9 +32,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: [], escalations: Escalation[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const escalations = [];
-    for (const site of getRemoteRefs(ctx).upstream) {
+    for (const site of (await getRemoteRefs(ctx)).upstream) {
       escalations.push({
         ...ctx.artifact.at(site.file, site.loc), // The whole destination: it is the fact the judgement turns on.
         item: site.url, // The matched release goes in the HINT, not a wording slot: it is per-locus

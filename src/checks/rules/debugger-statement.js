@@ -23,10 +23,10 @@ import { nonAuthoredJs } from "../../lib/bundled.js";
 
 import { perArtifact } from "../each-artifact.js";
 export default {
-  run: perArtifact((ctx) => {
+  run: perArtifact(async (ctx) => {
     const escalations = [];
-    const skip = nonAuthoredJs(ctx); // a debugger left in a library is not the dev's
-    for (const src of ctx.jsSources) {
+    const skip = await nonAuthoredJs(ctx); // a debugger left in a library is not the dev's
+    for (const src of await ctx.jsSources()) {
       if (skip.has(src.file)) {
         continue;
       }

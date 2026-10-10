@@ -21,8 +21,8 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
-    const vendor = ctx.artifact.vendor;
+  async run(ctx) {
+    const vendor = await ctx.vendor();
     const file = vendor?.vendorFile ?? "VENDOR";
     const out = [];
     for (const { source, paths } of vendor?.ambiguousSources ?? []) {

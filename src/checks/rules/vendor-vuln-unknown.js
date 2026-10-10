@@ -2,7 +2,7 @@
 // The network pre-step (src/vendor/verify.js auditGithub) already tried to prove
 // an npm identity for every github-sourced VENDOR entry, by content-hash matching
 // the bundled bytes against the repo-name candidate, and audited the ones it could. The entries
-// it could NOT resolve are recorded on artifact.vendor.unaudited; this check just
+// it could NOT resolve are recorded on the vendor reading's `unaudited`; this check just
 // reads that and surfaces one info per entry, so the reviewer knows the library
 // went unaudited and the developer is nudged toward an npm-hosted source.
 // Deterministic, no network: a pure reader of the shared store.
@@ -11,7 +11,7 @@
 // are accepted by provenance - so they produce nothing here. npm-sourced entries
 // and resolved github twins are audited by vendor-vulnerable instead.)
 //
-// Belongs here: turning each artifact.vendor.unaudited entry into an info finding +
+// Belongs here: turning each the vendor reading's `unaudited` entry into an info finding +
 // note. Does NOT belong here: the resolution/audit attempt (-> src/vendor/
 // verify.js), or the wording (-> the registry).
 
@@ -27,9 +27,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const { artifact } = ctx;
-    const vendor = artifact.vendor;
+    const vendor = await ctx.vendor();
     const unaudited = vendor?.unaudited ?? [];
     const vendorName = vendor?.vendorFile ?? null;
     const vendorText = vendorName

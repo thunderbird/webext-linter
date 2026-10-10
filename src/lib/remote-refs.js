@@ -54,7 +54,7 @@ import { extname, HTML_EXTENSIONS } from "../util/files.js";
 /**
  * The shared scan, computed once per artifact.
  * @param {RunContext} ctx
- * @returns {RemoteRefs}
+ * @returns {Promise<RemoteRefs>}
  */
 export function getRemoteRefs(ctx) {
   return ((ctx.cache ??= {}).remoteRefs ??= scan(ctx));
@@ -62,10 +62,13 @@ export function getRemoteRefs(ctx) {
 
 /**
  * @param {RunContext} ctx
- * @returns {RemoteRefs}
+ * @returns {Promise<RemoteRefs>}
  */
-function scan(ctx) {
+async function scan(ctx) {
   const { artifact } = ctx;
+  // What vouches for a file as a verified vendored copy: the vendor results and the
+  // untrusted list, both final (src/vendor/resolve.js verifiedVendorSource).
+  const vouching = { vendor: await ctx.vendor(), bundled: await ctx.bundled() };
   const out = {
     definite: [],
     undecidable: [],
@@ -80,7 +83,7 @@ function scan(ctx) {
       // Resolved once per file, not per ref: every ref below is judged against the
       // same answer, so a file cannot be upstream's for one ref and the developer's
       // for the next.
-      const release = verifiedVendorSource(artifact, file);
+      const release = verifiedVendorSource(vouching, file);
       const html = buf.toString("utf8");
       for (const ref of scanHtmlRemoteRefs(html)) {
         sortHtml(out, file, ref, release);
@@ -91,7 +94,7 @@ function scan(ctx) {
         sortCss(out, file, ref, release);
       }
     } else if (ext === ".css") {
-      const release = verifiedVendorSource(artifact, file);
+      const release = verifiedVendorSource(vouching, file);
       for (const ref of scanCssRemoteRefs(buf.toString("utf8"))) {
         sortCss(out, file, ref, release);
       }
@@ -104,8 +107,8 @@ function scan(ctx) {
   // that rule: they ask verifiedVendorSource per file and record the site as
   // upstream's instead of dropping it. Remote refs in HTML/CSS and the CSP hosts below
   // therefore still apply, and nothing skips a vendored .html/.css.
-  const skip = nonAuthoredJs(ctx);
-  for (const src of ctx.jsSources ?? []) {
+  const skip = await nonAuthoredJs(ctx);
+  for (const src of await ctx.jsSources()) {
     if (skip.has(src.file)) {
       continue;
     }

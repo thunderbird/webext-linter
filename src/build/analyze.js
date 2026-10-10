@@ -22,7 +22,7 @@ import { collectBuildFiles } from "./collect.js";
  */
 
 /**
- * Look at the SCA build once, in setup.
+ * Look at the SCA build once, when a check first asks for it (src/review/products.js).
  * @param {object} params
  * @param {{files: Map<string, Buffer>}} [params.build]  The submission's files
  *   (the archive's source view); absent is no files at all.

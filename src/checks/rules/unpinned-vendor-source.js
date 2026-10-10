@@ -22,8 +22,8 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
-    const vendor = ctx.artifact.vendor;
+  async run(ctx) {
+    const vendor = await ctx.vendor();
     // Anchor on the VENDOR declaration (file + the line citing the source), with
     // the URL on the locus line - mirrors vendor-vuln-unknown. The vendored file
     // rides on `item`, which the response does not consume, so every unpinned

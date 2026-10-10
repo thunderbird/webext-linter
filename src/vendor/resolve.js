@@ -216,8 +216,9 @@ function directoryArchive(src) {
  * Distinct from isVendored, which asks the DECLARATION question ("skip scanning
  * this file") and is deliberately verification-independent. Use this one only
  * where the content match itself is the argument.
- * @param {?import("../addon/load.js").Addon} addon  The routed artifact. Read
- *   whole because the answer spans its vendor results AND its untrusted list.
+ * @param {?{vendor?: object, bundled?: object}} addon  The routed artifact's vendor reading
+ *   and classification, both final. Read together because the answer spans its vendor
+ *   results AND its untrusted list.
  * @param {string} file  Add-on-relative path.
  * @returns {?string}  The upstream source URL, or null. With more than one
  *   verified row for a path (a file and a folder declaration can both produce

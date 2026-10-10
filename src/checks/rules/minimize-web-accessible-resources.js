@@ -34,7 +34,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[],
    *   escalations?: import("../escalation.js").Escalation[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     // Registry `input: xpi`: ctx.artifact is the built XPI. web_accessible_resources -
     // the resources, the files they expand to, and the reachability graph of what
     // loads them - is a property of what actually ships, so the exposure is judged
@@ -45,7 +45,7 @@ export default {
     if (!entries.length) {
       return { findings: [] }; // nothing to minimize
     }
-    const reach = buildReachability(ctx);
+    const reach = await buildReachability(ctx);
     const files = artifact.files;
     const findings = [];
     /** @type {import("../escalation.js").Escalation[]} one per unresolved WAR file. */

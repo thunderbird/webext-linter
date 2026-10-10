@@ -1,16 +1,17 @@
-// The Setup feed, pinned line for line, so that a change to how setup is composed has to
-// reproduce it or declare itself.
+// The Setup and Activity feeds, pinned line for line, so that a change to how a review
+// computes its data has to reproduce them or declare itself.
 //
-// It locks three things at once that nothing else covers:
-//   - the ORDER the slow pre-review steps run in, which is SETUP_STEPS' order;
-//   - their LABELS, which are the only thing a reviewer sees while the tool is silent;
-//   - the [done/total] counter, whose total is sized before the steps run.
+// It locks what nothing else covers:
+//   - the EAGER steps (SETUP_STEPS) and their [done/total] counter, sized before they run;
+//   - the review data computed on first ask (src/review/products.js): which of it a review
+//     computes, in what order, and under which check's line - the only thing a reviewer
+//     sees while the tool is busy.
 //
 // The goldens cannot stand in for it: progress is a no-op for the harness, so no golden
-// contains a Setup line at all. They pin what a review FINDS; this pins how it got there.
+// contains a feed line at all. They pin what a review FINDS; this pins how it got there.
 //
 // Driven through the CLI because that is the only place the feed is switched on
-// (setProgress in src/cli.js), and against the seeded cache so every label is decided by
+// (setProgress in src/cli.js), and against the seeded caches so every label is decided by
 // the fixtures rather than by what a machine happens to have downloaded.
 
 import { test } from "node:test";
@@ -20,7 +21,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { SETUP_STEPS } from "../../src/pipeline.js";
-import { addonOutsideRepo, seedFixtureCache } from "../seed-caches.js";
+import {
+  addonOutsideRepo,
+  cdnMissCache,
+  seedFixtureCache,
+} from "../seed-caches.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..", "..");
@@ -34,27 +39,46 @@ const OFFLINE = [
   CACHE,
 ];
 
-/** The Setup section's lines, in order, as a reviewer sees them. The add-on, `args[0]`, is
- *  reviewed as a copy outside the repository, since its work folder is created beside it. */
-function setupFeed(args) {
+/**
+ * The feed a reviewer sees, in two parts: the Setup section's lines, and the lines of the
+ * review data computed while the checks ran - each printed where it was first needed, so
+ * every check line is dropped and what remains is the data, in the order it was computed.
+ * The add-on, `args[0]`, is reviewed as a copy outside the repository, since its work folder
+ * is created beside it; its CDN lookups are answered by a cache that already holds them.
+ */
+function feed(args) {
   const [target, ...rest] = args;
+  const copy = addonOutsideRepo(target);
   const r = spawnSync(
     process.execPath,
     [
       path.join(ROOT, "verify.js"),
-      addonOutsideRepo(target),
+      copy,
       ...rest,
       ...OFFLINE,
+      "--cache-cdn-lookup-dir",
+      cdnMissCache(
+        path.dirname(copy),
+        ...rest.filter((a) => a.startsWith("/"))
+      ),
     ],
     { encoding: "utf8", cwd: ROOT }
   );
-  const block = r.stdout.split("── Setup ──")[1]?.split("── Activity ──")[0];
-  assert.ok(block, `no Setup section in: ${args.join(" ")}`);
-  return block
-    .trim()
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
+  const [, after] = r.stdout.split("── Setup ──");
+  assert.ok(after, `no Setup section in: ${args.join(" ")}\n${r.stderr}`);
+  const [setupBlock, rest2 = ""] = after.split("── Activity ──");
+  const activityBlock = rest2.split("── Review Details ──")[0];
+  const lines = (block) =>
+    block
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+  return {
+    setup: lines(setupBlock),
+    data: lines(activityBlock).filter(
+      (l) => !l.startsWith("[") && !l.startsWith("•")
+    ),
+  };
 }
 
 const addon = (name) => path.join(ROOT, "tests", "addons", name);
@@ -81,7 +105,7 @@ test("every declared step is narratable and named once", () => {
   }
 });
 
-// The totals the five feeds below count towards, derived from the list the way the pipeline
+// The totals the feeds below count towards, derived from the list the way the pipeline
 // derives them. A silent step that was counted, or a narrated one that was not, moves a
 // number here before anyone has to read a feed.
 test("the narrated count per run is the total the feed shows", () => {
@@ -91,130 +115,115 @@ test("the narrated count per run is the total the feed shows", () => {
     sca: false,
     isExp: false,
     invalidExperiment: false,
-    unrescued: false,
     ...over,
   });
-  assert.equal(narrated(facts()), 7, "an XPI review");
-  assert.equal(narrated(facts({ sca: true })), 12, "a source code review");
-  assert.equal(narrated(facts({ isExp: true })), 8, "an Experiment review");
-  assert.equal(narrated(facts({ sca: true, isExp: true })), 13, "both");
-  // The rejection is decided by the third step, and the total is sized BEFORE the run: the
-  // same conditions asked with it already decided say three, and the feed still counts
-  // towards eight. That gap IS "the counter stops short".
+  assert.equal(narrated(facts()), 2, "an XPI review");
+  assert.equal(narrated(facts({ sca: true })), 2, "a source code review");
+  assert.equal(narrated(facts({ isExp: true })), 3, "an Experiment review");
+  assert.equal(narrated(facts({ sca: true, isExp: true })), 3, "both");
   assert.equal(narrated(facts({ isExp: true, invalidExperiment: true })), 3);
-  // A source review its preparation could not rescue reads the add-on and the schema, and
-  // takes its dependency audit from the record: nothing else is narrated. A rejected
-  // Experiment is still decided by its reject check first.
-  assert.equal(narrated(facts({ sca: true, unrescued: true })), 2);
-  assert.equal(
-    narrated(
-      facts({
-        sca: true,
-        isExp: true,
-        unrescued: true,
-        invalidExperiment: true,
-      })
-    ),
-    3
-  );
 });
 
-// An XPI review: read the add-on, get the schema, fetch the library hashes, then the three
-// library passes, then parse. Seven steps, and the counter completes.
-test("the setup feed of an XPI review", () => {
-  assert.deepEqual(setupFeed([addon("clean")]), [
-    "[1/7] Reading add-on",
-    "[2/7] Fetching review schemas (release-mv3)",
-    "[3/7] Fetching library hashes",
-    "[4/7] Verifying vendored libraries",
-    "[5/7] Identifying bundled libraries on a CDN",
-    "[6/7] Parsing add-on sources",
-    "[7/7] Auditing libraries",
-  ]);
+// An XPI review: read the add-on, get the schema - the eager steps. Then its checks ask for
+// the data, and the first that needs the parsed sources computes everything behind them, in
+// the order each stage depends on the one before: the library hashes, the vendor reading,
+// the CDN identification, the parse; the audit of the identified libraries last, when the
+// vulnerability check asks.
+test("the feed of an XPI review", () => {
+  assert.deepEqual(feed([addon("clean")]), {
+    setup: [
+      "[1/2] Reading add-on",
+      "[2/2] Fetching review schemas (release-mv3)",
+    ],
+    data: [
+      "Fetching library hashes",
+      "Verifying vendored libraries",
+      "Identifying bundled libraries on a CDN",
+      "Parsing add-on sources",
+      "Auditing libraries",
+    ],
+  });
 });
 
-// A source code review does the whole XPI pass FIRST (the shipped artifact is analysed in
-// both modes), then the source's own library and dependency passes, then parses the source,
-// and analyses the build last. Thirteen steps and a total of thirteen: the total is counted
-// off the same list that runs them, so it cannot fall behind the steps.
-test("the setup feed of a source code review", () => {
+// A source code review computes the shipped XPI's data and the source's own as its checks
+// ask for each: the first check reads both artifacts' parsed sources, the XPI's first.
+test("the feed of a source code review", () => {
   assert.deepEqual(
-    setupFeed([
+    feed([
       path.join(addon("build-hygiene-sca"), "xpi"),
       "--sca-root",
       path.join(addon("build-hygiene-sca"), "src"),
     ]),
-    [
-      "[1/12] Reading add-on",
-      "[2/12] Fetching review schemas (release-mv3)",
-      "[3/12] Fetching library hashes",
-      "[4/12] Verifying vendored libraries",
-      "[5/12] Identifying bundled libraries on a CDN",
-      "[6/12] Parsing add-on sources",
-      "[7/12] Verifying vendored source libraries",
-      "[8/12] Auditing source dependencies",
-      "[9/12] Identifying source libraries on a CDN",
-      "[10/12] Parsing add-on sources",
-      "[11/12] Analyzing the build",
-      "[12/12] Auditing libraries",
-    ]
+    {
+      setup: [
+        "[1/2] Reading add-on",
+        "[2/2] Fetching review schemas (release-mv3)",
+      ],
+      data: [
+        "Fetching library hashes",
+        "Verifying vendored libraries",
+        "Identifying bundled libraries on a CDN",
+        "Parsing add-on sources",
+        "Verifying vendored source libraries",
+        "Auditing source dependencies",
+        "Identifying source libraries on a CDN",
+        "Parsing add-on sources",
+        "Auditing libraries",
+        "Analyzing the build",
+      ],
+    }
   );
 });
 
-// An accepted Experiment adds ONE step, and it runs where the classification is needed:
-// after the schema, before anything reads code.
-test("the setup feed of an accepted Experiment review", () => {
+// An accepted Experiment adds ONE eager step, where the classification is needed: after
+// the schema, before any check reads code.
+test("the feed of an accepted Experiment review", () => {
   assert.deepEqual(
-    setupFeed([addon("experiment-core-code"), "--allow-experiments"]),
-    [
-      "[1/8] Reading add-on",
-      "[2/8] Fetching review schemas (release-mv3)",
-      "[3/8] Verifying bundled experiments",
-      "[4/8] Fetching library hashes",
-      "[5/8] Verifying vendored libraries",
-      "[6/8] Identifying bundled libraries on a CDN",
-      "[7/8] Parsing add-on sources",
-      "[8/8] Auditing libraries",
-    ]
+    feed([addon("experiment-core-code"), "--allow-experiments"]),
+    {
+      setup: [
+        "[1/3] Reading add-on",
+        "[2/3] Fetching review schemas (release-mv3)",
+        "[3/3] Verifying bundled experiments",
+      ],
+      data: [
+        "Fetching library hashes",
+        "Verifying vendored libraries",
+        "Identifying bundled libraries on a CDN",
+        "Parsing add-on sources",
+        "Auditing libraries",
+      ],
+    }
   );
 });
 
-// A REJECTED Experiment is the one path whose counter cannot complete: the rejection is
-// decided by the experiment step itself, and everything after it is skipped, so the feed
-// stops at 3 of a total sized for a review that would have continued. Pinned because it is
-// the documented exception - if it ever completes, either the exception is gone or the
-// review stopped being aborted.
-test("a rejected Experiment stops the setup feed where the review stops", () => {
-  const feed = setupFeed([addon("experiment-disallowed")]);
-  assert.deepEqual(feed, [
-    "[1/8] Reading add-on",
-    "[2/8] Fetching review schemas (release-mv3)",
-    "[3/8] Verifying bundled experiments",
-  ]);
-  const [done, total] = feed
-    .at(-1)
-    .match(/\[(\d+)\/(\d+)\]/)
-    .slice(1);
-  assert.notEqual(
-    done,
-    total,
-    "the counter stops short, and that is the point"
-  );
+// A REJECTED Experiment runs its one reject check, which reads the manifest.json, the
+// Experiment verdict and the schema - none of the review's data. So none of it is computed:
+// no library hashes, no vendor reading, no parse.
+test("a rejected Experiment computes none of the review's data", () => {
+  assert.deepEqual(feed([addon("experiment-disallowed")]), {
+    setup: [
+      "[1/3] Reading add-on",
+      "[2/3] Fetching review schemas (release-mv3)",
+      "[3/3] Verifying bundled experiments",
+    ],
+    data: [],
+  });
 });
 
-// A rejected Experiment submitted as SOURCE CODE: the total is sized for the source review
-// this would have been (fourteen), the rejection is decided by step three, and the review
-// that runs is an XPI review of the shipped add-on. The silent steps that name the reviewed
-// artifact still run - the report has an add-on to name either way - which no feed line
-// shows, so the golden pins the naming and this pins the stopping.
-test("a rejected Experiment submitted as source stops at three of a source review's total", () => {
+// The same when it was submitted as SOURCE CODE: the review is an XPI review of the shipped
+// add-on, the source is never read, and nothing is computed.
+test("a rejected Experiment submitted as source computes nothing either", () => {
   const dir = addon("experiment-disallowed-sca");
   assert.deepEqual(
-    setupFeed([path.join(dir, "xpi"), "--sca-root", path.join(dir, "src")]),
-    [
-      "[1/13] Reading add-on",
-      "[2/13] Fetching review schemas (release-mv3)",
-      "[3/13] Verifying bundled experiments",
-    ]
+    feed([path.join(dir, "xpi"), "--sca-root", path.join(dir, "src")]),
+    {
+      setup: [
+        "[1/3] Reading add-on",
+        "[2/3] Fetching review schemas (release-mv3)",
+        "[3/3] Verifying bundled experiments",
+      ],
+      data: [],
+    }
   );
 });

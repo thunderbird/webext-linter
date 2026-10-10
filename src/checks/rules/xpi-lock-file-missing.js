@@ -30,9 +30,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const { artifact } = ctx;
-    const unlocked = artifact.vendor.unlocked ?? [];
+    const unlocked = (await ctx.vendor()).unlocked ?? [];
     const text = anchorText(artifact, "package.json");
     const findings = [];
     for (const { name, spec } of unlocked) {

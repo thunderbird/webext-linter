@@ -1,10 +1,10 @@
 // Shared vulnerability->finding mapping for the four dependency-vulnerability
 // checks, one per (declared vs pulled in) x (shipped vs build-time only):
-// vendor-vulnerable (prod deps + vendored libs, artifact.vendor.vulnerabilities),
-// vendor-vulnerable-dev (SCA declared build deps, artifact.vendor.devVulnerabilities), and
-// the two indirect ones (artifact.vendor.treeVulnerabilities / treeDevVulnerabilities).
-// The OSV audit ran once in the network pre-step (src/vendor/verify.js), which recorded
-// each vulnerable package with the file + token to anchor it; this maps each recorded
+// vendor-vulnerable (prod deps + vendored libs, the vendor reading's vulnerabilities),
+// vendor-vulnerable-dev (SCA declared build deps, its devVulnerabilities), and the two
+// indirect ones (its treeVulnerabilities / treeDevVulnerabilities), read via ctx.vendor().
+// The OSV audit ran once, when the vendor reading was first asked for (src/vendor/verify.js),
+// which recorded each vulnerable package with the file + token to anchor it; this maps each recorded
 // vulnerability to a finding, anchored at its declaration line - a package.json or VENDOR
 // file line in a built XPI, the package's lock entry in a source review. Deterministic,
 // no network.

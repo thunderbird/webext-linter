@@ -261,15 +261,13 @@ export function applyUnverifiedVendor(addon) {
 }
 
 /**
- * The bundled classification of the routed artifact: the addon.bundled the pipeline
- * computed in setup and reconciled against the vendor audit (classifyReview,
- * identifyBundledLibraries). A sealed field, so an artifact setup never classified throws
- * rather than answering with a classification that skipped the reconciliation.
+ * The bundled classification of the routed artifact, reconciled against the vendor audit and
+ * the CDN identification - computed on first ask (src/review/products.js).
  * @param {RunContext} ctx
- * @returns {Bundled}
+ * @returns {Promise<Bundled>}
  */
 function getBundled(ctx) {
-  return ctx.artifact.bundled;
+  return ctx.bundled();
 }
 
 /**
@@ -277,10 +275,10 @@ function getBundled(ctx) {
  * classifies both, so a packed stylesheet is in here beside a packed script (see
  * classifyBundled).
  * @param {RunContext} ctx
- * @returns {BundleTag[]}
+ * @returns {Promise<BundleTag[]>}
  */
-export function classifyAddonJs(ctx) {
-  return getBundled(ctx).classified;
+export async function classifyAddonJs(ctx) {
+  return (await getBundled(ctx)).classified;
 }
 
 /**
@@ -339,12 +337,12 @@ export function classifyInlineSources(sources, skip = new Set()) {
  * page from the non-authored set after classification, and its inline scripts are then
  * the developer's to answer for.
  * @param {RunContext} ctx
- * @returns {ReturnType<typeof classifyInlineSources>}
+ * @returns {Promise<ReturnType<typeof classifyInlineSources>>}
  */
-export function classifyInlineScripts(ctx) {
-  const bundled = getBundled(ctx);
+export async function classifyInlineScripts(ctx) {
+  const bundled = await getBundled(ctx);
   return (bundled.inline ??= classifyInlineSources(
-    ctx.jsSources ?? [],
+    await ctx.jsSources(),
     bundled.nonAuthored
   ));
 }
@@ -352,20 +350,20 @@ export function classifyInlineScripts(ctx) {
 /**
  * Files that are not the developer's authored source (see classifyBundled).
  * @param {RunContext} ctx
- * @returns {Set<string>}
+ * @returns {Promise<Set<string>>}
  */
-export function nonAuthoredJs(ctx) {
-  return getBundled(ctx).nonAuthored;
+export async function nonAuthoredJs(ctx) {
+  return (await getBundled(ctx)).nonAuthored;
 }
 
 /**
  * Identified-but-not-popular libraries (see markUntrusted), read by the
  * untrusted-library (info) and untrusted-minified-library (reject) checks.
  * @param {RunContext} ctx
- * @returns {Array<{file: string, source?: string, name?: string, unreadable: boolean}>}
+ * @returns {Promise<Array<{file: string, source?: string, name?: string, unreadable: boolean}>>}
  */
-export function untrustedLibs(ctx) {
-  return getBundled(ctx).untrusted ?? [];
+export async function untrustedLibs(ctx) {
+  return (await getBundled(ctx)).untrusted ?? [];
 }
 
 /**

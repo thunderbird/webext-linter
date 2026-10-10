@@ -26,9 +26,9 @@ export default {
    * @returns {{findings: [], escalations:
    *   import("../escalation.js").Escalation[]}}
    */
-  run: perArtifact((ctx) => {
+  run: perArtifact(async (ctx) => {
     const escalations = [];
-    for (const hit of getEvalScan(ctx).hits) {
+    for (const hit of (await getEvalScan(ctx)).hits) {
       if (hit.type !== "ambiguous-fetch-eval") {
         continue;
       }

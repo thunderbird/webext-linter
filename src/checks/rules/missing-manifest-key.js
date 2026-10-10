@@ -13,8 +13,8 @@
 import { getPermissionAnalysis } from "../../lib/permissions.js";
 
 export default {
-  run(ctx) {
-    const { missingManifestKeys, notes } = getPermissionAnalysis(ctx);
+  async run(ctx) {
+    const { missingManifestKeys, notes } = await getPermissionAnalysis(ctx);
     for (const n of notes.manifestKeys) {
       ctx.note?.(n.at, n.item, n.verdict);
     }

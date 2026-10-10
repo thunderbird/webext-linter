@@ -203,7 +203,7 @@ which means either nothing was built or the build output was committed beside th
   reviewer's machine. Beyond those, the build must not commit a `node_modules` folder or a
   built archive (`.xpi` / `.zip` - both are build output, never shipped in a source
   submission), and any `package.json` install hook (`postinstall`, …) escalates and aborts
-  the review once reported. The build is traced once in setup, over the files reached from
+  the review once reported. The build is traced once, over the files reached from
   `package.json`, and what `undeclared-build-source` reads of it is the steps that trace
   could not follow.
   Nothing in those files says for certain what the build **does**, so every source

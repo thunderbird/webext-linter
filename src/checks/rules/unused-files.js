@@ -77,20 +77,20 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[],
    *   escalations?: import("../escalation.js").Escalation[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     // Registry `input: xpi`: ctx.artifact is the built XPI. A file bundled but reached
     // from no entry point is dead weight in what actually ships, so this runs over
     // the XPI - over a source submission it would instead flag every unreferenced
     // config / test / doc in the repo (all noise), while the XPI surfaces the build's
     // own dead files. (The reachability graph is the same XPI's.)
     const { artifact } = ctx;
-    const reach = buildReachability(ctx);
+    const reach = await buildReachability(ctx);
     // Recognized third-party files are not the developer's authored code, so an
     // unreached one is not the developer's unused file - exempt it. The set
     // (hash-identified libraries, minified bundles, obfuscated code, vendored files)
     // is the XPI's own classification (getBundled over ctx.artifact), intrinsic to the
     // artifact under review, so it needs no cross-artifact review-target metadata.
-    const skip = new Set(nonAuthoredJs(ctx));
+    const skip = new Set(await nonAuthoredJs(ctx));
     // The lock's exemption is the package file's: see the header. Read once, not per file.
     const packageFileShipped = artifact.files.has(PACKAGE_FILE);
     // An Experiment loads its files by mechanisms static analysis can't trace, so

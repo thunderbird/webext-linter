@@ -49,7 +49,7 @@ import { buildReachability } from "./reachability.js";
  * Dynamic-code-execution signals, scanned once and memoized on the addon so the
  * eval-related checks share the result.
  * @param {RunContext} ctx
- * @returns {EvalScan}
+ * @returns {Promise<EvalScan>}
  */
 export function getEvalScan(ctx) {
   return ((ctx.cache ??= {}).evalScan ??= scan(ctx));
@@ -57,17 +57,17 @@ export function getEvalScan(ctx) {
 
 /**
  * @param {RunContext} ctx
- * @returns {EvalScan}
+ * @returns {Promise<EvalScan>}
  */
-function scan(ctx) {
-  const skip = nonAuthoredJs(ctx);
+async function scan(ctx) {
+  const skip = await nonAuthoredJs(ctx);
   // Only scan code OUTSIDE the pure WebExtension tree: WebExtension files cannot
   // execute these constructs without a permissive CSP (reported separately by
   // csp-unsafe-eval/-inline), so a hit there is noise. Privileged Experiment /
   // non-WebExtension code has no CSP gate, so its hits are real.
-  const webext = buildReachability(ctx).pureWebExtensionReachable;
+  const webext = (await buildReachability(ctx)).pureWebExtensionReachable;
   const hits = [];
-  for (const src of ctx.jsSources ?? []) {
+  for (const src of await ctx.jsSources()) {
     if (skip.has(src.file) || webext.has(src.file)) {
       continue;
     }

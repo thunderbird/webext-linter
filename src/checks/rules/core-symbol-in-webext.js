@@ -30,13 +30,13 @@ import { buildReachability } from "../../lib/reachability.js";
 
 import { perArtifact } from "../each-artifact.js";
 export default {
-  run: perArtifact((ctx) => {
+  run: perArtifact(async (ctx) => {
     const out = [];
-    const skip = nonAuthoredJs(ctx); // a core symbol in a bundled library is not the dev's
+    const skip = await nonAuthoredJs(ctx); // a core symbol in a bundled library is not the dev's
     // The pure WebExtension tree only (see the header); the mixed/"unsure" files
     // count as Experiment code and are excluded with it.
-    const webext = buildReachability(ctx).pureWebExtensionReachable;
-    for (const src of ctx.jsSources) {
+    const webext = (await buildReachability(ctx)).pureWebExtensionReachable;
+    for (const src of await ctx.jsSources()) {
       if (skip.has(src.file) || !webext.has(src.file)) {
         continue;
       }

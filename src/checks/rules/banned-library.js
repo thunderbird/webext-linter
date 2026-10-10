@@ -3,7 +3,7 @@
 // assets/library-blocks.yaml. The vendor audit (src/vendor/verify.js) matched each
 // identified/declared (name, version) - and in a source review every package the lock file
 // installs - against the policy BEFORE its OSV query, recording hits on
-// artifact.vendor.blocked (a banned one also skipped the OSV request); this check maps that
+// the vendor reading's `blocked` (a banned one also skipped the OSV request); this check maps that
 // set to findings, anchored at the declaration line or the lock entry. Deterministic,
 // no network.
 //
@@ -27,9 +27,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const { artifact } = ctx;
-    const blocked = artifact.vendor.blocked ?? [];
+    const blocked = (await ctx.vendor()).blocked ?? [];
     const textByFile = new Map();
     /**
      * Read a packaged file's text, memoizing it per path.

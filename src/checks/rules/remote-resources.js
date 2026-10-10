@@ -32,8 +32,8 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[],
    *   escalations: Escalation[]}}
    */
-  run(ctx) {
-    const refs = getRemoteRefs(ctx);
+  async run(ctx) {
+    const refs = await getRemoteRefs(ctx);
     const findings = [];
     for (const site of refs.definite) {
       findings.push(

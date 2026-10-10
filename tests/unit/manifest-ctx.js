@@ -147,12 +147,10 @@ export function withManifest(ctx) {
     ctx.artifact.kind = kind;
     ctx.artifact.at = locusMinter(kind);
   }
-  // Setup classifies every artifact a check can be routed to (classifyReview); a test that
-  // set no classification of its own gets the one setup would compute without known
-  // library hashes or a vendor audit. Asked of the descriptor, so a sealed artifact's
-  // throwing getter is never read.
-  const set = Object.getOwnPropertyDescriptor(ctx.artifact, "bundled");
-  if (ctx.artifact.files && (!set || (!set.get && set.value === undefined))) {
+  // Every artifact a check can be routed to is classified; a test that set no classification
+  // of its own gets the one the review would compute without known library hashes or a
+  // vendor audit.
+  if (ctx.artifact.files && ctx.artifact.bundled === undefined) {
     ctx.artifact.bundled = classifyBundled(ctx.artifact);
   }
   // The other shipped-authoritative field the pipeline attaches to the review addon and
@@ -168,6 +166,31 @@ export function withManifest(ctx) {
   if (ctx.options === undefined) {
     ctx.options = {};
   }
+  return withData(ctx);
+}
+
+/**
+ * Give a hand-built ctx the data getters production gives every per-artifact ctx
+ * (src/review/products.js): ctx.vendor(), ctx.bundled(), ctx.jsSources(), ctx.apiUsages(),
+ * ctx.buildReview(). A test states the data as plain values - `jsSources` / `apiUsages` on
+ * the ctx, `vendor` / `bundled` / `buildReview` on its artifact - and each getter answers
+ * the value as it stands when a check asks, so a test that fills a field in after building
+ * the ctx is still read. A getter the test already supplied is left alone.
+ * @param {object} ctx
+ * @returns {object} the same ctx.
+ */
+export function withData(ctx) {
+  if (typeof ctx.jsSources !== "function") {
+    const list = ctx.jsSources ?? [];
+    ctx.jsSources = async () => list;
+  }
+  if (typeof ctx.apiUsages !== "function") {
+    const usages = ctx.apiUsages;
+    ctx.apiUsages = async () => usages;
+  }
+  ctx.vendor ??= async () => ctx.artifact?.vendor;
+  ctx.bundled ??= async () => ctx.artifact?.bundled;
+  ctx.buildReview ??= async () => ctx.artifact?.buildReview;
   return ctx;
 }
 

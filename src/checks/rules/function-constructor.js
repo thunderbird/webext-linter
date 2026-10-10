@@ -12,9 +12,9 @@ import { dedupe } from "../../lib/util.js";
 import { getEvalScan } from "../../lib/eval-scan.js";
 
 export default {
-  run(ctx) {
+  async run(ctx) {
     const out = [];
-    for (const hit of getEvalScan(ctx).hits) {
+    for (const hit of (await getEvalScan(ctx)).hits) {
       if (hit.type !== "function-constructor") {
         continue;
       }

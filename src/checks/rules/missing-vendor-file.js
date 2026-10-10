@@ -3,7 +3,7 @@
 // dependency whose file is absent is intentionally ignored (dependencies are
 // installed/bundled at build time and the submission may predate the build - see
 // verifyPackage in src/vendor/verify.js). resolveVendor recorded these on
-// artifact.vendor.missing; this check only reads them. Deterministic, no network.
+// the vendor reading's `missing`; this check only reads them. Deterministic, no network.
 //
 // Belongs here: turning each missing VENDOR entry into a finding and a note.
 // Does NOT belong here: the VENDOR parse (-> src/normalize/vendor.js) and the
@@ -20,9 +20,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const { artifact } = ctx;
-    const missing = artifact.vendor.missing ?? [];
+    const missing = (await ctx.vendor()).missing ?? [];
     if (!missing.length) {
       return { findings: [] };
     }

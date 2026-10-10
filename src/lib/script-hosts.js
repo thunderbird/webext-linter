@@ -42,7 +42,7 @@ const cache = new WeakMap();
  * Map each packaged JS file to the set of host-page base directories whose
  * document context can run it. Memoized per ctx.
  * @param {RunContext} ctx
- * @returns {Map<string, Set<string>>}
+ * @returns {Promise<Map<string, Set<string>>>}
  */
 export function scriptHostDirs(ctx) {
   let map = cache.get(ctx);
@@ -82,9 +82,9 @@ export function resolvePageRelative(files, hostDirs, fromScript, raw) {
 
 /**
  * @param {RunContext} ctx
- * @returns {Map<string, Set<string>>}
+ * @returns {Promise<Map<string, Set<string>>>}
  */
-function compute(ctx) {
+async function compute(ctx) {
   const files = ctx.artifact?.files ?? new Map();
   const manifest = ctx.manifest?.json || {};
   /** @type {Map<string, Set<string>>} */
@@ -96,7 +96,7 @@ function compute(ctx) {
   // propagate the page's base just like its <script src> children do.
   /** @type {Map<string, Set<string>>} */
   const imports = new Map();
-  for (const src of ctx.jsSources || []) {
+  for (const src of await ctx.jsSources()) {
     let set = imports.get(src.file);
     for (const r of localImportsOf(src).refs) {
       const t = resolveRef(files, src.file, r.path);

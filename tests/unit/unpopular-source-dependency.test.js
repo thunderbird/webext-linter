@@ -24,7 +24,7 @@ const ctxWith = (unpopularDeps, pkgJson = PKG_JSON) => ({
   note() {},
 });
 
-test("reports one finding per dep, anchored at its package.json line", () => {
+test("reports one finding per dep, anchored at its package.json line", async () => {
   const ctx = ctxWith([
     {
       name: "@quill-fixture/extract-time",
@@ -33,7 +33,7 @@ test("reports one finding per dep, anchored at its package.json line", () => {
       token: "@quill-fixture/extract-time",
     },
   ]);
-  const out = unpopularSourceDependency.run(withManifest(ctx)).findings;
+  const out = (await unpopularSourceDependency.run(withManifest(ctx))).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "package.json");
   // The response is collapsible (no {{item}}), so item carries the subject AND
@@ -44,22 +44,26 @@ test("reports one finding per dep, anchored at its package.json line", () => {
   assert.equal(out[0].severity, null);
 });
 
-test("an empty list yields no findings", () => {
-  assert.equal(unpopularSourceDependency.run(ctxWith([])).findings.length, 0);
+test("an empty list yields no findings", async () => {
+  assert.equal(
+    (await unpopularSourceDependency.run(withManifest(ctxWith([])))).findings
+      .length,
+    0
+  );
 });
 
-test("a missing token anchors at the file with no line", () => {
+test("a missing token anchors at the file with no line", async () => {
   const ctx = ctxWith([
     { name: "niche", version: "1.0.0", file: "package.json", token: "" },
   ]);
-  const out = unpopularSourceDependency.run(withManifest(ctx)).findings;
+  const out = (await unpopularSourceDependency.run(withManifest(ctx))).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].loc, null);
 });
 
 // What verifyScaDependencies records is the lock entry: a JSON key in an npm lock, a YAML
 // key in a pnpm one.
-test("a lock entry anchors at its key in the lock", () => {
+test("a lock entry anchors at its key in the lock", async () => {
   const npmLock = `{
   "packages": {
     "": { "dependencies": { "niche": "1.0.0" } },
@@ -104,7 +108,7 @@ test("a lock entry anchors at its key in the lock", () => {
     },
     note() {},
   };
-  const out = unpopularSourceDependency.run(withManifest(ctx)).findings;
+  const out = (await unpopularSourceDependency.run(withManifest(ctx))).findings;
   assert.deepEqual(
     out.map((f) => [f.file, f.loc?.line]),
     [

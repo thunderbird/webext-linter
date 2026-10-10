@@ -76,18 +76,20 @@ that no longer exist.
 4. `src/pipeline.js` - the review pipeline (`runPipeline`): with
    `src/checks/registry.js`, the ground truth for the review-pipeline page
    (`check-flow.html`). Read the stage order OFF THE CODE rather than from this
-   list - and read it off `SETUP_STEPS`, the declared list one loop walks, not off the
-   order the statements happen to sit in. The whole shipped-XPI chain (resolveVendor
-   → verifyVendor → classifyReview → identifyBundledLibraries → extractReview) runs
-   in BOTH modes and before the source is read: the shipped artifact is analysed the
-   same way either way. The vulnerability audit is NOT part of it - it follows the
-   review target, in its own later phase. Getting this backwards inverts the diagram.
+   list. The eager steps are `SETUP_STEPS`, the declared list one loop walks; the
+   review's data (the vendor reading and audits, classification, CDN identification,
+   parse, build trace) is computed when a check first asks, through the getters
+   `src/review/products.js` builds, each stage after the ones it depends on. The
+   shipped-XPI chain (resolveVendor → verifyVendor → classifyBundled → CDN
+   identification → extractReview) is the same in BOTH modes: the shipped artifact is
+   analysed the same way either way. The vulnerability audit of identified libraries
+   follows the review target. Getting this backwards inverts the diagram.
    The review mode is DERIVED (`--sca-root`, minus a rejected Experiment) and assigned
    nowhere. The file also shows the `mode.sca` forks, and the four routes a check can
    declare (`source` / `xpi` / `sca` / `all`) dispatched by `routeCtx` over the sibling
    ctxs built by `buildXpiCtx` / `buildScaCtx` / `buildAllCtx`.
 5. `src/checks/registry.js` - the orchestrator (`runChecks`), which runs the whole
-   review inside that single Phase-6 call: the phase's checks in its main loop, then
+   review inside that single call: the phase's checks in its main loop, then
    the unused-folder collapse. The pipeline only calls `runChecks` and assembles the
    `Review` from what it returns.
 

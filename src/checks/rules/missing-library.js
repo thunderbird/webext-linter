@@ -29,9 +29,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const findings = [];
-    for (const c of classifyAddonJs(ctx)) {
+    for (const c of await classifyAddonJs(ctx)) {
       const id = c.libraryId
         ? `${c.libraryId.name} ${c.libraryId.version}`
         : null;

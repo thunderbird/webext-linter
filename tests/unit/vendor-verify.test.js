@@ -49,7 +49,7 @@ import { makeTgz } from "./tarball-fixture.js";
 setNetworkPacing({ intervalMs: 0, backoffMs: 0 });
 
 // ---- classifySource (no network) ----
-test("classifySource recognizes the trusted hosts and pinned refs", () => {
+test("classifySource recognizes the trusted hosts and pinned refs", async () => {
   const npm = classifySource(
     "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"
   );
@@ -75,7 +75,7 @@ test("classifySource recognizes the trusted hosts and pinned refs", () => {
 // GitHub also serves raw files with a fully-qualified refs/(tags|heads)/<ref>
 // path; the real ref must be read from it (not the literal "refs") so a version
 // tag is recognized as pinned.
-test("classifySource reads the ref from a refs/tags raw.githubusercontent URL", () => {
+test("classifySource reads the ref from a refs/tags raw.githubusercontent URL", async () => {
   const tag = classifySource(
     "https://raw.githubusercontent.com/Stuk/jszip/refs/tags/v3.10.1/dist/jszip.js"
   );
@@ -90,7 +90,7 @@ test("classifySource reads the ref from a refs/tags raw.githubusercontent URL", 
   assert.deepEqual([branch.ref, branch.pinned], ["main", false]);
 });
 
-test("classifySource rejects untrusted hosts, non-https, and mutable refs", () => {
+test("classifySource rejects untrusted hosts, non-https, and mutable refs", async () => {
   assert.equal(classifySource("https://evil.example.com/x.js").trusted, false);
   // cdnjs is not an accepted source (a cdnjs lib is always on npm/github); such a
   // URL is untrusted and routes to manual review.
@@ -111,7 +111,7 @@ test("classifySource rejects untrusted hosts, non-https, and mutable refs", () =
   assert.equal(classifySource("https://unpkg.com/foo/x.js").pinned, false);
 });
 
-test("classifySource recognizes an npm-registry tarball (whole-package source)", () => {
+test("classifySource recognizes an npm-registry tarball (whole-package source)", async () => {
   const t = classifySource(
     "https://registry.npmjs.org/ical.js/-/ical.js-2.2.1.tgz"
   );
@@ -131,7 +131,7 @@ test("classifySource recognizes an npm-registry tarball (whole-package source)",
 
 // A github.com/.../blob/<ref>/... URL is an accepted INPUT host: it is rewritten
 // to a raw.githubusercontent.com URL (the real fetch host) and classified github.
-test("classifySource accepts a github.com blob URL, rewriting it to raw", () => {
+test("classifySource accepts a github.com blob URL, rewriting it to raw", async () => {
   const gh = classifySource(
     "https://github.com/moment/moment/blob/2.29.1/min/moment.min.js"
   );
@@ -152,7 +152,7 @@ test("classifySource accepts a github.com blob URL, rewriting it to raw", () => 
 
 // Every fetch host in the config allowlist has a parser, so classifySource and
 // config.js VENDOR_TRUSTED_HOSTS cannot silently drift apart.
-test("every VENDOR_TRUSTED_HOSTS host classifies a pinned URL as trusted", () => {
+test("every VENDOR_TRUSTED_HOSTS host classifies a pinned URL as trusted", async () => {
   const sample = {
     "unpkg.com": "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js",
     "cdn.jsdelivr.net":
@@ -311,7 +311,7 @@ const pinnedEntry = (path, sourceUrl) => ({
 // shape it reports: the MISSING PATH is the location a reviewer is sent to, and the
 // VENDOR file's own name rides on {{item}} - the two are easy to swap, and swapping
 // them points the reviewer at a file that exists instead of the one that does not.
-test("missing-vendor-file: one warning per missing entry, listing the path", () => {
+test("missing-vendor-file: one warning per missing entry, listing the path", async () => {
   const ctx = {
     artifact: {
       files: new Map([["VENDORS.md", Buffer.from("file: lib/gone.js")]]),
@@ -325,16 +325,19 @@ test("missing-vendor-file: one warning per missing entry, listing the path", () 
       },
     },
   };
-  const out = missingVendorFile.run(withManifest(ctx)).findings;
+  const out = (await missingVendorFile.run(withManifest(ctx))).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "lib/gone.js");
   assert.equal(out[0].item, "VENDORS.md");
 });
 
 // Nothing declared missing is silence, not an empty finding.
-test("missing-vendor-file: says nothing when every declared file is shipped", () => {
+test("missing-vendor-file: says nothing when every declared file is shipped", async () => {
   const ctx = { artifact: { files: new Map(), vendor: { missing: [] } } };
-  assert.deepEqual(missingVendorFile.run(withManifest(ctx)).findings, []);
+  assert.deepEqual(
+    (await missingVendorFile.run(withManifest(ctx))).findings,
+    []
+  );
 });
 
 // ---- verifyScaDependencies (SCA mode dependency audit) ----
@@ -653,9 +656,9 @@ test("verifyVendor: a folder verifies each file against the repo archive subpath
   assert.equal(byPath["vendor/lib/b.js"], "modified");
   // the modified file becomes a vendor-modified finding
   assert.ok(
-    vendorModified
-      .run(withManifest({ artifact: addon }))
-      .findings.some((f) => f.file === "vendor/lib/b.js")
+    (await vendorModified.run(withManifest({ artifact: addon }))).findings.some(
+      (f) => f.file === "vendor/lib/b.js"
+    )
   );
 });
 
@@ -696,7 +699,7 @@ test("verifyVendor: an unfetchable source -> unfetchable", async () => {
   assert.equal(addon.vendor.results[0].outcome, "unfetchable");
 });
 
-test("classifySource accepts a github.com release asset, keeping the declared URL", () => {
+test("classifySource accepts a github.com release asset, keeping the declared URL", async () => {
   const url =
     "https://github.com/kewisch/ical.js/releases/download/v2.2.1/ical.min.js";
   const gh = classifySource(url);
@@ -1436,7 +1439,7 @@ test("auditGithub: a github source whose npm twin matches by hash is OSV-audited
 
 // ---- the vendor checks (pure readers of addon.vendor) ----
 
-test("vendor-vulnerable: a recorded vulnerability becomes a finding at the package.json line", () => {
+test("vendor-vulnerable: a recorded vulnerability becomes a finding at the package.json line", async () => {
   const pkg = '{\n  "dependencies": {\n    "lodash": "4.17.20"\n  }\n}';
   const ctx = {
     artifact: {
@@ -1456,7 +1459,7 @@ test("vendor-vulnerable: a recorded vulnerability becomes a finding at the packa
       }),
     },
   };
-  const out = vendorVulnerable.run(withManifest(ctx)).findings;
+  const out = (await vendorVulnerable.run(withManifest(ctx))).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "package.json");
   assert.equal(out[0].loc.line, 3);
@@ -1473,8 +1476,8 @@ test("vendor-vulnerable: a recorded vulnerability becomes a finding at the packa
 // severity:auto - the check derives each finding's severity from the advisory's
 // OSV band. high/critical -> error, moderate/medium -> warning, everything else
 // (low, unknown) -> info. Nothing is skipped: every band yields one finding.
-test("vendor-vulnerable: maps the OSV band to the finding severity", () => {
-  const severityFor = (band) => {
+test("vendor-vulnerable: maps the OSV band to the finding severity", async () => {
+  const severityFor = async (band) => {
     const pkg = '{\n  "dependencies": {\n    "lodash": "1.0.0"\n  }\n}';
     const ctx = {
       artifact: {
@@ -1494,29 +1497,32 @@ test("vendor-vulnerable: maps the OSV band to the finding severity", () => {
         }),
       },
     };
-    const out = vendorVulnerable.run(withManifest(ctx)).findings;
+    const out = (await vendorVulnerable.run(withManifest(ctx))).findings;
     assert.equal(out.length, 1); // reported, never dropped
     return out[0].severity;
   };
-  assert.equal(severityFor("critical"), "error");
-  assert.equal(severityFor("high"), "error");
-  assert.equal(severityFor("moderate"), "warning");
-  assert.equal(severityFor("medium"), "warning");
-  assert.equal(severityFor("low"), "info");
-  assert.equal(severityFor("unknown"), "info");
+  assert.equal(await severityFor("critical"), "error");
+  assert.equal(await severityFor("high"), "error");
+  assert.equal(await severityFor("moderate"), "warning");
+  assert.equal(await severityFor("medium"), "warning");
+  assert.equal(await severityFor("low"), "info");
+  assert.equal(await severityFor("unknown"), "info");
 });
 
-test("vendor-vulnerable: no recorded vulnerabilities -> no findings", () => {
+test("vendor-vulnerable: no recorded vulnerabilities -> no findings", async () => {
   const ctx = {
     artifact: { files: new Map(), vendor: store() },
   };
-  assert.deepEqual(vendorVulnerable.run(withManifest(ctx)).findings, []);
+  assert.deepEqual(
+    (await vendorVulnerable.run(withManifest(ctx))).findings,
+    []
+  );
 });
 
 // vendor-vuln-unknown is a pure reader of vendor.unaudited (verify.js does
 // the github->npm resolution and decides what lands there). It emits one info per
 // entry, anchored at its VENDOR source line.
-test("vendor-vuln-unknown: one info per unaudited entry, at its VENDOR source line", () => {
+test("vendor-vuln-unknown: one info per unaudited entry, at its VENDOR source line", async () => {
   const ghUrl = "https://cdn.jsdelivr.net/gh/javve/list.js@v2.3.1/dist/list.js";
   const vendorMd = `list.js\n${ghUrl}\n`;
   const ctx = {
@@ -1530,23 +1536,26 @@ test("vendor-vuln-unknown: one info per unaudited entry, at its VENDOR source li
       }),
     },
   };
-  const out = vendorVulnUnknown.run(withManifest(ctx)).findings;
+  const out = (await vendorVulnUnknown.run(withManifest(ctx))).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].item, ghUrl); // the source URL surfaces on the locus line
   assert.equal(out[0].file, "VENDOR.md");
   assert.equal(out[0].loc.line, 2); // the source URL line
 });
 
-test("vendor-vuln-unknown: no unaudited entries -> no findings", () => {
+test("vendor-vuln-unknown: no unaudited entries -> no findings", async () => {
   const ctx = { artifact: { files: new Map(), vendor: store() } };
-  assert.deepEqual(vendorVulnUnknown.run(withManifest(ctx)).findings, []);
+  assert.deepEqual(
+    (await vendorVulnUnknown.run(withManifest(ctx))).findings,
+    []
+  );
 });
 
 // A range resolves through the lock beside it, so the two ways that fails are two checks
 // reading two lists. Each reports only its own: resolveVendor decides which case a
 // dependency is in, so a submission is never told both to commit a lock and to regenerate
 // the one it committed.
-test("the two ranged-dependency checks read their own list, anchored in package.json", () => {
+test("the two ranged-dependency checks read their own list, anchored in package.json", async () => {
   const pkg = '{\n  "dependencies": {\n    "lodash": "^4.17.21"\n  }\n}';
   const ctxWith = (vendor) => ({
     artifact: {
@@ -1557,8 +1566,8 @@ test("the two ranged-dependency checks read their own list, anchored in package.
   const dep = [{ name: "lodash", spec: "^4.17.21" }];
 
   // No lock committed at all.
-  const missing = xpiLockFileMissing.run(
-    withManifest(ctxWith({ unlocked: dep }))
+  const missing = (
+    await xpiLockFileMissing.run(withManifest(ctxWith({ unlocked: dep })))
   ).findings;
   assert.equal(missing.length, 1);
   assert.equal(missing[0].file, "package.json");
@@ -1567,8 +1576,8 @@ test("the two ranged-dependency checks read their own list, anchored in package.
   assert.equal(missing[0].item, "lodash (^4.17.21)");
 
   // A lock, and it resolves nothing for the name.
-  const invalid = xpiLockFileInvalid.run(
-    withManifest(ctxWith({ unpinned: dep }))
+  const invalid = (
+    await xpiLockFileInvalid.run(withManifest(ctxWith({ unpinned: dep })))
   ).findings;
   assert.equal(invalid.length, 1);
   assert.equal(invalid[0].loc.line, 3);
@@ -1576,18 +1585,20 @@ test("the two ranged-dependency checks read their own list, anchored in package.
 
   // Neither reads the other's list.
   assert.deepEqual(
-    xpiLockFileMissing.run(withManifest(ctxWith({ unpinned: dep }))).findings,
+    (await xpiLockFileMissing.run(withManifest(ctxWith({ unpinned: dep }))))
+      .findings,
     []
   );
   assert.deepEqual(
-    xpiLockFileInvalid.run(withManifest(ctxWith({ unlocked: dep }))).findings,
+    (await xpiLockFileInvalid.run(withManifest(ctxWith({ unlocked: dep }))))
+      .findings,
     []
   );
 });
 
 // A comparison-sign-bearing spec reads correctly, not squared() 's unreadable brackets -
 // see utf8ComparisonSigns (src/lib/util.js).
-test("both ranged-dependency checks keep a comparison-sign spec readable", () => {
+test("both ranged-dependency checks keep a comparison-sign spec readable", async () => {
   const pkg = '{\n  "dependencies": {\n    "lodash": ">=4.17.0 <5.0.0"\n  }\n}';
   const ctxWith = (vendor) => ({
     artifact: {
@@ -1597,18 +1608,18 @@ test("both ranged-dependency checks keep a comparison-sign spec readable", () =>
   });
   const dep = [{ name: "lodash", spec: ">=4.17.0 <5.0.0" }];
 
-  const missing = xpiLockFileMissing.run(
-    withManifest(ctxWith({ unlocked: dep }))
+  const missing = (
+    await xpiLockFileMissing.run(withManifest(ctxWith({ unlocked: dep })))
   ).findings;
   assert.equal(missing[0].item, "lodash (≥4.17.0 ＜5.0.0)");
 
-  const invalid = xpiLockFileInvalid.run(
-    withManifest(ctxWith({ unpinned: dep }))
+  const invalid = (
+    await xpiLockFileInvalid.run(withManifest(ctxWith({ unpinned: dep })))
   ).findings;
   assert.equal(invalid[0].item, "lodash (≥4.17.0 ＜5.0.0)");
 });
 
-test("unpinned-vendor-source: anchored on the VENDOR line, URL as the hint", () => {
+test("unpinned-vendor-source: anchored on the VENDOR line, URL as the hint", async () => {
   const url = "https://unpkg.com/x/x.js";
   const ctx = {
     artifact: {
@@ -1621,7 +1632,7 @@ test("unpinned-vendor-source: anchored on the VENDOR line, URL as the hint", () 
       }),
     },
   };
-  const out = unpinnedVendorSource.run(withManifest(ctx)).findings;
+  const out = (await unpinnedVendorSource.run(withManifest(ctx))).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "VENDOR"); // anchored on the VENDOR declaration
   assert.equal(out[0].loc.line, 2); // the line citing the source
@@ -1629,7 +1640,7 @@ test("unpinned-vendor-source: anchored on the VENDOR line, URL as the hint", () 
   assert.equal(out[0].hint, url); // URL rides the locus line
 });
 
-test("vendor-modified: a modified result is a finding; verified passes silently", () => {
+test("vendor-modified: a modified result is a finding; verified passes silently", async () => {
   const ctx = {
     artifact: {
       vendor: store({
@@ -1640,33 +1651,39 @@ test("vendor-modified: a modified result is a finding; verified passes silently"
       }),
     },
   };
-  const out = vendorModified.run(withManifest(ctx)).findings;
+  const out = (await vendorModified.run(withManifest(ctx))).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "b.js");
   assert.equal(out[0].item, "b.js");
   assert.deepEqual(out[0].data, { url: "u2" });
 });
 
-test("vendor-unparseable: an unparsable VENDOR file is an error finding", () => {
-  const out = vendorUnparseable.run(
-    withManifest({
-      artifact: {
-        files: new Map([["VENDOR", Buffer.from("we bundle stuff, see docs")]]),
-        vendor: store({ unparsedVendor: true, vendorFile: "VENDOR" }),
-      },
-    })
+test("vendor-unparseable: an unparsable VENDOR file is an error finding", async () => {
+  const out = (
+    await vendorUnparseable.run(
+      withManifest({
+        artifact: {
+          files: new Map([
+            ["VENDOR", Buffer.from("we bundle stuff, see docs")],
+          ]),
+          vendor: store({ unparsedVendor: true, vendorFile: "VENDOR" }),
+        },
+      })
+    )
   ).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "VENDOR");
   // No finding when the VENDOR parsed (or is absent).
   assert.equal(
-    vendorUnparseable.run(
-      withManifest({
-        artifact: {
-          files: new Map(),
-          vendor: store({ unparsedVendor: false }),
-        },
-      })
+    (
+      await vendorUnparseable.run(
+        withManifest({
+          artifact: {
+            files: new Map(),
+            vendor: store({ unparsedVendor: false }),
+          },
+        })
+      )
     ).findings.length,
     0
   );
@@ -1680,7 +1697,7 @@ test("vendor-unparseable: an unparsable VENDOR file is an error finding", () => 
 // markUntrusted then routes by readability, which is the whole point: a readable file
 // can be reviewed as the developer's own code, an unreadable one cannot be reviewed at
 // all and is rejected with a request for source.
-test("every unverified outcome becomes untrusted, routed by readability", () => {
+test("every unverified outcome becomes untrusted, routed by readability", async () => {
   const MIN = "!function(e){return e}(1);".repeat(60);
   const READ = "export function hello() {\n  return 1;\n}\n";
   const build = (outcome, file, body) => ({
@@ -2040,7 +2057,7 @@ test("vendor grouping: a lone entry is fetched from its own URL, never via the p
 // The tarball URL is constructed rather than looked up, so the construction has to be
 // held to the same parser every declared source goes through - an unparseable one
 // would be fetched from a host nobody vetted.
-test("vendor grouping: the constructed package URL classifies as a pinned tarball", () => {
+test("vendor grouping: the constructed package URL classifies as a pinned tarball", async () => {
   const src = classifySource(GROUP_TGZ);
   assert.equal(src.trusted, true);
   assert.equal(src.tarball, true);
@@ -2654,7 +2671,8 @@ test("a malicious advisory on a declared package is a vendor-vulnerable error", 
       advisories: { "MAL-2023-462": { id: "MAL-2023-462" } },
     })
   );
-  const out = vendorVulnerable.run(withManifest({ artifact: addon })).findings;
+  const out = (await vendorVulnerable.run(withManifest({ artifact: addon })))
+    .findings;
   assert.deepEqual(
     out.map((f) => [f.item, f.severity, f.data.severity]),
     [["evil-pkg", "error", "critical"]]
@@ -2682,7 +2700,8 @@ test("a malicious advisory on an XPI-shipped library is a vendor-vulnerable erro
       throwOnFetch: true,
     })
   );
-  const out = vendorVulnerable.run(withManifest({ artifact: addon })).findings;
+  const out = (await vendorVulnerable.run(withManifest({ artifact: addon })))
+    .findings;
   assert.deepEqual(
     out.map((f) => [f.item, f.severity, f.data.severity]),
     [["evil-pkg", "error", "critical"]]

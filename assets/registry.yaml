@@ -921,8 +921,8 @@ deterministic-phase:
     The package.json declares an npm install lifecycle hook that fetches or executes remote code when the dependencies are installed. Every part of the build must come only from the dependencies declared in package.json/lock. Please remove the remote fetch or execution from the hook.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# SCA only: the build review. analyzeBuild traces the build ONCE in setup
-# (src/build/analyze.js), storing addon.buildReview; this check reads it. A build
+# SCA only: the build review. analyzeBuild traces the build ONCE, when a check first asks
+# (src/build/analyze.js, ctx.buildReview()); this check reads it. A build
 # must not fetch or execute code/resources from an UNDECLARED external source (a raw URL,
 # curl|sh, a git clone of an unpinned repo, a CDN, a postinstall hook) - only installing the
 # declared dependencies (npm ci from node_modules, importing a declared package) is allowed.

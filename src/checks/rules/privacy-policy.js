@@ -36,10 +36,10 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: [], escalations: Escalation[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const escalations = [];
     const seen = new Set();
-    for (const sink of getOutboundSinks(ctx)) {
+    for (const sink of await getOutboundSinks(ctx)) {
       if (!sink.channel.overt || !sink.destClass.remote) {
         continue;
       }

@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { withManifest, allOf } from "./manifest-ctx.js";
+import { withManifest, withData, allOf } from "./manifest-ctx.js";
 
 import {
   classifyBundled,
@@ -75,7 +75,7 @@ const addonWith = (files) => ({
   files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
 });
 
-test("classifyBundled flags an undeclared statement-dense file", () => {
+test("classifyBundled flags an undeclared statement-dense file", async () => {
   const { classified, nonAuthored } = classifyBundled(
     addonWith({ "lib/blob.js": MINIFIED })
   );
@@ -90,7 +90,7 @@ test("classifyBundled flags an undeclared statement-dense file", () => {
 // A file whose one long line is a single data literal (a big array, an inline data:
 // URI) is readable data, not packed code: NOT minified, so it stays authored source -
 // it is scanned by the content checks, not rejected with "provide the original source".
-test("a long-line file that is a single data literal is not minified", () => {
+test("a long-line file that is a single data literal is not minified", async () => {
   for (const [name, body] of [
     ["lib/blob.js", DATA_BLOB],
     ["src/icon.js", DATA_URI],
@@ -102,8 +102,8 @@ test("a long-line file that is a single data literal is not minified", () => {
     assert.equal(tag.minified, false, `${name} must not be minified`);
     assert.ok(!nonAuthored.has(name), `${name} must stay authored (scanned)`);
     assert.deepEqual(
-      minifiedCode
-        .run(
+      (
+        await minifiedCode.run(
           withManifest({
             artifact: {
               ...addonWith({ [name]: body }),
@@ -111,7 +111,7 @@ test("a long-line file that is a single data literal is not minified", () => {
             },
           })
         )
-        .findings.map((f) => f.file),
+      ).findings.map((f) => f.file),
       [],
       `${name} must not be reported as minified-code`
     );
@@ -124,7 +124,7 @@ test("a long-line file that is a single data literal is not minified", () => {
 // a minified file there is rejected too). A hash-identified library is real third-party
 // code and stays excluded (driving missing-library, not minified-code); obfuscated and
 // VENDOR-declared files likewise stay excluded.
-test("a minified non-library is non-authored and rejected; identified libraries stay excluded", () => {
+test("a minified non-library is non-authored and rejected; identified libraries stay excluded", async () => {
   const LIB_JS = `${MINIFIED}\n//jq`; // minified geometry + distinct bytes
   const addon = addonWith({
     "blob.js": MINIFIED, // minified by geometry, not a known library
@@ -160,15 +160,17 @@ test("a minified non-library is non-authored and rejected; identified libraries 
     options: {},
   };
   assert.deepEqual(
-    minifiedCode.run(withManifest(ctx)).findings.map((f) => f.file),
+    (await minifiedCode.run(withManifest(ctx))).findings.map((f) => f.file),
     ["blob.js"]
   );
   assert.deepEqual(
-    missingLibrary.run(withManifest(ctx)).findings.map((f) => f.file),
+    (await missingLibrary.run(withManifest(ctx))).findings.map((f) => f.file),
     ["jquery.min.js"]
   );
   assert.deepEqual(
-    obfuscatedCode.run(allOf(withManifest(ctx))).findings.map((f) => f.file),
+    (await obfuscatedCode.run(allOf(withManifest(ctx)))).findings.map(
+      (f) => f.file
+    ),
     ["packed.js"]
   );
 });
@@ -177,7 +179,7 @@ test("a minified non-library is non-authored and rejected; identified libraries 
 // authored code, scanned and reviewable, with no finding and nobody asked to judge it. A
 // structure the library half-recognizes is one ordinary code shares, so charging a
 // reviewer for it would spend attention on every innocent submission that has it.
-test("a file only an unpinned family matches is ordinary authored code", () => {
+test("a file only an unpinned family matches is ordinary authored code", async () => {
   const file = "modules/signature.js";
   const addon = addonWith({ [file]: MODULE_PATTERN });
   const bundled = classifyBundled(addon);
@@ -188,46 +190,48 @@ test("a file only an unpinned family matches is ordinary authored code", () => {
   );
   assert.ok(!bundled.nonAuthored.has(file), "stays authored (scanned)");
   assert.deepEqual(
-    obfuscatedCode.run(
-      allOf(withManifest({ artifact: { ...addon, bundled }, options: {} }))
+    (
+      await obfuscatedCode.run(
+        allOf(withManifest({ artifact: { ...addon, bundled }, options: {} }))
+      )
     ).findings,
     []
   );
 });
 
-test("classification done before normalize survives reformatting", () => {
+test("classification done before normalize survives reformatting", async () => {
   const addon = addonWith({ "lib/blob.js": MINIFIED });
   // Pipeline pre-step: classify BEFORE normalize.
   addon.bundled = classifyBundled(addon);
   // Normalize reformats the file in place (build/lint mode).
   addon.files.set("lib/blob.js", Buffer.from(PRETTY));
   // The check reads the pre-step store, so the minified file is still flagged.
-  const flagged = minifiedCode
-    .run(withManifest({ artifact: addon, options: {} }))
-    .findings.map((f) => f.file);
+  const flagged = (
+    await minifiedCode.run(withManifest({ artifact: addon, options: {} }))
+  ).findings.map((f) => f.file);
   assert.deepEqual(flagged, ["lib/blob.js"]);
 });
 
-test("without the pre-step, classifying the reformatted bytes misses it", () => {
+test("without the pre-step, classifying the reformatted bytes misses it", async () => {
   // No addon.bundled: the reader recomputes over the already-pretty bytes, which
   // do not look minified - the build/lint false negative the pre-step fixes.
-  const flagged = minifiedCode
-    .run(
+  const flagged = (
+    await minifiedCode.run(
       withManifest({
         artifact: addonWith({ "lib/blob.js": PRETTY }),
         options: {},
       })
     )
-    .findings.map((f) => f.file);
+  ).findings.map((f) => f.file);
   assert.deepEqual(flagged, []);
 });
 
-test("readers share the artifact's one classification", () => {
+test("readers share the artifact's one classification", async () => {
   const artifact = addonWith({ "lib/blob.js": MINIFIED });
   artifact.bundled = classifyBundled(artifact);
-  const ctx = { artifact, options: {} };
-  assert.strictEqual(classifyAddonJs(ctx), classifyAddonJs(ctx));
-  assert.strictEqual(classifyAddonJs(ctx), artifact.bundled.classified);
+  const ctx = withData({ artifact, options: {} });
+  assert.strictEqual(await classifyAddonJs(ctx), await classifyAddonJs(ctx));
+  assert.strictEqual(await classifyAddonJs(ctx), artifact.bundled.classified);
 });
 
 // A vendored CSS distribution: recognized as a library by a CONTENT-HASH match,
@@ -241,7 +245,7 @@ const MINIFIED_CSS = `.x{color:#fff}${".y{margin:0}".repeat(120)}`;
 // payload is stripped it is short, so it is NOT minified (the CSS false positive).
 const DATA_FONT_CSS = `@font-face{font-family:x;src:url("data:font/woff2;base64,${"A".repeat(2000)}")}\n.a{color:red}`;
 
-test("classifyBundled tags an undeclared vendored CSS as a library", () => {
+test("classifyBundled tags an undeclared vendored CSS as a library", async () => {
   const file = "vendor/bootstrap/bootstrap.min.css";
   const addon = addonWith({ [file]: LIB_CSS });
   const { classified, nonAuthored } = classifyBundled(addon, {
@@ -254,17 +258,19 @@ test("classifyBundled tags an undeclared vendored CSS as a library", () => {
   assert.ok(nonAuthored.has(file)); // joins the non-authored skip set
 });
 
-test("missing-library reports an undeclared vendored CSS file", () => {
+test("missing-library reports an undeclared vendored CSS file", async () => {
   const file = "vendor/bootstrap/bootstrap.min.css";
   const addon = addonWith({ [file]: LIB_CSS });
   addon.bundled = classifyBundled(addon, {
     libraryHashes: libHashes(addon, file),
   });
-  const findings = missingLibrary.run(
-    withManifest({
-      artifact: addon,
-      options: {},
-    })
+  const findings = (
+    await missingLibrary.run(
+      withManifest({
+        artifact: addon,
+        options: {},
+      })
+    )
   ).findings;
   assert.deepEqual(
     findings.map((f) => f.file),
@@ -276,7 +282,7 @@ test("missing-library reports an undeclared vendored CSS file", () => {
 // `library` is a true content-hash match - NOT a .min name, a known stem, a UMD
 // wrapper, or a "/*!" banner (none of which are a library signal on their own). The
 // same bytes are a library only when their hash is in the known-library DB.
-test("library is a content-hash match, not a .min name or banner", () => {
+test("library is a content-hash match, not a .min name or banner", async () => {
   const tagOf = (file, body, known = false) => {
     const addon = addonWith({ [file]: body });
     return classifyBundled(addon, {
@@ -294,7 +300,7 @@ test("library is a content-hash match, not a .min name or banner", () => {
   assert.equal(tagOf("vendor/x.min.css", minCss, true), true);
 });
 
-test("a minified CSS is minified but not a library or obfuscated", () => {
+test("a minified CSS is minified but not a library or obfuscated", async () => {
   const { classified } = classifyBundled(
     addonWith({ "popup/app.css": MINIFIED_CSS })
   );
@@ -305,7 +311,7 @@ test("a minified CSS is minified but not a library or obfuscated", () => {
   );
 });
 
-test("a CSS whose one long line is a single data: payload is not minified", () => {
+test("a CSS whose one long line is a single data: payload is not minified", async () => {
   const { classified, nonAuthored } = classifyBundled(
     addonWith({ "popup/fonts.css": DATA_FONT_CSS })
   );
@@ -320,21 +326,29 @@ test("a CSS whose one long line is a single data: payload is not minified", () =
 // inline script has none. classifyInlineScripts asks both questions of the extracted
 // source. `ctx` here is the shape a check sees - jsSources, as collectJsSources builds
 // them, where an inline body carries the HTML path and inline: true.
-const inlineCtx = (code, file = "page.html", extra = {}) => ({
-  artifact: {
-    bundled: classifyBundled({ files: new Map() }),
-    files: new Map(),
-    ...extra.artifact,
-  },
-  options: {},
-  jsSources: [
-    { file, code, lineOffset: 4, inline: true, declaredJs: true, ...extra.src },
-  ],
-  ...extra,
-});
+const inlineCtx = (code, file = "page.html", extra = {}) =>
+  withData({
+    artifact: {
+      bundled: classifyBundled({ files: new Map() }),
+      files: new Map(),
+      ...extra.artifact,
+    },
+    options: {},
+    jsSources: [
+      {
+        file,
+        code,
+        lineOffset: 4,
+        inline: true,
+        declaredJs: true,
+        ...extra.src,
+      },
+    ],
+    ...extra,
+  });
 
-test("classifyInlineScripts judges a minified inline script", () => {
-  const [site] = classifyInlineScripts(inlineCtx(MINIFIED));
+test("classifyInlineScripts judges a minified inline script", async () => {
+  const [site] = await classifyInlineScripts(inlineCtx(MINIFIED));
   assert.equal(site.file, "page.html");
   // lineOffset + 1: the reviewer is sent to the <script>, not the top of the page.
   assert.deepEqual(site.loc, { line: 5, column: 0 });
@@ -342,8 +356,8 @@ test("classifyInlineScripts judges a minified inline script", () => {
   assert.equal(site.obfuscation, VERDICT.PASS);
 });
 
-test("classifyInlineScripts judges an obfuscated inline script", () => {
-  const [site] = classifyInlineScripts(inlineCtx(OBFUSCATED));
+test("classifyInlineScripts judges an obfuscated inline script", async () => {
+  const [site] = await classifyInlineScripts(inlineCtx(OBFUSCATED));
   assert.equal(site.obfuscation, VERDICT.FAIL);
   // Multi-line and low-density: obfuscated, and not minified by geometry.
   assert.equal(site.minified, false);
@@ -351,18 +365,18 @@ test("classifyInlineScripts judges an obfuscated inline script", () => {
 
 // The container is a .html, so judging by extension would apply the CSS rule - one long
 // line is enough. A script whose only long line is a data literal is readable source.
-test("classifyInlineScripts judges the body as JS, not by the .html it sits in", () => {
-  const [site] = classifyInlineScripts(inlineCtx(DATA_BLOB));
+test("classifyInlineScripts judges the body as JS, not by the .html it sits in", async () => {
+  const [site] = await classifyInlineScripts(inlineCtx(DATA_BLOB));
   assert.equal(site.minified, false);
 });
 
 // The floor bounds the OBFUSCATION detector, not the minified question - so a body
 // under it is still asked whether it is packed, and a bundle cannot be cut into
 // sub-floor <script> blocks to hide. A non-authored page is skipped outright.
-test("classifyInlineScripts asks about a short body, but not for obfuscation", () => {
+test("classifyInlineScripts asks about a short body, but not for obfuscation", async () => {
   const short = `var a=0;${"a=a+1;".repeat(120)}`; // packed, ~730 bytes: under the floor
   assert.ok(Buffer.byteLength(short, "utf8") < 1024);
-  const [site] = classifyInlineScripts(inlineCtx(short));
+  const [site] = await classifyInlineScripts(inlineCtx(short));
   assert.equal(site.minified, true);
   assert.equal(site.obfuscation, VERDICT.PASS); // not asked at this size
   const ctx = inlineCtx(MINIFIED, "lib/vendor.html");
@@ -371,13 +385,13 @@ test("classifyInlineScripts asks about a short body, but not for obfuscation", (
     nonAuthored: new Set(["lib/vendor.html"]),
     untrusted: [],
   };
-  assert.deepEqual(classifyInlineScripts(ctx), []);
+  assert.deepEqual(await classifyInlineScripts(ctx), []);
 });
 
 // The same split for FILES: a sub-floor packed build chunk is minified (real ones ship -
 // a Vite modulepreload polyfill, a webpack chunk), while the obfuscation detector is
 // still bounded to the sizes where it is precise.
-test("classifyBundled asks about a short file, but not for obfuscation", () => {
+test("classifyBundled asks about a short file, but not for obfuscation", async () => {
   const short = `var a=0;${"a=a+1;".repeat(120)}`;
   const { classified } = classifyBundled(addonWith({ "chunk.js": short }));
   const tag = classified.find((c) => c.file === "chunk.js");
@@ -389,7 +403,7 @@ test("classifyBundled asks about a short file, but not for obfuscation", () => {
 // ... but only for JS. The size-independence argument is about statement density, and
 // only the JS branch measures it: for CSS isMinified is pure geometry, so a small
 // one-line generated stylesheet - a design-token file - would read as packed.
-test("a short stylesheet keeps the floor, a short script does not", () => {
+test("a short stylesheet keeps the floor, a short script does not", async () => {
   const tokens = `:root{${Array.from(
     { length: 40 },
     (_, i) => `--tk-color-${i}:#ff00${i % 10}${i % 10}`
@@ -410,16 +424,18 @@ test("a short stylesheet keeps the floor, a short script does not", () => {
 
 // A script with a src= attribute is a separate file and is classified as one; only
 // bodies reach here, and a page with none yields nothing.
-test("classifyInlineScripts yields nothing for a page with no inline body", () => {
+test("classifyInlineScripts yields nothing for a page with no inline body", async () => {
   assert.deepEqual(
-    classifyInlineScripts({
-      artifact: {
-        bundled: classifyBundled({ files: new Map() }),
-        files: new Map(),
-      },
-      jsSources: [],
-      options: {},
-    }),
+    await classifyInlineScripts(
+      withData({
+        artifact: {
+          bundled: classifyBundled({ files: new Map() }),
+          files: new Map(),
+        },
+        jsSources: [],
+        options: {},
+      })
+    ),
     []
   );
 });
@@ -428,26 +444,26 @@ test("classifyInlineScripts yields nothing for a page with no inline body", () =
 // parses. So the type list can never hide code - packed JavaScript in a
 // <script type="text/template"> still parses, and is still caught - while a template
 // or a JSON blob, which never parses, is not rejected for not being JavaScript.
-test("an inline body is read when its type declares JS, or when it parses", () => {
+test("an inline body is read when its type declares JS, or when it parses", async () => {
   const packed = `var a=0;${"a=a+1;".repeat(250)}`;
   const markup = `<tr><td>${"x".repeat(600)}</td></tr>\n`.repeat(4);
-  const of = (code, declaredJs) =>
-    classifyInlineScripts(
+  const of = async (code, declaredJs) =>
+    await classifyInlineScripts(
       inlineCtx(code, "page.html", { src: { declaredJs } })
     );
   // declared JS: read whether or not it parses.
-  assert.equal(of(packed, true)[0].minified, true);
-  assert.equal(of(markup, true)[0].minified, true);
+  assert.equal((await of(packed, true))[0].minified, true);
+  assert.equal((await of(markup, true))[0].minified, true);
   // not declared JS: read it anyway when it parses...
-  assert.equal(of(packed, false)[0].minified, true);
+  assert.equal((await of(packed, false))[0].minified, true);
   // ... and do not call unparsable markup "packed code".
-  assert.equal(of(markup, false)[0].minified, false);
+  assert.equal((await of(markup, false))[0].minified, false);
 });
 
 // The parse hint is the SOURCE's, never the container's path. A Vue <script lang="ts">
 // lives in a .vue; parsed as plain JS it fails, maxLineStatements gives up, and an
 // ordinary component is reported as packed code.
-test("classifyInlineScripts parses a .vue block by its lang, not the .vue path", () => {
+test("classifyInlineScripts parses a .vue block by its lang, not the .vue path", async () => {
   const ts =
     "export default defineComponent({\n" +
     "  data(): { n: number } { return { n: 0 }; },\n" +
@@ -455,10 +471,10 @@ test("classifyInlineScripts parses a .vue block by its lang, not the .vue path",
     "});\n" +
     `// ${"pad ".repeat(200)}\n`;
   const ctx = inlineCtx(ts, "App.vue", { src: { parseAs: ".ts" } });
-  assert.equal(classifyInlineScripts(ctx)[0].minified, false);
+  assert.equal((await classifyInlineScripts(ctx))[0].minified, false);
   // Without the hint the same block is misparsed and called minified.
   const noHint = inlineCtx(ts, "App.vue");
-  assert.equal(classifyInlineScripts(noHint)[0].minified, true);
+  assert.equal((await classifyInlineScripts(noHint))[0].minified, true);
 });
 
 // The reviewability decision must see the same verdicts the checks do. Otherwise one
@@ -467,7 +483,7 @@ test("classifyInlineScripts parses a .vue block by its lang, not the .vue path",
 // classifyInlineSources answers "is this body the developer ships reviewable", so it
 // reads only shipped <script> bodies. A source without `inline` - a lifted Vue template
 // binding - is code the scanner synthesized and is not the add-on's to answer for.
-test("classifyInlineSources ignores a source that is not a script body", () => {
+test("classifyInlineSources ignores a source that is not a script body", async () => {
   const packed = `()=>{${"a=a+1; ".repeat(200)}}`;
   const asBinding = [
     { file: "Comp.vue", code: packed, lineOffset: 1, parseAs: ".js" },
@@ -494,7 +510,7 @@ test("an inline obfuscation finding names its site, not just its page", async ()
     { file: "p.html", code: OBFUSCATED, lineOffset: 1, inline: true },
     { file: "p.html", code: OBFUSCATED, lineOffset: 40, inline: true },
   ];
-  const out = obfuscated.run(
+  const out = await obfuscated.run(
     allOf(
       withManifest({
         artifact: { files: new Map() },

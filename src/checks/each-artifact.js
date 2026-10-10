@@ -26,13 +26,13 @@ import { wiringError } from "../lib/errors.js";
  * has. The findings and escalations of each come back in one list, each carrying the locus
  * its own artifact minted, so the report says which side every case is in.
  *
- * @param {(ctx: RunContext, check: LoadedCheck) => {findings?: object[], escalations?: object[]}} fn
- *   The per-artifact body, unchanged from the one-artifact shape. Synchronous: a promise
- *   would be read as an empty result, so one is refused.
- * @returns {(ctx: RunContext, check: LoadedCheck) => {findings: object[], escalations: object[]}}
+ * @param {(ctx: RunContext, check: LoadedCheck) => Promise<{findings?: object[], escalations?: object[]}>} fn
+ *   The per-artifact body, unchanged from the one-artifact shape. Awaited: the data it
+ *   reads is computed on first ask.
+ * @returns {(ctx: RunContext, check: LoadedCheck) => Promise<{findings: object[], escalations: object[]}>}
  */
 export function perArtifact(fn) {
-  return (ctx, check) => {
+  return async (ctx, check) => {
     if (!ctx.xpi) {
       // Only the `all` route names the artifacts, so a wrapped body on any other route
       // reaches here. Left to itself it would iterate nothing and report a clean review,
@@ -53,13 +53,7 @@ export function perArtifact(fn) {
       // copy: buildReachability memoizes in a WeakMap keyed on the ctx OBJECT, so a fresh
       // object per check would recompute the reachability graph every time.
       one.note = ctx.note;
-      const out = fn(one, check) ?? {};
-      if (typeof out.then === "function") {
-        throw wiringError(
-          `${check?.id ?? "a check"} wraps an async body in perArtifact, which reads ` +
-            "results synchronously"
-        );
-      }
+      const out = (await fn(one, check)) ?? {};
       findings.push(...(out.findings ?? []));
       escalations.push(...(out.escalations ?? []));
     }

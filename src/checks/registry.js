@@ -149,20 +149,19 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
 
 /**
  * The shared context passed to every check's run(ctx, check). Built once per
- * review (built in runPipeline Phase 4) and read by the rule modules.
+ * review (in runPipeline, once the eager setup has run) and read by the rule modules.
  * @typedef {object} RunContext
  * @property {import("../addon/load.js").Addon} artifact  The artifact this check was ROUTED
  *   to (its declared `input`), linked by reference: ctx.artifact IS the object the loader
- *   produced, so a reader can see which artifact a set of files belongs to. It carries what
- *   that artifact was LOADED with - its views, the recorded path lists - plus the classification
- *   the pipeline resolved for it (vendor/bundled). Nothing shipped-authoritative is on it:
- *   the manifest.json record and the experiment classification are asked of the built XPI
- *   once and shared, as ctx.manifest / ctx.experiments below, so a check cannot pair one
- *   artifact's manifest.json with another's files.
- *   Sealed before any check runs (src/lib/errors.js sealArtifact), so reading a field this
- *   artifact never produced throws a WIRING LinterError and the run exits 2 instead of the
- *   check finding nothing. Read its fields directly: `ctx.artifact?.x` guards against a
- *   routing bug, which must fail, not read as an empty review.
+ *   produced, so a reader can see which artifact a set of files belongs to. A check reads what
+ *   that artifact was LOADED with off it - its views, the recorded path lists; what the review
+ *   COMPUTES about it (vendor reading, classification, parsed sources, build trace) comes
+ *   through the data getters below, never off the artifact. Nothing shipped-authoritative is
+ *   on it: the manifest.json record and the experiment classification are asked of the built
+ *   XPI once and shared, as ctx.manifest / ctx.experiments below, so a check cannot pair one
+ *   artifact's manifest.json with another's files. Read its fields directly:
+ *   `ctx.artifact?.x` guards against a routing bug, which must fail, not read as an empty
+ *   review.
  *   ABSENT on the `all` route, which names no single artifact - see `xpi` / `sca` below.
  * @property {RunContext} [xpi]  On the `all` route only: the built XPI's own ctx - the same
  *   object siblings.xpi holds, so the analyses are memoized once and a locus is minted by
@@ -174,12 +173,18 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   them reads these two by name and says which side every read is about.
  * @property {object} cache  What this review DERIVES from that artifact, memoized per ctx and
  *   computed once on first ask: the locale scan, the eval scan, the outbound sinks, the
- *   permission analysis, the api resolution, the remote refs, and a bundled classification
- *   when no setup step pre-computed one. Every slot is reached through its accessor in
- *   src/lib/*, never read directly, so a check asks a question rather than a field.
+ *   permission analysis, the api resolution, the remote refs. Every slot is reached through
+ *   its accessor in src/lib/*, never read directly, so a check asks a question rather than
+ *   a field.
  * @property {import("../schema/index.js").SchemaIndex} schema  Resolved schema.
- * @property {object[]} jsSources  Parsed JS sources (see addon/sources.js).
- * @property {object[]} apiUsages  Per-source extracted API usage.
+ * @property {() => Promise<object>} vendor  The artifact's vendor reading and every audit of
+ *   it, computed on first ask (src/review/products.js) - the review target only.
+ * @property {() => Promise<object>} bundled  The artifact's bundled classification, after
+ *   the CDN identification.
+ * @property {() => Promise<object[]>} jsSources  The artifact's parsed JS sources (see
+ *   addon/sources.js).
+ * @property {() => Promise<object[]>} apiUsages  Per-source extracted API usage.
+ * @property {() => Promise<object>} buildReview  The build trace - the source archive only.
  * @property {?import("../addon/load.js").WebExtManifestRecord} manifest  The authoritative,
  *   SHIPPED manifest.json (the built XPI's - what Thunderbird loads), read once like `schema`:
  *   `json` the parse, `text` the manifest.json text (tokenLine reads it), `error` why

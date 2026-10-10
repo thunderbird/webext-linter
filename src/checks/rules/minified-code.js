@@ -31,9 +31,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const findings = [];
-    for (const c of classifyAddonJs(ctx)) {
+    for (const c of await classifyAddonJs(ctx)) {
       if (c.library || c.obfuscation.fail || c.untrusted) {
         // library -> missing-library; obfuscated -> obfuscated-code; untrusted (a
         // not-popular CDN match) -> untrusted-minified-library if unreadable, else
@@ -53,7 +53,7 @@ export default {
     // classifyAddonJs tags files, so without this the identical bytes are rejected as
     // a .js and unmentioned as an inline <script>. An obfuscated one is obfuscated-code's
     // finding, exactly as for a file.
-    for (const site of classifyInlineScripts(ctx)) {
+    for (const site of await classifyInlineScripts(ctx)) {
       if (site.obfuscation.fail) {
         continue;
       }

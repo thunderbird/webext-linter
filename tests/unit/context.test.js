@@ -1,14 +1,19 @@
-// Unit tests for the sibling-ctx builders' assembly contract: they NEVER parse. The pipeline's
-// extraction pass parses each source once and hands the results over already parsed; these
-// builders only derive ctx.apiUsages from them, project the shared review env, and swap the
-// per-artifact fields. What the pass itself extracts (and which files it skips) is tested in
-// extract.test.js.
+// Unit tests for the sibling-ctx builders' assembly contract: they NEVER compute. Each
+// artifact's data comes from its getters (src/review/products.js), which the builders hand
+// on as they are; the builders project the shared review env and swap the per-artifact
+// fields. What the extraction pass extracts (and which files it skips) is tested in
+// extract.test.js, and the getters in products.test.js.
 
 import { test } from "node:test";
 import { REVIEW_MODE } from "../../src/lib/enum.js";
 import assert from "node:assert/strict";
 
-import { buildXpiCtx, buildScaCtx } from "../../src/checks/context.js";
+import {
+  buildXpiCtx,
+  buildScaCtx,
+  buildAllCtx,
+} from "../../src/checks/context.js";
+import { deriveApiUsages } from "../../src/review/products.js";
 import { collectJsSources } from "../../src/addon/sources.js";
 import { runExtractionPass } from "../../src/checks/extract.js";
 import { SYMLINK_CAUSE } from "../../src/lib/enum.js";
@@ -26,7 +31,6 @@ const envWith = (over = {}) => ({
   options: {},
   mode: REVIEW_MODE.XPI,
   scaExpSource: undefined,
-  invalidExperiment: false,
   manifest: noManifest(),
   experiments: null,
   previous: null,
@@ -43,63 +47,70 @@ const shippedRecord = {
   loc: null,
 };
 
-// The builders never parse: a REVIEWABLE add-on's sources must arrive already through the
-// extraction pass, or the builder throws (no files would mean "no code" and pass every
-// code check vacuously). The pipeline parses in Phase 2/3; a test not about the sources
-// satisfies the contract with this.
+// An add-on's sources, through the extraction pass, as the parse getter answers them.
 const parsed = (addon) => {
   const jsSources = collectJsSources(addon);
   runExtractionPass(jsSources, { schema: {} });
   return jsSources;
 };
 
-test("buildXpiCtx assembles the sources it is handed, and parses nothing itself", () => {
-  const xpi = addonWith({ "app.js": "export const x = 1;" });
-  const jsSources = parsed(xpi);
-  const xpiCtx = buildXpiCtx(xpi, jsSources, envWith());
-  // The pass's per-file results are carried through, and ctx.apiUsages is derived from them.
-  assert.equal(xpiCtx.jsSources, jsSources);
-  assert.ok(xpiCtx.jsSources[0].extracted.remoteJs);
-  assert.equal(xpiCtx.apiUsages.length, 1);
-  assert.equal(xpiCtx.apiUsages[0].file, "app.js");
+// Data getters over fixed values, the shape the review hands each builder.
+const dataFor = (addon, jsSources = parsed(addon)) => ({
+  vendor: async () => addon.vendor,
+  bundled: async () => addon.bundled,
+  jsSources: async () => jsSources,
+  apiUsages: async () => deriveApiUsages(jsSources),
+  buildReview: async () => addon.buildReview,
 });
 
-test("buildXpiCtx has no sources when the pipeline parsed none (a rejected Experiment)", () => {
-  // The single reject check reads the manifest.json, the experiment classification and the schema -
-  // never a line of code - so the pipeline hands no sources over. The XPI's files are NOT
-  // parsed as a fallback.
+test("buildXpiCtx hands on the data getters it is given, and computes nothing itself", async () => {
   const xpi = addonWith({ "app.js": "export const x = 1;" });
-  const xpiCtx = buildXpiCtx(
-    xpi,
-    undefined,
-    envWith({ invalidExperiment: true })
-  );
-  assert.deepEqual(xpiCtx.jsSources, []);
-  assert.deepEqual(xpiCtx.apiUsages, []);
+  const data = dataFor(xpi);
+  const xpiCtx = buildXpiCtx(xpi, data, envWith());
+  for (const name of [
+    "vendor",
+    "bundled",
+    "jsSources",
+    "apiUsages",
+    "buildReview",
+  ]) {
+    assert.equal(xpiCtx[name], data[name], name);
+  }
+  const jsSources = await xpiCtx.jsSources();
+  assert.ok(jsSources[0].extracted.remoteJs);
+  const apiUsages = await xpiCtx.apiUsages();
+  assert.equal(apiUsages.length, 1);
+  assert.equal(apiUsages[0].file, "app.js");
 });
 
-// The fail-open this closes: no files MEANS "this add-on has no code", so every code
-// check would pass vacuously and the review would report a clean add-on whose JavaScript it
-// never read - exit 1, no crash, no warning. Only a rejected Experiment may have no sources.
-test("buildXpiCtx throws when a reviewable built XPI arrives with no parsed sources", () => {
-  const xpi = addonWith({ "app.js": "eval('danger');" });
-  assert.throws(
-    () => buildXpiCtx(xpi, undefined, envWith()),
-    /no parsed sources/
-  );
+// The `all` route has no artifact, so no data of its own: a check on it asks ctx.xpi /
+// ctx.sca, and one that reads the data off it was written for the one-artifact shape.
+test("the all ctx has no data of its own, and says where to ask", async () => {
+  const xpi = addonWith({ "app.js": "1;" });
+  const xpiCtx = buildXpiCtx(xpi, dataFor(xpi), envWith());
+  const all = buildAllCtx(envWith(), { xpi: xpiCtx });
+  assert.equal(all.xpi, xpiCtx);
+  assert.equal(all.sca, null);
+  await assert.rejects(() => all.jsSources(), /ask ctx\.xpi \/ ctx\.sca/);
+  await assert.rejects(() => all.vendor(), /has no artifact/);
 });
 
 // buildXpiCtx builds the shipped ctx (siblings.xpi) from the XPI's OWN sources + api-usage.
-test("buildXpiCtx carries the XPI's own sources", () => {
+test("buildXpiCtx carries the XPI's own sources", async () => {
   const xpi = addonWith({ "app.js": "export const x = 1;" });
   const xpiParsed = parsed(xpi);
 
-  const inSca = buildXpiCtx(xpi, xpiParsed, envWith({ mode: REVIEW_MODE.SCA }));
+  const inSca = buildXpiCtx(
+    xpi,
+    dataFor(xpi, xpiParsed),
+    envWith({ mode: REVIEW_MODE.SCA })
+  );
   // ctx.artifact IS the XPI, so its files Map is the XPI's by identity.
   assert.equal(inSca.artifact.files, xpi.files);
-  assert.equal(inSca.jsSources, xpiParsed);
-  assert.equal(inSca.apiUsages.length, xpiParsed.length); // the XPI's OWN api-usage
-  assert.equal(inSca.apiUsages[0].file, "app.js");
+  assert.equal(await inSca.jsSources(), xpiParsed);
+  const apiUsages = await inSca.apiUsages();
+  assert.equal(apiUsages.length, xpiParsed.length); // the XPI's OWN api-usage
+  assert.equal(apiUsages[0].file, "app.js");
 
   // The two SCA paths reach a check AS GIVEN, absolute - never a prefix derived from them.
   // The --sca-* paths are NOT on the ctx: where the source and the Experiment sit is
@@ -108,7 +119,7 @@ test("buildXpiCtx carries the XPI's own sources", () => {
   // for the report.
   const withPaths = buildXpiCtx(
     xpi,
-    xpiParsed,
+    dataFor(xpi, xpiParsed),
     envWith({
       mode: REVIEW_MODE.SCA,
       scaExpSource: "/r/src/experiments",
@@ -132,7 +143,7 @@ test("a check can merge the source and Experiment views off ctx.artifact", () =>
   source.experiment = experiment;
   const env = envWith({ mode: REVIEW_MODE.SCA });
 
-  const scaCtx = buildScaCtx(source, parsed(source), env);
+  const scaCtx = buildScaCtx(source, dataFor(source), env);
 
   // Apart: the WebExtension checks see the add-on's code and nothing privileged.
   assert.ok(scaCtx.artifact.files.has("app.js"));
@@ -154,11 +165,8 @@ test("a check can merge the source and Experiment views off ctx.artifact", () =>
 
   // In an XPI review there is no Experiment view to merge - the shipped artifact carries
   // its experiment code like any other file, so the field is simply absent.
-  const xpiOnly = buildScaCtx(
-    addonWith({ "app.js": "1;" }),
-    parsed(addonWith({ "app.js": "1;" })),
-    env
-  );
+  const plain = addonWith({ "app.js": "1;" });
+  const xpiOnly = buildScaCtx(plain, dataFor(plain), env);
   assert.equal(xpiOnly.artifact.experiment, undefined);
 });
 
@@ -166,7 +174,7 @@ test("a check can merge the source and Experiment views off ctx.artifact", () =>
 // and, as the review target, the input: source ones read - and shares the review env. The
 // artifact is linked like every other ctx.artifact, so a build check can never read
 // ctx.artifact.manifest against another artifact's files.
-test("buildScaCtx puts the archive on ctx.artifact, with its sources", () => {
+test("buildScaCtx puts the archive on ctx.artifact, with its sources", async () => {
   const source = addonWith({ "src/app.js": "export const x = 1;" });
   const env = envWith({
     mode: REVIEW_MODE.SCA,
@@ -185,7 +193,7 @@ test("buildScaCtx puts the archive on ctx.artifact, with its sources", () => {
     buildReview: { unresolved: [], anchor: "package.json" },
   };
 
-  const scaCtx = buildScaCtx(archive, parsed(source), env);
+  const scaCtx = buildScaCtx(archive, dataFor(archive, parsed(source)), env);
   // The artifact IS the archive - one object, not a projection of some of its fields.
   assert.equal(scaCtx.artifact, archive);
   assert.deepEqual(scaCtx.artifact.nodeModules, ["node_modules"]); // committed-node-modules reads it
@@ -196,35 +204,22 @@ test("buildScaCtx puts the archive on ctx.artifact, with its sources", () => {
   assert.equal(scaCtx.artifact.symlinks[0].cause, SYMLINK_CAUSE.OUTSIDE);
   // the file:/link: walk a lock check runs reads it
   assert.deepEqual(scaCtx.artifact.directories, ["libs"]);
-  assert.deepEqual(scaCtx.artifact.buildReview, {
+  assert.deepEqual(await scaCtx.buildReview(), {
     unresolved: [],
     anchor: "package.json",
   }); // build-review checks read it
   // And it carries the parsed source: one ctx serves both routes, so the build checks and
   // the code checks cannot disagree about what the archive holds.
-  assert.equal(scaCtx.jsSources.length, 1);
-  assert.ok(scaCtx.apiUsages);
+  assert.equal((await scaCtx.jsSources()).length, 1);
+  assert.ok(await scaCtx.apiUsages());
   assert.equal(scaCtx.schema, env.schema); // shared review env
   assert.equal(scaCtx.manifest, env.manifest); // shipped manifest stays for framing
 
   // An artifact with no files is still a valid, readable ctx - an input: sca check skips cleanly on it
   // rather than crashing.
-  const empty = buildScaCtx(
-    { ...source, files: new Map() },
-    parsed(source),
-    env
-  );
+  const emptyArchive = { ...source, files: new Map() };
+  const empty = buildScaCtx(emptyArchive, dataFor(emptyArchive, []), env);
   assert.equal(empty.artifact.files.size, 0);
-});
-
-// Symmetric to buildXpiCtx: the readable source MUST arrive parsed (the pipeline parses it in
-// Phase 3). No files would review a clean add-on whose source was never read.
-test("buildScaCtx throws when the source arrives with no parsed sources", () => {
-  const source = addonWith({ "src/app.js": "eval('danger');" });
-  assert.throws(
-    () => buildScaCtx(source, undefined, envWith()),
-    /no parsed sources/
-  );
 });
 
 // ctx.artifact IS the loaded artifact, linked by pointer - not a copy of some of its fields.
@@ -238,7 +233,7 @@ test("ctx.artifact is the loaded artifact itself; the shipped answers come from 
     options: { allowExperiments: true },
     manifest: shippedRecord,
   });
-  const xpiCtx = buildXpiCtx(xpi, parsed(xpi), env);
+  const xpiCtx = buildXpiCtx(xpi, dataFor(xpi), env);
   assert.equal(xpiCtx.artifact, xpi, "the same object the loader produced");
   // The two shipped-authoritative answers are asked of the XPI once and shared, so they sit
   // on the ctx rather than on whichever artifact a check was routed to.
@@ -259,7 +254,7 @@ test("a manifest.json check reads the record, not the routed files", async () =>
   const xpi = addonWith({ "a.js": "export const x = 1;" });
   // An artifact that ships no manifest.json still carries a record; `present` says so.
   const env = envWith({ manifest: noManifest() });
-  const xpiCtx = buildXpiCtx(xpi, parsed(xpi), env);
+  const xpiCtx = buildXpiCtx(xpi, dataFor(xpi), env);
   assert.ok(
     xpiCtx.artifact.files.size > 0,
     "the routed artifact does have files"

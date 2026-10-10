@@ -10,10 +10,10 @@
 // npm/GitHub dependency or bundle the library with the add-on as authored code. An
 // `npm:<name>@<range>` alias is NOT one of them: it installs a registry package under
 // another name, so it is classified by what it installs and the spelling decides nothing
-// (src/vendor/resolve.js -> artifact.vendor.unsupportedDeps). A source archive's committed
+// (src/vendor/resolve.js -> the vendor reading's `unsupportedDeps`). A source archive's committed
 // lock file: an install from a local path the archive does not hold as a folder - outside
 // the source root, absent, or a local tarball (src/vendor/locks.js localInstalls ->
-// artifact.vendor.lockLocalInstalls). A local folder inside the source root is the
+// the vendor reading's `lockLocalInstalls`). A local folder inside the source root is the
 // submission's own code, reviewed like any other file, so it never reaches this check; a
 // remote tarball or a non-GitHub git source in the lock is lock-foreign-source's.
 // This check only reads those two lists and emits a finding per entry. Deterministic, no
@@ -40,13 +40,13 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const { artifact } = ctx;
     // One of the two is empty in any review: a built XPI fills the first, a source
     // archive the second (src/vendor/resolve.js).
     const unsupported = [
-      ...(artifact.vendor.unsupportedDeps ?? []),
-      ...(artifact.vendor.lockLocalInstalls ?? []),
+      ...((await ctx.vendor()).unsupportedDeps ?? []),
+      ...((await ctx.vendor()).lockLocalInstalls ?? []),
     ];
     // Memoized per distinct file: one file can hold several unsupported entries, and
     // re-reading/re-decoding the same bytes once per one would be wasted work.

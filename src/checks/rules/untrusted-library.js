@@ -29,9 +29,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const findings = [];
-    for (const lib of untrustedLibs(ctx)) {
+    for (const lib of await untrustedLibs(ctx)) {
       if (lib.unreadable) {
         continue; // a minified/obfuscated one is untrusted-minified-library's (reject) concern
       }

@@ -2,20 +2,19 @@
 // the built XPI, and in a source review the submitted archive - plus the route that carries
 // every artifact at once. `source` gets no ctx of its own: it points at whichever artifact
 // the review mode makes the target. They all project ONE shared review env: the schema,
-// the shipped manifest.json and experiments, and the mode. The pipeline (pipeline.js) resolves the schema, parses the sources, and builds
-// that shared env; this module only derives ctx.apiUsages from the already-parsed sources and
-// swaps the per-artifact fields for each sibling.
+// the shipped manifest.json and experiments, and the mode. Each per-artifact ctx also carries
+// that artifact's DATA getters (ctx.vendor(), ctx.bundled(), ctx.jsSources(),
+// ctx.apiUsages(), ctx.buildReview()), which compute on first ask (src/review/products.js).
 //
-// Belongs here: assembling the per-artifact sibling ctxs from the shared review env -
-// projecting the already-parsed JsSources into the RunContext shape registry.js documents.
+// Belongs here: assembling the per-artifact sibling ctxs from the shared review env and the
+// artifact's data getters, in the RunContext shape registry.js documents.
 //
-// Does NOT belong here: PARSING. The extraction pass (src/checks/extract.js) parses each source
-// once, up front, and its results arrive already parsed - this module never reaches for an AST.
-// Nor LOADING any review-level singleton: the pipeline does that once and hands it in via
-// the env. Nor any individual review logic - that lives in a rule under src/checks/rules/*.
-// The RunContext type and runChecks live in src/checks/registry.js.
+// Does NOT belong here: computing the data (src/review/products.js), LOADING any review-level
+// singleton (the pipeline does that once and hands it in via the env), or any individual
+// review logic - that lives in a rule under src/checks/rules/*. The RunContext type and
+// runChecks live in src/checks/registry.js.
 
-import { apiUsageOf } from "./extract.js";
+import { wiringError } from "../lib/errors.js";
 
 /** @typedef {import("./registry.js").RunContext} RunContext */
 
@@ -36,24 +35,10 @@ import { apiUsageOf } from "./extract.js";
  */
 
 /**
- * Per-source api-usage in the ctx.apiUsages shape (file + inline + the extracted usage),
- * derived from sources ALREADY through the extraction pass - this module never parses.
- * @param {import("../addon/sources.js").JsSource[]} jsSources
- * @returns {object[]}
- */
-function deriveApiUsages(jsSources) {
-  return jsSources.map((src) => ({
-    file: src.file,
-    inline: src.inline,
-    ...apiUsageOf(src),
-  }));
-}
-
-/**
  * Project one sibling RunContext from the shared review `env` onto a single artifact. Every
  * review-level field (schema, the shipped manifest.json and experiments, mode) is copied from
  * `env`, so all siblings share them by reference and cannot drift; only the artifact itself
- * and its parsed `jsSources`/`apiUsages` differ. The manifest.json and
+ * and its data getters differ. The manifest.json and
  * experiments are shipped-authoritative - read off `env`, which asked the built XPI once - so
  * a check cannot read one artifact's manifest.json against another's files.
  * @param {ReviewEnv} env
@@ -61,18 +46,16 @@ function deriveApiUsages(jsSources) {
  * @param {import("../addon/load.js").Addon} [routed.artifact]  The routed artifact, linked
  *   by reference: ctx.artifact IS the object the loader produced. Absent for the ONE route
  *   that can be about more than one artifact (the `all` ctx), which names them instead.
- *   By the time a check sees it, the artifact is sealed (src/lib/errors.js sealArtifact): a
- *   field only some artifacts carry throws when read off one that never produced it, so a
- *   check has no reason to ask whether a field EXISTS - the only way it cannot is that the
- *   check declared the wrong `input`. A field whose VALUE is null is the other thing entirely: `experiments` below
- *   is a verdict or null, and null is that artifact's answer (it declares none), so
- *   reading it through `?.` is right where guarding a field's existence is not.
- * @param {import("../addon/sources.js").JsSource[]} routed.jsSources
- * @param {object[]|undefined} routed.apiUsages  Per-source usage, or undefined for a ctx
- *   over no artifact (the `all` route, which names its artifacts instead).
+ *   A check reads the artifact's own files off it; what the review COMPUTES about it comes
+ *   through the data getters, never off the artifact.
+ * @param {import("../review/products.js").ArtifactData} routed.data  The artifact's data
+ *   getters. A getter for data this artifact never has throws, so a check has no reason to
+ *   ask whether data EXISTS - the only way it cannot is that the check declared the wrong
+ *   `input`. A value that is null is the other thing entirely: `experiments` below is a
+ *   verdict or null, and null is that artifact's answer (it declares none).
  * @returns {RunContext}
  */
-function projectCtx(env, { artifact, jsSources, apiUsages }) {
+function projectCtx(env, { artifact, data }) {
   /** @type {RunContext} */
   const ctx = {
     // Per-ctx scratch for the memoized derivations (see the lazy accessors in src/lib/*),
@@ -80,8 +63,12 @@ function projectCtx(env, { artifact, jsSources, apiUsages }) {
     // something the artifact was loaded with.
     cache: {},
     schema: env.schema,
-    jsSources,
-    apiUsages,
+    // The artifact's data, each computed on first ask and shared by every check after it.
+    vendor: data.vendor,
+    bundled: data.bundled,
+    jsSources: data.jsSources,
+    apiUsages: data.apiUsages,
+    buildReview: data.buildReview,
     options: env.options,
     invalidExperiment: env.invalidExperiment,
     // "xpi" (a built add-on) or "sca" (a source-code archive review, --sca-root). Gates checks
@@ -113,35 +100,19 @@ function projectCtx(env, { artifact, jsSources, apiUsages }) {
 }
 
 /**
- * The ctx over the BUILT XPI - always analysed, in both review modes. It serves the
- * `input: xpi` checks: the structure checks (bundled-files,
- * minimize-web-accessible-resources, ...), the manifest.json checks (the shipped manifest.json
- * IS this artifact's), the diff + packaging summaries, and - in an XPI review - the whole
- * review, since it IS siblings.source, the review target.
- * The XPI goes through the SAME full extraction pass in both modes, so it carries the
- * XPI's OWN per-source api-usage and an `input: xpi` check sees the identical artifact whether
- * the run is an XPI review or an SCA review. A reviewable XPI MUST arrive parsed; only a rejected
- * Experiment (env.invalidExperiment) may have no sources, and it reviews with no files
- * (its one check reads no code).
+ * The ctx over the BUILT XPI - in both review modes. It serves the `input: xpi` checks: the
+ * structure checks (bundled-files, minimize-web-accessible-resources, ...), the manifest.json
+ * checks (the shipped manifest.json IS this artifact's), the diff + packaging summaries, and -
+ * in an XPI review - the whole review, since it IS siblings.source, the review target. Its
+ * data is computed the same way in both modes, so an `input: xpi` check sees the identical
+ * artifact whether the run is an XPI review or a source review.
  * @param {import("../addon/load.js").Addon} xpiAddon  The built XPI.
- * @param {import("../addon/sources.js").JsSource[]|undefined} xpiParsedSources  Its sources,
- *   already through the full extraction pass (Phase 2). Absent only for a rejected Experiment.
+ * @param {import("../review/products.js").ArtifactData} data  Its data getters.
  * @param {ReviewEnv} env  The shared review-level state (see projectCtx).
  * @returns {RunContext}
  */
-export function buildXpiCtx(xpiAddon, xpiParsedSources, env) {
-  if (!env.invalidExperiment && !xpiParsedSources) {
-    throw new Error(
-      "buildXpiCtx: a reviewable built XPI arrived with no parsed sources " +
-        "(the extraction pass must run and hand them over)"
-    );
-  }
-  const jsSources = xpiParsedSources ?? [];
-  return projectCtx(env, {
-    artifact: xpiAddon,
-    jsSources,
-    apiUsages: deriveApiUsages(jsSources),
-  });
+export function buildXpiCtx(xpiAddon, data, env) {
+  return projectCtx(env, { artifact: xpiAddon, data });
 }
 
 /**
@@ -153,25 +124,15 @@ export function buildXpiCtx(xpiAddon, xpiParsedSources, env) {
  *
  * It projects the shipped manifest.json and experiments from `env`, so no artifact's
  * manifest.json is read against another's files and the review-level singletons stay
- * single-instance. The source MUST arrive parsed.
+ * single-instance.
  * @param {import("../addon/load.js").Addon} archive  The submitted archive, carrying its
  *   views (scaViews): `files` is everything but the Experiment implementation.
- * @param {import("../addon/sources.js").JsSource[]} parsedSources  Its parsed sources.
+ * @param {import("../review/products.js").ArtifactData} data  Its data getters.
  * @param {ReviewEnv} env
  * @returns {RunContext}
  */
-export function buildScaCtx(archive, parsedSources, env) {
-  if (!parsedSources) {
-    throw new Error(
-      "buildScaCtx: the readable source arrived with no parsed sources " +
-        "(the extraction pass must run and hand them over)"
-    );
-  }
-  return projectCtx(env, {
-    artifact: archive,
-    jsSources: parsedSources,
-    apiUsages: deriveApiUsages(parsedSources),
-  });
+export function buildScaCtx(archive, data, env) {
+  return projectCtx(env, { artifact: archive, data });
 }
 
 /**
@@ -200,7 +161,23 @@ export function buildScaCtx(archive, parsedSources, env) {
  * @returns {RunContext}
  */
 export function buildAllCtx(env, { xpi, sca = null }) {
-  const ctx = projectCtx(env, { jsSources: [], apiUsages: undefined });
+  // No artifact, so no data of its own: a check on this route asks ctx.xpi / ctx.sca, and one
+  // that reads the data here was written for the one-artifact shape.
+  const none = (what) => () =>
+    Promise.reject(
+      wiringError(
+        `${what} was read off the \`input: all\` ctx, which has no artifact - ask ctx.xpi / ctx.sca`
+      )
+    );
+  const ctx = projectCtx(env, {
+    data: {
+      vendor: none("The vendor reading"),
+      bundled: none("The classification"),
+      jsSources: none("The parsed sources"),
+      apiUsages: none("The API usage"),
+      buildReview: none("The build trace"),
+    },
+  });
   ctx.xpi = xpi;
   ctx.sca = sca;
   return ctx;

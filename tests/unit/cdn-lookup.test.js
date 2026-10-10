@@ -152,9 +152,11 @@ test("a hit promotes the bundle into the vendored family (library + libraryId + 
   // find-lib-on-cdn reports it; minified-code and missing-library do NOT.
   const ctx = { artifact: addon };
   assert.deepEqual(
-    findLibOnCdn
-      .run(withManifest(ctx))
-      .findings.map((f) => [f.file, f.item, f.hint]),
+    (await findLibOnCdn.run(withManifest(ctx))).findings.map((f) => [
+      f.file,
+      f.item,
+      f.hint,
+    ]),
     [
       [
         "app/fuse.min.js",
@@ -163,8 +165,11 @@ test("a hit promotes the bundle into the vendored family (library + libraryId + 
       ],
     ]
   );
-  assert.equal(minifiedCode.run(withManifest(ctx)).findings.length, 0);
-  assert.equal(missingLibrary.run(withManifest(ctx)).findings.length, 0);
+  assert.equal((await minifiedCode.run(withManifest(ctx))).findings.length, 0);
+  assert.equal(
+    (await missingLibrary.run(withManifest(ctx))).findings.length,
+    0
+  );
 });
 
 test("a NOT-popular hit is identified but untrusted (authored code), not the vendored family", async () => {
@@ -215,10 +220,14 @@ test("a NOT-popular hit is identified but untrusted (authored code), not the ven
   const ctx = { artifact: addon };
   // find-lib-on-cdn + minified-code stay silent; untrusted-minified-library rejects
   // it; untrusted-library stays silent because it reports only READABLE ones.
-  assert.equal(findLibOnCdn.run(withManifest(ctx)).findings.length, 0);
-  assert.equal(minifiedCode.run(withManifest(ctx)).findings.length, 0);
-  assert.equal(untrustedLibrary.run(withManifest(ctx)).findings.length, 0);
-  const rejects = untrustedMinifiedLibrary.run(withManifest(ctx)).findings;
+  assert.equal((await findLibOnCdn.run(withManifest(ctx))).findings.length, 0);
+  assert.equal((await minifiedCode.run(withManifest(ctx))).findings.length, 0);
+  assert.equal(
+    (await untrustedLibrary.run(withManifest(ctx))).findings.length,
+    0
+  );
+  const rejects = (await untrustedMinifiedLibrary.run(withManifest(ctx)))
+    .findings;
   assert.equal(rejects.length, 1);
   assert.match(rejects[0].item, /@me\/obscure 1\.0\.0/);
 });
@@ -261,13 +270,16 @@ test("a NOT-popular hit whose package name does not match the file is discarded"
 
   const ctx = { artifact: addon };
   assert.equal(
-    untrustedMinifiedLibrary.run(withManifest(ctx)).findings.length,
+    (await untrustedMinifiedLibrary.run(withManifest(ctx))).findings.length,
     0
   );
-  assert.equal(untrustedLibrary.run(withManifest(ctx)).findings.length, 0);
-  assert.equal(findLibOnCdn.run(withManifest(ctx)).findings.length, 0);
+  assert.equal(
+    (await untrustedLibrary.run(withManifest(ctx))).findings.length,
+    0
+  );
+  assert.equal((await findLibOnCdn.run(withManifest(ctx))).findings.length, 0);
   assert.deepEqual(
-    minifiedCode.run(withManifest(ctx)).findings.map((f) => f.file),
+    (await minifiedCode.run(withManifest(ctx))).findings.map((f) => f.file),
     ["pdf-lib.min.js"]
   );
 });
@@ -360,7 +372,7 @@ test("a gh-type hit uses GitHub stars for the popularity bar; a popular hit adds
   assert.equal(tag.cdn.popular, true);
   // Popular -> the "declare it" finding fires and nothing is escalated.
   assert.equal(
-    findLibOnCdn.run(withManifest({ artifact: addon })).findings.length,
+    (await findLibOnCdn.run(withManifest({ artifact: addon }))).findings.length,
     1
   );
   assert.deepEqual(addon.vendor.results, []);
@@ -404,7 +416,7 @@ test("a minified bundle is identified as a known library on the CDN", async () =
   assert.equal(tag.cdn.type, "npm");
   assert.ok(addon.bundled.nonAuthored.has("app/fuse.min.js"));
   assert.equal(
-    findLibOnCdn.run(withManifest({ artifact: addon })).findings.length,
+    (await findLibOnCdn.run(withManifest({ artifact: addon }))).findings.length,
     1
   );
 });
@@ -448,7 +460,7 @@ test("a large readable file is CDN-identified as a library (not scanned as autho
     "excluded from content analysis"
   );
   assert.equal(
-    findLibOnCdn.run(withManifest({ artifact: addon })).findings.length,
+    (await findLibOnCdn.run(withManifest({ artifact: addon }))).findings.length,
     1
   );
 });
@@ -555,17 +567,17 @@ test("a NOT-popular readable hit is untrusted and reviewed as authored (info)", 
 
   const ctx = { artifact: addon };
   assert.equal(
-    untrustedLibrary.run(withManifest(ctx)).findings.length,
+    (await untrustedLibrary.run(withManifest(ctx))).findings.length,
     1,
     "readable untrusted -> info"
   );
   assert.equal(
-    untrustedMinifiedLibrary.run(withManifest(ctx)).findings.length,
+    (await untrustedMinifiedLibrary.run(withManifest(ctx))).findings.length,
     0,
     "not rejected as unreadable"
   );
   assert.equal(
-    findLibOnCdn.run(withManifest(ctx)).findings.length,
+    (await findLibOnCdn.run(withManifest(ctx))).findings.length,
     0,
     "not-popular -> no declare-it"
   );
@@ -581,9 +593,9 @@ test("a miss leaves the bundle minified (falls through to minified-code)", async
   assert.equal(tag.library, false);
   assert.equal(tag.cdn, undefined);
   const ctx = { artifact: addon };
-  assert.equal(findLibOnCdn.run(withManifest(ctx)).findings.length, 0);
+  assert.equal((await findLibOnCdn.run(withManifest(ctx))).findings.length, 0);
   assert.deepEqual(
-    minifiedCode.run(withManifest(ctx)).findings.map((f) => f.file),
+    (await minifiedCode.run(withManifest(ctx))).findings.map((f) => f.file),
     ["app/blob.js"]
   );
 });
@@ -705,7 +717,7 @@ test("results are cached on disk: a second run makes no request (hits + misses)"
   );
 });
 
-test("cdnUrl builds npm and gh source URLs", () => {
+test("cdnUrl builds npm and gh source URLs", async () => {
   assert.equal(
     cdnUrl({
       type: "npm",

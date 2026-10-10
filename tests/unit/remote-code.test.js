@@ -25,7 +25,7 @@ import { formatNote } from "../../src/checks/registry.js";
 // ---- url classifier ----
 // http(s), protocol-relative //, ftp and wss URLs classify as remote; data:/blob:
 // as embedded; relative paths, moz-extension:, fragments and "" as local.
-test("classifyUrl distinguishes remote / embedded / local", () => {
+test("classifyUrl distinguishes remote / embedded / local", async () => {
   for (const u of [
     "https://x/y.js",
     "http://x",
@@ -45,7 +45,7 @@ test("classifyUrl distinguishes remote / embedded / local", () => {
 // ---- HTML ----
 // Remote <script>, stylesheet <link> and <iframe> yield three remote refs
 // (kinds script/css/content) while a local <script src> stays classified local.
-test("HTML scan flags remote script/link/iframe, ignores local", () => {
+test("HTML scan flags remote script/link/iframe, ignores local", async () => {
   const refs = scanHtmlRemoteRefs(
     `<script src="https://cdn/x.js"></script>
          <script src="local.js"></script>
@@ -64,7 +64,7 @@ test("HTML scan flags remote script/link/iframe, ignores local", () => {
 // ---- CSS ----
 // A remote @import and a remote url() are reported (kinds import/url); a local
 // @import and a relative font url() are ignored.
-test("CSS scan flags remote @import and url(), not local", () => {
+test("CSS scan flags remote @import and url(), not local", async () => {
   const refs = scanCssRemoteRefs(
     `@import url("https://cdn/a.css");
          @import "local.css";
@@ -80,7 +80,7 @@ test("CSS scan flags remote @import and url(), not local", () => {
 
 // A url() inside a CSS comment is skipped and a data: URI containing a literal
 // ')' does not break parsing, so only the one genuine remote url() is reported.
-test("CSS scan ignores url() in comments and handles ')' inside a data URI", () => {
+test("CSS scan ignores url() in comments and handles ')' inside a data URI", async () => {
   const refs = scanCssRemoteRefs(
     `/* see url(https://commented.example.com/x.css) */
      body { background: url("data:image/png;base64,AA)BB"); }
@@ -97,7 +97,7 @@ test("CSS scan ignores url() in comments and handles ')' inside a data URI", () 
 // CSS inside HTML is scanned with the same css scanner, with lines offset to the
 // HTML file: a remote @import in a <style> reports at its file line, a remote
 // url() in a style= attribute at the element's line, and local refs are ignored.
-test("inline CSS scan flags remote @import in <style> and url() in style=", () => {
+test("inline CSS scan flags remote @import in <style> and url() in style=", async () => {
   const html =
     `<!doctype html>\n` + // line 1
     `<head>\n` + // line 2
@@ -120,14 +120,16 @@ test("inline CSS scan flags remote @import in <style> and url() in style=", () =
 
 // remote-resources surfaces an inline-<style> remote @import as a finding, exactly
 // like a remote ref in a standalone .css file.
-test("remote-resources flags a remote @import inside an inline <style>", () => {
+test("remote-resources flags a remote @import inside an inline <style>", async () => {
   const ctx = fakeCtx(
     {
       "page.html": `<head><style>@import url("https://cdn/f.css");</style></head>`,
     },
     { manifest_version: 3, name: "x", version: "1" }
   );
-  const items = remoteScript.run(withManifest(ctx)).findings.map((f) => f.item);
+  const items = (await remoteScript.run(withManifest(ctx))).findings.map(
+    (f) => f.item
+  );
   assert.ok(items.some((i) => i.includes("cdn/f.css")));
 });
 
@@ -139,7 +141,7 @@ function types(code) {
 // Static import, dynamic import() and importScripts() with remote URLs all flag
 // (import as remote-import, importScripts as remote-importscripts); a relative
 // "./local.js" import does not.
-test("JS scan flags remote imports / importScripts", () => {
+test("JS scan flags remote imports / importScripts", async () => {
   assert.ok(
     types(`import x from "https://cdn/m.js";`).includes("remote-import")
   );
@@ -157,7 +159,7 @@ test("JS scan flags remote imports / importScripts", () => {
 // Dynamic-code sinks are detected: eval (eval), new Function and bare Function()
 // (function-constructor), and setTimeout with a string body (string-timer);
 // setTimeout with an arrow function is not a string-timer.
-test("JS scan flags eval / Function / string timers", () => {
+test("JS scan flags eval / Function / string timers", async () => {
   assert.ok(types(`eval("x");`).includes("eval"));
   assert.ok(
     types(`const f = new Function("return 1");`).includes(
@@ -177,7 +179,7 @@ test("JS scan flags eval / Function / string timers", () => {
 // csp-unsafe-* - so its hits are dropped; a non-WebExtension file (here an
 // unreferenced privileged-style file, outside the tree) keeps all four hit types,
 // including the ambiguous fetch().then(eval) that feeds remote-eval.
-test("getEvalScan scopes hits to non-WebExtension files", () => {
+test("getEvalScan scopes hits to non-WebExtension files", async () => {
   const dyn =
     `eval("x");\n` +
     `const f = new Function("return 1");\n` +
@@ -192,7 +194,7 @@ test("getEvalScan scopes hits to non-WebExtension files", () => {
       background: { scripts: ["bg.js"] },
     }
   );
-  const hits = getEvalScan(withManifest(ctx)).hits;
+  const hits = (await getEvalScan(withManifest(ctx))).hits;
   // Every hit is from the non-WebExtension file; the WebExtension file is exempt.
   assert.ok(hits.length > 0);
   assert.ok(
@@ -213,7 +215,7 @@ test("getEvalScan scopes hits to non-WebExtension files", () => {
 
 // Assigning a literal remote URL to a created script element's .src is detected
 // as remote-script-src (dynamic injection of remote code at runtime).
-test("JS scan flags runtime script injection with a literal remote src", () => {
+test("JS scan flags runtime script injection with a literal remote src", async () => {
   const t = types(
     `const s = document.createElement("script"); s.src = "https://cdn/x.js";`
   );
@@ -223,7 +225,7 @@ test("JS scan flags runtime script injection with a literal remote src", () => {
 // A remote <script> inside an HTML string passed to document.write/innerHTML is
 // flagged remote-script-html, including when an attribute value contains '>'
 // (an AST/HTML parse case a regex cannot see); a local src is not flagged.
-test("JS scan detects a remote script in injected HTML, even with '>' in an attr", () => {
+test("JS scan detects a remote script in injected HTML, even with '>' in an attr", async () => {
   assert.ok(
     types(
       `document.write('<script src="https://cdn.example.com/x.js"></script>');`
@@ -245,7 +247,7 @@ test("JS scan detects a remote script in injected HTML, even with '>' in an attr
 // Non-literal sinks where the URL/code cannot be resolved statically (computed
 // import(), computed script .src, fetch().then(eval)) are surfaced as ambiguous-*
 // hits so a human can review them rather than being silently dropped.
-test("JS scan reports ambiguous (non-literal) cases for review", () => {
+test("JS scan reports ambiguous (non-literal) cases for review", async () => {
   assert.ok(
     types(`const u = base + path; import(u);`).includes("ambiguous-import")
   );
@@ -267,7 +269,7 @@ test("JS scan reports ambiguous (non-literal) cases for review", () => {
 // never remote/ambiguous. A relative literal or an uninterpolated template both
 // resolve, as do the deprecated extension.getURL alias and an aliased /
 // feature-detected API root (via the shared api-base index).
-test("JS scan treats getURL(<relative>) resources as local, not remote/ambiguous", () => {
+test("JS scan treats getURL(<relative>) resources as local, not remote/ambiguous", async () => {
   const clean = (code) => {
     const t = types(code);
     assert.ok(
@@ -302,7 +304,7 @@ test("JS scan treats getURL(<relative>) resources as local, not remote/ambiguous
 // exactly like the inline call - local when the argument is relative, and still
 // REMOTE when it is absolute, so the indirection masks nothing. A reassigned
 // binding cannot be proven, so it stays ambiguous.
-test("JS scan resolves a getURL result held in a variable, like the inline call", () => {
+test("JS scan resolves a getURL result held in a variable, like the inline call", async () => {
   const clean = (code) => {
     const t = types(code);
     assert.ok(
@@ -334,7 +336,7 @@ test("JS scan resolves a getURL result held in a variable, like the inline call"
 // reported remote rather than hidden behind a local-looking sibling. The arms are
 // read wherever they sit - standalone, nested for a third choice, inside a
 // concatenation, and whether the call is inline or held in a variable.
-test("JS scan judges every arm of a conditional getURL argument", () => {
+test("JS scan judges every arm of a conditional getURL argument", async () => {
   const remote = (code, type) =>
     assert.ok(
       types(code).includes(type),
@@ -374,7 +376,7 @@ test("JS scan judges every arm of a conditional getURL argument", () => {
 // "https://x"), so it must still be flagged remote - a remote/exfil URL wrapped in
 // getURL is not masked. A getURL argument that cannot be resolved statically stays
 // ambiguous (the result cannot be proven local).
-test("JS scan flags getURL(<absolute>) as remote, keeps dynamic-arg getURL ambiguous", () => {
+test("JS scan flags getURL(<absolute>) as remote, keeps dynamic-arg getURL ambiguous", async () => {
   assert.ok(
     types(`import(browser.runtime.getURL("https://evil.com/x.js"));`).includes(
       "remote-import"
@@ -401,7 +403,7 @@ test("JS scan flags getURL(<absolute>) as remote, keeps dynamic-arg getURL ambig
 // Over-suppression guards: getURL resolution must NOT swallow genuinely remote or
 // unresolvable references, nor a getURL that is not the real API method (a bare
 // call, a method on some other object, or a shadowed API-root binding).
-test("JS scan getURL resolution does not over-suppress", () => {
+test("JS scan getURL resolution does not over-suppress", async () => {
   // Real remote / dynamic references still fire.
   assert.ok(types(`import("https://cdn/m.js");`).includes("remote-import"));
   assert.ok(types(`import(base + "/x.js");`).includes("ambiguous-import"));
@@ -422,7 +424,7 @@ test("JS scan getURL resolution does not over-suppress", () => {
 // eval-family sinks still flag when accessed via window/globalThis/self
 // (window.eval, self.importScripts, window.setTimeout string, new window.Function),
 // but an eval method on a non-global object and a non-string global timer do not.
-test("JS scan flags eval-family sinks reached via a global object", () => {
+test("JS scan flags eval-family sinks reached via a global object", async () => {
   assert.ok(types(`window.eval("x");`).includes("eval"));
   assert.ok(types(`globalThis.eval("x");`).includes("eval"));
   assert.ok(
@@ -447,7 +449,7 @@ test("JS scan flags eval-family sinks reached via a global object", () => {
 // The same eval-family sinks accessed via a BRACKETED string property on a global
 // (globalThis["eval"], window["Function"]) are the same sinks - a common way to hide
 // them (provider_for_google_calendar used globalThis["eval"] over hex-escaped data).
-test("JS scan flags eval-family sinks reached via bracketed global access", () => {
+test("JS scan flags eval-family sinks reached via bracketed global access", async () => {
   assert.ok(types(`globalThis["eval"]("x");`).includes("eval"));
   assert.ok(types(`window["eval"]("x");`).includes("eval"));
   assert.ok(
@@ -470,7 +472,7 @@ test("JS scan flags eval-family sinks reached via bracketed global access", () =
 // rel is parsed as space-separated tokens: "alternate stylesheet" matches via
 // its stylesheet token, but "stylesheet-x" and "x-preload" are single non-keyword
 // tokens and must not match, so only one remote css ref is reported.
-test("HTML scan matches rel by whitespace token, not substring", () => {
+test("HTML scan matches rel by whitespace token, not substring", async () => {
   const refs = scanHtmlRemoteRefs(
     `<link rel="alternate stylesheet" href="https://cdn/a.css">
          <link rel="stylesheet-x" href="https://cdn/b.css">
@@ -488,7 +490,7 @@ test("HTML scan matches rel by whitespace token, not substring", () => {
 // modulepreload and preload as=script count as remote script sources, preload
 // as=style as css, while rel=icon and rel=preconnect are not code sources and
 // are ignored.
-test("HTML scan flags remote module/script preload links", () => {
+test("HTML scan flags remote module/script preload links", async () => {
   const refs = scanHtmlRemoteRefs(
     `<link rel="modulepreload" href="https://cdn/m.js">
          <link rel="preload" as="script" href="https://cdn/s.js">
@@ -525,7 +527,7 @@ function fakeCtx(files, manifest, vendor, bundled) {
 // A manifest.json CSP with 'unsafe-eval' and 'unsafe-inline' yields two findings
 // (severity left to the registry stamp), whereas 'wasm-unsafe-eval' is
 // permitted and produces none.
-test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval", () => {
+test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval", async () => {
   const bad = fakeCtx(
     {},
     {
@@ -534,15 +536,21 @@ test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval",
       },
     }
   );
-  assert.equal(cspUnsafeEval.run(withManifest(bad)).findings.length, 1);
-  assert.equal(cspUnsafeInline.run(withManifest(bad)).findings.length, 1);
+  assert.equal((await cspUnsafeEval.run(withManifest(bad))).findings.length, 1);
+  assert.equal(
+    (await cspUnsafeInline.run(withManifest(bad))).findings.length,
+    1
+  );
 
   const ok = fakeCtx(
     {},
     { content_security_policy: "script-src 'self' 'wasm-unsafe-eval'" }
   );
-  assert.equal(cspUnsafeEval.run(withManifest(ok)).findings.length, 0);
-  assert.equal(cspUnsafeInline.run(withManifest(ok)).findings.length, 0);
+  assert.equal((await cspUnsafeEval.run(withManifest(ok))).findings.length, 0);
+  assert.equal(
+    (await cspUnsafeInline.run(withManifest(ok))).findings.length,
+    0
+  );
 
   // Both findings anchor on the content_security_policy line of the manifest.json text, so the
   // record is built over THOSE bytes - the line the reviewer opens is a fact about the
@@ -559,19 +567,19 @@ test("csp-unsafe-eval / csp-unsafe-inline flag the CSP, allow wasm-unsafe-eval",
     options: {},
   };
   assert.equal(
-    cspUnsafeEval.run(withManifest(located)).findings[0].loc.line,
+    (await cspUnsafeEval.run(withManifest(located))).findings[0].loc.line,
     3
   );
   assert.equal(
-    cspUnsafeInline.run(withManifest(located)).findings[0].loc.line,
+    (await cspUnsafeInline.run(withManifest(located))).findings[0].loc.line,
     3
   );
 });
 
 // A remote host allowed in the CSP script-src directive is flagged with a
 // "remote script source" message, since it permits loading off-package code.
-test("remote-resources flags a remote CSP script-src host", () => {
-  const { findings } = remoteScript.run(
+test("remote-resources flags a remote CSP script-src host", async () => {
+  const { findings } = await remoteScript.run(
     withManifest(
       fakeCtx(
         {},
@@ -585,16 +593,19 @@ test("remote-resources flags a remote CSP script-src host", () => {
 
 // A clean fully-bundled add-on (local JS, no remote CSP or eval) produces zero
 // findings from both checks - the negative/no-false-positive baseline.
-test("remote-resources + eval checks: no findings for a clean bundled add-on", () => {
+test("remote-resources + eval checks: no findings for a clean bundled add-on", async () => {
   const ctx = fakeCtx(
     { "bg.js": "browser.runtime.onInstalled.addListener(() => {});\n" },
     { manifest_version: 3, name: "x", version: "1" }
   );
-  assert.equal(remoteScript.run(withManifest(ctx)).findings.length, 0);
+  assert.equal((await remoteScript.run(withManifest(ctx))).findings.length, 0);
   // no undecidable sites -> nothing escalated either
-  assert.deepEqual(remoteScript.run(withManifest(ctx)).escalations, []);
-  assert.equal(evalCall.run(allOf(withManifest(ctx))).findings.length, 0);
-  const re = remoteEval.run(allOf(withManifest(ctx)));
+  assert.deepEqual((await remoteScript.run(withManifest(ctx))).escalations, []);
+  assert.equal(
+    (await evalCall.run(allOf(withManifest(ctx)))).findings.length,
+    0
+  );
+  const re = await remoteEval.run(allOf(withManifest(ctx)));
   assert.equal(re.findings.length, 0);
   assert.deepEqual(re.escalations, []);
 });
@@ -603,7 +614,7 @@ test("remote-resources + eval checks: no findings for a clean bundled add-on", (
 // Each scanned site is narrated to the feed via ctx.note with its per-site
 // verdict, regardless of the finding (the orchestrator gates/captures the feed).
 
-test("eval checks note each dynamic-code site and the CSP, with verdicts", () => {
+test("eval checks note each dynamic-code site and the CSP, with verdicts", async () => {
   const ctx = fakeCtx(
     { "bg.js": `eval("x"); fetch(u).then(eval);` },
     {
@@ -615,9 +626,9 @@ test("eval checks note each dynamic-code site and the CSP, with verdicts", () =>
   const notes = [];
   ctx.note = (at, item, verdict) =>
     notes.push({ file: at.file, item, verdict });
-  evalCall.run(allOf(withManifest(ctx), ctx.note)).findings;
-  remoteEval.run(allOf(withManifest(ctx), ctx.note));
-  cspUnsafeEval.run(withManifest(ctx)).findings;
+  (await evalCall.run(allOf(withManifest(ctx), ctx.note))).findings;
+  await remoteEval.run(allOf(withManifest(ctx), ctx.note));
+  (await cspUnsafeEval.run(withManifest(ctx))).findings;
   assert.ok(
     notes.some((n) => n.item === "eval()" && n.verdict === VERDICT.FAIL)
   );
@@ -629,7 +640,7 @@ test("eval checks note each dynamic-code site and the CSP, with verdicts", () =>
   );
 });
 
-test("remote-resources notes remote (fail), local code (pass) and ambiguous (unsure)", () => {
+test("remote-resources notes remote (fail), local code (pass) and ambiguous (unsure)", async () => {
   const ctx = fakeCtx(
     {
       "popup.html":
@@ -640,7 +651,7 @@ test("remote-resources notes remote (fail), local code (pass) and ambiguous (uns
   );
   const notes = [];
   ctx.note = (at, item, verdict) => notes.push({ item, verdict });
-  remoteScript.run(withManifest(ctx));
+  await remoteScript.run(withManifest(ctx));
   assert.ok(
     notes.some((n) => /cdn/.test(n.item) && n.verdict === VERDICT.FAIL)
   );
@@ -652,7 +663,7 @@ test("remote-resources notes remote (fail), local code (pass) and ambiguous (uns
 
 // The feed line: a padded [verdict] tag aligning the file column, then
 // file:line - item (file alone when no line is known).
-test("formatNote renders a padded verdict tag and the site", () => {
+test("formatNote renders a padded verdict tag and the site", async () => {
   // The note is unindented - runChecks prints it at the feed's DETAIL level.
   assert.equal(
     formatNote("bg.js", { line: 4 }, "fetch x", VERDICT.FAIL),
@@ -696,15 +707,15 @@ const verified = (path = "lib/x.css") => ({
   results: [{ path, source: UPSTREAM, outcome: "verified" }],
 });
 
-test("vendored-remote-resources sends a remote load in a VERIFIED vendored file to a person", () => {
+test("vendored-remote-resources sends a remote load in a VERIFIED vendored file to a person", async () => {
   const ctx = withManifest(
     fakeCtx(VENDORED_CSS, { manifest_version: 3 }, verified())
   );
   // The developer's-own-code check says nothing about it: not its question.
-  const own = remoteScript.run(ctx);
+  const own = await remoteScript.run(ctx);
   assert.deepEqual(own.findings, []);
   assert.deepEqual(own.escalations, []);
-  const out = vendoredRemote.run(ctx);
+  const out = await vendoredRemote.run(ctx);
   assert.deepEqual(out.findings, []);
   assert.equal(out.escalations.length, 1);
   const [e] = out.escalations;
@@ -717,7 +728,7 @@ test("vendored-remote-resources sends a remote load in a VERIFIED vendored file 
 });
 
 // A definite remote load in HTML takes the same route as one in CSS.
-test("vendored-remote-resources routes a remote <script> in a verified file the same way", () => {
+test("vendored-remote-resources routes a remote <script> in a verified file the same way", async () => {
   const ctx = withManifest(
     fakeCtx(
       { "lib/x.html": `<script src="https://cdn.example/evil.js"></script>` },
@@ -725,9 +736,9 @@ test("vendored-remote-resources routes a remote <script> in a verified file the 
       verified("lib/x.html")
     )
   );
-  assert.deepEqual(remoteScript.run(ctx).findings, []);
+  assert.deepEqual((await remoteScript.run(ctx)).findings, []);
   assert.deepEqual(
-    vendoredRemote.run(ctx).escalations.map((e) => e.item),
+    (await vendoredRemote.run(ctx)).escalations.map((e) => e.item),
     ["https://cdn.example/evil.js"]
   );
 });
@@ -736,7 +747,7 @@ test("vendored-remote-resources routes a remote <script> in a verified file the 
 // leaves the file reviewed as the developer's own code (applyUnverifiedVendor), so
 // its remote loads stay findings. Without this the feature would exempt any declared
 // file, which is exactly what a declaration must never buy.
-test("remote-resources still flags a remote load in a declared but unverified file", () => {
+test("remote-resources still flags a remote load in a declared but unverified file", async () => {
   for (const outcome of ["modified", "not-popular", "unfetchable", "no-url"]) {
     const ctx = fakeCtx(
       VENDORED_CSS,
@@ -746,13 +757,13 @@ test("remote-resources still flags a remote load in a declared but unverified fi
         results: [{ path: "lib/x.css", source: UPSTREAM, outcome }],
       }
     );
-    const out = remoteScript.run(withManifest(ctx));
+    const out = await remoteScript.run(withManifest(ctx));
     assert.equal(out.findings.length, 1, outcome);
     assert.deepEqual(out.escalations, [], outcome);
   }
   // ... and a file with no vendor store at all (the SCA / undeclared case).
   const bare = fakeCtx(VENDORED_CSS, { manifest_version: 3 });
-  assert.equal(remoteScript.run(withManifest(bare)).findings.length, 1);
+  assert.equal((await remoteScript.run(withManifest(bare))).findings.length, 1);
 });
 
 // A submission can say two contradictory things about one file - a not-popular FOLDER
@@ -761,11 +772,11 @@ test("remote-resources still flags a remote load in a declared but unverified fi
 // carry the contradiction; the untrusted list is what still remembers it. Reading
 // only the results would tell the reviewer both "reviewed as authored code" and
 // "matched upstream" about one file, with the exempting half winning.
-test("remote-resources refuses the exemption for a file marked untrusted", () => {
+test("remote-resources refuses the exemption for a file marked untrusted", async () => {
   const ctx = fakeCtx(VENDORED_CSS, { manifest_version: 3 }, verified(), {
     untrusted: [{ file: "lib/x.css", source: UPSTREAM, unreadable: false }],
   });
-  const out = remoteScript.run(withManifest(ctx));
+  const out = await remoteScript.run(withManifest(ctx));
   assert.equal(out.findings.length, 1);
   assert.deepEqual(out.escalations, []);
 });
@@ -773,7 +784,7 @@ test("remote-resources refuses the exemption for a file marked untrusted", () =>
 // An undecidable site in a verified vendored file goes to the vendored lane too, not
 // the developer's: the only thing resolving it could do is produce a finding this file is
 // exempt from, so the undecidable question is not asked about it at all.
-test("an undecidable site in a verified vendored file asks the other question too", () => {
+test("an undecidable site in a verified vendored file asks the other question too", async () => {
   const ctx = withManifest(
     fakeCtx(
       { "lib/x.html": `<script src="data:text/javascript,alert(1)"></script>` },
@@ -783,18 +794,21 @@ test("an undecidable site in a verified vendored file asks the other question to
   );
   // Not asked as "is this remote?" - resolving it could only produce a finding this
   // file is exempt from - so remote-resources does not raise it at all.
-  assert.deepEqual(remoteScript.run(ctx).escalations, []);
-  assert.equal(vendoredRemote.run(ctx).escalations.length, 1);
+  assert.deepEqual((await remoteScript.run(ctx)).escalations, []);
+  assert.equal((await vendoredRemote.run(ctx)).escalations.length, 1);
 });
 
 // The scanners can report one site twice; the findings lane dedupes, and a reviewer
 // should be asked once too.
-test("vendored-remote-resources dedupes its escalations like the findings", () => {
+test("vendored-remote-resources dedupes its escalations like the findings", async () => {
   const dup = `<link rel="stylesheet" href="https://cdn.example/a.css"><link rel="stylesheet" href="https://cdn.example/a.css">`;
   const ctx = fakeCtx(
     { "lib/x.html": dup },
     { manifest_version: 3 },
     verified("lib/x.html")
   );
-  assert.equal(vendoredRemote.run(withManifest(ctx)).escalations.length, 1);
+  assert.equal(
+    (await vendoredRemote.run(withManifest(ctx))).escalations.length,
+    1
+  );
 });

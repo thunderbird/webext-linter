@@ -17,9 +17,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const findings = [];
-    for (const src of ctx.jsSources) {
+    for (const src of await ctx.jsSources()) {
       const { parseError } = apiUsageOf(src);
       if (parseError && !walkFailureOf(src)) {
         findings.push(

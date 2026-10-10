@@ -21,8 +21,8 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
-    const results = ctx.artifact.vendor.results ?? [];
+  async run(ctx) {
+    const results = (await ctx.vendor()).results ?? [];
     const findings = [];
     for (const { path, source, outcome } of results) {
       if (outcome === "verified") {

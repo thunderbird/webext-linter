@@ -27,9 +27,9 @@ import { perArtifact } from "../each-artifact.js";
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
 export default {
-  run: perArtifact((ctx) => {
+  run: perArtifact(async (ctx) => {
     const out = [];
-    for (const sink of getOutboundSinks(ctx)) {
+    for (const sink of await getOutboundSinks(ctx)) {
       if (!sink.channel.overt || !sink.destClass.remote) {
         continue;
       }

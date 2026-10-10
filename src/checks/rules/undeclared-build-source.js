@@ -23,8 +23,8 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: [], escalations?: Escalation[]}}
    */
-  run(ctx) {
-    const review = ctx.artifact.buildReview;
+  async run(ctx) {
+    const review = await ctx.buildReview();
     const { unresolved } = review;
     // Null when the source documents no build at all: the entry then carries no locus
     // rather than pointing the reviewer at a package.json the submission lacks.

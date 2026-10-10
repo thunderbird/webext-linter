@@ -72,35 +72,26 @@ test("inputFor recovers the sibling a check ran on", () => {
 // The wrap and the registry entry are one decision in two files, so the failure when they
 // disagree has to name both halves. Only the `all` route names the artifacts; left to
 // itself the body would iterate nothing on any other route and report a clean review.
-// A body's results are read synchronously, so an async one would come back empty and
-// read as a clean review - it is refused by name instead.
-test("a perArtifact body that returns a promise fails by name", () => {
-  const wrapped = perArtifact(async () => ({ findings: [{ file: "x" }] }));
-  assert.throws(
-    () => wrapped({ xpi: {}, sca: null }, { id: "some-check", input: "all" }),
-    /some-check wraps an async body in perArtifact/
-  );
-});
-
-test("a perArtifact body routed anywhere but `all` fails by name", () => {
-  const wrapped = perArtifact(() => ({ findings: [] }));
-  assert.throws(
-    () => wrapped({ jsSources: [] }, { id: "some-check", input: "source" }),
+test("a perArtifact body routed anywhere but `all` fails by name", async () => {
+  const wrapped = perArtifact(async () => ({ findings: [] }));
+  await assert.rejects(
+    () => wrapped({}, { id: "some-check", input: "source" }),
     /some-check is wrapped in perArtifact but was routed to "source"/
   );
   // And it runs, unremarkably, when the route does name them - over both sides, and over
-  // one where a review has one.
+  // one where a review has one. The body is awaited: the data it reads is computed on
+  // first ask.
   const ran = [];
-  const counting = perArtifact((one) => {
+  const counting = perArtifact(async (one) => {
     ran.push(one.tag);
-    return { findings: [] };
+    return { findings: [{ file: one.tag }] };
   });
-  assert.deepEqual(counting({ xpi: { tag: "x" }, sca: { tag: "s" } }, {}), {
-    findings: [],
-    escalations: [],
-  });
+  assert.deepEqual(
+    await counting({ xpi: { tag: "x" }, sca: { tag: "s" } }, {}),
+    { findings: [{ file: "x" }, { file: "s" }], escalations: [] }
+  );
   assert.deepEqual(ran, ["x", "s"]);
   ran.length = 0;
-  counting({ xpi: { tag: "x" }, sca: null }, {});
+  await counting({ xpi: { tag: "x" }, sca: null }, {});
   assert.deepEqual(ran, ["x"], "an XPI review has one artifact, not one twice");
 });

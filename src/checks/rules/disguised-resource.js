@@ -22,9 +22,9 @@ import { finding } from "../../report/finding.js";
 const TYPES = new Set(["element-src", "set-attribute"]);
 
 export default {
-  run(ctx) {
+  async run(ctx) {
     const out = [];
-    for (const sink of getOutboundSinks(ctx)) {
+    for (const sink of await getOutboundSinks(ctx)) {
       if (!TYPES.has(sink.type) || !isStrongCovertExfil(sink)) {
         continue;
       }

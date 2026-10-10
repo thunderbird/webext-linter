@@ -27,7 +27,7 @@ import { trunc } from "./util.js";
  * The add-on's outbound network sinks, scanned once and memoized on the addon
  * so every check shares the result.
  * @param {RunContext} ctx
- * @returns {FileSink[]}
+ * @returns {Promise<FileSink[]>}
  */
 export function getOutboundSinks(ctx) {
   return ((ctx.cache ??= {}).outboundSinks ??= scanAll(ctx));
@@ -77,12 +77,12 @@ export function isWeakCovertExfil(sink) {
 
 /**
  * @param {RunContext} ctx
- * @returns {FileSink[]}
+ * @returns {Promise<FileSink[]>}
  */
-function scanAll(ctx) {
-  const skip = nonAuthoredJs(ctx);
+async function scanAll(ctx) {
+  const skip = await nonAuthoredJs(ctx);
   const out = [];
-  for (const src of ctx.jsSources ?? []) {
+  for (const src of await ctx.jsSources()) {
     if (skip.has(src.file)) {
       continue;
     }

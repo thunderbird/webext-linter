@@ -17,7 +17,7 @@ import bannedLibrary from "../../src/checks/rules/banned-library.js";
 
 // ---- parseLibraryBlocks ----
 
-test("parseLibraryBlocks reads entries keyed by npm name, skipping malformed ones", () => {
+test("parseLibraryBlocks reads entries keyed by npm name, skipping malformed ones", async () => {
   const blocks = parseLibraryBlocks(`
 - name: jquery
   banned_below: "3.0.0"
@@ -33,7 +33,7 @@ test("parseLibraryBlocks reads entries keyed by npm name, skipping malformed one
   assert.equal(blocks.get("dompurify").bannedBelow, null);
 });
 
-test("parseLibraryBlocks tolerates an empty / non-list document", () => {
+test("parseLibraryBlocks tolerates an empty / non-list document", async () => {
   assert.equal(parseLibraryBlocks("").size, 0);
   assert.equal(parseLibraryBlocks("{}").size, 0);
   assert.equal(parseLibraryBlocks("null").size, 0);
@@ -41,7 +41,7 @@ test("parseLibraryBlocks tolerates an empty / non-list document", () => {
 
 // ---- matchLibraryBlock ----
 
-test("matchLibraryBlock: banned below, unadvised below, clean at/above the threshold", () => {
+test("matchLibraryBlock: banned below, unadvised below, clean at/above the threshold", async () => {
   const blocks = parseLibraryBlocks(`
 - name: jquery
   banned_below: "3.0.0"
@@ -63,7 +63,7 @@ test("matchLibraryBlock: banned below, unadvised below, clean at/above the thres
   assert.equal(matchLibraryBlock(blocks, "dompurify", "2.4.0"), null);
 });
 
-test("matchLibraryBlock: normalizes a dispensary alias (angularjs -> angular) and strips a v prefix", () => {
+test("matchLibraryBlock: normalizes a dispensary alias (angularjs -> angular) and strips a v prefix", async () => {
   const blocks = parseLibraryBlocks(`
 - name: angular
   banned_below: "1.5.9"
@@ -77,7 +77,7 @@ test("matchLibraryBlock: normalizes a dispensary alias (angularjs -> angular) an
   assert.equal(matchLibraryBlock(blocks, "angularjs", "1.5.9"), null);
 });
 
-test("matchLibraryBlock: unknown name, unparseable version, and empty policy never match", () => {
+test("matchLibraryBlock: unknown name, unparseable version, and empty policy never match", async () => {
   const blocks = parseLibraryBlocks(
     `- name: jquery\n  banned_below: "3.0.0"\n  reason: "R"`
   );
@@ -87,7 +87,7 @@ test("matchLibraryBlock: unknown name, unparseable version, and empty policy nev
   assert.equal(matchLibraryBlock(new Map(), "jquery", "1.0.0"), null);
 });
 
-test("matchLibraryBlock: banned takes precedence over unadvised (below both)", () => {
+test("matchLibraryBlock: banned takes precedence over unadvised (below both)", async () => {
   const blocks = parseLibraryBlocks(`
 - name: lib
   banned_below: "2.0.0"
@@ -110,7 +110,7 @@ test("resolveLibraryBlocks reads the shipped default asset", async () => {
 
 // ---- the banned-library check (pure reader of addon.vendor.blocked) ----
 
-test("banned-library: banned -> error, unadvised -> warning, anchored at the declaration line", () => {
+test("banned-library: banned -> error, unadvised -> warning, anchored at the declaration line", async () => {
   const pkg = '{\n  "dependencies": {\n    "jquery": "2.2.4"\n  }\n}';
   const ctx = {
     artifact: {
@@ -137,7 +137,7 @@ test("banned-library: banned -> error, unadvised -> warning, anchored at the dec
       },
     },
   };
-  const out = bannedLibrary.run(withManifest(ctx)).findings;
+  const out = (await bannedLibrary.run(withManifest(ctx))).findings;
   assert.equal(out.length, 2);
 
   const jq = out.find((f) => f.item === "jquery");
@@ -157,18 +157,22 @@ test("banned-library: banned -> error, unadvised -> warning, anchored at the dec
   assert.equal(dp.data.status, "discouraged");
 });
 
-test("banned-library: no recorded hits -> no findings", () => {
+test("banned-library: no recorded hits -> no findings", async () => {
   assert.deepEqual(
-    bannedLibrary.run(
-      withManifest({
-        artifact: { files: new Map(), vendor: { blocked: [] } },
-      })
+    (
+      await bannedLibrary.run(
+        withManifest({
+          artifact: { files: new Map(), vendor: { blocked: [] } },
+        })
+      )
     ).findings,
     []
   );
   assert.deepEqual(
-    bannedLibrary.run(
-      withManifest({ artifact: { files: new Map(), vendor: {} } })
+    (
+      await bannedLibrary.run(
+        withManifest({ artifact: { files: new Map(), vendor: {} } })
+      )
     ).findings,
     []
   );

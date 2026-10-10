@@ -18,9 +18,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const findings = [];
-    for (const ref of buildReachability(ctx).unrecognizedRefs) {
+    for (const ref of (await buildReachability(ctx)).unrecognizedRefs) {
       findings.push(
         finding({
           ...ctx.artifact.at(ref.file),

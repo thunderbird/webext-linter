@@ -57,8 +57,6 @@ import {
 } from "./addon/load.js";
 import { settleScaRoot } from "./addon/sca-root.js";
 import { runChecks, loadRegistry, ctxForRule } from "./checks/registry.js";
-import { analyzeBuild } from "./build/analyze.js";
-import { withExperiment } from "./addon/store.js";
 import { buildXpiCtx, buildScaCtx, buildAllCtx } from "./checks/context.js";
 import {
   renderFindings,
@@ -73,43 +71,31 @@ import { issue, loopSlots } from "./report/loop.js";
 import { headerLines, loopPromptLines, schemaLines } from "./report/format.js";
 import { writeSweepFiles } from "./report/sweep-files.js";
 import { sweepRun } from "./checks/registry-vocabulary.js";
-import { resolveVendor } from "./vendor/resolve.js";
-import {
-  verifyVendor,
-  verifyVendorDeclarations,
-  verifyScaDependencies,
-  auditIdentifiedLibraries,
-} from "./vendor/verify.js";
-import { classifyBundled, applyUnverifiedVendor } from "./lib/bundled.js";
-import { collectJsSources } from "./addon/sources.js";
-import { runExtractionPass } from "./checks/extract.js";
-import { resolveCdnLibraries } from "./lib/cdn-lookup.js";
-import {
-  resolveLibraryHashes,
-  parseLibraryHashes,
-} from "./lib/library-hashes.js";
-import {
-  resolveLibraryBlocks,
-  parseLibraryBlocks,
-} from "./lib/library-blocks.js";
 import { isExperiment, parseVersion, strictMaxVersion } from "./lib/util.js";
-import {
-  experimentApiMembers,
-  experimentApiNamespaces,
-} from "./lib/experiments.js";
+import { experimentApiMembers } from "./lib/experiments.js";
 import { experimentVerdict } from "./experiments/verify.js";
 import { debug, progress, report, warn, FEED } from "./util/log.js";
 import { DEFAULT_CACHE } from "./config.js";
-import { rethrowIfFatal, sealArtifact, wiringError } from "./lib/errors.js";
+import { rethrowIfFatal, wiringError } from "./lib/errors.js";
+import { reviewData } from "./review/products.js";
 
 /** @typedef {import("./report/finding.js").Finding} Finding */
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
 
 /**
- * The setup sequence: every pre-review step, in the order it runs, with the condition that
- * decides whether this run has it. The loop in runPipeline WALKS this list and runs each
- * entry's action, so a step happens because it is declared here rather than because a
+ * The setup sequence: the review's EAGER steps, in the order they run, with the condition
+ * that decides whether this run has each. The loop in runPipeline WALKS this list and runs
+ * each entry's action, so a step happens because it is declared here rather than because a
  * statement sits somewhere in that function.
+ *
+ * Eager means every review needs it before any check can run: the schema (every report
+ * stamps it, and the manifest.json checks read it), the Experiment verdict (it decides the
+ * review's mode), the Experiment APIs on the schema (they decide what every API lookup
+ * answers, so they cannot depend on which checks ran first), the source archive (the
+ * artifact the checks are routed to), and the record of what was reviewed. Everything else
+ * the review computes - the vendor reading and its audits, the classification, the CDN
+ * lookup, the parse, the build trace - is computed when a check first asks for it
+ * (src/review/products.js).
  *
  * The ONE place that order and that count are stated. The feed's total is the count of the
  * NARRATED entries this run plans, so a step cannot be added without the total following
@@ -126,104 +112,37 @@ import { rethrowIfFatal, sealArtifact, wiringError } from "./lib/errors.js";
  *     like any other step and is not counted.
  *
  * `when` decides whether this run has the step. It is asked as the loop ARRIVES, because
- * one fact - `invalidExperiment` - is decided by a step of this list; the plan sized before
- * the run (for the feed's total) asks the same conditions of the facts as they stand then.
- *
- * Two reviews are DECIDED before their checks run, and skip the setup that serves the rest:
- * a rejected Experiment (`invalidExperiment`), which runs its one reject check against the
- * shipped XPI, and an UNRESCUED source review (`unrescued`) - one whose preparation found
- * its lock vulnerable and could not rescue it (src/prepare/steps.js). That one takes the
- * lock audit its preparation recorded instead of asking for it again, and runs only the
- * checks that read it.
+ * one fact - `invalidExperiment` - is decided by a step of this list: a REJECTED Experiment is
+ * reviewed as its shipped XPI alone, even with --sca-root, so its Experiment APIs are not
+ * registered and the source archive is not read.
  * @type {{key: string, label?: ?string,
- *   when: (facts: {sca: boolean, isExp: boolean, invalidExperiment: boolean,
- *     unrescued: boolean}) => boolean}[]}
+ *   when: (facts: {sca: boolean, isExp: boolean, invalidExperiment: boolean}) => boolean}[]}
  */
-// One predicate per PHASE, not per step. Every step inside a phase acts on the same
-// artifact, so every one of them runs exactly when that artifact is there to act on -
-// written once here rather than decided again, identically, by each step.
-/** An unrescued source review: the archive is loaded, and its lock audit is the record's.
- *  A rejected Experiment's one reject check comes first, so it is never one. */
-const UNRESCUED = (f) => f.unrescued && !f.invalidExperiment;
-/** Either review decided before its checks run. */
-const DECIDED = (f) => f.invalidExperiment || UNRESCUED(f);
-/** A review whose checks decide it: everything but the two decided reviews. */
-const REVIEWED = (f) => !DECIDED(f);
-/** There IS a source archive to prepare: the phase that prepares it, and nothing else, needs
- *  this. */
-const ARCHIVE = (f) => f.sca && REVIEWED(f);
-
 export const SETUP_STEPS = Object.freeze([
-  // PHASE 1 - the REVIEW-LEVEL answers, and the one gate they decide. Each of these
-  // produces something the whole review shares rather than something an artifact owns:
-  // the loaded artifact and its manifest.json record, the schema, the Experiment verdict
-  // (+ invalidExperiment, which gates every phase below). That is why the Experiment
-  // steps are here even though they read the XPI - their product is projected through
-  // `env` to every sibling, never stapled to an artifact. Phases 2-4 are the opposite:
-  // each produces state that belongs to ONE artifact, one phase per artifact.
   { key: "read", label: "Reading add-on", when: () => true },
-  // The one piece of setup EVERY path needs, a rejected Experiment included.
   { key: "schema", label: null, when: () => true },
   {
     key: "experiments",
     label: "Verifying bundled experiments",
     when: (f) => f.isExp,
   },
-  // Everything below serves a review its checks decide, so a decided review drops it: a
-  // rejected Experiment runs its one reject check against the shipped XPI and nothing else,
-  // and an unrescued source review its vulnerability checks over the recorded lock audit.
-  // The exceptions are the steps that name what was reviewed, which their reports still
-  // need, and - for an unrescued review - the source archive its findings point into.
-  { key: "experiment-schema", when: (f) => f.isExp && REVIEWED(f) },
-  // PHASE 2 - the SHIPPED XPI. Both modes run all of it: the artifact users install is
-  // analysed the same way whether or not a source archive came with it.
-  { key: "hashes", label: "Fetching library hashes", when: REVIEWED },
-  { key: "vendor-xpi", label: "Verifying vendored libraries", when: REVIEWED },
   {
-    key: "cdn-bundled",
-    label: "Identifying bundled libraries on a CDN",
-    when: REVIEWED,
+    key: "experiment-schema",
+    when: (f) => f.isExp && !f.invalidExperiment,
   },
-  // The two parses - the shipped artifact's and, in a source review, the readable source's
-  // - are separate steps under one label.
-  { key: "parse-xpi", label: "Parsing add-on sources", when: REVIEWED },
-  // What the submission IS, and what this review makes of it: the submitted source archive,
-  // the review target, and the record of what was reviewed. The target is two entries rather
-  // than one arm each side of an `if`, so the list - not a branch inside a step - holds the
-  // pin that a REJECTED Experiment is reviewed as its shipped XPI even with --sca-root,
-  // and `meta` is reached on every path.
-  { key: "source-archive", when: (f) => REVIEWED(f) || UNRESCUED(f) },
-  { key: "target-source", when: (f) => ARCHIVE(f) || UNRESCUED(f) },
+  // The target is two entries rather than one arm each side of an `if`, so the list - not a
+  // branch inside a step - holds the pin that a REJECTED Experiment is reviewed as its
+  // shipped XPI even with --sca-root, and `meta` is reached on every path.
+  { key: "source-archive", when: (f) => f.sca && !f.invalidExperiment },
+  { key: "target-source", when: (f) => f.sca && !f.invalidExperiment },
   { key: "target-xpi", when: (f) => !f.sca || f.invalidExperiment },
   { key: "meta", when: () => true },
-  // An XPI review's target IS the built XPI, parsed above; there is nothing left to do but
-  // hand those sources on.
-  { key: "xpi-sources", when: (f) => !f.sca && REVIEWED(f) },
-  // An unrescued source review's whole dependency audit: the lists its preparation recorded,
-  // read from disk and asked of nobody. Silent, like every step that fetches nothing.
-  { key: "deps-recorded", when: UNRESCUED },
-  // PHASE 3 - the SOURCE ARCHIVE's own preparation, and the build the reviewer reproduces.
-  // Only an archive has any of this: dependencies it installs rather than ships, a build to
-  // trace, readable source to parse. An XPI review reaches none of it.
-  {
-    key: "vendor-source",
-    label: "Verifying vendored source libraries",
-    when: ARCHIVE,
-  },
-  { key: "deps-source", label: "Auditing source dependencies", when: ARCHIVE },
-  {
-    key: "cdn-source",
-    label: "Identifying source libraries on a CDN",
-    when: ARCHIVE,
-  },
-  { key: "parse-source", label: "Parsing add-on sources", when: ARCHIVE },
-  { key: "build", label: "Analyzing the build", when: ARCHIVE },
-  // PHASE 4 - the REVIEW TARGET. One audit, over whichever artifact this review is about,
-  // recorded on that artifact - so the checks reading it find it in both modes without any
-  // of them naming an artifact. Last, because it needs the target's libraries identified
-  // first: phase 2 does that for an XPI review, phase 3 for a source review.
-  { key: "audit", label: "Auditing libraries", when: REVIEWED },
 ]);
+
+/** Either review decided before its checks run: a rejected Experiment, which runs its one
+ *  reject check, or an unrescued source review, which runs the checks its preparation's
+ *  rescue was for. Neither carries reviewer to-do items. */
+const DECIDED = (f) => f.invalidExperiment || f.unrescued;
 
 /**
  * Every path opt is ABSOLUTE. The arg-array reader resolves them (pipelineOptsFromValues,
@@ -425,10 +344,11 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
   opts = { ...opts, ...scaMove };
 
   // Load the .xpi. Read before the "Setup" banner because it sizes the feed - it gives
-  // the mode and whether the add-on is an Experiment. Every slow NETWORK step below (the
-  // experiment fetch, schema fetch, vendor verification, CDN lookups) plus the AST parse
-  // is narrated as a Setup step. The add-on reads are fast local ones (this .xpi, and in
-  // a kept SCA the source archive loaded in Phase 2) marked by the "Reading add-on" step.
+  // the mode and whether the add-on is an Experiment. The eager steps below (the schema
+  // fetch, the experiment fetch) are narrated as Setup steps; the review's data is
+  // narrated where a check first asks for it (src/review/products.js). The add-on reads
+  // are fast local ones (this .xpi, and in a source review the source archive) marked by
+  // the "Reading add-on" step.
   // Loading here is the ONLY way an add-on enters a review: its content and its identity
   // then come from one value, and no caller can hand in files that disagree with the path
   // the report goes on to name.
@@ -464,8 +384,10 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
       return invalidExperiment;
     },
     // The preparation gave its rescue up, and recorded the lock audit that decides this
-    // review (UNRESCUED).
-    unrescued: Boolean(lockAudit),
+    // review. A rejected Experiment's one reject check comes first, so it is never one.
+    get unrescued() {
+      return Boolean(lockAudit) && !invalidExperiment;
+    },
     // What the review IS, from the two above. Read after setup, by the ctx builders and the
     // report; no step reads it, because a step says which FACTS it needs.
     get mode() {
@@ -510,23 +432,6 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
   let schemaSource;
   let schemaBranch;
   let schemaChannel;
-  // The known-library hash DB the bundled classifier matches files against. An empty Map
-  // recognizes nothing.
-  let libraryHashes = new Map();
-  // The parse-first REVIEW-TARGET sources handed to the ctx builders (Phase 5), which never
-  // parses for itself. In an XPI review the review target IS the built XPI, so these ARE
-  // xpiParsedSources; in SCA they are the readable source's, parsed in Phase 3. Stays
-  // unset for a rejected Experiment (its one check reads no code - an empty ctx.jsSources).
-  let preParsedJsSources;
-  // The BUILT XPI's sources, from the FULL extractReview run on it in Phase 2 (always, unless a
-  // rejected Experiment). buildXpiCtx (Phase 5) hands them to the input:xpi checks, so the
-  // shipped ctx is built ONE way regardless of mode; in an XPI review they ALSO ARE
-  // preParsedJsSources (the XPI is the review target).
-  let xpiParsedSources;
-  // The banned-library list (assets/library-blocks.yaml), resolved once in Phase 2 and shared
-  // by every artifact's analysis (the XPI in Phase 2, the archive in Phase 3) and by the
-  // review target's audit in Phase 4.
-  let libraryBlocks;
   // What was reviewed, built by the `meta` step and extended once the review has run.
   let meta;
 
@@ -612,69 +517,6 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
       schema.registerExperimentApis(
         experimentApiMembers(webExtManifestRecord?.json, xpiAddon.files)
       );
-    },
-
-    // The known-library hash DB the classifier matches bytes against (fetched and cached; a
-    // pre-seeded cache keeps offline runs deterministic). Both modes classify.
-    hashes: async () => {
-      const { text: libraryHashesText } = await resolveLibraryHashes({
-        cacheDir: opts.libraryHashesCache,
-      });
-      libraryHashes = parseLibraryHashes(libraryHashesText);
-
-      // The Mozilla add-on policy blocklist (curated assets/library-blocks.yaml): a shipped
-      // asset read from disk (fast, no network, so no step of its own). Consulted by the
-      // vendor audit before each OSV query (auditNpm) - a banned library is recorded and
-      // skips the request. Read ONCE here and shared by both artifact analyses (the XPI
-      // below, the SCA source in Phase 3).
-      const { text: libraryBlocksText } = await resolveLibraryBlocks();
-      libraryBlocks = parseLibraryBlocks(libraryBlocksText);
-    },
-
-    // Phase 2: the SHIPPED XPI's analysis, and what this review makes of the
-    // submission. Both modes run all of it - the XPI is analysed the same way either way.
-
-    // Analyse the BUILT XPI FIRST, with the SAME full chain an XPI review
-    // runs on its review target - resolveVendor -> verifyVendor -> classifyReview ->
-    // identifyBundledLibraries -> audit -> extractReview - so siblings.xpi is built ONE way
-    // regardless of which mode this review turns out to be. The vendor-aware classification
-    // it produces (xpiAddon.bundled) is what keeps a vendored library from being read as
-    // the developer's code: verifyVendor DISCOVERS vendored files, and classifyReview marks
-    // them non-authored AND leaves them out of `classified` altogether, so a minified
-    // vendored library is not counted against the developer by unused-files. In a native XPI
-    // review the XPI IS the review target, so this is that review's own analysis, and
-    // `xpi-sources` hands those parsed sources on rather than parsing again.
-    "vendor-xpi": async () => {
-      // A VENDOR file or a package.json is read from the artifact that IS the review
-      // target. In a source review that is the archive: the declarations there are the
-      // ones the reviewer reads and the build installs from, and a copy shipped inside the
-      // XPI is a second, unverified answer to the same question - which the source review
-      // has no use for, and sca-xpi-declares-vendoring reports as the mistake it is. So the
-      // XPI gets a vendor reading only when it is the review target.
-      //
-      // The condition is the MODE, not an identity test against reviewTarget: that does not
-      // exist yet here - `target-xpi` settles it later in the list - and other step bodies
-      // read setupFacts.sca the same way.
-      if (!setupFacts.sca) {
-        xpiAddon.vendor = resolveVendor({ addon: xpiAddon });
-        await verifyVendor(xpiAddon, opts.vendorNet, libraryBlocks);
-      }
-      // Classification runs on the XPI in BOTH modes: what its bytes ARE - a known library,
-      // minified, obfuscated - is a fact about the artifact, not about the review, and the
-      // input:xpi checks read it either way.
-      classifyReview(xpiAddon, { libraryHashes });
-    },
-    "cdn-bundled": () =>
-      identifyBundledLibraries(xpiAddon, {
-        net: opts.vendorNet,
-        cacheDir: opts.cdnLookupCache,
-        cdnEnabled: opts.cdnLookup !== false,
-      }),
-    "parse-xpi": () => {
-      xpiParsedSources = extractReview(xpiAddon, {
-        schema,
-        webExtManifestRecord,
-      });
     },
 
     // The submitted source archive, walked ONCE and split here into the two views every
@@ -786,108 +628,6 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
         reviewed: true,
       };
     },
-
-    // XPI review: the built XPI IS the review target and was fully analysed above. Its
-    // parsed sources ARE the review's sources.
-    "xpi-sources": () => {
-      preParsedJsSources = xpiParsedSources;
-    },
-
-    // An unrescued source review: the archive's dependency record built as `vendor-source`
-    // builds it, and the lock audit's four lists taken from the preparation's record, which
-    // ran that very audit on this very lock. Nothing else is read for it - the review is
-    // decided by these lists, and the checks that read them are the only ones it runs.
-    "deps-recorded": () => {
-      reviewTarget.vendor = resolveVendor({
-        addon: reviewTarget,
-        reviewerInstalls: true,
-      });
-      Object.assign(reviewTarget.vendor, lockAudit);
-    },
-
-    // Phase 3: the SOURCE ARCHIVE's own preparation - the same chain
-    // the XPI got in Phase 2 (declared-dependency audit, classify, identify, parse), plus the
-    // build trace.
-
-    // Resolve the source's dependencies ONCE (what the committed lock file installs + any
-    // VENDOR declarations), so the review's checks share one immutable store.
-    // A source archive may carry a VENDOR file of its own, and a declaration there
-    // must EARN its exemption exactly as one in a shipped XPI does: each declared path is
-    // compared against the bytes its declared source serves, so an entry that does not
-    // verify leaves a result row for applyUnverifiedVendor to reconcile into the untrusted
-    // family (`cdn-source`) and the file is reviewed as the developer's own code. Without
-    // this, the declaration alone would exclude the file from every source-level check,
-    // unverified and unreported. Only the declarations: the package.json half of verifyVendor compares
-    // SHIPPED copies of declared dependencies, which a source archive does not carry.
-    "vendor-source": async () => {
-      // The archive's lock IS what the reviewer installs from, so it alone says which
-      // packages, at which versions, are audited - package.json is not read for them.
-      reviewTarget.vendor = resolveVendor({
-        addon: reviewTarget,
-        reviewerInstalls: true,
-      });
-      await verifyVendorDeclarations(
-        reviewTarget,
-        opts.vendorNet,
-        libraryBlocks
-      );
-    },
-
-    // The source's lock file records what the build installs - audit each package against
-    // OSV and the policy blocklist, and each one it marks as declared for popularity
-    // (non-popular -> reject). The readable source may ALSO vendor a library as a
-    // committed copy, so full identification (Mozilla-hash + CDN + OSV, deduped against the
-    // declared audit) runs on it below. An unrecognized minified file the source vendors
-    // stays non-authored and is rejected.
-    // Then classify the source's files (library hash, minified geometry, obfuscation) into
-    // reviewTarget.bundled and its non-authored set. The files it counts as vendored are the
-    // VENDOR file's verified entries, settled by the step before this one.
-    "deps-source": async () => {
-      await verifyScaDependencies(reviewTarget, opts.vendorNet, libraryBlocks);
-      classifyReview(reviewTarget, { libraryHashes });
-    },
-
-    // Identify the UNDECLARED libraries the audit cannot see (jsDelivr hash), and
-    // applyUnverifiedVendor removes a readable not-popular vendored copy from the skip set;
-    // this FINALIZES the authored / non-authored split, so it must precede `parse-source`.
-    "cdn-source": () =>
-      identifyBundledLibraries(reviewTarget, {
-        net: opts.vendorNet,
-        cacheDir: opts.cdnLookupCache,
-        cdnEnabled: opts.cdnLookup !== false,
-      }),
-
-    // Parse the source ONCE, with the FINAL skip set (see extractReview).
-    "parse-source": () => {
-      preParsedJsSources = extractReview(reviewTarget, {
-        schema,
-        webExtManifestRecord,
-      });
-    },
-
-    // Look at the build ONCE here (the vendor pattern), over EVERY file the archive holds -
-    // the Experiment folder included - because a build step may reference any of it, and a
-    // step the trace cannot see raises no signal for the reviewer to follow. A script kept
-    // under the Experiment folder runs on the reviewer's machine like any other. What was
-    // found is stored on reviewTarget.buildReview for the input:sca checks to read. Nothing
-    // classifies what the build DOES, so it routes to the reviewer, who reproduces it from
-    // the source by hand.
-    build: () => {
-      reviewTarget.buildReview = analyzeBuild({
-        build: { files: withExperiment(reviewTarget) },
-      });
-    },
-
-    // Phase 4: the REVIEW TARGET. Last, because it needs the target's libraries identified
-    // first - Phase 2 does that for an XPI review, Phase 3 for a source review.
-
-    // ONE audit, over the REVIEW TARGET, recorded on the review target. The checks that
-    // read it - a published advisory, a policy-blocked release, a library nothing could be
-    // asked about - are routed to the target too, so they find it in both modes and none of
-    // them names an artifact. Auditing the shipped XPI as well, in a review whose target is
-    // the archive, wrote an answer nothing was routed to read.
-    audit: () =>
-      auditIdentifiedLibraries(reviewTarget, opts.vendorNet, libraryBlocks),
   };
 
   // Every action answers to a declared step, so a body cannot be added to setup without an
@@ -939,21 +679,10 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     }
   }
 
-  // The step list is done, so what each artifact carries is settled. Close them against
-  // reads of what was never computed for them: a field only some artifacts have - a vendor
-  // reading, a build trace - answers `undefined` otherwise, and a check that reads
-  // `undefined` finds nothing, which reads as a clean submission. From here such a read
-  // throws, so a wrongly-routed check is a wiring error that reaches the exit instead of a
-  // silent pass.
-  sealArtifact(xpiAddon, "built XPI");
-  if (scaArchive && scaArchive !== xpiAddon) {
-    sealArtifact(scaArchive, "source archive");
-  }
-
-  // Phase 5: build the sibling RunContexts the checks read, once the step list has run. The
+  // Build the sibling RunContexts the checks read, once the step list has run. The
   // review-level singletons are built ONCE here and shared by every sibling ctx, so they can
-  // never drift between artifacts or double-cost. Nothing is parsed here: Phase 2/3 parsed
-  // each artifact's sources.
+  // never drift between artifacts or double-cost. Nothing is computed here: each artifact's
+  // data is computed when a check first asks for it (src/review/products.js).
 
   // Both facts are settled - the loop has run - so the review mode follows from them.
   const mode = setupFacts.mode;
@@ -970,18 +699,25 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     experiments: experimentVerification ?? null,
   };
 
-  // From the built XPI's analysis, which every reviewable path runs: the shipped ctx, for the
-  // input:xpi checks - the structure checks and the manifest.json checks alike, since the
-  // shipped manifest.json is this artifact's.
-  // An unrescued review parses nothing - none of the checks it runs reads code - so both
-  // artifacts arrive with no sources rather than without any answer.
-  const unrescued = UNRESCUED(setupFacts);
-  const xpiCtx = buildXpiCtx(xpiAddon, unrescued ? [] : xpiParsedSources, env);
+  // Each artifact's data, computed when a check first asks for it.
+  const unrescued = setupFacts.unrescued;
+  const dataOf = reviewData({
+    opts,
+    schema,
+    manifest: webExtManifestRecord,
+    xpi: xpiAddon,
+    archive: mode.sca ? scaArchive : null,
+    target: reviewTarget,
+    lockAudit: unrescued ? lockAudit : null,
+  });
+  // The shipped ctx, for the input:xpi checks - the structure checks and the manifest.json
+  // checks alike, since the shipped manifest.json is this artifact's.
+  const xpiCtx = buildXpiCtx(xpiAddon, dataOf(xpiAddon), env);
   // The submitted archive, which only a source review has. One ctx over one artifact: the
   // build checks and the code checks read the same object, and what separates them is the
   // route each declared, not a second narrowed projection.
   const scaCtx = mode.sca
-    ? buildScaCtx(reviewTarget, unrescued ? [] : preParsedJsSources, env)
+    ? buildScaCtx(reviewTarget, dataOf(reviewTarget), env)
     : null;
   // The sibling ctxs keyed by the `input` value that routes to each (see routeCtx). Routing
   // is total: `source` is a first-class key, but it is a POINTER and not a ctx of its own -
@@ -1000,7 +736,7 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     all: buildAllCtx(env, { xpi: xpiCtx, sca: scaCtx }),
   };
 
-  // Phase 6: run the review, then finalize. runChecks runs the phase this review calls
+  // Run the review, then finalize. runChecks runs the phase this review calls
   // for - invalid-experiment for a rejected Experiment, deterministic otherwise - and
   // returns the finished findings, manual items and the checks that ran. Each throwing
   // check is isolated so one failure can't abort all.
@@ -1441,75 +1177,6 @@ function canWriteDir(dir) {
     rethrowIfFatal(err);
     return false;
   }
-}
-
-/**
- * Per-file classification of the REVIEW TARGET (library hash / minified geometry /
- * obfuscation, plus the vendored non-authored seed) -> addon.bundled.
- * It runs before identifyBundledLibraries, which reads its tags (tag.obfuscation) and refines
- * the result.
- * @param {import("./addon/load.js").Addon} addon
- * @param {{libraryHashes: Map<string, {name: string, version: string}>}} deps
- */
-function classifyReview(addon, { libraryHashes }) {
-  // Reuse the classification when the caller already has one (the SHIPPED XPI carries its own,
-  // computed in Phase 2 by `vendor-xpi`); otherwise classify now.
-  addon.bundled = addon.bundled ?? classifyBundled(addon, { libraryHashes });
-}
-
-/**
- * The single extraction pass over the REVIEW TARGET: parse each source ONCE, extract every
- * per-file result the checks read, drop the AST. Returns the parsed sources for Phase 5.
- *
- * It runs AFTER identifyBundledLibraries, and that ORDER IS THE POINT: that step FINALIZES
- * addon.bundled.nonAuthored - the skip set this pass gates content extraction on - and it moves
- * the line in BOTH directions. The CDN lookup ADDS a file (a library the Mozilla hash DB
- * missed), and applyUnverifiedVendor REMOVES one: a READABLE vendored library whose package
- * turns out not to be popular is reviewed as the developer's OWN code.
- *
- * That removal is what forces the order. A file dropped from the skip set after the pass would
- * be authored but never content-scanned - and since a check is a pure reader, it would find
- * nothing there. The library's network sinks, eval and unsafe-HTML would all be invisible.
- *
- * Runs once per artifact - the shipped one, and in a source review the readable source -
- * which are two steps of the setup list under one label (SETUP_STEPS).
- * @param {import("./addon/load.js").Addon} addon  The artifact to extract, already classified.
- * @param {{schema: object,
- *   webExtManifestRecord: ?import("./addon/load.js").WebExtManifestRecord}} deps  What the SHIPPED add-on
- *   declares: whether this is an Experiment, and which namespaces its APIs own, are its
- *   answers even when the artifact being extracted is the source.
- * @returns {import("./addon/sources.js").JsSource[]}  The parsed review sources.
- */
-function extractReview(addon, { schema, webExtManifestRecord }) {
-  const jsSources = collectJsSources(addon);
-  const experimentNamespaces = isExperiment(webExtManifestRecord?.json)
-    ? experimentApiNamespaces(webExtManifestRecord?.json, addon.files)
-    : null;
-  runExtractionPass(jsSources, {
-    schema,
-    nonAuthored: addon.bundled.nonAuthored,
-    experimentNamespaces,
-  });
-  return jsSources;
-}
-
-/**
- * Second-tier library identification over an already-classified add-on: reconcile the
- * not-popular declared (VENDOR/package) results into the untrusted family, then match the
- * still-unrecognized bundles against jsDelivr by content hash. Reads/writes addon.bundled
- * and addon.vendor. A lookup jsDelivr does not answer ends the review (src/util/net.js); with
- * the lookup off, no request is made. Runs AFTER classification
- * (so the Mozilla-hash matches and tag.obfuscation are final), and before the OSV audit of what
- * it identified (auditIdentifiedLibraries), which is the setup step after it.
- * @param {import("./addon/load.js").Addon} addon
- * @param {{net?: object, cacheDir?: string, cdnEnabled?: boolean}} opts
- */
-async function identifyBundledLibraries(
-  addon,
-  { net, cacheDir, cdnEnabled = true }
-) {
-  applyUnverifiedVendor(addon);
-  await resolveCdnLibraries(addon, { net, cacheDir, enabled: cdnEnabled });
 }
 
 /**

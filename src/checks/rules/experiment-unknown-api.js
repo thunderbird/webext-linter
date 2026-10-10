@@ -24,13 +24,13 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: [], escalations: Escalation[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const m = ctx.manifest?.json;
     if (!m || !isExperiment(m)) {
       ctx.note?.(ctx.manifest.locus(), "not an Experiment", VERDICT.SKIPPED);
       return { findings: [], escalations: [] };
     }
-    if (unknownApis(ctx).length === 0) {
+    if ((await unknownApis(ctx)).length === 0) {
       ctx.note?.(
         ctx.manifest.locus(),
         "no unrecognized API usage",

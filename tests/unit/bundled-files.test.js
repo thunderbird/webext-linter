@@ -34,6 +34,9 @@ function ctxWith(manifest, files = {}) {
 // The manifest.json half of this check asks the SCHEMA which keys carry a file path, so a ctx
 // without one makes it a no-op. Kept separate from ctxWith because the loader half reads
 // the schema too, and handing one to a loader test changes which calls are extracted.
+/** The parse getter a check reads its sources through, over a fixed list. */
+const sourcesGetter = (list) => async () => list;
+
 function schemaCtx(manifest, files = {}) {
   const ctx = ctxWith(manifest, files);
   ctx.schema = fixtureSchema;
@@ -52,16 +55,16 @@ function ctxWithJs(code, files = {}) {
   // The schema first: the pass below type-walks the derived loaders against it, and it must
   // be the SAME schema the check then reads off the ctx.
   ctx.schema = fixtureSchema;
-  ctx.jsSources = parsed([{ file: "bg.js", code, lineOffset: 0 }], {
-    schema: ctx.schema,
-  });
+  ctx.jsSources = sourcesGetter(
+    parsed([{ file: "bg.js", code, lineOffset: 0 }], { schema: ctx.schema })
+  );
   return ctx;
 }
 
 // Defensively handles manifest.json files that violate the schema (non-array
 // content_scripts, null entries, string js, string background) without
 // crashing the rule.
-test("does not throw on malformed content_scripts shapes", () => {
+test("does not throw on malformed content_scripts shapes", async () => {
   // object instead of array, null entry, string-typed js array.
   for (const manifest of [
     { content_scripts: {} },
@@ -69,27 +72,31 @@ test("does not throw on malformed content_scripts shapes", () => {
     { content_scripts: [{ js: "content.js" }] },
     { background: "oops.js" },
   ]) {
-    assert.doesNotThrow(() => bundledFiles.run(schemaCtx(manifest)).findings);
+    await assert.doesNotReject(
+      async () => (await bundledFiles.run(schemaCtx(manifest))).findings
+    );
   }
 });
 
 // Guards against iterating a string js value character by character, which
 // would wrongly report each letter as a missing file. Expects zero findings.
-test("a string-typed `js` does not produce per-character findings", () => {
+test("a string-typed `js` does not produce per-character findings", async () => {
   // Malformed: js is a string, not an array. Must not iterate characters.
-  const out = bundledFiles.run(
-    schemaCtx({ content_scripts: [{ js: "x.js" }] })
+  const out = (
+    await bundledFiles.run(schemaCtx({ content_scripts: [{ js: "x.js" }] }))
   ).findings;
   assert.equal(out.length, 0);
 });
 
 // With one referenced file present and one absent, exactly one finding is
 // produced and it names the missing file, confirming present files are skipped.
-test("flags a genuinely missing content script, not a present one", () => {
-  const out = bundledFiles.run(
-    schemaCtx(
-      { content_scripts: [{ js: ["present.js", "missing.js"] }] },
-      { "present.js": "" }
+test("flags a genuinely missing content script, not a present one", async () => {
+  const out = (
+    await bundledFiles.run(
+      schemaCtx(
+        { content_scripts: [{ js: ["present.js", "missing.js"] }] },
+        { "present.js": "" }
+      )
     )
   ).findings;
   assert.equal(out.length, 1);
@@ -100,39 +107,47 @@ test("flags a genuinely missing content script, not a present one", () => {
 // hand-written list forgets - so a manifest.json pointing at an icon the add-on does not
 // package is caught. Its size map is also where the walk needs three guards
 // that the AST twin (walkType) deliberately lacks, so they are pinned together here.
-test("icons are walked, and the three shape guards hold", () => {
-  const run = (manifest, files) =>
-    bundledFiles.run(schemaCtx(manifest, files)).findings.map((f) => f.item);
+test("icons are walked, and the three shape guards hold", async () => {
+  const run = async (manifest, files) =>
+    (await bundledFiles.run(schemaCtx(manifest, files))).findings.map(
+      (f) => f.item
+    );
 
   // The plain case: declared, not packaged.
-  assert.deepEqual(run({ icons: { 48: "gone.png" } }, {}), ["gone.png"]);
-  assert.deepEqual(run({ icons: { 48: "here.png" } }, { "here.png": "" }), []);
+  assert.deepEqual(await run({ icons: { 48: "gone.png" } }, {}), ["gone.png"]);
+  assert.deepEqual(
+    await run({ icons: { 48: "here.png" } }, { "here.png": "" }),
+    []
+  );
 
   // Guard 1: a key that does not match patternProperties is not a path. Gecko ignores
   // "32x32", so reporting it would name a file the runtime never loads.
-  assert.deepEqual(run({ icons: { "32x32": "legacy.png" } }, {}), []);
+  assert.deepEqual(await run({ icons: { "32x32": "legacy.png" } }, {}), []);
 
   // Guard 2: the leaf must hold a string. IconPath has a size-map arm AND a bare-string
   // arm, so an object value reaches a string-formatted leaf through the second one.
-  assert.deepEqual(run({ action: { default_icon: { 16: "a.png" } } }, {}), [
-    "a.png",
+  assert.deepEqual(
+    await run({ action: { default_icon: { 16: "a.png" } } }, {}),
+    ["a.png"]
+  );
+  assert.deepEqual(await run({ action: { default_icon: "b.png" } }, {}), [
+    "b.png",
   ]);
-  assert.deepEqual(run({ action: { default_icon: "b.png" } }, {}), ["b.png"]);
 
   // Guard 3: a value that is not a packaged path at all. A data: URI is legal wherever the
   // schema says ImageDataOrExtensionURL, and a localized path resolves only against a
   // locale, so neither can be called missing.
   assert.deepEqual(
-    run({ icons: { 48: "data:image/png;base64,AAAA" } }, {}),
+    await run({ icons: { 48: "data:image/png;base64,AAAA" } }, {}),
     []
   );
-  assert.deepEqual(run({ icons: { 48: "__MSG_iconPath__" } }, {}), []);
+  assert.deepEqual(await run({ icons: { 48: "__MSG_iconPath__" } }, {}), []);
 });
 
 // Two slots naming one missing file are two defects, and each anchors at its OWN line -
 // a text search for the value would give both the first slot's line. Repeating a path
 // across slots is the norm, not the exception.
-test("each slot anchors at its own line", () => {
+test("each slot anchors at its own line", async () => {
   const manifestText = [
     "{",
     '  "manifest_version": 3,',
@@ -142,10 +157,12 @@ test("each slot anchors at its own line", () => {
     "  }",
     "}",
   ].join("\n");
-  const out = bundledFiles.run(
-    schemaCtx(
-      { manifest_version: 3, icons: { 16: "icon.png", 48: "icon.png" } },
-      { "manifest.json": manifestText }
+  const out = (
+    await bundledFiles.run(
+      schemaCtx(
+        { manifest_version: 3, icons: { 16: "icon.png", 48: "icon.png" } },
+        { "manifest.json": manifestText }
+      )
     )
   ).findings;
   assert.deepEqual(
@@ -160,7 +177,7 @@ test("each slot anchors at its own line", () => {
 // file. bundled-files opts into that subtree; the walk itself skips it by default, so a
 // reachability seed built from the walk never pulls privileged code into the WebExtension
 // tree.
-test("a missing experiment script is reported", () => {
+test("a missing experiment script is reported", async () => {
   const manifest = {
     manifest_version: 3,
     experiment_apis: {
@@ -168,16 +185,16 @@ test("a missing experiment script is reported", () => {
     },
   };
   assert.deepEqual(
-    bundledFiles
-      .run(schemaCtx(manifest, { "exp/schema.json": "[]" }))
-      .findings.map((f) => f.item),
+    (
+      await bundledFiles.run(schemaCtx(manifest, { "exp/schema.json": "[]" }))
+    ).findings.map((f) => f.item),
     ["exp/impl.js"]
   );
 });
 
 // A missing manifest.json reference anchors at the manifest.json line that cites it
 // (located by the quoted path), not just the file with no location.
-test("anchors a missing manifest reference at its manifest.json line", () => {
+test("anchors a missing manifest reference at its manifest.json line", async () => {
   const manifestText = [
     "{",
     '  "manifest_version": 3,',
@@ -186,13 +203,15 @@ test("anchors a missing manifest reference at its manifest.json line", () => {
     "  }",
     "}",
   ].join("\n");
-  const out = bundledFiles.run(
-    schemaCtx(
-      {
-        manifest_version: 3,
-        background: { page: "chrome/content/dummy.html" },
-      },
-      { "manifest.json": manifestText }
+  const out = (
+    await bundledFiles.run(
+      schemaCtx(
+        {
+          manifest_version: 3,
+          background: { page: "chrome/content/dummy.html" },
+        },
+        { "manifest.json": manifestText }
+      )
     )
   ).findings;
   assert.equal(out.length, 1);
@@ -203,10 +222,10 @@ test("anchors a missing manifest reference at its manifest.json line", () => {
 
 // When the manifest.json text does not carry the path - a minified or rewritten manifest.json, say -
 // the finding names the file and carries no line: degraded, never dropped.
-test("missing manifest reference falls back to no line when the text lacks the path", () => {
+test("missing manifest reference falls back to no line when the text lacks the path", async () => {
   const ctx = schemaCtx({ content_scripts: [{ js: ["missing.js"] }] });
   ctx.manifest = manifestOf(ctx.manifest.json, "{}");
-  const out = bundledFiles.run(ctx).findings;
+  const out = (await bundledFiles.run(ctx)).findings;
   assert.equal(out.length, 1);
   assert.equal(out[0].file, "manifest.json");
   assert.equal(out[0].loc, null);
@@ -214,33 +233,36 @@ test("missing manifest reference falls back to no line when the text lacks the p
 
 // A file registered via a schema-derived loader (messageDisplayScripts.register)
 // must be bundled: an absent one is flagged, a present one is not.
-test("flags a missing file referenced by a schema-derived loader", () => {
+test("flags a missing file referenced by a schema-derived loader", async () => {
   const call = `messenger.messageDisplayScripts.register({ js: [{ file: "inject.js" }] });`;
-  const missing = bundledFiles.run(ctxWithJs(call)).findings;
+  const missing = (await bundledFiles.run(ctxWithJs(call))).findings;
   assert.equal(missing.length, 1);
   assert.match(missing[0].item, /inject\.js/);
 
-  const present = bundledFiles.run(
-    ctxWithJs(call, { "inject.js": "" })
-  ).findings;
+  const present = (await bundledFiles.run(ctxWithJs(call, { "inject.js": "" })))
+    .findings;
   assert.equal(present.length, 0);
 });
 
 // Bridge loaders are checked too (scripting.executeScript), but only for
 // packaged-file references: a remote or pseudo-scheme tabs.create url is not a
 // missing file.
-test("checks bridge loaders but ignores remote / scheme urls", () => {
-  const inject = bundledFiles.run(
-    ctxWithJs(`browser.scripting.executeScript({ files: ["content.js"] });`)
+test("checks bridge loaders but ignores remote / scheme urls", async () => {
+  const inject = (
+    await bundledFiles.run(
+      ctxWithJs(`browser.scripting.executeScript({ files: ["content.js"] });`)
+    )
   ).findings;
   assert.equal(inject.length, 1);
   assert.match(inject[0].item, /content\.js/);
 
-  const remote = bundledFiles.run(
-    ctxWithJs(`
+  const remote = (
+    await bundledFiles.run(
+      ctxWithJs(`
     browser.tabs.create({ url: "https://example.com/x" });
     browser.tabs.create({ url: "about:blank" });
   `)
+    )
   ).findings;
   assert.equal(remote.length, 0);
 });
@@ -250,7 +272,7 @@ test("checks bridge loaders but ignores remote / scheme urls", () => {
 // background.scripts script's host page is the generated one at the extension
 // ROOT, so a bare `file` resolves at root: present there -> no finding; only
 // next to the script in a subdir -> flagged.
-test("executeScript {file} is checked against the host page (root for background.scripts)", () => {
+test("executeScript {file} is checked against the host page (root for background.scripts)", async () => {
   const manifest = {
     manifest_version: 2,
     background: { scripts: ["src/background.js"] },
@@ -261,21 +283,23 @@ test("executeScript {file} is checked against the host page (root for background
     "src/background.js": call,
     "message-unescape.js": "", // at root, where the host page resolves it
   });
-  present.jsSources = parsed(
-    [{ file: "src/background.js", code: call, lineOffset: 0 }],
-    { schema: present.schema }
+  present.jsSources = sourcesGetter(
+    parsed([{ file: "src/background.js", code: call, lineOffset: 0 }], {
+      schema: present.schema,
+    })
   );
-  assert.equal(bundledFiles.run(present).findings.length, 0); // resolves to root message-unescape.js
+  assert.equal((await bundledFiles.run(present)).findings.length, 0); // resolves to root message-unescape.js
 
   const missing = ctxWith(manifest, {
     "src/background.js": call,
     "src/message-unescape.js": "", // only next to the script, not at root
   });
-  missing.jsSources = parsed(
-    [{ file: "src/background.js", code: call, lineOffset: 0 }],
-    { schema: missing.schema }
+  missing.jsSources = sourcesGetter(
+    parsed([{ file: "src/background.js", code: call, lineOffset: 0 }], {
+      schema: missing.schema,
+    })
   );
-  const out = bundledFiles.run(missing).findings;
+  const out = (await bundledFiles.run(missing)).findings;
   assert.equal(out.length, 1);
   assert.match(out[0].item, /message-unescape\.js/);
 });
@@ -284,7 +308,7 @@ test("executeScript {file} is checked against the host page (root for background
 // (missing) and from a ".." that climbs ABOVE the package root (escapes) - the
 // signal the check uses to tell "not bundled" from "wrong path". A ".." that
 // stays inside the package (a subdir going up to a sibling) is NOT an escape.
-test("resolveInDirStatus reports ok / missing / escapes", () => {
+test("resolveInDirStatus reports ok / missing / escapes", async () => {
   const files = new Map([
     ["skin/x.svg", Buffer.from("")],
     ["a/b.html", Buffer.from("")],
@@ -317,7 +341,7 @@ test("resolveInDirStatus reports ok / missing / escapes", () => {
 // resolveRefStatus derives the base directory from the referring file: a file at
 // the root resolves a leading ".." as an escape, while a file in a subdirectory
 // can reach a sibling tree.
-test("resolveRefStatus resolves relative to the referring file's directory", () => {
+test("resolveRefStatus resolves relative to the referring file's directory", async () => {
   const files = new Map([["skin/x.svg", Buffer.from("")]]);
   assert.equal(
     resolveRefStatus(files, "bg.js", "../skin/x.svg").kind,
@@ -333,7 +357,7 @@ test("resolveRefStatus resolves relative to the referring file's directory", () 
 // A tabs.create({url}) is resolved against the calling SCRIPT's own directory, so
 // "../target/target.html" from a script in a SUBDIRECTORY climbs out to a bundled
 // sibling -> no finding (the thunderbird_conversations options/ case).
-test("tabs.create {url} resolves against the script's dir (subdir climbs out)", () => {
+test("tabs.create {url} resolves against the script's dir (subdir climbs out)", async () => {
   const manifest = {
     manifest_version: 2,
     options_ui: { page: "options/options.html" },
@@ -344,17 +368,18 @@ test("tabs.create {url} resolves against the script's dir (subdir climbs out)", 
     "options/options.js": call,
     "target/target.html": "",
   });
-  ctx.jsSources = parsed(
-    [{ file: "options/options.js", code: call, lineOffset: 0 }],
-    { schema: ctx.schema }
+  ctx.jsSources = sourcesGetter(
+    parsed([{ file: "options/options.js", code: call, lineOffset: 0 }], {
+      schema: ctx.schema,
+    })
   );
-  assert.equal(bundledFiles.run(ctx).findings.length, 0); // options/../target/target.html
+  assert.equal((await bundledFiles.run(ctx)).findings.length, 0); // options/../target/target.html
 });
 
 // The gmail-conversation-view case: a background.scripts module in a subdirectory
 // whose tabs.create url uses "..". The host page is the generated root page, so
 // "../assistant/assistant.html" CLAMPS at root to the bundled assistant/ file.
-test("background.scripts: a climbing tabs.create url clamps to a bundled file - not flagged", () => {
+test("background.scripts: a climbing tabs.create url clamps to a bundled file - not flagged", async () => {
   const manifest = {
     manifest_version: 2,
     background: { scripts: ["background/bg.mjs"] },
@@ -364,50 +389,55 @@ test("background.scripts: a climbing tabs.create url clamps to a bundled file - 
     "background/bg.mjs": call,
     "assistant/assistant.html": "",
   });
-  ctx.jsSources = parsed(
-    [{ file: "background/bg.mjs", code: call, lineOffset: 0 }],
-    { schema: ctx.schema }
+  ctx.jsSources = sourcesGetter(
+    parsed([{ file: "background/bg.mjs", code: call, lineOffset: 0 }], {
+      schema: ctx.schema,
+    })
   );
-  assert.equal(bundledFiles.run(ctx).findings.length, 0); // clamps to assistant/assistant.html
+  assert.equal((await bundledFiles.run(ctx)).findings.length, 0); // clamps to assistant/assistant.html
 });
 
 // A leading ".." is CLAMPED at the package root (Gecko's URL resolution can't
 // climb above the origin), so "../target/target.html" from a root host page
 // resolves to the bundled "target/target.html" - not flagged. Only a clamped
 // path with no file behind it is flagged.
-test("tabs.create {url} with a leading .. clamps at root", () => {
+test("tabs.create {url} with a leading .. clamps at root", async () => {
   const manifest = { manifest_version: 2, background: { scripts: ["bg.js"] } };
 
   const present = ctxWith(manifest, {
     "bg.js": `browser.tabs.create({ url: "../target/target.html" });`,
     "target/target.html": "",
   });
-  present.jsSources = parsed(
-    [
-      {
-        file: "bg.js",
-        code: present.artifact.files.get("bg.js").toString(),
-        lineOffset: 0,
-      },
-    ],
-    { schema: present.schema }
+  present.jsSources = sourcesGetter(
+    parsed(
+      [
+        {
+          file: "bg.js",
+          code: present.artifact.files.get("bg.js").toString(),
+          lineOffset: 0,
+        },
+      ],
+      { schema: present.schema }
+    )
   );
-  assert.equal(bundledFiles.run(present).findings.length, 0); // clamps to target/target.html
+  assert.equal((await bundledFiles.run(present)).findings.length, 0); // clamps to target/target.html
 
   const missing = ctxWith(manifest, {
     "bg.js": `browser.tabs.create({ url: "../nope/missing.html" });`,
   });
-  missing.jsSources = parsed(
-    [
-      {
-        file: "bg.js",
-        code: missing.artifact.files.get("bg.js").toString(),
-        lineOffset: 0,
-      },
-    ],
-    { schema: missing.schema }
+  missing.jsSources = sourcesGetter(
+    parsed(
+      [
+        {
+          file: "bg.js",
+          code: missing.artifact.files.get("bg.js").toString(),
+          lineOffset: 0,
+        },
+      ],
+      { schema: missing.schema }
+    )
   );
-  const out = bundledFiles.run(missing).findings;
+  const out = (await bundledFiles.run(missing)).findings;
   assert.equal(out.length, 1);
   assert.match(out[0].item, /missing\.html/);
 });
@@ -416,26 +446,29 @@ test("tabs.create {url} with a leading .. clamps at root", () => {
 // not checked - that is an unused-files matter, not a missing bundled file. The
 // identical call from a live (declared) script IS flagged. (expression-search-ng
 // shape: an orphan page script whose tabs.create url never fires.)
-test("loader refs in a non-live (orphan) script are skipped", () => {
+test("loader refs in a non-live (orphan) script are skipped", async () => {
   const call = `browser.tabs.create({ url: "missing.html" });`;
 
   // Orphan: no manifest.json entry and no page loads it -> not live -> skipped.
   const orphan = ctxWith({ manifest_version: 2 }, { "orphan.js": call });
-  orphan.jsSources = parsed(
-    [{ file: "orphan.js", code: call, lineOffset: 0 }],
-    { schema: orphan.schema }
+  orphan.jsSources = sourcesGetter(
+    parsed([{ file: "orphan.js", code: call, lineOffset: 0 }], {
+      schema: orphan.schema,
+    })
   );
-  assert.equal(bundledFiles.run(orphan).findings.length, 0);
+  assert.equal((await bundledFiles.run(orphan)).findings.length, 0);
 
   // Live: declared as the background script -> checked -> the missing url flagged.
   const live = ctxWith(
     { manifest_version: 2, background: { scripts: ["bg.js"] } },
     { "bg.js": call }
   );
-  live.jsSources = parsed([{ file: "bg.js", code: call, lineOffset: 0 }], {
-    schema: live.schema,
-  });
-  const out = bundledFiles.run(live).findings;
+  live.jsSources = sourcesGetter(
+    parsed([{ file: "bg.js", code: call, lineOffset: 0 }], {
+      schema: live.schema,
+    })
+  );
+  const out = (await bundledFiles.run(live)).findings;
   assert.equal(out.length, 1);
   assert.match(out[0].item, /missing\.html/);
 });

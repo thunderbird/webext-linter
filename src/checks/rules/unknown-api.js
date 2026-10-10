@@ -37,9 +37,9 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: [], escalations: object[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const escalations = [];
-    for (const { file, usage, res } of resolveApiUsages(ctx)) {
+    for (const { file, usage, res } of await resolveApiUsages(ctx)) {
       const full = `${usage.root}.${usage.segments.join(".")}`;
       const loc = { line: usage.line, column: usage.column };
 

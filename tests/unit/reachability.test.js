@@ -43,7 +43,7 @@ function ctxFrom(files, manifest, schema, kind) {
 // The graph follows manifest.json seeds, JS imports/getURL, and HTML/CSS references
 // (resolved relative to the referencing file); an unreferenced file is not
 // reachable.
-test("reachability follows manifest + import + getURL + HTML/CSS edges", () => {
+test("reachability follows manifest + import + getURL + HTML/CSS edges", async () => {
   const manifest = {
     manifest_version: 3,
     background: { scripts: ["bg.js"] },
@@ -61,7 +61,7 @@ test("reachability follows manifest + import + getURL + HTML/CSS edges", () => {
     "icons/a.png": "",
     "orphan.js": `console.log(1);`,
   };
-  const reach = buildReachability(ctxFrom(files, manifest));
+  const reach = await buildReachability(ctxFrom(files, manifest));
   for (const f of [
     "bg.js",
     "lib/util.js",
@@ -82,7 +82,7 @@ test("reachability follows manifest + import + getURL + HTML/CSS edges", () => {
 // (so any file-reference key, declared or future, becomes a seed), but skips the
 // experiment_apis subtree - whose schema/script paths are privileged experiment
 // implementation that must never seed the WebExtension tree.
-test("manifestStringRefs collects manifest strings but skips experiment_apis", () => {
+test("manifestStringRefs collects manifest strings but skips experiment_apis", async () => {
   const strings = manifestStringRefs({
     manifest_version: 3,
     background: { scripts: ["bg.js"] },
@@ -103,7 +103,7 @@ test("manifestStringRefs collects manifest strings but skips experiment_apis", (
 // (message_display_scripts, a Thunderbird key) is still reachable: the generic
 // walk seeds every manifest.json string that resolves to a packaged file, so there is
 // no per-key list to fall out of date.
-test("reachability seeds a message_display_scripts file (no per-key list)", () => {
+test("reachability seeds a message_display_scripts file (no per-key list)", async () => {
   const manifest = {
     manifest_version: 3,
     background: { scripts: ["bg.js"] },
@@ -116,7 +116,7 @@ test("reachability seeds a message_display_scripts file (no per-key list)", () =
     "style.css": `body{}`,
     "orphan.js": `console.log(3);`,
   };
-  const reach = buildReachability(ctxFrom(files, manifest));
+  const reach = await buildReachability(ctxFrom(files, manifest));
   assert.ok(reach.reachable.has("content.js"));
   assert.ok(reach.reachable.has("style.css"));
   assert.ok(!reach.reachable.has("orphan.js"));
@@ -125,7 +125,7 @@ test("reachability seeds a message_display_scripts file (no per-key list)", () =
 // webReachable is seeded from content scripts only; a WAR resource a content
 // script getURLs is web-reachable, an exposed-but-unloaded one is not. A narrow
 // resource glob seeds general reachability; an over-broad "*" does not.
-test("webReachable from content scripts; WAR globs expand", () => {
+test("webReachable from content scripts; WAR globs expand", async () => {
   const manifest = {
     manifest_version: 3,
     content_scripts: [{ js: ["cs.js"], matches: ["*://*/*"] }],
@@ -139,7 +139,7 @@ test("webReachable from content scripts; WAR globs expand", () => {
     "res/used.png": "",
     "res/unused.png": "",
   };
-  const reach = buildReachability(ctxFrom(files, manifest));
+  const reach = await buildReachability(ctxFrom(files, manifest));
   assert.ok(reach.webReachable.has("cs.js"));
   assert.ok(reach.webReachable.has("res/used.png"));
   assert.ok(!reach.webReachable.has("res/unused.png"));
@@ -152,7 +152,7 @@ test("webReachable from content scripts; WAR globs expand", () => {
 // Experiment API. The experiment implementation files are excluded; a plain `.html`
 // parameter to an Experiment API (a content page) IS folded in, while an `.xhtml`/`.js`
 // parameter (privileged) is not; dead code is excluded too.
-test("pureWebExtensionReachable: webext tree + .html experiment params only", () => {
+test("pureWebExtensionReachable: webext tree + .html experiment params only", async () => {
   const manifest = {
     manifest_version: 2,
     background: { scripts: ["bg.js"] },
@@ -175,9 +175,8 @@ test("pureWebExtensionReachable: webext tree + .html experiment params only", ()
     "exp/schema.json": "[]",
     "dead.js": `console.log(1);`,
   };
-  const pure = buildReachability(
-    ctxFrom(files, manifest)
-  ).pureWebExtensionReachable;
+  const pure = (await buildReachability(ctxFrom(files, manifest)))
+    .pureWebExtensionReachable;
   // WebExtension entry + its ordinary import.
   assert.ok(pure.has("bg.js"));
   assert.ok(pure.has("helper.js"));
@@ -197,7 +196,7 @@ test("pureWebExtensionReachable: webext tree + .html experiment params only", ()
 // so the closure would be empty and every WebExtension code check would review
 // nothing. Instead the whole source view is WebExtension code - and it is already only
 // that, because the archive partition gave the Experiment implementation its own view.
-test("SCA mode: pureWebExtensionReachable is every file the source view holds", () => {
+test("SCA mode: pureWebExtensionReachable is every file the source view holds", async () => {
   // A built entry the readable source layout does not contain (the SCA mismatch).
   const manifest = {
     manifest_version: 3,
@@ -212,12 +211,12 @@ test("SCA mode: pureWebExtensionReachable is every file the source view holds", 
   // XPI mode (default): the built entry resolves to nothing in this tree, so a
   // non-entry source file is NOT reviewed - this is exactly the under-review the
   // SCA branch fixes.
-  const xpi = buildReachability(ctxFrom(files, manifest));
+  const xpi = await buildReachability(ctxFrom(files, manifest));
   assert.ok(!xpi.pureWebExtensionReachable.has("helper.js"));
 
   // SCA mode, no exp folder: every source file is WebExtension code (incl. the
   // experiment subtree - the deferred false-positive case).
-  const sca = buildReachability({
+  const sca = await buildReachability({
     ...ctxFrom(files, manifest, undefined, ARTIFACT_SCA),
     mode: REVIEW_MODE.SCA,
   });
@@ -231,7 +230,7 @@ test("SCA mode: pureWebExtensionReachable is every file the source view holds", 
   const files2 = Object.fromEntries(
     Object.entries(files).filter(([f]) => !f.startsWith("experiments/"))
   );
-  const scaExp = buildReachability({
+  const scaExp = await buildReachability({
     ...ctxFrom(files2, manifest, undefined, ARTIFACT_SCA),
     mode: REVIEW_MODE.SCA,
   });
@@ -241,7 +240,7 @@ test("SCA mode: pureWebExtensionReachable is every file the source view holds", 
   // The built XPI is not the source archive: it uses the closure branch like an XPI
   // review (its entry points resolve against its own files), so the all-source fallback
   // does NOT apply - a non-entry file is not swept in.
-  const shipped = buildReachability({
+  const shipped = await buildReachability({
     ...ctxFrom(files, manifest, undefined, ARTIFACT_XPI),
     mode: REVIEW_MODE.SCA,
   });
@@ -253,7 +252,7 @@ test("SCA mode: pureWebExtensionReachable is every file the source view holds", 
 // so the orchestrator routes them to a context whose addon is the built XPI
 // (buildXpiCtx' xpiCtx); over it a resource the XPI's own content script loads is
 // web-reachable even when the source's pre-build layout would not show it.
-test("SCA: reachability over the built XPI describes the XPI", () => {
+test("SCA: reachability over the built XPI describes the XPI", async () => {
   const xpiManifest = {
     manifest_version: 3,
     content_scripts: [{ matches: ["*://*/*"], js: ["content.js"] }],
@@ -273,7 +272,7 @@ test("SCA: reachability over the built XPI describes the XPI", () => {
     }),
     manifest: manifestOf(xpiManifest, xpiText),
   };
-  const reach = buildReachability(
+  const reach = await buildReachability(
     withManifest({
       artifact: xpi,
       jsSources: parsedSources(xpi),
@@ -286,14 +285,14 @@ test("SCA: reachability over the built XPI describes the XPI", () => {
 
 // A non-literal getURL sets hasDynamicLoaders; the basename safety net finds a
 // string reference the structured parsers missed.
-test("dynamic loaders set the flag; mentionsOf finds bare-name references", () => {
+test("dynamic loaders set the flag; mentionsOf finds bare-name references", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
     "bg.js": `const p = "helper.js";\nbrowser.runtime.getURL(p);`,
     "helper.js": `console.log(1);`,
   };
-  const reach = buildReachability(ctxFrom(files, manifest));
+  const reach = await buildReachability(ctxFrom(files, manifest));
   assert.equal(reach.hasDynamicLoaders, true);
   assert.ok(!reach.reachable.has("helper.js"));
   const hits = reach.mentionsOf("helper.js", "helper.js");
@@ -304,7 +303,7 @@ test("dynamic loaders set the flag; mentionsOf finds bare-name references", () =
 // End-to-end with the real fixture schema: it defines messageDisplayScripts.
 // register with a rel-url file parameter, so the derivation marks it a loader
 // and the file it registers is reachable (no fake schema, no hardcoding).
-test("reachability finds files registered via a schema-derived loader", () => {
+test("reachability finds files registered via a schema-derived loader", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -312,11 +311,11 @@ test("reachability finds files registered via a schema-derived loader", () => {
     "inject.js": `console.log(1);`,
   };
   const ctx = ctxFrom(files, manifest, fixtureSchema);
-  assert.ok(buildReachability(ctx).reachable.has("inject.js"));
+  assert.ok((await buildReachability(ctx)).reachable.has("inject.js"));
 });
 
 // A bridge loader (tabs.create) adds an edge the same way.
-test("reachability follows schema-derived and bridge loader APIs", () => {
+test("reachability follows schema-derived and bridge loader APIs", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -325,7 +324,7 @@ test("reachability follows schema-derived and bridge loader APIs", () => {
     "page.html": "<html></html>",
   };
   const ctx = ctxFrom(files, manifest, fixtureSchema);
-  const reach = buildReachability(ctx);
+  const reach = await buildReachability(ctx);
   assert.ok(reach.reachable.has("inject.js")); // schema-derived register
   assert.ok(reach.reachable.has("page.html")); // bridge tabs.create
 });
@@ -334,7 +333,7 @@ test("reachability follows schema-derived and bridge loader APIs", () => {
 // (Gecko's "current page URL"), not the script's own location. A background PAGE
 // in src/ hosts src/background.js there, so "message-unescape.js" resolves to
 // src/message-unescape.js next to the page and is reachable, not an orphan.
-test("reachability resolves tabs.executeScript file against the host page dir", () => {
+test("reachability resolves tabs.executeScript file against the host page dir", async () => {
   const manifest = {
     manifest_version: 2,
     background: { page: "src/background.html" },
@@ -345,7 +344,7 @@ test("reachability resolves tabs.executeScript file against the host page dir", 
     "src/background.js": `browser.tabs.executeScript(id, { file: "message-unescape.js" });`,
     "src/message-unescape.js": `console.log(1);`,
   };
-  const reach = buildReachability(ctxFrom(files, manifest));
+  const reach = await buildReachability(ctxFrom(files, manifest));
   assert.ok(reach.reachable.has("src/message-unescape.js"));
 });
 
@@ -355,7 +354,7 @@ test("reachability resolves tabs.executeScript file against the host page dir", 
 // entirely.
 const manualItems = (result) => result.escalations ?? [];
 
-test("unused-files: junk + orphan are findings; mentioned -> escalation", () => {
+test("unused-files: junk + orphan are findings; mentioned -> escalation", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -376,7 +375,7 @@ test("unused-files: junk + orphan are findings; mentioned -> escalation", () => 
     "README.md": "# x",
     "README_DE.md": "# x", // localized doc variant: allowlisted, not flagged
   };
-  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const result = await unusedFiles.run(ctxFrom(files, manifest));
   const found = result.findings.map((f) => f.file);
   const manual = manualItems(result).map((m) => m.file);
   assert.ok(found.includes(".DS_Store"));
@@ -422,7 +421,7 @@ test("unused-files: junk + orphan are findings; mentioned -> escalation", () => 
 // it). The review cannot both ask for a file and report it as unused. Everything else in
 // that family is read by nothing and is what this check exists to report - a lock BELOW the
 // root included, since only the root's is consulted.
-test("unused-files exempts the root package.json and lock, not one below the root", () => {
+test("unused-files exempts the root package.json and lock, not one below the root", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -432,7 +431,7 @@ test("unused-files exempts the root package.json and lock, not one below the roo
     "pnpm-lock.yaml": "x: 1",
     "lib/vendored/package.json": '{"name":"vendored"}',
   };
-  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const result = await unusedFiles.run(ctxFrom(files, manifest));
   const reported = [
     ...result.findings.map((f) => f.file),
     ...manualItems(result).map((m) => m.file),
@@ -452,7 +451,7 @@ test("unused-files exempts the root package.json and lock, not one below the roo
 // The mention net is path-aware: a reference whose path resolves to a DIFFERENT
 // packaged file must not make an unrelated same-basename file look mentioned. A
 // bare basename (no resolvable path) is still caught, so recall is preserved.
-test("mentionsOf is path-aware: a path-resolved reference ignores a same-basename namesake", () => {
+test("mentionsOf is path-aware: a path-resolved reference ignores a same-basename namesake", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -461,7 +460,7 @@ test("mentionsOf is path-aware: a path-resolved reference ignores a same-basenam
     "dead/button.js": `export const y = 2;`,
     "dead/widget.js": `export const z = 3;`,
   };
-  const reach = buildReachability(ctxFrom(files, manifest));
+  const reach = await buildReachability(ctxFrom(files, manifest));
   // "./lib/button.js" resolves to lib/button.js, NOT to dead/button.js.
   assert.deepEqual(reach.mentionsOf("dead/button.js"), []);
   assert.deepEqual(
@@ -479,7 +478,7 @@ test("mentionsOf is path-aware: a path-resolved reference ignores a same-basenam
 // with a referenced library file (e.g. an add-on's own widgets/button.js vs a
 // vendored components/button/button.js) is a clear ORPHAN finding, not an
 // ambiguous escalation - so it is reported, not hidden behind a manual review.
-test("unused-files: a basename colliding with a referenced library file is still an orphan", () => {
+test("unused-files: a basename colliding with a referenced library file is still an orphan", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -487,7 +486,7 @@ test("unused-files: a basename colliding with a referenced library file is still
     "lib/button.js": `export const x = 1;`,
     "dead/button.js": `export const y = 2;`,
   };
-  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const result = await unusedFiles.run(ctxFrom(files, manifest));
   const found = result.findings.map((f) => f.file);
   const manual = manualItems(result).map((m) => m.file);
   assert.ok(found.includes("dead/button.js"), "collision orphan is a finding");
@@ -500,7 +499,7 @@ test("unused-files: a basename colliding with a referenced library file is still
 // and a build log are not. Substring matching covers localized and variant names
 // with any separator. A code file is turned away by its extension whatever it is
 // called, so the exemption cannot hide code.
-test("unused-files: an unsettled extension is exempt by name, code never is", () => {
+test("unused-files: an unsettled extension is exempt by name, code never is", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -516,7 +515,7 @@ test("unused-files: an unsettled extension is exempt by name, code never is", ()
     "history.js": `console.log("orphan code, not a doc");`,
     "README.js": `console.log("not a readme");`,
   };
-  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const result = await unusedFiles.run(ctxFrom(files, manifest));
   const found = result.findings.map((f) => f.file);
   const manual = manualItems(result).map((m) => m.file);
   const flagged = (f) => found.includes(f) || manual.includes(f);
@@ -544,7 +543,7 @@ test("unused-files: an unsettled extension is exempt by name, code never is", ()
 // documentation the add-on ships rather than packaging debris. A .txt does not
 // settle it - it is as much a build artifact as a document - which is exactly what
 // this check exists to surface.
-test("unused-files: a documentation extension is exempt; an unnamed .txt is not", () => {
+test("unused-files: a documentation extension is exempt; an unnamed .txt is not", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -555,7 +554,7 @@ test("unused-files: a documentation extension is exempt; an unnamed .txt is not"
     "protocol.rst": "the other markup",
     "data.txt": "not named like a document",
   };
-  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const result = await unusedFiles.run(ctxFrom(files, manifest));
   const found = result.findings.map((f) => f.file);
   const manual = manualItems(result).map((m) => m.file);
   const flagged = (f) => found.includes(f) || manual.includes(f);
@@ -573,7 +572,7 @@ test("unused-files: a documentation extension is exempt; an unnamed .txt is not"
 // Junk by name outranks the exemptions, so a leaked build/editor directory is
 // reported for what it is even when everything in it is documentation - shipping
 // .git/ or .vscode/ is the finding, whatever the file inside happens to be.
-test("unused-files: markdown inside a junk directory is still junk", () => {
+test("unused-files: markdown inside a junk directory is still junk", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -584,7 +583,7 @@ test("unused-files: markdown inside a junk directory is still junk", () => {
     "README.md~": "# an editor backup",
     "notes.md": "# a document the add-on ships",
   };
-  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const result = await unusedFiles.run(ctxFrom(files, manifest));
   const found = result.findings.map((f) => f.file);
   for (const junk of [
     ".git/COMMIT_EDITMSG.md",
@@ -602,7 +601,7 @@ test("unused-files: markdown inside a junk directory is still junk", () => {
 // ctx.note, carrying its deterministic verdict (unsure = escalated to a reviewer,
 // fail = a clear orphan) and the loaders (file:line) it examined - so a reviewer
 // can re-check them even though the report shows only the final outcome.
-test("unused-files notes the loaders it examined per candidate", () => {
+test("unused-files notes the loaders it examined per candidate", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -615,7 +614,7 @@ test("unused-files notes the loaders it examined per candidate", () => {
   const notes = [];
   ctx.note = (at, item, verdict) =>
     notes.push({ file: at.file, item, verdict });
-  unusedFiles.run(ctx);
+  await unusedFiles.run(ctx);
 
   const maybe = notes.find((n) => n.file === "maybe.js");
   assert.equal(maybe.verdict, VERDICT.UNSURE);
@@ -639,7 +638,7 @@ test("unused-files notes the loaders it examined per candidate", () => {
 // loaderTrace (shared by unused-files + minimize-WAR) renders the three cases:
 // referrers sorted by (file, line) with a dead-code marker when none is live, a
 // runtime-loader hint, and the no-loader fallback.
-test("loaderTrace formats referrers / dynamic loaders / none", () => {
+test("loaderTrace formats referrers / dynamic loaders / none", async () => {
   const noDyn = { hasDynamicLoaders: false, dynamicLoaderSites: [] };
   assert.equal(
     loaderTrace(
@@ -669,7 +668,7 @@ test("loaderTrace formats referrers / dynamic loaders / none", () => {
 
 // A README-only reference is documentation, not a runtime load, so the asset
 // is a clear orphan (a finding), not an ambiguous "mentioned" case (escalation).
-test("unused-files: a doc-only reference does not count as a mention", () => {
+test("unused-files: a doc-only reference does not count as a mention", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -677,7 +676,7 @@ test("unused-files: a doc-only reference does not count as a mention", () => {
     "README.md": `![banner](Images/banner.png)`, // only mention is in docs
     "Images/banner.png": "",
   };
-  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const result = await unusedFiles.run(ctxFrom(files, manifest));
   assert.ok(result.findings.some((f) => f.file === "Images/banner.png"));
   assert.ok(!manualItems(result).some((m) => m.file === "Images/banner.png"));
 });
@@ -685,7 +684,7 @@ test("unused-files: a doc-only reference does not count as a mention", () => {
 // minimize-WAR pre-flight: an over-broad resource pattern is a finding; a
 // concrete resource no content script loads is a finding; a loaded one is fine.
 // A match like <all_urls> is not a file and is never reported by this check.
-test("minimize-WAR flags over-broad exposure and unloaded resources", () => {
+test("minimize-WAR flags over-broad exposure and unloaded resources", async () => {
   const manifest = {
     manifest_version: 3,
     content_scripts: [{ js: ["cs.js"], matches: ["*://*/*"] }],
@@ -699,9 +698,9 @@ test("minimize-WAR flags over-broad exposure and unloaded resources", () => {
     "used.png": "",
     "unused.png": "",
   };
-  const items = minimizeWar
-    .run(ctxFrom(files, manifest))
-    .findings.map((o) => o.item);
+  const items = (await minimizeWar.run(ctxFrom(files, manifest))).findings.map(
+    (o) => o.item
+  );
   assert.ok(items.includes("*")); // over-broad resource
   assert.ok(!items.includes("<all_urls>")); // a match is not a file - not reported
   assert.ok(items.includes("unused.png")); // exposed but unloaded (unambiguous)
@@ -712,7 +711,7 @@ test("minimize-WAR flags over-broad exposure and unloaded resources", () => {
 // per suspected loader site; the rule itself decides nothing. With no
 // token each resolves to a manual note on the file F, and every candidate points
 // at the loader site (bg.js) the reviewer would follow.
-test("unused-files makes a candidate per ambiguous file's loader site", () => {
+test("unused-files makes a candidate per ambiguous file's loader site", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -720,7 +719,7 @@ test("unused-files makes a candidate per ambiguous file's loader site", () => {
     "good.js": `console.log(1);`,
     "bad.js": `console.log(2);`,
   };
-  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const result = await unusedFiles.run(ctxFrom(files, manifest));
   assert.equal(result.findings.length, 0);
   assert.deepEqual(
     manualItems(result)
@@ -731,7 +730,7 @@ test("unused-files makes a candidate per ambiguous file's loader site", () => {
 });
 
 // An ambiguous exposed resource escalates too, named by the exposed file.
-test("minimize-WAR escalates an ambiguous exposed resource", () => {
+test("minimize-WAR escalates an ambiguous exposed resource", async () => {
   const manifest = {
     manifest_version: 3,
     content_scripts: [{ js: ["cs.js"], matches: ["https://example.com/*"] }],
@@ -744,14 +743,14 @@ test("minimize-WAR escalates an ambiguous exposed resource", () => {
     "cs.js": `// references maybe.png by a runtime-built path`,
     "maybe.png": "",
   };
-  const result = minimizeWar.run(ctxFrom(files, manifest));
+  const result = await minimizeWar.run(ctxFrom(files, manifest));
   assert.ok(manualItems(result).some((m) => m.item === "maybe.png"));
 });
 
 // A file referenced only by another UNREACHABLE file (with no live dynamic
 // loader) is a clear orphan, settled deterministically as a finding - no reviewer
 // is asked, because dead code cannot load it.
-test("unused-files: a file named only by dead code is a finding", () => {
+test("unused-files: a file named only by dead code is a finding", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -759,7 +758,7 @@ test("unused-files: a file named only by dead code is a finding", () => {
     "dead.html": `<script src="dead.js"></script>`, // unreachable
     "dead.js": `console.log(2);`, // named only by the unreachable dead.html
   };
-  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const result = await unusedFiles.run(ctxFrom(files, manifest));
   const found = result.findings.map((f) => f.file);
   assert.ok(found.includes("dead.html"));
   assert.ok(found.includes("dead.js"));
@@ -768,7 +767,7 @@ test("unused-files: a file named only by dead code is a finding", () => {
 
 // A dynamic loader that sits in unreachable code never runs, so it must not set
 // hasDynamicLoaders nor drag unrelated orphans to a reviewer.
-test("unused-files: a dynamic loader in dead code does not force escalation", () => {
+test("unused-files: a dynamic loader in dead code does not force escalation", async () => {
   const manifest = { manifest_version: 3, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -776,16 +775,16 @@ test("unused-files: a dynamic loader in dead code does not force escalation", ()
     "orphan-loader.js": `const p = "x";\nbrowser.runtime.getURL(p);`,
     "asset.png": ``, // unreachable, referenced by nothing
   };
-  const reach = buildReachability(ctxFrom(files, manifest));
+  const reach = await buildReachability(ctxFrom(files, manifest));
   assert.equal(reach.hasDynamicLoaders, false); // the dead loader is dropped
-  const result = unusedFiles.run(ctxFrom(files, manifest));
+  const result = await unusedFiles.run(ctxFrom(files, manifest));
   assert.ok(result.findings.map((f) => f.file).includes("asset.png"));
   assert.deepEqual(result.escalations, []);
 });
 
 // minimize-WAR: a resource named only by dead code, with no live dynamic loader,
 // is plainly needless exposure - a deterministic finding, not an escalation.
-test("minimize-WAR: a resource named only by dead code is a finding", () => {
+test("minimize-WAR: a resource named only by dead code is a finding", async () => {
   const manifest = {
     manifest_version: 3,
     content_scripts: [{ js: ["cs.js"], matches: ["https://example.com/*"] }],
@@ -799,7 +798,7 @@ test("minimize-WAR: a resource named only by dead code is a finding", () => {
     "dead.html": `<img src="res.png">`, // names res.png, but is unreachable
     "res.png": ``,
   };
-  const result = minimizeWar.run(ctxFrom(files, manifest));
+  const result = await minimizeWar.run(ctxFrom(files, manifest));
   assert.ok(result.findings.map((f) => f.item).includes("res.png"));
   assert.ok(!manualItems(result).some((m) => m.item === "res.png"));
 });
@@ -808,7 +807,7 @@ test("minimize-WAR: a resource named only by dead code is a finding", () => {
 // appear in this resource-minimization finding; and a file exposed by a glob
 // anchors on the WAR pattern's line, not the file's coincidental occurrence
 // elsewhere in the manifest.json (here the "icons" field).
-test("minimize-WAR: no match patterns reported; globbed files anchor on the pattern line", () => {
+test("minimize-WAR: no match patterns reported; globbed files anchor on the pattern line", async () => {
   const manifest = {
     manifest_version: 3,
     icons: { 16: "icons/icon16.png", 48: "icons/icon48.png" },
@@ -822,7 +821,7 @@ test("minimize-WAR: no match patterns reported; globbed files anchor on the patt
     "icons/icon16.png": ``,
     "icons/icon48.png": ``,
   };
-  const result = minimizeWar.run(ctxFrom(files, manifest));
+  const result = await minimizeWar.run(ctxFrom(files, manifest));
   const items = result.findings.map((f) => f.item);
   // The match pattern is not a file - never reported here.
   assert.ok(!items.includes("<all_urls>"));

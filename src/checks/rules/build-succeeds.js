@@ -18,10 +18,10 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: [], escalations: Escalation[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     // Null when the source documents no build at all: the question then carries no locus
     // rather than pointing at a package.json the submission lacks.
-    const { anchor } = ctx.artifact.buildReview;
+    const { anchor } = await ctx.buildReview();
     ctx.note?.(ctx.artifact.at(anchor), "the build", VERDICT.UNSURE);
     return { findings: [], escalations: [{ ...ctx.artifact.at(anchor) }] };
   },

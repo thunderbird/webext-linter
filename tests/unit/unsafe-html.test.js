@@ -12,7 +12,7 @@ const sinks = (code) => scanUnsafeHtml(code).hits.map((h) => h.sink);
 
 // Assignments fed by identifiers, calls, or string concatenation are reported
 // for each HTML sink, including the method form insertAdjacentHTML.
-test("flags dynamic innerHTML / outerHTML / insertAdjacentHTML", () => {
+test("flags dynamic innerHTML / outerHTML / insertAdjacentHTML", async () => {
   assert.deepEqual(sinks(`el.innerHTML = userInput;`), ["innerHTML"]);
   assert.deepEqual(sinks(`el.outerHTML = build();`), ["outerHTML"]);
   assert.deepEqual(sinks(`el.innerHTML = "<a>" + name + "</a>";`), [
@@ -26,7 +26,7 @@ test("flags dynamic innerHTML / outerHTML / insertAdjacentHTML", () => {
 // Static content is flagged too - the only sanctioned insertion method is
 // Element.setHTML(), so a non-empty static string, a static concatenation, and a
 // fully-static ternary all produce a hit, just like dynamic content.
-test("flags static (non-empty) HTML content too", () => {
+test("flags static (non-empty) HTML content too", async () => {
   assert.deepEqual(sinks(`el.innerHTML = "<b>ok</b>";`), ["innerHTML"]);
   assert.deepEqual(sinks(`el.innerHTML = "<a>" + "<b>";`), ["innerHTML"]);
   assert.deepEqual(sinks(`el.innerHTML = cond ? "<b>A</b>" : "<i>B</i>";`), [
@@ -36,7 +36,7 @@ test("flags static (non-empty) HTML content too", () => {
 
 // The ONLY exempt writes are an empty-string / null clear (no content) and
 // insertAdjacentHTML with an empty argument; textContent is never a sink.
-test("exempts only an empty/null clear and textContent", () => {
+test("exempts only an empty/null clear and textContent", async () => {
   assert.equal(scanUnsafeHtml(`el.innerHTML = "";`).hits.length, 0);
   assert.equal(scanUnsafeHtml("el.innerHTML = ``;").hits.length, 0);
   assert.equal(scanUnsafeHtml(`el.innerHTML = null;`).hits.length, 0);
@@ -52,7 +52,7 @@ test("exempts only an empty/null clear and textContent", () => {
 
 // Bracket-style property writes, the srcdoc sink, and ternaries with even one
 // dynamic arm are all detected, so static-only detection cannot be bypassed.
-test("flags computed access, srcdoc, and dynamic ternary arms", () => {
+test("flags computed access, srcdoc, and dynamic ternary arms", async () => {
   assert.deepEqual(sinks(`el["innerHTML"] = userInput;`), ["innerHTML"]);
   assert.deepEqual(sinks(`frame.srcdoc = build();`), ["srcdoc"]);
   assert.deepEqual(sinks(`el.innerHTML = cond ? "<b>ok</b>" : userInput;`), [
@@ -62,7 +62,7 @@ test("flags computed access, srcdoc, and dynamic ternary arms", () => {
 
 // The check narrates each sink it flags to the feed via ctx.note (verdict fail),
 // so the reviewer gets the HTML-sink trail alongside the findings.
-test("unsafe-html notes each sink site (verdict fail)", () => {
+test("unsafe-html notes each sink site (verdict fail)", async () => {
   const code = "el.innerHTML = userInput;";
   const ctx = {
     artifact: {
@@ -76,7 +76,7 @@ test("unsafe-html notes each sink site (verdict fail)", () => {
   const notes = [];
   ctx.note = (at, item, verdict) =>
     notes.push({ file: at.file, item, verdict });
-  const out = unsafeHtml.run(withManifest(ctx)).findings;
+  const out = (await unsafeHtml.run(withManifest(ctx))).findings;
   assert.equal(out.length, 1); // still one finding
   assert.deepEqual(notes, [
     { file: "render.js", item: ".innerHTML", verdict: VERDICT.FAIL },

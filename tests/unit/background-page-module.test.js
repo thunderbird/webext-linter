@@ -19,11 +19,11 @@ const addon = (files, manifest) => ({
 // module-syntax loc, which the check reads via moduleSyntaxOf. A check never parses, so a
 // <script src> target absent from the artifact's files (a non-JS suffix) is simply not a classic .js
 // script here - unrecognized-file-type reports it instead.
-const run = (files, manifest) => {
+const run = async (files, manifest) => {
   const a = addon(files, manifest);
-  return rule
-    .run(withManifest({ artifact: a, jsSources: parsedSources(a) }))
-    .findings.map((f) => `${f.file}:${f.loc?.line}`);
+  return (
+    await rule.run(withManifest({ artifact: a, jsSources: parsedSources(a) }))
+  ).findings.map((f) => `${f.file}:${f.loc?.line}`);
 };
 
 // background.html lines: 1 doctype, 2 head, 3 background.js (module, no type ->
@@ -44,18 +44,19 @@ const FILES = {
   "helper.js": "export function init() {}",
 };
 
-test("flags only the module <script src> that lacks type=module", () => {
+test("flags only the module <script src> that lacks type=module", async () => {
   // background.js's tag (line 2) is flagged; the type=module tag (ok.js), the
   // classic script, and the inline import are all left alone.
-  assert.deepEqual(run(FILES, { background: { page: "background.html" } }), [
-    "background.html:2",
-  ]);
+  assert.deepEqual(
+    await run(FILES, { background: { page: "background.html" } }),
+    ["background.html:2"]
+  );
 });
 
-test("no finding for a background that uses scripts (not a page)", () => {
+test("no finding for a background that uses scripts (not a page)", async () => {
   // background.scripts is background-module.js's domain, not this check's.
   assert.deepEqual(
-    run(
+    await run(
       {
         "background.js": 'import "./helper.js";',
         "helper.js": "export const x = 1;",
@@ -66,9 +67,9 @@ test("no finding for a background that uses scripts (not a page)", () => {
   );
 });
 
-test("no finding when the declared page is absent from the package", () => {
+test("no finding when the declared page is absent from the package", async () => {
   assert.deepEqual(
-    run(
+    await run(
       { "helper.js": "export const x = 1;" },
       {
         background: { page: "background.html" },

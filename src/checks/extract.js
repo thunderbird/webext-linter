@@ -219,7 +219,8 @@ function extractSource(
 /**
  * The per-file results an extraction pass stored on a source. A CHECK IS A PURE READER: it
  * never parses, so a source that reaches a check without having been through a pass is a
- * wiring bug in setup, not something to paper over by parsing here. Fail loudly instead.
+ * wiring bug in the review's data (src/review/products.js), not something to paper over by
+ * parsing here. Fail loudly instead.
  *
  * A field being ABSENT is a different thing, and legitimate: `codeAtoms` on a non-authored
  * source, `experimentRefs` on a non-Experiment add-on. Everything else is on every source.

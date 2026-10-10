@@ -88,9 +88,9 @@ export const COLLAPSE_MODES = new Set(["subject"]);
 // pins no mode and runs in either.
 //
 // A check reads only the artifact its route names, and has no way to reach another (see
-// buildXpiCtx / buildScaCtx / buildAllCtx). The artifacts themselves are sealed (sealArtifact,
-// src/lib/errors.js), so reading a field the routed artifact never produced throws rather
-// than answering nothing.
+// buildXpiCtx / buildScaCtx / buildAllCtx). What the review computes about an artifact is
+// read through that ctx's data getters (src/review/products.js), and a getter for data the
+// routed artifact never has throws rather than answering nothing.
 //
 // A few checks read no artifact at all - only the shared records, ctx.manifest and
 // ctx.experiments, which belong to no route because both are the built XPI's (see the

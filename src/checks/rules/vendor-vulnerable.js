@@ -21,9 +21,9 @@ export default {
    * @param {import("../registry.js").RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     return {
-      findings: vulnFindings(ctx, ctx.artifact.vendor.vulnerabilities ?? []),
+      findings: vulnFindings(ctx, (await ctx.vendor()).vulnerabilities ?? []),
     };
   },
 };

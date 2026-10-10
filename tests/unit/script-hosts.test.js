@@ -28,7 +28,7 @@ const dirs = (map, file) => [...(map.get(file) ?? [])];
 // child at the page's own directory, and that base flows to the modules the
 // child imports (document.baseURI is the page's, not the imported module's). So
 // a page-relative `file` resolves under the page dir - the isabelle shape.
-test("background.page in a subdir hosts its scripts (and imports) at the page dir", () => {
+test("background.page in a subdir hosts its scripts (and imports) at the page dir", async () => {
   const manifest = {
     manifest_version: 2,
     background: { page: "src/background.html" },
@@ -41,7 +41,7 @@ test("background.page in a subdir hosts its scripts (and imports) at the page di
     "src/message-unescape.js": ``,
   };
   const ctx = ctxFrom(files, manifest);
-  const hd = scriptHostDirs(ctx);
+  const hd = await scriptHostDirs(ctx);
   assert.deepEqual(dirs(hd, "src/background.js"), ["src"]);
   assert.deepEqual(dirs(hd, "src/helper.js"), ["src"]); // imported module inherits the page dir
   assert.equal(
@@ -59,7 +59,7 @@ test("background.page in a subdir hosts its scripts (and imports) at the page di
 // so the script's base is root even when the script itself lives in a subdir -
 // the page-vs-script distinction. "inject.js" resolves at the root, NOT next to
 // the script.
-test("background.scripts get the generated root page's base", () => {
+test("background.scripts get the generated root page's base", async () => {
   const manifest = {
     manifest_version: 3,
     background: { scripts: ["src/bg.js"] },
@@ -71,7 +71,7 @@ test("background.scripts get the generated root page's base", () => {
     "src/inject.js": ``, // next to the script
   };
   const ctx = ctxFrom(files, manifest);
-  const hd = scriptHostDirs(ctx);
+  const hd = await scriptHostDirs(ctx);
   const f = ctx.artifact.files;
   assert.deepEqual(dirs(hd, "src/bg.js"), [""]); // root
   assert.equal(
@@ -83,7 +83,7 @@ test("background.scripts get the generated root page's base", () => {
 // A script no declared page loads has no known host context, so a page-relative
 // path falls back to root-relative resolution - never worse than resolving every
 // path at the root.
-test("a script with no declared host page falls back to root-relative", () => {
+test("a script with no declared host page falls back to root-relative", async () => {
   const manifest = { manifest_version: 2 };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -92,7 +92,7 @@ test("a script with no declared host page falls back to root-relative", () => {
     "x.js": ``,
   };
   const ctx = ctxFrom(files, manifest);
-  const hd = scriptHostDirs(ctx);
+  const hd = await scriptHostDirs(ctx);
   const f = ctx.artifact.files;
   assert.equal(hd.get("lib/util.js"), undefined); // no host page
   assert.equal(resolvePageRelative(f, hd, "lib/util.js", "x.js"), "x.js"); // root
@@ -103,7 +103,7 @@ test("a script with no declared host page falls back to root-relative", () => {
 });
 
 // A popup page hosts the script it loads at the popup's directory.
-test("an action popup page hosts its script at the popup dir", () => {
+test("an action popup page hosts its script at the popup dir", async () => {
   const manifest = {
     manifest_version: 3,
     action: { default_popup: "ui/popup.html" },
@@ -113,7 +113,7 @@ test("an action popup page hosts its script at the popup dir", () => {
     "ui/popup.html": `<script src="popup.js"></script>`,
     "ui/popup.js": `console.log(1);`,
   };
-  const hd = scriptHostDirs(ctxFrom(files, manifest));
+  const hd = await scriptHostDirs(ctxFrom(files, manifest));
   assert.deepEqual(dirs(hd, "ui/popup.js"), ["ui"]);
 });
 
@@ -121,7 +121,7 @@ test("an action popup page hosts its script at the popup dir", () => {
 // tabs.create - is still a host context, because being included by an HTML page
 // (not how the page is opened) is what lets a script run in it. So its script's
 // page-relative executeScript path resolves under the page dir, not root.
-test("a dynamically-opened page (no manifest key) still hosts its script", () => {
+test("a dynamically-opened page (no manifest key) still hosts its script", async () => {
   const manifest = { manifest_version: 2, background: { scripts: ["bg.js"] } };
   const files = {
     "manifest.json": JSON.stringify(manifest),
@@ -131,7 +131,7 @@ test("a dynamically-opened page (no manifest key) still hosts its script", () =>
     "dash/inject.js": ``,
   };
   const ctx = ctxFrom(files, manifest);
-  const hd = scriptHostDirs(ctx);
+  const hd = await scriptHostDirs(ctx);
   assert.deepEqual(dirs(hd, "dash/dashboard.js"), ["dash"]);
   assert.equal(
     resolvePageRelative(
@@ -150,7 +150,7 @@ test("a dynamically-opened page (no manifest key) still hosts its script", () =>
 // clamps to "x" and surplus ".." saturate - they resolve to the bundled file
 // rather than escaping. This is the qnote/filtaquilla shape (an icon "../skin/x"
 // that loads).
-test("a leading .. clamps at root for a root-hosted (background.scripts) module", () => {
+test("a leading .. clamps at root for a root-hosted (background.scripts) module", async () => {
   const manifest = {
     manifest_version: 2,
     background: { scripts: ["background.mjs"], type: "module" },
@@ -162,7 +162,7 @@ test("a leading .. clamps at root for a root-hosted (background.scripts) module"
     "skin/x.svg": ``,
   };
   const ctx = ctxFrom(files, manifest);
-  const hd = scriptHostDirs(ctx);
+  const hd = await scriptHostDirs(ctx);
   const f = ctx.artifact.files;
   assert.deepEqual(dirs(hd, "modules/menu.mjs"), [""]); // inherits the root base
   // "../skin/x.svg" from root clamps to "skin/x.svg" (does not escape).
@@ -179,7 +179,7 @@ test("a leading .. clamps at root for a root-hosted (background.scripts) module"
 
 // From a subdir host page, a single ".." is a real directory step (walk out,
 // then back in), while surplus ".." clamp at root - the nested-page shape.
-test(".. walks out of a subdir host page then clamps at root", () => {
+test(".. walks out of a subdir host page then clamps at root", async () => {
   const manifest = {
     manifest_version: 2,
     background: { page: "nested/background.html" },
@@ -192,7 +192,7 @@ test(".. walks out of a subdir host page then clamps at root", () => {
     "top.svg": ``,
   };
   const ctx = ctxFrom(files, manifest);
-  const hd = scriptHostDirs(ctx);
+  const hd = await scriptHostDirs(ctx);
   const f = ctx.artifact.files;
   assert.deepEqual(dirs(hd, "nested/menu.js"), ["nested"]);
   // base nested/: bare path stays under nested/.

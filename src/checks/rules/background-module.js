@@ -30,7 +30,7 @@ export default {
    * @param {RunContext} ctx
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     // Registry `input: xpi`: ctx.artifact is the built XPI. Module-ness is a runtime-
     // loading property of what ships - Thunderbird loads the XPI's background script
     // against the XPI's manifest.json, and the build can transform it (an ESM source
@@ -51,7 +51,7 @@ export default {
     const isModule = bg.type === "module";
 
     const out = [];
-    for (const src of ctx.jsSources) {
+    for (const src of await ctx.jsSources()) {
       if (!scripts.has(src.file)) {
         continue;
       }

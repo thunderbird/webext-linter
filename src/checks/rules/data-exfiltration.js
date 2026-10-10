@@ -37,10 +37,10 @@ export default {
    * @returns {{findings: [], escalations:
    *   import("../escalation.js").Escalation[]}}
    */
-  run(ctx) {
+  async run(ctx) {
     const escalations = [];
     const seen = new Set();
-    for (const sink of getOutboundSinks(ctx)) {
+    for (const sink of await getOutboundSinks(ctx)) {
       const remote = sink.destClass.remote || sink.destClass.dynamic;
       const key = `${sink.file}:${sink.line}`;
       if (!sink.channel.overt || !remote || seen.has(key)) {

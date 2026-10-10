@@ -11,8 +11,8 @@ import { finding } from "../../report/finding.js";
 import { getEvalScan } from "../../lib/eval-scan.js";
 
 export default {
-  run(ctx) {
-    if (!getEvalScan(ctx).unsafeEval) {
+  async run(ctx) {
+    if (!(await getEvalScan(ctx)).unsafeEval) {
       return { findings: [] };
     }
     ctx.note?.(ctx.manifest.locus(), "CSP 'unsafe-eval'", VERDICT.FAIL);
