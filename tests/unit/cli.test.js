@@ -1962,11 +1962,6 @@ test("a prepared review refuses a record it cannot start from", (t) => {
       ]);
     });
   refusedFor(
-    "an unrescued that is neither true nor false",
-    { unrescued: "yes" },
-    /The hand-back was refused: the preparation's record holds unrescued as neither true nor false/
-  );
-  refusedFor(
     "an experiments that is neither true nor false",
     { submission: { xpi: path.join(os.tmpdir(), "x.xpi"), experiments: 1 } },
     /The hand-back was refused: the preparation's record holds submission\.experiments as neither true nor false/

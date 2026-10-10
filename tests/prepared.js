@@ -103,7 +103,7 @@ export function answer(work, answers) {
  * A vulnerable one gets its rescued copy, and `rescue` is the agent's work in it: a function
  * of the copy's root, which changes what it must for the copy's audit to come out clean -
  * or null, which changes nothing, so the fix step gives the rescue up and the original is
- * done, unrescued. Each step is asserted to move as the preparation moves it.
+ * done, its roots back in sca/. Each step is asserted to move as the preparation moves it.
  * @param {{source: string, xpi: string, flags?: object, vulns?: Record<string, object[]>,
  *   rescue?: ?(copyRoot: string) => void}} opts
  * @returns {Promise<{next: string, work: string, record: object}>}  The handout of the
@@ -158,7 +158,11 @@ export async function realPreparation({
     "a fix that changed nothing gives the rescue up"
   );
   assert.equal(at.work, work);
-  assert.equal(at.record.unrescued, true);
+  assert.equal(
+    at.record.roots.scaRoot,
+    sca,
+    "the source as submitted is reviewed"
+  );
   assert.ok(!fs.existsSync(copy), "the given-up copy is deleted");
   return at;
 }

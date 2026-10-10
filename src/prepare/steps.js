@@ -213,12 +213,9 @@ function answeredRoots(work, record) {
  * @throws {HandbackRefused}
  */
 export function recordedRoots(work, roots) {
-  const paths = workPaths(work);
-  const sca = realSca(paths);
-  const copy = realFolder(paths.rescued);
+  const sca = realSca(workPaths(work));
   const root = realFolder(roots.scaRoot);
-  const inside = (tree) => tree !== null && relativeInside(root, tree) !== null;
-  if (!root || !(inside(sca) || inside(copy))) {
+  if (!root || !(relativeInside(root, sca) !== null || inCopy(work, root))) {
     throw new HandbackRefused(
       `the preparation's record names a source root "${displayLine(roots.scaRoot)}" ` +
         `that is not a folder inside "${sca}" or its rescued copy`
@@ -235,6 +232,20 @@ export function recordedRoots(work, roots) {
     );
   }
   return { scaRoot: root, scaExpSource: exp };
+}
+
+/**
+ * Whether `root` lies in the work folder's rescued copy - which is how a record says its
+ * review reads the copy: a rescue that came out clean leaves its roots there, and every other
+ * record names `sca/`.
+ * @param {string} work
+ * @param {?string} root
+ * @returns {boolean}
+ */
+function inCopy(work, root) {
+  const copy = realFolder(workPaths(work).rescued);
+  const real = root ? realFolder(root) : null;
+  return copy !== null && real !== null && relativeInside(real, copy) !== null;
 }
 
 /**
@@ -329,8 +340,7 @@ function rescue(work, record) {
 /**
  * A rescued copy's step, handed back: audited, then done when clean, on to `fix` after a
  * `reduce` that was not enough, and given up after a `fix` that was not either - the
- * folder is then done and marked unrescued, its roots back in `sca/`, before the copy is
- * removed.
+ * folder is then done with its roots back in `sca/`, before the copy is removed.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record
  * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} context
@@ -349,23 +359,23 @@ async function rescueStep(work, record, context) {
   const real = fs.realpathSync(rescued);
   const back = (p) =>
     p ? path.join(fs.realpathSync(sca), path.relative(real, p)) : p;
-  const unrescued = markPrepare(work, {
+  const givenUp = markPrepare(work, {
     ...record,
     step: PREPARE_STEP.done,
-    unrescued: true,
     roots: {
       scaRoot: back(record.roots.scaRoot),
       scaExpSource: back(record.roots.scaExpSource),
     },
   });
   fs.rmSync(rescued, { recursive: true, force: true });
-  return { next: "review", work, record: unrescued };
+  return { next: "review", work, record: givenUp };
 }
 
 /**
  * A done folder handed back again before its review started - the start before was refused,
- * failed, or was cut short: its review is started once more. Where it gave its rescue up and
- * the copy is still there - the give-up was cut short - the copy's removal is finished first.
+ * failed, or was cut short: its review is started once more. A copy its roots do not lie in is
+ * no longer read - a give-up cut short before it was removed - and its removal is finished
+ * first.
  * And the review file the review claims is deleted again, in case the run that marked the
  * folder was cut short before it could.
  * @param {string} work
@@ -373,7 +383,7 @@ async function rescueStep(work, record, context) {
  * @returns {Handout}
  */
 function doneAgain(work, record) {
-  if (record.unrescued === true) {
+  if (!inCopy(work, record.roots?.scaRoot)) {
     fs.rmSync(workPaths(work).rescued, { recursive: true, force: true });
   }
   return { next: "review", work, record: markPrepare(work, record) };

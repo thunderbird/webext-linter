@@ -55,7 +55,7 @@ const READ_ONLY = 0o444;
  * - `reduce` and `fix`: the rescued copy in `rescued/`, waiting for its dependencies to be
  *   reduced, then audit-fixed, and audited again after each;
  * - `done`: the review may start here, and the record holds what its command is built from.
- *   A folder whose rescue was given up is `done` too, marked `unrescued`.
+ *   A folder whose rescue was given up is `done` too, its roots back in `sca/`.
  */
 export const PREPARE_STEP = Object.freeze({
   extract: "extract",
@@ -77,12 +77,10 @@ export const PREPARE_STEP = Object.freeze({
  * @property {?{scaRoot: string, scaExpSource: ?string}} roots  The settled roots, absolute
  *   and real, once known: inside `sca/`, or inside `rescued/` while a rescue runs and once it
  *   came out clean - the tree the next step, or the review, reads.
- * @property {boolean} unrescued  The rescue was given up: the source as submitted, in
- *   `sca/`, is reviewed like any other, and its vulnerability checks stop it.
  * @property {string} digest  The hash over every other field, as writePrepare stored it
  *   (recordDigest). A record whose digest does not match was changed after it was written.
  *
- * Every boolean in the record - `unrescued`, `submission.experiments`, a boolean flag - is
+ * Every boolean in the record - `submission.experiments`, a boolean flag - is
  * `true` or `false`, which is all the linter writes. Anything else was put there by an edit,
  * and the record is refused rather than read (recordBoolean).
  */
@@ -131,7 +129,6 @@ export function readPrepare(work) {
     );
   }
   // The record's own booleans, checked here so no reader tests one itself.
-  recordBoolean(record.unrescued, "unrescued");
   if (!record.submission || typeof record.submission !== "object") {
     throw new HandbackRefused("the preparation's record names no submission");
   }
@@ -171,7 +168,6 @@ export function startRecord({ submission, flags }) {
     submission,
     flags,
     roots: null,
-    unrescued: false,
   };
 }
 

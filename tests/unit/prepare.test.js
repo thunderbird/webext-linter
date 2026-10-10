@@ -176,7 +176,6 @@ test("a source stopped only by a locked vulnerability gets a rescued copy", asyn
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.reduce);
   assert.equal(at.record.roots.scaRoot, copy);
-  assert.equal(at.record.unrescued, false);
   assert.deepEqual(recordOf(work), at.record);
   assert.ok(!fs.existsSync(workPaths(work).review));
   assert.equal(
@@ -465,7 +464,7 @@ test("a reduce that is not enough moves on to fix, and a clean fix is done", asy
 });
 
 // The way out: an agent that could not do either step runs on without changing anything.
-// The copy is deleted, and the folder is done, marked unrescued, its roots back in sca/: the
+// The copy is deleted, and the folder is done, its roots back in sca/: the
 // source as submitted is reviewed like any other. The preparation writes no report of its own.
 test("a fix that is not enough deletes the copy, and the original is reviewed unrescued", async () => {
   const { work, copy } = await rescued();
@@ -474,7 +473,6 @@ test("a fix that is not enough deletes the copy, and the original is reviewed un
   assert.equal(at.next, "review");
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.done);
-  assert.equal(at.record.unrescued, true);
   assert.equal(at.record.roots.scaRoot, workPaths(work).sca);
   assert.deepEqual(recordOf(work), at.record);
   assert.ok(!fs.existsSync(copy), "the copy is deleted");
@@ -582,7 +580,23 @@ test("a done folder handed back again hands out its review again", async () => {
   cleanup(work);
 });
 
-// A give-up cut short after the folder was marked unrescued leaves the copy behind; the next
+// A clean rescue's folder handed back again keeps its copy: its roots lie there, so the copy
+// is what its review reads.
+test("a clean rescue handed back again keeps its copy", async () => {
+  const { work, copy, root } = await rescued();
+  writeTree(root, {
+    "package.json": packageFile(null),
+    "package-lock.json": npmLock(null),
+  });
+  await later(work, net(TOOL_HIGH));
+  const again = await later(work, noNet);
+  assert.equal(again.next, "review");
+  assert.equal(again.record.roots.scaRoot, root);
+  assert.ok(fs.existsSync(copy));
+  cleanup(work);
+});
+
+// A give-up cut short after the folder was marked done leaves the copy behind; the next
 // hand-back finishes removing it, and hands the review out.
 test("a copy left behind by a give-up cut short is removed", async () => {
   const { work, copy } = await rescued();
@@ -590,7 +604,6 @@ test("a copy left behind by a give-up cut short is removed", async () => {
   writePrepare(work, {
     ...recordOf(work),
     step: PREPARE_STEP.done,
-    unrescued: true,
     roots: { scaRoot: workPaths(work).sca, scaExpSource: null },
   });
   assert.ok(fs.existsSync(copy));
@@ -612,7 +625,6 @@ test("a forged record never removes a folder outside the work folder", async () 
   writePrepare(work, {
     ...recordOf(work),
     step: PREPARE_STEP.done,
-    unrescued: true,
     roots: { scaRoot: stray, scaExpSource: null },
   });
   await later(work, noNet);
@@ -673,10 +685,14 @@ test("a record of another version of this tool is refused as one", async () => {
 // there by an edit, and the hand-back is refused rather than reading a meaning into it.
 test("a record boolean that is neither true nor false is refused", async () => {
   const { work } = await rescued();
-  writePrepare(work, { ...recordOf(work), unrescued: "yes" });
+  const record = recordOf(work);
+  writePrepare(work, {
+    ...record,
+    submission: { ...record.submission, experiments: "yes" },
+  });
   await assert.rejects(
     later(work, noNet),
-    refused(/holds unrescued as neither true nor false/)
+    refused(/holds submission\.experiments as neither true nor false/)
   );
   cleanup(work);
 });
