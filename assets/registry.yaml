@@ -6,8 +6,8 @@
 # mode - `response-for-xpi` and `response-for-sca`, both of them, and no `response`. The
 # two forms are exclusive (assertResponse refuses a mix), and the per-mode pair is for a
 # check whose ADVICE differs by submission: what an XPI submission can be asked to fix is
-# not what a source code submission can. The mode is derived, not the flag - a rejected
-# Experiment reviews as XPI even with --sca-root - and it changes nothing but this text.
+# not what a source code submission can. The mode is the review's (--sca-root or not), and it
+# changes nothing but this text.
 #
 # The check-bearing sections below ARE the phases: a check's phase IS the section it
 # lives in, so no entry declares one. The orchestrator (runChecks) knows this closed set

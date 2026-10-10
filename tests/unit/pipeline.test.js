@@ -129,6 +129,42 @@ test("allowed Experiment: normal review runs, no reject", async () => {
   fs.rmSync(src, { recursive: true, force: true });
 });
 
+// The verdict decides nothing but what experiment-not-allowed reports: with that check left
+// out, a rejected Experiment's review runs exactly as an allowed one does - the same findings,
+// its own APIs registered (browser.myApi resolves, so unknown-api is silent), and the review
+// mode it was asked for.
+test("a rejected Experiment without its reject check reviews as an allowed one", async () => {
+  const src = tmpAddon({
+    "manifest.json": EXPERIMENT_MANIFEST,
+    "bg.js": "browser.myApi.doThing();\n",
+    "impl.js": 'this.myApi = class { getAPI() { eval("y"); return {}; } };\n',
+  });
+  const ids = async (extra) =>
+    (await runReview({ addonPath: src, ...OFFLINE, ...extra })).findings
+      .map((f) => f.ruleId)
+      .sort();
+  const skipped = await ids({ checksSkip: ["experiment-not-allowed"] });
+  assert.deepEqual(skipped, await ids({ allowExperiments: true }));
+  assert.ok(!skipped.includes("unknown-api"), "its APIs are registered");
+  fs.rmSync(src, { recursive: true, force: true });
+
+  // Submitted as source, it is a source review.
+  const fixture = path.join(
+    path.dirname(new URL(import.meta.url).pathname),
+    "..",
+    "addons",
+    "experiment-disallowed-sca"
+  );
+  const { meta } = await runReview({
+    addonPath: path.join(fixture, "xpi"),
+    scaRoot: path.join(fixture, "src"),
+    scaExpSource: path.join(fixture, "src", "experiment"),
+    ...OFFLINE,
+  });
+  assert.equal(meta.scaRoot, path.join(fixture, "src"));
+  assert.deepEqual(meta.checksRun, ["experiment-not-allowed"]);
+});
+
 // A link named node_modules is a link like any other here. Nothing installs anything into
 // an add-on, so the name earns it no special handling: the XPI holding it is refused before
 // any review starts, and nothing behind the link is read.

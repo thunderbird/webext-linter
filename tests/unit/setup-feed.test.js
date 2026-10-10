@@ -67,6 +67,9 @@ function feed(args) {
     ],
     { encoding: "utf8", cwd: ROOT }
   );
+  // A run that failed prints a Setup section too, up to where it stopped - so a test must not
+  // read one as a review's feed.
+  assert.notEqual(r.status, 2, `${args.join(" ")}\n${r.stdout}${r.stderr}`);
   const [, after] = r.stdout.split("── Setup ──");
   assert.ok(after, `no Setup section in: ${args.join(" ")}\n${r.stderr}`);
   const [setupBlock, rest2 = ""] = after.split("── Activity ──");
@@ -114,25 +117,22 @@ test("every declared step is narratable and named once", () => {
 test("the narrated count per run is the total the feed shows", () => {
   const narrated = (facts) =>
     SETUP_STEPS.filter((s) => "label" in s && s.when(facts)).length;
-  // The mode derived as the pipeline derives it (setupFacts.mode).
+  // The mode derived as the pipeline derives it (setupFacts.mode): --sca-root or not.
   const facts = (over) => ({
     sca: false,
     isExp: false,
-    invalidExperiment: false,
     ...over,
     get mode() {
-      return this.sca && !this.invalidExperiment
-        ? REVIEW_MODE.SCA
-        : REVIEW_MODE.XPI;
+      return this.sca ? REVIEW_MODE.SCA : REVIEW_MODE.XPI;
     },
   });
   assert.equal(narrated(facts()), 2, "an XPI review");
   assert.equal(narrated(facts({ sca: true })), 2, "a source code review");
   assert.equal(narrated(facts({ isExp: true })), 3, "an Experiment review");
   assert.equal(narrated(facts({ sca: true, isExp: true })), 3, "both");
-  assert.equal(narrated(facts({ isExp: true, invalidExperiment: true })), 3);
-  // The steps follow the mode: a rejected Experiment submitted as source has the XPI
-  // review's target and no source archive.
+  // The steps follow the mode and nothing else: an Experiment's APIs are registered and a
+  // source review loads its archive, whatever the Experiment verdict - the review's first
+  // check is what stops a rejected one.
   const keys = (f) => SETUP_STEPS.filter((s) => s.when(f)).map((s) => s.key);
   assert.deepEqual(keys(facts({ sca: true, isExp: true })), [
     "read",
@@ -143,10 +143,14 @@ test("the narrated count per run is the total the feed shows", () => {
     "target-source",
     "meta",
   ]);
-  assert.deepEqual(
-    keys(facts({ sca: true, isExp: true, invalidExperiment: true })),
-    ["read", "schema", "experiments", "target-xpi", "meta"]
-  );
+  assert.deepEqual(keys(facts({ isExp: true })), [
+    "read",
+    "schema",
+    "experiments",
+    "experiment-schema",
+    "target-xpi",
+    "meta",
+  ]);
 });
 
 // An XPI review: read the add-on, get the schema - the eager steps. Then its checks ask for
@@ -254,12 +258,18 @@ test("a rejected Experiment computes none of the review's data", () => {
   });
 });
 
-// The same when it was submitted as SOURCE CODE: the review is an XPI review of the shipped
-// add-on, the source is never read, and nothing is computed.
+// The same when it was submitted as SOURCE CODE: it is a source review, and still nothing is
+// computed - the first check stops it before any check reads the review's data.
 test("a rejected Experiment submitted as source computes nothing either", () => {
   const dir = addon("experiment-disallowed-sca");
   assert.deepEqual(
-    feed([path.join(dir, "xpi"), "--sca-root", path.join(dir, "src")]),
+    feed([
+      path.join(dir, "xpi"),
+      "--sca-root",
+      path.join(dir, "src"),
+      "--sca-exp-source",
+      path.join(dir, "src", "experiment"),
+    ]),
     {
       setup: [
         "[1/3] Reading add-on",

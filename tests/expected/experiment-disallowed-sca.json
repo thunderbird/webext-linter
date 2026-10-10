@@ -1,5 +1,8 @@
 {
-  "_comment": "An SCA submission whose SHIPPED XPI bundles an unsupported Experiment, with experiments off. invalidExperiment pins mode=xpi, so the source archive is never read and the review target is the XPI. experiment-not-allowed runs first and aborts the review, so no other check runs and the report ends on the early-exit reason. What pins the mode is meta.xpi in the golden - it must be the xpi/ path, never src/. (The src/ tree also carries an eval() and a debugger statement as belt-and-braces; note they are suppressed by the early exit alone, so they would NOT catch a regression of the mode pin on their own. Nor does experiment-not-allowed's own route back the pin up: it declares input: xpi and reads the shared records, so its loci are the XPI's however the mode resolves.)",
+  "_comment": "An SCA submission whose SHIPPED XPI bundles an unsupported Experiment, with experiments off. It is reviewed as the source review it was asked to be: --sca-root and --sca-exp-source given, the archive loaded, and the Experiment's APIs registered as for any Experiment. The rejection decides nothing about the mode: experiment-not-allowed, the first check, reports the rejected group on the XPI's manifest.json and aborts the review, so no other check runs and nothing of the archive is analysed. The eval() and debugger in src/bg.js are the canary: they would fire if any check ran after the abort.",
+  "sca": {
+    "expSource": "experiment"
+  },
   "expect": {
     "experiment-not-allowed": ["manifest.json:5"]
   }

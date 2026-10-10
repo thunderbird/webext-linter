@@ -1519,8 +1519,7 @@ test("an authored text is re-wrapped, and its source line breaks do not survive"
 // print. An SCA review spans TWO artifacts and labels every locus [XPI]/[SCA], so the
 // block says what those are - and names the source as the values the run was GIVEN, since
 // an agent sent to the source root cannot be handed a path it must split first. A
-// one-artifact review names one: there is nothing to disambiguate, and a rejected Experiment
-// submitted with --sca-root is one of those, because only the shipped XPI was reviewed.
+// one-artifact review names one: there is nothing to disambiguate.
 test("the header names both artifacts in an SCA review, one otherwise", () => {
   const base = {
     schemaBranch: "release-mv3",

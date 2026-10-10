@@ -84,7 +84,7 @@ that no longer exist.
    identification → extractReview) is the same in BOTH modes: the shipped artifact is
    analysed the same way either way. The vulnerability audit of identified libraries
    follows the review target. Getting this backwards inverts the diagram.
-   The review mode is DERIVED (`--sca-root`, minus a rejected Experiment) and assigned
+   The review mode is DERIVED (`--sca-root` or not) and assigned
    nowhere. The file also shows the `mode.sca` forks, and the four routes a check can
    declare (`source` / `xpi` / `sca` / `all`) dispatched by `routeCtx` over the sibling
    ctxs built by `buildXpiCtx` / `buildScaCtx` / `buildAllCtx`.

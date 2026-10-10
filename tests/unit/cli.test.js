@@ -812,8 +812,8 @@ test("reviewing a fixture renders to stdout with a severity-based exit", () => {
 });
 
 // A source code review's own steps send a sub-agent to paths, and those paths are what the
-// review RESOLVED to be, never what the flags asked for - a rejected Experiment keeps
-// --sca-root and is still an XPI review, so a step reading the flag would send an agent to a
+// review RESOLVED to be, never what the flags asked for: the root a review settles on can
+// sit below the one --sca-root named, so a step reading the flag would send an agent to a
 // root nothing had read. Driven through the CLI because that is the seam: rendering from a
 // hand-built meta cannot catch a pipeline that feeds its two halves different values.
 //
@@ -841,24 +841,32 @@ test("a source code review's steps carry the paths the review resolved to", () =
     "and where the build report goes"
   );
 
-  // An invalid Experiment submitted WITH --sca-root is rejected from the shipped XPI alone:
-  // the source archive is never read, so neither path may appear anywhere - not in a block
-  // naming it, and not in a step asking for work on a root this review does not have.
+  // A rejected Experiment submitted WITH --sca-root is the source review it was asked to be:
+  // it needs --sca-exp-source like any Experiment reviewed with source, and with it the review
+  // starts and is aborted at its first check - so its first prompt is the close, and no build
+  // report is asked for.
   const exp = path.join(ROOT, "tests", "addons", "experiment-disallowed-sca");
-  const rejected = run([
+  const asked = [
     path.join(exp, "xpi"),
     ...OFFLINE_FLAGS,
     "--sca-root",
-    exp,
+    path.join(exp, "src"),
     "--llm-review",
+  ];
+  const refused = run(asked);
+  assert.equal(refused.code, 2, refused.stdout + refused.stderr);
+  assert.match(refused.stderr, /--sca-exp-source/);
+  const rejected = run([
+    ...asked,
+    "--sca-exp-source",
+    path.join(exp, "src", "experiment"),
   ]);
+  assert.equal(rejected.code, 1, rejected.stderr);
   assert.match(rejected.stdout, /── LLM Prompt ──/);
-  assert.doesNotMatch(rejected.stdout, /SCA_ROOT|BUILD_PROCESS/);
-  const rejectedLines = rejected.stdout.split("\n").map((l) => l.trim());
-  assert.ok(!rejectedLines.includes(exp), "no source root is handed out");
+  assert.doesNotMatch(rejected.stdout, /BUILD_PROCESS/);
   assert.ok(
-    !rejectedLines.some((l) => /\/build\.md$/.test(l)),
-    "and no build report is asked for"
+    !rejected.stdout.split("\n").some((l) => /\/build\.md$/.test(l.trim())),
+    "no build report is asked for"
   );
 });
 

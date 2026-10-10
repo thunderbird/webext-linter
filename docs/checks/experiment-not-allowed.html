@@ -26,7 +26,10 @@
       <p>
         This is the first check of every review. Its error aborts the review,
         so when an experiment is unsupported no other check runs, and the report
-        ends on the reason "Experiment APIs not accepted". Recognised but locally
+        ends on the reason "Experiment APIs not accepted". The rejection changes
+        nothing else: the review keeps the mode it was asked for (a source code
+        review stays one, and needs <em>--sca-exp-source</em> like any Experiment),
+        and the Experiment's APIs are registered as for an allowed one. Recognised but locally
         modified drafts pass here — they stay on the normal review path and are
         flagged by the experiment-modified check instead. Which experiments are
         rejected is the Experiment verdict's to say, the one place that reads

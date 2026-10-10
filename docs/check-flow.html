@@ -104,11 +104,12 @@
         loads the add-on, resolves the schema, and - for an Experiment - decides
         the Experiment verdict and registers the Experiment's APIs. The amber
         boxes are the ones that matter: they <strong>resolve the review
-        state</strong> - <code>invalidExperiment</code>, the submitted source
-        archive and the <strong>review target</strong> - and every check keys off
-        those. The <code>mode</code> is not one of them: it is DERIVED from
-        <code>--sca-root</code> and the Experiment verdict, so it cannot disagree
-        with the steps that ran. These eager steps are declared in
+        state</strong> - the Experiment verdict, the submitted source archive and
+        the <strong>review target</strong> - and every check keys off those. The
+        <code>mode</code> is not one of them: it is DERIVED from
+        <code>--sca-root</code> alone, so it cannot disagree with the steps that
+        ran. The verdict decides nothing about it: a rejected Experiment is the
+        review it was asked to be, and its first check stops it. These eager steps are declared in
         <code>SETUP_STEPS</code> and walked by one loop, which is also where the
         Setup feed's <code>[n/total]</code> comes from.
       </p>
@@ -177,8 +178,9 @@ flowchart TB
     EXQ -- no --> P1F
     EXQ -- yes --> IQ{{"an UNSUPPORTED Experiment (unrecognised<br/>draft or file-less declaration), and<br/>--allow-experiments is off?"}}
     EXFQ -- no --> IQ
-    IQ -- yes --> SETINV["invalidExperiment = true<br/>→ mode derives to xpi · the archive is not read"]
+    IQ -- yes --> SETINV["the group is marked rejected<br/>→ experiment-not-allowed reports it, first"]
     IQ -- no --> XNS["register the Experiment API namespaces<br/>into the schema, so its calls resolve"]
+    SETINV --> XNS
     XNS --> MODEQ
 
     MODEQ{{"--sca-root given?<br/>(the review is NEVER re-routed by what the XPI looks like)"}}
@@ -190,7 +192,6 @@ flowchart TB
 
   MX2 --> ENV
   LSRC --> ENV
-  SETINV --> ENV
 
   subgraph P5 ["runPipeline() · build the shared review env, the data getters, then the sibling ctxs"]
     ENV["build the review env ONCE - the schema, the shipped manifest and<br/>experiments, the mode: the singletons every sibling shares"] --> DATA
@@ -198,7 +199,7 @@ flowchart TB
     XB["buildXpiCtx(xpiAddon, its getters, env) → xpiCtx<br/>ALWAYS - it is siblings.xpi"] --> SM{{"mode?"}}
     SM -- sca --> SB2["buildScaCtx(archive, its getters, env)<br/>→ the archive's ctx"]
     SB2 --> SIB
-    SM -- "xpi · invalidExperiment" --> SIB
+    SM -- xpi --> SIB
     SIB["siblings = { source: scaCtx ?? xpiCtx (a pointer),<br/>xpi: xpiCtx · sca: scaCtx · all: buildAllCtx(xpi, sca) }"] --> SIBS["siblings = { source, xpi, sca, all }"]
   end
 
@@ -265,18 +266,16 @@ flowchart TB
         any content test, so a build could be dressed up as source and shrink its
         own review. In SCA the readable source has getters of its own
         (<code>siblings.source</code>); in an XPI review there is no second
-        artifact, so <code>siblings.source</code> simply aliases the shipped ctx. An
-        invalid Experiment is the one thing that still makes an
-        <code>--sca-root</code> run an XPI review.
+        artifact, so <code>siblings.source</code> simply aliases the shipped ctx.
       </div>
       <p>
-        The invalid-Experiment path runs on to the orchestrator like any other
-        review. Setting <code>invalidExperiment</code> pins the mode and leaves the
-        source archive unread. The first check, <code>experiment-not-allowed</code>,
-        judges from the manifest, the experiment classification and the schema -
-        which is resolved <em>before</em> the decision because the check resolves
-        API paths through it - and its error aborts the review, so no other check
-        runs and not one line of the add-on's code is read.
+        A rejected Experiment runs on to the orchestrator like any other review,
+        in the mode it was asked for, with its APIs registered. The first check,
+        <code>experiment-not-allowed</code>, judges from the manifest, the experiment
+        classification and the schema - which is resolved <em>before</em> the
+        decision because the check resolves API paths through it - and its error
+        aborts the review, so no other check runs and not one line of the add-on's
+        code is read.
       </p>
 
       <h2>The stores</h2>

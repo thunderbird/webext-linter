@@ -109,13 +109,12 @@ import { reviewData } from "./review/products.js";
  *   - NO `label` is a silent step - fast work, or a decision rather than a fetch. It runs
  *     like any other step and is not counted.
  *
- * `when` decides whether this run has the step. It is asked as the loop ARRIVES, because
- * one fact - `invalidExperiment` - is decided by a step of this list: a REJECTED Experiment is
- * reviewed as its shipped XPI alone, even with --sca-root, so its Experiment APIs are not
- * registered and the source archive is not read. That is the review MODE, and a step that
- * depends on it reads `mode` rather than spelling out what makes one.
+ * `when` decides whether this run has the step, from facts the fast .xpi read already gives:
+ * whether this is an Experiment, and the review MODE. A step that depends on the mode reads
+ * `mode` rather than spelling out what makes one. The Experiment verdict decides none of
+ * them: a rejected Experiment is the review it was asked to be, and its first check stops it.
  * @type {{key: string, label?: ?string,
- *   when: (facts: {sca: boolean, isExp: boolean, invalidExperiment: boolean,
+ *   when: (facts: {sca: boolean, isExp: boolean,
  *     mode: import("./lib/enum.js").ReviewMode}) => boolean}[]}
  */
 export const SETUP_STEPS = Object.freeze([
@@ -126,13 +125,10 @@ export const SETUP_STEPS = Object.freeze([
     label: "Verifying bundled experiments",
     when: (f) => f.isExp,
   },
-  {
-    key: "experiment-schema",
-    when: (f) => f.isExp && !f.invalidExperiment,
-  },
+  { key: "experiment-schema", when: (f) => f.isExp },
   // The target is two entries rather than one arm each side of an `if`, so the list - not a
-  // branch inside a step - holds the pin that a REJECTED Experiment is reviewed as its
-  // shipped XPI even with --sca-root, and `meta` is reached on every path.
+  // branch inside a step - holds which artifact the review is of, and `meta` is reached on
+  // every path.
   { key: "source-archive", when: (f) => f.mode.sca },
   { key: "target-source", when: (f) => f.mode.sca },
   { key: "target-xpi", when: (f) => !f.mode.sca },
@@ -293,11 +289,9 @@ async function reviewSubmission(opts, work, prepared) {
   // build over both off the root package.json - the code and the tooling are one set of
   // files, which is what the build checks want.
   //
-  // The review mode is DERIVED from the two facts below and assigned nowhere, so it cannot
-  // drift from the steps that ran: --sca-root makes it a source code review, and a REJECTED
-  // Experiment takes it back to an XPI review (its rejection is decided from the shipped XPI
-  // alone, so the readable source is never read). Setup itself never reads it - each step
-  // says which facts it needs - and everything after setup reads the one derivation.
+  // The review mode is DERIVED from one fact below and assigned nowhere, so it cannot drift
+  // from the steps that ran: --sca-root makes it a source code review. Every reader - the
+  // steps, the ctx builders, the report - reads that one derivation.
   // The parsed registry, threaded from main() (or loaded once here when a caller
   // such as the test harness invokes the pipeline directly), read under THIS run's band
   // policy. Applied here rather than at either construction site, so a caller that hands one
@@ -349,26 +343,16 @@ async function reviewSubmission(opts, work, prepared) {
 
   // The facts each step's `when` is asked of, from what the fast .xpi read already gives
   // us: the mode, and whether this is an Experiment.
-  let invalidExperiment = false;
   const setupFacts = {
     sca: Boolean(opts.scaRoot),
     isExp,
-    // Live rather than a snapshot: the experiments step decides this one, and the loop
-    // asks each step's condition as it reaches it.
-    get invalidExperiment() {
-      return invalidExperiment;
-    },
-    // What the review IS, from `sca` and `invalidExperiment`, derived here and nowhere else.
-    // Live like `invalidExperiment`: the steps that depend on it, the ctx builders and the
-    // report all read it, so none of them re-spells the rule.
+    // What the review IS, derived here and nowhere else: the steps that depend on it, the
+    // ctx builders and the report all read it, so none of them re-spells the rule.
     get mode() {
-      return this.sca && !invalidExperiment ? REVIEW_MODE.SCA : REVIEW_MODE.XPI;
+      return this.sca ? REVIEW_MODE.SCA : REVIEW_MODE.XPI;
     },
   };
-  // The total, sized by asking the same conditions the loop will ask - but of the facts as
-  // they stand HERE, before any step has run. That is the whole of why a rejected
-  // Experiment's counter stops short: the step that rejects it has not run yet, so the
-  // total is the one the review would have had, and the report says where it ended.
+  // The total, sized by asking the same conditions the loop will ask.
   const setupTotal = SETUP_STEPS.filter(
     (step) => "label" in step && step.when(setupFacts)
   ).length;
@@ -420,18 +404,17 @@ async function reviewSubmission(opts, work, prepared) {
 
     // Mark the start of the review. The .xpi was already read pre-banner (above), and has
     // nothing to narrate: an XPI holding a link is refused at load, so it skips nothing. The
-    // SCA source archive is read by `source-archive` and reused after it - in a
-    // source review, and not when a rejected Experiment drops that step - and its skip
-    // notices are narrated by `target-source`.
+    // SCA source archive is read by `source-archive` and reused after it, in a source
+    // review, and its skip notices are narrated by `target-source`.
     read: () => {},
 
     // The review schema: fetched, annotated, indexed. It is resolved from the SHIPPED
     // XPI's manifest.json alone (manifest_version + strict_max_version pick the channel), so it
     // depends on neither the Experiment classification nor the review mode - which is why it
     // runs before both, as the one piece of setup EVERY path needs. The extraction pass reads
-    // its web_api / loader signatures and the review runs against it; a rejected Experiment
-    // needs it too - the reject check resolves Experiment API paths through it (to spot one
-    // shadowing a built-in) and meta reads schema.applicationVersion.
+    // its web_api / loader signatures and the review runs against it; experiment-not-allowed
+    // resolves a rejected Experiment's API paths through it (to spot one shadowing a
+    // built-in), and meta reads schema.applicationVersion.
     //
     // It names the branch it chose, which is known only once it has chosen, so it narrates
     // itself with the narrator handed to it.
@@ -461,22 +444,24 @@ async function reviewSubmission(opts, work, prepared) {
     // masquerade as a verdict - we cannot verify identity without it.
     //
     // The verdict is the one reader of --allow-experiments. Without it, an unsupported
-    // experiment is rejected: `invalidExperiment` makes the review an XPI review of the
-    // shipped add-on, the Experiment APIs are not registered, and the review's first check,
-    // experiment-not-allowed, reports the rejected groups and aborts. A recognised but
-    // modified one is not rejected, so the full review runs and experiment-modified flags
-    // it. With --allow-experiments nothing is rejected, and the full review always runs.
+    // experiment is rejected, and the review's first check, experiment-not-allowed, reports
+    // the rejected groups and aborts. The verdict decides nothing else: the review keeps its
+    // mode and registers the Experiment's APIs, so with that check left out it runs exactly
+    // as an allowed one would. A recognised but modified one is not rejected, so the full
+    // review runs and experiment-modified flags it.
     // Experiments are reviewed from the XPI (its shipped-artifact role; xpiAddon ===
     // reviewTarget in XPI mode). They are privileged, non-bundled, readable code, and the
     // manifest.json's experiment paths resolve against the XPI's own files (no
     // source-layout mismatch).
     experiments: async () => {
-      ({ verification: experimentVerification, invalid: invalidExperiment } =
-        await experimentVerdict(work.xpi, opts));
+      ({ verification: experimentVerification } = await experimentVerdict(
+        work.xpi,
+        opts
+      ));
     },
 
-    // A valid Experiment's declared APIs are part of its platform: register each
-    // namespace it adds, with the members its own schema declares, so the developer's
+    // An Experiment's declared APIs are part of its platform - a rejected one's too, whose
+    // review experiment-not-allowed stops first: register each namespace it adds, with the members its own schema declares, so the developer's
     // calls into them (e.g. browser.calendar.*) resolve instead of tripping unknown-api
     // - and a call to a member the schema does NOT declare still does, because it
     // reaches nothing at run time. A namespace whose schema could not be read registers
@@ -551,9 +536,7 @@ async function reviewSubmission(opts, work, prepared) {
       }
     },
 
-    // The review target of every other review: the .xpi itself. A native XPI review takes
-    // this arm, and so does a REJECTED Experiment even with --sca-root - its rejection is
-    // decided entirely from the shipped XPI, so the readable source is never read.
+    // The review target of every other review: the .xpi itself.
     "target-xpi": () => {
       reviewTarget = xpiAddon;
     },
@@ -566,7 +549,7 @@ async function reviewSubmission(opts, work, prepared) {
     //
     // These are the names the Review Details block prints and the --llm-review prompt's steps
     // point at, so the report, the prompt and the machine-readable document say one thing.
-    // Built on every path: a rejected Experiment's report names its add-on too.
+    // Built on every path: an aborted review's report names its add-on too.
     meta: () => {
       meta = {
         action: "review",
