@@ -1,10 +1,10 @@
 // A code string passed to setTimeout/setInterval in authored JavaScript - the
 // string is eval'd, so it is dynamic code execution, not allowed.
 //
-// Asked of EVERY artifact the review has (`input: all`, via perArtifact), with the other
-// two deterministic dynamic-execution checks it shares a scan with: the question is about
-// what ships, and splitting the family across routes would answer it differently depending
-// on which of them found the hit.
+// Asked of EVERY artifact the review has (`input: all`, via perArtifact): a code string
+// in a built bundle is still the add-on's dynamic code execution. function-constructor
+// shares the scan but stays `input: source`, because bundlers emit `new Function`
+// themselves.
 //
 // Belongs here: a finding per code-string-timer hit. Does NOT belong here: the
 // scan (-> getEvalScan in src/lib/eval-scan.js, shared with the other
