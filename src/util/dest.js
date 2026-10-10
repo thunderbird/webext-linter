@@ -77,6 +77,22 @@ export function rescuedWorkFolder(work) {
 }
 
 /**
+ * Where one RUN of a review keeps what it caches: a dot folder in the run's ROOT work folder.
+ * A source review is one run over several work folders - the original's, and a rescued
+ * copy's, whose record names the original - so the root is the original's, and the copy
+ * reads and writes the same cache. Not one of workPaths' names: a run claims those afresh,
+ * while this one is there to be found again by every invocation of the run.
+ * @param {string} work  The work folder this invocation runs in, absolute.
+ * @param {?{original?: ?{work?: string}}} [record]  Its preparation's record, if it has one.
+ * @returns {{dir: string, osv: string}}  The folder, and OSV's answers in it
+ *   (src/vendor/osv-cache.js).
+ */
+export function runCache(work, record) {
+  const dir = path.join(record?.original?.work ?? work, ".cache");
+  return { dir, osv: path.join(dir, "osv.json") };
+}
+
+/**
  * Every name a review uses inside its work folder, as absolute paths.
  *
  * - `xpi`, the shipped add-on, extracted or copied there by the linter (src/addon/load.js),

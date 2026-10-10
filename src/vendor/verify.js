@@ -85,7 +85,6 @@ import {
   VENDOR_OSV_BATCH_API,
   VENDOR_OSV_VULN_API,
   VENDOR_OSV_BATCH_SIZE,
-  VENDOR_OSV_HYDRATE_MAX,
   VENDOR_TREE_BANDS,
 } from "../config.js";
 
@@ -416,8 +415,6 @@ async function auditLockedPackages(vendor, net, blocks) {
   if (!queue.length) {
     return;
   }
-  /** @type {Map<string, ?OsvVuln>} */
-  const advisories = new Map();
   /** @type {{declared: VendorVuln[], declaredDev: VendorVuln[], shipped: VendorVuln[],
    *   buildTime: VendorVuln[]}} */
   const found = { declared: [], declaredDev: [], shipped: [], buildTime: [] };
@@ -449,9 +446,7 @@ async function auditLockedPackages(vendor, net, blocks) {
       const hits = results[i]?.vulns;
       const vulns = [];
       for (const hit of Array.isArray(hits) ? hits : []) {
-        const full = hit?.id
-          ? await hydrateAdvisory(hit.id, advisories, net)
-          : null;
+        const full = hit?.id ? await hydrateAdvisory(hit.id, net) : null;
         if (full) {
           vulns.push(full);
         }
@@ -506,34 +501,23 @@ function isMaliciousAdvisory(v) {
 }
 
 /**
- * Fetch the full OSV record for one advisory id, memoized across the scan: the
- * batch endpoint answers with bare ids, and one advisory routinely affects
- * several packages in the same tree. A failed fetch is cached as null, so a
- * missing advisory is not retried per package. `cache` also caps the scan
- * (VENDOR_OSV_HYDRATE_MAX) - past it, hits are dropped rather than fetched.
+ * Fetch the full OSV record for one advisory id: the batch endpoint answers with bare ids.
+ * One advisory routinely affects several packages in a tree, and the run's OSV cache
+ * (src/vendor/osv-cache.js) answers each repeat, so it is asked of OSV once per run.
  * @param {string} id  An OSV/GHSA advisory id.
- * @param {Map<string, ?OsvVuln>} cache  Per-scan memo.
  * @param {VendorNet} net
- * @returns {Promise<?OsvVuln>}
+ * @returns {Promise<?OsvVuln>}  Null when OSV has no such advisory.
  */
-async function hydrateAdvisory(id, cache, net) {
-  if (cache.has(id)) {
-    return cache.get(id);
-  }
-  if (cache.size >= VENDOR_OSV_HYDRATE_MAX) {
-    return null;
-  }
-  let record = null;
+async function hydrateAdvisory(id, net) {
   try {
-    record = await net.fetchJson(`${VENDOR_OSV_VULN_API}${id}`);
+    return await net.fetchJson(`${VENDOR_OSV_VULN_API}${id}`);
   } catch (err) {
     // OSV answered 404: no such advisory. Anything else must not read as one.
     if (err.status !== 404) {
       throw err;
     }
+    return null;
   }
-  cache.set(id, record);
-  return record;
 }
 
 /**

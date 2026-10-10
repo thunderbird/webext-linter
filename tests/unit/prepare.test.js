@@ -460,6 +460,18 @@ test("a reduce that leaves the copy clean hands the review the copy", async () =
   cleanup(work);
 });
 
+// The preparation is one run with its review: OSV is asked through the run's cache in the
+// original's work folder, which the copy shares. A step over a lock the original already
+// had audited asks OSV nothing.
+test("a rescued copy reads the run's OSV cache", async () => {
+  const { work, copy } = await rescued();
+  assert.ok(fs.existsSync(path.join(work, ".cache", "osv.json")));
+  const reduce = await later(copy, noNet);
+  assert.equal(reduce.record.step, PREPARE_STEP.fix);
+  assert.ok(!fs.existsSync(path.join(copy, ".cache")), "no cache of its own");
+  cleanup(work);
+});
+
 test("a reduce that is not enough moves on to fix, and a clean fix is done", async () => {
   const { work, copy, root } = await rescued();
   const reduce = await later(copy, net(TOOL_HIGH));

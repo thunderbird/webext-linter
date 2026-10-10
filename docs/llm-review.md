@@ -427,6 +427,7 @@ lives in one **work folder**, under a name that is the same in every review:
 | `build/` | The copy of the source the agent builds in, never the archive itself | the agent, when the reviewer lets it build |
 | `build-diff.md` | `BUILD_DIFF` | the agent, after building |
 | `sweep-<artifact>.yaml` and `sweep-<artifact>.answers.json` | One tree's sweep request and answers | the linter, and a sweeping agent |
+| `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again. A rescued copy uses the original's | the linter, whenever it audits |
 
 The folder is always `<add-on name>-<timestamp>` beside the add-on argument, named by the
 run that starts the review: no flag names another. It must not exist: the run that starts a

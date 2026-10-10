@@ -47,7 +47,9 @@ import {
 import { auditRoot, isClean, isRescuable } from "./audit.js";
 import { settleScaRoot } from "../addon/sca-root.js";
 import { relativeInside } from "../addon/load.js";
-import { rescuedWorkFolder, workPaths } from "../util/dest.js";
+import { rescuedWorkFolder, runCache, workPaths } from "../util/dest.js";
+import { defaultNet } from "../vendor/verify.js";
+import { withOsvCache } from "../vendor/osv-cache.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 import {
   HandbackRefused,
@@ -108,9 +110,10 @@ export async function handBack(work, { net } = {}) {
   if (!record) {
     throw new HandbackRefused(`"${work}" holds no preparation`);
   }
-  // The audit reads the npm registry cache the review it starts will read.
+  // The audit reads the npm registry cache the review it starts will read, and asks OSV
+  // through the run's cache, which every step of the preparation and its review share.
   const context = {
-    net,
+    net: withOsvCache(net ?? defaultNet, runCache(work, record).osv),
     cacheDir: record.flags?.["cache-npm-registry-dir"] || undefined,
   };
   switch (record.step) {

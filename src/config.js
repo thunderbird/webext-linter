@@ -316,16 +316,6 @@ export const VENDOR_OSV_VULN_API = "https://api.osv.dev/v1/vulns/";
 export const VENDOR_OSV_BATCH_SIZE = 200;
 
 /**
- * Distinct advisories hydrated per tree audit. A runaway bound, not a policy: a
- * dropped advisory is invisible in the report, so this has to sit far above what
- * an honest submission reaches. The worst real submission measured carried about
- * a hundred distinct advisories across its whole tree, and the batch step is
- * already bounded by VENDOR_LOCK_MAX_PACKAGES, so this only ever stops a tree
- * that is pathological rather than merely neglected.
- */
-export const VENDOR_OSV_HYDRATE_MAX = 2000;
-
-/**
  * Packages enumerated from one lock file. Real trees run to a few thousand; past
  * this the submission is not something a reviewer builds by hand anyway.
  */

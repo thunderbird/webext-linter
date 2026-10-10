@@ -20,6 +20,10 @@ import {
   defaultNet,
 } from "../../src/vendor/verify.js";
 import http from "node:http";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { withOsvCache } from "../../src/vendor/osv-cache.js";
 import { VENDOR_FETCH_MAX_BYTES } from "../../src/config.js";
 
 // What a host's "there is no such thing" arrives as through the real transport: the one
@@ -2542,28 +2546,34 @@ test("auditLockedPackages: a short results array reports only what it covers", a
 });
 
 // One advisory routinely affects several packages in the same tree. Fetching it
-// once per package would multiply the requests for no new information.
+// once per package would multiply the requests for no new information: the run's OSV
+// cache, which every review asks OSV through, answers the repeat.
 test("auditLockedPackages: an advisory affecting two packages is fetched once", async () => {
   const calls = { hydrate: [] };
   const addon = addonWith(
     { "package.json": "{}" },
     store({ lockPackages: [locked("a", "1.0.0"), locked("b", "1.0.0")] })
   );
+  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-osv-"));
   await verifyScaDependencies(
     addon,
-    net({
-      calls,
-      batch: {
-        results: [
-          { vulns: [{ id: "GHSA-shared" }] },
-          { vulns: [{ id: "GHSA-shared" }] },
-        ],
-      },
-      advisories: {
-        "GHSA-shared": advisory("GHSA-shared", "HIGH", "1.0.1", "a"),
-      },
-    })
+    withOsvCache(
+      net({
+        calls,
+        batch: {
+          results: [
+            { vulns: [{ id: "GHSA-shared" }] },
+            { vulns: [{ id: "GHSA-shared" }] },
+          ],
+        },
+        advisories: {
+          "GHSA-shared": advisory("GHSA-shared", "HIGH", "1.0.1", "a"),
+        },
+      }),
+      path.join(cacheDir, "osv.json")
+    )
   );
+  fs.rmSync(cacheDir, { recursive: true, force: true });
   assert.equal(calls.hydrate.length, 1);
   assert.deepEqual(
     addon.vendor.treeVulnerabilities.map((v) => v.name),

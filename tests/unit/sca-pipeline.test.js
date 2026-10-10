@@ -1831,7 +1831,11 @@ test("an unrescued record that would let its review pass is refused", async (t) 
         }
       );
       // Refused before anything was claimed: the folder holds what the preparation left.
-      assert.deepEqual(fs.readdirSync(work).sort(), ["prepare.json", "sca"]);
+      assert.deepEqual(fs.readdirSync(work).sort(), [
+        ".cache",
+        "prepare.json",
+        "sca",
+      ]);
     });
   }
 });

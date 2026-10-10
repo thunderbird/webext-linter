@@ -1952,7 +1952,12 @@ test("a prepared review refuses a record it cannot start from", (t) => {
       const r = run(["--llm-handback", work]);
       assert.equal(r.code, 2, r.stdout + r.stderr);
       assert.match(r.stdout, problem);
-      assert.deepEqual(fs.readdirSync(work).sort(), ["prepare.json", "sca"]);
+      // What the preparation left: its record, the source, and the run's cache.
+      assert.deepEqual(fs.readdirSync(work).sort(), [
+        ".cache",
+        "prepare.json",
+        "sca",
+      ]);
     });
   refusedFor(
     "an unrescued record with no lock audit",

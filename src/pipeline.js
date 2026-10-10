@@ -26,7 +26,9 @@
 import { ARTIFACT_SCA, ARTIFACT_XPI, artifactRoots } from "./lib/artifacts.js";
 import fs from "node:fs";
 import path from "node:path";
-import { workPaths } from "./util/dest.js";
+import { workPaths, runCache } from "./util/dest.js";
+import { defaultNet } from "./vendor/verify.js";
+import { withOsvCache } from "./vendor/osv-cache.js";
 import {
   originalPackages,
   readPrepare,
@@ -697,10 +699,17 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     experiments: experimentVerification ?? null,
   };
 
-  // Each artifact's data, computed when a check first asks for it.
+  // Each artifact's data, computed when a check first asks for it. OSV is asked through the
+  // run's cache: a prepared review's questions were mostly asked by its preparation already.
   const unrescued = setupFacts.unrescued;
   const dataOf = reviewData({
-    opts,
+    opts: {
+      ...opts,
+      vendorNet: withOsvCache(
+        opts.vendorNet ?? defaultNet,
+        runCache(opts.workFolder, prepared).osv
+      ),
+    },
     schema,
     manifest: webExtManifestRecord,
     xpi: xpiAddon,
