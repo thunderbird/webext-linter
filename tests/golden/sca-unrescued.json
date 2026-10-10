@@ -12,6 +12,8 @@
     "applicationVersion": "128.0",
     "manifestVersion": 3,
     "checksRun": [
+      "experiment-not-allowed",
+      "lockfile-injection",
       "vendor-vulnerable",
       "vendor-vulnerable-dev"
     ],

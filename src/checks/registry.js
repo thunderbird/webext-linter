@@ -684,23 +684,20 @@ export class Registry {
 
   /**
    * The texts of the preparation of a source code review: the intro the first prompt opens
-   * with, the reasons a rescue is for, and one list of steps per prompt (SCA_PROMPT_STEPS).
-   * Required, all of them: a run whose whole output is one of these has nothing to print
-   * without it. The reasons are read by the review of a folder whose rescue was given up,
-   * which runs the checks that name them and no other (src/pipeline.js).
+   * with, and one list of steps per prompt (SCA_PROMPT_STEPS). Required, all of them: a run
+   * whose whole output is one of these has nothing to print without it.
    *
    * A step comes back with its `when` condition parsed, never filtered here: which steps a
    * run prints is layout, decided in src/report/format.js beside the flags themselves.
    * `when: experiments` marks a step about the Experiment folder, which only the review of
    * an add-on declaring Experiments reads - so it is printed only for one.
-   * @returns {{intro: string, rescueFor: string[],
+   * @returns {{intro: string,
    *   steps: Record<string, {when: ?object, text: string}[]>}}
    */
   llmScaReviewPrompt() {
     const p = this.doc["llm-sca-review-prompt"];
     return {
       intro: p.intro,
-      rescueFor: p["rescue-for"],
       steps: Object.fromEntries(
         SCA_PROMPT_STEPS.map((name) => [name, p[name].map(loadedStep)])
       ),
@@ -1620,8 +1617,7 @@ export function assertAskedIn(registry, at) {
  * abort a review and then print a bullet with nothing in it - the report would say the
  * submission could not be reviewed without saying why. A reason nothing references is
  * wording no report can reach, which is the same dead-prose failure a closed `prose-map`
- * refuses in the schema. The reasons the preparation rescues a review for
- * (`llm-sca-review-prompt`'s `rescue-for`) are references too, and asked the same way.
+ * refuses in the schema.
  * @param {Registry} registry @param {string} at
  * @returns {void}
  */
@@ -1662,13 +1658,6 @@ export function assertEarlyExit(registry, at) {
       );
     }
     named.add(reason);
-  }
-  // The review of a source whose rescue was given up runs the checks that name these
-  // reasons and no other (src/pipeline.js), so one that names nothing defined would select
-  // no check at all.
-  for (const reason of registry.doc["llm-sca-review-prompt"]?.["rescue-for"] ??
-    []) {
-    assertReasonDefined(reason, "`llm-sca-review-prompt` rescues for", ids, at);
   }
   for (const id of ids) {
     if (!named.has(id)) {

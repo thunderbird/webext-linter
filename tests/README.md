@@ -93,7 +93,8 @@ a fake OSV network answering its `"advisories"` (`"name@version"` to a list of `
 and the review runs in the folder the preparation leaves. With `"rescued": true` the
 rescued copy is given the fixture's `src/` tree and comes out clean, so the review reports
 what the rescue changed (`sca-dependencies-changed`). Without it the rescue is given up, and
-the review is decided by the lock audit the preparation recorded (`sca-unrescued`).
+the original is reviewed like any other source, its lock audit answered from the run's OSV
+cache (`sca-unrescued`).
 
 A selection, not the catalogue - every folder under `addons/` is a fixture:
 

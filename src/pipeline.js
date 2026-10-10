@@ -29,11 +29,7 @@ import path from "node:path";
 import { workPaths, runCache } from "./util/dest.js";
 import { defaultNet } from "./vendor/verify.js";
 import { withOsvCache } from "./vendor/osv-cache.js";
-import {
-  originalPackages,
-  readPrepare,
-  unrescuedLockAudit,
-} from "./prepare/state.js";
+import { originalPackages, readPrepare } from "./prepare/state.js";
 import {
   resolveSchemaZip,
   refreshAllSchemas,
@@ -244,17 +240,12 @@ export async function runPipeline(opts) {
   // review is started there by the hand-back that finds the preparation done (src/cli.js),
   // and reads the record for what the preparation found.
   const prepared = readPrepare(opts.workFolder);
-  // A folder whose rescue was given up hands its review the lock audit it recorded, checked
-  // here, before anything is claimed: the record is a file the agent can write, and this one
-  // decides the review (src/prepare/state.js unrescuedLockAudit).
-  const lockAudit =
-    prepared?.unrescued === true ? unrescuedLockAudit(prepared) : null;
   const claim = claimWorkFolder(
     opts.workFolder,
     claimedNames(work, opts.llmReview)
   );
   try {
-    return await reviewSubmission(opts, work, prepared, lockAudit);
+    return await reviewSubmission(opts, work, prepared);
   } catch (err) {
     // The state is one of the claimed names under --llm-review, so it being there means
     // this run wrote it. A plain run writes none and gives back on any failure.
@@ -266,31 +257,14 @@ export async function runPipeline(opts) {
 }
 
 /**
- * The checks an unrescued review runs: the registry's, by the reasons its preparation's
- * rescue is for (`rescue-for` in `llm-sca-review-prompt`). Never empty - every reason the
- * registry defines is named by a check (assertEarlyExit) - so the check loader is never
- * handed the empty selection it reads as "every check".
- * @param {import("./checks/registry.js").Registry} registry
- * @returns {string[]}
- */
-function rescueChecks(registry) {
-  const { rescueFor } = registry.llmScaReviewPrompt();
-  return registry
-    .checkIds()
-    .filter((id) => rescueFor.includes(registry.earlyExitFor(id)));
-}
-
-/**
  * The review itself, inside the work folder runPipeline claimed for it.
  * @param {PipelineOpts} opts
  * @param {ReturnType<typeof workPaths>} work  The work folder's names.
  * @param {?import("./prepare/state.js").PrepareRecord} prepared  The preparation's record,
  *   where the review starts in a folder a source code review was prepared in.
- * @param {?Record<string, import("./vendor/verify.js").VendorVuln[]>} lockAudit  The lock
- *   audit an unrescued folder recorded, checked; null for every other review.
  * @returns {Promise<PipelineResult>}
  */
-async function reviewSubmission(opts, work, prepared, lockAudit) {
+async function reviewSubmission(opts, work, prepared) {
   const { addonPath } = opts;
   // `addonPath` IS the shipped add-on's path, absolute, and the single value the run has
   // for "which add-on": what the report names, what a verdict file is checked against, and
@@ -383,11 +357,6 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     // asks each step's condition as it reaches it.
     get invalidExperiment() {
       return invalidExperiment;
-    },
-    // The preparation gave its rescue up, and recorded the lock audit that decides this
-    // review. Only a source review is one: a rejected Experiment is reviewed as its XPI.
-    get unrescued() {
-      return Boolean(lockAudit) && this.mode.sca;
     },
     // What the review IS, from `sca` and `invalidExperiment`, derived here and nowhere else.
     // Live like `invalidExperiment`: the steps that depend on it, the ctx builders and the
@@ -701,7 +670,6 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
 
   // Each artifact's data, computed when a check first asks for it. OSV is asked through the
   // run's cache: a prepared review's questions were mostly asked by its preparation already.
-  const unrescued = setupFacts.unrescued;
   const dataOf = reviewData({
     opts: {
       ...opts,
@@ -715,7 +683,6 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     xpi: xpiAddon,
     archive: mode.sca ? scaArchive : null,
     target: reviewTarget,
-    lockAudit: unrescued ? lockAudit : null,
   });
   // The shipped ctx, for the input:xpi checks - the structure checks and the manifest.json
   // checks alike, since the shipped manifest.json is this artifact's.
@@ -746,15 +713,8 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
   // Run the review, then finalize. runChecks runs the deterministic phase and returns the
   // finished findings, manual items and the checks that ran. Each throwing check is
   // isolated so one failure can't abort all. A rejected Experiment stops at its first
-  // check, experiment-not-allowed, as any review stops at a check that aborts it.
-  //
-  // An unrescued review runs the checks the preparation's rescue was for, and no other:
-  // those whose `review-early-exit` reason the registry's `rescue-for` names. They read
-  // the recorded lists, report them at error, and so abort the review. The run's own
-  // --checks-* do not narrow them - the preparation already decided.
-  const selection = unrescued
-    ? { only: rescueChecks(registry) }
-    : { only: opts.checksOnly, skip: opts.checksSkip };
+  // check, experiment-not-allowed, as any review stops at a check that aborts it - and a
+  // source whose preparation gave up rescuing its lock stops at its vulnerability checks.
   // The `--eslint` opt-in gates code-sanity inside loadChecks (eslintEligible).
   progress(""); // close the Setup section before runChecks prints "── Activity ──"
   const {
@@ -763,7 +723,7 @@ async function reviewSubmission(opts, work, prepared, lockAudit) {
     checksRun,
   } = await runChecks(
     registry,
-    { ...selection, eslint: opts.eslint },
+    { only: opts.checksOnly, skip: opts.checksSkip, eslint: opts.eslint },
     siblings
   );
   findings.push(...reviewFindings);

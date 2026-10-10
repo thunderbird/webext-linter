@@ -14,6 +14,10 @@
     "checksRun": [
       "experiment-not-allowed",
       "lockfile-injection",
+      "vendor-vulnerable",
+      "vendor-vulnerable-dev",
+      "vendor-vulnerable-indirect",
+      "vendor-vulnerable-indirect-dev",
       "core-symbol-in-webext",
       "trademark-violation",
       "trademark-thunderbird-locale",
@@ -55,11 +59,7 @@
       "experiment-unknown-api",
       "non-experiment-strict-max-version",
       "unsupported-dependency",
-      "vendor-vulnerable",
       "banned-library",
-      "vendor-vulnerable-dev",
-      "vendor-vulnerable-indirect",
-      "vendor-vulnerable-indirect-dev",
       "sca-package-file-missing",
       "sca-package-file-invalid"
     ],

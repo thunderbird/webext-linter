@@ -46,6 +46,77 @@ deterministic-phase:
     The committed lock file records the following package(s) at one release but installs another, so the release the review would audit is not the one the build installs. Please regenerate the lock file with your package manager and commit it as it writes it.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
+# The four dependency-vulnerability checks follow, early in the phase: each names the
+# known-vulnerabilities early exit, so a submission with a vulnerable lock stops before the
+# review computes anything else. A source review whose preparation gave up rescuing its lock
+# (src/prepare/steps.js) is reviewed like any other and stops here.
+
+# Each pinned npm name@version - a package.json dependency of a built XPI, a package the
+# lock file of a source archive marks as declared and installs for production, or an
+# npm-sourced VENDOR entry - is audited against the OSV database (src/vendor/verify.js); a
+# package with known advisories is reported here. In a source review only high and
+# critical advisories (and malicious-package ones) are recorded. The packages nobody
+# declares, pulled in by these, are vendor-vulnerable-indirect below.
+# severity:auto - the check sets each finding's severity from the advisory's OSV
+# band (high/critical -> error, moderate/medium -> warning, else info).
+- title: Vulnerable dependency
+  severity: auto
+  review-early-exit: known-vulnerabilities
+  check: vendor-vulnerable
+  input: source
+  response: |-
+    A dependency this add-on bundles has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). Update {{item}} to {{fixed}} or later.
+
+# Each package the lock file marks as declared and installs for the build only is
+# OSV-audited in SCA mode too (src/vendor/verify.js verifyScaDependencies): the reviewer
+# builds the add-on from source, so a vulnerable build-time dependency runs on the
+# reviewer's machine even though it is never shipped. Mirrors vendor-vulnerable for the
+# dev set; `input: sca` - a lock is only read in a source review. Only high and critical
+# are recorded - an advisory saying the package IS malicious counts as critical - so the
+# severity is flat rather than auto. The build-time packages nobody declares are
+# vendor-vulnerable-indirect-dev below.
+- title: Vulnerable build dependency
+  severity: error
+  review-early-exit: known-vulnerabilities
+  check: vendor-vulnerable-dev
+  input: sca
+  response: |-
+    A build dependency this add-on declares has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update {{item}} to {{fixed}} or later.
+
+# The other half of the two entries above: the packages the submission does NOT
+# declare, pulled in because a declared dependency asked for them - whether one is
+# declared is the lock file's own record. The committed
+# lock file is enumerated (src/vendor/locks.js) and the whole tree audited in one
+# batch (src/vendor/verify.js auditLockedPackages), which is where almost all of a
+# real submission's exposure sits. Only high and critical are recorded - a package
+# is worth reporting when it fails the review, not when it merely
+# appears - and an advisory saying the package IS malicious, which states no severity
+# at all, counts as critical. So the severity is flat rather than auto. The raw band still
+# fills the {{severity}} slot. `input: sca` - a lock is only read in a source review.
+- title: Vulnerable indirect dependency
+  severity: error
+  review-early-exit: known-vulnerabilities
+  check: vendor-vulnerable-indirect
+  input: sca
+  response: |-
+    A package this add-on does not declare, but that one of its dependencies pulls in, has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It ends up in the code you ship. Update the declared dependency that pulls it in, which usually resolves this because a newer release often already depends on a fixed version ({{fixed}} or later for {{item}}). If no update resolves it, consider moving to a different or simpler build chain.
+
+# The build-time half of vendor-vulnerable-indirect: an undeclared package the lock
+# file installs only to build with. Never shipped, but the reviewer reproduces the
+# build, so it runs on their machine. Same audit, same threshold; the dev/production
+# split comes from the lock file itself (npm's dev flags, or reachability from the
+# pnpm importers), as does the question of what counts as declared - the lock
+# records the optionalDependencies, workspace package files and npm: aliases. An npm
+# lockfile v1 records no declared set, so every package in one counts as declared and is
+# reported by the two entries above instead.
+- title: Vulnerable indirect build dependency
+  severity: error
+  review-early-exit: known-vulnerabilities
+  check: vendor-vulnerable-indirect-dev
+  input: sca
+  response: |-
+    A package this add-on does not declare, but that one of its build dependencies pulls in, has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update the declared build dependency that pulls it in, which usually resolves this because a newer release often already depends on a fixed version ({{fixed}} or later for {{item}}). If no update resolves it, consider moving to a different or simpler build chain.
+
 # Flags a privileged core global (Services, ChromeUtils, Components/Cc/Ci/Cu, ...)
 # referenced in pure WebExtension code, where the sandbox does not provide it. The
 # Experiment dependency tree (and its mixed/unsure files) is exempt.
@@ -648,22 +719,6 @@ deterministic-phase:
     The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# Each pinned npm name@version - a package.json dependency of a built XPI, a package the
-# lock file of a source archive marks as declared and installs for production, or an
-# npm-sourced VENDOR entry - is audited against the OSV database (src/vendor/verify.js); a
-# package with known advisories is reported here. In a source review only high and
-# critical advisories (and malicious-package ones) are recorded. The packages nobody
-# declares, pulled in by these, are vendor-vulnerable-indirect below.
-# severity:auto - the check sets each finding's severity from the advisory's OSV
-# band (high/critical -> error, moderate/medium -> warning, else info).
-- title: Vulnerable dependency
-  severity: auto
-  review-early-exit: known-vulnerabilities
-  check: vendor-vulnerable
-  input: source
-  response: |-
-    A dependency this add-on bundles has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). Update {{item}} to {{fixed}} or later.
-
 # A bundled library version Mozilla's add-on policy disallows (banned) or discourages
 # (unadvised), matched against the curated assets/library-blocks.yaml BEFORE the OSV
 # audit (src/vendor/verify.js) - a banned version also skips the OSV request. In a source
@@ -678,56 +733,6 @@ deterministic-phase:
   input: source
   response: |-
     A library version this add-on uses is {{status}} by Mozilla's add-on policy: {{item}} ({{version}}) - {{reason}} Update to a permitted version.
-
-# Each package the lock file marks as declared and installs for the build only is
-# OSV-audited in SCA mode too (src/vendor/verify.js verifyScaDependencies): the reviewer
-# builds the add-on from source, so a vulnerable build-time dependency runs on the
-# reviewer's machine even though it is never shipped. Mirrors vendor-vulnerable for the
-# dev set; `input: sca` - a lock is only read in a source review. Only high and critical
-# are recorded - an advisory saying the package IS malicious counts as critical - so the
-# severity is flat rather than auto. The build-time packages nobody declares are
-# vendor-vulnerable-indirect-dev below.
-- title: Vulnerable build dependency
-  severity: error
-  review-early-exit: known-vulnerabilities
-  check: vendor-vulnerable-dev
-  input: sca
-  response: |-
-    A build dependency this add-on declares has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update {{item}} to {{fixed}} or later.
-
-# The other half of the two entries above: the packages the submission does NOT
-# declare, pulled in because a declared dependency asked for them - whether one is
-# declared is the lock file's own record. The committed
-# lock file is enumerated (src/vendor/locks.js) and the whole tree audited in one
-# batch (src/vendor/verify.js auditLockedPackages), which is where almost all of a
-# real submission's exposure sits. Only high and critical are recorded - a package
-# is worth reporting when it fails the review, not when it merely
-# appears - and an advisory saying the package IS malicious, which states no severity
-# at all, counts as critical. So the severity is flat rather than auto. The raw band still
-# fills the {{severity}} slot. `input: sca` - a lock is only read in a source review.
-- title: Vulnerable indirect dependency
-  severity: error
-  review-early-exit: known-vulnerabilities
-  check: vendor-vulnerable-indirect
-  input: sca
-  response: |-
-    A package this add-on does not declare, but that one of its dependencies pulls in, has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It ends up in the code you ship. Update the declared dependency that pulls it in, which usually resolves this because a newer release often already depends on a fixed version ({{fixed}} or later for {{item}}). If no update resolves it, consider moving to a different or simpler build chain.
-
-# The build-time half of vendor-vulnerable-indirect: an undeclared package the lock
-# file installs only to build with. Never shipped, but the reviewer reproduces the
-# build, so it runs on their machine. Same audit, same threshold; the dev/production
-# split comes from the lock file itself (npm's dev flags, or reachability from the
-# pnpm importers), as does the question of what counts as declared - the lock
-# records the optionalDependencies, workspace package files and npm: aliases. An npm
-# lockfile v1 records no declared set, so every package in one counts as declared and is
-# reported by the two entries above instead.
-- title: Vulnerable indirect build dependency
-  severity: error
-  review-early-exit: known-vulnerabilities
-  check: vendor-vulnerable-indirect-dev
-  input: sca
-  response: |-
-    A package this add-on does not declare, but that one of its build dependencies pulls in, has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update the declared build dependency that pulls it in, which usually resolves this because a newer release often already depends on a fixed version ({{fixed}} or later for {{item}}). If no update resolves it, consider moving to a different or simpler build chain.
 
 # Deterministic (SCA only): the source archive has no package.json, so there is no build to
 # reproduce the shipped XPI from. The build's entry point is the root package.json
@@ -2060,12 +2065,9 @@ review-early-exit:
 # with no install script run, so no submission code runs. Each step's reader may fail to do
 # it and run the next command anyway (the way out both say). A clean copy is reviewed. A copy
 # the audit still finds vulnerable after the fix is deleted, and the source as submitted is
-# reviewed, decided by the lock audit already recorded (src/pipeline.js): it runs only the
-# checks that name a reason `rescue-for` lists, which report the vulnerabilities and so abort
-# the review.
-#
-# `rescue-for` names the review-early-exit reasons a rescue is for (validated against them at
-# load): the checks that name them are the ones such a review runs.
+# reviewed like any other: its vulnerability checks, early in the phase, report the lock and
+# abort the review. Every audit of the run asks OSV through the run's cache, so that review
+# asks nothing the preparation already did (src/vendor/osv-cache.js).
 #
 # The step lists are prompts. `extract` is printed by --llm-sca-review with the intro and
 # the Submission values; `reduce` and `fix` by the run that hands the copy a step, with the
@@ -2076,8 +2078,6 @@ llm-sca-review-prompt:
     This is the first half of a source code review. The add-on was submitted in two parts: the built XPI users install, and an archive of the source it was built from. A source archive has no fixed shape - the developer lays it out however they like - so where the add-on's own code sits inside it can only be found by looking. Work that out from the values below, then run the command the steps name. That run prints what to do next, until it starts the review itself and prints the review's first prompt.
 
     A name in <angle brackets> is a value you work out. The rest are given under "Submission".
-  rescue-for:
-    - known-vulnerabilities
   # A step with `when: experiments` is printed when the built XPI's manifest.json declares
   # Experiments, and one with `when: NOT experiments` when it does not. Absent means every
   # run prints it. `when:` is the same condition language the review loop's steps use

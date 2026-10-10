@@ -12,6 +12,7 @@
     "manifestVersion": 3,
     "checksRun": [
       "experiment-not-allowed",
+      "vendor-vulnerable",
       "core-symbol-in-webext",
       "trademark-violation",
       "trademark-thunderbird-locale",
@@ -55,7 +56,6 @@
       "xpi-lock-file-missing",
       "xpi-lock-file-invalid",
       "unsupported-dependency",
-      "vendor-vulnerable",
       "banned-library",
       "sca-xpi-declares-vendoring",
       "sca-xpi-fully-included-in-archive",

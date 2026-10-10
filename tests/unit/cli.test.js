@@ -1917,9 +1917,11 @@ test("a preparation refuses an unanswered hand-back", () => {
  *  source, whose lock carries a critical advisory, prepared through its rescue to the
  *  give-up, so the folder is unrescued as a real preparation leaves it. Then `over` is
  *  written into that real record, the way an agent that edited the record and recomputed
- *  its hash would, so what is tested is the check behind the digest. */
-async function preparedFolder(over = {}) {
-  const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
+ *  its hash would, so what is tested is the check behind the digest. `name` prepares
+ *  another fixture instead: one with no lock, done at once, whose review asks nothing of a
+ *  registry. */
+async function preparedFolder(over = {}, name = "sca-unrescued") {
+  const fixture = path.join(ROOT, "tests", "addons", name);
   const { work } = await realPreparation({
     source: path.join(fixture, "src"),
     xpi: path.join(fixture, "xpi"),
@@ -1959,11 +1961,6 @@ test("a prepared review refuses a record it cannot start from", (t) => {
         "sca",
       ]);
     });
-  refusedFor(
-    "an unrescued record with no lock audit",
-    { lockAudit: null },
-    /The hand-back was refused: the preparation's record says its rescue was given up/
-  );
   refusedFor(
     "an unrescued that is neither true nor false",
     { unrescued: "yes" },
@@ -2046,17 +2043,20 @@ test("a prepared review refuses a record it cannot start from", (t) => {
 // and a key no option declares is dropped.
 test("a prepared review drops what a record must not say", async () => {
   const before = fs.readdirSync(CACHE).sort();
-  const work = await preparedFolder({
-    flags: {
-      "cache-clear": true,
-      "cache-schema-dir": CACHE,
-      "cache-hash-db-dir": CACHE,
-      "cache-experiments-dir": CACHE,
-      "cache-cdn-lookup-dir": CDN_CACHE,
-      eslint: false,
-      "rm-rf": "/",
+  const work = await preparedFolder(
+    {
+      flags: {
+        "cache-clear": true,
+        "cache-schema-dir": CACHE,
+        "cache-hash-db-dir": CACHE,
+        "cache-experiments-dir": CACHE,
+        "cache-cdn-lookup-dir": CDN_CACHE,
+        eslint: false,
+        "rm-rf": "/",
+      },
     },
-  });
+    "missing-lock-sca"
+  );
   const r = run(["--llm-handback", work]);
   assert.notEqual(r.code, 2, r.stdout + r.stderr);
   assert.match(r.stdout, /── LLM Prompt ──/);

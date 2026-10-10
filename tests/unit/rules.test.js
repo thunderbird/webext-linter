@@ -5306,7 +5306,6 @@ test("reading data an artifact never has is a wiring error, not an empty result"
     xpi,
     archive: null,
     target: xpi,
-    lockAudit: null,
   });
   await assert.rejects(
     () =>

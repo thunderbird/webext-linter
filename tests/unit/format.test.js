@@ -1392,7 +1392,6 @@ test("the report's authored prose is required, by the names that index it", () =
 test("the preparation prompts come from the registry and every part is required", () => {
   const prompt = loadRegistry().llmScaReviewPrompt();
   assert.ok(prompt.intro.length > 0);
-  assert.deepEqual(prompt.rescueFor, ["known-vulnerabilities"]);
   for (const name of ["extract", "reduce", "fix"]) {
     assert.ok(prompt.steps[name].length > 0, name);
     for (const step of prompt.steps[name]) {
@@ -1426,15 +1425,6 @@ test("the preparation prompts come from the registry and every part is required"
     () => checkScaPrompt(noCommand),
     /`fix` carries no \{\{flags\}\}/
   );
-  // A rescue is for a reason a review can stop for: its checks are what the review of an
-  // unrescued source runs.
-  const badReason = loadRegistry();
-  badReason.doc["llm-sca-review-prompt"]["rescue-for"] = ["no-such-reason"];
-  assert.throws(
-    () => assertEarlyExit(badReason, "t.yaml"),
-    /`llm-sca-review-prompt` rescues for `no-such-reason`, which `review-early-exit` does not define/
-  );
-
   // The condition decides whether the Experiment step prints at all, so a fact this
   // prompt cannot evaluate - a plausible near-miss included - is refused by name rather
   // than leaving the step printed in no run.

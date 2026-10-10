@@ -166,10 +166,6 @@ export function deriveApiUsages(jsSources) {
  * - the build trace and the check of the lock's install sources exist on the archive only.
  * A getter for data an artifact never has throws: a check that reads it was routed wrong,
  * and a silent empty answer would read as a clean submission.
- *
- * An UNRESCUED source review's vendor reading is the lock audit its preparation recorded
- * (src/prepare/steps.js): the archive's dependency record, with the four lists taken from
- * the record instead of asked of the network again.
  * @param {object} deps
  * @param {object} deps.opts  The pipeline opts: the network, the caches, the CDN switch.
  * @param {object} deps.schema  The review schema, Experiment APIs already registered.
@@ -177,18 +173,9 @@ export function deriveApiUsages(jsSources) {
  * @param {import("../addon/load.js").Addon} deps.xpi  The built XPI.
  * @param {?import("../addon/load.js").Addon} deps.archive  The source archive, or null.
  * @param {import("../addon/load.js").Addon} deps.target  The review target.
- * @param {?object} deps.lockAudit  An unrescued review's recorded lock audit, or null.
  * @returns {(artifact: import("../addon/load.js").Addon) => ArtifactData}
  */
-export function reviewData({
-  opts,
-  schema,
-  manifest,
-  xpi,
-  archive,
-  target,
-  lockAudit,
-}) {
+export function reviewData({ opts, schema, manifest, xpi, archive, target }) {
   const sca = Boolean(archive);
   const net = opts.vendorNet;
   const cdn = {
@@ -279,10 +266,6 @@ export function reviewData({
   const scaLockInstalls = stage("Checking the lock file's sources", [], () =>
     findLockInjections(archive, { net, cacheDir: opts.npmRegistryCache })
   );
-  const scaRecorded = stage(null, [], () => {
-    archive.vendor = resolveVendor({ addon: archive, reviewerInstalls: true });
-    Object.assign(archive.vendor, lockAudit);
-  });
 
   const identified = (artifact) =>
     artifact === xpi ? xpiIdentified() : scaIdentified();
@@ -315,11 +298,7 @@ export function reviewData({
           if (artifact !== target) {
             throw absent("A vendor reading", artifact);
           }
-          if (lockAudit) {
-            await scaRecorded();
-          } else {
-            await audited();
-          }
+          await audited();
           return artifact.vendor;
         },
         bundled: async () => {

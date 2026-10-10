@@ -290,7 +290,9 @@ decide a source submission cannot be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
 `lock-foreign-source`, `build-registry-redirect`, `build-lifecycle-hook`,
 `undeclared-build-source`, `build-succeeds` and `build-reproduces-xpi` - name *a build that
-cannot be reproduced*. When one of them reports at error
+cannot be reproduced*. The Experiment, lock-injection and vulnerability checks are the first
+six of the review, so a submission they reject stops before anything else is computed. When
+one of them reports at error
 severity, the review stops there: no check after it runs, and nothing further is put to a
 reviewer. The report holds what the checks up to it found, drops every to-do item a
 reviewer would have been **asked** - the two manual-review sections and their tally

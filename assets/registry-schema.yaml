@@ -332,12 +332,6 @@ sections:
         kind: text
         required: true
         why: what the prompt tells its reader first
-      rescue-for:
-        kind: list
-        required: true
-        why: >-
-          the reasons a rescue is for - ids a check names in `review-early-exit`. The review
-          of a source whose rescue was given up runs the checks that name them
       extract:
         kind: list
         of: mapping

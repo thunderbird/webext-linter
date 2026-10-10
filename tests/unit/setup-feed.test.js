@@ -150,10 +150,9 @@ test("the narrated count per run is the total the feed shows", () => {
 });
 
 // An XPI review: read the add-on, get the schema - the eager steps. Then its checks ask for
-// the data, and the first that needs the parsed sources computes everything behind them, in
-// the order each stage depends on the one before: the library hashes, the vendor reading,
-// the CDN identification, the parse; the audit of the identified libraries last, when the
-// vulnerability check asks.
+// the data, in the order each stage depends on the one before. The vulnerability check comes
+// early, so the library hashes, the vendor reading, the CDN identification and the audit of
+// the identified libraries come first; the parse after them, when a code check asks.
 test("the feed of an XPI review", () => {
   assert.deepEqual(feed([addon("clean")]), {
     setup: [
@@ -164,15 +163,16 @@ test("the feed of an XPI review", () => {
       "Fetching library hashes",
       "Verifying vendored libraries",
       "Identifying bundled libraries on a CDN",
-      "Parsing add-on sources",
       "Auditing libraries",
+      "Parsing add-on sources",
     ],
   });
 });
 
 // A source code review computes the shipped XPI's data and the source's own as its checks
-// ask for each: the lock's install sources first, for the second check, then both
-// artifacts' parsed sources, the XPI's first.
+// ask for each: the lock's install sources first, for the second check, then the source's
+// vendor reading and audits for the vulnerability checks, then both artifacts' parsed
+// sources, the XPI's first.
 test("the feed of a source code review", () => {
   assert.deepEqual(
     feed([
@@ -188,14 +188,14 @@ test("the feed of a source code review", () => {
       data: [
         "Checking the lock file's sources",
         "Fetching library hashes",
-        "Verifying vendored libraries",
-        "Identifying bundled libraries on a CDN",
-        "Parsing add-on sources",
         "Verifying vendored source libraries",
         "Auditing source dependencies",
         "Identifying source libraries on a CDN",
-        "Parsing add-on sources",
         "Auditing libraries",
+        "Verifying vendored libraries",
+        "Identifying bundled libraries on a CDN",
+        "Parsing add-on sources",
+        "Parsing add-on sources",
         "Analyzing the build",
       ],
     }
@@ -233,8 +233,8 @@ test("the feed of an accepted Experiment review", () => {
         "Fetching library hashes",
         "Verifying vendored libraries",
         "Identifying bundled libraries on a CDN",
-        "Parsing add-on sources",
         "Auditing libraries",
+        "Parsing add-on sources",
       ],
     }
   );

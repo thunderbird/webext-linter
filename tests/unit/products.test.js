@@ -29,7 +29,6 @@ const xpiReview = (files = { "a.js": "const x = 1;\n" }) => {
     xpi,
     archive: null,
     target: xpi,
-    lockAudit: null,
   });
   return { xpi, data: dataOf(xpi) };
 };
@@ -64,7 +63,6 @@ test("data an artifact never has is a wiring error", async () => {
     xpi,
     archive,
     target: archive,
-    lockAudit: null,
   });
   await assert.rejects(
     () => dataOf(xpi).vendor(),
@@ -88,34 +86,9 @@ test("a failing stage ends the review with its own message", async () => {
     xpi,
     archive: null,
     target: xpi,
-    lockAudit: null,
   })(xpi);
   await assert.rejects(
     () => data.bundled(),
     (err) => err instanceof LinterError && err.cause instanceof TypeError
   );
-});
-
-// An unrescued source review's vendor reading is the lock audit its preparation recorded:
-// nothing is asked of the network for it, and nothing is classified.
-test("an unrescued review's vendor reading is the recorded audit", async () => {
-  const xpi = addonOf({ "a.js": "1;" }, ARTIFACT_XPI);
-  const archive = addonOf({ "package.json": "{}" }, ARTIFACT_SCA);
-  const lockAudit = {
-    vulnerabilities: [],
-    devVulnerabilities: [{ name: "x" }],
-    treeVulnerabilities: [],
-    treeDevVulnerabilities: [],
-  };
-  const vendor = await reviewData({
-    opts: OPTS,
-    schema: null,
-    manifest: null,
-    xpi,
-    archive,
-    target: archive,
-    lockAudit,
-  })(archive).vendor();
-  assert.deepEqual(vendor.devVulnerabilities, [{ name: "x" }]);
-  assert.equal(archive.bundled, undefined, "nothing was classified");
 });

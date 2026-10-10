@@ -143,7 +143,7 @@ async function extract(work, record, context) {
   if (!isRescuable(found)) {
     return done(work, settled);
   }
-  return rescue(work, { ...settled, lockAudit: found.lists });
+  return rescue(work, settled);
 }
 
 /**
@@ -323,7 +323,6 @@ function rescue(work, record) {
       },
       original: { work, scaRoot: record.roots.scaRoot },
       rescued: null,
-      lockAudit: null,
       unrescued: false,
     });
     fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true });

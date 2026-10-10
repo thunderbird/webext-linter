@@ -381,13 +381,11 @@ the review. Three outcomes:
   installs another is not clean. A reader that cannot run the commands hands
   back without changing anything. The hand-back that finds the copy clean starts its review.
 - **The copy is still vulnerable after the fix**: the copy is deleted, and the original is
-  reviewed, **unrescued**. Its record holds the lock audit the preparation ran, and its
-  review takes that as its own: it reads the add-on, the schema and the source archive, asks
-  no network for the dependencies, and runs only the checks whose early-exit reason the
-  registry's `rescue-for` names. The first of them to report a vulnerable lock entry aborts
-  the review for known vulnerabilities, and it closes as any aborted review does. A record that
-  says the rescue was given up but holds no high or critical entry was edited, and the
-  review refuses it before it starts.
+  reviewed, **unrescued**, like any other source: its vulnerability checks come early in the
+  review, and the first of them to report a vulnerable lock entry aborts it for known
+  vulnerabilities. It closes as any aborted review does. Its audit of the lock asks OSV
+  nothing the preparation already asked: every audit of the run reads OSV's answers from
+  `.cache/osv.json` in the work folder.
 
 A rescued copy's review tells the developer, at info, that the source was reviewed with
 changed dependencies (`sca-dependencies-changed`): their own `package.json` and lock still

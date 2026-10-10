@@ -21,9 +21,7 @@ import {
   freshWorkFolder,
 } from "../seed-caches.js";
 import { defaultWorkFolder } from "../../src/util/dest.js";
-import { readPrepare, writePrepare } from "../../src/prepare/state.js";
 import { advisory, realPreparation } from "../prepared.js";
-import { HandbackRefused } from "../../src/report/handback.js";
 
 // A cache pre-seeded from the fixtures so the schema / experiments / library-hash
 // fetches all hit disk - these runs stay offline.
@@ -548,6 +546,7 @@ test("SCA meta names the artifacts, each a real path", async () => {
       scaRoot: src,
       scaExpSource: path.join(src, "src", "experiments"),
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.equal(withExp.scaExpSource, path.join(src, "src", "experiments"));
 
@@ -577,6 +576,7 @@ test("an SCA --llm-review names a build report in the work folder", async () => 
       llmReview: true,
       workFolder: work,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.equal(meta.buildFile, path.join(work, "build.md"));
     assert.equal(meta.summaryFile, path.join(work, "summary.md"));
@@ -592,6 +592,7 @@ test("an SCA --llm-review names a build report in the work folder", async () => 
       addonPath: xpi,
       llmReview: true,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi),
     });
     assert.equal(xpiOnly.meta.buildFile, undefined);
     assert.equal(path.basename(xpiOnly.meta.reportFile), "report.md");
@@ -659,6 +660,7 @@ test("SCA e2e: --sca-exp-source excludes the Experiment subtree from the code ch
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     };
     // Without the flag, the privileged Experiment code is reviewed as WebExtension
     // code and false-positives core-symbol-in-webext.
@@ -728,6 +730,7 @@ test("SCA e2e: an Experiment add-on needs --sca-exp-source", async () => {
       scaRoot: src,
       allowExperiments: true,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     };
     await assert.rejects(runReview(base), /--sca-exp-source/);
     const review = await runReview({
@@ -754,6 +757,7 @@ test("SCA e2e: --sca-exp-source may sit beside the add-on code under --sca-root"
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
     };
     // Accepted (no throw) when the sibling folder sits anywhere under --sca-root.
     for (const scaExpSource of [path.join(src, "experiment")]) {
@@ -1634,6 +1638,7 @@ test(
         addonPath: addon,
         llmReview: true,
         ...OFFLINE,
+        cdnLookupCache: cdnMissCache(addon),
       });
       assert.equal(meta.prompting, true);
       assert.ok(Array.isArray(findings), "the review completed");
@@ -1682,10 +1687,8 @@ test("a manifest whose name and version are not strings still reviews", async ()
 });
 
 // ---- a source review its preparation could not rescue ----
-// The work folder's record is done and unrescued, and holds the lock audit the preparation
-// ran. The review is decided by it: no network is asked for the dependencies, only the checks
-// the registry's rescue-for reasons name run, and they abort it. The record is a file the agent
-// can write, so one that would let such a review pass is refused before anything is claimed.
+// The work folder's record is done and unrescued. The review is an ordinary one, and its
+// vulnerability checks stop it.
 
 const UNRESCUED_FIXTURE = path.join(
   path.dirname(new URL(import.meta.url).pathname),
@@ -1694,30 +1697,10 @@ const UNRESCUED_FIXTURE = path.join(
   "sca-unrescued"
 );
 
-/** The lock audit a preparation records: one critical entry on a declared build tool. */
-const recordedAudit = (over = {}) => ({
-  vulnerabilities: [],
-  devVulnerabilities: [
-    {
-      name: "lint-pebble",
-      version: "0.4.0",
-      ids: ["GHSA-fixture-pebble"],
-      severity: "critical",
-      fixed: ["0.4.1"],
-      file: "package-lock.json",
-      token: "node_modules/lint-pebble",
-      ...over,
-    },
-  ],
-  treeVulnerabilities: [],
-  treeDevVulnerabilities: [],
-});
-
 /** A work folder whose preparation gave its rescue up, made for real: the unrescued
  *  fixture's source, whose lock carries a critical advisory on the build tool, prepared
- *  through its rescue to the give-up. A `lockAudit` given is then written into that real
- *  record, the way an agent that edited it and recomputed its hash would. */
-async function unrescuedFolder(lockAudit) {
+ *  through its rescue to the give-up. */
+async function unrescuedFolder() {
   const { work } = await realPreparation({
     source: path.join(UNRESCUED_FIXTURE, "src"),
     xpi: path.join(UNRESCUED_FIXTURE, "xpi"),
@@ -1727,9 +1710,6 @@ async function unrescuedFolder(lockAudit) {
       ],
     },
   });
-  if (lockAudit !== undefined) {
-    writePrepare(work, { ...readPrepare(work), lockAudit });
-  }
   return work;
 }
 
@@ -1758,32 +1738,38 @@ test("an aborting check is the last check the review runs", async () => {
   );
 });
 
-/** A network that fails the test on any request. */
-const noNet = {
+/** A network that answers the npm registry's download counts, which every source review
+ *  asks for its declared packages, and fails the test on anything else - OSV above all. */
+const registryOnly = {
   fetchBytes: async () => assert.fail("no request expected"),
-  fetchJson: async () => assert.fail("no request expected"),
-  postJson: async () => assert.fail("no request expected"),
+  fetchJson: async (url) =>
+    url.startsWith("https://api.npmjs.org/downloads/")
+      ? { downloads: 1_000_000 }
+      : assert.fail(`no request expected: ${url}`),
+  postJson: async (url) => assert.fail(`no request expected: ${url}`),
 };
 
-test("an unrescued review is decided by the recorded lock audit, asking no network", async () => {
+// A source whose preparation gave its rescue up is reviewed like any other: its vulnerability
+// checks, early in the phase, report the lock and abort the review. Its audit of the lock is
+// answered from the run's OSV cache, which the preparation filled, so OSV is asked nothing.
+test("an unrescued review is an ordinary review, its audit answered from the run's cache", async () => {
   const { findings, meta } = await runReview({
     addonPath: path.join(UNRESCUED_FIXTURE, "xpi"),
     scaRoot: path.join(UNRESCUED_FIXTURE, "src"),
     workFolder: await unrescuedFolder(),
-    vendorNet: noNet,
+    vendorNet: registryOnly,
     ...OFFLINE,
-    cdnLookup: true,
+    cdnLookupCache: cdnMissCache(
+      path.join(UNRESCUED_FIXTURE, "xpi"),
+      path.join(UNRESCUED_FIXTURE, "src")
+    ),
   });
-  // The rescue checks run in registry order, and the first one that aborts stops the review.
-  const registry = loadRegistry();
-  const { rescueFor } = registry.llmScaReviewPrompt();
-  const rescue = registry
-    .checkIds()
-    .filter((id) => rescueFor.includes(registry.earlyExitFor(id)));
-  assert.deepEqual(
-    meta.checksRun,
-    rescue.slice(0, rescue.indexOf("vendor-vulnerable-dev") + 1)
-  );
+  assert.deepEqual(meta.checksRun, [
+    "experiment-not-allowed",
+    "lockfile-injection",
+    "vendor-vulnerable",
+    "vendor-vulnerable-dev",
+  ]);
   assert.deepEqual(
     findings.map((f) => [f.ruleId, f.file, f.loc?.line]),
     [["vendor-vulnerable-dev", "package-lock.json", 13]]
@@ -1792,50 +1778,4 @@ test("an unrescued review is decided by the recorded lock audit, asking no netwo
     meta.earlyExit.reasons.map((r) => r.id),
     ["known-vulnerabilities"]
   );
-  assert.deepEqual(meta.manualReview, []);
-  assert.equal(meta.preSweep, null);
-});
-
-test("an unrescued record that would let its review pass is refused", async (t) => {
-  const forged = {
-    "no lock audit": null,
-    "empty lists": {
-      vulnerabilities: [],
-      devVulnerabilities: [],
-      treeVulnerabilities: [],
-      treeDevVulnerabilities: [],
-    },
-    "a moderate advisory only": recordedAudit({ severity: "moderate" }),
-    "an entry outside a lock": recordedAudit({ file: "src/bg.js" }),
-    "an entry with no ids": recordedAudit({ ids: "GHSA-x" }),
-    "a list missing": { vulnerabilities: [], devVulnerabilities: [] },
-  };
-  for (const [name, lockAudit] of Object.entries(forged)) {
-    await t.test(name, async () => {
-      const work = await unrescuedFolder(lockAudit);
-      await assert.rejects(
-        runReview({
-          addonPath: path.join(UNRESCUED_FIXTURE, "xpi"),
-          scaRoot: path.join(UNRESCUED_FIXTURE, "src"),
-          workFolder: work,
-          vendorNet: noNet,
-          ...OFFLINE,
-        }),
-        (err) => {
-          assert.ok(err instanceof HandbackRefused, err.message);
-          assert.match(
-            err.problem,
-            /holds no lock audit with a high or critical/
-          );
-          return true;
-        }
-      );
-      // Refused before anything was claimed: the folder holds what the preparation left.
-      assert.deepEqual(fs.readdirSync(work).sort(), [
-        ".cache",
-        "prepare.json",
-        "sca",
-      ]);
-    });
-  }
 });

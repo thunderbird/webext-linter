@@ -13,20 +13,17 @@
 // read-only, the plainest signal that it is out of the agent's reach. Every write stores a
 // hash over the record in it (`digest`), so any change at all - a plausible one included -
 // is caught on the next read; an integrity check, not proof of who wrote it. And what a
-// changed record could still decide is checked as the linter would write it (recordBoolean,
-// unrescuedLockAudit), so even an edit that recomputed the hash cannot make a review pass.
+// changed record could still decide is checked as the linter would write it (recordBoolean).
 //
 // One record per work folder. The folder the source was extracted into holds one from the
 // start; a rescued copy (`<work>-rescued`) holds its own, which names the folder it was
 // copied from. The hand-back that finds a folder done starts its review from this record
 // (src/cli.js), and that review reads it too (src/pipeline.js): a rescued review reads the
 // original's package files from the root it names, to tell the developer the rescue changed
-// them (originalPackages), and the review of a folder whose rescue was given up takes the
-// lock audit recorded here instead of asking for it again (unrescuedLockAudit).
+// them (originalPackages).
 //
 // Belongs here: the record's shape and version, reading and writing it, marking a folder at
-// a step, reading the package files of the original root it names, and checking the lock
-// audit an unrescued folder records. Does NOT belong
+// a step, and reading the package files of the original root it names. Does NOT belong
 // here: what each step does and when the record moves on (-> ./steps.js), the audit that
 // decides it (-> ./audit.js), the folder's names (-> src/util/dest.js workPaths), or how a
 // prompt is printed (-> src/report/format.js).
@@ -41,9 +38,7 @@ import { workPaths } from "../util/dest.js";
 import { rethrowIfFatal, wiringError } from "../lib/errors.js";
 import { PACKAGE_FILE } from "../vendor/package-file.js";
 import { TREE_LOCKS } from "../vendor/locks.js";
-import { VENDOR_TREE_BANDS } from "../config.js";
 import { HandbackRefused } from "../report/handback.js";
-import { LOCK_AUDIT_LISTS } from "./audit.js";
 
 /** Bumped when the record's shape, or what a step does with it, changes in a way an older
  *  file cannot satisfy. A preparation in flight does not survive the upgrade, and saying so
@@ -90,11 +85,8 @@ export const PREPARE_STEP = Object.freeze({
  * @property {?string} rescued  In a folder that handed its source to a rescued copy: that
  *   copy. Kept once the folder is `done` again after a rescue was given up, so the pair can
  *   still be proven while the copy is removed. Null otherwise.
- * @property {?Record<string, import("../vendor/verify.js").VendorVuln[]>} lockAudit  In a
- *   folder a rescued copy was made for: what the lock audit found in its own root, by
- *   LOCK_AUDIT_LISTS name (./audit.js). Null otherwise.
- * @property {boolean} unrescued  The rescue was given up: the folder's review takes
- *   `lockAudit` as its dependency audit, and is decided by it (src/pipeline.js).
+ * @property {boolean} unrescued  The rescue was given up: the folder's own source is
+ *   reviewed, like any other, and its vulnerability checks stop it.
  * @property {string} digest  The hash over every other field, as writePrepare stored it
  *   (recordDigest). A record whose digest does not match was changed after it was written.
  *
@@ -189,7 +181,6 @@ export function startRecord({ submission, flags }) {
     roots: null,
     original: null,
     rescued: null,
-    lockAudit: null,
     unrescued: false,
   };
 }
@@ -310,62 +301,4 @@ export function originalPackages(record) {
     }
   }
   return { files };
-}
-
-/**
- * The lock audit an unrescued folder records, checked before its review takes it as its own.
- *
- * The record is a file the agent can write, and this one decides a review: it stands in for
- * the network audit, and the review runs nothing but the checks that read it. So a record
- * that would let that review pass is refused rather than read. The preparation only ever
- * writes an unrescued folder whose lock audit found at least one entry, and the lock audit
- * records high and critical advisories alone (VENDOR_TREE_BANDS, a malicious package
- * counting as critical) - so a record without one such entry, well formed, was edited.
- * @param {PrepareRecord} record  An unrescued folder's record.
- * @returns {Record<string, import("../vendor/verify.js").VendorVuln[]>}
- * @throws {HandbackRefused}
- */
-export function unrescuedLockAudit(record) {
-  const audit = record.lockAudit;
-  const lists =
-    audit && typeof audit === "object"
-      ? LOCK_AUDIT_LISTS.map((name) => audit[name])
-      : [];
-  const entries = lists.every(Array.isArray) ? lists.flat() : [];
-  if (
-    lists.length !== LOCK_AUDIT_LISTS.length ||
-    !entries.length ||
-    !entries.every(wellFormed)
-  ) {
-    throw new HandbackRefused(
-      "the preparation's record says its rescue was given up, but holds no lock audit " +
-        "with a high or critical advisory, which is the only kind it records"
-    );
-  }
-  return Object.fromEntries(
-    LOCK_AUDIT_LISTS.map((name, i) => [name, lists[i]])
-  );
-}
-
-/**
- * Whether a recorded entry has the shape the lock audit writes (VendorVuln), at one of the
- * bands it keeps, anchored in a lock.
- * @param {unknown} v
- * @returns {boolean}
- */
-function wellFormed(v) {
-  const strings = (a) =>
-    Array.isArray(a) && a.every((x) => typeof x === "string");
-  return (
-    Boolean(v) &&
-    typeof v === "object" &&
-    typeof v.name === "string" &&
-    v.name !== "" &&
-    typeof v.version === "string" &&
-    strings(v.ids) &&
-    strings(v.fixed) &&
-    VENDOR_TREE_BANDS.includes(v.severity) &&
-    TREE_LOCKS.includes(v.file) &&
-    typeof v.token === "string"
-  );
 }

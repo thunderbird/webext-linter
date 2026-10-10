@@ -187,17 +187,6 @@ test("a source stopped only by a locked vulnerability gets a rescued copy", asyn
   const original = recordOf(work);
   assert.equal(original.step, PREPARE_STEP.handed);
   assert.equal(original.rescued, copy);
-  assert.deepEqual(
-    original.lockAudit.devVulnerabilities.map((v) => [
-      v.file,
-      v.name,
-      v.version,
-      v.ids,
-      v.severity,
-    ]),
-    [["package-lock.json", "lint-pebble", "0.4.0", ["GHSA-tool"], "high"]]
-  );
-  assert.deepEqual(original.lockAudit.vulnerabilities, []);
   assert.equal(original.unrescued, false);
   assert.ok(!fs.existsSync(workPaths(work).review));
   assert.equal(
@@ -500,7 +489,6 @@ test("a fix that is not enough deletes the copy, and the original is reviewed un
   assert.equal(at.record.step, PREPARE_STEP.done);
   assert.equal(at.record.unrescued, true);
   assert.equal(at.record.rescued, copy);
-  assert.equal(at.record.lockAudit.devVulnerabilities.length, 1);
   assert.deepEqual(recordOf(work), at.record);
   assert.ok(!fs.existsSync(copy), "the copy is deleted");
   assert.ok(!fs.existsSync(workPaths(work).report), "no report of its own");
@@ -710,12 +698,12 @@ test("every record the preparation writes is read-only", async () => {
 });
 
 // Every write stores a hash over the record, so a change made after it - even a plausible
-// one, like a release in the recorded lock audit - is caught on the next read, and refused.
+// one, like the root it names - is caught on the next read, and refused.
 test("a record changed after the linter wrote it is refused", async () => {
   const { work } = await rescued();
   const file = workPaths(work).prepare;
   const record = JSON.parse(fs.readFileSync(file, "utf8"));
-  record.lockAudit.devVulnerabilities[0].version = "0.4.1";
+  record.roots.scaExpSource = record.roots.scaRoot;
   fs.chmodSync(file, 0o644);
   fs.writeFileSync(file, JSON.stringify(record, null, 1));
   await assert.rejects(
@@ -770,7 +758,6 @@ test("a rescued copy that cannot be made ends the preparation", async (t) => {
     });
     const original = recordOf(work);
     assert.equal(original.step, PREPARE_STEP.extract);
-    assert.equal(original.lockAudit, null);
     assert.equal(original.rescued, null);
   };
   await t.test("a folder of someone else's at its path", async () => {
