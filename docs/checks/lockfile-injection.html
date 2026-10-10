@@ -37,8 +37,9 @@
         <a href="lock-foreign-source.html">lock-foreign-source</a>'s.
       </p>
       <p>
-        It is the second check of a source review, so a forged lock stops the review
-        before anything reads the lock to audit it. The preparation of a source code
+        It runs after the checks that read the package and lock files and before any
+        that need the vendor reading, so a forged lock stops the review before anything
+        reads the lock to audit it. The preparation of a source code
         review (<code>--llm-sca-review</code>) asks the same question first, and does
         not audit or rescue such a lock.
       </p>

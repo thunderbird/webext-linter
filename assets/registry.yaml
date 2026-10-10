@@ -16,6 +16,16 @@
 # simply not a phase.
 
 deterministic-phase:
+# THE HEAD OF THE PHASE: every check that can stop a review on its own, ordered so a
+# submission they reject stops before the rest of the review is computed - a check that
+# reports an error ends the run (src/checks/registry.js abortsReview). The Experiment verdict
+# first, read from records alone; then the source archive's package.json and lock and where
+# the lock installs from, which read nothing the review computes; then lockfile-injection,
+# which may ask the npm registry; then the checks that need the vendor reading (the OSV audit,
+# the CDN identification): the four dependency-vulnerability checks and banned-library. A
+# source review whose preparation gave up rescuing its lock is reviewed like any other and
+# stops at its vulnerability checks.
+
 # Aborts the review of an Experiment that uses an UNSUPPORTED experiment (an
 # unknown API draft, or one shadowing a built-in). A recognised but modified draft
 # does NOT land here; it is reviewed normally and flagged by experiment-modified.
@@ -30,11 +40,129 @@ deterministic-phase:
     We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). A resubmission without them is reviewed in full. The following cannot be accepted:
     Read more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews
 
+# Deterministic (SCA only): the source archive has no package.json, so there is no build to
+# reproduce the shipped XPI from. The build's entry point is the root package.json
+# (src/build/collect.js seeds from it), so its absence is the absence of a build. Reported as
+# the bare fact: nothing here says WHY it is missing, and nothing in the archive could.
+# Presence is tested by NAME, not by parse - one that exists but cannot be used is not
+# MISSING, and sca-package-file-invalid reports it. The pair mirrors sca-lock-file-missing /
+# sca-lock-file-invalid, the other file this build cannot run without.
+# NOT silent when the shipped XPI IS the archive's own code: that the shipped
+# bytes are readable says nothing about whether this source produces them, which is what
+# reproducing the build establishes, and with no build there is nothing to reproduce. The
+# question of whether the archive held the whole XPI is a separate one
+# (sca-xpi-fully-included-in-archive), and prints beside this rejection rather than in
+# place of it.
+- title: Missing package.json
+  severity: error
+  review-early-exit: unreproducible-build
+  check: sca-package-file-missing
+  input: sca
+  response: |-
+    The submitted source archive contains no package.json, so there is no build process the shipped add-on can be reproduced from.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
+# Deterministic (SCA only): a package.json was submitted but cannot be used - it does not
+# parse, or it parses to something that is not a JSON object. npm reads neither, so the
+# build it defines cannot be run. The two cases are kept apart in the wording because a
+# developer would check: one will not open, the other opens fine and simply is not a
+# package file. They are the two the lock file's file-level faults carry, for the same
+# reason. Decided from the one parse every reader of this file shares
+# (src/vendor/package-file.js), so an unusable package file here is exactly the one the
+# dependency readers found nothing in.
+# Which case failed rides the location line as {{item}}, so the response states the rule
+# once. Like its sibling above, NOT silenced by the shipped XPI being the archive's own
+# code.
+- title: Invalid package.json
+  severity: error
+  review-early-exit: unreproducible-build
+  check: sca-package-file-invalid
+  input: sca
+  response: |-
+    The committed package.json cannot be read, so the build it defines cannot be run. Please commit a valid package.json.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
+# Deterministic (SCA only): the source ships a package.json and no npm or pnpm lock.
+# `npm ci` and `pnpm install --frozen-lockfile` both refuse without one, so the
+# source cannot be shown to produce the shipped XPI. The reading is fixed by the SUBMISSION
+# TYPE, never by the file's contents: here a package.json defines the BUILD whatever it
+# carries, so whatever it declares is installed. An absent `scripts` block is not a second
+# reading and not grounds for anything. The mirror holds in a built XPI, where the same
+# file declares VENDORED libraries whatever it carries (xpi-lock-file-missing /
+# xpi-lock-file-invalid). The lock is owed by the package.json, never by what it happens to
+# declare: both installers refuse without one whatever it holds, and a root declaring nothing
+# itself is a workspace root or a package.json whose declarations moved, not a submission
+# that installs nothing. Only the ROOT package.json is read - the build's entry point
+# (src/build/collect.js), and the directory the install runs in. Nothing here goes looking
+# for a package.json or a lock deeper in the archive: they sit at the root, which is what the
+# root IS. WHICH folder that is was settled before any check ran (src/addon/sca-root.js),
+# because the root is named by someone who has not looked inside the archive yet.
+- title: Missing lock file
+  severity: error
+  review-early-exit: unreproducible-build
+  check: sca-lock-file-missing
+  input: sca
+  response: |-
+    The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
+# Deterministic (SCA only): a lock was submitted but cannot be read - it does not parse, or
+# it is not an npm or pnpm lock while package.json declares something to install from it.
+# The dependency audit reads the installed tree out of the lock, so an unreadable one would
+# leave it seeing nothing (src/vendor/locks.js unreadableLock). Whether a readable lock
+# matches package.json is NOT asked: that is the package manager's own question, which
+# `npm ci` and `pnpm install --frozen-lockfile` answer when the build installs. Which of the
+# two it was rides the location line as {{item}}.
+- title: Invalid lock file
+  severity: error
+  review-early-exit: unreproducible-build
+  check: sca-lock-file-invalid
+  input: sca
+  response: |-
+    The committed lock file cannot be read, so the dependencies it installs cannot be checked. Please run the install again and commit the lock file it writes. The supported package managers are npm and pnpm.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
+# Deterministic (SCA only): a committed .npmrc that SETS a package registry (registry=
+# or @scope:registry=, case-insensitive) is rejected outright - a legitimate build never
+# needs to set the registry (npm defaults to the public one), and any setting can only
+# point the install at another source, pulling the SAME declared package names from an
+# UNDECLARED source and leaving package.json/lock a clean decoy. The value is not parsed;
+# the raw value is surfaced as {{item}}. The ARCHIVE'S OWN .npmrc is the one read - npm takes
+# its config from the directory the install runs in, and the review runs it at --sca-root -
+# so a config deeper in the tree is never asked for.
+# review-early-exit for the same reason as the other build rejects, reached from the other
+# direction: the install would RUN, but what it fetches is not what the submission declares,
+# so reproducing it attests nothing - and it would pull code from a developer-chosen host
+# onto the reviewer's own machine. Asking them to build is uninformative and unsafe at once.
+- title: Build registry override
+  severity: error
+  review-early-exit: unreproducible-build
+  check: build-registry-redirect
+  input: sca
+  response: |-
+    The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
+# Deterministic (SCA only): a lock entry the install takes from a source the review cannot
+# audit. The dependency audit identifies a package by name and version, while the installer
+# fetches the URL the lock records - so an entry resolved anywhere but the npm registry or
+# GitHub installs bytes the audit vouched for under another name. Read from the governing lock
+# (src/vendor/locks.js lockSourceGaps); {{item}} names the package and the recorded source.
+- title: Lock file installs from an unsupported source
+  severity: error
+  review-early-exit: unreproducible-build
+  check: lock-foreign-source
+  input: sca
+  response: |-
+    The committed lock file installs the following package(s) from a source the review does not support. Every dependency must install from the npm registry (registry.npmjs.org) or from GitHub. Please install the dependencies from those sources and commit the regenerated lock file.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
 # Deterministic (SCA only): a lock entry that names one release while its URL installs
 # another - a `version` of 1.2.2 beside the 1.2.1 tarball, or another package entirely. The
 # audit asks about the name and version, the install fetches the URL, so the audit would vouch
-# for a release the build never installs. Second in the phase, so a forged lock stops the
-# review before anything reads the lock to audit it. A URL on the registry's tarball path is
+# for a release the build never installs. After the checks that read the package and lock
+# files and before any that need the vendor reading, so a forged lock stops the review before
+# anything reads the lock to audit it. A URL on the registry's tarball path is
 # compared offline, any other registry URL is asked of the registry, once and cached
 # (src/vendor/locks.js findLockInjections); {{item}} names the entry and what it installs.
 - title: Lock file entries that install another release
@@ -45,11 +173,6 @@ deterministic-phase:
   response: |-
     The committed lock file records the following package(s) at one release but installs another, so the release the review would audit is not the one the build installs. Please regenerate the lock file with your package manager and commit it as it writes it.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
-
-# The four dependency-vulnerability checks follow, early in the phase: each names the
-# known-vulnerabilities early exit, so a submission with a vulnerable lock stops before the
-# review computes anything else. A source review whose preparation gave up rescuing its lock
-# (src/prepare/steps.js) is reviewed like any other and stops here.
 
 # Each pinned npm name@version - a package.json dependency of a built XPI, a package the
 # lock file of a source archive marks as declared and installs for production, or an
@@ -116,6 +239,21 @@ deterministic-phase:
   input: sca
   response: |-
     A package this add-on does not declare, but that one of its build dependencies pulls in, has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update the declared build dependency that pulls it in, which usually resolves this because a newer release often already depends on a fixed version ({{fixed}} or later for {{item}}). If no update resolves it, consider moving to a different or simpler build chain.
+
+# A bundled library version Mozilla's add-on policy disallows (banned) or discourages
+# (unadvised), matched against the curated assets/library-blocks.yaml BEFORE the OSV
+# audit (src/vendor/verify.js) - a banned version also skips the OSV request. In a source
+# review every package the lock file installs is matched, declared or not. Distinct
+# from vendor-vulnerable (published CVE advisories); this is Mozilla policy, which can
+# ban a version with no formal advisory.
+# severity:auto - banned -> error, unadvised -> warning (set by the banned-library check).
+- title: Banned library
+  severity: auto
+  review-early-exit: disallowed-library-versions
+  check: banned-library
+  input: source
+  response: |-
+    A library version this add-on uses is {{status}} by Mozilla's add-on policy: {{item}} ({{version}}) - {{reason}} Update to a permitted version.
 
 # Flags a privileged core global (Services, ChromeUtils, Components/Cc/Ci/Cu, ...)
 # referenced in pure WebExtension code, where the sandbox does not provide it. The
@@ -718,138 +856,6 @@ deterministic-phase:
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
   response-for-sca: |-
     The following dependencies are declared from a source the review cannot identify or verify. Only npm packages and GitHub URLs are supported. This applies to build dependencies too, since the reviewer installs and runs them to reproduce your build. Re-declare each as an npm package or a GitHub source, or, for a library you bundle, include its non-minified source in the archive so it can be reviewed directly.
-    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
-
-# A bundled library version Mozilla's add-on policy disallows (banned) or discourages
-# (unadvised), matched against the curated assets/library-blocks.yaml BEFORE the OSV
-# audit (src/vendor/verify.js) - a banned version also skips the OSV request. In a source
-# review every package the lock file installs is matched, declared or not. Distinct
-# from vendor-vulnerable (published CVE advisories); this is Mozilla policy, which can
-# ban a version with no formal advisory.
-# severity:auto - banned -> error, unadvised -> warning (set by the banned-library check).
-- title: Banned library
-  severity: auto
-  review-early-exit: disallowed-library-versions
-  check: banned-library
-  input: source
-  response: |-
-    A library version this add-on uses is {{status}} by Mozilla's add-on policy: {{item}} ({{version}}) - {{reason}} Update to a permitted version.
-
-# Deterministic (SCA only): the source archive has no package.json, so there is no build to
-# reproduce the shipped XPI from. The build's entry point is the root package.json
-# (src/build/collect.js seeds from it), so its absence is the absence of a build. Reported as
-# the bare fact: nothing here says WHY it is missing, and nothing in the archive could.
-# Presence is tested by NAME, not by parse - one that exists but cannot be used is not
-# MISSING, and sca-package-file-invalid reports it. The pair mirrors sca-lock-file-missing /
-# sca-lock-file-invalid, the other file this build cannot run without.
-# NOT silent when the shipped XPI IS the archive's own code: that the shipped
-# bytes are readable says nothing about whether this source produces them, which is what
-# reproducing the build establishes, and with no build there is nothing to reproduce. The
-# question of whether the archive held the whole XPI is a separate one
-# (sca-xpi-fully-included-in-archive), and prints beside this rejection rather than in
-# place of it.
-- title: Missing package.json
-  severity: error
-  review-early-exit: unreproducible-build
-  check: sca-package-file-missing
-  input: sca
-  response: |-
-    The submitted source archive contains no package.json, so there is no build process the shipped add-on can be reproduced from.
-    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
-
-# Deterministic (SCA only): a package.json was submitted but cannot be used - it does not
-# parse, or it parses to something that is not a JSON object. npm reads neither, so the
-# build it defines cannot be run. The two cases are kept apart in the wording because a
-# developer would check: one will not open, the other opens fine and simply is not a
-# package file. They are the two the lock file's file-level faults carry, for the same
-# reason. Decided from the one parse every reader of this file shares
-# (src/vendor/package-file.js), so an unusable package file here is exactly the one the
-# dependency readers found nothing in.
-# Which case failed rides the location line as {{item}}, so the response states the rule
-# once. Like its sibling above, NOT silenced by the shipped XPI being the archive's own
-# code.
-- title: Invalid package.json
-  severity: error
-  review-early-exit: unreproducible-build
-  check: sca-package-file-invalid
-  input: sca
-  response: |-
-    The committed package.json cannot be read, so the build it defines cannot be run. Please commit a valid package.json.
-    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
-
-# Deterministic (SCA only): the source ships a package.json and no npm or pnpm lock.
-# `npm ci` and `pnpm install --frozen-lockfile` both refuse without one, so the
-# source cannot be shown to produce the shipped XPI. The reading is fixed by the SUBMISSION
-# TYPE, never by the file's contents: here a package.json defines the BUILD whatever it
-# carries, so whatever it declares is installed. An absent `scripts` block is not a second
-# reading and not grounds for anything. The mirror holds in a built XPI, where the same
-# file declares VENDORED libraries whatever it carries (xpi-lock-file-missing /
-# xpi-lock-file-invalid). The lock is owed by the package.json, never by what it happens to
-# declare: both installers refuse without one whatever it holds, and a root declaring nothing
-# itself is a workspace root or a package.json whose declarations moved, not a submission
-# that installs nothing. Only the ROOT package.json is read - the build's entry point
-# (src/build/collect.js), and the directory the install runs in. Nothing here goes looking
-# for a package.json or a lock deeper in the archive: they sit at the root, which is what the
-# root IS. WHICH folder that is was settled before any check ran (src/addon/sca-root.js),
-# because the root is named by someone who has not looked inside the archive yet.
-- title: Missing lock file
-  severity: error
-  review-early-exit: unreproducible-build
-  check: sca-lock-file-missing
-  input: sca
-  response: |-
-    The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
-    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
-
-# Deterministic (SCA only): a lock was submitted but cannot be read - it does not parse, or
-# it is not an npm or pnpm lock while package.json declares something to install from it.
-# The dependency audit reads the installed tree out of the lock, so an unreadable one would
-# leave it seeing nothing (src/vendor/locks.js unreadableLock). Whether a readable lock
-# matches package.json is NOT asked: that is the package manager's own question, which
-# `npm ci` and `pnpm install --frozen-lockfile` answer when the build installs. Which of the
-# two it was rides the location line as {{item}}.
-- title: Invalid lock file
-  severity: error
-  review-early-exit: unreproducible-build
-  check: sca-lock-file-invalid
-  input: sca
-  response: |-
-    The committed lock file cannot be read, so the dependencies it installs cannot be checked. Please run the install again and commit the lock file it writes. The supported package managers are npm and pnpm.
-    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
-
-# Deterministic (SCA only): a committed .npmrc that SETS a package registry (registry=
-# or @scope:registry=, case-insensitive) is rejected outright - a legitimate build never
-# needs to set the registry (npm defaults to the public one), and any setting can only
-# point the install at another source, pulling the SAME declared package names from an
-# UNDECLARED source and leaving package.json/lock a clean decoy. The value is not parsed;
-# the raw value is surfaced as {{item}}. The ARCHIVE'S OWN .npmrc is the one read - npm takes
-# its config from the directory the install runs in, and the review runs it at --sca-root -
-# so a config deeper in the tree is never asked for.
-# review-early-exit for the same reason as the other build rejects, reached from the other
-# direction: the install would RUN, but what it fetches is not what the submission declares,
-# so reproducing it attests nothing - and it would pull code from a developer-chosen host
-# onto the reviewer's own machine. Asking them to build is uninformative and unsafe at once.
-- title: Build registry override
-  severity: error
-  review-early-exit: unreproducible-build
-  check: build-registry-redirect
-  input: sca
-  response: |-
-    The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
-    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
-
-# Deterministic (SCA only): a lock entry the install takes from a source the review cannot
-# audit. The dependency audit identifies a package by name and version, while the installer
-# fetches the URL the lock records - so an entry resolved anywhere but the npm registry or
-# GitHub installs bytes the audit vouched for under another name. Read from the governing lock
-# (src/vendor/locks.js lockSourceGaps); {{item}} names the package and the recorded source.
-- title: Lock file installs from an unsupported source
-  severity: error
-  review-early-exit: unreproducible-build
-  check: lock-foreign-source
-  input: sca
-  response: |-
-    The committed lock file installs the following package(s) from a source the review does not support. Every dependency must install from the npm registry (registry.npmjs.org) or from GitHub. Please install the dependencies from those sources and commit the regenerated lock file.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Deterministic (SCA only), and never a reason to stop: the source reviewed is a RESCUED COPY

@@ -106,6 +106,12 @@ const FLAT_SRC = {
     version: "1.0.0",
     scripts: { build: "web-ext build" },
   }),
+  // A source submission owes a lock, and without one the review stops at its lock check,
+  // before the code checks these tests are about. Empty is enough: nothing is declared.
+  "package-lock.json": JSON.stringify({
+    lockfileVersion: 3,
+    packages: { "": {} },
+  }),
 };
 
 test("SCA e2e: a flat layout is accepted and fully reviewed", async () => {
@@ -134,11 +140,12 @@ test("SCA e2e: a flat layout is accepted and fully reviewed", async () => {
         "the root source file is reviewed by the code checks"
       );
       // The build review works flat: collectBuildFiles traced the build off the root
-      // package.json, which ships no lock, so the lock requirement rejects.
+      // package.json, and the check that reads that trace ran.
       assert.ok(
-        has(findings, "sca-lock-file-missing"),
-        "the missing lock is flagged (the build review runs in a flat layout)"
+        meta.checksRun.includes("undeclared-build-source"),
+        "the build review runs in a flat layout"
       );
+      assert.ok(!has(findings, "sca-lock-file-missing"), "its lock is there");
     }
   } finally {
     fs.rmSync(xpi, { recursive: true, force: true });
@@ -281,11 +288,12 @@ test("SCA e2e: --sca-root alone switches to SCA mode and is the review source", 
       ),
       "the root source file is reviewed"
     );
-    // The build review ran (SCA-only), so the root package.json's missing lock is rejected.
+    // The source checks ran (SCA-only): the archive's lock check is among them.
     assert.ok(
-      has(findings, "sca-lock-file-missing"),
-      "the SCA build review ran with --sca-root alone"
+      meta.checksRun.includes("sca-lock-file-missing"),
+      "the SCA checks ran with --sca-root alone"
     );
+    assert.ok(!has(findings, "sca-lock-file-missing"), "and the lock is there");
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
   }
@@ -394,6 +402,10 @@ test("SCA e2e: an undeclared source-bundled library is CDN-identified and OSV-au
     "app.js": "console.log('app');\n",
     "vendor/lib.min.js": LIB, // undeclared: not in package.json
     "package.json": JSON.stringify({ name: "l", version: "1.0.0" }),
+    "package-lock.json": JSON.stringify({
+      lockfileVersion: 3,
+      packages: { "": {} },
+    }),
   });
   // A net that recognizes the vendored file's hash on jsDelivr (popular) and returns an OSV
   // advisory for it - so it is identified AND audited.
@@ -1764,12 +1776,12 @@ test("an unrescued review is an ordinary review, its audit answered from the run
       path.join(UNRESCUED_FIXTURE, "src")
     ),
   });
-  assert.deepEqual(meta.checksRun, [
-    "experiment-not-allowed",
-    "lockfile-injection",
-    "vendor-vulnerable",
-    "vendor-vulnerable-dev",
-  ]);
+  // The head of the phase, up to the first vulnerability check that reports.
+  const ids = loadRegistry().checkIds();
+  assert.deepEqual(
+    meta.checksRun,
+    ids.slice(0, ids.indexOf("vendor-vulnerable-dev") + 1)
+  );
   assert.deepEqual(
     findings.map((f) => [f.ruleId, f.file, f.loc?.line]),
     [["vendor-vulnerable-dev", "package-lock.json", 13]]

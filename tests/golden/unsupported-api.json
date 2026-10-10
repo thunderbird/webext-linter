@@ -13,6 +13,7 @@
     "checksRun": [
       "experiment-not-allowed",
       "vendor-vulnerable",
+      "banned-library",
       "core-symbol-in-webext",
       "trademark-violation",
       "trademark-thunderbird-locale",
@@ -55,7 +56,6 @@
       "xpi-lock-file-missing",
       "xpi-lock-file-invalid",
       "unsupported-dependency",
-      "banned-library",
       "sca-xpi-declares-vendoring",
       "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",

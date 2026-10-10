@@ -2461,6 +2461,11 @@ test("code Babel cannot walk is reported at its line, not exit 2", () => {
     path.join(src, "package.json"),
     '{"name":"x","version":"1.0.0"}'
   );
+  // The lock a source submission owes; without it the review stops before the code checks.
+  fs.writeFileSync(
+    path.join(src, "package-lock.json"),
+    '{"lockfileVersion":3,"packages":{"":{}}}'
+  );
   fs.writeFileSync(path.join(src, "broken.js"), "let a;\nlet a;\n");
   try {
     const r = run([xpi, ...OFFLINE_FLAGS]);
