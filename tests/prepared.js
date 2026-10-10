@@ -32,12 +32,12 @@ export const advisory = (id, severity, name, fixed) => ({
  * The network the audit asks, answering OSV from `vulns`: "name@version" -> the advisories
  * that release has. The single-package query answers with them whole; the batch answers with
  * their ids, positionally, and each id is served on its own. Everything else 404s, so a
- * request the audit should not make is not answered. `batch: false` has the batch endpoint
- * answer 404.
+ * request the audit should not make is not answered. `batchDown` has the batch endpoint
+ * answer 404 - which is no answer from OSV, and ends the run.
  * @param {Record<string, object[]>} [vulns]
- * @param {{batch?: boolean}} [opts]
+ * @param {{batchDown?: boolean}} [opts]
  */
-export function net(vulns = {}, { batch = true } = {}) {
+export function net(vulns = {}, { batchDown = false } = {}) {
   const byId = new Map(
     Object.values(vulns)
       .flat()
@@ -61,7 +61,7 @@ export function net(vulns = {}, { batch = true } = {}) {
     if (!url.includes("querybatch")) {
       return { vulns: vulns[key(body)] ?? [] };
     }
-    if (!batch) {
+    if (batchDown) {
       throw notFound();
     }
     return {

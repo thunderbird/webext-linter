@@ -51,8 +51,9 @@ export const LOCK_AUDIT_LISTS = Object.freeze([
  * What the audit of one root found.
  * @typedef {object} RootAudit
  * @property {boolean} complete  The audit read the whole tree: the root loaded, its lock is
- *   there and parses, no entry is installed from a source the audit cannot read or installs
- *   another release than it names, and the scan was not abandoned. Without each of these, an empty tree would read as a clean one.
+ *   there and parses, and no entry is installed from a source the audit cannot read or
+ *   installs another release than it names. Without each of these, an empty tree would read
+ *   as a clean one. An audit OSV does not answer is not incomplete: it ends the run.
  * @property {Record<string, import("../vendor/verify.js").VendorVuln[]>} lists  The
  *   lock audit's hits, by LOCK_AUDIT_LISTS name: only high, critical and malicious
  *   advisories are recorded there.
@@ -97,9 +98,7 @@ export async function auditRoot(roots, { net, cacheDir } = {}) {
   const { vendor } = archive;
   return {
     complete:
-      governingLock(archive) !== null &&
-      unreadableLock(archive) === null &&
-      !vendor.lockScanAbandoned,
+      governingLock(archive) !== null && unreadableLock(archive) === null,
     lists: Object.fromEntries(LOCK_AUDIT_LISTS.map((l) => [l, vendor[l]])),
   };
 }

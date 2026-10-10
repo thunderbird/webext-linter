@@ -93,7 +93,9 @@ test("a partly asked batch sends only the new queries, and answers in order", as
   );
 });
 
-test("a batch OSV answers 404 is not kept: the scan is abandoned, not answered", async () => {
+// A failure is never kept: the run ends on it and is handed back in the same work folder once
+// OSV answers, so a kept failure would be replayed on every retry.
+test("a batch OSV answers 404 is not kept", async () => {
   const file = cacheFile();
   const down = counting({ batch404: true });
   await assert.rejects(
@@ -109,7 +111,7 @@ test("a batch OSV answers 404 is not kept: the scan is abandoned, not answered",
   assert.equal(up.sent.length, 1, "asked again");
 });
 
-test("advisories and single queries are kept, a 404 included", async () => {
+test("advisories and single queries are kept; a 404 is not", async () => {
   const file = cacheFile();
   const osv = counting();
   for (let run = 0; run < 2; run++) {
@@ -129,7 +131,8 @@ test("advisories and single queries are kept, a 404 included", async () => {
       (err) => err.status === 404
     );
   }
-  assert.equal(osv.sent.length, 4, "each asked once across both invocations");
+  // The two answers once across both invocations; the two 404s asked each time.
+  assert.equal(osv.sent.length, 6);
 });
 
 test("every other request goes to the network untouched", async () => {

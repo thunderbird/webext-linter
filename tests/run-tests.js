@@ -19,6 +19,7 @@ import { runPipeline } from "../src/pipeline.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
 import { formatReview } from "../src/report/format.js";
 import { setNetworkPacing } from "../src/util/net.js";
+import { VENDOR_OSV_API, VENDOR_OSV_BATCH_API } from "../src/config.js";
 import {
   cdnMissCache,
   fixtureCacheOpts,
@@ -58,7 +59,8 @@ const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
 // must be an HTTP negative and never a transport failure, because a connection-shaped
 // error sends fetchWithTimeout into assertNetwork, which probes the control point and
 // can abort the whole review (NetworkGoneError). A fixture that wants to test THAT
-// declares it.
+// declares it. The one exception is an OSV query, which OSV answers with an empty 200 for a
+// package it has no record of, and the fixture is answered the same (installFetchMock).
 //
 // With no "network" map every URL 404s, which is what every fixture written before this
 // existed relies on: a declared vendor source becomes "unfetchable" -> the untrusted
@@ -146,9 +148,22 @@ function fetchResponse(dir, spec) {
  * @returns {() => void}
  */
 function installFetchMock(dir, network) {
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, init) => {
     const spec = network[String(url)];
-    return spec ? fetchResponse(dir, spec) : new Response("", { status: 404 });
+    if (spec) {
+      return fetchResponse(dir, spec);
+    }
+    // OSV answers a package it has no record of with an empty 200, never a 404 - which the
+    // audit takes for no answer, and ends the review on (src/vendor/verify.js askOsv). So an
+    // OSV query the fixture does not declare is answered the way OSV answers it.
+    if (String(url) === VENDOR_OSV_API) {
+      return Response.json({});
+    }
+    if (String(url) === VENDOR_OSV_BATCH_API) {
+      const { queries = [] } = JSON.parse(init?.body ?? "{}");
+      return Response.json({ results: queries.map(() => ({})) });
+    }
+    return new Response("", { status: 404 });
   };
   return () => {
     globalThis.fetch = REAL_FETCH;

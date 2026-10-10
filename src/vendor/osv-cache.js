@@ -26,7 +26,6 @@ import { writeFileAtomic } from "../util/atomic.js";
 import { parseJson } from "../util/json.js";
 import { debug } from "../util/log.js";
 import { rethrowIfFatal } from "../lib/errors.js";
-import { httpError } from "../util/net.js";
 
 /** @typedef {import("./verify.js").VendorNet} VendorNet */
 
@@ -40,10 +39,11 @@ function queryKey(query) {
 }
 
 /**
- * `net`, with OSV answered from the run's cache in `file`. A 404 is an answer too, and is
- * kept: a release or advisory OSV has no record of. A batch's 404 is not, because it
- * abandons the whole scan rather than answering any query in it. Every other request goes to
- * `net` untouched.
+ * `net`, with OSV answered from the run's cache in `file`. Only what OSV answered is kept. A
+ * failure - a 404 included, which is no answer from OSV (src/vendor/verify.js askOsv) - passes
+ * up and is not kept: the run ends on it, and is handed back in this same work folder once OSV
+ * answers again, so a kept failure would be replayed on every retry. Every other request goes
+ * to `net` untouched.
  * @param {VendorNet} net
  * @param {string} file  The run's OSV cache file.
  * @returns {VendorNet}
@@ -54,28 +54,14 @@ export function withOsvCache(net, file) {
     cache[key] = value;
     save(file, cache);
   };
-  // A cached answer, or the 404 it was: re-thrown as the error the network would have thrown.
-  const replay = (entry, url) => {
-    if (entry.notFound) {
-      throw httpError({ status: 404, url });
+  // Whether OSV's answer to `key` is kept. An entry without one is not, and is asked again.
+  const kept = (key) => Object.hasOwn(cache[key] ?? {}, "answer");
+  // Asked once, then kept.
+  const once = async (key, ask) => {
+    if (kept(key)) {
+      return cache[key].answer;
     }
-    return entry.answer;
-  };
-  // Asked once, then kept: an answer, or a 404.
-  const once = async (key, url, ask) => {
-    if (Object.hasOwn(cache, key)) {
-      return replay(cache[key], url);
-    }
-    let answer;
-    try {
-      answer = await ask();
-    } catch (err) {
-      if (err.status !== 404) {
-        throw err;
-      }
-      remember(key, { notFound: true });
-      throw err;
-    }
+    const answer = await ask();
     remember(key, { answer });
     return answer;
   };
@@ -85,29 +71,27 @@ export function withOsvCache(net, file) {
       if (!String(url).startsWith(VENDOR_OSV_VULN_API)) {
         return net.fetchJson(url);
       }
-      return once(`vuln:${url.slice(VENDOR_OSV_VULN_API.length)}`, url, () =>
+      return once(`vuln:${url.slice(VENDOR_OSV_VULN_API.length)}`, () =>
         net.fetchJson(url)
       );
     },
     async postJson(url, body) {
       if (url === VENDOR_OSV_API) {
-        return once(`query:${queryKey(body)}`, url, () =>
-          net.postJson(url, body)
-        );
+        return once(`query:${queryKey(body)}`, () => net.postJson(url, body));
       }
       if (url !== VENDOR_OSV_BATCH_API) {
         return net.postJson(url, body);
       }
       const queries = Array.isArray(body?.queries) ? body.queries : [];
       const keys = queries.map((q) => `batch:${queryKey(q)}`);
-      const missing = queries.filter((_, i) => !Object.hasOwn(cache, keys[i]));
+      const missing = queries.filter((_, i) => !kept(keys[i]));
       if (missing.length > 0) {
         const res = await net.postJson(url, { ...body, queries: missing });
         const results = Array.isArray(res?.results) ? res.results : [];
         // The endpoint answers positionally, one result per query sent.
         let at = 0;
         for (const [i, q] of queries.entries()) {
-          if (!Object.hasOwn(cache, keys[i]) && q === missing[at]) {
+          if (!kept(keys[i]) && q === missing[at]) {
             cache[keys[i]] = { answer: results[at] ?? {} };
             at++;
           }
@@ -122,7 +106,7 @@ export function withOsvCache(net, file) {
 /**
  * The run's cached answers, or none when the file is absent or unreadable.
  * @param {string} file
- * @returns {Record<string, {answer?: unknown, notFound?: true}>}
+ * @returns {Record<string, {answer?: unknown}>}
  */
 function load(file) {
   try {

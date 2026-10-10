@@ -20,6 +20,7 @@ import {
   writePrepare,
 } from "../../src/prepare/state.js";
 import { HandbackRefused } from "../../src/report/handback.js";
+import { NoAnswerError } from "../../src/util/net.js";
 import { workPaths } from "../../src/util/dest.js";
 import { loadSourceArchive } from "../../src/addon/load.js";
 import depsChanged from "../../src/checks/rules/sca-dependencies-changed.js";
@@ -383,18 +384,6 @@ test("a source the audit cannot read in full is not rescued", async (t) => {
     assert.equal(at.record.step, PREPARE_STEP.done);
     cleanup(work);
   });
-  await t.test("the lock scan abandoned", async () => {
-    // The batch endpoint does not answer: the declared tool's advisory would be rescued,
-    // but the tree is unread.
-    const work = workFolder({
-      "package.json": packageFile(),
-      "package-lock.json": npmLock(),
-    });
-    const at = await first(work, net(TOOL_HIGH, { batch: false }));
-    assert.equal(at.work, work);
-    assert.equal(at.record.step, PREPARE_STEP.done);
-    cleanup(work);
-  });
   await t.test("a file the loader cannot read", async () => {
     const work = workFolder({
       "package.json": packageFile(),
@@ -534,18 +523,37 @@ test("a copy the audit cannot vouch for is not clean", async (t) => {
       cleanup(work);
     });
   }
-  await t.test("its tree never read", async () => {
+});
+
+// OSV answering 404 is no answer: it says nothing about the tree, so the preparation ends as
+// the tool's failure, with the record where it was, for the folder to be handed back once OSV
+// answers again - at the first step, and at a rescued copy's.
+test("an audit OSV does not answer ends the preparation", async (t) => {
+  const noAnswer = (err) =>
+    err instanceof NoAnswerError && /querybatch \(HTTP 404\)/.test(err.message);
+  await t.test("at the first step", async () => {
+    const work = workFolder({
+      "package.json": packageFile(),
+      "package-lock.json": npmLock(),
+    });
+    await assert.rejects(
+      first(work, net(TOOL_HIGH, { batchDown: true })),
+      noAnswer
+    );
+    assert.equal(recordOf(work).step, PREPARE_STEP.extract);
+    cleanup(work);
+  });
+  await t.test("at a rescued copy's step", async () => {
     const { work, root } = await rescued();
+    // A package the run has not asked OSV about yet, so the copy's audit asks.
     writeTree(root, {
       "package.json": packageFile(null),
       "package-lock.json": npmLock(null, {
         "node_modules/argv-crumb": { version: "0.0.8", dev: true },
       }),
     });
-    assert.equal(
-      (await later(work, net({}, { batch: false }))).record.step,
-      PREPARE_STEP.fix
-    );
+    await assert.rejects(later(work, net({}, { batchDown: true })), noAnswer);
+    assert.equal(recordOf(work).step, PREPARE_STEP.reduce);
     cleanup(work);
   });
 });

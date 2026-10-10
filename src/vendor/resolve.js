@@ -95,8 +95,6 @@ import {
  * @property {import("./verify.js").VendorVuln[]} treeDevVulnerabilities  The same
  *   for undeclared packages installed for the BUILD only. Read by the
  *   vendor-vulnerable-indirect-dev check.
- * @property {boolean} lockScanAbandoned  The lock audit gave up on the tree, so the four
- *   vulnerability lists hold nothing from it (auditLockedPackages).
  * @property {{path: string, source: ?string, repo: ?string}[]} unaudited
  *   GitHub-sourced VENDOR entries that could not be resolved to a verified npm
  *   identity for an OSV audit (filled by verifyVendor; empty offline). Read by
@@ -428,11 +426,6 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
     // to build with. Read by the two vendor-vulnerable-indirect checks.
     treeVulnerabilities: [],
     treeDevVulnerabilities: [],
-    // Set when the lock audit gave up on the tree (an OSV 404, or a net that cannot post):
-    // the four lists above are then empty because nothing was asked, not because nothing was
-    // found. Read by the preparation's audit (src/prepare/audit.js), which must not take
-    // such a tree for a clean one.
-    lockScanAbandoned: false,
     // Filled by verifyVendor when a github source cannot be resolved to a
     // verified npm identity (network). Empty for offline runs.
     unaudited: [],

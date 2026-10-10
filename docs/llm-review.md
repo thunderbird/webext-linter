@@ -371,7 +371,7 @@ the review. Three outcomes:
 
 - **The lock is clean**, or the audit cannot read it in full (no lock, one that does not
   parse, an entry from a source the audit cannot read, an entry that installs another
-  release than it names, a scan OSV refused with a 404): the folder is done, and the same hand-back starts its review. The review decides the rest.
+  release than it names): the folder is done, and the same hand-back starts its review. The review decides the rest.
 - **The lock installs a package with a known high or critical advisory**: the linter copies
   the source into `rescued/` beside `sca/` in the same work folder, and hands the copy two
   steps. First the reader

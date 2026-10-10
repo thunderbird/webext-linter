@@ -425,6 +425,8 @@ test("verifyScaDependencies: lookups that find nothing (404) record nothing", as
       lockGithubInstalls: [ghLocked("widget", "u/widget")],
     })
   );
+  // Popularity and repositories answer "no such package" with a 404; OSV answers a
+  // package it has no record of with an empty 200.
   const nothingFound = {
     fetchBytes: async () => {
       throw notFound();
@@ -432,9 +434,10 @@ test("verifyScaDependencies: lookups that find nothing (404) record nothing", as
     fetchJson: async () => {
       throw notFound();
     },
-    postJson: async () => {
-      throw notFound();
-    },
+    postJson: async (url, body) =>
+      url.includes("querybatch")
+        ? { results: body.queries.map(() => ({})) }
+        : {},
   };
   await verifyScaDependencies(addon, nothingFound);
   assert.deepEqual(addon.vendor.unpopularDeps, []);
@@ -1172,7 +1175,9 @@ test("auditIdentifiedLibraries: dedupes by release across files and prior audits
   );
 });
 
-test("auditIdentifiedLibraries: records nothing with a net that has no postJson", async () => {
+// A 404 from OSV is no answer: it says nothing about the library, so it ends the run rather
+// than reading as one with no advisories.
+test("auditIdentifiedLibraries: an OSV 404 ends the run", async () => {
   const addon = addonWith({ "vendor/lib.min.js": "X" }, store());
   addon.bundled = {
     classified: [
@@ -1183,7 +1188,12 @@ test("auditIdentifiedLibraries: records nothing with a net that has no postJson"
       },
     ],
   };
-  await auditIdentifiedLibraries(addon, net({ throwOnPost: true }));
+  await assert.rejects(
+    auditIdentifiedLibraries(addon, net({ throwOnPost: true })),
+    (err) =>
+      err instanceof NoAnswerError &&
+      /api\.osv\.dev\/v1\/query \(HTTP 404\)/.test(err.message)
+  );
   assert.deepEqual(addon.vendor.vulnerabilities, []);
 });
 
@@ -1369,15 +1379,6 @@ test("verifyVendor: a clean package records no vulnerability", async () => {
     addon,
     net({ listing: { files: [] }, osv: { vulns: [] } })
   );
-  assert.deepEqual(addon.vendor.vulnerabilities, []);
-});
-
-test("verifyVendor: an OSV 404 records nothing", async () => {
-  const addon = addonWith(
-    {},
-    store({ packages: [{ name: "lodash", version: "4.17.20" }] })
-  );
-  await verifyVendor(addon, net({ listing: { files: [] }, throwOnPost: true }));
   assert.deepEqual(addon.vendor.vulnerabilities, []);
 });
 
@@ -2315,12 +2316,13 @@ test("verifyVendorDeclarations: a below-bar reading still records not-popular", 
   ]);
 });
 
-// The other half, and the one every golden rests on: a 404 is an answer, read as a value.
-// The fixture harness answers every URL it does not know with one, so a fixture run must
+// The other half, and the one every golden rests on: a 404 is an answer, read as a value -
+// from every host but OSV, which answers an unknown package with an empty 200 (askOsv). The
+// fixture harness answers every other URL it does not know with one, so a fixture run must
 // stay a clean review with no matches - never an abort.
 test("a 404 is read as an answer, not fatal", async () => {
   // A transport that answers every request 404 - what the fixture harness does for a URL
-  // it has no entry for.
+  // it has no entry for - and OSV as OSV does for a package it has no record of.
   const deadLoad = {
     fetchBytes: async () => {
       throw notFound();
@@ -2328,9 +2330,7 @@ test("a 404 is read as an answer, not fatal", async () => {
     fetchJson: async () => {
       throw notFound();
     },
-    postJson: async () => {
-      throw notFound();
-    },
+    postJson: async () => ({}),
   };
   assert.equal(await isPopular({ kind: "npm", pkg: "x" }, deadLoad), false);
   const addon = addonWith(
@@ -2581,34 +2581,44 @@ test("auditLockedPackages: an advisory affecting two packages is fetched once", 
   );
 });
 
-// A partial scan would make the report depend on how far it got, so a 404 from any
-// batch or hydration abandons the whole thing and records nothing.
-test("auditLockedPackages: a failing batch or hydration records nothing", async () => {
+// A 404 from OSV - for a batch, or for an advisory it listed - is no answer, and ends the run:
+// read as one, it would drop advisories and report the rest of the tree as clean.
+test("auditLockedPackages: an OSV 404 for a batch or a hydration ends the run", async () => {
+  const noAnswer = (path) => (err) =>
+    err instanceof NoAnswerError &&
+    err.message.includes(`api.osv.dev/v1/${path}`) &&
+    err.message.includes("(HTTP 404)");
   const batchDown = addonWith(
     { "package.json": "{}" },
     store({ lockPackages: [locked("x", "1.0.0")] })
   );
-  await verifyScaDependencies(batchDown, net({ throwOnBatch: true }));
+  await assert.rejects(
+    verifyScaDependencies(batchDown, net({ throwOnBatch: true })),
+    noAnswer("querybatch")
+  );
   assert.deepEqual(batchDown.vendor.treeVulnerabilities, []);
 
   const hydrationDown = addonWith(
     { "package.json": "{}" },
     store({ lockPackages: [locked("x", "1.0.0")] })
   );
-  await verifyScaDependencies(
-    hydrationDown,
-    net({
-      throwOnHydrate: true,
-      batch: { results: [{ vulns: [{ id: "GHSA-x" }] }] },
-    })
+  await assert.rejects(
+    verifyScaDependencies(
+      hydrationDown,
+      net({
+        throwOnHydrate: true,
+        batch: { results: [{ vulns: [{ id: "GHSA-x" }] }] },
+      })
+    ),
+    noAnswer("vulns/GHSA-x")
   );
   assert.deepEqual(hydrationDown.vendor.treeVulnerabilities, []);
 });
 
 // The case the test above cannot reach: enough packages to need a SECOND chunk,
-// with OSV answering 404 for it after the first has already answered. A scan that kept those
-// answers would publish a partial tree that reads exactly like a clean one.
-test("auditLockedPackages: an answered chunk is discarded when a later one fails", async () => {
+// with OSV answering 404 for it after the first has already answered. The run ends, and
+// nothing of the first chunk was published: a partial tree reads exactly like a clean one.
+test("auditLockedPackages: an answered chunk is never published when a later one fails", async () => {
   const lockPackages = Array.from({ length: 250 }, (_, i) =>
     locked(`pkg-${String(i).padStart(3, "0")}`, "1.0.0")
   );
@@ -2632,7 +2642,10 @@ test("auditLockedPackages: an answered chunk is discarded when a later one fails
         }
       : answer(url, body);
   };
-  await verifyScaDependencies(addon, flaky);
+  await assert.rejects(
+    verifyScaDependencies(addon, flaky),
+    (err) => err instanceof NoAnswerError
+  );
   assert.equal(chunks, 2, "the first chunk must really have answered");
   assert.deepEqual(addon.vendor.treeVulnerabilities, []);
   assert.deepEqual(addon.vendor.treeDevVulnerabilities, []);

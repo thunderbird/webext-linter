@@ -380,11 +380,9 @@ export async function auditScaDependencies(addon, net = defaultNet, blocks) {
  * and build-only devVulnerabilities, pulled in and shipped treeVulnerabilities, pulled in
  * and build-only treeDevVulnerabilities. Every record anchors at the package's lock entry.
  *
- * All-or-nothing: results are held until every chunk has answered, so a scan cut short
- * records NOTHING rather than a partial tree that reads like a clean one. A chunk OSV gives
- * no answer for ends the review (src/util/net.js); one it answers 404 for abandons the scan, and says so on `vendor.lockScanAbandoned`: a scan
- * that recorded nothing reads the same as a clean tree to every check, and the preparation
- * must not take it for one.
+ * All-or-nothing: results are held until every chunk has answered, and a chunk OSV does not
+ * answer - a 404 included (askOsv) - ends the run, so no partial tree ever reads like a clean
+ * one.
  * @param {VendorStore} vendor  Must carry lockPackages (resolveVendor).
  * @param {VendorNet} net
  * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist.
@@ -420,24 +418,15 @@ async function auditLockedPackages(vendor, net, blocks) {
   const found = { declared: [], declaredDev: [], shipped: [], buildTime: [] };
   for (let at = 0; at < queue.length; at += VENDOR_OSV_BATCH_SIZE) {
     const chunk = queue.slice(at, at + VENDOR_OSV_BATCH_SIZE);
-    let results;
-    try {
-      const res = await net.postJson(VENDOR_OSV_BATCH_API, {
+    const res = await askOsv(VENDOR_OSV_BATCH_API, () =>
+      net.postJson(VENDOR_OSV_BATCH_API, {
         queries: chunk.map((p) => ({
           version: p.version,
           package: { name: p.name, ecosystem: "npm" },
         })),
-      });
-      results = Array.isArray(res?.results) ? res.results : [];
-    } catch (err) {
-      // OSV answered 404: abandon the scan. Anything else is no answer (fatal already) or a
-      // fault of our own, and must not pass for one.
-      if (err.status !== 404) {
-        throw err;
-      }
-      vendor.lockScanAbandoned = true;
-      return;
-    }
+      })
+    );
+    const results = Array.isArray(res?.results) ? res.results : [];
     // The endpoint answers positionally, one result per query, and says nothing
     // about which package each answer is for - hence the index, and hence the
     // tolerance for a short array rather than a trusted pairing.
@@ -501,23 +490,39 @@ function isMaliciousAdvisory(v) {
 }
 
 /**
+ * Ask OSV, and take a 404 for what it is: no answer. Every OSV url is the linter's own - a
+ * fixed endpoint, or an advisory id OSV itself just listed - and OSV answers a package it has
+ * never heard of with an empty 200, so a 404 says nothing about the submission: the endpoint
+ * is gone, or OSV cannot serve an advisory it listed. Read as an answer it would drop
+ * advisories and report the rest as clean, so it ends the run like any request that got no
+ * answer (src/util/net.js).
+ * @template T
+ * @param {string} url  The request, for the message.
+ * @param {() => Promise<T>} ask
+ * @returns {Promise<T>}
+ */
+async function askOsv(url, ask) {
+  try {
+    return await ask();
+  } catch (err) {
+    if (err.status === 404) {
+      throw new NoAnswerError(url, "HTTP 404");
+    }
+    throw err;
+  }
+}
+
+/**
  * Fetch the full OSV record for one advisory id: the batch endpoint answers with bare ids.
  * One advisory routinely affects several packages in a tree, and the run's OSV cache
  * (src/vendor/osv-cache.js) answers each repeat, so it is asked of OSV once per run.
  * @param {string} id  An OSV/GHSA advisory id.
  * @param {VendorNet} net
- * @returns {Promise<?OsvVuln>}  Null when OSV has no such advisory.
+ * @returns {Promise<?OsvVuln>}
  */
-async function hydrateAdvisory(id, net) {
-  try {
-    return await net.fetchJson(`${VENDOR_OSV_VULN_API}${id}`);
-  } catch (err) {
-    // OSV answered 404: no such advisory. Anything else must not read as one.
-    if (err.status !== 404) {
-      throw err;
-    }
-    return null;
-  }
+function hydrateAdvisory(id, net) {
+  const url = `${VENDOR_OSV_VULN_API}${id}`;
+  return askOsv(url, () => net.fetchJson(url));
 }
 
 /**
@@ -583,9 +588,9 @@ async function npmDownloads(name, net) {
  * regardless); an unadvised one is recorded but still audited (a live CVE on an
  * allowed library still matters).
  * A package with known advisories is recorded on `into` (one entry aggregating its
- * advisories, anchored at `file`/`token`). An OSV 404 records nothing. A query OSV
- * does not answer ends the review (src/util/net.js): recording nothing for it would read
- * as a package with no advisories. Drives a built XPI's package.json deps, npm-sourced
+ * advisories, anchored at `file`/`token`). A query OSV does not answer, a 404 included
+ * (askOsv), ends the run: recording nothing for it would read as a package with no
+ * advisories. Drives a built XPI's package.json deps, npm-sourced
  * VENDOR entries and hash-identified libraries -> vendor.vulnerabilities (read by
  * vendor-vulnerable); the caller passes the target `into` array.
  * @param {string} name  npm package name.
@@ -618,22 +623,15 @@ async function auditNpm(name, version, file, token, vendor, net, into, blocks) {
       return;
     }
   }
-  let vulns;
-  try {
-    const res = await net.postJson(VENDOR_OSV_API, {
+  const res = await askOsv(VENDOR_OSV_API, () =>
+    net.postJson(VENDOR_OSV_API, {
       // OSV npm versions carry no "v" prefix. A vendored URL may (e.g.
       // "@v1.2.3").
       version: String(version).replace(/^v/i, ""),
       package: { name, ecosystem: "npm" },
-    });
-    vulns = Array.isArray(res?.vulns) ? res.vulns : [];
-  } catch (err) {
-    // OSV answered 404: no record. Anything else must not read as "no advisories".
-    if (err.status !== 404) {
-      throw err;
-    }
-    return;
-  }
+    })
+  );
+  const vulns = Array.isArray(res?.vulns) ? res.vulns : [];
   const record = vulnRecord(name, version, vulns, file, token);
   if (record) {
     into.push(record);
