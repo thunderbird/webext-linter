@@ -174,9 +174,8 @@ export function formatText(review) {
  * The report body lines - Found Issues and the four to-do sections -
  * WITHOUT the trailing Summary tally.
  *
- * The order, the entry grouping and the numbering all come from orderReview: this
- * function only draws what that sequence already decided, so the numbers a reader sees
- * are the numbers --llm-handback resolves (src/report/order.js).
+ * The order and the entry grouping come from orderReview: this function only draws what
+ * that sequence already decided (src/report/order.js).
  * @param {ReviewResult} review
  * @returns {string[]}
  */

@@ -1,14 +1,12 @@
 // The ONE order of a finished review: every finding and every to-do item, in the
-// sequence the report lists them, each carrying the number the report lists it under.
-// The renderer prints this sequence and --llm-handback indexes into it, so an item's
-// number is assigned once and nothing has to re-derive it.
+// sequence the report lists them. The renderer prints this sequence and the loop asks
+// about it, so the two cannot disagree about what the review holds.
 //
-// That is the whole point of this module. While the order lived inside the renderer and
-// a second walk reproduced it for the verdicts, the two drifted three separate ways - a
-// group's locus filter, the display cap, and whether the messages had been filled yet -
-// and each drift silently moved every later number.
+// An item is ADDRESSED by its fixed reference (assignRefs below), never by where it sorts:
+// the order moves whenever the review gains an item, and an answer must stay on the item
+// it was given for.
 //
-// EVERY item is numbered, including one the page will not have room to print. The
+// EVERY item is in the sequence, including one the page will not have room to print. The
 // display cap is a property of the page, not of the review: the phase that asks about an
 // item must be handed every one of them, or the agent settles the ones it was given and
 // the rest pass unexamined, and an answer naming one must resolve rather than fail.
@@ -16,8 +14,8 @@
 // folded into another's line (`collapse: subject`) is the same bargain for the same
 // reason: it is asked and settled like any other, it just does not print.
 //
-// Belongs here: the sequence, the entry boundaries within it, the numbering, which items
-// the page has room for, which of them say the same thing as another (collapse), and
+// Belongs here: the sequence, the entry boundaries within it, the items' references, which
+// items the page has room for, which of them say the same thing as another (collapse), and
 // which sections of it a reviewer answers.
 //
 // Does NOT belong here: how an entry is drawn (src/report/format.js), what it says
@@ -88,8 +86,7 @@ function bucketOf(m) {
 const TODO_SECTIONS = Object.freeze(["code", "extendedManual", "standard"]);
 
 /** The to-do sections a person answers, as opposed to the ones settled by reading the
- *  add-on. It has ONE reader, `isQuestion` below. They are the LAST sections TODO_SECTIONS numbers, which is what makes
- *  omitting them truncate the numbering rather than punch a hole in it. */
+ *  add-on. It has ONE reader, `isQuestion` below. */
 const MANUAL_SECTIONS = Object.freeze(["extendedManual", "standard"]);
 
 /**
@@ -115,8 +112,8 @@ export function isQuestion(x) {
  * @property {string} section  A severity band for a finding, a to-do section otherwise.
  * @property {string} entry  Entry key: consecutive items sharing it are one numbered
  *   entry with a shared body and a list of locations.
- * @property {number} index  The number this item is listed under. Every item has one,
- *   whether or not the page prints its line.
+ * @property {?string} ref  The item's fixed reference (assignRefs), which answers are
+ *   recorded under. Only a review in the loop has one.
  * @property {boolean} shown  Whether the report prints a location line for it, or folds
  *   it into the entry's "and N more" marker (past the per-entry display cap), or prints
  *   nothing because another case of the same subject stands for it (`collapse: subject`).
@@ -129,7 +126,7 @@ export function isQuestion(x) {
  */
 
 /**
- * The review as one ordered, numbered sequence.
+ * The review as one ordered sequence.
  *
  * Findings come first, by severity band and sorted within it, with the items of an
  * entry adjacent. The to-do sections follow in the order they print, their repeats
@@ -147,13 +144,12 @@ export function isQuestion(x) {
  */
 export function orderReview(findings, manual = []) {
   const items = [];
-  let n = 0;
   const push = (kind, section, key, members) => {
     // An entry whose check declares `collapse: subject` prints one line per SUBJECT: the
     // first case keeps its line and carries a count of the others, the rest do not print.
     // Decided HERE, with the cap, because both answer the same question - does this item's
-    // line print - and one answer in one place is what keeps the printed numbers and the
-    // addressable ones together. The renderer prints what this decided; it decides nothing.
+    // line print - and one answer in one place is what keeps what prints and what is asked
+    // together. The renderer prints what this decided; it decides nothing.
     //
     // This is NOT the entry grouping, which is settled above and reads only the body and
     // whether an item has a locus at all. Grouping decides what is ONE entry; this decides
@@ -185,7 +181,7 @@ export function orderReview(findings, manual = []) {
     let printed = 0;
     members.forEach((target, i) => {
       // Past the cap the page prints a marker instead of the line, and a folded case
-      // prints none at all. The item is numbered either way: it is still part of the
+      // prints none at all. The item is in the sequence either way: it is still part of the
       // review, still asked about, and still addressable by an answer.
       const shown = !folded[i] && printed < MAX_ENTRIES_PER_CATEGORY;
       if (shown) {
@@ -195,7 +191,7 @@ export function orderReview(findings, manual = []) {
         kind,
         section,
         entry: key,
-        index: ++n,
+        ref: target.ref ?? null,
         shown,
         folded: folded[i],
         collapsed: collapsed[i],
@@ -240,4 +236,32 @@ function groupBy(list, bodyOf) {
     }
   }
   return [...byKey.values()];
+}
+
+/**
+ * Give every item that has none its fixed reference, `<check>.<n>`: the registry position
+ * of the check that raised it (Registry.refBase) and that check's own count. Taken from the
+ * registry and the check alone, so nothing the review does later - a sweep adding cases, a
+ * verdict, the order the phases run in - moves the reference an answer was recorded under.
+ * An item that has one keeps it, and a new case of a check continues that check's count.
+ * @param {object[]} items  Findings and manual items, in the order they were raised.
+ *   Mutated: each gets `ref`.
+ * @param {import("../checks/registry.js").Registry} registry
+ */
+export function assignRefs(items, registry) {
+  const counts = new Map();
+  for (const { ref } of items) {
+    if (ref) {
+      const [base, n] = ref.split(".").map(Number);
+      counts.set(base, Math.max(counts.get(base) ?? 0, n));
+    }
+  }
+  for (const x of items) {
+    if (!x.ref) {
+      const base = registry.refBase(x.ruleId);
+      const n = (counts.get(base) ?? 0) + 1;
+      counts.set(base, n);
+      x.ref = `${base}.${n}`;
+    }
+  }
 }

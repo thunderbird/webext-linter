@@ -41,7 +41,8 @@ import { SECTION_TITLES, manualQuestion } from "./format.js";
 /**
  * The item array for a finished review.
  *
- * Each entry carries its `index` (its number in the report), the `entry` it shares with
+ * Each entry carries its `ref` (the fixed reference answers are recorded under), the
+ * `entry` it shares with
  * its siblings - the numbered entry a collapsed group renders as, which the prose conveys
  * by layout and a flat array would otherwise lose - and the fields that decide it.
  * Named arguments, as applyVerdicts takes them: enough of them decide layout rather than
@@ -62,10 +63,10 @@ import { SECTION_TITLES, manualQuestion } from "./format.js";
 export function reviewItems({ findings, manual, choices, labelOf }) {
   const entryNumbers = new Map();
   const counters = new Map();
-  // The WHOLE review, never a filtered `manual`: orderReview numbers what it is GIVEN, so
-  // a pre-filtered list would renumber the survivors and every index here would name a
-  // different item than the report does. A phase picks the entries it asks about
-  // afterwards, by index (src/report/loop.js phaseEntries).
+  // The WHOLE review, never a filtered `manual`: the entry numbers count what they are
+  // GIVEN, so a pre-filtered list would number the survivors differently from the report.
+  // A phase picks the entries it asks about afterwards, by reference
+  // (src/report/loop.js phaseEntries).
   const listed = orderReview(findings, manual);
   const items = listed.map((x) => {
     const t = x.target;
@@ -95,7 +96,7 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
       x.kind === "finding" ? SECTION_TITLES.issues : SECTION_TITLES[x.section];
     return x.kind === "finding"
       ? {
-          index: x.index,
+          ref: x.ref,
           kind: "finding",
           section: title,
           entry: entryNumbers.get(key),
@@ -105,7 +106,7 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
           message: t.message,
         }
       : {
-          index: x.index,
+          ref: x.ref,
           kind: "todo",
           section: title,
           entry: entryNumbers.get(key),

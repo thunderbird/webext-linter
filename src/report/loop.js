@@ -8,7 +8,7 @@
 // WHY TWO FUNCTIONS AND NOT A CONVERSATION: `state + a filled review file -> the next
 // state + review file` is a pure file-to-file transformation, and so is `state -> report`.
 // That is what makes this half of the tool testable without talking to an agent.
-import { orderReview } from "./order.js";
+import { assignRefs, orderReview } from "./order.js";
 import { nextPhase, openIn, phaseOf, stepsOf } from "./phases.js";
 import { earlyExitOf } from "./early-exit.js";
 import {
@@ -113,10 +113,9 @@ function verdictsOf(state, ordered, registry) {
   const choices = registry.manualReviewChoices();
   const out = { ...answers };
   for (const x of ordered) {
-    const index = String(x.index);
-    if (index in answers && asking(x)) {
-      out[index] =
-        pickedChoice(answers[index], choices)?.verdict ?? String(VERB.reported);
+    if (x.ref in answers && asking(x)) {
+      out[x.ref] =
+        pickedChoice(answers[x.ref], choices)?.verdict ?? String(VERB.reported);
     }
   }
   return out;
@@ -286,7 +285,7 @@ export function accept(state, work, phases, registry) {
   // product lands in a file of its own - so what it hands out is empty and so must be what
   // comes back.
   // The one ordering of this hand-back: what went out is read from it, and an answer that
-  // moves a case finds that case in it - so both name the same item by the same number.
+  // moves a case finds that case in it by its reference.
   const ordered = orderReview(state.report.findings, state.manual);
   const asked = ITEMLESS_ANSWERS.includes(phase.answer)
     ? []
@@ -317,16 +316,15 @@ export function accept(state, work, phases, registry) {
     return { phase, answers };
   }
   state.answers ??= {};
-  const byIndex = new Map(ordered.map((x) => [String(x.index), x]));
-  for (const [index, value] of answers) {
+  const byRef = new Map(ordered.map((x) => [x.ref, x]));
+  for (const [ref, value] of answers) {
     if (value === VERB.ask) {
-      // Not settled: moved. The case itself carries where it is asked now (phaseOf), so a
-      // later pass that renumbers the review still finds it there.
-      byIndex.get(index).target.askedIn = "ask";
+      // Not settled: moved. The case itself carries where it is asked now (phaseOf).
+      byRef.get(ref).target.askedIn = "ask";
     } else {
       // Written down as text, because the state is JSON. A verb spells itself; a person's
       // answer is already their own words.
-      state.answers[index] = String(value);
+      state.answers[ref] = String(value);
     }
   }
   return { phase, answers };
@@ -340,8 +338,7 @@ export { HandbackRefused };
  * Built from `reviewItems` - the same array the report is numbered from - so an entry
  * carries the wording the review already gave it: a question's `message` and the answers
  * it offers, a case's `instructions`, a finding's locus. The ordered walk decides WHICH,
- * the item file decides WHAT, and they are joined by the index, which is the one thing
- * both agree on.
+ * the item file decides WHAT, and they are joined by the item's reference.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
  * @param {{name: string, answer: string}} phase
@@ -361,10 +358,10 @@ function phaseEntries(state, registry, phase, ordered) {
       manual: state.manual,
       choices: registry.manualReviewChoices(),
       labelOf: locusLabeler(mode),
-    }).map((item) => [item.index, item])
+    }).map((item) => [item.ref, item])
   );
   return entriesFor(
-    open.map((x) => rendered.get(x.index)).filter(Boolean),
+    open.map((x) => rendered.get(x.ref)).filter(Boolean),
     phase,
     // Keyed by the artifact a finding carries, so resolving a path is a lookup rather
     // than a branch on the review mode - and asked of the module that owns the names, so
@@ -414,10 +411,9 @@ export function reviewDetails(state) {
  * state, and why the invariant test (equivalent decisions produce today's report byte for
  * byte) is really a completeness check on that shape.
  *
- * `applyVerdicts` settles each item by INDEX: an answer names an item by its position in
- * the printed report, and that order comes from orderReview over the STORED
- * findings and manual items - so an index cannot shift between passes, because its input
- * cannot change.
+ * `applyVerdicts` settles each item by its fixed reference (src/report/order.js
+ * assignRefs), so an answer stays on its item whatever the review gained after it was
+ * given.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {{review: object, applied: string[], earlyExit: boolean, details: string,
@@ -432,11 +428,7 @@ export function settle(state, registry) {
   const { applied } = applyVerdicts({
     findings,
     manual: state.manual,
-    // applyVerdicts walks ENTRIES keyed by a NUMBER. The state holds the answers as an
-    // object because that is what survives JSON, and an object's keys are strings.
-    verdicts: new Map(
-      Object.entries(state.answers ?? {}).map(([i, v]) => [Number(i), v])
-    ),
+    verdicts: new Map(Object.entries(state.answers ?? {})),
     registry,
     labelOf,
     // Who was asked is the PHASE's answer, not the item's section: a case the agent sent
@@ -571,9 +563,8 @@ function sweptResults(state) {
  * finding where it does not - so everything downstream sees the SAME two lists and cannot
  * tell a swept case from a deterministic one.
  *
- * This runs while accepting the `spawn` phase, which asks about no numbered entry;
- * `verify` is the first pass that hands one out. So nothing is renumbered by what is
- * added here, because nothing has been numbered yet.
+ * The new cases get references of their own (assignRefs), continuing their check's count,
+ * so an answer recorded before the sweep stays on the item it was given for.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {string[]}  What was routed, for the audit line.
@@ -596,10 +587,10 @@ function routeSweep(state, registry) {
   });
   state.manual = manual;
   state.report.findings = findings;
+  assignRefs([...findings, ...manual], registry);
   // Worded NOW, not left to `settle`. orderReview groups findings by their message, and a
   // swept one arrives with none - so an unrendered finding would group one way while the
-  // verify phase asks about it and another once the report is built, moving items under an
-  // index that is supposed to mean the same case for the life of the review.
+  // verify phase asks about it and another once the report is built.
   renderFindings(state.report.findings, registry, mode);
   // The sweep is over: leaving it standing would ask a reviewer for work that is now in
   // the lists above it.

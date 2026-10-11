@@ -8,11 +8,18 @@ import assert from "node:assert/strict";
 
 import { earlyExitOf, withoutQuestions } from "../../src/report/early-exit.js";
 import { earlyExitLines } from "../../src/report/format.js";
-import { orderReview } from "../../src/report/order.js";
+import { assignRefs, orderReview } from "../../src/report/order.js";
 import { loadRegistry } from "../../src/checks/registry.js";
 import { SECTION, SEVERITY } from "../../src/report/finding.js";
 
 const registry = loadRegistry();
+
+/** The review ordered, its items carrying the references answers are recorded under, as
+ *  the loop gives them (assignRefs). */
+function refOrdered(findings, manual) {
+  assignRefs([...findings, ...manual], registry);
+  return orderReview(findings, manual);
+}
 
 /** A finding as the ordered review carries one. */
 const finding = (ruleId, severity = SEVERITY.ERROR) => ({
@@ -117,8 +124,8 @@ test("two reasons produce two lines, in the order the registry authors them", ()
 // that: no recorded answer takes it back.
 test("a finding aborts the review at the band it was reported at", () => {
   const findings = [finding("vendor-vulnerable")];
-  const ordered = orderReview(findings, []);
-  const index = String(ordered[0].index);
+  const ordered = refOrdered(findings, []);
+  const index = ordered[0].ref;
   for (const answers of [{}, { [index]: "withdrawn" }]) {
     assert.deepEqual(
       earlyExitOf(ordered, answers, registry).reasons.map((r) => r.text),
@@ -142,8 +149,8 @@ test("an escalated case aborts the review once it is reported, and not before", 
       file: "package.json",
     },
   ];
-  const ordered = orderReview([], todo);
-  const index = String(ordered[0].index);
+  const ordered = refOrdered([], todo);
+  const index = ordered[0].ref;
   // Nobody has judged it: a plain review with no agent in it aborts nothing.
   assert.equal(earlyExitOf(ordered, {}, registry), null);
   assert.equal(earlyExitOf(ordered, { [index]: "cleared" }, registry), null);
@@ -159,7 +166,7 @@ test("an escalated case aborts the review once it is reported, and not before", 
 // answered it - a review with nobody to ask aborts on nothing - and a "no" aborts it.
 test("a build question aborts the review once it is reported, and not before", () => {
   for (const ruleId of ["build-succeeds", "build-reproduces-xpi"]) {
-    const ordered = orderReview(
+    const ordered = refOrdered(
       [],
       [
         {
@@ -172,7 +179,7 @@ test("a build question aborts the review once it is reported, and not before", (
         },
       ]
     );
-    const index = String(ordered[0].index);
+    const index = ordered[0].ref;
     assert.equal(earlyExitOf(ordered, {}, registry), null, ruleId);
     assert.equal(
       earlyExitOf(ordered, { [index]: "cleared" }, registry),
@@ -193,7 +200,7 @@ test("a build question aborts the review once it is reported, and not before", (
 // a handful of checks name no reason at all - reporting one of those is ordinary review
 // work, not a submission that settles itself.
 test("a reported to-do aborts nothing when its check names no reason", () => {
-  const ordered = orderReview(
+  const ordered = refOrdered(
     [],
     [
       {
@@ -205,7 +212,7 @@ test("a reported to-do aborts nothing when its check names no reason", () => {
       },
     ]
   );
-  const index = String(ordered[0].index);
+  const index = ordered[0].ref;
   assert.equal(earlyExitOf(ordered, { [index]: "reported" }, registry), null);
 });
 

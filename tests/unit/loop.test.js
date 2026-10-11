@@ -16,7 +16,7 @@ import { REVIEW_MODE } from "../../src/lib/enum.js";
 import { ARTIFACT_SCA, ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 import { renderFindings } from "../../src/report/responses.js";
 import { STATE_VERSION, readState } from "../../src/report/state.js";
-import { orderReview } from "../../src/report/order.js";
+import { assignRefs, orderReview } from "../../src/report/order.js";
 import { writeReportFile } from "../../src/report/report-file.js";
 import {
   issue,
@@ -70,7 +70,7 @@ function review(
     artifact: "XPI",
     ...extra,
   });
-  return {
+  const made = {
     work: dir,
     state: {
       version: STATE_VERSION,
@@ -152,6 +152,20 @@ function review(
       sweep: null,
     },
   };
+  refed(made.state);
+  return made;
+}
+
+/** Give every item of a hand-built state its reference, as the pipeline does when it
+ *  writes a real one (src/report/order.js assignRefs). Called again by a test that adds
+ *  items, which keep the references they already have. */
+/** The reference the fixture's code-review case (unknown-api) gets: its check's registry
+ *  position, first of its kind. The fixture's other items name no registered check. */
+const CASE = `${REGISTRY.refBase("unknown-api")}.1`;
+
+function refed(state) {
+  assignRefs([...state.report.findings, ...state.manual], REGISTRY);
+  return state;
 }
 
 // The report is the one review document the LINTER writes. It is refreshed when the `ask`
@@ -185,7 +199,7 @@ test("the report file is written for the questions and rewritten once they are a
     }
     handBack(work, (e) => {
       if (out.phase.name === "verify")
-        return e.index === 1 ? "withdrawn" : "reported";
+        return e.index === "0.1" ? "withdrawn" : "reported";
       if (out.phase.name === "settle") return "ask";
       return "Clear";
     });
@@ -257,7 +271,7 @@ test("a review runs spawn -> verify -> settle -> details -> ask and then settles
     }
     handBack(work, (e) => {
       if (out.phase.name === "verify")
-        return e.index === 1 ? "withdrawn" : "reported";
+        return e.index === "0.1" ? "withdrawn" : "reported";
       if (out.phase.name === "settle") return "ask"; // -> becomes a question
       return "Clear"; // the reviewer's own word
     });
@@ -269,11 +283,11 @@ test("a review runs spawn -> verify -> settle -> details -> ask and then settles
   // standard ones - three questions, not two.
   assert.equal(answered[4][1].split(",").length, 3);
   assert.deepEqual(state.answers, {
-    1: "withdrawn",
-    2: "reported",
-    3: "Clear",
-    4: "Clear",
-    5: "Clear",
+    0.1: "withdrawn",
+    0.2: "reported",
+    0.3: "Clear",
+    0.4: "Clear",
+    [CASE]: "Clear",
   });
   // Moved by the case itself, not by its number: the item carries where it is asked now.
   const moved = state.manual.filter((m) => m.askedIn === "ask");
@@ -282,6 +296,72 @@ test("a review runs spawn -> verify -> settle -> details -> ask and then settles
     ["unknown-api"]
   );
   assert.deepEqual(state.sweep, [], "both sweeps ran and found nothing");
+});
+
+// An answer follows its item's reference, not where the item sorts. A sweep accepted AFTER
+// a question was answered files new cases ahead of it, and the answer must stay on the
+// question: the new case is open for its own phase, and nothing is asked twice.
+test("an answer recorded before the sweep stays on its item", () => {
+  const dir = tmp();
+  const { state, work } = review(dir);
+  const q1 = state.manual.find((m) => m.ruleId === "q1");
+  const placeOf = (item) =>
+    orderReview(state.report.findings, state.manual).findIndex(
+      (x) => x.target === item
+    );
+  const before = placeOf(q1);
+  state.answers[q1.ref] = "Clear";
+
+  const out = issue(state, work, PHASES, REGISTRY);
+  assert.equal(out.phase.name, "spawn");
+  swept(state, ARTIFACT_XPI, {
+    2: [{ file: "lib/net.js", line: 7, hint: "sends it" }],
+  });
+  handBack(work, () => null);
+  accept(state, work, PHASES, REGISTRY);
+
+  const added = state.manual.find((m) => m.ruleId === "data-exfiltration");
+  assert.ok(added, "the sweep filed a case");
+  assert.equal(added.ref, `${REGISTRY.refBase("data-exfiltration")}.1`);
+  assert.ok(placeOf(q1) > before, "the new case sorts ahead of the question");
+  assert.deepEqual(state.answers, { [q1.ref]: "Clear" });
+  const ordered = orderReview(state.report.findings, state.manual);
+  const open = (item) =>
+    !(ordered.find((x) => x.target === item).ref in state.answers);
+  assert.equal(open(q1), false, "the question stays answered");
+  assert.equal(open(added), true, "the new case is open");
+});
+
+// A reference is the registry position of the item's check and that check's own count,
+// so it depends on nothing the review does: an item keeps one it has, a new case of a
+// check continues that check's count, and a check that threw (no entry) counts under 0.
+test("assignRefs numbers each check's items under its registry position", () => {
+  const base = REGISTRY.refBase("unknown-api");
+  assert.ok(base > 0);
+  assert.equal(
+    REGISTRY.refBase("suitability-for-listing"),
+    REGISTRY.allEntries().findIndex(
+      (e) => e.check === "suitability-for-listing"
+    ) + 1,
+    "manual checks count in the same file order"
+  );
+  const items = [
+    { ruleId: "unknown-api" },
+    { ruleId: "check-failed" },
+    { ruleId: "unknown-api" },
+  ];
+  assignRefs(items, REGISTRY);
+  assert.deepEqual(
+    items.map((x) => x.ref),
+    [`${base}.1`, "0.1", `${base}.2`]
+  );
+  items.push({ ruleId: "unknown-api" });
+  assignRefs(items, REGISTRY);
+  assert.deepEqual(
+    items.map((x) => x.ref),
+    [`${base}.1`, "0.1", `${base}.2`, `${base}.3`],
+    "existing references stay, and the check's count continues"
+  );
 });
 
 // An entry says what it may be answered with, and that is what an answer is checked
@@ -320,7 +400,7 @@ test("an entry is answered from its own answers, not its phase's verbs", () => {
 
   handBack(work, () => "reported");
   accept(state, work, PHASES, REGISTRY);
-  assert.deepEqual(state.answers, { 1: "reported" });
+  assert.deepEqual(state.answers, { [CASE]: "reported" });
 });
 
 // What a verb MEANS is the phase's to word, but `reported` reads differently where the
@@ -631,7 +711,7 @@ test("--llm-skip-manual withholds the entries, so the ask phase is not issued", 
   assert.ok(!seen.includes("ask"), `ask was issued: ${seen.join(", ")}`);
   // The two findings and the code-review case were settled; NEITHER question was. They
   // stay open, which is what puts them in the report rather than in a verdict.
-  assert.deepEqual(Object.keys(state.answers).sort(), ["1", "2", "3"]);
+  assert.deepEqual(Object.keys(state.answers).sort(), ["0.1", "0.2", CASE]);
 });
 
 // The same phase, reached the other way: nothing produced an ask verdict and there are no
@@ -874,7 +954,7 @@ test("a case sent on with `ask` is settled by the reviewer's own answer", () => 
 
   const sent = issue(state, work, PHASES, REGISTRY);
   assert.equal(sent.phase.name, "settle");
-  // The case the agent gives up on, by the index it will keep.
+  // The case the agent gives up on, by the reference it keeps.
   const moved = sent.entries[0].index;
   handBack(work, () => "ask");
   accept(state, work, PHASES, REGISTRY);
@@ -883,7 +963,7 @@ test("a case sent on with `ask` is settled by the reviewer's own answer", () => 
   assert.equal(out.phase.name, "ask");
   assert.ok(
     out.entries.some((e) => e.index === moved),
-    "the moved case is asked under the index the agent saw"
+    "the moved case is asked under the reference the agent saw"
   );
   const [clear, report] = REGISTRY.manualReviewChoices().map((c) => c.label);
   handBack(work, (e) => (e.index === moved ? report : clear));
@@ -936,7 +1016,11 @@ test("a reviewer who writes `ask` has answered, not asked for a move", () => {
   accept(state, work, PHASES, REGISTRY);
 
   assert.deepEqual(state.route, {}, "nobody was moved");
-  assert.deepEqual(state.answers, { 1: "ask", 2: "ask" }, "both were answered");
+  assert.deepEqual(
+    state.answers,
+    { 0.1: "ask", 0.2: "ask" },
+    "both were answered"
+  );
   assert.equal(
     issue(state, work, PHASES, REGISTRY).phase.name,
     "close",
@@ -1208,6 +1292,7 @@ function buildQuestionsReview(dir) {
     todo("build-succeeds", { section: "manual-review" }),
     todo("build-reproduces-xpi", { section: "manual-review" })
   );
+  refed(made.state);
   return made;
 }
 
@@ -1226,7 +1311,6 @@ function driveBuild(made, answer) {
       break;
     }
     seen.push(out.phase.name);
-    // Named at hand-out, while the numbers still mean what they meant to this pass.
     handed[out.phase.name] = out.entries.map((e) => ruleAt(made, e.index));
     handBack(made.work, (e) => answer(out.phase.name, e));
     accept(made.state, made.work, PHASES, REGISTRY);
@@ -1250,11 +1334,10 @@ const goesOn =
         ? "cleared"
         : "Clear");
 
-/** The rule behind one ordered index in this review. */
-function ruleAt(made, index) {
-  const ordered = made.state.manual;
-  return orderReview(made.state.report.findings, ordered).find(
-    (x) => x.index === index
+/** The rule behind one reference in this review. */
+function ruleAt(made, ref) {
+  return orderReview(made.state.report.findings, made.state.manual).find(
+    (x) => x.ref === ref
   )?.target?.ruleId;
 }
 
@@ -1359,9 +1442,20 @@ test("a renumbered review still asks each build question in its own phase", () =
   const made = buildQuestionsReview(tmp());
   // Two cases filed ahead of everything, the way a sweep's escalations land in code review.
   made.state.manual.unshift(
-    { ...made.state.manual[0], ruleId: "privacy-policy", instructions: "a" },
-    { ...made.state.manual[0], ruleId: "privacy-policy", instructions: "b" }
+    {
+      ...made.state.manual[0],
+      ruleId: "privacy-policy",
+      instructions: "a",
+      ref: null,
+    },
+    {
+      ...made.state.manual[0],
+      ruleId: "privacy-policy",
+      instructions: "b",
+      ref: null,
+    }
   );
+  refed(made.state);
   const { handed } = driveBuild(made, goesOn());
   assert.deepEqual(handed.built, ["build-succeeds"]);
   assert.deepEqual(handed.reproduced, ["build-reproduces-xpi"]);
@@ -1377,7 +1471,9 @@ test("a case sent on with ask is dropped by an abort even after a renumbering", 
     ruleId: "unknown-api",
     instructions: "cleared first",
     settleVerbs: ["reported", "cleared", "ask"],
+    ref: null,
   });
+  refed(made.state);
   const { settled } = driveBuild(
     made,
     goesOn({
@@ -1385,7 +1481,7 @@ test("a case sent on with ask is dropped by an abort even after a renumbering", 
         const instr = made.state.manual.find(
           (m) =>
             orderReview(made.state.report.findings, made.state.manual).find(
-              (x) => x.index === e.index
+              (x) => x.ref === e.index
             )?.target === m
         )?.instructions;
         return instr === "settle me" ? "ask" : "cleared";
@@ -1655,6 +1751,7 @@ test("settle words a per-mode response from the state's review mode", () => {
           message: null,
         },
       ];
+      refed(state);
       const { settled } = driveLoop(state, work, () => "reported", reg);
       return settled.review.findings[0].message;
     };

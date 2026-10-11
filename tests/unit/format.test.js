@@ -748,7 +748,7 @@ test("an error among warnings shows only 'rejected'; later headings stay plain",
 // files reads as one line rather than three saying the same thing. Decided in order.js
 // beside the cap, because both answer "does this line print".
 //
-// What it must NOT do is lose a case: every one is still numbered and still settled, which
+// What it must NOT do is lose a case: every one is still in the sequence and still settled, which
 // is what makes the collapse a display decision rather than a review one.
 test("collapse:subject prints one line per subject and counts the rest", () => {
   const at = (file, line, item) => ({
@@ -787,14 +787,10 @@ test("collapse:subject prints one line per subject and counts the rest", () => {
   // and the line above already says how many this one stands for.
   assert.ok(!issues.includes("excluded from this list"));
 
-  // Display only - every case is still counted, still numbered, still settleable.
+  // Display only - every case is still counted, still in the sequence, still settleable.
   assert.match(out, /4 warning\(s\)/);
   const ordered = orderReview(findings);
   assert.equal(ordered.length, 4);
-  assert.deepEqual(
-    ordered.map((x) => x.index),
-    [1, 2, 3, 4]
-  );
   assert.deepEqual(
     ordered.map((x) => x.shown),
     [true, false, false, true]
@@ -1121,31 +1117,26 @@ test("the enumeration is exactly the order the report prints", () => {
       .map((x) => locationLine(x.target, label(x.target))),
     printed
   );
-  // Every item is numbered, 1..N with no gaps - including the ones the page had no room
-  // for. The item file carries them and a verdict can address them, which is what keeps
-  // a reader from settling the items they were handed while the rest pass unexamined.
-  assert.deepEqual(
-    enumerated.map((x) => x.index),
-    enumerated.map((_, i) => i + 1)
-  );
+  // Every item is in the sequence, including the ones the page had no room for. The
+  // item file carries them and a verdict can address them, which is what keeps a reader
+  // from settling the items they were handed while the rest pass unexamined.
+  assert.equal(enumerated.length, findings.length + manual.length);
   // The collapse really did reorder: c.js is listed second, not third.
   assert.deepEqual(printed.slice(0, 3), ["a.js:1", "c.js:3", "b.js:2"]);
   // The cap really did bite: 30 loci, 25 listed.
   assert.equal(printed.filter((l) => l.startsWith("f")).length, 25);
-  // The locus-less reminder is still a numbered item - it IS printed, as an entry with
+  // The locus-less reminder is still in the sequence - it IS printed, as an entry with
   // no location line - so a verdict can address it.
   assert.equal(hasLocus(enumerated.at(-1).target), false);
   assert.equal(enumerated.at(-1).kind, "todo");
-  assert.equal(typeof enumerated.at(-1).index, "number");
-  // The five the cap withheld are in the sequence, numbered, and marked unprinted.
+  // The five the cap withheld are in the sequence, marked unprinted.
   const withheld = enumerated.filter((x) => !x.shown);
   assert.equal(withheld.length, 5);
-  assert.ok(withheld.every((x) => typeof x.index === "number"));
 });
 
-// Why the numbering is ONE sequence. A finding with no locus joining the entry of findings
+// Why the order is ONE sequence. A finding with no locus joining the entry of findings
 // that DO have one contributes no line: an item in the sequence the page never shows,
-// silently pushing every later number out of step with what a reader counts. Locus status is
+// which a reader counting the page would miss. Locus status is
 // part of the entry key, so such a finding is its own entry and IS printed - as its message
 // alone, which is how a whole-add-on finding has always rendered.
 test("a locus-less finding is its own entry, so every item is on the page", () => {
@@ -1173,16 +1164,12 @@ test("a locus-less finding is its own entry, so every item is on the page", () =
   assert.match(issues, /1\) A\n\n2\) A\n - a\.js:1\n\n3\) B\n - b\.js:1/);
   const ordered = orderReview(findings);
   assert.equal(ordered.length, 3);
-  assert.deepEqual(
-    ordered.map((x) => x.index),
-    [1, 2, 3]
-  );
   // What a reader counts - location lines, plus entries showing none - is what the
-  // sequence numbered.
+  // sequence holds.
   const countable =
     issues.split("\n").filter((l) => l.startsWith(" - ")).length +
     ordered.filter((x) => !hasLocus(x.target)).length;
-  assert.equal(countable, ordered.filter((x) => x.index != null).length);
+  assert.equal(countable, ordered.length);
 });
 
 // ---- the hold band ----

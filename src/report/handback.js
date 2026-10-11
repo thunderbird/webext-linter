@@ -229,7 +229,7 @@ function resolvedIn(root, file, ruleId, resolving) {
  */
 export function entriesFor(items, phase, roots) {
   return items.map((item, i) => {
-    const base = { index: item.index };
+    const base = { index: item.ref };
     if (phase.answer === "words") {
       // Opaque strings the agent relays: the question, its label, and the answers it
       // offers. It reads nothing into them and composes nothing of its own.

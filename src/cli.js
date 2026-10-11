@@ -909,8 +909,7 @@ export async function main(argv) {
   // A HAND-BACK: a step of preparing a source code review, or a pass of the review loop
   // after the first (runHandback). No add-on is named: a preparation's record holds it, and
   // a loop pass reads the review from the state in the work folder, because the
-  // deterministic review ran ONCE, when the review started. So nothing can shift under an
-  // index between passes.
+  // deterministic review ran ONCE, when the review started.
   if (values["llm-handback"]) {
     return runHandback(values["llm-handback"], registry);
   }

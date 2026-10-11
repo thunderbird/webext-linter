@@ -52,10 +52,9 @@ import { VERB, verbNamed } from "./verbs.js";
  * stands for nothing, and neither does one in a review with nobody to judge it.
  *
  * Asked of the review as it WILL read, rather than of the settled report, because the
- * conversion cannot happen sooner: it moves a case out of the manual list and into the
- * findings, which renumbers every index after it, and an index is what a recorded answer
- * names. So settlement runs once, at the end - after the `ask` phase has been issued - and
- * an abort decided only there would prune the printed report instead of sparing the question.
+ * conversion happens only when the review is settled, once, at the end - after the `ask`
+ * phase has been issued - and an abort decided only there would prune the printed report
+ * instead of sparing the question.
  * @param {import("./order.js").OrderedItem} item  One ordered entry.
  * @param {?string} verdict  The verb its answer names, if it has one.
  * @param {Registry} registry
@@ -102,13 +101,13 @@ function earlyExitReasons(ordered, answers, registry) {
   const hit = new Set();
   for (const item of ordered) {
     // An ordered entry WRAPS what it is about: `target` is the finding or the to-do item,
-    // while the entry's own `section` is the band it is listed under and `index` is what a
+    // while the entry's own `section` is the band it is listed under and `ref` is what a
     // verdict names it by. Reading a severity or a ruleId off the wrapper silently matches
     // nothing.
     //
     // Crossed through verbNamed rather than compared as text: a stored answer is text
     // until something says which verb it names, and that crossing happens in one place.
-    const verdict = verbNamed(answers?.[String(item.index)]);
+    const verdict = verbNamed(answers?.[item.ref]);
     if (!standsAsError(item, verdict, registry)) {
       continue;
     }

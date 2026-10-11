@@ -5,10 +5,9 @@
 // what a reviewer typed instead of picking an answer - their words, carried onto the
 // case's location line and nowhere else (see below).
 //
-// An answer settles an item the linter numbered, keyed by that index. Nothing here mints
-// an index of its own - an index belongs to the linter's numbering of the document it
-// wrote, and letting an answer invent one would make the two documents disagree about
-// what item 7 is.
+// An answer settles an item by its fixed reference (src/report/order.js assignRefs).
+// Nothing here mints a reference of its own: an answer naming one the review does not
+// hold is refused rather than guessed at.
 //
 // What an answer DOES bring is a reviewer's own words, carried onto the case's location
 // line and nowhere else. The response paragraph a developer reads is
@@ -68,15 +67,15 @@ const VERBS = new Set(VERB_NAMES.filter((v) => v !== String(VERB.ask)));
  * @param {boolean} asked  Whether the phase that answered this item is the one that puts
  *   a question to a person. The PHASE decides it, never the item: a case the agent sent
  *   on with `ask` is answered by a reviewer while keeping the section it was filed under.
- * @param {number} index
+ * @param {string} ref  The item's reference, for the refusal texts.
  * @param {{label: string, verdict: string, description: string}[]} choices  The answers a
  *   question offered, read once per review by the caller: the registry cannot change
  *   between two answers of one file, and an accessor documented as "read once" is read
  *   once.
  * @returns {{verdict: string, note: ?string}}
  */
-function settleAnswer(answer, asked, index, choices) {
-  const at = `--llm-handback: item ${index}`;
+function settleAnswer(answer, asked, ref, choices) {
+  const at = `--llm-handback: item ${ref}`;
   const verbs = [...VERBS].join(", ");
   if (!asked) {
     if (!VERBS.has(answer)) {
@@ -159,13 +158,13 @@ function reviewerNote(text) {
  * Settle the review against `verdicts`, in place: withdraw findings, clear to-do items,
  * and turn a reported one into a finding of its own check.
  *
- * Every answer must land. An index past the end of the list throws: it means the answers
- * were recorded against a different review, and applying the rest would settle cases
- * nobody looked at.
+ * Every answer must land. A reference the review does not hold throws: it means the
+ * answers were recorded against a different review, and applying the rest would settle
+ * cases nobody looked at.
  * @param {object} args
  * @param {import("./finding.js").Finding[]} args.findings  Mutated in place.
  * @param {import("./finding.js").ManualItem[]} args.manual  Mutated in place.
- * @param {Map<number, string>} args.verdicts  Index to the answer that settles it, as the
+ * @param {Map<string, string>} args.verdicts  Reference to the answer that settles it, as the
  *   state records it: a reviewer's answer for a question, a verb for anything else.
  * @param {import("../checks/registry.js").Registry} args.registry
  * @param {(x: object) => string} [args.labelOf]
@@ -175,7 +174,7 @@ function reviewerNote(text) {
  *   `ask` is put to a reviewer while keeping the section it was filed under, so an item
  *   read on its own would be read in the wrong vocabulary. REQUIRED, and not defaulted -
  *   a default could only guess, and guessing wrong refuses the words a reviewer gave.
- * @returns {{applied: string[]}}  One audit line per applied verdict, in index order.
+ * @returns {{applied: string[]}}  One audit line per applied verdict, in reference order.
  */
 export function applyVerdicts({
   findings,
@@ -185,14 +184,12 @@ export function applyVerdicts({
   labelOf,
   asking,
 }) {
-  // The same sequence the report printed, numbered the same way - not a reconstruction
-  // of it. EVERY item is here, including one the page had no room to print: those are in
-  // the review a reviewer worked through, so a verdict naming one has to resolve rather
-  // than be refused as out of range.
-  //
-  const byIndex = new Map();
+  // EVERY item is here, including one the page had no room to print: those are in the
+  // review a reviewer worked through, so a verdict naming one has to resolve rather than
+  // be refused.
+  const byRef = new Map();
   for (const item of orderReview(findings, manual)) {
-    byIndex.set(item.index, item);
+    byRef.set(item.ref, item);
   }
   // The answers every question offered, read ONCE: they are the same for every item, and
   // the registry cannot change while one file is applied.
@@ -201,24 +198,21 @@ export function applyVerdicts({
   const dropFindings = new Set();
   const dropManual = new Set();
   const added = [];
-  for (const [index, answer] of [...verdicts].sort((a, b) => a[0] - b[0])) {
-    const item = byIndex.get(index);
+  for (const [ref, answer] of [...verdicts].sort((a, b) =>
+    byReference(a[0], b[0])
+  )) {
+    const item = byRef.get(ref);
     if (!item) {
       throw new Error(
-        `--llm-handback: item ${index} does not exist - this review lists ${byIndex.size} item(s)`
+        `--llm-handback: item ${ref} is not an item of this review`
       );
     }
-    const { verdict, note } = settleAnswer(
-      answer,
-      asking(item),
-      index,
-      choices
-    );
+    const { verdict, note } = settleAnswer(answer, asking(item), ref, choices);
     // Named in the audit line, so a misaimed verdict is legible there rather than only
     // in the re-rendered report.
-    const ref = refOf(item.target, labelOf);
-    const where = ref
-      ? ` (${ref})`
+    const locus = refOf(item.target, labelOf);
+    const where = locus
+      ? ` (${locus})`
       : ` (${item.target.title ?? item.target.ruleId})`;
     if (item.kind === "finding") {
       // A finding that HOLDS is "reported": it stays in the review and is reported to the
@@ -235,14 +229,14 @@ export function applyVerdicts({
       }
       if (verdict !== VERB.withdrawn) {
         throw new Error(
-          `--llm-handback: item ${index} is a finding, so it is "reported" or "withdrawn" (given: ${verdict})`
+          `--llm-handback: item ${ref} is a finding, so it is "reported" or "withdrawn" (given: ${verdict})`
         );
       }
       dropFindings.add(item.target);
     } else {
       if (verdict === VERB.withdrawn) {
         throw new Error(
-          `--llm-handback: item ${index} is a to-do item, so it is "reported" or "cleared" (given: withdrawn)`
+          `--llm-handback: item ${ref} is a to-do item, so it is "reported" or "cleared" (given: withdrawn)`
         );
       }
       dropManual.add(item.target);
@@ -255,7 +249,7 @@ export function applyVerdicts({
         added.push(
           asFinding(
             item.target,
-            index,
+            ref,
             registry,
             // The marker is authored as the list item its response needs, bullet and all;
             // a location line opens with a bullet of its own, so it is normalised exactly
@@ -267,7 +261,7 @@ export function applyVerdicts({
     }
     // The note is named, not quoted: this line is the audit of what was applied, and the
     // words themselves are in the report below it, where the developer reads them.
-    applied.push(`${index} ${verdict}${note ? " + note" : ""}${where}`);
+    applied.push(`${ref} ${verdict}${note ? " + note" : ""}${where}`);
   }
   // Edit the arrays only once every answer has been checked, so a file that fails
   // halfway leaves the review untouched rather than half-settled.
@@ -283,6 +277,18 @@ export function applyVerdicts({
   }
   findings.push(...added);
   return { applied };
+}
+
+/**
+ * Two references in the order of the registry, then of the check's own count.
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
+function byReference(a, b) {
+  const [ab, an] = a.split(".").map(Number);
+  const [bb, bn] = b.split(".").map(Number);
+  return ab - bb || an - bn;
 }
 
 /**
@@ -304,17 +310,17 @@ function refOf(target, labelOf) {
  * registry, exactly as for a finding the check emitted itself - so a settled case and a
  * detected one are worded by the same text.
  * @param {import("./finding.js").ManualItem} item
- * @param {number} index
+ * @param {string} ref  The item's reference, for the refusal text.
  * @param {import("../checks/registry.js").Registry} registry
  * @param {?string} [note]  The reviewer's own words about this case, carried onto the
  *   finding's location line. The response paragraph stays the registry's.
  * @returns {import("./finding.js").Finding}
  */
-function asFinding(item, index, registry, note = null) {
+function asFinding(item, ref, registry, note = null) {
   const severity = item.ruleId ? registry.suggestedVerdict(item.ruleId) : null;
   if (!severity) {
     throw new Error(
-      `--llm-handback: item ${index} cannot be reported - "${item.title}" declares no severity a reported case could carry`
+      `--llm-handback: item ${ref} cannot be reported - "${item.title}" declares no severity a reported case could carry`
     );
   }
   const f = finding({

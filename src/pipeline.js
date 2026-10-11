@@ -62,7 +62,7 @@ import {
   withDefaultNotes,
 } from "./report/responses.js";
 import { resolveHolds } from "./report/finding.js";
-import { orderReview } from "./report/order.js";
+import { assignRefs, orderReview } from "./report/order.js";
 import { earlyExitOf, withoutQuestions } from "./report/early-exit.js";
 import { STATE_VERSION } from "./report/state.js";
 import { issue, loopSlots } from "./report/loop.js";
@@ -842,6 +842,10 @@ async function reviewSubmission(opts, work, prepared) {
     // Everything formatText reads that the registry cannot recompute goes in here -
     // issueHeadings and verdictIntros are the registry's, and a copy here would
     // outlive an edit to it.
+    //
+    // Every item gets its fixed reference here, the one every answer is recorded under, in
+    // the order the checks raised them (src/report/order.js assignRefs).
+    assignRefs([...findings, ...meta.manualReview], registry);
     loopState = {
       version: STATE_VERSION,
       report: { findings, meta, sca: mode.sca },

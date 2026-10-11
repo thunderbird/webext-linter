@@ -20,7 +20,7 @@ import {
   withDefaultNotes,
 } from "../../src/report/responses.js";
 import { reviewItems } from "../../src/report/items.js";
-import { isQuestion } from "../../src/report/order.js";
+import { assignRefs, isQuestion, orderReview } from "../../src/report/order.js";
 import { entriesFor } from "../../src/report/handback.js";
 import { formatText, formatJson } from "../../src/report/format.js";
 
@@ -90,23 +90,43 @@ function review() {
 // typed instead.
 const verdicts = (obj) => new Map(Object.entries(obj).map(([k, v]) => [+k, v]));
 
+/** The audit lines without the reference each opens on, in a fixed order: what a verdict
+ *  did is what these tests read, and the references are the registry's. */
+const said = (applied) =>
+  applied.map((line) => line.slice(line.indexOf(" ") + 1)).sort();
+
+/** applyVerdicts with each answer named by its item's place in the report (1, 2, ...),
+ *  which is how these tests read most plainly. The items get their references first, as
+ *  the loop gives them (assignRefs), and each place becomes the reference of the item
+ *  there. */
+function applyAt(args) {
+  assignRefs([...args.findings, ...args.manual], registry);
+  const ordered = orderReview(args.findings, args.manual);
+  return applyVerdicts({
+    ...args,
+    verdicts: new Map(
+      [...args.verdicts].map(([at, v]) => [ordered[at - 1]?.ref ?? `#${at}`, v])
+    ),
+  });
+}
+
 // The three verbs, each on the kind of item it belongs to. A reported to-do item
 // becomes a finding of its own check - same locus, the band the registry declares, and
 // no message of its own, because renderFindings words it from the registry afterwards
 // exactly as it words a finding the check emitted itself.
 test("the three verbs edit the review the way the report reads them", () => {
   const r = review();
-  const { applied } = applyVerdicts({
+  const { applied } = applyAt({
     asking: isQuestion,
     findings: r.findings,
     manual: r.manual,
     verdicts: verdicts({ 2: "withdrawn", 3: "reported", 4: "cleared" }),
     registry,
   });
-  assert.deepEqual(applied, [
-    "2 withdrawn (a.js:2)",
-    "3 reported (manifest.json:3 - compose)",
-    "4 cleared (b.js:4)",
+  assert.deepEqual(said(applied), [
+    "cleared (b.js:4)",
+    "reported (manifest.json:3 - compose)",
+    "withdrawn (a.js:2)",
   ]);
   assert.deepEqual(
     r.findings.map((f) => [f.ruleId, f.severity, f.message]),
@@ -124,7 +144,7 @@ test("the three verbs edit the review the way the report reads them", () => {
 // add-on whose only fault is a missing disclosure on the ATN listing.
 test("a reported hold-or-error case enters as a hold", () => {
   const r = review();
-  applyVerdicts({
+  applyAt({
     asking: isQuestion,
     findings: [],
     manual: r.manual,
@@ -142,21 +162,21 @@ test("a reported hold-or-error case enters as a hold", () => {
 // because the loop requires every slot to be filled. See the test below it.
 test("an impossible verdict refuses the run", () => {
   const cases = [
-    [{ 9: "cleared" }, /item 9 does not exist/],
+    [{ 9: "cleared" }, /item #9 is not an item of this review/],
     [
       { 1: "cleared" },
-      /item 1 is a finding, so it is "reported" or "withdrawn"/,
+      /item \S+ is a finding, so it is "reported" or "withdrawn"/,
     ],
     [
       { 3: "withdrawn" },
-      /item 3 is a to-do item, so it is "reported" or "cleared"/,
+      /item \S+ is a to-do item, so it is "reported" or "cleared"/,
     ],
   ];
   for (const [obj, re] of cases) {
     const r = review();
     assert.throws(
       () =>
-        applyVerdicts({
+        applyAt({
           asking: isQuestion,
           findings: r.findings,
           manual: r.manual,
@@ -174,8 +194,9 @@ test("an impossible verdict refuses the run", () => {
 // that the line says what a verdict DID.
 test("a finding that holds is reported, and nothing happens to it", () => {
   const r = review();
+  assignRefs([...r.findings, ...r.manual], registry);
   const before = JSON.stringify(r.findings);
-  const { applied } = applyVerdicts({
+  const { applied } = applyAt({
     asking: isQuestion,
     findings: r.findings,
     manual: r.manual,
@@ -201,7 +222,7 @@ test("a by-hand reminder settles like an escalation", () => {
 
   const findings = [];
   const list = manual.map((m) => ({ ...m }));
-  applyVerdicts({
+  applyAt({
     asking: isQuestion,
     findings,
     manual: list,
@@ -233,7 +254,7 @@ test("reporting a case with no band to carry refuses the run", () => {
   item.loc = null;
   assert.throws(
     () =>
-      applyVerdicts({
+      applyAt({
         asking: isQuestion,
         findings: [],
         manual: [item],
@@ -253,12 +274,13 @@ test("an item the page withheld is in the file and can be settled", () => {
   const manual = Array.from({ length: 30 }, (_, i) =>
     mkItem("unused-permission", "Perms", "m.json", i + 1, `perm${i}`)
   );
+  assignRefs(manual, registry);
   const items = reviewItems({ findings: [], manual, choices });
   assert.equal(items.length, 30, "every site reaches the item file");
-  assert.deepEqual(
-    items.map((x) => x.index),
-    Array.from({ length: 30 }, (_, i) => i + 1),
-    "numbered 1..N with no gaps, so no index is unaddressable"
+  assert.equal(
+    new Set(items.map((x) => x.ref)).size,
+    30,
+    "every item has a reference of its own, so none is unaddressable"
   );
   // The last one is past the 25-line cap, so the report shows it only as "and N more".
   const beyondCap = items.at(-1);
@@ -266,14 +288,14 @@ test("an item the page withheld is in the file and can be settled", () => {
     asking: isQuestion,
     findings: [],
     manual,
-    verdicts: verdicts({ [beyondCap.index]: "cleared" }),
+    verdicts: new Map([[beyondCap.ref, "cleared"]]),
     registry,
   });
   assert.equal(manual.length, 29, "the withheld item settled like any other");
 });
 
-// The item file is what --llm-review hands over, so its indices must be the ones a verdict
-// file keys by. Built from the same sequence the renderer walks, and its `ref` is the
+// The item file is what --llm-review hands over, so its references must be the ones a
+// verdict keys by. Built from the same sequence the renderer walks, and its `ref` is the
 // locus line the report prints - so a verdict copied out of the file is accepted, and the
 // ref guard has nothing left to catch on this path.
 test("a verdict written from the item file applies", () => {
@@ -284,24 +306,25 @@ test("a verdict written from the item file applies", () => {
   const manual = [
     mkItem("unused-permission", "Perms", "manifest.json", 3, "compose"),
   ];
+  assignRefs([...findings, ...manual], registry);
   const items = reviewItems({ findings, manual, choices });
   assert.deepEqual(
-    items.map((x) => [x.index, x.kind, x.file]),
+    items.map((x) => [x.kind, x.file]),
     [
-      [1, "finding", "junk.txt"],
-      [2, "finding", "a.js"],
-      [3, "todo", "manifest.json"],
+      ["finding", "junk.txt"],
+      ["finding", "a.js"],
+      ["todo", "manifest.json"],
     ]
   );
-  // Keyed by the index the file states, which is all a verdict needs.
+  // Keyed by the reference the file states, which is all a verdict needs.
   applyVerdicts({
     asking: isQuestion,
     findings,
     manual,
-    verdicts: verdicts({
-      [items[1].index]: "withdrawn",
-      [items[2].index]: "reported",
-    }),
+    verdicts: new Map([
+      [items[1].ref, "withdrawn"],
+      [items[2].ref, "reported"],
+    ]),
     registry,
   });
   assert.deepEqual(
@@ -711,7 +734,7 @@ test("the authored answer order is the order a question offers", () => {
     // ...and the first position settles what the list says it settles, either way round:
     // a reported case becomes a finding, a cleared one leaves nothing behind.
     const findings = [];
-    applyVerdicts({
+    applyAt({
       asking: isQuestion,
       findings,
       manual,
@@ -739,7 +762,7 @@ const [CLEAR, REPORT] = registry.manualReviewChoices().map((c) => c.label);
 /** The settled report's Found Issues body, for a review of `manual` answered by `answers`. */
 function settled(manual, answers) {
   const findings = [];
-  applyVerdicts({
+  applyAt({
     asking: isQuestion,
     findings,
     manual,
@@ -770,7 +793,7 @@ function answerQuestion(
 ) {
   const manual = [item];
   return () =>
-    applyVerdicts({
+    applyAt({
       asking: isQuestion,
       findings: [],
       manual,
@@ -846,14 +869,14 @@ test("an answered case stays in its entry beside one that was only reported", ()
 // sentence, whatever word it happens to read like. A reviewer's own "cleared" is their
 // answer, not a verb that slipped past a label match.
 test("an answer belongs to the kind of item it settles", () => {
-  const { applied } = applyVerdicts({
+  const { applied } = applyAt({
     asking: isQuestion,
     findings: [],
     manual: [mkManual("privacy-policy", "Policy", "api.example.com")],
     verdicts: verdicts({ 1: "cleared" }),
     registry,
   });
-  assert.deepEqual(applied, ["1 reported + note (api.example.com)"]);
+  assert.deepEqual(said(applied), ["reported + note (api.example.com)"]);
 
   const code = mkItem(
     "unused-permission",
@@ -864,7 +887,7 @@ test("an answer belongs to the kind of item it settles", () => {
   );
   assert.throws(
     () =>
-      applyVerdicts({
+      applyAt({
         asking: isQuestion,
         findings: [],
         manual: [code],
@@ -876,7 +899,7 @@ test("an answer belongs to the kind of item it settles", () => {
   // A label is not a verb either: the same guard, the other way round.
   assert.throws(
     () =>
-      applyVerdicts({
+      applyAt({
         asking: isQuestion,
         findings: [],
         manual: [code],
@@ -1045,7 +1068,7 @@ test("a reviewer's words replace the default note, for both kinds of item", () =
     // Answered with their own words: the words are the note, and the marker is gone.
     const written = [make()];
     const findings = [];
-    applyVerdicts({
+    applyAt({
       asking: isQuestion,
       findings,
       manual: written,
@@ -1062,7 +1085,7 @@ test("a reviewer's words replace the default note, for both kinds of item", () =
     // Answered by picking "Report": the marker stands in for the words they did not write.
     const silent = [make()];
     const fallback = [];
-    applyVerdicts({
+    applyAt({
       asking: isQuestion,
       findings: fallback,
       manual: silent,
@@ -1075,7 +1098,7 @@ test("a reviewer's words replace the default note, for both kinds of item", () =
     // Cleared: nothing is filed at all, so no note of either kind can reach a developer.
     const cleared = [make()];
     const none = [];
-    applyVerdicts({
+    applyAt({
       asking: isQuestion,
       findings: none,
       manual: cleared,
@@ -1106,7 +1129,7 @@ test("`asking` decides the vocabulary, not the item's section", () => {
   // Its section says "settled by reading the add-on", and answered in that phase it takes
   // a verb and refuses a reviewer's label.
   const asAgent = () =>
-    applyVerdicts({
+    applyAt({
       asking: () => false,
       findings: [],
       manual: [{ ...code }],
@@ -1117,19 +1140,19 @@ test("`asking` decides the vocabulary, not the item's section", () => {
 
   // The same item, answered in the phase that asks a person: their label settles it, and
   // the audit line says so.
-  const { applied } = applyVerdicts({
+  const { applied } = applyAt({
     asking: () => true,
     findings: [],
     manual: [{ ...code }],
     verdicts: verdicts({ 1: clear }),
     registry,
   });
-  assert.deepEqual(applied, ["1 cleared (manifest.json:3 - compose)"]);
+  assert.deepEqual(said(applied), ["cleared (manifest.json:3 - compose)"]);
 
   // And it is required: nothing may fall back to reading the item.
   assert.throws(
     () =>
-      applyVerdicts({
+      applyAt({
         findings: [],
         manual: [{ ...code }],
         verdicts: verdicts({ 1: clear }),
@@ -1151,7 +1174,7 @@ test("a reported case becomes a finding that kept its artifact", () => {
     { ...mkItem("privacy-policy", "Policy", "b.js", 4), artifact: "SCA" },
   ];
   const findings = [];
-  applyVerdicts({
+  applyAt({
     asking: isQuestion,
     findings,
     manual: cases,

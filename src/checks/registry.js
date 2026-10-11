@@ -341,6 +341,22 @@ export class Registry {
   }
 
   /**
+   * The first half of a review item's fixed reference (src/report/order.js assignRefs): the
+   * entry's position among allEntries(), counted from 1, which is its order in the registry
+   * file. 0 for a ruleId no entry declares - `check-failed`, which the run mints for a check
+   * that threw.
+   * @param {string} ruleId
+   * @returns {number}
+   */
+  refBase(ruleId) {
+    return (
+      (this._refBase ??= new Map(
+        this.allEntries().map((e, i) => [stem(e.check), i + 1])
+      )).get(ruleId) ?? 0
+    );
+  }
+
+  /**
    * EVERY entry a ruleId can resolve to: the linked checks of every phase and the by-hand
    * manual ones. checkEntry() indexes exactly this set, so anything asked of "an entry" is
    * asked here and no list of them can be missed by asking only one.

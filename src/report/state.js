@@ -27,7 +27,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   verdictIntros - those are the registry's, and a stale copy here would outlive an edit
  *   to it.
  * @property {object[]} manual  The to-do items, kept beside the findings because
- *   orderReview numbers the two together and either alone renumbers the rest.
+ *   orderReview orders the two together.
  * @property {?object} preSweep  The blind-spot sweeps as the registry authored them, or
  *   null when no check that ran authors one.
  * @property {{skip: string[], sca: boolean, warningsAsErrors: boolean}} run
@@ -50,7 +50,8 @@ import { rethrowIfFatal } from "../lib/errors.js";
  * @property {string[]} issued  Every phase that has been handed back, in order. What a
  *   later prompt reads to know what already happened: whether agents were started
  *   (`spawned`) and whether the agent judged anything (`decided`).
- * @property {Object<string, *>} answers  index -> what came back, once it is settled.
+ * @property {Object<string, *>} answers  An item's reference (`ref`, src/report/order.js
+ *   assignRefs) -> what came back, once it is settled.
  * @property {?object[]} sweep  Everything the sweeping agents found, read back off their
  *   own answer files and already resolved to the check and the artifact each belongs to
  *   (src/report/sweep-files.js). Null where no tree was asked, which is not the same as
@@ -118,5 +119,6 @@ export function readState(file) {
  *  `ask` verdict, instead of in a `route` map keyed by index - a v11 file's routes would be
  *  read by nothing. Version 13 records no path to the state or the review file: both are in
  *  the work folder the state is read from, by their fixed names - a v12 file's recorded
- *  review path is read by nothing. */
-export const STATE_VERSION = 13;
+ *  review path is read by nothing. Version 14 keys `answers` by each item's fixed `ref`,
+ *  stored on the item, instead of by its position - a v13 file's numbers name no item. */
+export const STATE_VERSION = 14;

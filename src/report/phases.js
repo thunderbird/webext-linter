@@ -46,7 +46,7 @@ export function phaseOf(item) {
  * @returns {boolean}
  */
 export function isOpen(item, state) {
-  return !(String(item.index) in (state.answers ?? {}));
+  return !(item.ref in (state.answers ?? {}));
 }
 
 /**
