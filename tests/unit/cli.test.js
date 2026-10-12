@@ -254,6 +254,63 @@ test("--cache-work-dir: a review reads its answers from the folder named", async
   assert.match(r.stdout, /GHSA-seed-0000-0000/);
 });
 
+// A review of a source that declares npm dependencies, run as the reviewer runs it, with
+// every answer it reads already in a cache: OSV's for each package the lock installs, npm's
+// download count for each declared dependency, and the fixture caches for the rest. One
+// advisory on a package the build pulls in for production rejects the add-on at its lock
+// entry. The same run with one package's OSV answer missing asks the network, which the test
+// switch refuses, so the review is answered by the caches and nothing else.
+test("--cache-work-dir: a source review is answered by its seeded caches alone", () => {
+  const fixture = addonOutsideRepo(
+    path.join(FIXTURES, "sca-transitive-vulnerability")
+  );
+  const seeded = advisory(
+    "GHSA-seed-1111-1111",
+    "HIGH",
+    "entity-decoder",
+    "1.4.1"
+  );
+  const batch = {
+    "markdown-render@2.0.0": {},
+    "color-name-map@3.1.0": {},
+    "entity-decoder@1.4.0": { vulns: [{ id: seeded.id }] },
+    "bundler@5.0.0": {},
+    "script-serializer@6.0.2": {},
+  };
+  const review = (answers) =>
+    run([
+      path.join(fixture, "xpi"),
+      "--sca-root",
+      path.join(fixture, "src"),
+      ...OFFLINE_FLAGS,
+      "--cache-work-dir",
+      seedWorkCache({
+        osv: osvEntries({
+          batch: answers,
+          advisories: { [seeded.id]: seeded },
+        }),
+        popularity: popularityEntries({
+          npm: {
+            "markdown-render": { downloads: 500000 },
+            bundler: { downloads: 500000 },
+          },
+        }),
+      }),
+    ]);
+
+  const r = review(batch);
+  assert.equal(r.code, 1, r.stderr);
+  assert.match(
+    r.stdout,
+    /\[SCA\] package-lock\.json:29 - entity-decoder@1\.4\.0 has known vulnerabilities \(GHSA-seed-1111-1111\)/
+  );
+
+  const { "color-name-map@3.1.0": _, ...unanswered } = batch;
+  const missing = review(unanswered);
+  assert.equal(missing.code, 2);
+  assert.match(missing.stderr, /network request in a test: \S*osv\.dev/);
+});
+
 // --cache-clear wipes the cache directories before the review (so every source
 // re-fetches from scratch). ALL FIVE --cache-*-dir point at one temp dir so the
 // delete touches nothing else, and a nonexistent add-on makes runPipeline fail at
