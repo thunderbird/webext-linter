@@ -76,6 +76,12 @@ or `{ "status": <code> }`. Every URL a fixture does not declare answers 404 - ex
 OSV query, which gets OSV's empty answer, since a 404 from OSV ends the review. That 404 is
 what a fixture with no `"network"` map relies on: a declared vendor source is then
 unfetchable, so the file it names is reviewed as authored code rather than exempted.
+A declared answer from OSV, npm's downloads or GitHub's repositories is seeded into a run
+cache folder of the fixture's own, outside any work folder, which the review is given as
+`--cache-work-dir`. A declared jsDelivr hash lookup is seeded into the fixture's CDN lookup
+cache. Neither is served from the map, and no work folder is prepared. A `/v1/query` or
+`/v1/querybatch` answer names the `"name@version"` queries it answers in `"queries"`, a
+batch's `results` paired with them by position: without it the harness throws.
 
 **Add an add-on test:** drop a folder under `addons/` with a `manifest.json`
 (plus any JS/HTML/CSS it needs), and an `expected/<that folder's name>.json`

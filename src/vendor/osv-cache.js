@@ -35,7 +35,7 @@ import { NoAnswerError } from "../util/net.js";
  * @param {{version?: string, package?: {name?: string, ecosystem?: string}}} query
  * @returns {string}
  */
-export function queryKey(query) {
+function queryKey(query) {
   return `${query?.package?.ecosystem}:${query?.package?.name}@${query?.version}`;
 }
 

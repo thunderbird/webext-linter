@@ -214,6 +214,20 @@ export function cdnMissCache(...folders) {
 }
 
 /**
+ * Add jsDelivr's hits to a CDN lookup cache (cdnMissCache), each the lookup's answer for a
+ * file it knows, keyed by the file's sha256.
+ * @param {string} cache  The cache directory.
+ * @param {Record<string, object>} hits  sha256 -> jsDelivr's answer.
+ * @returns {string} The cache directory.
+ */
+export function seedCdnHits(cache, hits) {
+  const file = path.join(cache, "jsdelivr-hash-lookup.json");
+  const entries = JSON.parse(fs.readFileSync(file, "utf8"));
+  fs.writeFileSync(file, JSON.stringify({ ...entries, ...hits }));
+  return cache;
+}
+
+/**
  * A run cache folder holding the answers given, for a review to read through
  * --cache-work-dir (the run's `workCache`). Removed when the process exits.
  * @param {{osv?: Record<string, object>, popularity?: Record<string, object>}} entries

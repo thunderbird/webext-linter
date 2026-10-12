@@ -72,8 +72,9 @@ import {
  * @property {?string} vendorFile  The VENDOR filename (e.g. "VENDOR.md"), or
  *   null; the anchor file for VENDOR-sourced vulnerability/unaudited findings.
  * @property {Map<string, boolean>} popularity  One popularity reading per package
- *   for this run, shared by every gate that asks (isPopular). Per-run and
- *   in-process only; never written to disk.
+ *   for this invocation, shared by every gate that asks (isPopular), in process only.
+ *   Readings that outlive the invocation are kept in the run's cache
+ *   (src/vendor/popularity-cache.js).
  * @property {import("./verify.js").VendorVuln[]} vulnerabilities  Pinned npm
  *   packages (package.json deps + npm VENDOR entries in an XPI review, the lock's declared
  *   production packages + npm VENDOR entries in a source review) with known OSV advisories

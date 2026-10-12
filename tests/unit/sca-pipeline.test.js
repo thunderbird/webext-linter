@@ -21,6 +21,7 @@ import {
   freshWorkFolder,
   osvEntries,
   popularityEntries,
+  seedCdnHits,
   seedWorkCache,
 } from "../seed-caches.js";
 import { defaultWorkFolder } from "../../src/util/dest.js";
@@ -322,7 +323,7 @@ const BUILD_TOOL_LOCK = JSON.stringify({
 /**
  * A run cache folder holding OSV's answer to the lock audit's batch: one HIGH advisory for
  * `build-tool`, fixed in 2.0.0, and that advisory's record when it is hydrated. npm's
- * download count for it carries no number, so no popularity is read.
+ * download count for it is too low to be popular.
  * @param {string} id  The advisory id.
  * @returns {string} The folder, for the review's workCache.
  */
@@ -348,7 +349,7 @@ function buildToolAdvisoryCache(id) {
       batch: { "build-tool@1.0.0": { vulns: [{ id }] } },
       advisories: { [id]: advisory },
     }),
-    popularity: popularityEntries({ npm: { "build-tool": {} } }),
+    popularity: popularityEntries({ npm: { "build-tool": { downloads: 0 } } }),
   });
 }
 
@@ -383,6 +384,19 @@ test("SCA e2e: a flat layout audits the root lock file's dependencies", async ()
   }
 });
 
+/** jsDelivr's answer for the bundled library of the two tests below: npm's leftpad. */
+const LEFTPAD_HIT = {
+  type: "npm",
+  name: "leftpad",
+  version: "1.0.0",
+  file: "/lib.min.js",
+};
+
+/** npm's download count for leftpad, enough to be popular. */
+const LEFTPAD_POPULARITY = popularityEntries({
+  npm: { leftpad: { downloads: 50000 } },
+});
+
 // A third-party library bundled into the readable SOURCE (a committed copy the Mozilla
 // hash DB misses) that is NOT declared in package.json is identified by its jsDelivr
 // content hash and audited on OSV, so a vulnerable one is caught by vendor-vulnerable.
@@ -406,58 +420,44 @@ test("SCA e2e: an undeclared source-bundled library is OSV-audited", async () =>
       packages: { "": {} },
     }),
   });
-  // A net that recognizes the vendored file's hash on jsDelivr (popular) and returns an OSV
-  // advisory for it - so it is identified AND audited.
-  const vendorNet = {
-    fetchBytes: async () => Buffer.from(""),
-    fetchJson: async (url) => {
-      if (url.includes("api.npmjs.org/downloads/")) {
-        return { downloads: 50000 };
-      }
-      if (url.includes("api.github.com/repos/")) {
-        return { stargazers_count: 5000 };
-      }
-      if (url.split("/").pop() === libHash) {
-        return {
-          type: "npm",
-          name: "leftpad",
-          version: "1.0.0",
-          file: "/lib.min.js",
-        };
-      }
-      throw Object.assign(new Error("HTTP 404"), { status: 404 });
-    },
-    postJson: async (_url, body) =>
-      body?.package?.name === "leftpad"
-        ? {
-            vulns: [
-              {
-                id: "GHSA-lib-0000-0000",
-                aliases: ["CVE-2020-0001"],
-                database_specific: { severity: "HIGH" },
-                affected: [
-                  {
-                    package: { ecosystem: "npm", name: "leftpad" },
-                    ranges: [
-                      {
-                        type: "SEMVER",
-                        events: [{ introduced: "0" }, { fixed: "2.0.0" }],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          }
-        : { vulns: [] },
-  };
-  const cdnCache = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-cdn-"));
+  // jsDelivr knows the vendored file's hash (a popular package), and OSV holds an advisory
+  // for it - so it is identified AND audited.
+  const cdnCache = seedCdnHits(cdnMissCache(xpi, src), {
+    [libHash]: LEFTPAD_HIT,
+  });
+  const workCache = seedWorkCache({
+    osv: osvEntries({
+      query: {
+        "leftpad@1.0.0": {
+          vulns: [
+            {
+              id: "GHSA-lib-0000-0000",
+              aliases: ["CVE-2020-0001"],
+              database_specific: { severity: "HIGH" },
+              affected: [
+                {
+                  package: { ecosystem: "npm", name: "leftpad" },
+                  ranges: [
+                    {
+                      type: "SEMVER",
+                      events: [{ introduced: "0" }, { fixed: "2.0.0" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    }),
+    popularity: LEFTPAD_POPULARITY,
+  });
   try {
     const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
-      vendorNet,
+      workCache,
       cdnLookupCache: cdnCache,
     });
     assert.ok(
@@ -494,36 +494,21 @@ test("SCA e2e: an undeclared source-bundled library the CDN identifies is not re
       packages: { "": {} },
     }),
   });
-  // A net that recognizes the vendored file's hash on jsDelivr (popular) and finds no
-  // advisory for it, so the review runs to minified-code.
-  const vendorNet = {
-    fetchBytes: async () => Buffer.from(""),
-    fetchJson: async (url) => {
-      if (url.includes("api.npmjs.org/downloads/")) {
-        return { downloads: 50000 };
-      }
-      if (url.includes("api.github.com/repos/")) {
-        return { stargazers_count: 5000 };
-      }
-      if (url.split("/").pop() === libHash) {
-        return {
-          type: "npm",
-          name: "leftpad",
-          version: "1.0.0",
-          file: "/lib.min.js",
-        };
-      }
-      throw Object.assign(new Error("HTTP 404"), { status: 404 });
-    },
-    postJson: async () => ({ vulns: [] }),
-  };
-  const cdnCache = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-cdn-"));
+  // jsDelivr knows the vendored file's hash (a popular package), and OSV has no advisory
+  // for it, so the review runs to minified-code.
+  const cdnCache = seedCdnHits(cdnMissCache(xpi, src), {
+    [libHash]: LEFTPAD_HIT,
+  });
+  const workCache = seedWorkCache({
+    osv: osvEntries({ query: { "leftpad@1.0.0": {} } }),
+    popularity: LEFTPAD_POPULARITY,
+  });
   try {
     const { findings, meta } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
-      vendorNet,
+      workCache,
       cdnLookupCache: cdnCache,
     });
     assert.ok(

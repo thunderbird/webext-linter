@@ -33,6 +33,7 @@ import {
   freshWorkFolder,
   osvEntries,
   popularityEntries,
+  seedCdnHits,
   seedWorkCache,
 } from "./seed-caches.js";
 import { advisory, auditEntries, realPreparation } from "./prepared.js";
@@ -295,11 +296,7 @@ function cachedAnswers(network) {
  * @returns {string} The cache directory.
  */
 function fixtureCdnCache(dir, declared) {
-  const cache = cdnMissCache(dir);
-  const file = path.join(cache, "jsdelivr-hash-lookup.json");
-  const entries = JSON.parse(fs.readFileSync(file, "utf8"));
-  fs.writeFileSync(file, JSON.stringify({ ...entries, ...declared }));
-  return cache;
+  return seedCdnHits(cdnMissCache(dir), declared);
 }
 
 /**
