@@ -394,6 +394,21 @@ test("a process-value phase declares its values, and conditions read only those"
     /reports `unused-files`, which is not an error check with a review-early-exit/
   );
 
+  // A check that reads no single artifact: the finding names no file, so nothing could say
+  // which artifact it is about.
+  const everywhere = withValuePhase();
+  Object.values(everywhere.doc)
+    .filter(Array.isArray)
+    .flat()
+    .find((e) => e?.check === "build-succeeds").input = "all";
+  assert.throws(
+    () => check(everywhere),
+    (err) =>
+      err.message.includes(
+        "reports `build-succeeds`, whose `input: all` reads no single artifact"
+      )
+  );
+
   // A check that aborts the review but stamps no error of its own (`severity: auto`): its
   // finding could not abort, so the value would end nothing.
   const weak = withValuePhase();

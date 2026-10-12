@@ -1478,6 +1478,14 @@ function assertProcessValues(registry, phase, at) {
           "check with a review-early-exit reason - the value could not abort the review"
       );
     }
+    // The finding names no file, so the check's input is what says which artifact it is
+    // about (src/report/loop.js recordValue): one that reads no single artifact cannot.
+    if (!["xpi", "sca", "source"].includes(entry.input ?? "source")) {
+      throw new Error(
+        `${at} value \`${v.value}\` reports \`${v.reports}\`, whose \`input: ` +
+          `${entry.input}\` reads no single artifact the finding could be about`
+      );
+    }
   }
 }
 

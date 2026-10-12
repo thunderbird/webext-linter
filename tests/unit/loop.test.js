@@ -455,10 +455,30 @@ test("a process value that reports a check aborts the review", () => {
   );
   assert.ok(reported, "the reported check's finding is in the review");
   assert.equal(reported.ref, `${reg.refBase("build-succeeds")}.1`);
+  assert.equal(reported.artifact, ARTIFACT_SCA, "the artifact its check reads");
   const closing = issue(state, work, phases, reg);
   assert.equal(closing.phase.name, "close");
   assert.match(closing.steps[0].text, /^The review was aborted/);
   assert.match(closing.settled.details, /Build process issues/);
+});
+
+// The finding a value reports names no file, so the artifact it is about is the one its check
+// reads: a check of the XPI files it against the XPI.
+test("a process value's finding is about the artifact its check reads", () => {
+  const { reg, phases } = valueLoop();
+  // The raw entry, in whichever registry section holds it.
+  Object.values(reg.doc)
+    .filter(Array.isArray)
+    .flat()
+    .find((e) => e?.check === "build-succeeds").input = "xpi";
+  const { state, work } = review(tmp(), { sweep: false });
+  issue(state, work, phases, reg);
+  handBack(work, () => "Unsafe");
+  accept(state, work, phases, reg);
+  const reported = state.report.findings.find(
+    (f) => f.ruleId === "build-succeeds"
+  );
+  assert.equal(reported.artifact, ARTIFACT_XPI);
 });
 
 // The Build Review Details block names the build's two files once they were written, by the

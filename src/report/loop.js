@@ -30,7 +30,7 @@ import { reviewItems } from "./items.js";
 import { mergeSweepResults } from "./sweep.js";
 import { readSweepAnswers, sweepSlots } from "./sweep-files.js";
 import { finding, resolveHolds } from "./finding.js";
-import { ARTIFACT_SCA } from "../lib/artifacts.js";
+import { ARTIFACT_SCA, ARTIFACT_XPI } from "../lib/artifacts.js";
 import { artifactRoots } from "../lib/artifacts.js";
 import {
   detailLinkLines,
@@ -374,17 +374,34 @@ function recordValue(state, registry, phase, answers) {
   if (!picked.reports) {
     return;
   }
-  // The build is the source archive's, so the finding is about that artifact. It names no
-  // file: what it reports is the build process as a whole.
+  // It names no file, so no holder answers which artifact it is about: the reported check
+  // does, by the one it reads (its `input`, held to a single artifact at load).
   state.report.findings.push(
     finding({
       ruleId: picked.reports,
       severity: registry.checkEntry(picked.reports).severity,
-      artifact: ARTIFACT_SCA,
+      artifact: artifactRead(
+        registry.inputFor(picked.reports),
+        state.report.sca
+      ),
     })
   );
   assignRefs([...state.report.findings, ...state.manual], registry);
   renderFindings(state.report.findings, registry, { sca: state.report.sca });
+}
+
+/**
+ * The artifact a check with `input` reads: the XPI, the source archive, or for `source` the
+ * review's own - the source archive in a source review, else the XPI.
+ * @param {"xpi"|"sca"|"source"} input
+ * @param {boolean} sca  Whether this is a source review.
+ * @returns {string}
+ */
+function artifactRead(input, sca) {
+  if (input === "xpi") {
+    return ARTIFACT_XPI;
+  }
+  return input === "sca" || sca ? ARTIFACT_SCA : ARTIFACT_XPI;
 }
 
 /**
