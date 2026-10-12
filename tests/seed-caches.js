@@ -187,7 +187,7 @@ export function addonOutsideRepo(addon) {
 
 /**
  * A CDN lookup cache that already holds the lookup's answer for every file under `folders`:
- * the host's 404, pre-filled (`{notFound: true}`), so the lookup reads that the CDN has none
+ * the host's 404, pre-filled (`{fake404: true}`), so the lookup reads that the CDN has none
  * of them and asks no host. The lookup never writes such an entry, and reads one only with
  * the network switched off, as every test runs (src/lib/cdn-lookup.js).
  * For a review of files a test wrote itself, which no seeded cache can know in advance.
@@ -203,7 +203,7 @@ export function cdnMissCache(...folders) {
       const hash = createHash("sha256")
         .update(fs.readFileSync(path.join(folder, rel)))
         .digest("hex");
-      misses[hash] = { notFound: true };
+      misses[hash] = { fake404: true };
     }
   }
   fs.writeFileSync(
@@ -274,13 +274,13 @@ export function osvEntries({ query = {}, batch = {}, advisories = {} } = {}) {
  * @param {{npm?: Record<string, ?object>, github?: Record<string, ?object>}} readings
  *   `npm`: package name -> npm's downloads reply, `{downloads: n}`.
  *   `github`: "owner/repo" -> GitHub's repository reply, `{stargazers_count: n}`.
- * @returns {Record<string, {answer: object}|{notFound: true}>}
+ * @returns {Record<string, {answer: object}|{fake404: true}>}
  */
 export function popularityEntries({ npm = {}, github = {} } = {}) {
   const entries = {};
   const keep = (url, answer) => {
     entries[popularityKey(url)] =
-      answer === null ? { notFound: true } : { answer };
+      answer === null ? { fake404: true } : { answer };
   };
   for (const [name, answer] of Object.entries(npm)) {
     keep(`${VENDOR_NPM_DOWNLOADS_API}${name}`, answer);

@@ -250,13 +250,13 @@ test("a registry URL off the tarball path is asked of the registry, and its tarb
   };
   assert.deepEqual(await forged(addon, { net: recording, cacheDir }), expected);
   assert.deepEqual(again, [`${REG}@scope%2fgone/0.0.1`]);
-  // A pre-filled 404 (`{notFound: true}`) is read, as every test runs with the network
+  // A pre-filled 404 (`{fake404: true}`) is read, as every test runs with the network
   // switched off; an older version's `null` is not, and is asked again.
   const file = path.join(cacheDir, "npm-registry.json");
   const kept = JSON.parse(fs.readFileSync(file, "utf8"));
   fs.writeFileSync(
     file,
-    JSON.stringify({ ...kept, "@scope/gone@0.0.1": { notFound: true } })
+    JSON.stringify({ ...kept, "@scope/gone@0.0.1": { fake404: true } })
   );
   assert.deepEqual(await forged(addon, { net: noNet, cacheDir }), expected);
   fs.writeFileSync(

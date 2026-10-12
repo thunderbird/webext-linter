@@ -65,7 +65,7 @@ test("a request a spawned review makes is refused, and ends the run", () => {
   );
 });
 
-// A cache answers with a pre-filled 404 (`{notFound: true}`) only while the network is switched
+// A cache answers with a pre-filled 404 (`{fake404: true}`) only while the network is switched
 // off: no cache writes one, so it is a test's offline stand-in for the host's 404, and a real
 // run must ask the host instead. The switch is read once per process, so the real-run half is
 // asked of a child process started without it - with a fake network that records each request
@@ -80,10 +80,10 @@ test("a pre-filled 404 answers a cache only with the network switched off", () =
     import { resolveCdnLibraries } from ${src("lib/cdn-lookup.js")};
     import { classifyBundled } from ${src("lib/bundled.js")};
     import { findLockInjections } from ${src("vendor/locks.js")};
-    const notFound = () => Object.assign(new Error("HTTP 404"), { status: 404 });
+    const fake404 = () => Object.assign(new Error("HTTP 404"), { status: 404 });
     const recording = () => {
       const asked = [];
-      return { asked, fetchJson: async (url) => { asked.push(url); throw notFound(); } };
+      return { asked, fetchJson: async (url) => { asked.push(url); throw fake404(); } };
     };
     const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "wl-404-"));
 
@@ -93,7 +93,7 @@ test("a pre-filled 404 answers a cache only with the network switched off", () =
     const cdnDir = tmp();
     const hash = createHash("sha256").update(bytes).digest("hex");
     fs.writeFileSync(path.join(cdnDir, "jsdelivr-hash-lookup.json"),
-      JSON.stringify({ [hash]: { notFound: true } }));
+      JSON.stringify({ [hash]: { fake404: true } }));
     const cdnNet = recording();
     await resolveCdnLibraries(cdn, { net: cdnNet, cacheDir: cdnDir });
 
@@ -105,7 +105,7 @@ test("a pre-filled 404 answers a cache only with the network switched off", () =
       ["package-lock.json", Buffer.from(JSON.stringify(lock))]]), directories: [] };
     const regDir = tmp();
     fs.writeFileSync(path.join(regDir, "npm-registry.json"),
-      JSON.stringify({ "gone@1.0.0": { notFound: true } }));
+      JSON.stringify({ "gone@1.0.0": { fake404: true } }));
     const regNet = recording();
     await findLockInjections(reg, { net: regNet, cacheDir: regDir });
 

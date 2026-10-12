@@ -76,7 +76,7 @@ const NO_NETWORK = process.env.WEBEXT_LINTER_NO_NETWORK === "1";
 
 /**
  * Whether the network is switched off - which only the tests do. A cache asks this before it
- * answers with a pre-filled 404 entry (`{notFound: true}`): no cache writes one, so such an
+ * answers with a pre-filled 404 entry (`{fake404: true}`): no cache writes one, so such an
  * entry is a test's offline stand-in for the host's 404, and in a real run it is ignored and
  * the host asked.
  * @returns {boolean}

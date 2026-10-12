@@ -841,7 +841,7 @@ test("resolveCdnLibraries propagates every failure but a 404", async () => {
 });
 
 // A hit is kept for good, since a file hash names one release. A miss is never kept, so the
-// only miss a cache answers with is one a test pre-filled (`{notFound: true}`), read with the
+// only miss a cache answers with is one a test pre-filled (`{fake404: true}`), read with the
 // network switched off as every test runs. Anything else - an older version's miss included -
 // is asked again.
 test("a cached hit is never asked again; only a pre-filled 404 answers a miss", async () => {
@@ -858,7 +858,7 @@ test("a cached hit is never asked again; only a pre-filled 404 answers a miss", 
     await resolveCdnLibraries(addon, { net, cacheDir });
     return net.lookupCalls.length;
   };
-  assert.equal(await lookups({ notFound: true }), 0, "a pre-filled 404");
+  assert.equal(await lookups({ fake404: true }), 0, "a pre-filled 404");
   assert.equal(
     await lookups({ missedAt: Date.now() }),
     1,

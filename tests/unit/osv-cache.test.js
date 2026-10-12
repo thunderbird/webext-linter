@@ -16,7 +16,7 @@ import {
   VENDOR_OSV_VULN_API,
 } from "../../src/config.js";
 
-const notFound = () => Object.assign(new Error("HTTP 404"), { status: 404 });
+const fake404 = () => Object.assign(new Error("HTTP 404"), { status: 404 });
 
 /** A fake OSV that records every request it is sent. */
 function counting({ batch404 = false } = {}) {
@@ -27,7 +27,7 @@ function counting({ batch404 = false } = {}) {
       sent.push({ url, body });
       if (url === VENDOR_OSV_BATCH_API) {
         if (batch404) {
-          throw notFound();
+          throw fake404();
         }
         return {
           results: body.queries.map((q) => ({
@@ -36,14 +36,14 @@ function counting({ batch404 = false } = {}) {
         };
       }
       if (body.package.name === "gone") {
-        throw notFound();
+        throw fake404();
       }
       return { vulns: [{ id: `ID-${body.package.name}` }] };
     },
     async fetchJson(url) {
       sent.push({ url });
       if (url.endsWith("MISSING")) {
-        throw notFound();
+        throw fake404();
       }
       return { id: url.slice(url.lastIndexOf("/") + 1) };
     },

@@ -49,7 +49,7 @@ export function popularityKey(url) {
  * is kept. A failure passes up and is not kept: the run ends on it and is handed back in the
  * same work folder once the host answers again, so a kept failure would be replayed on every
  * retry. A 404, which reads as no reading for the package (./verify.js), is not kept either:
- * no lookup writes one, so a pre-filled `{notFound: true}` entry is a test's offline stand-in
+ * no lookup writes one, so a pre-filled `{fake404: true}` entry is a test's offline stand-in
  * for it, read only with the network switched off (src/util/net.js networkSwitchedOff) and
  * thrown as the host's 404 would be. In a real run such an entry is asked again. Every other
  * request goes to `net` untouched.
@@ -70,7 +70,7 @@ export function withPopularityCache(net, file) {
       if (Object.hasOwn(entry ?? {}, "answer")) {
         return entry.answer;
       }
-      if (entry?.notFound === true && networkSwitchedOff()) {
+      if (entry?.fake404 === true && networkSwitchedOff()) {
         throw httpError({ status: 404 });
       }
       const answer = await net.fetchJson(url);
@@ -84,7 +84,7 @@ export function withPopularityCache(net, file) {
 /**
  * The run's cached readings, or none when the file is absent or unreadable.
  * @param {string} file
- * @returns {Record<string, {answer?: unknown, notFound?: true}>}
+ * @returns {Record<string, {answer?: unknown, fake404?: true}>}
  */
 function load(file) {
   try {

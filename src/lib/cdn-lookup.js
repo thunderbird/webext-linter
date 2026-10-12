@@ -31,7 +31,7 @@
 // Hits are cached on disk, so a repeat review of the same bundle makes no request: a file
 // hash names one release, and that never changes. A miss - jsDelivr's 404 - is never kept: a
 // 404 can be a passing fault of the host as well as "no such file", and a file absent today
-// can be published tomorrow, so it is asked again on the next run. A `{notFound: true}`
+// can be published tomorrow, so it is asked again on the next run. A `{fake404: true}`
 // entry is read as that 404 only with the network switched off (src/util/net.js
 // networkSwitchedOff): it is how a test is given the answer offline. With the lookup off, every tag is left untouched, so a minified file
 // falls through to
@@ -145,7 +145,7 @@ export async function resolveCdnLibraries(
       : undefined;
     if (isCachedHit(entry)) {
       hit = entry;
-    } else if (entry?.notFound === true && networkSwitchedOff()) {
+    } else if (entry?.fake404 === true && networkSwitchedOff()) {
       hit = null;
     } else {
       // Not asked yet, or an entry this cache does not answer with (a pre-filled 404 in a
@@ -341,7 +341,7 @@ function isCachedHit(entry) {
   );
 }
 
-/** The on-disk cache file: a `{ "<sha256>": CdnHit | {notFound: true} }` JSON map. */
+/** The on-disk cache file: a `{ "<sha256>": CdnHit | {fake404: true} }` JSON map. */
 function cacheFile(cacheDir) {
   return path.join(cacheDir, "jsdelivr-hash-lookup.json");
 }
@@ -349,7 +349,7 @@ function cacheFile(cacheDir) {
 /**
  * Load the hash->result cache, or an empty map when absent/corrupt.
  * @param {string} cacheDir
- * @returns {Record<string, CdnHit|{notFound: true}>}
+ * @returns {Record<string, CdnHit|{fake404: true}>}
  */
 function loadCache(cacheDir) {
   try {
@@ -364,7 +364,7 @@ function loadCache(cacheDir) {
  * Persist the cache. Best-effort: a write failure is non-fatal (the lookups just
  * aren't cached for next run).
  * @param {string} cacheDir
- * @param {Record<string, CdnHit|{notFound: true}>} cache
+ * @param {Record<string, CdnHit|{fake404: true}>} cache
  */
 function saveCache(cacheDir, cache) {
   try {

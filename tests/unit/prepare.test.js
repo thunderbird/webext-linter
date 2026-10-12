@@ -139,21 +139,21 @@ function osvNet(vulns = {}, { batchDown = false } = {}) {
       .flat()
       .map((v) => [v.id, v])
   );
-  const notFound = () => Object.assign(new Error("HTTP 404"), { status: 404 });
+  const fake404 = () => Object.assign(new Error("HTTP 404"), { status: 404 });
   return {
     fetchBytes: async () => {
-      throw notFound();
+      throw fake404();
     },
     fetchJson: async (url) => {
       const id = url.slice(url.lastIndexOf("/") + 1);
       if (url.includes("/v1/vulns/") && byId.has(id)) {
         return byId.get(id);
       }
-      throw notFound();
+      throw fake404();
     },
     postJson: async (url, body) => {
       if (batchDown || !url.includes("querybatch")) {
-        throw notFound();
+        throw fake404();
       }
       return {
         results: body.queries.map((q) => ({

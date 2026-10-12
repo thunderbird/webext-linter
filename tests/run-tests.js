@@ -239,12 +239,12 @@ function cachedAnswers(network) {
   const osv = { query: {}, batch: {}, advisories: {} };
   const popularity = { npm: {}, github: {} };
   const cdn = {};
-  const answer = (url, spec, notFound) => {
+  const answer = (url, spec, fake404) => {
     if (spec.json !== undefined && (spec.status ?? 200) === 200) {
       return spec.json;
     }
-    if (notFound !== undefined && spec.status === 404) {
-      return notFound;
+    if (fake404 !== undefined && spec.status === 404) {
+      return fake404;
     }
     throw new Error(`${url}: no cache keeps this answer`);
   };
@@ -278,7 +278,7 @@ function cachedAnswers(network) {
       );
     } else if (url.startsWith(CDN_LOOKUP_URL)) {
       cdn[url.slice(CDN_LOOKUP_URL.length)] = answer(url, spec, {
-        notFound: true,
+        fake404: true,
       });
     } else {
       fetch[url] = spec;

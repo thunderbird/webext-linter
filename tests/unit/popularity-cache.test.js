@@ -26,7 +26,7 @@ const ROOT = path.resolve(
 
 const npm = (name) => `${VENDOR_NPM_DOWNLOADS_API}${name}`;
 const gh = (repo) => `${VENDOR_GITHUB_REPOS_API}${repo}`;
-const notFound = () => Object.assign(new Error("HTTP 404"), { status: 404 });
+const fake404 = () => Object.assign(new Error("HTTP 404"), { status: 404 });
 
 /** A fake host that records every request it is sent. */
 function counting() {
@@ -36,7 +36,7 @@ function counting() {
     async fetchJson(url) {
       sent.push(url);
       if (url.endsWith("gone")) {
-        throw notFound();
+        throw fake404();
       }
       if (url.endsWith("down")) {
         throw new Error("no answer");
@@ -125,7 +125,7 @@ test("an unreadable cache file reads as empty", async () => {
   assert.equal(host.sent.length, 1);
 });
 
-// A pre-filled 404 (`{notFound: true}`) answers only while the network is switched off: no
+// A pre-filled 404 (`{fake404: true}`) answers only while the network is switched off: no
 // lookup writes one, so it is a test's offline stand-in for the host's 404, and a real run
 // asks the host instead. The switch is read once per process, so the real-run half is asked
 // of a child process started without it, with a fake network that records each request and
@@ -144,7 +144,7 @@ test("a pre-filled 404 answers only with the network switched off", () => {
     )};
     const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "wl-404-")), "p.json");
     fs.writeFileSync(file, JSON.stringify({
-      "npm:gone": { notFound: true }, "gh:owner/gone": { notFound: true } }));
+      "npm:gone": { fake404: true }, "gh:owner/gone": { fake404: true } }));
     const asked = [];
     const net = withPopularityCache({ fetchJson: async (url) => {
       asked.push(url);

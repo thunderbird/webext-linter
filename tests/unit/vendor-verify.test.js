@@ -35,7 +35,7 @@ import { VENDOR_FETCH_MAX_BYTES } from "../../src/config.js";
 
 // What a host's "there is no such thing" arrives as through the real transport: the one
 // failure a caller may read as a value.
-const notFound = () => Object.assign(new Error("HTTP 404"), { status: 404 });
+const fake404 = () => Object.assign(new Error("HTTP 404"), { status: 404 });
 import {
   NetworkGoneError,
   NoAnswerError,
@@ -251,7 +251,7 @@ function net({
       if (url.includes("/v1/vulns/")) {
         calls?.hydrate?.push(url);
         if (throwOnHydrate) {
-          throw notFound();
+          throw fake404();
         }
         const id = url.slice(url.lastIndexOf("/") + 1);
         if (!(id in (advisories ?? {}))) {
@@ -283,7 +283,7 @@ function net({
       if (url.includes("querybatch")) {
         calls?.batch?.push(body);
         if (throwOnBatch) {
-          throw notFound();
+          throw fake404();
         }
         // OSV answers every query, with `{}` where it has nothing to say.
         return typeof batch === "function"
@@ -292,7 +292,7 @@ function net({
       }
       calls?.query?.push(body);
       if (throwOnPost) {
-        throw notFound();
+        throw fake404();
       }
       return (typeof osv === "function" ? osv(body) : osv) ?? { vulns: [] };
     },
@@ -2423,10 +2423,10 @@ test("a 404 is read as an answer, not fatal", async () => {
   // it has no entry for - and OSV as OSV does for a package it has no record of.
   const deadLoad = {
     fetchBytes: async () => {
-      throw notFound();
+      throw fake404();
     },
     fetchJson: async () => {
-      throw notFound();
+      throw fake404();
     },
     postJson: async () => ({}),
   };
