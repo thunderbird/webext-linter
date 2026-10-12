@@ -1,109 +1,82 @@
-// THE SWEEP'S OWN FILES: what a sweeping sub-agent is handed, and what it writes back.
+// THE SWEEP'S REQUEST AND ANSWERS: what a sweeping sub-agent is handed, and what comes
+// back from it.
 //
 // A sweep is the one sub-agent whose findings the review CONSUMES - the description and
 // the build report are the reviewer's, and the linter never opens them. So it is the one
-// that needs a shape, and a pair of files gives it one without the orchestrating agent
-// ever touching the content: it is handed a path, and everything else is between the
-// sub-agent and the linter.
+// that needs a shape, and the round trip gives it one:
 //
-// TWO FILES, because each direction wants a different format and only one of them is
-// written by an agent:
+//   the request   TEXT, printed inline in the step that spawns the agent. Prose is the
+//                 bulk of it, and the agent reads it as its whole brief.
+//   the answers   JSON, returned by the sub-agent as its reply and written UNCHANGED into
+//                 the answers file by the orchestrating agent. One quoting rule a writer
+//                 applies by reflex, where YAML has several that bite only on certain
+//                 content - an unquoted hint holding `http://host: thing` stops the file
+//                 parsing, and a hint is free text about a remote host.
 //
-//   the request   .yaml   prose is the bulk of it, and a literal block reads as prose.
-//                         Write-only from the linter: nothing reads it back, so an agent
-//                         that disturbs it costs nothing.
-//   the answers   .json   the agent writes this one. One quoting rule it applies by
-//                         reflex, where YAML has several that bite only on certain
-//                         content - an unquoted hint holding `http://host: thing` stops
-//                         the file parsing, and a hint is free text about a remote host.
+// The orchestrating agent relays and transcribes, and never composes: the linter reads
+// only the answers file, and refuses one that cannot be acted on.
 //
-// ONE FILE PER TREE. A sweep names a file, so it is a request about exactly one artifact;
-// grouping every sweep of one tree into one request lets a single reader walk that tree
-// once for all of them, and keeps the two trees independent.
+// ONE REQUEST PER TREE. A sweep names a file, so it is a request about exactly one
+// artifact. Grouping every sweep of one tree into one request lets a single reader walk
+// that tree once for all of them, and keeps the two trees independent.
 //
 // The LABEL is the identity, and it is the linter's: unique across the whole review, so
-// the two files cannot collide and no agent is ever asked which request an answer belongs
-// to. Nothing here tells an agent about a check id or an artifact - those are the review's
-// vocabulary, and a sweeping reader has no use for either.
+// two answers files cannot collide and no agent is ever asked which request an answer
+// belongs to. Nothing here tells an agent about a check id or an artifact - those are the
+// review's vocabulary, and a sweeping reader has no use for either.
 //
-// Belongs here: the shape of both files, the prose that goes in the request, and reading
-// an answers file back into results. Does NOT belong here: WHAT to look for (-> each
-// check's sweep instruction in assets/registry.yaml, carried through unchanged), where
-// the files live (-> src/util/dest.js workPaths), what a result MEANS once read
-// (-> src/report/sweep.js), or when they are written (-> src/pipeline.js).
+// Belongs here: the request's text, the answers' shape, and reading an answers file back
+// into results. Does NOT belong here: WHAT to look for (-> each check's sweep instruction
+// in assets/registry.yaml, carried through unchanged), where the answers file lives
+// (-> src/util/dest.js workPaths), what a result MEANS once read (-> src/report/sweep.js),
+// or when a request is made (-> src/pipeline.js).
 
 import fs from "node:fs";
 import path from "node:path";
-import YAML from "yaml";
 import { parseJson } from "../util/json.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 import { checkedResult, RESULT_SHAPE } from "./sweep.js";
-import { sweepSlot } from "../checks/registry-vocabulary.js";
+import { sweepAnswersSlot, sweepSlot } from "../checks/registry-vocabulary.js";
 
-/** The key the answers file holds everything under. A wrapper rather than a bare map, so
- *  the file says what it is to whoever opens it. */
+/** The key the answers hold everything under. A wrapper rather than a bare map, so the
+ *  file says what it is to whoever opens it. */
 const ANSWERS = "answers";
 
-/** The keys whose value is PROSE, and so is written as a literal block. Both are text a
- *  reader reads: the one telling them what to do with the file, and the one per sweep
- *  telling them what to look for. */
-const PROSE = new Set(["instructions", "instruction"]);
-
 /**
- * The request document handed to one tree's sweeping agent.
+ * The request handed to one tree's sweeping agent, as the text its spawn step prints.
  *
- * Every path it needs is a FIELD, named once and referred to by that name in the prose -
- * `sweepTarget` and `answerFile` - so nothing it must open is buried in a sentence, and
- * the prose says which tree without repeating the path. The worked example is
- * exampleAnswers'.
+ * Paragraphs apart by a blank line, each prose paragraph on one line for the prompt to
+ * wrap, and the parts that must not be re-flowed - the folder, the reply's shape and the
+ * worked example - indented, which the prompt keeps line for line. The folder is named once, on a line of
+ * its own, and the prose refers to it as "the folder above", so nothing it must open is
+ * buried in a sentence. The worked example is exampleAnswers'.
  * @param {object} args
  * @param {string} args.sweepTarget  The tree to read, absolute.
- * @param {string} args.answerFile  Where to write, absolute.
  * @param {{label: number, title: string, instruction: string}[]} args.sweeps
- * @returns {string}  The YAML text.
+ * @returns {string}
  */
-function sweepRequest({ sweepTarget, answerFile, sweeps }) {
+function sweepRequest({ sweepTarget, sweeps }) {
   const n = sweeps.length;
   const example = exampleAnswers(sweeps);
-  const doc = new YAML.Document({
-    sweepTarget,
-    answerFile,
-    instructions: [
-      `This file holds ${n} ${n === 1 ? "sweep" : "separate sweeps"}, listed under "sweeps" below. Each one is its own request: the scans could not settle it, so it is handed to you. Answer them all, and answer each from the folder named in "sweepTarget" above and from nothing else.`,
-      "Judge by EFFECT, never by the METHOD used - an unfamiliar form counts as much as a familiar one. Where a sweep is about code, resolve values assembled or supplied at runtime and follow them through helpers and bundled libraries.",
-      'Write your answers into the file named in "answerFile" above, and change nothing in this one. That file already lists every "label" below with a null beside it. Replace each null with a list of what you found for that label, and with an empty list where you found nothing. A null left behind is not an answer, and the review cannot tell it apart from a sweep nobody ran.',
-      `Each thing you found is one entry in that list, with a "file" (its path relative to "sweepTarget"), a "hint" - a short phrase naming what is there - and a "line" where it sits on one, left out where it does not. Nothing else: no verdict, and no wording for the developer, which is the linter's. Answered, that file reads:\n\n${indent(example, 2)}`,
-      "Write to no file but that one, and report only that you are done.",
-    ].join("\n\n"),
-    sweeps: sweeps.map((s) => ({
-      label: s.label,
-      title: s.title,
-      instruction: s.instruction.replace(/\s+/g, " ").trim(),
-    })),
-  });
-  // ONE multi-line convention for the whole file: every piece of PROSE is a literal
-  // block, which is what this repo's other authored prompt texts use
-  // (assets/registry.yaml). It separates paragraphs with a single blank line where a
-  // folded block needs two, and it carries the indented example above through untouched -
-  // a folded block would join its lines into prose.
-  //
-  // Chosen by KEY, not by whether the text happens to hold a newline: a one-paragraph
-  // instruction holds none, and left to the emitter it becomes a plain scalar wrapped
-  // across lines - valid, and a second way of writing the same kind of thing in one file.
-  YAML.visit(doc, {
-    Pair(_key, pair) {
-      if (PROSE.has(String(pair.key.value))) {
-        pair.value.type = "BLOCK_LITERAL";
-      }
-    },
-  });
-  // No folding anywhere: a literal block keeps its own lines, and the short scalars left
-  // are paths, which are not text to re-wrap.
-  return doc.toString({ lineWidth: 0 });
+  return [
+    "Sweep this folder, and read nothing outside it:",
+    indent(sweepTarget, 2),
+    `It is asked about in ${n} ${n === 1 ? "sweep" : "separate sweeps"}, each listed below under its label. Each one is its own request: the scans could not settle it, so it is handed to you. Answer them all, from the folder above and from nothing else.`,
+    "Judge by EFFECT, never by the METHOD used - an unfamiliar form counts as much as a familiar one. Where a sweep is about code, resolve values assembled or supplied at runtime and follow them through helpers and bundled libraries.",
+    ...sweeps.map(
+      (s) =>
+        `Label ${s.label}: ${s.title}\n${s.instruction.replace(/\s+/g, " ").trim()}`
+    ),
+    "Return your answers as your reply, as one JSON document of this shape:",
+    indent(`{"${ANSWERS}": {"<label>": [...]}}`, 2),
+    "It lists every label above, each with a list of what you found for it, and an empty list where you found nothing. Put nothing else in the reply: no words before or after it, and no code fence around it.",
+    `Each thing you found is one entry in that list, with a "file" (its path relative to the folder above), a "hint" - a short phrase naming what is there - and a "line" where it sits on one, left out where it does not. Nothing else: no verdict, and no wording for the developer, which is the linter's. Answered, your reply reads:\n\n${indent(example, 2)}`,
+    "Write no file.",
+  ].join("\n\n");
 }
 
 /**
- * The answers file as it would read once answered, laid out over THIS request's labels.
+ * The answers as they would read once answered, laid out over THIS request's labels.
  *
  * Every label, so the example doubles as the list of what must come back - an elided one
  * would leave the reader working out whether the rest are optional. The first shows a
@@ -129,58 +102,42 @@ function exampleAnswers(sweeps) {
   return [...lines, " }", "}"].join("\n");
 }
 
-/** Every line of `text` moved right by `by` spaces, so a block sits inside the paragraph
- *  that introduces it. Blank lines are left blank rather than padded, which is what keeps
- *  the literal scalar's paragraph breaks readable. */
+/** Every line of `text` moved right by `by` spaces, which the prompt keeps line for line
+ *  rather than re-flowing it as prose. */
 function indent(text, by) {
   const pad = " ".repeat(by);
   return text
     .split("\n")
-    .map((line) => (line === "" ? line : `${pad}${line}`))
+    .map((line) => `${pad}${line}`)
     .join("\n");
 }
 
 /**
- * The answers file as the linter lays it out: every label this tree was asked about, each
- * with a null.
+ * Every sweep request this review makes, and the answers file each one comes back into.
  *
- * PRE-CREATED rather than left to the agent, for the same reason the review file's rows
- * are: the slots are what the linter knows in advance, `null` is a sweep nobody has run
- * yet, and an empty list is one that was run and found nothing. An agent inventing the
- * file from scratch could return three answers to eight requests and nothing would say so.
- * @param {{label: number}[]} sweeps
- * @returns {string}  The JSON text.
- */
-function sweepAnswerSlots(sweeps) {
-  return `${JSON.stringify(
-    {
-      [ANSWERS]: Object.fromEntries(sweeps.map((s) => [String(s.label), null])),
-    },
-    null,
-    1
-  )}\n`;
-}
-
-/**
- * Write every sweep request this review makes, and the empty answers beside each.
+ * ONE PER TREE, grouped from the pre-sweep list: a sweep is a request about exactly one
+ * artifact, and putting every sweep of a tree in one request lets a single reader walk
+ * that tree once for all of them.
  *
- * ONE PAIR PER TREE, grouped from the pre-sweep list: a sweep is a request about exactly
- * one artifact, and putting every sweep of a tree in one request lets a single reader
- * walk that tree once for all of them.
+ * Nothing is written. The request is printed in the step that spawns the agent, and the
+ * answers file is the orchestrating agent's to write: a file the linter laid out first
+ * would be one that agent has to overwrite, and a name already taken is refused before the
+ * review begins (src/pipeline.js claimedNames).
  *
  * The tree's own path is what the request names, so a group whose artifact this review
- * has no root for cannot be written - and cannot arise, because preSweepOf drops such a
- * sweep while the review still knows which trees it has.
- * @param {{sweep: (artifact: string) => {request: string, answers: string}}} files
- *   The work folder's names (src/util/dest.js workPaths).
+ * has no root for cannot be asked about - and cannot arise, because preSweepOf drops such
+ * a sweep while the review still knows which trees it has.
+ * @param {{sweep: (artifact: string) => string}} files  The work folder's names
+ *   (src/util/dest.js workPaths).
  * @param {?{items: {label: number, artifact: string, title: string,
  *   instruction: string}[]}} preSweep
  * @param {Record<string, ?string>} trees  This review's trees by artifact
  *   (artifactRoots).
- * @returns {Record<string, {request: string, answers: string}>}  By artifact, for the
- *   steps that name them and the pass that reads them back.
+ * @returns {Record<string, {request: string, answers: string}>}  By artifact: the request
+ *   text and the answers file's path, for the steps that print them and the pass that
+ *   reads the answers back.
  */
-export function writeSweepFiles(files, preSweep, trees) {
+export function sweepRequests(files, preSweep, trees) {
   const byArtifact = new Map();
   for (const item of preSweep?.items ?? []) {
     byArtifact.set(item.artifact, [
@@ -188,29 +145,22 @@ export function writeSweepFiles(files, preSweep, trees) {
       item,
     ]);
   }
-  const written = {};
+  const asked = {};
   for (const [artifact, sweeps] of byArtifact) {
-    const paths = files.sweep(artifact);
-    fs.mkdirSync(path.dirname(paths.request), { recursive: true });
-    fs.writeFileSync(
-      paths.request,
-      sweepRequest({
-        sweepTarget: trees[artifact],
-        answerFile: paths.answers,
-        sweeps,
-      })
-    );
-    fs.writeFileSync(paths.answers, sweepAnswerSlots(sweeps));
-    written[artifact] = paths;
+    asked[artifact] = {
+      request: sweepRequest({ sweepTarget: trees[artifact], sweeps }),
+      answers: files.sweep(artifact),
+    };
   }
-  return written;
+  return asked;
 }
 
 /**
- * The prompt slots naming each tree's request, by the name its step uses.
+ * The prompt slots for each tree's sweep, by the names its step uses: the request text
+ * (sweepSlot) and the answers file's path (sweepAnswersSlot).
  *
  * Derived from the SAME map the run's conditions are (src/pipeline.js), so a step that
- * prints always has a path to name and a path that exists always has a step: an unfilled
+ * prints always has a request to hand over and a request always has a step: an unfilled
  * slot and a step pointing nowhere are both impossible rather than caught later
  * (assertFilled, src/report/format.js).
  *
@@ -222,9 +172,9 @@ export function writeSweepFiles(files, preSweep, trees) {
  */
 export function sweepSlots(state) {
   return Object.fromEntries(
-    Object.entries(state.paths?.sweeps ?? {}).map(([artifact, paths]) => [
-      sweepSlot(artifact),
-      paths.request,
+    Object.entries(state.paths?.sweeps ?? {}).flatMap(([artifact, sweep]) => [
+      [sweepSlot(artifact), sweep.request],
+      [sweepAnswersSlot(artifact), sweep.answers],
     ])
   );
 }
@@ -255,7 +205,7 @@ export function readSweepAnswers(file, asked) {
   } catch (err) {
     rethrowIfFatal(err);
     throw new Error(
-      `${where} could not be read - the sweep for it either did not run or did not write its answers`
+      `${where} could not be read - the sweep for it either did not run, or its reply was not written there`
     );
   }
   const doc = parseJson(raw);
@@ -265,7 +215,7 @@ export function readSweepAnswers(file, asked) {
   const answers = doc?.[ANSWERS];
   if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
     throw new Error(
-      `${where} names no "${ANSWERS}" - hand back the file as it was written, with a list beside each label`
+      `${where} names no "${ANSWERS}" - write the sweep's reply into it unchanged: one JSON document with a list beside each label`
     );
   }
   const wanted = new Map(asked.map((s) => [String(s.label), s]));

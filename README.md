@@ -451,10 +451,11 @@ artifact and so names none: a check there declares
 **`sweep-instruction-for-xpi:`** and/or **`sweep-instruction-for-sca:`**, and
 each becomes an independent sweep of its own tree.
 
-Under `--llm-review` each tree gets its own sweeping sub-agent, handed a request
-file the linter wrote - the folder to read, and the sweeps to answer - and an
-answers file to fill in. The instruction says what to look for; where to look,
-and where each answer belongs, are the linter's.
+Under `--llm-review` each tree gets its own sweeping sub-agent, handed the
+request the prompt prints - the folder to read, and the sweeps to answer - and
+returning its answers as its reply, which the orchestrating agent writes
+unchanged to an answers file the linter reads. The instruction says what to look
+for. Where to look, and where each answer belongs, are the linter's.
 
 A `sweep-instruction` says what to LOOK FOR, and never what confirming something
 means - that is the owning check's to say, in its own wording, so a swept case

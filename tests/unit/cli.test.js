@@ -10,7 +10,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import AdmZip from "adm-zip";
-import YAML from "yaml";
 
 import { pipelineOptsFromArgv } from "../../src/cli.js";
 import { readPrepare, writePrepare } from "../../src/prepare/state.js";
@@ -1011,7 +1010,10 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   assert.doesNotMatch(on.stdout, /── Summary ──/, "no tally");
   // The first pass is the SPAWN phase, and it says nothing about the questions: a later
   // pass asks those, and the agent only ever sees what the pass in front of it needs.
-  assert.doesNotMatch(on.stdout, /"answers"/, "the questions are a later pass");
+  assert.ok(
+    !entriesOf(on.stdout).some((e) => "answers" in e),
+    "the questions are a later pass"
+  );
   assert.match(on.stdout, /\/review\.json/, "the file to hand back is named");
   assert.match(
     on.stdout,
@@ -1032,29 +1034,16 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
   // The spawn pass asks for nothing in this file: its work is starting the agents, and
   // each of those answers in a file of its own.
   assert.deepEqual(entriesOf(on.stdout), []);
-  // The sweep request IS that file, named in the prompt and nowhere near it in content:
-  // the orchestrating agent is handed a path and told to pass it on, so no instruction
-  // text travels through the prompt at all.
-  const request = on.stdout.match(/^\s*(\S+\/sweep-xpi\.yaml)$/m);
-  assert.ok(request, "the sweep request is named");
-  const doc = YAML.parse(fs.readFileSync(request[1], "utf8"));
-  assert.ok(doc.sweepTarget, "it names the tree to read");
-  assert.ok(
-    doc.sweeps.length > 0,
-    "one sweep per check that declared an instruction"
-  );
-  assert.ok(
-    doc.sweeps.every((x) => x.label && x.instruction),
-    "each carries its own label and the check's own instruction"
-  );
-  // And the answers file beside it is pre-created, one null per label - so a sweep
-  // nobody ran cannot read as one that ran and found nothing.
-  const slots = JSON.parse(fs.readFileSync(doc.answerFile, "utf8")).answers;
-  assert.deepEqual(
-    Object.keys(slots).map(Number),
-    doc.sweeps.map((x) => x.label)
-  );
-  assert.ok(Object.values(slots).every((v) => v === null));
+  // The sweep request is printed INLINE in the step that spawns its agent: the tree to
+  // read and every sweep under its label. No request file is named, and the answers file
+  // is named for the orchestrating agent to write the reply to, and is not there yet.
+  assert.doesNotMatch(on.stdout, /sweep-xpi\.yaml/, "no request file");
+  assert.match(on.stdout, /Sweep this folder, and read nothing outside it:/);
+  assert.match(on.stdout, /^\s*\S+\/xpi\/$/m, "it names the tree to read");
+  assert.match(on.stdout, /^\s*Label 1: /m, "each sweep under its label");
+  const answers = on.stdout.match(/^\s*(\S+\/sweep-xpi\.answers\.json)$/m);
+  assert.ok(answers, "the answers file is named");
+  assert.ok(!fs.existsSync(answers[1]), "and left for the agent to write");
 
   const off = run([addon, ...OFFLINE_FLAGS]);
   assert.ok(!off.stdout.includes("Please verify"), "off by default");
@@ -1438,7 +1427,10 @@ test("the two skips withhold the description and the manual items", () => {
 
   // The inverse of the --llm-review assertions above: these are the two withheld steps,
   // and their absence is the whole feature.
-  assert.ok(!on.stdout.includes('"answers"'), "no manual questions asked");
+  assert.ok(
+    !entriesOf(on.stdout).some((e) => "answers" in e),
+    "no manual questions asked"
+  );
   assert.doesNotMatch(
     on.stdout,
     /\/summary\.md/,
@@ -1489,7 +1481,10 @@ test("each skip leaves out its own part and nothing else", () => {
   ]);
   assert.equal(noManual.code, 0, noManual.stderr);
   assert.match(noManual.stdout, /^\s*\S+\/summary\.md$/m);
-  assert.ok(!noManual.stdout.includes('"answers"'), "no questions asked");
+  assert.ok(
+    !entriesOf(noManual.stdout).some((e) => "answers" in e),
+    "no questions asked"
+  );
   assert.ok(
     !itemsOf(noManual).some((x) => manualSections.includes(x.section)),
     "no manual entry in the file"
@@ -1518,12 +1513,11 @@ test("a review with nothing to settle names no description file", () => {
   assert.match(r.stdout, /^1\. Spawn an independent sub-agent/m);
   assert.doesNotMatch(r.stdout, /Verify every entry/, "nothing to verify");
   assert.doesNotMatch(r.stdout, /Settle each entry/, "nothing to settle");
-  // The step that spawns the description agent gives it the PATH it writes to, on a line
-  // of its own and in the sentence that tells it to write - a sub-agent is handed the
-  // request and nothing else, so a name standing for a path it never saw names nothing.
+  // The description agent returns its text as its reply, and the step names the PATH the
+  // reply is written to, on a line of its own and in the sentence that says to write it.
   assert.match(
     r.stdout,
-    /Write it to\n\n\s+\S+\/summary\.md\n\n\s+and to nothing else/
+    /write its reply unchanged to\n\n\s+\S+\/summary\.md\n\n\s+and to nothing else/
   );
   assert.doesNotMatch(r.stdout, /ADDON_DESCRIPTION/);
   // The review file is handed over with nothing to answer: this phase has a step to do

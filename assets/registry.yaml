@@ -2208,7 +2208,8 @@ llm-sca-review-prompt:
 # {{description}}, {{build}} and {{buildDiff}} the files an agent writes, {{buildCopy}}
 # where the agent builds, {{xpiRoot}} the extracted XPI, {{sweepXpi}} and
 # {{sweepSca}} the sweep request for each tree - one sub-agent's whole brief, so the step
-# that starts it relays nothing else - {{scaRoot}} the source root, {{details}} the Review
+# that starts it relays nothing else - {{sweepXpiAnswers}} and {{sweepScaAnswers}} the
+# file each sweep's reply is written to, {{scaRoot}} the source root, {{details}} the Review
 # Details block, {{buildDetails}} the Build Review Details block, {{tally}} the closing
 # summary, and {{schema}} - what a verdict is judged against, printed by the phases
 # that judge and by no other. The artifacts are NOT named here: each entry carries its own resolved paths
@@ -2448,14 +2449,15 @@ llm-phases:
     # extracts it before the review is ever printed (src/addon/load.js), so XPI_ROOT is
     # already there by the time any phase is issued.
     #
-    # EVERY SPAWN STEP STANDS ALONE. Each carries the paths its own agent needs, spelled out
-    # where that agent is told to read or write them - a sub-agent is handed the request and
-    # nothing else, so a name standing for a path it was never given names nothing. None may
-    # refer to another having printed - not "either", not "the step below", not "the agents above".
-    # Each says whether its agent is waited for.
+    # EVERY SPAWN STEP STANDS ALONE. Each hands its agent the whole request inline - a
+    # sub-agent is handed the request and nothing else, so a name standing for something it
+    # was never given names nothing. Every sub-agent returns its work as its reply and writes
+    # no file. The step names the file the reply is written to, unchanged, by the agent
+    # reading this prompt. None may refer to another having printed - not "either", not
+    # "the step below", not "the agents above". Each says whether its agent is waited for.
     - name: spawn
       # Asks about nothing in the review file: its work is starting the agents this review
-      # needs, and each of those answers in a file of its own. `hints` says the sweeps are
+      # needs, and writing each one's reply to a file of its own. `hints` says the sweeps are
       # read back when this pass is accepted. Nothing here is a judgement, so no verb.
       answer: hints
       verbs: []
@@ -2463,19 +2465,17 @@ llm-phases:
       steps:
         - when: NOT llm-skip-summary AND NOT aborted
           text: |-
-            Spawn an independent sub-agent NOW to describe the add-on for the reviewer, so they can read it while you work. That file is the reviewer's and yours only to name: do not open it, read it, summarise it, or print what is in it.
+            Spawn an independent sub-agent NOW to describe the add-on for the reviewer, so they can read it while you work. What it returns is the reviewer's and yours only to write down: do not read it, summarise it, or print what is in it.
 
             Give it this request, and nothing else:
 
-            Describe this add-on for the reviewer. Anything you quote from it - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup.
+            Describe this add-on for the reviewer. Anything you quote from it - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup. Return the description as your reply, and write no file.
 
-            Write it to
+            Do not wait for it. When it comes back, write its reply unchanged to
 
             {{description}}
 
-            and to nothing else: not to the chat, not to a file of your own choosing.
-
-            Do not wait for it. What it writes is the reviewer's, and it is not needed until they are handed the review details.
+            and to nothing else. What it returns is not needed until the reviewer is handed the review details.
         - when: sweep-xpi AND NOT aborted
           text: |-
             Spawn an independent sub-agent NOW to sweep the built add-on.
@@ -2484,9 +2484,15 @@ llm-phases:
 
             {{sweepXpi}}
 
-            Tell it to do what the "instructions" in that file say, and tell it nothing more: the file names the folder to read, what to look for there, and the file to write its answers into. Do not open it yourself, do not summarise it, and do not add to it.
+            That is the whole request: do not summarise it, and do not add to it.
 
             Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. Any other agent this prompt started keeps running meanwhile. Leave it be.
+
+            Then write its reply unchanged, exactly as it returned it, to
+
+            {{sweepXpiAnswers}}
+
+            and to nothing else.
         - when: sweep-sca AND NOT aborted
           text: |-
             Spawn an independent sub-agent NOW to sweep the source archive.
@@ -2495,9 +2501,15 @@ llm-phases:
 
             {{sweepSca}}
 
-            Tell it to do what the "instructions" in that file say, and tell it nothing more: the file names the folder to read, what to look for there, and the file to write its answers into. Do not open it yourself, do not summarise it, and do not add to it.
+            That is the whole request: do not summarise it, and do not add to it.
 
             Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. Any other agent this prompt started keeps running meanwhile. Leave it be.
+
+            Then write its reply unchanged, exactly as it returned it, to
+
+            {{sweepScaAnswers}}
+
+            and to nothing else.
 
     # Audits what the deterministic checks proved. Its intro earns its text: without it the
     # entries alone would let the agent hunt for new problems instead of checking the ones it

@@ -114,15 +114,16 @@ export function runCache(work, dir) {
  * - `state`, the linter's own record of the review, and `review`, the file it hands the
  *   agent one phase at a time. A pass is handed back with the work folder (--llm-handback,
  *   src/cli.js), and finds both in it by these names.
- * - `sweep`, one sweeping agent's request and answers, per artifact it is asked about. A
- *   FUNCTION, because how many there are is the review's answer and not this module's: an
- *   XPI review has one tree with sweeps and a source review may have two, and a fixed pair
- *   of fields here would invent a path for a tree that does not exist.
+ * - `sweep`, where one sweeping agent's answers are written, per artifact it is asked
+ *   about. The orchestrating agent writes it, from the sub-agent's reply. A FUNCTION,
+ *   because how many there are is the review's answer and not this module's: an XPI
+ *   review has one tree with sweeps and a source review may have two, and a fixed field
+ *   here would invent a path for a tree that does not exist.
  * @param {string} work  The work folder, absolute.
  * @returns {{xpi: string, sca: string, rescued: string, prepare: string, state: string,
  *   review: string,
  *   report: string, summary: string, build: string, buildDiff: string, buildCopy: string,
- *   sweep: (artifact: string) => {request: string, answers: string}}}
+ *   sweep: (artifact: string) => string}}
  */
 export function workPaths(work) {
   const at = (name) => path.join(work, name);
@@ -139,12 +140,7 @@ export function workPaths(work) {
     build: at("build.md"),
     buildDiff: at("build-diff.md"),
     buildCopy: at("build"),
-    sweep: (artifact) => {
-      const tag = String(artifact).toLowerCase();
-      return {
-        request: hidden(`sweep-${tag}.yaml`),
-        answers: hidden(`sweep-${tag}.answers.json`),
-      };
-    },
+    sweep: (artifact) =>
+      hidden(`sweep-${String(artifact).toLowerCase()}.answers.json`),
   };
 }

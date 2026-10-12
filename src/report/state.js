@@ -40,8 +40,9 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   buildDiff, report (all in the review's work folder, src/util/dest.js workPaths, which
  *   also holds this file and the review file and is not recorded: the state is read from
  *   it), schemaCache, schema, the two artifact roots
- *   (scaRoot, xpiRoot) an entry's paths are resolved against, and `sweeps` - each tree's sweep request and answers file, by
- *   artifact, which is also what says WHICH trees this review asked about. Held here
+ *   (scaRoot, xpiRoot) an entry's paths are resolved against, and `sweeps` - each tree's sweep
+ *   request (the text its step hands over) and answers file, by artifact, which is also
+ *   what says WHICH trees this review asked about. Held here
  *   because a later pass prints them and cannot re-derive a moment - and `report` is also
  *   where a later pass WRITES, so losing it would leave the reviewer holding a link to a
  *   file nothing refreshes.
@@ -56,7 +57,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
  * @property {Object<string, *>} answers  An item's reference (`ref`, src/report/order.js
  *   assignRefs) -> what came back, once it is settled.
  * @property {?object[]} sweep  Everything the sweeping agents found, read back off their
- *   own answer files and already resolved to the check and the artifact each belongs to
+ *   answers files and already resolved to the check and the artifact each belongs to
  *   (src/report/sweep-files.js). Null where no tree was asked, which is not the same as
  *   every tree answering with nothing. Written and read inside the one `accept` that
  *   starts them; what stops a second pass starting them again is `issued`.
@@ -125,5 +126,7 @@ export function readState(file) {
  *  review path is read by nothing. Version 14 keys `answers` by each item's fixed `ref`,
  *  stored on the item, instead of by its position - a v13 file's numbers name no item.
  *  Version 15 adds `values`, the process values a `when:` reads - a v14 review in flight
- *  would never be asked for them. */
-export const STATE_VERSION = 15;
+ *  would never be asked for them. Version 16 carries each tree's sweep request in
+ *  `paths.sweeps` as the text its step hands over, where a v15 file names a request file
+ *  that no step hands over and no review writes any more. */
+export const STATE_VERSION = 16;

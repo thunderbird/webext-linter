@@ -1,7 +1,6 @@
-// The sweep's own two files: what a sweeping sub-agent is handed, and the door its
-// answers come back through.
+// The sweep's request and the door its answers come back through.
 //
-// This is the ONLY place a sweep's findings enter the review, and the agent that writes
+// This is the ONLY place a sweep's findings enter the review, and the agent that returns
 // them is reading an add-on rather than the linter - so every guard here exists because a
 // file that cannot be acted on has to be refused by name, at a point the agent can
 // correct, rather than half-applied downstream.
@@ -11,32 +10,25 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import YAML from "yaml";
 
 import { ARTIFACT_SCA, ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 import {
   readSweepAnswers,
+  sweepRequests,
   sweepSlots,
-  writeSweepFiles,
 } from "../../src/report/sweep-files.js";
 import { workPaths } from "../../src/util/dest.js";
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "wxl-sweepfiles-"));
 
-/** Write one tree's pair and read the request back, the way the review does. */
+/** One tree's request, made the way the review makes it. */
 function requested(sweeps, sweepTarget = "/tmp/tree/") {
-  const dir = tmp();
-  const files = workPaths(dir);
-  const written = writeSweepFiles(
-    files,
+  const asked = sweepRequests(
+    workPaths("/w"),
     { items: sweeps },
     { [ARTIFACT_SCA]: sweepTarget, [ARTIFACT_XPI]: sweepTarget }
   );
-  const at = written[sweeps[0].artifact];
-  return {
-    yaml: fs.readFileSync(at.request, "utf8"),
-    slots: JSON.parse(fs.readFileSync(at.answers, "utf8")),
-  };
+  return asked[sweeps[0].artifact];
 }
 
 /** Two sweeps of one tree, labelled the way preSweepOf labels them: across the whole
@@ -68,82 +60,58 @@ function answered(dir, found) {
 
 // ---- the request ----
 
-// The request has to stand alone: the agent is handed a path and nothing else, so
-// everything it needs to do the job is in the file or nowhere.
-test("the request names its tree, its answers file, and every sweep", () => {
-  const { yaml } = requested(SWEEPS);
-  const doc = YAML.parse(yaml);
-  assert.equal(doc.sweepTarget, "/tmp/tree/");
-  assert.match(doc.answerFile, /\/sweep-sca\.answers\.json$/);
-  assert.deepEqual(
-    doc.sweeps.map((s) => s.label),
-    [3, 4]
-  );
+// The request has to stand alone: the agent is handed it and nothing else, so everything
+// it needs to do the job is in it or nowhere.
+test("the request names its tree and every sweep, and asks for the reply", () => {
+  const { request } = requested(SWEEPS);
+  // The folder on a line of its own, indented so the prompt keeps it whole.
+  assert.match(request, /^ {2}\/tmp\/tree\/$/m);
   // The count is stated, so an agent can see whether it answered them all rather than
   // inferring it from a list it may have stopped reading.
-  assert.match(doc.instructions, /holds 2 separate sweeps/);
-  // Both paths are referred to BY FIELD NAME, so neither is buried in a sentence that
-  // could go out of step with the value above it.
-  assert.match(doc.instructions, /"sweepTarget"/);
-  assert.match(doc.instructions, /"answerFile"/);
+  assert.match(request, /in 2 separate sweeps/);
+  assert.match(
+    request,
+    /^Label 3: Unencrypted data transmission\nA remote endpoint/m
+  );
+  assert.match(request, /^Label 4: User-data exfiltration\nMessage content/m);
+  // The answers come back as the reply, and nothing is written.
+  assert.match(request, /Return your answers as your reply/);
+  assert.match(request, /^ {2}\{"answers": \{"<label>": \[\.\.\.\]\}\}$/m);
+  assert.match(request, /Write no file\.$/);
+  assert.doesNotMatch(request, /answers\.json/, "it names no file to write");
 
   // Nothing of the review's own vocabulary reaches the agent: not a check id, not an
   // artifact. It is told which folder and what to look for, and answers by label.
-  assert.ok(!yaml.includes("cleartext-transmission"), "no check id");
-  assert.ok(!yaml.includes(ARTIFACT_SCA), "no artifact name");
+  assert.ok(!request.includes("cleartext-transmission"), "no check id");
+  assert.ok(!request.includes(ARTIFACT_SCA), "no artifact name");
 });
 
 // The example is the part an agent copies, so it has to be the shape the door accepts -
 // and it must not suggest what to go and find.
 test("the worked example fixes the shape without suggesting a finding", () => {
-  const doc = YAML.parse(requested(SWEEPS).yaml);
+  const { request } = requested(SWEEPS);
   // Every label appears, so the example doubles as the list of what must come back, and
   // the empty list is shown as well as a find.
-  assert.match(doc.instructions, /"3": \[/);
-  assert.match(doc.instructions, /"4": \[\]/);
+  assert.match(request, /"3": \[/);
+  assert.match(request, /"4": \[\]/);
   // A placeholder where the content would be. A plausible hint here is a suggestion.
-  assert.match(doc.instructions, /"hint": "<what is there>"/);
-  // And the example parses as the JSON it claims to be.
-  const example = doc.instructions.slice(
-    doc.instructions.indexOf("{"),
-    doc.instructions.lastIndexOf("}") + 1
+  assert.match(request, /"hint": "<what is there>"/);
+  // And the example parses as the JSON it claims to be, and as one the door accepts.
+  const from = request.indexOf("Answered, your reply reads:");
+  const example = request.slice(
+    request.indexOf("{", from),
+    request.lastIndexOf("}") + 1
   );
   assert.deepEqual(Object.keys(JSON.parse(example).answers), ["3", "4"]);
+  const file = path.join(tmp(), "a.answers.json");
+  fs.writeFileSync(file, example);
+  assert.equal(readSweepAnswers(file, SWEEPS).length, 1);
 });
 
-// One convention for the whole file, chosen by key rather than by whether a value happens
-// to hold a newline - a one-paragraph instruction holds none, and left to the emitter it
-// becomes a plain scalar wrapped across lines, which is a second way of writing the same
-// kind of thing in one file.
-test("every piece of prose is written as a literal block, and round-trips", () => {
-  const { yaml } = requested(SWEEPS);
-  assert.match(yaml, /^instructions: \|-$/m);
-  for (const _ of SWEEPS) {
-    assert.ok(yaml.includes("instruction: |-"), "each sweep's text too");
-  }
-  const doc = YAML.parse(yaml);
-  assert.deepEqual(
-    doc.sweeps.map((s) => s.instruction),
-    SWEEPS.map((s) => s.instruction)
-  );
-  // The paragraph breaks and the indented example survive being written and read back.
-  assert.ok(doc.instructions.includes("\n\n"), "paragraphs stay paragraphs");
-});
+// ---- one request per tree ----
 
-// ---- the slots ----
-
-// Pre-created, because the slots are what the linter knows in advance: `null` is a sweep
-// nobody has run, an empty list is one that was run and found nothing, and an agent
-// inventing the file could answer three of eight with nothing to say so.
-test("the answers file starts with every label and no answer", () => {
-  assert.deepEqual(requested(SWEEPS).slots, { answers: { 3: null, 4: null } });
-});
-
-// ---- writing the pair ----
-
-test("one pair is written per tree, grouped from the pre-sweep list", () => {
-  const dir = tmp();
-  const files = workPaths(dir);
+test("one request is made per tree, grouped from the pre-sweep list", () => {
+  const files = workPaths("/w");
   const preSweep = {
     items: [
       ...SWEEPS,
@@ -156,46 +124,38 @@ test("one pair is written per tree, grouped from the pre-sweep list", () => {
       },
     ],
   };
-  const written = writeSweepFiles(files, preSweep, {
+  const asked = sweepRequests(files, preSweep, {
     [ARTIFACT_SCA]: "/src/",
     [ARTIFACT_XPI]: "/xpi/",
   });
-  assert.deepEqual(Object.keys(written).sort(), [ARTIFACT_SCA, ARTIFACT_XPI]);
+  assert.deepEqual(Object.keys(asked).sort(), [ARTIFACT_SCA, ARTIFACT_XPI]);
   // Each request is about ONE tree and holds only that tree's sweeps, so a reader is
   // never asked to decide which folder a request is about.
-  const sca = YAML.parse(
-    fs.readFileSync(written[ARTIFACT_SCA].request, "utf8")
-  );
-  const xpi = YAML.parse(
-    fs.readFileSync(written[ARTIFACT_XPI].request, "utf8")
-  );
-  assert.equal(sca.sweepTarget, "/src/");
-  assert.equal(xpi.sweepTarget, "/xpi/");
-  assert.deepEqual(
-    sca.sweeps.map((s) => s.label),
-    [3, 4]
-  );
-  assert.deepEqual(
-    xpi.sweeps.map((s) => s.label),
-    [9]
-  );
-  // Each names its own answers file, and that file holds its own labels - so the two
-  // trees cannot be answered into one another.
-  assert.equal(sca.answerFile, written[ARTIFACT_SCA].answers);
-  assert.deepEqual(
-    Object.keys(JSON.parse(fs.readFileSync(xpi.answerFile, "utf8")).answers),
-    ["9"]
-  );
+  assert.match(asked[ARTIFACT_SCA].request, /^ {2}\/src\/$/m);
+  assert.match(asked[ARTIFACT_XPI].request, /^ {2}\/xpi\/$/m);
+  assert.match(asked[ARTIFACT_SCA].request, /^Label 3: /m);
+  assert.doesNotMatch(asked[ARTIFACT_SCA].request, /^Label 9: /m);
+  assert.match(asked[ARTIFACT_XPI].request, /^Label 9: /m);
+  assert.doesNotMatch(asked[ARTIFACT_XPI].request, /^Label 3: /m);
+  // Each names its own answers file, so the two trees cannot be answered into one
+  // another - and nothing is written: the orchestrating agent writes the answers.
+  assert.equal(asked[ARTIFACT_SCA].answers, files.sweep(ARTIFACT_SCA));
+  assert.equal(asked[ARTIFACT_XPI].answers, files.sweep(ARTIFACT_XPI));
+  assert.ok(!fs.existsSync("/w"), "nothing is written");
 });
 
-// The condition that prints a step and the slot that step names come from ONE map, so a
+// The condition that prints a step and the slots that step names come from ONE map, so a
 // step pointing nowhere and an unfilled slot are both impossible rather than caught later.
-test("a slot exists for each tree asked, and none for a tree that was not", () => {
+test("slots exist for each tree asked, and none for a tree that was not", () => {
   assert.deepEqual(
     sweepSlots({
-      paths: { sweeps: { [ARTIFACT_XPI]: { request: "/x.yaml" } } },
+      paths: {
+        sweeps: {
+          [ARTIFACT_XPI]: { request: "Sweep it.", answers: "/x.answers.json" },
+        },
+      },
     }),
-    { sweepXpi: "/x.yaml" }
+    { sweepXpi: "Sweep it.", sweepXpiAnswers: "/x.answers.json" }
   );
   assert.deepEqual(sweepSlots({ paths: {} }), {});
 });

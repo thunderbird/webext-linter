@@ -73,7 +73,7 @@ import { earlyExitOf, withoutQuestions } from "./report/early-exit.js";
 import { STATE_VERSION } from "./report/state.js";
 import { issue, loopSlots } from "./report/loop.js";
 import { headerLines, loopPromptLines, schemaLines } from "./report/format.js";
-import { writeSweepFiles } from "./report/sweep-files.js";
+import { sweepRequests } from "./report/sweep-files.js";
 import { sweepRun } from "./checks/registry-vocabulary.js";
 import { isExperiment, parseVersion, strictMaxVersion } from "./lib/util.js";
 import { experimentApiMembers } from "./lib/experiments.js";
@@ -772,9 +772,9 @@ async function reviewSubmission(opts, work, prepared) {
   let buildCopyPath = null;
   let buildDiffPath = null;
   let reportPath = null;
-  // Each tree's sweep pair, by artifact - empty when this run sweeps nothing. The keys
-  // are what says which trees were asked: a step prints for one, and accepting the pass
-  // reads back exactly these.
+  // Each tree's sweep request and answers file, by artifact - empty when this run sweeps
+  // nothing. The keys are what says which trees were asked: a step prints for one, and
+  // accepting the pass reads back exactly these.
   let sweepFiles = {};
   // The REVIEW LOOP's state, built once the review is final and handed to `issue` below.
   // A LOCAL, never hung off meta: it carries the report, and the report carries meta.
@@ -820,16 +820,16 @@ async function reviewSubmission(opts, work, prepared) {
     meta.summaryFile = summaryPath ?? undefined;
     meta.buildFile = buildPath ?? undefined;
     meta.reportFile = reportPath;
-    // One sweeping agent per tree, each handed a request of its own and an answers file
-    // of its own. Written HERE, with the review, because the request carries the tree's
+    // One sweeping agent per tree, each handed a request of its own and answering into a
+    // file of its own. Made HERE, with the review, because the request carries the tree's
     // path and the sweeps that tree was asked about - both of which are this run's
     // answers and neither of which a later pass could reconstruct.
     //
-    // Nothing is written for a review that is not sweeping: --llm-skip-sweep withholds
-    // the asking though the instructions still stand, and then there is no request to
-    // make and no file for a step to name.
+    // Nothing is asked of a review that is not sweeping: --llm-skip-sweep withholds the
+    // asking though the instructions still stand, and then there is no request to hand
+    // over and no file for a step to name.
     sweepFiles = sweeping
-      ? writeSweepFiles(work, meta.preSweep, artifactRoots(meta))
+      ? sweepRequests(work, meta.preSweep, artifactRoots(meta))
       : {};
   }
 
@@ -876,9 +876,9 @@ async function reviewSubmission(opts, work, prepared) {
           ? { "build-guarded": true }
           : {}),
         // One condition per tree that has a sweep to run, keyed the way the step names
-        // it. Read off the FILES rather than off `sweeping` and `preSweep` separately:
-        // a step exists to send an agent at a request, so the request existing is the
-        // whole condition, and --llm-skip-sweep leaves none behind.
+        // it. Read off the REQUESTS rather than off `sweeping` and `preSweep` separately:
+        // a step exists to hand an agent a request, so the request existing is the whole
+        // condition, and --llm-skip-sweep leaves none behind.
         ...Object.fromEntries(
           Object.keys(sweepFiles).map((a) => [sweepRun(a), true])
         ),
@@ -902,9 +902,10 @@ async function reviewSubmission(opts, work, prepared) {
         // by the time anything is handed out.
         scaRoot: opts.scaRoot ?? null,
         xpiRoot: meta.xpiRoot,
-        // Where each tree's sweeping agent was sent and where it answers. Carried so the
-        // pass that accepts the hand-back reads back exactly the files this run wrote,
-        // with no later pass deriving them again.
+        // Each tree's sweep request, as the text its step hands over, and the file its
+        // answers are written to. Carried so the step prints the request this run made and
+        // the pass that accepts the hand-back reads exactly the files this run named, with
+        // no later pass deriving either again.
         sweeps: sweepFiles,
         // The schema block a judging phase prints - the snapshot its verdicts mean
         // anything against. Built once, from the same meta the report's header is.
@@ -1012,10 +1013,10 @@ const WORK_INPUTS = new Set(["sca", "rescued", "prepare"]);
  *
  * A plain review creates the shipped add-on's copy and nothing else. A --llm-review run
  * names every other output too - the loop's pair, the report, what its agents write, and a
- * sweep pair for each artifact - whether or not this review turns out to use each one: an
- * XPI review never builds and may sweep nothing, but which of them it will use is only known
- * once it has run, and a review refused at the end for a name it needed is a review paid for
- * and thrown away.
+ * sweep answers file for each artifact - whether or not this review turns out to use each
+ * one: an XPI review never builds and may sweep nothing, but which of them it will use is
+ * only known once it has run, and a review refused at the end for a name it needed is a
+ * review paid for and thrown away.
  * @param {ReturnType<typeof workPaths>} work
  * @param {boolean} [llmReview]
  * @returns {string[]}  Absolute paths.
@@ -1029,9 +1030,7 @@ function claimedNames(work, llmReview) {
       ([key, value]) => typeof value === "string" && !WORK_INPUTS.has(key)
     )
     .map(([, value]) => value);
-  const sweeps = [ARTIFACT_XPI, ARTIFACT_SCA].flatMap((artifact) =>
-    Object.values(work.sweep(artifact))
-  );
+  const sweeps = [ARTIFACT_XPI, ARTIFACT_SCA].map(work.sweep);
   return [...outputs, ...sweeps];
 }
 
@@ -1271,13 +1270,13 @@ export async function resolveReviewSchema({
 /**
  * The blind-spot sweeps for this review, or null when no check that ran authors one.
  *
- * One flat list, grouped into one request per tree when the requests are written
+ * One flat list, grouped into one request per tree when the requests are made
  * (src/report/sweep-files.js): the method is said once per request and each item says
  * only what its own check is looking for. Split the other way - method repeated on every
  * item - and eight near-identical paragraphs teach a reader to skim the part that matters.
  *
  * This is what BOTH readers get. The report prints it as the Standard Code Review list,
- * and the same items are what each sweeping agent's request file is built from - so a
+ * and the same items are what each sweeping agent's request is built from - so a
  * reviewer covering a blind spot by hand and an agent covering it are asked the same
  * thing, in the same words, under the same number.
  * @param {import("./checks/registry.js").Registry} registry
@@ -1314,7 +1313,7 @@ function preSweepOf(registry, ranIds, mode, siblings, trees) {
     // from the same lookup, so there is no second copy to go stale.
     .filter((s) => trees[s.artifact])
     // What NAMES this sweep for the rest of the review. Unique across the whole review
-    // rather than within a tree, so the two sweep files cannot both hold a label 1 and
+    // rather than within a tree, so the two answers files cannot both hold a label 1 and
     // an answer can never be read against the wrong one; and the same number the report
     // prints beside it, because both walk this list in this order.
     //

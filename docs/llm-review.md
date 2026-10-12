@@ -59,7 +59,7 @@ entry never offered are all refusals.
 | `build` | Where the reviewer chose the agent: build the add-on in the agent's own sandbox and write how the result differs from the shipped XPI. | Nothing: the diff goes to a file of its own |
 | `built` | Source code review only: ask the reviewer, alone, whether the build succeeded. | The reviewer's own answer |
 | `reproduced` | Source code review only: ask the reviewer, alone, whether the built XPI reproduces the submitted one. | The reviewer's own answer |
-| `spawn` | Start the sub-agents the review needs - the add-on description and one sweep per tree - and read back what the sweeps found. | Nothing: each sweep answers in a file of its own (see below) |
+| `spawn` | Start the sub-agents the review needs - the add-on description and one sweep per tree - and read back what the sweeps found. | Nothing: each sweep's reply is written to a file of its own (see below) |
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
 | `details` | Hand the reviewer the Review Details block, before the `ask` questions, so only where `ask` follows: not under `--llm-skip-manual`. | Nothing: the block is its whole work |
@@ -227,48 +227,54 @@ sweep with its own words and its own tree. Every entry, printed or handed out, n
 folder to search as a path, because a source review has two trees open at once.
 
 Under `--llm-review` that reading is a sub-agent's, **one per tree**, and the sweep is the
-only sub-agent whose output the linter reads. So it is the only one with a shape, and it
-gets two files of its own rather than reporting through the orchestrating agent:
+only sub-agent whose output the linter reads. So it is the only one with a shape: a
+request printed inline in the step that spawns it, and a reply the linter reads back from
+a file of its own.
 
 | | Written by | Format | Read back by |
 | --- | --- | --- | --- |
-| `.review/sweep-<artifact>.yaml` | the linter | YAML - the prose is the bulk of it | nobody |
-| `.review/sweep-<artifact>.answers.json` | the sweeping agent | JSON - one quoting rule, where a hint holding `http://host: thing` would break YAML | the linter |
+| the request | the linter, inline in the `spawn` step | plain text | the sweeping agent |
+| `.review/sweep-<artifact>.answers.json` | the orchestrating agent, from the sweeping agent's reply | JSON - one quoting rule, where a hint holding `http://host: thing` would break YAML | the linter |
 
-The request stands alone, because the agent is handed a path and nothing else:
+The request stands alone, because the agent is handed it and nothing else. It names the
+folder to read, says how to judge, lists each sweep under its label, and asks for the
+answers as the reply:
 
-```yaml
-sweepTarget: /reviews/addon-1.2-<timestamp>/xpi/
-answerFile: /reviews/addon-1.2-<timestamp>/.review/sweep-xpi.answers.json
-instructions: |-
-  This file holds 2 separate sweeps, listed under "sweeps" below. ...
-sweeps:
-  - label: 9
-    title: Check the package for unacceptable content
-    instruction: |-
-      Content shipped inside the package ...
+```text
+Sweep this folder, and read nothing outside it:
+
+  /reviews/addon-1.2-<timestamp>/xpi/
+
+It is asked about in 2 separate sweeps, each listed below under its label. ...
+
+Label 9: Check the package for unacceptable content
+Content shipped inside the package ...
+
+Return your answers as your reply: one JSON document {"answers": {"<label>": [...]}} that
+lists every label above ...
 ```
 
-and the answers file is pre-created with a `null` per label:
+The reply is one JSON document with a list per label:
 
 ```json
-{ "answers": { "9": null, "10": null } }
+{ "answers": { "9": [], "10": [] } }
 ```
 
 `label` is the identity, and it is the **linter's**: unique across the whole review, so
-the two files cannot collide and no agent is ever asked which request an answer belongs
-to. It is also the number the report prints beside that sweep, so the page a reviewer
+the two answers files cannot collide and no agent is ever asked which request an answer
+belongs to. It is also the number the report prints beside that sweep, so the page a reviewer
 reads and the request an agent reads are the same list under the same numbers. Nothing of
 the review's vocabulary reaches the agent - not a check id, not an artifact - because
 where a hint lands is the review's to know.
 
-Replacing a `null` with a list is the whole answer; an empty list is "swept and clean",
-and a `null` left behind is refused. That is what separates "found nothing" from "never
+A list per label is the whole answer. An empty list is "swept and clean", and a label left
+out or answered with `null` is refused. That is what separates "found nothing" from "never
 looked", and it is the agent's own statement rather than something inferred from silence.
 
-The orchestrating agent never touches any of this. Its two `spawn` steps each hand one
-sub-agent one path and tell it to follow the `instructions` in that file; it waits, and
-hands back a review file whose `entries` are empty.
+The orchestrating agent relays and transcribes, and composes nothing. Each `spawn` step
+hands one sub-agent its request as printed, waits for it, writes its reply unchanged to
+the answers file the step names, and hands back a review file whose `entries` are empty.
+The linter reads only that file, and refuses one it cannot act on, naming what to fix.
 
 What comes back is not a verdict on the sweep, and not a classification either: the agent
 that sweeps reads the add-on, not the linter, so it cannot know whether what it found is
@@ -286,7 +292,7 @@ exactly as a case it found for itself:
 
 So a sweep instruction says what to LOOK FOR, and is read in exactly two places: the
 request handed to the sweep agent, and the Standard Code Review list every report prints.
-It never says WHERE - that is the linter's, carried as `sweepTarget` - and it never says
+It never says WHERE - that is the linter's, named in the request - and it never says
 what confirming something means, which is the owning check's to say.
 
 Either way the case is deduplicated against what the deterministic pass already covered
@@ -294,7 +300,7 @@ in that same tree, as a to-do item or as a finding, so nothing downstream can te
 case from one a check found. The `hint` is a locus annotation naming what sits at that line; the paragraph
 the developer reads stays the registry's.
 
-`--llm-skip-sweep` withholds all of this: no request is written, the prompt spawns no
+`--llm-skip-sweep` withholds all of this: no request is made, the prompt spawns no
 sweeping agent, and the sweep is left out of the review - it is not handed to the
 reviewer, in the prompt or in the report.
 
@@ -315,9 +321,9 @@ what this review is and where to read it:
 | `BUILD_DIFF` | How the agent's build differs from the shipped XPI - only once the `build` phase wrote it, since the reviewer may build it themselves |
 | `REVIEW_REPORT` | The text the reviewer sends to the developer, written by the linter |
 
-The linter names these files and reads none of them. The description is a sub-agent's, and
-the agent conducting the review is told only to name it - not to open, read, summarise or
-print what was written there. The build report and the build diff are the agent's own, and
+The linter names these files and reads none of them. The description is a sub-agent's,
+returned as its reply, and the agent conducting the review is told only to write that reply
+unchanged to `ADDON_DESCRIPTION` - not to read, summarise or print it. The build report and the build diff are the agent's own, and
 the Build Review Details block names just those two, right before the build choice and the
 build questions.
 
@@ -452,11 +458,11 @@ the review sit in its hidden `.review/` folder, out of the reviewer's sight:
 | `.review/state.json` | The review itself, which every pass reads | the linter |
 | `.review/review.json` | The file the agent fills in and hands back (`ANSWERS` while a source code review is prepared) | the linter, each pass |
 | `report.md` | `REVIEW_REPORT` | the linter |
-| `summary.md` | `ADDON_DESCRIPTION` | a sub-agent |
+| `summary.md` | `ADDON_DESCRIPTION` | the agent, from a sub-agent's reply |
 | `build.md` | `BUILD_PROCESS` | the agent, in `build-safety`, in a source code review |
 | `build/` | The copy of the source the agent builds in, never the archive itself | the agent, when the reviewer lets it build |
 | `build-diff.md` | `BUILD_DIFF` | the agent, after building |
-| `.review/sweep-<artifact>.yaml` and `.review/sweep-<artifact>.answers.json` | One tree's sweep request and answers | the linter, and a sweeping agent |
+| `.review/sweep-<artifact>.answers.json` | One tree's sweep answers | the agent, from a sweeping agent's reply |
 | `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again | the linter, whenever it audits |
 | `.cache/popularity.json` | The npm download counts and GitHub stars read during this run, kept the same way | the linter, whenever it judges a source's popularity |
 

@@ -222,8 +222,7 @@ test("the steps that start an agent each say whether it is waited for", () => {
       (x) => x.when && namesOf(parseCondition(x.when)).includes(fact)
     );
   const UNATTENDED =
-    "Do not wait for it. What it writes is the reviewer's, and it is not needed until " +
-    "they are handed the review details.";
+    "Do not wait for it. When it comes back, write its reply unchanged to";
 
   // The description is not waited for. The build report is written before any agent
   // starts (build-safety), so no spawn step asks for one.
@@ -241,15 +240,16 @@ test("the steps that start an agent each say whether it is waited for", () => {
   for (const step of sweeps) {
     assert.match(step.text, /Wait for it before going on/);
   }
-  assert.equal(
-    new Set(sweeps.map((x) => x.text.split("\n\n").at(-1))).size,
-    1,
-    "both sweep steps say it the same way"
+  const waits = sweeps.map((x) =>
+    x.text.split("\n\n").find((p) => p.startsWith("Wait for it"))
   );
-  // And each is handed its own tree's request and nothing else - no instruction text
-  // travels through the prompt.
+  assert.equal(new Set(waits).size, 1, "both sweep steps say it the same way");
+  // And each is handed its own tree's request, inline and nothing else, and names the file
+  // its reply is written to.
   assert.match(sweeps[0].text, /\{\{sweepXpi\}\}/);
+  assert.match(sweeps[0].text, /\{\{sweepXpiAnswers\}\}/);
   assert.match(sweeps[1].text, /\{\{sweepSca\}\}/);
+  assert.match(sweeps[1].text, /\{\{sweepScaAnswers\}\}/);
 
   // Nothing leans on a sibling having printed.
   for (const step of spawn.steps) {

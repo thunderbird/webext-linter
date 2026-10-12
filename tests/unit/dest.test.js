@@ -59,12 +59,6 @@ test("the work folder's names are bare and fixed", () => {
       buildCopy: "/w/build",
     }
   );
-  assert.deepEqual(work.sweep("XPI"), {
-    request: "/w/.review/sweep-xpi.yaml",
-    answers: "/w/.review/sweep-xpi.answers.json",
-  });
-  assert.deepEqual(work.sweep("SCA"), {
-    request: "/w/.review/sweep-sca.yaml",
-    answers: "/w/.review/sweep-sca.answers.json",
-  });
+  assert.equal(work.sweep("XPI"), "/w/.review/sweep-xpi.answers.json");
+  assert.equal(work.sweep("SCA"), "/w/.review/sweep-sca.answers.json");
 });

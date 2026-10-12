@@ -154,15 +154,17 @@ export const SWEEP_INSTRUCTIONS = Object.freeze({
   [ARTIFACT_SCA]: "sweep-instruction-for-sca",
 });
 
-/** What a sweep of one ARTIFACT is called, in the two places a name for it is needed: the
- *  `when:` fact that decides whether its step prints, and the `{{placeholder}}` that
- *  step names its request file with. Derived from the artifact rather than written out,
- *  and written out nowhere else - the pipeline mints the condition and src/report/
- *  sweep-files.js mints the slot, both from here, so the step, the condition and the path
- *  cannot end up disagreeing about which tree they are for. */
+/** What a sweep of one ARTIFACT is called, in the places a name for it is needed: the
+ *  `when:` fact that decides whether its step prints, the `{{placeholder}}` that step
+ *  hands its request over with, and the one naming the file its answers are written to.
+ *  Derived from the artifact rather than written out, and written out nowhere else - the
+ *  pipeline mints the condition and src/report/sweep-files.js mints the slots, all from
+ *  here, so the step, the condition and the slots cannot end up disagreeing about which
+ *  tree they are for. */
 export const sweepRun = (artifact) => `sweep-${artifact.toLowerCase()}`;
 export const sweepSlot = (artifact) =>
   `sweep${artifact.charAt(0)}${artifact.slice(1).toLowerCase()}`;
+export const sweepAnswersSlot = (artifact) => `${sweepSlot(artifact)}Answers`;
 
 /** The facts the review loop's `when:` conditions can name (src/checks/condition.js), and
  *  so what a step of it is printed under (stepsOf, src/report/phases.js):

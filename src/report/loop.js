@@ -592,15 +592,16 @@ function reportMeta(state) {
 }
 
 /**
- * Everything the sweeping agents wrote, read back off their own files.
+ * Everything the sweeping agents returned, read back off the answers files their replies
+ * were written into.
  *
  * ONE READ for the whole review, because a sweep file that cannot be acted on must leave
  * the review untouched: a half-applied sweep would record one tree's hints and then
  * refuse on the other, and the agent's fix would replay the first.
  *
- * The files are the ones THIS run wrote (state.paths.sweeps), so which labels belong in
+ * The files are the ones THIS run named (state.paths.sweeps), so which labels belong in
  * each and what each label means are the review's own answers, never the file's. Read
- * only where a tree was actually asked - `--llm-skip-sweep` writes none, and then there
+ * only where a tree was actually asked - `--llm-skip-sweep` asks none, and then there
  * is nothing to read and nothing to say about it.
  * Null where no tree was asked, which is not the same as every tree answering with
  * nothing - the distinction the answers files are built around, kept here too.

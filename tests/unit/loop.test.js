@@ -27,6 +27,8 @@ import {
   HandbackRefused,
 } from "../../src/report/loop.js";
 import { workPaths } from "../../src/util/dest.js";
+import { loopPromptLines } from "../../src/report/format.js";
+import { sweepRequests } from "../../src/report/sweep-files.js";
 
 const REGISTRY = loadRegistry();
 const PHASES = REGISTRY.llmPhases().phases;
@@ -138,12 +140,16 @@ function review(
         // state carries both; without xpiRoot the loop would hand out relative paths.
         xpiRoot: "/tmp/work/xpi/",
         scaRoot: null,
-        // Each tree's sweep pair, which is also what says WHICH trees were asked. The
-        // request is never read back; the answers file is the one this loop opens.
+        // Each tree's sweep request and answers file, which is also what says WHICH trees
+        // were asked. The request is printed by the step, and the answers file is the one
+        // this loop opens.
         ...(sweep
           ? {
               sweeps: {
-                [ARTIFACT_XPI]: files.sweep(ARTIFACT_XPI),
+                [ARTIFACT_XPI]: {
+                  request: "Sweep the add-on.",
+                  answers: files.sweep(ARTIFACT_XPI),
+                },
               },
             }
           : {}),
@@ -778,6 +784,35 @@ test("the sweep phase asks for nothing in the review file, and answers in its ow
   assert.deepEqual(state.sweep, [], "both ran, neither found anything");
 });
 
+// The sweep request travels INLINE: the step that spawns the agent prints the whole of it -
+// the tree to read and each sweep's instruction under its label - and names the file the
+// agent's reply is written to. No request file exists for it to name.
+test("the spawn step hands the sweep request over inline and names the answers file", () => {
+  const dir = tmp();
+  const { state, work } = review(dir, { findings: false, questions: false });
+  state.paths.sweeps = sweepRequests(workPaths(work), state.preSweep, {
+    [ARTIFACT_XPI]: state.paths.xpiRoot,
+  });
+  const out = issue(state, work, PHASES, REGISTRY);
+  assert.equal(out.phase.name, "spawn");
+  const text = loopPromptLines(
+    REGISTRY.llmPhases(),
+    out.phase,
+    out.steps,
+    loopSlots(state, out, work)
+  ).join("\n");
+  const step = text.slice(text.indexOf("to sweep the built add-on"));
+  assert.match(step, /^\s+\/tmp\/work\/xpi\/$/m, "the folder to read");
+  assert.match(step, /Label 1: t1\n\s+i1\n/, "each label with its instruction");
+  assert.match(step, /Label 2: t2\n\s+i2\n/);
+  assert.match(
+    step,
+    /write its reply unchanged, exactly as it returned it, to\n\n\s+\S+\/\.review\/sweep-xpi\.answers\.json\n/,
+    "the answers file the reply is written to"
+  );
+  assert.doesNotMatch(text, /\.yaml/, "no request file is named");
+});
+
 // ONE check, TWO trees. A sweep is a request about exactly one artifact, and a check on
 // `input: all` reads both - so it authors an instruction per tree and gets an independent
 // sweep for each, in a different file, under a different label. The same relative path
@@ -796,7 +831,7 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
   // Both trees exist for this one, so the review is a source-code review.
   state.paths.scaRoot = path.join(dir, "src");
   state.paths.sweeps[ARTIFACT_SCA] = {
-    request: path.join(dir, "r.sweep-sca.yaml"),
+    request: "Sweep the source.",
     answers: path.join(dir, "r.sweep-sca.answers.json"),
   };
   state.run["sweep-sca"] = true;
