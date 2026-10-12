@@ -1290,13 +1290,10 @@ test("the two skips withhold the description and the manual items", () => {
   // ...while the step that closes the round trip survives the renumbering.
   assert.match(on.stdout, /--llm-handback/);
 
-  // --llm-skip-summary leaves the sweep as the spawn phase's only agent - and the manual
-  // items are not dropped from the REVIEW, only from what a phase puts to anyone. They
-  // are still in the report the last pass prints.
-  assert.ok(
-    entriesOf(on.stdout).every((e) => e.check),
-    "the first pass asks about the sweep and nothing else"
-  );
+  // --llm-skip-summary leaves the sweep as the spawn phase's only agent, and the pass asks
+  // about nothing in the file.
+  assert.match(on.stdout, /Spawn an independent sub-agent NOW to sweep/);
+  assert.deepEqual(entriesOf(on.stdout), []);
   assert.equal(on.code, 0);
 });
 
