@@ -23,9 +23,8 @@ import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
  * there. Two things write that, both onto the item itself: its check, which asks its
  * question in a phase of its own (`asked-in`, stamped when the item is rendered), and the
  * agent's `ask` verdict, which sends a case it could not settle on to a reviewer (stamped
- * when the hand-back is accepted). Carried BY the item rather than kept beside it by
- * number, so nothing that renumbers the review - a sweep adding cases, a verdict removing
- * one - can point a route at the wrong case.
+ * when the hand-back is accepted). Carried BY the item, so the route travels with the case
+ * wherever the review sorts it.
  * @param {import("./order.js").OrderedItem} item
  * @returns {string}
  */

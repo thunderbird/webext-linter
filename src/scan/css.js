@@ -1,8 +1,8 @@
 // Scans a CSS file for external references: @import (a CSS *source*, must be
 // bundled) and url() (fonts/images - resources). Uses the postcss parser plus
 // postcss-value-parser rather than regexes, so url() inside comments is ignored
-// and quoting / parentheses inside data URIs are handled correctly. The
-// remote-code check flags the remote ones.
+// and quoting / parentheses inside data URIs are handled correctly.
+// remote-resources flags the remote ones.
 //
 // Belongs here: CSS parsing and extraction of @import and url() references with
 // their kind, line, and URL classification.

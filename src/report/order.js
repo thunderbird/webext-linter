@@ -154,7 +154,7 @@ export function orderReview(findings, manual = []) {
     // This is NOT the entry grouping, which is settled above and reads only the body and
     // whether an item has a locus at all. Grouping decides what is ONE entry; this decides
     // which of that entry's lines print. Nothing here changes what was found, what is
-    // asked, or what a verdict can settle - every case keeps its index either way.
+    // asked, or what a verdict can settle - every case stays in the sequence either way.
     const keeperOf = new Map();
     const collapsed = new Array(members.length).fill(0);
     const folded = members.map((m, i) => {

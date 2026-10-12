@@ -8,8 +8,8 @@
 //
 // EVERY item is rendered, including one the page had no room to print. The cap bounds the
 // PAGE; a phase that asked about only the printed ones would settle those and let the rest
-// pass unexamined, and an answer naming one of them would be refused as out of range. The
-// two still number identically, because the numbering counts every item on both sides.
+// pass unexamined. The two still number identically, because the numbering counts every
+// item on both sides.
 //
 // Every to-do item is worded BOTH ways: `instructions`, which the agent follows to settle
 // it, and `message` plus the `answers` it offers, which is how a person is asked about it

@@ -1,5 +1,5 @@
 // Static analysis of a JS source for remote-code signals. Returns categorized
-// "hits" that the remote-code check turns into findings. Best-effort and
+// "hits" that the eval checks and remote-resources turn into findings. Best-effort and
 // conservative: a hit's `type` records exactly what was matched, so the check
 // can pick severity. Statically-undecidable cases (dynamic URLs, fetch to eval)
 // are reported as `ambiguous-*` types rather than asserted as remote.
@@ -11,8 +11,8 @@
 // eval/wasm - each tagged with a `type`.
 //
 // Does NOT belong here: the verdict, severity, and any review escalation - those
-// live in the eval checks (via src/lib/eval-scan.js) and
-// src/checks/rules/remote-resources.js with src/checks/escalation.js. User-facing
+// live in the eval checks (via src/lib/eval-scan.js) and remote-resources (via
+// src/lib/remote-refs.js) with src/checks/escalation.js. User-facing
 // wording lives in assets/registry.yaml. Babel access goes through
 // src/parse/ast.js.
 

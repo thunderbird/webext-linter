@@ -134,11 +134,11 @@ export function buildReachability(ctx) {
  */
 async function compute(ctx) {
   // Reachability describes whatever artifact the orchestrator routed into ctx.artifact:
-  // the built XPI for the structure checks (registry `input: xpi` - bundled-files,
-  // unused-files, minimize-web-accessible-resources), the review target for the
-  // WebExtension-code checks (`input: source` - the API/permission validators). Every
-  // `artifact`/`files`/`jsSources` below is that one artifact's, so the graph is always
-  // internally consistent.
+  // the built XPI for an `input: xpi` check (bundled-files, unused-files,
+  // unused-permission, ...), the review target for an `input: source` one (unknown-api,
+  // missing-permission, ...), and each artifact in turn for an `input: all` one
+  // (perArtifact). Every `artifact`/`files`/`jsSources` below is that one artifact's, so
+  // the graph is always internally consistent.
   //
   // pureWebExtensionReachable's "all readable-source files" branch exists only for the
   // source archive, whose pre-build layout the manifest.json's built entry-point paths miss

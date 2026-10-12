@@ -154,8 +154,8 @@ test("a reported hold-or-error case enters as a hold", () => {
   assert.equal(r.manual.length, 1);
 });
 
-// Each verb belongs to one kind of item, and an index past the end means the file was
-// written against another review. Both refuse rather than being skipped, because a
+// Each verb belongs to one kind of item, and an answer naming an item the review does not
+// hold means the file was written against another review. Both refuse rather than being skipped, because a
 // silently dropped answer is a report that understates what was settled.
 //
 // "reported" on a FINDING is not impossible: it is how a finding that holds is spelled,
@@ -295,9 +295,9 @@ test("an item the page withheld is in the file and can be settled", () => {
 });
 
 // The item file is what --llm-review hands over, so its references must be the ones a
-// verdict keys by. Built from the same sequence the renderer walks, and its `ref` is the
-// locus line the report prints - so a verdict copied out of the file is accepted, and the
-// ref guard has nothing left to catch on this path.
+// verdict keys by. Built from the same sequence the renderer walks, each item carrying its
+// fixed `ref` - so a verdict copied out of the file is accepted, and the unknown-reference
+// guard has nothing left to catch on this path.
 test("a verdict written from the item file applies", () => {
   const findings = [
     mkFinding("unused-files", "error", "DEAD", "junk.txt", 1),
@@ -341,7 +341,7 @@ test("a verdict written from the item file applies", () => {
 // The item file carries the FINISHED question: the reviewer's wording is the linter's, and
 // a model composing it from the parts composes it differently each time. Only the two
 // manual sections carry one - they are the only items a reviewer is asked - and its label
-// is the progress through those questions, not the item's index in the review.
+// is the progress through those questions, not the item's reference.
 
 /** A manual-review to-do (the "Extended Manual Review" bucket). */
 function mkManual(ruleId, title, item) {
@@ -417,7 +417,7 @@ test("every to-do carries both wordings, and the phase picks between them", () =
 
 // The report collapses repeats of one check into ONE entry with a list of locations. The
 // questions do not: each case is settled on its own, and its verdict is keyed by its own
-// index - so a reviewer asked twice must be able to tell which case they are answering.
+// reference - so a reviewer asked twice must be able to tell which case they are answering.
 test("two cases of one check are two questions, told apart by their locus", () => {
   const manual = [
     mkManual("privacy-policy", "Policy", "api.example.com"),
@@ -621,7 +621,7 @@ test("an entry names the full path of its own artifact, and the root that scopes
   assert.ok(bare.every((e) => e.root === undefined));
 
   // A table that HAS been given and lacks the artifact a finding was stamped with is
-  // wiring - the state carries both roots from v6. Handing over a relative path there
+  // wiring - the state carries both roots. Handing over a relative path there
   // would leave the agent resolving it against its own directory, so it is refused.
   assert.throws(
     () => entriesFor(items, phase("verify"), { XPI: roots.XPI, SCA: null }),

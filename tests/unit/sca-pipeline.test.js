@@ -1081,7 +1081,7 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
 // The build files (the archive's tooling) are reviewed by the build analysis (analyzeBuild)
 // + the deterministic undeclared-build-source check. This proves the pipeline wires
 // analyzeBuild -> scaCtx (ctx.buildReview()) -> the check: analyzeBuild stores the unresolved signals and the anchor, and the check escalates
-// the build to Extended Manual Review, which every source-code submission reaches.
+// the build to Extended Code Review, which every source-code submission reaches.
 test("SCA e2e: a build script outside the source is reviewed by undeclared-build-source", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({
@@ -1100,9 +1100,8 @@ test("SCA e2e: a build script outside the source is reviewed by undeclared-build
       meta.checksRun.includes("undeclared-build-source"),
       "undeclared-build-source runs in SCA mode"
     );
-    // ...and with no token the whole-build review escalated to Extended manual
-    // review (anchored at package.json; the review source's files under src/ are
-    // never traced as build files).
+    // ...and the whole-build review escalated to Extended Code Review (anchored at
+    // package.json; the review source's files under src/ are never traced as build files).
     assert.ok(
       meta.manualReview.some(
         (m) => m.extended && m.title === "Build process review"
@@ -1241,7 +1240,7 @@ test("SCA e2e: a minified file in the source is rejected by minified-code", asyn
 
 // A package.json install lifecycle hook runs when the reviewer installs the declared
 // dependencies, before the build - a supply-chain vector build-lifecycle-hook finds
-// offline (no token). Only the command says whether it is legitimate, so the hook
+// offline. Only the command says whether it is legitimate, so the hook
 // escalates for a reviewer to read rather than being asserted as a finding: it must
 // reach the manual-review list AND stay out of the findings the upload filter reads.
 test("SCA e2e: a package.json install hook escalates to a reviewer", async () => {

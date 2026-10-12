@@ -137,8 +137,7 @@ test("a finding aborts the review at the band it was reported at", () => {
 // An ESCALATING check aborts a review too, but only from the far side of a verdict: it
 // reports nothing itself, so its case weighs nothing until someone has judged it. This is
 // build-lifecycle-hook, which raises an install hook for a reviewer to read - a hook that
-// only runs local build steps settles nothing, and one that fetches code aborts the review
-// before anyone is asked to install it.
+// only runs local build steps settles nothing, and one that fetches code aborts the review.
 test("an escalated case aborts the review once it is reported, and not before", () => {
   const todo = [
     {

@@ -96,10 +96,11 @@ export function runCache(work) {
  *   src/cli.js), and finds both in it by these names.
  * - `report`, the text the reviewer sends to the developer. The one document the linter
  *   writes itself (src/report/report-file.js).
- * - `summary` and `build`, where sub-agents write the add-on description and what building
- *   it takes. `buildDiff` is where the build phase's agent writes the difference between
- *   its build and the shipped XPI, and `buildCopy` the copy of the source archive it builds
- *   in, never the archive itself, which the reviewer and the other agents read as submitted.
+ * - `summary`, where a sub-agent writes the add-on description, and `build`, where the
+ *   agent writes what building it takes (the build-safety phase). `buildDiff` is where the
+ *   build phase's agent writes the difference between its build and the shipped XPI, and
+ *   `buildCopy` the copy of the source archive it builds in, never the archive itself, which
+ *   the reviewer and the other agents read as submitted.
  * - `sweep`, one sweeping agent's request and answers, per artifact it is asked about. A
  *   FUNCTION, because how many there are is the review's answer and not this module's: an
  *   XPI review has one tree with sweeps and a source review may have two, and a fixed pair

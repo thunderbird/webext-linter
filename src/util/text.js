@@ -18,7 +18,7 @@
 // Belongs here: wrapText (a generic width-wrapper), that guard family, those scans, and
 // shellArg, which quotes one argument of a command a prompt hands its reader to run.
 // Does NOT belong here: the report's section layout (src/report/format.js), the
-// activity-feed narration (src/checks/escalation.js) that call them, or the one door to the
+// activity-feed narration (src/checks/registry.js) that call them, or the one door to the
 // terminal (src/util/log.js) that calls displayTerminal.
 
 // A leading list marker ("- ", "* ", "• ", "1. ", "2) ") - its width sets the
@@ -83,8 +83,8 @@ export function wrapText(text, indent = "", width = 80) {
  * through here: the substituted {{slot}} values (src/report/responses.js), the locus
  * line and the machine-readable report, the report's own header - its value rows and the
  * schema sentence, which carries the submission's manifest_version (src/report/format.js) -
- * the per-check feed notes (src/checks/registry.js) and a reviewer verdict narration
- * (src/checks/escalation.js). Guarding those sinks rather than the hundreds of places
+ * the per-check feed notes (src/checks/registry.js) and a reviewer's answer
+ * (src/report/verdicts.js). Guarding those sinks rather than the hundreds of places
  * a check composes a finding is what makes a check added later inherit it.
  *
  * NOT applied to our own authored prose: the registry's wording is ours, carries none

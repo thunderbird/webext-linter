@@ -210,7 +210,7 @@ function helpText(checkIds) {
     ],
     [
       "--llm-skip-sweep",
-      "With --llm-review or --llm-sca-review: leave out the sweep. The prompt neither spawns it nor stops for it, so the review is one prompt rather than two - and the Standard Code Review section stays in the report, for the reviewer to sweep by hand.",
+      "With --llm-review or --llm-sca-review: leave out the sweep. The prompt neither spawns it nor stops for it, and the Standard Code Review section stays in the report, for the reviewer to sweep by hand.",
     ],
     [
       "--llm-sca-review",

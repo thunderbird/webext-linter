@@ -97,7 +97,7 @@ shapes:
         review has, with no ctx.artifact - two of them in a source review, one in an XPI
         review, so a check on it tests for what it needs first. A check comparing the
         artifacts reads them by name as ctx.xpi and ctx.sca; one asking each of them the
-        same question reads ctx.artifacts, via perArtifact.
+        same question wraps its body in perArtifact, which runs it on each of them.
         A check that reads NO artifact - only the shared records, ctx.manifest and
         ctx.experiments - declares xpi, because both of those are the built XPI's:
         the route is then inert, and xpi is the artifact such a check is judging

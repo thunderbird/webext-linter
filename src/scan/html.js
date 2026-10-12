@@ -1,5 +1,5 @@
 // Scans an HTML document for elements that reference an external URL
-// (script/link/iframe/object/embed/media). The remote-code check turns the
+// (script/link/iframe/object/embed/media). remote-resources turns the
 // remote ones into findings. Parsing is done with a real HTML parser (parse5,
 // via html-parse.js), so attribute values containing ">" and the like are
 // handled correctly and line numbers come from the parser.

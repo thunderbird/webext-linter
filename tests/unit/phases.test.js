@@ -1,5 +1,5 @@
 // The REVIEW LOOP's authored text, checked the way it will be read: a phase the linter
-// hands out one per pass, plus the five texts the linter itself owns.
+// hands out one per pass, plus the four texts the linter itself owns.
 //
 // Every test here mutates a freshly loaded registry and asserts the LOAD refuses it. That
 // is the whole point of the file: this text reaches an agent verbatim, nothing downstream
@@ -263,7 +263,7 @@ test("the steps that start an agent each say whether it is waited for", () => {
 
 // A phase declares what one of its entries is answered WITH, beside the vocabulary that
 // answer may use. The two are one decision in two halves - a `verdict` phase names the
-// verbs it accepts, and the other two accept none - so a pair that disagrees is refused
+// verbs it accepts, and every other kind accepts none - so a pair that disagrees is refused
 // here rather than when a hand-back first arrives, which may be never.
 //
 // It is read as DATA everywhere the loop asks "what shape is this entry, and what may come

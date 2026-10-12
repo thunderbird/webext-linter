@@ -235,9 +235,9 @@ import { rethrowIfFatal } from "../lib/errors.js";
  * @param {{kind: string, recordInstalledTrees?: boolean}} options
  *   `kind` says WHICH artifact is being loaded (src/lib/artifacts.js). REQUIRED, and not
  *   defaulted: the loader is the one place that knows without being told, and an Addon that
- *   cannot say what it is silently un-labels every finding reported against it. The two
- *   production callers are the two answers - the pipeline's XPI, and loadSourceArchive's
- *   source archive below.
+ *   cannot say what it is silently un-labels every finding reported against it. The
+ *   production callers give both answers - an XPI (the pipeline, experimentVerdict), and
+ *   loadSourceArchive's source archive below.
  *
  *   `recordInstalledTrees` is off by default and describes a submitted SOURCE ARCHIVE,
  *   which asks for it by name; it applies to a folder read, since a source archive arrives

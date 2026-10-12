@@ -398,7 +398,7 @@ function recordValue(state, registry, phase, answers) {
  * @param {import("../checks/registry.js").Registry} registry
  * @param {{name: string, answer: string}} phase
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered - the
- *   caller's, so what it hands out and what it acts on are numbered alike.
+ *   caller's, so what it hands out and what it acts on come from one ordering.
  * @returns {object[]}
  */
 function phaseEntries(state, registry, phase, ordered) {

@@ -153,7 +153,7 @@ function declaresJs(type) {
 /**
  * Extract inline <script> bodies from an HTML document. Scripts with a `src`
  * attribute are skipped (the referenced file is covered separately, and a
- * remote src is flagged by the remote-code check). `lineOffset` is one less
+ * remote src is flagged by remote-resources). `lineOffset` is one less
  * than the body's start line so AST lines map back to the HTML.
  * @param {string} file  Add-on-relative path of the HTML document.
  * @param {string} html  Full HTML source text.

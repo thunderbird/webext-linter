@@ -188,7 +188,7 @@ What an entry's `"answer"` may say depends on WHO THE PHASE ASKS.
 A phase the agent settles by reading the add-on takes one of the linter's verbs:
 `verify` takes `reported` or `withdrawn`; `settle` takes `reported`, `cleared` or `ask` -
 the last of which does not settle the case but sends it on to the reviewer, keeping its
-number.
+reference.
 
 Which of those an entry actually offers is the owning check's to narrow: a check that can
 be screened but never settled from the package alone offers `cleared` and `ask` and no
@@ -301,7 +301,7 @@ reviewer, in the prompt or in the report.
 
 ## What the reviewer is handed
 
-Before anything is put to them, the reviewer is handed a **Review details** block naming
+Before the `ask` questions, the reviewer is handed a **Review details** block naming
 what this review is and where to read it:
 
 | Name | What it names |
@@ -321,7 +321,7 @@ print what was written there. The build report and the build diff are the agent'
 the Build Review Details block names just those two, right before the build choice and the
 build questions.
 
-`REVIEW_REPORT` it writes itself, twice: once as the `details` phase goes out, so the
+`REVIEW_REPORT` it writes itself: as the `details` phase goes out, where one does, so the
 reviewer can read the report while answering the questions that follow, and again from the settled review
 once those answers are in. It is a file rather than something the agent prints because
 printing it failed - the hand-over used to carry the report and ask for it back "in a code
@@ -329,7 +329,7 @@ block and unchanged", and that is the one text where a model rewording its input
 developer.
 
 The block is handed over twice, for two different readings. The `details` phase hands it
-over before anything is asked, so the reviewer can open those files while answering, and
+over before the `ask` questions, so the reviewer can open those files while answering, and
 the last pass hands it over again as what they are left holding.
 
 The last pass is the `close` phase. The linter applies every answer, writes `REVIEW_REPORT`,

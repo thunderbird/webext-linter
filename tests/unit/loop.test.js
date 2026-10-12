@@ -1,7 +1,7 @@
 // The REVIEW LOOP, driven end to end with no agent: every phase handed out, answered from
 // a canned decision, and handed back.
 //
-// This file is the safety net for the whole round trip. 182 goldens contain no prompt
+// This file is the safety net for the whole round trip. The goldens contain no prompt
 // output at all, so the golden suite cannot catch a regression here and will not need
 // regenerating either. Everything this half of the tool does that is testable
 // is testable because `state + a filled review file -> the next state` is a pure
@@ -47,7 +47,7 @@ function review(
     file: `f${i}.js`,
     loc: { line: i },
     // Every finding carries the artifact its path is in, as its holder minted it
-    // (src/checks/registry.js runOneCheck). A v6 state without it is not one the loop
+    // (src/checks/registry.js runOneCheck). A state without it is not one the loop
     // can hand out: entriesFor has no root to resolve the path against.
     artifact: "XPI",
     message: `finding ${i}`,
@@ -134,7 +134,7 @@ function review(
         description: files.summary,
         build: null,
         report: files.report,
-        // The roots an entry's paths are resolved against (handback.js entriesFor). A v6
+        // The roots an entry's paths are resolved against (handback.js entriesFor). The
         // state carries both; without xpiRoot the loop would hand out relative paths.
         xpiRoot: "/tmp/work/xpi/",
         scaRoot: null,
@@ -169,11 +169,10 @@ function refed(state) {
   return state;
 }
 
-// The report is the one review document the LINTER writes. It is refreshed when the `ask`
+// The report is the one review document the LINTER writes. It is written when the `details`
 // phase goes out - that phase hands the reviewer the Review Details block, which links the
-// file, and they read it to answer the very questions it puts - and written again from the
-// settled review once those answers are in. Asking the agent to reproduce the report in the
-// chat is what this replaced, so the two writes are what the reviewer actually gets.
+// file, and they read it to answer the questions `ask` puts - and written again from the
+// settled review once those answers are in.
 test("the report file is written for the questions and rewritten once they are answered", () => {
   const dir = tmp();
   const { state, work } = review(dir);
@@ -492,11 +491,10 @@ test("an entry is answered from its own answers, not its phase's verbs", () => {
   // --llm-skip-summary with no sweep leaves spawn with nothing to start, so settle is
   // first once it has been issued.
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
-  // Spawn unpacks the package whatever else it does, and `details` hands over the block,
-  // so both are issued in every review; marked done here so this test starts where it
-  // means to.
+  // Marked done so this test starts where it means to - spawn has nothing to start here
+  // anyway.
   state.issued = ["spawn", "details"];
-  // What the 14 screened checks declare: settle it, or clear it. No handing it on.
+  // What most screened checks declare: settle it, or clear it. No handing it on.
   state.manual[0].settleVerbs = ["reported", "cleared"];
 
   const out = issue(state, work, PHASES, REGISTRY);
@@ -572,11 +570,9 @@ test("reporting reads as the last resort only where clearing was the way out", (
 // is also what ends the loop: "no item is still open" would block forever on an item
 // routed to a phase this run never issues.
 //
-// `spawn`'s every step is now optional (summary/build/sweep, each gated by its own
-// marker) - the package itself is extracted by the linter before the review is ever
-// printed (src/addon/load.js), so `spawn` carries no unconditional step any more. A run
-// that opts out of all three ends up with zero surviving steps, and is skipped like any
-// other phase with nothing to do.
+// Every step of `spawn` is optional (the description agent and each tree's sweep) - the
+// linter extracts the package before the review is printed (src/addon/load.js). A run
+// that starts none of them is skipped like any other phase with nothing to do.
 test("spawn with nothing to start is skipped, not issued empty", () => {
   const dir = tmp();
   const { state, work } = review(dir, { sweep: false });
@@ -630,9 +626,8 @@ test("a wrong hand-back is refused, and changes nothing", () => {
   // --llm-skip-summary as well, so spawn starts nothing and verify is the phase in
   // flight: a refusal needs a pass that actually asked for something.
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
-  // Spawn unpacks the package whatever else it does, and `details` hands over the block,
-  // so both are issued in every review; marked done here so this test starts where it
-  // means to.
+  // Marked done so this test starts where it means to - spawn has nothing to start here
+  // anyway.
   state.issued = ["spawn", "details"];
   assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "verify");
   const before = JSON.stringify(state);
@@ -984,9 +979,9 @@ test("every combination of the skips issues exactly the phases it should", () =>
     if (skip.includes("llm-skip-summary")) {
       state.paths.description = null;
     }
-    // `spawn` runs only where it starts an agent: the package itself is no longer
-    // unpacked by a step here (the linter extracts it before the review is printed), so
-    // a run that skips the summary agent and does not sweep has nothing left to spawn.
+    // `spawn` runs only where it starts an agent (the linter extracts the package before
+    // the review is printed), so a run that skips the summary agent and does not sweep
+    // has nothing left to spawn.
     const expected = [
       ...(!skip.includes("llm-skip-summary") || sweeps ? ["spawn"] : []),
       "verify",
@@ -1065,9 +1060,8 @@ test("a case sent on with `ask` is settled by the reviewer's own answer", () => 
   const dir = tmp();
   const { state, work } = review(dir, { sweep: false, findings: false });
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
-  // Spawn unpacks the package whatever else it does, and `details` hands over the block,
-  // so both are issued in every review; marked done here so this test starts where it
-  // means to.
+  // Marked done so this test starts where it means to - spawn has nothing to start here
+  // anyway.
   state.issued = ["spawn", "details"];
 
   const sent = issue(state, work, PHASES, REGISTRY);
@@ -1118,9 +1112,8 @@ test("a reviewer who writes `ask` has answered, not asked for a move", () => {
     code: false,
   });
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
-  // Spawn unpacks the package whatever else it does, and `details` hands over the block,
-  // so both are issued in every review; marked done here so this test starts where it
-  // means to.
+  // Marked done so this test starts where it means to - spawn has nothing to start here
+  // anyway.
   state.issued = ["spawn", "details"];
   // Real check ids, because a reported case becomes a finding of its own check and takes
   // the severity that check declares.

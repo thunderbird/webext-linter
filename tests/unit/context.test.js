@@ -226,7 +226,7 @@ test("buildScaCtx puts the archive on ctx.artifact, with its sources", async () 
 // That is what makes provenance readable: ctx.artifact.files are demonstrably THAT artifact's
 // files. What keeps a check away from the artifact it was not routed to is the routing, not a
 // projection. The shipped answers still arrive from the env rather than off the artifact, and
-// no credentials are on the ctx: the token stays in the pipeline (it builds the client).
+// no credentials are on the ctx.
 test("ctx.artifact is the loaded artifact itself; the shipped answers come from env", () => {
   const xpi = addonWith({ "app.js": "export const x = 1;" });
   const env = envWith({ manifest: shippedRecord });

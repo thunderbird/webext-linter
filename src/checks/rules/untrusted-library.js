@@ -11,7 +11,8 @@
 // tells the dev why - otherwise an unsafe-html/etc. finding on a "library" file
 // would be baffling. The popularity verdict + the untrusted tagging (which also
 // removes the file from the non-authored skip set) happen earlier
-// (src/lib/cdn-lookup.js, src/vendor/verify.js -> markUntrusted).
+// (src/lib/cdn-lookup.js and applyUnverifiedVendor, both -> markUntrusted in
+// src/lib/bundled.js).
 //
 // Belongs here: selecting the readable untrusted entries and emitting one info
 // finding per file. Does NOT belong here: the trust verdict / classification (->

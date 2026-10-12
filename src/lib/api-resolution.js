@@ -19,7 +19,8 @@ import { SchemaIndex } from "../schema/index.js";
 /**
  * @typedef {object} ResolvedUsage
  * @property {string} file   The packaged file the call sits in.
- * @property {object} usage  The parsed usage (root, segments, line, column, guarded).
+ * @property {object} usage  The parsed usage (root, segments, line, column, dynamicTail,
+ *   optional).
  * @property {object} res    The schema.resolveApi result (kind, namespace, member,
  *   def, namespaceDef) each consumer inspects.
  */
@@ -64,9 +65,8 @@ async function resolve(ctx) {
 /**
  * The resolved usages that DON'T exist in the schema: an unknown namespace, an
  * unknown member of a known namespace, or a member the schema marks unsupported -
- * i.e. what unknown-api acts on, either as a finding or, where the site is guarded, as
- * a manual review item. Shared with experiment-unknown-api, which gates a manual
- * review on whether an Experiment has any.
+ * the set unknown-api escalates for a reader. Read by experiment-unknown-api, which
+ * gates a manual review on whether an Experiment has any.
  * @param {RunContext} ctx
  * @returns {Promise<ResolvedUsage[]>}
  */

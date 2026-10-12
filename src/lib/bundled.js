@@ -66,7 +66,7 @@ import { isMinified, isMinifiedJs } from "./minified.js";
  * plus the not-the-developer's-source skip set. The result is stored on addon.bundled
  * (src/review/products.js).
  *
- * `nonAuthored` is the VENDOR.md-declared third-party files plus any JS or CSS
+ * `nonAuthored` is the VENDOR-file-declared third-party files plus any JS or CSS
  * tagged library / minified / obfuscated. The source-level finding scanners (the
  * eval checks, unsafe-html, remote-resources, code-sanity) skip these as noise -
  * minified or obfuscated code is forbidden anyway (minified-code,
@@ -163,7 +163,7 @@ function classifyFiles(addon, { libraryHashes = new Map() } = {}) {
  * @returns {Bundled}
  */
 function assembleBundled({ classified, nonAuthored }) {
-  // `untrusted` is filled later (cdn-lookup.js, vendor/verify.js) for an
+  // `untrusted` is filled later (cdn-lookup.js, applyUnverifiedVendor) for an
   // identified-but-not-popular library: known by content, but not confirmed
   // widely used, so NOT in the trusted/exempt family - see markUntrusted.
   return { classified, nonAuthored, untrusted: [] };

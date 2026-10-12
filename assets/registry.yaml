@@ -725,8 +725,8 @@ deterministic-phase:
   response: |-
     The following Experiment API(s) are published Thunderbird API drafts, but this add-on bundles a modified or outdated copy of each. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments.
 
-# Flags an accepted Experiment (--allow-experiments) that declares no
-# strict_max_version.
+# Flags a reviewed Experiment (allowed by --allow-experiments, or a recognised upstream
+# draft) that declares no strict_max_version.
 - title: Experiment missing strict_max_version
   severity: error
   check: experiment-missing-strict-max-version
@@ -1004,7 +1004,7 @@ deterministic-phase:
 # the build is the reviewer's attestation that the shipped XPI comes from the source they
 # read, which is what an SCA review rests on - so a build that does not succeed aborts the
 # review before anyone is asked to install the XPI. Asked ALONE, in a phase of its own
-# (`asked-in: built`), after the build and before any other question. Declared before
+# (`asked-in: built`), right after the build and before the sweeps. Declared before
 # build-reproduces-xpi, which is the order a plain review lists them in.
 - title: Build failure
   severity: error
@@ -1053,9 +1053,8 @@ deterministic-phase:
     The build process fetches or runs code from outside the dependencies declared in package.json and its lock file, so it cannot be built safely for review. Every part of the build must come only from the declared dependencies. Please remove those steps from the build.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# Two rules about the SHAPE of a source-code submission, one per entry below. They were one
-# check while both said "you did not need to submit source", and they are two now because
-# each has its own remedy and the shared wording could state neither plainly.
+# Two rules about the SHAPE of a source-code submission, one per entry below, kept apart
+# because each has its own remedy and a shared wording could state neither plainly.
 #
 # Both take `input: all`, the only route carrying more than one artifact. Each asks after
 # the archive it needs and returns early without it: a review with one artifact has neither
@@ -2081,17 +2080,6 @@ review-early-exit:
     disallowed-library-versions: Disallowed library versions
     unreproducible-build: Build process issues
 
-# The sweep framing, authored twice - once for each reader.
-#
-# Both carry the one rule that decides a sweep - judge by effect, not by method - because
-# a reviewer sweeping by hand and an agent sweeping under --llm-review are doing the same
-# reading. They part twice. The agent is told what to hand back, since a reviewer writing
-# a review produces no such thing. And the agent is told to resolve runtime values and
-# follow them through helpers and libraries, which a reviewer does not need spelled out.
-#
-# Authored twice rather than shared-plus-addendum, so each reads as one text to its own
-# reader. The cost is that the shared rule lives in two places: change it in one and
-# change it in the other, or the reviewer and the agent are told different things.
 # The prompts that PREPARE a source code review: what --llm-sca-review prints, and what each
 # --llm-handback run on the work folder it created prints after it, until the preparation is
 # done and that run starts the review itself (src/prepare/steps.js, src/cli.js), whose first
@@ -2193,14 +2181,17 @@ llm-sca-review-prompt:
 #                an assignment and invites the agent to go and read it before a step asks.
 #                Every path is printed on the ENTRY it is about instead, which is the same
 #                rule everywhere here: a path is printed by the thing that needs it.
-#   FRAME        every pass: the file, and that it changed. The linter's, so it cannot drift.
+#   FRAME        every pass but `close`: the file, and that it changed. The linter's, so it
+#                cannot drift.
 #   INTRO        per phase, and EMPTY unless the steps alone would let the agent act wrongly.
 #   STEPS        per phase, numbered over what survives its `when:` condition, exactly
 #                as llm-sca-review-prompt's step lists do. No step numbers itself. A
 #                condition is AND / OR / NOT over the facts REVIEW_PROMPT_FACTS names - the
-#                flags given, `aborted`, `sca`, `sweep-<artifact>`, `first`, `spawned`,
-#                `decided` and `closing` (src/checks/condition.js).
-#   HANDOVER     ONE text, appended by the linter as every phase's last numbered step. Not
+#                flags given, `aborted`, `sca`, `build-guarded`, `sweep-<artifact>`,
+#                `first`, `spawned`, `decided` and `closing` - and over the process values
+#                recorded so far, read with value(phase, id) (src/checks/condition.js).
+#   HANDOVER     ONE text, appended by the linter as the last numbered step of every phase
+#                but `close`, which nothing is handed back after. Not
 #                one per phase and not one per slot: every entry in every phase carries
 #                "answer": null, so the agent learns the file once and never relearns it.
 #                What an answer IS - a verb, a reviewer's words - the phase's own step
@@ -2214,10 +2205,12 @@ llm-sca-review-prompt:
 # listed here, or lists one no step names, is a drafting error - assertPhases refuses both.
 #
 # Placeholders the linter fills: {{review}} the review file, {{command}} the hand-back,
-# {{description}} and {{build}} the two files an agent writes, {{sweepXpi}} and
+# {{description}}, {{build}} and {{buildDiff}} the files an agent writes, {{buildCopy}}
+# where the agent builds, {{xpiRoot}} the extracted XPI, {{sweepXpi}} and
 # {{sweepSca}} the sweep request for each tree - one sub-agent's whole brief, so the step
 # that starts it relays nothing else - {{scaRoot}} the source root, {{details}} the Review
-# Details block, and {{schema}} - what a verdict is judged against, printed by the phases
+# Details block, {{buildDetails}} the Build Review Details block, {{tally}} the closing
+# summary, and {{schema}} - what a verdict is judged against, printed by the phases
 # that judge and by no other. The artifacts are NOT named here: each entry carries its own resolved paths
 # (src/report/handback.js), so nothing is left for the agent to join. A path is printed by
 # the thing that needs it, which is why the preamble names none of them: it is too early,
@@ -2402,8 +2395,8 @@ llm-phases:
 
             and to nothing else. Open it with one line saying the outcome: the build is identical, the build differs, or the build failed. Where it differs, list the files only one side has, give a unified diff for every text file whose content differs, and name every binary file that differs. Where the build failed, say which step failed and quote its error output, and where it failed because package.json and the lock file disagree, say that this was the cause. That file is the reviewer's: write what you found, never a verdict.
 
-    # The two build questions, each in a phase of its own so it is put to the reviewer ALONE
-    # and before anything else: `ask` batches, and a reviewer must not be asked to install
+    # The two build questions, each in a phase of its own so it is put to the reviewer ALONE,
+    # right after the build: `ask` batches, and a reviewer must not be asked to install
     # an XPI in the same breath as being asked whether the source reproduces it. Only the
     # cases of a check naming the phase (`asked-in`) open here, so neither appears in an XPI
     # review. Asked under --llm-skip-manual too: they decide whether the review goes on,
@@ -2574,8 +2567,8 @@ llm-phases:
       verbs: []
       intro: ""
       steps:
-        # As in `build`: the wait only where an agent was started, under the phase's own
-        # condition so it never issues the phase on its own.
+        # The wait only where an agent was started, under the phase's own condition so it
+        # never issues the phase on its own.
         - when: spawned AND NOT aborted AND NOT llm-skip-manual
           text: |-
             Wait for every agent you spawned to come back.
@@ -2589,7 +2582,7 @@ llm-phases:
 
     # Puts what only a person can answer to a person. Intro EMPTY: today's two ask blocks say
     # where an entry came from, which is procedural - the agent relays both identically, and
-    # naming the difference invites it to treat them differently, which step 3 forbids.
+    # naming the difference invites it to treat them differently, which its step forbids.
     # Never in a review that was aborted: nothing further is put to anyone. Nor under
     # --llm-skip-manual, whose questions stay in the report for later.
     - name: ask

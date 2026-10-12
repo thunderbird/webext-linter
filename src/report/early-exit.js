@@ -90,7 +90,7 @@ function standsAsError(item, verdict, registry) {
  * Registry order, not encounter order: which finding happened to come first is an
  * accident of the add-on, and the closing block is a sentence the developer reads.
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
- * @param {Record<string, *>} answers  Verdicts recorded so far, by item index. Empty for
+ * @param {Record<string, *>} answers  Verdicts recorded so far, by item reference. Empty for
  *   a review with no agent in it, where an escalated case stands for nothing because
  *   nobody has judged it.
  * @param {Registry} registry
@@ -133,7 +133,7 @@ function earlyExitReasons(ordered, answers, registry) {
  * edit changes the text, and a consumer matching on English silently stops recognising
  * the case it was written for. The terminal report prints only the texts.
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
- * @param {Record<string, *>} answers  Verdicts recorded so far, by item index.
+ * @param {Record<string, *>} answers  Verdicts recorded so far, by item reference.
  * @param {Registry} registry
  * @returns {?{intro: string, reasons: {id: string, text: string}[]}}
  */

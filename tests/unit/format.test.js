@@ -1050,14 +1050,14 @@ test("control characters from the submission never reach the report", () => {
   }
 });
 
-// ---- the item enumeration a verdict file indexes into ----
-// A verdict names an item by its position in the printed report, so the enumeration has
-// to BE the printed order - not merely resemble it. This asserts that against the report
-// itself: every locus line the renderer emits, in order, is what the sequence numbered.
+// ---- the one order a review is printed and asked in ----
+// The renderer prints orderReview's sequence and the loop asks about it, so the sequence
+// has to BE the printed order - not merely resemble it. This asserts that against the
+// report itself: every locus line the renderer emits, in order, is what the sequence holds.
 // Grouping reorders findings (they collapse by message), the to-do sections follow the
 // body groups, and the display cap hides the tail of a long list - all three are ways the
 // two could drift, and all three are covered here. The cap bounds the PAGE only: a
-// withheld item is still numbered, so it is still in the item file and still settleable.
+// withheld item is still in the sequence, so it is still in the item file and still settleable.
 test("the enumeration is exactly the order the report prints", () => {
   const registry = loadRegistry();
   const mk = (ruleId, severity, message, file, line, item) => ({

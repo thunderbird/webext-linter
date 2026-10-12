@@ -52,7 +52,7 @@ that no longer exist.
    intent. EVERY entry declares a
    `severity`, the `manual-checks` ones included - the loader refuses one that does not.
    EVERY entry declares an `input` too - a route for a check that runs, `none` for a
-   by-hand one. Entries may also carry `sca`, `eslint`, `sweep-instruction`
+   by-hand one. Entries may also carry `skip-in-sca-review`, `eslint`, `sweep-instruction`
    (the class of code the check cannot see, listed in the report's Standard Code Review
    section - or `sweep-instruction-for-xpi`/`sweep-instruction-for-sca` on `input: all`,
    which names no tree of its own and so says which per sweep), `default-note` (the marker a reported case carries when the reviewer wrote

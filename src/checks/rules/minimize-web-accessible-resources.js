@@ -52,10 +52,9 @@ export default {
     const escalations = [];
     const seen = new Set();
     /**
-     * Emit one finding per key. `item` is the displayed entry; `locItem` is the
-     * manifest.json token to anchor on, which differs from `item` when a glob pattern
-     * exposed the file - the loc must point at the WAR pattern (e.g. "icons/*"),
-     * not the file's own coincidental line elsewhere (e.g. the "icons" field).
+     * Emit one finding per key. `item` is the displayed entry and `at` anchors it at the
+     * WAR pattern that exposed it (e.g. "icons/*"), not at the file's own coincidental
+     * line elsewhere (e.g. the "icons" field).
      * @param {string} key @param {?string} item @param {object} at  Where the pattern
      *   that exposed it was declared, from the record (warResourceList paths).
      */

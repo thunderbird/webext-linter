@@ -99,7 +99,7 @@ is monitored and upstream changes are ported manually.
 
 **LLM review:** what an LLM agent runs, instead of a person reading the report. `--llm-review`
 runs the review ONCE and hands out the first of its phases. Every `--llm-handback` run after
-that takes a phase back and hands out the next, until the last one carries the report.
+that takes a phase back and hands out the next, until the last one hands over the settled review.
 `--llm-sca-review` starts preparing a source code review, and `--llm-handback` on the work
 folder it created carries the preparation on, until it starts the review itself.
 
@@ -361,7 +361,7 @@ machine.
 | `disguised-window` | Data smuggled out through a `window.open()` to a remote URL built with appended runtime data (error, regardless of consent). |
 | `eval-call` | An `eval()` call in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt: it cannot run eval without a permissive CSP, which `csp-unsafe-eval` flags. |
 | `experiment-manual-review` | Every reviewed Experiment (declares `experiment_apis`) - routed to manual review with a reminder that Experiments have full access to Thunderbird's internals and need a careful human code review. Fires for pristine, modified, and `--allow-experiments` submissions. Silent for non-Experiments and outright-rejected ones. |
-| `experiment-missing-strict-max-version` | An accepted Experiment (`--allow-experiments`) that sets no `strict_max_version` (error). Silent when experiments are disallowed, since `experiment-not-allowed` already rejects it. |
+| `experiment-missing-strict-max-version` | A reviewed Experiment (allowed by `--allow-experiments`, or a recognised upstream draft) that sets no `strict_max_version` (error). Never reached for one `experiment-not-allowed` rejects, which aborts the review. |
 | `experiment-schema-invalid` | A packaged Experiment schema file Thunderbird cannot read (not UTF-8 or UTF-16 text, or not JSON with only `//` comments) - Thunderbird refuses to install the add-on (error). A declared schema that is not packaged is `bundled-files`'. |
 | `experiment-modified` | A bundled Experiment that is a recognised published Thunderbird API draft but a modified or outdated copy (error) - the submission stays on the normal review path but is rejected until the unmodified latest upstream copy is bundled. |
 | `experiment-overrides-api` | An Experiment whose declared API path overrides or grafts onto a built-in Thunderbird API instead of adding a new namespace (error). |

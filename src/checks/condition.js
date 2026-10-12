@@ -18,8 +18,8 @@
 // vocabulary, src/checks/registry-vocabulary.js), or whether a step prints (-> its reader,
 // src/report/phases.js stepsOf and src/report/format.js).
 //
-// A plain character scan rather than a regex or a parser library: the language is five
-// tokens, the text is the registry's own, and a scan says exactly where it stopped.
+// A plain character scan rather than a regex or a parser library: the language is a
+// handful of tokens, the text is the registry's own, and a scan says exactly where it stopped.
 
 const OPERATORS = new Set(["AND", "OR", "NOT"]);
 
@@ -32,7 +32,7 @@ const FUNCTIONS = new Set(["value"]);
  */
 
 /**
- * Split a condition into words and parentheses, each with where it starts.
+ * Split a condition into words, parentheses and commas, each with where it starts.
  * @param {string} text
  * @returns {{token: string, at: number}[]}
  */

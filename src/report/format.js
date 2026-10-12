@@ -89,7 +89,8 @@ const SEV_COLOR = {
  *   add-on description for the reviewer - in the review's work folder, beside the review
  *   file (src/util/dest.js workPaths). Named by this tool, written and read by neither.
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
- *   in a source code review, where the reviewer reproduces the build.
+ *   in a source code review, and in the Review Details only once the phase that writes it
+ *   recorded it (src/report/loop.js reportMeta).
  * @property {string} [buildDiffFile]  Where the build phase's agent wrote how its build
  *   differs from the shipped XPI: set by the loop (src/report/loop.js reportMeta) only
  *   once that file exists, since the reviewer may decline the build.
@@ -125,7 +126,7 @@ const SEV_COLOR = {
 // both by that name.
 //
 // `preSweep` is the one title here that names no sequence section: it is not an item of
-// the numbered review (it settles nothing and carries no index), but the report, the item
+// the numbered review (it settles nothing and carries no reference), but the report, the item
 // file and the prompt still have to call it one thing, which is what this map is for.
 // It is titled STANDARD because, like the standard manual checks, it is carried by every
 // submission rather than raised by one - the pairing is deliberate: the two standard
@@ -930,11 +931,11 @@ function entriesOf(items) {
 
 /**
  * The locus lines of one entry: ` - file:line` (with the artifact label and any
- * per-locus hint) for each item the sequence numbered, then an "and N more" marker
+ * per-locus hint) for each item the sequence shows, then an "and N more" marker
  * standing for the ones it withheld. Shared by the Found Issues entries and the to-do
  * sections. What is shown and what is withheld was decided in src/report/order.js - the
- * cap is not applied a second time here, because a second opinion about it is exactly
- * how the printed numbers and the addressable ones came apart.
+ * cap is not applied a second time here, because a second opinion about it is how what
+ * prints and what is asked would come apart.
  * A line standing for cases of the same subject elsewhere says how many, because "this
  * host, and others like it" and "this host, in two more files" are different facts and a
  * reader cannot tell them apart from the entry alone. Counted in order.js; printed here.

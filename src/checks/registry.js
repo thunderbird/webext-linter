@@ -132,7 +132,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {boolean} ["skip-in-sca-review"]  Keeps a check that judges the shipped XPI out
  *   of a source review (modeEligible); absent means it runs in both.
  * @property {"source"|"xpi"|"sca"|"all"|undefined} input  Which artifact is
- *   ctx.artifact when the check runs (VALID_CHECK_INPUTS above). NOT what its findings
+ *   ctx.artifact when the check runs (VALID_CHECK_INPUTS, registry-vocabulary.js). NOT what its findings
  *   are about - a locus answers that, from the holder that minted it. Required for every
  *   check; runChecks routes it (see buildXpiCtx / buildScaCtx).
  * @property {?string} section  Which to-do section its escalations are listed under
@@ -607,8 +607,11 @@ export class Registry {
    * filtered by one evaluator (src/checks/condition.js holds) against the facts their run
    * meets.
    * @returns {{preamble: {when: ?object, text: string}[], frame: string, handover: string,
-   *   refused: string, phases: {name: string, verbs: string[], intro: string,
-   *   steps: {when: ?object, text: string}[]}[]}}
+   *   refused: string, phases: {name: string, answer: string, verbs: string[],
+   *   product: ?string, verbProse: object, intro: string,
+   *   steps: {when: ?object, text: string}[], question: ?string,
+   *   values: {value: string, label: string, description: string,
+   *   reports: ?string}[]}[]}}
    */
   llmPhases() {
     const p = this.doc["llm-phases"];
@@ -1338,7 +1341,7 @@ export function assertEntries(registry, at) {
  * @param {unknown} step
  * @param {number} i  Its position, for the message.
  * @param {string} where  Which prompt it is in, with the registry path, for the message.
- * @param {string} noun  What its list calls one item, for the message: "`outcome` step"
+ * @param {string} noun  What its list calls one item, for the message: "`extract` step"
  *   in the SCA prompt, "step" in a phase, "part" in the preamble.
  * @param {string[]} facts  The facts this prompt's conditions may name.
  * @param {Map<string, string[]>} [values]  The process values this prompt's conditions may
@@ -1483,17 +1486,17 @@ function assertProcessValues(registry, phase, at) {
 const SETTLE_PHASE = "settle";
 
 /**
- * The REVIEW LOOP's texts, checked at load: the four the linter owns, and every phase's
- * intro and steps.
+ * The REVIEW LOOP's texts, checked at load: the three the linter owns, the preamble, and
+ * every phase's steps, verbs and process values.
  *
  * The placeholders are checked because each one is the only way a value reaches the agent:
  * a `handover` with no `{{command}}` leaves it holding a decision and no way to hand it
  * back, and a `frame` with no `{{review}}` names no file at all.
  *
- * `verbs` is checked BOTH WAYS against the phase's own steps. A verb the phase accepts but
- * no step names is one the agent is never told it may use; a verb a step names but the
- * phase does not accept is one the agent will be refused for using. Either is a drafting
- * error, and neither is visible by reading one of the two alone.
+ * `verbs` is checked BOTH WAYS against the phase's `verb-prose`. A verb the phase accepts
+ * but does not word is offered with nothing to choose on, and a verb it words but does not
+ * accept is one the agent will be refused for using. Either is a drafting error, and
+ * neither is visible by reading one of the two alone.
  * @param {Registry} registry
  * @param {string} at
  */
@@ -1839,6 +1842,17 @@ export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
 }
 
 /**
+ * Whether --checks-only / --checks-skip leave a check in the run. The one reading of the two
+ * lists, for loadChecks and for anything that has to know what the run left out.
+ * @param {string} id
+ * @param {{only?: string[], skip?: string[]}} selection
+ * @returns {boolean}
+ */
+export function checkSelected(id, { only, skip } = {}) {
+  return (!only?.length || only.includes(id)) && !skip?.includes(id);
+}
+
+/**
  * Load and filter the check modules named by the registry, GROUPED BY PHASE - a check's
  * phase is which list it lands in (its registry section), so no LoadedCheck carries one.
  * Every phase in PHASE_SECTIONS gets a list (loadRegistry has already asserted that none of
@@ -1855,17 +1869,6 @@ export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
  *   dependency is not pulled in when the check will not run.
  * @returns {Promise<Map<string, LoadedCheck[]>>}  Phase -> its checks, in registry order.
  */
-/**
- * Whether --checks-only / --checks-skip leave a check in the run. The one reading of the two
- * lists, for loadChecks and for anything that has to know what the run left out.
- * @param {string} id
- * @param {{only?: string[], skip?: string[]}} selection
- * @returns {boolean}
- */
-export function checkSelected(id, { only, skip } = {}) {
-  return (!only?.length || only.includes(id)) && !skip?.includes(id);
-}
-
 export async function loadChecks(registry, { only, skip, eslint } = {}) {
   const byPhase = new Map(Object.keys(PHASE_SECTIONS).map((p) => [p, []]));
   for (const entry of registry.checkEntries()) {
@@ -2038,7 +2041,7 @@ function eslintEligible(entry, inEslintMode) {
  * @returns {RunContext}
  */
 export function routeCtx(check, siblings) {
-  // No `input` => the review-level source ctx. assertEntry requires an input on every
+  // No `input` => the review-level source ctx. The registry schema requires an input on every
   // check, so this is a floor, not a routing rule.
   if (check.input === undefined) {
     return siblings.source;

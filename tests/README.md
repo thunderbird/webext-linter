@@ -72,7 +72,8 @@ win), so a fixture can exercise a flag-gated check - e.g.
 
 It may also carry a `"network"` map keyed by URL, saying what that URL serves:
 `{ "sameAs": "<path in the fixture>" }`, `{ "body": "<text>" }`, `{ "json": <value> }`
-or `{ "status": <code> }`. Every URL a fixture does not declare answers 404, which is
+or `{ "status": <code> }`. Every URL a fixture does not declare answers 404 - except an
+OSV query, which gets OSV's empty answer, since a 404 from OSV ends the review. That 404 is
 what a fixture with no `"network"` map relies on: a declared vendor source is then
 unfetchable, so the file it names is reviewed as authored code rather than exempted.
 
@@ -161,7 +162,7 @@ A selection, not the catalogue - `unit/` holds one file per module or scanner:
 | `rules.test.js` | The deterministic rule modules and the `Registry`-driven loader (`loadRegistry`, `loadChecks` - including its hard-throw on a missing module). |
 | `schema-index.test.js` | The `SchemaIndex` resolver (namespaces, `$extend` merge, permission/manifest-key sets) against the schema fixture. |
 | `unsafe-html.test.js` | The unsanitized-HTML scanner (`innerHTML`/`outerHTML`/`srcdoc`/`insertAdjacentHTML`). |
-| `vendor.test.js` | `VENDOR.md` parsing (which files are treated as third-party and left untouched). |
+| `vendor-resolve.test.js` | `resolveVendor`: the VENDOR file parse (which files are treated as third-party), and the dependency declarations of a built XPI and of a source review. |
 
 
 ### Schema fixture (`schema-fixture/`)

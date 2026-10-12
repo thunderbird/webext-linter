@@ -183,8 +183,8 @@ export const sweepSlot = (artifact) =>
  *  - `closing`: the prompt being printed is the closing one (its phase answers `end`).
  *
  *  `first`, `spawned` and `decided` are read off the review each pass (runOf); `closing`
- *  comes from the phase being printed (stepsOf). Every other name but `aborted` and the
- *  flags is the key the run record answers under. */
+ *  comes from the phase being printed (stepsOf). Every other name but `aborted`, `closing`
+ *  and the flags is the key the run record answers under. */
 export const REVIEW_PROMPT_FACTS = [
   ...PROMPT_SKIPS,
   "aborted",

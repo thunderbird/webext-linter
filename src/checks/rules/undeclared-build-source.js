@@ -3,7 +3,7 @@
 // `npm ci` (from node_modules). A curl/wget/git-clone/CDN fetch is a reject.
 //
 // Nothing decides that from the files, so EVERY source-code submission raises this, for
-// the agent to settle by reading the build before anything is built (or, with no agent, for
+// the agent to settle in `settle`, after the build (or, with no agent, for
 // the reviewer). Whether the build then succeeds and reproduces the shipped XPI are two
 // questions of their own (build-succeeds, build-reproduces-xpi). The deterministic
 // `unresolved` signals from collectBuildFiles (a network fetch, an orchestrator the linter

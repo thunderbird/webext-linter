@@ -458,7 +458,7 @@ function oneLineDeclaration(line) {
  * Read one block into the declaration it makes, or reject it. A block is EITHER a run
  * of self-contained one-line declarations, OR one keyed declaration: the packaged file
  * (a FILE_KEYS key, or a "path:" header line) and its source (a SRC_KEYS key, else the
- * first file URL the block carries).
+ * block's only bare URL line).
  *
  * Anything else is rejected rather than guessed at - a block naming a file with no
  * source, a source with no file, two sources, two files, or one-liners mixed with
@@ -570,9 +570,8 @@ function readBlock(block) {
     // source a declaration.
   }
 
-  // The source: a keyed one wins; failing that the block's only file URL. More than
-  // one candidate is ambiguous, and ambiguity is a rejection, not a choice.
-  // A keyed source wins; failing that the block's only bare URL line. A LABELLED
+  // A keyed source wins, failing that the block's only bare URL line. More than one
+  // candidate is ambiguous, and ambiguity is a rejection, not a choice. A LABELLED
   // block forgoes that fallback: it promised key:value lines, so the only shape
   // left for the bare-URL fallback is a block that named its file with a key.
   const fallback = labelled ? [] : unkeyed;

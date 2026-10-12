@@ -762,8 +762,8 @@ async function reviewSubmission(opts, work, prepared) {
   // Where the prompt's reader writes the add-on description, and where it writes what
   // building the add-on takes. Both sit in the review's work folder, and this tool writes
   // neither and reads neither. Held until the prompt is built, because whether either
-  // is NAMED depends on whether the step that writes it prints - the description is withheld
-  // by --llm-skip-summary, the build report by a review that is not a source code one.
+  // is NAMED depends on whether the step that writes it can print - the description is
+  // withheld by --llm-skip-summary, the build report by a review that is not a source code one.
   let summaryPath = null;
   let buildPath = null;
   let buildCopyPath = null;
@@ -795,7 +795,7 @@ async function reviewSubmission(opts, work, prepared) {
     summaryPath = skip.includes("llm-skip-summary") ? null : work.summary;
     buildPath = mode.sca ? work.build : null;
     // The build phase's two paths, named only where it can be issued: a source code review
-    // (src/report/loop.js runOf).
+    // (its steps' `sca` condition in assets/registry.yaml).
     buildCopyPath = mode.sca ? work.buildCopy : null;
     buildDiffPath = mode.sca ? work.buildDiff : null;
     // Ungated, unlike the two above: every review has a report, and this one is written by
@@ -805,9 +805,10 @@ async function reviewSubmission(opts, work, prepared) {
     // Named on meta BEFORE the state is built: `issue` writes the state, and a field set
     // after that never reaches the passes that read it back. A path printed for a file
     // nobody is asked to write would be an instruction with no step behind it - which is
-    // why the first two are null above unless the step that writes them prints: the
-    // description is withheld by --llm-skip-summary, the build report by a review that is
-    // not a source code one.
+    // why the first two are null above where the step that writes them can never print: the
+    // description under --llm-skip-summary, the build report in a review that is not a
+    // source code one. The Review Details name the build report only once its phase
+    // recorded it (src/report/loop.js reportMeta).
     //
     // Nothing is checked here: the work folder was found writable, and every one of these
     // names free, before the review began (runPipeline). The agents this prompt hands out
@@ -949,8 +950,9 @@ async function reviewSubmission(opts, work, prepared) {
     // its result goes into the state, and every pass after this reads that instead of
     // rebuilding it. So this is the only run that needs the add-on at all.
     //
-    // Which phase goes out is `issue`'s to decide, from what has work - a run with no
-    // sweep and no description agent starts at `verify`, and never mentions either.
+    // Which phase goes out is `issue`'s to decide, from what has work - a source review
+    // opens with its build, and a run with no sweep and no description agent never
+    // mentions either.
     const texts = registry.llmPhases();
     const state = loopState;
     const first = issue(state, opts.workFolder, texts.phases, registry);

@@ -820,7 +820,8 @@ test("reviewing a fixture renders to stdout with a severity-based exit", () => {
 // Keyed on the paths themselves, because a path is all a step gives out: a sub-agent is
 // handed the request and nothing else, so nothing in one stands for a path by name.
 test("a source code review's steps carry the paths the review resolved to", () => {
-  // A source review nothing aborts, so its first prompt starts the agents that take paths.
+  // A source review nothing aborts, so its first prompt is the build opening, which takes
+  // both paths.
   const sca = path.join(ROOT, "tests", "addons", "sca-transpiled-kept");
   const r = run([
     path.join(sca, "xpi"),
@@ -1289,7 +1290,7 @@ test("the two skips withhold the description and the manual items", () => {
   // ...while the step that closes the round trip survives the renumbering.
   assert.match(on.stdout, /--llm-handback/);
 
-  // Both skips are off the spawn phase, so its only agent is the sweep - and the manual
+  // --llm-skip-summary leaves the sweep as the spawn phase's only agent - and the manual
   // items are not dropped from the REVIEW, only from what a phase puts to anyone. They
   // are still in the report the last pass prints.
   assert.ok(

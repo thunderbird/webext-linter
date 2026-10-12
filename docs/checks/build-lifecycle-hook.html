@@ -71,8 +71,11 @@ flowchart TD
         network. A hook cleared as a local build step aborts nothing. Once one is reported,
         nothing further is put to a reviewer: the report drops every to-do item they would
         have been asked, keeps the code-review sections of a printed report (an aborted <code>--llm-review</code> hands over no to-do item at all), and the developer&rsquo;s text ends
-        on the reason it is incomplete (&ldquo;Build process issues&rdquo;). The next thing the review would otherwise ask is that a reviewer install these
-        dependencies, which is the moment the hook runs on their machine.
+        on the reason it is incomplete (&ldquo;Build process issues&rdquo;). Under <code>--llm-review</code> the agent settles it
+        in the <code>settle</code> phase, after the build. Where the review runs its build
+        steps, the hooks are screened before any install by the agent's build safety
+        judgement and the reviewer's build choice
+        (<a href="build-unsafe.html">Unsafe build process</a>).
       </div>
 
       <p class="source-note">

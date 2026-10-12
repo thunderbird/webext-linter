@@ -2,8 +2,8 @@
 // the JS scan (eval / Function constructor / code-string timer / ambiguous
 // fetch().then(eval) hits) over authored sources, plus the manifest.json CSP flags.
 // The eval-call / function-constructor / string-timer / csp-unsafe-* checks and
-// remote-eval all read this one result, so the AST scan runs a single time per
-// review - the same "compute once, checks read it" pattern as getOutboundSinks.
+// remote-eval all read this one result, gathered once per artifact - the same
+// "compute once, checks read it" pattern as getOutboundSinks.
 //
 // The `hits` are scoped to files OUTSIDE the pure WebExtension tree. A
 // WebExtension sandbox cannot execute eval / the Function constructor /

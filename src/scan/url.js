@@ -1,6 +1,6 @@
-// Classifies a URL/reference string found in HTML/CSS/JS so the remote-code
-// check can decide whether a referenced source is bundled (local) or fetched
-// from the network (remote).
+// Classifies a URL/reference string found in HTML/CSS/JS so a check can decide
+// whether a referenced source is bundled (local) or fetched from the network
+// (remote).
 //
 // Belongs here: pure remote/embedded/local classification of a URL or reference
 // string by its scheme/shape, and the ranking of those classes by exposure -

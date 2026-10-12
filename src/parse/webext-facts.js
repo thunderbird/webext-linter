@@ -1,6 +1,7 @@
 // Loads the hand-curated Thunderbird domain facts from assets/webext-facts.yaml -
 // data the API schema does not express (the API root globals, the user-data
-// namespaces, the privileged core globals, and the file-loader method tables).
+// namespaces, the privileged core globals, the file-loader method tables, and the
+// extension-URL-minting methods).
 // The fact VALUES live in assets/ (like registry.yaml / library-blocks.yaml);
 // this module is only the loader that reads them once and hands each consumer the
 // shape it uses. Each list's consumer is named in the yaml.
@@ -8,7 +9,7 @@
 // Belongs here: reading and shaping the facts (Set / Map). Does NOT belong here:
 // the facts themselves (-> assets/webext-facts.yaml) or what a consumer does with
 // them (-> src/parse/api-base.js, network-sinks.js, core-symbols.js,
-// loader-files.js).
+// loader-files.js, local-url.js).
 
 import fs from "node:fs";
 import path from "node:path";

@@ -13,7 +13,7 @@
 //
 // Does NOT belong here: the verdict and wording (-> src/checks/rules/
 // disguised-*.js, cleartext-transmission.js, privacy-policy.js,
-// data-exfiltration.js, assets/registry.yaml), the once-per-run aggregation
+// data-exfiltration.js, assets/registry.yaml), the once-per-artifact aggregation
 // (-> src/lib/outbound-sinks.js), URL classification (-> src/scan/url.js)
 // and Babel access (-> src/parse/ast.js). Not yet covered: document.write, the
 // anchor ping attribute.
