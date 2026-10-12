@@ -14,32 +14,120 @@
 
 import { URL_CLASS } from "../lib/enum.js";
 
-const REMOTE_RE = /^(?:https?:|ftps?:|wss?:)\/\//i;
-const PROTOCOL_RELATIVE_RE = /^\/\//; // "//host/x" - inherits page scheme, i.e. remote
-const EMBEDDED_RE = /^(?:data|blob):/i;
+// The base a reference is resolved against: the add-on's own origin, so a relative
+// path, "/x" or "#x" names a packaged resource.
+const SELF_BASE = "moz-extension://ext/";
+const SELF_HOST = "ext";
+// A web page base, for telling a protocol-relative "//host/x" from an explicit
+// moz-extension: URL. Content scripts resolve "//host/x" against the web page, so
+// it is a network load.
+const WEB_BASE = "https://page.invalid/";
+
+const REMOTE_PROTOCOLS = new Set([
+  "http:",
+  "https:",
+  "ftp:",
+  "ftps:",
+  "ws:",
+  "wss:",
+]);
+const EMBEDDED_PROTOCOLS = new Set(["data:", "blob:"]);
+
+/**
+ * The class of a URL scheme: a network scheme is REMOTE, data: and blob: are
+ * EMBEDDED, every other scheme (moz-extension:, chrome:, resource:, javascript:,
+ * ...) is LOCAL.
+ * @param {string} protocol  A scheme with its trailing colon, lowercase ("http:").
+ * @returns {import("../lib/enum.js").UrlClass}
+ */
+function classifyScheme(protocol) {
+  if (REMOTE_PROTOCOLS.has(protocol)) {
+    return URL_CLASS.REMOTE;
+  }
+  if (EMBEDDED_PROTOCOLS.has(protocol)) {
+    return URL_CLASS.EMBEDDED;
+  }
+  return URL_CLASS.LOCAL;
+}
+
+/**
+ * The scheme a text starts with, read the way the URL parser reads it (tab, LF
+ * and CR removed, leading C0 controls and spaces trimmed, lowercased), or null
+ * when it starts with none. For text the URL parser rejects, such as the prefix
+ * "http://" of a concatenation, whose scheme is still plain to read.
+ * @param {string} text
+ * @returns {?string}  The scheme with its trailing colon ("http:").
+ */
+export function writtenScheme(text) {
+  let clean = "";
+  for (const c of String(text ?? "")) {
+    if (c !== "\t" && c !== "\n" && c !== "\r") {
+      clean += c;
+    }
+  }
+  let start = 0;
+  while (start < clean.length && clean.charCodeAt(start) <= 0x20) {
+    start++;
+  }
+  const colon = clean.indexOf(":", start);
+  if (colon <= start) {
+    return null;
+  }
+  const scheme = clean.slice(start, colon).toLowerCase();
+  const isAlpha = (c) => c >= "a" && c <= "z";
+  const isSchemeChar = (c) =>
+    isAlpha(c) || (c >= "0" && c <= "9") || c === "+" || c === "-" || c === ".";
+  return isAlpha(scheme[0]) && [...scheme].every(isSchemeChar)
+    ? `${scheme}:`
+    : null;
+}
+
+/**
+ * The URL a reference names, read the way the browser reads it (WHATWG URL)
+ * against `base`, or null when it does not parse. The parser does the trimming
+ * (leading/trailing C0 controls and spaces, tab/LF/CR anywhere) and accepts the
+ * forms a browser accepts (`https:/x`, `http:x`, `https:\x`).
+ * @param {string} s
+ * @param {string} base
+ * @returns {?URL}
+ */
+function parseRef(s, base) {
+  try {
+    return new URL(s, base);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * @param {string} raw  URL or reference string to classify.
  * @returns {import("../lib/enum.js").UrlClass}
  *   - REMOTE:   network-loaded (http/https/ftp/ws, or protocol-relative
- *               "//host")
+ *               "//host"), or a value that does not parse and names no other
+ *               scheme as written (only a broken authority throws, so this fails
+ *               closed)
  *   - EMBEDDED: inline payload (data:, blob:) - not bundled source, often
  *               obfuscation
- *   - LOCAL:    relative path, root-relative "/x",
- *               moz-extension:/chrome:/resource:, "#...", or empty
+ *   - LOCAL:    relative path, root-relative "/x", "#...", empty, and every
+ *               other scheme (moz-extension:, chrome:, resource:, javascript:,
+ *               about:, ...)
  */
 export function classifyUrl(raw) {
-  const url = String(raw ?? "").trim();
-  if (url === "") {
-    return URL_CLASS.LOCAL;
+  const text = String(raw ?? "");
+  const url = parseRef(text, SELF_BASE);
+  if (!url) {
+    const scheme = writtenScheme(text);
+    return scheme ? classifyScheme(scheme) : URL_CLASS.REMOTE;
   }
-  if (EMBEDDED_RE.test(url)) {
-    return URL_CLASS.EMBEDDED;
+  if (url.protocol === "moz-extension:" && url.host !== SELF_HOST) {
+    // Another host: an explicit moz-extension: URL keeps its scheme against a web
+    // base, a protocol-relative "//host/x" takes the web page's.
+    const onWeb = parseRef(text, WEB_BASE);
+    return onWeb?.protocol === "moz-extension:"
+      ? URL_CLASS.LOCAL
+      : URL_CLASS.REMOTE;
   }
-  if (REMOTE_RE.test(url) || PROTOCOL_RELATIVE_RE.test(url)) {
-    return URL_CLASS.REMOTE;
-  }
-  return URL_CLASS.LOCAL;
+  return classifyScheme(url.protocol);
 }
 
 // The classes ordered by exposure, gravest first: a network destination outranks

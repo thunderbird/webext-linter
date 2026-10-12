@@ -28,7 +28,12 @@ import {
   srcText,
   staticValues,
 } from "./ast.js";
-import { classifyUrl, isLoopback, worstUrlClass } from "../scan/url.js";
+import {
+  classifyUrl,
+  isLoopback,
+  worstUrlClass,
+  writtenScheme,
+} from "../scan/url.js";
 import { URL_CLASS, OVERTNESS } from "../lib/enum.js";
 import { apiBasesOf } from "./api-base.js";
 import { localUrlArgs, localUrlVarsOf } from "./local-url.js";
@@ -42,7 +47,7 @@ const URL_PROPS = new Set(["src", "href"]);
 const STYLE_URL_PROPS = new Set(["backgroundImage", "background", "cssText"]);
 
 // Non-TLS remote schemes - data sent to one of these travels unencrypted.
-const CLEARTEXT_RE = /^(?:http|ws|ftp):\/\//i;
+const CLEARTEXT_PROTOCOLS = ["http:", "ws:", "ftp:"];
 
 // XMLHttpRequest.open(method, url, ...) leads with an HTTP method, which is how
 // it is told apart from window.open(url, ...).
@@ -364,7 +369,7 @@ function urlInfo(node, bases, urlVars) {
   }
   return {
     destClass,
-    cleartext: CLEARTEXT_RE.test(prefix),
+    cleartext: isCleartext(prefix, url),
     host,
     dataAppended: destClass.remote,
   };
@@ -386,7 +391,7 @@ function staticUrlInfo(url) {
   }
   return {
     destClass,
-    cleartext: CLEARTEXT_RE.test(url),
+    cleartext: isCleartext(url, parsed),
     host,
     dataAppended: false,
   };
@@ -436,6 +441,18 @@ function parsedUrl(s) {
   } catch {
     return null;
   }
+}
+
+/**
+ * True when a destination is sent over a non-TLS scheme. A parsed URL answers by its
+ * protocol. A value that does not parse (the prefix `"http://"` of `"http://" + host`)
+ * answers by its scheme as written.
+ * @param {string} s  The destination text.
+ * @param {?URL} parsed  Its parsedUrl.
+ * @returns {boolean}
+ */
+function isCleartext(s, parsed) {
+  return CLEARTEXT_PROTOCOLS.includes(parsed?.protocol ?? writtenScheme(s));
 }
 
 /**

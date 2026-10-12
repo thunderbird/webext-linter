@@ -36,6 +36,31 @@ test("scanNetworkSinks reads scheme/host from a dynamic URL prefix", () => {
   assert.equal(hit.dataAppended, true);
 });
 
+// The scheme is read the way the browser parses it: "http:host/x" is a cleartext
+// request to that host. A prefix with no host yet is still a cleartext remote send.
+test("scanNetworkSinks reads a loosely spelled scheme and a bare scheme prefix", () => {
+  const loose = one('fetch("http:evil.example/c");');
+  assert.equal(loose.destClass, URL_CLASS.REMOTE);
+  assert.equal(loose.cleartext, true);
+  assert.equal(loose.host, "evil.example");
+
+  const bare = one('fetch("http://" + host + "/c");');
+  assert.equal(bare.destClass, URL_CLASS.REMOTE);
+  assert.equal(bare.cleartext, true);
+  assert.equal(bare.host, null);
+});
+
+// An explicit moz-extension: URL is the add-on's own origin, also when the prefix
+// alone does not parse as a URL.
+test("a moz-extension: destination is local", () => {
+  for (const code of [
+    'fetch("moz-extension://abc/x");',
+    'fetch("moz-extension://" + browser.runtime.id + "/x");',
+  ]) {
+    assert.equal(one(code).destClass, URL_CLASS.LOCAL, code);
+  }
+});
+
 // The host is read through a CSS url(...) wrapper (a covert style sink).
 test("scanNetworkSinks reads host through a CSS url() wrapper", () => {
   const hit = one(

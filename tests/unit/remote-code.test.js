@@ -24,7 +24,8 @@ import { formatNote } from "../../src/checks/registry.js";
 
 // ---- url classifier ----
 // http(s), protocol-relative //, ftp and wss URLs classify as remote; data:/blob:
-// as embedded; relative paths, moz-extension:, fragments and "" as local.
+// as embedded; relative paths, moz-extension: and other schemes, fragments and ""
+// as local.
 test("classifyUrl distinguishes remote / embedded / local", async () => {
   for (const u of [
     "https://x/y.js",
@@ -32,14 +33,43 @@ test("classifyUrl distinguishes remote / embedded / local", async () => {
     "//cdn/x.js",
     "ftp://x",
     "wss://x",
+    "//cdn.example/x.js",
   ]) {
     assert.equal(classifyUrl(u), URL_CLASS.REMOTE, u);
   }
   assert.equal(classifyUrl("data:text/js,alert(1)"), URL_CLASS.EMBEDDED);
   assert.equal(classifyUrl("blob:abc"), URL_CLASS.EMBEDDED);
-  for (const u of ["lib/x.js", "/lib/x.js", "moz-extension://x", "#frag", ""]) {
+  for (const u of [
+    "lib/x.js",
+    "/lib/x.js",
+    "moz-extension://x",
+    "moz-extension://abc/x",
+    "chrome://x/content/a.js",
+    "javascript:void(0)",
+    "#frag",
+    "",
+  ]) {
     assert.equal(classifyUrl(u), URL_CLASS.LOCAL, u);
   }
+});
+
+// The scheme is read the way the browser reads it, so a URL the browser loads from
+// the network is remote however loosely it is spelled. A value the URL parser
+// rejects (a broken authority) is judged by the scheme it is written with, and is
+// remote when it has none.
+test("classifyUrl reads a scheme the way the browser parses it", () => {
+  for (const u of [
+    "https:/evil/x.js",
+    "http:evil/x",
+    "https:\\\\evil/x",
+    "ht\ttps://evil/x",
+    "http://",
+    "//a b/x.js",
+  ]) {
+    assert.equal(classifyUrl(u), URL_CLASS.REMOTE, JSON.stringify(u));
+  }
+  assert.equal(classifyUrl("da\nta:text/js,alert(1)"), URL_CLASS.EMBEDDED);
+  assert.equal(classifyUrl("moz-extension://a b/x.js"), URL_CLASS.LOCAL);
 });
 
 // ---- HTML ----
@@ -231,6 +261,14 @@ test("getEvalScan scopes hits to non-WebExtension files", async () => {
 test("JS scan flags runtime script injection with a literal remote src", async () => {
   const t = types(
     `const s = document.createElement("script"); s.src = "https://cdn/x.js";`
+  );
+  assert.ok(t.includes("remote-script-src"));
+});
+
+// A src the browser still loads from the network with a single slash is remote.
+test("JS scan flags a script src with a loosely spelled remote scheme", () => {
+  const t = types(
+    `const s = document.createElement("script"); s.src = "https:/evil.example/x.js";`
   );
   assert.ok(t.includes("remote-script-src"));
 });
