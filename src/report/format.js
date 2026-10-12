@@ -574,10 +574,7 @@ export function schemaLines(meta, schemaCache) {
  * behind it is an instruction with nothing to do.
  *
  * The paths are a block of NAMED values (valueLines), the shape the --llm-sca-review
- * prompt uses for its own Submission block. Named, because the --llm-review prompt's steps
- * point at them by name rather than carrying a path through wrapped prose - and named in
- * EVERY run, not only under a review flag, because one section must not read two ways
- * depending on a flag.
+ * prompt uses for its own Submission block.
  *
  * An SCA review spans TWO artifacts and the reader has to know which is which: the report
  * labels every locus [XPI]/[SCA], and the block names the artifacts behind those labels -
@@ -609,18 +606,6 @@ export function headerLines(meta) {
   // excluded from the WebExtension code checks - which nothing else in the report says.
   if (meta.scaExpSource) {
     values.push(["SCA_EXP_SOURCE", meta.scaExpSource]);
-  }
-  // Only --llm-review writes one. It is named here rather than only in the prompt so
-  // the section stays the one place that says what this review consists of.
-  // Where the description GOES, not where it is: this run writes no such file. The
-  // prompt's reader does, and the reviewer is handed a link to it.
-  if (meta.summaryFile) {
-    values.push(["ADDON_DESCRIPTION", meta.summaryFile]);
-  }
-  // Where the build report GOES, on the same terms: a source code review's reviewer
-  // reproduces the build, and this names what that takes without this tool ever reading it.
-  if (meta.buildFile) {
-    values.push(["BUILD_PROCESS", meta.buildFile]);
   }
   return [
     ...section("Review Details"),
