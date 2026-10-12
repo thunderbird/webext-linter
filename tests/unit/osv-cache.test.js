@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { withOsvCache } from "../../src/vendor/osv-cache.js";
+import { NoAnswerError } from "../../src/util/net.js";
 import {
   VENDOR_OSV_API,
   VENDOR_OSV_BATCH_API,
@@ -109,6 +110,32 @@ test("a batch OSV answers 404 is not kept", async () => {
     queries: [query("a")],
   });
   assert.equal(up.sent.length, 1, "asked again");
+});
+
+// A batch reply that leaves a query without a result is no answer: it ends the review,
+// and nothing of it is kept, so the next ask goes to OSV again.
+test("a short batch reply is no answer, and nothing of it is kept", async () => {
+  for (const reply of [{ results: [{}] }, {}, { results: [{}, null] }]) {
+    const file = cacheFile();
+    const short = {
+      async postJson() {
+        return reply;
+      },
+    };
+    await assert.rejects(
+      withOsvCache(short, file).postJson(VENDOR_OSV_BATCH_API, {
+        queries: [query("a"), query("b")],
+      }),
+      NoAnswerError,
+      JSON.stringify(reply)
+    );
+    const up = counting();
+    await withOsvCache(up, file).postJson(VENDOR_OSV_BATCH_API, {
+      queries: [query("a"), query("b")],
+    });
+    assert.equal(up.sent.length, 1, "asked again");
+    assert.equal(up.sent[0].body.queries.length, 2, "both asked again");
+  }
 });
 
 test("advisories and single queries are kept; a 404 is not", async () => {

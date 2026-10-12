@@ -26,6 +26,7 @@ import { writeFileAtomic } from "../util/atomic.js";
 import { parseJson } from "../util/json.js";
 import { debug } from "../util/log.js";
 import { rethrowIfFatal } from "../lib/errors.js";
+import { NoAnswerError } from "../util/net.js";
 
 /** @typedef {import("./verify.js").VendorNet} VendorNet */
 
@@ -86,13 +87,16 @@ export function withOsvCache(net, file) {
       const keys = queries.map((q) => `batch:${queryKey(q)}`);
       const missing = queries.filter((_, i) => !kept(keys[i]));
       if (missing.length > 0) {
-        const res = await net.postJson(url, { ...body, queries: missing });
-        const results = Array.isArray(res?.results) ? res.results : [];
+        const results = completeBatch(
+          await net.postJson(url, { ...body, queries: missing }),
+          missing.length,
+          url
+        );
         // The endpoint answers positionally, one result per query sent.
         let at = 0;
         for (const [i, q] of queries.entries()) {
           if (!kept(keys[i]) && q === missing[at]) {
-            cache[keys[i]] = { answer: results[at] ?? {} };
+            cache[keys[i]] = { answer: results[at] };
             at++;
           }
         }
@@ -134,4 +138,27 @@ function save(file, cache) {
       `Could not write the OSV cache ${path.basename(file)}: ${err.message}`
     );
   }
+}
+
+/**
+ * The results of an OSV batch reply, when it answers every query: one object per query
+ * sent, in order. Anything short of that is no answer, never a partial one - a package
+ * left without a result would otherwise read as having no advisories.
+ * @param {*} res  The reply.
+ * @param {number} sent  How many queries were sent.
+ * @param {string} url  The endpoint, for the refusal.
+ * @returns {object[]}
+ * @throws {NoAnswerError}
+ */
+export function completeBatch(res, sent, url) {
+  const results = res?.results;
+  const complete =
+    Array.isArray(results) &&
+    results.length === sent &&
+    results.every((r) => r !== null && typeof r === "object");
+  if (!complete) {
+    const got = Array.isArray(results) ? results.length : "no";
+    throw new NoAnswerError(url, `${got} results for ${sent} queries`);
+  }
+  return results;
 }

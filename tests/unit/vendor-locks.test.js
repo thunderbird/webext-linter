@@ -1138,7 +1138,7 @@ test("a pnpm override is audited at the installed version", async () => {
     fetchJson: async () => ({ downloads: 1e9 }),
     postJson: async (_url, body) => {
       asked.push(...body.queries.map((q) => `${q.package.name}@${q.version}`));
-      return { results: [] };
+      return { results: body.queries.map(() => ({})) };
     },
   });
   assert.ok(asked.includes("lodash@4.17.21"), asked.join(" "));

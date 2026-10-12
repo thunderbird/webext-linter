@@ -68,6 +68,7 @@ import { npmNameForLibrary } from "../lib/library-hashes.js";
 import { matchLibraryBlock } from "../lib/library-blocks.js";
 import { normalizedSha256, eolNormalize } from "../normalize/hash.js";
 import { fetchWithTimeout, httpError, NoAnswerError } from "../util/net.js";
+import { completeBatch } from "./osv-cache.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 import { debug } from "../util/log.js";
 import { parseJson } from "../util/json.js";
@@ -426,10 +427,9 @@ async function auditLockedPackages(vendor, net, blocks) {
         })),
       })
     );
-    const results = Array.isArray(res?.results) ? res.results : [];
-    // The endpoint answers positionally, one result per query, and says nothing
-    // about which package each answer is for - hence the index, and hence the
-    // tolerance for a short array rather than a trusted pairing.
+    // The endpoint answers positionally, one result per query, and says nothing about
+    // which package each answer is for - hence the index. A short reply is no answer.
+    const results = completeBatch(res, chunk.length, VENDOR_OSV_BATCH_API);
     for (let i = 0; i < chunk.length; i++) {
       const pkg = chunk[i];
       const hits = results[i]?.vulns;
@@ -490,7 +490,8 @@ function isMaliciousAdvisory(v) {
 }
 
 /**
- * Ask OSV, and take a 404 for what it is: no answer. Every OSV url is the linter's own - a
+ * Ask OSV, and take a 404, or a reply that is not an object, for what it is: no answer.
+ * Every OSV url is the linter's own - a
  * fixed endpoint, or an advisory id OSV itself just listed - and OSV answers a package it has
  * never heard of with an empty 200, so a 404 says nothing about the submission: the endpoint
  * is gone, or OSV cannot serve an advisory it listed. Read as an answer it would drop
@@ -502,14 +503,21 @@ function isMaliciousAdvisory(v) {
  * @returns {Promise<T>}
  */
 async function askOsv(url, ask) {
+  let res;
   try {
-    return await ask();
+    res = await ask();
   } catch (err) {
     if (err.status === 404) {
       throw new NoAnswerError(url, "HTTP 404");
     }
     throw err;
   }
+  // Every OSV endpoint answers with an object - `{}` where it has nothing to say - so a
+  // reply that is not one carries no answer.
+  if (res === null || typeof res !== "object") {
+    throw new NoAnswerError(url, "the reply is not an object");
+  }
+  return res;
 }
 
 /**

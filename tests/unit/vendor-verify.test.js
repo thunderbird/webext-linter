@@ -278,9 +278,10 @@ function net({
         if (throwOnBatch) {
           throw notFound();
         }
+        // OSV answers every query, with `{}` where it has nothing to say.
         return typeof batch === "function"
           ? batch(body)
-          : (batch ?? { results: [] });
+          : (batch ?? { results: body.queries.map(() => ({})) });
       }
       calls?.query?.push(body);
       if (throwOnPost) {
@@ -950,6 +951,25 @@ test("verifyVendor: a declared dependency the add-on ships is audited", async ()
   );
   assert.equal(calls.query.length, 1);
   assert.equal(addon.vendor.vulnerabilities[0].name, "jszip");
+});
+
+// OSV answers every query with an object, `{}` where it has nothing to say, so a reply
+// that is not one is no answer, never a clean package.
+test("verifyVendor: an OSV reply that is not an object is no answer", async () => {
+  const body = "LIB\n";
+  const sri = `sha256-${createHash("sha256").update(body).digest("base64")}`;
+  const addon = addonWith(
+    { "vendor/lib.js": body },
+    store({ packages: [{ name: "jszip", version: "3.10.1" }] })
+  );
+  const listing = { files: [{ path: "/dist/jszip.js", integrity: sri }] };
+  await assert.rejects(
+    verifyVendor(
+      addon,
+      net({ listing, osv: () => "not json", throwOnFetch: true })
+    ),
+    NoAnswerError
+  );
 });
 
 test("verifyVendor: a copy differing only in line endings is the release it declares", async () => {
@@ -2521,7 +2541,7 @@ test("auditLockedPackages: declared packages share the one batch", async () => {
       ],
     })
   );
-  await verifyScaDependencies(addon, net({ calls, batch: { results: [] } }));
+  await verifyScaDependencies(addon, net({ calls }));
   assert.deepEqual(
     calls.batch[0].queries.map((q) => q.package.name),
     ["marked", "webpack", "deep"]
@@ -2538,7 +2558,7 @@ test("auditLockedPackages: the queue is chunked, covering every package once", a
     locked(`pkg-${String(i).padStart(3, "0")}`, "1.0.0")
   );
   const addon = addonWith({ "package.json": "{}" }, store({ lockPackages }));
-  await verifyScaDependencies(addon, net({ calls, batch: { results: [] } }));
+  await verifyScaDependencies(addon, net({ calls }));
   assert.deepEqual(
     calls.batch.map((b) => b.queries.length),
     [200, 50]
@@ -2550,28 +2570,23 @@ test("auditLockedPackages: the queue is chunked, covering every package once", a
 });
 
 // The endpoint says nothing about which package each answer is for - only its
-// position - so a short or empty results array must leave the rest unreported
-// rather than shifting every answer onto the wrong package.
-test("auditLockedPackages: a short results array reports only what it covers", async () => {
-  const addon = addonWith(
-    { "package.json": "{}" },
-    store({
-      lockPackages: [locked("first", "1.0.0"), locked("second", "1.0.0")],
-    })
-  );
-  await verifyScaDependencies(
-    addon,
-    net({
-      batch: { results: [{ vulns: [{ id: "GHSA-one" }] }] },
-      advisories: {
-        "GHSA-one": advisory("GHSA-one", "CRITICAL", "1.0.1", "first"),
-      },
-    })
-  );
-  assert.deepEqual(
-    addon.vendor.treeVulnerabilities.map((v) => v.name),
-    ["first"]
-  );
+// position - so a reply that leaves a package without a result is no answer. Read as one,
+// the unanswered package would pass as having no advisories.
+test("auditLockedPackages: a short results array is no answer", async () => {
+  const lockPackages = [locked("first", "1.0.0"), locked("second", "1.0.0")];
+  for (const batch of [
+    { results: [{ vulns: [{ id: "GHSA-one" }] }] },
+    { results: [] },
+    {},
+    { results: [{}, null] },
+  ]) {
+    const addon = addonWith({ "package.json": "{}" }, store({ lockPackages }));
+    await assert.rejects(
+      verifyScaDependencies(addon, net({ batch })),
+      NoAnswerError,
+      JSON.stringify(batch)
+    );
+  }
 });
 
 // One advisory routinely affects several packages in the same tree. Fetching it
