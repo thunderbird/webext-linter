@@ -3,6 +3,10 @@
   "preparation": {
     "from": "original",
     "advisories": {
+      "lint-pebble@0.4.0": [],
+      "argv-crumb@0.0.8": [],
+      "tidy-lantern@2.1.0": [],
+      "wick-trim@1.0.3": [],
       "wick-trim@1.0.1": [
         {
           "id": "CVE-2026-22222",

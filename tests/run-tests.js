@@ -35,7 +35,7 @@ import {
   popularityEntries,
   seedWorkCache,
 } from "./seed-caches.js";
-import { advisory, realPreparation } from "./prepared.js";
+import { advisory, auditEntries, realPreparation } from "./prepared.js";
 import { makeTgz } from "./unit/tarball-fixture.js";
 
 // Every request paces itself against a live host's request budget
@@ -201,11 +201,12 @@ function installFetchMock(dir, network) {
 // review source and the archive key a file identically.
 // An SCA spec may also carry a "preparation" block: the review is then started the way a
 // prepared source code review is, in the work folder a REAL preparation (src/prepare/steps.js)
-// leaves - run here, step by step, against a fake OSV network answering `advisories`
-// ("name@version" -> [{id, severity, fixed}]). It starts from the fixture's `from` folder
+// leaves - run here, step by step, its audits answered from `advisories` seeded into the
+// fixture's run cache folder (--cache-work-dir) ("name@version" -> [{id, severity, fixed}],
+// an empty list for a release with none), which names every release an audit asks about. It starts from the fixture's `from` folder
 // (src/ by default). With `rescued`, the agent's work in the rescued copy is the fixture's
 // src/ tree, and the copy's review runs; without, the rescue is given up, and the original
-// is reviewed like any other source, its lock audit answered from the run's OSV cache.
+// is reviewed like any other source, its lock audit answered from that same folder.
 function loadFixture(dir) {
   const file = path.join(EXPECTED_DIR, `${path.basename(dir)}.json`);
   const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -302,16 +303,14 @@ function fixtureCdnCache(dir, declared) {
 }
 
 /**
- * The work folder a fixture's "preparation" block leaves, prepared for real: the folder whose
- * review starts, and the source root in it.
- * @param {string} dir  The fixture.
- * @param {{advisories?: Record<string, {id: string, severity: string, fixed: string}[]>,
- *   from?: string, rescued?: boolean}} preparation
- * @returns {Promise<{workFolder: string, scaRoot: string}>}
+ * OSV's answers to a fixture's "preparation" block's audit, as run cache entries.
+ * @param {?{advisories?: Record<string, {id: string, severity: string, fixed: string}[]>}}
+ *   preparation
+ * @returns {Record<string, object>}
  */
-async function preparedFixture(dir, preparation) {
+function preparationEntries(preparation) {
   const vulns = Object.fromEntries(
-    Object.entries(preparation.advisories ?? {}).map(([release, list]) => {
+    Object.entries(preparation?.advisories ?? {}).map(([release, list]) => {
       const name = release.slice(0, release.lastIndexOf("@"));
       return [
         release,
@@ -319,10 +318,23 @@ async function preparedFixture(dir, preparation) {
       ];
     })
   );
+  return auditEntries(vulns);
+}
+
+/**
+ * The work folder a fixture's "preparation" block leaves, prepared for real: the folder whose
+ * review starts, and the source root in it. Its run cache is `cache`, the fixture's seeded
+ * folder, which its review reads too.
+ * @param {string} dir  The fixture.
+ * @param {{from?: string, rescued?: boolean}} preparation
+ * @param {string} cache
+ * @returns {Promise<{workFolder: string, scaRoot: string}>}
+ */
+async function preparedFixture(dir, preparation, cache) {
   const at = await realPreparation({
     source: path.join(dir, preparation.from ?? "src"),
     xpi: path.join(dir, "xpi"),
-    vulns,
+    cache,
     rescue: preparation.rescued
       ? (copyRoot) =>
           fs.cpSync(path.join(dir, "src"), copyRoot, { recursive: true })
@@ -460,31 +472,19 @@ async function main() {
       //
       // The run's OSV and popularity answers are read from a cache folder of the fixture's
       // own, named the way a test names it on the command line (--cache-work-dir). A
-      // prepared fixture's review reads the cache its preparation kept instead, so it may
-      // declare none of these answers.
+      // prepared fixture's preparation reads the same folder, which also holds the answers
+      // its "preparation" block gives the audit.
       //
       // Each fixture gets a fresh work folder of its own: the default one sits beside the
       // add-on argument, which would put a copy of every fixture inside tests/addons.
-      const argv = optionsToArgv(options);
-      if (preparation) {
-        const declared = [
-          ...Object.values(answers.osv),
-          ...Object.values(answers.popularity),
-        ].some((family) => Object.keys(family).length > 0);
-        if (declared) {
-          throw new Error(
-            "a prepared fixture declares OSV or popularity answers"
-          );
-        }
-      } else {
-        argv.push(
-          "--cache-work-dir",
-          seedWorkCache({
-            osv: osvEntries(answers.osv),
-            popularity: popularityEntries(answers.popularity),
-          })
-        );
-      }
+      const workCache = seedWorkCache({
+        osv: {
+          ...osvEntries(answers.osv),
+          ...preparationEntries(preparation),
+        },
+        popularity: popularityEntries(answers.popularity),
+      });
+      const argv = [...optionsToArgv(options), "--cache-work-dir", workCache];
       const base = {
         ...pipelineOptsFromArgv(argv),
         ...CACHE_OPTS,
@@ -502,7 +502,11 @@ async function main() {
         // opt, since that is what the arg reader hands the pipeline.
         let scaRoot = path.join(dir, "src");
         if (preparation) {
-          ({ workFolder, scaRoot } = await preparedFixture(dir, preparation));
+          ({ workFolder, scaRoot } = await preparedFixture(
+            dir,
+            preparation,
+            workCache
+          ));
         }
         const inRoot = (value) =>
           value ? path.join(scaRoot, value) : undefined;

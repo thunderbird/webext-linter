@@ -2,8 +2,10 @@
 // which roots it reads back and settles, what its audit of a root's lock decides
 // (src/prepare/audit.js), when a rescued copy is made, how the copy's steps move on, how a
 // rescue is given up, what each hand-back refuses, and what the review of a rescued copy
-// tells the developer (sca-dependencies-changed). Driven through handBack() with a fake
-// network, so every OSV answer is the test's.
+// tells the developer (sca-dependencies-changed). Driven through handBack() with OSV's
+// answers seeded into a run cache folder outside the work folder, which the record names as
+// its --cache-work-dir (auditCache), so every OSV answer is the test's, and a request for one
+// it does not give is refused by the switched-off network.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -24,7 +26,7 @@ import { NoAnswerError } from "../../src/util/net.js";
 import { workPaths } from "../../src/util/dest.js";
 import { loadSourceArchive } from "../../src/addon/load.js";
 import depsChanged from "../../src/checks/rules/sca-dependencies-changed.js";
-import { advisory, answer, net, noNet, writeTree } from "../prepared.js";
+import { advisory, answer, auditCache, writeTree } from "../prepared.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..", "..");
@@ -33,6 +35,9 @@ const ROOT = path.resolve(here, "..", "..");
 const TOOL_HIGH = {
   "lint-pebble@0.4.0": [advisory("GHSA-tool", "HIGH", "lint-pebble", "0.4.1")],
 };
+
+/** The build tool every source below declares, as OSV answers it with no advisory. */
+const TOOL_CLEAN = { "lint-pebble@0.4.0": [] };
 
 /** A package.json for the sources below: no dependency of its own, and a lint tool pinned
  *  as a devDependency unless `tool` is null. */
@@ -73,11 +78,17 @@ function npmLock(tool = "0.4.0", extraPackages = {}) {
 /**
  * A work folder as the run that starts a preparation leaves it, its source extracted into
  * sca/ (`files`, relative to sca/), inside a fresh parent. Real, as the hand-back is given it.
+ * Its record names `cache` as its --cache-work-dir: by default a folder seeded with OSV's
+ * answers `vulns` (auditCache), for every step of the preparation. A null `cache` names none,
+ * so the run's cache is the work folder's own.
  * @param {Record<string, string>} files
- * @param {{experiments?: boolean}} [opts]
+ * @param {{experiments?: boolean, vulns?: Record<string, object[]>, cache?: ?string}} [opts]
  * @returns {string} The work folder.
  */
-function workFolder(files, { experiments = false } = {}) {
+function workFolder(
+  files,
+  { experiments = false, vulns = {}, cache = auditCache(vulns) } = {}
+) {
   const parent = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "wl-prepare-"))
   );
@@ -87,7 +98,7 @@ function workFolder(files, { experiments = false } = {}) {
     work,
     startRecord({
       submission: { xpi: path.join(parent, "addon.xpi"), experiments },
-      flags: {},
+      flags: cache ? { "cache-work-dir": cache } : {},
     })
   );
   writeTree(workPaths(work).sca, {
@@ -98,14 +109,62 @@ function workFolder(files, { experiments = false } = {}) {
   return work;
 }
 
-/** The first step: the extracted source handed back as the root, sca/ itself. */
-const first = (work, n = net(), answers = {}) => {
+/** The first step: the extracted source handed back as the root, sca/ itself, with
+ *  `answers` filled in beside it. */
+const first = (work, answers = {}) => {
   answer(work, { SCA_ROOT: workPaths(work).sca, ...answers });
-  return handBack(work, { net: n });
+  return handBack(work);
 };
 
 /** A later step: the folder handed back, nothing to fill in. */
-const later = (work, n = net()) => handBack(work, { net: n });
+const later = (work) => handBack(work);
+
+/** The first step as `first` takes it, its audit asking `net` behind the run's cache. */
+const firstAsking = (work, net) => {
+  answer(work, { SCA_ROOT: workPaths(work).sca });
+  return handBack(work, { net });
+};
+
+/**
+ * A network answering OSV from `vulns` the way OSV does, for a test about what the run's
+ * cache keeps of a live answer: the batch answers with ids, positionally, and each id is
+ * served on its own. Everything else 404s. `batchDown` has the batch endpoint answer 404,
+ * which is no answer from OSV, and ends the run.
+ * @param {Record<string, object[]>} [vulns]
+ * @param {{batchDown?: boolean}} [opts]
+ */
+function osvNet(vulns = {}, { batchDown = false } = {}) {
+  const byId = new Map(
+    Object.values(vulns)
+      .flat()
+      .map((v) => [v.id, v])
+  );
+  const notFound = () => Object.assign(new Error("HTTP 404"), { status: 404 });
+  return {
+    fetchBytes: async () => {
+      throw notFound();
+    },
+    fetchJson: async (url) => {
+      const id = url.slice(url.lastIndexOf("/") + 1);
+      if (url.includes("/v1/vulns/") && byId.has(id)) {
+        return byId.get(id);
+      }
+      throw notFound();
+    },
+    postJson: async (url, body) => {
+      if (batchDown || !url.includes("querybatch")) {
+        throw notFound();
+      }
+      return {
+        results: body.queries.map((q) => ({
+          vulns: (vulns[`${q.package.name}@${q.version}`] ?? []).map((v) => ({
+            id: v.id,
+          })),
+        })),
+      };
+    },
+  };
+}
 
 const recordOf = (work) => readPrepare(work);
 
@@ -124,11 +183,14 @@ const refused = (pattern) => (err) => {
 // Nothing to stop the review: the folder is done, with the roots recorded, the review file
 // the review claims for itself gone, and the review starts there.
 test("a clean source is done, and its review starts in the folder", async () => {
-  const work = workFolder({
-    "package.json": packageFile(),
-    "package-lock.json": npmLock(),
-  });
-  const at = await first(work, net());
+  const work = workFolder(
+    {
+      "package.json": packageFile(),
+      "package-lock.json": npmLock(),
+    },
+    { vulns: TOOL_CLEAN }
+  );
+  const at = await first(work);
   assert.equal(at.next, "review");
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.done);
@@ -145,11 +207,14 @@ test("a clean source is done, and its review starts in the folder", async () => 
 // The root is settled the way the review settles it: named one wrapper folder too high, it
 // moves down to the folder holding package.json, and that is what is recorded and audited.
 test("a wrapper folder named as the root settles on the folder below", async () => {
-  const work = workFolder({
-    "proj/package.json": packageFile(),
-    "proj/package-lock.json": npmLock(),
-  });
-  const at = await first(work, net(TOOL_HIGH));
+  const work = workFolder(
+    {
+      "proj/package.json": packageFile(),
+      "proj/package-lock.json": npmLock(),
+    },
+    { vulns: TOOL_HIGH }
+  );
+  const at = await first(work);
   // Audited at the settled root: the build tool's advisory is found there, so it is rescued,
   // and the copy's root is the same folder in the copy.
   assert.equal(at.work, work);
@@ -165,12 +230,15 @@ test("a wrapper folder named as the root settles on the folder below", async () 
 // work folder's rescued/, beside sca/, and the record's roots move into the copy - a symbolic
 // link copied as it is written. One folder, one record.
 test("a source stopped only by a locked vulnerability gets a rescued copy", async () => {
-  const work = workFolder({
-    "package.json": packageFile(),
-    "package-lock.json": npmLock(),
-  });
+  const work = workFolder(
+    {
+      "package.json": packageFile(),
+      "package-lock.json": npmLock(),
+    },
+    { vulns: TOOL_HIGH }
+  );
   fs.symlinkSync("bg.js", path.join(workPaths(work).sca, "link.js"));
-  const at = await first(work, net(TOOL_HIGH));
+  const at = await first(work);
   const copy = workPaths(work).rescued;
   assert.equal(at.next, "step");
   assert.equal(at.work, work);
@@ -217,18 +285,21 @@ test("a pnpm tree vulnerability is rescued like an npm one", async () => {
     "  argv-crumb@0.0.8: {}",
     "",
   ].join("\n");
-  const work = workFolder({
-    "package.json": packageFile(),
-    "pnpm-lock.yaml": lock,
-  });
-  const at = await first(
-    work,
-    net({
-      "argv-crumb@0.0.8": [
-        advisory("GHSA-crumb", "CRITICAL", "argv-crumb", "0.0.10"),
-      ],
-    })
+  const work = workFolder(
+    {
+      "package.json": packageFile(),
+      "pnpm-lock.yaml": lock,
+    },
+    {
+      vulns: {
+        ...TOOL_CLEAN,
+        "argv-crumb@0.0.8": [
+          advisory("GHSA-crumb", "CRITICAL", "argv-crumb", "0.0.10"),
+        ],
+      },
+    }
   );
+  const at = await first(work);
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.reduce);
   cleanup(work);
@@ -246,31 +317,31 @@ test("roots that are missing, blank or outside the source are refused", async ()
   await assert.rejects(later(work), refused(/SCA_ROOT still has no "answer"/));
   unchanged();
   await assert.rejects(
-    first(work, net(), { SCA_ROOT: "   " }),
+    first(work, { SCA_ROOT: "   " }),
     refused(/SCA_ROOT names no folder/)
   );
   unchanged();
   const elsewhere = path.join(path.dirname(work), "elsewhere");
   writeTree(elsewhere, { "package.json": packageFile() });
   await assert.rejects(
-    first(work, net(), { SCA_ROOT: elsewhere }),
+    first(work, { SCA_ROOT: elsewhere }),
     refused(/SCA_ROOT ".+elsewhere" is not a folder inside/)
   );
   await assert.rejects(
-    first(work, net(), { SCA_ROOT: path.join(sca, "nothing-here") }),
+    first(work, { SCA_ROOT: path.join(sca, "nothing-here") }),
     refused(/is not a folder inside/)
   );
   // A link inside the source that leads out is the folder it leads to, and refused.
   fs.symlinkSync(elsewhere, path.join(sca, "out"));
   await assert.rejects(
-    first(work, net(), { SCA_ROOT: path.join(sca, "out") }),
+    first(work, { SCA_ROOT: path.join(sca, "out") }),
     refused(/is not a folder inside/)
   );
   unchanged();
   // One that leads to a folder inside it is that folder, and taken as it.
   writeTree(path.join(sca, "real"), { "package.json": packageFile() });
   fs.symlinkSync(path.join(sca, "real"), path.join(sca, "in"));
-  const at = await first(work, net(), { SCA_ROOT: "in" });
+  const at = await first(work, { SCA_ROOT: "in" });
   assert.equal(at.record.roots.scaRoot, path.join(sca, "real"));
   cleanup(work);
 });
@@ -282,7 +353,7 @@ test("a source folder that is a link is refused", async () => {
   fs.renameSync(sca, moved);
   fs.symlinkSync(moved, sca);
   await assert.rejects(
-    first(work, net(), { SCA_ROOT: sca }),
+    first(work, { SCA_ROOT: sca }),
     refused(/is not the folder the source was extracted into/)
   );
   cleanup(work);
@@ -296,20 +367,20 @@ test("an Experiment folder is read against the root, and must lie inside it", as
   const sca = workPaths(work).sca;
   // Asked for, so an answer missing is refused like any other.
   await assert.rejects(
-    first(work, net(), {}),
+    first(work, {}),
     refused(/SCA_EXP_SOURCE still has no "answer"/)
   );
   await assert.rejects(
-    first(work, net(), { SCA_EXP_SOURCE: "../.." }),
+    first(work, { SCA_EXP_SOURCE: "../.." }),
     refused(/SCA_EXP_SOURCE "\.\.\/\.\." is not a folder inside/)
   );
   // The root itself excludes nothing, and the review refuses it - so the hand-back does.
   await assert.rejects(
-    first(work, net(), { SCA_EXP_SOURCE: "." }),
+    first(work, { SCA_EXP_SOURCE: "." }),
     refused(/sca-exp-source/)
   );
   assert.equal(recordOf(work).step, PREPARE_STEP.extract, "nothing moved");
-  const at = await first(work, net(), { SCA_EXP_SOURCE: "exp" });
+  const at = await first(work, { SCA_EXP_SOURCE: "exp" });
   assert.equal(at.record.roots.scaExpSource, path.join(sca, "exp"));
   cleanup(work);
 });
@@ -318,22 +389,24 @@ test("an Experiment folder is read against the root, and must lie inside it", as
 // Each of these is done at once, and its review decides the rest.
 
 test("a vulnerable library committed to the archive is not rescued", async () => {
-  const work = workFolder({
-    "package.json": packageFile(null),
-    "package-lock.json": npmLock(null),
-    "vendor/bootstrap.min.css": fs.readFileSync(
-      path.join(
-        ROOT,
-        "tests/addons/sca-undeclared-library/src/vendor/bootstrap/bootstrap.min.css"
-      )
-    ),
-  });
-  const at = await first(
-    work,
-    net({
-      "bootstrap@5.3.0": [advisory("GHSA-css", "HIGH", "bootstrap", "5.3.1")],
-    })
+  const work = workFolder(
+    {
+      "package.json": packageFile(null),
+      "package-lock.json": npmLock(null),
+      "vendor/bootstrap.min.css": fs.readFileSync(
+        path.join(
+          ROOT,
+          "tests/addons/sca-undeclared-library/src/vendor/bootstrap/bootstrap.min.css"
+        )
+      ),
+    },
+    {
+      vulns: {
+        "bootstrap@5.3.0": [advisory("GHSA-css", "HIGH", "bootstrap", "5.3.1")],
+      },
+    }
   );
+  const at = await first(work);
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.done);
   cleanup(work);
@@ -342,12 +415,15 @@ test("a vulnerable library committed to the archive is not rescued", async () =>
 // The preparation looks at the lock and nothing else: a review that will stop for another
 // reason as well is rescued all the same, and stops on that reason after.
 test("a vulnerable lock beside another reason to stop is rescued", async () => {
-  const work = workFolder({
-    "package.json": packageFile(),
-    "package-lock.json": npmLock(),
-    ".npmrc": "registry=https://registry.example.invalid/\n",
-  });
-  const at = await first(work, net(TOOL_HIGH));
+  const work = workFolder(
+    {
+      "package.json": packageFile(),
+      "package-lock.json": npmLock(),
+      ".npmrc": "registry=https://registry.example.invalid/\n",
+    },
+    { vulns: TOOL_HIGH }
+  );
+  const at = await first(work);
   assert.equal(at.record.step, PREPARE_STEP.reduce);
   cleanup(work);
 });
@@ -367,7 +443,7 @@ test("a forged lock is neither audited nor rescued", async () => {
       },
     }),
   });
-  const at = await first(work, noNet);
+  const at = await first(work);
   assert.equal(at.next, "review");
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.done);
@@ -384,7 +460,7 @@ test("a source with more than one lock is neither audited nor rescued", async ()
     "package-lock.json": npmLock(),
     "pnpm-lock.yaml": "lockfileVersion: '9.0'\nimporters:\n  .: {}\n",
   });
-  const at = await first(work, noNet);
+  const at = await first(work);
   assert.equal(at.next, "review");
   assert.equal(at.record.step, PREPARE_STEP.done);
   assert.ok(!fs.existsSync(workPaths(work).rescued), "no copy is made");
@@ -393,20 +469,26 @@ test("a source with more than one lock is neither audited nor rescued", async ()
 
 test("a source the audit cannot read in full is not rescued", async (t) => {
   await t.test("no lock at all", async () => {
-    const work = workFolder({ "package.json": packageFile() });
-    const at = await first(work, net(TOOL_HIGH));
+    const work = workFolder(
+      { "package.json": packageFile() },
+      { vulns: TOOL_HIGH }
+    );
+    const at = await first(work);
     assert.equal(at.work, work);
     assert.equal(at.record.step, PREPARE_STEP.done);
     cleanup(work);
   });
   await t.test("a file the loader cannot read", async () => {
-    const work = workFolder({
-      "package.json": packageFile(),
-      "package-lock.json": npmLock(),
-      "secret.js": "",
-    });
+    const work = workFolder(
+      {
+        "package.json": packageFile(),
+        "package-lock.json": npmLock(),
+        "secret.js": "",
+      },
+      { vulns: TOOL_HIGH }
+    );
     fs.chmodSync(path.join(workPaths(work).sca, "secret.js"), 0);
-    const at = await first(work, net(TOOL_HIGH));
+    const at = await first(work);
     assert.equal(at.work, work);
     assert.equal(at.record.step, PREPARE_STEP.done);
     cleanup(work);
@@ -415,13 +497,17 @@ test("a source the audit cannot read in full is not rescued", async (t) => {
 
 // ---- the rescued copy's steps ----
 
-/** A work folder rescued for the build tool's advisory: the copy, at `reduce`. */
-async function rescued() {
-  const work = workFolder({
-    "package.json": packageFile(),
-    "package-lock.json": npmLock(),
-  });
-  const at = await first(work, net(TOOL_HIGH));
+/** A work folder rescued for the build tool's advisory: the copy, at `reduce`. Its steps are
+ *  answered from `vulns`, which holds that advisory. */
+async function rescued(vulns = TOOL_HIGH) {
+  const work = workFolder(
+    {
+      "package.json": packageFile(),
+      "package-lock.json": npmLock(),
+    },
+    { vulns }
+  );
+  const at = await first(work);
   return { work, copy: workPaths(work).rescued, root: at.record.roots.scaRoot };
 }
 
@@ -431,7 +517,7 @@ test("a reduce that leaves the copy clean hands the review the copy", async () =
     "package.json": packageFile(null),
     "package-lock.json": npmLock(null),
   });
-  const at = await later(work, net(TOOL_HIGH));
+  const at = await later(work);
   assert.equal(at.next, "review");
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.done);
@@ -444,9 +530,16 @@ test("a reduce that leaves the copy clean hands the review the copy", async () =
 // The preparation is one run with its review: OSV is asked through the run's cache in the
 // work folder. A step over a lock already audited asks OSV nothing.
 test("a rescued copy's step reads the run's OSV cache", async () => {
-  const { work } = await rescued();
+  const work = workFolder(
+    {
+      "package.json": packageFile(),
+      "package-lock.json": npmLock(),
+    },
+    { cache: null }
+  );
+  await firstAsking(work, osvNet(TOOL_HIGH));
   assert.ok(fs.existsSync(path.join(work, ".cache", "osv.json")));
-  const reduce = await later(work, noNet);
+  const reduce = await handBack(work);
   assert.equal(reduce.record.step, PREPARE_STEP.fix);
   cleanup(work);
 });
@@ -454,21 +547,29 @@ test("a rescued copy's step reads the run's OSV cache", async () => {
 // A run that names its cache folder (--cache-work-dir, forwarded in the record) keeps OSV's
 // answers there instead, so the preparation and its review read the folder a test seeded.
 test("a step asks through the cache folder its record names", async () => {
-  const work = workFolder({
-    "package.json": packageFile(),
-    "package-lock.json": npmLock(),
-  });
-  const dir = path.join(path.dirname(work), "run-cache");
-  writePrepare(work, { ...recordOf(work), flags: { "cache-work-dir": dir } });
-  await first(work, net(TOOL_HIGH));
-  assert.ok(fs.existsSync(path.join(dir, "osv.json")));
+  const dir = auditCache();
+  const work = workFolder(
+    {
+      "package.json": packageFile(),
+      "package-lock.json": npmLock(),
+    },
+    { cache: dir }
+  );
+  await firstAsking(work, osvNet(TOOL_HIGH));
+  assert.notDeepEqual(
+    JSON.parse(fs.readFileSync(path.join(dir, "osv.json"), "utf8")),
+    {}
+  );
   assert.ok(!fs.existsSync(path.join(work, ".cache")));
   cleanup(work);
 });
 
 test("a reduce that is not enough moves on to fix, and a clean fix is done", async () => {
-  const { work, copy, root } = await rescued();
-  const reduce = await later(work, net(TOOL_HIGH));
+  const { work, copy, root } = await rescued({
+    ...TOOL_HIGH,
+    "lint-pebble@0.4.1": [],
+  });
+  const reduce = await later(work);
   assert.equal(reduce.next, "step");
   assert.equal(reduce.work, work);
   assert.equal(reduce.record.step, PREPARE_STEP.fix);
@@ -476,7 +577,7 @@ test("a reduce that is not enough moves on to fix, and a clean fix is done", asy
     "package.json": packageFile("0.4.1"),
     "package-lock.json": npmLock("0.4.1"),
   });
-  const fix = await later(work, net(TOOL_HIGH));
+  const fix = await later(work);
   assert.equal(fix.work, work);
   assert.equal(fix.record.step, PREPARE_STEP.done);
   cleanup(work);
@@ -487,8 +588,8 @@ test("a reduce that is not enough moves on to fix, and a clean fix is done", asy
 // source as submitted is reviewed like any other. The preparation writes no report of its own.
 test("a fix that is not enough deletes the copy, and the original is reviewed unrescued", async () => {
   const { work, copy } = await rescued();
-  await later(work, net(TOOL_HIGH));
-  const at = await later(work, net(TOOL_HIGH));
+  await later(work);
+  const at = await later(work);
   assert.equal(at.next, "review");
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.done);
@@ -497,7 +598,7 @@ test("a fix that is not enough deletes the copy, and the original is reviewed un
   assert.ok(!fs.existsSync(copy), "the copy is deleted");
   assert.ok(!fs.existsSync(workPaths(work).report), "no report of its own");
   // Handed back again, its review is handed out once more, asking nothing.
-  const again = await later(work, noNet);
+  const again = await later(work);
   assert.equal(again.next, "review");
   assert.deepEqual(again.record, at.record);
   cleanup(work);
@@ -545,11 +646,7 @@ test("a copy the audit cannot vouch for is not clean", async (t) => {
     await t.test(name, async () => {
       const { work, root } = await rescued();
       edit(root);
-      assert.equal(
-        (await later(work, net())).record.step,
-        PREPARE_STEP.fix,
-        name
-      );
+      assert.equal((await later(work)).record.step, PREPARE_STEP.fix, name);
       cleanup(work);
     });
   }
@@ -567,7 +664,7 @@ test("an audit OSV does not answer ends the preparation", async (t) => {
       "package-lock.json": npmLock(),
     });
     await assert.rejects(
-      first(work, net(TOOL_HIGH, { batchDown: true })),
+      firstAsking(work, osvNet(TOOL_HIGH, { batchDown: true })),
       noAnswer
     );
     assert.equal(recordOf(work).step, PREPARE_STEP.extract);
@@ -582,7 +679,10 @@ test("an audit OSV does not answer ends the preparation", async (t) => {
         "node_modules/argv-crumb": { version: "0.0.8", dev: true },
       }),
     });
-    await assert.rejects(later(work, net({}, { batchDown: true })), noAnswer);
+    await assert.rejects(
+      handBack(work, { net: osvNet({}, { batchDown: true }) }),
+      noAnswer
+    );
     assert.equal(recordOf(work).step, PREPARE_STEP.reduce);
     cleanup(work);
   });
@@ -594,7 +694,7 @@ test("an audit OSV does not answer ends the preparation", async (t) => {
 // handed back again is at the copy's step, and carries it on.
 test("a folder handed back mid-rescue carries the rescue on", async () => {
   const { work } = await rescued();
-  const again = await later(work, net(TOOL_HIGH));
+  const again = await later(work);
   assert.equal(again.next, "step");
   assert.equal(again.work, work);
   assert.equal(again.record.step, PREPARE_STEP.fix);
@@ -605,13 +705,16 @@ test("a folder handed back mid-rescue carries the rescue on", async () => {
 // hand-back to start again, and the review file the review claims is deleted again, in case
 // the run that marked it was cut short before it could.
 test("a done folder handed back again hands out its review again", async () => {
-  const work = workFolder({
-    "package.json": packageFile(),
-    "package-lock.json": npmLock(),
-  });
-  const done = await first(work, net());
+  const work = workFolder(
+    {
+      "package.json": packageFile(),
+      "package-lock.json": npmLock(),
+    },
+    { vulns: TOOL_CLEAN }
+  );
+  const done = await first(work);
   fs.writeFileSync(workPaths(work).review, "{}");
-  const again = await later(work, noNet);
+  const again = await later(work);
   assert.equal(again.next, "review");
   assert.deepEqual(again.record, done.record);
   assert.ok(!fs.existsSync(workPaths(work).review));
@@ -626,8 +729,8 @@ test("a clean rescue handed back again keeps its copy", async () => {
     "package.json": packageFile(null),
     "package-lock.json": npmLock(null),
   });
-  await later(work, net(TOOL_HIGH));
-  const again = await later(work, noNet);
+  await later(work);
+  const again = await later(work);
   assert.equal(again.next, "review");
   assert.equal(again.record.roots.scaRoot, root);
   assert.ok(fs.existsSync(copy));
@@ -638,14 +741,14 @@ test("a clean rescue handed back again keeps its copy", async () => {
 // hand-back finishes removing it, and hands the review out.
 test("a copy left behind by a give-up cut short is removed", async () => {
   const { work, copy } = await rescued();
-  await later(work, net(TOOL_HIGH));
+  await later(work);
   writePrepare(work, {
     ...recordOf(work),
     step: PREPARE_STEP.done,
     roots: { scaRoot: workPaths(work).sca, scaExpSource: null },
   });
   assert.ok(fs.existsSync(copy));
-  const at = await later(work, noNet);
+  const at = await later(work);
   assert.equal(at.next, "review");
   assert.equal(at.work, work);
   assert.ok(!fs.existsSync(copy));
@@ -665,7 +768,7 @@ test("a forged record never removes a folder outside the work folder", async () 
     step: PREPARE_STEP.done,
     roots: { scaRoot: stray, scaExpSource: null },
   });
-  await later(work, noNet);
+  await later(work);
   assert.ok(fs.existsSync(stray));
   assert.ok(!fs.existsSync(workPaths(work).rescued));
   cleanup(work);
@@ -675,16 +778,19 @@ test("a forged record never removes a folder outside the work folder", async () 
 // it is out of the agent's reach - at every step.
 test("every record the preparation writes is read-only", async () => {
   const mode = (folder) => fs.statSync(workPaths(folder).prepare).mode & 0o777;
-  const work = workFolder({
-    "package.json": packageFile(),
-    "package-lock.json": npmLock(),
-  });
+  const work = workFolder(
+    {
+      "package.json": packageFile(),
+      "package-lock.json": npmLock(),
+    },
+    { vulns: TOOL_HIGH }
+  );
   assert.equal(mode(work), 0o444, "as the preparation starts");
-  await first(work, net(TOOL_HIGH));
+  await first(work);
   assert.equal(mode(work), 0o444, "at reduce");
-  await later(work, net(TOOL_HIGH));
+  await later(work);
   assert.equal(mode(work), 0o444, "at fix");
-  await later(work, net(TOOL_HIGH));
+  await later(work);
   assert.equal(mode(work), 0o444, "given up");
   cleanup(work);
 });
@@ -699,7 +805,7 @@ test("a record changed after the linter wrote it is refused", async () => {
   fs.chmodSync(file, 0o644);
   fs.writeFileSync(file, JSON.stringify(record, null, 1));
   await assert.rejects(
-    later(work, noNet),
+    later(work),
     refused(/changed after the linter wrote it/)
   );
   cleanup(work);
@@ -715,7 +821,7 @@ test("a record of another version of this tool is refused as one", async () => {
   record.version = 1;
   fs.chmodSync(file, 0o644);
   fs.writeFileSync(file, JSON.stringify(record));
-  await assert.rejects(later(work, noNet), /written by another version/);
+  await assert.rejects(later(work), /written by another version/);
   cleanup(work);
 });
 
@@ -729,7 +835,7 @@ test("a record boolean that is neither true nor false is refused", async () => {
     submission: { ...record.submission, experiments: "yes" },
   });
   await assert.rejects(
-    later(work, noNet),
+    later(work),
     refused(/holds submission\.experiments as neither true nor false/)
   );
   cleanup(work);
@@ -740,14 +846,17 @@ test("a record boolean that is neither true nor false is refused", async () => {
 // run before any prompt names it, and the record stays at its first step, so handing the
 // folder back retries.
 test("a rescued copy is made again over a stale one", async () => {
-  const work = workFolder({
-    "package.json": packageFile(),
-    "package-lock.json": npmLock(),
-  });
+  const work = workFolder(
+    {
+      "package.json": packageFile(),
+      "package-lock.json": npmLock(),
+    },
+    { vulns: TOOL_HIGH }
+  );
   const copy = workPaths(work).rescued;
   fs.mkdirSync(copy);
   fs.writeFileSync(path.join(copy, "left-over.txt"), "stale");
-  const at = await first(work, net(TOOL_HIGH));
+  const at = await first(work);
   assert.equal(at.record.step, PREPARE_STEP.reduce);
   assert.ok(!fs.existsSync(path.join(copy, "left-over.txt")));
   assert.ok(fs.existsSync(path.join(copy, "package.json")));
@@ -759,13 +868,16 @@ test("a rescued copy that cannot be made ends the preparation", async (t) => {
     t.skip("root writes any folder");
     return;
   }
-  const work = workFolder({
-    "package.json": packageFile(),
-    "package-lock.json": npmLock(),
-  });
+  const work = workFolder(
+    {
+      "package.json": packageFile(),
+      "package-lock.json": npmLock(),
+    },
+    { vulns: TOOL_HIGH }
+  );
   fs.chmodSync(work, 0o555);
   try {
-    await assert.rejects(first(work, net(TOOL_HIGH)), (err) => {
+    await assert.rejects(first(work), (err) => {
       assert.ok(!(err instanceof HandbackRefused), err.message);
       assert.match(
         err.message,

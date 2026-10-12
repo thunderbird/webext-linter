@@ -19,9 +19,12 @@ import {
   cdnMissCache,
   fixtureCacheOpts,
   freshWorkFolder,
+  osvEntries,
+  popularityEntries,
+  seedWorkCache,
 } from "../seed-caches.js";
 import { defaultWorkFolder } from "../../src/util/dest.js";
-import { advisory, realPreparation } from "../prepared.js";
+import { advisory, auditEntries, realPreparation } from "../prepared.js";
 
 // A cache pre-seeded from the fixtures so the schema / experiments / library-hash
 // fetches all hit disk - these runs stay offline.
@@ -317,12 +320,13 @@ const BUILD_TOOL_LOCK = JSON.stringify({
 });
 
 /**
- * An OSV transport answering the lock audit's batch with one HIGH advisory for
- * `build-tool`, fixed in 2.0.0, and that advisory's record when it is hydrated.
+ * A run cache folder holding OSV's answer to the lock audit's batch: one HIGH advisory for
+ * `build-tool`, fixed in 2.0.0, and that advisory's record when it is hydrated. npm's
+ * download count for it carries no number, so no popularity is read.
  * @param {string} id  The advisory id.
- * @returns {object}
+ * @returns {string} The folder, for the review's workCache.
  */
-function buildToolAdvisoryNet(id) {
+function buildToolAdvisoryCache(id) {
   const advisory = {
     id,
     aliases: ["CVE-2021-0001"],
@@ -339,15 +343,13 @@ function buildToolAdvisoryNet(id) {
       },
     ],
   };
-  return {
-    fetchBytes: async () => Buffer.from(""),
-    fetchJson: async (url) => (url.endsWith(`/${id}`) ? advisory : {}),
-    postJson: async (_url, body) => ({
-      results: (body?.queries ?? []).map((q) =>
-        q.package.name === "build-tool" ? { vulns: [{ id }] } : { vulns: [] }
-      ),
+  return seedWorkCache({
+    osv: osvEntries({
+      batch: { "build-tool@1.0.0": { vulns: [{ id }] } },
+      advisories: { [id]: advisory },
     }),
-  };
+    popularity: popularityEntries({ npm: { "build-tool": {} } }),
+  });
 }
 
 // The dependency audit reads the root lock file, which in a flat layout IS the review
@@ -364,13 +366,13 @@ test("SCA e2e: a flat layout audits the root lock file's dependencies", async ()
     }),
     "package-lock.json": BUILD_TOOL_LOCK,
   });
-  const vendorNet = buildToolAdvisoryNet("GHSA-flat-0000-0000");
+  const workCache = buildToolAdvisoryCache("GHSA-flat-0000-0000");
   try {
     const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
-      vendorNet,
+      workCache,
     });
     assert.ok(
       has(findings, "vendor-vulnerable-dev", (f) => /build-tool/.test(f.item)),
@@ -1093,14 +1095,14 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
     }),
     "package-lock.json": BUILD_TOOL_LOCK,
   });
-  // Injected OSV transport: one HIGH advisory for the dev dep, fixed in 2.0.0.
-  const vendorNet = buildToolAdvisoryNet("GHSA-dev0-0000-0000");
+  // OSV's answer: one HIGH advisory for the dev dep, fixed in 2.0.0.
+  const workCache = buildToolAdvisoryCache("GHSA-dev0-0000-0000");
   try {
     const { findings } = await runReview({
       addonPath: xpi,
       scaRoot: src,
       ...OFFLINE,
-      vendorNet,
+      workCache,
     });
     assert.ok(
       has(findings, "vendor-vulnerable-dev", (f) => /build-tool/.test(f.item)),
@@ -1808,16 +1810,12 @@ const UNRESCUED_FIXTURE = path.join(
 
 /** A work folder whose preparation gave its rescue up, made for real: the unrescued
  *  fixture's source, whose lock carries a critical advisory on the build tool, prepared
- *  through its rescue to the give-up. */
-async function unrescuedFolder() {
+ *  through its rescue to the give-up, its run cache the seeded folder `cache`. */
+async function unrescuedFolder(cache) {
   const { work } = await realPreparation({
     source: path.join(UNRESCUED_FIXTURE, "src"),
     xpi: path.join(UNRESCUED_FIXTURE, "xpi"),
-    vulns: {
-      "lint-pebble@0.4.0": [
-        advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
-      ],
-    },
+    cache,
   });
   return work;
 }
@@ -1847,26 +1845,34 @@ test("an aborting check is the last check the review runs", async () => {
   );
 });
 
-/** A network that answers the npm registry's download counts, which every source review
- *  asks for its declared packages, and fails the test on anything else - OSV above all. */
-const registryOnly = {
-  fetchBytes: async () => assert.fail("no request expected"),
-  fetchJson: async (url) =>
-    url.startsWith("https://api.npmjs.org/downloads/")
-      ? { downloads: 1_000_000 }
-      : assert.fail(`no request expected: ${url}`),
-  postJson: async (url) => assert.fail(`no request expected: ${url}`),
-};
-
 // A source whose preparation gave its rescue up is reviewed like any other: its vulnerability
 // checks, early in the phase, report the lock and abort the review. Its audit of the lock is
-// answered from the run's OSV cache, which the preparation filled, so OSV is asked nothing.
+// answered from the run cache folder its preparation read too, so OSV is asked nothing.
 test("an unrescued review is an ordinary review, its audit answered from the run's cache", async () => {
+  // OSV's answers to the audit, and npm's download counts, which every source review asks
+  // for its declared packages. Nothing else is answered, OSV above all.
+  const workCache = seedWorkCache({
+    osv: auditEntries({
+      "lint-pebble@0.4.0": [
+        advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
+      ],
+      "argv-crumb@0.0.8": [],
+      "tidy-lantern@2.1.0": [],
+      "wick-trim@1.0.1": [],
+    }),
+    popularity: popularityEntries({
+      npm: {
+        "lint-pebble": { downloads: 1_000_000 },
+        "tidy-lantern": { downloads: 1_000_000 },
+      },
+    }),
+  });
+  const workFolder = await unrescuedFolder(workCache);
   const { findings, meta } = await runReview({
     addonPath: path.join(UNRESCUED_FIXTURE, "xpi"),
     scaRoot: path.join(UNRESCUED_FIXTURE, "src"),
-    workFolder: await unrescuedFolder(),
-    vendorNet: registryOnly,
+    workFolder,
+    workCache,
     ...OFFLINE,
     cdnLookupCache: cdnMissCache(
       path.join(UNRESCUED_FIXTURE, "xpi"),

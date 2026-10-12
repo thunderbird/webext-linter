@@ -24,6 +24,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { withOsvCache } from "../../src/vendor/osv-cache.js";
+import { withRunCache } from "../../src/vendor/run-cache.js";
+import { runCache } from "../../src/util/dest.js";
+import {
+  osvEntries,
+  popularityEntries,
+  seedWorkCache,
+} from "../seed-caches.js";
 import { VENDOR_FETCH_MAX_BYTES } from "../../src/config.js";
 
 // What a host's "there is no such thing" arrives as through the real transport: the one
@@ -292,6 +299,21 @@ function net({
   };
 }
 
+/**
+ * The network a review asks, answered only from `answers` seeded into a run cache of its own
+ * (seedWorkCache), as a review reads its run's cache. Anything not seeded goes on to the real
+ * network, which the switched-off test network refuses.
+ * @param {{osv?: object, popularity?: object}} [answers]  As osvEntries and
+ *   popularityEntries take them.
+ */
+function seededNet({ osv = {}, popularity = {} } = {}) {
+  const dir = seedWorkCache({
+    osv: osvEntries(osv),
+    popularity: popularityEntries(popularity),
+  });
+  return withRunCache(defaultNet, runCache(dir, dir));
+}
+
 const store = (over = {}) => ({
   set: new Set(),
   results: [],
@@ -377,7 +399,13 @@ test("verifyScaDependencies: a non-popular declared dep is recorded at its lock 
     { "package-lock.json": "{}" },
     store({ lockPackages: [locked("niche", "1.0.0", false, true)] })
   );
-  await verifyScaDependencies(addon, net({ downloads: 30 }));
+  await verifyScaDependencies(
+    addon,
+    seededNet({
+      osv: { batch: { "niche@1.0.0": {} } },
+      popularity: { npm: { niche: { downloads: 30 } } },
+    })
+  );
   assert.deepEqual(addon.vendor.unpopularDeps, [
     {
       name: "niche",
@@ -393,7 +421,13 @@ test("verifyScaDependencies: a POPULAR declared dep is allowed (not recorded)", 
     { "package-lock.json": "{}" },
     store({ lockPackages: [locked("react", "18.0.0", false, true)] })
   );
-  await verifyScaDependencies(addon, net({ downloads: 5000 }));
+  await verifyScaDependencies(
+    addon,
+    seededNet({
+      osv: { batch: { "react@18.0.0": {} } },
+      popularity: { npm: { react: { downloads: 5000 } } },
+    })
+  );
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
@@ -439,20 +473,12 @@ test("verifyScaDependencies: lookups that find nothing (404) record nothing", as
       lockGithubInstalls: [ghLocked("widget", "u/widget")],
     })
   );
-  // Popularity and repositories answer "no such package" with a 404; OSV answers a
-  // package it has no record of with an empty 200.
-  const nothingFound = {
-    fetchBytes: async () => {
-      throw notFound();
-    },
-    fetchJson: async () => {
-      throw notFound();
-    },
-    postJson: async (url, body) =>
-      url.includes("querybatch")
-        ? { results: body.queries.map(() => ({})) }
-        : {},
-  };
+  // Popularity and repositories answer "no such package" with a 404, kept as its offline
+  // stand-in (null). OSV answers a package it has no record of with an empty 200.
+  const nothingFound = seededNet({
+    osv: { batch: { "niche@1.0.0": {} } },
+    popularity: { npm: { niche: null }, github: { "u/widget": null } },
+  });
   await verifyScaDependencies(addon, nothingFound);
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
@@ -464,7 +490,12 @@ test("verifyScaDependencies: a low-star GitHub install is recorded as unreviewab
     { "package-lock.json": "{}" },
     store({ lockGithubInstalls: [ghLocked("widget", "u/widget")] })
   );
-  await verifyScaDependencies(addon, net({ stars: 5 }));
+  await verifyScaDependencies(
+    addon,
+    seededNet({
+      popularity: { github: { "u/widget": { stargazers_count: 5 } } },
+    })
+  );
   assert.deepEqual(addon.vendor.unpopularDeps, [
     {
       name: "widget",
@@ -480,7 +511,12 @@ test("verifyScaDependencies: a popular (high-star) GitHub install is allowed", a
     { "package-lock.json": "{}" },
     store({ lockGithubInstalls: [ghLocked("widget", "u/widget")] })
   );
-  await verifyScaDependencies(addon, net({ stars: 5000 }));
+  await verifyScaDependencies(
+    addon,
+    seededNet({
+      popularity: { github: { "u/widget": { stargazers_count: 5000 } } },
+    })
+  );
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
@@ -491,8 +527,8 @@ test("verifyScaDependencies: a trusted-org (thunderbird) GitHub install is a fre
       lockGithubInstalls: [ghLocked("helper", "thunderbird/helper")],
     })
   );
-  // stars:0 would fail the bar, but the trusted org never triggers the lookup.
-  await verifyScaDependencies(addon, net({ stars: 0 }));
+  // Nothing is answered, so a lookup would end the test: the trusted org never triggers one.
+  await verifyScaDependencies(addon, seededNet());
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
@@ -514,16 +550,24 @@ test("verifyScaDependencies: hits route by the lock's declared and dev markers",
   const hit = (id) => ({ vulns: [{ id }] });
   await verifyScaDependencies(
     addon,
-    net({
-      downloads: 5, // a build tool is held to the same bar as a shipped one
-      batch: {
-        results: [hit("A"), hit("B"), hit("C"), hit("D")],
+    seededNet({
+      osv: {
+        batch: {
+          "build-tool@1.0.0": hit("A"),
+          "lib@2.0.0": hit("B"),
+          "pulled@3.0.0": hit("C"),
+          "pulled-dev@4.0.0": hit("D"),
+        },
+        advisories: {
+          A: advisory("A", "HIGH", "2.0.0", "build-tool"),
+          B: advisory("B", "CRITICAL", "2.0.1", "lib"),
+          C: advisory("C", "HIGH", "3.0.1", "pulled"),
+          D: advisory("D", "HIGH", "4.0.1", "pulled-dev"),
+        },
       },
-      advisories: {
-        A: advisory("A", "HIGH", "2.0.0", "build-tool"),
-        B: advisory("B", "CRITICAL", "2.0.1", "lib"),
-        C: advisory("C", "HIGH", "3.0.1", "pulled"),
-        D: advisory("D", "HIGH", "4.0.1", "pulled-dev"),
+      // A build tool is held to the same bar as a shipped one.
+      popularity: {
+        npm: { "build-tool": { downloads: 5 }, lib: { downloads: 5 } },
       },
     })
   );
@@ -562,11 +606,17 @@ test("verifyScaDependencies: a declared package's moderate advisory is not recor
   );
   await verifyScaDependencies(
     addon,
-    net({
-      batch: {
-        results: [{ vulns: [{ id: "M" }] }, { vulns: [{ id: "M" }] }],
+    seededNet({
+      osv: {
+        batch: {
+          "lib@2.0.0": { vulns: [{ id: "M" }] },
+          "tool@1.0.0": { vulns: [{ id: "M" }] },
+        },
+        advisories: { M: advisory("M", "MODERATE", "9.9.9", "lib") },
       },
-      advisories: { M: advisory("M", "MODERATE", "9.9.9", "lib") },
+      popularity: {
+        npm: { lib: { downloads: 99999 }, tool: { downloads: 99999 } },
+      },
     })
   );
   assert.deepEqual(addon.vendor.vulnerabilities, []);
@@ -1137,7 +1187,10 @@ test("auditIdentifiedLibraries: an undeclared identified library is OSV-audited"
       },
     ],
   };
-  await auditIdentifiedLibraries(addon, net({ osv }));
+  await auditIdentifiedLibraries(
+    addon,
+    seededNet({ osv: { query: { "angular@1.0.2": osv } } })
+  );
   assert.deepEqual(addon.vendor.vulnerabilities, [
     {
       name: "angular", // dispensary "angularjs" mapped to its npm package
@@ -2304,15 +2357,11 @@ test("isPopular: with no memo every ask reaches the host", async () => {
 // Provenance still short-circuits the whole thing, so a first-party source costs no
 // request at all - and therefore none of the budget the rest of the run needs.
 test("isPopular: a trusted github org is never asked about", async () => {
-  const askless = {
-    fetchJson: async () => {
-      throw new Error("no popularity lookup expected for a trusted org");
-    },
-  };
+  // Nothing is answered, so a lookup would end the test.
   assert.equal(
     await isPopular(
       { kind: "github", repo: "thunderbird/webext-support" },
-      askless
+      seededNet()
     ),
     true
   );
@@ -2447,10 +2496,12 @@ test("auditLockedPackages: an undeclared HIGH is recorded with its lock anchor",
   );
   await verifyScaDependencies(
     addon,
-    net({
-      batch: { results: [{ vulns: [{ id: "GHSA-tree" }] }] },
-      advisories: {
-        "GHSA-tree": advisory("GHSA-tree", "HIGH", "2.0.1", "nth-check"),
+    seededNet({
+      osv: {
+        batch: { "nth-check@2.0.0": { vulns: [{ id: "GHSA-tree" }] } },
+        advisories: {
+          "GHSA-tree": advisory("GHSA-tree", "HIGH", "2.0.1", "nth-check"),
+        },
       },
     })
   );
@@ -2480,16 +2531,16 @@ test("auditLockedPackages: a moderate or low advisory is not recorded", async ()
   );
   await verifyScaDependencies(
     addon,
-    net({
-      batch: {
-        results: [
-          { vulns: [{ id: "GHSA-mid" }] },
-          { vulns: [{ id: "GHSA-low" }] },
-        ],
-      },
-      advisories: {
-        "GHSA-mid": advisory("GHSA-mid", "MODERATE", "1.0.1", "mid"),
-        "GHSA-low": advisory("GHSA-low", "LOW", "1.0.1", "small"),
+    seededNet({
+      osv: {
+        batch: {
+          "mid@1.0.0": { vulns: [{ id: "GHSA-mid" }] },
+          "small@1.0.0": { vulns: [{ id: "GHSA-low" }] },
+        },
+        advisories: {
+          "GHSA-mid": advisory("GHSA-mid", "MODERATE", "1.0.1", "mid"),
+          "GHSA-low": advisory("GHSA-low", "LOW", "1.0.1", "small"),
+        },
       },
     })
   );
@@ -2507,15 +2558,19 @@ test("auditLockedPackages: a build-time package routes to the dev set", async ()
   );
   await verifyScaDependencies(
     addon,
-    net({
-      batch: { results: [{ vulns: [{ id: "GHSA-dev" }] }] },
-      advisories: {
-        "GHSA-dev": advisory(
-          "GHSA-dev",
-          "HIGH",
-          "6.0.3",
-          "serialize-javascript"
-        ),
+    seededNet({
+      osv: {
+        batch: {
+          "serialize-javascript@6.0.2": { vulns: [{ id: "GHSA-dev" }] },
+        },
+        advisories: {
+          "GHSA-dev": advisory(
+            "GHSA-dev",
+            "HIGH",
+            "6.0.3",
+            "serialize-javascript"
+          ),
+        },
       },
     })
   );
@@ -2706,13 +2761,15 @@ test("auditLockedPackages: a malicious-package advisory is recorded as critical"
   );
   await verifyScaDependencies(
     addon,
-    net({
-      batch: { results: [{ vulns: [{ id: "MAL-2023-462" }] }] },
-      // As OSV really serves one: no database_specific.severity, no severity[].
-      advisories: {
-        "MAL-2023-462": {
-          id: "MAL-2023-462",
-          summary: "Malicious code in evil-pkg",
+    seededNet({
+      osv: {
+        batch: { "evil-pkg@1.0.0": { vulns: [{ id: "MAL-2023-462" }] } },
+        // As OSV really serves one: no database_specific.severity, no severity[].
+        advisories: {
+          "MAL-2023-462": {
+            id: "MAL-2023-462",
+            summary: "Malicious code in evil-pkg",
+          },
         },
       },
     })
@@ -2733,9 +2790,12 @@ test("a malicious advisory on a declared package is a vendor-vulnerable error", 
   );
   await verifyScaDependencies(
     addon,
-    net({
-      batch: { results: [{ vulns: [{ id: "MAL-2023-462" }] }] },
-      advisories: { "MAL-2023-462": { id: "MAL-2023-462" } },
+    seededNet({
+      osv: {
+        batch: { "evil-pkg@1.0.0": { vulns: [{ id: "MAL-2023-462" }] } },
+        advisories: { "MAL-2023-462": { id: "MAL-2023-462" } },
+      },
+      popularity: { npm: { "evil-pkg": { downloads: 99999 } } },
     })
   );
   const out = (await vendorVulnerable.run(withManifest({ artifact: addon })))
@@ -2784,7 +2844,7 @@ test("auditLockedPackages: a non-array vulns field does not abort the review", a
   );
   await verifyScaDependencies(
     addon,
-    net({ batch: { results: [{ vulns: 5 }] } })
+    seededNet({ osv: { batch: { "x@1.0.0": { vulns: 5 } } } })
   );
   assert.deepEqual(addon.vendor.treeVulnerabilities, []);
 });

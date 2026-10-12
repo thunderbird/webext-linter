@@ -14,28 +14,19 @@ import YAML from "yaml";
 
 import { pipelineOptsFromArgv } from "../../src/cli.js";
 import { readPrepare, writePrepare } from "../../src/prepare/state.js";
-import {
-  advisory,
-  answer,
-  net as osvNet,
-  realPreparation,
-} from "../prepared.js";
+import { advisory, answer, auditCache, realPreparation } from "../prepared.js";
 import {
   addonOutsideRepo,
   cdnMissCache,
   freshFixtureCache,
   freshWorkFolder,
+  osvEntries,
+  popularityEntries,
   seedFixtureCache,
+  seedWorkCache,
 } from "../seed-caches.js";
 import { relativeInside } from "../../src/addon/load.js";
-import { runCache, workPaths } from "../../src/util/dest.js";
-import { withRunCache } from "../../src/vendor/run-cache.js";
-import { popularityKey } from "../../src/vendor/popularity-cache.js";
-import {
-  VENDOR_NPM_DOWNLOADS_API,
-  VENDOR_OSV_BATCH_API,
-  VENDOR_OSV_VULN_API,
-} from "../../src/config.js";
+import { workPaths } from "../../src/util/dest.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..", "..");
@@ -212,8 +203,8 @@ test("cache/cdn flags map to the pipeline opts", () => {
 
 // --cache-work-dir names the folder the run's cache is read from, so a review is answered
 // by what a test kept there: every lock package popular, and one advisory, which the review
-// reports. Kept through the run's own cache (withRunCache), so the entries are spelt as the
-// review reads them. The folder need not exist before the seeding creates it.
+// reports. Seeded with the run cache's own keys (seedWorkCache), so the entries are spelt as
+// the review reads them.
 test("--cache-work-dir: a review reads its answers from the folder named", async () => {
   const fixture = addonOutsideRepo(path.join(FIXTURES, "sca-unrescued"));
   const lock = JSON.parse(
@@ -231,26 +222,25 @@ test("--cache-work-dir: a review reads its answers from the folder named", async
     "tidy-lantern",
     "2.1.1"
   );
-  const answers = osvNet({ "tidy-lantern@2.1.0": [seeded] });
-  const dir = path.join(fixture, "run-cache");
-  const keep = withRunCache(
-    {
-      ...answers,
-      fetchJson: async (url) =>
-        popularityKey(url) ? { downloads: 1e9 } : answers.fetchJson(url),
-    },
-    runCache(fixture, dir)
-  );
-  for (const { name } of packages) {
-    await keep.fetchJson(`${VENDOR_NPM_DOWNLOADS_API}${name}`);
-  }
-  await keep.postJson(VENDOR_OSV_BATCH_API, {
-    queries: packages.map(({ name, version }) => ({
-      package: { name, ecosystem: "npm" },
-      version,
-    })),
+  const release = ({ name, version }) => `${name}@${version}`;
+  const dir = seedWorkCache({
+    osv: osvEntries({
+      batch: Object.fromEntries(
+        packages.map((p) => [
+          release(p),
+          release(p) === "tidy-lantern@2.1.0"
+            ? { vulns: [{ id: seeded.id }] }
+            : {},
+        ])
+      ),
+      advisories: { [seeded.id]: seeded },
+    }),
+    popularity: popularityEntries({
+      npm: Object.fromEntries(
+        packages.map(({ name }) => [name, { downloads: 1e9 }])
+      ),
+    }),
   });
-  await keep.fetchJson(`${VENDOR_OSV_VULN_API}${seeded.id}`);
 
   const r = run([
     path.join(fixture, "xpi"),
@@ -2059,11 +2049,14 @@ async function preparedFolder(over = {}, name = "sca-unrescued") {
       "cache-experiments-dir": CACHE,
       "cache-cdn-lookup-dir": CDN_CACHE,
     },
-    vulns: {
+    cache: auditCache({
       "lint-pebble@0.4.0": [
         advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
       ],
-    },
+      "argv-crumb@0.0.8": [],
+      "tidy-lantern@2.1.0": [],
+      "wick-trim@1.0.1": [],
+    }),
   });
   writePrepare(work, {
     ...readPrepare(work),
@@ -2082,12 +2075,8 @@ test("a prepared review refuses a record it cannot start from", (t) => {
       const r = run(["--llm-handback", work]);
       assert.equal(r.code, 2, r.stdout + r.stderr);
       assert.match(r.stdout, problem);
-      // What the preparation left: its record, the source, and the run's cache.
-      assert.deepEqual(fs.readdirSync(work).sort(), [
-        ".cache",
-        "prepare.json",
-        "sca",
-      ]);
+      // What the preparation left: its record and the source.
+      assert.deepEqual(fs.readdirSync(work).sort(), ["prepare.json", "sca"]);
     });
   refusedFor(
     "an experiments that is neither true nor false",
@@ -2219,11 +2208,11 @@ test("the hand-back starts the review of an unrescued source, which closes at on
       "cache-cdn-lookup-dir": CDN_CACHE,
       "cache-npm-registry-dir": CACHE,
     },
-    vulns: {
+    cache: auditCache({
       "lint-pebble@0.4.0": [
         advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
       ],
-    },
+    }),
   });
   assert.equal(record.roots.scaRoot, workPaths(work).sca, "the rescue gave up");
   const r = run(["--llm-handback", work]);
@@ -2243,26 +2232,28 @@ test("the hand-back starts the review of an unrescued source, which closes at on
 // A vulnerable source is rescued through the prompts the hand-backs print: the step that
 // settles the roots hands out the copy's `reduce`, and one that leaves the copy vulnerable
 // its `fix`, each naming the copy and the work folder to hand back. OSV is answered from the
-// run's cache, which an earlier preparation of the same source filled.
+// run cache folder named as --cache-work-dir, which the record hands to every step.
 test("the hand-backs print a rescued copy's reduce and then its fix", async () => {
   const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
   const source = path.join(fixture, "src");
-  const { work: earlier } = await realPreparation({
-    source,
-    xpi: path.join(fixture, "xpi"),
-    vulns: {
-      "lint-pebble@0.4.0": [
-        advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
-      ],
-    },
+  const cache = auditCache({
+    "lint-pebble@0.4.0": [
+      advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
+    ],
+    "argv-crumb@0.0.8": [],
+    "tidy-lantern@2.1.0": [],
+    "wick-trim@1.0.1": [],
   });
   const dir = submissionFolder();
-  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+  const r = run([
+    dir,
+    "--llm-sca-review",
+    ...OFFLINE_FLAGS,
+    "--cache-work-dir",
+    cache,
+  ]);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
-  fs.cpSync(path.join(earlier, ".cache"), path.join(work, ".cache"), {
-    recursive: true,
-  });
   fs.cpSync(source, headerValue(r.stdout, "EXTRACT_TO"), { recursive: true });
   answer(work, { SCA_ROOT: headerValue(r.stdout, "EXTRACT_TO") });
   const copy = path.join(work, "rescued");

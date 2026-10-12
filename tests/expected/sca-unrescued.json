@@ -2,6 +2,8 @@
   "_comment": "A source-code submission whose preparation could not rescue its dependencies: its preparation is run for real and gives the rescue up (its lock carries a high advisory on a package it pulls in for production, and a critical one on a declared build tool). The original is then reviewed like any other source, its lock audit answered from the run's OSV cache the preparation filled. The vulnerability checks come early, and the first that reports aborts the review for known vulnerabilities: the declared build tool's critical advisory, at its lock line. The check that would report the production package's advisory comes after it, so it never runs.",
   "preparation": {
     "advisories": {
+      "argv-crumb@0.0.8": [],
+      "tidy-lantern@2.1.0": [],
       "lint-pebble@0.4.0": [
         {
           "id": "GHSA-fixture-pebble",
