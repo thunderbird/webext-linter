@@ -22,7 +22,7 @@ import { writeFileAtomic } from "../util/atomic.js";
 import { parseJson } from "../util/json.js";
 import { debug } from "../util/log.js";
 import { rethrowIfFatal } from "../lib/errors.js";
-import { httpError, networkSwitchedOff } from "../util/net.js";
+import { seededResponse } from "../util/net.js";
 
 /** @typedef {import("./verify.js").VendorNet} VendorNet */
 
@@ -54,10 +54,11 @@ export function bytesKey(url) {
 /**
  * `net`, with source downloads and unpkg listings answered from the cache folder `dir`. Only
  * an answer is kept. A failure passes up and is not kept, and neither is a 404, which reads
- * as a source that cannot be fetched (./verify.js): no download writes one, so a pre-filled
- * `{fake404: true}` entry is a test's offline stand-in for it, read only with the network
- * switched off (src/util/net.js networkSwitchedOff) and thrown as the host's 404 would be.
- * In a real run such an entry is asked again. Every other request goes to `net` untouched.
+ * as a source that cannot be fetched (./verify.js). An entry seeding a response
+ * (`{fake: ...}`, src/util/net.js seededResponse) is a test's stand-in for what the host
+ * does: the request is made with it played in place of the host, and what it gives is taken
+ * as the host's: a success is kept, a failure is not. Every other request goes to `net`
+ * untouched.
  * @param {VendorNet} net
  * @param {string} dir  The cache folder.
  * @returns {VendorNet}
@@ -66,7 +67,6 @@ export function withSourceCache(net, dir) {
   const file = path.join(dir, INDEX);
   const index = load(file);
   const entryOf = (key) => (Object.hasOwn(index, key) ? index[key] : undefined);
-  const missing = (entry) => entry?.fake404 === true && networkSwitchedOff();
   return {
     ...net,
     async fetchBytes(url) {
@@ -76,10 +76,7 @@ export function withSourceCache(net, dir) {
       if (kept) {
         return kept;
       }
-      if (missing(entry)) {
-        throw httpError({ status: 404 });
-      }
-      const bytes = await net.fetchBytes(url);
+      const bytes = await net.fetchBytes(url, seededResponse(entry));
       const sha256 = hashOf(bytes);
       if (keep(path.join(dir, sha256), bytes)) {
         index[key] = { sha256 };
@@ -87,19 +84,16 @@ export function withSourceCache(net, dir) {
       }
       return bytes;
     },
-    async fetchJson(url) {
+    async fetchJson(url, seeded) {
       const key = listingKey(url);
       if (key === null) {
-        return net.fetchJson(url);
+        return net.fetchJson(url, seeded);
       }
       const entry = entryOf(key);
       if (Object.hasOwn(entry ?? {}, "answer")) {
         return entry.answer;
       }
-      if (missing(entry)) {
-        throw httpError({ status: 404 });
-      }
-      const answer = await net.fetchJson(url);
+      const answer = await net.fetchJson(url, seededResponse(entry));
       index[key] = { answer };
       keep(file, JSON.stringify(index));
       return answer;
@@ -144,7 +138,7 @@ function keptBody(dir, sha256) {
 /**
  * The folder's index, or none when it is absent or unreadable.
  * @param {string} file
- * @returns {Record<string, {sha256?: string, answer?: unknown, fake404?: true}>}
+ * @returns {Record<string, {sha256?: string, answer?: unknown, fake?: object}>}
  */
 function load(file) {
   try {

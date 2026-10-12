@@ -1,6 +1,8 @@
 // Unit tests for the run's OSV cache (src/vendor/osv-cache.js): every invocation of one review
 // run asks OSV through it, so a question one of them asked is answered from the run's work
-// folder. Kept by what was asked, not by a request's body. No network: a counting fake answers.
+// folder. Kept by what was asked, not by a request's body. Each test seeds OSV's answers as the
+// cache's content, or OSV's response as a `{fake: ...}` entry, and runs the cache over the
+// real transport, which refuses any request nothing was seeded for.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -8,141 +10,164 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { withOsvCache } from "../../src/vendor/osv-cache.js";
+import {
+  osvBatchKey,
+  osvQueryKey,
+  osvVulnKey,
+  withOsvCache,
+} from "../../src/vendor/osv-cache.js";
+import { defaultNet } from "../../src/vendor/verify.js";
 import { NoAnswerError } from "../../src/util/net.js";
+import { observed } from "../seed-caches.js";
 import {
   VENDOR_OSV_API,
   VENDOR_OSV_BATCH_API,
   VENDOR_OSV_VULN_API,
 } from "../../src/config.js";
 
-const fake404 = () => Object.assign(new Error("HTTP 404"), { status: 404 });
-
-/** A fake OSV that records every request it is sent. */
-function counting({ batch404 = false } = {}) {
-  const sent = [];
-  return {
-    sent,
-    async postJson(url, body) {
-      sent.push({ url, body });
-      if (url === VENDOR_OSV_BATCH_API) {
-        if (batch404) {
-          throw fake404();
-        }
-        return {
-          results: body.queries.map((q) => ({
-            vulns: [{ id: `ID-${q.package.name}` }],
-          })),
-        };
-      }
-      if (body.package.name === "gone") {
-        throw fake404();
-      }
-      return { vulns: [{ id: `ID-${body.package.name}` }] };
-    },
-    async fetchJson(url) {
-      sent.push({ url });
-      if (url.endsWith("MISSING")) {
-        throw fake404();
-      }
-      return { id: url.slice(url.lastIndexOf("/") + 1) };
-    },
-  };
-}
-
 const query = (name) => ({
   version: "1.0.0",
   package: { name, ecosystem: "npm" },
 });
 
-/** A fresh cache file of the test's own. */
-function cacheFile() {
+/** The refusal of a request no cache entry seeded anything for. */
+const refused = (url) => (err) =>
+  err.message.includes(`network request in a test: ${url}`);
+
+/**
+ * A cache file of the test's own, holding `entries`, or none when not given.
+ * @param {object} [entries]
+ * @returns {string}
+ */
+function cacheFile(entries) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-osv-cache-"));
-  return path.join(dir, ".cache", "osv.json");
+  const file = path.join(dir, ".cache", "osv.json");
+  if (entries !== undefined) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(entries));
+  }
+  return file;
 }
 
+const read = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
+
 test("a batch over packages already asked sends nothing, in any order", async () => {
-  const file = cacheFile();
-  const osv = counting();
-  const first = await withOsvCache(osv, file).postJson(VENDOR_OSV_BATCH_API, {
-    queries: [query("a"), query("b")],
+  const file = cacheFile({
+    [osvBatchKey(query("a"))]: { answer: { vulns: [{ id: "ID-a" }] } },
+    [osvBatchKey(query("b"))]: { answer: {} },
   });
-  // Another invocation of the run, putting the same packages together the other way.
-  const again = await withOsvCache(osv, file).postJson(VENDOR_OSV_BATCH_API, {
-    queries: [query("b"), query("a")],
-  });
-  assert.equal(osv.sent.length, 1);
-  assert.deepEqual(again.results, [...first.results].reverse());
+  const { net, sent } = observed(defaultNet);
+  for (const [order, results] of [
+    [
+      ["a", "b"],
+      [{ vulns: [{ id: "ID-a" }] }, {}],
+    ],
+    [
+      ["b", "a"],
+      [{}, { vulns: [{ id: "ID-a" }] }],
+    ],
+  ]) {
+    const res = await withOsvCache(net, file).postJson(VENDOR_OSV_BATCH_API, {
+      queries: order.map(query),
+    });
+    assert.deepEqual(res.results, results);
+  }
+  assert.deepEqual(sent, []);
 });
 
+// A batch is played with the response any of its queries seeds.
 test("a partly asked batch sends only the new queries, and answers in order", async () => {
-  const file = cacheFile();
-  const osv = counting();
-  await withOsvCache(osv, file).postJson(VENDOR_OSV_BATCH_API, {
-    queries: [query("b")],
+  const file = cacheFile({
+    [osvBatchKey(query("a"))]: {
+      fake: {
+        status: 200,
+        json: {
+          results: [{ vulns: [{ id: "ID-a" }] }, { vulns: [{ id: "ID-c" }] }],
+        },
+      },
+    },
+    [osvBatchKey(query("b"))]: { answer: { vulns: [{ id: "ID-b" }] } },
   });
-  const res = await withOsvCache(osv, file).postJson(VENDOR_OSV_BATCH_API, {
+  const { net, sent } = observed(defaultNet);
+  const res = await withOsvCache(net, file).postJson(VENDOR_OSV_BATCH_API, {
     queries: [query("a"), query("b"), query("c")],
   });
   assert.deepEqual(
-    osv.sent[1].body.queries.map((q) => q.package.name),
+    sent[0].body.queries.map((q) => q.package.name),
     ["a", "c"]
   );
   assert.deepEqual(
     res.results.map((r) => r.vulns[0].id),
     ["ID-a", "ID-b", "ID-c"]
   );
-});
-
-// A failure is never kept: the run ends on it and is handed back in the same work folder once
-// OSV answers, so a kept failure would be replayed on every retry.
-test("a batch OSV answers 404 is not kept", async () => {
-  const file = cacheFile();
-  const down = counting({ batch404: true });
-  await assert.rejects(
-    withOsvCache(down, file).postJson(VENDOR_OSV_BATCH_API, {
-      queries: [query("a")],
-    }),
-    (err) => err.status === 404
-  );
-  const up = counting();
-  await withOsvCache(up, file).postJson(VENDOR_OSV_BATCH_API, {
-    queries: [query("a")],
+  // Kept, so the same batch again sends nothing.
+  const again = await withOsvCache(net, file).postJson(VENDOR_OSV_BATCH_API, {
+    queries: [query("c"), query("a")],
   });
-  assert.equal(up.sent.length, 1, "asked again");
+  assert.deepEqual(
+    again.results.map((r) => r.vulns[0].id),
+    ["ID-c", "ID-a"]
+  );
+  assert.equal(sent.length, 1);
 });
 
 // A batch reply that leaves a query without a result is no answer: it ends the review,
 // and nothing of it is kept, so the next ask goes to OSV again.
 test("a short batch reply is no answer, and nothing of it is kept", async () => {
   for (const reply of [{ results: [{}] }, {}, { results: [{}, null] }]) {
-    const file = cacheFile();
-    const short = {
-      async postJson() {
-        return reply;
-      },
+    const entries = {
+      [osvBatchKey(query("a"))]: { fake: { status: 200, json: reply } },
     };
-    await assert.rejects(
-      withOsvCache(short, file).postJson(VENDOR_OSV_BATCH_API, {
-        queries: [query("a"), query("b")],
-      }),
-      NoAnswerError,
-      JSON.stringify(reply)
+    const file = cacheFile(entries);
+    const { net, sent } = observed(defaultNet);
+    for (let run = 0; run < 2; run++) {
+      await assert.rejects(
+        withOsvCache(net, file).postJson(VENDOR_OSV_BATCH_API, {
+          queries: [query("a"), query("b")],
+        }),
+        NoAnswerError,
+        JSON.stringify(reply)
+      );
+    }
+    assert.equal(sent.length, 2, "asked again");
+    assert.deepEqual(
+      sent.map((s) => s.body.queries.length),
+      [2, 2],
+      "both asked again"
     );
-    const up = counting();
-    await withOsvCache(up, file).postJson(VENDOR_OSV_BATCH_API, {
-      queries: [query("a"), query("b")],
-    });
-    assert.equal(up.sent.length, 1, "asked again");
-    assert.equal(up.sent[0].body.queries.length, 2, "both asked again");
+    assert.deepEqual(read(file), entries, "nothing kept");
   }
 });
 
-test("advisories and single queries are kept; a 404 is not", async () => {
-  const file = cacheFile();
-  const osv = counting();
+// A failure is never kept: the run ends on it and is handed back in the same work folder once
+// OSV answers, so a kept failure would be replayed on every retry.
+test("a batch OSV answers 404 is not kept", async () => {
+  const entries = { [osvBatchKey(query("a"))]: { fake: { status: 404 } } };
+  const file = cacheFile(entries);
+  const { net, sent } = observed(defaultNet);
   for (let run = 0; run < 2; run++) {
-    const net = withOsvCache(osv, file);
+    await assert.rejects(
+      withOsvCache(net, file).postJson(VENDOR_OSV_BATCH_API, {
+        queries: [query("a")],
+      }),
+      (err) => err.status === 404
+    );
+  }
+  assert.equal(sent.length, 2, "asked each time");
+  assert.deepEqual(read(file), entries, "nothing kept");
+});
+
+test("advisories and single queries are kept; a 404 is not", async () => {
+  const entries = {
+    [osvVulnKey("GHSA-1")]: { answer: { id: "GHSA-1" } },
+    [osvVulnKey("MISSING")]: { fake: { status: 404 } },
+    [osvQueryKey(query("a"))]: { answer: { vulns: [{ id: "ID-a" }] } },
+    [osvQueryKey(query("gone"))]: { fake: { status: 404 } },
+  };
+  const file = cacheFile(entries);
+  const { net: host, sent } = observed(defaultNet);
+  for (let run = 0; run < 2; run++) {
+    const net = withOsvCache(host, file);
     assert.deepEqual(await net.fetchJson(`${VENDOR_OSV_VULN_API}GHSA-1`), {
       id: "GHSA-1",
     });
@@ -158,23 +183,31 @@ test("advisories and single queries are kept; a 404 is not", async () => {
       (err) => err.status === 404
     );
   }
-  // The two answers once across both invocations; the two 404s asked each time.
-  assert.equal(osv.sent.length, 6);
+  // The two answers never sent, the two 404s sent each time.
+  assert.deepEqual(
+    sent.map((s) => s.url),
+    [
+      `${VENDOR_OSV_VULN_API}MISSING`,
+      VENDOR_OSV_API,
+      `${VENDOR_OSV_VULN_API}MISSING`,
+      VENDOR_OSV_API,
+    ]
+  );
+  assert.deepEqual(read(file), entries, "nothing kept");
 });
 
 test("every other request goes to the network untouched", async () => {
   const file = cacheFile();
-  const sent = [];
-  const other = {
-    fetchJson: async (url) => (sent.push(url), { url }),
-    postJson: async (url) => (sent.push(url), { url }),
-  };
-  const net = withOsvCache(other, file);
-  for (let i = 0; i < 2; i++) {
-    await net.fetchJson("https://registry.npmjs.org/x/1.0.0");
-    await net.postJson("https://example.invalid/post", {});
-  }
-  assert.equal(sent.length, 4);
+  const { net: host, sent } = observed(defaultNet);
+  const net = withOsvCache(host, file);
+  const npm = "https://registry.npmjs.org/x/1.0.0";
+  const post = "https://example.invalid/post";
+  await assert.rejects(net.fetchJson(npm), refused(npm));
+  await assert.rejects(net.postJson(post, {}), refused(post));
+  assert.deepEqual(
+    sent.map((s) => s.url),
+    [npm, post]
+  );
   assert.equal(fs.existsSync(file), false, "nothing kept");
 });
 
@@ -182,7 +215,10 @@ test("an unreadable cache file reads as empty", async () => {
   const file = cacheFile();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, "{ not json");
-  const osv = counting();
-  await withOsvCache(osv, file).fetchJson(`${VENDOR_OSV_VULN_API}GHSA-1`);
-  assert.equal(osv.sent.length, 1);
+  const url = `${VENDOR_OSV_VULN_API}GHSA-1`;
+  await assert.rejects(
+    withOsvCache(defaultNet, file).fetchJson(url),
+    refused(url)
+  );
+  assert.equal(fs.readFileSync(file, "utf8"), "{ not json", "nothing kept");
 });

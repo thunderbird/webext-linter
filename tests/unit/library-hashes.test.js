@@ -8,14 +8,21 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { setNetworkPacing } from "../../src/util/net.js";
+import { seedDownload } from "../seed-caches.js";
 import { DAY_MS } from "../../src/util/cache-age.js";
+import { LIBRARY_HASHES_URL } from "../../src/config.js";
+import { NoAnswerError } from "../../src/util/net.js";
 import {
   parseLibraryHashes,
   resolveLibraryHashes,
   npmNameForLibrary,
   isCompleteHashDb,
+  cachedHashesPath,
 } from "../../src/lib/library-hashes.js";
+
+/** The switched-off network's refusal of a request to `url`. @param {string} url */
+const refused = (url) => (err) =>
+  err.message.includes(`network request in a test: ${url}`);
 
 const H = "a".repeat(64); // a syntactically valid (if fake) sha256
 
@@ -67,27 +74,25 @@ test("resolveLibraryHashes reads a pre-seeded cache without touching the network
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-/** globalThis.fetch answering with `respond()` for the length of the test. */
-function fetching(t, respond) {
-  setNetworkPacing({ intervalMs: 0, backoffMs: 0, maxWaitMs: 0 });
-  const real = globalThis.fetch;
-  globalThis.fetch = async () => respond();
-  t.after(() => {
-    globalThis.fetch = real;
-  });
-}
-
-// The DB gains library releases upstream, so a copy older than a day is downloaded again
-// - and one that gets no answer ends the review rather than being used stale.
+// The DB gains library releases upstream, so a copy older than a day is not used but
+// downloaded again. Nothing is seeded at first, so the switched-off network refuses the
+// refresh, naming the request that proves it was asked. With the host's 200 seeded in the
+// cached file, the download replaces it, and the new copy is what the next run reads.
 test("resolveLibraryHashes downloads a cache older than a day again", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "libhash-old-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const cached = path.join(dir, "dispensary-hashes.txt");
+  const cached = cachedHashesPath(dir);
   fs.writeFileSync(cached, `${H} lib.1.0.0.lib.js\n`);
   const old = new Date(Date.now() - 2 * DAY_MS);
   fs.utimesSync(cached, old, old);
 
-  fetching(t, () => new Response(`${H} lib.2.0.0.lib.js\n`, { status: 200 }));
+  await assert.rejects(
+    resolveLibraryHashes({ cacheDir: dir }),
+    refused(LIBRARY_HASHES_URL)
+  );
+
+  seedDownload(cached, { status: 200, body: `${H} lib.2.0.0.lib.js\n` });
+  fs.utimesSync(cached, old, old);
   const { text, source } = await resolveLibraryHashes({ cacheDir: dir });
   assert.equal(source, "download");
   assert.match(text, /lib\.2\.0\.0/);
@@ -96,22 +101,22 @@ test("resolveLibraryHashes downloads a cache older than a day again", async (t) 
     /lib\.2\.0\.0/,
     "cache rewritten"
   );
+  const again = await resolveLibraryHashes({ cacheDir: dir });
+  assert.equal(again.source, "cache");
+  assert.match(again.text, /lib\.2\.0\.0/);
 });
 
+// A refresh that gets no answer ends the review: the cached file holds the host's 503,
+// seeded in place of a copy.
 test("a stale hash DB whose refresh gets no answer is not used", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "libhash-noans-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const cached = path.join(dir, "dispensary-hashes.txt");
-  fs.writeFileSync(cached, `${H} lib.1.0.0.lib.js\n`);
-  const old = new Date(Date.now() - 2 * DAY_MS);
-  fs.utimesSync(cached, old, old);
-
-  fetching(t, () => new Response("", { status: 503 }));
-  await assert.rejects(resolveLibraryHashes({ cacheDir: dir }));
+  seedDownload(cachedHashesPath(dir), { status: 503 });
+  await assert.rejects(resolveLibraryHashes({ cacheDir: dir }), NoAnswerError);
 });
 
-// A fresh cache is used without a request: the switched-off network refuses any request
-// here, which fails the test.
+// A fresh cache is used without a request: nothing is seeded, so the switched-off network
+// refuses any request here, which fails the test.
 test("a fresh hash DB is used without a request", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "libhash-fresh-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -137,33 +142,40 @@ test("isCompleteHashDb rejects a truncated or empty hash DB", () => {
 });
 
 // The gate is applied, not just defined: a fresh cache cut mid-line is not used but
-// downloaded again, and the complete copy replaces it.
+// downloaded again, which the switched-off network refuses, naming the request. With the
+// host's 200 seeded in the cached file, the complete copy replaces it.
 test("a fresh but truncated hash DB is downloaded again", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "libhash-cut-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const cached = path.join(dir, "dispensary-hashes.txt");
+  const cached = cachedHashesPath(dir);
   fs.writeFileSync(cached, `${H} lib.1.0.0.lib.js\n${"b".repeat(64)} li`);
 
-  fetching(t, () => new Response(`${H} lib.2.0.0.lib.js\n`, { status: 200 }));
+  await assert.rejects(
+    resolveLibraryHashes({ cacheDir: dir }),
+    refused(LIBRARY_HASHES_URL)
+  );
+
+  seedDownload(cached, { status: 200, body: `${H} lib.2.0.0.lib.js\n` });
   const { text, source } = await resolveLibraryHashes({ cacheDir: dir });
   assert.equal(source, "download");
   assert.match(text, /lib\.2\.0\.0/);
   assert.match(fs.readFileSync(cached, "utf8"), /lib\.2\.0\.0/);
+  const again = await resolveLibraryHashes({ cacheDir: dir });
+  assert.equal(again.source, "cache");
+  assert.match(again.text, /lib\.2\.0\.0/);
 });
 
 // A download that is not a complete DB (an error page served with a 200) ends the review
-// and is never cached, so the next run does not review against it either.
+// and is never cached, so the next run does not review against it either: the cached file
+// still holds the seeded response, not the page.
 test("an incomplete download is refused and not cached", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "libhash-bad-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-
-  fetching(t, () => new Response("<html>maintenance</html>", { status: 200 }));
+  const cached = cachedHashesPath(dir);
+  seedDownload(cached, { status: 200, body: "<html>maintenance</html>" });
+  const seededFile = fs.readFileSync(cached, "utf8");
   await assert.rejects(resolveLibraryHashes({ cacheDir: dir }), /incomplete/);
-  assert.equal(
-    fs.existsSync(path.join(dir, "dispensary-hashes.txt")),
-    false,
-    "nothing cached"
-  );
+  assert.equal(fs.readFileSync(cached, "utf8"), seededFile, "nothing cached");
 });
 
 test("npmNameForLibrary maps dispensary aliases and passes others through", () => {

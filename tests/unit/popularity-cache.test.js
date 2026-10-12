@@ -1,62 +1,57 @@
 // Unit tests for the run's popularity cache (src/vendor/popularity-cache.js): every invocation
 // of one review run asks npm and GitHub through it, so a package one of them asked about is
-// answered from the run's cache folder. No network: a counting fake answers.
+// answered from the run's cache folder. Each test seeds the hosts' answers as the cache's
+// content, or a host's response as a `{fake: ...}` entry, and runs the cache over the real
+// transport, which refuses any request nothing was seeded for.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import {
   popularityKey,
   withPopularityCache,
 } from "../../src/vendor/popularity-cache.js";
+import { defaultNet } from "../../src/vendor/verify.js";
+import { NoAnswerError } from "../../src/util/net.js";
+import { observed } from "../seed-caches.js";
 import {
   VENDOR_GITHUB_REPOS_API,
   VENDOR_NPM_DOWNLOADS_API,
 } from "../../src/config.js";
 
-const ROOT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../.."
-);
-
 const npm = (name) => `${VENDOR_NPM_DOWNLOADS_API}${name}`;
 const gh = (repo) => `${VENDOR_GITHUB_REPOS_API}${repo}`;
-const fake404 = () => Object.assign(new Error("HTTP 404"), { status: 404 });
 
-/** A fake host that records every request it is sent. */
-function counting() {
-  const sent = [];
-  return {
-    sent,
-    async fetchJson(url) {
-      sent.push(url);
-      if (url.endsWith("gone")) {
-        throw fake404();
-      }
-      if (url.endsWith("down")) {
-        throw new Error("no answer");
-      }
-      return url.startsWith(VENDOR_GITHUB_REPOS_API)
-        ? { stargazers_count: 7 }
-        : { downloads: 7 };
-    },
-  };
-}
+/** The refusal of a request no cache entry seeded anything for. */
+const refused = (url) => (err) =>
+  err.message.includes(`network request in a test: ${url}`);
 
-/** A fresh cache file of the test's own. */
-function cacheFile() {
+/**
+ * A cache file of the test's own, holding `entries`, or none when not given.
+ * @param {object} [entries]
+ * @returns {string}
+ */
+function cacheFile(entries) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-popularity-cache-"));
-  return path.join(dir, ".cache", "popularity.json");
+  const file = path.join(dir, ".cache", "popularity.json");
+  if (entries !== undefined) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(entries));
+  }
+  return file;
 }
+
+const read = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 
 test("an answer is kept, and a repeat in another invocation sends nothing", async () => {
-  const file = cacheFile();
-  const host = counting();
+  const file = cacheFile({
+    "npm:@scope/pkg": { answer: { downloads: 7 } },
+    "gh:owner/repo": { answer: { stargazers_count: 7 } },
+  });
+  const { net: host, sent } = observed(defaultNet);
   for (let run = 0; run < 2; run++) {
     const net = withPopularityCache(host, file);
     assert.deepEqual(await net.fetchJson(npm("@scope/pkg")), { downloads: 7 });
@@ -64,37 +59,53 @@ test("an answer is kept, and a repeat in another invocation sends nothing", asyn
       stargazers_count: 7,
     });
   }
-  assert.deepEqual(host.sent, [npm("@scope/pkg"), gh("owner/repo")]);
+  assert.deepEqual(sent, []);
 });
 
 // A failure is never kept: the run ends on it and is handed back in the same work folder once
 // the host answers, so a kept failure would be replayed on every retry. A 404 is not kept
 // either: no lookup writes one.
 test("a 404 and a failure are not kept", async () => {
-  const file = cacheFile();
-  const host = counting();
+  const entries = {
+    "npm:gone": { fake: { status: 404 } },
+    "gh:owner/gone": { fake: { status: 404 } },
+    "npm:down": { fake: { status: 503 } },
+    "gh:owner/down": { fake: { status: 503 } },
+  };
+  const file = cacheFile(entries);
+  const { net: host, sent } = observed(defaultNet);
   for (let run = 0; run < 2; run++) {
     const net = withPopularityCache(host, file);
     for (const url of [npm("gone"), gh("owner/gone")]) {
       await assert.rejects(net.fetchJson(url), (err) => err.status === 404);
     }
     for (const url of [npm("down"), gh("owner/down")]) {
-      await assert.rejects(net.fetchJson(url), /no answer/);
+      await assert.rejects(
+        net.fetchJson(url),
+        (err) => err instanceof NoAnswerError && /HTTP 503/.test(err.message)
+      );
     }
   }
-  assert.equal(host.sent.length, 8, "asked each time");
-  assert.equal(fs.existsSync(file), false, "nothing kept");
+  assert.equal(sent.length, 8, "asked each time");
+  assert.deepEqual(read(file), entries, "nothing kept");
 });
 
 test("a GitHub repository is kept without case, an npm name as it is", async () => {
-  const file = cacheFile();
-  const host = counting();
+  const file = cacheFile({
+    "gh:owner/repo": { answer: { stargazers_count: 7 } },
+    "npm:Pkg": { answer: { downloads: 7 } },
+  });
+  const { net: host, sent } = observed(defaultNet);
   const net = withPopularityCache(host, file);
-  await net.fetchJson(gh("Owner/Repo"));
-  await net.fetchJson(gh("owner/REPO"));
-  await net.fetchJson(npm("Pkg"));
-  await net.fetchJson(npm("pkg"));
-  assert.deepEqual(host.sent, [gh("Owner/Repo"), npm("Pkg"), npm("pkg")]);
+  for (const url of [gh("Owner/Repo"), gh("owner/REPO")]) {
+    assert.deepEqual(await net.fetchJson(url), { stargazers_count: 7 });
+  }
+  assert.deepEqual(await net.fetchJson(npm("Pkg")), { downloads: 7 });
+  await assert.rejects(net.fetchJson(npm("pkg")), refused(npm("pkg")));
+  assert.deepEqual(
+    sent.map((s) => s.url),
+    [npm("pkg")]
+  );
   assert.equal(popularityKey(gh("Owner/Repo")), "gh:owner/repo");
   assert.equal(popularityKey(npm("@Scope/Pkg")), "npm:@Scope/Pkg");
   assert.equal(popularityKey("https://registry.npmjs.org/x"), null);
@@ -102,17 +113,16 @@ test("a GitHub repository is kept without case, an npm name as it is", async () 
 
 test("every other request goes to the network untouched", async () => {
   const file = cacheFile();
-  const sent = [];
-  const other = {
-    fetchJson: async (url) => (sent.push(url), { url }),
-    postJson: async (url) => (sent.push(url), { url }),
-  };
-  const net = withPopularityCache(other, file);
-  for (let i = 0; i < 2; i++) {
-    await net.fetchJson("https://registry.npmjs.org/x/1.0.0");
-    await net.postJson("https://example.invalid/post", {});
-  }
-  assert.equal(sent.length, 4);
+  const { net: host, sent } = observed(defaultNet);
+  const net = withPopularityCache(host, file);
+  const registry = "https://registry.npmjs.org/x/1.0.0";
+  const post = "https://example.invalid/post";
+  await assert.rejects(net.fetchJson(registry), refused(registry));
+  await assert.rejects(net.postJson(post, {}), refused(post));
+  assert.deepEqual(
+    sent.map((s) => s.url),
+    [registry, post]
+  );
   assert.equal(fs.existsSync(file), false, "nothing kept");
 });
 
@@ -120,66 +130,29 @@ test("an unreadable cache file reads as empty", async () => {
   const file = cacheFile();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, "{ not json");
-  const host = counting();
-  await withPopularityCache(host, file).fetchJson(npm("a"));
-  assert.equal(host.sent.length, 1);
+  await assert.rejects(
+    withPopularityCache(defaultNet, file).fetchJson(npm("a")),
+    refused(npm("a"))
+  );
+  assert.equal(fs.readFileSync(file, "utf8"), "{ not json", "nothing kept");
 });
 
-// A pre-filled 404 (`{fake404: true}`) answers only while the network is switched off: no
-// lookup writes one, so it is a test's offline stand-in for the host's 404, and a real run
-// asks the host instead. The switch is read once per process, so the real-run half is asked
-// of a child process started without it, with a fake network that records each request and
-// makes none, and the same child with the switch on is the control.
-test("a pre-filled 404 answers only with the network switched off", () => {
-  const module = JSON.stringify(
-    path.join(ROOT, "src", "vendor", "popularity-cache.js")
-  );
-  const script = `
-    import fs from "node:fs";
-    import os from "node:os";
-    import path from "node:path";
-    import { withPopularityCache } from ${module};
-    import { VENDOR_NPM_DOWNLOADS_API, VENDOR_GITHUB_REPOS_API } from ${JSON.stringify(
-      path.join(ROOT, "src", "config.js")
-    )};
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "wl-404-")), "p.json");
-    fs.writeFileSync(file, JSON.stringify({
-      "npm:gone": { fake404: true }, "gh:owner/gone": { fake404: true } }));
-    const asked = [];
-    const net = withPopularityCache({ fetchJson: async (url) => {
-      asked.push(url);
-      return { downloads: 1 };
-    } }, file);
-    const statuses = [];
-    for (const url of [VENDOR_NPM_DOWNLOADS_API + "gone", VENDOR_GITHUB_REPOS_API + "Owner/Gone"]) {
-      try { await net.fetchJson(url); statuses.push("answer"); }
-      catch (err) { statuses.push(err.status); }
-    }
-    console.log(JSON.stringify({ asked: asked.length, statuses }));
-  `;
-  const run = (switchedOff) => {
-    const env = { ...process.env };
-    if (switchedOff) {
-      env.WEBEXT_LINTER_NO_NETWORK = "1";
-    } else {
-      delete env.WEBEXT_LINTER_NO_NETWORK;
-    }
-    const r = spawnSync(
-      process.execPath,
-      ["--input-type=module", "-e", script],
-      { encoding: "utf8", env }
-    );
-    assert.equal(r.status, 0, r.stderr);
-    return JSON.parse(r.stdout.trim().split("\n").pop());
-  };
+// A seeded response is played by the real transport in place of the host, and what it gives
+// is the host's answer: kept like any other, while the seeded entry itself is never written.
+test("a seeded answer is played through the transport and kept as an answer", async () => {
+  const file = cacheFile({
+    "npm:pkg": { fake: { status: 200, json: { downloads: 7 } } },
+  });
+  const net = withPopularityCache(defaultNet, file);
+  assert.deepEqual(await net.fetchJson(npm("pkg")), { downloads: 7 });
+  assert.deepEqual(read(file), { "npm:pkg": { answer: { downloads: 7 } } });
+  // Kept, so it is read back without the transport.
+  const { net: host, sent } = observed(defaultNet);
   assert.deepEqual(
-    run(false),
-    { asked: 2, statuses: ["answer", "answer"] },
-    "a real run asks"
+    await withPopularityCache(host, file).fetchJson(npm("pkg")),
+    {
+      downloads: 7,
+    }
   );
-  assert.deepEqual(
-    run(true),
-    { asked: 0, statuses: [404, 404] },
-    "a test reads it"
-  );
+  assert.deepEqual(sent, []);
 });

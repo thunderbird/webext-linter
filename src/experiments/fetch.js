@@ -12,7 +12,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { debug } from "../util/log.js";
-import { codeloadZipUrl, downloadToCache } from "../util/download.js";
+import {
+  codeloadZipUrl,
+  downloadToCache,
+  seededDownload,
+} from "../util/download.js";
 import { EXPERIMENTS_REPO, EXPERIMENTS_BRANCH } from "../config.js";
 import { cacheAgeHours, cacheIsStale } from "../util/cache-age.js";
 
@@ -47,7 +51,7 @@ export async function resolveExperimentsZip({
   fs.mkdirSync(cacheDir, { recursive: true });
   const cached = cachedExperimentsPath(cacheDir, branch);
 
-  if (!cacheIsStale(cached)) {
+  if (seededDownload(cached) === undefined && !cacheIsStale(cached)) {
     debug(
       `Using cached experiments zip (${cacheAgeHours(cached)} h old): ${cached}`
     );

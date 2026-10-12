@@ -2,9 +2,8 @@
 // findLockInjections): every registry entry must install the release it names. The audit asks
 // about the name and version an entry records, while the install fetches its URL, so an entry
 // whose URL is another release is forged. A URL on the registry's tarball path is compared
-// offline; one off it is asked of the registry, once, and the answer cached. The registry
-// answers live only in the tests of what its cache keeps, and the switched-off network
-// refuses any other request.
+// offline; one off it is asked of the registry, once, and the answer cached. The registry's
+// responses are seeded in its cache, and the switched-off network refuses any other request.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,6 +16,8 @@ import {
   lockInstallTargets,
 } from "../../src/vendor/locks.js";
 import { defaultNet } from "../../src/vendor/verify.js";
+import { NoAnswerError } from "../../src/util/net.js";
+import { observed, seeded, seedRegistryCache } from "../seed-caches.js";
 
 const REG = "https://registry.npmjs.org/";
 
@@ -213,63 +214,49 @@ test("a registry URL off the tarball path is asked of the registry, and its tarb
       resolved: `${REG}@scope/gone/-/x.tgz`,
     },
   });
-  const asked = [];
-  const net = {
-    fetchJson: async (url) => {
-      asked.push(url);
-      if (url === `${REG}tinylib/1.2.1`) {
-        return { dist: { tarball: odd } };
-      }
-      if (url === `${REG}mismatch/1.0.0`) {
-        return { dist: { tarball: `${REG}mismatch/-/mismatch-1.0.0.tgz` } };
-      }
-      const err = new Error("Not Found");
-      err.status = 404;
-      throw err;
-    },
+  // The registry's responses, played in place of the host: a 200 is kept like a live answer,
+  // a 404 is not.
+  const cacheDir = seedRegistryCache({
+    "tinylib@1.2.1": seeded({ status: 200, json: { dist: { tarball: odd } } }),
+    "mismatch@1.0.0": seeded({
+      status: 200,
+      json: { dist: { tarball: `${REG}mismatch/-/mismatch-1.0.0.tgz` } },
+    }),
+    "@scope/gone@0.0.1": seeded({ status: 404 }),
+  });
+  const asked = async () => {
+    const { net, sent } = observed(defaultNet);
+    const found = await forged(addon, { net, cacheDir });
+    return { found, urls: sent.map((r) => r.url) };
   };
-  const cacheDir = freshCache();
   const expected = [
     ["mismatch", "1.0.0", `${REG}mismatch/-/elsewhere.tgz`],
     ["@scope/gone", "0.0.1", `${REG}@scope/gone/-/x.tgz`],
   ];
-  assert.deepEqual(await forged(addon, { net, cacheDir }), expected);
-  assert.deepEqual(asked, [
+  const first = await asked();
+  assert.deepEqual(first.found, expected);
+  assert.deepEqual(first.urls, [
     `${REG}tinylib/1.2.1`,
     `${REG}mismatch/1.0.0`,
     `${REG}@scope%2fgone/0.0.1`,
   ]);
-  // The second run is answered from the cache - except the 404, which is never kept (it can
-  // be a passing fault of the registry) and so is asked again.
-  const again = [];
-  const recording = {
-    fetchJson: async (url) => {
-      again.push(url);
-      return net.fetchJson(url);
-    },
-  };
-  assert.deepEqual(await forged(addon, { net: recording, cacheDir }), expected);
-  assert.deepEqual(again, [`${REG}@scope%2fgone/0.0.1`]);
-  // A pre-filled 404 (`{fake404: true}`) is read, as every test runs with the network
-  // switched off; an older version's `null` is not, and is asked again.
   const file = path.join(cacheDir, "npm-registry.json");
   const kept = JSON.parse(fs.readFileSync(file, "utf8"));
-  fs.writeFileSync(
-    file,
-    JSON.stringify({ ...kept, "@scope/gone@0.0.1": { fake404: true } })
-  );
-  assert.deepEqual(
-    await forged(addon, { net: defaultNet, cacheDir }),
-    expected
-  );
+  assert.equal(kept["tinylib@1.2.1"], odd);
+  assert.deepEqual(kept["@scope/gone@0.0.1"], { fake: { status: 404 } });
+  // The second run is answered from the cache - except the 404, which is never kept (it can
+  // be a passing fault of the registry) and so is asked again.
+  const second = await asked();
+  assert.deepEqual(second.found, expected);
+  assert.deepEqual(second.urls, [`${REG}@scope%2fgone/0.0.1`]);
+  // A seeded 404 (`{fake: {status: 404}}`) is played, as every test runs with the network
+  // switched off. An older version's `null` is not, and is asked of the registry again,
+  // which the switched-off network refuses.
   fs.writeFileSync(
     file,
     JSON.stringify({ ...kept, "@scope/gone@0.0.1": null })
   );
-  again.length = 0;
-  assert.deepEqual(await forged(addon, { net: recording, cacheDir }), expected);
-  assert.deepEqual(again, [`${REG}@scope%2fgone/0.0.1`]);
-  fs.rmSync(cacheDir, { recursive: true, force: true });
+  await assert.rejects(asked(), /network request in a test: .*@scope%2fgone/);
 });
 
 test("an answer other than a 404 is not read as one", async () => {
@@ -279,15 +266,11 @@ test("an answer other than a 404 is not read as one", async () => {
       resolved: `${REG}tinylib/-/release.tgz`,
     },
   });
-  const net = {
-    fetchJson: async () => {
-      const err = new Error("Service Unavailable");
-      err.status = 503;
-      throw err;
-    },
-  };
+  const cacheDir = seedRegistryCache({
+    "tinylib@1.2.1": seeded({ status: 503 }),
+  });
   await assert.rejects(
-    () => findLockInjections(addon, { net, cacheDir: freshCache() }),
-    /Service Unavailable/
+    () => findLockInjections(addon, { net: defaultNet, cacheDir }),
+    (err) => err instanceof NoAnswerError && /HTTP 503/.test(err.message)
   );
 });

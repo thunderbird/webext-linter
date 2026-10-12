@@ -43,7 +43,7 @@ import { writeFileAtomic } from "../util/atomic.js";
 import { debug } from "../util/log.js";
 import { classifySource } from "./sources.js";
 import { defaultNet } from "./verify.js";
-import { networkSwitchedOff } from "../util/net.js";
+import { seededResponse } from "../util/net.js";
 
 import {
   DECLARATION_MAPS,
@@ -867,9 +867,15 @@ export async function findLockInjections(
     }
     cache ??= loadRegistryCache(cacheDir);
     const key = `${name}@${version}`;
-    let tarball = cachedTarball(Object.hasOwn(cache, key) ? cache[key] : null);
+    const entry = Object.hasOwn(cache, key) ? cache[key] : null;
+    let tarball = cachedTarball(entry);
     if (tarball === undefined) {
-      tarball = await registryTarball(net, name, version);
+      tarball = await registryTarball(
+        net,
+        name,
+        version,
+        seededResponse(entry)
+      );
       if (tarball !== null) {
         cache[key] = tarball;
         dirty = true;
@@ -895,12 +901,13 @@ export async function findLockInjections(
  * @param {import("./verify.js").VendorNet} net
  * @param {string} name  The package, possibly scoped.
  * @param {string} version
+ * @param {import("../util/net.js").SeededResponse} [seeded]  A test's stand-in for the host.
  * @returns {Promise<?string>}
  */
-async function registryTarball(net, name, version) {
+async function registryTarball(net, name, version, seeded) {
   const url = `${NPM_REGISTRY_TARBALLS}${name.replace("/", "%2f")}/${encodeURIComponent(version)}`;
   try {
-    const j = await net.fetchJson(url);
+    const j = await net.fetchJson(url, seeded);
     const tarball = j?.dist?.tarball;
     return typeof tarball === "string" && tarball !== "" ? tarball : null;
   } catch (err) {
@@ -912,22 +919,17 @@ async function registryTarball(net, name, version) {
 }
 
 /**
- * What a cache entry answers: the tarball URL it keeps; null for a pre-filled 404
- * (`{fake404: true}`), read only with the network switched off (src/util/net.js
- * networkSwitchedOff), since no lookup writes one and it is how a test is given that answer
- * offline; and undefined for anything else - none yet, a pre-filled 404 in a real run, an
- * older version's entry, a corrupt value - which is asked again.
+ * The tarball URL a cache entry keeps, or undefined for anything else - none yet, a seeded
+ * response (src/util/net.js seededResponse, which the caller plays in place of the host), an older
+ * version's entry, a corrupt value - which is asked again.
  * @param {unknown} entry
- * @returns {string|null|undefined}
+ * @returns {string|undefined}
  */
 function cachedTarball(entry) {
-  if (typeof entry === "string" && entry !== "") {
-    return entry;
-  }
-  return entry?.fake404 === true && networkSwitchedOff() ? null : undefined;
+  return typeof entry === "string" && entry !== "" ? entry : undefined;
 }
 
-/** The on-disk cache file: a `{ "<package>@<version>": <tarball URL> | {fake404: true} }`
+/** The on-disk cache file: a `{ "<package>@<version>": <tarball URL> | {fake: SeededResponse} }`
  *  JSON map. */
 function registryCacheFile(cacheDir) {
   return path.join(cacheDir, "npm-registry.json");
@@ -936,7 +938,7 @@ function registryCacheFile(cacheDir) {
 /**
  * Load the registry's cached answers, or an empty map when absent or corrupt.
  * @param {string} cacheDir
- * @returns {Record<string, string|{fake404: true}>}
+ * @returns {Record<string, string|{fake: object}>}
  */
 function loadRegistryCache(cacheDir) {
   try {
@@ -954,7 +956,7 @@ function loadRegistryCache(cacheDir) {
  * Persist the cache. Best-effort: a write failure is non-fatal (the answers are just asked
  * again next run).
  * @param {string} cacheDir
- * @param {Record<string, string|{fake404: true}>} cache
+ * @param {Record<string, string|{fake: object}>} cache
  */
 function saveRegistryCache(cacheDir, cache) {
   try {

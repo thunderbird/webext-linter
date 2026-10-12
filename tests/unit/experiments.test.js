@@ -30,13 +30,14 @@ import { loadSchemaFiles } from "../../src/schema/load.js";
 import experimentOverridesApi from "../../src/checks/rules/experiment-overrides-api.js";
 import experimentNotAllowed from "../../src/checks/rules/experiment-not-allowed.js";
 import experimentModified from "../../src/checks/rules/experiment-modified.js";
-import { seedFixtureCache } from "../seed-caches.js";
+import { seedDownload, seedFixtureCache } from "../seed-caches.js";
 import {
   resolveExperimentsZip,
   cachedExperimentsPath,
 } from "../../src/experiments/fetch.js";
-import { setNetworkPacing } from "../../src/util/net.js";
 import { DAY_MS } from "../../src/util/cache-age.js";
+import { codeloadZipUrl } from "../../src/util/download.js";
+import { EXPERIMENTS_REPO } from "../../src/config.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const EXPERIMENTS_FIXTURE = path.join(here, "..", "experiments-fixture");
@@ -551,17 +552,12 @@ test("experiment-modified flags only modified groups", () => {
 // The allowed list moves upstream - an Experiment approved, one withdrawn - so a cached copy
 // older than a day is downloaded again before it is used, and a fresh one is used as is.
 test("resolveExperimentsZip downloads a list older than a day again", async (t) => {
-  setNetworkPacing({ intervalMs: 0, backoffMs: 0, maxWaitMs: 0 });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exp-age-"));
-  const real = globalThis.fetch;
-  t.after(() => {
-    globalThis.fetch = real;
-    fs.rmSync(dir, { recursive: true, force: true });
-  });
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const cached = cachedExperimentsPath(dir, "main");
   fs.writeFileSync(cached, "old zip");
 
-  // The switched-off network refuses any request for the fresh copy.
+  // Nothing seeded yet: the switched-off network refuses a request for the fresh copy.
   const fresh = await resolveExperimentsZip({ branch: "main", cacheDir: dir });
   assert.equal(
     fresh.source,
@@ -569,12 +565,26 @@ test("resolveExperimentsZip downloads a list older than a day again", async (t) 
     "a fresh copy is used without a request"
   );
 
+  // Once older than a day it is downloaded again, which the switched-off network refuses,
+  // naming the request.
   const old = new Date(Date.now() - 2 * DAY_MS);
   fs.utimesSync(cached, old, old);
-  globalThis.fetch = async () => new Response("new zip", { status: 200 });
+  await assert.rejects(
+    resolveExperimentsZip({ branch: "main", cacheDir: dir }),
+    (err) =>
+      err.message.includes(
+        `network request in a test: ${codeloadZipUrl(EXPERIMENTS_REPO, "main")}`
+      )
+  );
+
+  // With the host's 200 seeded in the cached file, the download replaces it, and the new
+  // copy is what the next run reads.
+  seedDownload(cached, { status: 200, body: "new zip" });
   const stale = await resolveExperimentsZip({ branch: "main", cacheDir: dir });
   assert.equal(stale.source, "download:main");
   assert.equal(fs.readFileSync(cached, "utf8"), "new zip", "cache rewritten");
+  const again = await resolveExperimentsZip({ branch: "main", cacheDir: dir });
+  assert.equal(again.source, "cache:main");
 });
 
 // The verdict --llm-sca-review asks before it prepares a review, by the rule the review's own

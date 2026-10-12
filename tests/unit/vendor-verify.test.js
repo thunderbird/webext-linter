@@ -19,12 +19,15 @@ import {
   isPopular,
   defaultNet,
 } from "../../src/vendor/verify.js";
-import http from "node:http";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { withOsvCache } from "../../src/vendor/osv-cache.js";
-import { observed, seededNet } from "../seed-caches.js";
+import {
+  observed,
+  osvEntries,
+  seedWorkCache,
+  seeded,
+  seededNet,
+} from "../seed-caches.js";
+import { withRunCache } from "../../src/vendor/run-cache.js";
+import { runCache } from "../../src/util/dest.js";
 import {
   VENDOR_FETCH_MAX_BYTES,
   VENDOR_GITHUB_REPOS_API,
@@ -34,9 +37,6 @@ import {
   VENDOR_OSV_VULN_API,
 } from "../../src/config.js";
 
-// What a host's "there is no such thing" arrives as through the real transport: the one
-// failure a caller may read as a value.
-const fake404 = () => Object.assign(new Error("HTTP 404"), { status: 404 });
 import {
   NetworkGoneError,
   NoAnswerError,
@@ -55,9 +55,9 @@ import { applyUnverifiedVendor } from "../../src/lib/bundled.js";
 import { normalizedSha256 } from "../../src/normalize/hash.js";
 import { makeTgz } from "./tarball-fixture.js";
 
-// Every request here is answered by a seeded cache or a failure stand-in, which sit ABOVE
-// the gate and so never reach it. Zeroed anyway, because the real-transport test in this
-// file does reach it, and the gate's own behaviour is asserted in tests/unit/net.test.js.
+// Every request here is answered from a seeded cache, each failure as a seeded response
+// played through the transport, and so through the gate. Zeroed so the gate never waits. Its
+// own behaviour is asserted in tests/unit/net.test.js.
 setNetworkPacing({ intervalMs: 0, backoffMs: 0 });
 
 // ---- classifySource (no network) ----
@@ -995,16 +995,17 @@ test("verifyVendor: an OSV reply that is not an object is no answer", async () =
     store({ packages: [{ name: "jszip", version: "3.10.1" }] })
   );
   const listing = { files: [{ path: "/dist/jszip.js", integrity: sri }] };
-  // The one reply no cache keeps: everything else comes from the seeded listing.
-  const seeded = listed(JSZIP_META, listing, {
+  // OSV replies with a JSON string.
+  const notAnObject = listed(JSZIP_META, listing, {
+    osv: {
+      query: { "jszip@3.10.1": seeded({ status: 200, json: "not json" }) },
+    },
     popularity: { npm: { jszip: POPULAR } },
   });
-  const notAnObject = {
-    ...seeded,
-    postJson: async (url, body) =>
-      url === VENDOR_OSV_API ? "not json" : seeded.postJson(url, body),
-  };
-  await assert.rejects(verifyVendor(addon, notAnObject), NoAnswerError);
+  await assert.rejects(
+    verifyVendor(addon, notAnObject),
+    (err) => err instanceof NoAnswerError && /not an object/.test(err.message)
+  );
 });
 
 test("verifyVendor: a copy differing only in line endings is the release it declares", async () => {
@@ -1048,17 +1049,9 @@ test("verifyVendor: a listing that gets no answer ends the review", async () => 
     { "vendor/lib.js": "LIB\n" },
     store({ packages: [{ name: "jszip", version: "3.10.1" }] })
   );
-  // The listing's silence is the one failure here, and no cache can hold it.
-  const seeded = seededNet();
-  const silentListing = {
-    ...seeded,
-    fetchJson: async (url) => {
-      if (url === JSZIP_META) {
-        throw new NoAnswerError(url, "HTTP 503");
-      }
-      return seeded.fetchJson(url);
-    },
-  };
+  const silentListing = seededNet({
+    sources: { meta: { [JSZIP_META]: seeded({ status: 503 }) } },
+  });
   await assert.rejects(verifyVendor(addon, silentListing), NoAnswerError);
 });
 
@@ -1268,17 +1261,9 @@ test("auditIdentifiedLibraries: an OSV 404 ends the run", async () => {
       },
     ],
   };
-  // OSV's 404 is the one failure here, and no cache can hold it.
-  const seeded = seededNet();
-  const osvDown = {
-    ...seeded,
-    postJson: async (url, body) => {
-      if (url === VENDOR_OSV_API) {
-        throw fake404();
-      }
-      return seeded.postJson(url, body);
-    },
-  };
+  const osvDown = seededNet({
+    osv: { query: { "jquery@1.7.2": seeded({ status: 404 }) } },
+  });
   await assert.rejects(
     auditIdentifiedLibraries(addon, osvDown),
     (err) =>
@@ -1844,18 +1829,25 @@ test("every unverified outcome becomes untrusted, routed by readability", async 
 //
 // This is the guard against a NEW swallow site forgetting the rule: it asserts at the
 // public entry points, not at the catches.
-const goneNet = (
-  fail = () => new NetworkGoneError("https://registry.example/x", true)
-) => {
-  const boom = () => {
-    throw fail();
-  };
-  return {
-    fetchBytes: async () => boom(),
-    fetchJson: async () => boom(),
-    postJson: async () => boom(),
-  };
+
+// No network: the host fails before any response, and so does the host the review reached
+// before it, when one was.
+const GONE = { fail: "ENOTFOUND", probe: { fail: "ENOTFOUND" } };
+
+// A network on which every request the entry points below make about x@1.0.0 gets
+// `response`, so whichever is asked first fails.
+const failingNet = (response) => {
+  const fails = seeded(response);
+  return seededNet({
+    osv: { query: { "x@1.0.0": fails }, batch: { "x@1.0.0": fails } },
+    popularity: { npm: { x: fails } },
+    sources: {
+      bytes: { "https://unpkg.com/x@1.0.0/x.js": fails },
+      meta: { "https://unpkg.com/x@1.0.0/?meta": fails },
+    },
+  });
 };
+const goneNet = () => failingNet(GONE);
 
 test("a NetworkGoneError propagates out of every vendor entry point", async () => {
   const vendorStore = () => ({
@@ -1923,8 +1915,7 @@ test("a NetworkGoneError propagates out of every vendor entry point", async () =
 
 // A host that gave no answer stops the review the same way, from every entry point.
 test("a NoAnswerError propagates out of every vendor entry point", async () => {
-  const silent = () =>
-    goneNet(() => new NoAnswerError("https://registry.example/x", "HTTP 503"));
+  const silent = () => failingNet({ status: 503 });
   const vendorStore = () => ({
     entries: [
       {
@@ -1984,7 +1975,9 @@ test("a NoAnswerError propagates out of every vendor entry point", async () => {
 // let a low-star GitHub install through unrecorded.
 test("a GitHub popularity lookup that gets no answer ends the review", async () => {
   const silent = () =>
-    goneNet(() => new NoAnswerError("https://api.github.com/repos/u/w", "503"));
+    seededNet({
+      popularity: { github: { "u/widget": seeded({ status: 503 }) } },
+    });
   await assert.rejects(
     isPopular({ kind: "github", repo: "u/widget" }, silent()),
     NoAnswerError
@@ -2667,13 +2660,9 @@ test("auditLockedPackages: a short results array is no answer", async () => {
     { results: [{}, null] },
   ]) {
     const addon = addonWith({ "package.json": "{}" }, store({ lockPackages }));
-    // The short reply is the one failure here, and no cache can hold it.
-    const seeded = seededNet();
-    const short = {
-      ...seeded,
-      postJson: async (url, body) =>
-        url === VENDOR_OSV_BATCH_API ? batch : seeded.postJson(url, body),
-    };
+    const short = seededNet({
+      osv: { batch: { "first@1.0.0": seeded({ status: 200, json: batch }) } },
+    });
     await assert.rejects(
       verifyScaDependencies(addon, short),
       NoAnswerError,
@@ -2690,27 +2679,24 @@ test("auditLockedPackages: an advisory affecting two packages is fetched once", 
     { "package.json": "{}" },
     store({ lockPackages: [locked("a", "1.0.0"), locked("b", "1.0.0")] })
   );
-  // A run's OSV cache, empty, over the seeded network: what reaches the network below it
-  // is what the run asks of OSV.
-  const { net, sent } = observed(
-    seededNet({
-      osv: {
-        batch: {
-          "a@1.0.0": { vulns: [{ id: "GHSA-shared" }] },
-          "b@1.0.0": { vulns: [{ id: "GHSA-shared" }] },
-        },
-        advisories: {
-          "GHSA-shared": advisory("GHSA-shared", "HIGH", "1.0.1", "a"),
-        },
+  const dir = seedWorkCache({
+    osv: osvEntries({
+      batch: {
+        "a@1.0.0": { vulns: [{ id: "GHSA-shared" }] },
+        "b@1.0.0": { vulns: [{ id: "GHSA-shared" }] },
       },
-    })
-  );
-  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-osv-"));
-  await verifyScaDependencies(
-    addon,
-    withOsvCache(net, path.join(cacheDir, "osv.json"))
-  );
-  fs.rmSync(cacheDir, { recursive: true, force: true });
+      // The advisory is OSV's response, played in place of OSV and kept like a live
+      // answer. What passes the run's cache on to the transport is what the run asks of OSV.
+      advisories: {
+        "GHSA-shared": seeded({
+          status: 200,
+          json: advisory("GHSA-shared", "HIGH", "1.0.1", "a"),
+        }),
+      },
+    }),
+  });
+  const { net, sent } = observed(defaultNet);
+  await verifyScaDependencies(addon, withRunCache(net, runCache(dir, dir)));
   assert.equal(sentTo(sent, VENDOR_OSV_VULN_API).length, 1);
   assert.deepEqual(
     addon.vendor.treeVulnerabilities.map((v) => v.name),
@@ -2729,19 +2715,9 @@ test("auditLockedPackages: an OSV 404 for a batch or a hydration ends the run", 
     { "package.json": "{}" },
     store({ lockPackages: [locked("x", "1.0.0")] })
   );
-  // OSV's 404 is the one failure in each half, and no cache can hold it.
-  const seeded = seededNet({
-    osv: { batch: { "x@1.0.0": { vulns: [{ id: "GHSA-x" }] } } },
+  const batchNet = seededNet({
+    osv: { batch: { "x@1.0.0": seeded({ status: 404 }) } },
   });
-  const batchNet = {
-    ...seeded,
-    postJson: async (url, body) => {
-      if (url === VENDOR_OSV_BATCH_API) {
-        throw fake404();
-      }
-      return seeded.postJson(url, body);
-    },
-  };
   await assert.rejects(
     verifyScaDependencies(batchDown, batchNet),
     noAnswer("querybatch")
@@ -2752,15 +2728,12 @@ test("auditLockedPackages: an OSV 404 for a batch or a hydration ends the run", 
     { "package.json": "{}" },
     store({ lockPackages: [locked("x", "1.0.0")] })
   );
-  const hydrateNet = {
-    ...seeded,
-    fetchJson: async (url) => {
-      if (url.startsWith(VENDOR_OSV_VULN_API)) {
-        throw fake404();
-      }
-      return seeded.fetchJson(url);
+  const hydrateNet = seededNet({
+    osv: {
+      batch: { "x@1.0.0": { vulns: [{ id: "GHSA-x" }] } },
+      advisories: { "GHSA-x": seeded({ status: 404 }) },
     },
-  };
+  });
   await assert.rejects(
     verifyScaDependencies(hydrationDown, hydrateNet),
     noAnswer("vulns/GHSA-x")
@@ -2776,38 +2749,38 @@ test("auditLockedPackages: an answered chunk is never published when a later one
     locked(`pkg-${String(i).padStart(3, "0")}`, "1.0.0")
   );
   const addon = addonWith({ "package.json": "{}" }, store({ lockPackages }));
-  let chunks = 0;
-  // The first chunk is answered from the seeded cache. OSV's 404 for the second is the
-  // one failure, and no cache can hold it.
-  const seeded = seededNet({
-    osv: {
-      batch: Object.fromEntries(
-        lockPackages
-          .slice(0, 200)
-          .map((p) => [
+  // The first chunk is answered, and OSV answers 404 for the second.
+  const { net: flaky, sent } = observed(
+    seededNet({
+      osv: {
+        batch: Object.fromEntries(
+          lockPackages.map((p, i) => [
             `${p.name}@${p.version}`,
-            { vulns: [{ id: "GHSA-everywhere" }] },
+            i < 200
+              ? { vulns: [{ id: "GHSA-everywhere" }] }
+              : seeded({ status: 404 }),
           ])
-      ),
-      advisories: {
-        "GHSA-everywhere": advisory("GHSA-everywhere", "HIGH", "2.0.0", "pkg"),
+        ),
+        advisories: {
+          "GHSA-everywhere": advisory(
+            "GHSA-everywhere",
+            "HIGH",
+            "2.0.0",
+            "pkg"
+          ),
+        },
       },
-    },
-  });
-  const flaky = {
-    ...seeded,
-    postJson: async (url, body) => {
-      if (url === VENDOR_OSV_BATCH_API && ++chunks === 2) {
-        throw fake404();
-      }
-      return seeded.postJson(url, body);
-    },
-  };
+    })
+  );
   await assert.rejects(
     verifyScaDependencies(addon, flaky),
     (err) => err instanceof NoAnswerError
   );
-  assert.equal(chunks, 2, "the first chunk must really have answered");
+  assert.equal(
+    batches(sent).length,
+    2,
+    "the first chunk must really have answered"
+  );
   assert.deepEqual(addon.vendor.treeVulnerabilities, []);
   assert.deepEqual(addon.vendor.treeDevVulnerabilities, []);
 });
@@ -2963,21 +2936,13 @@ test("auditLockedPackages: a release the VENDOR-file audit recorded is reported 
 // NetworkGoneError is not a flaky endpoint, it is the run having no network at
 // all - which stops the review rather than quietly reporting a clean tree.
 test("auditLockedPackages: NetworkGoneError propagates from both endpoints", async () => {
-  const gone = new NetworkGoneError("https://api.osv.dev/", false);
   const fromBatch = addonWith(
     { "package.json": "{}" },
     store({ lockPackages: [locked("x", "1.0.0")] })
   );
-  // The dead network is the one failure in each half, and no cache can hold it.
-  const seeded = seededNet({
-    osv: { batch: { "x@1.0.0": { vulns: [{ id: "GHSA-x" }] } } },
+  const batchNet = seededNet({
+    osv: { batch: { "x@1.0.0": seeded(GONE) } },
   });
-  const batchNet = {
-    ...seeded,
-    postJson: async () => {
-      throw gone;
-    },
-  };
   await assert.rejects(
     () => verifyScaDependencies(fromBatch, batchNet),
     NetworkGoneError
@@ -2987,12 +2952,12 @@ test("auditLockedPackages: NetworkGoneError propagates from both endpoints", asy
     { "package.json": "{}" },
     store({ lockPackages: [locked("x", "1.0.0")] })
   );
-  const hydrateNet = {
-    ...seeded,
-    fetchJson: async () => {
-      throw gone;
+  const hydrateNet = seededNet({
+    osv: {
+      batch: { "x@1.0.0": { vulns: [{ id: "GHSA-x" }] } },
+      advisories: { "GHSA-x": seeded(GONE) },
     },
-  };
+  });
   await assert.rejects(
     () => verifyScaDependencies(fromHydrate, hydrateNet),
     NetworkGoneError
@@ -3044,41 +3009,40 @@ test("auditLockedPackages: an empty tree sends no request", async () => {
 // A JSON answer that cannot be read is no answer: handed back as nothing, it would reach
 // every caller as a value (no advisories, nothing published). A source over the cap is a
 // verdict on what the submission names, and arrives as one - read only up to the cap, so
-// a huge archive is refused by its size, not by how long it takes to arrive.
+// a huge archive is refused by its size, not by how long it takes to arrive. Each body is
+// the host's response seeded in the cache entry of its request, read by defaultNet.
 test("defaultNet: a non-JSON or oversized JSON body is no answer; an oversized source is a verdict", async () => {
-  const big = Buffer.alloc(VENDOR_FETCH_MAX_BYTES + 1024 * 1024, 0x61);
-  let sent = 0;
-  const server = http.createServer((req, res) => {
-    if (req.url === "/html") {
-      res.writeHead(200, { "content-type": "text/html" });
-      res.end("<html>maintenance</html>");
-      return;
-    }
-    // Chunked, no content-length: the cap has to be found while reading.
-    res.writeHead(200, { "content-type": "application/octet-stream" });
-    for (let at = 0; at < big.length; at += 1024 * 1024) {
-      sent += 1;
-      res.write(big.subarray(at, at + 1024 * 1024));
-    }
-    res.end();
+  // No content-length: the cap has to be found while reading.
+  const big = "a".repeat(VENDOR_FETCH_MAX_BYTES + 1024 * 1024);
+  const oversized = seeded({
+    status: 200,
+    headers: { "content-type": "application/octet-stream" },
+    body: big,
   });
-  await new Promise((r) => server.listen(0, r));
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
-    await assert.rejects(
-      defaultNet.fetchJson(`${base}/html`),
-      (err) => err instanceof NoAnswerError && err.message.includes("not JSON")
-    );
-    await assert.rejects(
-      defaultNet.fetchJson(`${base}/big`),
-      (err) => err instanceof NoAnswerError && err.message.includes("size cap")
-    );
-    await assert.rejects(
-      defaultNet.fetchBytes(`${base}/big`),
-      (err) => !(err instanceof NoAnswerError) && /size cap/.test(err.message)
-    );
-    assert.ok(sent > 0);
-  } finally {
-    server.close();
-  }
+  const source = "https://unpkg.com/some-package@1.0.0/dist/some-package.js";
+  const net = seededNet({
+    popularity: {
+      npm: {
+        maintenance: seeded({
+          status: 200,
+          headers: { "content-type": "text/html" },
+          body: "<html>maintenance</html>",
+        }),
+        huge: oversized,
+      },
+    },
+    sources: { bytes: { [source]: oversized } },
+  });
+  await assert.rejects(
+    net.fetchJson(`${VENDOR_NPM_DOWNLOADS_API}maintenance`),
+    (err) => err instanceof NoAnswerError && err.message.includes("not JSON")
+  );
+  await assert.rejects(
+    net.fetchJson(`${VENDOR_NPM_DOWNLOADS_API}huge`),
+    (err) => err instanceof NoAnswerError && err.message.includes("size cap")
+  );
+  await assert.rejects(
+    net.fetchBytes(source),
+    (err) => !(err instanceof NoAnswerError) && /size cap/.test(err.message)
+  );
 });

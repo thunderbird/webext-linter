@@ -11,12 +11,16 @@ import { runPipeline, resolveReviewSchema } from "../../src/pipeline.js";
 import {
   fixtureCacheOpts,
   freshWorkFolder,
+  osvEntries,
   popularityEntries,
+  seedDownload,
+  seeded,
   seedSourcesCache,
   seedWorkCache,
 } from "../seed-caches.js";
 import { createHash } from "node:crypto";
-import { NoAnswerError, setNetworkPacing } from "../../src/util/net.js";
+import { NoAnswerError } from "../../src/util/net.js";
+import { allSchemaBranches, cachedZipPath } from "../../src/schema/fetch.js";
 
 // A cache pre-seeded from the fixtures, so the pipeline's schema / experiments /
 // library-hash fetches all hit disk - these runs stay offline.
@@ -251,28 +255,9 @@ test("add-on: a shipped node_modules folder is reviewed like any other folder", 
 // The add-on ships lodash under its own file name; package.json + the lock name the
 // release, its unpkg listing matches the shipped bytes, and the OSV audit of the release
 // rejects. Each answer the review needs comes from a cache the test seeded (lodashCaches),
-// and one host gives no answer (failing).
+// and one host's seeded response is no answer.
 const LODASH = path.resolve("tests/addons/package-range-locked-shipped");
 const LISTING = "https://unpkg.com/lodash@4.17.21/?meta";
-const OSV_QUERY = "https://api.osv.dev/v1/query";
-
-/** globalThis.fetch answering each URL in `failures` with that status, which no cache can
- *  hold. It refuses every other request as the switched-off network does, which stops
- *  guarding once fetch is replaced. */
-function failing(t, failures) {
-  setNetworkPacing({ intervalMs: 0, backoffMs: 0, maxWaitMs: 0 });
-  const real = globalThis.fetch;
-  globalThis.fetch = async (url) => {
-    const status = failures[String(url)];
-    if (status === undefined) {
-      throw new Error(`network request in a test: ${url}`);
-    }
-    return new Response("", { status });
-  };
-  t.after(() => {
-    globalThis.fetch = real;
-  });
-}
 
 const lodashListing = () => {
   const bytes = fs.readFileSync(path.join(LODASH, "lib/collection-helpers.js"));
@@ -284,9 +269,10 @@ const lodashListing = () => {
 };
 
 /** The review's caches for the lodash add-on, as runPipeline opts: npm's downloads reading,
- *  and the unpkg `listing` when one is given. */
-const lodashCaches = (listing) => ({
+ *  the unpkg `listing` and the OSV `osv` entries when given. */
+const lodashCaches = (listing, osv = {}) => ({
   workCache: seedWorkCache({
+    osv,
     popularity: popularityEntries({
       npm: { lodash: { downloads: 50000000 } },
     }),
@@ -298,10 +284,13 @@ const lodashCaches = (listing) => ({
 
 // AUDITS #49: a refused listing read as "lodash is not shipped" would drop the declaration
 // before its audit and pass the add-on clean.
-test("a listing unpkg does not answer ends the review instead of passing it", async (t) => {
-  failing(t, { [LISTING]: 503 });
+test("a listing unpkg does not answer ends the review instead of passing it", async () => {
   await assert.rejects(
-    runReview({ addonPath: LODASH, ...OFFLINE, ...lodashCaches() }),
+    runReview({
+      addonPath: LODASH,
+      ...OFFLINE,
+      ...lodashCaches(seeded({ status: 503 })),
+    }),
     (err) =>
       err instanceof NoAnswerError &&
       err.message.includes("unpkg.com") &&
@@ -310,13 +299,15 @@ test("a listing unpkg does not answer ends the review instead of passing it", as
 });
 
 // An OSV outage that recorded nothing would read as a release with no advisories.
-test("an OSV query that gets no answer ends the review", async (t) => {
-  failing(t, { [OSV_QUERY]: 502 });
+test("an OSV query that gets no answer ends the review", async () => {
   await assert.rejects(
     runReview({
       addonPath: LODASH,
       ...OFFLINE,
-      ...lodashCaches(lodashListing()),
+      ...lodashCaches(
+        lodashListing(),
+        osvEntries({ query: { "lodash@4.17.21": seeded({ status: 502 }) } })
+      ),
     }),
     (err) =>
       err instanceof NoAnswerError &&
@@ -326,7 +317,9 @@ test("an OSV query that gets no answer ends the review", async (t) => {
 });
 
 // A schema cache known to be too old for the add-on is refreshed; a refresh that gets no
-// answer ends the review rather than reviewing against the stale copy.
+// answer ends the review rather than reviewing against the stale copy. The refresh asks
+// the mv2 branch first, whose cached file holds the host's 503 in place of a copy, while
+// the mv3 add-on's own branches stay readable stale copies.
 test("a stale schema cache whose refresh gets no answer ends the review", async (t) => {
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-stale-schema-"));
   t.after(() => fs.rmSync(cacheDir, { recursive: true, force: true }));
@@ -335,12 +328,13 @@ test("a stale schema cache whose refresh gets no answer ends the review", async 
   for (const f of fs.readdirSync(cacheDir)) {
     fs.utimesSync(path.join(cacheDir, f), old, old);
   }
-  setNetworkPacing({ intervalMs: 0, backoffMs: 0, maxWaitMs: 0 });
-  const real = globalThis.fetch;
-  t.after(() => {
-    globalThis.fetch = real;
-  });
-  globalThis.fetch = async () => new Response("", { status: 503 }); // every download answers 503
+  const [first] = allSchemaBranches();
+  assert.match(
+    first,
+    /-mv2$/,
+    "the refresh starts outside the add-on's branches"
+  );
+  seedDownload(cachedZipPath(cacheDir, first), { status: 503 });
   await assert.rejects(
     resolveReviewSchema({
       cacheDir,

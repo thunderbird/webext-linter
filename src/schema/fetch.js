@@ -17,7 +17,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { debug } from "../util/log.js";
-import { codeloadZipUrl, downloadToCache } from "../util/download.js";
+import {
+  codeloadZipUrl,
+  downloadToCache,
+  seededDownload,
+} from "../util/download.js";
 
 const REPO = "thunderbird/webext-annotated-schemas";
 
@@ -99,7 +103,11 @@ export async function resolveSchemaZip({ branch, cacheDir, refresh = false }) {
   fs.mkdirSync(cacheDir, { recursive: true });
   const cached = cachedZipPath(cacheDir, branch);
 
-  if (fs.existsSync(cached) && !refresh) {
+  if (
+    fs.existsSync(cached) &&
+    seededDownload(cached) === undefined &&
+    !refresh
+  ) {
     debug(`Using cached schema zip: ${cached}`);
     return { zipPath: cached, source: `cache:${branch}` };
   }

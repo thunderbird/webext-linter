@@ -39,15 +39,15 @@
 // be one each caller had to remember to pass through; here it cannot be bypassed.
 //
 // The TESTS switch the network off (WEBEXT_LINTER_NO_NETWORK=1, set by tests/offline.js):
-// a test must be answered by a seeded cache or by an answer it supplies, never by a host.
-// The switch is read once, when this module loads, and nothing can turn it back on; while it
-// is on, a request that would go out through the built-in fetch to another machine throws
-// instead. Two kinds still pass, since neither can leave this one: a loopback host (the tests
-// of this module run their own server there), and a URL that does not parse, which fetch
-// refuses itself with the same parser before it connects anywhere. It only takes the network
-// away: unset, as in every real run, nothing changes. The one other thing it decides is
-// whether a cache may answer with a host's 404 a test pre-filled (networkSwitchedOff): no
-// cache writes a 404, and in a real run none is ever read.
+// a test is answered by a seeded cache, never by a host. The switch is read once, when this
+// module loads, and nothing can turn it back on. While it is on, fetch is never called. Each
+// cache asks for a URL in four steps: a real value it keeps is returned; with the network
+// off, an entry seeding the host's response (`seeded`, a SeededResponse) is played through
+// everything below in place of fetch - the timeout, the retries, the body read, the decision
+// above; with the network on, the request goes over the wire and a seeded entry never
+// surfaces (seededResponse); and a success, played or live, is kept, while a 404 or a
+// failure never is. No cache ever writes a seeded entry. With the network off, a request
+// with nothing seeded throws, and with it on, a seeded response handed here is refused.
 //
 // Belongs here: the abort-timeout wrapper, that decision, and the rate gate (the
 // per-host interval, the status a refusal is recognised by, and the two ways a refusal
@@ -76,34 +76,47 @@ const NO_NETWORK = process.env.WEBEXT_LINTER_NO_NETWORK === "1";
 
 /**
  * Whether the network is switched off - which only the tests do. A cache asks this before it
- * answers with a pre-filled 404 entry (`{fake404: true}`): no cache writes one, so such an
- * entry is a test's offline stand-in for the host's 404, and in a real run it is ignored and
- * the host asked.
+ * reads a seeded response (`{fake: SeededResponse}`): no cache writes one, so such an entry
+ * is a test's stand-in for what the host does, and in a real run it is ignored and the host
+ * asked.
  * @returns {boolean}
  */
 export function networkSwitchedOff() {
   return NO_NETWORK;
 }
-/** The fetch this process started with: the one that reaches a real host. */
-const BUILTIN_FETCH = globalThis.fetch;
-/** The hosts that are this machine, as the URL parser spells them. */
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 /**
- * Whether a request to `url` could reach another machine: its host, read by the parser fetch
- * itself uses, is not loopback. A URL that does not parse reaches nothing.
- * @param {string} url
- * @returns {boolean}
+ * The response a cache entry seeds for its request (`{fake: SeededResponse}`), or undefined
+ * when it seeds none. Read only with the network switched off: no cache writes such an
+ * entry, and in a real run one is ignored and the host asked.
+ * @param {unknown} entry
+ * @returns {SeededResponse|undefined}
  */
-function reachesAnotherMachine(url) {
-  let host;
-  try {
-    host = new URL(url).hostname;
-  } catch {
-    return false;
-  }
-  return !LOOPBACK_HOSTS.has(host);
+export function seededResponse(entry) {
+  return NO_NETWORK &&
+    entry !== null &&
+    typeof entry === "object" &&
+    Object.hasOwn(entry, "fake")
+    ? entry.fake
+    : undefined;
 }
+
+/**
+ * @typedef {object} SeededResponse  What a host does with one request, as it may come over
+ *   the wire, seeded by a test in the cache entry of that request: an HTTP response (its
+ *   `status`, any, with `headers` and a text `body` or `json`), a `hang` (headers and never
+ *   a body, which runs into the timeout), or a `fail` (a failure before any response, as
+ *   fetch names its cause: a code such as "ENOTFOUND", or "redirect count exceeded"). After
+ *   a `fail`, `probe` is what the control point gives when it is asked whether the network
+ *   is still there.
+ * @property {number} [status]
+ * @property {Record<string, string>} [headers]
+ * @property {string} [body]
+ * @property {unknown} [json]
+ * @property {boolean} [hang]
+ * @property {string} [fail]
+ * @property {SeededResponse} [probe]
+ */
 
 /**
  * Thrown when the network itself is gone, as opposed to one load failing. Its own
@@ -193,8 +206,10 @@ function isConnectionFailure(err) {
 // spent.
 const nextFree = new Map();
 
-let networkIntervalMs = NETWORK_MIN_INTERVAL_MS;
-let networkBackoffMs = NETWORK_BACKOFF_MS;
+// With the network off there is no host to be held to a rate: every request is a seeded
+// response, played at once. The tests of the gate set the values they exercise.
+let networkIntervalMs = NO_NETWORK ? 0 : NETWORK_MIN_INTERVAL_MS;
+let networkBackoffMs = NO_NETWORK ? 0 : NETWORK_BACKOFF_MS;
 let networkMaxWaitMs = NETWORK_MAX_WAIT_MS;
 let networkAnnounceMs = NETWORK_ANNOUNCE_WAIT_MS;
 
@@ -385,13 +400,17 @@ function refusedToAnswer(err) {
  * @param {number} [timeoutMs]
  * @param {RequestInit} [init]  Extra fetch options (method/headers/body). The abort
  *   signal and redirect handling are set here and cannot be overridden.
+ * @param {SeededResponse|SeededResponse[]} [seeded]  The response a test's cache seeded
+ *   for this request, played in place of fetch: one per attempt when a list, its last
+ *   repeated.
  * @returns {Promise<T>}
  */
 export async function fetchWithTimeout(
   url,
   consume,
   timeoutMs = SETUP_FETCH_TIMEOUT_MS,
-  init
+  init,
+  seeded
 ) {
   const host = meteredHost(url);
   // Set once the host has named a time and been asked again at it. That ask was the
@@ -410,7 +429,15 @@ export async function fetchWithTimeout(
     nextFree.set(host, slot + networkIntervalMs);
     await delay(slot - Date.now());
     try {
-      return await issue(url, consume, timeoutMs, init);
+      return await issue(
+        url,
+        consume,
+        timeoutMs,
+        init,
+        Array.isArray(seeded)
+          ? seeded[Math.min(attempt, seeded.length - 1)]
+          : seeded
+      );
     } catch (err) {
       rethrowIfFatal(err);
       if (!refusedToAnswer(err)) {
@@ -477,18 +504,28 @@ export async function fetchWithTimeout(
  * @template T
  * @param {string} url @param {(res: Response) => Promise<T>} consume
  * @param {number} timeoutMs @param {RequestInit} [init]
+ * @param {SeededResponse} [seeded]  Played in place of fetch (fetchWithTimeout).
  * @returns {Promise<T>}
  */
-async function issue(url, consume, timeoutMs, init) {
+async function issue(url, consume, timeoutMs, init, seeded) {
   // Before the timer and outside the try below, so it is never read as a host that gave no
   // answer. A wiring error, the class no catch absorbs: a caller that tolerates one failed
   // request (the CDN lookup does) would otherwise swallow it, and the test would pass on a
-  // request it was never allowed to make.
+  // request it was never allowed to make. A URL that does not parse is the caller's own
+  // failure, as fetch reports it, before either.
+  if (seeded !== undefined && !NO_NETWORK) {
+    throw wiringError(`a seeded response outside a test: ${url}`);
+  }
   if (
-    NO_NETWORK &&
-    globalThis.fetch === BUILTIN_FETCH &&
-    reachesAnotherMachine(url)
+    seeded !== undefined &&
+    seeded.fail === undefined &&
+    !seeded.hang &&
+    !Number.isInteger(seeded.status)
   ) {
+    throw wiringError(`a seeded response names no status: ${url}`);
+  }
+  if (seeded === undefined && NO_NETWORK) {
+    new URL(url);
     throw wiringError(`network request in a test: ${url}`);
   }
   const ctrl = new AbortController();
@@ -496,11 +533,14 @@ async function issue(url, consume, timeoutMs, init) {
   let res;
   try {
     try {
-      res = await fetch(url, {
-        ...init,
-        signal: ctrl.signal,
-        redirect: "follow",
-      });
+      res =
+        seeded === undefined
+          ? await fetch(url, {
+              ...init,
+              signal: ctrl.signal,
+              redirect: "follow",
+            })
+          : replay(url, seeded, ctrl.signal);
     } catch (err) {
       // No response. Either the network is gone (assertNetwork stops the review with
       // that), or this host gave no answer: it refused the connection, failed TLS, or
@@ -510,7 +550,7 @@ async function issue(url, consume, timeoutMs, init) {
         throw timedOut(url, timeoutMs);
       }
       if (isConnectionFailure(err)) {
-        await assertNetwork(url, failureReason(err));
+        await assertNetwork(url, failureReason(err), seeded?.probe);
       }
       if (hasCode(err, "ERR_INVALID_URL")) {
         throw err;
@@ -539,6 +579,39 @@ async function issue(url, consume, timeoutMs, init) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * What fetch would have given for `url`, had the host done what `seeded` says: the same
+ * parse of the URL, the same failure before a response, a Response whose body a hang never
+ * delivers until the abort, or a Response with the status, headers and body the host gave.
+ * @param {string} url
+ * @param {SeededResponse} seeded
+ * @param {AbortSignal} signal
+ * @returns {Response}
+ */
+function replay(url, seeded, signal) {
+  new URL(url);
+  if (seeded.fail !== undefined) {
+    throw Object.assign(new TypeError("fetch failed"), {
+      cause: Object.assign(new Error(seeded.fail), { code: seeded.fail }),
+    });
+  }
+  if (seeded.hang) {
+    return new Response(
+      new ReadableStream({
+        start(stream) {
+          signal.addEventListener("abort", () => stream.error(signal.reason));
+        },
+      })
+    );
+  }
+  return new Response(
+    seeded.json !== undefined
+      ? JSON.stringify(seeded.json)
+      : (seeded.body ?? ""),
+    { status: seeded.status, headers: seeded.headers }
+  );
 }
 
 /** @param {string} url @param {number} timeoutMs @returns {NoAnswerError} */
@@ -582,9 +655,10 @@ function failureReason(err) {
  * URL, not the control point's.
  * @param {string} url  The request that failed.
  * @param {string} reason  Why it failed, for that report.
+ * @param {SeededResponse} [probe]  What the control point gives when asked, in a test.
  * @returns {Promise<void>}
  */
-async function assertNetwork(url, reason) {
+async function assertNetwork(url, reason, probe) {
   // Nothing has ever been reached, so there is no evidence to weigh - and the first
   // request a review makes is one it cannot proceed without.
   if (controlUrl === null || url === controlUrl) {
@@ -598,12 +672,22 @@ async function assertNetwork(url, reason) {
     // whether the network is gone, and waiting or retrying would delay the one answer
     // that has to arrive fast. Reaching the primitive directly rather than asking the
     // gate to stand aside is what keeps the gate something no CALLER can opt out of.
-    await issue(controlUrl, async () => null, CONTROL_TIMEOUT_MS);
+    await issue(
+      controlUrl,
+      async () => null,
+      CONTROL_TIMEOUT_MS,
+      undefined,
+      probe
+    );
   } catch (err) {
     // The probe took the clause above, so the network is gone - but report it
     // against the request that revealed it, not against the control point.
     if (err instanceof NetworkGoneError) {
       throw new NetworkGoneError(url, true);
+    }
+    // A probe a test seeded no response for is a request it was never allowed to make.
+    if (err?.class?.wiring) {
+      throw err;
     }
     throw new NoAnswerError(url, reason);
   }

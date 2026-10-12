@@ -27,6 +27,14 @@ test("a request to another machine is refused, in this process", async () => {
   );
 });
 
+// A loopback host is refused like any other: no test opens a socket, so none is let through.
+test("a request to this machine is refused too", async () => {
+  await assert.rejects(
+    () => fetchWithTimeout("http://127.0.0.1:9/", (r) => r.text()),
+    /network request in a test: http:\/\/127\.0\.0\.1:9\//
+  );
+});
+
 // The CDN lookup tolerates one failed lookup, so a refusal it could swallow would let the
 // review finish on a request it was never allowed to make. Given a cache with no answer for
 // the shipped file, the lookup has to ask, and the run has to fail naming the request.
@@ -67,51 +75,25 @@ test("a request a spawned review makes is refused, and ends the run", () => {
   );
 });
 
-// A cache answers with a pre-filled 404 (`{fake404: true}`) only while the network is switched
-// off: no cache writes one, so it is a test's offline stand-in for the host's 404, and a real
-// run must ask the host instead. The switch is read once per process, so the real-run half is
-// asked of a child process started without it - with a fake network that records each request
-// and makes none - and the same child with the switch on is the control.
-test("a pre-filled 404 answers a cache only with the network switched off", () => {
+// A seeded response (`{fake: ...}`) is read from a cache entry only while the network is
+// switched off: no cache writes one, so it is a test's stand-in for what the host does, and a
+// real run asks the host with nothing seeded. The switch is read once per process, so the
+// real-run half is asked of a child process started without it, and the same child with the
+// switch on is the control.
+test("a seeded response is read only with the network switched off", () => {
   const src = (rel) => JSON.stringify(path.join(ROOT, "src", rel));
   const script = `
     import fs from "node:fs";
     import os from "node:os";
     import path from "node:path";
-    import { createHash } from "node:crypto";
-    import { resolveCdnLibraries } from ${src("lib/cdn-lookup.js")};
-    import { classifyBundled } from ${src("lib/bundled.js")};
-    import { findLockInjections } from ${src("vendor/locks.js")};
-    const fake404 = () => Object.assign(new Error("HTTP 404"), { status: 404 });
-    const recording = () => {
-      const asked = [];
-      return { asked, fetchJson: async (url) => { asked.push(url); throw fake404(); } };
-    };
-    const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "wl-404-"));
-
-    const bytes = Buffer.from("var a=0;" + "a=a+1;".repeat(250));
-    const cdn = { files: new Map([["x.min.js", bytes]]) };
-    cdn.bundled = classifyBundled(cdn);
-    const cdnDir = tmp();
-    const hash = createHash("sha256").update(bytes).digest("hex");
-    fs.writeFileSync(path.join(cdnDir, "jsdelivr-hash-lookup.json"),
-      JSON.stringify({ [hash]: { fake404: true } }));
-    const cdnNet = recording();
-    await resolveCdnLibraries(cdn, { net: cdnNet, cacheDir: cdnDir });
-
-    const lock = { lockfileVersion: 3, packages: { "": { name: "x" },
-      "node_modules/gone": { version: "1.0.0",
-        resolved: "https://registry.npmjs.org/gone/-/elsewhere.tgz" } } };
-    const reg = { files: new Map([
-      ["package.json", Buffer.from(JSON.stringify({ name: "x" }))],
-      ["package-lock.json", Buffer.from(JSON.stringify(lock))]]), directories: [] };
-    const regDir = tmp();
-    fs.writeFileSync(path.join(regDir, "npm-registry.json"),
-      JSON.stringify({ "gone@1.0.0": { fake404: true } }));
-    const regNet = recording();
-    await findLockInjections(reg, { net: regNet, cacheDir: regDir });
-
-    console.log(JSON.stringify({ cdn: cdnNet.asked.length, registry: regNet.asked.length }));
+    import { seededResponse } from ${src("util/net.js")};
+    import { seededDownload } from ${src("util/download.js")};
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "wl-404-")), "x.zip");
+    fs.writeFileSync(file, JSON.stringify({ fake: { status: 404 } }));
+    console.log(JSON.stringify({
+      response: seededResponse({ fake: { status: 404 } }) ?? null,
+      download: seededDownload(file) ?? null,
+    }));
   `;
   const run = (switchedOff) => {
     const env = { ...process.env };
@@ -128,8 +110,16 @@ test("a pre-filled 404 answers a cache only with the network switched off", () =
     assert.equal(r.status, 0, r.stderr);
     return JSON.parse(r.stdout.trim().split("\n").pop());
   };
-  assert.deepEqual(run(false), { cdn: 1, registry: 1 }, "a real run asks");
-  assert.deepEqual(run(true), { cdn: 0, registry: 0 }, "a test reads it");
+  assert.deepEqual(
+    run(false),
+    { response: null, download: null },
+    "a real run asks the host"
+  );
+  assert.deepEqual(
+    run(true),
+    { response: { status: 404 }, download: { status: 404 } },
+    "a test plays it"
+  );
 });
 
 // --cache-work-dir lets a test seed the answers a run reads, so a real run, with the network

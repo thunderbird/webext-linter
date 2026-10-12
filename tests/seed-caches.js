@@ -40,6 +40,39 @@ const SCHEMA_FIXTURE = path.join(here, "schema-fixture");
 const EXPERIMENTS_FIXTURE = path.join(here, "experiments-fixture");
 const LIBRARY_HASHES_FIXTURE = path.join(here, "library-hashes-fixture.txt");
 
+/** The marker `seeded` puts on a response, so the entry helpers write it as one. */
+const SEEDED = Symbol("seeded response");
+
+/** The host's 404, as a seeded response. */
+const NOT_FOUND = { status: 404 };
+
+/**
+ * A response for a cache's entry helpers to seed instead of an answer: what the host does
+ * with the request (src/util/net.js SeededResponse), played by the real transport in place of
+ * the host, and only while the network is off.
+ * @param {import("../src/util/net.js").SeededResponse} response
+ * @returns {object}
+ */
+export const seeded = (response) => ({ [SEEDED]: response });
+
+/**
+ * The cache entry for a value an entry helper is given: a `seeded` response, or an answer.
+ * @param {unknown} value
+ * @returns {{answer: unknown}|{fake: object}}
+ */
+const entryOf = (value) =>
+  value?.[SEEDED] ? { fake: value[SEEDED] } : { answer: value };
+
+/**
+ * Seed the response the download kept at `cachedFile` gets (src/util/download.js
+ * seededDownload): the cached file itself holds `{fake: response}` in place of a copy.
+ * @param {string} cachedFile
+ * @param {import("../src/util/net.js").SeededResponse|import("../src/util/net.js").SeededResponse[]} response
+ */
+export function seedDownload(cachedFile, response) {
+  fs.writeFileSync(cachedFile, JSON.stringify({ fake: response }));
+}
+
 /**
  * Recursively list POSIX-relative file paths under a directory.
  * @param {string} root @param {string} [prefix]
@@ -198,9 +231,9 @@ export function addonOutsideRepo(addon) {
 
 /**
  * A CDN lookup cache that already holds the lookup's answer for every file under `folders`:
- * the host's 404, pre-filled (`{fake404: true}`), so the lookup reads that the CDN has none
+ * the host's 404, seeded (`{fake: {status: 404}}`), so the lookup reads that the CDN has none
  * of them and asks no host. The lookup never writes such an entry, and reads one only with
- * the network switched off, as every test runs (src/lib/cdn-lookup.js).
+ * the network switched off, as every test runs (src/util/net.js seededResponse).
  * For a review of files a test wrote itself, which no seeded cache can know in advance.
  * Removed when the process exits.
  * @param {...string} folders
@@ -214,7 +247,7 @@ export function cdnMissCache(...folders) {
       const hash = createHash("sha256")
         .update(fs.readFileSync(path.join(folder, rel)))
         .digest("hex");
-      misses[hash] = { fake404: true };
+      misses[hash] = { fake: NOT_FOUND };
     }
   }
   fs.writeFileSync(
@@ -228,14 +261,37 @@ export function cdnMissCache(...folders) {
  * Add jsDelivr's hits to a CDN lookup cache (cdnMissCache), each the lookup's answer for a
  * file it knows, keyed by the file's sha256.
  * @param {string} cache  The cache directory.
- * @param {Record<string, object>} hits  sha256 -> jsDelivr's answer.
+ * @param {Record<string, object>} hits  sha256 -> jsDelivr's answer, or a `seeded` response.
  * @returns {string} The cache directory.
  */
 export function seedCdnHits(cache, hits) {
   const file = path.join(cache, "jsdelivr-hash-lookup.json");
   const entries = JSON.parse(fs.readFileSync(file, "utf8"));
-  fs.writeFileSync(file, JSON.stringify({ ...entries, ...hits }));
+  for (const [hash, hit] of Object.entries(hits)) {
+    entries[hash] = hit?.[SEEDED] ? { fake: hit[SEEDED] } : hit;
+  }
+  fs.writeFileSync(file, JSON.stringify(entries));
   return cache;
+}
+
+/**
+ * An npm registry cache folder (the lock check's `cacheDir`, src/vendor/locks.js) holding the
+ * registry's answers given. Removed when the process exits.
+ * @param {Record<string, string|object>} answers  "name@version" -> the tarball URL the
+ *   registry names for that release, or a `seeded` response.
+ * @returns {string} The folder's absolute path.
+ */
+export function seedRegistryCache(answers) {
+  const dir = freshParent();
+  const entries = {};
+  for (const [release, answer] of Object.entries(answers)) {
+    entries[release] = answer?.[SEEDED] ? { fake: answer[SEEDED] } : answer;
+  }
+  fs.writeFileSync(
+    path.join(dir, "npm-registry.json"),
+    JSON.stringify(entries)
+  );
+  return dir;
 }
 
 /**
@@ -245,31 +301,36 @@ export function seedCdnHits(cache, hits) {
  * @param {{bytes?: Record<string, Buffer|string>, meta?: Record<string, object>,
  *   missing?: string[]}} [sources]
  *   `bytes`: a source URL -> the body its host serves. `meta`: an unpkg `?meta` URL -> the
- *   listing. `missing`: URLs the host answers 404, kept as the offline stand-in for it.
+ *   listing. Either may be a `seeded` response instead. `missing`: URLs the host answers 404.
  * @returns {string} The folder's absolute path.
  */
 export function seedSourcesCache({ bytes = {}, meta = {}, missing = [] } = {}) {
   const dir = freshParent();
   const index = {};
   for (const [url, body] of Object.entries(bytes)) {
+    if (body?.[SEEDED]) {
+      index[bytesKey(url)] = { fake: body[SEEDED] };
+      continue;
+    }
     const buf = Buffer.from(body);
     const sha256 = createHash("sha256").update(buf).digest("hex");
     fs.writeFileSync(path.join(dir, sha256), buf);
     index[bytesKey(url)] = { sha256 };
   }
   for (const [url, answer] of Object.entries(meta)) {
-    index[listingKey(url)] = { answer };
+    index[listingKey(url)] = entryOf(answer);
   }
   for (const url of missing) {
-    index[listingKey(url) ?? bytesKey(url)] = { fake404: true };
+    index[listingKey(url) ?? bytesKey(url)] = { fake: NOT_FOUND };
   }
   fs.writeFileSync(path.join(dir, "sources.json"), JSON.stringify(index));
   return dir;
 }
 
 /**
- * The library sources a fixture's "network" map declares, as seedSourcesCache takes them.
- * Each entry is what the host serves at that URL:
+ * The library sources a fixture's "network" map declares, as seedSourcesCache takes them:
+ * each answer as the cache keeps it, and a declared status as the `seeded` response the host
+ * gives instead. Each entry is what the host serves at that URL:
  *   { "sameAs": "<path>" }  the bytes of a file in the fixture, read from disk. The way to
  *                           express "this declaration checks out": a `verified` outcome
  *                           needs the upstream bytes to equal the packaged ones EXACTLY,
@@ -287,11 +348,11 @@ export function seedSourcesCache({ bytes = {}, meta = {}, missing = [] } = {}) {
  *                           content hash decides. A listing whose files are meant NOT to
  *                           match is a plain `json` instead.
  *   { "json": <value> }     an unpkg "?meta" listing as written.
- *   { "status": 404 }       the host has no such source.
- * Any other status is no answer, which no cache keeps, so it is refused here.
+ *   { "status": <code> }    the host's status instead: a 404 for no such source, or a
+ *                           failure.
  * @param {string} dir  The fixture directory; every fixture path resolves against it.
  * @param {Record<string, object>} specs  URL -> its entry.
- * @returns {{bytes: Record<string, Buffer>, meta: Record<string, object>,
+ * @returns {{bytes: Record<string, Buffer|object>, meta: Record<string, object>,
  *   missing: string[]}}
  */
 export function fixtureSources(dir, specs) {
@@ -299,13 +360,11 @@ export function fixtureSources(dir, specs) {
   const read = (file, encoding) =>
     fs.readFileSync(path.join(dir, file), encoding);
   for (const [url, spec] of Object.entries(specs)) {
-    const status = spec.status ?? 200;
-    if (status === 404) {
-      sources.missing.push(url);
-    } else if (status !== 200) {
-      throw new Error(`${url}: no cache keeps a ${status}`);
+    const into = listingKey(url) === null ? sources.bytes : sources.meta;
+    if (spec.status !== undefined && spec.status !== 200) {
+      into[url] = seeded({ status: spec.status });
     } else if (spec.meta !== undefined) {
-      sources.meta[url] = {
+      into[url] = {
         type: "directory",
         files: Object.entries(spec.meta).map(([published, file]) => ({
           path: published,
@@ -314,9 +373,9 @@ export function fixtureSources(dir, specs) {
         })),
       };
     } else if (spec.json !== undefined) {
-      sources.meta[url] = spec.json;
+      into[url] = spec.json;
     } else if (spec.tgz !== undefined) {
-      sources.bytes[url] = makeTgz(
+      into[url] = makeTgz(
         Object.fromEntries(
           Object.entries(spec.tgz).map(([inPackage, file]) => [
             `package/${inPackage}`,
@@ -325,9 +384,9 @@ export function fixtureSources(dir, specs) {
         )
       );
     } else if (spec.sameAs !== undefined) {
-      sources.bytes[url] = read(spec.sameAs);
+      into[url] = read(spec.sameAs);
     } else {
-      sources.bytes[url] = Buffer.from(spec.body ?? "");
+      into[url] = Buffer.from(spec.body ?? "");
     }
   }
   return sources;
@@ -376,31 +435,31 @@ function npmQuery(release) {
 export function osvEntries({ query = {}, batch = {}, advisories = {} } = {}) {
   const entries = {};
   for (const [release, answer] of Object.entries(query)) {
-    entries[osvQueryKey(npmQuery(release))] = { answer };
+    entries[osvQueryKey(npmQuery(release))] = entryOf(answer);
   }
   for (const [release, answer] of Object.entries(batch)) {
-    entries[osvBatchKey(npmQuery(release))] = { answer };
+    entries[osvBatchKey(npmQuery(release))] = entryOf(answer);
   }
   for (const [id, answer] of Object.entries(advisories)) {
-    entries[osvVulnKey(id)] = { answer };
+    entries[osvVulnKey(id)] = entryOf(answer);
   }
   return entries;
 }
 
 /**
  * The popularity readings as the run's popularity cache keeps them
- * (src/vendor/popularity-cache.js). Each is what the host itself answers, or null where it
- * answers 404 for a package it does not know, kept as the offline stand-in for that 404.
+ * (src/vendor/popularity-cache.js). Each is what the host itself answers, null where it
+ * answers 404 for a package it does not know, or any other `seeded` response.
  * @param {{npm?: Record<string, ?object>, github?: Record<string, ?object>}} readings
  *   `npm`: package name -> npm's downloads reply, `{downloads: n}`.
  *   `github`: "owner/repo" -> GitHub's repository reply, `{stargazers_count: n}`.
- * @returns {Record<string, {answer: object}|{fake404: true}>}
+ * @returns {Record<string, {answer: object}|{fake: object}>}
  */
 export function popularityEntries({ npm = {}, github = {} } = {}) {
   const entries = {};
   const keep = (url, answer) => {
     entries[popularityKey(url)] =
-      answer === null ? { fake404: true } : { answer };
+      answer === null ? { fake: NOT_FOUND } : entryOf(answer);
   };
   for (const [name, answer] of Object.entries(npm)) {
     keep(`${VENDOR_NPM_DOWNLOADS_API}${name}`, answer);
@@ -432,9 +491,10 @@ export function seededNet({ osv = {}, popularity = {}, sources = {} } = {}) {
 }
 
 /**
- * `net`, with every request it is asked recorded in `sent` and passed on untouched: for a
- * test about how often, in what order or in what batches the review asks. It answers nothing
- * itself, so every answer still comes from what `net` reads.
+ * `net`, with every request it is asked recorded in `sent` and passed on untouched, with the
+ * response a cache seeded for it: for a test about how often, in what order or in what
+ * batches the review asks. It answers nothing itself, so every answer still comes from what
+ * `net` reads.
  * @param {import("../src/vendor/verify.js").VendorNet} net
  * @returns {{net: import("../src/vendor/verify.js").VendorNet,
  *   sent: {kind: "bytes"|"json"|"post", url: string, body?: object}[]}}
@@ -444,17 +504,17 @@ export function observed(net) {
   return {
     sent,
     net: {
-      fetchBytes(url) {
+      fetchBytes(url, seed) {
         sent.push({ kind: "bytes", url });
-        return net.fetchBytes(url);
+        return net.fetchBytes(url, seed);
       },
-      fetchJson(url) {
+      fetchJson(url, seed) {
         sent.push({ kind: "json", url });
-        return net.fetchJson(url);
+        return net.fetchJson(url, seed);
       },
-      postJson(url, body) {
+      postJson(url, body, seed) {
         sent.push({ kind: "post", url, body });
-        return net.postJson(url, body);
+        return net.postJson(url, body, seed);
       },
     },
   };

@@ -24,7 +24,7 @@ import { writeFileAtomic } from "../util/atomic.js";
 import { parseJson } from "../util/json.js";
 import { debug } from "../util/log.js";
 import { rethrowIfFatal } from "../lib/errors.js";
-import { httpError, networkSwitchedOff } from "../util/net.js";
+import { seededResponse } from "../util/net.js";
 
 /** @typedef {import("./verify.js").VendorNet} VendorNet */
 
@@ -48,10 +48,10 @@ export function popularityKey(url) {
  * `net`, with the popularity lookups answered from the run's cache in `file`. Only an answer
  * is kept. A failure passes up and is not kept: the run ends on it and is handed back in the
  * same work folder once the host answers again, so a kept failure would be replayed on every
- * retry. A 404, which reads as no reading for the package (./verify.js), is not kept either:
- * no lookup writes one, so a pre-filled `{fake404: true}` entry is a test's offline stand-in
- * for it, read only with the network switched off (src/util/net.js networkSwitchedOff) and
- * thrown as the host's 404 would be. In a real run such an entry is asked again. Every other
+ * retry. A 404, which reads as no reading for the package (./verify.js), is not kept either.
+ * An entry seeding a response (`{fake: ...}`, src/util/net.js seededResponse) is a test's
+ * stand-in for what the host does: the request is made with it played in place of the host,
+ * and what it gives is taken as the host's: a success is kept, a failure is not. Every other
  * request goes to `net` untouched.
  * @param {VendorNet} net
  * @param {string} file  The run's popularity cache file.
@@ -61,19 +61,16 @@ export function withPopularityCache(net, file) {
   const cache = load(file);
   return {
     ...net,
-    async fetchJson(url) {
+    async fetchJson(url, seeded) {
       const key = popularityKey(url);
       if (key === null) {
-        return net.fetchJson(url);
+        return net.fetchJson(url, seeded);
       }
       const entry = Object.hasOwn(cache, key) ? cache[key] : undefined;
       if (Object.hasOwn(entry ?? {}, "answer")) {
         return entry.answer;
       }
-      if (entry?.fake404 === true && networkSwitchedOff()) {
-        throw httpError({ status: 404 });
-      }
-      const answer = await net.fetchJson(url);
+      const answer = await net.fetchJson(url, seededResponse(entry));
       cache[key] = { answer };
       save(file, cache);
       return answer;
@@ -84,7 +81,7 @@ export function withPopularityCache(net, file) {
 /**
  * The run's cached readings, or none when the file is absent or unreadable.
  * @param {string} file
- * @returns {Record<string, {answer?: unknown, fake404?: true}>}
+ * @returns {Record<string, {answer?: unknown, fake?: object}>}
  */
 function load(file) {
   try {

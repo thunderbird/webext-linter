@@ -93,9 +93,11 @@ import {
 /** @typedef {import("./resolve.js").VendorStore} VendorStore */
 /** @typedef {import("./sources.js").VendorSource} VendorSource */
 /**
- * @typedef {{fetchBytes: (url: string) => Promise<Buffer>,
- *   fetchJson: (url: string) => Promise<object>,
- *   postJson: (url: string, body: object) => Promise<object>}} VendorNet
+ * @typedef {import("../util/net.js").SeededResponse} SeededResponse
+ * @typedef {{fetchBytes: (url: string, seeded?: SeededResponse) => Promise<Buffer>,
+ *   fetchJson: (url: string, seeded?: SeededResponse) => Promise<object>,
+ *   postJson: (url: string, body: object, seeded?: SeededResponse) => Promise<object>}}
+ *   VendorNet
  */
 /**
  * @typedef {object} VendorVuln  One vulnerable npm package (OSV audit) - a
@@ -1502,22 +1504,41 @@ export async function isPopular(src, net, memo) {
 
 /**
  * The default network transport: a timeout- and size-capped HTTPS fetch. The
- * caller only ever passes an already trusted-host URL.
+ * caller only ever passes an already trusted-host URL. `seeded` is the response a test's
+ * cache seeded for the request, played in place of fetch (src/util/net.js).
  * @type {VendorNet}
  */
 export const defaultNet = {
-  fetchBytes(url) {
-    return fetchWithTimeout(url, readBytes, VENDOR_FETCH_TIMEOUT_MS);
+  fetchBytes(url, seeded) {
+    return fetchWithTimeout(
+      url,
+      readBytes,
+      VENDOR_FETCH_TIMEOUT_MS,
+      undefined,
+      seeded
+    );
   },
-  fetchJson(url) {
-    return fetchWithTimeout(url, readJson, VENDOR_FETCH_TIMEOUT_MS);
+  fetchJson(url, seeded) {
+    return fetchWithTimeout(
+      url,
+      readJson,
+      VENDOR_FETCH_TIMEOUT_MS,
+      undefined,
+      seeded
+    );
   },
-  postJson(url, body) {
-    return fetchWithTimeout(url, readJson, VENDOR_FETCH_TIMEOUT_MS, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  postJson(url, body, seeded) {
+    return fetchWithTimeout(
+      url,
+      readJson,
+      VENDOR_FETCH_TIMEOUT_MS,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      seeded
+    );
   },
 };
 

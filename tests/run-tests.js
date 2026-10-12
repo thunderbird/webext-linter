@@ -35,6 +35,7 @@ import {
   seedCdnHits,
   seedSourcesCache,
   seedWorkCache,
+  seeded,
 } from "./seed-caches.js";
 import { advisory, auditEntries, realPreparation } from "./prepared.js";
 
@@ -94,12 +95,11 @@ function loadFixture(dir) {
  *     `queries` ("name@version", npm), since the run's cache keeps OSV's answer per query.
  *     A /v1/query answer answers each of them, a batch's `json.results` pair with them by
  *     position. /v1/vulns/<id> is the record.
- *   - npm's downloads and GitHub's repositories, a declared 404 kept as the offline
- *     stand-in for it (popularityEntries).
+ *   - npm's downloads and GitHub's repositories (popularityEntries).
  *   - jsDelivr's hash lookup, a declared hit kept in the CDN lookup cache (fixtureCdnCache).
  *   - every other URL, a library source kept in the sources cache (fixtureSources).
- * Each is a JSON answer, or a 404 where the host gives one for what it does not know.
- * Any other status is no answer, which no cache keeps, so it is refused here.
+ * Each is a JSON answer, or a status, seeded as the response the host gives (a 404 for what
+ * it does not know, or a failure), played by the real transport.
  * @param {Record<string, object>} network
  * @returns {{sources: Record<string, object>, osv: object, popularity: object,
  *   cdn: Record<string, object>}}
@@ -109,14 +109,15 @@ function cachedAnswers(network) {
   const osv = { query: {}, batch: {}, advisories: {} };
   const popularity = { npm: {}, github: {} };
   const cdn = {};
-  const answer = (url, spec, fake404) => {
+  // A JSON answer, or the status the host gives instead, seeded as its response.
+  const answer = (url, spec) => {
     if (spec.json !== undefined && (spec.status ?? 200) === 200) {
       return spec.json;
     }
-    if (fake404 !== undefined && spec.status === 404) {
-      return fake404;
+    if (spec.status !== undefined) {
+      return seeded({ status: spec.status });
     }
-    throw new Error(`${url}: no cache keeps this answer`);
+    throw new Error(`${url}: declares no answer`);
   };
   for (const [url, spec] of Object.entries(network)) {
     if (url === VENDOR_OSV_API || url === VENDOR_OSV_BATCH_API) {
@@ -138,19 +139,15 @@ function cachedAnswers(network) {
     } else if (url.startsWith(VENDOR_NPM_DOWNLOADS_API)) {
       popularity.npm[url.slice(VENDOR_NPM_DOWNLOADS_API.length)] = answer(
         url,
-        spec,
-        null
+        spec
       );
     } else if (url.startsWith(VENDOR_GITHUB_REPOS_API)) {
       popularity.github[url.slice(VENDOR_GITHUB_REPOS_API.length)] = answer(
         url,
-        spec,
-        null
+        spec
       );
     } else if (url.startsWith(CDN_LOOKUP_URL)) {
-      cdn[url.slice(CDN_LOOKUP_URL.length)] = answer(url, spec, {
-        fake404: true,
-      });
+      cdn[url.slice(CDN_LOOKUP_URL.length)] = answer(url, spec);
     } else {
       sources[url] = spec;
     }

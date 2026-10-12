@@ -14,6 +14,7 @@ import path from "node:path";
 
 import { debug } from "../util/log.js";
 import { writeFileAtomic } from "../util/atomic.js";
+import { seededDownload } from "../util/download.js";
 import { fetchWithTimeout, withHttpStatus } from "../util/net.js";
 import { LIBRARY_HASHES_URL, LIBRARY_HASHES_CACHE } from "../config.js";
 import { cacheAgeHours, cacheIsStale } from "../util/cache-age.js";
@@ -49,7 +50,8 @@ export async function resolveLibraryHashes({
 } = {}) {
   fs.mkdirSync(cacheDir, { recursive: true });
   const cached = cachedHashesPath(cacheDir);
-  if (!cacheIsStale(cached)) {
+  const seeded = seededDownload(cached);
+  if (seeded === undefined && !cacheIsStale(cached)) {
     const text = fs.readFileSync(cached, "utf8");
     // Validate the cache, don't trust it: a truncated/partial cached DB would
     // silently review a real library as authored code. A bad cache falls through to
@@ -67,19 +69,25 @@ export async function resolveLibraryHashes({
   debug(
     `Downloading library hashes from ${url} - ${fs.existsSync(cached) ? "the cached copy is older than a day, or incomplete" : "none cached"} ...`
   );
-  const text = await fetchWithTimeout(url, async (res) => {
-    if (!res.ok) {
-      // Stamped with the status so the rate gate can tell a refusal from an answer
-      // (src/util/net.js); only a 404 keeps this wording.
-      throw withHttpStatus(
-        new Error(
-          `Failed to download library hashes: HTTP ${res.status} ${res.statusText} (${url}).`
-        ),
-        res
-      );
-    }
-    return res.text();
-  });
+  const text = await fetchWithTimeout(
+    url,
+    async (res) => {
+      if (!res.ok) {
+        // Stamped with the status so the rate gate can tell a refusal from an answer
+        // (src/util/net.js); only a 404 keeps this wording.
+        throw withHttpStatus(
+          new Error(
+            `Failed to download library hashes: HTTP ${res.status} ${res.statusText} (${url}).`
+          ),
+          res
+        );
+      }
+      return res.text();
+    },
+    undefined,
+    undefined,
+    seeded
+  );
   // Refuse to review against a partial DB (a short/HTML error body, a cut download)
   // rather than caching and silently mis-classifying libraries. A hard, fixable error.
   if (!isCompleteHashDb(text)) {

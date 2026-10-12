@@ -31,6 +31,7 @@ import {
   cdnMissCache,
   observed,
   seedCdnHits,
+  seeded,
   seededNet,
 } from "../seed-caches.js";
 
@@ -42,35 +43,22 @@ const addonWith = (files) => ({
   files: new Map(Object.entries(files).map(([k, v]) => [k, Buffer.from(v)])),
 });
 
-// An HTTP answer as the real fetch delivers it: the status stamped on the error.
-const httpAnswer = (status) =>
-  Object.assign(new Error(`HTTP ${status}`), { status });
-
-// A CDN lookup cache holding jsDelivr's answers: sha256 -> its hit, or {fake404: true}.
+// A CDN lookup cache holding jsDelivr's answers: sha256 -> its hit, or a `seeded` response.
 const cdnCache = (answers) => seedCdnHits(cdnMissCache(), answers);
 
-// jsDelivr answering the hash lookup live, for the tests of what the lookup keeps in its
-// cache: a hit from `hits`, else its 404. Every other request goes on to `net`. Records
-// each lookup it answers.
-function liveLookup(hits, net = defaultNet) {
-  const lookups = [];
-  return {
-    lookups,
-    fetchBytes: (url) => net.fetchBytes(url),
-    postJson: (url, body) => net.postJson(url, body),
-    async fetchJson(url) {
-      if (!url.startsWith(CDN_LOOKUP_URL)) {
-        return net.fetchJson(url);
-      }
-      lookups.push(url);
-      const hash = url.split("/").pop();
-      if (hits.has(hash)) {
-        return hits.get(hash);
-      }
-      throw httpAnswer(404); // jsDelivr's 404 surfaces as a throw via fetchJson
-    },
-  };
-}
+// The hash lookups among the requests a review sent (observed).
+const lookupsIn = (sent) =>
+  sent.filter((r) => r.url.startsWith(CDN_LOOKUP_URL));
+
+// No network: jsDelivr fails before any response, and so does the host the review reached
+// before it, when one was.
+const GONE = { fail: "ENOTFOUND", probe: { fail: "ENOTFOUND" } };
+
+// A request that never reaches a host: a URL that does not parse, which stays the caller's
+// own failure.
+const OWN_FAULT = { fail: "ERR_INVALID_URL" };
+const ownFault = (err) =>
+  !(err instanceof NoAnswerError) && err.cause?.code === "ERR_INVALID_URL";
 
 function tmpCacheDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "cdn-cache-"));
@@ -281,11 +269,10 @@ test("a NOT-popular hit whose package name does not match the file is discarded"
   );
 });
 
-// The discard is policy, applied AFTER the cache: the raw hit stays cached, so a
-// second run makes no new hash lookup - and if the package later clears the
-// popularity bar, the same cached hit promotes the file into the vendored family.
+// The discard is policy, applied AFTER the cache: the raw hit stays cached, so a second run
+// makes no new hash lookup - and if the package later clears the popularity bar, the same
+// cached hit promotes the file into the vendored family.
 test("a discarded hit stays cached; a later popularity flip promotes it from cache", async () => {
-  const cacheDir = tmpCacheDir();
   const hit = {
     type: "npm",
     name: "cw_office_sdk",
@@ -297,25 +284,32 @@ test("a discarded hit stays cached; a later popularity flip promotes it from cac
   const first = classify(addonWith({ "pdf-lib.min.js": MINIFIED }));
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hash = rawSha256(first.files.get("pdf-lib.min.js"));
-  const net1 = liveLookup(
-    new Map([[hash, hit]]),
+  // jsDelivr's hit, played in place of the host and kept like a live answer.
+  const cacheDir = cdnCache({ [hash]: seeded({ status: 200, json: hit }) });
+  const run1 = observed(
     seededNet({ popularity: { npm: { cw_office_sdk: { downloads: 50 } } } })
   );
-  await resolveCdnLibraries(first, { net: net1, cacheDir });
-  assert.equal(net1.lookups.length, 1);
+  await resolveCdnLibraries(first, { net: run1.net, cacheDir });
+  assert.equal(lookupsIn(run1.sent).length, 1);
   assert.equal(
     first.bundled.classified.find((c) => c.file === "pdf-lib.min.js").cdn,
     undefined
   );
+  assert.deepEqual(
+    JSON.parse(
+      fs.readFileSync(path.join(cacheDir, "jsdelivr-hash-lookup.json"), "utf8")
+    )[hash],
+    hit,
+    "the discarded hit stays cached"
+  );
 
   // Run 2: same cache, the package is popular this time -> promoted, no new lookup.
   const second = classify(addonWith({ "pdf-lib.min.js": MINIFIED }));
-  const net2 = liveLookup(
-    new Map(),
+  const run2 = observed(
     seededNet({ popularity: { npm: { cw_office_sdk: { downloads: 5000 } } } })
   );
-  await resolveCdnLibraries(second, { net: net2, cacheDir });
-  assert.equal(net2.lookups.length, 0, "served from cache");
+  await resolveCdnLibraries(second, { net: run2.net, cacheDir });
+  assert.equal(lookupsIn(run2.sent).length, 0, "served from cache");
   const tag = second.bundled.classified.find(
     (c) => c.file === "pdf-lib.min.js"
   );
@@ -331,14 +325,23 @@ test("a corrupt cache entry with a non-string name is treated as a miss", async 
   const addon = classify(addonWith({ "x.min.js": MINIFIED }));
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hash = rawSha256(addon.files.get("x.min.js"));
+  // The corrupt entry also seeds jsDelivr's 404 for the lookup asked in its place.
   fs.writeFileSync(
     path.join(cacheDir, "jsdelivr-hash-lookup.json"),
     JSON.stringify({
-      [hash]: { type: "npm", name: 123, version: "1.0.0", file: "/x.min.js" },
+      [hash]: {
+        type: "npm",
+        name: 123,
+        version: "1.0.0",
+        file: "/x.min.js",
+        fake: { status: 404 },
+      },
     })
   );
 
-  await resolveCdnLibraries(addon, { net: liveLookup(new Map()), cacheDir });
+  const { net, sent } = observed(defaultNet);
+  await resolveCdnLibraries(addon, { net, cacheDir });
+  assert.equal(lookupsIn(sent).length, 1, "asked again");
 
   const tag = addon.bundled.classified.find((c) => c.file === "x.min.js");
   assert.equal(tag.library, false);
@@ -611,7 +614,7 @@ test("a miss leaves the bundle minified (falls through to minified-code)", async
   const addon = classify(addonWith({ "app/blob.js": MINIFIED }));
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hash = rawSha256(addon.files.get("app/blob.js"));
-  const cacheDir = cdnCache({ [hash]: { fake404: true } }); // jsDelivr's 404
+  const cacheDir = cdnCache({ [hash]: seeded({ status: 404 }) }); // jsDelivr's 404
 
   await resolveCdnLibraries(addon, { net: defaultNet, cacheDir });
 
@@ -631,14 +634,14 @@ test("a miss leaves the bundle minified (falls through to minified-code)", async
 // read as "not on the CDN", which would review a library as the developer's own code.
 test("a lookup failure short of a 404 propagates", async () => {
   const addon = classify(addonWith({ "app/blob.js": MINIFIED }));
-  const net = {
-    async fetchJson() {
-      throw new Error("could not be read");
-    },
-  };
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(addon.files.get("app/blob.js"));
   await assert.rejects(
-    resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() }),
-    /could not be read/
+    resolveCdnLibraries(addon, {
+      net: defaultNet,
+      cacheDir: cdnCache({ [hash]: seeded(OWN_FAULT) }),
+    }),
+    ownFault
   );
 });
 
@@ -646,38 +649,39 @@ test("a lookup failure short of a 404 propagates", async () => {
 // unidentified, and a 404 - a passing fault of the host as well as "no such file" - is asked
 // again on the next run. Neither is written.
 test("neither no answer nor a 404 is cached", async () => {
-  const cacheDir = tmpCacheDir();
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(Buffer.from(MINIFIED));
+  const file = (dir) => path.join(dir, "jsdelivr-hash-lookup.json");
+  const asked = async (cacheDir) => {
+    const { net, sent } = observed(defaultNet);
+    await resolveCdnLibraries(classify(addonWith({ "x.js": MINIFIED })), {
+      cacheDir,
+      net,
+    });
+    return lookupsIn(sent).length;
+  };
 
   // No answer: the review stops, and nothing is cached.
-  await assert.rejects(
-    resolveCdnLibraries(classify(addonWith({ "x.js": MINIFIED })), {
-      cacheDir,
-      net: {
-        async fetchJson(url) {
-          throw new NoAnswerError(url, "HTTP 503");
-        },
-      },
-    }),
-    NoAnswerError
+  const cacheDir = cdnCache({ [hash]: seeded({ status: 503 }) });
+  const seededFile = fs.readFileSync(file(cacheDir), "utf8");
+  await assert.rejects(asked(cacheDir), NoAnswerError);
+  assert.equal(
+    fs.readFileSync(file(cacheDir), "utf8"),
+    seededFile,
+    "nothing kept of no answer"
   );
 
-  // Nothing was cached for the run that got no answer, so this one asks (a real 404).
-  const again = classify(addonWith({ "x.js": MINIFIED }));
-  const secondNet = liveLookup(new Map());
-  await resolveCdnLibraries(again, { cacheDir, net: secondNet });
-  const secondAsked = secondNet.lookups.length;
-  assert.equal(secondAsked, 1, "asked again after no answer");
+  // Nothing was cached for the run that got no answer, so this one asks (jsDelivr's 404).
+  seedCdnHits(cacheDir, { [hash]: seeded({ status: 404 }) });
+  const missFile = fs.readFileSync(file(cacheDir), "utf8");
+  assert.equal(await asked(cacheDir), 1, "asked again after no answer");
 
   // The 404 was not kept either -> asked again, and nothing was written.
-  const third = classify(addonWith({ "x.js": MINIFIED }));
-  const thirdNet = liveLookup(new Map());
-  await resolveCdnLibraries(third, { cacheDir, net: thirdNet });
-  const thirdAsked = thirdNet.lookups.length;
-  assert.equal(thirdAsked, 1, "the 404 was asked again");
+  assert.equal(await asked(cacheDir), 1, "the 404 was asked again");
   assert.equal(
-    fs.existsSync(path.join(cacheDir, "jsdelivr-hash-lookup.json")),
-    false,
-    "no cache file: nothing was answered to keep"
+    fs.readFileSync(file(cacheDir), "utf8"),
+    missFile,
+    "nothing was answered to keep"
   );
 });
 
@@ -694,23 +698,23 @@ test("disabled is a no-op (offline-safe)", async () => {
 });
 
 test("results are cached on disk: a second run makes no request (hits + misses)", async () => {
-  const cacheDir = tmpCacheDir();
   const hitAddon = classify(addonWith({ "a.js": MINIFIED }));
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hitHash = rawSha256(hitAddon.files.get("a.js"));
-  const net = liveLookup(
-    new Map([
-      [
-        hitHash,
-        { type: "npm", name: "lib", version: "1.0.0", file: "/lib.min.js" },
-      ],
-    ]),
+  // jsDelivr's hit, played in place of the host and kept like a live answer.
+  const cacheDir = cdnCache({
+    [hitHash]: seeded({
+      status: 200,
+      json: { type: "npm", name: "lib", version: "1.0.0", file: "/lib.min.js" },
+    }),
+  });
+  const { net, sent } = observed(
     seededNet({ popularity: { npm: { lib: { downloads: 5000 } } } })
   );
 
   // First run populates the cache (one hash lookup for the hit).
   await resolveCdnLibraries(hitAddon, { net, cacheDir });
-  const firstLookups = net.lookups.length;
+  const firstLookups = lookupsIn(sent).length;
   assert.ok(firstLookups >= 1);
 
   // Second run over a freshly classified copy: same hashes -> the jsDelivr HASH
@@ -719,7 +723,7 @@ test("results are cached on disk: a second run makes no request (hits + misses)"
   const again = classify(addonWith({ "a.js": MINIFIED }));
   await resolveCdnLibraries(again, { net, cacheDir });
   assert.equal(
-    net.lookups.length,
+    lookupsIn(sent).length,
     firstLookups,
     "no new jsDelivr hash lookups on the cached run"
   );
@@ -755,51 +759,23 @@ test("cdnUrl builds npm and gh source URLs", async () => {
 // different add-on. A dead network, a host that gave no answer and any other failure stop
 // the review: only a 404 means no match.
 test("resolveCdnLibraries propagates every failure but a 404", async () => {
-  const addon = classify(addonWith({ "app/lib.min.js": MINIFIED }));
-  const gone = {
-    fetchJson: async () => {
-      throw new NetworkGoneError("https://data.jsdelivr.com/x", true);
-    },
-  };
-  await assert.rejects(
-    () => resolveCdnLibraries(addon, { net: gone, cacheDir: tmpCacheDir() }),
-    NetworkGoneError
-  );
-
-  const silent = {
-    fetchJson: async (url) => {
-      throw new NoAnswerError(url, "HTTP 503");
-    },
-  };
-  await assert.rejects(
-    () =>
-      resolveCdnLibraries(classify(addonWith({ "app/lib.min.js": MINIFIED })), {
-        net: silent,
-        cacheDir: tmpCacheDir(),
-      }),
-    NoAnswerError
-  );
-
-  const ordinary = {
-    fetchJson: async () => {
-      throw new Error("could not be read");
-    },
-  };
-  await assert.rejects(
-    () =>
-      resolveCdnLibraries(classify(addonWith({ "app/lib.min.js": MINIFIED })), {
-        net: ordinary,
-        cacheDir: tmpCacheDir(),
-      }),
-    /could not be read/
-  );
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(Buffer.from(MINIFIED));
+  const lookup = (response) =>
+    resolveCdnLibraries(classify(addonWith({ "app/lib.min.js": MINIFIED })), {
+      net: defaultNet,
+      cacheDir: cdnCache({ [hash]: seeded(response) }),
+    });
+  await assert.rejects(() => lookup(GONE), NetworkGoneError);
+  await assert.rejects(() => lookup({ status: 503 }), NoAnswerError);
+  await assert.rejects(() => lookup(OWN_FAULT), ownFault);
 });
 
 // A hit is kept for good, since a file hash names one release. A miss is never kept, so the
-// only miss a cache answers with is one a test pre-filled (`{fake404: true}`), read with the
-// network switched off as every test runs. Anything else - an older version's miss included -
-// is asked again.
-test("a cached hit is never asked again; only a pre-filled 404 answers a miss", async () => {
+// only miss a cache holds is one a test seeded (`{fake: {status: 404}}`), played in place of
+// the host with the network switched off as every test runs. Anything else - an older
+// version's miss included - is asked of the host again.
+test("a cached hit is never asked again; only a seeded 404 stands in for a miss", async () => {
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const lookups = async (entry) => {
     const cacheDir = tmpCacheDir();
@@ -809,20 +785,29 @@ test("a cached hit is never asked again; only a pre-filled 404 answers a miss", 
       path.join(cacheDir, "jsdelivr-hash-lookup.json"),
       JSON.stringify({ [hash]: entry })
     );
-    const net = liveLookup(
-      new Map(),
+    const { net, sent } = observed(
       seededNet({ popularity: { npm: { lib: { downloads: 5000 } } } })
     );
     await resolveCdnLibraries(addon, { net, cacheDir });
-    return net.lookups.length;
+    return lookupsIn(sent).length;
   };
-  assert.equal(await lookups({ fake404: true }), 0, "a pre-filled 404");
   assert.equal(
-    await lookups({ missedAt: Date.now() }),
+    await lookups({ fake: { status: 404 } }),
     1,
+    "a seeded 404 is played"
+  );
+  // Any other entry is asked of jsDelivr, which the switched-off network refuses.
+  const askedOfHost = /network request in a test/;
+  await assert.rejects(
+    lookups({ missedAt: Date.now() }),
+    askedOfHost,
     "an older version's miss is asked again"
   );
-  assert.equal(await lookups(null), 1, "a legacy bare miss is asked again");
+  await assert.rejects(
+    lookups(null),
+    askedOfHost,
+    "a legacy bare miss is asked again"
+  );
   const hit = { type: "npm", name: "lib", version: "1.0.0", file: "/x.min.js" };
   assert.equal(await lookups(hit), 0, "a hit is never asked again");
 });

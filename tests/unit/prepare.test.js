@@ -23,12 +23,11 @@ import {
 } from "../../src/prepare/state.js";
 import { HandbackRefused } from "../../src/report/handback.js";
 import { NoAnswerError } from "../../src/util/net.js";
-import { defaultNet } from "../../src/vendor/verify.js";
-import { VENDOR_OSV_BATCH_API, VENDOR_OSV_VULN_API } from "../../src/config.js";
-import { workPaths } from "../../src/util/dest.js";
+import { runCache, workPaths } from "../../src/util/dest.js";
 import { loadSourceArchive } from "../../src/addon/load.js";
 import depsChanged from "../../src/checks/rules/sca-dependencies-changed.js";
 import { advisory, answer, auditCache, writeTree } from "../prepared.js";
+import { osvEntries, seeded, seedWorkCache } from "../seed-caches.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..", "..");
@@ -121,60 +120,48 @@ const first = (work, answers = {}) => {
 /** A later step: the folder handed back, nothing to fill in. */
 const later = (work) => handBack(work);
 
-/** The first step as `first` takes it, its audit asking `net` behind the run's cache. */
-const firstAsking = (work, net) => {
-  answer(work, { SCA_ROOT: workPaths(work).sca });
-  return handBack(work, { net });
-};
-
 /**
- * OSV answering live from `vulns` the way OSV does, for a test about what the run's cache
- * keeps of a live answer: the batch answers with ids, positionally, and each id is served on
- * its own. Every other request goes on to the production network.
- * @param {Record<string, object[]>} [vulns]
+ * OSV's responses to an audit of one release, as run cache entries (osvEntries), each played
+ * in place of OSV and kept like a live answer: `vulns` maps the "name@version" asked about to
+ * its advisories, as auditEntries takes it.
+ * @param {Record<string, object[]>} vulns  One release.
+ * @returns {Record<string, object>}
  */
-function osvNet(vulns = {}) {
-  const byId = new Map(
-    Object.values(vulns)
-      .flat()
-      .map((v) => [v.id, v])
-  );
-  return {
-    fetchBytes: (url) => defaultNet.fetchBytes(url),
-    fetchJson: async (url) => {
-      if (!url.startsWith(VENDOR_OSV_VULN_API)) {
-        return defaultNet.fetchJson(url);
-      }
-      const id = url.slice(url.lastIndexOf("/") + 1);
-      if (byId.has(id)) {
-        return byId.get(id);
-      }
-      throw Object.assign(new Error("HTTP 404"), { status: 404 });
+function liveAudit(vulns) {
+  const [[release, list]] = Object.entries(vulns);
+  return osvEntries({
+    batch: {
+      [release]: seeded({
+        status: 200,
+        json: { results: [{ vulns: list.map((v) => ({ id: v.id })) }] },
+      }),
     },
-    postJson: async (url, body) => {
-      if (url !== VENDOR_OSV_BATCH_API) {
-        return defaultNet.postJson(url, body);
-      }
-      return {
-        results: body.queries.map((q) => ({
-          vulns: (vulns[`${q.package.name}@${q.version}`] ?? []).map((v) => ({
-            id: v.id,
-          })),
-        })),
-      };
-    },
-  };
+    advisories: Object.fromEntries(
+      list.map((v) => [v.id, seeded({ status: 200, json: v })])
+    ),
+  });
 }
 
-/** OSV's batch endpoint answering 404, which is no answer from OSV and ends the run. Every
- *  other request goes on to the production network. */
-const batchDown = {
-  fetchBytes: (url) => defaultNet.fetchBytes(url),
-  fetchJson: (url) => defaultNet.fetchJson(url),
-  postJson: async () => {
-    throw Object.assign(new Error("HTTP 404"), { status: 404 });
-  },
-};
+/** OSV's batch endpoint answering 404 for `release`, which is no answer from OSV and ends
+ *  the run, as run cache entries (osvEntries). */
+const batchDown = (release) =>
+  osvEntries({ batch: { [release]: seeded({ status: 404 }) } });
+
+/** Add `entries` to the OSV cache of the run the record of `work` names. */
+function seedRunOsv(work, entries) {
+  const file = runCache(work, recordOf(work).flags?.["cache-work-dir"]).osv;
+  const cache = fs.existsSync(file)
+    ? JSON.parse(fs.readFileSync(file, "utf8"))
+    : {};
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ ...cache, ...entries }));
+}
+
+/** Whether every entry of a run's OSV cache file holds OSV's answer. */
+const allAnswered = (file) =>
+  Object.values(JSON.parse(fs.readFileSync(file, "utf8"))).every((e) =>
+    Object.hasOwn(e, "answer")
+  );
 
 const recordOf = (work) => readPrepare(work);
 
@@ -538,7 +525,8 @@ test("a reduce that leaves the copy clean hands the review the copy", async () =
 });
 
 // The preparation is one run with its review: OSV is asked through the run's cache in the
-// work folder. A step over a lock already audited asks OSV nothing.
+// work folder. A step over a lock already audited asks OSV nothing, and the advisory it
+// reads there is what rescues the copy.
 test("a rescued copy's step reads the run's OSV cache", async () => {
   const work = workFolder(
     {
@@ -547,8 +535,10 @@ test("a rescued copy's step reads the run's OSV cache", async () => {
     },
     { cache: null }
   );
-  await firstAsking(work, osvNet(TOOL_HIGH));
-  assert.ok(fs.existsSync(path.join(work, ".cache", "osv.json")));
+  seedRunOsv(work, liveAudit(TOOL_HIGH));
+  const at = await first(work);
+  assert.equal(at.record.step, PREPARE_STEP.reduce);
+  assert.ok(allAnswered(path.join(work, ".cache", "osv.json")));
   const reduce = await handBack(work);
   assert.equal(reduce.record.step, PREPARE_STEP.fix);
   cleanup(work);
@@ -557,7 +547,7 @@ test("a rescued copy's step reads the run's OSV cache", async () => {
 // A run that names its cache folder (--cache-work-dir, forwarded in the record) keeps OSV's
 // answers there instead, so the preparation and its review read the folder a test seeded.
 test("a step asks through the cache folder its record names", async () => {
-  const dir = auditCache();
+  const dir = seedWorkCache({ osv: liveAudit(TOOL_HIGH) });
   const work = workFolder(
     {
       "package.json": packageFile(),
@@ -565,11 +555,9 @@ test("a step asks through the cache folder its record names", async () => {
     },
     { cache: dir }
   );
-  await firstAsking(work, osvNet(TOOL_HIGH));
-  assert.notDeepEqual(
-    JSON.parse(fs.readFileSync(path.join(dir, "osv.json"), "utf8")),
-    {}
-  );
+  const at = await first(work);
+  assert.equal(at.record.step, PREPARE_STEP.reduce, "the advisory was read");
+  assert.ok(allAnswered(path.join(dir, "osv.json")));
   assert.ok(!fs.existsSync(path.join(work, ".cache")));
   cleanup(work);
 });
@@ -669,11 +657,14 @@ test("an audit OSV does not answer ends the preparation", async (t) => {
   const noAnswer = (err) =>
     err instanceof NoAnswerError && /querybatch \(HTTP 404\)/.test(err.message);
   await t.test("at the first step", async () => {
-    const work = workFolder({
-      "package.json": packageFile(),
-      "package-lock.json": npmLock(),
-    });
-    await assert.rejects(firstAsking(work, batchDown), noAnswer);
+    const work = workFolder(
+      {
+        "package.json": packageFile(),
+        "package-lock.json": npmLock(),
+      },
+      { cache: seedWorkCache({ osv: batchDown("lint-pebble@0.4.0") }) }
+    );
+    await assert.rejects(first(work), noAnswer);
     assert.equal(recordOf(work).step, PREPARE_STEP.extract);
     cleanup(work);
   });
@@ -686,7 +677,8 @@ test("an audit OSV does not answer ends the preparation", async (t) => {
         "node_modules/argv-crumb": { version: "0.0.8", dev: true },
       }),
     });
-    await assert.rejects(handBack(work, { net: batchDown }), noAnswer);
+    seedRunOsv(work, batchDown("argv-crumb@0.0.8"));
+    await assert.rejects(later(work), noAnswer);
     assert.equal(recordOf(work).step, PREPARE_STEP.reduce);
     cleanup(work);
   });

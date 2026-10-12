@@ -41,6 +41,8 @@ export default [
         Buffer: "readonly",
         URL: "readonly",
         fetch: "readonly",
+        Response: "readonly",
+        ReadableStream: "readonly",
         AbortController: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",

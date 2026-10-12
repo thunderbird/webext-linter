@@ -26,7 +26,7 @@ import { writeFileAtomic } from "../util/atomic.js";
 import { parseJson } from "../util/json.js";
 import { debug } from "../util/log.js";
 import { rethrowIfFatal } from "../lib/errors.js";
-import { NoAnswerError } from "../util/net.js";
+import { NoAnswerError, seededResponse } from "../util/net.js";
 
 /** @typedef {import("./verify.js").VendorNet} VendorNet */
 
@@ -71,8 +71,10 @@ export function osvVulnKey(id) {
  * `net`, with OSV answered from the run's cache in `file`. Only what OSV answered is kept. A
  * failure - a 404 included, which is no answer from OSV (src/vendor/verify.js askOsv) - passes
  * up and is not kept: the run ends on it, and is handed back in this same work folder once OSV
- * answers again, so a kept failure would be replayed on every retry. Every other request goes
- * to `net` untouched.
+ * answers again, so a kept failure would be replayed on every retry. An entry seeding a
+ * response (`{fake: ...}`, src/util/net.js seededResponse) is a test's stand-in for what OSV
+ * does: the request is made with it played in place of OSV, and what it gives is taken as
+ * OSV's: an answer is kept, a failure is not. Every other request goes to `net` untouched.
  * @param {VendorNet} net
  * @param {string} file  The run's OSV cache file.
  * @returns {VendorNet}
@@ -90,33 +92,37 @@ export function withOsvCache(net, file) {
     if (kept(key)) {
       return cache[key].answer;
     }
-    const answer = await ask();
+    const answer = await ask(seededResponse(cache[key]));
     remember(key, { answer });
     return answer;
   };
   return {
     ...net,
-    fetchJson(url) {
+    fetchJson(url, seeded) {
       if (!String(url).startsWith(VENDOR_OSV_VULN_API)) {
-        return net.fetchJson(url);
+        return net.fetchJson(url, seeded);
       }
-      return once(osvVulnKey(url.slice(VENDOR_OSV_VULN_API.length)), () =>
-        net.fetchJson(url)
+      return once(osvVulnKey(url.slice(VENDOR_OSV_VULN_API.length)), (seed) =>
+        net.fetchJson(url, seed)
       );
     },
-    async postJson(url, body) {
+    async postJson(url, body, seeded) {
       if (url === VENDOR_OSV_API) {
-        return once(osvQueryKey(body), () => net.postJson(url, body));
+        return once(osvQueryKey(body), (seed) => net.postJson(url, body, seed));
       }
       if (url !== VENDOR_OSV_BATCH_API) {
-        return net.postJson(url, body);
+        return net.postJson(url, body, seeded);
       }
       const queries = Array.isArray(body?.queries) ? body.queries : [];
       const keys = queries.map(osvBatchKey);
       const missing = queries.filter((_, i) => !kept(keys[i]));
       if (missing.length > 0) {
+        // A query that seeds a response has the batch it is sent in played with it.
+        const batchSeed = keys
+          .map((key) => seededResponse(cache[key]))
+          .find((s) => s !== undefined);
         const results = completeBatch(
-          await net.postJson(url, { ...body, queries: missing }),
+          await net.postJson(url, { ...body, queries: missing }, batchSeed),
           missing.length,
           url
         );
@@ -138,7 +144,7 @@ export function withOsvCache(net, file) {
 /**
  * The run's cached answers, or none when the file is absent or unreadable.
  * @param {string} file
- * @returns {Record<string, {answer?: unknown}>}
+ * @returns {Record<string, {answer?: unknown, fake?: object}>}
  */
 function load(file) {
   try {
