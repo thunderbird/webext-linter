@@ -14,6 +14,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { scanCssRemoteRefs } from "../../src/scan/css.js";
 import AdmZip from "adm-zip";
 import semver from "semver";
 
@@ -367,6 +368,16 @@ test("web_accessible_resources globs: matched in pattern x path time, exactly as
     expandResourcePattern(packaged, "a/*"),
     [...packaged.keys()].filter((p) => oldGlob("a/*").test(p))
   );
+});
+
+// The CSS reader walks the token stream once: an escaped url( that never closes, or many that
+// do, cost a pass over the rest of the text, not one per call.
+test("CSS references: escaped and unclosed url() calls are read in linear time", () => {
+  for (const unit of ["u\\72l(", "u\\72l(a)", "image-set(", "url(x) "]) {
+    assertLinear((n) =>
+      scanCssRemoteRefs(`a{b:${unit.repeat(n / unit.length)}}`)
+    );
+  }
 });
 
 test("stylesheets: comments, url() and strings are stripped in linear time, exactly as before", () => {

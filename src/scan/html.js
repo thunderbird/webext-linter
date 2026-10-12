@@ -121,9 +121,9 @@ export function scanHtmlInlineCssRefs(html) {
         refs.push({ ...ref, line: ref.line + offset });
       }
     }
-    // A style= attribute: a bare declaration list. Wrap it in a rule so postcss
-    // parses the declarations (`@import` is invalid here, so only url() arises);
-    // the refs are attributed to the element's own line.
+    // A style= attribute: a bare declaration list, read inside a rule as the browser
+    // reads it (an `@import` there is followed by nothing, so only url() arises); the
+    // refs are attributed to the element's own line.
     const styleAttr = el.attr("style");
     if (styleAttr) {
       for (const ref of scanCssRemoteRefs(`*{${styleAttr}}`)) {

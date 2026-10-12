@@ -136,6 +136,46 @@ test("CSS scan ignores url() in comments and handles ')' inside a data URI", asy
   assert.equal(remote[0].url, "https://cdn.example.com/i.png");
 });
 
+// CSS is read as the browser reads it: escapes are decoded before a name or a URL is
+// matched, an image-set() loads each of its URLs, and a construct a stricter parser refuses
+// costs nothing else in the sheet. Each of these loads a remote resource.
+test("CSS scan reads escapes and image-set() as the browser does", () => {
+  const remote = (css) =>
+    scanCssRemoteRefs(css)
+      .filter((r) => r.klass.remote)
+      .map((r) => [r.kind === REF_KIND.IMPORT ? "import" : "url", r.url]);
+  assert.deepEqual(remote("a { background: url(htt\\70://evil.com/a); }"), [
+    ["url", "http://evil.com/a"],
+  ]);
+  assert.deepEqual(remote("a { background: u\\72l(http://evil.com/a); }"), [
+    ["url", "http://evil.com/a"],
+  ]);
+  assert.deepEqual(
+    remote(
+      'a { background: image-set("http://evil.com/a" 1x, url(b.png) 2x); }'
+    ),
+    [["url", "http://evil.com/a"]]
+  );
+  assert.deepEqual(
+    remote(
+      "@\\69mport url(http://evil.com/a.css);\na { b: url(http://evil.com/c); }"
+    ),
+    [
+      ["import", "http://evil.com/a.css"],
+      ["url", "http://evil.com/c"],
+    ]
+  );
+  // What is local stays local, escaped or not, and an @import inside a block is none.
+  assert.deepEqual(
+    remote("a { background: url(a.png) url(\\61.png) image-set('b.png' 1x); }"),
+    []
+  );
+  assert.deepEqual(
+    scanCssRemoteRefs('a { @import "x.css"; }').map((r) => r.kind),
+    []
+  );
+});
+
 // ---- inline CSS in HTML ----
 // CSS inside HTML is scanned with the same css scanner, with lines offset to the
 // HTML file: a remote @import in a <style> reports at its file line, a remote
