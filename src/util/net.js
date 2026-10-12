@@ -510,7 +510,7 @@ export async function fetchWithTimeout(
 async function issue(url, consume, timeoutMs, init, seeded) {
   // Before the timer and outside the try below, so it is never read as a host that gave no
   // answer. A wiring error, the class no catch absorbs: a caller that tolerates one failed
-  // request (the CDN lookup does) would otherwise swallow it, and the test would pass on a
+  // request (the vendor verification does) would otherwise swallow it, and the test would pass on a
   // request it was never allowed to make. A URL that does not parse is the caller's own
   // failure, as fetch reports it, before either.
   if (seeded !== undefined && !NO_NETWORK) {
@@ -597,21 +597,24 @@ function replay(url, seeded, signal) {
       cause: Object.assign(new Error(seeded.fail), { code: seeded.fail }),
     });
   }
-  if (seeded.hang) {
-    return new Response(
-      new ReadableStream({
-        start(stream) {
-          signal.addEventListener("abort", () => stream.error(signal.reason));
-        },
-      })
-    );
-  }
-  return new Response(
-    seeded.json !== undefined
-      ? JSON.stringify(seeded.json)
-      : (seeded.body ?? ""),
-    { status: seeded.status, headers: seeded.headers }
-  );
+  const res = seeded.hang
+    ? new Response(
+        new ReadableStream({
+          start(stream) {
+            signal.addEventListener("abort", () => stream.error(signal.reason));
+          },
+        })
+      )
+    : new Response(
+        seeded.json !== undefined
+          ? JSON.stringify(seeded.json)
+          : (seeded.body ?? ""),
+        { status: seeded.status, headers: seeded.headers }
+      );
+  // A Response made here carries no URL, where fetch's carries the one it answered, and
+  // every reader that names the request names it by `res.url`.
+  Object.defineProperty(res, "url", { value: url });
+  return res;
 }
 
 /** @param {string} url @param {number} timeoutMs @returns {NoAnswerError} */

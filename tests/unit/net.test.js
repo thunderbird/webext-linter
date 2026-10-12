@@ -625,6 +625,17 @@ test("a status other than a 2xx or 404 is no answer", async () => {
   }
 });
 
+// A seeded response is read like fetch's own, URL included: a body that is not JSON is no
+// answer from the URL that served it, named as a live one would be.
+test("a reply that is not JSON is no answer, from its own URL", async () => {
+  await assert.rejects(
+    () => ask(npm("garbled"), { status: 200, body: "<html>" }),
+    (err) =>
+      err instanceof NoAnswerError &&
+      err.message.includes(`no answer from api.npmjs.org: ${npm("garbled")}`)
+  );
+});
+
 // A redirect that never ends fails before any response, in fetch's own shape.
 test("a redirect loop is no answer", async () => {
   await assert.rejects(

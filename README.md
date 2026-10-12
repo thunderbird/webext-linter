@@ -87,7 +87,7 @@ silence as a result - so an offline machine needs the network once a day.
 | `--cache-hash-db-dir <dir>` | Where the fetched library-hash database (the addons-linter "dispensary" `hashes.txt`, used by `missing-library` to identify a bundled library by its exact content hash) is cached (default `WEBEXT-LINTER-CACHE/mozilla-hash-db`). |
 | `--cache-cdn-lookup-dir <dir>` | Where the jsDelivr CDN hash-lookup results are cached, backing `--cdn-lib-lookup` (default `WEBEXT-LINTER-CACHE/cdn-lookup`). |
 | `--cache-npm-registry-dir <dir>` | Where the npm registry's answers about a lock file's tarball URLs are cached, backing `lockfile-injection` for a registry URL off the tarball path (default `WEBEXT-LINTER-CACHE/npm-registry`). |
-| `--cache-sources-dir <dir>` | Where the pinned library sources a review downloads to verify a VENDOR entry or a lock install are kept (default `WEBEXT-LINTER-CACHE/sources`). |
+| `--cache-sources-dir <dir>` | Where the pinned library sources a review downloads are kept: VENDOR sources, package tarballs and unpkg's file listings (default `WEBEXT-LINTER-CACHE/sources`). |
 | `--cache-experiments-dir <dir>` | Where the fetched allowed-experiments zip (the Thunderbird Draft-API list feeding the Experiment checks, e.g. `experiment-modified`) is cached (default `WEBEXT-LINTER-CACHE/experiments`). |
 
 The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `banned-library`) is curated by hand from Mozilla's [addons-linter third-party library docs](https://github.com/mozilla/addons-linter/blob/master/docs/third-party-libraries.md), since Mozilla ships no machine-readable list, and that page

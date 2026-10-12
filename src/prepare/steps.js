@@ -93,12 +93,10 @@ function rootEntries(record) {
 /**
  * Take the next step of the preparation in `work`, and say what comes next.
  * @param {string} work  The work folder handed back, absolute and real, holding a record.
- * @param {{net?: import("../vendor/verify.js").VendorNet}} [context]  The network the
- *   audit asks; the real one unless a test hands in its own.
  * @returns {Promise<Handout>}
  * @throws {HandbackRefused}
  */
-export async function handBack(work, { net } = {}) {
+export async function handBack(work) {
   const record = readPrepare(work);
   if (!record) {
     throw new HandbackRefused(`"${work}" holds no preparation`);
@@ -108,7 +106,7 @@ export async function handBack(work, { net } = {}) {
   // its review share: the folder its flags name (--cache-work-dir), or the work folder's.
   const context = {
     net: withRunCache(
-      net ?? defaultNet,
+      defaultNet,
       runCache(work, record.flags?.["cache-work-dir"] || undefined)
     ),
     cacheDir: record.flags?.["cache-npm-registry-dir"] || undefined,

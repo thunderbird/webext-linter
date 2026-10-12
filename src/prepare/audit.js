@@ -65,8 +65,8 @@ export const LOCK_AUDIT_LISTS = Object.freeze([
  * Audit one root's lock.
  * @param {{scaRoot: string, scaExpSource: ?string}} roots  Settled, absolute.
  * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} [context]
- *   The network the audit asks, the real one unless a test hands in its own, and where the
- *   npm registry's answers about the lock's tarball URLs are cached.
+ *   The network the audit asks, the run's, behind its cache (./steps.js handBack), and where
+ *   the npm registry's answers about the lock's tarball URLs are cached.
  * @returns {Promise<RootAudit>}
  */
 export async function auditRoot(roots, { net, cacheDir } = {}) {

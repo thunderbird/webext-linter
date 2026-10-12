@@ -160,32 +160,12 @@ function helpText(checkIds) {
   const cache = [
     [
       "--cache-clear",
-      "Delete every cache directory before the review, so all fetched sources (schema, library-hash DB, CDN lookups, npm registry answers, allowed-experiments) are re-downloaded from scratch - as on a first run.",
+      `Delete every cache directory below before the review, so all fetched sources (${CACHES.map((c) => c.holds).join(", ")}) are re-downloaded from scratch - as on a first run.`,
     ],
-    [
-      "--cache-schema-dir <dir>",
-      `Where the downloaded schema zips are cached (default: ${DEFAULT_CACHE}).`,
-    ],
-    [
-      "--cache-hash-db-dir <dir>",
-      `Where the fetched library-hash database is cached (default: ${LIBRARY_HASHES_CACHE}).`,
-    ],
-    [
-      "--cache-cdn-lookup-dir <dir>",
-      `Where the CDN hash-lookup results are cached, backing --cdn-lib-lookup (default: ${CDN_LOOKUP_CACHE}).`,
-    ],
-    [
-      "--cache-npm-registry-dir <dir>",
-      `Where the npm registry's answers about a lock file's tarball URLs are cached (default: ${NPM_REGISTRY_CACHE}).`,
-    ],
-    [
-      "--cache-sources-dir <dir>",
-      `Where the pinned library sources a review downloads are kept (default: ${SOURCES_CACHE}).`,
-    ],
-    [
-      "--cache-experiments-dir <dir>",
-      `Where the fetched allowed-experiments zip is cached (default: ${EXPERIMENTS_CACHE}).`,
-    ],
+    ...CACHES.map((c) => [
+      `--${c.flag} <dir>`,
+      `${c.help} (default: ${c.folder}).`,
+    ]),
   ];
 
   const checks = [
@@ -295,14 +275,63 @@ function helpText(checkIds) {
   ].join("\n");
 }
 
+/**
+ * Every cache a review reads, the one list the cache flags, their help, their defaults, the
+ * review's opts and --cache-clear are all made from, so a cache cannot be known to one of
+ * them and missing from another. `holds` is how --cache-clear names what it deletes.
+ * --cache-work-dir is not one of them: it is the run's own, which no review shares, and a
+ * test's alone.
+ * @type {readonly {flag: string, opt: string, holds: string, help: string,
+ *   folder: string}[]}
+ */
+const CACHES = Object.freeze([
+  {
+    flag: "cache-schema-dir",
+    opt: "schemaCache",
+    holds: "schema",
+    help: "Where the downloaded schema zips are cached",
+    folder: DEFAULT_CACHE,
+  },
+  {
+    flag: "cache-hash-db-dir",
+    opt: "libraryHashesCache",
+    holds: "library-hash DB",
+    help: "Where the fetched library-hash database is cached",
+    folder: LIBRARY_HASHES_CACHE,
+  },
+  {
+    flag: "cache-cdn-lookup-dir",
+    opt: "cdnLookupCache",
+    holds: "CDN lookups",
+    help: "Where the CDN hash-lookup results are cached, backing --cdn-lib-lookup",
+    folder: CDN_LOOKUP_CACHE,
+  },
+  {
+    flag: "cache-npm-registry-dir",
+    opt: "npmRegistryCache",
+    holds: "npm registry answers",
+    help: "Where the npm registry's answers about a lock file's tarball URLs are cached",
+    folder: NPM_REGISTRY_CACHE,
+  },
+  {
+    flag: "cache-sources-dir",
+    opt: "sourcesCache",
+    holds: "library sources",
+    help: "Where the pinned library sources a review downloads are kept",
+    folder: SOURCES_CACHE,
+  },
+  {
+    flag: "cache-experiments-dir",
+    opt: "experimentsCache",
+    holds: "allowed-experiments",
+    help: "Where the fetched allowed-experiments zip is cached",
+    folder: EXPERIMENTS_CACHE,
+  },
+]);
+
 const OPTIONS = {
   "cache-clear": { type: "boolean" },
-  "cache-schema-dir": { type: "string" },
-  "cache-hash-db-dir": { type: "string" },
-  "cache-cdn-lookup-dir": { type: "string" },
-  "cache-npm-registry-dir": { type: "string" },
-  "cache-sources-dir": { type: "string" },
-  "cache-experiments-dir": { type: "string" },
+  ...Object.fromEntries(CACHES.map((c) => [c.flag, { type: "string" }])),
   "cdn-lib-lookup": { type: "string" },
   "checks-only": { type: "string" },
   "checks-skip": { type: "string" },
@@ -343,14 +372,9 @@ function reviewSkips(values) {
 const SCA_FLAGS = ["sca-root", "sca-exp-source"];
 
 /** Where each cache lives when the run names none. */
-const CACHE_DIR_DEFAULTS = Object.freeze({
-  "cache-schema-dir": DEFAULT_CACHE,
-  "cache-hash-db-dir": LIBRARY_HASHES_CACHE,
-  "cache-cdn-lookup-dir": CDN_LOOKUP_CACHE,
-  "cache-npm-registry-dir": NPM_REGISTRY_CACHE,
-  "cache-sources-dir": SOURCES_CACHE,
-  "cache-experiments-dir": EXPERIMENTS_CACHE,
-});
+const CACHE_DIR_DEFAULTS = Object.freeze(
+  Object.fromEntries(CACHES.map((c) => [c.flag, c.folder]))
+);
 
 /** The flags that name a folder on this machine, each taken to be its real target before
  *  anything reads it (main). --sca-exp-source is not one of them: it names a folder INSIDE
@@ -358,12 +382,7 @@ const CACHE_DIR_DEFAULTS = Object.freeze({
 const FOLDER_FLAGS = [
   "sca-root",
   "llm-handback",
-  "cache-schema-dir",
-  "cache-hash-db-dir",
-  "cache-cdn-lookup-dir",
-  "cache-npm-registry-dir",
-  "cache-sources-dir",
-  "cache-experiments-dir",
+  ...CACHES.map((c) => c.flag),
   "cache-work-dir",
 ];
 
@@ -1090,14 +1109,7 @@ function printReview(result, format) {
  * @returns {string[]}
  */
 function cacheDirs(opts) {
-  return [
-    opts.schemaCache,
-    opts.libraryHashesCache,
-    opts.cdnLookupCache,
-    opts.npmRegistryCache,
-    opts.sourcesCache,
-    opts.experimentsCache,
-  ];
+  return CACHES.map((c) => opts[c.opt]);
 }
 
 /**
@@ -1191,21 +1203,9 @@ function pipelineOptsFromValues(values) {
   const inRoot = (value) =>
     value === undefined ? undefined : path.resolve(scaRoot ?? ".", value);
   return {
-    schemaCache:
-      values["cache-schema-dir"] || CACHE_DIR_DEFAULTS["cache-schema-dir"],
-    libraryHashesCache:
-      values["cache-hash-db-dir"] || CACHE_DIR_DEFAULTS["cache-hash-db-dir"],
-    cdnLookupCache:
-      values["cache-cdn-lookup-dir"] ||
-      CACHE_DIR_DEFAULTS["cache-cdn-lookup-dir"],
-    npmRegistryCache:
-      values["cache-npm-registry-dir"] ||
-      CACHE_DIR_DEFAULTS["cache-npm-registry-dir"],
-    sourcesCache:
-      values["cache-sources-dir"] || CACHE_DIR_DEFAULTS["cache-sources-dir"],
-    experimentsCache:
-      values["cache-experiments-dir"] ||
-      CACHE_DIR_DEFAULTS["cache-experiments-dir"],
+    ...Object.fromEntries(
+      CACHES.map((c) => [c.opt, values[c.flag] || c.folder])
+    ),
     // --cdn-lib-lookup true|false, default true. Only those two values reach here (main
     // refuses the rest), so this is the default-when-absent expression and nothing more.
     cdnLookup: values["cdn-lib-lookup"] !== "false",

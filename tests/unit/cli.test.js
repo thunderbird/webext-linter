@@ -316,40 +316,31 @@ test("--cache-work-dir: a source review is answered by its seeded caches alone",
   assert.match(missing.stderr, /network request in a test: \S*osv\.dev/);
 });
 
-// --cache-clear wipes the cache directories before the review (so every source
-// re-fetches from scratch). Every --cache-*-dir points at one temp dir so the delete touches
-// nothing else, the kept sources at one of their own, and a nonexistent add-on makes
-// runPipeline fail at load (before any network) - we assert only that the stale files were
-// deleted.
-test("--cache-clear deletes the cache directories before the review", () => {
-  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-clear-"));
-  const stale = path.join(cacheDir, "webext-annotated-schemas-junk.zip");
-  fs.writeFileSync(stale, "stale");
-  const sourcesDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "wrr-clear-sources-")
-  );
-  const kept = path.join(sourcesDir, "sources.json");
-  fs.writeFileSync(kept, "{}");
-  run([
-    "/no/such/addon.xpi",
-    "--cache-clear",
-    "--cache-schema-dir",
-    cacheDir,
-    "--cache-hash-db-dir",
-    cacheDir,
-    "--cache-cdn-lookup-dir",
-    cacheDir,
-    "--cache-experiments-dir",
-    cacheDir,
-    "--cache-npm-registry-dir",
-    cacheDir,
-    "--cache-sources-dir",
-    sourcesDir,
-  ]);
-  assert.ok(!fs.existsSync(stale), "the stale cache file was cleared");
-  assert.ok(!fs.existsSync(kept), "the kept sources were cleared");
-  fs.rmSync(cacheDir, { recursive: true, force: true });
-  fs.rmSync(sourcesDir, { recursive: true, force: true });
+// --cache-clear wipes the cache directories before the review (so every source re-fetches
+// from scratch): every one --help names, read from --help itself, so a cache added there is
+// cleared too, or this fails. Each points at a temp dir of its own holding a stale file, so
+// the delete touches nothing else, and a nonexistent add-on makes runPipeline fail at load
+// (before any network) - we assert only that the stale files were deleted.
+test("--cache-clear deletes every cache directory --help names", () => {
+  const flags = [
+    ...new Set(
+      run(["--help"])
+        .stdout.split("\n")
+        .flatMap((line) => line.split(" "))
+        .filter((w) => w.startsWith("--cache-") && w.endsWith("-dir"))
+    ),
+  ];
+  assert.ok(flags.length >= 6, flags.join(" "));
+  const stale = flags.map((flag) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-clear-"));
+    fs.writeFileSync(path.join(dir, "stale"), "stale");
+    return [flag, dir];
+  });
+  run(["/no/such/addon.xpi", "--cache-clear", ...stale.flat()]);
+  for (const [flag, dir] of stale) {
+    assert.ok(!fs.existsSync(path.join(dir, "stale")), `${flag} was cleared`);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 // A pipeline hard-fail the review could not run through (here a missing add-on; an
