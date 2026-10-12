@@ -5,8 +5,7 @@
 //
 // Belongs here: extracting the core-symbol global references from an AST, as raw
 // per-file input for the core-symbol-in-webext check. The symbol list itself is a
-// hand-curated Thunderbird fact loaded from assets/webext-facts.yaml (re-exported
-// here as the single import point).
+// hand-curated Thunderbird fact loaded from assets/webext-facts.yaml.
 //
 // Does NOT belong here: the core-symbol list values (-> assets/webext-facts.yaml),
 // the WebExtension vs Experiment partition or the non-authored skip that decides
@@ -16,8 +15,6 @@
 
 import { parseJs, traverse, nodeLoc } from "./ast.js";
 import { CORE_SYMBOLS } from "./webext-facts.js";
-
-export { CORE_SYMBOLS };
 
 /**
  * @param {string} code  JavaScript source text.
