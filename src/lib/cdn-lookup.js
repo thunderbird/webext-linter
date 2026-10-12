@@ -166,7 +166,8 @@ export async function resolveCdnLibraries(
     // gets: jsDelivr is uncurated (unlike the Mozilla hash DB, whose membership IS
     // the popularity signal), so an obscure or author-published package found here
     // must not be silently accepted. Looked up fresh each run (popularity is
-    // time-varying, so it is not cached with the hash hit). A package with no reading
+    // time-varying, so it is kept only in the run's cache, src/vendor/popularity-cache.js,
+    // never with the hash hit). A package with no reading
     // counts as not-popular; a lookup that got no answer ends the review
     // (src/util/net.js).
     //

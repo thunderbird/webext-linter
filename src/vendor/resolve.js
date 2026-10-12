@@ -399,11 +399,11 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
     missing,
     ambiguousSources,
     vendorFile: vendorFile?.name ?? null,
-    // One popularity reading per package, for the length of THIS review. It is a
+    // One popularity reading per package, for the length of THIS invocation. It is a
     // request budget, not a result cache: a package declared once per file was
-    // asked about once per file, and the host answers a burst by refusing. Never
-    // persisted - popularity is time-varying, the same reason the CDN identifier
-    // keeps it out of its on-disk cache (src/lib/cdn-lookup.js).
+    // asked about once per file, and the host answers a burst by refusing. What
+    // outlives the invocation is the run's cache (src/vendor/popularity-cache.js), which
+    // a new run starts without, since popularity is time-varying.
     popularity: new Map(),
     // Filled by the OSV audits (verify.js). Empty for offline runs.
     vulnerabilities: [],

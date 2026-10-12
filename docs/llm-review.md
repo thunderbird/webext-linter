@@ -456,6 +456,7 @@ lives in one **work folder**, under a name that is the same in every review:
 | `build-diff.md` | `BUILD_DIFF` | the agent, after building |
 | `sweep-<artifact>.yaml` and `sweep-<artifact>.answers.json` | One tree's sweep request and answers | the linter, and a sweeping agent |
 | `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again | the linter, whenever it audits |
+| `.cache/popularity.json` | The npm download counts and GitHub stars read during this run, kept the same way | the linter, whenever it judges a source's popularity |
 
 The folder is always `<add-on name>-<timestamp>` beside the add-on argument, named by the
 run that starts the review: no flag names another. It must not exist: the run that starts a

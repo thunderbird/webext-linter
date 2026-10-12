@@ -1468,11 +1468,12 @@ function metaFiles(node, out = []) {
  * (src/util/net.js), so a submission cannot pad its VENDOR file until the package it cares
  * about goes unasked.
  *
- * `memo` holds one answer per package for the length of ONE review (never across
- * runs - popularity is time-varying, the same reason cdn-lookup does not cache it
- * to disk). Without it a package declared 34 times was asked about 34 times.
+ * `memo` holds one answer per package for the length of ONE invocation. Without it a
+ * package declared 34 times was asked about 34 times. Across the invocations of one run,
+ * the run's cache (src/vendor/popularity-cache.js) answers a repeat, and a new run asks
+ * afresh, since popularity is time-varying.
  * @param {VendorSource} src @param {VendorNet} net
- * @param {Map<string, boolean>} [memo]  Per-run, in-process; see above.
+ * @param {Map<string, boolean>} [memo]  Per-invocation, in-process, see above.
  * @returns {Promise<boolean>}
  */
 export async function isPopular(src, net, memo) {

@@ -28,7 +28,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { workPaths, runCache } from "./util/dest.js";
 import { defaultNet } from "./vendor/verify.js";
-import { withOsvCache } from "./vendor/osv-cache.js";
+import { withRunCache } from "./vendor/run-cache.js";
 import { originalPackages, readPrepare } from "./prepare/state.js";
 import {
   resolveSchemaZip,
@@ -655,14 +655,15 @@ async function reviewSubmission(opts, work, prepared) {
     experiments: experimentVerification ?? null,
   };
 
-  // Each artifact's data, computed when a check first asks for it. OSV is asked through the
-  // run's cache: a prepared review's questions were mostly asked by its preparation already.
+  // Each artifact's data, computed when a check first asks for it. OSV and the popularity
+  // hosts are asked through the run's cache: a prepared review's questions were mostly asked
+  // by its preparation already.
   const dataOf = reviewData({
     opts: {
       ...opts,
-      vendorNet: withOsvCache(
+      vendorNet: withRunCache(
         opts.vendorNet ?? defaultNet,
-        runCache(opts.workFolder).osv
+        runCache(opts.workFolder)
       ),
     },
     schema,

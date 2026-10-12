@@ -66,17 +66,23 @@ export function defaultWorkFolder(addonPath) {
 }
 
 /**
- * Where one RUN of a review keeps what it caches: a dot folder in its work folder. Every
- * invocation of the run - the preparation's hand-backs and the review - works in that one
- * folder, so they all find the same cache. Not one of workPaths' names: a run claims those
- * afresh, while this one is there to be found again by every invocation of the run.
+ * Where one RUN of a review keeps what it caches: a dot folder in its work folder unless the
+ * run names its own. Every invocation of the run - the preparation's hand-backs and the
+ * review - works in that one folder, so they all find the same cache. Not one of workPaths'
+ * names: a run claims those afresh, while this one is there to be found again by every
+ * invocation of the run.
  * @param {string} work  The work folder, absolute.
- * @returns {{dir: string, osv: string}}  The folder, and OSV's answers in it
- *   (src/vendor/osv-cache.js).
+ * @param {string} [dir]  The folder the run keeps its cache in, when it names one.
+ * @returns {{dir: string, osv: string, popularity: string}}  The folder, OSV's answers in it
+ *   (src/vendor/osv-cache.js), and the popularity readings (src/vendor/popularity-cache.js).
  */
-export function runCache(work) {
-  const dir = path.join(work, ".cache");
-  return { dir, osv: path.join(dir, "osv.json") };
+export function runCache(work, dir) {
+  const at = dir || path.join(work, ".cache");
+  return {
+    dir: at,
+    osv: path.join(at, "osv.json"),
+    popularity: path.join(at, "popularity.json"),
+  };
 }
 
 /**

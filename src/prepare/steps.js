@@ -43,7 +43,7 @@ import { settleScaRoot } from "../addon/sca-root.js";
 import { relativeInside } from "../addon/load.js";
 import { runCache, workPaths } from "../util/dest.js";
 import { defaultNet } from "../vendor/verify.js";
-import { withOsvCache } from "../vendor/osv-cache.js";
+import { withRunCache } from "../vendor/run-cache.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 import {
   HandbackRefused,
@@ -103,10 +103,11 @@ export async function handBack(work, { net } = {}) {
   if (!record) {
     throw new HandbackRefused(`"${work}" holds no preparation`);
   }
-  // The audit reads the npm registry cache the review it starts will read, and asks OSV
-  // through the run's cache, which every step of the preparation and its review share.
+  // The audit reads the npm registry cache the review it starts will read, and asks OSV and
+  // the popularity hosts through the run's cache, which every step of the preparation and
+  // its review share.
   const context = {
-    net: withOsvCache(net ?? defaultNet, runCache(work).osv),
+    net: withRunCache(net ?? defaultNet, runCache(work)),
     cacheDir: record.flags?.["cache-npm-registry-dir"] || undefined,
   };
   switch (record.step) {
