@@ -62,7 +62,7 @@ entry never offered are all refusals.
 | `spawn` | Start the sub-agents the review needs - the add-on description and one sweep per tree - and read back what the sweeps found. | Nothing: each sweep answers in a file of its own (see below) |
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
-| `details` | Hand the reviewer the Review Details block, before the `ask` questions: in every review without `--llm-skip-manual`, and in every source review. | Nothing: the block is its whole work |
+| `details` | Hand the reviewer the Review Details block, before the `ask` questions, so only where `ask` follows: not under `--llm-skip-manual`. | Nothing: the block is its whole work |
 | `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
 | `close` | The last phase, once nothing else has work: hand over the settled review. It opens on whether the review is settled or was aborted, and says only what applies to it. | Nothing: the review ends with it |
 
@@ -83,7 +83,7 @@ prompt, `spawned` once `spawn` went out, `decided` once `verify` or `settle` did
 left with no step is not issued. The preamble's parts are conditioned the same way. A wait
 for spawned agents is a step of its own (`when: spawned AND ...`), carrying its phase's own
 condition so that a wait alone never issues a phase. The registry spells each one
-out, for example `details`' `NOT aborted AND (sca OR NOT llm-skip-manual)`, and refuses a
+out, for example `details`' `NOT aborted AND NOT llm-skip-manual`, and refuses a
 condition that does not parse or names a fact nothing answers.
 
 A condition can also read a **process value** with `value(phase, id)`. A phase answering

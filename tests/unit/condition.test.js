@@ -32,11 +32,11 @@ test("NOT binds tightest, then AND, then OR", () => {
 });
 
 test("a condition holds over the facts true now", () => {
-  const details = "NOT aborted AND (sca OR NOT llm-skip-manual)";
-  assert.equal(evaluate(details, []), true);
-  assert.equal(evaluate(details, ["llm-skip-manual"]), false);
-  assert.equal(evaluate(details, ["llm-skip-manual", "sca"]), true);
-  assert.equal(evaluate(details, ["aborted", "sca"]), false);
+  const mixed = "NOT aborted AND (sca OR NOT llm-skip-manual)";
+  assert.equal(evaluate(mixed, []), true);
+  assert.equal(evaluate(mixed, ["llm-skip-manual"]), false);
+  assert.equal(evaluate(mixed, ["llm-skip-manual", "sca"]), true);
+  assert.equal(evaluate(mixed, ["aborted", "sca"]), false);
   assert.equal(evaluate("a OR b AND c", ["b"]), false);
   assert.equal(evaluate("a OR b AND c", ["b", "c"]), true);
   assert.equal(evaluate("NOT NOT a", ["a"]), true);

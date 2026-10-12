@@ -1231,9 +1231,9 @@ test("a blocking finding closes the review on its first prompt", () => {
   assert.match(first.settled.details, /- Known security vulnerabilities$/);
 });
 
-// The Review Details block goes out once, in a phase of its own, before the questions - and
-// only where a question follows: not in an aborted review, and not in an XPI review under
-// --llm-skip-manual. A source review keeps it under that flag, for its build questions.
+// The Review Details block goes out once, in a phase of its own, before the `ask` questions -
+// and only where they follow: not in an aborted review, and not under --llm-skip-manual,
+// whatever the review. A source review's build questions come first, with their own block.
 test("the details block is handed over by its own phase, before the questions", () => {
   const blocks = (made) => {
     const shown = [];
@@ -1262,7 +1262,7 @@ test("the details block is handed over by its own phase, before the questions", 
 
   const source = buildQuestionsReview(tmp());
   source.state.run.skip = ["llm-skip-manual"];
-  assert.deepEqual(blocks(source), ["details"]);
+  assert.deepEqual(blocks(source), []);
 
   const aborted = blockingReview(tmp());
   const shown = [];

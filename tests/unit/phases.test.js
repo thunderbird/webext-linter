@@ -495,7 +495,7 @@ test("a step prints when its condition holds over the run's facts", () => {
       step("aborted", "aborted"),
       step("NOT aborted AND NOT llm-skip-manual", "asking"),
       step("sca AND NOT aborted", "building"),
-      step("NOT aborted AND (sca OR NOT llm-skip-manual)", "details"),
+      step("NOT aborted AND (sca OR NOT llm-skip-manual)", "either"),
     ],
   };
   const texts = (run) => stepsOf(phase, run).map((s) => s.text);
@@ -503,21 +503,21 @@ test("a step prints when its condition holds over the run's facts", () => {
     "always",
     "running",
     "asking",
-    "details",
+    "either",
   ]);
   assert.deepEqual(texts({ skip: [], halted: true, sca: true }), [
     "always",
     "aborted",
   ]);
-  // --llm-skip-manual: no questions in an XPI review, so no details block either ...
+  // --llm-skip-manual withholds a step that needs it off ...
   assert.deepEqual(
     texts({ skip: ["llm-skip-manual"], halted: false, sca: false }),
     ["always", "running"]
   );
-  // ... but a source review still asks its build questions, so the block stays.
+  // ... while a step with an OR still prints where its other arm holds.
   assert.deepEqual(
     texts({ skip: ["llm-skip-manual"], halted: false, sca: true }),
-    ["always", "running", "building", "details"]
+    ["always", "running", "building", "either"]
   );
 });
 
@@ -576,8 +576,8 @@ test("the shipped steps carry the conditions they are printed under", () => {
   // The wait step carries its phase's own condition beside `spawned`, so the phase is never
   // issued with nothing but a wait in it.
   assert.deepEqual(when("details"), [
-    ["aborted", "llm-skip-manual", "sca", "spawned"],
-    ["aborted", "llm-skip-manual", "sca"],
+    ["aborted", "llm-skip-manual", "spawned"],
+    ["aborted", "llm-skip-manual"],
   ]);
   assert.deepEqual(when("ask"), [["aborted", "llm-skip-manual"]]);
   assert.deepEqual(when("close"), [

@@ -2565,9 +2565,9 @@ llm-phases:
 
     # Hands the reviewer the Review Details block, once, before the `ask` questions: what this
     # review is, and where to read it while answering - the build diff among it. Its own
-    # phase so it does not hang off one particular question phase. Shown in every review
-    # --llm-skip-manual leaves `ask` to, and in every source review. Not in a review that was
-    # aborted, whose closing hand-over carries the block anyway.
+    # phase so it does not hang off one particular question phase. Shown only where `ask`
+    # follows: not under --llm-skip-manual, and not in a review that was aborted - the
+    # closing hand-over carries the block either way.
     - name: details
       # Asks about nothing in the review file: the block is its whole work.
       answer: none
@@ -2576,10 +2576,10 @@ llm-phases:
       steps:
         # As in `build`: the wait only where an agent was started, under the phase's own
         # condition so it never issues the phase on its own.
-        - when: spawned AND NOT aborted AND (sca OR NOT llm-skip-manual)
+        - when: spawned AND NOT aborted AND NOT llm-skip-manual
           text: |-
             Wait for every agent you spawned to come back.
-        - when: NOT aborted AND (sca OR NOT llm-skip-manual)
+        - when: NOT aborted AND NOT llm-skip-manual
           text: |-
             Give the reviewer this block before you put anything to them, under a "Review details" heading and otherwise exactly as it is written here:
 
