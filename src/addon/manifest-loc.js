@@ -12,6 +12,7 @@
 
 import { parseTree, findNodeAtLocation } from "jsonc-parser";
 import { rethrowIfFatal } from "../lib/errors.js";
+import { lineIndex } from "../lib/util.js";
 
 /**
  * @typedef {object} ManifestLoc
@@ -35,27 +36,7 @@ export function buildManifestLoc(text) {
     rethrowIfFatal(err);
     tree = null;
   }
-  // 1-based line for any offset, via the sorted offsets of each line start.
-  const lineStarts = [0];
-  for (let i = 0; i < text.length; i++) {
-    if (text.charCodeAt(i) === 10 /* \n */) {
-      lineStarts.push(i + 1);
-    }
-  }
-  const offsetToLine = (offset) => {
-    // Largest lineStarts index whose value is <= offset, +1.
-    let lo = 0;
-    let hi = lineStarts.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (lineStarts[mid] <= offset) {
-        lo = mid;
-      } else {
-        hi = mid - 1;
-      }
-    }
-    return lo + 1;
-  };
+  const offsetToLine = lineIndex(text);
 
   return {
     lineAt(path) {

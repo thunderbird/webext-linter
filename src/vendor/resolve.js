@@ -53,16 +53,17 @@ import {
  * @property {{name: string, version: string, file: string}[]} packages  Pinned package.json
  *   deps. `file` is the declaring package file, "package.json". Empty in a source review,
  *   which reads its dependencies from the lock (lockPackages); so are the four below.
- * @property {{name: string, spec: string, file: string}[]} unpinned  Ranged deps a
- *   committed lock resolves nothing for.
- * @property {{name: string, spec: string, file: string}[]} unlocked  Ranged deps with no
- *   lock committed at all. Kept apart from `unpinned` because the two have different
- *   remedies.
+ * @property {{name: string, spec: string, file: string, section: string}[]} unpinned
+ *   Ranged deps a committed lock resolves nothing for. `section` is the package.json map
+ *   that declared it (e.g. "dependencies"), which locates its line.
+ * @property {{name: string, spec: string, file: string, section: string}[]} unlocked
+ *   Ranged deps with no lock committed at all. Kept apart from `unpinned` because the
+ *   two have different remedies.
  * @property {{name: string, spec: string, repo: string, ref: ?string, file: string}[]}
  *   githubDeps  GitHub-sourced package.json deps.
- * @property {{name: string, spec: string, file: string}[]} unsupportedDeps  package.json
- *   deps from an unsupported source (not npm, not GitHub), rejected by the
- *   unsupported-dependency check.
+ * @property {{name: string, spec: string, file: string, section: string}[]}
+ *   unsupportedDeps  package.json deps from an unsupported source (not npm, not GitHub),
+ *   rejected by the unsupported-dependency check.
  * @property {VendorEntry[]} missing  VENDOR entries whose file is absent.
  * @property {{source: string, paths: string[]}[]} ambiguousSources  Source URLs
  *   paired with more than one bundled file (the developer must split them or use a
@@ -473,10 +474,10 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
  * @param {string} file  The declaring package file's own store-relative path, "package.json".
  *   Carried on every produced item so a finding anchors at the file that declared it.
  * @returns {{packages: {name: string, version: string, file: string}[],
- *   unpinned: {name: string, spec: string, file: string}[],
- *   unlocked: {name: string, spec: string, file: string}[],
+ *   unpinned: {name: string, spec: string, file: string, section: string}[],
+ *   unlocked: {name: string, spec: string, file: string, section: string}[],
  *   githubDeps: {name: string, spec: string, repo: string, ref: ?string, file: string}[],
- *   unsupported: {name: string, spec: string, file: string}[]}}
+ *   unsupported: {name: string, spec: string, file: string, section: string}[]}}
  */
 function classifyDeps(deps, addon, file) {
   const packages = [];
@@ -484,7 +485,7 @@ function classifyDeps(deps, addon, file) {
   const unlocked = [];
   const githubDeps = [];
   const unsupported = [];
-  for (const { name, spec, installs } of deps) {
+  for (const { map: section, name, spec, installs } of deps) {
     // Classified by what npm INSTALLS, reported by what the developer WROTE. The two come
     // apart for an `npm:` alias, where the spec names another package: the source, the pin
     // and the audited release are all the target's, while a finding has to quote the
@@ -501,7 +502,7 @@ function classifyDeps(deps, addon, file) {
       if (gh) {
         githubDeps.push({ name, spec, repo: gh.repo, ref: gh.ref, file });
       } else {
-        unsupported.push({ name, spec, file });
+        unsupported.push({ name, spec, file, section });
       }
     } else {
       // A range, which names one release only through a lock. A developer who ships a
@@ -515,9 +516,9 @@ function classifyDeps(deps, addon, file) {
       if (version) {
         packages.push({ name: target.name, version, file });
       } else if (governingLock(addon)) {
-        unpinned.push({ name, spec, file });
+        unpinned.push({ name, spec, file, section });
       } else {
-        unlocked.push({ name, spec, file });
+        unlocked.push({ name, spec, file, section });
       }
     }
   }
@@ -537,10 +538,10 @@ function classifyDeps(deps, addon, file) {
  * @param {Addon} addon
  * @param {string} file  This package file's own store-relative path, carried on every item.
  * @returns {{packages: {name: string, version: string, file: string}[],
- *   unpinned: {name: string, spec: string, file: string}[],
- *   unlocked: {name: string, spec: string, file: string}[],
+ *   unpinned: {name: string, spec: string, file: string, section: string}[],
+ *   unlocked: {name: string, spec: string, file: string, section: string}[],
  *   githubDeps: {name: string, spec: string, repo: string, ref: ?string, file: string}[],
- *   unsupported: {name: string, spec: string, file: string}[]}}
+ *   unsupported: {name: string, spec: string, file: string, section: string}[]}}
  */
 function classifyPackageFile(pkg, addon, file) {
   const declared = declaredDependencies(pkg);
@@ -561,10 +562,10 @@ function classifyPackageFile(pkg, addon, file) {
  * read: nothing is installed from an XPI, so there is no local package to follow.
  * @param {Addon} addon
  * @returns {{packages: {name: string, version: string, file: string}[],
- *   unpinned: {name: string, spec: string, file: string}[],
- *   unlocked: {name: string, spec: string, file: string}[],
+ *   unpinned: {name: string, spec: string, file: string, section: string}[],
+ *   unlocked: {name: string, spec: string, file: string, section: string}[],
  *   githubDeps: {name: string, spec: string, repo: string, ref: ?string, file: string}[],
- *   unsupported: {name: string, spec: string, file: string}[]}}
+ *   unsupported: {name: string, spec: string, file: string, section: string}[]}}
  */
 function resolvePackages(addon) {
   const pkg = readPackageFile(submissionFiles(addon));

@@ -12,7 +12,7 @@
 // src/build/collect.js), or the wording (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
-import { tokenLine } from "../../lib/util.js";
+import { jsonLine } from "../../lib/util.js";
 import { parseJson } from "../../util/json.js";
 import { rethrowIfFatal } from "../../lib/errors.js";
 
@@ -58,7 +58,7 @@ export default {
       if (typeof cmd !== "string" || cmd.trim() === "") {
         continue;
       }
-      const line = tokenLine(text, hook);
+      const line = jsonLine(text, ["scripts", hook]);
       const loc = line ? { line } : undefined;
       const item = `${hook}: ${cmd}`;
       ctx.note?.(

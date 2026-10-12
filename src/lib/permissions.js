@@ -50,12 +50,13 @@
 // src/schema/index.js (incl. the permissionWebApis annotation). The navigator.*
 // call match itself - src/parse/web-api-calls.js. Match-pattern helpers - lib/util.js.
 
+import { visit } from "jsonc-parser";
+
 import { VERDICT } from "./enum.js";
 import { finding } from "../report/finding.js";
 import {
   asArray,
   isMatchPattern,
-  tokenLine,
   versionInBounds,
   wholeWordRe,
 } from "./util.js";
@@ -488,7 +489,7 @@ function permissionTokens(manifest, prompts) {
  * token in its comments only over-includes an occurrence, the safe direction).
  * String literals deliberately count (dynamic access spells the token in a string).
  * The manifest.json is also searched as JSON and a manifest.json occurrence
- * is located via tokenLine - though the script-injection manifest.json keys
+ * is located at the first key or string value holding the token (manifestTokenLine) - though the script-injection manifest.json keys
  * (compose_scripts / message_display_scripts) are NOT tokens: they ground their
  * permission deterministically (analyzePermissions), so they never escalate.
  *
@@ -533,7 +534,7 @@ async function locateTokens(ctx, tokens) {
       if (re.test(manifestJson)) {
         located.get(t).push({
           file: "manifest.json",
-          line: tokenLine(ctx.manifest?.text, t),
+          line: manifestTokenLine(ctx.manifest?.text, re),
         });
       }
     }
@@ -562,6 +563,38 @@ async function locateTokens(ctx, tokens) {
     }
   }
   return located;
+}
+
+/**
+ * 1-based line of the first key or string value in the manifest.json text that holds the
+ * token as a whole word, or null when none does. Read with the JSON parser, so the word is
+ * matched in the decoded string (an escaped character reads as itself) and a word inside a
+ * longer string, such as a description, still gets its line.
+ * @param {?string} text  The manifest.json source.
+ * @param {RegExp} re  The token's whole-word pattern (wholeWordRe).
+ * @returns {number|null}
+ */
+function manifestTokenLine(text, re) {
+  if (!text) {
+    return null;
+  }
+  let line = null;
+  const take = (value, startLine) => {
+    if (line === null && typeof value === "string" && re.test(value)) {
+      line = startLine + 1;
+    }
+  };
+  visit(
+    text,
+    {
+      onObjectProperty: (property, offset, length, startLine) =>
+        take(property, startLine),
+      onLiteralValue: (value, offset, length, startLine) =>
+        take(value, startLine),
+    },
+    { allowTrailingComma: true }
+  );
+  return line;
 }
 
 /**

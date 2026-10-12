@@ -29,7 +29,7 @@ import { finding } from "../../report/finding.js";
 import {
   anchorText,
   declarationLine,
-  tokenLine,
+  jsonLine,
   utf8ComparisonSigns,
 } from "../../lib/util.js";
 
@@ -52,16 +52,19 @@ export default {
     // re-reading/re-decoding the same bytes once per one would be wasted work.
     const textByFile = new Map();
     const findings = [];
-    for (const { name, spec, file, token } of unsupported) {
+    for (const { name, spec, file, token, section } of unsupported) {
       const at = file ?? "package.json";
       let text = textByFile.get(at);
       if (text === undefined) {
         text = anchorText(artifact, at);
         textByFile.set(at, text);
       }
-      // A lock entry carries the string locating it (a JSON key or a YAML key); a
-      // package.json declaration is found by its quoted name.
-      const line = token ? declarationLine(text, token) : tokenLine(text, name);
+      // A lock entry carries the string locating it (a JSON key or a YAML key). A
+      // package.json declaration is found under the section it was read from, so a name
+      // also declared in another section points at this one.
+      const line = token
+        ? declarationLine(text, token)
+        : jsonLine(text, [section, name]);
       const loc = line ? { line } : undefined;
       ctx.note?.(
         ctx.artifact.at(at, loc),

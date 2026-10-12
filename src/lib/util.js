@@ -6,7 +6,7 @@
 //
 // Belongs here: generic, dependency-light check helpers - dedupe, the
 // asArray/asObject manifest.json guards, isMatchPattern/isBroadHost, trunc, SCHEME_RE,
-// escapeRegExp/wholeWordRe, the line locators (tokenLine, lineContaining,
+// escapeRegExp/wholeWordRe, the line locators (lineIndex, jsonLine, lineContaining,
 // declarationLine), utf8ComparisonSigns, the doc/dependency-file tests
 // (isDocMetadataFile, isDocFile, DEPENDENCY_FILE_RE), isExperiment/strictMaxVersion, the
 // version family (strictMinVersion, parseVersion, cmpVersion, versionInBounds, isVersion,
@@ -19,6 +19,8 @@
 // bundled.js. Shared utilities used across the whole repo (extname, sortKeys,
 // debug) stay in src/util/files.js, src/util/json.js, src/util/log.js. Any
 // rule's verdict logic - src/checks/rules/*.
+
+import { parseTree, findNodeAtLocation } from "jsonc-parser";
 
 import { DISPLAY_TRUNCATE_LENGTH } from "../config.js";
 import { VERDICT } from "./enum.js";
@@ -356,30 +358,65 @@ export function isMatchPattern(p) {
 }
 
 /**
- * 1-based line of the first occurrence of `"<token>"` in some JSON text, or null if it is
- * not there. Any quoted token - a key or a string value - in ANY JSON file: package.json's
- * lifecycle hooks and a lock file's entries as much as a manifest.json key, which is why it
- * names neither. Best-effort: a token appearing more than once resolves to its first line.
- *
- * A manifest.json value is located by the record's `locus` (src/addon/load.js), which
- * resolves its JSON path. This is for a word that has no path, such as a permission token
- * found in the manifest.json text (src/lib/permissions.js locateTokens).
- * @param {?string} text  The JSON source to search.
- * @param {string} token  The bare key/value, without surrounding quotes.
- * @returns {number|null}
+ * The 1-based line of any offset into `text`, as a lookup built once over the offsets each
+ * line starts at, so a caller asking many times pays for one pass.
+ * @param {string} text
+ * @returns {(offset: number) => number}
  */
-export function tokenLine(text, token) {
-  if (!text) {
-    return null;
-  }
-  const needle = `"${token}"`;
-  const lines = text.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes(needle)) {
-      return i + 1;
+export function lineIndex(text) {
+  const lineStarts = [0];
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 10 /* \n */) {
+      lineStarts.push(i + 1);
     }
   }
-  return null;
+  return (offset) => {
+    // Largest lineStarts index whose value is <= offset, +1.
+    let lo = 0;
+    let hi = lineStarts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (lineStarts[mid] <= offset) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return lo + 1;
+  };
+}
+
+/**
+ * 1-based line of the entry at a JSON path in some JSON text: the line of its KEY for an
+ * object member, of the value itself for an array element. Any JSON file, such as a
+ * package.json script or dependency, or a lock file's entry. Read with the JSON parser, so
+ * an escaped key is found and a name that also appears elsewhere (another section, a
+ * value) resolves to the entry the path names.
+ *
+ * Null when the path is absent or empty, or the text does not parse. A leading BOM is
+ * dropped before parsing, which moves no line.
+ * @param {?string} text  The JSON source.
+ * @param {(string|number)[]} path  e.g. ["dependencies", "lodash"].
+ * @returns {number|null}
+ */
+export function jsonLine(text, path) {
+  if (!text || !Array.isArray(path) || path.length === 0) {
+    return null;
+  }
+  const source = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  const errors = [];
+  const tree = parseTree(source, errors, { allowTrailingComma: true });
+  if (!tree || errors.length) {
+    return null;
+  }
+  const node = findNodeAtLocation(tree, path);
+  if (!node) {
+    return null;
+  }
+  // findNodeAtLocation answers the VALUE node. A member's key opens its property node.
+  const at =
+    node.parent?.type === "property" ? node.parent.offset : node.offset;
+  return lineIndex(source)(at);
 }
 
 /**
@@ -428,10 +465,13 @@ export function anchorText(addon, file) {
  * The line in `text` where `token` is DECLARED, across the dependency-file
  * formats a finding can anchor in. One question with three answers, because the
  * file is JSON in one submission and YAML in the next, and the caller records a
- * token without knowing which: a quoted JSON key (a package.json dependency, an
- * npm lock's "node_modules/..." path), a YAML mapping key (a pnpm lock's
- * "name@version"), and - failing both - the first line the token appears on at
- * all, which is what locates a source URL inside a VENDOR file's prose.
+ * token without knowing which: a JSON entry (an npm lock v2/v3 `packages` key such as
+ * "node_modules/x", or a top-level `dependencies` key, which is a v1 lock's hoisted
+ * entry and a package.json declaration), a YAML mapping key (a pnpm lock's
+ * "name@version", and the first key spelling of a JSON file's token the paths do not
+ * reach, such as a v1 lock's nested entry), and - failing both - the first line the
+ * token appears on at all, which is what locates a source URL inside a VENDOR file's
+ * prose.
  *
  * The order is what makes it correct, not just tidy. A pnpm lock repeats
  * "name@version" inside OTHER packages' peer-dependency suffixes, usually near
@@ -445,7 +485,8 @@ export function declarationLine(text, token) {
     return null;
   }
   return (
-    tokenLine(text, token) ??
+    jsonLine(text, ["packages", token]) ??
+    jsonLine(text, ["dependencies", token]) ??
     yamlKeyLine(text, token) ??
     lineContaining(text, token)
   );
@@ -618,7 +659,7 @@ export function utf8ComparisonSigns(text) {
 
 /**
  * 1-based line of the first line containing `needle` as a plain substring, or
- * null. Unlike tokenLine (which matches a quoted JSON token), this suits
+ * null. Unlike jsonLine (which reads a JSON entry by its path), this suits
  * free-form text such as a VENDOR file, where a finding anchors on the verbatim
  * source URL rather than a quoted key.
  * @param {string} text

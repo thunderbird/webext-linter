@@ -178,7 +178,12 @@ test("a range with no lock committed is unlocked, not unpinned", async () => {
   assert.deepEqual(packages, []);
   assert.deepEqual(unpinned, []);
   assert.deepEqual(unlocked, [
-    { name: "jszip", spec: "^3.10.0", file: "package.json" },
+    {
+      name: "jszip",
+      spec: "^3.10.0",
+      file: "package.json",
+      section: "dependencies",
+    },
   ]);
 });
 
@@ -193,7 +198,12 @@ test("a range a committed lock does not cover is unpinned, not unlocked", async 
   assert.deepEqual(packages, []);
   assert.deepEqual(unlocked, []);
   assert.deepEqual(unpinned, [
-    { name: "jszip", spec: "^3.10.0", file: "package.json" },
+    {
+      name: "jszip",
+      spec: "^3.10.0",
+      file: "package.json",
+      section: "dependencies",
+    },
   ]);
 });
 
@@ -245,6 +255,7 @@ test("an npm: alias is the package it installs, not the name it is written under
       name: "@typescript/lib-dom",
       spec: "npm:@types/web@^0.0.353",
       file: "package.json",
+      section: "dependencies",
     },
   ]);
 

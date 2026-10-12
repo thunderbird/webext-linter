@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { buildManifestLoc } from "../../src/addon/manifest-loc.js";
-import { tokenLine } from "../../src/lib/util.js";
+import { jsonLine } from "../../src/lib/util.js";
 import minimizeHostPermissions from "../../src/checks/rules/minimize-host-permissions.js";
 
 // A manifest.json where "<all_urls>" is JSON-escaped AND appears twice: once in a
@@ -27,9 +27,12 @@ test("buildManifestLoc resolves the exact line for an escaped, repeated value", 
   const loc = buildManifestLoc(TEXT);
   assert.equal(loc.lineAt(["host_permissions", 0]), 6);
   assert.equal(loc.lineAt(["web_accessible_resources", 0, "matches", 0]), 4);
-  // A quoted-token search misses entirely here (the value is \u-escaped) - which is
-  // why the line comes from a path lookup.
-  assert.equal(tokenLine(TEXT, "<all_urls>"), null);
+  // The shared JSON locator reads the same escaped value by its path.
+  assert.equal(jsonLine(TEXT, ["host_permissions", 0]), 6);
+  assert.equal(
+    jsonLine(TEXT, ["web_accessible_resources", 0, "matches", 0]),
+    4
+  );
 });
 
 // An absent path and an unparseable manifest.json both degrade to null, never throw.

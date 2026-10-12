@@ -22,7 +22,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { anchorText, tokenLine, utf8ComparisonSigns } from "../../lib/util.js";
+import { anchorText, jsonLine, utf8ComparisonSigns } from "../../lib/util.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -36,8 +36,8 @@ export default {
     const unpinned = (await ctx.vendor()).unpinned ?? [];
     const text = anchorText(artifact, "package.json");
     const findings = [];
-    for (const { name, spec } of unpinned) {
-      const line = tokenLine(text, name);
+    for (const { name, spec, section } of unpinned) {
+      const line = jsonLine(text, [section, name]);
       const loc = line ? { line } : undefined;
       ctx.note?.(
         ctx.artifact.at("package.json", loc),

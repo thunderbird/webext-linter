@@ -1581,7 +1581,7 @@ test("the two ranged-dependency checks read their own list, anchored in package.
       vendor: store(vendor),
     },
   });
-  const dep = [{ name: "lodash", spec: "^4.17.21" }];
+  const dep = [{ name: "lodash", spec: "^4.17.21", section: "dependencies" }];
 
   // No lock committed at all.
   const missing = (

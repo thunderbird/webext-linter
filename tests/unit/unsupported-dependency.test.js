@@ -30,7 +30,7 @@ const ctxWith = (unsupportedDeps, pkgJson = PKG_JSON) =>
 test("reports one finding per dep, anchored at its package.json line", async () => {
   const out = (
     await unsupportedDependency.run(
-      ctxWith([{ name: "local", spec: "file:../x" }])
+      ctxWith([{ name: "local", spec: "file:../x", section: "dependencies" }])
     )
   ).findings;
   assert.equal(out.length, 1);
@@ -39,6 +39,28 @@ test("reports one finding per dep, anchored at its package.json line", async () 
   assert.equal(out[0].item, "local (file:../x)");
   assert.equal(out[0].loc.line, 3); // the "local" declaration line
   assert.equal(out[0].severity, null); // stamped from the registry (error)
+});
+
+// The record names the section it was read from, so a name declared in two sections
+// anchors at that section's line, not at the first place the name is written.
+test("a dep declared in two sections anchors at its own section's line", async () => {
+  const pkgJson = `{
+  "devDependencies": {
+    "local": "^1.0.0"
+  },
+  "dependencies": {
+    "local": "file:../x"
+  }
+}`;
+  const out = (
+    await unsupportedDependency.run(
+      ctxWith(
+        [{ name: "local", spec: "file:../x", section: "dependencies" }],
+        pkgJson
+      )
+    )
+  ).findings;
+  assert.equal(out[0].loc.line, 6);
 });
 
 test("an empty list yields no findings", async () => {
@@ -51,7 +73,7 @@ test("an empty list yields no findings", async () => {
 test("a dep whose token is absent from package.json anchors at the file, no line", async () => {
   const out = (
     await unsupportedDependency.run(
-      ctxWith([{ name: "ghost", spec: "file:../y" }])
+      ctxWith([{ name: "ghost", spec: "file:../y", section: "dependencies" }])
     )
   ).findings;
   assert.equal(out.length, 1);
@@ -63,7 +85,9 @@ test("a dep whose token is absent from package.json anchors at the file, no line
 test("a spec with comparison signs stays readable in the item", async () => {
   const out = (
     await unsupportedDependency.run(
-      ctxWith([{ name: "weird", spec: ">=4.17.0 <5.0.0" }])
+      ctxWith([
+        { name: "weird", spec: ">=4.17.0 <5.0.0", section: "dependencies" },
+      ])
     )
   ).findings;
   assert.equal(out[0].item, "weird (≥4.17.0 ＜5.0.0)");

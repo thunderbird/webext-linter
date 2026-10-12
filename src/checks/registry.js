@@ -188,7 +188,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   only.
  * @property {?import("../addon/load.js").WebExtManifestRecord} manifest  The authoritative,
  *   SHIPPED manifest.json (the built XPI's - what Thunderbird loads), read once like `schema`:
- *   `json` the parse, `text` the manifest.json text (tokenLine reads it), `error` why
+ *   `json` the parse, `text` the manifest.json text (locateTokens reads it), `error` why
  *   it cannot be read, `loc` the position index (the record's `locus` reads it). ALWAYS a
  *   record: `present` says whether the artifact ships the file at all, so absent and
  *   unparsable stay separable even where a reader answers `!json` to both.

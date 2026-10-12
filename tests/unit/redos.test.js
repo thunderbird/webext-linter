@@ -31,7 +31,6 @@ import { globMatch } from "../../src/util/files.js";
 import {
   isVersion,
   declarationLine,
-  tokenLine,
   lineContaining,
   stripVersionSuffix,
 } from "../../src/lib/util.js";
@@ -279,7 +278,8 @@ test("manifest.json references: ?query and #hash are cut in linear time", () => 
 
 test("lock and package.json lines: a key is located in linear time, exactly as before", () => {
   assertLinear((n) => declarationLine(`a${" ".repeat(n)}b`, "c"));
-  // The old chain: a quoted token, else the YAML key line, else any line containing it.
+  // The old text chain: the YAML key line, else any line containing it. None of these
+  // samples parses as JSON, so the JSON stage answers nothing for them.
   const oldYamlKeyLine = (text, key) => {
     const lines = text.split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
@@ -293,9 +293,7 @@ test("lock and package.json lines: a key is located in linear time, exactly as b
   const oracle = ([text, key]) =>
     !text || !key
       ? null
-      : (tokenLine(text, key) ??
-        oldYamlKeyLine(text, key) ??
-        lineContaining(text, key));
+      : (oldYamlKeyLine(text, key) ?? lineContaining(text, key));
   const lines = samples(["a", "b", " ", ":", "'", '"', "\t"], 3000, 10);
   const keys = samples(["a", "b", " ", ":", "'"], 3000, 3, 2);
   const pairs = lines.map((line, i) => [`x\n${line}`, keys[i]]);

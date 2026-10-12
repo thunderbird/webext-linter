@@ -2813,6 +2813,45 @@ test("unused-permission decides token-absent permissions deterministically", asy
   );
 });
 
+// A manifest.json token is matched as a whole word inside a decoded string, so a word in a
+// longer value (here a description) is located at that value's line.
+test("unused-permission locates a manifest.json token inside a longer string", async () => {
+  const manifest = {
+    manifest_version: 2,
+    description: "Keeps each cookieStoreId apart",
+    permissions: ["cookies"],
+    background: { scripts: ["bg.js"] },
+  };
+  const jsSources = [{ file: "bg.js", code: "", lineOffset: 0 }];
+  runExtractionPass(jsSources, { schema });
+  const ctx = {
+    schema,
+    artifact: {
+      manifest: manifestOf(manifest),
+      files: new Map([
+        ["manifest.json", Buffer.from(JSON.stringify(manifest, null, 2))],
+        ["bg.js", Buffer.from("")],
+      ]),
+    },
+    jsSources,
+    apiUsages: [],
+  };
+  const out = await unusedPermissionProducer.run(withManifest(ctx), {
+    permissionTokens: PERMISSION_TOKENS,
+  });
+  assert.deepEqual(
+    out.escalations.find((e) => e.item === "cookies").occurrences,
+    [
+      {
+        id: "cookies#1",
+        file: "manifest.json",
+        line: 3,
+        token: "cookieStoreId",
+      },
+    ]
+  );
+});
+
 // The NON-AUTHORED bundle path for a BARE token: a vendored bundle has no codeAtoms, so
 // its raw text is scanned line by line (with its lineOffset applied).
 test("unused-permission locates a bare token in a non-authored bundle (raw scan)", async () => {
