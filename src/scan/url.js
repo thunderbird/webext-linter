@@ -51,14 +51,12 @@ function classifyScheme(protocol) {
 }
 
 /**
- * The scheme a text starts with, read the way the URL parser reads it (tab, LF
- * and CR removed, leading C0 controls and spaces trimmed, lowercased), or null
- * when it starts with none. For text the URL parser rejects, such as the prefix
- * "http://" of a concatenation, whose scheme is still plain to read.
+ * A text as the URL parser reads it before anything else: tab, LF and CR removed anywhere,
+ * leading C0 controls and spaces trimmed.
  * @param {string} text
- * @returns {?string}  The scheme with its trailing colon ("http:").
+ * @returns {string}
  */
-export function writtenScheme(text) {
+function parserText(text) {
   let clean = "";
   for (const c of String(text ?? "")) {
     if (c !== "\t" && c !== "\n" && c !== "\r") {
@@ -69,11 +67,67 @@ export function writtenScheme(text) {
   while (start < clean.length && clean.charCodeAt(start) <= 0x20) {
     start++;
   }
-  const colon = clean.indexOf(":", start);
-  if (colon <= start) {
+  return clean.slice(start);
+}
+
+/** The schemes the URL parser treats as special: their authority ends at a backslash too. */
+const SPECIAL_PROTOCOLS = new Set([
+  "http:",
+  "https:",
+  "ws:",
+  "wss:",
+  "ftp:",
+  "file:",
+]);
+
+/**
+ * The host a URL's leading static text already fixes, or null while what follows could
+ * still change it. A prefix such as `"http://127.0.0.1"` of `"http://127.0.0.1" + tail`
+ * parses on its own, but the tail continues the authority: `".evil.example"` extends the
+ * host, `":80@evil.example"` turns the prefix into userinfo of another host. The host is
+ * the prefix's only once its authority has ended - as the WHATWG URL parser ends it, at
+ * the first `/`, `?` or `#` after the `//`, or `\` for a special scheme. A protocol-relative
+ * prefix (`//host/...`) is read against a web page, whose scheme is special.
+ * @param {string} prefix  The static text a dynamic URL starts with.
+ * @returns {?{host: string, hostname: string}}
+ */
+export function prefixHost(prefix) {
+  const text = parserText(prefix);
+  const scheme = writtenScheme(text);
+  const special = scheme === null || SPECIAL_PROTOCOLS.has(scheme);
+  const isSlash = (c) => c === "/" || (special && c === "\\");
+  let at = scheme === null ? 0 : scheme.length;
+  if (!isSlash(text[at]) || !isSlash(text[at + 1])) {
+    return null; // no authority written yet
+  }
+  while (isSlash(text[at])) {
+    at++;
+  }
+  for (; at < text.length; at++) {
+    const c = text[at];
+    if (isSlash(c) || c === "?" || c === "#") {
+      const url = parseRef(text, WEB_BASE);
+      return url?.hostname ? { host: url.host, hostname: url.hostname } : null;
+    }
+  }
+  return null; // the authority is still open
+}
+
+/**
+ * The scheme a text starts with, read the way the URL parser reads it (tab, LF
+ * and CR removed, leading C0 controls and spaces trimmed, lowercased), or null
+ * when it starts with none. For text the URL parser rejects, such as the prefix
+ * "http://" of a concatenation, whose scheme is still plain to read.
+ * @param {string} text
+ * @returns {?string}  The scheme with its trailing colon ("http:").
+ */
+export function writtenScheme(text) {
+  const clean = parserText(text);
+  const colon = clean.indexOf(":");
+  if (colon <= 0) {
     return null;
   }
-  const scheme = clean.slice(start, colon).toLowerCase();
+  const scheme = clean.slice(0, colon).toLowerCase();
   const isAlpha = (c) => c >= "a" && c <= "z";
   const isSchemeChar = (c) =>
     isAlpha(c) || (c >= "0" && c <= "9") || c === "+" || c === "-" || c === ".";

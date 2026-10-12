@@ -31,6 +31,7 @@ import {
 import {
   classifyUrl,
   isLoopback,
+  prefixHost,
   worstUrlClass,
   writtenScheme,
 } from "../scan/url.js";
@@ -394,16 +395,18 @@ function urlInfo(node, bases, urlVars, readAs) {
  *   cleartext: boolean, host: ?string, dataAppended: boolean}}
  */
 function prefixUrlInfo(prefix) {
-  const url = parsedUrl(prefix);
-  const host = url?.host || null;
+  // The host is the prefix's only once its authority has ended: before that, the dynamic
+  // tail can still extend it or move it (prefixHost). So an open authority is never
+  // loopback, and names no host.
+  const fixed = prefixHost(prefix);
   const destClass = prefix ? classifyUrl(prefix) : URL_CLASS.DYNAMIC;
-  if (destClass.remote && isLoopback(url?.hostname)) {
-    return LOCAL_DEST; // concat-prefix loopback ("http://127.0.0.1:" + port) too
+  if (destClass.remote && isLoopback(fixed?.hostname)) {
+    return LOCAL_DEST; // a loopback host the tail can no longer move
   }
   return {
     destClass,
-    cleartext: isCleartext(prefix, url),
-    host,
+    cleartext: isCleartext(prefix, parsedUrl(prefix)),
+    host: fixed?.host || null,
     dataAppended: destClass.remote,
   };
 }
