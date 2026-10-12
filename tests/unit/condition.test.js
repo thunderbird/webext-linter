@@ -1,11 +1,16 @@
 // Unit tests for the step condition language (src/checks/condition.js): parsing AND / OR /
-// NOT with parentheses, the names a condition reads, evaluating it against the facts true
+// NOT with parentheses and value(phase, id), the names and calls a condition reads, evaluating it against the facts true
 // now, and refusing anything else with where it went wrong.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { holds, namesOf, parseCondition } from "../../src/checks/condition.js";
+import {
+  callsOf,
+  holds,
+  namesOf,
+  parseCondition,
+} from "../../src/checks/condition.js";
 
 const evaluate = (text, facts) => holds(parseCondition(text), new Set(facts));
 
@@ -59,6 +64,46 @@ test("anything outside the grammar is refused with where it went wrong", () => {
     ["a & b", /unexpected "&" at 3/],
     ["Sca", /expected a name at 1, found "Sca"/],
     ["()", /expected a name at 2, found "\)"/],
+  ]) {
+    assert.throws(() => parseCondition(text), refusal, JSON.stringify(text));
+  }
+});
+
+// value(phase, id) reads a process value: it holds once that phase returned that id, and it
+// mixes with the facts like any name. Its arguments are not facts, so namesOf leaves them
+// out and callsOf names them for the registry to check.
+test("value(phase, id) holds once the phase returned that id", () => {
+  const text =
+    "sca AND NOT aborted AND (value(choice, llm) OR value(unsafe, llm))";
+  const tree = parseCondition(text);
+  assert.deepEqual(namesOf(tree), ["sca", "aborted"]);
+  assert.deepEqual(callsOf(tree), [
+    { call: "value", args: ["choice", "llm"] },
+    { call: "value", args: ["unsafe", "llm"] },
+  ]);
+  const sca = new Set(["sca"]);
+  assert.equal(holds(tree, sca, { unsafe: "llm" }), true);
+  assert.equal(holds(tree, sca, { choice: "user" }), false);
+  assert.equal(holds(tree, sca), false, "no value returned yet");
+  assert.equal(
+    holds(tree, new Set(["sca", "aborted"]), { choice: "llm" }),
+    false
+  );
+  assert.equal(
+    holds(parseCondition("NOT value(safety, safe)"), new Set(), {}),
+    true
+  );
+});
+
+test("a call outside the grammar is refused with where it went wrong", () => {
+  for (const [text, refusal] of [
+    ["value(a)", /value\(\) takes two names, given 1/],
+    ["value(a, b, c)", /value\(\) takes two names, given 3/],
+    ["issued(a, b)", /"issued" is not a function at 7/],
+    ["value(a, b", /expected "\)" at the end/],
+    ["value(A, b)", /expected a name at 7/],
+    ["value(a,, b)", /expected a name at 9/],
+    ["a, b", /unexpected "," at 2/],
   ]) {
     assert.throws(() => parseCondition(text), refusal, JSON.stringify(text));
   }

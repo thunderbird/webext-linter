@@ -22,6 +22,7 @@ import {
   issue,
   accept,
   settle,
+  loopSlots,
   reviewDetails,
   HandbackRefused,
 } from "../../src/report/loop.js";
@@ -362,6 +363,123 @@ test("assignRefs numbers each check's items under its registry position", () => 
     [`${base}.1`, "0.1", `${base}.2`, `${base}.3`],
     "existing references stay, and the check's count continues"
   );
+});
+
+// ---- process values ----
+
+/** The loop with a process-value phase first, and a phase after it whose one step prints
+ *  only when that value came back `safe`. One value reports a check that aborts the
+ *  review. */
+function valueLoop() {
+  const reg = loadRegistry();
+  reg.doc["llm-phases"].phases.unshift(
+    {
+      name: "safety",
+      answer: "value",
+      verbs: [],
+      intro: "",
+      question: "Is it safe?",
+      steps: [{ text: "Judge the build." }],
+      values: [
+        { value: "safe", label: "Safe", description: "nothing remote" },
+        {
+          value: "unsafe",
+          label: "Unsafe",
+          description: "something remote",
+          reports: "build-succeeds",
+        },
+      ],
+    },
+    {
+      name: "after",
+      answer: "none",
+      verbs: [],
+      intro: "",
+      steps: [{ text: "Only when safe.", when: "value(safety, safe)" }],
+    }
+  );
+  return { reg, phases: reg.llmPhases().phases };
+}
+
+// A process value steers the review and settles nothing: it is asked once, by its own
+// entry, accepted only as one of the labels offered, and recorded where a `when:` reads it,
+// never among the answers that settle items.
+test("a process value is asked once and read by value(phase, id)", () => {
+  const { reg, phases } = valueLoop();
+  const { state, work } = review(tmp(), { sweep: false });
+  const out = issue(state, work, phases, reg);
+  assert.equal(out.phase.name, "safety");
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(reviewFileOf(work), "utf8")).entries,
+    [
+      {
+        index: "safety",
+        message: "Is it safe?",
+        answers: [
+          { label: "Safe", description: "nothing remote" },
+          { label: "Unsafe", description: "something remote" },
+        ],
+        answer: null,
+      },
+    ]
+  );
+  handBack(work, () => "Maybe");
+  assert.throws(
+    () => accept(state, work, phases, reg),
+    /answers "Maybe", which this entry does not accept \(expected one of: Safe, Unsafe\)/
+  );
+  assert.equal(state.values, undefined, "a refusal records nothing");
+
+  handBack(work, () => "Safe");
+  accept(state, work, phases, reg);
+  assert.deepEqual(state.values, { safety: "safe" });
+  assert.deepEqual(state.answers, {}, "it settles no item");
+  const next = issue(state, work, phases, reg);
+  assert.equal(next.phase.name, "after", "its reader prints");
+  assert.deepEqual(
+    next.steps.map((x) => x.text),
+    ["Only when safe."]
+  );
+});
+
+// A value that reports a check aborts the review through that check: its finding is in
+// the review, so the next prompt is the closing one and the report names its reason.
+test("a process value that reports a check aborts the review", () => {
+  const { reg, phases } = valueLoop();
+  const { state, work } = review(tmp(), { sweep: false });
+  issue(state, work, phases, reg);
+  handBack(work, () => "Unsafe");
+  accept(state, work, phases, reg);
+  assert.deepEqual(state.values, { safety: "unsafe" });
+  const reported = state.report.findings.find(
+    (f) => f.ruleId === "build-succeeds"
+  );
+  assert.ok(reported, "the reported check's finding is in the review");
+  assert.equal(reported.ref, `${reg.refBase("build-succeeds")}.1`);
+  const closing = issue(state, work, phases, reg);
+  assert.equal(closing.phase.name, "close");
+  assert.match(closing.steps[0].text, /^The review was aborted/);
+  assert.match(closing.settled.details, /Build process issues/);
+});
+
+// The Build Review Details block names the build's two files once they were written, by the
+// same rows the Review Details block uses, and nothing else.
+test("the build details name the build report and the diff once written", () => {
+  const dir = tmp();
+  const { state, work } = review(dir, { sweep: false });
+  state.paths.build = path.join(dir, "build.md");
+  state.paths.buildDiff = path.join(dir, "build-diff.md");
+  state.report.meta.buildFile = state.paths.build;
+  assert.equal(loopSlots(state, {}, work).buildDetails, "");
+  state.products = ["build"];
+  assert.deepEqual(loopSlots(state, {}, work).buildDetails.split("\n"), [
+    `* BUILD_PROCESS: [build.md](${state.paths.build})`,
+  ]);
+  state.products = ["build", "buildDiff"];
+  assert.deepEqual(loopSlots(state, {}, work).buildDetails.split("\n"), [
+    `* BUILD_PROCESS: [build.md](${state.paths.build})`,
+    `* BUILD_DIFF: [build-diff.md](${state.paths.buildDiff})`,
+  ]);
 });
 
 // An entry says what it may be answered with, and that is what an answer is checked

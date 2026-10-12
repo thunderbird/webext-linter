@@ -85,7 +85,9 @@ export function stepsOf(phase, run = {}) {
       facts.add(name);
     }
   }
-  return phase.steps.filter((step) => !step.when || holds(step.when, facts));
+  return phase.steps.filter(
+    (step) => !step.when || holds(step.when, facts, run.values ?? {})
+  );
 }
 
 /**

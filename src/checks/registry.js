@@ -39,7 +39,7 @@ import { displayLine } from "../util/text.js";
 
 import { finding, SECTION, SEVERITY } from "../report/finding.js";
 import { MAX_NOTE } from "../config.js";
-import { namesOf, parseCondition } from "./condition.js";
+import { callsOf, namesOf, parseCondition } from "./condition.js";
 import { artifactLabel } from "../report/artifact.js";
 import { ARTIFACT_NONE, assertLocus } from "../lib/artifacts.js";
 import { VERB, VERB_NAMES, verbNamed } from "../report/verbs.js";
@@ -386,6 +386,17 @@ export class Registry {
   }
 
   /**
+   * Ids of the checks an agent's build relies on (`build-guard`): with any of them switched
+   * off, the review builds nothing itself.
+   * @returns {string[]}
+   */
+  buildGuardIds() {
+    return this.checkEntries()
+      .filter((e) => e["build-guard"])
+      .map((e) => stem(e.check));
+  }
+
+  /**
    * The permission-prompts token vocabulary, projected for the check that scans the
    * add-on for it. Deliberately narrow: the token entries only - wording stays the
    * report layer's business, so a check has no window into any entry's prose or
@@ -622,6 +633,14 @@ export class Registry {
         ),
         intro: phase.intro,
         steps: phase.steps.map(loadedStep),
+        // A process-value phase's question and the values it accepts back.
+        question: phase.question ?? null,
+        values: (phase.values ?? []).map((v) => ({
+          value: v.value,
+          label: v.label,
+          description: v.description,
+          reports: v.reports ?? null,
+        })),
       })),
     };
   }
@@ -1322,8 +1341,10 @@ export function assertEntries(registry, at) {
  * @param {string} noun  What its list calls one item, for the message: "`outcome` step"
  *   in the SCA prompt, "step" in a phase, "part" in the preamble.
  * @param {string[]} facts  The facts this prompt's conditions may name.
+ * @param {Map<string, string[]>} [values]  The process values this prompt's conditions may
+ *   read with value(phase, id): each phase answering `value`, with the ids it accepts.
  */
-function assertStep(step, i, where, noun, facts) {
+function assertStep(step, i, where, noun, facts, values = new Map()) {
   const nth = `${where} ${noun} ${i + 1}`;
   if (!step || typeof step !== "object" || Array.isArray(step)) {
     throw new Error(`${nth} is not a mapping`);
@@ -1364,6 +1385,24 @@ function assertStep(step, i, where, noun, facts) {
         `(expected one of: ${facts.join(", ")})`
     );
   }
+  for (const {
+    call,
+    args: [phase, id],
+  } of callsOf(tree)) {
+    const ids = values.get(phase);
+    if (!ids) {
+      throw new Error(
+        `${nth} reads \`${call}(${phase}, ${id})\`, but no phase of this prompt returns a ` +
+          `process value called \`${phase}\``
+      );
+    }
+    if (!ids.includes(id)) {
+      throw new Error(
+        `${nth} reads \`${call}(${phase}, ${id})\`, which \`${phase}\` never returns ` +
+          `(expected one of: ${ids.join(", ")})`
+      );
+    }
+  }
 }
 
 /**
@@ -1378,6 +1417,61 @@ function loadedStep(step) {
     when: step.when === undefined ? null : parseCondition(step.when),
     text: step.text,
   };
+}
+
+/**
+ * A process-value phase's values, checked at load. A phase answering `value` must offer some,
+ * and no other kind may author them, or a question nobody asks. Each id is a name a `when:`
+ * can read, and two equal ids or labels would make an answer mean either. A value that
+ * `reports` a check aborts the review through that check, so the check must exist and abort.
+ * @param {Registry} registry
+ * @param {object} phase  The phase as authored.
+ * @param {string} at  How it is named in a message.
+ */
+function assertProcessValues(registry, phase, at) {
+  if (phase.answer !== "value") {
+    for (const key of ["values", "question"]) {
+      if (phase[key] !== undefined) {
+        throw new Error(
+          `${at} answers with \`${phase.answer}\` but authors \`${key}\` - only a ` +
+            "`value` phase asks for a process value"
+        );
+      }
+    }
+    return;
+  }
+  const values = phase.values ?? [];
+  if (values.length === 0) {
+    throw new Error(
+      `${at} answers with \`value\` but offers no \`values\` to answer with`
+    );
+  }
+  for (const key of ["value", "label"]) {
+    const seen = new Set();
+    for (const v of values) {
+      if (seen.has(v[key])) {
+        throw new Error(`${at} offers the ${key} \`${v[key]}\` twice`);
+      }
+      seen.add(v[key]);
+    }
+  }
+  for (const v of values) {
+    if (!/^[a-z][a-z0-9-]*$/.test(v.value)) {
+      throw new Error(
+        `${at} value \`${v.value}\` is not a lower-case name a condition can read`
+      );
+    }
+    if (v.reports === undefined) {
+      continue;
+    }
+    const entry = registry.checkEntry(v.reports);
+    if (!entry?.["review-early-exit"] || entry.severity !== SEVERITY.ERROR) {
+      throw new Error(
+        `${at} value \`${v.value}\` reports \`${v.reports}\`, which is not an error ` +
+          "check with a review-early-exit reason - the value could not abort the review"
+      );
+    }
+  }
 }
 
 // The phase whose answers a check may narrow: the one that settles what a check could not.
@@ -1414,8 +1508,21 @@ export function assertPhases(registry, at) {
   }
   // The preamble's parts are conditioned and printed like steps, so they are checked like
   // them: prose, not self-numbered, and a condition naming only facts this prompt knows.
+  // The process values a condition may read: each phase answering `value`, by its name.
+  const values = new Map(
+    doc.phases
+      .filter((phase) => phase.answer === "value")
+      .map((phase) => [phase.name, (phase.values ?? []).map((v) => v.value)])
+  );
   doc.preamble.forEach((part, i) =>
-    assertStep(part, i, `${where} \`preamble\``, "part", REVIEW_PROMPT_FACTS)
+    assertStep(
+      part,
+      i,
+      `${where} \`preamble\``,
+      "part",
+      REVIEW_PROMPT_FACTS,
+      values
+    )
   );
   // The review ends with ONE closing phase, the last, and it hands over what the reviewer
   // is left with. Two would leave the second unreachable, one that is not last would end
@@ -1461,8 +1568,9 @@ export function assertPhases(registry, at) {
         );
       }
     }
+    assertProcessValues(registry, phase, at2);
     phase.steps.forEach((step, i) => {
-      assertStep(step, i, at2, "step", REVIEW_PROMPT_FACTS);
+      assertStep(step, i, at2, "step", REVIEW_PROMPT_FACTS, values);
     });
     // Both ways, over the phase's `verb-prose`. A step does not name verbs: what an
     // answer means is rendered onto the entry that offers it, so this is where the agent
@@ -1743,16 +1851,22 @@ export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
  *   dependency is not pulled in when the check will not run.
  * @returns {Promise<Map<string, LoadedCheck[]>>}  Phase -> its checks, in registry order.
  */
+/**
+ * Whether --checks-only / --checks-skip leave a check in the run. The one reading of the two
+ * lists, for loadChecks and for anything that has to know what the run left out.
+ * @param {string} id
+ * @param {{only?: string[], skip?: string[]}} selection
+ * @returns {boolean}
+ */
+export function checkSelected(id, { only, skip } = {}) {
+  return (!only?.length || only.includes(id)) && !skip?.includes(id);
+}
+
 export async function loadChecks(registry, { only, skip, eslint } = {}) {
-  const onlySet = only?.length ? new Set(only) : null;
-  const skipSet = skip?.length ? new Set(skip) : null;
   const byPhase = new Map(Object.keys(PHASE_SECTIONS).map((p) => [p, []]));
   for (const entry of registry.checkEntries()) {
     const id = stem(entry.check);
-    if (onlySet && !onlySet.has(id)) {
-      continue;
-    }
-    if (skipSet && skipSet.has(id)) {
+    if (!checkSelected(id, { only, skip })) {
       continue;
     }
     // The `--eslint` opt-in gate, applied HERE (unlike the mode gate, which gates in runChecks

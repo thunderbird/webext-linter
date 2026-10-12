@@ -292,7 +292,7 @@ test("a phase declares the kind of answer its entries take", () => {
   phaseNamed(unknown, "verify").answer = "verdicts";
   assert.throws(
     () => check(unknown),
-    /invalid `answer` "verdicts" \(expected one of: hints, verdict, words, none, end\)/
+    /invalid `answer` "verdicts" \(expected one of: hints, verdict, words, value, none, end\)/
   );
 
   // A verdict phase with nothing to say back, and a phase that names a verb nobody will
@@ -312,6 +312,103 @@ test("a phase declares the kind of answer its entries take", () => {
       /but accepts `reported` - only a `verdict` phase names verbs/,
       name
     );
+  }
+});
+
+// ---- process values ----
+
+/** A registry with one process-value phase ahead of the closing one, the way the loop
+ *  authors one: values with an id, a label and a description, one of them reporting a
+ *  check that aborts the review. */
+function withValuePhase(extra = {}) {
+  const registry = fresh();
+  const phases = registry.doc["llm-phases"].phases;
+  phases.splice(phases.length - 1, 0, {
+    name: "safety",
+    answer: "value",
+    verbs: [],
+    intro: "",
+    steps: [{ text: "Judge the build." }],
+    values: [
+      { value: "safe", label: "Safe", description: "nothing remote" },
+      {
+        value: "unsafe",
+        label: "Unsafe",
+        description: "something remote",
+        reports: "build-succeeds",
+      },
+    ],
+    ...extra,
+  });
+  return registry;
+}
+
+// A process value is declared by the phase that asks for it, and every name a condition
+// reads from it is checked at load: a typo in either name is refused rather than read as a
+// step that never prints.
+test("a process-value phase declares its values, and conditions read only those", () => {
+  check(withValuePhase());
+  const loaded = withValuePhase()
+    .llmPhases()
+    .phases.find((p) => p.name === "safety");
+  assert.deepEqual(
+    loaded.values.map((v) => [v.value, v.label, v.reports]),
+    [
+      ["safe", "Safe", null],
+      ["unsafe", "Unsafe", "build-succeeds"],
+    ]
+  );
+
+  const none = withValuePhase();
+  delete phaseNamed(none, "safety").values;
+  assert.throws(
+    () => check(none),
+    /answers with `value` but offers no `values`/
+  );
+  const stray = fresh();
+  phaseNamed(stray, "ask").question = "Who builds?";
+  assert.throws(
+    () => check(stray),
+    /answers with `words` but authors `question` - only a `value` phase/
+  );
+  const twice = withValuePhase();
+  phaseNamed(twice, "safety").values[1].value = "safe";
+  assert.throws(() => check(twice), /offers the value `safe` twice/);
+  const label = withValuePhase();
+  phaseNamed(label, "safety").values[1].label = "Safe";
+  assert.throws(() => check(label), /offers the label `Safe` twice/);
+  const upper = withValuePhase();
+  phaseNamed(upper, "safety").values[0].value = "Safe";
+  assert.throws(() => check(upper), /value `Safe` is not a lower-case name/);
+  const notAborting = withValuePhase();
+  phaseNamed(notAborting, "safety").values[1].reports = "unused-files";
+  assert.throws(
+    () => check(notAborting),
+    /reports `unused-files`, which is not an error check with a review-early-exit/
+  );
+
+  for (const [when, refusal] of [
+    ["value(safety, safe)", null],
+    [
+      "value(safty, safe)",
+      /no phase of this prompt returns a process value called `safty`/,
+    ],
+    [
+      "value(safety, maybe)",
+      /`safety` never returns \(expected one of: safe, unsafe\)/,
+    ],
+    [
+      "value(ask, safe)",
+      /no phase of this prompt returns a process value called `ask`/,
+    ],
+  ]) {
+    const registry = withValuePhase();
+    phaseNamed(registry, "close").steps[0].when = when;
+    if (refusal) {
+      assert.throws(() => check(registry), refusal, when);
+    } else {
+      check(registry);
+    }
   }
 });
 

@@ -111,6 +111,11 @@ shapes:
       kind: gate
       why: >-
         it makes the check opt-in, run only under --eslint; leaving it out runs it always
+    build-guard:
+      kind: gate
+      why: >-
+        it marks a check an agent's build relies on: with any of these switched off
+        (--checks-only / --checks-skip), the review builds nothing itself
     collapse:
       kind: one-of
       values: COLLAPSE_MODES
@@ -229,6 +234,27 @@ shapes:
       why: >-
         the extra wording for the verb a reader falls back to, when there is one
 
+  # One value a process-value pass (`answer: value`) accepts back.
+  phase-value-entry:
+    value:
+      kind: text
+      required: true
+      why: >-
+        the id a `when:` reads with value(phase, id), which is what the review records
+    label:
+      kind: text
+      required: true
+      why: what the value is called where it is offered, and what comes back
+    description:
+      kind: text
+      required: true
+      why: when it applies, so the one choosing can choose
+    reports:
+      kind: text
+      why: >-
+        the check whose finding this value adds to the review - the one way a process value
+        aborts it, with that check's reason and response
+
   # One pass of the review loop: what it asks, what it accepts back, and its steps.
   loop-phase-entry:
     name:
@@ -267,6 +293,16 @@ shapes:
       kind: map-of
       shape: verb-prose-entry
       why: what each verdict this pass accepts means, worded per verb
+    question:
+      kind: text
+      why: >-
+        the question a process-value pass puts to a person, relayed as it is written
+    values:
+      kind: entries
+      shape: phase-value-entry
+      name-key: value
+      noun: "`values`"
+      why: the process values this pass accepts back, one of which comes back
 
 sections:
   deterministic-phase:

@@ -50,6 +50,8 @@ import { rethrowIfFatal } from "../lib/errors.js";
  * @property {string[]} issued  Every phase that has been handed back, in order. What a
  *   later prompt reads to know what already happened: whether agents were started
  *   (`spawned`) and whether the agent judged anything (`decided`).
+ * @property {Object<string, string>} [values]  The process values returned so far: a
+ *   phase answering `value` -> the id it returned. Read by value(phase, id) in a `when:`.
  * @property {Object<string, *>} answers  An item's reference (`ref`, src/report/order.js
  *   assignRefs) -> what came back, once it is settled.
  * @property {?object[]} sweep  Everything the sweeping agents found, read back off their
@@ -120,5 +122,7 @@ export function readState(file) {
  *  read by nothing. Version 13 records no path to the state or the review file: both are in
  *  the work folder the state is read from, by their fixed names - a v12 file's recorded
  *  review path is read by nothing. Version 14 keys `answers` by each item's fixed `ref`,
- *  stored on the item, instead of by its position - a v13 file's numbers name no item. */
-export const STATE_VERSION = 14;
+ *  stored on the item, instead of by its position - a v13 file's numbers name no item.
+ *  Version 15 adds `values`, the process values a `when:` reads - a v14 review in flight
+ *  would never be asked for them. */
+export const STATE_VERSION = 15;

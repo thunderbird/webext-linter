@@ -54,7 +54,12 @@ import {
   scaViews,
 } from "./addon/load.js";
 import { settleScaRoot } from "./addon/sca-root.js";
-import { runChecks, loadRegistry, ctxForRule } from "./checks/registry.js";
+import {
+  checkSelected,
+  ctxForRule,
+  loadRegistry,
+  runChecks,
+} from "./checks/registry.js";
 import { buildXpiCtx, buildScaCtx, buildAllCtx } from "./checks/context.js";
 import {
   renderFindings,
@@ -857,6 +862,15 @@ async function reviewSubmission(opts, work, prepared) {
       run: {
         skip,
         sca: mode.sca,
+        // Whether every check an agent's build relies on runs: with one switched off, nothing
+        // vouches for what the build would install, so the review builds nothing itself.
+        ...(registry
+          .buildGuardIds()
+          .every((id) =>
+            checkSelected(id, { only: opts.checksOnly, skip: opts.checksSkip })
+          )
+          ? { "build-guarded": true }
+          : {}),
         // One condition per tree that has a sweep to run, keyed the way the step names
         // it. Read off the FILES rather than off `sweeping` and `preSweep` separately:
         // a step exists to send an agent at a request, so the request existing is the

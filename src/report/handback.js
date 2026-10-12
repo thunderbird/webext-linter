@@ -139,6 +139,18 @@ export function answersOf(handed, asked, phase, keyOf) {
     );
   }
   for (const [key, value] of got) {
+    // A process value is one of the labels the entry offered, carried as that label: it
+    // steers the review and settles no item, so it never crosses into a verb.
+    if (phase.answer === "value") {
+      const offered = (wanted.get(key)?.answers ?? []).map((a) => a.label);
+      if (!offered.includes(value)) {
+        throw new HandbackRefused(
+          `${key} answers "${displayLine(String(value))}", which this entry does not ` +
+            `accept (expected one of: ${offered.join(", ")})`
+        );
+      }
+      continue;
+    }
     // `words` are a person's own answer, and those are not ours to judge - only to carry.
     if (phase.answer === "words") {
       if (typeof value !== "string" || value === "") {
@@ -204,6 +216,26 @@ function resolvedIn(root, file, ruleId, resolving) {
     );
   }
   return at;
+}
+
+/**
+ * The one entry a process-value phase (`answer: value`) hands over, keyed by the phase's
+ * name: the question it puts to a person where it has one, and the values it accepts, each
+ * by the label that comes back and the description that says when it applies.
+ * @param {{name: string, question: ?string, values: {label: string,
+ *   description: string}[]}} phase
+ * @returns {object}
+ */
+export function valueEntry(phase) {
+  return {
+    index: phase.name,
+    ...(phase.question ? { message: phase.question } : {}),
+    answers: phase.values.map(({ label, description }) => ({
+      label,
+      description,
+    })),
+    [SLOT]: null,
+  };
 }
 
 /**

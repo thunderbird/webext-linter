@@ -677,6 +677,17 @@ function schemaLine(meta) {
  * @returns {string[]}
  */
 export function detailLinkLines(meta) {
+  return [...detailRows(meta), "", schemaLine(meta)];
+}
+
+/**
+ * The Review Details rows alone, one per path the meta names, in the block's order. The
+ * whole block adds the schema line; the Build Review Details block is these rows for the
+ * build's two files, so the two blocks name a file the same way.
+ * @param {ReviewMeta} meta
+ * @returns {string[]}
+ */
+export function detailRows(meta) {
   const rows = [];
   if (meta.xpiFile) {
     rows.push(["XPI_FILE", null, meta.xpiFile]);
@@ -702,15 +713,11 @@ export function detailLinkLines(meta) {
   if (meta.reportFile) {
     rows.push(["REVIEW_REPORT", "report.md", meta.reportFile]);
   }
-  return [
-    ...rows.map(([name, text, target]) =>
-      text === null
-        ? `* ${name}: ${displayLine(target)}`
-        : `* ${name}: [${text}](${displayPath(target)})`
-    ),
-    "",
-    schemaLine(meta),
-  ];
+  return rows.map(([name, text, target]) =>
+    text === null
+      ? `* ${name}: ${displayLine(target)}`
+      : `* ${name}: [${text}](${displayPath(target)})`
+  );
 }
 
 /**

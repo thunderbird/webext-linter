@@ -18,6 +18,7 @@ import {
   entriesFor,
   readHandback,
   reviewFile,
+  valueEntry,
   writeReviewFile,
 } from "./handback.js";
 import { writeState } from "./state.js";
@@ -28,10 +29,12 @@ import { writeReportFile } from "./report-file.js";
 import { reviewItems } from "./items.js";
 import { mergeSweepResults } from "./sweep.js";
 import { readSweepAnswers, sweepSlots } from "./sweep-files.js";
-import { resolveHolds } from "./finding.js";
+import { finding, resolveHolds } from "./finding.js";
+import { ARTIFACT_SCA } from "../lib/artifacts.js";
 import { artifactRoots } from "../lib/artifacts.js";
 import {
   detailLinkLines,
+  detailRows,
   earlyExitLines,
   issuesBodyLines,
   locusLabeler,
@@ -58,7 +61,7 @@ import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {{skip: string[], sca: boolean, halted: boolean, first: boolean,
- *   spawned: boolean, decided: boolean}}
+ *   spawned: boolean, decided: boolean, values: Object<string, string>}}
  */
 function runOf(state, ordered, registry) {
   const halted = Boolean(
@@ -74,6 +77,8 @@ function runOf(state, ordered, registry) {
     first: !state.phase,
     spawned: spawnIssued(state),
     decided: issued.includes("verify") || issued.includes("settle"),
+    // The process values returned so far, which value(phase, id) reads.
+    values: state.values ?? {},
   };
 }
 
@@ -186,9 +191,7 @@ export function issue(state, work, phases, registry) {
   // each product lands in a file of its own. Every other phase hands over its open items,
   // rendered for THIS reader - never stored, so the same item can be worded one way here
   // and another for the reviewer.
-  const entries = ITEMLESS_ANSWERS.includes(phase.answer)
-    ? []
-    : phaseEntries(state, registry, phase, ordered);
+  const entries = askedIn(state, registry, phase, ordered);
   state.phase = phase.name;
   // The `details` phase hands the reviewer the Review Details block, and that block links
   // the report. Refresh the file first, so the link opens the review as it stands rather
@@ -244,6 +247,11 @@ export function loopSlots(state, issued, work) {
     // what aborted it where something did.
     details: issued.settled?.details ?? reviewDetails(state),
     tally: issued.settled?.tally ?? "",
+    // The Build Review Details block: the build's two files, where they were written.
+    buildDetails: detailRows({
+      buildFile: reportMeta(state).buildFile,
+      buildDiffFile: reportMeta(state).buildDiffFile,
+    }).join("\n"),
     ...sweepSlots(state),
   };
 }
@@ -280,16 +288,11 @@ export function accept(state, work, phases, registry) {
   }
   const { entries } = readHandback(workPaths(work).review);
   // What went out: the same question `issue` answered, asked again through the same
-  // helper rather than stored, so the two cannot disagree about what was asked. An
-  // itemless phase asks about no entry at all - its work is what its steps do, and each
-  // product lands in a file of its own - so what it hands out is empty and so must be what
-  // comes back.
+  // helper rather than stored, so the two cannot disagree about what was asked.
   // The one ordering of this hand-back: what went out is read from it, and an answer that
   // moves a case finds that case in it by its reference.
   const ordered = orderReview(state.report.findings, state.manual);
-  const asked = ITEMLESS_ANSWERS.includes(phase.answer)
-    ? []
-    : phaseEntries(state, registry, phase, ordered);
+  const asked = askedIn(state, registry, phase, ordered);
   const answers = answersOf(entries, asked, phase, (e) =>
     String(e.index ?? "undefined")
   );
@@ -312,6 +315,10 @@ export function accept(state, work, phases, registry) {
   if (phase.product && productWritten(state.paths?.[phase.product])) {
     state.products = [...(state.products ?? []), phase.product];
   }
+  if (phase.answer === "value") {
+    recordValue(state, registry, phase, answers);
+    return { phase, answers };
+  }
   if (phase.answer === "none") {
     return { phase, answers };
   }
@@ -331,6 +338,54 @@ export function accept(state, work, phases, registry) {
 }
 
 export { HandbackRefused };
+
+/**
+ * What a phase hands out and checks the hand-back against: a process-value phase its one
+ * entry, an itemless phase nothing, any other phase its open items.
+ * @param {import("./state.js").LoopState} state
+ * @param {import("../checks/registry.js").Registry} registry
+ * @param {object} phase
+ * @param {import("./order.js").OrderedItem[]} ordered
+ * @returns {object[]}
+ */
+function askedIn(state, registry, phase, ordered) {
+  if (phase.answer === "value") {
+    return [valueEntry(phase)];
+  }
+  return ITEMLESS_ANSWERS.includes(phase.answer)
+    ? []
+    : phaseEntries(state, registry, phase, ordered);
+}
+
+/**
+ * Record the process value a phase returned, by the id its `when:` readers name. It settles
+ * no item, so it never goes into `answers`. A value that `reports` a check adds that check's
+ * finding, which aborts the review the way any finding of an aborting check does - with its
+ * reason and its response, and nothing for the loop to decide on its own.
+ * @param {import("./state.js").LoopState} state  Mutated.
+ * @param {import("../checks/registry.js").Registry} registry
+ * @param {{name: string, values: {value: string, label: string, reports: ?string}[]}} phase
+ * @param {Map<string, string>} answers  The one label that came back.
+ */
+function recordValue(state, registry, phase, answers) {
+  const label = answers.get(phase.name);
+  const picked = phase.values.find((v) => v.label === label);
+  state.values = { ...(state.values ?? {}), [phase.name]: picked.value };
+  if (!picked.reports) {
+    return;
+  }
+  // The build is the source archive's, so the finding is about that artifact. It names no
+  // file: what it reports is the build process as a whole.
+  state.report.findings.push(
+    finding({
+      ruleId: picked.reports,
+      severity: registry.checkEntry(picked.reports).severity,
+      artifact: ARTIFACT_SCA,
+    })
+  );
+  assignRefs([...state.report.findings, ...state.manual], registry);
+  renderFindings(state.report.findings, registry, { sca: state.report.sca });
+}
 
 /**
  * The entries one phase asks about, rendered.
@@ -510,7 +565,10 @@ function reportMeta(state) {
   } = state.report.meta;
   return {
     ...rest,
-    ...(spawnIssued(state) ? { summaryFile, buildFile } : {}),
+    ...(spawnIssued(state) ? { summaryFile } : {}),
+    ...(spawnIssued(state) || state.products?.includes("build")
+      ? { buildFile }
+      : {}),
     ...(state.products?.includes("buildDiff")
       ? { buildDiffFile: state.paths.buildDiff }
       : {}),

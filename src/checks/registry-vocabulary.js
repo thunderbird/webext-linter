@@ -171,6 +171,8 @@ export const sweepSlot = (artifact) =>
  *  - `aborted`: a finding has aborted the review. Derived every pass (src/report/loop.js
  *    runOf), because a verdict can abort a review or take the abort back;
  *  - `sca`: a source code review;
+ *  - `build-guarded`: every check an agent's build relies on (`build-guard`) runs, so the
+ *    review may build the add-on itself;
  *  - one `sweep-<artifact>` per tree with a sweep to run. Each sweepable artifact is its
  *    own fact, because each starts its OWN sub-agent against its own tree and a review may
  *    have one such tree or two. Taken from the artifacts that can be swept rather than
@@ -187,6 +189,7 @@ export const REVIEW_PROMPT_FACTS = [
   ...PROMPT_SKIPS,
   "aborted",
   "sca",
+  "build-guarded",
   ...Object.keys(SWEEP_INSTRUCTIONS).map(sweepRun),
   "first",
   "spawned",
@@ -218,22 +221,30 @@ export const LOOP_VERBS = VERB_NAMES;
 /** What one entry of a phase is answered WITH, which decides the shape the entry is handed
  *  over in and what the linter accepts back: `hints` is what a sweep found, a list per
  *  check; `verdict` is one of the phase's own verbs; `words` is a person's answer, theirs
- *  to write and not ours to judge. Named as data because the loop reads it rather than the
+ *  to write and not ours to judge; `value` is a process value, one of the phase's own
+ *  `values`, which steers the review and settles no item. Named as data because the loop reads it rather than the
  *  phase's name - a phase carries its vocabulary AND the kind of answer that vocabulary
  *  belongs to, and neither is inferred from what it is called. */
-export const ANSWER_KINDS = ["hints", "verdict", "words", "none", "end"];
+export const ANSWER_KINDS = [
+  "hints",
+  "verdict",
+  "words",
+  "value",
+  "none",
+  "end",
+];
 
-/** The answer kinds of a phase that asks about no entry: its work is what its steps do, so
- *  it is issued once. `hints` and `none` are handed back with an empty file - `hints` also
- *  reads the sweeps back on that hand-back, `none` reads nothing. `end` is the closing
- *  phase: issued once nothing else has work, and never handed back, because the review
- *  ends with it. */
-export const ITEMLESS_ANSWERS = ["hints", "none", "end"];
+/** The answer kinds of a phase that asks about no review item: its work is what its steps
+ *  do, so it is issued once. `hints` and `none` are handed back with an empty file - `hints`
+ *  also reads the sweeps back on that hand-back, `none` reads nothing. `value` is handed
+ *  back with its one process value. `end` is the closing phase: issued once nothing else
+ *  has work, and never handed back, because the review ends with it. */
+export const ITEMLESS_ANSWERS = ["hints", "none", "value", "end"];
 
-/** What a phase's `product` can name: a file its agent writes for the reviewer only when the
- *  reviewer wants it, keyed as the state's `paths` key that holds it. Whether it was written
- *  is recorded when the phase comes back, and the Review Details block links it only then. */
-export const PHASE_PRODUCTS = ["buildDiff"];
+/** What a phase's `product` can name: a file its agent writes for the reviewer, keyed as the
+ *  state's `paths` key that holds it. Whether it was written is recorded when the phase
+ *  comes back, and the Review Details block links it only then. */
+export const PHASE_PRODUCTS = ["build", "buildDiff"];
 
 /** The one fact the preparation prompts' `when:` conditions can name: whether the built
  *  add-on declares Experiments, which decides whether the first asks its reader for the
