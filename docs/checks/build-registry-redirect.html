@@ -26,7 +26,9 @@
         root of the submitted archive — npm takes its config from the directory
         the install runs in, and the review runs it there. A custom registry can pull the
         same declared package names from an undeclared source, leaving the
-        declared dependencies and the lock file a clean decoy. The value is not
+        declared dependencies and the lock file a clean decoy. The file is read
+        with npm's own parser, so a quoted key counts and a key under a
+        <code>[section]</code>, which npm ignores, does not. The value is not
         inspected — the mere presence of a registry setting is the rejection.
       </p>
 

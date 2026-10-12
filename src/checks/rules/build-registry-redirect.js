@@ -3,9 +3,10 @@
 // build never needs to set either (npm already defaults to the public registry), so ANY
 // registry setting is disallowed outright - it can only point the install at a source
 // other than the public npm registry, pulling the SAME declared package names from an
-// UNDECLARED source and leaving package.json/lock a clean decoy. The value is NOT parsed
-// (no host/quote/case handling to slip past); the mere presence of the key is the
-// reject. Deterministic, no network.
+// UNDECLARED source and leaving package.json/lock a clean decoy. The file is read with
+// npm's own parser (`ini`), so a quoted key counts and a key under a [section], which npm
+// ignores, does not. The value is NOT judged: the mere presence of the key is the reject.
+// Deterministic, no network.
 //
 // input: sca - reads the submitted source archive off ctx.artifact. The ARCHIVE'S OWN .npmrc is the
 // one read: npm takes its config from the directory the install runs in, and the review
@@ -15,6 +16,8 @@
 //
 // Belongs here: flagging .npmrc registry settings. Does NOT belong here: which files are
 // in the source view (-> src/addon/load.js scaViews) or the wording (-> the registry).
+
+import ini from "ini";
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
@@ -27,55 +30,73 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const files = ctx.artifact.files;
-    const buf = files.get(".npmrc");
+    const buf = ctx.artifact.files.get(".npmrc");
     if (!buf) {
       return { findings: [] };
     }
     const findings = [];
-    const lines = buf.toString("utf8").split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const value = registrySetting(lines[i]);
-      if (value !== null) {
-        const loc = { line: i + 1 };
-        ctx.note?.(
-          ctx.artifact.at(".npmrc", loc),
-          "sets a package registry",
-          VERDICT.FAIL
-        );
-        findings.push(
-          finding({ ...ctx.artifact.at(".npmrc", loc), item: value })
-        );
-      }
+    for (const { line, value } of registrySettings(buf.toString("utf8"))) {
+      const at = ctx.artifact.at(".npmrc", { line });
+      ctx.note?.(at, "sets a package registry", VERDICT.FAIL);
+      findings.push(finding({ ...at, item: value }));
     }
     return { findings };
   },
 };
 
 /**
- * If this .npmrc line sets a package registry (`registry=` or `@scope:registry=`,
- * matched case-INSENSITIVELY), return the raw value it is set to (or the key itself when
- * the value is empty, so the finding always has a subject); otherwise null. Comments,
- * auth lines, and unrelated keys are ignored. The value is NOT validated - ANY registry
- * setting is rejected.
- * @param {string} line
- * @returns {?string}
+ * Every package registry the .npmrc sets, as npm reads the file (`ini.decode`): a
+ * top-level `registry` or `@scope:registry` key, matched case-insensitively, with the
+ * line it is set on. A key under a [section] decodes into that section and is not one
+ * npm uses. The value is not validated - ANY registry setting is rejected - and an empty
+ * one is reported by its key, so a finding always has a subject.
+ *
+ * `ini` reports no positions, so the line is the first line at which decoding the file up
+ * to and including it yields the key. The same parser decides both, on a file small enough
+ * to decode once per line.
+ * @param {string} text
+ * @returns {{line: number, value: string}[]}
  */
-function registrySetting(line) {
-  const trimmed = line.trim();
-  if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith(";")) {
-    return null;
+function registrySettings(text) {
+  const settings = [];
+  const lines = text.split(/\r?\n/);
+  const seen = new Set();
+  for (let i = 0; i < lines.length; i++) {
+    const decoded = ini.decode(lines.slice(0, i + 1).join("\n"));
+    for (const [key, value] of Object.entries(decoded)) {
+      if (seen.has(key) || !isRegistryKey(key) || isSection(value)) {
+        continue;
+      }
+      seen.add(key);
+      for (const one of [value].flat()) {
+        settings.push({ line: i + 1, value: String(one ?? "").trim() || key });
+      }
+    }
   }
-  const eq = trimmed.indexOf("=");
-  if (eq === -1) {
-    return null;
-  }
-  // Lower-case per the disallow-ANY-registry policy, and drop npm's `[]` array-append
-  // suffix: npm honors `registry[]=<url>` as the same registry config, so it must be
-  // caught too (only the exact `[]` suffix - `registry[0]=` is not honored by npm).
-  const key = trimmed.slice(0, eq).trim().toLowerCase().replace(/\[\]$/, "");
-  if (key !== "registry" && !/^@[^:]+:registry$/.test(key)) {
-    return null;
-  }
-  return trimmed.slice(eq + 1).trim() || key;
+  return settings;
+}
+
+/**
+ * Whether a decoded top-level key sets a registry: `registry` itself, or one scope's
+ * `@scope:registry`.
+ * @param {string} key
+ * @returns {boolean}
+ */
+function isRegistryKey(key) {
+  const k = key.toLowerCase();
+  return (
+    k === "registry" ||
+    (k.startsWith("@") &&
+      k.endsWith(":registry") &&
+      k.indexOf(":") === k.length - ":registry".length)
+  );
+}
+
+/**
+ * Whether a decoded value is a [section]: an object that is not an array.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isSection(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

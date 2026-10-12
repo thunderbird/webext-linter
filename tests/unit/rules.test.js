@@ -2075,8 +2075,9 @@ test("the unresolved steps read as an English list, and add to the instruction",
 // ---- build-registry-redirect (SCA deterministic: .npmrc registry) ----
 
 // ANY registry= / @scope:registry= in .npmrc is a hard reject (a legit build never sets
-// the registry) - the raw value is the item, anchored at the line; the value is not
-// parsed. Auth lines, comments, unrelated keys, and no .npmrc are clean.
+// the registry) - the value is the item, anchored at its line. The file is read with npm's
+// own parser, so a quoted key counts and a key under a [section] does not. Auth lines,
+// comments, unrelated keys, and no .npmrc are clean.
 test("build-registry-redirect rejects any registry setting in .npmrc", async () => {
   const run = async (npmrc) =>
     (
@@ -2108,6 +2109,15 @@ test("build-registry-redirect rejects any registry setting in .npmrc", async () 
   assert.equal((await run("registry=https://registry.npmjs.org/")).length, 1);
   assert.equal((await run('registry="https://registry.npmjs.org/"')).length, 1);
   assert.equal((await run("REGISTRY=https://evil/")).length, 1);
+  // A quoted key is the same setting to npm, and is anchored at its own line.
+  one(await run('"registry"=https://evil/'), "https://evil/");
+  one(await run("'registry'=https://evil/"), "https://evil/");
+  one(await run('"@acme:registry"=https://evil/'), "https://evil/");
+  const later = await run("save-exact=true\n# note\nregistry=https://evil/");
+  assert.equal(later.length, 1);
+  assert.equal(later[0].loc.line, 3);
+  // A key under a [section] decodes into that section, which npm does not read.
+  assert.deepEqual(await run("[x]\nregistry=https://evil/"), []);
   // Auth lines, comments, unrelated keys, and no .npmrc are clean.
   assert.deepEqual(await run("//registry.npmjs.org/:_authToken=abc"), []);
   assert.deepEqual(await run("# registry=https://evil/"), []);
