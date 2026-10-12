@@ -14,7 +14,7 @@ import YAML from "yaml";
 
 import { pipelineOptsFromArgv } from "../../src/cli.js";
 import { readPrepare, writePrepare } from "../../src/prepare/state.js";
-import { advisory, realPreparation } from "../prepared.js";
+import { advisory, answer, realPreparation } from "../prepared.js";
 import {
   addonOutsideRepo,
   cdnMissCache,
@@ -1204,6 +1204,41 @@ test("--warnings-as-errors is refused on a --llm-handback pass", () => {
   assert.doesNotMatch(r.stderr, /nonexistent/);
 });
 
+// ...and read back it is: a case a later pass reports becomes a finding in the band the
+// review started with, so a warning reported under the flag is an error, exit code included.
+test("a hand-back pass reports a case in the band its review recorded", () => {
+  const addon = path.join(ROOT, "tests", "addons", "optional-permission");
+  const settle = (...flags) => {
+    const first = run([
+      addon,
+      ...OFFLINE_FLAGS,
+      "--llm-review",
+      "--llm-skip-summary",
+      "--llm-skip-manual",
+      "--llm-skip-sweep",
+      "--checks-only",
+      "unused-permission",
+      ...flags,
+    ]);
+    assert.equal(first.code, 0, first.stderr);
+    const file = reviewFile(first.stdout);
+    const doc = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.deepEqual(
+      doc.entries.map((e) => e.ruleId),
+      ["unused-permission"]
+    );
+    doc.entries = doc.entries.map((e) => ({ ...e, answer: "reported" }));
+    fs.writeFileSync(file, JSON.stringify(doc));
+    return run(["--llm-handback", path.dirname(file)]);
+  };
+  const plain = settle();
+  assert.equal(plain.code, 0, plain.stdout + plain.stderr);
+  assert.match(plain.stdout, /0 error\(s\), 0 hold, 1 warning\(s\)/);
+  const strict = settle("--warnings-as-errors");
+  assert.equal(strict.code, 1, strict.stdout + strict.stderr);
+  assert.match(strict.stdout, /1 error\(s\), 0 hold, 0 warning\(s\)/);
+});
+
 // JSON is a machine contract: stdout is the document, stderr is silent - even
 // with --verbose (no activity feed, no notices).
 test("JSON output is fully silent on stderr, even with --verbose", () => {
@@ -2061,6 +2096,98 @@ test("a prepared review drops what a record must not say", async () => {
     before,
     "no cache was cleared"
   );
+});
+
+// A source whose rescue was given up is reviewed as submitted: the hand-back starts that
+// review, its vulnerability checks abort it, so its first prompt is the close, and the run
+// exits as a rejected review does.
+test("the hand-back starts the review of an unrescued source, which closes at once", async () => {
+  // The fixture's source with nothing declared, so the review asks npm for no package's
+  // downloads, and only the vulnerable build tool its lock installs.
+  const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
+  const source = fs.mkdtempSync(path.join(os.tmpdir(), "wl-unrescued-"));
+  fs.cpSync(path.join(fixture, "src"), source, { recursive: true });
+  const own = { name: "lantern-sorter", version: "1.0.0" };
+  fs.writeFileSync(path.join(source, "package.json"), JSON.stringify(own));
+  fs.writeFileSync(
+    path.join(source, "package-lock.json"),
+    JSON.stringify({
+      ...own,
+      lockfileVersion: 3,
+      packages: { "": own, "node_modules/lint-pebble": { version: "0.4.0" } },
+    })
+  );
+  const { work, record } = await realPreparation({
+    source,
+    xpi: path.join(fixture, "xpi"),
+    flags: {
+      "cache-schema-dir": CACHE,
+      "cache-hash-db-dir": CACHE,
+      "cache-experiments-dir": CACHE,
+      "cache-cdn-lookup-dir": CDN_CACHE,
+      "cache-npm-registry-dir": CACHE,
+    },
+    vulns: {
+      "lint-pebble@0.4.0": [
+        advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
+      ],
+    },
+  });
+  assert.equal(record.roots.scaRoot, workPaths(work).sca, "the rescue gave up");
+  const r = run(["--llm-handback", work]);
+  assert.equal(r.code, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /── LLM Prompt ──/);
+  assert.doesNotMatch(r.stdout, /SCA Review Prompt/);
+  // The first prompt is the close, its report already written, and its vulnerability checks
+  // are what aborted it.
+  assert.match(r.stdout, /The review was aborted before it finished/);
+  assert.ok(r.stdout.includes(`[report.md](${work}/report.md)`), r.stdout);
+  const { findings, meta } = readJson(work, "state.json").report;
+  assert.equal(meta.checksRun.at(-1), "vendor-vulnerable-indirect");
+  assert.ok(findings.some((f) => f.ruleId === "vendor-vulnerable-indirect"));
+  fs.rmSync(source, { recursive: true, force: true });
+});
+
+// A vulnerable source is rescued through the prompts the hand-backs print: the step that
+// settles the roots hands out the copy's `reduce`, and one that leaves the copy vulnerable
+// its `fix`, each naming the copy and the work folder to hand back. OSV is answered from the
+// run's cache, which an earlier preparation of the same source filled.
+test("the hand-backs print a rescued copy's reduce and then its fix", async () => {
+  const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
+  const source = path.join(fixture, "src");
+  const { work: earlier } = await realPreparation({
+    source,
+    xpi: path.join(fixture, "xpi"),
+    vulns: {
+      "lint-pebble@0.4.0": [
+        advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
+      ],
+    },
+  });
+  const dir = submissionFolder();
+  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+  assert.equal(r.code, 0, r.stderr);
+  const work = workOf(r.stdout);
+  fs.cpSync(path.join(earlier, ".cache"), path.join(work, ".cache"), {
+    recursive: true,
+  });
+  fs.cpSync(source, headerValue(r.stdout, "EXTRACT_TO"), { recursive: true });
+  answer(work, { SCA_ROOT: headerValue(r.stdout, "EXTRACT_TO") });
+  const copy = path.join(work, "rescued");
+  const step = (prompt, name) => {
+    const next = run(argvOf(commandOf(prompt)));
+    assert.equal(next.code, 0, next.stdout + next.stderr);
+    assert.match(next.stdout, /── SCA Review Prompt ──/);
+    assert.equal(headerValue(next.stdout, "RESCUE_ROOT"), copy);
+    assert.deepEqual(commandOf(next.stdout), [`--llm-handback ${work}`]);
+    assert.equal(readJson(work, "prepare.json").step, name);
+    return next.stdout;
+  };
+  const reduce = step(r.stdout, "reduce");
+  assert.doesNotMatch(reduce, /npm audit fix/);
+  const fix = step(reduce, "fix");
+  assert.match(fix, /npm audit fix/);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // The prompt's one command is typed by its reader, and a submission folder is as likely to

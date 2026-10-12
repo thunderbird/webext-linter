@@ -90,6 +90,9 @@ import unrecognizedManifestKey from "../../src/checks/rules/unrecognized-manifes
 import backgroundModule from "../../src/checks/rules/background-module.js";
 import unusedPermissionProducer from "../../src/checks/rules/unused-permission.js";
 import unrecognizedFileType from "../../src/checks/rules/unrecognized-file-type.js";
+import bundledFiles from "../../src/checks/rules/bundled-files.js";
+import minimizeWar from "../../src/checks/rules/minimize-web-accessible-resources.js";
+import unsafeHtml from "../../src/checks/rules/unsafe-html.js";
 import { scanNetworkSinks } from "../../src/parse/network-sinks.js";
 import { parseApiUsage } from "../../src/parse/api-usage.js";
 import { getPermissionAnalysis } from "../../src/lib/permissions.js";
@@ -3708,6 +3711,22 @@ test("strict-max-version-api is skipped without strict_max_version", async () =>
   assert.equal(out.length, 0);
 });
 
+// Only a call or a listener needs the API to exist. Reading the namespace itself - the
+// usual feature test - works on every version, so a namespace newer than the declared
+// maximum is not reported for that read.
+test("strict-max-version-api ignores a bare namespace read", async () => {
+  const out = (
+    await strictMaxVersionApi.run(
+      withManifest(
+        maxCtx("60.*", [
+          { root: "messenger", segments: ["messages"], line: 1, column: 0 }, // va 66
+        ])
+      )
+    )
+  ).findings;
+  assert.deepEqual(out, []);
+});
+
 // ---- strict-min-version-api ----
 // version_added newer than the declared strict_min_version: installs at the low
 // end of the supported range lack the API. Tuple compare (minor/patch matter).
@@ -6647,6 +6666,107 @@ test("locale-messages-invalid checks the messages shape, one folder per locale",
       ["_locales/fr/messages.json", "not messages data"],
       ["_locales/it/messages.json", "not messages data"],
     ]
+  );
+});
+
+// A loader argument that names no file is not a missing one: getURL("") is the common way
+// to ask for the add-on's base URL, and a bare fragment stays on the current page. Both
+// would otherwise reach the file lookup and be rejected as files the XPI does not bundle.
+test("bundled-files ignores an empty or fragment-only loader argument", async () => {
+  for (const code of [
+    'browser.runtime.getURL("");',
+    'browser.tabs.create({ url: "#top" });',
+  ]) {
+    const manifest = {
+      manifest_version: 3,
+      background: { scripts: ["bg.js"] },
+    };
+    const ctx = withManifest({
+      artifact: {
+        files: new Map([["bg.js", Buffer.from(code)]]),
+        manifest: manifestOf(manifest),
+      },
+      schema,
+      jsSources: parsed([{ file: "bg.js", code, lineOffset: 0 }], { schema }),
+    });
+    assert.deepEqual((await bundledFiles.run(ctx)).findings, [], code);
+  }
+});
+
+// An exposed resource named only by dead code is needless exposure only while nothing live
+// can build a path to it. A live dynamic loader might, so the file goes to a reviewer
+// instead of being reported as plainly unloaded.
+test("minimize-WAR escalates a dead-code resource when a live dynamic loader exists", async () => {
+  const manifest = {
+    manifest_version: 3,
+    content_scripts: [{ js: ["cs.js"], matches: ["https://example.com/*"] }],
+    web_accessible_resources: [
+      { resources: ["res.png"], matches: ["https://example.com/*"] },
+    ],
+  };
+  const addon = {
+    files: new Map(
+      Object.entries({
+        "cs.js": 'const p = "x";\nbrowser.runtime.getURL(p);',
+        "dead.html": '<img src="res.png">',
+        "res.png": "",
+      }).map(([k, v]) => [k, Buffer.from(v)])
+    ),
+    manifest: manifestOf(manifest),
+  };
+  const out = await minimizeWar.run(
+    withManifest({ artifact: addon, jsSources: parsedSources(addon) })
+  );
+  assert.deepEqual(
+    out.escalations.map((e) => e.item),
+    ["res.png"]
+  );
+  assert.ok(!out.findings.some((f) => f.item === "res.png"));
+});
+
+// A resource a content script loads is the exposure doing its job: it is settled, so it is
+// neither reported nor put to a reviewer, even though live code names it.
+test("minimize-WAR leaves a resource a web context loads alone", async () => {
+  const manifest = {
+    manifest_version: 3,
+    content_scripts: [{ js: ["cs.js"], matches: ["https://example.com/*"] }],
+    web_accessible_resources: [
+      { resources: ["used.png"], matches: ["https://example.com/*"] },
+    ],
+  };
+  const addon = {
+    files: new Map(
+      Object.entries({
+        "cs.js": 'browser.runtime.getURL("used.png");',
+        "used.png": "",
+      }).map(([k, v]) => [k, Buffer.from(v)])
+    ),
+    manifest: manifestOf(manifest),
+  };
+  const out = await minimizeWar.run(
+    withManifest({ artifact: addon, jsSources: parsedSources(addon) })
+  );
+  assert.deepEqual(out.findings, []);
+  assert.deepEqual(out.escalations, []);
+});
+
+// A library's own HTML writes are not the developer's: unsafe-html reads the same
+// non-authored set every content check skips, and reports only the authored file.
+test("unsafe-html skips a non-authored file", async () => {
+  const code = "el.innerHTML = s;";
+  const ctx = withManifest({
+    artifact: {
+      files: new Map(),
+      bundled: { classified: [], nonAuthored: new Set(["lib.js"]) },
+    },
+    jsSources: parsed([
+      { file: "lib.js", code, lineOffset: 0 },
+      { file: "app.js", code, lineOffset: 0 },
+    ]),
+  });
+  assert.deepEqual(
+    (await unsafeHtml.run(ctx)).findings.map((f) => f.file),
+    ["app.js"]
   );
 });
 

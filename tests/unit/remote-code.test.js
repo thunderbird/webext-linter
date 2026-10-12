@@ -61,6 +61,19 @@ test("HTML scan flags remote script/link/iframe, ignores local", async () => {
   assert.ok(refs.some((r) => r.kind.script && r.klass.local));
 });
 
+// <object> loads its data attribute and <embed> its src, so a remote one of each is
+// remote content like an <iframe>.
+test("HTML scan flags a remote object data and embed src as content", async () => {
+  const refs = scanHtmlRemoteRefs(
+    `<object data="https://evil.example.com/a"></object>
+         <embed src="https://evil.example.com/b">`
+  );
+  assert.deepEqual(
+    refs.filter((r) => r.klass.remote && r.kind.content).map((r) => r.tag),
+    ["object", "embed"]
+  );
+});
+
 // ---- CSS ----
 // A remote @import and a remote url() are reported (kinds import/url); a local
 // @import and a relative font url() are ignored.
@@ -467,6 +480,58 @@ test("JS scan flags eval-family sinks reached via bracketed global access", asyn
   );
   // Gating preserved: a bracketed "eval" on a NON-global object is not a sink.
   assert.ok(!types(`myInterpreter["eval"]("x");`).includes("eval"));
+});
+
+// The rest of the code-string sinks: setInterval like setTimeout, a static template
+// body like a string, and a fetched body handed to Function like one handed to eval.
+test("JS scan flags every code-string timer and a then(Function)", async () => {
+  assert.ok(types(`setInterval("tick()", 10);`).includes("string-timer"));
+  assert.ok(types("setTimeout(`tick()`, 10);").includes("string-timer"));
+  assert.ok(
+    types(`fetch(u).then((r) => r.text()).then(Function);`).includes(
+      "ambiguous-fetch-eval"
+    )
+  );
+});
+
+// Every way to inject a remote <script> as HTML is the same sink as document.write,
+// and a module re-exported from a remote URL is loaded like an imported one.
+test("JS scan flags remote script HTML and re-exports through every API", async () => {
+  const tag = `'<script src="https://cdn.example.com/x.js"></script>'`;
+  for (const code of [
+    `document.writeln(${tag});`,
+    `el.outerHTML = ${tag};`,
+    `el.insertAdjacentHTML("beforeend", ${tag});`,
+  ]) {
+    assert.ok(types(code).includes("remote-script-html"), code);
+  }
+  for (const code of [
+    `export * from "https://cdn.example.com/m.js";`,
+    `export { a } from "https://cdn.example.com/m.js";`,
+  ]) {
+    assert.ok(types(code).includes("remote-import"), code);
+  }
+});
+
+// A script element's src set through setAttribute is judged like an assigned one, an
+// inline data: payload is reported embedded, and streamed wasm counts by either API.
+test("JS scan flags setAttribute src, embedded script src and compileStreaming", async () => {
+  const el = `const s = document.createElement("script");`;
+  assert.ok(
+    types(
+      `${el} s.setAttribute("src", "https://cdn.example.com/x.js");`
+    ).includes("remote-script-src")
+  );
+  assert.ok(
+    types(`${el} s.src = "data:text/javascript,alert(1)";`).includes(
+      "embedded-script-src"
+    )
+  );
+  assert.ok(
+    types(
+      `WebAssembly.compileStreaming(fetch("https://cdn.example.com/m.wasm"));`
+    ).includes("remote-wasm")
+  );
 });
 
 // rel is parsed as space-separated tokens: "alternate stylesheet" matches via

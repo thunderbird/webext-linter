@@ -679,6 +679,46 @@ test("a wrong hand-back is refused, and changes nothing", () => {
   );
 });
 
+// An entry handed back twice is refused, even where every entry is answered: otherwise the
+// later copy silently decides the item, whichever of the two the agent meant.
+test("an entry handed back twice is refused, and changes nothing", () => {
+  const { state, work } = review(tmp(), { sweep: false });
+  state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
+  state.issued = ["spawn", "details"];
+  assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "verify");
+  const before = JSON.stringify(state);
+  const doc = JSON.parse(fs.readFileSync(reviewFileOf(work), "utf8"));
+  doc.entries.forEach((e) => (e.answer = "reported"));
+  doc.entries.push({ ...doc.entries[0], answer: "withdrawn" });
+  fs.writeFileSync(reviewFileOf(work), JSON.stringify(doc, null, 1));
+  assert.throws(() => accept(state, work, PHASES, REGISTRY), /appears twice/);
+  assert.equal(JSON.stringify(state), before);
+});
+
+// A phase that asks a person takes their words, and an empty answer or one that is not
+// text is none. Taken anyway, an empty one breaks the review only once it is settled, and
+// anything else is reported as a note the reviewer never wrote.
+test("a person's answer that is empty or not text is refused at the hand-back", () => {
+  const { state, work } = review(tmp(), {
+    sweep: false,
+    findings: false,
+    code: false,
+  });
+  state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
+  state.issued = ["spawn", "details"];
+  assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "ask");
+  const before = JSON.stringify(state);
+  for (const said of ["", { label: "Clear" }, 1]) {
+    handBack(work, () => said);
+    assert.throws(
+      () => accept(state, work, PHASES, REGISTRY),
+      /answers with nothing a reviewer said/,
+      JSON.stringify(said)
+    );
+  }
+  assert.equal(JSON.stringify(state), before);
+});
+
 // The sweep asks nothing of the file every other phase uses: its work is starting the
 // agents, and each of those answers in a file of its own. So what goes out is empty, and
 // what makes the review whole is the answers files - where an empty list is a real answer
@@ -1875,6 +1915,63 @@ test("the details link the build diff only when the build phase wrote one", () =
       }
     }
   }
+});
+
+// A process-value phase can have a product too: the build report is written by the phase
+// that judges the build. Recorded as that phase comes back, so the blocks the reviewer
+// chooses who builds from link the report the choice rests on, and only once it exists.
+test("the build report is linked once the judging phase wrote it", () => {
+  for (const wrote of [true, false]) {
+    const { state, work } = buildReview(tmp());
+    assert.equal(
+      issue(state, work, PHASES, REGISTRY).phase.name,
+      "build-safety"
+    );
+    if (wrote) {
+      fs.writeFileSync(state.paths.build, "1. npm ci\n");
+    }
+    handBack(work, () => "safe");
+    accept(state, work, PHASES, REGISTRY);
+    const next = issue(state, work, PHASES, REGISTRY);
+    assert.equal(next.phase.name, "build-choice");
+    const linked = /^\* BUILD_PROCESS: \[build\.md\]/m;
+    for (const block of [
+      loopSlots(state, next, work).buildDetails,
+      reviewDetails(state),
+    ]) {
+      if (wrote) {
+        assert.match(block, linked);
+      } else {
+        assert.doesNotMatch(block, /BUILD_PROCESS/);
+      }
+    }
+  }
+});
+
+// The description is linked once the phase that starts its agent went back, and not
+// before: a review that never started the agent has no description to read.
+test("the details link the description only once spawn went out", () => {
+  const { state, work } = review(tmp());
+  state.report.meta.summaryFile = state.paths.description;
+  assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "spawn");
+  assert.doesNotMatch(reviewDetails(state), /ADDON_DESCRIPTION/);
+  swept(state, ARTIFACT_XPI);
+  handBack(work, () => null);
+  accept(state, work, PHASES, REGISTRY);
+  assert.match(reviewDetails(state), /^\* ADDON_DESCRIPTION: \[summary\.md\]/m);
+});
+
+// The closing prompt hands over the FINISHED review's tally and details, the reasons an
+// abort lists among them. The block an earlier pass would build has neither.
+test("the closing prompt's slots carry the settled tally and details", () => {
+  const { state, work } = blockingReview(tmp());
+  const out = issue(state, work, PHASES, REGISTRY);
+  assert.equal(out.phase.name, "close");
+  const slots = loopSlots(state, out, work);
+  assert.equal(slots.details, out.settled.details);
+  assert.match(slots.details, /- Known security vulnerabilities$/);
+  assert.equal(slots.tally, out.settled.tally);
+  assert.match(slots.tally, /extended code review item/);
 });
 
 // The two suppressions of the `ask` phase are different facts and must stay so: the skip

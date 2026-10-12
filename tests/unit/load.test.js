@@ -18,6 +18,7 @@ import {
   scaViews,
   scaRootRelative,
   relativeInside,
+  hasParentSegment,
 } from "../../src/addon/load.js";
 import { withExperiment } from "../../src/addon/store.js";
 import { ERROR_CLASS, SYMLINK_CAUSE } from "../../src/lib/enum.js";
@@ -811,6 +812,18 @@ test("relativeInside places an in-source exp folder, else answers null", () => {
   );
 });
 
+// A path written by someone else (an agent's answer, a hand-back) steps out of its tree by
+// any ".." segment, wherever it sits and whichever separator writes it, since a backslash is
+// a separator wherever the path is later read on Windows.
+test("hasParentSegment finds a way out under either separator", () => {
+  for (const out of ["../x", "src/../../x", "..\\x", "src\\..\\x", ".."]) {
+    assert.equal(hasParentSegment(out), true, out);
+  }
+  for (const inside of ["src/x", "..x/y", "x..", "a/...", ""]) {
+    assert.equal(hasParentSegment(inside), false, inside);
+  }
+});
+
 // A ZIP entry name is taken as written - entryKey strips a leading "./" and nothing else -
 // so a name carrying path SYNTAX rather than names ("." , "" or "..") keys a file where the
 // manifest.json's own reference can never find it (normalizeRefInDir drops both), and two
@@ -1378,6 +1391,42 @@ test("loadAddon(file) records an archive's empty directory entries", () => {
   assert.throws(() => loadAddon(bad, path.join(dir, "out2"), XPI), {
     message: `Could not read archive: ${bad}`,
   });
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A directory entry is created on disk like a file is written, so a name stepping out of
+// the package refuses the archive the same way, and nothing is created beside it.
+test("a directory entry naming a way out of the package refuses the archive", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-direscape-"));
+  const zip = new AdmZip();
+  zip.addFile("manifest.json", Buffer.from(MANIFEST));
+  zip.addFile("lib/", Buffer.alloc(0));
+  zip.getEntries().find((e) => e.entryName === "lib/").entryName =
+    "../ESCAPED/";
+  const file = path.join(dir, "addon.xpi");
+  zip.writeZip(file);
+  assert.throws(() => loadAddon(file, path.join(dir, "out"), XPI), {
+    message: `Could not read archive: ${file}`,
+  });
+  assert.equal(fs.existsSync(path.join(dir, "ESCAPED")), false);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// An unpacked folder is held to the same unpacked cap as an archive, counted from the
+// sizes on disk. A sparse file reaches it without writing the bytes.
+test("an unpacked folder over the unpacked cap is refused at load", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-dircap-"));
+  const src = path.join(dir, "src");
+  fs.mkdirSync(src);
+  fs.writeFileSync(path.join(src, "manifest.json"), MANIFEST);
+  fs.writeFileSync(path.join(src, "big.js"), "");
+  fs.truncateSync(path.join(src, "big.js"), ADDON_MAX_UNPACKED_BYTES + 1);
+  assert.throws(
+    () => loadAddon(src, path.join(dir, "out"), XPI),
+    /unpacked size exceeds/
+  );
 
   fs.rmSync(dir, { recursive: true, force: true });
 });

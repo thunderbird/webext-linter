@@ -138,6 +138,36 @@ test("isCompleteHashDb rejects a truncated or empty hash DB", () => {
   assert.equal(isCompleteHashDb("# only a comment\n"), false); // newline but zero entries
 });
 
+// The gate is applied, not just defined: a fresh cache cut mid-line is not used but
+// downloaded again, and the complete copy replaces it.
+test("a fresh but truncated hash DB is downloaded again", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "libhash-cut-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cached = path.join(dir, "dispensary-hashes.txt");
+  fs.writeFileSync(cached, `${H} lib.1.0.0.lib.js\n${"b".repeat(64)} li`);
+
+  fetching(t, () => new Response(`${H} lib.2.0.0.lib.js\n`, { status: 200 }));
+  const { text, source } = await resolveLibraryHashes({ cacheDir: dir });
+  assert.equal(source, "download");
+  assert.match(text, /lib\.2\.0\.0/);
+  assert.match(fs.readFileSync(cached, "utf8"), /lib\.2\.0\.0/);
+});
+
+// A download that is not a complete DB (an error page served with a 200) ends the review
+// and is never cached, so the next run does not review against it either.
+test("an incomplete download is refused and not cached", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "libhash-bad-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  fetching(t, () => new Response("<html>maintenance</html>", { status: 200 }));
+  await assert.rejects(resolveLibraryHashes({ cacheDir: dir }), /incomplete/);
+  assert.equal(
+    fs.existsSync(path.join(dir, "dispensary-hashes.txt")),
+    false,
+    "nothing cached"
+  );
+});
+
 test("npmNameForLibrary maps dispensary aliases and passes others through", () => {
   // Aliases where the dispensary name differs from the npm package.
   assert.equal(npmNameForLibrary("angularjs"), "angular");

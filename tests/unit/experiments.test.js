@@ -331,6 +331,25 @@ test("verifyExperiments: a missing referenced file -> modified", async () => {
   );
 });
 
+// A known API name is not an implementation: a declaration that ships no files of its own
+// has nothing that matched upstream, so it is never pristine, beside a group that is.
+test("verifyExperiments: a known API name with no files -> unsupported", async () => {
+  const manifest = {
+    experiment_apis: {
+      ...DEMO_MANIFEST.experiment_apis,
+      notify: { parent: { paths: [["notify"]] } },
+    },
+  };
+  const res = await verifyExperiments(
+    addon(demoFiles()),
+    manifestOf(manifest),
+    opts
+  );
+  const status = Object.fromEntries(res.groups.map((g) => [g.name, g.status]));
+  assert.deepEqual(status, { demo: "pristine", notify: "unsupported" });
+  assert.equal(res.pristine, false);
+});
+
 test("verifyExperiments: an unknown API name -> unsupported", async () => {
   const manifest = {
     experiment_apis: {

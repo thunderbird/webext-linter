@@ -394,6 +394,15 @@ test("a process-value phase declares its values, and conditions read only those"
     /reports `unused-files`, which is not an error check with a review-early-exit/
   );
 
+  // A check that aborts the review but stamps no error of its own (`severity: auto`): its
+  // finding could not abort, so the value would end nothing.
+  const weak = withValuePhase();
+  phaseNamed(weak, "safety").values[1].reports = "vendor-vulnerable";
+  assert.throws(
+    () => check(weak),
+    /reports `vendor-vulnerable`, which is not an error check/
+  );
+
   for (const [when, refusal] of [
     ["value(safety, safe)", null],
     [

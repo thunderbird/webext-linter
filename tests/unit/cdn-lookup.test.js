@@ -493,6 +493,58 @@ test("a small readable file is below the threshold and not CDN-identified", asyn
   assert.equal(net.lookupCalls.length, 0, "not sent to the CDN");
 });
 
+// Being minified waives the readable floor, not the classification floor: a packed chunk
+// too small to be a library release is never hashed to the CDN, at any density.
+test("a minified file below the classification floor is not sent to the CDN", async () => {
+  const TINY = `var a=0;${"a=a+1;".repeat(100)}`; // ~600 bytes, under 1KB
+  const addon = classify(addonWith({ "app/chunk.js": TINY }));
+  assert.equal(
+    addon.bundled.classified.find((c) => c.file === "app/chunk.js").minified,
+    true
+  );
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(addon.files.get("app/chunk.js"));
+  const net = netFor(
+    new Map([
+      [hash, { type: "npm", name: "chunk", version: "1.0.0", file: "/c.js" }],
+    ])
+  );
+
+  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+
+  assert.equal(net.lookupCalls.length, 0, "not sent to the CDN");
+  assert.equal(
+    addon.bundled.classified.find((c) => c.file === "app/chunk.js").libraryId,
+    undefined
+  );
+});
+
+// A file the Mozilla hash DB already named is never asked of the CDN: that would hash a
+// known library to a third party for nothing, and a hit would rename the release the OSV
+// audit queries.
+test("a file the hash DB identified is not looked up again", async () => {
+  const addon = addonWith({ "lib/jquery.min.js": MINIFIED });
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(addon.files.get("lib/jquery.min.js"));
+  addon.bundled = classifyBundled(addon, {
+    libraryHashes: new Map([[hash, { name: "jquery", version: "3.6.0" }]]),
+  });
+  const net = netFor(
+    new Map([
+      [hash, { type: "npm", name: "other", version: "9.9.9", file: "/o.js" }],
+    ])
+  );
+
+  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+
+  assert.equal(net.calls.length, 0, "no request at all");
+  const tag = addon.bundled.classified.find(
+    (c) => c.file === "lib/jquery.min.js"
+  );
+  assert.deepEqual(tag.libraryId, { name: "jquery", version: "3.6.0" });
+  assert.equal(tag.cdn, undefined);
+});
+
 // The obfuscation veto holds for readable files too: an obfuscated file is never sent
 // to the CDN, so identification can never launder obfuscated code into the trusted family.
 test("a readable obfuscated file is NOT CDN-identified (obfuscation is never laundered)", async () => {

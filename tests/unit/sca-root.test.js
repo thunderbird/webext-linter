@@ -138,6 +138,17 @@ test("node_modules and dotfolders are skipped at every level", () => {
   );
 });
 
+// A symbolic link is not a folder of the submission: the walk never follows one, so the
+// root cannot settle on a package.json the link reaches outside the archive.
+test("a lone symlinked subfolder is not followed out of the root", () => {
+  const outside = tree({ "package.json": PKG });
+  const root = tree({ "README.md": "x" });
+  fs.symlinkSync(outside, path.join(root, "wrap"), "dir");
+  const out = settleScaRoot({ scaRoot: root });
+  assert.equal(out.scaRoot, root);
+  assert.equal(out.movedFrom, null);
+});
+
 // Containment is an invariant of every source code review, so it decides here too: a move
 // that put --sca-exp-source outside the root would trade a wrong root for a failed run.
 test("the move is abandoned where the Experiment folder would fall outside", () => {

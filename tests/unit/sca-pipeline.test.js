@@ -674,6 +674,45 @@ test("an SCA --llm-review names a build report in the work folder", async () => 
   }
 });
 
+// The review builds the source itself only where every check a build relies on ran: with
+// one switched off, by --checks-skip or by a --checks-only that leaves it out, nothing
+// vouches for what the build would install, so the run record says so.
+test("an SCA --llm-review records whether its build is guarded", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir(SRC_FILES);
+  const guarded = async (selection) => {
+    const work = freshWorkFolder();
+    await runReview({
+      addonPath: xpi,
+      scaRoot: src,
+      llmReview: true,
+      workFolder: work,
+      ...selection,
+      ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
+    });
+    const { run } = JSON.parse(
+      fs.readFileSync(path.join(work, "state.json"), "utf8")
+    );
+    return run["build-guarded"] === true;
+  };
+  try {
+    assert.equal(await guarded({}), true);
+    assert.equal(
+      await guarded({ checksSkip: ["vendor-vulnerable-indirect-dev"] }),
+      false
+    );
+    assert.equal(await guarded({ checksOnly: ["lockfile-injection"] }), false);
+    assert.equal(
+      await guarded({ checksOnly: loadRegistry().buildGuardIds() }),
+      true
+    );
+  } finally {
+    fs.rmSync(xpi, { recursive: true, force: true });
+    fs.rmSync(src, { recursive: true, force: true });
+  }
+});
+
 test("SCA e2e: code checks review the source; manifest/WAR resolve against the XPI", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(SRC_FILES);

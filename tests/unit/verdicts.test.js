@@ -802,6 +802,18 @@ function answerQuestion(
     });
 }
 
+// A label is matched whatever its case and the space around it. Read as the reviewer's own
+// words instead, a picked "clear" would REPORT the case they cleared.
+test("a picked label is matched whatever its case and spacing", () => {
+  for (const [answer, verdict] of [
+    [` ${CLEAR.toUpperCase()} `, "cleared"],
+    [REPORT.toLowerCase(), "reported"],
+  ]) {
+    const { applied } = answerQuestion(answer)();
+    assert.deepEqual(said(applied), [`${verdict} (api.example.com)`], answer);
+  }
+});
+
 test("a typed answer closes the case's location line in parentheses", () => {
   const manual = [mkManual("privacy-policy", "Policy", "api.example.com")];
   const { body } = settled(manual, {

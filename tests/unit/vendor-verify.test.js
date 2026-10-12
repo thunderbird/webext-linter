@@ -1881,6 +1881,22 @@ test("a NoAnswerError propagates out of every vendor entry point", async () => {
   );
 });
 
+// GitHub's stars gate the same way: only its 404 is no reading. Silence read as one would
+// let a low-star GitHub install through unrecorded.
+test("a GitHub popularity lookup that gets no answer ends the review", async () => {
+  const silent = () =>
+    goneNet(() => new NoAnswerError("https://api.github.com/repos/u/w", "503"));
+  await assert.rejects(
+    isPopular({ kind: "github", repo: "u/widget" }, silent()),
+    NoAnswerError
+  );
+  const addon = addonWith(
+    { "package-lock.json": "{}" },
+    store({ lockGithubInstalls: [ghLocked("widget", "u/widget")] })
+  );
+  await assert.rejects(verifyScaDependencies(addon, silent()), NoAnswerError);
+});
+
 // ---- grouping the entries that share one npm package ----
 // A bundled library is many files from one release, declared one line each. Verified
 // a file at a time, the release was fetched, asked about and audited once PER FILE:
