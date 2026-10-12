@@ -14,7 +14,18 @@ import AdmZip from "adm-zip";
 import { allSchemaBranches, cachedZipPath } from "../src/schema/fetch.js";
 import { cachedExperimentsPath } from "../src/experiments/fetch.js";
 import { cachedHashesPath } from "../src/lib/library-hashes.js";
-import { EXPERIMENTS_BRANCH } from "../src/config.js";
+import { runCache } from "../src/util/dest.js";
+import {
+  osvBatchKey,
+  osvQueryKey,
+  osvVulnKey,
+} from "../src/vendor/osv-cache.js";
+import { popularityKey } from "../src/vendor/popularity-cache.js";
+import {
+  EXPERIMENTS_BRANCH,
+  VENDOR_GITHUB_REPOS_API,
+  VENDOR_NPM_DOWNLOADS_API,
+} from "../src/config.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA_FIXTURE = path.join(here, "schema-fixture");
@@ -200,4 +211,82 @@ export function cdnMissCache(...folders) {
     JSON.stringify(misses)
   );
   return dir;
+}
+
+/**
+ * A run cache folder holding the answers given, for a review to read through
+ * --cache-work-dir (the run's `workCache`). Removed when the process exits.
+ * @param {{osv?: Record<string, object>, popularity?: Record<string, object>}} entries
+ *   Built by osvEntries and popularityEntries.
+ * @returns {string} The folder's absolute path.
+ */
+export function seedWorkCache({ osv = {}, popularity = {} } = {}) {
+  const dir = freshParent();
+  const files = runCache(dir, dir);
+  fs.writeFileSync(files.osv, JSON.stringify(osv));
+  fs.writeFileSync(files.popularity, JSON.stringify(popularity));
+  return dir;
+}
+
+/**
+ * The npm query OSV is sent for a "name@version" release.
+ * @param {string} release
+ * @returns {{version: string, package: {name: string, ecosystem: string}}}
+ */
+function npmQuery(release) {
+  const at = release.lastIndexOf("@");
+  return {
+    version: release.slice(at + 1),
+    package: { name: release.slice(0, at), ecosystem: "npm" },
+  };
+}
+
+/**
+ * OSV's answers as the run's OSV cache keeps them (src/vendor/osv-cache.js). Each is what
+ * OSV itself answers, so a review reads it exactly as it reads a live reply.
+ * @param {{query?: Record<string, object>, batch?: Record<string, object>,
+ *   advisories?: Record<string, object>}} answers
+ *   `query`: "name@version" (npm) -> the reply to that query sent alone, `{}` for a package
+ *   OSV has no record of, or `{vulns: [...]}` with full advisory records.
+ *   `batch`: "name@version" -> that query's result in a batch, `{}` or `{vulns: [{id}]}`,
+ *   which the review hydrates through `advisories`.
+ *   `advisories`: advisory id -> the record /v1/vulns/<id> serves.
+ * @returns {Record<string, {answer: object}>}
+ */
+export function osvEntries({ query = {}, batch = {}, advisories = {} } = {}) {
+  const entries = {};
+  for (const [release, answer] of Object.entries(query)) {
+    entries[osvQueryKey(npmQuery(release))] = { answer };
+  }
+  for (const [release, answer] of Object.entries(batch)) {
+    entries[osvBatchKey(npmQuery(release))] = { answer };
+  }
+  for (const [id, answer] of Object.entries(advisories)) {
+    entries[osvVulnKey(id)] = { answer };
+  }
+  return entries;
+}
+
+/**
+ * The popularity readings as the run's popularity cache keeps them
+ * (src/vendor/popularity-cache.js). Each is what the host itself answers, or null where it
+ * answers 404 for a package it does not know, kept as the offline stand-in for that 404.
+ * @param {{npm?: Record<string, ?object>, github?: Record<string, ?object>}} readings
+ *   `npm`: package name -> npm's downloads reply, `{downloads: n}`.
+ *   `github`: "owner/repo" -> GitHub's repository reply, `{stargazers_count: n}`.
+ * @returns {Record<string, {answer: object}|{notFound: true}>}
+ */
+export function popularityEntries({ npm = {}, github = {} } = {}) {
+  const entries = {};
+  const keep = (url, answer) => {
+    entries[popularityKey(url)] =
+      answer === null ? { notFound: true } : { answer };
+  };
+  for (const [name, answer] of Object.entries(npm)) {
+    keep(`${VENDOR_NPM_DOWNLOADS_API}${name}`, answer);
+  }
+  for (const [repo, answer] of Object.entries(github)) {
+    keep(`${VENDOR_GITHUB_REPOS_API}${repo}`, answer);
+  }
+  return entries;
 }

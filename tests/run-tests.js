@@ -19,11 +19,21 @@ import { runPipeline } from "../src/pipeline.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
 import { formatReview } from "../src/report/format.js";
 import { setNetworkPacing } from "../src/util/net.js";
-import { VENDOR_OSV_API, VENDOR_OSV_BATCH_API } from "../src/config.js";
+import {
+  CDN_LOOKUP_URL,
+  VENDOR_GITHUB_REPOS_API,
+  VENDOR_NPM_DOWNLOADS_API,
+  VENDOR_OSV_API,
+  VENDOR_OSV_BATCH_API,
+  VENDOR_OSV_VULN_API,
+} from "../src/config.js";
 import {
   cdnMissCache,
   fixtureCacheOpts,
   freshWorkFolder,
+  osvEntries,
+  popularityEntries,
+  seedWorkCache,
 } from "./seed-caches.js";
 import { advisory, realPreparation } from "./prepared.js";
 import { makeTgz } from "./unit/tarball-fixture.js";
@@ -39,8 +49,6 @@ const ROOT = path.resolve(here, "..");
 // A cache pre-seeded from the fixtures, so the pipeline's schema / experiments /
 // library-hash fetches all hit disk - the whole harness runs offline.
 const CACHE_OPTS = fixtureCacheOpts();
-/** The jsDelivr hash lookup a fixture's "network" block can answer, before the hash. */
-const CDN_HASH_LOOKUP = "data.jsdelivr.com/v1/lookup/hash/";
 const ADDONS_DIR = path.join(here, "addons");
 // The fixtures' specs, kept out of the add-ons they describe (see loadFixture).
 const EXPECTED_DIR = path.join(here, "expected");
@@ -62,6 +70,12 @@ const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
 // declares it. The one exception is an OSV query, which OSV answers with an empty 200 for a
 // package it has no record of, and the fixture is answered the same (installFetchMock).
 //
+// What a run keeps in a cache is not served from here: a declared answer from OSV, npm's
+// downloads, GitHub's repositories or the jsDelivr hash lookup is written into the cache the
+// review reads it from (cachedAnswers), the way a real run reads an answer an earlier
+// invocation kept. A question of these families the fixture does not declare still reaches
+// the fake, and gets its default answer: OSV's empty one, a 404 otherwise.
+//
 // With no "network" map every URL 404s, which is what every fixture written before this
 // existed relies on: a declared vendor source becomes "unfetchable" -> the untrusted
 // family (applyUnverifiedVendor), i.e. reviewed as authored code or rejected as
@@ -76,8 +90,8 @@ const REAL_FETCH = globalThis.fetch;
  *                           EXACTLY, and an inline copy would rot the day the fixture
  *                           file is edited.
  *   { "body": "<text>" }    literal bytes - the way to express "modified".
- *   { "json": <value> }     a JSON endpoint (npm downloads, GitHub stars, unpkg ?meta,
- *                           the OSV audit).
+ *   { "json": <value> }     a JSON endpoint (unpkg ?meta). The same form declares an
+ *                           answer a cache keeps (cachedAnswers), which never gets here.
  *   { "tgz": {"<in-package path>": "<fixture path>"} }
  *                           an npm registry tarball PUBLISHING those fixture files,
  *                           built here from their own bytes. Same reasoning as
@@ -155,7 +169,8 @@ function installFetchMock(dir, network) {
     }
     // OSV answers a package it has no record of with an empty 200, never a 404 - which the
     // audit takes for no answer, and ends the review on (src/vendor/verify.js askOsv). So an
-    // OSV query the fixture does not declare is answered the way OSV answers it.
+    // OSV query the fixture does not declare is answered the way OSV answers it. A declared
+    // one never gets here: the run's cache answers it (cachedAnswers).
     if (String(url) === VENDOR_OSV_API) {
       return Response.json({});
     }
@@ -204,24 +219,85 @@ function loadFixture(dir) {
 }
 
 /**
- * The CDN lookup cache a fixture is reviewed with: jsDelivr's answer for each of its files
- * already in it, a miss - except the files whose lookup the fixture's "network" block
- * answers itself (data.jsdelivr.com/v1/lookup/hash/<sha256>), which it asks for.
- * @param {string} dir  The fixture.
- * @param {Record<string, object>} network  Its "network" block.
- * @returns {string} The cache directory.
+ * Split a fixture's "network" block into what the review's caches answer and what is left
+ * for the fake fetch. The cached families:
+ *   - OSV. A declared /v1/query or /v1/querybatch answer names the queries it answers in
+ *     `queries` ("name@version", npm), since the run's cache keeps OSV's answer per query.
+ *     A batch's `json.results` pair with them by position. /v1/vulns/<id> is the record.
+ *   - npm's downloads and GitHub's repositories, a declared 404 kept as the offline
+ *     stand-in for it (popularityEntries).
+ *   - jsDelivr's hash lookup, a declared hit kept in the CDN lookup cache (fixtureCdnCache).
+ * Each is a JSON answer, or a 404 where the host gives one for what it does not know.
+ * Any other status is no answer, which no cache keeps, so it is refused here.
+ * @param {Record<string, object>} network
+ * @returns {{fetch: Record<string, object>, osv: object, popularity: object,
+ *   cdn: Record<string, object>}}
  */
-function fixtureCdnCache(dir, network) {
-  const cache = cdnMissCache(dir);
-  const file = path.join(cache, "jsdelivr-hash-lookup.json");
-  const misses = JSON.parse(fs.readFileSync(file, "utf8"));
-  for (const url of Object.keys(network)) {
-    const at = url.indexOf(CDN_HASH_LOOKUP);
-    if (at !== -1) {
-      delete misses[url.slice(at + CDN_HASH_LOOKUP.length)];
+function cachedAnswers(network) {
+  const fetch = {};
+  const osv = { query: {}, batch: {}, advisories: {} };
+  const popularity = { npm: {}, github: {} };
+  const cdn = {};
+  const answer = (url, spec, notFound) => {
+    if (spec.json !== undefined && (spec.status ?? 200) === 200) {
+      return spec.json;
+    }
+    if (notFound !== undefined && spec.status === 404) {
+      return notFound;
+    }
+    throw new Error(`${url}: no cache keeps this answer`);
+  };
+  for (const [url, spec] of Object.entries(network)) {
+    if (url === VENDOR_OSV_API || url === VENDOR_OSV_BATCH_API) {
+      const json = answer(url, spec);
+      const queries = spec.queries ?? [];
+      const results = url === VENDOR_OSV_API ? [json] : (json.results ?? []);
+      if (queries.length === 0 || queries.length !== results.length) {
+        throw new Error(
+          `${url}: ${results.length} answers for queries ${queries}`
+        );
+      }
+      const into = url === VENDOR_OSV_API ? osv.query : osv.batch;
+      queries.forEach((release, i) => {
+        into[release] = results[i];
+      });
+    } else if (url.startsWith(VENDOR_OSV_VULN_API)) {
+      osv.advisories[url.slice(VENDOR_OSV_VULN_API.length)] = answer(url, spec);
+    } else if (url.startsWith(VENDOR_NPM_DOWNLOADS_API)) {
+      popularity.npm[url.slice(VENDOR_NPM_DOWNLOADS_API.length)] = answer(
+        url,
+        spec,
+        null
+      );
+    } else if (url.startsWith(VENDOR_GITHUB_REPOS_API)) {
+      popularity.github[url.slice(VENDOR_GITHUB_REPOS_API.length)] = answer(
+        url,
+        spec,
+        null
+      );
+    } else if (url.startsWith(CDN_LOOKUP_URL)) {
+      cdn[url.slice(CDN_LOOKUP_URL.length)] = answer(url, spec, {
+        notFound: true,
+      });
+    } else {
+      fetch[url] = spec;
     }
   }
-  fs.writeFileSync(file, JSON.stringify(misses));
+  return { fetch, osv, popularity, cdn };
+}
+
+/**
+ * The CDN lookup cache a fixture is reviewed with: jsDelivr's answer for each of its files
+ * already in it, a miss unless the fixture's "network" block declares the lookup's answer.
+ * @param {string} dir  The fixture.
+ * @param {Record<string, object>} declared  sha256 -> the declared answer (cachedAnswers).
+ * @returns {string} The cache directory.
+ */
+function fixtureCdnCache(dir, declared) {
+  const cache = cdnMissCache(dir);
+  const file = path.join(cache, "jsdelivr-hash-lookup.json");
+  const entries = JSON.parse(fs.readFileSync(file, "utf8"));
+  fs.writeFileSync(file, JSON.stringify({ ...entries, ...declared }));
   return cache;
 }
 
@@ -372,7 +448,8 @@ async function main() {
       preparation,
     } = loadFixture(dir);
     let problems;
-    const restoreFetch = installFetchMock(dir, network);
+    const answers = cachedAnswers(network);
+    const restoreFetch = installFetchMock(dir, answers.fetch);
     try {
       // The review opts every fixture runs with. A fixture's flag "options" parse in
       // first; the harness's cache opts win, because pipelineOptsFromArgv supplies the
@@ -381,12 +458,37 @@ async function main() {
       // The CDN identifier runs as in any review (a fixture's own --cdn-lib-lookup false
       // turns it off), answered from a cache of the fixture's own (fixtureCdnCache).
       //
+      // The run's OSV and popularity answers are read from a cache folder of the fixture's
+      // own, named the way a test names it on the command line (--cache-work-dir). A
+      // prepared fixture's review reads the cache its preparation kept instead, so it may
+      // declare none of these answers.
+      //
       // Each fixture gets a fresh work folder of its own: the default one sits beside the
       // add-on argument, which would put a copy of every fixture inside tests/addons.
+      const argv = optionsToArgv(options);
+      if (preparation) {
+        const declared = [
+          ...Object.values(answers.osv),
+          ...Object.values(answers.popularity),
+        ].some((family) => Object.keys(family).length > 0);
+        if (declared) {
+          throw new Error(
+            "a prepared fixture declares OSV or popularity answers"
+          );
+        }
+      } else {
+        argv.push(
+          "--cache-work-dir",
+          seedWorkCache({
+            osv: osvEntries(answers.osv),
+            popularity: popularityEntries(answers.popularity),
+          })
+        );
+      }
       const base = {
-        ...pipelineOptsFromArgv(optionsToArgv(options)),
+        ...pipelineOptsFromArgv(argv),
         ...CACHE_OPTS,
-        cdnLookupCache: fixtureCdnCache(dir, network),
+        cdnLookupCache: fixtureCdnCache(dir, answers.cdn),
         workFolder: freshWorkFolder(),
       };
       // The folder the review runs in: the fresh one, or the one a preparation left.

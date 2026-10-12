@@ -40,6 +40,34 @@ export function queryKey(query) {
 }
 
 /**
+ * The cache key of OSV's answer to one query sent alone (VENDOR_OSV_API).
+ * @param {{version?: string, package?: {name?: string, ecosystem?: string}}} query
+ * @returns {string}
+ */
+export function osvQueryKey(query) {
+  return `query:${queryKey(query)}`;
+}
+
+/**
+ * The cache key of OSV's answer to one query of a batch (VENDOR_OSV_BATCH_API). Kept apart
+ * from osvQueryKey, because the batch answers with bare advisory ids.
+ * @param {{version?: string, package?: {name?: string, ecosystem?: string}}} query
+ * @returns {string}
+ */
+export function osvBatchKey(query) {
+  return `batch:${queryKey(query)}`;
+}
+
+/**
+ * The cache key of one advisory's record (VENDOR_OSV_VULN_API).
+ * @param {string} id
+ * @returns {string}
+ */
+export function osvVulnKey(id) {
+  return `vuln:${id}`;
+}
+
+/**
  * `net`, with OSV answered from the run's cache in `file`. Only what OSV answered is kept. A
  * failure - a 404 included, which is no answer from OSV (src/vendor/verify.js askOsv) - passes
  * up and is not kept: the run ends on it, and is handed back in this same work folder once OSV
@@ -72,19 +100,19 @@ export function withOsvCache(net, file) {
       if (!String(url).startsWith(VENDOR_OSV_VULN_API)) {
         return net.fetchJson(url);
       }
-      return once(`vuln:${url.slice(VENDOR_OSV_VULN_API.length)}`, () =>
+      return once(osvVulnKey(url.slice(VENDOR_OSV_VULN_API.length)), () =>
         net.fetchJson(url)
       );
     },
     async postJson(url, body) {
       if (url === VENDOR_OSV_API) {
-        return once(`query:${queryKey(body)}`, () => net.postJson(url, body));
+        return once(osvQueryKey(body), () => net.postJson(url, body));
       }
       if (url !== VENDOR_OSV_BATCH_API) {
         return net.postJson(url, body);
       }
       const queries = Array.isArray(body?.queries) ? body.queries : [];
-      const keys = queries.map((q) => `batch:${queryKey(q)}`);
+      const keys = queries.map(osvBatchKey);
       const missing = queries.filter((_, i) => !kept(keys[i]));
       if (missing.length > 0) {
         const results = completeBatch(

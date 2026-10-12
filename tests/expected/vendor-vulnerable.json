@@ -8,6 +8,7 @@
       "json": { "downloads": 8000000 }
     },
     "https://api.osv.dev/v1/query": {
+      "queries": ["marked@4.0.0"],
       "json": {
         "vulns": [
           {

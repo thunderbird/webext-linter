@@ -1,5 +1,5 @@
 {
-  "_comment": "The SCA dependency audit, driven by the faked network below, reading the committed package-lock.json alone. tiny-obscure-helper is a package the lock marks as declared, and nobody uses it (12 downloads a month), so unpopular-source-dependency rejects it, anchored at its lock entry: a dependency the reviewer cannot lean on the community for must be shipped readable instead. vitest (a devDependency) and platform-binary (an optionalDependency) are declared too, so they are popularity-gated the same way, though this fixture does not exercise that: the network map answers a downloads lookup for tiny-obscure-helper only, so theirs 404 and record nothing. Every installed package is OSV-audited in one batch, and the batch answers each of the three with a MODERATE advisory - which produces NOTHING: a source review reports a package when it fails the review, not when it merely appears, and that absence is the threshold's end-to-end pin for declared dependencies. The batch results are POSITIONAL, in the enumeration's sorted order (platform-binary, tiny-obscure-helper, vitest).",
+  "_comment": "The SCA dependency audit, driven by the faked network below, reading the committed package-lock.json alone. tiny-obscure-helper is a package the lock marks as declared, and nobody uses it (12 downloads a month), so unpopular-source-dependency rejects it, anchored at its lock entry: a dependency the reviewer cannot lean on the community for must be shipped readable instead. vitest (a devDependency) and platform-binary (an optionalDependency) are declared too, so they are popularity-gated the same way, though this fixture does not exercise that: the network map answers a downloads lookup for tiny-obscure-helper only, so theirs 404 and record nothing. Every installed package is OSV-audited in one batch, and the batch answers each of the three with a MODERATE advisory - which produces NOTHING: a source review reports a package when it fails the review, not when it merely appears, and that absence is the threshold's end-to-end pin for declared dependencies. The batch results pair by position with the `queries` it names, one per package the lock installs.",
   "network": {
     "https://api.npmjs.org/downloads/point/last-month/tiny-obscure-helper": {
       "json": {
@@ -7,6 +7,11 @@
       }
     },
     "https://api.osv.dev/v1/querybatch": {
+      "queries": [
+        "platform-binary@2.3.3",
+        "tiny-obscure-helper@1.0.0",
+        "vitest@1.0.0"
+      ],
       "json": {
         "results": [
           {
