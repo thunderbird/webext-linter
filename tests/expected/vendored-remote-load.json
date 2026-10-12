@@ -5,7 +5,13 @@
       "sameAs": "lib/theme.css"
     },
     "https://api.npmjs.org/downloads/point/last-month/theme": {
-      "json": { "downloads": 180000 }
+      "json": {
+        "downloads": 180000
+      }
+    },
+    "https://api.osv.dev/v1/query": {
+      "queries": ["theme@2.1.0"],
+      "json": {}
     }
   },
   "expect": {}

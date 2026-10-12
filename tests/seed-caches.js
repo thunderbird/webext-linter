@@ -15,7 +15,14 @@ import { allSchemaBranches, cachedZipPath } from "../src/schema/fetch.js";
 import { cachedExperimentsPath } from "../src/experiments/fetch.js";
 import { cachedHashesPath } from "../src/lib/library-hashes.js";
 import { runCache } from "../src/util/dest.js";
-import { bytesKey, listingKey } from "../src/vendor/source-cache.js";
+import {
+  bytesKey,
+  listingKey,
+  withSourceCache,
+} from "../src/vendor/source-cache.js";
+import { withRunCache } from "../src/vendor/run-cache.js";
+import { defaultNet } from "../src/vendor/verify.js";
+import { makeTgz } from "./unit/tarball-fixture.js";
 import {
   osvBatchKey,
   osvQueryKey,
@@ -261,6 +268,72 @@ export function seedSourcesCache({ bytes = {}, meta = {}, missing = [] } = {}) {
 }
 
 /**
+ * The library sources a fixture's "network" map declares, as seedSourcesCache takes them.
+ * Each entry is what the host serves at that URL:
+ *   { "sameAs": "<path>" }  the bytes of a file in the fixture, read from disk. The way to
+ *                           express "this declaration checks out": a `verified` outcome
+ *                           needs the upstream bytes to equal the packaged ones EXACTLY,
+ *                           and an inline copy would rot the day the fixture file is edited.
+ *   { "body": "<text>" }    literal bytes - the way to express "modified".
+ *   { "tgz": {"<in-package path>": "<fixture path>"} }
+ *                           an npm registry tarball PUBLISHING those fixture files, built
+ *                           from their own bytes, each at the in-package path named, which
+ *                           is what the verification checks. A committed binary would rot
+ *                           the day a file is edited, and could not be read in a diff.
+ *   { "meta": {"<published path>": "<fixture path>"} }
+ *                           an unpkg "?meta" listing PUBLISHING those fixture files, each
+ *                           entry's `integrity` computed from the file's own bytes: the way
+ *                           to express "the add-on is carrying this release", which a
+ *                           content hash decides. A listing whose files are meant NOT to
+ *                           match is a plain `json` instead.
+ *   { "json": <value> }     an unpkg "?meta" listing as written.
+ *   { "status": 404 }       the host has no such source.
+ * Any other status is no answer, which no cache keeps, so it is refused here.
+ * @param {string} dir  The fixture directory; every fixture path resolves against it.
+ * @param {Record<string, object>} specs  URL -> its entry.
+ * @returns {{bytes: Record<string, Buffer>, meta: Record<string, object>,
+ *   missing: string[]}}
+ */
+export function fixtureSources(dir, specs) {
+  const sources = { bytes: {}, meta: {}, missing: [] };
+  const read = (file, encoding) =>
+    fs.readFileSync(path.join(dir, file), encoding);
+  for (const [url, spec] of Object.entries(specs)) {
+    const status = spec.status ?? 200;
+    if (status === 404) {
+      sources.missing.push(url);
+    } else if (status !== 200) {
+      throw new Error(`${url}: no cache keeps a ${status}`);
+    } else if (spec.meta !== undefined) {
+      sources.meta[url] = {
+        type: "directory",
+        files: Object.entries(spec.meta).map(([published, file]) => ({
+          path: published,
+          type: "application/javascript",
+          integrity: `sha256-${createHash("sha256").update(read(file)).digest("base64")}`,
+        })),
+      };
+    } else if (spec.json !== undefined) {
+      sources.meta[url] = spec.json;
+    } else if (spec.tgz !== undefined) {
+      sources.bytes[url] = makeTgz(
+        Object.fromEntries(
+          Object.entries(spec.tgz).map(([inPackage, file]) => [
+            `package/${inPackage}`,
+            read(file, "latin1"),
+          ])
+        )
+      );
+    } else if (spec.sameAs !== undefined) {
+      sources.bytes[url] = read(spec.sameAs);
+    } else {
+      sources.bytes[url] = Buffer.from(spec.body ?? "");
+    }
+  }
+  return sources;
+}
+
+/**
  * A run cache folder holding the answers given, for a review to read through
  * --cache-work-dir (the run's `workCache`). Removed when the process exits.
  * @param {{osv?: Record<string, object>, popularity?: Record<string, object>}} entries
@@ -336,4 +409,53 @@ export function popularityEntries({ npm = {}, github = {} } = {}) {
     keep(`${VENDOR_GITHUB_REPOS_API}${repo}`, answer);
   }
   return entries;
+}
+
+/**
+ * The network a review asks, as src/pipeline.js composes it, answered only from what is
+ * seeded: `osv` and `popularity` into a run cache of its own (seedWorkCache), `sources` into a
+ * sources cache of its own (seedSourcesCache). Anything not seeded goes on to the real
+ * network, which the switched-off test network refuses.
+ * @param {{osv?: object, popularity?: object, sources?: object}} [answers]  As osvEntries,
+ *   popularityEntries and seedSourcesCache take them.
+ * @returns {import("../src/vendor/verify.js").VendorNet}
+ */
+export function seededNet({ osv = {}, popularity = {}, sources = {} } = {}) {
+  const dir = seedWorkCache({
+    osv: osvEntries(osv),
+    popularity: popularityEntries(popularity),
+  });
+  return withRunCache(
+    withSourceCache(defaultNet, seedSourcesCache(sources)),
+    runCache(dir, dir)
+  );
+}
+
+/**
+ * `net`, with every request it is asked recorded in `sent` and passed on untouched: for a
+ * test about how often, in what order or in what batches the review asks. It answers nothing
+ * itself, so every answer still comes from what `net` reads.
+ * @param {import("../src/vendor/verify.js").VendorNet} net
+ * @returns {{net: import("../src/vendor/verify.js").VendorNet,
+ *   sent: {kind: "bytes"|"json"|"post", url: string, body?: object}[]}}
+ */
+export function observed(net) {
+  const sent = [];
+  return {
+    sent,
+    net: {
+      fetchBytes(url) {
+        sent.push({ kind: "bytes", url });
+        return net.fetchBytes(url);
+      },
+      fetchJson(url) {
+        sent.push({ kind: "json", url });
+        return net.fetchJson(url);
+      },
+      postJson(url, body) {
+        sent.push({ kind: "post", url, body });
+        return net.postJson(url, body);
+      },
+    },
+  };
 }

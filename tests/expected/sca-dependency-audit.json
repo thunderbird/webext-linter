@@ -45,6 +45,12 @@
           "severity": "MODERATE"
         }
       }
+    },
+    "https://api.npmjs.org/downloads/point/last-month/platform-binary": {
+      "status": 404
+    },
+    "https://api.npmjs.org/downloads/point/last-month/vitest": {
+      "status": 404
     }
   },
   "expect": {

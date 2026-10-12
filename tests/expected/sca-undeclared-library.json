@@ -20,6 +20,10 @@
       "json": {
         "downloads": 900000
       }
+    },
+    "https://api.osv.dev/v1/query": {
+      "queries": ["tinybundle@3.2.1", "bootstrap@5.3.0"],
+      "json": {}
     }
   }
 }

@@ -5,7 +5,12 @@
       "sameAs": "lib/thing.js"
     },
     "https://api.github.com/repos/someone/thing-lib": {
-      "json": { "stargazers_count": 4200 }
+      "json": {
+        "stargazers_count": 4200
+      }
+    },
+    "https://unpkg.com/thing-lib@1.4.2/?meta": {
+      "status": 404
     }
   },
   "expect": {

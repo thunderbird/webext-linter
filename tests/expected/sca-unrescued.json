@@ -23,5 +23,13 @@
   },
   "expect": {
     "vendor-vulnerable-dev": ["package-lock.json:13"]
+  },
+  "network": {
+    "https://api.npmjs.org/downloads/point/last-month/lint-pebble": {
+      "status": 404
+    },
+    "https://api.npmjs.org/downloads/point/last-month/tidy-lantern": {
+      "status": 404
+    }
   }
 }

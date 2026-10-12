@@ -3,5 +3,14 @@
   "expect": {
     "untrusted-minified-library": ["lib/widget.min.js"],
     "sca-xpi-declares-vendoring": ["VENDORS.md"]
+  },
+  "network": {
+    "https://api.osv.dev/v1/query": {
+      "queries": ["widget@1.2.3"],
+      "json": {}
+    },
+    "https://unpkg.com/widget@1.2.3/dist/widget.min.js": {
+      "status": 404
+    }
   }
 }

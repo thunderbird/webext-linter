@@ -24,13 +24,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { withOsvCache } from "../../src/vendor/osv-cache.js";
-import { withRunCache } from "../../src/vendor/run-cache.js";
-import { runCache } from "../../src/util/dest.js";
-import {
-  osvEntries,
-  popularityEntries,
-  seedWorkCache,
-} from "../seed-caches.js";
+import { seededNet } from "../seed-caches.js";
 import { VENDOR_FETCH_MAX_BYTES } from "../../src/config.js";
 
 // What a host's "there is no such thing" arrives as through the real transport: the one
@@ -297,21 +291,6 @@ function net({
       return (typeof osv === "function" ? osv(body) : osv) ?? { vulns: [] };
     },
   };
-}
-
-/**
- * The network a review asks, answered only from `answers` seeded into a run cache of its own
- * (seedWorkCache), as a review reads its run's cache. Anything not seeded goes on to the real
- * network, which the switched-off test network refuses.
- * @param {{osv?: object, popularity?: object}} [answers]  As osvEntries and
- *   popularityEntries take them.
- */
-function seededNet({ osv = {}, popularity = {} } = {}) {
-  const dir = seedWorkCache({
-    osv: osvEntries(osv),
-    popularity: popularityEntries(popularity),
-  });
-  return withRunCache(defaultNet, runCache(dir, dir));
 }
 
 const store = (over = {}) => ({

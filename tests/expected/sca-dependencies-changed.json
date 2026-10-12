@@ -19,5 +19,10 @@
   },
   "expect": {
     "sca-dependencies-changed": ["package.json"]
+  },
+  "network": {
+    "https://api.npmjs.org/downloads/point/last-month/tidy-lantern": {
+      "status": 404
+    }
   }
 }

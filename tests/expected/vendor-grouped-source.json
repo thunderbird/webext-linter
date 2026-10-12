@@ -8,7 +8,13 @@
       }
     },
     "https://api.npmjs.org/downloads/point/last-month/widget": {
-      "json": { "downloads": 250000 }
+      "json": {
+        "downloads": 250000
+      }
+    },
+    "https://api.osv.dev/v1/query": {
+      "queries": ["widget@1.2.3"],
+      "json": {}
     }
   },
   "expect": {}

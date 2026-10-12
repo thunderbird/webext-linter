@@ -3,5 +3,14 @@
   "expect": {
     "unsafe-html": ["lib/widget.js:3"],
     "untrusted-library": ["lib/widget.js"]
+  },
+  "network": {
+    "https://api.osv.dev/v1/query": {
+      "queries": ["widget@1.0.0"],
+      "json": {}
+    },
+    "https://unpkg.com/widget@1.0.0/dist/widget.js": {
+      "status": 404
+    }
   }
 }

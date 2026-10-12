@@ -10,7 +10,6 @@
 //   node tests/run-tests.js
 //   UPDATE_GOLDEN=1 node tests/run-tests.js
 
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +17,6 @@ import { fileURLToPath } from "node:url";
 import { runPipeline } from "../src/pipeline.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
 import { formatReview } from "../src/report/format.js";
-import { setNetworkPacing } from "../src/util/net.js";
 import {
   CDN_LOOKUP_URL,
   VENDOR_GITHUB_REPOS_API,
@@ -33,18 +31,12 @@ import {
   freshWorkFolder,
   osvEntries,
   popularityEntries,
+  fixtureSources,
   seedCdnHits,
   seedSourcesCache,
   seedWorkCache,
 } from "./seed-caches.js";
 import { advisory, auditEntries, realPreparation } from "./prepared.js";
-import { makeTgz } from "./unit/tarball-fixture.js";
-
-// Every request paces itself against a live host's request budget
-// (src/config.js NETWORK_MIN_INTERVAL_MS). Every request here is answered
-// from a fixture map, so there is no budget to respect and no refusal to back off
-// from - only real seconds to lose, on every request every fixture makes.
-setNetworkPacing({ intervalMs: 0, backoffMs: 0 });
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..");
@@ -57,135 +49,10 @@ const EXPECTED_DIR = path.join(here, "expected");
 const GOLDEN_DIR = path.join(here, "golden");
 const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
 
-// The network, faked at the socket. Every fetch in the tool goes through
-// fetchWithTimeout -> globalThis.fetch, so replacing that one function is enough to make
-// the harness hermetic AND to let a fixture decide what a URL serves. It is replaced
-// rather than injecting a transport per stage, because an injected transport SKIPS the
-// production code above it - fetchWithTimeout, readBytes/readJson, the size caps - which
-// then has no golden coverage at all. Here only the socket is faked.
-//
-// A fixture declares what it needs under "network" in its spec (see
-// fetchResponse). Anything it does not declare is a 404, deliberately: an unlisted URL
-// must be an HTTP negative and never a transport failure, because a connection-shaped
-// error sends fetchWithTimeout into assertNetwork, which probes the control point and
-// can abort the whole review (NetworkGoneError). A fixture that wants to test THAT
-// declares it. The one exception is an OSV query, which OSV answers with an empty 200 for a
-// package it has no record of, and the fixture is answered the same (installFetchMock).
-//
-// What a run keeps in a cache is not served from here: a declared answer from OSV, npm's
-// downloads, GitHub's repositories or the jsDelivr hash lookup is written into the cache the
-// review reads it from (cachedAnswers), the way a real run reads an answer an earlier
-// invocation kept. A question of these families the fixture does not declare still reaches
-// the fake, and gets its default answer: OSV's empty one, a 404 otherwise.
-//
-// With no "network" map every URL 404s, which is what every fixture written before this
-// existed relies on: a declared vendor source becomes "unfetchable" -> the untrusted
-// family (applyUnverifiedVendor), i.e. reviewed as authored code or rejected as
-// unreadable - never exempt.
-const REAL_FETCH = globalThis.fetch;
-
-/**
- * Build the Response a fixture's "network" entry describes.
- *   { "sameAs": "<path>" }  the bytes of a file in the fixture, read from disk. The way
- *                           to express "this declaration checks out": a `verified`
- *                           outcome needs the upstream bytes to equal the packaged ones
- *                           EXACTLY, and an inline copy would rot the day the fixture
- *                           file is edited.
- *   { "body": "<text>" }    literal bytes - the way to express "modified".
- *   { "json": <value> }     a JSON endpoint (unpkg ?meta). The same form declares an
- *                           answer a cache keeps (cachedAnswers), which never gets here.
- *   { "tgz": {"<in-package path>": "<fixture path>"} }
- *                           an npm registry tarball PUBLISHING those fixture files,
- *                           built here from their own bytes. Same reasoning as
- *                           `sameAs`, for the same reason: a package a fixture
- *                           verifies against has to hold what the fixture ships, and
- *                           a committed binary would rot the day a file is edited
- *                           (and could not be read in a diff). Each path is published
- *                           at the in-package path the declaration names, which is
- *                           what the verification actually checks.
- *   { "meta": {"<published path>": "<fixture path>"} }
- *                           an unpkg "?meta" listing PUBLISHING those fixture files,
- *                           each entry's `integrity` computed here from the file's own
- *                           bytes. The way to express "the add-on is carrying this
- *                           release": that is decided by a content hash, so a listing
- *                           written by hand would be a committed digest that rots the
- *                           day the fixture file is edited. A listing whose files are
- *                           meant NOT to match is a plain `json` instead - nothing
- *                           there has to stay in step with anything.
- *   { "status": <code> }    an HTTP negative, with an empty body.
- * @param {string} dir  The fixture directory; `sameAs` resolves against it.
- * @param {object} spec
- * @returns {Response}
- */
-function fetchResponse(dir, spec) {
-  const status = spec.status ?? 200;
-  if (spec.sameAs !== undefined) {
-    return new Response(fs.readFileSync(path.join(dir, spec.sameAs)), {
-      status,
-    });
-  }
-  if (spec.tgz !== undefined) {
-    const entries = Object.fromEntries(
-      Object.entries(spec.tgz).map(([inPackage, file]) => [
-        `package/${inPackage}`,
-        fs.readFileSync(path.join(dir, file), "latin1"),
-      ])
-    );
-    return new Response(makeTgz(entries), { status });
-  }
-  if (spec.meta !== undefined) {
-    const files = Object.entries(spec.meta).map(([published, file]) => {
-      const bytes = fs.readFileSync(path.join(dir, file));
-      return {
-        path: published,
-        type: "application/javascript",
-        integrity: `sha256-${createHash("sha256").update(bytes).digest("base64")}`,
-      };
-    });
-    return new Response(JSON.stringify({ type: "directory", files }), {
-      status,
-      headers: { "content-type": "application/json" },
-    });
-  }
-  if (spec.json !== undefined) {
-    return new Response(JSON.stringify(spec.json), {
-      status,
-      headers: { "content-type": "application/json" },
-    });
-  }
-  return new Response(spec.body ?? "", { status });
-}
-
-/**
- * Point globalThis.fetch at one fixture's map for the duration of its run, and return
- * the undo. Per fixture, not once for the suite: the harness runs every fixture in one
- * process, so one fixture's URLs must not answer another's requests.
- * @param {string} dir @param {Record<string, object>} network
- * @returns {() => void}
- */
-function installFetchMock(dir, network) {
-  globalThis.fetch = async (url, init) => {
-    const spec = network[String(url)];
-    if (spec) {
-      return fetchResponse(dir, spec);
-    }
-    // OSV answers a package it has no record of with an empty 200, never a 404 - which the
-    // audit takes for no answer, and ends the review on (src/vendor/verify.js askOsv). So an
-    // OSV query the fixture does not declare is answered the way OSV answers it. A declared
-    // one never gets here: the run's cache answers it (cachedAnswers).
-    if (String(url) === VENDOR_OSV_API) {
-      return Response.json({});
-    }
-    if (String(url) === VENDOR_OSV_BATCH_API) {
-      const { queries = [] } = JSON.parse(init?.body ?? "{}");
-      return Response.json({ results: queries.map(() => ({})) });
-    }
-    return new Response("", { status: 404 });
-  };
-  return () => {
-    globalThis.fetch = REAL_FETCH;
-  };
-}
+// The network stays switched off (tests/offline.js), as in every test: the review asks
+// through the production transport, and every answer it gets comes from a cache seeded for
+// the fixture from its spec's "network" map (cachedAnswers). A request the fixture does not
+// declare is refused, naming its URL, and fails the fixture.
 
 // A fixture's spec holds the expected per-rule locations under "expect", and may carry an
 // optional "options" object keyed by real CLI flags (e.g. { "--allow-experiments": true }),
@@ -222,22 +89,23 @@ function loadFixture(dir) {
 }
 
 /**
- * Split a fixture's "network" block into what the review's caches answer and what is left
- * for the fake fetch. The cached families:
+ * Split a fixture's "network" block into the caches the review reads them from:
  *   - OSV. A declared /v1/query or /v1/querybatch answer names the queries it answers in
  *     `queries` ("name@version", npm), since the run's cache keeps OSV's answer per query.
- *     A batch's `json.results` pair with them by position. /v1/vulns/<id> is the record.
+ *     A /v1/query answer answers each of them, a batch's `json.results` pair with them by
+ *     position. /v1/vulns/<id> is the record.
  *   - npm's downloads and GitHub's repositories, a declared 404 kept as the offline
  *     stand-in for it (popularityEntries).
  *   - jsDelivr's hash lookup, a declared hit kept in the CDN lookup cache (fixtureCdnCache).
+ *   - every other URL, a library source kept in the sources cache (fixtureSources).
  * Each is a JSON answer, or a 404 where the host gives one for what it does not know.
  * Any other status is no answer, which no cache keeps, so it is refused here.
  * @param {Record<string, object>} network
- * @returns {{fetch: Record<string, object>, osv: object, popularity: object,
+ * @returns {{sources: Record<string, object>, osv: object, popularity: object,
  *   cdn: Record<string, object>}}
  */
 function cachedAnswers(network) {
-  const fetch = {};
+  const sources = {};
   const osv = { query: {}, batch: {}, advisories: {} };
   const popularity = { npm: {}, github: {} };
   const cdn = {};
@@ -254,7 +122,8 @@ function cachedAnswers(network) {
     if (url === VENDOR_OSV_API || url === VENDOR_OSV_BATCH_API) {
       const json = answer(url, spec);
       const queries = spec.queries ?? [];
-      const results = url === VENDOR_OSV_API ? [json] : (json.results ?? []);
+      const results =
+        url === VENDOR_OSV_API ? queries.map(() => json) : (json.results ?? []);
       if (queries.length === 0 || queries.length !== results.length) {
         throw new Error(
           `${url}: ${results.length} answers for queries ${queries}`
@@ -283,10 +152,10 @@ function cachedAnswers(network) {
         fake404: true,
       });
     } else {
-      fetch[url] = spec;
+      sources[url] = spec;
     }
   }
-  return { fetch, osv, popularity, cdn };
+  return { sources, osv, popularity, cdn };
 }
 
 /**
@@ -458,9 +327,8 @@ async function main() {
       preparation,
     } = loadFixture(dir);
     let problems;
-    const answers = cachedAnswers(network);
-    const restoreFetch = installFetchMock(dir, answers.fetch);
     try {
+      const answers = cachedAnswers(network);
       // The review opts every fixture runs with. A fixture's flag "options" parse in
       // first; the harness's cache opts win, because pipelineOptsFromArgv supplies the
       // REAL cache directories as defaults and the harness must keep its own.
@@ -468,8 +336,8 @@ async function main() {
       // The CDN identifier runs as in any review (a fixture's own --cdn-lib-lookup false
       // turns it off), answered from a cache of the fixture's own (fixtureCdnCache).
       //
-      // The library sources a review downloads are kept in a sources cache of the fixture's
-      // own, so one fixture's download never answers another's.
+      // The library sources it declares are read from a sources cache of the fixture's own
+      // (fixtureSources), so one fixture's sources never answer another's.
       //
       // The run's OSV and popularity answers are read from a cache folder of the fixture's
       // own, named the way a test names it on the command line (--cache-work-dir). A
@@ -490,7 +358,7 @@ async function main() {
         ...pipelineOptsFromArgv(argv),
         ...CACHE_OPTS,
         cdnLookupCache: fixtureCdnCache(dir, answers.cdn),
-        sourcesCache: seedSourcesCache(),
+        sourcesCache: seedSourcesCache(fixtureSources(dir, answers.sources)),
         workFolder: freshWorkFolder(),
       };
       // The folder the review runs in: the fresh one, or the one a preparation left.
@@ -541,9 +409,6 @@ async function main() {
       console.error(`✗ ${name}: threw ${err.message}`);
       failed++;
       continue;
-    } finally {
-      // Per fixture: the next one must not inherit this one's answers.
-      restoreFetch();
     }
     if (problems.length === 0) {
       console.log(`✓ ${name}`);

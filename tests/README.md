@@ -71,17 +71,22 @@ win), so a fixture can exercise a flag-gated check - e.g.
 `"options": { "--allow-experiments": true }`.
 
 It may also carry a `"network"` map keyed by URL, saying what that URL serves:
-`{ "sameAs": "<path in the fixture>" }`, `{ "body": "<text>" }`, `{ "json": <value> }`
-or `{ "status": <code> }`. Every URL a fixture does not declare answers 404 - except an
-OSV query, which gets OSV's empty answer, since a 404 from OSV ends the review. That 404 is
-what a fixture with no `"network"` map relies on: a declared vendor source is then
-unfetchable, so the file it names is reviewed as authored code rather than exempted.
-A declared answer from OSV, npm's downloads or GitHub's repositories is seeded into a run
-cache folder of the fixture's own, outside any work folder, which the review is given as
-`--cache-work-dir`. A declared jsDelivr hash lookup is seeded into the fixture's CDN lookup
-cache. Neither is served from the map, and no work folder is prepared. A `/v1/query` or
-`/v1/querybatch` answer names the `"name@version"` queries it answers in `"queries"`, a
-batch's `results` paired with them by position: without it the harness throws.
+`{ "sameAs": "<path in the fixture>" }`, `{ "body": "<text>" }`, `{ "json": <value> }`,
+`{ "tgz": {...} }` or `{ "meta": {...} }` (a tarball or an unpkg listing built from fixture
+files), or `{ "status": 404 }`. The review runs with the network switched off, as every test
+does, and every answer comes from a cache seeded for the fixture from this map, so no work
+folder is prepared:
+- OSV, npm's downloads and GitHub's repositories: a run cache folder of the fixture's own,
+  given to the review as `--cache-work-dir`. A `/v1/query` or `/v1/querybatch` answer names
+  the `"name@version"` queries it answers in `"queries"`: a `/v1/query` answer answers each
+  of them, a batch's `results` pair with them by position. Without it the harness throws.
+- jsDelivr's hash lookup: the fixture's CDN lookup cache.
+- Every other URL is a library source: the fixture's sources cache (`--cache-sources-dir`).
+
+A request the map does not declare is refused and fails the fixture, naming its URL. A
+declared `{ "status": 404 }` is the host's 404: a library source declared that way is
+unfetchable, so the file it names is reviewed as authored code rather than exempted. No
+other status can be declared, since no cache keeps one.
 
 **Add an add-on test:** drop a folder under `addons/` with a `manifest.json`
 (plus any JS/HTML/CSS it needs), and an `expected/<that folder's name>.json`
