@@ -492,34 +492,27 @@ function isMaliciousAdvisory(v) {
 }
 
 /**
- * Ask OSV, and take a 404, or a reply that is not an object, for what it is: no answer.
- * Every OSV url is the linter's own - a
+ * Ask OSV, and take a 404 for what it is: no answer. Every OSV url is the linter's own - a
  * fixed endpoint, or an advisory id OSV itself just listed - and OSV answers a package it has
  * never heard of with an empty 200, so a 404 says nothing about the submission: the endpoint
  * is gone, or OSV cannot serve an advisory it listed. Read as an answer it would drop
  * advisories and report the rest as clean, so it ends the run like any request that got no
- * answer (src/util/net.js).
+ * answer (src/util/net.js). What an answer from OSV is, the run's cache decides before it
+ * keeps one (./osv-cache.js osvAnswer), and every OSV request is asked through it.
  * @template T
  * @param {string} url  The request, for the message.
  * @param {() => Promise<T>} ask
  * @returns {Promise<T>}
  */
 async function askOsv(url, ask) {
-  let res;
   try {
-    res = await ask();
+    return await ask();
   } catch (err) {
     if (err.status === 404) {
       throw new NoAnswerError(url, "HTTP 404");
     }
     throw err;
   }
-  // Every OSV endpoint answers with an object - `{}` where it has nothing to say - so a
-  // reply that is not one carries no answer.
-  if (res === null || typeof res !== "object") {
-    throw new NoAnswerError(url, "the reply is not an object");
-  }
-  return res;
 }
 
 /**

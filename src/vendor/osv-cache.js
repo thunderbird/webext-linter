@@ -27,6 +27,7 @@ import { parseJson } from "../util/json.js";
 import { debug } from "../util/log.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 import { NoAnswerError, seededResponse } from "../util/net.js";
+import { plainObject } from "../lib/util.js";
 
 /** @typedef {import("./verify.js").VendorNet} VendorNet */
 
@@ -87,12 +88,13 @@ export function withOsvCache(net, file) {
   };
   // Whether OSV's answer to `key` is kept. An entry without one is not, and is asked again.
   const kept = (key) => Object.hasOwn(cache[key] ?? {}, "answer");
-  // Asked once, then kept.
-  const once = async (key, ask) => {
+  // Asked once, then kept - and only what is an answer from OSV, so a reply that is none
+  // ends the run here, before it is kept and replayed on every retry.
+  const once = async (key, url, ask) => {
     if (kept(key)) {
       return cache[key].answer;
     }
-    const answer = await ask(seededResponse(cache[key]));
+    const answer = osvAnswer(await ask(seededResponse(cache[key])), url);
     remember(key, { answer });
     return answer;
   };
@@ -102,13 +104,17 @@ export function withOsvCache(net, file) {
       if (!String(url).startsWith(VENDOR_OSV_VULN_API)) {
         return net.fetchJson(url, seeded);
       }
-      return once(osvVulnKey(url.slice(VENDOR_OSV_VULN_API.length)), (seed) =>
-        net.fetchJson(url, seed)
+      return once(
+        osvVulnKey(url.slice(VENDOR_OSV_VULN_API.length)),
+        url,
+        (seed) => net.fetchJson(url, seed)
       );
     },
     async postJson(url, body, seeded) {
       if (url === VENDOR_OSV_API) {
-        return once(osvQueryKey(body), (seed) => net.postJson(url, body, seed));
+        return once(osvQueryKey(body), url, (seed) =>
+          net.postJson(url, body, seed)
+        );
       }
       if (url !== VENDOR_OSV_BATCH_API) {
         return net.postJson(url, body, seeded);
@@ -175,6 +181,23 @@ function save(file, cache) {
 }
 
 /**
+ * An OSV reply, when it is an answer. Every OSV endpoint answers with an object - `{}` where
+ * it has nothing to say - so a reply that is not one (a number, null, an array) carries no
+ * answer and ends the run, like any request that got none (src/util/net.js).
+ * @template T
+ * @param {T} res  The reply.
+ * @param {string} url  The endpoint, for the refusal.
+ * @returns {T}
+ * @throws {NoAnswerError}
+ */
+export function osvAnswer(res, url) {
+  if (!plainObject(res)) {
+    throw new NoAnswerError(url, "the reply is not an object");
+  }
+  return res;
+}
+
+/**
  * The results of an OSV batch reply, when it answers every query: one object per query
  * sent, in order. Anything short of that is no answer, never a partial one - a package
  * left without a result would otherwise read as having no advisories.
@@ -189,7 +212,7 @@ export function completeBatch(res, sent, url) {
   const complete =
     Array.isArray(results) &&
     results.length === sent &&
-    results.every((r) => r !== null && typeof r === "object");
+    results.every(plainObject);
   if (!complete) {
     const got = Array.isArray(results) ? results.length : "no";
     throw new NoAnswerError(url, `${got} results for ${sent} queries`);

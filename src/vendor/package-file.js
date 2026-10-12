@@ -20,6 +20,7 @@
 // when a lock is owed, which is the check that asks.
 
 import { parseJson } from "../util/json.js";
+import { plainObject } from "../lib/util.js";
 
 /**
  * @typedef {object} DeclaredDependency  One dependency a package file declares.
@@ -40,17 +41,6 @@ export const DECLARATION_MAPS = [
   "devDependencies",
   "optionalDependencies",
 ];
-
-/**
- * Whether a value is a plain JSON object - the only shape any of the maps here may take.
- * An array is excluded: `Object.entries` walks one happily, yielding index keys that read
- * as package names.
- * @param {unknown} value
- * @returns {boolean}
- */
-function plainObject(value) {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 // The submission's package file, by name. Shared so that the checks asking whether it is
 // THERE and whether it can be USED cannot come to different answers about which file they

@@ -5,7 +5,7 @@
 // orchestrator (escalation.js) routes it to a reviewer or to manual review.
 //
 // Belongs here: generic, dependency-light check helpers - dedupe, the
-// asArray/asObject manifest.json guards, isMatchPattern/isBroadHost, trunc, SCHEME_RE,
+// asArray/asObject manifest.json guards, plainObject (the shape of a JSON map), isMatchPattern/isBroadHost, trunc, SCHEME_RE,
 // escapeRegExp/wholeWordRe, the line locators (lineIndex, jsonLine, lineContaining,
 // declarationLine), utf8ComparisonSigns, the doc/dependency-file tests
 // (isDocMetadataFile, isDocFile, DEPENDENCY_FILE_RE), isExperiment/strictMaxVersion, the
@@ -337,6 +337,17 @@ export function versionInBounds(manifest, min, max) {
  */
 export function asArray(v) {
   return Array.isArray(v) ? v : [];
+}
+
+/**
+ * Whether a value is a plain JSON object: not null, and not an array. An array passes a bare
+ * `typeof` test, and then reads as an object whose every name is missing, or whose index keys
+ * read as names. Every reader of a parsed JSON or YAML map asks this before it reads one.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function plainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 /**

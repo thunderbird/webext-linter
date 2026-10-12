@@ -44,6 +44,7 @@ import { debug } from "../util/log.js";
 import { classifySource } from "./sources.js";
 import { defaultNet } from "./verify.js";
 import { seededResponse } from "../util/net.js";
+import { plainObject } from "../lib/util.js";
 
 import {
   DECLARATION_MAPS,
@@ -1348,16 +1349,6 @@ export function unreadableLock(addon) {
     return { file, reason: "unrecognised" };
   }
   return null;
-}
-
-/**
- * Whether a value is a plain JSON/YAML object - the only shape a lock's maps may take.
- * An array is excluded: reading one by key answers undefined for every name.
- * @param {unknown} value
- * @returns {boolean}
- */
-function plainObject(value) {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 /**

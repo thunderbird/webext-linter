@@ -282,3 +282,52 @@ test("OSV: a played success is kept and read back, a played failure is never kep
   }
   assert.equal(asked.length, 6, "played on every ask");
 });
+
+// Every OSV endpoint answers with an object, so a reply that is a number, null or an array is
+// no answer. It ends the run before it is kept: kept, it would be replayed on every retry of
+// the run and never asked again. An array is not an object here either: read as one, `[]`
+// would be a package with no advisories.
+test("a reply that is not an object is no answer, and is never kept", async () => {
+  // `null` the reader already refuses as no JSON at all, the others are JSON that is no
+  // answer from OSV.
+  const noAnswer = (err) => err instanceof NoAnswerError;
+  for (const body of ["42", "null", "[]"]) {
+    const vuln = osvVulnKey("GHSA-x");
+    const single = osvQueryKey(query("a"));
+    const entries = {
+      [vuln]: { fake: { status: 200, body } },
+      [single]: { fake: { status: 200, body } },
+    };
+    const file = cacheFile(entries);
+    const cache = withOsvCache(defaultNet, file);
+    await assert.rejects(
+      cache.fetchJson(`${VENDOR_OSV_VULN_API}GHSA-x`),
+      noAnswer,
+      body
+    );
+    await assert.rejects(
+      cache.postJson(VENDOR_OSV_API, query("a")),
+      noAnswer,
+      body
+    );
+    assert.deepEqual(read(file), entries, `${body}: nothing kept`);
+  }
+});
+
+// A batch answers one object per query. A result that is an array is no answer for its
+// package, and the batch it came in is kept no part of.
+test("a batch result that is an array is no answer, and nothing of it is kept", async () => {
+  const entries = {
+    [osvBatchKey(query("a"))]: {
+      fake: { status: 200, json: { results: [[], {}] } },
+    },
+  };
+  const file = cacheFile(entries);
+  await assert.rejects(
+    withOsvCache(defaultNet, file).postJson(VENDOR_OSV_BATCH_API, {
+      queries: [query("a"), query("b")],
+    }),
+    (err) => err instanceof NoAnswerError
+  );
+  assert.deepEqual(read(file), entries);
+});
