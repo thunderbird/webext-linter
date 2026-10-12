@@ -1,8 +1,9 @@
 // Unit tests for the jsDelivr CDN hash-lookup identifier (resolveCdnLibraries): a
 // hit promotes an unrecognized bundle - minified, or a large readable one - into the
 // vendored family (library + libraryId + cdn + nonAuthored), a miss leaves it
-// as classified, and a hit is cached on disk so a second run makes no request. All
-// via an injected `net` - no real network.
+// as classified, and a hit is cached on disk so a second run makes no request. Every
+// answer comes from a seeded cache read through the production network path, and the
+// switched-off network refuses any request not seeded.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -14,6 +15,8 @@ import path from "node:path";
 import { classifyBundled } from "../../src/lib/bundled.js";
 import { VERDICT } from "../../src/lib/enum.js";
 import { resolveCdnLibraries, cdnUrl } from "../../src/lib/cdn-lookup.js";
+import { CDN_LOOKUP_URL } from "../../src/config.js";
+import { defaultNet } from "../../src/vendor/verify.js";
 import {
   NetworkGoneError,
   NoAnswerError,
@@ -24,6 +27,12 @@ import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
 import untrustedLibrary from "../../src/checks/rules/untrusted-library.js";
 import untrustedMinifiedLibrary from "../../src/checks/rules/untrusted-minified-library.js";
+import {
+  cdnMissCache,
+  observed,
+  seedCdnHits,
+  seededNet,
+} from "../seed-caches.js";
 
 // One long line packing many statements -> minified (same fixture style as
 // bundled.test.js). >= 1024 bytes so it is classified, not skipped.
@@ -37,33 +46,26 @@ const addonWith = (files) => ({
 const httpAnswer = (status) =>
   Object.assign(new Error(`HTTP ${status}`), { status });
 
-// A net that answers the jsDelivr hash lookup for known hashes AND the popularity
-// trust-bar lookups (npm last-month downloads / GitHub stars) resolveCdnLibraries
-// makes for each hit. `downloads`/`stars` default well above the bars
-// (VENDOR_NPM_MIN_DOWNLOADS=1000 / VENDOR_GITHUB_MIN_STARS=100) so a hit is popular
-// unless a test overrides them. Records every URL it was asked.
-function netFor(map, { downloads = 5000, stars = 500 } = {}) {
-  const calls = [];
+// A CDN lookup cache holding jsDelivr's answers: sha256 -> its hit, or {fake404: true}.
+const cdnCache = (answers) => seedCdnHits(cdnMissCache(), answers);
+
+// jsDelivr answering the hash lookup live, for the tests of what the lookup keeps in its
+// cache: a hit from `hits`, else its 404. Every other request goes on to `net`. Records
+// each lookup it answers.
+function liveLookup(hits, net = defaultNet) {
+  const lookups = [];
   return {
-    calls,
-    // Hash-lookup calls only (excludes the popularity endpoints), so a test can
-    // assert the jsDelivr lookup was cached while popularity is re-checked.
-    get lookupCalls() {
-      return calls.filter(
-        (u) => !u.includes("api.npmjs.org") && !u.includes("api.github.com")
-      );
-    },
+    lookups,
+    fetchBytes: (url) => net.fetchBytes(url),
+    postJson: (url, body) => net.postJson(url, body),
     async fetchJson(url) {
-      calls.push(url);
-      if (url.includes("api.npmjs.org/downloads/point/last-month/")) {
-        return { downloads };
+      if (!url.startsWith(CDN_LOOKUP_URL)) {
+        return net.fetchJson(url);
       }
-      if (url.includes("api.github.com/repos/")) {
-        return { stargazers_count: stars };
-      }
+      lookups.push(url);
       const hash = url.split("/").pop();
-      if (map.has(hash)) {
-        return map.get(hash);
+      if (hits.has(hash)) {
+        return hits.get(hash);
       }
       throw httpAnswer(404); // jsDelivr's 404 surfaces as a throw via fetchJson
     },
@@ -80,8 +82,8 @@ function classify(addon) {
   return addon;
 }
 
-// The rate gate spaces real requests against a host's budget; every request
-// here is answered by `netFor`, so waiting would only cost the suite real seconds.
+// The rate gate spaces real requests against a host's budget; no request here reaches a
+// host, so waiting would only cost the suite real seconds.
 setNetworkPacing({ intervalMs: 0, backoffMs: 0 });
 
 // The identifier asks about popularity per FILE, and the vendor step asks per
@@ -100,16 +102,17 @@ test("the popularity memo is shared, so one package costs one lookup", async () 
     version: "7.0.0",
     file,
   });
-  const net = netFor(
-    new Map([
-      [rawSha256(addon.files.get("app/a.min.js")), hit("/dist/a.min.js")],
-      [rawSha256(addon.files.get("app/b.min.js")), hit("/dist/b.min.js")],
-    ])
+  const cacheDir = cdnCache({
+    [rawSha256(addon.files.get("app/a.min.js"))]: hit("/dist/a.min.js"),
+    [rawSha256(addon.files.get("app/b.min.js"))]: hit("/dist/b.min.js"),
+  });
+  const { net, sent } = observed(
+    seededNet({ popularity: { npm: { "fuse.js": { downloads: 5000 } } } })
   );
 
-  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+  await resolveCdnLibraries(addon, { net, cacheDir });
 
-  const asked = net.calls.filter((u) => u.includes("api.npmjs.org"));
+  const asked = sent.filter((r) => r.url.includes("api.npmjs.org"));
   assert.equal(asked.length, 1, "one reading for the one package");
   assert.equal(
     addon.bundled.classified.filter((c) => c.libraryId).length,
@@ -122,21 +125,19 @@ test("a hit promotes the bundle into the vendored family (library + libraryId + 
   const addon = classify(addonWith({ "app/fuse.min.js": MINIFIED }));
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hash = rawSha256(addon.files.get("app/fuse.min.js"));
-  const net = netFor(
-    new Map([
-      [
-        hash,
-        {
-          type: "npm",
-          name: "fuse.js",
-          version: "7.0.0",
-          file: "/dist/fuse.min.js",
-        },
-      ],
-    ])
-  );
+  const cacheDir = cdnCache({
+    [hash]: {
+      type: "npm",
+      name: "fuse.js",
+      version: "7.0.0",
+      file: "/dist/fuse.min.js",
+    },
+  });
+  const net = seededNet({
+    popularity: { npm: { "fuse.js": { downloads: 5000 } } },
+  });
 
-  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+  await resolveCdnLibraries(addon, { net, cacheDir });
 
   const tag = addon.bundled.classified.find(
     (c) => c.file === "app/fuse.min.js"
@@ -177,22 +178,20 @@ test("a NOT-popular hit is identified but untrusted (authored code), not the ven
   addon.vendor = { results: [] };
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hash = rawSha256(addon.files.get("app/obscure.min.js"));
-  const net = netFor(
-    new Map([
-      [
-        hash,
-        {
-          type: "npm",
-          name: "@me/obscure",
-          version: "1.0.0",
-          file: "/dist/obscure.min.js",
-        },
-      ],
-    ]),
-    { downloads: 50 } // below VENDOR_NPM_MIN_DOWNLOADS (1000)
-  );
+  const cacheDir = cdnCache({
+    [hash]: {
+      type: "npm",
+      name: "@me/obscure",
+      version: "1.0.0",
+      file: "/dist/obscure.min.js",
+    },
+  });
+  // Downloads below VENDOR_NPM_MIN_DOWNLOADS (1000).
+  const net = seededNet({
+    popularity: { npm: { "@me/obscure": { downloads: 50 } } },
+  });
 
-  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+  await resolveCdnLibraries(addon, { net, cacheDir });
 
   const tag = addon.bundled.classified.find(
     (c) => c.file === "app/obscure.min.js"
@@ -242,22 +241,20 @@ test("a NOT-popular hit whose package name does not match the file is discarded"
   addon.vendor = { results: [] };
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hash = rawSha256(addon.files.get("pdf-lib.min.js"));
-  const net = netFor(
-    new Map([
-      [
-        hash,
-        {
-          type: "npm",
-          name: "cw_office_sdk",
-          version: "1.3.5",
-          file: "/components/cw-pdf-editor/util/pdf-lib.min.js",
-        },
-      ],
-    ]),
-    { downloads: 50 } // below VENDOR_NPM_MIN_DOWNLOADS (1000)
-  );
+  const cacheDir = cdnCache({
+    [hash]: {
+      type: "npm",
+      name: "cw_office_sdk",
+      version: "1.3.5",
+      file: "/components/cw-pdf-editor/util/pdf-lib.min.js",
+    },
+  });
+  // Downloads below VENDOR_NPM_MIN_DOWNLOADS (1000).
+  const net = seededNet({
+    popularity: { npm: { cw_office_sdk: { downloads: 50 } } },
+  });
 
-  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+  await resolveCdnLibraries(addon, { net, cacheDir });
 
   const tag = addon.bundled.classified.find((c) => c.file === "pdf-lib.min.js");
   // No identification at all: no libraryId (nothing to OSV-audit under the wrong
@@ -300,9 +297,12 @@ test("a discarded hit stays cached; a later popularity flip promotes it from cac
   const first = classify(addonWith({ "pdf-lib.min.js": MINIFIED }));
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hash = rawSha256(first.files.get("pdf-lib.min.js"));
-  const net1 = netFor(new Map([[hash, hit]]), { downloads: 50 });
+  const net1 = liveLookup(
+    new Map([[hash, hit]]),
+    seededNet({ popularity: { npm: { cw_office_sdk: { downloads: 50 } } } })
+  );
   await resolveCdnLibraries(first, { net: net1, cacheDir });
-  assert.equal(net1.lookupCalls.length, 1);
+  assert.equal(net1.lookups.length, 1);
   assert.equal(
     first.bundled.classified.find((c) => c.file === "pdf-lib.min.js").cdn,
     undefined
@@ -310,9 +310,12 @@ test("a discarded hit stays cached; a later popularity flip promotes it from cac
 
   // Run 2: same cache, the package is popular this time -> promoted, no new lookup.
   const second = classify(addonWith({ "pdf-lib.min.js": MINIFIED }));
-  const net2 = netFor(new Map(), { downloads: 5000 });
+  const net2 = liveLookup(
+    new Map(),
+    seededNet({ popularity: { npm: { cw_office_sdk: { downloads: 5000 } } } })
+  );
   await resolveCdnLibraries(second, { net: net2, cacheDir });
-  assert.equal(net2.lookupCalls.length, 0, "served from cache");
+  assert.equal(net2.lookups.length, 0, "served from cache");
   const tag = second.bundled.classified.find(
     (c) => c.file === "pdf-lib.min.js"
   );
@@ -335,7 +338,7 @@ test("a corrupt cache entry with a non-string name is treated as a miss", async 
     })
   );
 
-  await resolveCdnLibraries(addon, { net: netFor(new Map()), cacheDir });
+  await resolveCdnLibraries(addon, { net: liveLookup(new Map()), cacheDir });
 
   const tag = addon.bundled.classified.find((c) => c.file === "x.min.js");
   assert.equal(tag.library, false);
@@ -348,22 +351,22 @@ test("a gh-type hit uses GitHub stars for the popularity bar; a popular hit adds
   addon.vendor = { results: [] };
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hash = rawSha256(addon.files.get("app/widget.min.js"));
-  const net = netFor(
-    new Map([
-      [
-        hash,
-        {
-          type: "gh",
-          name: "owner/widget",
-          version: "v1.2.3",
-          file: "/widget.min.js",
-        },
-      ],
-    ]),
-    { stars: 500 } // above VENDOR_GITHUB_MIN_STARS (100)
+  const cacheDir = cdnCache({
+    [hash]: {
+      type: "gh",
+      name: "owner/widget",
+      version: "v1.2.3",
+      file: "/widget.min.js",
+    },
+  });
+  // Stars above VENDOR_GITHUB_MIN_STARS (100).
+  const { net, sent } = observed(
+    seededNet({
+      popularity: { github: { "owner/widget": { stargazers_count: 500 } } },
+    })
   );
 
-  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+  await resolveCdnLibraries(addon, { net, cacheDir });
 
   const tag = addon.bundled.classified.find(
     (c) => c.file === "app/widget.min.js"
@@ -378,7 +381,7 @@ test("a gh-type hit uses GitHub stars for the popularity bar; a popular hit adds
   assert.deepEqual(addon.vendor.results, []);
   // The popularity lookup queried the GitHub stars API for the repo.
   assert.ok(
-    net.calls.some((u) => u.includes("api.github.com/repos/owner/widget"))
+    sent.some((r) => r.url.includes("api.github.com/repos/owner/widget"))
   );
 });
 
@@ -394,20 +397,18 @@ test("a minified bundle is identified as a known library on the CDN", async () =
 
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hash = rawSha256(addon.files.get("app/fuse.min.js"));
-  const net = netFor(
-    new Map([
-      [
-        hash,
-        {
-          type: "npm",
-          name: "fuse.js",
-          version: "7.0.0",
-          file: "/dist/fuse.min.js",
-        },
-      ],
-    ])
-  );
-  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+  const cacheDir = cdnCache({
+    [hash]: {
+      type: "npm",
+      name: "fuse.js",
+      version: "7.0.0",
+      file: "/dist/fuse.min.js",
+    },
+  });
+  const net = seededNet({
+    popularity: { npm: { "fuse.js": { downloads: 5000 } } },
+  });
+  await resolveCdnLibraries(addon, { net, cacheDir });
 
   const tag = addon.bundled.classified.find(
     (c) => c.file === "app/fuse.min.js"
@@ -436,21 +437,19 @@ test("a large readable file is CDN-identified as a library (not scanned as autho
 
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hash = rawSha256(addon.files.get("libs/pdf.mjs"));
-  const net = netFor(
-    new Map([
-      [
-        hash,
-        {
-          type: "npm",
-          name: "pdfjs-dist",
-          version: "5.6.205",
-          file: "/build/pdf.mjs",
-        },
-      ],
-    ])
-  );
+  const cacheDir = cdnCache({
+    [hash]: {
+      type: "npm",
+      name: "pdfjs-dist",
+      version: "5.6.205",
+      file: "/build/pdf.mjs",
+    },
+  });
+  const net = seededNet({
+    popularity: { npm: { "pdfjs-dist": { downloads: 5000 } } },
+  });
 
-  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+  await resolveCdnLibraries(addon, { net, cacheDir });
 
   const tag = addon.bundled.classified.find((c) => c.file === "libs/pdf.mjs");
   assert.equal(tag.library, true);
@@ -475,22 +474,14 @@ test("a small readable file is below the threshold and not CDN-identified", asyn
     false
   );
 
-  const { rawSha256 } = await import("../../src/normalize/hash.js");
-  const hash = rawSha256(addon.files.get("app/util.js"));
-  const net = netFor(
-    new Map([
-      [
-        hash,
-        { type: "npm", name: "whatever", version: "1.0.0", file: "/x.js" },
-      ],
-    ])
-  );
+  // Nothing is seeded: a lookup would be refused by the switched-off network.
+  const { net, sent } = observed(defaultNet);
 
   await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
 
   const tag = addon.bundled.classified.find((c) => c.file === "app/util.js");
   assert.equal(tag.library, false, "a small readable file is not looked up");
-  assert.equal(net.lookupCalls.length, 0, "not sent to the CDN");
+  assert.equal(sent.length, 0, "not sent to the CDN");
 });
 
 // Being minified waives the readable floor, not the classification floor: a packed chunk
@@ -502,17 +493,12 @@ test("a minified file below the classification floor is not sent to the CDN", as
     addon.bundled.classified.find((c) => c.file === "app/chunk.js").minified,
     true
   );
-  const { rawSha256 } = await import("../../src/normalize/hash.js");
-  const hash = rawSha256(addon.files.get("app/chunk.js"));
-  const net = netFor(
-    new Map([
-      [hash, { type: "npm", name: "chunk", version: "1.0.0", file: "/c.js" }],
-    ])
-  );
+  // Nothing is seeded: a lookup would be refused by the switched-off network.
+  const { net, sent } = observed(defaultNet);
 
   await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
 
-  assert.equal(net.lookupCalls.length, 0, "not sent to the CDN");
+  assert.equal(sent.length, 0, "not sent to the CDN");
   assert.equal(
     addon.bundled.classified.find((c) => c.file === "app/chunk.js").libraryId,
     undefined
@@ -529,15 +515,12 @@ test("a file the hash DB identified is not looked up again", async () => {
   addon.bundled = classifyBundled(addon, {
     libraryHashes: new Map([[hash, { name: "jquery", version: "3.6.0" }]]),
   });
-  const net = netFor(
-    new Map([
-      [hash, { type: "npm", name: "other", version: "9.9.9", file: "/o.js" }],
-    ])
-  );
+  // Nothing is seeded: a request would be refused by the switched-off network.
+  const { net, sent } = observed(defaultNet);
 
   await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
 
-  assert.equal(net.calls.length, 0, "no request at all");
+  assert.equal(sent.length, 0, "no request at all");
   const tag = addon.bundled.classified.find(
     (c) => c.file === "lib/jquery.min.js"
   );
@@ -561,24 +544,15 @@ test("a readable obfuscated file is NOT CDN-identified (obfuscation is never lau
   assert.equal(tag0.obfuscation, VERDICT.FAIL);
   assert.equal(tag0.minified, false);
 
-  const { rawSha256 } = await import("../../src/normalize/hash.js");
-  const hash = rawSha256(addon.files.get("libs/packed.js"));
-  const net = netFor(
-    new Map([
-      [hash, { type: "npm", name: "somelib", version: "1.0.0", file: "/x.js" }],
-    ])
-  );
+  // Nothing is seeded: a lookup would be refused by the switched-off network.
+  const { net, sent } = observed(defaultNet);
 
   await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
 
   const tag = addon.bundled.classified.find((c) => c.file === "libs/packed.js");
   assert.equal(tag.library, false, "obfuscated file is not promoted");
   assert.equal(tag.cdn, undefined, "not even looked up");
-  assert.equal(
-    net.lookupCalls.length,
-    0,
-    "the obfuscated file is never sent to the CDN"
-  );
+  assert.equal(sent.length, 0, "the obfuscated file is never sent to the CDN");
 });
 
 // A NOT-popular readable hit is identified but untrusted, and - being readable - is
@@ -590,22 +564,20 @@ test("a NOT-popular readable hit is untrusted and reviewed as authored (info)", 
   addon.vendor = { results: [] };
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hash = rawSha256(addon.files.get("libs/obscure.js"));
-  const net = netFor(
-    new Map([
-      [
-        hash,
-        {
-          type: "npm",
-          name: "@me/obscure",
-          version: "1.0.0",
-          file: "/index.js",
-        },
-      ],
-    ]),
-    { downloads: 50 } // below the popularity bar
-  );
+  const cacheDir = cdnCache({
+    [hash]: {
+      type: "npm",
+      name: "@me/obscure",
+      version: "1.0.0",
+      file: "/index.js",
+    },
+  });
+  // Downloads below the popularity bar.
+  const net = seededNet({
+    popularity: { npm: { "@me/obscure": { downloads: 50 } } },
+  });
 
-  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+  await resolveCdnLibraries(addon, { net, cacheDir });
 
   const tag = addon.bundled.classified.find(
     (c) => c.file === "libs/obscure.js"
@@ -637,9 +609,11 @@ test("a NOT-popular readable hit is untrusted and reviewed as authored (info)", 
 
 test("a miss leaves the bundle minified (falls through to minified-code)", async () => {
   const addon = classify(addonWith({ "app/blob.js": MINIFIED }));
-  const net = netFor(new Map()); // nothing matches -> 404
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(addon.files.get("app/blob.js"));
+  const cacheDir = cdnCache({ [hash]: { fake404: true } }); // jsDelivr's 404
 
-  await resolveCdnLibraries(addon, { net, cacheDir: tmpCacheDir() });
+  await resolveCdnLibraries(addon, { net: defaultNet, cacheDir });
 
   const tag = addon.bundled.classified.find((c) => c.file === "app/blob.js");
   assert.equal(tag.library, false);
@@ -689,30 +663,16 @@ test("neither no answer nor a 404 is cached", async () => {
 
   // Nothing was cached for the run that got no answer, so this one asks (a real 404).
   const again = classify(addonWith({ "x.js": MINIFIED }));
-  let secondAsked = 0;
-  await resolveCdnLibraries(again, {
-    cacheDir,
-    net: {
-      async fetchJson() {
-        secondAsked += 1;
-        throw httpAnswer(404);
-      },
-    },
-  });
+  const secondNet = liveLookup(new Map());
+  await resolveCdnLibraries(again, { cacheDir, net: secondNet });
+  const secondAsked = secondNet.lookups.length;
   assert.equal(secondAsked, 1, "asked again after no answer");
 
   // The 404 was not kept either -> asked again, and nothing was written.
   const third = classify(addonWith({ "x.js": MINIFIED }));
-  let thirdAsked = 0;
-  await resolveCdnLibraries(third, {
-    cacheDir,
-    net: {
-      async fetchJson() {
-        thirdAsked += 1;
-        throw httpAnswer(404);
-      },
-    },
-  });
+  const thirdNet = liveLookup(new Map());
+  await resolveCdnLibraries(third, { cacheDir, net: thirdNet });
+  const thirdAsked = thirdNet.lookups.length;
   assert.equal(thirdAsked, 1, "the 404 was asked again");
   assert.equal(
     fs.existsSync(path.join(cacheDir, "jsdelivr-hash-lookup.json")),
@@ -723,20 +683,14 @@ test("neither no answer nor a 404 is cached", async () => {
 
 test("disabled is a no-op (offline-safe)", async () => {
   const addon = classify(addonWith({ "app/blob.js": MINIFIED }));
-  // enabled:false -> never touches the net.
-  let called = false;
-  const spy = {
-    async fetchJson() {
-      called = true;
-      throw new Error("should not be called");
-    },
-  };
+  // enabled:false -> never touches the net, which the switched-off network would refuse.
+  const { net, sent } = observed(defaultNet);
   await resolveCdnLibraries(addon, {
-    net: spy,
+    net,
     cacheDir: tmpCacheDir(),
     enabled: false,
   });
-  assert.equal(called, false);
+  assert.equal(sent.length, 0);
 });
 
 test("results are cached on disk: a second run makes no request (hits + misses)", async () => {
@@ -744,18 +698,19 @@ test("results are cached on disk: a second run makes no request (hits + misses)"
   const hitAddon = classify(addonWith({ "a.js": MINIFIED }));
   const { rawSha256 } = await import("../../src/normalize/hash.js");
   const hitHash = rawSha256(hitAddon.files.get("a.js"));
-  const net = netFor(
+  const net = liveLookup(
     new Map([
       [
         hitHash,
         { type: "npm", name: "lib", version: "1.0.0", file: "/lib.min.js" },
       ],
-    ])
+    ]),
+    seededNet({ popularity: { npm: { lib: { downloads: 5000 } } } })
   );
 
   // First run populates the cache (one hash lookup for the hit).
   await resolveCdnLibraries(hitAddon, { net, cacheDir });
-  const firstLookups = net.lookupCalls.length;
+  const firstLookups = net.lookups.length;
   assert.ok(firstLookups >= 1);
 
   // Second run over a freshly classified copy: same hashes -> the jsDelivr HASH
@@ -764,7 +719,7 @@ test("results are cached on disk: a second run makes no request (hits + misses)"
   const again = classify(addonWith({ "a.js": MINIFIED }));
   await resolveCdnLibraries(again, { net, cacheDir });
   assert.equal(
-    net.lookupCalls.length,
+    net.lookups.length,
     firstLookups,
     "no new jsDelivr hash lookups on the cached run"
   );
@@ -854,9 +809,12 @@ test("a cached hit is never asked again; only a pre-filled 404 answers a miss", 
       path.join(cacheDir, "jsdelivr-hash-lookup.json"),
       JSON.stringify({ [hash]: entry })
     );
-    const net = netFor(new Map());
+    const net = liveLookup(
+      new Map(),
+      seededNet({ popularity: { npm: { lib: { downloads: 5000 } } } })
+    );
     await resolveCdnLibraries(addon, { net, cacheDir });
-    return net.lookupCalls.length;
+    return net.lookups.length;
   };
   assert.equal(await lookups({ fake404: true }), 0, "a pre-filled 404");
   assert.equal(

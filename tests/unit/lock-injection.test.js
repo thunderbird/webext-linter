@@ -2,8 +2,9 @@
 // findLockInjections): every registry entry must install the release it names. The audit asks
 // about the name and version an entry records, while the install fetches its URL, so an entry
 // whose URL is another release is forged. A URL on the registry's tarball path is compared
-// offline; one off it is asked of the registry, once, and the answer cached. No network: a
-// lookup is answered by a fake.
+// offline; one off it is asked of the registry, once, and the answer cached. The registry
+// answers live only in the tests of what its cache keeps, and the switched-off network
+// refuses any other request.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,6 +16,7 @@ import {
   findLockInjections,
   lockInstallTargets,
 } from "../../src/vendor/locks.js";
+import { defaultNet } from "../../src/vendor/verify.js";
 
 const REG = "https://registry.npmjs.org/";
 
@@ -50,16 +52,14 @@ const pnpm = (packagesYaml) =>
     "pnpm-lock.yaml": `lockfileVersion: '9.0'\nimporters:\n  .:\n    dependencies: {}\npackages:\n${packagesYaml}`,
   });
 
-/** A network that fails the test on any request. */
-const noNet = {
-  fetchJson: async () => assert.fail("no request expected"),
-};
-
 /** An empty cache folder of the test's own. */
 const freshCache = () => fs.mkdtempSync(path.join(os.tmpdir(), "wl-npm-reg-"));
 
 /** The forged entries, as [name, version, installed]. */
-async function forged(addon, opts = { net: noNet, cacheDir: freshCache() }) {
+async function forged(
+  addon,
+  opts = { net: defaultNet, cacheDir: freshCache() }
+) {
   return (await findLockInjections(addon, opts)).map((f) => [
     f.name,
     f.version,
@@ -258,7 +258,10 @@ test("a registry URL off the tarball path is asked of the registry, and its tarb
     file,
     JSON.stringify({ ...kept, "@scope/gone@0.0.1": { fake404: true } })
   );
-  assert.deepEqual(await forged(addon, { net: noNet, cacheDir }), expected);
+  assert.deepEqual(
+    await forged(addon, { net: defaultNet, cacheDir }),
+    expected
+  );
   fs.writeFileSync(
     file,
     JSON.stringify({ ...kept, "@scope/gone@0.0.1": null })

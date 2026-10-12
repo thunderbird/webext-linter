@@ -193,10 +193,6 @@ export const SETUP_STEPS = Object.freeze([
  *   a lock file's tarball URLs.
  * @property {string} [sourcesCache]  Where to keep the pinned library sources a review
  *   downloads.
- * @property {import("./vendor/verify.js").VendorNet} [vendorNet]  Injectable
- *   network transport for every review fetch that is not a cached asset - vendor
- *   verification, the CDN lookup, the OSV audit (a unit test injects its own);
- *   defaults to the real fetch.
  * @property {import("./checks/registry.js").Registry} [registry]  Parsed
  *   registry threaded from the caller, parsed once here otherwise.
  * @property {boolean} [llmReview]  Run the review and hand out the first phase of it -
@@ -668,10 +664,7 @@ async function reviewSubmission(opts, work, prepared) {
     opts: {
       ...opts,
       vendorNet: withRunCache(
-        withSourceCache(
-          opts.vendorNet ?? defaultNet,
-          opts.sourcesCache ?? SOURCES_CACHE
-        ),
+        withSourceCache(defaultNet, opts.sourcesCache ?? SOURCES_CACHE),
         runCache(opts.workFolder, opts.workCache)
       ),
     },

@@ -375,25 +375,20 @@ test("verifyExperiments: an unknown API name -> unsupported", async () => {
   assert.equal(status0(res), "unsupported");
 });
 
-// Run `fn` with a global fetch that throws, proving a code path resolves nothing
-// over the network (an empty cache dir forces a fetch if resolution is attempted).
+// Run `fn` with an empty experiments cache: resolving the allow-list then asks for its
+// download, which the switched-off network refuses, proving whether a code path resolves it.
 async function withoutNetwork(fn) {
   const emptyCache = fs.mkdtempSync(path.join(os.tmpdir(), "exp-nonet-"));
-  const orig = globalThis.fetch;
-  globalThis.fetch = async () => {
-    throw new Error("network attempted");
-  };
   try {
     return await fn(emptyCache);
   } finally {
-    globalThis.fetch = orig;
     fs.rmSync(emptyCache, { recursive: true, force: true });
   }
 }
 
 test("verifyExperiments: no locatable experiment files -> not pristine, allow-list never resolved", async () => {
-  // With no locatable experiment files, the allow-list is never resolved: fetch would
-  // throw here if it were, so a plain pristine=false proves the short-circuit.
+  // With no locatable experiment files, the allow-list is never resolved: its download
+  // would be refused here if it were, so a plain pristine=false proves the short-circuit.
   await withoutNetwork(async (experimentsCache) => {
     const res = await verifyExperiments(
       { files: new Map() },
@@ -412,7 +407,7 @@ test("verifyExperiments: an unfetchable allow-list is a hard fail (throws)", asy
     assert.rejects(
       () =>
         verifyExperiments(addon(demoFiles()), demoRecord, { experimentsCache }),
-      /network attempted|Failed to download/
+      /network request in a test/
     )
   );
 });
@@ -566,9 +561,7 @@ test("resolveExperimentsZip downloads a list older than a day again", async (t) 
   const cached = cachedExperimentsPath(dir, "main");
   fs.writeFileSync(cached, "old zip");
 
-  globalThis.fetch = async () => {
-    throw new Error("network attempted");
-  };
+  // The switched-off network refuses any request for the fresh copy.
   const fresh = await resolveExperimentsZip({ branch: "main", cacheDir: dir });
   assert.equal(
     fresh.source,

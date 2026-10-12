@@ -24,6 +24,7 @@ import {
 } from "../../src/vendor/locks.js";
 import { resolveVendor } from "../../src/vendor/resolve.js";
 import { verifyScaDependencies } from "../../src/vendor/verify.js";
+import { observed, seededNet } from "../seed-caches.js";
 
 function fakeAddon(files, directories = []) {
   const map = new Map();
@@ -1132,15 +1133,28 @@ test("an overridden version is the one the tree audit reads, for npm and pnpm", 
 test("a pnpm override is audited at the installed version", async () => {
   const addon = overrideFixture("pnpm");
   addon.vendor = resolveVendor({ addon, reviewerInstalls: true });
-  const asked = [];
-  await verifyScaDependencies(addon, {
-    fetchBytes: async () => Buffer.alloc(0),
-    fetchJson: async () => ({ downloads: 1e9 }),
-    postJson: async (_url, body) => {
-      asked.push(...body.queries.map((q) => `${q.package.name}@${q.version}`));
-      return { results: body.queries.map(() => ({})) };
-    },
-  });
+  // OSV knows the installed tree only: a question about lodash@4.17.20 is refused.
+  const { net, sent } = observed(
+    seededNet({
+      osv: {
+        batch: {
+          "lodash@4.17.21": {},
+          "minimist@1.2.8": {},
+          "optimist@0.6.1": {},
+          "wordwrap@1.0.0": {},
+        },
+      },
+      popularity: {
+        npm: { lodash: { downloads: 1e9 }, optimist: { downloads: 1e9 } },
+      },
+    })
+  );
+  await verifyScaDependencies(addon, net);
+  const asked = sent
+    .filter((r) => r.kind === "post")
+    .flatMap((r) =>
+      r.body.queries.map((q) => `${q.package.name}@${q.version}`)
+    );
   assert.ok(asked.includes("lodash@4.17.21"), asked.join(" "));
   assert.ok(!asked.includes("lodash@4.17.20"), asked.join(" "));
 });
@@ -1165,23 +1179,24 @@ test("npm v1 counts every package as declared", async () => {
   assert.deepEqual(declared(addon).sort(), ["deep", "top"]);
 
   addon.vendor = resolveVendor({ addon, reviewerInstalls: true });
-  const popularity = [];
-  await verifyScaDependencies(addon, {
-    fetchBytes: async () => Buffer.alloc(0),
-    fetchJson: async (url) => {
-      if (url.includes("/v1/vulns/")) {
-        return {
-          id: "GHSA-v1",
-          database_specific: { severity: "HIGH" },
-        };
-      }
-      popularity.push(url.slice(url.lastIndexOf("/") + 1));
-      return { downloads: 5 };
-    },
-    postJson: async (_url, body) => ({
-      results: body.queries.map(() => ({ vulns: [{ id: "GHSA-v1" }] })),
-    }),
-  });
+  const { net, sent } = observed(
+    seededNet({
+      osv: {
+        batch: {
+          "top@1.0.0": { vulns: [{ id: "GHSA-v1" }] },
+          "deep@2.0.0": { vulns: [{ id: "GHSA-v1" }] },
+        },
+        advisories: {
+          "GHSA-v1": { id: "GHSA-v1", database_specific: { severity: "HIGH" } },
+        },
+      },
+      popularity: { npm: { top: { downloads: 5 }, deep: { downloads: 5 } } },
+    })
+  );
+  await verifyScaDependencies(addon, net);
+  const popularity = sent
+    .filter((r) => r.url.includes("api.npmjs.org"))
+    .map((r) => r.url.slice(r.url.lastIndexOf("/") + 1));
   assert.deepEqual(popularity.sort(), ["deep", "top"]);
   assert.deepEqual(
     addon.vendor.vulnerabilities.map((v) => v.name),
@@ -1283,15 +1298,13 @@ test("a direct GitHub dependency is popularity-gated", async () => {
     }),
   });
   addon.vendor = resolveVendor({ addon, reviewerInstalls: true });
-  const asked = [];
-  await verifyScaDependencies(addon, {
-    fetchBytes: async () => Buffer.alloc(0),
-    fetchJson: async (url) => {
-      asked.push(url);
-      return { stargazers_count: 3 };
-    },
-    postJson: async () => ({ results: [] }),
-  });
+  const { net, sent } = observed(
+    seededNet({
+      popularity: { github: { "o/widget": { stargazers_count: 3 } } },
+    })
+  );
+  await verifyScaDependencies(addon, net);
+  const asked = sent.map((r) => r.url);
   assert.ok(
     asked.some((u) => u.endsWith("/repos/o/widget")),
     asked.join()
@@ -1434,15 +1447,13 @@ test("an scp-form GitHub repo in a pnpm lock is popularity-gated", async () => {
   });
   assert.deepEqual(lockSourceGaps(addon), []);
   addon.vendor = resolveVendor({ addon, reviewerInstalls: true });
-  const asked = [];
-  await verifyScaDependencies(addon, {
-    fetchBytes: async () => Buffer.alloc(0),
-    fetchJson: async (url) => {
-      asked.push(url);
-      return { stargazers_count: 3 };
-    },
-    postJson: async () => ({ results: [] }),
-  });
+  const { net, sent } = observed(
+    seededNet({
+      popularity: { github: { "o/gadget": { stargazers_count: 3 } } },
+    })
+  );
+  await verifyScaDependencies(addon, net);
+  const asked = sent.map((r) => r.url);
   assert.ok(
     asked.some((u) => u.endsWith("/repos/o/gadget")),
     asked.join()
@@ -1476,15 +1487,13 @@ test("a scheme-and-colon GitHub source, and a nameless entry, are gated", async 
   });
   assert.deepEqual(lockSourceGaps(addon), []);
   addon.vendor = resolveVendor({ addon, reviewerInstalls: true });
-  const asked = [];
-  await verifyScaDependencies(addon, {
-    fetchBytes: async () => Buffer.alloc(0),
-    fetchJson: async (url) => {
-      asked.push(url);
-      return { stargazers_count: 3 };
-    },
-    postJson: async () => ({ results: [] }),
-  });
+  const { net, sent } = observed(
+    seededNet({
+      popularity: { github: { "o/widget": { stargazers_count: 3 } } },
+    })
+  );
+  await verifyScaDependencies(addon, net);
+  const asked = sent.map((r) => r.url);
   assert.ok(
     asked.some((u) => u.endsWith("/repos/o/widget")),
     asked.join()

@@ -8,7 +8,13 @@ import os from "node:os";
 import path from "node:path";
 
 import { runPipeline, resolveReviewSchema } from "../../src/pipeline.js";
-import { fixtureCacheOpts, freshWorkFolder } from "../seed-caches.js";
+import {
+  fixtureCacheOpts,
+  freshWorkFolder,
+  popularityEntries,
+  seedSourcesCache,
+  seedWorkCache,
+} from "../seed-caches.js";
 import { createHash } from "node:crypto";
 import { NoAnswerError, setNetworkPacing } from "../../src/util/net.js";
 
@@ -244,26 +250,24 @@ test("add-on: a shipped node_modules folder is reviewed like any other folder", 
 
 // The add-on ships lodash under its own file name; package.json + the lock name the
 // release, its unpkg listing matches the shipped bytes, and the OSV audit of the release
-// rejects. Each request answers from `answers`; anything else is a 404.
+// rejects. Each answer the review needs comes from a cache the test seeded (lodashCaches),
+// and one host gives no answer (failing).
 const LODASH = path.resolve("tests/addons/package-range-locked-shipped");
 const LISTING = "https://unpkg.com/lodash@4.17.21/?meta";
 const OSV_QUERY = "https://api.osv.dev/v1/query";
 
-/** globalThis.fetch answering each URL with `answers[url]` (a status, or a JSON body). */
-function answering(t, answers) {
+/** globalThis.fetch answering each URL in `failures` with that status, which no cache can
+ *  hold. It refuses every other request as the switched-off network does, which stops
+ *  guarding once fetch is replaced. */
+function failing(t, failures) {
   setNetworkPacing({ intervalMs: 0, backoffMs: 0, maxWaitMs: 0 });
   const real = globalThis.fetch;
   globalThis.fetch = async (url) => {
-    const a = answers[String(url)];
-    if (typeof a === "number") {
-      return new Response("", { status: a });
+    const status = failures[String(url)];
+    if (status === undefined) {
+      throw new Error(`network request in a test: ${url}`);
     }
-    return a === undefined
-      ? new Response("", { status: 404 })
-      : new Response(JSON.stringify(a), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+    return new Response("", { status });
   };
   t.after(() => {
     globalThis.fetch = real;
@@ -279,17 +283,25 @@ const lodashListing = () => {
   };
 };
 
+/** The review's caches for the lodash add-on, as runPipeline opts: npm's downloads reading,
+ *  and the unpkg `listing` when one is given. */
+const lodashCaches = (listing) => ({
+  workCache: seedWorkCache({
+    popularity: popularityEntries({
+      npm: { lodash: { downloads: 50000000 } },
+    }),
+  }),
+  sourcesCache: seedSourcesCache({
+    meta: listing ? { [LISTING]: listing } : {},
+  }),
+});
+
 // AUDITS #49: a refused listing read as "lodash is not shipped" would drop the declaration
 // before its audit and pass the add-on clean.
 test("a listing unpkg does not answer ends the review instead of passing it", async (t) => {
-  answering(t, {
-    [LISTING]: 503,
-    "https://api.npmjs.org/downloads/point/last-month/lodash": {
-      downloads: 50000000,
-    },
-  });
+  failing(t, { [LISTING]: 503 });
   await assert.rejects(
-    runReview({ addonPath: LODASH, ...OFFLINE }),
+    runReview({ addonPath: LODASH, ...OFFLINE, ...lodashCaches() }),
     (err) =>
       err instanceof NoAnswerError &&
       err.message.includes("unpkg.com") &&
@@ -299,16 +311,17 @@ test("a listing unpkg does not answer ends the review instead of passing it", as
 
 // An OSV outage that recorded nothing would read as a release with no advisories.
 test("an OSV query that gets no answer ends the review", async (t) => {
-  answering(t, {
-    [LISTING]: lodashListing(),
-    "https://api.npmjs.org/downloads/point/last-month/lodash": {
-      downloads: 50000000,
-    },
-    [OSV_QUERY]: 502,
-  });
+  failing(t, { [OSV_QUERY]: 502 });
   await assert.rejects(
-    runReview({ addonPath: LODASH, ...OFFLINE }),
-    (err) => err instanceof NoAnswerError && err.message.includes("api.osv.dev")
+    runReview({
+      addonPath: LODASH,
+      ...OFFLINE,
+      ...lodashCaches(lodashListing()),
+    }),
+    (err) =>
+      err instanceof NoAnswerError &&
+      err.message.includes("api.osv.dev") &&
+      err.message.includes("HTTP 502")
   );
 });
 
@@ -322,8 +335,12 @@ test("a stale schema cache whose refresh gets no answer ends the review", async 
   for (const f of fs.readdirSync(cacheDir)) {
     fs.utimesSync(path.join(cacheDir, f), old, old);
   }
-  answering(t, {}); // every download refused below
-  globalThis.fetch = async () => new Response("", { status: 503 });
+  setNetworkPacing({ intervalMs: 0, backoffMs: 0, maxWaitMs: 0 });
+  const real = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = real;
+  });
+  globalThis.fetch = async () => new Response("", { status: 503 }); // every download answers 503
   await assert.rejects(
     resolveReviewSchema({
       cacheDir,

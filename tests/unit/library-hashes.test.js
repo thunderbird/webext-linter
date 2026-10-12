@@ -110,7 +110,8 @@ test("a stale hash DB whose refresh gets no answer is not used", async (t) => {
   await assert.rejects(resolveLibraryHashes({ cacheDir: dir }));
 });
 
-// A fresh cache is used without a request: any fetch here fails the test.
+// A fresh cache is used without a request: the switched-off network refuses any request
+// here, which fails the test.
 test("a fresh hash DB is used without a request", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "libhash-fresh-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -118,9 +119,6 @@ test("a fresh hash DB is used without a request", async (t) => {
     path.join(dir, "dispensary-hashes.txt"),
     `${H} lib.1.0.0.lib.js\n`
   );
-  fetching(t, () => {
-    throw new Error("network attempted");
-  });
   const { source } = await resolveLibraryHashes({ cacheDir: dir });
   assert.equal(source, "cache");
 });

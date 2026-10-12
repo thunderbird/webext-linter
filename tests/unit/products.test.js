@@ -6,19 +6,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { reviewData } from "../../src/review/products.js";
+import { defaultNet } from "../../src/vendor/verify.js";
 import { LinterError } from "../../src/lib/errors.js";
 import { ARTIFACT_SCA, ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 import { fixtureCacheOpts } from "../seed-caches.js";
 import { addonOf } from "./manifest-ctx.js";
 
-/** A network that fails the test on any request. */
-const noNet = {
-  fetchBytes: async () => assert.fail("no request expected"),
-  fetchJson: async () => assert.fail("no request expected"),
-  postJson: async () => assert.fail("no request expected"),
-};
-
-const OPTS = { ...fixtureCacheOpts(), cdnLookup: false, vendorNet: noNet };
+// The production network, which the switched-off test network makes refuse any request.
+const OPTS = { ...fixtureCacheOpts(), cdnLookup: false, vendorNet: defaultNet };
 
 const xpiReview = (files = { "a.js": "const x = 1;\n" }) => {
   const xpi = addonOf(files, ARTIFACT_XPI);

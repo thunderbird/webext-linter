@@ -1,6 +1,6 @@
 // Unit tests for vendor verification: source classification (pure), the network
 // batch verifyVendor (fetch + EOL-tolerant compare + popularity + package.json
-// file matching, with the network injected), and each of the vendor checks
+// file matching, answered from seeded caches), and each of the vendor checks
 // reading the precomputed addon.vendor store. No real network.
 
 import { test } from "node:test";
@@ -24,8 +24,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { withOsvCache } from "../../src/vendor/osv-cache.js";
-import { seededNet } from "../seed-caches.js";
-import { VENDOR_FETCH_MAX_BYTES } from "../../src/config.js";
+import { observed, seededNet } from "../seed-caches.js";
+import {
+  VENDOR_FETCH_MAX_BYTES,
+  VENDOR_GITHUB_REPOS_API,
+  VENDOR_NPM_DOWNLOADS_API,
+  VENDOR_OSV_API,
+  VENDOR_OSV_BATCH_API,
+  VENDOR_OSV_VULN_API,
+} from "../../src/config.js";
 
 // What a host's "there is no such thing" arrives as through the real transport: the one
 // failure a caller may read as a value.
@@ -48,9 +55,9 @@ import { applyUnverifiedVendor } from "../../src/lib/bundled.js";
 import { normalizedSha256 } from "../../src/normalize/hash.js";
 import { makeTgz } from "./tarball-fixture.js";
 
-// Every request here is answered by an injected transport, which sits ABOVE the gate
-// and so never reaches it. Zeroed anyway, because the pipeline tests in this file do
-// reach it, and the gate's own behaviour is asserted in tests/unit/net.test.js.
+// Every request here is answered by a seeded cache or a failure stand-in, which sit ABOVE
+// the gate and so never reach it. Zeroed anyway, because the real-transport test in this
+// file does reach it, and the gate's own behaviour is asserted in tests/unit/net.test.js.
 setNetworkPacing({ intervalMs: 0, backoffMs: 0 });
 
 // ---- classifySource (no network) ----
@@ -186,7 +193,7 @@ test("every VENDOR_TRUSTED_HOSTS host classifies a pinned URL as trusted", async
   }
 });
 
-// ---- verifyVendor (network injected) ----
+// ---- verifyVendor (answered from seeded caches) ----
 
 // Build an addon with files, plus a vendor store as resolveVendor would leave it.
 function addonWith(files, vendor) {
@@ -202,96 +209,17 @@ function addonWith(files, vendor) {
   };
 }
 
-// An injectable transport. `bytes` answers every fetchBytes (the VENDOR case);
-// `files` answers per-URL (the package case, a missing URL is a 404); `listing`
-// answers the "?meta" tree, and `throwOnListing` makes unpkg answer 404 for it instead
-// ("no-answer": the listing gets no answer at all);
-// `downloads` drives the npm popularity lookup; `osv` answers the OSV audit
-// postJson (an object, or a function of the request body), and `throwOnPost` makes
-// OSV answer 404 for the audit POST.
-function net({
-  bytes,
-  files,
-  listing,
-  throwOnListing,
-  downloads = 99999,
-  stars = 99999,
-  throwOnFetch,
-  osv,
-  throwOnPost,
-  // The tree audit's two endpoints, kept separate from the single-package ones:
-  // `batch` answers /v1/querybatch (positionally, one result per query) and
-  // `advisories` maps an advisory id to the record /v1/vulns/<id> serves.
-  batch,
-  advisories,
-  throwOnBatch,
-  throwOnHydrate,
-  calls,
-} = {}) {
-  return {
-    fetchBytes: async (url) => {
-      if (throwOnFetch) {
-        throw new Error("boom");
-      }
-      if (files) {
-        if (!(url in files)) {
-          throw new Error("404");
-        }
-        return Buffer.from(files[url]);
-      }
-      return Buffer.from(bytes ?? "");
-    },
-    fetchJson: async (url) => {
-      if (url.includes("/v1/vulns/")) {
-        calls?.hydrate?.push(url);
-        if (throwOnHydrate) {
-          throw fake404();
-        }
-        const id = url.slice(url.lastIndexOf("/") + 1);
-        if (!(id in (advisories ?? {}))) {
-          throw new Error("404");
-        }
-        return advisories[id];
-      }
-      if (url.includes("?meta")) {
-        if (throwOnListing === "no-answer") {
-          throw new NoAnswerError(url, "HTTP 503");
-        }
-        if (throwOnListing) {
-          throw Object.assign(new Error("HTTP 404"), { status: 404 });
-        }
-        return listing ?? { type: "directory", files: [] };
-      }
-      const popularityUrl =
-        url.includes("api.github.com/repos/") ||
-        url.includes("api.npmjs.org/downloads/");
-      if (popularityUrl) {
-        calls?.popularity?.push(url);
-      }
-      if (url.includes("api.github.com/repos/")) {
-        return { stargazers_count: stars };
-      }
-      return { downloads };
-    },
-    postJson: async (url, body) => {
-      if (url.includes("querybatch")) {
-        calls?.batch?.push(body);
-        if (throwOnBatch) {
-          throw fake404();
-        }
-        // OSV answers every query, with `{}` where it has nothing to say.
-        return typeof batch === "function"
-          ? batch(body)
-          : (batch ?? { results: body.queries.map(() => ({})) });
-      }
-      calls?.query?.push(body);
-      if (throwOnPost) {
-        throw fake404();
-      }
-      return (typeof osv === "function" ? osv(body) : osv) ?? { vulns: [] };
-    },
-  };
-}
+// The requests a review sent (observed) to one endpoint, by the URL's start.
+const sentTo = (sent, prefix) => sent.filter((r) => r.url.startsWith(prefix));
+// The popularity readings among them, npm's and GitHub's.
+const popularityAsks = (sent) => [
+  ...sentTo(sent, VENDOR_NPM_DOWNLOADS_API),
+  ...sentTo(sent, VENDOR_GITHUB_REPOS_API),
+];
+// The single-package OSV queries among them (the batch endpoint shares their prefix).
+const osvQueries = (sent) => sent.filter((r) => r.url === VENDOR_OSV_API);
+// A popular npm package's reading, well over the bar.
+const POPULAR = { downloads: 250000 };
 
 const store = (over = {}) => ({
   set: new Set(),
@@ -413,7 +341,6 @@ test("verifyScaDependencies: a POPULAR declared dep is allowed (not recorded)", 
 // Popularity asks whether the developer chose a reputable library. A package the lock
 // records nobody declaring was chosen by nobody, so the question does not arise.
 test("verifyScaDependencies: a pulled-in package is not popularity-gated", async () => {
-  const calls = { popularity: [] };
   const addon = addonWith(
     { "package-lock.json": "{}" },
     store({
@@ -421,15 +348,17 @@ test("verifyScaDependencies: a pulled-in package is not popularity-gated", async
       lockGithubInstalls: [ghLocked("ghdeep", "u/ghdeep", false)],
     })
   );
-  await verifyScaDependencies(addon, net({ calls, downloads: 1, stars: 1 }));
-  assert.deepEqual(calls.popularity, []);
+  const { net, sent } = observed(
+    seededNet({ osv: { batch: { "deep@1.0.0": {} } } })
+  );
+  await verifyScaDependencies(addon, net);
+  assert.deepEqual(popularityAsks(sent), []);
   assert.deepEqual(addon.vendor.unpopularDeps, []);
 });
 
 // One reading per package, not per release: a lock may install two versions of one
 // declared name.
 test("verifyScaDependencies: a declared name is looked up once", async () => {
-  const calls = { popularity: [] };
   const addon = addonWith(
     { "package-lock.json": "{}" },
     store({
@@ -439,8 +368,14 @@ test("verifyScaDependencies: a declared name is looked up once", async () => {
       ],
     })
   );
-  await verifyScaDependencies(addon, net({ calls, downloads: 30 }));
-  assert.equal(calls.popularity.length, 1);
+  const { net, sent } = observed(
+    seededNet({
+      osv: { batch: { "twice@1.0.0": {}, "twice@2.0.0": {} } },
+      popularity: { npm: { twice: { downloads: 30 } } },
+    })
+  );
+  await verifyScaDependencies(addon, net);
+  assert.equal(popularityAsks(sent).length, 1);
   assert.equal(addon.vendor.unpopularDeps.length, 1);
 });
 
@@ -602,13 +537,25 @@ test("verifyScaDependencies: a declared package's moderate advisory is not recor
   assert.deepEqual(addon.vendor.devVulnerabilities, []);
 });
 
+// The popular package foo@1.0.0 with no advisories, serving the sources given (URL -> body).
+const fooNet = (bytes) =>
+  seededNet({
+    osv: { query: { "foo@1.0.0": {} } },
+    popularity: { npm: { foo: POPULAR } },
+    sources: { bytes },
+  });
+// foo@1.0.0 with no advisories, serving `sources` (as seededNet takes them), for an outcome
+// that never asks npm about it: modified or unfetchable.
+const fooUnread = (sources) =>
+  seededNet({ osv: { query: { "foo@1.0.0": {} } }, sources });
+
 test("verifyVendor: VENDOR entry that matches a popular pinned source -> verified", async () => {
   const url = "https://unpkg.com/foo@1.0.0/a.js";
   const addon = addonWith(
     { "a.js": "BODY\n" },
     store({ set: new Set(["a.js"]), entries: [pinnedEntry("a.js", url)] })
   );
-  await verifyVendor(addon, net({ bytes: "BODY\n" }));
+  await verifyVendor(addon, fooNet({ [url]: "BODY\n" }));
   assert.deepEqual(addon.vendor.results, [
     { path: "a.js", source: url, outcome: "verified" },
   ]);
@@ -620,7 +567,7 @@ test("verifyVendor: an EOL-only difference still verifies", async () => {
     { "a.js": "line1\r\nline2\r\n" }, // CRLF + trailing newline
     store({ set: new Set(["a.js"]), entries: [pinnedEntry("a.js", url)] })
   );
-  await verifyVendor(addon, net({ bytes: "line1\nline2" })); // LF, no trailing
+  await verifyVendor(addon, fooNet({ [url]: "line1\nline2" })); // LF, no trailing
   assert.equal(addon.vendor.results[0].outcome, "verified");
 });
 
@@ -638,7 +585,7 @@ test("verifyVendor: a file matching an npm-registry tarball -> verified", async 
     "package/package.json": "{}\n",
   });
   const addon = addonWith({ "vendor/foo.js": "BODY\n" }, store(tgzEntry()));
-  await verifyVendor(addon, net({ bytes: tgz }));
+  await verifyVendor(addon, fooNet({ [TGZ_URL]: tgz }));
   assert.deepEqual(addon.vendor.results, [
     { path: "vendor/foo.js", source: TGZ_URL, outcome: "verified" },
   ]);
@@ -647,7 +594,7 @@ test("verifyVendor: a file matching an npm-registry tarball -> verified", async 
 test("verifyVendor: an EOL-only diff against a tarball entry still verifies", async () => {
   const tgz = makeTgz({ "package/dist/foo.js": "a\r\nb\r\n" }); // CRLF upstream
   const addon = addonWith({ "vendor/foo.js": "a\nb" }, store(tgzEntry())); // LF
-  await verifyVendor(addon, net({ bytes: tgz }));
+  await verifyVendor(addon, fooNet({ [TGZ_URL]: tgz }));
   assert.equal(addon.vendor.results[0].outcome, "verified");
 });
 
@@ -657,13 +604,13 @@ test("verifyVendor: a tarball with no matching file -> modified", async () => {
     { "vendor/foo.js": "LOCALLY CHANGED\n" },
     store(tgzEntry())
   );
-  await verifyVendor(addon, net({ bytes: tgz }));
+  await verifyVendor(addon, fooUnread({ bytes: { [TGZ_URL]: tgz } }));
   assert.equal(addon.vendor.results[0].outcome, "modified");
 });
 
 test("verifyVendor: an unfetchable tarball -> unfetchable", async () => {
   const addon = addonWith({ "vendor/foo.js": "BODY\n" }, store(tgzEntry()));
-  await verifyVendor(addon, net({ throwOnFetch: true }));
+  await verifyVendor(addon, fooUnread({ missing: [TGZ_URL] }));
   assert.equal(addon.vendor.results[0].outcome, "unfetchable");
 });
 
@@ -696,7 +643,17 @@ test("verifyVendor: a folder verifies each file against the repo archive subpath
       ],
     })
   );
-  await verifyVendor(addon, net({ bytes: zip.toBuffer() }));
+  await verifyVendor(
+    addon,
+    seededNet({
+      popularity: { github: { "o/r": { stargazers_count: 5000 } } },
+      sources: {
+        bytes: {
+          [`https://github.com/o/r/archive/${SHA}.zip`]: zip.toBuffer(),
+        },
+      },
+    })
+  );
   const byPath = Object.fromEntries(
     addon.vendor.results.map((r) => [r.path, r.outcome])
   );
@@ -718,7 +675,7 @@ test("verifyVendor: a real byte difference is modified, a niche lib not-popular"
     { "a.js": "MINE" },
     store({ set: new Set(["a.js"]), entries: [pinnedEntry("a.js", url)] })
   );
-  await verifyVendor(modified, net({ bytes: "UPSTREAM" }));
+  await verifyVendor(modified, fooUnread({ bytes: { [url]: "UPSTREAM" } }));
   assert.equal(modified.vendor.results[0].outcome, "modified");
 
   const niche = addonWith(
@@ -728,7 +685,14 @@ test("verifyVendor: a real byte difference is modified, a niche lib not-popular"
   // A readable not-popular VENDOR file was skipped as vendored - prove it leaves
   // the non-authored set so the source-level checks scan it as authored code.
   niche.bundled.nonAuthored.add("a.js");
-  await verifyVendor(niche, net({ bytes: "BODY", downloads: 3 }));
+  await verifyVendor(
+    niche,
+    seededNet({
+      osv: { query: { "foo@1.0.0": {} } },
+      popularity: { npm: { foo: { downloads: 3 } } },
+      sources: { bytes: { [url]: "BODY" } },
+    })
+  );
   applyUnverifiedVendor(niche); // the pipeline's post-classifyBundled reconciliation
   // not-popular is not a manual-review result; it is dropped from results and
   // recorded as an untrusted (here readable) library, reviewed as authored code.
@@ -745,7 +709,7 @@ test("verifyVendor: an unfetchable source -> unfetchable", async () => {
     { "a.js": "BODY" },
     store({ set: new Set(["a.js"]), entries: [pinnedEntry("a.js", url)] })
   );
-  await verifyVendor(addon, net({ throwOnFetch: true }));
+  await verifyVendor(addon, fooUnread({ missing: [url] }));
   assert.equal(addon.vendor.results[0].outcome, "unfetchable");
 });
 
@@ -785,20 +749,22 @@ test("verifyVendor: a github release asset is byte-compared and star-gated", asy
         entries: [pinnedEntry("vendor/lib.min.js", url)],
       })
     );
-  const fetchBytes = async () => Buffer.from("BODY\n");
+  const starred = (stargazers_count) =>
+    seededNet({
+      popularity: { github: { "someone/repo": { stargazers_count } } },
+      // No npm release of the repo's name answers for it.
+      sources: {
+        bytes: { [url]: "BODY\n" },
+        missing: ["https://unpkg.com/repo@1.0.0/?meta"],
+      },
+    });
 
   const popular = mk();
-  await verifyVendor(popular, {
-    fetchBytes,
-    fetchJson: async () => ({ stargazers_count: 1180 }),
-  });
+  await verifyVendor(popular, starred(1180));
   assert.equal(popular.vendor.results[0].outcome, "verified");
 
   const niche = mk();
-  await verifyVendor(niche, {
-    fetchBytes,
-    fetchJson: async () => ({ stargazers_count: 5 }), // below VENDOR_GITHUB_MIN_STARS
-  });
+  await verifyVendor(niche, starred(5)); // below VENDOR_GITHUB_MIN_STARS
   applyUnverifiedVendor(niche);
   assert.deepEqual(niche.vendor.results, []);
   assert.equal(niche.bundled.untrusted[0].file, "vendor/lib.min.js");
@@ -815,15 +781,15 @@ test("verifyVendor: a github source from a trusted org verifies despite low star
       entries: [pinnedEntry("vendor/i18n.mjs", url)],
     })
   );
-  // The raw bytes match; fetchJson throws to prove the stars lookup is skipped
+  // The raw bytes match, and no reading is seeded, so a stars lookup would end the test
   // (a trusted org is accepted by provenance).
-  const net = {
-    fetchBytes: async () => Buffer.from("BODY\n"),
-    fetchJson: async () => {
-      throw new Error("no popularity lookup expected for a trusted org");
-    },
-  };
-  await verifyVendor(addon, net);
+  const raw =
+    "https://raw.githubusercontent.com/thunderbird/webext-support/" +
+    "6bbbf8ac2105d04c1b59083e8bd52e0046448ec7/modules/i18n/i18n.mjs";
+  await verifyVendor(
+    addon,
+    seededNet({ sources: { bytes: { [raw]: "BODY\n" } } })
+  );
   assert.equal(addon.vendor.results[0].outcome, "verified");
 });
 
@@ -838,16 +804,36 @@ test("verifyVendor: a github source from a non-trusted org is still star-gated",
       entries: [pinnedEntry("vendor/lib.js", url)],
     })
   );
-  const net = {
-    fetchBytes: async () => Buffer.from("BODY\n"),
-    fetchJson: async () => ({ stargazers_count: 5 }), // below VENDOR_GITHUB_MIN_STARS
-  };
-  await verifyVendor(addon, net);
+  const raw =
+    "https://raw.githubusercontent.com/someone/repo/" +
+    "6bbbf8ac2105d04c1b59083e8bd52e0046448ec7/lib.js";
+  await verifyVendor(
+    addon,
+    seededNet({
+      // below VENDOR_GITHUB_MIN_STARS
+      popularity: { github: { "someone/repo": { stargazers_count: 5 } } },
+      sources: {
+        bytes: { [raw]: "BODY\n" },
+        // No npm release of the repo's name answers for it.
+        missing: [
+          "https://unpkg.com/repo@6bbbf8ac2105d04c1b59083e8bd52e0046448ec7/?meta",
+        ],
+      },
+    })
+  );
   applyUnverifiedVendor(addon);
   // star-gated -> not-popular -> untrusted (authored code), dropped from results.
   assert.deepEqual(addon.vendor.results, []);
   assert.equal(addon.bundled.untrusted[0].file, "vendor/lib.js");
 });
+
+// The unpkg listing of jszip@3.10.1, the release the listing tests declare.
+const JSZIP_META = "https://unpkg.com/jszip@3.10.1/?meta";
+
+// A network serving one unpkg listing, and whatever else `answers` seeds. No source bytes
+// are seeded, so a download would end the test.
+const listed = (url, listing, answers = {}) =>
+  seededNet({ ...answers, sources: { meta: { [url]: listing } } });
 
 test("verifyVendor: a file that does not hash-match any published file is not claimed", async () => {
   const sri = `sha256-${createHash("sha256").update("UPSTREAM").digest("base64")}`;
@@ -856,7 +842,7 @@ test("verifyVendor: a file that does not hash-match any published file is not cl
     store({ packages: [{ name: "jszip", version: "3.10.1" }] })
   );
   const listing = { files: [{ path: "/dist/jszip.min.js", integrity: sri }] };
-  await verifyVendor(addon, net({ listing, throwOnFetch: true }));
+  await verifyVendor(addon, listed(JSZIP_META, listing));
   assert.deepEqual(addon.vendor.results, []);
   assert.equal(addon.vendor.set.has("lib/jszip.min.js"), false);
 });
@@ -870,7 +856,13 @@ test("verifyVendor: a renamed verbatim copy is matched by hash (basename-indepen
   );
   const listing = { files: [{ path: "/dist/foo.js", integrity: sri }] };
   const base = "https://unpkg.com/pkg@2.0.0";
-  await verifyVendor(addon, net({ listing, throwOnFetch: true }));
+  await verifyVendor(
+    addon,
+    listed(`${base}/?meta`, listing, {
+      osv: { query: { "pkg@2.0.0": {} } },
+      popularity: { npm: { pkg: POPULAR } },
+    })
+  );
   assert.deepEqual(addon.vendor.results, [
     {
       path: "vendor/renamed.js",
@@ -888,7 +880,13 @@ test("verifyVendor: a hash match for a niche package is not-popular", async () =
     store({ packages: [{ name: "niche", version: "1.0.0" }] })
   );
   const listing = { files: [{ path: "/lib.js", integrity: sri }] };
-  await verifyVendor(addon, net({ listing, downloads: 3, throwOnFetch: true }));
+  await verifyVendor(
+    addon,
+    listed("https://unpkg.com/niche@1.0.0/?meta", listing, {
+      osv: { query: { "niche@1.0.0": {} } },
+      popularity: { npm: { niche: { downloads: 3 } } },
+    })
+  );
   applyUnverifiedVendor(addon);
   // niche npm dep -> not-popular -> untrusted (authored code), dropped from results.
   assert.deepEqual(addon.vendor.results, []);
@@ -898,7 +896,7 @@ test("verifyVendor: a hash match for a niche package is not-popular", async () =
 // unpkg's real "?meta" is a FLAT files array whose entries carry the MIME type in
 // `type` (not the literal "file") plus a per-file sha256 `integrity`. A packaged
 // file is matched by hashing it locally and comparing to that integrity - no
-// bytes are fetched (`throwOnFetch` proves it). Matching on a literal type === "file"
+// bytes are fetched (none are seeded, so a download would end the test). Matching on a literal type === "file"
 // would extract nothing from this listing and leave every vendored copy unrecognized;
 // downloading each file instead of hashing locally would hang on a big package.
 test("verifyVendor: a flat ?meta file is matched by sha256 integrity, no download", async () => {
@@ -926,7 +924,13 @@ test("verifyVendor: a flat ?meta file is matched by sha256 integrity, no downloa
     ],
   };
   const base = "https://unpkg.com/@awesome.me/webawesome@3.3.1";
-  await verifyVendor(addon, net({ listing, throwOnFetch: true }));
+  await verifyVendor(
+    addon,
+    listed(`${base}/?meta`, listing, {
+      osv: { query: { "@awesome.me/webawesome@3.3.1": {} } },
+      popularity: { npm: { "@awesome.me/webawesome": POPULAR } },
+    })
+  );
   assert.ok(addon.vendor.set.has("vendor/webawesome/webawesome.js"));
   assert.deepEqual(addon.vendor.results, [
     {
@@ -947,6 +951,11 @@ test("verifyVendor: a flat ?meta file is matched by sha256 integrity, no downloa
 const ADVISORY = {
   vulns: [{ id: "GHSA-x", database_specific: { severity: "HIGH" } }],
 };
+// jszip@3.10.1 as OSV and npm answer for it: advised against, and popular.
+const JSZIP_ADVISED = {
+  osv: { query: { "jszip@3.10.1": ADVISORY } },
+  popularity: { npm: { jszip: POPULAR } },
+};
 
 test("verifyVendor: a declared dependency no packaged file came from is not audited", async () => {
   const sri = `sha256-${createHash("sha256").update("UPSTREAM").digest("base64")}`;
@@ -955,13 +964,10 @@ test("verifyVendor: a declared dependency no packaged file came from is not audi
     store({ packages: [{ name: "jszip", version: "3.10.1" }] })
   );
   const listing = { files: [{ path: "/dist/jszip.js", integrity: sri }] };
-  const calls = { query: [] };
-  await verifyVendor(
-    addon,
-    net({ listing, osv: ADVISORY, calls, throwOnFetch: true })
-  );
+  const { net, sent } = observed(listed(JSZIP_META, listing));
+  await verifyVendor(addon, net);
   // Not merely unreported - never asked. The request itself is the cost.
-  assert.deepEqual(calls.query, []);
+  assert.deepEqual(osvQueries(sent), []);
   assert.deepEqual(addon.vendor.vulnerabilities, []);
 });
 
@@ -973,12 +979,9 @@ test("verifyVendor: a declared dependency the add-on ships is audited", async ()
     store({ packages: [{ name: "jszip", version: "3.10.1" }] })
   );
   const listing = { files: [{ path: "/dist/jszip.js", integrity: sri }] };
-  const calls = { query: [] };
-  await verifyVendor(
-    addon,
-    net({ listing, osv: ADVISORY, calls, throwOnFetch: true })
-  );
-  assert.equal(calls.query.length, 1);
+  const { net, sent } = observed(listed(JSZIP_META, listing, JSZIP_ADVISED));
+  await verifyVendor(addon, net);
+  assert.equal(osvQueries(sent).length, 1);
   assert.equal(addon.vendor.vulnerabilities[0].name, "jszip");
 });
 
@@ -992,13 +995,16 @@ test("verifyVendor: an OSV reply that is not an object is no answer", async () =
     store({ packages: [{ name: "jszip", version: "3.10.1" }] })
   );
   const listing = { files: [{ path: "/dist/jszip.js", integrity: sri }] };
-  await assert.rejects(
-    verifyVendor(
-      addon,
-      net({ listing, osv: () => "not json", throwOnFetch: true })
-    ),
-    NoAnswerError
-  );
+  // The one reply no cache keeps: everything else comes from the seeded listing.
+  const seeded = listed(JSZIP_META, listing, {
+    popularity: { npm: { jszip: POPULAR } },
+  });
+  const notAnObject = {
+    ...seeded,
+    postJson: async (url, body) =>
+      url === VENDOR_OSV_API ? "not json" : seeded.postJson(url, body),
+  };
+  await assert.rejects(verifyVendor(addon, notAnObject), NoAnswerError);
 });
 
 test("verifyVendor: a copy differing only in line endings is the release it declares", async () => {
@@ -1012,12 +1018,9 @@ test("verifyVendor: a copy differing only in line endings is the release it decl
     store({ packages: [{ name: "jszip", version: "3.10.1" }] })
   );
   const listing = { files: [{ path: "/dist/jszip.js", integrity: sri }] };
-  const calls = { query: [] };
-  await verifyVendor(
-    addon,
-    net({ listing, osv: ADVISORY, calls, throwOnFetch: true })
-  );
-  assert.equal(calls.query.length, 1);
+  const { net, sent } = observed(listed(JSZIP_META, listing, JSZIP_ADVISED));
+  await verifyVendor(addon, net);
+  assert.equal(osvQueries(sent).length, 1);
   assert.equal(addon.vendor.vulnerabilities[0].name, "jszip");
   assert.ok(addon.vendor.set.has("vendor/lib.js"));
 });
@@ -1027,14 +1030,13 @@ test("verifyVendor: a release unpkg does not have is not audited either", async 
     { "vendor/lib.js": "LIB\n" },
     store({ packages: [{ name: "jszip", version: "3.10.1" }] })
   );
-  const calls = { query: [] };
-  await verifyVendor(
-    addon,
-    net({ throwOnListing: true, osv: ADVISORY, calls, throwOnFetch: true })
+  const { net, sent } = observed(
+    seededNet({ sources: { missing: [JSZIP_META] } })
   );
+  await verifyVendor(addon, net);
   // A 404 says the release was never published, so nothing packaged can have come from
   // it.
-  assert.deepEqual(calls.query, []);
+  assert.deepEqual(osvQueries(sent), []);
   assert.deepEqual(addon.vendor.vulnerabilities, []);
   assert.deepEqual(addon.vendor.packages, []);
 });
@@ -1046,13 +1048,18 @@ test("verifyVendor: a listing that gets no answer ends the review", async () => 
     { "vendor/lib.js": "LIB\n" },
     store({ packages: [{ name: "jszip", version: "3.10.1" }] })
   );
-  await assert.rejects(
-    verifyVendor(
-      addon,
-      net({ throwOnListing: "no-answer", osv: ADVISORY, throwOnFetch: true })
-    ),
-    NoAnswerError
-  );
+  // The listing's silence is the one failure here, and no cache can hold it.
+  const seeded = seededNet();
+  const silentListing = {
+    ...seeded,
+    fetchJson: async (url) => {
+      if (url === JSZIP_META) {
+        throw new NoAnswerError(url, "HTTP 503");
+      }
+      return seeded.fetchJson(url);
+    },
+  };
+  await assert.rejects(verifyVendor(addon, silentListing), NoAnswerError);
 });
 
 test("verifyVendor: a shipped file another declaration covers still answers for the release", async () => {
@@ -1069,17 +1076,14 @@ test("verifyVendor: a shipped file another declaration covers still answers for 
     })
   );
   const listing = { files: [{ path: "/dist/jszip.js", integrity: sri }] };
-  const calls = { query: [] };
-  await verifyVendor(
-    addon,
-    net({ listing, osv: ADVISORY, calls, throwOnFetch: true })
-  );
-  assert.equal(calls.query.length, 1);
+  const { net, sent } = observed(listed(JSZIP_META, listing, JSZIP_ADVISED));
+  await verifyVendor(addon, net);
+  assert.equal(osvQueries(sent).length, 1);
   assert.equal(addon.vendor.vulnerabilities[0].name, "jszip");
   assert.deepEqual(addon.vendor.results, []);
 });
 
-// ---- OSV vulnerability audit (network injected) ----
+// ---- OSV vulnerability audit ----
 
 // A package OSV reports an advisory for is recorded on vendor.vulnerabilities,
 // aggregated per package: a CVE alias is preferred over the OSV id, the severity
@@ -1114,7 +1118,13 @@ test("verifyVendor: the OSV audit records a vulnerable pinned package", async ()
     ],
   };
   const listing = { files: [{ path: "/lodash.js", integrity: sri }] };
-  await verifyVendor(addon, net({ listing, osv }));
+  await verifyVendor(
+    addon,
+    listed("https://unpkg.com/lodash@4.17.20/?meta", listing, {
+      osv: { query: { "lodash@4.17.20": osv } },
+      popularity: { npm: { lodash: POPULAR } },
+    })
+  );
   assert.deepEqual(addon.vendor.vulnerabilities, [
     {
       name: "lodash",
@@ -1220,20 +1230,25 @@ test("auditIdentifiedLibraries: dedupes by release across files and prior audits
       },
     ],
   };
-  let queries = 0;
-  const osv = (body) => {
-    queries += 1;
-    return body.package.name === "jquery"
-      ? {
-          vulns: [
-            { id: "CVE-2020-11022", database_specific: { severity: "MEDIUM" } },
-          ],
-        }
-      : { vulns: [] };
-  };
-  await auditIdentifiedLibraries(addon, net({ osv }));
+  const { net, sent } = observed(
+    seededNet({
+      osv: {
+        query: {
+          "jquery@1.7.2": {
+            vulns: [
+              {
+                id: "CVE-2020-11022",
+                database_specific: { severity: "MEDIUM" },
+              },
+            ],
+          },
+        },
+      },
+    })
+  );
+  await auditIdentifiedLibraries(addon, net);
   // jquery queried once (not twice), moment skipped (already recorded).
-  assert.equal(queries, 1);
+  assert.equal(osvQueries(sent).length, 1);
   assert.deepEqual(
     addon.vendor.vulnerabilities.map((v) => `${v.name}@${v.version}`),
     ["moment@2.0.0", "jquery@1.7.2"] // the prior moment entry + one jquery entry
@@ -1253,8 +1268,19 @@ test("auditIdentifiedLibraries: an OSV 404 ends the run", async () => {
       },
     ],
   };
+  // OSV's 404 is the one failure here, and no cache can hold it.
+  const seeded = seededNet();
+  const osvDown = {
+    ...seeded,
+    postJson: async (url, body) => {
+      if (url === VENDOR_OSV_API) {
+        throw fake404();
+      }
+      return seeded.postJson(url, body);
+    },
+  };
   await assert.rejects(
-    auditIdentifiedLibraries(addon, net({ throwOnPost: true })),
+    auditIdentifiedLibraries(addon, osvDown),
     (err) =>
       err instanceof NoAnswerError &&
       /api\.osv\.dev\/v1\/query \(HTTP 404\)/.test(err.message)
@@ -1264,18 +1290,12 @@ test("auditIdentifiedLibraries: an OSV 404 ends the run", async () => {
 
 // ---- the Mozilla policy blocklist short-circuit (auditNpm consults the `blocks` policy) ----
 
+// The bodies of the OSV batches a review sent (observed), in order.
+const batches = (sent) => sentTo(sent, VENDOR_OSV_BATCH_API).map((r) => r.body);
+
 const JQUERY_BLOCK = parseLibraryBlocks(
   `- name: jquery\n  banned_below: "3.0.0"\n  reason: "old jquery"`
 );
-// A net whose OSV POST bumps a counter, so a test can prove OSV was / was not queried.
-const countingNet = (counter) =>
-  net({
-    downloads: 99999,
-    osv: () => {
-      counter.n++;
-      return { vulns: [] };
-    },
-  });
 
 // A banned identified library is recorded on vendor.blocked and SKIPS the OSV query
 // (auditNpm returns before postJson), so a disallowed library costs no OSV request.
@@ -1291,9 +1311,9 @@ test("blocklist: a banned identified library is recorded and skips the OSV query
       },
     ],
   };
-  const c = { n: 0 };
-  await auditIdentifiedLibraries(addon, countingNet(c), JQUERY_BLOCK);
-  assert.equal(c.n, 0); // OSV never queried for a banned library
+  const { net, sent } = observed(seededNet());
+  await auditIdentifiedLibraries(addon, net, JQUERY_BLOCK);
+  assert.equal(osvQueries(sent).length, 0); // OSV never queried for a banned library
   assert.deepEqual(addon.vendor.blocked, [
     {
       name: "jquery",
@@ -1323,9 +1343,11 @@ test("blocklist: an unadvised identified library is recorded but still OSV-audit
       },
     ],
   };
-  const c = { n: 0 };
-  await auditIdentifiedLibraries(addon, countingNet(c), blocks);
-  assert.equal(c.n, 1); // unadvised is still audited
+  const { net, sent } = observed(
+    seededNet({ osv: { query: { "dompurify@2.0.0": {} } } })
+  );
+  await auditIdentifiedLibraries(addon, net, blocks);
+  assert.equal(osvQueries(sent).length, 1); // unadvised is still audited
   assert.equal(addon.vendor.blocked.length, 1);
   assert.equal(addon.vendor.blocked[0].status, "unadvised");
 });
@@ -1352,9 +1374,9 @@ test("blocklist: a declared-AND-bundled banned library is recorded once, not twi
       },
     ],
   };
-  const c = { n: 0 };
-  await auditIdentifiedLibraries(addon, countingNet(c), JQUERY_BLOCK);
-  assert.equal(c.n, 0); // banned -> no OSV
+  const { net, sent } = observed(seededNet());
+  await auditIdentifiedLibraries(addon, net, JQUERY_BLOCK);
+  assert.equal(osvQueries(sent).length, 0); // banned -> no OSV
   assert.equal(addon.vendor.blocked.length, 1); // not double-recorded
 });
 
@@ -1362,7 +1384,6 @@ test("blocklist: a declared-AND-bundled banned library is recorded once, not twi
 // declared or not, shipped or build-only: vendor.blocked covers the whole installed tree.
 // A banned release leaves the OSV batch, as auditNpm skips one, so it is reported once.
 test("blocklist: a banned package anywhere in the lock is recorded and leaves the batch", async () => {
-  const calls = { batch: [] };
   const addon = addonWith(
     { "package-lock.json": "{}" },
     store({
@@ -1372,17 +1393,16 @@ test("blocklist: a banned package anywhere in the lock is recorded and leaves th
       ],
     })
   );
-  await verifyScaDependencies(
-    addon,
-    net({ calls, batch: { results: [{ vulns: [] }] } }),
-    JQUERY_BLOCK
+  const { net, sent } = observed(
+    seededNet({ osv: { batch: { "other@1.0.0": { vulns: [] } } } })
   );
+  await verifyScaDependencies(addon, net, JQUERY_BLOCK);
   assert.deepEqual(
     addon.vendor.blocked.map((b) => [b.name, b.status, b.file, b.token]),
     [["jquery", "banned", "package-lock.json", "node_modules/jquery"]]
   );
   assert.deepEqual(
-    calls.batch[0].queries.map((q) => q.package.name),
+    batches(sent)[0].queries.map((q) => q.package.name),
     ["other"]
   );
 });
@@ -1421,7 +1441,14 @@ test("verifyVendor: the OSV audit records a vulnerable npm VENDOR library", asyn
       },
     ],
   };
-  await verifyVendor(addon, net({ bytes: "BODY\n", osv }));
+  await verifyVendor(
+    addon,
+    seededNet({
+      osv: { query: { "lodash@4.17.20": osv } },
+      popularity: { npm: { lodash: POPULAR } },
+      sources: { bytes: { [url]: "BODY\n" } },
+    })
+  );
   assert.deepEqual(addon.vendor.vulnerabilities, [
     {
       name: "lodash",
@@ -1442,12 +1469,12 @@ test("verifyVendor: a clean package records no vulnerability", async () => {
   );
   await verifyVendor(
     addon,
-    net({ listing: { files: [] }, osv: { vulns: [] } })
+    listed("https://unpkg.com/left-pad@1.3.0/?meta", { files: [] })
   );
   assert.deepEqual(addon.vendor.vulnerabilities, []);
 });
 
-// ---- github -> npm resolution + audit (auditGithub, network injected) ----
+// ---- github -> npm resolution + audit (auditGithub) ----
 
 // The SRI a ?meta listing carries for a body the bundled file should match.
 const sriOf = (body) =>
@@ -1491,7 +1518,14 @@ test("auditGithub: a github source whose npm twin matches by hash is OSV-audited
   };
   await verifyVendor(
     addon,
-    net({ bytes: body, listing, osv: osvFor("moment", "2.29.2") })
+    seededNet({
+      osv: { query: { "moment@2.29.1": osvFor("moment", "2.29.2") } },
+      popularity: { github: { "moment/moment": { stargazers_count: 5000 } } },
+      sources: {
+        bytes: { [url]: body },
+        meta: { "https://unpkg.com/moment@2.29.1/?meta": listing },
+      },
+    })
   );
   assert.deepEqual(addon.vendor.vulnerabilities, [
     {
@@ -1972,6 +2006,18 @@ test("a GitHub popularity lookup that gets no answer ends the review", async () 
 const GROUP_BASE = "https://cdn.jsdelivr.net/npm/@scope/widget@1.2.3/dist";
 const GROUP_TGZ = "https://registry.npmjs.org/@scope/widget/-/widget-1.2.3.tgz";
 
+// @scope/widget@1.2.3 as OSV and npm answer for it, serving the sources given (URL -> body).
+const widgetNet = (bytes, missing = []) =>
+  seededNet({
+    osv: { query: { "@scope/widget@1.2.3": {} } },
+    popularity: { npm: { "@scope/widget": POPULAR } },
+    sources: { bytes, missing },
+  });
+
+// The source downloads a review sent (observed), in order.
+const downloads = (sent) =>
+  sent.filter((r) => r.kind === "bytes").map((r) => r.url);
+
 // Two entries on one package, the shape every grouped test starts from.
 const groupAddon = (files = { "lib/a.js": "A\n", "lib/b.js": "B\n" }) =>
   addonWith(
@@ -1986,28 +2032,21 @@ const groupAddon = (files = { "lib/a.js": "A\n", "lib/b.js": "B\n" }) =>
   );
 
 // The whole point: one request for the package, and none for the files. If the file
-// URLs were still fetched the grouping would be pure overhead, so they are absent
-// from `files` here and would 404 if asked for.
+// URLs were still fetched the grouping would be pure overhead, so they are not seeded
+// here, and a download of one would end the test.
 test("vendor grouping: two entries on one package fetch the tarball once, and no file URLs", async () => {
   const addon = groupAddon();
   const tgz = makeTgz({
     "package/dist/a.js": "A\n",
     "package/dist/b.js": "B\n",
   });
-  let fetched = [];
-  const n = {
-    fetchBytes: async (url) => {
-      fetched.push(url);
-      if (url !== GROUP_TGZ) {
-        throw new Error("HTTP 404");
-      }
-      return tgz;
-    },
-    fetchJson: async () => ({ downloads: 250000 }),
-    postJson: async () => ({ vulns: [] }),
-  };
-  await verifyVendorDeclarations(addon, n);
-  assert.deepEqual(fetched, [GROUP_TGZ], "the package, and nothing else");
+  const { net, sent } = observed(widgetNet({ [GROUP_TGZ]: tgz }));
+  await verifyVendorDeclarations(addon, net);
+  assert.deepEqual(
+    downloads(sent),
+    [GROUP_TGZ],
+    "the package, and nothing else"
+  );
   assert.deepEqual(addon.vendor.results, [
     { path: "lib/a.js", source: `${GROUP_BASE}/a.js`, outcome: "verified" },
     { path: "lib/b.js", source: `${GROUP_BASE}/b.js`, outcome: "verified" },
@@ -2024,7 +2063,7 @@ test("vendor grouping: each grouped entry keeps its own row and source URL", asy
     "package/dist/a.js": "A\n",
     "package/dist/b.js": "B\n",
   });
-  await verifyVendorDeclarations(addon, net({ bytes: tgz, downloads: 250000 }));
+  await verifyVendorDeclarations(addon, widgetNet({ [GROUP_TGZ]: tgz }));
   assert.deepEqual(addon.vendor.results, [
     { path: "lib/a.js", source: `${GROUP_BASE}/a.js`, outcome: "verified" },
     { path: "lib/b.js", source: `${GROUP_BASE}/b.js`, outcome: "modified" },
@@ -2034,18 +2073,16 @@ test("vendor grouping: each grouped entry keeps its own row and source URL", asy
 // auditNpm appends a record per call, so a package declared 34 times was recorded 34
 // times - the same advisory, 34 findings. The audit belongs to the package now.
 test("vendor grouping: a package two entries share is OSV-audited once", async () => {
-  const calls = { query: [] };
   const addon = groupAddon();
   const tgz = makeTgz({
     "package/dist/a.js": "A\n",
     "package/dist/b.js": "B\n",
   });
-  await verifyVendorDeclarations(
-    addon,
-    net({ bytes: tgz, downloads: 250000, calls })
-  );
-  assert.equal(calls.query.length, 1, "one audit for the one package");
-  assert.deepEqual(calls.query[0].package, {
+  const { net, sent } = observed(widgetNet({ [GROUP_TGZ]: tgz }));
+  await verifyVendorDeclarations(addon, net);
+  const queries = osvQueries(sent);
+  assert.equal(queries.length, 1, "one audit for the one package");
+  assert.deepEqual(queries[0].body.package, {
     name: "@scope/widget",
     ecosystem: "npm",
   });
@@ -2060,7 +2097,7 @@ test("vendor grouping: bytes published elsewhere in the package are still modifi
     "package/dist/a.js": "A\n",
     "package/dist/b.js": "B\n",
   });
-  await verifyVendorDeclarations(addon, net({ bytes: tgz, downloads: 250000 }));
+  await verifyVendorDeclarations(addon, widgetNet({ [GROUP_TGZ]: tgz }));
   assert.equal(
     addon.vendor.results.find((r) => r.path === "lib/b.js").outcome,
     "modified",
@@ -2074,20 +2111,10 @@ test("vendor grouping: bytes published elsewhere in the package are still modifi
 test("vendor grouping: a path the package does not publish falls back to its own URL", async () => {
   const addon = groupAddon();
   const tgz = makeTgz({ "package/dist/a.js": "A\n" }); // no b.js
-  const n = {
-    fetchBytes: async (url) => {
-      if (url === GROUP_TGZ) {
-        return tgz;
-      }
-      if (url === `${GROUP_BASE}/b.js`) {
-        return Buffer.from("B\n");
-      }
-      throw new Error("HTTP 404");
-    },
-    fetchJson: async () => ({ downloads: 250000 }),
-    postJson: async () => ({ vulns: [] }),
-  };
-  await verifyVendorDeclarations(addon, n);
+  await verifyVendorDeclarations(
+    addon,
+    widgetNet({ [GROUP_TGZ]: tgz, [`${GROUP_BASE}/b.js`]: "B\n" })
+  );
   assert.deepEqual(
     addon.vendor.results.map((r) => r.outcome),
     ["verified", "verified"],
@@ -2101,10 +2128,10 @@ test("vendor grouping: an unfetchable package falls back to per-file verificatio
   const addon = groupAddon();
   await verifyVendorDeclarations(
     addon,
-    net({
-      files: { [`${GROUP_BASE}/a.js`]: "A\n", [`${GROUP_BASE}/b.js`]: "B\n" },
-      downloads: 250000,
-    })
+    widgetNet(
+      { [`${GROUP_BASE}/a.js`]: "A\n", [`${GROUP_BASE}/b.js`]: "B\n" },
+      [GROUP_TGZ]
+    )
   );
   assert.deepEqual(
     addon.vendor.results.map((r) => r.outcome),
@@ -2124,17 +2151,8 @@ test("vendor grouping: a lone entry is fetched from its own URL, never via the p
       entries: [pinnedEntry("lib/a.js", url)],
     })
   );
-  const n = {
-    fetchBytes: async (got) => {
-      if (got !== url) {
-        throw new Error(`no package fetch expected, got ${got}`);
-      }
-      return Buffer.from("A\n");
-    },
-    fetchJson: async () => ({ downloads: 250000 }),
-    postJson: async () => ({ vulns: [] }),
-  };
-  await verifyVendorDeclarations(addon, n);
+  // Only the file's own URL is seeded, so a package download would end the test.
+  await verifyVendorDeclarations(addon, widgetNet({ [url]: "A\n" }));
   assert.deepEqual(addon.vendor.results, [
     { path: "lib/a.js", source: url, outcome: "verified" },
   ]);
@@ -2173,7 +2191,14 @@ test("vendor grouping: folder, github and unpinned entries are left alone", asyn
   );
   await verifyVendorDeclarations(
     addon,
-    net({ files: { [ghUrl]: "X\n" }, stars: 5000 })
+    seededNet({
+      popularity: { github: { "o/r": { stargazers_count: 5000 } } },
+      // No npm release of the repo's name answers for it.
+      sources: {
+        bytes: { [ghUrl]: "X\n" },
+        missing: ["https://unpkg.com/r@1.0.0/?meta"],
+      },
+    })
   );
   assert.deepEqual(addon.vendor.results, [
     { path: "lib/x.js", source: ghUrl, outcome: "verified" },
@@ -2198,6 +2223,13 @@ const folderEntry = (sourceUrl) => ({
   pinned: true,
 });
 
+// widget@1.2.3 as npm answers for it, serving its registry tarball `tgz`.
+const folderNet = (tgz) =>
+  seededNet({
+    popularity: { npm: { widget: POPULAR } },
+    sources: { bytes: { [FOLDER_TGZ]: tgz } },
+  });
+
 // The package is taken from the URL and its own tarball answers for the directory.
 // Only the tarball is served here, so nothing can pass by way of a file URL.
 test("verifyFolder: a CDN directory URL resolves to that package's tarball", async () => {
@@ -2209,19 +2241,9 @@ test("verifyFolder: a CDN directory URL resolves to that package's tarball", asy
     { "lib/a.js": "A\n", "lib/b.js": "B\n" },
     store({ folders: new Set(["lib"]), entries: [folderEntry(FOLDER_CDN)] })
   );
-  const asked = [];
-  await verifyVendorDeclarations(addon, {
-    fetchBytes: async (url) => {
-      asked.push(url);
-      if (url !== FOLDER_TGZ) {
-        throw new Error("HTTP 404");
-      }
-      return tgz;
-    },
-    fetchJson: async () => ({ downloads: 250000 }),
-    postJson: async () => ({ vulns: [] }),
-  });
-  assert.deepEqual(asked, [FOLDER_TGZ]);
+  const { net, sent } = observed(folderNet(tgz));
+  await verifyVendorDeclarations(addon, net);
+  assert.deepEqual(downloads(sent), [FOLDER_TGZ]);
   assert.deepEqual(addon.vendor.results, [
     { path: "lib/a.js", source: FOLDER_CDN, outcome: "verified" },
     { path: "lib/b.js", source: FOLDER_CDN, outcome: "verified" },
@@ -2236,7 +2258,7 @@ test("verifyFolder: a registry tarball directory source is fetched as given", as
     { "lib/a.js": "A\n" },
     store({ folders: new Set(["lib"]), entries: [folderEntry(FOLDER_TGZ)] })
   );
-  await verifyVendorDeclarations(addon, net({ bytes: tgz, downloads: 250000 }));
+  await verifyVendorDeclarations(addon, folderNet(tgz));
   assert.deepEqual(addon.vendor.results, [
     { path: "lib/a.js", source: FOLDER_TGZ, outcome: "verified" },
   ]);
@@ -2253,7 +2275,7 @@ test("verifyFolder: a file the declaration never names is covered too", async ()
     { "lib/a.js": "A\n", "lib/LICENSE.txt": "MIT\n" },
     store({ folders: new Set(["lib"]), entries: [folderEntry(FOLDER_CDN)] })
   );
-  await verifyVendorDeclarations(addon, net({ bytes: tgz, downloads: 250000 }));
+  await verifyVendorDeclarations(addon, folderNet(tgz));
   assert.deepEqual(
     addon.vendor.results.map((r) => [r.path, r.outcome]),
     [
@@ -2271,7 +2293,7 @@ test("verifyFolder: a file the package does not publish is modified", async () =
     { "lib/a.js": "A\n", "lib/mine.js": "MINE\n" },
     store({ folders: new Set(["lib"]), entries: [folderEntry(FOLDER_CDN)] })
   );
-  await verifyVendorDeclarations(addon, net({ bytes: tgz, downloads: 250000 }));
+  await verifyVendorDeclarations(addon, folderNet(tgz));
   assert.deepEqual(
     addon.vendor.results.map((r) => [r.path, r.outcome]),
     [
@@ -2283,7 +2305,6 @@ test("verifyFolder: a file the package does not publish is modified", async () =
 
 // One directory is one package, so it is one reading however many files it holds.
 test("verifyFolder: the package of a directory is asked about once", async () => {
-  const calls = { popularity: [] };
   const tgz = makeTgz({
     "package/dist/a.js": "A\n",
     "package/dist/b.js": "B\n",
@@ -2292,11 +2313,9 @@ test("verifyFolder: the package of a directory is asked about once", async () =>
     { "lib/a.js": "A\n", "lib/b.js": "B\n" },
     store({ folders: new Set(["lib"]), entries: [folderEntry(FOLDER_CDN)] })
   );
-  await verifyVendorDeclarations(
-    addon,
-    net({ bytes: tgz, downloads: 250000, calls })
-  );
-  assert.equal(calls.popularity.length, 1);
+  const { net, sent } = observed(folderNet(tgz));
+  await verifyVendorDeclarations(addon, net);
+  assert.equal(popularityAsks(sent).length, 1);
 });
 
 // ---- asking about a package once ----
@@ -2315,22 +2334,34 @@ test("verifyFolder: the package of a directory is asked about once", async () =>
 // The memo is the fix that matters most, because it removes the requests rather than
 // spacing them: the add-on that exposed this declared ONE package across 34 files.
 test("isPopular: the memo answers once for a package two entries share", async () => {
-  const calls = { popularity: [] };
-  const n = net({ downloads: 250000, calls });
+  const { net, sent } = observed(
+    seededNet({ popularity: { npm: { widget: POPULAR } } })
+  );
   const memo = new Map();
-  assert.equal(await isPopular({ kind: "npm", pkg: "widget" }, n, memo), true);
-  assert.equal(await isPopular({ kind: "npm", pkg: "widget" }, n, memo), true);
-  assert.equal(calls.popularity.length, 1, "asked once for the two entries");
+  assert.equal(
+    await isPopular({ kind: "npm", pkg: "widget" }, net, memo),
+    true
+  );
+  assert.equal(
+    await isPopular({ kind: "npm", pkg: "widget" }, net, memo),
+    true
+  );
+  assert.equal(
+    popularityAsks(sent).length,
+    1,
+    "asked once for the two entries"
+  );
 });
 
 // Without a memo nothing is remembered, which is what keeps every caller that does
 // not pass one behaving exactly as it did.
 test("isPopular: with no memo every ask reaches the host", async () => {
-  const calls = { popularity: [] };
-  const n = net({ downloads: 250000, calls });
-  await isPopular({ kind: "npm", pkg: "widget" }, n);
-  await isPopular({ kind: "npm", pkg: "widget" }, n);
-  assert.equal(calls.popularity.length, 2);
+  const { net, sent } = observed(
+    seededNet({ popularity: { npm: { widget: POPULAR } } })
+  );
+  await isPopular({ kind: "npm", pkg: "widget" }, net);
+  await isPopular({ kind: "npm", pkg: "widget" }, net);
+  assert.equal(popularityAsks(sent).length, 2);
 });
 
 // Provenance still short-circuits the whole thing, so a first-party source costs no
@@ -2349,7 +2380,6 @@ test("isPopular: a trusted github org is never asked about", async () => {
 // The declarations a review verifies go through the store's memo, so one package
 // declared across several files is one request no matter how many files there are.
 test("verifyVendorDeclarations: a package two entries share is looked up once", async () => {
-  const calls = { popularity: [] };
   const base = "https://unpkg.com/widget@1.2.3/dist";
   const addon = addonWith(
     { "lib/a.js": "A\n", "lib/b.js": "B\n" },
@@ -2361,19 +2391,26 @@ test("verifyVendorDeclarations: a package two entries share is looked up once", 
       ],
     })
   );
-  await verifyVendorDeclarations(
-    addon,
-    net({
-      files: { [`${base}/a.js`]: "A\n", [`${base}/b.js`]: "B\n" },
-      downloads: 250000,
-      calls,
+  const { net, sent } = observed(
+    seededNet({
+      osv: { query: { "widget@1.2.3": {} } },
+      popularity: { npm: { widget: POPULAR } },
+      sources: {
+        bytes: { [`${base}/a.js`]: "A\n", [`${base}/b.js`]: "B\n" },
+        missing: ["https://registry.npmjs.org/widget/-/widget-1.2.3.tgz"],
+      },
     })
   );
+  await verifyVendorDeclarations(addon, net);
   assert.deepEqual(addon.vendor.results, [
     { path: "lib/a.js", source: `${base}/a.js`, outcome: "verified" },
     { path: "lib/b.js", source: `${base}/b.js`, outcome: "verified" },
   ]);
-  assert.equal(calls.popularity.length, 1, "one reading for the one package");
+  assert.equal(
+    popularityAsks(sent).length,
+    1,
+    "one reading for the one package"
+  );
 });
 
 // The regression the whole change must not cause: a package that really is below the
@@ -2386,7 +2423,11 @@ test("verifyVendorDeclarations: a below-bar reading still records not-popular", 
   );
   await verifyVendorDeclarations(
     addon,
-    net({ bytes: "BODY\n", downloads: 12 })
+    seededNet({
+      osv: { query: { "widget@1.2.3": {} } },
+      popularity: { npm: { widget: { downloads: 12 } } },
+      sources: { bytes: { [url]: "BODY\n" } },
+    })
   );
   assert.deepEqual(addon.vendor.results, [
     { path: "a.js", source: url, outcome: "not-popular" },
@@ -2398,17 +2439,13 @@ test("verifyVendorDeclarations: a below-bar reading still records not-popular", 
 // fixture harness answers every other URL it does not know with one, so a fixture run must
 // stay a clean review with no matches - never an abort.
 test("a 404 is read as an answer, not fatal", async () => {
-  // A transport that answers every request 404 - what the fixture harness does for a URL
-  // it has no entry for - and OSV as OSV does for a package it has no record of.
-  const deadLoad = {
-    fetchBytes: async () => {
-      throw fake404();
-    },
-    fetchJson: async () => {
-      throw fake404();
-    },
-    postJson: async () => ({}),
-  };
+  // Every host answers 404 - what the fixture harness does for a URL it has no entry for -
+  // and OSV answers as it does for a package it has no record of.
+  const deadLoad = seededNet({
+    osv: { query: { "x@1.0.0": {} } },
+    popularity: { npm: { x: null } },
+    sources: { missing: ["https://unpkg.com/x@1.0.0/x.js"] },
+  });
   assert.equal(await isPopular({ kind: "npm", pkg: "x" }, deadLoad), false);
   const addon = addonWith(
     { "lib/x.js": "x" },
@@ -2564,7 +2601,6 @@ test("auditLockedPackages: a build-time package routes to the dev set", async ()
 // Declared and pulled-in packages are asked about in the same batch - the single-package
 // endpoint is never used in a source review.
 test("auditLockedPackages: declared packages share the one batch", async () => {
-  const calls = { batch: [], query: [] };
   const addon = addonWith(
     { "package-lock.json": "{}" },
     store({
@@ -2575,30 +2611,46 @@ test("auditLockedPackages: declared packages share the one batch", async () => {
       ],
     })
   );
-  await verifyScaDependencies(addon, net({ calls }));
+  const { net, sent } = observed(
+    seededNet({
+      osv: {
+        batch: { "marked@4.0.0": {}, "webpack@5.0.0": {}, "deep@1.0.0": {} },
+      },
+      popularity: { npm: { marked: POPULAR, webpack: POPULAR } },
+    })
+  );
+  await verifyScaDependencies(addon, net);
   assert.deepEqual(
-    calls.batch[0].queries.map((q) => q.package.name),
+    batches(sent)[0].queries.map((q) => q.package.name),
     ["marked", "webpack", "deep"]
   );
-  assert.deepEqual(calls.query, []);
+  assert.deepEqual(osvQueries(sent), []);
 });
 
 // One request carrying a whole large tree is refused by the endpoint, so the
 // queue is chunked - and the chunks must together cover every package exactly
 // once, in order, because the answers come back positionally.
 test("auditLockedPackages: the queue is chunked, covering every package once", async () => {
-  const calls = { batch: [] };
   const lockPackages = Array.from({ length: 250 }, (_, i) =>
     locked(`pkg-${String(i).padStart(3, "0")}`, "1.0.0")
   );
   const addon = addonWith({ "package.json": "{}" }, store({ lockPackages }));
-  await verifyScaDependencies(addon, net({ calls }));
+  const { net, sent } = observed(
+    seededNet({
+      osv: {
+        batch: Object.fromEntries(
+          lockPackages.map((p) => [`${p.name}@${p.version}`, {}])
+        ),
+      },
+    })
+  );
+  await verifyScaDependencies(addon, net);
   assert.deepEqual(
-    calls.batch.map((b) => b.queries.length),
+    batches(sent).map((b) => b.queries.length),
     [200, 50]
   );
   assert.deepEqual(
-    calls.batch.flatMap((b) => b.queries.map((q) => q.package.name)),
+    batches(sent).flatMap((b) => b.queries.map((q) => q.package.name)),
     lockPackages.map((p) => p.name)
   );
 });
@@ -2615,8 +2667,15 @@ test("auditLockedPackages: a short results array is no answer", async () => {
     { results: [{}, null] },
   ]) {
     const addon = addonWith({ "package.json": "{}" }, store({ lockPackages }));
+    // The short reply is the one failure here, and no cache can hold it.
+    const seeded = seededNet();
+    const short = {
+      ...seeded,
+      postJson: async (url, body) =>
+        url === VENDOR_OSV_BATCH_API ? batch : seeded.postJson(url, body),
+    };
     await assert.rejects(
-      verifyScaDependencies(addon, net({ batch })),
+      verifyScaDependencies(addon, short),
       NoAnswerError,
       JSON.stringify(batch)
     );
@@ -2627,32 +2686,32 @@ test("auditLockedPackages: a short results array is no answer", async () => {
 // once per package would multiply the requests for no new information: the run's OSV
 // cache, which every review asks OSV through, answers the repeat.
 test("auditLockedPackages: an advisory affecting two packages is fetched once", async () => {
-  const calls = { hydrate: [] };
   const addon = addonWith(
     { "package.json": "{}" },
     store({ lockPackages: [locked("a", "1.0.0"), locked("b", "1.0.0")] })
   );
-  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-osv-"));
-  await verifyScaDependencies(
-    addon,
-    withOsvCache(
-      net({
-        calls,
+  // A run's OSV cache, empty, over the seeded network: what reaches the network below it
+  // is what the run asks of OSV.
+  const { net, sent } = observed(
+    seededNet({
+      osv: {
         batch: {
-          results: [
-            { vulns: [{ id: "GHSA-shared" }] },
-            { vulns: [{ id: "GHSA-shared" }] },
-          ],
+          "a@1.0.0": { vulns: [{ id: "GHSA-shared" }] },
+          "b@1.0.0": { vulns: [{ id: "GHSA-shared" }] },
         },
         advisories: {
           "GHSA-shared": advisory("GHSA-shared", "HIGH", "1.0.1", "a"),
         },
-      }),
-      path.join(cacheDir, "osv.json")
-    )
+      },
+    })
+  );
+  const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-osv-"));
+  await verifyScaDependencies(
+    addon,
+    withOsvCache(net, path.join(cacheDir, "osv.json"))
   );
   fs.rmSync(cacheDir, { recursive: true, force: true });
-  assert.equal(calls.hydrate.length, 1);
+  assert.equal(sentTo(sent, VENDOR_OSV_VULN_API).length, 1);
   assert.deepEqual(
     addon.vendor.treeVulnerabilities.map((v) => v.name),
     ["a", "b"]
@@ -2670,8 +2729,21 @@ test("auditLockedPackages: an OSV 404 for a batch or a hydration ends the run", 
     { "package.json": "{}" },
     store({ lockPackages: [locked("x", "1.0.0")] })
   );
+  // OSV's 404 is the one failure in each half, and no cache can hold it.
+  const seeded = seededNet({
+    osv: { batch: { "x@1.0.0": { vulns: [{ id: "GHSA-x" }] } } },
+  });
+  const batchNet = {
+    ...seeded,
+    postJson: async (url, body) => {
+      if (url === VENDOR_OSV_BATCH_API) {
+        throw fake404();
+      }
+      return seeded.postJson(url, body);
+    },
+  };
   await assert.rejects(
-    verifyScaDependencies(batchDown, net({ throwOnBatch: true })),
+    verifyScaDependencies(batchDown, batchNet),
     noAnswer("querybatch")
   );
   assert.deepEqual(batchDown.vendor.treeVulnerabilities, []);
@@ -2680,14 +2752,17 @@ test("auditLockedPackages: an OSV 404 for a batch or a hydration ends the run", 
     { "package.json": "{}" },
     store({ lockPackages: [locked("x", "1.0.0")] })
   );
+  const hydrateNet = {
+    ...seeded,
+    fetchJson: async (url) => {
+      if (url.startsWith(VENDOR_OSV_VULN_API)) {
+        throw fake404();
+      }
+      return seeded.fetchJson(url);
+    },
+  };
   await assert.rejects(
-    verifyScaDependencies(
-      hydrationDown,
-      net({
-        throwOnHydrate: true,
-        batch: { results: [{ vulns: [{ id: "GHSA-x" }] }] },
-      })
-    ),
+    verifyScaDependencies(hydrationDown, hydrateNet),
     noAnswer("vulns/GHSA-x")
   );
   assert.deepEqual(hydrationDown.vendor.treeVulnerabilities, []);
@@ -2702,23 +2777,31 @@ test("auditLockedPackages: an answered chunk is never published when a later one
   );
   const addon = addonWith({ "package.json": "{}" }, store({ lockPackages }));
   let chunks = 0;
-  const flaky = net({
-    advisories: {
-      "GHSA-everywhere": advisory("GHSA-everywhere", "HIGH", "2.0.0", "pkg"),
+  // The first chunk is answered from the seeded cache. OSV's 404 for the second is the
+  // one failure, and no cache can hold it.
+  const seeded = seededNet({
+    osv: {
+      batch: Object.fromEntries(
+        lockPackages
+          .slice(0, 200)
+          .map((p) => [
+            `${p.name}@${p.version}`,
+            { vulns: [{ id: "GHSA-everywhere" }] },
+          ])
+      ),
+      advisories: {
+        "GHSA-everywhere": advisory("GHSA-everywhere", "HIGH", "2.0.0", "pkg"),
+      },
     },
   });
-  const answer = flaky.postJson;
-  flaky.postJson = async (url, body) => {
-    if (url.includes("querybatch") && ++chunks === 2) {
-      throw Object.assign(new Error("HTTP 404"), { status: 404 });
-    }
-    return url.includes("querybatch")
-      ? {
-          results: body.queries.map(() => ({
-            vulns: [{ id: "GHSA-everywhere" }],
-          })),
-        }
-      : answer(url, body);
+  const flaky = {
+    ...seeded,
+    postJson: async (url, body) => {
+      if (url === VENDOR_OSV_BATCH_API && ++chunks === 2) {
+        throw fake404();
+      }
+      return seeded.postJson(url, body);
+    },
   };
   await assert.rejects(
     verifyScaDependencies(addon, flaky),
@@ -2800,10 +2883,9 @@ test("a malicious advisory on an XPI-shipped library is a vendor-vulnerable erro
   const listing = { files: [{ path: "/dist/lib.js", integrity: sri }] };
   await verifyVendor(
     addon,
-    net({
-      listing,
-      osv: { vulns: [{ id: "MAL-2024-1" }] },
-      throwOnFetch: true,
+    listed("https://unpkg.com/evil-pkg@1.0.0/?meta", listing, {
+      osv: { query: { "evil-pkg@1.0.0": { vulns: [{ id: "MAL-2024-1" }] } } },
+      popularity: { npm: { "evil-pkg": POPULAR } },
     })
   );
   const out = (await vendorVulnerable.run(withManifest({ artifact: addon })))
@@ -2833,7 +2915,6 @@ test("auditLockedPackages: a non-array vulns field does not abort the review", a
 // hit - so the lock audit leaves it alone. A different version of the same name is a
 // different release, and is still asked about.
 test("auditLockedPackages: a release the VENDOR-file audit recorded is reported once", async () => {
-  const calls = { batch: [] };
   const vendored = {
     name: "lodash",
     version: "4.17.20",
@@ -2864,13 +2945,15 @@ test("auditLockedPackages: a release the VENDOR-file audit recorded is reported 
       ],
     })
   );
-  await verifyScaDependencies(
-    addon,
-    net({ calls, batch: { results: [{ vulns: [] }] } }),
-    JQUERY_BLOCK
+  const { net, sent } = observed(
+    seededNet({
+      osv: { batch: { "lodash@4.17.21": { vulns: [] } } },
+      popularity: { npm: { jquery: POPULAR, lodash: POPULAR } },
+    })
   );
+  await verifyScaDependencies(addon, net, JQUERY_BLOCK);
   assert.deepEqual(
-    calls.batch[0].queries.map((q) => `${q.package.name}@${q.version}`),
+    batches(sent)[0].queries.map((q) => `${q.package.name}@${q.version}`),
     ["lodash@4.17.21"]
   );
   assert.deepEqual(addon.vendor.vulnerabilities, [vendored]);
@@ -2885,9 +2968,15 @@ test("auditLockedPackages: NetworkGoneError propagates from both endpoints", asy
     { "package.json": "{}" },
     store({ lockPackages: [locked("x", "1.0.0")] })
   );
-  const batchNet = net({ batch: { results: [] } });
-  batchNet.postJson = async () => {
-    throw gone;
+  // The dead network is the one failure in each half, and no cache can hold it.
+  const seeded = seededNet({
+    osv: { batch: { "x@1.0.0": { vulns: [{ id: "GHSA-x" }] } } },
+  });
+  const batchNet = {
+    ...seeded,
+    postJson: async () => {
+      throw gone;
+    },
   };
   await assert.rejects(
     () => verifyScaDependencies(fromBatch, batchNet),
@@ -2898,11 +2987,11 @@ test("auditLockedPackages: NetworkGoneError propagates from both endpoints", asy
     { "package.json": "{}" },
     store({ lockPackages: [locked("x", "1.0.0")] })
   );
-  const hydrateNet = net({
-    batch: { results: [{ vulns: [{ id: "GHSA-x" }] }] },
-  });
-  hydrateNet.fetchJson = async () => {
-    throw gone;
+  const hydrateNet = {
+    ...seeded,
+    fetchJson: async () => {
+      throw gone;
+    },
   };
   await assert.rejects(
     () => verifyScaDependencies(fromHydrate, hydrateNet),
@@ -2914,7 +3003,6 @@ test("auditLockedPackages: NetworkGoneError propagates from both endpoints", asy
 // the policy is about what the build pulls in, whoever chose it. An unadvised one is
 // recorded and still audited.
 test("auditLockedPackages: a transitive banned version is refused", async () => {
-  const calls = { batch: [] };
   const addon = addonWith(
     { "package-lock.json": "{}" },
     store({
@@ -2925,11 +3013,10 @@ test("auditLockedPackages: a transitive banned version is refused", async () => 
     `- name: jquery\n  banned_below: "3.0.0"\n  reason: "old jquery"\n` +
       `- name: angular\n  unadvised_below: "1.6.0"\n  reason: "old angular"`
   );
-  await verifyScaDependencies(
-    addon,
-    net({ calls, batch: { results: [{ vulns: [] }] } }),
-    blocks
+  const { net, sent } = observed(
+    seededNet({ osv: { batch: { "angular@1.5.0": { vulns: [] } } } })
   );
+  await verifyScaDependencies(addon, net, blocks);
   assert.deepEqual(
     addon.vendor.blocked.map((b) => [b.name, b.status, b.token]),
     [
@@ -2938,7 +3025,7 @@ test("auditLockedPackages: a transitive banned version is refused", async () => 
     ]
   );
   assert.deepEqual(
-    calls.batch[0].queries.map((q) => q.package.name),
+    batches(sent)[0].queries.map((q) => q.package.name),
     ["angular"]
   );
 });
@@ -2946,10 +3033,10 @@ test("auditLockedPackages: a transitive banned version is refused", async () => 
 // Nothing to audit must cost nothing: an XPI review, and every submission with
 // no committed lock, must not reach the endpoint at all.
 test("auditLockedPackages: an empty tree sends no request", async () => {
-  const calls = { batch: [] };
   const addon = addonWith({ "package.json": "{}" }, store());
-  await verifyScaDependencies(addon, net({ calls }));
-  assert.deepEqual(calls.batch, []);
+  const { net, sent } = observed(seededNet());
+  await verifyScaDependencies(addon, net);
+  assert.deepEqual(batches(sent), []);
 });
 
 // ---- the real transport's reading of a body ----

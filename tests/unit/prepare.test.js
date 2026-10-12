@@ -23,6 +23,8 @@ import {
 } from "../../src/prepare/state.js";
 import { HandbackRefused } from "../../src/report/handback.js";
 import { NoAnswerError } from "../../src/util/net.js";
+import { defaultNet } from "../../src/vendor/verify.js";
+import { VENDOR_OSV_BATCH_API, VENDOR_OSV_VULN_API } from "../../src/config.js";
 import { workPaths } from "../../src/util/dest.js";
 import { loadSourceArchive } from "../../src/addon/load.js";
 import depsChanged from "../../src/checks/rules/sca-dependencies-changed.js";
@@ -126,34 +128,32 @@ const firstAsking = (work, net) => {
 };
 
 /**
- * A network answering OSV from `vulns` the way OSV does, for a test about what the run's
- * cache keeps of a live answer: the batch answers with ids, positionally, and each id is
- * served on its own. Everything else 404s. `batchDown` has the batch endpoint answer 404,
- * which is no answer from OSV, and ends the run.
+ * OSV answering live from `vulns` the way OSV does, for a test about what the run's cache
+ * keeps of a live answer: the batch answers with ids, positionally, and each id is served on
+ * its own. Every other request goes on to the production network.
  * @param {Record<string, object[]>} [vulns]
- * @param {{batchDown?: boolean}} [opts]
  */
-function osvNet(vulns = {}, { batchDown = false } = {}) {
+function osvNet(vulns = {}) {
   const byId = new Map(
     Object.values(vulns)
       .flat()
       .map((v) => [v.id, v])
   );
-  const fake404 = () => Object.assign(new Error("HTTP 404"), { status: 404 });
   return {
-    fetchBytes: async () => {
-      throw fake404();
-    },
+    fetchBytes: (url) => defaultNet.fetchBytes(url),
     fetchJson: async (url) => {
+      if (!url.startsWith(VENDOR_OSV_VULN_API)) {
+        return defaultNet.fetchJson(url);
+      }
       const id = url.slice(url.lastIndexOf("/") + 1);
-      if (url.includes("/v1/vulns/") && byId.has(id)) {
+      if (byId.has(id)) {
         return byId.get(id);
       }
-      throw fake404();
+      throw Object.assign(new Error("HTTP 404"), { status: 404 });
     },
     postJson: async (url, body) => {
-      if (batchDown || !url.includes("querybatch")) {
-        throw fake404();
+      if (url !== VENDOR_OSV_BATCH_API) {
+        return defaultNet.postJson(url, body);
       }
       return {
         results: body.queries.map((q) => ({
@@ -165,6 +165,16 @@ function osvNet(vulns = {}, { batchDown = false } = {}) {
     },
   };
 }
+
+/** OSV's batch endpoint answering 404, which is no answer from OSV and ends the run. Every
+ *  other request goes on to the production network. */
+const batchDown = {
+  fetchBytes: (url) => defaultNet.fetchBytes(url),
+  fetchJson: (url) => defaultNet.fetchJson(url),
+  postJson: async () => {
+    throw Object.assign(new Error("HTTP 404"), { status: 404 });
+  },
+};
 
 const recordOf = (work) => readPrepare(work);
 
@@ -663,10 +673,7 @@ test("an audit OSV does not answer ends the preparation", async (t) => {
       "package.json": packageFile(),
       "package-lock.json": npmLock(),
     });
-    await assert.rejects(
-      firstAsking(work, osvNet(TOOL_HIGH, { batchDown: true })),
-      noAnswer
-    );
+    await assert.rejects(firstAsking(work, batchDown), noAnswer);
     assert.equal(recordOf(work).step, PREPARE_STEP.extract);
     cleanup(work);
   });
@@ -679,10 +686,7 @@ test("an audit OSV does not answer ends the preparation", async (t) => {
         "node_modules/argv-crumb": { version: "0.0.8", dev: true },
       }),
     });
-    await assert.rejects(
-      handBack(work, { net: osvNet({}, { batchDown: true }) }),
-      noAnswer
-    );
+    await assert.rejects(handBack(work, { net: batchDown }), noAnswer);
     assert.equal(recordOf(work).step, PREPARE_STEP.reduce);
     cleanup(work);
   });
