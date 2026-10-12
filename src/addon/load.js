@@ -773,12 +773,12 @@ function extractZip(zipPath, destDir) {
       if (unpacked > ADDON_MAX_UNPACKED_BYTES) {
         throw addonTooLargeError();
       }
-      const dest = path.join(destDir, ...name.split("/"));
+      const dest = insideTarget(destDir, name, zipPath);
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.writeFileSync(dest, data);
     }
     for (const folder of folders) {
-      const dest = path.join(destDir, ...folder.split("/"));
+      const dest = insideTarget(destDir, folder, zipPath);
       // A name that is both a file and a folder has no single meaning, like two entries
       // naming one path.
       if (fs.existsSync(dest) && !fs.statSync(dest).isDirectory()) {
@@ -790,6 +790,25 @@ function extractZip(zipPath, destDir) {
     fs.rmSync(destDir, { recursive: true, force: true });
     throw err;
   }
+}
+
+/**
+ * Where an entry key lands under `destDir`, refusing the archive when that is not inside it.
+ *
+ * isSafeAddonPath judges the NAME. This judges the place the platform's own `path` makes of
+ * it, so an entry the name rules missed still never writes outside the extraction folder.
+ * Thrown inside extractZip's try, so the refusal removes destDir like any other.
+ * @param {string} destDir  The extraction folder.
+ * @param {string} key  A posix entry key that passed isSafeAddonPath.
+ * @param {string} zipPath  The archive, named in the refusal.
+ * @returns {string} The absolute target path.
+ */
+function insideTarget(destDir, key, zipPath) {
+  const dest = path.join(destDir, ...key.split("/"));
+  if (relativeInside(dest, destDir) === null) {
+    throw unreadableArchiveError(zipPath);
+  }
+  return dest;
 }
 
 /**
@@ -973,8 +992,8 @@ function linkCause(full, rootReal) {
  *
  * A ZIP entry name is already posix - the format says so ("All slashes MUST be forward
  * slashes '/' as opposed to backwards slashes") - so nothing is rewritten here. A
- * backslash in an entry name is therefore part of the NAME, which is the only reading that
- * cannot invent a directory that the archive does not have.
+ * backslash is not turned into a separator, which could invent a directory the archive
+ * does not have. isSafeAddonPath refuses a name holding one instead.
  *
  * The leading "./" is the one exception, because `zip -r ./dir` writes it on every entry
  * and it names the package root unambiguously. Every other non-canonical spelling is
@@ -1029,12 +1048,18 @@ function walkedKey(rel) {
 
 /**
  * True when a normalized add-on-relative path stays inside the add-on root: not
- * empty, not absolute, no Windows drive, and no ".." segment.
+ * empty, not absolute, no Windows drive, no backslash, and no ".." segment.
  * @param {string} p  Normalized posix path.
  * @returns {boolean}
  */
 function isSafeAddonPath(p) {
   if (!p || p.startsWith("/") || /^[a-zA-Z]:/.test(p)) {
+    return false;
+  }
+  // The zip format separates with "/" only, so a backslash is no separator in a well formed
+  // name. It IS one on Windows, where "..\x" steps out of the package and "a\b.js" lands in
+  // a folder the archive never named, so the segment rules below cannot judge such a name.
+  if (p.includes("\\")) {
     return false;
   }
   // Every segment must NAME something. "..", "." and "" are path SYNTAX, not names: they

@@ -1222,6 +1222,37 @@ test("a refused archive leaves no partial extraction on disk", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// A zip entry name separates with "/" only. A backslash is a separator on Windows, where
+// "..\..\evil" steps out of the extraction folder and "a\b.js" lands in a folder the
+// archive never named, so either name refuses the archive and nothing is written.
+test("a zip entry name holding a backslash refuses the archive", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-backslash-"));
+  ["..\\..\\evil", "a\\b.js"].forEach((entryName, n) => {
+    const sub = path.join(dir, `case-${n}`);
+    fs.mkdirSync(sub);
+    const zip = new AdmZip();
+    zip.addFile(
+      "manifest.json",
+      Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+    );
+    zip.addFile("MARKER.js", Buffer.from("browser.runtime.id;\n"));
+    zip.getEntries().find((e) => e.entryName === "MARKER.js").entryName =
+      entryName;
+    const file = path.join(sub, "bad.xpi");
+    zip.writeZip(file);
+
+    const dest = path.join(sub, "xpi");
+    assert.throws(
+      () => loadAddon(file, dest, XPI),
+      { message: `Could not read archive: ${file}` },
+      entryName
+    );
+    assert.deepEqual(fs.readdirSync(sub), ["bad.xpi"], entryName);
+  });
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // An archive with no real files at all (only directory entries) still leaves a directory
 // a later readDir can walk - otherwise loadAddon crashes on a submission that is merely
 // useless, not unreadable.
