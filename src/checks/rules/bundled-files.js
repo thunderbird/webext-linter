@@ -5,7 +5,9 @@
 //     theme images, experiment schema and parent/child scripts (manifestFileRefs),
 //   - file-loading API calls: every packaged-file path the schema-directed +
 //     bridge extractor finds (register/setIcon/theme/menus, executeScript/
-//     insertCSS, getURL, tabs.create, *.setPopup, ...) - see loader-files.js.
+//     insertCSS, getURL, tabs.create, *.setPopup, ...) - see loader-files.js. A
+//     path naming a packaged folder counts as present: getURL("images/") is the
+//     add-on's base URL for the files under it.
 // Both halves therefore come from the schema, and neither has a key list to maintain.
 // Complements the remote-resources check (which catches remote sources).
 //
@@ -95,7 +97,8 @@ export default {
     // 2. Files referenced by file-loading API calls (schema-directed + bridge).
     // A base:"page" loader path (tabs.create {url}, executeScript {file}, menus
     // icons, ...) resolves against the calling script's HOST PAGE directory (".."
-    // clamped at root); getURL/scripting.* (base:"root") are root-relative.
+    // clamped at root); getURL/scripting.* (base:"root") are root-relative. A path
+    // naming a packaged folder is present too ({folders: true}).
     //
     // Like the manifest.json refs above, loader refs are a property of the built XPI:
     // its scripts, its load graph, and the files they must resolve to - all read
@@ -131,9 +134,11 @@ export default {
                 artifact.files,
                 hostDirs,
                 src.file,
-                ref.path
+                ref.path,
+                { folders: true }
               ) != null
-            : resolveRef(artifact.files, null, ref.path) != null;
+            : resolveRef(artifact.files, null, ref.path, { folders: true }) !=
+              null;
         ctx.note?.(
           ctx.artifact.at(src.file, loc),
           ref.path,

@@ -64,20 +64,22 @@ export function scriptHostDirs(ctx) {
  * @param {Map<string, Set<string>>} hostDirs  From scriptHostDirs.
  * @param {string} fromScript  The script file making the call.
  * @param {string} raw  The referenced path.
+ * @param {{folders?: boolean}} [opts]  See resolveInDir.
  * @returns {string|null}
  */
-export function resolvePageRelative(files, hostDirs, fromScript, raw) {
+export function resolvePageRelative(files, hostDirs, fromScript, raw, opts) {
   const dirs = hostDirs.get(fromScript);
   if (dirs && dirs.size) {
     for (const dir of dirs) {
-      const hit = resolveInDir(files, dir, raw);
-      if (hit) {
+      // `!= null`, not truthiness: the root folder resolves to "".
+      const hit = resolveInDir(files, dir, raw, opts);
+      if (hit != null) {
         return hit;
       }
     }
     return null;
   }
-  return resolveRef(files, null, raw);
+  return resolveRef(files, null, raw, opts);
 }
 
 /**

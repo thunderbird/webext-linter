@@ -6693,6 +6693,48 @@ test("bundled-files ignores an empty or fragment-only loader argument", async ()
   }
 });
 
+// A loader path naming a packaged FOLDER is not a missing file: getURL("images/") is the
+// add-on's base URL for the files under it (issue #6). A folder exists when a packaged file
+// sits under it, so a folder nothing ships under is still reported.
+test("bundled-files accepts a loader path naming a packaged folder", async () => {
+  const findingsFor = async (code, more = []) => {
+    const manifest = {
+      manifest_version: 3,
+      background: { scripts: ["bg.js"] },
+    };
+    const ctx = withManifest({
+      artifact: {
+        files: new Map([
+          ["bg.js", Buffer.from(code)],
+          ["images/a.png", Buffer.from("PNG")],
+          ...more,
+        ]),
+        manifest: manifestOf(manifest),
+      },
+      schema,
+      jsSources: parsed([{ file: "bg.js", code, lineOffset: 0 }], { schema }),
+    });
+    return (await bundledFiles.run(ctx)).findings.map((f) => f.item);
+  };
+  for (const code of [
+    'browser.runtime.getURL("images/");',
+    'browser.runtime.getURL("images");',
+    'browser.runtime.getURL("/images/");',
+  ]) {
+    assert.deepEqual(await findingsFor(code), [], code);
+  }
+  assert.deepEqual(
+    await findingsFor('browser.tabs.create({ url: "pages/" });', [
+      ["pages/p.html", Buffer.from("<p>")],
+    ]),
+    [],
+    "a page-relative folder"
+  );
+  assert.deepEqual(await findingsFor('browser.runtime.getURL("missing/");'), [
+    "missing/",
+  ]);
+});
+
 // An exposed resource named only by dead code is needless exposure only while nothing live
 // can build a path to it. A live dynamic loader might, so the file goes to a reviewer
 // instead of being reported as plainly unloaded.

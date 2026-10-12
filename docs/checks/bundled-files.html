@@ -46,8 +46,10 @@
         calling script's host
         page directory, the rest against the package root. Loader references are
         read only in scripts reachable from an entry point — an orphan script never
-        runs, so its references are dead-code noise, an unused-files matter. Each
-        remaining candidate that is absent from the package produces a finding.
+        runs, so its references are dead-code noise, an unused-files matter. A loader
+        path naming a packaged folder, such as <code>getURL("images/")</code>, counts
+        as present. Each remaining candidate that is absent from the package produces
+        a finding.
       </p>
 
       <h2>Decision flow</h2>

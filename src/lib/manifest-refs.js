@@ -226,11 +226,12 @@ export function normalizeRef(p) {
  * @param {Map<string, Buffer>} files
  * @param {string|null} fromFile
  * @param {string} raw
+ * @param {{folders?: boolean}} [opts]  See resolveInDir.
  * @returns {string|null}
  */
-export function resolveRef(files, fromFile, raw) {
+export function resolveRef(files, fromFile, raw, opts) {
   const dir = fromFile == null ? null : dirname(fromFile);
-  return resolveInDir(files, dir, raw);
+  return resolveInDir(files, dir, raw, opts);
 }
 
 /**
@@ -278,14 +279,44 @@ function normalizeRefInDir(dir, raw) {
  * leading "/" in `raw` is always root-relative. Used (via script-hosts.js) to
  * resolve a page-relative loader path against the calling script's HOST PAGE
  * directory. `.`/`..` are normalized, with ".." clamped at the package root.
+ *
+ * With `folders`, a packaged FOLDER resolves too - one some packaged file sits under, the
+ * root ("") included. Only a caller asking "does this path exist in the package" wants
+ * that: a folder is never a file anything loads.
  * @param {Map<string, Buffer>} files
  * @param {string|null} dir
  * @param {string} raw
+ * @param {{folders?: boolean}} [opts]
  * @returns {string|null}
  */
-export function resolveInDir(files, dir, raw) {
+export function resolveInDir(files, dir, raw, { folders = false } = {}) {
   const { key } = normalizeRefInDir(dir, raw);
-  return key != null && files.has(key) ? key : null;
+  if (key == null) {
+    return null;
+  }
+  if (files.has(key)) {
+    return key;
+  }
+  return folders && isPackagedFolder(files, key) ? key : null;
+}
+
+/**
+ * Whether some packaged file sits under `key`, which makes it a folder of the package.
+ * @param {Map<string, Buffer>} files
+ * @param {string} key  A normalized add-on-relative path, "" for the root.
+ * @returns {boolean}
+ */
+function isPackagedFolder(files, key) {
+  if (key === "") {
+    return files.size > 0;
+  }
+  const prefix = `${key}/`;
+  for (const file of files.keys()) {
+    if (file.startsWith(prefix)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
