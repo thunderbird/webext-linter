@@ -15,6 +15,7 @@ import { allSchemaBranches, cachedZipPath } from "../src/schema/fetch.js";
 import { cachedExperimentsPath } from "../src/experiments/fetch.js";
 import { cachedHashesPath } from "../src/lib/library-hashes.js";
 import { runCache } from "../src/util/dest.js";
+import { bytesKey, listingKey } from "../src/vendor/source-cache.js";
 import {
   osvBatchKey,
   osvQueryKey,
@@ -120,7 +121,7 @@ export function freshFixtureCache() {
  * The seeded cache as runPipeline opts - the same dir pointed at every fetchable
  * source, so a review runs offline. Spread into a runPipeline() call.
  * @returns {{schemaCache: string, experimentsCache: string, libraryHashesCache: string,
- *   cdnLookupCache: string, npmRegistryCache: string}}
+ *   cdnLookupCache: string, npmRegistryCache: string, sourcesCache: string}}
  */
 export function fixtureCacheOpts() {
   const dir = seedFixtureCache();
@@ -137,6 +138,9 @@ export function fixtureCacheOpts() {
     // Empty: no fixture's lock is off the registry's tarball path, so nothing is asked,
     // and the network switch names any request that slips through.
     npmRegistryCache: dir,
+    // Empty: a review that is given no sources asks for one, and the network switch names
+    // it, rather than the user's own kept sources answering it.
+    sourcesCache: dir,
   };
 }
 
@@ -225,6 +229,35 @@ export function seedCdnHits(cache, hits) {
   const entries = JSON.parse(fs.readFileSync(file, "utf8"));
   fs.writeFileSync(file, JSON.stringify({ ...entries, ...hits }));
   return cache;
+}
+
+/**
+ * A sources cache folder (--cache-sources-dir, the review's `sourcesCache`) holding the
+ * library sources given, as src/vendor/source-cache.js keeps them. Removed when the process
+ * exits.
+ * @param {{bytes?: Record<string, Buffer|string>, meta?: Record<string, object>,
+ *   missing?: string[]}} [sources]
+ *   `bytes`: a source URL -> the body its host serves. `meta`: an unpkg `?meta` URL -> the
+ *   listing. `missing`: URLs the host answers 404, kept as the offline stand-in for it.
+ * @returns {string} The folder's absolute path.
+ */
+export function seedSourcesCache({ bytes = {}, meta = {}, missing = [] } = {}) {
+  const dir = freshParent();
+  const index = {};
+  for (const [url, body] of Object.entries(bytes)) {
+    const buf = Buffer.from(body);
+    const sha256 = createHash("sha256").update(buf).digest("hex");
+    fs.writeFileSync(path.join(dir, sha256), buf);
+    index[bytesKey(url)] = { sha256 };
+  }
+  for (const [url, answer] of Object.entries(meta)) {
+    index[listingKey(url)] = { answer };
+  }
+  for (const url of missing) {
+    index[listingKey(url) ?? bytesKey(url)] = { fake404: true };
+  }
+  fs.writeFileSync(path.join(dir, "sources.json"), JSON.stringify(index));
+  return dir;
 }
 
 /**

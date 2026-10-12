@@ -34,6 +34,7 @@ import {
   osvEntries,
   popularityEntries,
   seedCdnHits,
+  seedSourcesCache,
   seedWorkCache,
 } from "./seed-caches.js";
 import { advisory, auditEntries, realPreparation } from "./prepared.js";
@@ -467,6 +468,9 @@ async function main() {
       // The CDN identifier runs as in any review (a fixture's own --cdn-lib-lookup false
       // turns it off), answered from a cache of the fixture's own (fixtureCdnCache).
       //
+      // The library sources a review downloads are kept in a sources cache of the fixture's
+      // own, so one fixture's download never answers another's.
+      //
       // The run's OSV and popularity answers are read from a cache folder of the fixture's
       // own, named the way a test names it on the command line (--cache-work-dir). A
       // prepared fixture's preparation reads the same folder, which also holds the answers
@@ -486,6 +490,7 @@ async function main() {
         ...pipelineOptsFromArgv(argv),
         ...CACHE_OPTS,
         cdnLookupCache: fixtureCdnCache(dir, answers.cdn),
+        sourcesCache: seedSourcesCache(),
         workFolder: freshWorkFolder(),
       };
       // The folder the review runs in: the fresh one, or the one a preparation left.

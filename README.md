@@ -73,18 +73,21 @@ allowed-experiments list each move upstream, and a stale copy would review again
 was true when it was fetched. The CDN lookup cache keeps a hit for good - a file hash
 names one release - and never keeps a miss: a 404 can be a passing fault as well as an
 answer, so it is asked again on the next run. The npm registry cache behind
-`lockfile-injection` does the same. A review needs every host it
+`lockfile-injection` does the same, and so does the sources cache: a pinned library source a
+review downloads (an npm release's files or tarball, a GitHub file, archive or release asset
+at a tag or commit) is kept for good and never downloaded again. A review needs every host it
 asks to answer: a request that gets no answer (still refused after the retries, timed out,
 not accepted) ends the review with exit 2, like no network, rather than reading the
 silence as a result - so an offline machine needs the network once a day.
 
 | Option | Description |
 | --- | --- |
-| `--cache-clear` | Delete every cache directory below before the review, so all fetched sources (schema, library-hash DB, CDN lookups, npm registry answers, allowed-experiments) are re-downloaded from scratch - as on a first run. |
+| `--cache-clear` | Delete every cache directory below before the review, so all fetched sources (schema, library-hash DB, CDN lookups, npm registry answers, library sources, allowed-experiments) are re-downloaded from scratch - as on a first run. |
 | `--cache-schema-dir <dir>` | Where the downloaded schema zips are cached (default `WEBEXT-LINTER-CACHE/schema`). |
 | `--cache-hash-db-dir <dir>` | Where the fetched library-hash database (the addons-linter "dispensary" `hashes.txt`, used by `missing-library` to identify a bundled library by its exact content hash) is cached (default `WEBEXT-LINTER-CACHE/mozilla-hash-db`). |
 | `--cache-cdn-lookup-dir <dir>` | Where the jsDelivr CDN hash-lookup results are cached, backing `--cdn-lib-lookup` (default `WEBEXT-LINTER-CACHE/cdn-lookup`). |
 | `--cache-npm-registry-dir <dir>` | Where the npm registry's answers about a lock file's tarball URLs are cached, backing `lockfile-injection` for a registry URL off the tarball path (default `WEBEXT-LINTER-CACHE/npm-registry`). |
+| `--cache-sources-dir <dir>` | Where the pinned library sources a review downloads to verify a VENDOR entry or a lock install are kept (default `WEBEXT-LINTER-CACHE/sources`). |
 | `--cache-experiments-dir <dir>` | Where the fetched allowed-experiments zip (the Thunderbird Draft-API list feeding the Experiment checks, e.g. `experiment-modified`) is cached (default `WEBEXT-LINTER-CACHE/experiments`). |
 
 The banned/unadvised library policy (`assets/library-blocks.yaml`, read by `banned-library`) is curated by hand from Mozilla's [addons-linter third-party library docs](https://github.com/mozilla/addons-linter/blob/master/docs/third-party-libraries.md), since Mozilla ships no machine-readable list, and that page

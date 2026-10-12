@@ -29,6 +29,7 @@ import path from "node:path";
 import { workPaths, runCache } from "./util/dest.js";
 import { defaultNet } from "./vendor/verify.js";
 import { withRunCache } from "./vendor/run-cache.js";
+import { withSourceCache } from "./vendor/source-cache.js";
 import { originalPackages, readPrepare } from "./prepare/state.js";
 import {
   resolveSchemaZip,
@@ -78,7 +79,7 @@ import { isExperiment, parseVersion, strictMaxVersion } from "./lib/util.js";
 import { experimentApiMembers } from "./lib/experiments.js";
 import { experimentVerdict } from "./experiments/verify.js";
 import { debug, progress, report, warn, FEED } from "./util/log.js";
-import { DEFAULT_CACHE } from "./config.js";
+import { DEFAULT_CACHE, SOURCES_CACHE } from "./config.js";
 import { rethrowIfFatal, wiringError } from "./lib/errors.js";
 import { reviewData } from "./review/products.js";
 
@@ -190,6 +191,8 @@ export const SETUP_STEPS = Object.freeze([
  * @property {string} [cdnLookupCache]  Where to cache the CDN hash-lookup results.
  * @property {string} [npmRegistryCache]  Where to cache the npm registry's answers about
  *   a lock file's tarball URLs.
+ * @property {string} [sourcesCache]  Where to keep the pinned library sources a review
+ *   downloads.
  * @property {import("./vendor/verify.js").VendorNet} [vendorNet]  Injectable
  *   network transport for every review fetch that is not a cached asset - vendor
  *   verification, the CDN lookup, the OSV audit (a unit test injects its own);
@@ -659,12 +662,16 @@ async function reviewSubmission(opts, work, prepared) {
 
   // Each artifact's data, computed when a check first asks for it. OSV and the popularity
   // hosts are asked through the run's cache: a prepared review's questions were mostly asked
-  // by its preparation already.
+  // by its preparation already. A pinned library source is downloaded through the sources
+  // cache, which every review shares.
   const dataOf = reviewData({
     opts: {
       ...opts,
       vendorNet: withRunCache(
-        opts.vendorNet ?? defaultNet,
+        withSourceCache(
+          opts.vendorNet ?? defaultNet,
+          opts.sourcesCache ?? SOURCES_CACHE
+        ),
         runCache(opts.workFolder, opts.workCache)
       ),
     },

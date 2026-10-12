@@ -90,6 +90,13 @@ export const CDN_LOOKUP_CACHE = path.join(CACHE_ROOT, "cdn-lookup");
 export const NPM_REGISTRY_CACHE = path.join(CACHE_ROOT, "npm-registry");
 
 /**
+ * Directory where the pinned library sources a review downloads are kept
+ * (--cache-sources-dir). A pinned source is the same bytes each time it is named, so a
+ * download is kept for good. See src/vendor/source-cache.js.
+ */
+export const SOURCES_CACHE = path.join(CACHE_ROOT, "sources");
+
+/**
  * Minimum size (bytes) for a READABLE file to earn a CDN identification attempt - a
  * library shipped un-minified (e.g. pdf.mjs) is large, while the developer's own files
  * are typically small, so this targets likely libraries and avoids a CDN lookup (and a

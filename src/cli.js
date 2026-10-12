@@ -47,6 +47,7 @@ import {
   LIBRARY_HASHES_CACHE,
   CDN_LOOKUP_CACHE,
   NPM_REGISTRY_CACHE,
+  SOURCES_CACHE,
   PROMPT_SKIPS,
 } from "./config.js";
 import {
@@ -178,6 +179,10 @@ function helpText(checkIds) {
       `Where the npm registry's answers about a lock file's tarball URLs are cached (default: ${NPM_REGISTRY_CACHE}).`,
     ],
     [
+      "--cache-sources-dir <dir>",
+      `Where the pinned library sources a review downloads are kept (default: ${SOURCES_CACHE}).`,
+    ],
+    [
       "--cache-experiments-dir <dir>",
       `Where the fetched allowed-experiments zip is cached (default: ${EXPERIMENTS_CACHE}).`,
     ],
@@ -296,6 +301,7 @@ const OPTIONS = {
   "cache-hash-db-dir": { type: "string" },
   "cache-cdn-lookup-dir": { type: "string" },
   "cache-npm-registry-dir": { type: "string" },
+  "cache-sources-dir": { type: "string" },
   "cache-experiments-dir": { type: "string" },
   "cdn-lib-lookup": { type: "string" },
   "checks-only": { type: "string" },
@@ -342,6 +348,7 @@ const CACHE_DIR_DEFAULTS = Object.freeze({
   "cache-hash-db-dir": LIBRARY_HASHES_CACHE,
   "cache-cdn-lookup-dir": CDN_LOOKUP_CACHE,
   "cache-npm-registry-dir": NPM_REGISTRY_CACHE,
+  "cache-sources-dir": SOURCES_CACHE,
   "cache-experiments-dir": EXPERIMENTS_CACHE,
 });
 
@@ -355,6 +362,7 @@ const FOLDER_FLAGS = [
   "cache-hash-db-dir",
   "cache-cdn-lookup-dir",
   "cache-npm-registry-dir",
+  "cache-sources-dir",
   "cache-experiments-dir",
   "cache-work-dir",
 ];
@@ -1087,6 +1095,7 @@ function cacheDirs(opts) {
     opts.libraryHashesCache,
     opts.cdnLookupCache,
     opts.npmRegistryCache,
+    opts.sourcesCache,
     opts.experimentsCache,
   ];
 }
@@ -1192,6 +1201,8 @@ function pipelineOptsFromValues(values) {
     npmRegistryCache:
       values["cache-npm-registry-dir"] ||
       CACHE_DIR_DEFAULTS["cache-npm-registry-dir"],
+    sourcesCache:
+      values["cache-sources-dir"] || CACHE_DIR_DEFAULTS["cache-sources-dir"],
     experimentsCache:
       values["cache-experiments-dir"] ||
       CACHE_DIR_DEFAULTS["cache-experiments-dir"],

@@ -51,6 +51,8 @@ test("a request a spawned review makes is refused, and ends the run", () => {
       cache,
       "--cache-npm-registry-dir",
       cache,
+      "--cache-sources-dir",
+      cache,
       "--cache-cdn-lookup-dir",
       emptyCdn,
       "--cdn-lib-lookup",

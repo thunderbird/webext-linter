@@ -53,6 +53,8 @@ const cacheFlags = (cache, cdnCache = CDN_CACHE) => [
   cdnCache,
   "--cache-npm-registry-dir",
   cache,
+  "--cache-sources-dir",
+  cache,
 ];
 const OFFLINE_FLAGS = cacheFlags(CACHE);
 
@@ -193,12 +195,15 @@ test("cache/cdn flags map to the pipeline opts", () => {
     "/d",
     "--cache-npm-registry-dir",
     "/e",
+    "--cache-sources-dir",
+    "/f",
   ]);
   assert.equal(o.schemaCache, "/a");
   assert.equal(o.libraryHashesCache, "/b");
   assert.equal(o.cdnLookupCache, "/c");
   assert.equal(o.experimentsCache, "/d");
   assert.equal(o.npmRegistryCache, "/e");
+  assert.equal(o.sourcesCache, "/f");
 });
 
 // --cache-work-dir names the folder the run's cache is read from, so a review is answered
@@ -312,13 +317,19 @@ test("--cache-work-dir: a source review is answered by its seeded caches alone",
 });
 
 // --cache-clear wipes the cache directories before the review (so every source
-// re-fetches from scratch). ALL FIVE --cache-*-dir point at one temp dir so the
-// delete touches nothing else, and a nonexistent add-on makes runPipeline fail at
-// load (before any network) - we assert only that the stale cache file was deleted.
+// re-fetches from scratch). Every --cache-*-dir points at one temp dir so the delete touches
+// nothing else, the kept sources at one of their own, and a nonexistent add-on makes
+// runPipeline fail at load (before any network) - we assert only that the stale files were
+// deleted.
 test("--cache-clear deletes the cache directories before the review", () => {
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-clear-"));
   const stale = path.join(cacheDir, "webext-annotated-schemas-junk.zip");
   fs.writeFileSync(stale, "stale");
+  const sourcesDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "wrr-clear-sources-")
+  );
+  const kept = path.join(sourcesDir, "sources.json");
+  fs.writeFileSync(kept, "{}");
   run([
     "/no/such/addon.xpi",
     "--cache-clear",
@@ -332,9 +343,13 @@ test("--cache-clear deletes the cache directories before the review", () => {
     cacheDir,
     "--cache-npm-registry-dir",
     cacheDir,
+    "--cache-sources-dir",
+    sourcesDir,
   ]);
   assert.ok(!fs.existsSync(stale), "the stale cache file was cleared");
+  assert.ok(!fs.existsSync(kept), "the kept sources were cleared");
   fs.rmSync(cacheDir, { recursive: true, force: true });
+  fs.rmSync(sourcesDir, { recursive: true, force: true });
 });
 
 // A pipeline hard-fail the review could not run through (here a missing add-on; an
@@ -2478,6 +2493,7 @@ test("the preparation records every cache as an absolute path", () => {
         "WEBEXT-LINTER-CACHE",
         "npm-registry"
       ),
+      "cache-sources-dir": path.join(cwd, "WEBEXT-LINTER-CACHE", "sources"),
       "cache-experiments-dir": path.join(
         cwd,
         "WEBEXT-LINTER-CACHE",

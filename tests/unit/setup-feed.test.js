@@ -40,6 +40,8 @@ const OFFLINE = [
   CACHE,
   "--cache-npm-registry-dir",
   CACHE,
+  "--cache-sources-dir",
+  CACHE,
 ];
 
 /**
