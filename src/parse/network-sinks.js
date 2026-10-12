@@ -34,6 +34,7 @@ import {
   worstUrlClass,
   writtenScheme,
 } from "../scan/url.js";
+import { declarationUrls, openUrlArg, urlsIn } from "../scan/css.js";
 import { URL_CLASS, OVERTNESS } from "../lib/enum.js";
 import { apiBasesOf } from "./api-base.js";
 import { localUrlArgs, localUrlVarsOf } from "./local-url.js";
@@ -45,6 +46,14 @@ import { DATA_APIS } from "./webext-facts.js";
 // style properties that can carry a url() pointing at a remote host.
 const URL_PROPS = new Set(["src", "href"]);
 const STYLE_URL_PROPS = new Set(["backgroundImage", "background", "cssText"]);
+
+// How a sink's value is read: as a URL, as a CSS value whose url() arguments
+// are the destinations, or as a CSS declaration list (style.cssText).
+const READ_AS = Object.freeze({
+  URL: "url",
+  CSS_VALUE: "css-value",
+  CSS_DECLARATIONS: "css-declarations",
+});
 
 // Non-TLS remote schemes - data sent to one of these travels unencrypted.
 const CLEARTEXT_PROTOCOLS = ["http:", "ws:", "ftp:"];
@@ -108,12 +117,14 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
    * @param {?AstNode} urlNode  The destination-URL argument.
    * @param {AstNode[]} dataNodes  Other arguments that may hold the payload.
    * @param {AstNode} site  The node to report the location of.
+   * @param {string} [readAs]  How the value is read, a READ_AS member.
    */
-  const push = (type, channel, urlNode, dataNodes, site) => {
+  const push = (type, channel, urlNode, dataNodes, site, readAs) => {
     const { destClass, dataAppended, cleartext, host } = urlInfo(
       urlNode,
       bases,
-      urlVars
+      urlVars,
+      readAs ?? READ_AS.URL
     );
     hits.push({
       type,
@@ -234,7 +245,9 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
             : "element-src";
         push(type, OVERTNESS.COVERT, right, [], path.node);
       } else if (STYLE_URL_PROPS.has(prop)) {
-        push("style-url", OVERTNESS.COVERT, right, [], path.node);
+        const readAs =
+          prop === "cssText" ? READ_AS.CSS_DECLARATIONS : READ_AS.CSS_VALUE;
+        push("style-url", OVERTNESS.COVERT, right, [], path.node, readAs);
       } else if (prop === "action" && isFormVar(left.object)) {
         formActions.set(left.object.name, right); // record the form action
       }
@@ -338,10 +351,11 @@ function isHttpMethodLiteral(node) {
  * @param {Map<object, object>} bases  The AST's alias index from apiBasesOf.
  * @param {Map<AstNode, string[]>} urlVars  The AST's local-URL variable index
  *   from localUrlVarsOf.
+ * @param {string} readAs  How the value is read, a READ_AS member.
  * @returns {{destClass: import("../lib/enum.js").UrlClass,
  *   cleartext: boolean, host: ?string, dataAppended: boolean}}
  */
-function urlInfo(node, bases, urlVars) {
+function urlInfo(node, bases, urlVars, readAs) {
   if (!node) {
     return {
       destClass: URL_CLASS.LOCAL,
@@ -358,9 +372,28 @@ function urlInfo(node, bases, urlVars) {
   const values =
     localUrlArgs(node, bases) ?? urlVars.get(node) ?? staticValues(node);
   if (values) {
-    return worstStaticUrlInfo(values);
+    if (readAs === READ_AS.URL) {
+      return worstStaticUrlInfo(values);
+    }
+    // Every url() argument of every value is a destination. A style value
+    // without url() loads nothing.
+    const read = readAs === READ_AS.CSS_DECLARATIONS ? declarationUrls : urlsIn;
+    return worstStaticUrlInfo(values.flatMap(read)) ?? LOCAL_DEST;
   }
-  const prefix = bareUrl(staticPrefix(node));
+  const prefix = staticPrefix(node);
+  return readAs === READ_AS.URL
+    ? prefixUrlInfo(prefix)
+    : stylePrefixUrlInfo(prefix);
+}
+
+/**
+ * Classify the leading static text of a dynamic URL. The dynamic tail is data
+ * appended to a remote destination.
+ * @param {string} prefix
+ * @returns {{destClass: import("../lib/enum.js").UrlClass,
+ *   cleartext: boolean, host: ?string, dataAppended: boolean}}
+ */
+function prefixUrlInfo(prefix) {
   const url = parsedUrl(prefix);
   const host = url?.host || null;
   const destClass = prefix ? classifyUrl(prefix) : URL_CLASS.DYNAMIC;
@@ -373,6 +406,25 @@ function urlInfo(node, bases, urlVars) {
     host,
     dataAppended: destClass.remote,
   };
+}
+
+/**
+ * Classify the leading static text of a dynamic style value. Its closed url()
+ * arguments are whole destinations. When it ends inside an unclosed url(), the
+ * dynamic tail continues that argument, which is then a URL prefix. Otherwise
+ * the tail stands outside any url() and may add one, so it is dynamic.
+ * @param {string} prefix
+ * @returns {{destClass: import("../lib/enum.js").UrlClass,
+ *   cleartext: boolean, host: ?string, dataAppended: boolean}}
+ */
+function stylePrefixUrlInfo(prefix) {
+  const urls = urlsIn(prefix);
+  const open = openUrlArg(prefix);
+  if (open) {
+    urls.pop(); // the last argument is the open one, read as a prefix below
+  }
+  const tail = open == null ? DYNAMIC_DEST : prefixUrlInfo(open);
+  return gravestInfo([...urls.map(staticUrlInfo), tail]);
 }
 
 /**
@@ -404,12 +456,23 @@ function staticUrlInfo(url) {
  * `c ? "http://127.0.0.1/x" : "https://evil/y"` the first arm is genuinely local
  * while the second decides the sink, and reporting the host of the wrong arm
  * would name an innocent destination.
- * @param {string[]} urls  At least one candidate value.
+ * @param {string[]} urls  The candidate values.
  * @returns {{destClass: import("../lib/enum.js").UrlClass,
- *   cleartext: boolean, host: ?string, dataAppended: boolean}}
+ *   cleartext: boolean, host: ?string, dataAppended: boolean}|undefined}
+ *   undefined when there is no value.
  */
 function worstStaticUrlInfo(urls) {
-  const infos = urls.map((url) => staticUrlInfo(bareUrl(url)));
+  return gravestInfo(urls.map(staticUrlInfo));
+}
+
+/**
+ * The gravest of several classified destinations, or undefined for none.
+ * @param {{destClass: import("../lib/enum.js").UrlClass,
+ *   cleartext: boolean, host: ?string, dataAppended: boolean}[]} infos
+ * @returns {{destClass: import("../lib/enum.js").UrlClass,
+ *   cleartext: boolean, host: ?string, dataAppended: boolean}|undefined}
+ */
+function gravestInfo(infos) {
   const worst = worstUrlClass(infos.map((info) => info.destClass));
   const gravest = infos.filter((info) => info.destClass === worst);
   // Among equally grave destinations a cleartext one is the graver still, and
@@ -419,9 +482,19 @@ function worstStaticUrlInfo(urls) {
 }
 
 // A local (non-network) destination: no cleartext/privacy/exfil concern. The
-// answer for a resolved loopback destination.
+// answer for a resolved loopback destination and for a style value that loads
+// nothing.
 const LOCAL_DEST = {
   destClass: URL_CLASS.LOCAL,
+  cleartext: false,
+  host: null,
+  dataAppended: false,
+};
+
+// A destination that cannot be pinned down: the dynamic tail of a style value
+// that stands outside any url().
+const DYNAMIC_DEST = {
+  destClass: URL_CLASS.DYNAMIC,
   cleartext: false,
   host: null,
   dataAppended: false,
@@ -486,17 +559,6 @@ function staticPrefix(node) {
     default:
       return "";
   }
-}
-
-/**
- * The bare URL from a value that may be wrapped in `url("...")` (a CSS
- * background), with surrounding quotes stripped.
- * @param {string} s
- * @returns {string}
- */
-function bareUrl(s) {
-  const match = /url\(\s*['"]?([^'")]*)/i.exec(s);
-  return (match ? match[1] : s).replace(/^['"]/, "").trim();
 }
 
 /**

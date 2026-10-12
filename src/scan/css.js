@@ -95,19 +95,63 @@ function firstRef(params) {
 }
 
 /**
- * All url(...) arguments in a declaration value.
+ * All url(...) arguments in a declaration value. An unclosed url() at the end
+ * counts too, as the browser closes it at the end of the value.
  * @param {string} value  The raw declaration value text.
  * @returns {string[]}
  */
-function urlsIn(value) {
+export function urlsIn(value) {
+  return urlCalls(value)
+    .map((call) => urlArg(call))
+    .filter((u) => u != null);
+}
+
+/**
+ * The argument of the unclosed url() a value ends in ("" for a bare `url(`), or
+ * null when it has none. A value built as a prefix (`"url(https://h/" + x`)
+ * ends this way, and its dynamic tail continues that argument.
+ * @param {string} value  The raw value text.
+ * @returns {?string}
+ */
+export function openUrlArg(value) {
+  const last = urlCalls(value).at(-1);
+  return last?.unclosed ? (urlArg(last) ?? "") : null;
+}
+
+/**
+ * All url(...) arguments in a CSS declaration list (a style attribute or an
+ * element's style.cssText), read from every declaration value. A list postcss
+ * cannot parse is read as one value, so a malformed list still yields its
+ * url() arguments.
+ * @param {string} text  The raw declaration list text.
+ * @returns {string[]}
+ */
+export function declarationUrls(text) {
+  try {
+    const urls = [];
+    // Wrapped in a rule so postcss parses the bare declarations.
+    postcss.parse(`*{${text}}`).walkDecls((decl) => {
+      urls.push(...urlsIn(decl.value));
+    });
+    return urls;
+  } catch (err) {
+    rethrowIfFatal(err);
+    return urlsIn(text);
+  }
+}
+
+/**
+ * The url(...) function nodes of a value, in order (a url() argument is not
+ * descended into).
+ * @param {string} value  The raw value text.
+ * @returns {{nodes: {value: string}[], unclosed?: boolean}[]}
+ */
+function urlCalls(value) {
   const out = [];
   valueParser(value).walk((node) => {
     if (node.type === "function" && node.value.toLowerCase() === "url") {
-      const u = urlArg(node);
-      if (u != null) {
-        out.push(u);
-      }
-      return false; // do not descend into the url() argument
+      out.push(node);
+      return false;
     }
     return undefined;
   });
