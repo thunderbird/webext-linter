@@ -610,7 +610,8 @@ test("the shipped steps carry the conditions they are printed under", () => {
   assert.deepEqual(when("verify"), [["aborted"]]);
   assert.deepEqual(when("settle"), [["aborted"]]);
   // The build opening: only a source review whose install is vouched for, and each choice
-  // only after the judgement it answers. The build itself runs only where the reviewer chose
+  // only after the judgement it answers, and only where the reviewer allowed package-manager
+  // commands. The build itself runs only where the reviewer chose
   // the agent to build.
   const calls = (name) =>
     loaded
@@ -625,8 +626,8 @@ test("the shipped steps carry the conditions they are printed under", () => {
     ["build-choice-unsafe", "unsafe"],
   ]) {
     assert.deepEqual(when(name), [
-      ["aborted", "build-guarded", "sca"],
-      ["aborted", "build-guarded", "sca"],
+      ["aborted", "build-guarded", "package-managers-declined", "sca"],
+      ["aborted", "build-guarded", "package-managers-declined", "sca"],
     ]);
     assert.deepEqual(calls(name), [
       [["build-safety", value]],

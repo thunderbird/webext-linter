@@ -184,6 +184,10 @@ export const sweepAnswersSlot = (artifact) => `${sweepSlot(artifact)}Answers`;
  *  - `decided`: the agent has judged something - `verify` or `settle` went out;
  *  - `closing`: the prompt being printed is the closing one (its phase answers `end`).
  *
+ *  - `package-managers-declined`: the reviewer did not allow the agent to run package-manager
+ *    commands when the preparation asked (src/prepare/steps.js), so the agent builds nothing.
+ *    A review started without a preparation has no such fact.
+ *
  *  `first`, `spawned` and `decided` are read off the review each pass (runOf); `closing`
  *  comes from the phase being printed (stepsOf). Every other name but `aborted`, `closing`
  *  and the flags is the key the run record answers under. */
@@ -197,6 +201,7 @@ export const REVIEW_PROMPT_FACTS = [
   "spawned",
   "decided",
   "closing",
+  "package-managers-declined",
 ];
 
 /**
@@ -265,3 +270,8 @@ export const SCA_PROMPT_STEPS = ["extract", "reduce", "fix"];
  *  how the reader reaches the next run. A list without it would leave its reader with
  *  nowhere to go. */
 export const SCA_PROMPT_COMMAND = "{{flags}}";
+
+/** The values the preparation's PACKAGE_MANAGERS question accepts back, by id: whether the
+ *  reviewer allows the agent to run package-manager commands. Each id is offered exactly
+ *  once (assertScaPrompt), so every answer reads as one of the two. */
+export const PACKAGE_MANAGER_VALUES = ["allow", "decline"];

@@ -2118,6 +2118,10 @@ llm-sca-review-prompt:
   # (SCA_PROMPT_FACTS).
   extract:
     - text: |-
+        Open ANSWERS, given above. Put its entry whose "index" is PACKAGE_MANAGERS to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+
+        Record the label they picked as that entry's "answer", and change nothing else in the file. Only those labels are accepted: if they answer anything else, ask the question again.
+    - text: |-
         Extract SOURCE_ARCHIVE into EXTRACT_TO, given above.
 
         Unpack until the add-on's own files appear, which is TWICE for an archive packed twice - a .tar.gz is a tar inside a gzip. Then stop. Anything you find INSIDE the extracted tree is part of the source and stays packed: the review reports those as committed build artifacts, and unpacking one deletes a finding.
@@ -2142,6 +2146,21 @@ llm-sca-review-prompt:
         {{flags}}
     - text: |-
         That run checks the source and prints the next prompt. Follow it from there - this one is done.
+  # The question the first prompt puts to the reviewer before anything else, as the
+  # PACKAGE_MANAGERS entry of ANSWERS: whether the agent may run package-manager commands.
+  # Declined, the preparation audits and rescues nothing, and the review asks no build
+  # choice and runs no build (`package-managers-declined`). The `built` and `reproduced`
+  # questions are still asked, answered from the reviewer's own build.
+  package-managers:
+    question: |-
+      This review can have the agent run package-manager commands. To rescue dependencies with known vulnerabilities, it runs `npm install --package-lock-only --ignore-scripts` and `npm audit fix --package-lock-only --ignore-scripts`, or for pnpm `pnpm install --lockfile-only --ignore-scripts` and `pnpm audit --fix`. These change only the lock file and run no install script. To build the add-on, where you later choose that it builds, it runs `npm ci` or `pnpm install --frozen-lockfile` and the add-on's own build commands, which run the submission's code. May the agent run these commands?
+    values:
+      - value: allow
+        label: Allow
+        description: The agent may run these commands. Dependencies with known vulnerabilities are rescued where these commands can fix them, and you are asked later who builds the add-on.
+      - value: decline
+        label: Do not allow
+        description: The agent runs none of them. Nothing is rescued, so known vulnerabilities in the dependencies end the review, and the agent builds nothing. You answer the build questions from your own build.
   # The copy's dependencies, reduced to what the release build uses. The release build is
   # worked out from the copy itself: no build report exists yet, because no review has run.
   reduce:
@@ -2188,7 +2207,8 @@ llm-sca-review-prompt:
 #                as llm-sca-review-prompt's step lists do. No step numbers itself. A
 #                condition is AND / OR / NOT over the facts REVIEW_PROMPT_FACTS names - the
 #                flags given, `aborted`, `sca`, `build-guarded`, `sweep-<artifact>`,
-#                `first`, `spawned`, `decided` and `closing` - and over the process values
+#                `first`, `spawned`, `decided`, `closing` and `package-managers-declined` -
+#                and over the process values
 #                recorded so far, read with value(phase, id) (src/checks/condition.js).
 #   HANDOVER     ONE text, appended by the linter as the last numbered step of every phase
 #                but `close`, which nothing is handed back after. Not
@@ -2305,6 +2325,8 @@ llm-phases:
 
     # The reviewer's choice after a SAFE judgement: who builds. Asked alone, beside the Build
     # Review Details block that links the report the choice rests on.
+    # Not asked where the reviewer declined package-manager commands in the preparation:
+    # the agent builds nothing, and the reviewer answers the build questions from their own.
     - name: build-choice
       answer: value
       verbs: []
@@ -2319,12 +2341,12 @@ llm-phases:
           label: Build myself
           description: Nothing is built here. You build the add-on yourself and answer the two build questions from your own build.
       steps:
-        - when: sca AND build-guarded AND NOT aborted AND value(build-safety, safe)
+        - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined AND value(build-safety, safe)
           text: |-
             Give the reviewer this block under a "Build review details" heading, exactly as it is written here:
 
             {{buildDetails}}
-        - when: sca AND build-guarded AND NOT aborted AND value(build-safety, safe)
+        - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined AND value(build-safety, safe)
           text: &build-choice-ask |-
             Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
 
@@ -2332,6 +2354,7 @@ llm-phases:
 
     # The reviewer's choice after an UNSAFE judgement: stop the review, or build anyway, by
     # the agent or by hand, having read why the agent judged it unsafe.
+    # Not asked where the reviewer declined package-manager commands, as `build-choice`.
     - name: build-choice-unsafe
       answer: value
       verbs: []
@@ -2350,17 +2373,18 @@ llm-phases:
           label: Build myself
           description: You judged those steps harmless. You build the add-on yourself and answer the two build questions from your own build.
       steps:
-        - when: sca AND build-guarded AND NOT aborted AND value(build-safety, unsafe)
+        - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined AND value(build-safety, unsafe)
           text: |-
             Give the reviewer this block under a "Build review details" heading, exactly as it is written here:
 
             {{buildDetails}}
-        - when: sca AND build-guarded AND NOT aborted AND value(build-safety, unsafe)
+        - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined AND value(build-safety, unsafe)
           text: *build-choice-ask
 
     # Builds the add-on and says where the build put what it produced, for the reviewer to
     # compare with the shipped XPI before the build questions. Only where the reviewer chose
-    # the agent to build. The answer is a path inside the build copy, which the linter
+    # the agent to build, which a reviewer who declined package-manager commands is never
+    # asked. The answer is a path inside the build copy, which the linter
     # validates and the Build Review Details block links, or the `failed` label. The linter
     # judges nothing else here.
     - name: build

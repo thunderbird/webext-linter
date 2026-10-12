@@ -1905,6 +1905,21 @@ test("a review whose build checks did not all run opens at the build questions",
   assert.ok(!seen.includes("build"), seen.join(", "));
 });
 
+// A reviewer who declined package-manager commands in the preparation is asked no build
+// choice, and the agent builds nothing. The build questions are still asked, of the
+// reviewer's own build.
+test("a review whose reviewer declined package-manager commands builds nothing", () => {
+  for (const safety of ["safe", "unsafe"]) {
+    const made = buildQuestionsReview(tmp());
+    made.state.run["package-managers-declined"] = true;
+    const { seen } = driveBuild(made, goesOn({ "build-safety": () => safety }));
+    assert.deepEqual(seen.slice(0, 3), ["build-safety", "built", "reproduced"]);
+    for (const phase of ["build-choice", "build-choice-unsafe", "build"]) {
+      assert.ok(!seen.includes(phase), seen.join(", "));
+    }
+  }
+});
+
 test("an XPI review never builds", () => {
   const { state, work } = review(tmp(), { sweep: false });
   const { seen } = driveLoop(state, work, (phase) =>

@@ -68,11 +68,13 @@ export function writeTree(dir, files) {
   }
 }
 
-/** Fill in the review file the way the agent does: each entry's answer by its index. */
+/** Fill in the review file the way the agent does: each entry's answer by its index. The
+ *  reviewer allows package-manager commands unless `answers` says otherwise. */
 export function answer(work, answers) {
   const file = workPaths(work).review;
   const doc = JSON.parse(fs.readFileSync(file, "utf8"));
-  doc.entries = doc.entries.map((e) => ({ ...e, answer: answers[e.index] }));
+  const given = { PACKAGE_MANAGERS: "Allow", ...answers };
+  doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));
   fs.writeFileSync(file, JSON.stringify(doc));
 }
 

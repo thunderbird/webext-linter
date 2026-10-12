@@ -54,8 +54,8 @@ entry never offered are all refusals.
 | Phase | What it is for | What fills its answers |
 | --- | --- | --- |
 | `build-safety` | Source code review only: write the build report (`BUILD_PROCESS`), with a safety section listing anything the build fetches or runs from outside the declared dependencies, and judge whether building is safe. | A process value: `safe` / `unsafe` |
-| `build-choice` | After a `safe` judgement: show the Build Review Details block and ask the reviewer, alone, who builds. | A process value: LLM builds / Build myself |
-| `build-choice-unsafe` | After an `unsafe` judgement: the same, and the reviewer may also stop the review. | A process value: Abort / LLM builds anyway / Build myself |
+| `build-choice` | After a `safe` judgement: show the Build Review Details block and ask the reviewer, alone, who builds. Not asked where the reviewer declined package-manager commands while the review was prepared. | A process value: LLM builds / Build myself |
+| `build-choice-unsafe` | After an `unsafe` judgement: the same, and the reviewer may also stop the review. Not asked where the reviewer declined package-manager commands. | A process value: Abort / LLM builds anyway / Build myself |
 | `build` | Where the reviewer chose the agent: build the add-on in the agent's own sandbox and write how the result differs from the shipped XPI. | Nothing: the diff goes to a file of its own |
 | `built` | Source code review only: ask the reviewer, alone, whether the build succeeded. | The reviewer's own answer |
 | `reproduced` | Source code review only: ask the reviewer, alone, whether the built XPI reproduces the submitted one. | The reviewer's own answer |
@@ -77,7 +77,8 @@ Which steps a phase prints is decided by each step's `when:` condition: `AND`, `
 and parentheses over the facts of this run - the `--llm-skip-*` flags it was given,
 `aborted` once a finding has aborted the review, `sca` for a source code review,
 `build-guarded` when every check a build relies on ran,
-`sweep-xpi` / `sweep-sca` for a tree with a sweep to run, `first` on the review's first
+`package-managers-declined` when the reviewer declined package-manager commands while the
+review was prepared, `sweep-xpi` / `sweep-sca` for a tree with a sweep to run, `first` on the review's first
 prompt, `spawned` once `spawn` went out, `decided` once `verify` or `settle` did, and
 `closing` in the closing prompt. A step with no condition prints in every run, and a phase
 left with no step is not issued. The preamble's parts are conditioned the same way. A wait
@@ -391,13 +392,27 @@ on that being answered correctly - handed a root with no `package.json` and one 
 that has one, it settles the root itself before reading anything (`src/addon/sca-root.js`)
 and says so in its Setup feed.
 
+Before anything else, the prompt has its reader put one question to the reviewer, alone,
+through its question tool: the `PACKAGE_MANAGERS` entry of `ANSWERS`, which asks whether the
+agent may run package-manager commands. Its message names every one it would run: in a
+rescue, `npm install --package-lock-only --ignore-scripts` and
+`npm audit fix --package-lock-only --ignore-scripts`, or for pnpm
+`pnpm install --lockfile-only --ignore-scripts` and `pnpm audit --fix`, and in the review's
+build, `npm ci` or `pnpm install --frozen-lockfile` and the add-on's own build commands. The
+reader records the label the reviewer picked, `Allow` or `Do not allow`, and any other answer
+is refused. Declined, the hand-back settles the roots and the folder is done at once: the
+lock is not audited and nothing is rescued, so a vulnerable lock aborts the review it starts.
+That review asks no build choice and runs no build (`package-managers-declined`), and the
+`built` and `reproduced` questions are still asked, of the reviewer's own build.
+
 The reader hands the two back in the work folder's review file (`ANSWERS`, the same
 `.review/review.json` a review pass uses) and runs `--llm-handback` on the folder. The preparation's
 own record, `.review/prepare.json`, says where it stands, so every step is that one command; the
 reader never chooses what comes next. A root outside `sca/`, or an Experiment folder outside
 the root, is refused, and the reader corrects the file and hands it back again.
 
-That hand-back settles the roots as the review would, and then **audits the root's lock**
+That hand-back settles the roots as the review would, and then, where the reviewer allowed
+package-manager commands, **audits the root's lock**
 (`src/prepare/audit.js`): every package it installs, against OSV and the policy blocklist,
 exactly as the review's own dependency audit reads it. Before that it asks whether every
 registry entry installs the release it names (`lockfile-injection`'s question): a lock that
@@ -442,6 +457,31 @@ and from then on the same command carries the round trip above.
 
 The tool extracts the submitted `.xpi` itself, but not a source archive: those arrive in
 too many formats for it to open, which is why that one extraction is the reader's.
+
+### Permissions
+
+Claude Code's auto mode may stop a command it was not told to expect. These allow rules
+let the linter's own commands run without that:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(node */verify.js *)",
+      "Bash(npm install --package-lock-only --ignore-scripts*)",
+      "Bash(npm audit fix --package-lock-only --ignore-scripts*)",
+      "Bash(pnpm install --lockfile-only --ignore-scripts*)",
+      "Bash(pnpm audit --fix*)",
+      "Bash(npm ci*)",
+      "Bash(pnpm install --frozen-lockfile*)"
+    ]
+  }
+}
+```
+
+The first runs the linter's hand-backs, the next four are the rescue's lock-only commands,
+and the last two are the build's installs. The add-on's own build commands have no rule:
+they run the submission's code, and the reviewer's build choice is what allows them.
 
 
 ## Where a review's files go

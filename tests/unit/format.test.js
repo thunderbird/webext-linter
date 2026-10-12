@@ -1442,6 +1442,34 @@ test("the preparation prompts come from the registry and every part is required"
   const typo = loadRegistry();
   typo.doc["llm-sca-review-prompt"].extract[2].experiments = true;
   assert.throws(() => checkScaPrompt(typo), /step 3 authors `experiments`/);
+  // The package-manager question offers allow and decline once each, under labels of their
+  // own: every answer is read as one of the two.
+  assert.deepEqual(
+    prompt.packageManagers.values.map((v) => v.value),
+    ["allow", "decline"]
+  );
+  const managers = (mutate) => {
+    const r = loadRegistry();
+    mutate(r.doc["llm-sca-review-prompt"]["package-managers"]);
+    return r;
+  };
+  assert.throws(
+    () => checkScaPrompt(managers((m) => delete m.question)),
+    /authors no `question`/
+  );
+  assert.throws(
+    () => checkScaPrompt(managers((m) => (m.values[1].value = "maybe"))),
+    /invalid `value` "maybe"/
+  );
+  assert.throws(
+    () => checkScaPrompt(managers((m) => (m.values[1].value = "allow"))),
+    /offers `allow` other than once/
+  );
+  assert.throws(
+    () =>
+      checkScaPrompt(managers((m) => (m.values[1].label = m.values[0].label))),
+    /offers one label twice/
+  );
 });
 
 // A step may carry a literal example, whose authored line breaks ARE the layout: a step is

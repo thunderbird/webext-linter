@@ -195,9 +195,68 @@ test("a clean source is done, and its review starts in the folder", async () => 
     scaRoot: workPaths(work).sca,
     scaExpSource: null,
   });
+  assert.equal(at.record.packageManagers, true, "the reviewer allowed them");
   assert.deepEqual(recordOf(work), at.record);
   assert.ok(!fs.existsSync(workPaths(work).review), "the review file is gone");
   assert.ok(!fs.existsSync(workPaths(work).rescued), "no copy is made");
+  cleanup(work);
+});
+
+// The reviewer is asked first whether the agent may run package-manager commands, and the
+// record holds no answer until the first hand-back reads one.
+test("the first step asks the reviewer about package-manager commands", () => {
+  const work = workFolder({ "package.json": packageFile() });
+  const [managers] = JSON.parse(
+    fs.readFileSync(workPaths(work).review, "utf8")
+  ).entries;
+  assert.equal(managers.index, "PACKAGE_MANAGERS");
+  assert.equal(managers.answer, null);
+  assert.match(managers.message, /npm install --package-lock-only/);
+  assert.match(managers.message, /npm ci/);
+  assert.deepEqual(
+    managers.answers.map((a) => a.label),
+    ["Allow", "Do not allow"]
+  );
+  assert.equal(recordOf(work).packageManagers, null);
+  cleanup(work);
+});
+
+// Declined, nothing is audited and nothing rescued: a rescue runs package-manager commands.
+// The lock is vulnerable and OSV is given no answer, so any audit would ask the switched-off
+// network and fail. The folder is done at once, its roots in sca/.
+test("declined package-manager commands are done at once, with nothing audited", async () => {
+  const work = workFolder({
+    "package.json": packageFile(),
+    "package-lock.json": npmLock(),
+  });
+  const at = await first(work, { PACKAGE_MANAGERS: "Do not allow" });
+  assert.equal(at.next, "review");
+  assert.equal(at.record.step, PREPARE_STEP.done);
+  assert.equal(at.record.packageManagers, false);
+  assert.deepEqual(at.record.roots, {
+    scaRoot: workPaths(work).sca,
+    scaExpSource: null,
+  });
+  assert.deepEqual(recordOf(work), at.record);
+  assert.ok(!fs.existsSync(workPaths(work).rescued), "no copy is made");
+  cleanup(work);
+});
+
+// The answer is one of the labels its entry offered, and anything else is refused with the
+// folder unchanged.
+test("an answer about package-manager commands that is no label is refused", async () => {
+  const work = workFolder({ "package.json": packageFile() });
+  await assert.rejects(
+    first(work, { PACKAGE_MANAGERS: "Maybe" }),
+    refused(
+      /PACKAGE_MANAGERS answers "Maybe", which this entry does not accept/
+    )
+  );
+  await assert.rejects(
+    first(work, { PACKAGE_MANAGERS: null }),
+    refused(/PACKAGE_MANAGERS still has no "answer"/)
+  );
+  assert.equal(recordOf(work).step, PREPARE_STEP.extract);
   cleanup(work);
 });
 
@@ -833,6 +892,16 @@ test("a record boolean that is neither true nor false is refused", async () => {
   await assert.rejects(
     later(work),
     refused(/holds submission\.experiments as neither true nor false/)
+  );
+  cleanup(work);
+});
+
+test("a packageManagers that is neither true nor false is refused", async () => {
+  const { work } = await rescued();
+  writePrepare(work, { ...recordOf(work), packageManagers: "no" });
+  await assert.rejects(
+    later(work),
+    refused(/holds packageManagers as neither true nor false/)
   );
   cleanup(work);
 });

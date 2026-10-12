@@ -1844,15 +1844,16 @@ const readJson = (work, name) =>
 
 /**
  * Do what the first prompt asks, the way its reader would: extract the source into
- * EXTRACT_TO, fill the roots into ANSWERS, and run the hand-back it prints - which, with
+ * EXTRACT_TO, answer ANSWERS (package-manager commands allowed, and the roots), and run the hand-back it prints - which, with
  * nothing to rescue, starts the review.
  * @param {string} stdout  The --llm-sca-review run's output.
- * @param {{expSource?: string, typed?: (work: string) => string}} [opts]  The Experiment
- *   folder to answer, relative to the root, for an add-on that declares Experiments - and
- *   how the work folder is typed, where not as the prompt prints it.
+ * @param {{expSource?: string, typed?: (work: string) => string, managers?: string}}
+ *   [opts]  The Experiment folder to answer, relative to the root, for an add-on that
+ *   declares Experiments, how the work folder is typed, where not as the prompt prints it,
+ *   and the reviewer's answer about package-manager commands.
  * @returns {{code: number, stdout: string, stderr: string}}  The hand-back's run.
  */
-function handBackRoots(stdout, { expSource, typed } = {}) {
+function handBackRoots(stdout, { expSource, typed, managers = "Allow" } = {}) {
   const root = headerValue(stdout, "EXTRACT_TO");
   fs.cpSync(NO_LOCK_SOURCE, root, { recursive: true });
   if (expSource) {
@@ -1860,9 +1861,10 @@ function handBackRoots(stdout, { expSource, typed } = {}) {
   }
   const answers = headerValue(stdout, "ANSWERS");
   const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
+  const given = { PACKAGE_MANAGERS: managers, SCA_ROOT: root };
   doc.entries = doc.entries.map((e) => ({
     ...e,
-    answer: e.index === "SCA_ROOT" ? root : expSource,
+    answer: e.index in given ? given[e.index] : expSource,
   }));
   fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
   return typed
@@ -1922,9 +1924,14 @@ test("--llm-sca-review creates the work folder and hands it back", () => {
     `${path.join(work, "sca")}${path.sep}`
   );
   assert.equal(headerValue(r.stdout, "ANSWERS"), workPaths(work).review);
-  assert.deepEqual(readJson(work, "review"), {
-    entries: [{ index: "SCA_ROOT", answer: null }],
-  });
+  const [managers, ...roots] = readJson(work, "review").entries;
+  assert.equal(managers.index, "PACKAGE_MANAGERS");
+  assert.equal(managers.answer, null);
+  assert.deepEqual(
+    managers.answers.map((a) => a.label),
+    ["Allow", "Do not allow"]
+  );
+  assert.deepEqual(roots, [{ index: "SCA_ROOT", answer: null }]);
   assert.deepEqual(commandOf(r.stdout), [`--llm-handback ${work}`]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -1954,9 +1961,30 @@ test("the hand-back that finishes the preparation starts the review", () => {
   assert.equal(meta.xpi, path.join(dir, "addon.xpi"));
   assert.equal(meta.scaRoot, path.join(work, "sca"));
   assert.deepEqual(meta.checksRun, ["unused-files"]);
+  assert.ok(!("package-managers-declined" in readJson(work, "state").run));
   // From here on the folder holds a review, and its hand-back is a pass of the loop.
   const next = run(["--llm-handback", work]);
   assert.doesNotMatch(next.stdout, /SCA Review Prompt/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A reviewer who declines package-manager commands has the review started at once, and
+// told so: the started review records the fact its build steps read.
+test("declined package-manager commands reach the review it starts", () => {
+  const dir = submissionFolder();
+  const prepared = run([
+    dir,
+    "--llm-sca-review",
+    ...OFFLINE_FLAGS,
+    "--checks-only",
+    "unused-files",
+  ]);
+  assert.equal(prepared.code, 0, prepared.stderr);
+  const work = workOf(prepared.stdout);
+  const handed = handBackRoots(prepared.stdout, { managers: "Do not allow" });
+  assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
+  assert.equal(readJson(work, "prepare").packageManagers, false);
+  assert.equal(readJson(work, "state").run["package-managers-declined"], true);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -2010,7 +2038,7 @@ test("the preparation records the flags its review is started with", () => {
   // records one - and the steps renumber over what survives.
   const plain = prepared();
   assert.doesNotMatch(plain.stdout, /SCA_EXP_SOURCE|Experiment/);
-  assert.match(plain.stdout, /\n5\. That run checks the source/);
+  assert.match(plain.stdout, /\n6\. That run checks the source/);
 
   // An add-on that ships an Experiment needs the folder, so the .xpi's own manifest.json
   // decides: the prompt asks for it, the review file has a slot for it, and the started

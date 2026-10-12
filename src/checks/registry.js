@@ -63,6 +63,7 @@ import {
   SCA_PROMPT_FACTS,
   SCA_PROMPT_STEPS,
   SCA_PROMPT_COMMAND,
+  PACKAGE_MANAGER_VALUES,
   REVIEW_PROMPT_FACTS,
 } from "./registry-vocabulary.js";
 import { rethrowIfFatal, wiringError } from "../lib/errors.js";
@@ -733,16 +734,30 @@ export class Registry {
    * run prints is layout, decided in src/report/format.js beside the flags themselves.
    * `when: experiments` marks a step about the Experiment folder, which only the review of
    * an add-on declaring Experiments reads - so it is printed only for one.
+   *
+   * `packageManagers` is the question the first prompt puts to the reviewer: its text, and
+   * the two answers it offers, each by its id (PACKAGE_MANAGER_VALUES).
    * @returns {{intro: string,
-   *   steps: Record<string, {when: ?object, text: string}[]>}}
+   *   steps: Record<string, {when: ?object, text: string}[]>,
+   *   packageManagers: {question: string,
+   *     values: {value: string, label: string, description: string}[]}}}
    */
   llmScaReviewPrompt() {
     const p = this.doc["llm-sca-review-prompt"];
+    const ask = p["package-managers"];
     return {
       intro: p.intro,
       steps: Object.fromEntries(
         SCA_PROMPT_STEPS.map((name) => [name, p[name].map(loadedStep)])
       ),
+      packageManagers: {
+        question: ask.question,
+        values: ask.values.map(({ value, label, description }) => ({
+          value,
+          label,
+          description,
+        })),
+      },
     };
   }
 
@@ -1674,6 +1689,21 @@ export function assertScaPrompt(registry, at) {
           "command that carries the preparation on there, and nothing else names it"
       );
     }
+  } // Every answer is read as allow or decline, so each is offered once, under a label of
+  // its own: a missing one could not be chosen, and two equal labels would read as either.
+  const values = prompt["package-managers"].values;
+  for (const id of PACKAGE_MANAGER_VALUES) {
+    if (values.filter((v) => v.value === id).length !== 1) {
+      throw new Error(
+        `${where} \`package-managers\` offers \`${id}\` other than once - it is ` +
+          "one of the answers the preparation reads, and needs exactly one"
+      );
+    }
+  }
+  if (new Set(values.map((v) => v.label)).size !== values.length) {
+    throw new Error(
+      `${where} \`package-managers\` offers one label twice - an answer would read as either`
+    );
   }
 }
 

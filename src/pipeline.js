@@ -873,6 +873,11 @@ async function reviewSubmission(opts, work, prepared) {
           )
           ? { "build-guarded": true }
           : {}),
+        // The reviewer did not allow the agent to run package-manager commands when the
+        // preparation asked, so the review builds nothing itself.
+        ...(prepared?.packageManagers === false
+          ? { "package-managers-declined": true }
+          : {}),
         // One condition per tree that has a sweep to run, keyed the way the step names
         // it. Read off the REQUESTS rather than off `sweeping` and `preSweep` separately:
         // a step exists to hand an agent a request, so the request existing is the whole

@@ -32,7 +32,9 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   null when no check that ran authors one.
  * @property {{skip: string[], sca: boolean, warningsAsErrors: boolean}} run
  *   What this run was told to leave out (PROMPT_SKIPS), whether it is a source code review,
- *   whether every check a build relies on runs (`build-guarded`), which trees it sweeps
+ *   whether every check a build relies on runs (`build-guarded`), whether the reviewer
+ *   declined package-manager commands in the preparation (`package-managers-declined`),
+ *   which trees it sweeps
  *   (one sweepRun key each), and the band it publishes a warning at (--warnings-as-errors). One
  *   record, read by everything that asks: a step prints by it, the routing drops entries by
  *   it, the registry is read under it, and both legs of a hand-over ask it the same question.

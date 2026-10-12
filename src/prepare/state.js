@@ -42,7 +42,7 @@ import { HandbackRefused } from "../report/handback.js";
 /** Bumped when the record's shape, or what a step does with it, changes in a way an older
  *  file cannot satisfy. A preparation in flight does not survive the upgrade, and saying so
  *  beats reading it wrongly. */
-export const PREPARE_VERSION = 3;
+export const PREPARE_VERSION = 4;
 
 /** The mode every write leaves the record at: readable, and writable by nobody. */
 const READ_ONLY = 0o444;
@@ -74,13 +74,16 @@ export const PREPARE_STEP = Object.freeze({
  * @property {Record<string, string|boolean>} flags  The flags the review is to be run with,
  *   as parsed (src/cli.js), named without their dashes. A folder among them is absolute, so
  *   it names the same folder wherever the review starts.
+ * @property {?boolean} packageManagers  Whether the reviewer allows the agent to run
+ *   package-manager commands, as the first hand-back read it, and null before it. Declined,
+ *   the preparation audits and rescues nothing, and the review builds nothing itself.
  * @property {?{scaRoot: string, scaExpSource: ?string}} roots  The settled roots, absolute
  *   and real, once known: inside `sca/`, or inside `rescued/` while a rescue runs and once it
  *   came out clean - the tree the next step, or the review, reads.
  * @property {string} digest  The hash over every other field, as writePrepare stored it
  *   (recordDigest). A record whose digest does not match was changed after it was written.
  *
- * Every boolean in the record - `submission.experiments`, a boolean flag - is
+ * Every boolean in the record - `submission.experiments`, `packageManagers`, a boolean flag - is
  * `true` or `false`, which is all the linter writes. Anything else was put there by an edit,
  * and the record is refused rather than read (recordBoolean).
  */
@@ -133,6 +136,16 @@ export function readPrepare(work) {
     throw new HandbackRefused("the preparation's record names no submission");
   }
   recordBoolean(record.submission.experiments, "submission.experiments");
+  // Unknown until the first hand-back reads the reviewer's answer, and known after it.
+  if (record.step === PREPARE_STEP.extract) {
+    if (record.packageManagers !== null) {
+      throw new HandbackRefused(
+        "the preparation's record holds packageManagers before the reviewer answered it"
+      );
+    }
+  } else {
+    recordBoolean(record.packageManagers, "packageManagers");
+  }
   return record;
 }
 
@@ -167,6 +180,7 @@ export function startRecord({ submission, flags }) {
     step: PREPARE_STEP.extract,
     submission,
     flags,
+    packageManagers: null,
     roots: null,
   };
 }

@@ -894,7 +894,8 @@ export async function main(argv) {
       startRecord({
         submission: { xpi: submission.xpi, experiments },
         flags: forwardedFlags(values),
-      })
+      }),
+      registry
     );
     // The prompt IS the output: no review has run, and none can until its reader answers
     // it. Printed as the report is, and to the screen only.
@@ -1300,7 +1301,7 @@ function runHandback(work, registry) {
 async function runPreparePass(work, registry) {
   let out;
   try {
-    out = await handBack(work);
+    out = await handBack(work, registry);
   } catch (err) {
     return refusedOrFailed(err, registry);
   }

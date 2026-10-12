@@ -23,6 +23,7 @@ import {
   COLLAPSE_MODES,
   ANSWER_KINDS,
   PHASE_PRODUCTS,
+  PACKAGE_MANAGER_VALUES,
 } from "./registry-vocabulary.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -42,6 +43,7 @@ const VOCABULARIES = {
   COLLAPSE_MODES,
   ANSWER_KINDS: new Set(ANSWER_KINDS),
   PHASE_PRODUCTS: new Set(PHASE_PRODUCTS),
+  PACKAGE_MANAGER_VALUES: new Set(PACKAGE_MANAGER_VALUES),
   SEVERITY_BANDS: Object.values(SEVERITY),
   VERDICT_KEYS,
 };
