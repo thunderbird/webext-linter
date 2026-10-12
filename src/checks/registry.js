@@ -1464,7 +1464,11 @@ function assertProcessValues(registry, phase, at) {
     if (v.reports === undefined) {
       continue;
     }
-    const entry = registry.checkEntry(v.reports);
+    // Looked up without checkEntry, whose index is built once: asked during the load, it
+    // would freeze the entries before anything after the load reads them.
+    const entry = registry
+      .allEntries()
+      .find((e) => stem(e.check) === v.reports);
     if (!entry?.["review-early-exit"] || entry.severity !== SEVERITY.ERROR) {
       throw new Error(
         `${at} value \`${v.value}\` reports \`${v.reports}\`, which is not an error ` +

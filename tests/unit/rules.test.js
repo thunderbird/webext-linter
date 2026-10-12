@@ -30,6 +30,7 @@ import { reviewData } from "../../src/review/products.js";
 import syncXhr from "../../src/checks/rules/sync-xhr.js";
 import debuggerStatement from "../../src/checks/rules/debugger-statement.js";
 import asyncOnMessage from "../../src/checks/rules/async-onmessage.js";
+import buildUnsafe from "../../src/checks/rules/build-unsafe.js";
 import minimizeHostPermissions from "../../src/checks/rules/minimize-host-permissions.js";
 import codeSanity from "../../src/checks/rules/code-sanity.js";
 import deprecatedApi from "../../src/checks/rules/deprecated-api.js";
@@ -861,6 +862,7 @@ test("where a check runs: the route says it, or the flag says what a route canno
   for (const id of [
     "undeclared-build-source",
     "build-succeeds",
+    "build-unsafe",
     "build-reproduces-xpi",
     "build-registry-redirect",
     "lock-foreign-source",
@@ -1013,6 +1015,7 @@ test("every check's severity is pinned to its band", async () => {
       "build-registry-redirect",
       "build-reproduces-xpi",
       "build-succeeds",
+      "build-unsafe",
       "bundled-files",
       "cleartext-transmission",
       "committed-build-artifact",
@@ -1290,7 +1293,7 @@ test("the shape pass closes every vocabulary the registry has", async () => {
   );
   bad(
     (d) => (phase(d, "verify").bogus = 1),
-    /phases` entry 2 .* authors `bogus`/,
+    /phases` entry \d+ .* authors `bogus`/,
     "a phase"
   );
   bad(
@@ -1902,6 +1905,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "build-registry-redirect",
     "build-reproduces-xpi",
     "build-succeeds",
+    "build-unsafe",
     "committed-build-artifact",
     "committed-node-modules",
     "lock-foreign-source",
@@ -6690,4 +6694,31 @@ test("abortsReview: only an error from a check naming an early-exit reason stops
   assert.equal(abortsReview(registry, aborting, at(SEVERITY.WARNING)), false);
   assert.equal(abortsReview(registry, aborting, []), false);
   assert.equal(abortsReview(registry, plain, at(SEVERITY.ERROR)), false);
+});
+
+// build-unsafe reports what a reviewer decided, not what a file says: its rule raises nothing,
+// and its one finding comes from the loop, when the unsafe build's question is answered with
+// `abort` (src/report/loop.js recordValue).
+test("build-unsafe raises nothing of its own", () => {
+  assert.deepEqual(buildUnsafe.run(), { findings: [] });
+  assert.ok(
+    loadRegistry()
+      .llmPhases()
+      .phases.some((p) => p.values.some((v) => v.reports === "build-unsafe")),
+    "a process value reports it"
+  );
+});
+
+// The checks a build relies on: with any of them switched off, the review builds nothing
+// itself. Pinned, so a check joining or leaving the set is a decision made here.
+test("build-guard marks exactly the checks a build relies on", () => {
+  assert.deepEqual(loadRegistry().buildGuardIds().sort(), [
+    "build-registry-redirect",
+    "lock-foreign-source",
+    "lockfile-injection",
+    "vendor-vulnerable",
+    "vendor-vulnerable-dev",
+    "vendor-vulnerable-indirect",
+    "vendor-vulnerable-indirect-dev",
+  ]);
 });

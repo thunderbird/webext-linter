@@ -153,6 +153,7 @@ deterministic-phase:
   severity: error
   review-early-exit: unreproducible-build
   check: build-registry-redirect
+  build-guard: true
   input: sca
   response: |-
     The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
@@ -167,6 +168,7 @@ deterministic-phase:
   severity: error
   review-early-exit: unreproducible-build
   check: lock-foreign-source
+  build-guard: true
   input: sca
   response: |-
     The committed lock file installs the following package(s) from a source the review does not support. Every dependency must install from the npm registry (registry.npmjs.org) or from GitHub. Please install the dependencies from those sources and commit the regenerated lock file.
@@ -183,6 +185,7 @@ deterministic-phase:
 - title: Lock file entries that install another release
   severity: error
   check: lockfile-injection
+  build-guard: true
   input: sca
   review-early-exit: lockfile-injection
   response: |-
@@ -201,6 +204,7 @@ deterministic-phase:
   severity: auto
   review-early-exit: known-vulnerabilities
   check: vendor-vulnerable
+  build-guard: true
   input: source
   response: |-
     A dependency this add-on bundles has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). Update {{item}} to {{fixed}} or later.
@@ -217,6 +221,7 @@ deterministic-phase:
   severity: error
   review-early-exit: known-vulnerabilities
   check: vendor-vulnerable-dev
+  build-guard: true
   input: sca
   response: |-
     A build dependency this add-on declares has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update {{item}} to {{fixed}} or later.
@@ -235,6 +240,7 @@ deterministic-phase:
   severity: error
   review-early-exit: known-vulnerabilities
   check: vendor-vulnerable-indirect
+  build-guard: true
   input: sca
   response: |-
     A package this add-on does not declare, but that one of its dependencies pulls in, has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It ends up in the code you ship. Update the declared dependency that pulls it in, which usually resolves this because a newer release often already depends on a fixed version ({{fixed}} or later for {{item}}). If no update resolves it, consider moving to a different or simpler build chain.
@@ -251,6 +257,7 @@ deterministic-phase:
   severity: error
   review-early-exit: known-vulnerabilities
   check: vendor-vulnerable-indirect-dev
+  build-guard: true
   input: sca
   response: |-
     A package this add-on does not declare, but that one of its build dependencies pulls in, has known security vulnerabilities: {{item}} ({{version}}) is affected by published advisories of {{severity}} severity ({{ids}}). It is not shipped, but reviewers build the add-on from source, so it runs on the reviewer's machine during the build. Update the declared build dependency that pulls it in, which usually resolves this because a newer release often already depends on a fixed version ({{fixed}} or later for {{item}}). If no update resolves it, consider moving to a different or simpler build chain.
@@ -937,9 +944,9 @@ deterministic-phase:
 # a FINDING halts a review, and an escalated case becomes one only when it is reported at
 # this check's severity (src/report/verdicts.js). So a benign `husky prepare` that is
 # cleared aborts nothing, and a plain review with nobody to judge the hook aborts nothing
-# either. Once someone HAS judged it remote-fetching, the next thing the review would ask
-# is that a reviewer install these dependencies - which is the moment the hook runs on
-# their machine. It is settled in the `settle` phase, before `ask` is ever issued.
+# either. It is settled in the `settle` phase. Under --llm-review a source review builds
+# first, so a hook is screened before any install by the build-safety judgement and the
+# reviewer's build choice, and this check is what reports a remote-fetching hook.
 - title: Build install hook
   severity: error
   review-early-exit: unreproducible-build
@@ -967,9 +974,10 @@ deterministic-phase:
 # must not fetch or execute code/resources from an UNDECLARED external source (a raw URL,
 # curl|sh, a git clone of an unpinned repo, a CDN, a postinstall hook) - only installing the
 # declared dependencies (npm ci from node_modules, importing a declared package) is allowed.
-# Settled by the agent in `settle`, before anything is built: a build that reaches for an
-# undeclared source aborts the review there, so it is never run and never offered. A plain
-# review lists it under Extended Code Review, ahead of the two build questions below.
+# Settled by the agent in `settle`. Under --llm-review a source review builds first, so the
+# same question is screened before anything is built by the build-safety judgement and the
+# reviewer's build choice, and this check is what reports such a build. A plain review lists
+# it under Extended Code Review, ahead of the two build questions below.
 # {{unresolvedBuildSteps}} names the steps the linter could not follow.
 - title: Build process review
   severity: error
@@ -1029,6 +1037,21 @@ deterministic-phase:
     changes (a timestamp, a build id) still match.
   response: |-
     The XPI built from the submitted source differs from the submitted XPI, so the review cannot continue. Please make sure the submitted XPI is built from exactly the submitted source, by the build instructions it contains.
+
+# SCA only: a build the reviewer judged unsafe to run. Nothing here is detected: under
+# --llm-review the agent judges the build process (the `build-safety` phase), and where it
+# finds steps that fetch or run code from outside the declared dependencies the reviewer may
+# stop the review. That answer reports this check (`reports: build-unsafe` on the `abort`
+# value), so the review ends through the early exit with this reason and this response. Its
+# rule raises nothing, so a plain review never lists it.
+- title: Unsafe build process
+  severity: error
+  check: build-unsafe
+  input: sca
+  review-early-exit: unreproducible-build
+  response: |-
+    The build process fetches or runs code from outside the dependencies declared in package.json and its lock file, so it cannot be built safely for review. Every part of the build must come only from the declared dependencies. Please remove those steps from the build.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Two rules about the SHAPE of a source-code submission, one per entry below. They were one
 # check while both said "you did not need to submit source", and they are two now because
@@ -2235,30 +2258,208 @@ llm-phases:
   # forever), and the review ends with it.
   #
   # `intro` is EMPTY unless the steps alone would let the agent do work that is not its own.
-  # Two of the nine earn text, and both for that reason.
+  # Two of them earn text, and both for that reason.
   phases:
-    # Every sub-agent the review may need started, before anything else reads the add-on.
+    # A source review opens with its BUILD, before anything else is spent on it: a build that
+    # is unsafe, fails or does not reproduce the shipped XPI ends the review here, before any
+    # sweep, verify or settle pass. Only where every check the build relies on ran
+    # (`build-guarded`): with one of them switched off, nothing vouches for what an install
+    # pulls in, and the review builds nothing itself - the two build questions are still
+    # asked, of a build the reviewer makes.
+    #
+    # The first three phases ask for PROCESS VALUES (`answer: value`): answers that steer the
+    # review and settle no item. The agent judges whether building is safe, and the reviewer
+    # then chooses who builds - or, where the agent judged it unsafe, may stop the review,
+    # which `abort` does by reporting build-unsafe.
+    - name: build-safety
+      answer: value
+      verbs: []
+      product: build
+      intro: ""
+      values:
+        - value: safe
+          label: safe
+          description: Nothing in the build is fetched or run from outside the dependencies declared in package.json and its lock file.
+        - value: unsafe
+          label: unsafe
+          description: At least one build step fetches or runs code or resources from outside the declared dependencies, as the report's safety section lists.
+      steps:
+        - when: sca AND build-guarded AND NOT aborted
+          text: |-
+            Work out what building this add-on takes. This is a source code review, so the add-on is built from its source before anything else is reviewed. Read the documentation and the build files in
+
+            {{scaRoot}}
+
+            and report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
+
+            Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
+
+            The install step is the one command you do NOT restate as the documentation writes it. Report `npm ci`, even where the docs say `npm install`: the reviewer installs what the submitted lock file pins, not whatever the registry resolves to today. Where the submission ships a pnpm-lock.yaml, that same step is `pnpm install --frozen-lockfile`. npm and pnpm are the only package managers a submission may use, so those are the only two spellings.
+
+            Report that step with NO flag that leaves dependencies out - never `--omit=dev`, `--production` or `--prod` - even where the documentation uses one. The reviewer has to run the build AND audit everything it pulls in, and a dependency that was never installed is one nobody can audit.
+
+            Under a "Safety" heading, list anything the build reaches for outside the declared dependencies - a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, code run from an install hook, or a step whose source is not in the tree. Name the file and the line for each, and say what it does. Where you find none, say so.
+
+            Write it to
+
+            {{build}}
+
+            and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision.
+        - when: sca AND build-guarded AND NOT aborted
+          text: |-
+            Then answer the one entry in the file with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. It is your judgement of what the safety section lists, and the reviewer decides what follows from it.
+
+    # The reviewer's choice after a SAFE judgement: who builds. Asked alone, beside the Build
+    # Review Details block that links the report the choice rests on.
+    - name: build-choice
+      answer: value
+      verbs: []
+      intro: ""
+      question: |-
+        The agent read the build process and found nothing fetched or run from outside the declared dependencies. Its report is in BUILD_PROCESS. Building runs the submission's own code. Who builds the add-on?
+      values:
+        - value: llm
+          label: LLM builds
+          description: The agent builds the add-on from a copy of the source archive in its sandbox, and writes the build diff for you to read.
+        - value: user
+          label: Build myself
+          description: Nothing is built here. You build the add-on yourself and answer the two build questions from your own build.
+      steps:
+        - when: sca AND build-guarded AND NOT aborted AND value(build-safety, safe)
+          text: |-
+            Give the reviewer this block under a "Build review details" heading, exactly as it is written here:
+
+            {{buildDetails}}
+        - when: sca AND build-guarded AND NOT aborted AND value(build-safety, safe)
+          text: &build-choice-ask |-
+            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+
+            Record the label they picked in its "answer". Only those labels are accepted: if they answer anything else, ask the question again.
+
+    # The reviewer's choice after an UNSAFE judgement: stop the review, or build anyway, by
+    # the agent or by hand, having read why the agent judged it unsafe.
+    - name: build-choice-unsafe
+      answer: value
+      verbs: []
+      intro: ""
+      question: |-
+        The agent found build steps that fetch or run code from outside the declared dependencies. They are listed in the safety section of BUILD_PROCESS. How should the review go on?
+      values:
+        - value: abort
+          label: Abort
+          description: The review stops here. The developer is told that the build must not fetch or run code from outside the declared dependencies.
+          reports: build-unsafe
+        - value: llm
+          label: LLM builds anyway
+          description: You judged those steps harmless. The agent builds the add-on from a copy of the source archive in its sandbox, and writes the build diff for you to read.
+        - value: user
+          label: Build myself
+          description: You judged those steps harmless. You build the add-on yourself and answer the two build questions from your own build.
+      steps:
+        - when: sca AND build-guarded AND NOT aborted AND value(build-safety, unsafe)
+          text: |-
+            Give the reviewer this block under a "Build review details" heading, exactly as it is written here:
+
+            {{buildDetails}}
+        - when: sca AND build-guarded AND NOT aborted AND value(build-safety, unsafe)
+          text: *build-choice-ask
+
+    # Builds the add-on and writes how the result differs from the shipped XPI, for the
+    # reviewer to read before the build questions. Only where the reviewer chose the agent to
+    # build. The linter judges nothing here - the diff is the reviewer's to read, and the
+    # Build Review Details block links it once it exists.
+    - name: build
+      # Asks about nothing in the review file: its one product is the diff, in a file of its
+      # own.
+      answer: none
+      verbs: []
+      product: buildDiff
+      intro: ""
+      steps:
+        - when: sca AND NOT aborted AND (value(build-choice, llm) OR value(build-choice-unsafe, llm))
+          text: |-
+            Copy
+
+            {{scaRoot}}
+
+            to
+
+            {{buildCopy}}
+
+            and build there, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in
+
+            {{build}}
+
+            Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci`, or `pnpm install --frozen-lockfile` where the copy has a pnpm-lock.yaml, and with no flag that leaves dependencies out. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
+
+            Then compare the built XPI with the shipped one, extracted in
+
+            {{xpiRoot}}
+
+            and write the result to
+
+            {{buildDiff}}
+
+            and to nothing else. Open it with one line saying the outcome: the build is identical, the build differs, or the build failed. Where it differs, list the files only one side has, give a unified diff for every text file whose content differs, and name every binary file that differs. Where the build failed, say which step failed and quote its error output, and where it failed because package.json and the lock file disagree, say that this was the cause. That file is the reviewer's: write what you found, never a verdict.
+
+    # The two build questions, each in a phase of its own so it is put to the reviewer ALONE
+    # and before anything else: `ask` batches, and a reviewer must not be asked to install
+    # an XPI in the same breath as being asked whether the source reproduces it. Only the
+    # cases of a check naming the phase (`asked-in`) open here, so neither appears in an XPI
+    # review. Asked under --llm-skip-manual too: they decide whether the review goes on,
+    # which is not what that flag withholds. A "no" aborts the review, so `reproduced` is
+    # never asked after a build that failed (`when: NOT aborted`), and neither is `ask`.
+    - name: built
+      # A person's own words, read like `ask`'s.
+      answer: words
+      verbs: []
+      intro: ""
+      steps:
+        # The build's files again, the diff among them now where the agent built: what the
+        # two questions are answered from.
+        - when: sca AND build-guarded AND NOT aborted
+          text: |-
+            Give the reviewer this block under a "Build review details" heading, exactly as it is written here:
+
+            {{buildDetails}}
+        - when: NOT aborted
+          text: |-
+            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Where they build the add-on themselves, it is the question they answer once they have. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+
+            Record what they answered in its "answer", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
+
+    - name: reproduced
+      answer: words
+      verbs: []
+      intro: ""
+      steps:
+        - when: NOT aborted
+          text: |-
+            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Where they build the add-on themselves, it is the question they answer once they have. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+
+            Record what they answered in its "answer", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
+
+    # Every sub-agent the review needs started, once a source review's build has settled
+    # whether it goes on.
     # Named for what its steps DO, and NOT called `setup`: the pipeline has a setup of its
     # own - SETUP_STEPS and the "Setup" banner every review prints, agent or not
     # (src/pipeline.js) - and one word for two things that both run first is one a reader
     # has to disambiguate every time it appears. NOT called `sweep` either: the sweep is
-    # one of three products, and naming the phase after it pulled a sweep-specific intro
+    # one of its two products, and naming the phase after it pulled a sweep-specific intro
     # into a place it did not fit.
     #
     # Every step here is optional, so a run that starts no agent is not issued this phase
     # at all - and none of them is taken by a review the deterministic checks already
     # aborted: what an aborted review hands over is decided before any pass, and neither the
-    # description, nor the build report, nor a sweep could change it. The package is not unpacked HERE: the linter extracts it before the review is
-    # ever printed (src/addon/load.js), so XPI_ROOT is already there by the time any phase
-    # is issued.
+    # description nor a sweep could change it. The package is not unpacked HERE: the linter
+    # extracts it before the review is ever printed (src/addon/load.js), so XPI_ROOT is
+    # already there by the time any phase is issued.
     #
     # EVERY SPAWN STEP STANDS ALONE. Each carries the paths its own agent needs, spelled out
     # where that agent is told to read or write them - a sub-agent is handed the request and
     # nothing else, so a name standing for a path it was never given names nothing. None may
     # refer to another having printed - not "either", not "the step below", not "the agents above".
-    # Each says whether its agent is waited for, and the two that are not say it in the
-    # SAME words: a second spelling of one instruction is a difference for its reader to
-    # interpret.
+    # Each says whether its agent is waited for.
     - name: spawn
       # Asks about nothing in the review file: its work is starting the agents this review
       # needs, and each of those answers in a file of its own. `hints` says the sweeps are
@@ -2280,35 +2481,6 @@ llm-phases:
             {{description}}
 
             and to nothing else: not to the chat, not to a file of your own choosing.
-
-            Do not wait for it. What it writes is the reviewer's, and it is not needed until they are handed the review details.
-        - when: sca AND NOT aborted
-          text: |-
-            Spawn an independent sub-agent NOW to work out what building this add-on takes. This is a source code review, so the reviewer reproduces the build themselves, and nothing in the report says what that takes. That file is the reviewer's and yours only to name: do not open it, read it, summarise it, or print what is in it.
-
-            Give it this request, and nothing else:
-
-            Read the documentation and the build files in
-
-            {{scaRoot}}
-
-            and report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
-
-            Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
-
-            The install step is the one command you do NOT restate as the documentation writes it. Report `npm ci`, even where the docs say `npm install`: the reviewer installs what the submitted lock file pins, not whatever the registry resolves to today. Where the submission ships a pnpm-lock.yaml, that same step is `pnpm install --frozen-lockfile`. npm and pnpm are the only package managers a submission may use, so those are the only two spellings.
-
-            Report that step with NO flag that leaves dependencies out - never `--omit=dev`, `--production` or `--prod` - even where the documentation uses one. The reviewer has to run the build AND audit everything it pulls in, and a dependency that was never installed is one nobody can audit.
-
-            Report anything the build reaches for outside the declared dependencies - a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, code run from an install hook, or a step whose source is not in the tree. Name the file and the line for each, and say what it does. Where you find none, say so.
-
-            That is a report, never a verdict. Whether the build is accepted is settled by the reviewer reproducing it, and nothing you write settles it.
-
-            Write it to
-
-            {{build}}
-
-            and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision, on the reviewer's machine.
 
             Do not wait for it. What it writes is the reviewer's, and it is not needed until they are handed the review details.
         - when: sweep-xpi AND NOT aborted
@@ -2391,54 +2563,6 @@ llm-phases:
 
             Judge every API, permission and method against SCHEMA, never against what you remember: a name the schema does not have is not a name this add-on can use, whatever another version of Thunderbird offers.
 
-    # Builds the add-on and writes how the result differs from the shipped XPI, for the
-    # reviewer to read before the questions. Only in a source code review that nothing has
-    # aborted (`when: sca AND NOT aborted`), because building runs the submission's own
-    # code. Opt-in: the reviewer is asked first. The linter judges nothing
-    # here - the diff is the reviewer's to read, and the Review Details block links it once
-    # it exists.
-    - name: build
-      # Asks about nothing in the review file: its one product is the diff, in a file of its
-      # own, and only when the reviewer agreed to the build.
-      answer: none
-      verbs: []
-      product: buildDiff
-      intro: ""
-      steps:
-        # Its own step, printed only where an agent was started. It carries the phase's own
-        # condition too: a phase is issued while any step survives, and a wait alone is no
-        # work.
-        - when: spawned AND sca AND NOT aborted
-          text: |-
-            Wait for every agent you spawned to come back.
-        - when: sca AND NOT aborted
-          text: |-
-            Ask the reviewer, with your question tool, whether to build the add-on from the source archive and compare the result with the shipped XPI, saying that building runs the submission's own code. If they decline, build nothing and write nothing.
-
-            If they agree, copy
-
-            {{scaRoot}}
-
-            to
-
-            {{buildCopy}}
-
-            and build there, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in
-
-            {{build}}
-
-            Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci`, or `pnpm install --frozen-lockfile` where the copy has a pnpm-lock.yaml, and with no flag that leaves dependencies out. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
-
-            Then compare the built XPI with the shipped one, extracted in
-
-            {{xpiRoot}}
-
-            and write the result to
-
-            {{buildDiff}}
-
-            and to nothing else. Open it with one line saying the outcome: the build is identical, the build differs, or the build failed. Where it differs, list the files only one side has, give a unified diff for every text file whose content differs, and name every binary file that differs. Where the build failed, say which step failed and quote its error output, and where it failed because package.json and the lock file disagree, say that this was the cause. That file is the reviewer's: write what you found, never a verdict.
-
     # Hands the reviewer the Review Details block, once, before anything is put to them:
     # what this review is, and where to read it while answering - the build diff among it.
     # Its own phase so it does not hang off one particular question phase. Shown whenever a
@@ -2463,36 +2587,6 @@ llm-phases:
             {{details}}
 
             It names what this review is and where to read it, and its links are written for their client to open. Write nothing of your own about it: no summary, no excerpt, no link of your own making. Where a path names a file another agent wrote, the reviewer reads it themselves, while you work.
-
-    # The two build questions, each in a phase of its own so it is put to the reviewer ALONE
-    # and before anything else: `ask` batches, and a reviewer must not be asked to install
-    # an XPI in the same breath as being asked whether the source reproduces it. Only the
-    # cases of a check naming the phase (`asked-in`) open here, so neither appears in an XPI
-    # review. Asked under --llm-skip-manual too: they decide whether the review goes on,
-    # which is not what that flag withholds. A "no" aborts the review, so `reproduced` is
-    # never asked after a build that failed (`when: NOT aborted`), and neither is `ask`.
-    - name: built
-      # A person's own words, read like `ask`'s.
-      answer: words
-      verbs: []
-      intro: ""
-      steps:
-        - when: NOT aborted
-          text: |-
-            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Where they declined the build, it is the question they answer once they have built the add-on themselves. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
-
-            Record what they answered in its "answer", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
-
-    - name: reproduced
-      answer: words
-      verbs: []
-      intro: ""
-      steps:
-        - when: NOT aborted
-          text: |-
-            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Where they declined the build, it is the question they answer once they have built the add-on themselves. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
-
-            Record what they answered in its "answer", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
 
     # Puts what only a person can answer to a person. Intro EMPTY: today's two ask blocks say
     # where an entry came from, which is procedural - the agent relays both identically, and

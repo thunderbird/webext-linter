@@ -8,7 +8,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { stepsOf } from "../../src/report/phases.js";
-import { namesOf, parseCondition } from "../../src/checks/condition.js";
+import {
+  callsOf,
+  namesOf,
+  parseCondition,
+} from "../../src/checks/condition.js";
 import {
   loadRegistry,
   assertAskedIn,
@@ -128,7 +132,7 @@ test("a verb no verdict knows is refused", () => {
 test("a phase missing its own parts is refused by name", () => {
   const noName = fresh();
   delete phaseNamed(noName, "verify").name;
-  assert.throws(() => check(noName), /phases` entry 2 .* authors no `name`/);
+  assert.throws(() => check(noName), /phases` entry \d+ .* authors no `name`/);
 
   const twice = fresh();
   phaseNamed(twice, "settle").name = "verify";
@@ -205,14 +209,11 @@ test("the loop's phases are refused outright when absent", () => {
   assert.throws(() => check(noPhases), /authors no `phases`/);
 });
 
-// Every step that starts a sub-agent says whether to wait for it, and the two that are not
-// waited for say it in the SAME words. Two spellings of one instruction is a difference for
-// the agent to interpret, and it would interpret it - the files are named side by side in
-// the same block and read by the same person.
+// Every step that starts a sub-agent says whether to wait for it.
 //
-// Each step also has to stand alone: all three carry a marker, so any of them can be the
-// only one printed, and a step referring to another that did not print is an instruction
-// about nothing.
+// Each step also has to stand alone: each carries a marker, so any of them can be the only
+// one printed, and a step referring to another that did not print is an instruction about
+// nothing.
 test("the steps that start an agent each say whether it is waited for", () => {
   const spawn = phaseNamed(fresh(), "spawn");
   // Found by the fact its condition reads, not by position.
@@ -224,13 +225,16 @@ test("the steps that start an agent each say whether it is waited for", () => {
     "Do not wait for it. What it writes is the reviewer's, and it is not needed until " +
     "they are handed the review details.";
 
-  // The description and the build report: one sentence, used twice.
-  for (const marker of ["llm-skip-summary", "sca"]) {
-    assert.ok(
-      by(marker).text.includes(UNATTENDED),
-      `the \`${marker}\` step says it is not waited for, in the shared words`
-    );
-  }
+  // The description is not waited for. The build report is written before any agent
+  // starts (build-safety), so no spawn step asks for one.
+  assert.ok(
+    by("llm-skip-summary").text.includes(UNATTENDED),
+    "the description step says it is not waited for"
+  );
+  assert.ok(
+    !spawn.steps.some((x) => x.text.includes("{{build}}")),
+    "no spawn step writes the build report"
+  );
   // A sweep is the opposite, and each says so in the SAME words: one agent per tree, and
   // two instructions a reader has to tell apart would be two things to interpret.
   const sweeps = ["sweep-xpi", "sweep-sca"].map(by);
@@ -271,13 +275,16 @@ test("a phase declares the kind of answer its entries take", () => {
       .llmPhases()
       .phases.map((p) => [p.name, p.answer, p.verbs.length]),
     [
+      ["build-safety", "value", 0],
+      ["build-choice", "value", 0],
+      ["build-choice-unsafe", "value", 0],
+      ["build", "none", 0],
+      ["built", "words", 0],
+      ["reproduced", "words", 0],
       ["spawn", "hints", 0],
       ["verify", "verdict", 2],
       ["settle", "verdict", 3],
-      ["build", "none", 0],
       ["details", "none", 0],
-      ["built", "words", 0],
-      ["reproduced", "words", 0],
       ["ask", "words", 0],
       ["close", "end", 0],
     ]
@@ -525,18 +532,49 @@ test("the shipped steps carry the conditions they are printed under", () => {
   // nothing: every step of the three phases before the questions carries `aborted`.
   assert.deepEqual(when("spawn"), [
     ["aborted", "llm-skip-summary"],
-    ["aborted", "sca"],
     ["aborted", "sweep-xpi"],
     ["aborted", "sweep-sca"],
   ]);
   assert.deepEqual(when("verify"), [["aborted"]]);
   assert.deepEqual(when("settle"), [["aborted"]]);
-  // The wait steps carry their phase's own condition beside `spawned`, so a phase is never
-  // issued with nothing but a wait in it.
-  assert.deepEqual(when("build"), [
-    ["aborted", "sca", "spawned"],
-    ["aborted", "sca"],
+  // The build opening: only a source review whose install is vouched for, and each choice
+  // only after the judgement it answers. The build itself runs only where the reviewer chose
+  // the agent to build.
+  const calls = (name) =>
+    loaded
+      .find((p) => p.name === name)
+      .steps.map((x) => (x.when ? callsOf(x.when).map((c) => c.args) : null));
+  assert.deepEqual(when("build-safety"), [
+    ["aborted", "build-guarded", "sca"],
+    ["aborted", "build-guarded", "sca"],
   ]);
+  for (const [name, value] of [
+    ["build-choice", "safe"],
+    ["build-choice-unsafe", "unsafe"],
+  ]) {
+    assert.deepEqual(when(name), [
+      ["aborted", "build-guarded", "sca"],
+      ["aborted", "build-guarded", "sca"],
+    ]);
+    assert.deepEqual(calls(name), [
+      [["build-safety", value]],
+      [["build-safety", value]],
+    ]);
+  }
+  assert.deepEqual(when("build"), [["aborted", "sca"]]);
+  assert.deepEqual(calls("build"), [
+    [
+      ["build-choice", "llm"],
+      ["build-choice-unsafe", "llm"],
+    ],
+  ]);
+  assert.deepEqual(when("built"), [
+    ["aborted", "build-guarded", "sca"],
+    ["aborted"],
+  ]);
+  assert.deepEqual(when("reproduced"), [["aborted"]]);
+  // The wait step carries its phase's own condition beside `spawned`, so the phase is never
+  // issued with nothing but a wait in it.
   assert.deepEqual(when("details"), [
     ["aborted", "llm-skip-manual", "sca", "spawned"],
     ["aborted", "llm-skip-manual", "sca"],

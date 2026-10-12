@@ -83,8 +83,8 @@ function runOf(state, ordered, registry) {
 }
 
 /**
- * Whether the phase that starts the review's own agents - the add-on description, the build
- * report, the sweeps - went out. A review that never issued it started none of them, and so
+ * Whether the phase that starts the review's own agents - the add-on description and the
+ * sweeps - went out. A review that never issued it started none of them, and so
  * has none of their files to wait for or to name.
  * @param {import("./state.js").LoopState} state
  * @returns {boolean}
@@ -552,9 +552,9 @@ export function settle(state, registry) {
 }
 
 /** The meta the Review Details block names: which add-on this is and where it can be read
- *  (the unpacked package), plus the files written for the reviewer - the description and the
- *  build report where the phase that starts their agents went out, and the build diff where
- *  the build phase wrote one. Those are what the block exists to hand over, and a file no
+ *  (the unpacked package), plus the files written for the reviewer - the description where
+ *  the phase that starts its agent went out, and the build report and the build diff where
+ *  the phase that writes each recorded it. Those are what the block exists to hand over, and a file no
  *  agent was ever asked to write is not one of them. */
 function reportMeta(state) {
   const {
@@ -566,9 +566,7 @@ function reportMeta(state) {
   return {
     ...rest,
     ...(spawnIssued(state) ? { summaryFile } : {}),
-    ...(spawnIssued(state) || state.products?.includes("build")
-      ? { buildFile }
-      : {}),
+    ...(state.products?.includes("build") ? { buildFile } : {}),
     ...(state.products?.includes("buildDiff")
       ? { buildDiffFile: state.paths.buildDiff }
       : {}),
