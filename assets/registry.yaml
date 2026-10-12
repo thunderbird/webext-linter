@@ -977,7 +977,7 @@ deterministic-phase:
 # Settled by the agent in `settle`. Under --llm-review a source review builds first, so the
 # same question is screened before anything is built by the build-safety judgement and the
 # reviewer's build choice, and this check is what reports such a build. A plain review lists
-# it under Extended Code Review, ahead of the two build questions below.
+# it under Extended Code Review, ahead of the build question below.
 # {{unresolvedBuildSteps}} names the steps the linter could not follow.
 - title: Build process review
   severity: error
@@ -1000,43 +1000,27 @@ deterministic-phase:
   response: |-
     The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 
-# SCA only: the first of the two build questions, asked of every source review. Reproducing
+# SCA only: the build question, asked of every source review once the build ran. Reproducing
 # the build is the reviewer's attestation that the shipped XPI comes from the source they
-# read, which is what an SCA review rests on - so a build that does not succeed aborts the
-# review before anyone is asked to install the XPI. Asked ALONE, in a phase of its own
-# (`asked-in: built`), right after the build and before the sweeps. Declared before
-# build-reproduces-xpi, which is the order a plain review lists them in.
-- title: Build failure
+# read, which is what an SCA review rests on. So a source that does not build into the
+# shipped XPI aborts the review before anyone is asked to install that XPI. Asked ALONE, in
+# a phase of its own (`asked-in: built`), right after the build and before the sweeps.
+- title: Source does not build into the XPI
   severity: error
-  check: build-succeeds
+  check: build-reproduces-xpi
   input: sca
   asked-in: built
   review-early-exit: unreproducible-build
   instructions-for-human: |-
-    Did the build succeed? Follow the build process from a clean copy of the
-    source archive, installing the dependencies exactly as the lock file pins
-    them (npm ci, or pnpm install --frozen-lockfile), or read the build diff
-    where the review wrote one. Clear only if every step completed. An install
-    refused because package.json and the lock file disagree is a failed build.
+    Does the source build into the submitted XPI? Follow the build process from
+    a clean copy of the source archive, installing the dependencies exactly as
+    the lock file pins them (npm ci, or pnpm install --frozen-lockfile). Clear
+    only if the build completes and its result matches the submitted XPI. Files
+    that differ only by what every build changes (a timestamp, a build id) still
+    match. An install refused because package.json and the lock file disagree
+    is a failed build.
   response: |-
-    The submitted source could not be built by following its build instructions, so the review cannot continue. Please make sure the instructions are complete and that the build succeeds from a clean copy of the submitted archive.
-
-# SCA only: the second build question, asked once the build succeeded (`asked-in:
-# reproduced`, after `built`). A build that does not reproduce the shipped XPI attests
-# nothing about it, so the review is aborted before anyone is asked to install it.
-- title: Build does not reproduce the XPI
-  severity: error
-  check: build-reproduces-xpi
-  input: sca
-  asked-in: reproduced
-  review-early-exit: unreproducible-build
-  instructions-for-human: |-
-    Does the built XPI reproduce the submitted XPI? Read the build diff where
-    the review wrote one, or compare your own build's result with the submitted
-    XPI. Clear only if they match. Files that differ only by what every build
-    changes (a timestamp, a build id) still match.
-  response: |-
-    The XPI built from the submitted source differs from the submitted XPI, so the review cannot continue. Please make sure the submitted XPI is built from exactly the submitted source, by the build instructions it contains.
+    The submitted source either could not be built by following its build instructions, or does not build into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
 
 # SCA only: a build the reviewer judged unsafe to run. Nothing here is detected: under
 # --llm-review the agent judges the build process (the `build-safety` phase), and where it
@@ -2149,8 +2133,8 @@ llm-sca-review-prompt:
   # The question the first prompt puts to the reviewer before anything else, as the
   # PACKAGE_MANAGERS entry of ANSWERS: whether the agent may run package-manager commands.
   # Declined, the preparation audits and rescues nothing, and the review asks no build
-  # choice and runs no build (`package-managers-declined`). The `built` and `reproduced`
-  # questions are still asked, answered from the reviewer's own build.
+  # choice and runs no build (`package-managers-declined`). The `built` question is
+  # still asked, answered from the reviewer's own build.
   package-managers:
     question: |-
       This review can have the agent run package-manager commands. To rescue dependencies with known vulnerabilities, it runs `npm install --package-lock-only --ignore-scripts` and `npm audit fix --package-lock-only --ignore-scripts`, or for pnpm `pnpm install --lockfile-only --ignore-scripts` and `pnpm audit --fix`. These change only the lock file and run no install script. To build the add-on, where you later choose that it builds, it runs `npm ci` or `pnpm install --frozen-lockfile` and the add-on's own build commands, which run the submission's code. May the agent run these commands?
@@ -2278,7 +2262,7 @@ llm-phases:
     # is unsafe, fails or does not reproduce the shipped XPI ends the review here, before any
     # sweep, verify or settle pass. Only where every check the build relies on ran
     # (`build-guarded`): with one of them switched off, nothing vouches for what an install
-    # pulls in, and the review builds nothing itself - the two build questions are still
+    # pulls in, and the review builds nothing itself - the build question is still
     # asked, of a build the reviewer makes.
     #
     # The first three phases ask for PROCESS VALUES (`answer: value`): answers that steer the
@@ -2339,7 +2323,7 @@ llm-phases:
           description: The agent builds the add-on from a copy of the source archive in its sandbox, and the review links what the build produced.
         - value: user
           label: Build myself
-          description: Nothing is built here. You build the add-on yourself and answer the two build questions from your own build.
+          description: Nothing is built here. You build the add-on yourself and answer the build question from your own build.
       steps:
         - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined AND value(build-safety, safe)
           text: |-
@@ -2371,7 +2355,7 @@ llm-phases:
           description: You judged those steps harmless. The agent builds the add-on from a copy of the source archive in its sandbox, and the review links what the build produced.
         - value: user
           label: Build myself
-          description: You judged those steps harmless. You build the add-on yourself and answer the two build questions from your own build.
+          description: You judged those steps harmless. You build the add-on yourself and answer the build question from your own build.
       steps:
         - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined AND value(build-safety, unsafe)
           text: |-
@@ -2416,13 +2400,12 @@ llm-phases:
 
             Then answer the one entry in the file with where the build put what it produced: the XPI or zip file, or the folder such as `dist/`, inside {{buildCopy}}. Write it as a path, absolute or relative to {{buildCopy}}. Where the build failed, answer with the "label" of its one answer instead. Compare nothing and judge nothing: the reviewer reads what the build produced.
 
-    # The two build questions, each in a phase of its own so it is put to the reviewer ALONE,
-    # right after the build: `ask` batches, and a reviewer must not be asked to install
-    # an XPI in the same breath as being asked whether the source reproduces it. Only the
-    # cases of a check naming the phase (`asked-in`) open here, so neither appears in an XPI
-    # review. Asked under --llm-skip-manual too: they decide whether the review goes on,
-    # which is not what that flag withholds. A "no" aborts the review, so `reproduced` is
-    # never asked after a build that failed (`when: NOT aborted`), and neither is `ask`.
+    # The build question, in a phase of its own so it is put to the reviewer ALONE, right
+    # after the build: `ask` batches, and a reviewer must not be asked to install an XPI in
+    # the same breath as being asked whether the source builds into it. Only the cases of a
+    # check naming the phase (`asked-in`) open here, so it never appears in an XPI review.
+    # Asked under --llm-skip-manual too: it decides whether the review goes on, which is not
+    # what that flag withholds. A "no" aborts the review, so `ask` is never asked after it.
     - name: built
       # A person's own words, read like `ask`'s.
       answer: words
@@ -2430,23 +2413,12 @@ llm-phases:
       intro: ""
       steps:
         # The build's files again, the build output among them now where the agent built:
-        # what the two questions are answered from.
+        # what the question is answered from.
         - when: sca AND build-guarded AND NOT aborted
           text: |-
             Give the reviewer this block under a "Build review details" heading, exactly as it is written here:
 
             {{buildDetails}}
-        - when: NOT aborted
-          text: |-
-            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Where they build the add-on themselves, it is the question they answer once they have. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
-
-            Record what they answered in its "answer", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
-
-    - name: reproduced
-      answer: words
-      verbs: []
-      intro: ""
-      steps:
         - when: NOT aborted
           text: |-
             Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Where they build the add-on themselves, it is the question they answer once they have. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.

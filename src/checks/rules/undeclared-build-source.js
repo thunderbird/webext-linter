@@ -4,8 +4,8 @@
 //
 // Nothing decides that from the files, so EVERY source-code submission raises this, for
 // the agent to settle in `settle`, after the build (or, with no agent, for
-// the reviewer). Whether the build then succeeds and reproduces the shipped XPI are two
-// questions of their own (build-succeeds, build-reproduces-xpi). The deterministic
+// the reviewer). Whether the source then builds into the shipped XPI is a question of its
+// own (build-reproduces-xpi). The deterministic
 // `unresolved` signals from collectBuildFiles (a network fetch, an orchestrator the linter
 // could not follow) ride along, so the entry names what could not be followed.
 //

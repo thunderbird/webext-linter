@@ -280,7 +280,6 @@ test("a phase declares the kind of answer its entries take", () => {
       ["build-choice-unsafe", "value", 0],
       ["build", "output", 0],
       ["built", "words", 0],
-      ["reproduced", "words", 0],
       ["spawn", "hints", 0],
       ["verify", "verdict", 2],
       ["settle", "verdict", 3],
@@ -342,7 +341,7 @@ function withValuePhase(extra = {}) {
         value: "unsafe",
         label: "Unsafe",
         description: "something remote",
-        reports: "build-succeeds",
+        reports: "build-reproduces-xpi",
       },
     ],
     ...extra,
@@ -410,7 +409,7 @@ test("a process-value phase declares its values, and conditions read only those"
     loaded.values.map((v) => [v.value, v.label, v.reports]),
     [
       ["safe", "Safe", null],
-      ["unsafe", "Unsafe", "build-succeeds"],
+      ["unsafe", "Unsafe", "build-reproduces-xpi"],
     ]
   );
 
@@ -448,12 +447,12 @@ test("a process-value phase declares its values, and conditions read only those"
   Object.values(everywhere.doc)
     .filter(Array.isArray)
     .flat()
-    .find((e) => e?.check === "build-succeeds").input = "all";
+    .find((e) => e?.check === "build-reproduces-xpi").input = "all";
   assert.throws(
     () => check(everywhere),
     (err) =>
       err.message.includes(
-        "reports `build-succeeds`, whose `input: all` reads no single artifact"
+        "reports `build-reproduces-xpi`, whose `input: all` reads no single artifact"
       )
   );
 
@@ -645,7 +644,6 @@ test("the shipped steps carry the conditions they are printed under", () => {
     ["aborted", "build-guarded", "sca"],
     ["aborted"],
   ]);
-  assert.deepEqual(when("reproduced"), [["aborted"]]);
   // The wait step carries its phase's own condition beside `spawned`, so the phase is never
   // issued with nothing but a wait in it.
   assert.deepEqual(when("details"), [
@@ -677,7 +675,9 @@ test("the shipped steps carry the conditions they are printed under", () => {
 test("asked-in names a phase a person answers, on a question only a person answers", () => {
   // The raw entry in the document: allEntries hands out copies.
   const entry = (r) =>
-    r.doc["deterministic-phase"].find((e) => e.check === "build-succeeds");
+    r.doc["deterministic-phase"].find(
+      (e) => e.check === "build-reproduces-xpi"
+    );
   assertAskedIn(fresh(), "t.yaml");
 
   for (const [phase, refusal] of [

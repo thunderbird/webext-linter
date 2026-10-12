@@ -391,7 +391,7 @@ function valueLoop() {
           value: "unsafe",
           label: "Unsafe",
           description: "something remote",
-          reports: "build-succeeds",
+          reports: "build-reproduces-xpi",
         },
       ],
     },
@@ -457,10 +457,10 @@ test("a process value that reports a check aborts the review", () => {
   accept(state, work, phases, reg);
   assert.deepEqual(state.values, { safety: "unsafe" });
   const reported = state.report.findings.find(
-    (f) => f.ruleId === "build-succeeds"
+    (f) => f.ruleId === "build-reproduces-xpi"
   );
   assert.ok(reported, "the reported check's finding is in the review");
-  assert.equal(reported.ref, `${reg.refBase("build-succeeds")}.1`);
+  assert.equal(reported.ref, `${reg.refBase("build-reproduces-xpi")}.1`);
   assert.equal(reported.artifact, ARTIFACT_SCA, "the artifact its check reads");
   const closing = issue(state, work, phases, reg);
   assert.equal(closing.phase.name, "close");
@@ -476,13 +476,13 @@ test("a process value's finding is about the artifact its check reads", () => {
   Object.values(reg.doc)
     .filter(Array.isArray)
     .flat()
-    .find((e) => e?.check === "build-succeeds").input = "xpi";
+    .find((e) => e?.check === "build-reproduces-xpi").input = "xpi";
   const { state, work } = review(tmp(), { sweep: false });
   issue(state, work, phases, reg);
   handBack(work, () => "Unsafe");
   accept(state, work, phases, reg);
   const reported = state.report.findings.find(
-    (f) => f.ruleId === "build-succeeds"
+    (f) => f.ruleId === "build-reproduces-xpi"
   );
   assert.equal(reported.artifact, ARTIFACT_XPI);
 });
@@ -1327,7 +1327,7 @@ test("a blocking finding closes the review on its first prompt", () => {
 
 // The Review Details block goes out once, in a phase of its own, before the `ask` questions -
 // and only where they follow: not in an aborted review, and not under --llm-skip-manual,
-// whatever the review. A source review's build questions come first, with their own block.
+// whatever the review. A source review's build question comes first, with its own block.
 test("the details block is handed over by its own phase, before the questions", () => {
   const blocks = (made) => {
     const shown = [];
@@ -1489,9 +1489,9 @@ function buildReview(dir) {
 }
 
 /**
- * The source review above, carrying the three build items every source review raises, as
- * the pipeline renders them: undeclared-build-source for the agent to settle, and the two
- * build questions, each naming the phase it is asked in (`asked-in`).
+ * The source review above, carrying the two build items every source review raises, as the
+ * pipeline renders them: undeclared-build-source for the agent to settle, and the build
+ * question, naming the phase it is asked in (`asked-in`).
  */
 function buildQuestionsReview(dir) {
   const made = buildReview(dir);
@@ -1514,7 +1514,6 @@ function buildQuestionsReview(dir) {
       llmInstructions: "read the build",
       settleVerbs: ["reported", "cleared"],
     }),
-    todo("build-succeeds", { section: "manual-review" }),
     todo("build-reproduces-xpi", { section: "manual-review" })
   );
   refed(made.state);
@@ -1568,8 +1567,8 @@ function ruleAt(made, ref) {
 }
 
 // A source review opens with its build: the agent judges it, the reviewer chooses who
-// builds, and the two build questions follow the build, each in a phase of its own so it is
-// put to the reviewer ALONE - all before the sweeps and the verify and settle passes.
+// builds, and the build question follows the build, in a phase of its own so it is put to
+// the reviewer ALONE - all before the sweeps and the verify and settle passes.
 test("a source review opens with the build, and its questions come before the sweeps", () => {
   const made = buildQuestionsReview(tmp());
   const { seen, handed, settled } = driveBuild(made, goesOn());
@@ -1578,7 +1577,6 @@ test("a source review opens with the build, and its questions come before the sw
     "build-choice",
     "build",
     "built",
-    "reproduced",
     "spawn",
     "verify",
     "settle",
@@ -1594,10 +1592,8 @@ test("a source review opens with the build, and its questions come before the sw
       !Object.values(made.state.answers).includes("LLM builds"),
     "a process value is not an answer"
   );
-  assert.deepEqual(handed.built, ["build-succeeds"]);
-  assert.deepEqual(handed.reproduced, ["build-reproduces-xpi"]);
+  assert.deepEqual(handed.built, ["build-reproduces-xpi"]);
   const asked = handed.ask;
-  assert.ok(!asked.includes("build-succeeds"), asked.join(", "));
   assert.ok(!asked.includes("build-reproduces-xpi"), asked.join(", "));
   assert.ok(
     handed.settle.includes("undeclared-build-source"),
@@ -1606,19 +1602,40 @@ test("a source review opens with the build, and its questions come before the sw
   assert.equal(settled.earlyExit, false);
 });
 
-// A "no" to either build question aborts the review there: the case is its finding, the
-// questions still pending are never put, and the report ends on why. A build that failed
-// is never also asked whether it reproduces the XPI.
-test("a build question answered no aborts the review, and nothing after it is asked", () => {
+// The build is one question: whether the source builds into the submitted XPI. It is the
+// single entry of `built`, and no other phase asks about the build's result.
+test("the build question is the single entry of its own phase", () => {
+  assert.deepEqual(
+    PHASES.map((p) => p.name).filter(
+      (n) => n.startsWith("built") || n === "reproduced"
+    ),
+    ["built"]
+  );
+  const made = buildQuestionsReview(tmp());
+  const entries = {};
+  for (let pass = 0; pass < 12; pass++) {
+    const out = issue(made.state, made.work, PHASES, REGISTRY);
+    if (out.phase.answer === "end") {
+      break;
+    }
+    entries[out.phase.name] = out.entries.map((e) => ruleAt(made, e.index));
+    handBack(made.work, (e) => goesOn()(out.phase.name, e));
+    accept(made.state, made.work, PHASES, REGISTRY);
+  }
+  assert.deepEqual(entries.built, ["build-reproduces-xpi"]);
+  for (const [phase, rules] of Object.entries(entries)) {
+    if (phase !== "built") {
+      assert.ok(!rules.includes("build-reproduces-xpi"), phase);
+    }
+  }
+});
+
+// A "no" to the build question aborts the review there: the case is its finding, the
+// questions still pending are never put, and the report ends on why.
+test("the build question answered no aborts the review, and nothing after it is asked", () => {
   for (const [phase, said, rule, skipped] of [
-    ["built", "Report", "build-succeeds", ["reproduced", "spawn", "ask"]],
-    [
-      "built",
-      "npm run build fails",
-      "build-succeeds",
-      ["reproduced", "spawn", "ask"],
-    ],
-    ["reproduced", "Report", "build-reproduces-xpi", ["spawn", "ask"]],
+    ["built", "Report", "build-reproduces-xpi", ["spawn", "ask"]],
+    ["built", "npm run build fails", "build-reproduces-xpi", ["spawn", "ask"]],
   ]) {
     const made = buildQuestionsReview(tmp());
     const { seen, closing, settled } = driveBuild(
@@ -1668,22 +1685,19 @@ test("undeclared build sources reported in settle abort the review", () => {
   );
 });
 
-// --llm-skip-manual withholds the questions in `ask`, not the build questions: those decide
+// --llm-skip-manual withholds the questions in `ask`, not the build question: it decides
 // whether the review goes on at all.
-test("--llm-skip-manual still asks the build questions", () => {
+test("--llm-skip-manual still asks the build question", () => {
   const made = buildQuestionsReview(tmp());
   made.state.run.skip = ["llm-skip-manual"];
   const { seen } = driveBuild(made, goesOn());
-  assert.ok(
-    seen.includes("built") && seen.includes("reproduced"),
-    seen.join(", ")
-  );
+  assert.ok(seen.includes("built"), seen.join(", "));
   assert.ok(!seen.includes("ask"), seen.join(", "));
 });
 
 // A case is routed by what it IS, not by its number: a sweep that files cases ahead of the
-// build questions renumbers the review, and each question still opens in its own phase.
-test("a renumbered review still asks each build question in its own phase", () => {
+// build question renumbers the review, and the question still opens in its own phase.
+test("a renumbered review still asks the build question in its own phase", () => {
   const made = buildQuestionsReview(tmp());
   // Two cases filed ahead of everything, the way a sweep's escalations land in code review.
   made.state.manual.unshift(
@@ -1702,8 +1716,7 @@ test("a renumbered review still asks each build question in its own phase", () =
   );
   refed(made.state);
   const { handed } = driveBuild(made, goesOn());
-  assert.deepEqual(handed.built, ["build-succeeds"]);
-  assert.deepEqual(handed.reproduced, ["build-reproduces-xpi"]);
+  assert.deepEqual(handed.built, ["build-reproduces-xpi"]);
 });
 
 // The agent's `ask` verdict moves the case itself. A verdict that removes an earlier item
@@ -1845,7 +1858,7 @@ test("the agent wait prints only where an agent was started, and never alone", (
 });
 
 // The reviewer chooses who builds. "Build myself" builds nothing here, and the build
-// questions are still asked, of the reviewer's own build.
+// question is still asked, of the reviewer's own build.
 test("a reviewer who builds it themselves skips the build phase", () => {
   for (const [safety, choice, label] of [
     ["safe", "build-choice", "Build myself"],
@@ -1860,7 +1873,7 @@ test("a reviewer who builds it themselves skips the build phase", () => {
       "build-safety",
       choice,
       "built",
-      "reproduced",
+      "spawn",
     ]);
     assert.ok(!seen.includes("build"), seen.join(", "));
   }
@@ -1896,24 +1909,24 @@ test("an unsafe build is built anyway, or aborts the review with build-unsafe", 
 });
 
 // With one of the checks a build relies on switched off, nothing vouches for what an install
-// pulls in: the review builds nothing itself, and opens at the build questions.
-test("a review whose build checks did not all run opens at the build questions", () => {
+// pulls in: the review builds nothing itself, and opens at the build question.
+test("a review whose build checks did not all run opens at the build question", () => {
   const made = buildQuestionsReview(tmp());
   delete made.state.run["build-guarded"];
   const { seen } = driveBuild(made, goesOn());
-  assert.deepEqual(seen.slice(0, 3), ["built", "reproduced", "spawn"]);
+  assert.deepEqual(seen.slice(0, 2), ["built", "spawn"]);
   assert.ok(!seen.includes("build"), seen.join(", "));
 });
 
 // A reviewer who declined package-manager commands in the preparation is asked no build
-// choice, and the agent builds nothing. The build questions are still asked, of the
+// choice, and the agent builds nothing. The build question is still asked, of the
 // reviewer's own build.
 test("a review whose reviewer declined package-manager commands builds nothing", () => {
   for (const safety of ["safe", "unsafe"]) {
     const made = buildQuestionsReview(tmp());
     made.state.run["package-managers-declined"] = true;
     const { seen } = driveBuild(made, goesOn({ "build-safety": () => safety }));
-    assert.deepEqual(seen.slice(0, 3), ["build-safety", "built", "reproduced"]);
+    assert.deepEqual(seen.slice(0, 3), ["build-safety", "built", "spawn"]);
     for (const phase of ["build-choice", "build-choice-unsafe", "build"]) {
       assert.ok(!seen.includes(phase), seen.join(", "));
     }

@@ -35,10 +35,9 @@
         A source review builds first, so the same question is screened before anything is
         built by the agent's safety judgement and the reviewer's build choice
         (<a href="build-unsafe.html">Unsafe build process</a>). In a review with no agent it is listed under
-        Extended Code Review, ahead of the two build questions. Whether the build then
-        succeeds, and whether it reproduces the shipped XPI, are two questions of their own
-        (<a href="build-succeeds.html">Build failure</a>,
-        <a href="build-reproduces-xpi.html">Build does not reproduce the XPI</a>). The steps the
+        Extended Code Review, ahead of the build question. Whether the source then builds
+        into the shipped XPI is a question of its own
+        (<a href="build-reproduces-xpi.html">Source does not build into the XPI</a>). The steps the
         analysis could not statically follow (an opaque orchestrator, yarn or bun, a network
         fetch in a script) are named in the entry, which anchors at the submission's own
         <code>package.json</code> where there is one.

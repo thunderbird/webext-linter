@@ -73,7 +73,6 @@
       "sca-invalid-symlink",
       "build-lifecycle-hook",
       "undeclared-build-source",
-      "build-succeeds",
       "build-reproduces-xpi",
       "build-unsafe",
       "sca-xpi-declares-vendoring",

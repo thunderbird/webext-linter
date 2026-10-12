@@ -43,23 +43,15 @@ An example can be found here: https://github.com/thunderbird/webext-examples/tre
 
 Continue manual review for the following checks:
 
-1) Build failure: Did the build succeed? Follow the build process from a clean
-   copy of the source archive, installing the dependencies exactly as the lock
-   file pins them (npm ci, or pnpm install --frozen-lockfile), or read the build
-   diff where the review wrote one. Clear only if every step completed. An
-   install refused because package.json and the lock file disagree is a failed
-   build.
+1) Source does not build into the XPI: Does the source build into the submitted
+   XPI? Follow the build process from a clean copy of the source archive,
+   installing the dependencies exactly as the lock file pins them (npm ci, or
+   pnpm install --frozen-lockfile). Clear only if the build completes and its
+   result matches the submitted XPI. Files that differ only by what every build
+   changes (a timestamp, a build id) still match. An install refused because
+   package.json and the lock file disagree is a failed build.
 Suggested verdict: error
-Suggested response: The submitted source could not be built by following its build instructions, so the review cannot continue. Please make sure the instructions are complete and that the build succeeds from a clean copy of the submitted archive.
- - [SCA] package.json
-
-2) Build does not reproduce the XPI: Does the built XPI reproduce the submitted
-   XPI? Read the build diff where the review wrote one, or compare your own
-   build's result with the submitted XPI. Clear only if they match. Files that
-   differ only by what every build changes (a timestamp, a build id) still
-   match.
-Suggested verdict: error
-Suggested response: The XPI built from the submitted source differs from the submitted XPI, so the review cannot continue. Please make sure the submitted XPI is built from exactly the submitted source, by the build instructions it contains.
+Suggested response: The submitted source either could not be built by following its build instructions, or does not build into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
  - [SCA] package.json
 
 ── Standard Code Review ──
@@ -237,5 +229,5 @@ Because the original project is still active, your submission does not meet thes
 ── Summary ──
 
 1 error(s), 0 hold, 1 warning(s), 0 info,
-2 extended code review item(s), 2 extended manual review item(s),
+2 extended code review item(s), 1 extended manual review item(s),
 11 standard code review item(s), 10 standard manual review item(s)

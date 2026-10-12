@@ -117,7 +117,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | `--llm-handback <dir>` | Take a phase back from the review's work folder and hand out the next - the last being `close`, which hands over the settled review. On a work folder a source code review is being prepared in, take the next step of the preparation instead, and once it is done, start its review (see [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review)). The only run that carries on an existing work folder. Takes no add-on path. Normally run by the agent, not by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission folder - one built `.xpi` and one archive of its source - and print the first prompt for preparing a source code review of it. It creates the review's work folder at its default place beside the `.xpi`, records there how the review is to be run (this run's flags), has the source extracted into its `sca/` and the roots handed back with `--llm-handback`. Where the lock installs a package with a known high or critical advisory, the preparation has a copy's dependencies reduced, then audit-fixed (`rescued/` in the work folder), and reviews the copy if that resolves them. If it does not, the source as submitted is reviewed, and its vulnerability checks abort it. The hand-back that finishes the preparation starts that review itself, with this run's flags. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any `--sca-*` flag, which is what the preparation works out. See [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review). |
 | `--llm-skip-summary` | Leave out the add-on description: the prompt does not ask for one and names no file for it. |
-| `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later, unless the review was aborted early. The two build questions are still asked. |
+| `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later, unless the review was aborted early. The build question is still asked. |
 | `--llm-skip-sweep` | Leave out the sweep: no sweeping agent is spawned, and the sweep is not handed to the reviewer either. |
 
 **Source code archive (SCA):**
@@ -217,12 +217,12 @@ which means either nothing was built or the build output was committed beside th
   whether the build pulls from the declared dependencies alone - no raw URL, `curl|sh`,
   unpinned `git clone`, CDN or postinstall hook - and names any step the linter could not
   follow statically; under `--llm-review` the agent settles it in `settle`.
-  `build-succeeds` and `build-reproduces-xpi` (Extended Manual Review) ask the reviewer
-  whether the build succeeded and whether it reproduces the shipped XPI. Any of the three
+  `build-reproduces-xpi` (Extended Manual Review) asks the reviewer whether the source
+  builds into the shipped XPI. Any of the three
   reported aborts the review. Under `--llm-review` a source review opens with its build,
   before the sweeps: the agent writes the build report and judges it safe or unsafe, the
   reviewer chooses who builds (or, after an unsafe judgement, stops the review, which
-  reports `build-unsafe`), and the two build questions are each asked alone right after.
+  reports `build-unsafe`), and the build question is asked alone right after.
   With any check the build relies on switched off (`build-guard` in the registry), nothing
   is built by the agent, and the two questions are still asked.
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
@@ -279,7 +279,7 @@ question for each), or an `instructions-for-human` alone. A check with wording a
 agent can be handed is screened, and its cases land under **Extended Code Review**.
 A check whose cases the code cannot answer authors only the human half, and its cases
 land under **Extended Manual Review**: `native-messaging` (what the listing discloses
-about the native app), `build-succeeds` and `build-reproduces-xpi` (reproducing the build is
+about the native app), `build-reproduces-xpi` (reproducing the build is
 the reviewer's own attestation that the source produces the shipped XPI),
 `trademark-thunderbird-name` (an
 add-on name written directly in the manifest.json carries no locale tag, so the language has
@@ -290,15 +290,15 @@ not the developer's, so accepting it is a judgement a person owns), and
 so no scan of its surface settles what it does).
 
 Some findings abort the review outright. A check can declare that it does by naming the
-reason the report gives (`review-early-exit:` in the registry) - today nineteen do, across
+reason the report gives (`review-early-exit:` in the registry) - today eighteen do, across
 five reasons: `experiment-not-allowed` names *Experiment APIs not accepted*,
 `lockfile-injection` names *lock file entries that install another release*, the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
-names *disallowed library versions*, and the twelve that
+names *disallowed library versions*, and the eleven that
 decide a source submission cannot be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
 `sca-lock-file-multiple`, `lock-foreign-source`, `build-registry-redirect`, `build-lifecycle-hook`,
-`undeclared-build-source`, `build-unsafe`, `build-succeeds` and `build-reproduces-xpi` - name
+`undeclared-build-source`, `build-unsafe` and `build-reproduces-xpi` - name
 *a build that cannot be reproduced*. These lead the review, ordered so a submission they reject stops
 before the rest is computed: `experiment-not-allowed`; then the source archive's package.json
 and lock checks (`sca-package-file-*`, `sca-lock-file-*`, `build-registry-redirect`,

@@ -3,38 +3,40 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Build does not reproduce the XPI</title>
+    <title>Source does not build into the XPI</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
   <body>
     <main class="page">
       <header class="check-header">
-        <h1>Build does not reproduce the XPI <span class="badge error">error</span></h1>
+        <h1>Source does not build into the XPI <span class="badge error">error</span></h1>
         <div class="check-id">build-reproduces-xpi</div>
       </header>
 
       <h2>What it asks</h2>
       <p class="lead">
-        Every source-code submission asks the reviewer whether the build reproduces the
-        submitted XPI: does what the source builds match what was submitted?
+        Every source-code submission asks the reviewer whether the source builds into the
+        submitted XPI: does the build complete, from a clean copy with the dependencies
+        installed exactly as the lock file pins them (<code>npm ci</code>, or
+        <code>pnpm install --frozen-lockfile</code>), and does its result match what was
+        submitted?
       </p>
       <p>
         Reproducing the build is the reviewer's attestation that the shipped XPI comes
         from the source they read, which is what a source-code review rests on. The
         reviewer answers by comparing the build output the review links, or their own
         build, with the submitted XPI. Files that differ only by what every build changes (a
-        timestamp, a build id) still match. It is asked only once the build succeeded
-        (<a href="build-succeeds.html">Build failure</a>), so a build that failed is never
-        also reported as not reproducing the XPI.
+        timestamp, a build id) still match. An install refused because
+        <code>package.json</code> and the lock file disagree is a failed build.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A build that succeeded"] --> Q{"Does its result match<br/>the submitted XPI?"}
+  A["The build, from a clean copy"] --> Q{"Does it complete, and does<br/>its result match the submitted XPI?"}
   Q -- yes --> OK([cleared: the remaining<br/>questions follow])
-  Q -- "no, or the reviewer's own words" --> ERR([ERROR: the build differs from the XPI<br/>the review is aborted])
+  Q -- "no, or the reviewer's own words" --> ERR([ERROR: the source does not build into the XPI<br/>the review is aborted])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -47,9 +49,10 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told that the XPI built from the submitted source differs from the
-        submitted XPI, so the review cannot continue, and that the submitted XPI must be
-        built from exactly the submitted source, by the build instructions it contains.
+        The add-on is told that the submitted source either could not be built by its build
+        instructions, or does not build into the submitted XPI, so the review cannot
+        continue, and that the instructions must be complete, the build must succeed from a
+        clean copy, and the submitted XPI must be built from exactly the submitted source.
       </div>
 
       <div class="outcome">
@@ -57,9 +60,9 @@ flowchart TD
         A &ldquo;no&rdquo; settles the submission on its own. Nothing further is put to a
         reviewer: the report drops every to-do item they would have been asked, keeps the code-review sections of a printed report (an aborted <code>--llm-review</code> hands over no to-do item at all), and the developer&rsquo;s text ends on the reason it is
         incomplete (&ldquo;Build process issues&rdquo;). Under <code>--llm-review</code> the
-        question is asked ALONE, in the <code>reproduced</code> phase, right after the build
+        question is asked ALONE, in the <code>built</code> phase, right after the build
         and before the sweeps - <code>ask</code> batches, and nobody may be asked to
-        install an XPI in the same breath as being asked whether the source reproduces it.
+        install an XPI in the same breath as being asked whether the source builds into it.
         It is asked under <code>--llm-skip-manual</code> too.
       </div>
 

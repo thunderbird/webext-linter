@@ -56,9 +56,8 @@ entry never offered are all refusals.
 | `build-safety` | Source code review only: write the build report (`BUILD_PROCESS`), with a safety section listing anything the build fetches or runs from outside the declared dependencies, and judge whether building is safe. | A process value: `safe` / `unsafe` |
 | `build-choice` | After a `safe` judgement: show the Build Review Details block and ask the reviewer, alone, who builds. Not asked where the reviewer declined package-manager commands while the review was prepared. | A process value: LLM builds / Build myself |
 | `build-choice-unsafe` | After an `unsafe` judgement: the same, and the reviewer may also stop the review. Not asked where the reviewer declined package-manager commands. | A process value: Abort / LLM builds anyway / Build myself |
-| `build` | Where the reviewer chose the agent: build the add-on in the agent's own sandbox and write how the result differs from the shipped XPI. | Nothing: the diff goes to a file of its own |
-| `built` | Source code review only: ask the reviewer, alone, whether the build succeeded. | The reviewer's own answer |
-| `reproduced` | Source code review only: ask the reviewer, alone, whether the built XPI reproduces the submitted one. | The reviewer's own answer |
+| `build` | Where the reviewer chose the agent: build the add-on in a copy of the source, in the agent's own sandbox. | Where the build put what it produced (an XPI, a zip or a folder inside the copy), or that it failed |
+| `built` | Source code review only: ask the reviewer, alone, whether the source builds into the submitted XPI. | The reviewer's own answer |
 | `spawn` | Start the sub-agents the review needs - the add-on description and one sweep per tree - and read back what the sweeps found. | Nothing: each sweep's reply is written to a file of its own (see below) |
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
@@ -112,7 +111,7 @@ produced: the XPI or zip file, or a folder such as `dist/`, as a path absolute o
 the build copy, or the offered label `The build failed`. The linter accepts a path only where
 it exists and lies inside the build copy once links are followed, and is a file or a folder,
 and links it as `BUILD_OUTPUT`. It judges nothing else: the reviewer compares that output with
-the shipped XPI to answer the two build questions.
+the shipped XPI to answer the build question.
 
 These build steps run only where every check a build relies on ran (`build-guarded`): the
 dependency-vulnerability checks, `lockfile-injection`, `lock-foreign-source` and
@@ -124,16 +123,15 @@ reviewer makes.
 `undeclared-build-source` and `build-lifecycle-hook` are still settled in `settle`, and
 reported there they still abort the review.
 
-After the build come the two build questions, each in a phase of its own so it is put to
-the reviewer ALONE - `ask` batches, and nobody may be asked to
-install an XPI in the same breath as being asked whether the source reproduces it. `built` asks whether the build succeeded (`build-succeeds`), then
-`reproduced` whether its result matches the submitted XPI (`build-reproduces-xpi`); each
-check names its phase (`asked-in:` in the registry), and the case carries it. A "no" - Report,
-or the reviewer's own words - aborts the review: that case becomes its finding, the other
-build question and every `ask` question are dropped, and the report ends on "Build process
-issues". So a build that failed is never also reported as not reproducing the XPI. Both
-questions are asked under `--llm-skip-manual` too: they decide whether the review goes on,
-which is not what that flag withholds.
+After the build comes the build question, in a phase of its own so it is put to the
+reviewer ALONE - `ask` batches, and nobody may be asked to install an XPI in the same breath
+as being asked whether the source builds into it. `built` asks whether the source builds,
+from a clean copy with the dependencies installed as the lock file pins them, into the
+submitted XPI (`build-reproduces-xpi`). The check names its phase (`asked-in:` in the
+registry), and the case carries it. A "no" - Report, or the reviewer's own words - aborts the
+review: that case becomes its finding, every `ask` question is dropped, and the report ends
+on "Build process issues". The question is asked under `--llm-skip-manual` too: it decides
+whether the review goes on, which is not what that flag withholds.
 
 
 ## When the review is aborted early
@@ -145,15 +143,15 @@ loop would do is ask a reviewer to **reproduce the build** - running that tree o
 machine, on the strength of a question the linter issued knowing better.
 
 A check declares that it aborts the review by naming the reason the report gives
-(`review-early-exit:` in the registry). Today nineteen do, across five reasons:
+(`review-early-exit:` in the registry). Today eighteen do, across five reasons:
 `experiment-not-allowed` names _Experiment APIs not accepted_, `lockfile-injection` names
 _lock file entries that install another release_, the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
-names *disallowed library versions*, and the twelve that decide a source submission cannot
+names *disallowed library versions*, and the eleven that decide a source submission cannot
 be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
 `sca-lock-file-multiple`, `build-registry-redirect`, `lock-foreign-source`, `build-lifecycle-hook`,
-`undeclared-build-source`, `build-unsafe`, `build-succeeds` and `build-reproduces-xpi` -
+`undeclared-build-source`, `build-unsafe` and `build-reproduces-xpi` -
 name *a build that cannot be reproduced*. The threshold is the finding's severity, so an advisory
 that lands as a warning aborts nothing.
 
@@ -403,7 +401,7 @@ reader records the label the reviewer picked, `Allow` or `Do not allow`, and any
 is refused. Declined, the hand-back settles the roots and the folder is done at once: the
 lock is not audited and nothing is rescued, so a vulnerable lock aborts the review it starts.
 That review asks no build choice and runs no build (`package-managers-declined`), and the
-`built` and `reproduced` questions are still asked, of the reviewer's own build.
+`built` question is still asked, of the reviewer's own build.
 
 The reader hands the two back in the work folder's review file (`ANSWERS`, the same
 `.review/review.json` a review pass uses) and runs `--llm-handback` on the folder. The preparation's
@@ -533,5 +531,5 @@ The caches are not part of it: they stay in `WEBEXT-LINTER-CACHE/`.
 | `--llm-handback <dir>` | Take a phase back and hand out the next, from the review file in the work folder the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file in that folder. On a folder a source code review is being prepared in (`.review/prepare.json`, and no review started), take the next step of the preparation instead, and once it is done, start its review. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - and print the first prompt for preparing a source code review of it. It creates the review's work folder beside the `.xpi`, records there how the review is to be run, and its prompt ends in `--llm-handback` on that folder (see [Preparing a source code review](#preparing-a-source-code-review)). Refused beside any `--sca-*` flag, which is what the preparation works out. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
-| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted early, which takes them out. The two build questions are still asked. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
+| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted early, which takes them out. The build question is still asked. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
 | `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. No sweeping agent is spawned, and the sweep is not handed to the reviewer either. |
