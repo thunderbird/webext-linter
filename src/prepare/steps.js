@@ -105,9 +105,12 @@ export async function handBack(work, { net } = {}) {
   }
   // The audit reads the npm registry cache the review it starts will read, and asks OSV and
   // the popularity hosts through the run's cache, which every step of the preparation and
-  // its review share.
+  // its review share: the folder its flags name (--cache-work-dir), or the work folder's.
   const context = {
-    net: withRunCache(net ?? defaultNet, runCache(work)),
+    net: withRunCache(
+      net ?? defaultNet,
+      runCache(work, record.flags?.["cache-work-dir"] || undefined)
+    ),
     cacheDir: record.flags?.["cache-npm-registry-dir"] || undefined,
   };
   switch (record.step) {

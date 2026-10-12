@@ -451,6 +451,21 @@ test("a rescued copy's step reads the run's OSV cache", async () => {
   cleanup(work);
 });
 
+// A run that names its cache folder (--cache-work-dir, forwarded in the record) keeps OSV's
+// answers there instead, so the preparation and its review read the folder a test seeded.
+test("a step asks through the cache folder its record names", async () => {
+  const work = workFolder({
+    "package.json": packageFile(),
+    "package-lock.json": npmLock(),
+  });
+  const dir = path.join(path.dirname(work), "run-cache");
+  writePrepare(work, { ...recordOf(work), flags: { "cache-work-dir": dir } });
+  await first(work, net(TOOL_HIGH));
+  assert.ok(fs.existsSync(path.join(dir, "osv.json")));
+  assert.ok(!fs.existsSync(path.join(work, ".cache")));
+  cleanup(work);
+});
+
 test("a reduce that is not enough moves on to fix, and a clean fix is done", async () => {
   const { work, copy, root } = await rescued();
   const reduce = await later(work, net(TOOL_HIGH));

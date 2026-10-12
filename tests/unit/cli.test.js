@@ -14,7 +14,12 @@ import YAML from "yaml";
 
 import { pipelineOptsFromArgv } from "../../src/cli.js";
 import { readPrepare, writePrepare } from "../../src/prepare/state.js";
-import { advisory, answer, realPreparation } from "../prepared.js";
+import {
+  advisory,
+  answer,
+  net as osvNet,
+  realPreparation,
+} from "../prepared.js";
 import {
   addonOutsideRepo,
   cdnMissCache,
@@ -23,7 +28,14 @@ import {
   seedFixtureCache,
 } from "../seed-caches.js";
 import { relativeInside } from "../../src/addon/load.js";
-import { workPaths } from "../../src/util/dest.js";
+import { runCache, workPaths } from "../../src/util/dest.js";
+import { withRunCache } from "../../src/vendor/run-cache.js";
+import { popularityKey } from "../../src/vendor/popularity-cache.js";
+import {
+  VENDOR_NPM_DOWNLOADS_API,
+  VENDOR_OSV_BATCH_API,
+  VENDOR_OSV_VULN_API,
+} from "../../src/config.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..", "..");
@@ -196,6 +208,60 @@ test("cache/cdn flags map to the pipeline opts", () => {
   assert.equal(o.cdnLookupCache, "/c");
   assert.equal(o.experimentsCache, "/d");
   assert.equal(o.npmRegistryCache, "/e");
+});
+
+// --cache-work-dir names the folder the run's cache is read from, so a review is answered
+// by what a test kept there: every lock package popular, and one advisory, which the review
+// reports. Kept through the run's own cache (withRunCache), so the entries are spelt as the
+// review reads them. The folder need not exist before the seeding creates it.
+test("--cache-work-dir: a review reads its answers from the folder named", async () => {
+  const fixture = addonOutsideRepo(path.join(FIXTURES, "sca-unrescued"));
+  const lock = JSON.parse(
+    fs.readFileSync(path.join(fixture, "src", "package-lock.json"), "utf8")
+  );
+  const packages = Object.entries(lock.packages)
+    .filter(([at]) => at)
+    .map(([at, { version }]) => ({
+      name: at.slice("node_modules/".length),
+      version,
+    }));
+  const seeded = advisory(
+    "GHSA-seed-0000-0000",
+    "CRITICAL",
+    "tidy-lantern",
+    "2.1.1"
+  );
+  const answers = osvNet({ "tidy-lantern@2.1.0": [seeded] });
+  const dir = path.join(fixture, "run-cache");
+  const keep = withRunCache(
+    {
+      ...answers,
+      fetchJson: async (url) =>
+        popularityKey(url) ? { downloads: 1e9 } : answers.fetchJson(url),
+    },
+    runCache(fixture, dir)
+  );
+  for (const { name } of packages) {
+    await keep.fetchJson(`${VENDOR_NPM_DOWNLOADS_API}${name}`);
+  }
+  await keep.postJson(VENDOR_OSV_BATCH_API, {
+    queries: packages.map(({ name, version }) => ({
+      package: { name, ecosystem: "npm" },
+      version,
+    })),
+  });
+  await keep.fetchJson(`${VENDOR_OSV_VULN_API}${seeded.id}`);
+
+  const r = run([
+    path.join(fixture, "xpi"),
+    "--sca-root",
+    path.join(fixture, "src"),
+    ...OFFLINE_FLAGS,
+    "--cache-work-dir",
+    dir,
+  ]);
+  assert.equal(r.code, 1, r.stderr);
+  assert.match(r.stdout, /GHSA-seed-0000-0000/);
 });
 
 // --cache-clear wipes the cache directories before the review (so every source
@@ -1902,6 +1968,32 @@ test("the preparation records the flags its review is started with", () => {
     path.join(work, "sca", "experiment")
   );
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// --cache-work-dir is handed to the review the preparation starts, as the real folder it
+// names, so the preparation and its review read one cache. --cache-clear leaves it alone:
+// it holds what a test seeded, not a cache this tool fills.
+test("the preparation records --cache-work-dir for its review", () => {
+  const dir = submissionFolder();
+  const seeded = fs.mkdtempSync(path.join(os.tmpdir(), "wl-run-cache-"));
+  const kept = path.join(seeded, "osv.json");
+  fs.writeFileSync(kept, "{}");
+  const r = run([
+    dir,
+    "--llm-sca-review",
+    "--cache-clear",
+    ...cacheFlags(freshFixtureCache(), cdnMissCache(FIXTURES_DIR)),
+    "--cache-work-dir",
+    seeded,
+  ]);
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(
+    readJson(workOf(r.stdout), "prepare.json").flags["cache-work-dir"],
+    fs.realpathSync(seeded)
+  );
+  assert.ok(fs.existsSync(kept), "--cache-clear does not delete it");
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(seeded, { recursive: true, force: true });
 });
 
 // A skip names part of the prompt the PREPARED review will print, so it belongs to the

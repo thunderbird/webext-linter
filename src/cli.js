@@ -65,6 +65,7 @@ import { shellArg, wrapText } from "./util/text.js";
 import { parseJson } from "./util/json.js";
 import { rethrowIfFatal } from "./lib/errors.js";
 import { isExperiment } from "./lib/util.js";
+import { networkSwitchedOff } from "./util/net.js";
 
 /** @typedef {import("./pipeline.js").PipelineOpts} PipelineOpts */
 
@@ -313,6 +314,11 @@ const OPTIONS = {
   "warnings-as-errors": { type: "boolean" },
   verbose: { type: "boolean" },
   help: { type: "boolean" },
+  // The folder a run keeps its cache in (src/util/dest.js runCache), so a test can seed the
+  // answers a review reads. Declared only with the network switched off (tests/offline.js),
+  // and so refused as unknown in every real run, whose cache is its own work folder's. Not
+  // on the help screen, which describes a real run.
+  ...(networkSwitchedOff() && { "cache-work-dir": { type: "string" } }),
 };
 
 /**
@@ -350,6 +356,7 @@ const FOLDER_FLAGS = [
   "cache-cdn-lookup-dir",
   "cache-npm-registry-dir",
   "cache-experiments-dir",
+  "cache-work-dir",
 ];
 
 /** The flags the preparation of a source code review is given and never hands on to the
@@ -1204,6 +1211,9 @@ function pipelineOptsFromValues(values) {
     // sweep REQUEST, and with them the per-tree conditions derived from the requests - so
     // no step that starts a sweeping agent prints (src/report/phases.js stepsOf).
     llmSkipSweep: Boolean(values["llm-skip-sweep"]),
+    workCache: values["cache-work-dir"]
+      ? path.resolve(values["cache-work-dir"])
+      : undefined,
   };
 }
 

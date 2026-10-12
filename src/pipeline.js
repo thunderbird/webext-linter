@@ -153,6 +153,8 @@ export const SETUP_STEPS = Object.freeze([
  *   src/util/dest.js defaultWorkFolder), and a caller that forgot would otherwise put a review somewhere
  *   nobody chose. Created if missing; nothing already in it is overwritten.
  * @property {string} [schemaCache]
+ * @property {string} [workCache]  The folder the run keeps its cache in, absolute, when it
+ *   names one (--cache-work-dir, tests only): otherwise the work folder's (runCache).
  * @property {string} [experimentsCache]  Where to cache the fetched experiments
  *   zip.
  * @property {string[]} [checksOnly]
@@ -663,7 +665,7 @@ async function reviewSubmission(opts, work, prepared) {
       ...opts,
       vendorNet: withRunCache(
         opts.vendorNet ?? defaultNet,
-        runCache(opts.workFolder)
+        runCache(opts.workFolder, opts.workCache)
       ),
     },
     schema,

@@ -129,3 +129,41 @@ test("a pre-filled 404 answers a cache only with the network switched off", () =
   assert.deepEqual(run(false), { cdn: 1, registry: 1 }, "a real run asks");
   assert.deepEqual(run(true), { cdn: 0, registry: 0 }, "a test reads it");
 });
+
+// --cache-work-dir lets a test seed the answers a run reads, so a real run, with the network
+// on, does not know it: refused exactly as a flag that does not exist, and named on no help
+// screen. Asked of a child process started without the switch, and with it as the control.
+test("--cache-work-dir is an unknown option with the network on", () => {
+  const run = (switchedOff, args) => {
+    const env = { ...process.env };
+    if (switchedOff) {
+      env.WEBEXT_LINTER_NO_NETWORK = "1";
+    } else {
+      delete env.WEBEXT_LINTER_NO_NETWORK;
+    }
+    return spawnSync(
+      process.execPath,
+      [path.join(ROOT, "verify.js"), ...args],
+      {
+        encoding: "utf8",
+        env,
+      }
+    );
+  };
+  const given = run(false, ["--cache-work-dir", "x", "--help"]);
+  const unknown = run(false, ["--no-such-dir", "x", "--help"]);
+  assert.equal(given.status, 2);
+  assert.match(given.stderr, /Unknown option '--cache-work-dir'/);
+  assert.equal(
+    given.stdout + given.stderr,
+    (unknown.stdout + unknown.stderr).replaceAll(
+      "--no-such-dir",
+      "--cache-work-dir"
+    )
+  );
+  const offline = run(true, ["--cache-work-dir", "x", "--help"]);
+  assert.equal(offline.status, 0, offline.stderr);
+  const help = offline.stdout.slice(offline.stdout.indexOf("Usage:"));
+  assert.match(help, /--cache-schema-dir/);
+  assert.doesNotMatch(help, /cache-work-dir/);
+});
