@@ -1064,8 +1064,9 @@ function isSafeAddonPath(p) {
   }
   // Every segment must NAME something. "..", "." and "" are path SYNTAX, not names: they
   // make one file addressable by two spellings, so the key an entry lands under stops being
-  // the key the manifest.json's own reference resolves to (normalizeRefInDir drops both while
-  // this loader keeps them), and ".." can additionally point outside the package.
+  // the key the manifest.json's own reference resolves to (normalizeRefInDir resolves "." and
+  // ".." away while this loader keeps them), and ".." can additionally point outside the
+  // package.
   //
   // entryKey has already stripped a LEADING "./" by this point. That is what `zip -r ./dir`
   // produces, it names the package root unambiguously, and it is the one form repaired

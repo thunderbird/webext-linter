@@ -234,42 +234,92 @@ export function resolveRef(files, fromFile, raw, opts) {
   return resolveInDir(files, dir, raw, opts);
 }
 
+// The URL the add-on's own pages live under. Only the scheme and host matter: a reference
+// resolving to any other origin names no packaged file.
+const PACKAGE_ORIGIN = "moz-extension://ext";
+
+// A folder no packaged file can sit in: the zip loader refuses a name holding a backslash,
+// and moz-extension: keeps a backslash as a plain path character. Resolving a relative
+// reference under this folder shows whether its ".." climbs above the package root, which
+// the URL parser clamps silently.
+const SENTINEL = "\\";
+
 /**
- * Normalize `raw` against base directory `dir` and collapse `.`/`..` to a packaged
- * key. Returns the collapsed key (null for an empty/blank reference) AND whether a
- * ".." climbed above the package root - which resolveInDir clamps silently but
- * resolveInDirStatus reports. `dir` null (or a leading "/" in raw) is root-relative.
+ * The reference as the URL parser reads it: leading and trailing C0 controls and spaces
+ * are stripped, and every tab and newline is removed.
+ * @param {string} raw
+ * @returns {string}
+ */
+function urlInput(raw) {
+  let out = "";
+  for (const ch of raw) {
+    if (ch !== "\t" && ch !== "\n" && ch !== "\r") {
+      out += ch;
+    }
+  }
+  let start = 0;
+  let end = out.length;
+  while (start < end && out.charCodeAt(start) <= 0x20) {
+    start++;
+  }
+  while (end > start && out.charCodeAt(end - 1) <= 0x20) {
+    end--;
+  }
+  return out.slice(start, end);
+}
+
+/**
+ * The moz-extension: base URL of directory `dir` ("" or null is the root), optionally
+ * inside the sentinel folder. Each segment is encoded, so a packaged name holding "%",
+ * "#" or "?" stays one literal segment.
+ * @param {string|null} dir @param {boolean} sentinel
+ * @returns {string}
+ */
+function baseUrl(dir, sentinel) {
+  const segs = dir ? dir.split("/").map(encodeURIComponent) : [];
+  if (sentinel) {
+    segs.unshift(SENTINEL);
+  }
+  return `${PACKAGE_ORIGIN}/${segs.map((s) => `${s}/`).join("")}`;
+}
+
+/**
+ * Resolve `raw` against base directory `dir` the way the browser resolves it under
+ * moz-extension:, to a packaged key. `dir` null (or a leading "/" in raw) is
+ * root-relative. The key is null when raw names no file (empty, or only a query or
+ * fragment), resolves to another scheme or host, or holds a malformed percent escape
+ * (reported as missing). `escaped` is the linter's stricter rule: a relative reference
+ * whose ".." climbs above the package root is a wrong path, though the browser clamps it.
+ * resolveInDir ignores it, resolveInDirStatus reports it.
  * @param {string|null} dir @param {string} raw
  * @returns {{key: string|null, escaped: boolean}}
  */
 function normalizeRefInDir(dir, raw) {
-  // No backslash folding, for the reason normalizeRef gives: these resolve as URLs.
-  let p = cutAtFirst(String(raw ?? ""), "?#").trim();
-  if (p === "") {
+  const input = urlInput(String(raw ?? ""));
+  if (cutAtFirst(input, "?#") === "") {
     return { key: null, escaped: false };
   }
-  if (p.startsWith("/") || dir == null) {
-    p = p.replace(/^\/+/, "");
-  } else {
-    p = dir ? `${dir}/${p}` : p;
+  let url;
+  try {
+    url = new URL(input, baseUrl(dir, false));
+  } catch {
+    return { key: null, escaped: false };
   }
-  const parts = [];
-  let escaped = false;
-  for (const seg of p.split("/")) {
-    if (seg === "" || seg === ".") {
-      continue;
-    }
-    if (seg === "..") {
-      if (parts.length === 0) {
-        escaped = true; // climbed above the package root
-      } else {
-        parts.pop();
-      }
-    } else {
-      parts.push(seg);
-    }
+  const origin = new URL(PACKAGE_ORIGIN);
+  if (url.protocol !== origin.protocol || url.host !== origin.host) {
+    return { key: null, escaped: false };
   }
-  return { key: parts.join("/"), escaped };
+  let key;
+  try {
+    key = decodeURIComponent(url.pathname.slice(1));
+  } catch {
+    return { key: null, escaped: false };
+  }
+  const relative = !input.startsWith("/") && !URL.canParse(input);
+  const escaped =
+    relative &&
+    !new URL(input, baseUrl(dir, true)).pathname.startsWith(`/${SENTINEL}/`);
+  return { key, escaped };
 }
 
 /**
@@ -278,7 +328,8 @@ function normalizeRefInDir(dir, raw) {
  * getURL); `dir === ""` is the add-on root; any other value is that directory. A
  * leading "/" in `raw` is always root-relative. Used (via script-hosts.js) to
  * resolve a page-relative loader path against the calling script's HOST PAGE
- * directory. `.`/`..` are normalized, with ".." clamped at the package root.
+ * directory. Resolution is the browser's (see normalizeRefInDir), with ".." clamped at
+ * the package root.
  *
  * With `folders`, a packaged FOLDER resolves too - one some packaged file sits under, the
  * root ("") included. Only a caller asking "does this path exist in the package" wants
@@ -303,14 +354,15 @@ export function resolveInDir(files, dir, raw, { folders = false } = {}) {
 /**
  * Whether some packaged file sits under `key`, which makes it a folder of the package.
  * @param {Map<string, Buffer>} files
- * @param {string} key  A normalized add-on-relative path, "" for the root.
+ * @param {string} key  A normalized add-on-relative path, "" for the root. A trailing "/"
+ *   (a folder URL such as "icons/") names the same folder.
  * @returns {boolean}
  */
 function isPackagedFolder(files, key) {
   if (key === "") {
     return files.size > 0;
   }
-  const prefix = `${key}/`;
+  const prefix = key.endsWith("/") ? key : `${key}/`;
   for (const file of files.keys()) {
     if (file.startsWith(prefix)) {
       return true;

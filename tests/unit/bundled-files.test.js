@@ -338,6 +338,41 @@ test("resolveInDirStatus reports ok / missing / escapes", async () => {
   );
 });
 
+// A reference resolves the way the browser reads it as a moz-extension: URL, so a
+// percent escape decodes, in a name and in a ".." segment alike.
+test("resolveInDirStatus decodes percent escapes", async () => {
+  const files = new Map([
+    ["my file.png", Buffer.from("")],
+    ["x.js", Buffer.from("")],
+  ]);
+  assert.deepEqual(resolveInDirStatus(files, null, "my%20file.png"), {
+    kind: "ok",
+    key: "my file.png",
+  });
+  assert.deepEqual(resolveInDirStatus(files, "pages", ".%2E/x.js"), {
+    kind: "ok",
+    key: "x.js",
+  });
+});
+
+// A malformed percent escape names no file the browser can load, even when a packaged
+// file is spelled exactly like the reference.
+test("resolveInDirStatus reports a malformed percent escape as missing", async () => {
+  const files = new Map([["%E0%A4%A", Buffer.from("")]]);
+  assert.equal(resolveInDirStatus(files, null, "%E0%A4%A").kind, "missing");
+});
+
+// The browser clamps a ".." above the package root, the linter reports it as an escape
+// even when the clamped path names a packaged file. A root-relative "/.." is no escape.
+test("resolveInDirStatus reports a clamped .. as an escape", async () => {
+  const files = new Map([["x.js", Buffer.from("")]]);
+  assert.equal(resolveInDirStatus(files, null, "../../x.js").kind, "escapes");
+  assert.deepEqual(resolveInDirStatus(files, "pages", "/../x.js"), {
+    kind: "ok",
+    key: "x.js",
+  });
+});
+
 // resolveRefStatus derives the base directory from the referring file: a file at
 // the root resolves a leading ".." as an escape, while a file in a subdirectory
 // can reach a sibling tree.
