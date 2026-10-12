@@ -31,9 +31,10 @@
         dependencies?
       </p>
       <p>
-        Under <code>--llm-review</code> the agent settles it in the <code>settle</code> phase,
-        before anything is built - so a build that reaches for an undeclared source is never
-        run and never offered to the reviewer. In a review with no agent it is listed under
+        Under <code>--llm-review</code> the agent settles it in the <code>settle</code> phase.
+        A source review builds first, so the same question is screened before anything is
+        built by the agent's safety judgement and the reviewer's build choice
+        (<a href="build-unsafe.html">Unsafe build process</a>). In a review with no agent it is listed under
         Extended Code Review, the first build item on the to-do list. Whether the build then
         succeeds, and whether it reproduces the shipped XPI, are two questions of their own
         (<a href="build-succeeds.html">Build failure</a>,
@@ -53,7 +54,7 @@ flowchart TD
   A --> D["steps the linter could not follow<br/>ride along with the entry"]
   D --> M
   M -- no --> CL([cleared: the build may run])
-  M -- yes --> ERR([ERROR: undeclared build source<br/>the review is aborted, nothing is built])
+  M -- yes --> ERR([ERROR: undeclared build source<br/>the review is aborted])
 
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
@@ -74,7 +75,7 @@ flowchart TD
       <div class="outcome">
         <strong>It aborts the review</strong>
         A build that reaches for an undeclared source settles the submission on its own:
-        nothing is built, nothing further is put to a reviewer, and the developer&rsquo;s text
+        nothing further is put to a reviewer, and the developer&rsquo;s text
         ends on the reason it is incomplete (&ldquo;Build process issues&rdquo;).
       </div>
 

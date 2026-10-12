@@ -26,10 +26,11 @@
         Nothing in the files can answer that - only a build can - so the question is
         raised on every source review, anchored at the submission's package.json (or at no
         file, where the source documents no build at all). The reviewer answers it from the
-        build diff the review wrote, or from their own build where they declined the one
-        offered. Whether the build reaches for an undeclared source is settled before
-        anything is built (<a href="undeclared-build-source.html">Build process
-        review</a>), and whether the result matches the shipped XPI is the next question
+        build diff the review wrote, or from their own build where they chose to build it
+        themselves. Under <code>--llm-review</code> the build is judged safe or unsafe
+        before anything is built, and the reviewer may stop the review there
+        (<a href="build-unsafe.html">Unsafe build process</a>). Whether the result matches
+        the shipped XPI is the next question
         (<a href="build-reproduces-xpi.html">Build does not reproduce the XPI</a>).
       </p>
 
@@ -63,8 +64,8 @@ flowchart TD
         A &ldquo;no&rdquo; settles the submission on its own. Nothing further is put to a
         reviewer: the report drops every to-do item they would have been asked, keeps the code-review sections of a printed report (an aborted <code>--llm-review</code> hands over no to-do item at all), and the developer&rsquo;s text ends on the reason it is
         incomplete (&ldquo;Build process issues&rdquo;). Under <code>--llm-review</code> the
-        question is asked ALONE, in the <code>built</code> phase, after the build and
-        before any other question - <code>ask</code> batches, and nobody may be asked to
+        question is asked ALONE, in the <code>built</code> phase, right after the build and
+        before the sweeps - <code>ask</code> batches, and nobody may be asked to
         install an XPI in the same breath as being asked whether the source reproduces it.
         It is asked under <code>--llm-skip-manual</code> too.
       </div>

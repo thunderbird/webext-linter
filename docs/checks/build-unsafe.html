@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unsafe build process</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Unsafe build process <span class="badge error">error</span></h1>
+        <div class="check-id">build-unsafe</div>
+      </header>
+
+      <h2>What it reports</h2>
+      <p class="lead">
+        A source-code submission whose build the reviewer judged unsafe to run: it fetches
+        or runs code from outside the dependencies declared in package.json and its lock
+        file.
+      </p>
+      <p>
+        Nothing in the files decides it, so the check raises nothing itself, and a review
+        with no agent never lists it. Under <code>--llm-review</code> a source review opens
+        with its build. The agent writes the build report and judges the build safe or
+        unsafe. After an unsafe judgement the reviewer is shown the report's safety section
+        and asked how the review goes on: stop it, have the agent build anyway, or build it
+        themselves. Stopping it reports this check.
+      </p>
+      <p>
+        The build steps run only where every check the build relies on ran. With one of
+        them switched off (<code>--checks-only</code> / <code>--checks-skip</code>), nothing
+        is judged or built here, and the reviewer builds the add-on themselves.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A source-code submission<br/>under --llm-review"] --> J{"The agent judges<br/>the build process"}
+  J -- safe --> C([the reviewer chooses who builds])
+  J -- unsafe --> Q{"How should the<br/>review go on?"}
+  Q -- "build anyway, or build myself" --> C
+  Q -- abort --> ERR([ERROR: unsafe build process<br/>the review is aborted])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR err;
+  class C ok;
+  class J,Q manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that its build process fetches or runs code from outside the
+        declared dependencies, so it cannot be built safely for review, and that every part
+        of the build must come only from those dependencies.
+      </div>
+
+      <div class="outcome">
+        <strong>It aborts the review</strong>
+        The reviewer&rsquo;s &ldquo;abort&rdquo; settles the submission on its own: nothing is
+        built, nothing further is put to a reviewer, and the developer&rsquo;s text ends on the
+        reason it is incomplete (&ldquo;Build process issues&rdquo;).
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/build-unsafe.js</code>, the
+        <code>build-choice-unsafe</code> phase and the entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

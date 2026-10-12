@@ -2563,12 +2563,11 @@ llm-phases:
 
             Judge every API, permission and method against SCHEMA, never against what you remember: a name the schema does not have is not a name this add-on can use, whatever another version of Thunderbird offers.
 
-    # Hands the reviewer the Review Details block, once, before anything is put to them:
-    # what this review is, and where to read it while answering - the build diff among it.
-    # Its own phase so it does not hang off one particular question phase. Shown whenever a
-    # question follows: in every review --llm-skip-manual leaves `ask` to, and in every
-    # source review, whose build questions are asked under that flag too. Not in a review
-    # that was aborted, whose closing hand-over carries the block anyway.
+    # Hands the reviewer the Review Details block, once, before the `ask` questions: what this
+    # review is, and where to read it while answering - the build diff among it. Its own
+    # phase so it does not hang off one particular question phase. Shown in every review
+    # --llm-skip-manual leaves `ask` to, and in every source review. Not in a review that was
+    # aborted, whose closing hand-over carries the block anyway.
     - name: details
       # Asks about nothing in the review file: the block is its whole work.
       answer: none
