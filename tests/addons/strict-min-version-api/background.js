@@ -1,4 +1,4 @@
-// Modeled on a real submission (mboxsleuth): strict_min_version 115.0 but the
+// Modeled on a real submission, here called tagsorter: strict_min_version 115.0 but the
 // messages.tags.* API was only added in Thunderbird 121, so installs on 115-120
 // break. strict-min-version-api lists every call site.
 async function listAndTag() {

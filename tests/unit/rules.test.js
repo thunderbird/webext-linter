@@ -3523,7 +3523,7 @@ test("unknown-api: every shape around an absent namespace escalates, none reject
   );
 });
 
-// End-to-end, the markdown_here shape: feature detection written as a guard clause,
+// End-to-end, the noteformatter shape (a made-up name for a real submission): feature detection written as a guard clause,
 // parsed for real. The too-new API must be handed to judgement rather than rejecting
 // the add-on - the point of the whole change.
 test("a too-new API is a judgement whether or not it looks guarded", async () => {
