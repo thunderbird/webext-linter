@@ -610,6 +610,7 @@ export class Registry {
    *   refused: string, phases: {name: string, answer: string, verbs: string[],
    *   product: ?string, verbProse: object, intro: string,
    *   steps: {when: ?object, text: string}[], question: ?string,
+   *   failed: ?{label: string, description: string},
    *   values: {value: string, label: string, description: string,
    *   reports: ?string}[]}[]}}
    */
@@ -636,8 +637,11 @@ export class Registry {
         ),
         intro: phase.intro,
         steps: phase.steps.map(loadedStep),
-        // A process-value phase's question and the values it accepts back.
+        // A process-value or output phase's question, and what it accepts back.
         question: phase.question ?? null,
+        failed: phase.failed
+          ? { label: phase.failed.label, description: phase.failed.description }
+          : null,
         values: (phase.values ?? []).map((v) => ({
           value: v.value,
           label: v.label,
@@ -1424,7 +1428,8 @@ function loadedStep(step) {
 
 /**
  * A process-value phase's values, checked at load. A phase answering `value` must offer some,
- * and no other kind may author them, or a question nobody asks. Each id is a name a `when:`
+ * and no other kind may author them, or a question nobody asks. An `output` phase is checked
+ * by assertOutput, and only it authors `failed`. Each id is a name a `when:`
  * can read, and two equal ids or labels would make an answer mean either. A value that
  * `reports` a check aborts the review through that check, so the check must exist and abort.
  * @param {Registry} registry
@@ -1432,16 +1437,26 @@ function loadedStep(step) {
  * @param {string} at  How it is named in a message.
  */
 function assertProcessValues(registry, phase, at) {
+  if (phase.answer === "output") {
+    assertOutput(phase, at);
+    return;
+  }
   if (phase.answer !== "value") {
-    for (const key of ["values", "question"]) {
+    for (const key of ["values", "question", "failed"]) {
       if (phase[key] !== undefined) {
         throw new Error(
           `${at} answers with \`${phase.answer}\` but authors \`${key}\` - only a ` +
-            "`value` phase asks for a process value"
+            "`value` or `output` phase hands over a question"
         );
       }
     }
     return;
+  }
+  if (phase.failed !== undefined) {
+    throw new Error(
+      `${at} answers with \`value\` but authors \`failed\` - only an \`output\` ` +
+        "phase offers it"
+    );
   }
   const values = phase.values ?? [];
   if (values.length === 0) {
@@ -1484,6 +1499,33 @@ function assertProcessValues(registry, phase, at) {
       throw new Error(
         `${at} value \`${v.value}\` reports \`${v.reports}\`, whose \`input: ` +
           `${entry.input}\` reads no single artifact the finding could be about`
+      );
+    }
+  }
+}
+
+/**
+ * An output phase, checked at load. Its one entry is the question and the `failed` answer,
+ * so it must author both, and the path that comes back is kept as its `product`, so it must
+ * name one. It offers no process values: what comes back is a path, not one of a list.
+ * @param {object} phase  The phase as authored.
+ * @param {string} at  How it is named in a message.
+ */
+function assertOutput(phase, at) {
+  if (phase.values !== undefined) {
+    throw new Error(
+      `${at} answers with \`output\` but authors \`values\` - it accepts a path, ` +
+        "not one of a list"
+    );
+  }
+  for (const [key, why] of [
+    ["question", "its one entry would ask nothing"],
+    ["failed", "a build that produced nothing could not be answered"],
+    ["product", "the path that comes back would be kept nowhere"],
+  ]) {
+    if (phase[key] === undefined) {
+      throw new Error(
+        `${at} answers with \`output\` but authors no \`${key}\` - ${why}`
       );
     }
   }

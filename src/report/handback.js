@@ -12,7 +12,7 @@
 // file costs nothing, because nothing reads them.
 import fs from "node:fs";
 import path from "node:path";
-import { hasParentSegment } from "../addon/load.js";
+import { hasParentSegment, relativeInside } from "../addon/load.js";
 import { VERB, verbOf } from "./verbs.js";
 import { displayLine } from "../util/text.js";
 import { parseJson } from "../util/json.js";
@@ -151,6 +151,16 @@ export function answersOf(handed, asked, phase, keyOf) {
       }
       continue;
     }
+    // A build's output is a path, or the `failed` label its entry offers. Which of the two,
+    // and whether the path names something the build produced, is outputAt's to say.
+    if (phase.answer === "output") {
+      if (typeof value !== "string" || value.trim() === "") {
+        throw new HandbackRefused(
+          `${key} names no path and does not answer "${phase.failed.label}"`
+        );
+      }
+      continue;
+    }
     // `words` are a person's own answer, and those are not ours to judge - only to carry.
     if (phase.answer === "words") {
       if (typeof value !== "string" || value === "") {
@@ -236,6 +246,87 @@ export function valueEntry(phase) {
     })),
     [SLOT]: null,
   };
+}
+
+/**
+ * The one entry an output phase (`answer: output`) hands over, keyed by the phase's name:
+ * its question, and the one answer it offers besides a path, for a build that failed.
+ * @param {{name: string, question: string, failed: {label: string,
+ *   description: string}}} phase
+ * @returns {object}
+ */
+export function outputEntry(phase) {
+  return {
+    index: phase.name,
+    message: phase.question,
+    answers: [
+      { label: phase.failed.label, description: phase.failed.description },
+    ],
+    [SLOT]: null,
+  };
+}
+
+/**
+ * What an output phase's answer names: null for its `failed` label, else the file or folder
+ * the build produced, as the real path it is.
+ *
+ * A relative path is resolved against the build copy, and links are followed before it is
+ * held to that copy, so a link that points out of it is refused like any path outside it.
+ * The copy itself is not an output: the build put something inside it.
+ * @param {string} answer  What came back, already checked by answersOf.
+ * @param {{name: string, failed: {label: string}}} phase
+ * @param {?string} buildCopy  Where the agent built.
+ * @returns {?string}
+ * @throws {HandbackRefused}
+ */
+export function outputAt(answer, phase, buildCopy) {
+  if (answer === phase.failed.label) {
+    return null;
+  }
+  const named = displayLine(answer);
+  const copy = realPath(buildCopy ?? "");
+  if (!copy) {
+    throw new HandbackRefused(
+      `${phase.name} names "${named}", but the build copy "${buildCopy}" does not exist: ` +
+        "build there"
+    );
+  }
+  const real = realPath(path.resolve(copy, answer.trim()));
+  if (!real) {
+    throw new HandbackRefused(
+      `${phase.name} names "${named}", which does not exist: name the file or folder ` +
+        `the build produced inside "${copy}"`
+    );
+  }
+  const inside = relativeInside(real, copy);
+  if (inside === null || inside === "") {
+    throw new HandbackRefused(
+      `${phase.name} names "${named}", which is not inside the build copy "${copy}": ` +
+        "name what the build produced there"
+    );
+  }
+  const stat = fs.statSync(real);
+  if (!stat.isFile() && !stat.isDirectory()) {
+    throw new HandbackRefused(
+      `${phase.name} names "${named}", which is neither a file nor a folder: name the ` +
+        "XPI or zip file, or the folder, the build produced"
+    );
+  }
+  return real;
+}
+
+/**
+ * The path `p` really is, links followed, or null where nothing is there.
+ * @param {string} p
+ * @returns {?string}
+ */
+function realPath(p) {
+  try {
+    return p ? fs.realpathSync(p) : null;
+  } catch (err) {
+    rethrowIfFatal(err);
+    return null;
+  }
 }
 
 /**

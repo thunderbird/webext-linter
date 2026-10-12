@@ -55,7 +55,6 @@ test("the work folder's names are bare and fixed", () => {
       report: "/w/report.md",
       summary: "/w/summary.md",
       build: "/w/build.md",
-      buildDiff: "/w/build-diff.md",
       buildCopy: "/w/build",
     }
   );

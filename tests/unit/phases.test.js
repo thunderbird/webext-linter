@@ -278,7 +278,7 @@ test("a phase declares the kind of answer its entries take", () => {
       ["build-safety", "value", 0],
       ["build-choice", "value", 0],
       ["build-choice-unsafe", "value", 0],
-      ["build", "none", 0],
+      ["build", "output", 0],
       ["built", "words", 0],
       ["reproduced", "words", 0],
       ["spawn", "hints", 0],
@@ -299,7 +299,7 @@ test("a phase declares the kind of answer its entries take", () => {
   phaseNamed(unknown, "verify").answer = "verdicts";
   assert.throws(
     () => check(unknown),
-    /invalid `answer` "verdicts" \(expected one of: hints, verdict, words, value, none, end\)/
+    /invalid `answer` "verdicts" \(expected one of: hints, verdict, words, value, output, none, end\)/
   );
 
   // A verdict phase with nothing to say back, and a phase that names a verb nobody will
@@ -350,6 +350,54 @@ function withValuePhase(extra = {}) {
   return registry;
 }
 
+// The build phase answers with where its build put what it produced: one entry, its
+// question and the `failed` answer, and the path kept as its product. Each of those three is
+// required at load, and no other kind authors `failed`.
+test("an output phase declares its question, its failed answer and its product", () => {
+  const loaded = fresh()
+    .llmPhases()
+    .phases.find((p) => p.name === "build");
+  assert.equal(loaded.answer, "output");
+  assert.equal(loaded.product, "buildOutput");
+  assert.equal(loaded.question, "Where did the build put what it produced?");
+  assert.equal(loaded.failed.label, "The build failed");
+  assert.equal(typeof loaded.failed.description, "string");
+
+  for (const key of ["question", "failed", "product"]) {
+    const missing = fresh();
+    delete phaseNamed(missing, "build")[key];
+    assert.throws(
+      () => check(missing),
+      new RegExp(`answers with \`output\` but authors no \`${key}\``),
+      key
+    );
+  }
+  const listed = fresh();
+  phaseNamed(listed, "build").values = [
+    { value: "done", label: "Done", description: "built" },
+  ];
+  assert.throws(
+    () => check(listed),
+    /answers with `output` but authors `values`/
+  );
+  const valued = withValuePhase({
+    failed: { label: "Failed", description: "nothing built" },
+  });
+  assert.throws(
+    () => check(valued),
+    /answers with `value` but authors `failed` - only an `output` phase/
+  );
+  const worded = fresh();
+  phaseNamed(worded, "ask").failed = { label: "x", description: "y" };
+  assert.throws(
+    () => check(worded),
+    /answers with `words` but authors `failed`/
+  );
+  const blank = fresh();
+  delete phaseNamed(blank, "build").failed.description;
+  assert.throws(() => check(blank), /authors no `description`/);
+});
+
 // A process value is declared by the phase that asks for it, and every name a condition
 // reads from it is checked at load: a typo in either name is refused rather than read as a
 // step that never prints.
@@ -376,7 +424,7 @@ test("a process-value phase declares its values, and conditions read only those"
   phaseNamed(stray, "ask").question = "Who builds?";
   assert.throws(
     () => check(stray),
-    /answers with `words` but authors `question` - only a `value` phase/
+    /answers with `words` but authors `question` - only a `value` or `output` phase/
   );
   const twice = withValuePhase();
   phaseNamed(twice, "safety").values[1].value = "safe";

@@ -282,8 +282,8 @@ shapes:
       kind: one-of
       values: PHASE_PRODUCTS
       why: >-
-        the file this pass's agent may write for the reviewer, linked in the Review Details
-        only once it was
+        what this pass's agent may leave for the reviewer, linked in the Review Details
+        only once it did
     steps:
       kind: list
       of: mapping
@@ -296,7 +296,21 @@ shapes:
     question:
       kind: text
       why: >-
-        the question a process-value pass puts to a person, relayed as it is written
+        the question a process-value or output pass hands over, relayed as it is written
+    failed:
+      kind: object
+      noun: "`failed` answer"
+      fields:
+        label:
+          kind: text
+          required: true
+          why: what an output pass accepts back where its build produced nothing
+        description:
+          kind: text
+          required: true
+          why: when that answer applies, so the one answering can choose it
+      why: >-
+        the one answer an output pass offers besides a path, for a build that failed
     values:
       kind: entries
       shape: phase-value-entry

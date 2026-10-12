@@ -19,6 +19,7 @@
 // src/checks/escalation.js. Reuse the shared canonicalJson helper in
 // src/util/json.js rather than adding JSON utilities here.
 
+import path from "node:path";
 import {
   SEVERITY,
   SEVERITY_ORDER,
@@ -91,9 +92,10 @@ const SEV_COLOR = {
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
  *   in a source code review, and in the Review Details only once the phase that writes it
  *   recorded it (src/report/loop.js reportMeta).
- * @property {string} [buildDiffFile]  Where the build phase's agent wrote how its build
- *   differs from the shipped XPI: set by the loop (src/report/loop.js reportMeta) only
- *   once that file exists, since the reviewer may decline the build.
+ * @property {string} [buildOutput]  The file or folder the build phase's agent named as
+ *   what its build produced, inside the build copy: set by the loop (src/report/loop.js
+ *   reportMeta) only once that answer was accepted, since the reviewer may decline the
+ *   build and a build may fail.
  * @property {string} [reportFile]  Where the text the reviewer sends to the developer is
  *   written - in the work folder with the other two. Unlike them this tool WRITES it
  *   (src/report/report-file.js), which is why it is named for every review rather than
@@ -668,8 +670,9 @@ export function detailLinkLines(meta) {
 
 /**
  * The Review Details rows alone, one per path the meta names, in the block's order. The
- * whole block adds the schema line; the Build Review Details block is these rows for the
- * build's two files, so the two blocks name a file the same way.
+ * whole block adds the schema line. The Build Review Details block is these rows for the
+ * source root and the build's report and output, so the two blocks name a file the same
+ * way. BUILD_OUTPUT is named by its own basename, which is what the build called it.
  * @param {ReviewMeta} meta
  * @returns {string[]}
  */
@@ -693,8 +696,12 @@ export function detailRows(meta) {
   if (meta.buildFile) {
     rows.push(["BUILD_PROCESS", "build.md", meta.buildFile]);
   }
-  if (meta.buildDiffFile) {
-    rows.push(["BUILD_DIFF", "build-diff.md", meta.buildDiffFile]);
+  if (meta.buildOutput) {
+    rows.push([
+      "BUILD_OUTPUT",
+      displayLine(path.basename(meta.buildOutput)),
+      meta.buildOutput,
+    ]);
   }
   if (meta.reportFile) {
     rows.push(["REVIEW_REPORT", "report.md", meta.reportFile]);

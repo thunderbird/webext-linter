@@ -224,7 +224,8 @@ export const LOOP_VERBS = VERB_NAMES;
  *  over in and what the linter accepts back: `hints` is what a sweep found, a list per
  *  check; `verdict` is one of the phase's own verbs; `words` is a person's answer, theirs
  *  to write and not ours to judge; `value` is a process value, one of the phase's own
- *  `values`, which steers the review and settles no item. Named as data because the loop reads it rather than the
+ *  `values`, which steers the review and settles no item. `output` is where a build put
+ *  what it produced, a path inside the build copy, or the phase's `failed` label. Named as data because the loop reads it rather than the
  *  phase's name - a phase carries its vocabulary AND the kind of answer that vocabulary
  *  belongs to, and neither is inferred from what it is called. */
 export const ANSWER_KINDS = [
@@ -232,6 +233,7 @@ export const ANSWER_KINDS = [
   "verdict",
   "words",
   "value",
+  "output",
   "none",
   "end",
 ];
@@ -239,14 +241,15 @@ export const ANSWER_KINDS = [
 /** The answer kinds of a phase that asks about no review item: its work is what its steps
  *  do, so it is issued once. `hints` and `none` are handed back with an empty file - `hints`
  *  also reads the sweeps back on that hand-back, `none` reads nothing. `value` is handed
- *  back with its one process value. `end` is the closing phase: issued once nothing else
+ *  back with its one process value, `output` with its one path. `end` is the closing phase: issued once nothing else
  *  has work, and never handed back, because the review ends with it. */
-export const ITEMLESS_ANSWERS = ["hints", "none", "value", "end"];
+export const ITEMLESS_ANSWERS = ["hints", "none", "value", "output", "end"];
 
-/** What a phase's `product` can name: a file its agent writes for the reviewer, keyed as the
- *  state's `paths` key that holds it. Whether it was written is recorded when the phase
- *  comes back, and the Review Details block links it only then. */
-export const PHASE_PRODUCTS = ["build", "buildDiff"];
+/** What a phase's `product` can name: what its agent leaves for the reviewer, keyed as the
+ *  state's `paths` key that holds it. `build` is a file the agent writes, `buildOutput` the
+ *  file or folder an `output` phase's answer names. Whether it came back is recorded when
+ *  the phase comes back, and the Review Details block links it only then. */
+export const PHASE_PRODUCTS = ["build", "buildOutput"];
 
 /** The one fact the preparation prompts' `when:` conditions can name: whether the built
  *  add-on declares Experiments, which decides whether the first asks its reader for the

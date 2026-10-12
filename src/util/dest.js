@@ -103,10 +103,10 @@ export function runCache(work, dir) {
  * - `report`, the text the reviewer sends to the developer. The one document the linter
  *   writes itself (src/report/report-file.js).
  * - `summary`, where a sub-agent writes the add-on description, and `build`, where the
- *   agent writes what building it takes (the build-safety phase). `buildDiff` is where the
- *   build phase's agent writes the difference between its build and the shipped XPI, and
- *   `buildCopy` the copy of the source archive it builds in, never the archive itself, which
- *   the reviewer and the other agents read as submitted.
+ *   agent writes what building it takes (the build-safety phase). `buildCopy` is the copy of
+ *   the source archive the build phase's agent builds in, never the archive itself, which
+ *   the reviewer and the other agents read as submitted. What that build produces lies
+ *   inside it, wherever the build put it.
  *
  * In `.review/`:
  * - `prepare`, reserved for the preparation of a source code review. An input like `sca`,
@@ -122,7 +122,7 @@ export function runCache(work, dir) {
  * @param {string} work  The work folder, absolute.
  * @returns {{xpi: string, sca: string, rescued: string, prepare: string, state: string,
  *   review: string,
- *   report: string, summary: string, build: string, buildDiff: string, buildCopy: string,
+ *   report: string, summary: string, build: string, buildCopy: string,
  *   sweep: (artifact: string) => string}}
  */
 export function workPaths(work) {
@@ -138,7 +138,6 @@ export function workPaths(work) {
     report: at("report.md"),
     summary: at("summary.md"),
     build: at("build.md"),
-    buildDiff: at("build-diff.md"),
     buildCopy: at("build"),
     sweep: (artifact) =>
       hidden(`sweep-${String(artifact).toLowerCase()}.answers.json`),

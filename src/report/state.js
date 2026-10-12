@@ -37,9 +37,9 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   record, read by everything that asks: a step prints by it, the routing drops entries by
  *   it, the registry is read under it, and both legs of a hand-over ask it the same question.
  * @property {object} paths  The values a step names: description, build, buildCopy,
- *   buildDiff, report (all in the review's work folder, src/util/dest.js workPaths, which
+ *   report (all in the review's work folder, src/util/dest.js workPaths, which
  *   also holds this file and the review file and is not recorded: the state is read from
- *   it), schemaCache, schema, the two artifact roots
+ *   it), buildOutput once the build phase named what its build produced, schemaCache, schema, the two artifact roots
  *   (scaRoot, xpiRoot) an entry's paths are resolved against, and `sweeps` - each tree's sweep
  *   request (the text its step hands over) and answers file, by artifact, which is also
  *   what says WHICH trees this review asked about. Held here
@@ -62,8 +62,9 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   every tree answering with nothing. Written and read inside the one `accept` that
  *   starts them; what stops a second pass starting them again is `issued`.
  * @property {string[]} [products]  The `paths` keys of the phase products that came back
- *   (a phase's `product`, src/report/handback.js productWritten), recorded once as that
- *   phase is handed back.
+ *   (a phase's `product`: a file its agent wrote, src/report/handback.js productWritten,
+ *   or the path an output phase's answer named), recorded once as that phase is handed
+ *   back.
  */
 
 /**
@@ -128,5 +129,7 @@ export function readState(file) {
  *  Version 15 adds `values`, the process values a `when:` reads - a v14 review in flight
  *  would never be asked for them. Version 16 carries each tree's sweep request in
  *  `paths.sweeps` as the text its step hands over, where a v15 file names a request file
- *  that no step hands over and no review writes any more. */
-export const STATE_VERSION = 16;
+ *  that no step hands over and no review writes any more. Version 17 has the build phase
+ *  answer where its build put what it produced, kept as `paths.buildOutput`, where a v16 file
+ *  names a `paths.buildDiff` no step writes and its build phase asks nothing. */
+export const STATE_VERSION = 17;

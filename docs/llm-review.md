@@ -106,10 +106,12 @@ shown the Build Review Details block, which links that report, and chooses who b
 After an `unsafe` judgement they may also stop the review: `Abort` reports `build-unsafe`.
 Where the agent builds, it builds in a copy of the source archive, installing the
 dependencies exactly as the lock pins them (`npm ci` / `pnpm install --frozen-lockfile`),
-and writes the outcome to `BUILD_DIFF`: identical, differing (with the diff), or failed
-(with the failing step and its error, and saying so where package.json and the lock file
-disagree). The linter judges none of it; the reviewer reads the diff to answer the two
-build questions.
+and answers the `build` phase's one entry (`answer: output`) with where the build put what it
+produced: the XPI or zip file, or a folder such as `dist/`, as a path absolute or relative to
+the build copy, or the offered label `The build failed`. The linter accepts a path only where
+it exists and lies inside the build copy once links are followed, and is a file or a folder,
+and links it as `BUILD_OUTPUT`. It judges nothing else: the reviewer compares that output with
+the shipped XPI to answer the two build questions.
 
 These build steps run only where every check a build relies on ran (`build-guarded`): the
 dependency-vulnerability checks, `lockfile-injection`, `lock-foreign-source` and
@@ -318,14 +320,14 @@ what this review is and where to read it:
 | `SCA_EXP_SOURCE` | The Experiment implementation folder, when one was named |
 | `ADDON_DESCRIPTION` | Where a sub-agent wrote a description of the add-on, for reading while answering |
 | `BUILD_PROCESS` | What building the add-on takes and whether it is safe, written by the agent in `build-safety`, in a source code review |
-| `BUILD_DIFF` | How the agent's build differs from the shipped XPI - only once the `build` phase wrote it, since the reviewer may build it themselves |
+| `BUILD_OUTPUT` | What the agent's build produced, a file or a folder inside the build copy, named by its own name - only once the `build` phase named it, since the reviewer may build it themselves and a build may fail |
 | `REVIEW_REPORT` | The text the reviewer sends to the developer, written by the linter |
 
 The linter names these files and reads none of them. The description is a sub-agent's,
 returned as its reply, and the agent conducting the review is told only to write that reply
-unchanged to `ADDON_DESCRIPTION` - not to read, summarise or print it. The build report and the build diff are the agent's own, and
-the Build Review Details block names just those two, right before the build choice and the
-build questions.
+unchanged to `ADDON_DESCRIPTION` - not to read, summarise or print it. The build report and the build output are the agent's own, and
+the Build Review Details block names the source root the review read and those two, right
+before the build choice and the build questions.
 
 `REVIEW_REPORT` it writes itself: as the `details` phase goes out, where one does, so the
 reviewer can read the report while answering the questions that follow, and again from the settled review
@@ -460,8 +462,7 @@ the review sit in its hidden `.review/` folder, out of the reviewer's sight:
 | `report.md` | `REVIEW_REPORT` | the linter |
 | `summary.md` | `ADDON_DESCRIPTION` | the agent, from a sub-agent's reply |
 | `build.md` | `BUILD_PROCESS` | the agent, in `build-safety`, in a source code review |
-| `build/` | The copy of the source the agent builds in, never the archive itself | the agent, when the reviewer lets it build |
-| `build-diff.md` | `BUILD_DIFF` | the agent, after building |
+| `build/` | The copy of the source the agent builds in, never the archive itself, holding `BUILD_OUTPUT` | the agent, when the reviewer lets it build |
 | `.review/sweep-<artifact>.answers.json` | One tree's sweep answers | the agent, from a sweeping agent's reply |
 | `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again | the linter, whenever it audits |
 | `.cache/popularity.json` | The npm download counts and GitHub stars read during this run, kept the same way | the linter, whenever it judges a source's popularity |

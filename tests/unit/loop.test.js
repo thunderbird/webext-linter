@@ -487,23 +487,28 @@ test("a process value's finding is about the artifact its check reads", () => {
   assert.equal(reported.artifact, ARTIFACT_XPI);
 });
 
-// The Build Review Details block names the build's two files once they were written, by the
-// same rows the Review Details block uses, and nothing else.
-test("the build details name the build report and the diff once written", () => {
+// The Build Review Details block names the source the review read, and the build's report
+// and output once each came back, by the same rows the Review Details block uses. The output
+// is named by its own name.
+test("the build details name the source root, then the build report and output once back", () => {
   const dir = tmp();
   const { state, work } = review(dir, { sweep: false });
+  state.paths.scaRoot = path.join(dir, "rescued", "src");
   state.paths.build = path.join(dir, "build.md");
-  state.paths.buildDiff = path.join(dir, "build-diff.md");
   state.report.meta.buildFile = state.paths.build;
-  assert.equal(loopSlots(state, {}, work).buildDetails, "");
+  const root = `* SCA_ROOT: [source archive](${state.paths.scaRoot})`;
+  assert.deepEqual(loopSlots(state, {}, work).buildDetails.split("\n"), [root]);
   state.products = ["build"];
   assert.deepEqual(loopSlots(state, {}, work).buildDetails.split("\n"), [
+    root,
     `* BUILD_PROCESS: [build.md](${state.paths.build})`,
   ]);
-  state.products = ["build", "buildDiff"];
+  state.paths.buildOutput = path.join(dir, "build", "addon-1.0.xpi");
+  state.products = ["build", "buildOutput"];
   assert.deepEqual(loopSlots(state, {}, work).buildDetails.split("\n"), [
+    root,
     `* BUILD_PROCESS: [build.md](${state.paths.build})`,
-    `* BUILD_DIFF: [build-diff.md](${state.paths.buildDiff})`,
+    `* BUILD_OUTPUT: [addon-1.0.xpi](${state.paths.buildOutput})`,
   ]);
 });
 
@@ -1259,6 +1264,7 @@ const BUILDS = {
   "build-safety": "safe",
   "build-choice": "LLM builds",
   "build-choice-unsafe": "LLM builds anyway",
+  build: "The build failed",
 };
 
 function driveLoop(state, work, answer, reg = REGISTRY) {
@@ -1477,8 +1483,8 @@ function buildReview(dir) {
   made.state.run = { skip: [], sca: true, "build-guarded": true };
   made.state.paths.build = path.join(dir, "build.md");
   made.state.report.meta.buildFile = made.state.paths.build;
+  made.state.paths.scaRoot = path.join(dir, "sca");
   made.state.paths.buildCopy = path.join(dir, "r.build");
-  made.state.paths.buildDiff = path.join(dir, "r.build-diff.md");
   return made;
 }
 
@@ -1915,43 +1921,123 @@ test("an aborted review never builds", () => {
   assert.ok(!seen.includes("build"), seen.join(", "));
 });
 
-// The build phase asks about no entry, so a hand-back that adds one is answering a
-// question nobody asked.
-test("the build phase is handed back empty, or refused", () => {
-  const { state, work } = buildReview(tmp());
-  driveLoop(state, work, (phase) =>
-    phase === "verify" ? "withdrawn" : "cleared"
-  );
-  const fresh = buildReview(tmp());
-  fresh.state.phase = "build";
-  fs.mkdirSync(path.dirname(reviewFileOf(fresh.work)), { recursive: true });
-  fs.writeFileSync(
-    reviewFileOf(fresh.work),
-    JSON.stringify({ entries: [{ index: 1, answer: "x" }] })
-  );
-  assert.throws(
-    () => accept(fresh.state, fresh.work, PHASES, REGISTRY),
-    HandbackRefused
-  );
+/** A source review driven up to its build phase, which is the one in flight. */
+function atBuild(dir) {
+  const made = buildReview(dir);
+  for (let pass = 0; pass < 4; pass++) {
+    const out = issue(made.state, made.work, PHASES, REGISTRY);
+    if (out.phase.name === "build") {
+      return { ...made, out };
+    }
+    handBack(made.work, () => BUILDS[out.phase.name]);
+    accept(made.state, made.work, PHASES, REGISTRY);
+  }
+  throw new Error("the build phase was never issued");
+}
+
+// The build phase hands over one entry: where the build put what it produced, with the one
+// answer for a build that produced nothing.
+test("the build phase asks where the build put what it produced", () => {
+  const { out } = atBuild(tmp());
+  const build = PHASES.find((p) => p.name === "build");
+  assert.deepEqual(out.entries, [
+    {
+      index: "build",
+      message: "Where did the build put what it produced?",
+      answers: [
+        { label: "The build failed", description: build.failed.description },
+      ],
+      answer: null,
+    },
+  ]);
 });
 
-// The reviewer may decline the build, and then there is no diff to link. Whether there is
-// one is read when the phase comes back, so the ask hand-over and the final both say the
-// same thing.
-test("the details link the build diff only when the build phase wrote one", () => {
-  // A folder at the diff's path is not a diff the agent wrote.
-  for (const wrote of ["file", "folder", null]) {
-    const { state, work } = buildReview(tmp());
+/**
+ * The build phase handed back with `answer`, in a build copy holding what a build leaves:
+ * `dist/addon.xpi`, and beside the copy a file outside it, and inside the copy a link to
+ * that file.
+ */
+function buildAnswered(answer) {
+  const dir = fs.realpathSync(tmp());
+  const made = atBuild(dir);
+  const copy = made.state.paths.buildCopy;
+  fs.mkdirSync(path.join(copy, "dist"), { recursive: true });
+  fs.writeFileSync(path.join(copy, "dist", "addon.xpi"), "PK");
+  fs.writeFileSync(path.join(dir, "outside.xpi"), "PK");
+  fs.symlinkSync(path.join(dir, "outside.xpi"), path.join(copy, "linked.xpi"));
+  handBack(made.work, () =>
+    typeof answer === "function" ? answer(copy, dir) : answer
+  );
+  return made;
+}
+
+// A path inside the build copy, relative or absolute, file or folder, is kept as the build's
+// output and linked by its own name. The failed label keeps none.
+test("the build output is a file or folder inside the build copy, or nothing", () => {
+  for (const [answer, name] of [
+    ["dist/addon.xpi", "addon.xpi"],
+    [(copy) => path.join(copy, "dist"), "dist"],
+    ["The build failed", null],
+  ]) {
+    const { state, work } = buildAnswered(answer);
+    accept(state, work, PHASES, REGISTRY);
+    assert.ok(state.issued.includes("build"));
+    if (name === null) {
+      assert.equal(state.paths.buildOutput, undefined);
+      assert.ok(!state.products?.includes("buildOutput"));
+      assert.doesNotMatch(reviewDetails(state), /BUILD_OUTPUT/);
+      continue;
+    }
+    const at =
+      name === "dist"
+        ? path.join(state.paths.buildCopy, "dist")
+        : path.join(state.paths.buildCopy, "dist", "addon.xpi");
+    assert.equal(state.paths.buildOutput, at);
+    assert.ok(state.products.includes("buildOutput"));
+    assert.ok(
+      reviewDetails(state).includes(`* BUILD_OUTPUT: [${name}](${at})`),
+      reviewDetails(state)
+    );
+  }
+});
+
+// Anything that names nothing the build produced in its copy is refused, naming what to fix,
+// and the review stays where it was: a path outside the copy, by "..", absolutely or through
+// a link, one that does not exist, the copy itself, or no path at all.
+test("a build output outside the build copy, or missing, is refused", () => {
+  for (const [answer, refusal] of [
+    ["../outside.xpi", /is not inside the build copy/],
+    [(copy, dir) => path.join(dir, "outside.xpi"), /is not inside the build/],
+    ["linked.xpi", /is not inside the build copy/],
+    ["dist/missing.xpi", /does not exist: name the file or folder/],
+    [".", /is not inside the build copy/],
+    ["  ", /names no path and does not answer "The build failed"/],
+    [3, /names no path/],
+  ]) {
+    const { state, work } = buildAnswered(answer);
+    const before = structuredClone(state);
+    assert.throws(
+      () => accept(state, work, PHASES, REGISTRY),
+      (err) => err instanceof HandbackRefused && refusal.test(err.problem),
+      String(answer)
+    );
+    assert.deepEqual(state, before, String(answer));
+  }
+});
+
+// The reviewer may decline the build, and a build may fail, and then there is no output to
+// link. Whether there is one is settled when the phase comes back, so the ask hand-over and
+// the final both say the same thing.
+test("the details link the build output only when the build phase named one", () => {
+  for (const named of [true, false]) {
+    const { state, work } = buildAnswered(
+      named ? "dist/addon.xpi" : "The build failed"
+    );
+    accept(state, work, PHASES, REGISTRY);
     for (let pass = 0; pass < 8; pass++) {
       const out = issue(state, work, PHASES, REGISTRY);
-      if (!out || out.phase.name === "ask") {
+      if (out.phase.name === "ask") {
         break;
-      }
-      if (out.phase.name === "build" && wrote === "file") {
-        fs.writeFileSync(state.paths.buildDiff, "The build is identical.\n");
-      }
-      if (out.phase.name === "build" && wrote === "folder") {
-        fs.mkdirSync(state.paths.buildDiff);
       }
       handBack(
         work,
@@ -1961,14 +2047,15 @@ test("the details link the build diff only when the build phase wrote one", () =
       );
       accept(state, work, PHASES, REGISTRY);
     }
-    const linked = /^\* BUILD_DIFF: \[build-diff\.md\]/m;
+    const linked = /^\* BUILD_OUTPUT: \[addon\.xpi\]/m;
     const { details } = settle(state, REGISTRY);
     for (const block of [reviewDetails(state), details]) {
-      if (wrote === "file") {
+      if (named) {
         assert.match(block, linked);
       } else {
-        assert.doesNotMatch(block, /BUILD_DIFF/);
+        assert.doesNotMatch(block, /BUILD_OUTPUT/);
       }
+      assert.doesNotMatch(block, /BUILD_DIFF/);
     }
   }
 });

@@ -770,7 +770,6 @@ async function reviewSubmission(opts, work, prepared) {
   let summaryPath = null;
   let buildPath = null;
   let buildCopyPath = null;
-  let buildDiffPath = null;
   let reportPath = null;
   // Each tree's sweep request and answers file, by artifact - empty when this run sweeps
   // nothing. The keys are what says which trees were asked: a step prints for one, and
@@ -797,10 +796,9 @@ async function reviewSubmission(opts, work, prepared) {
     meta.prompting = true;
     summaryPath = skip.includes("llm-skip-summary") ? null : work.summary;
     buildPath = mode.sca ? work.build : null;
-    // The build phase's two paths, named only where it can be issued: a source code review
+    // Where the build phase builds, named only where it can be issued: a source code review
     // (its steps' `sca` condition in assets/registry.yaml).
     buildCopyPath = mode.sca ? work.buildCopy : null;
-    buildDiffPath = mode.sca ? work.buildDiff : null;
     // Ungated, unlike the two above: every review has a report, and this one is written by
     // the linter (src/report/report-file.js) rather than asked of an agent, so there is no
     // step whose absence could leave the path naming nothing.
@@ -893,7 +891,6 @@ async function reviewSubmission(opts, work, prepared) {
         description: summaryPath,
         build: buildPath,
         buildCopy: buildCopyPath,
-        buildDiff: buildDiffPath,
         report: reportPath,
         schemaCache: opts.schemaCache,
         // The two roots every reported path is relative to, so a later pass can resolve
