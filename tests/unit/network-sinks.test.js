@@ -97,6 +97,31 @@ test("a real remote http sink flags cleartext despite the loopback downgrade", (
   assert.equal(hostlike.host, "127.example.com");
 });
 
+// The host is the one a browser goes to, read with its own URL parser. A backslash ends
+// an http(s) authority, so "http://evil.example.com\\@127.0.0.1/" goes to evil.example.com
+// and must not pass as loopback. Userinfo is not the host, either way round, and every
+// IPv4 spelling of 127.0.0.1 is loopback.
+test("a destination's host is the one the browser's URL parser reads", () => {
+  for (const [url, host] of [
+    ["http://evil.example.com\\@127.0.0.1/x", "evil.example.com"],
+    ["http://127.0.0.1@evil.example.com/x", "evil.example.com"],
+  ]) {
+    const hit = one(`fetch(${JSON.stringify(url)});`);
+    assert.equal(hit.destClass, URL_CLASS.REMOTE, url);
+    assert.equal(hit.cleartext, true, url);
+    assert.equal(hit.host, host, url);
+  }
+  for (const url of [
+    "http://evil.example.com@127.0.0.1/x",
+    "http://0x7f.0.0.1/x",
+    "http://2130706433/x",
+  ]) {
+    const hit = one(`fetch(${JSON.stringify(url)});`);
+    assert.equal(hit.destClass, URL_CLASS.LOCAL, url);
+    assert.equal(hit.host, null, url);
+  }
+});
+
 // fetch(getURL(<relative>)) / img.src = getURL(<relative>) targets a packaged
 // moz-extension:// resource: a LOCAL destination (no host), never an outbound
 // transmission or exfil channel. getURL resolves the argument against the extension

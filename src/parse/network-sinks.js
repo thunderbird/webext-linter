@@ -43,8 +43,6 @@ const STYLE_URL_PROPS = new Set(["backgroundImage", "background", "cssText"]);
 
 // Non-TLS remote schemes - data sent to one of these travels unencrypted.
 const CLEARTEXT_RE = /^(?:http|ws|ftp):\/\//i;
-// The host (authority) of an absolute scheme://host URL.
-const URL_HOST_RE = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i;
 
 // XMLHttpRequest.open(method, url, ...) leads with an HTTP method, which is how
 // it is told apart from window.open(url, ...).
@@ -358,9 +356,10 @@ function urlInfo(node, bases, urlVars) {
     return worstStaticUrlInfo(values);
   }
   const prefix = bareUrl(staticPrefix(node));
-  const host = urlHost(prefix);
+  const url = parsedUrl(prefix);
+  const host = url?.host || null;
   const destClass = prefix ? classifyUrl(prefix) : URL_CLASS.DYNAMIC;
-  if (destClass.remote && isLoopback(host)) {
+  if (destClass.remote && isLoopback(url?.hostname)) {
     return LOCAL_DEST; // concat-prefix loopback ("http://127.0.0.1:" + port) too
   }
   return {
@@ -379,9 +378,10 @@ function urlInfo(node, bases, urlVars) {
  *   cleartext: boolean, host: ?string, dataAppended: boolean}}
  */
 function staticUrlInfo(url) {
-  const host = urlHost(url);
+  const parsed = parsedUrl(url);
+  const host = parsed?.host || null;
   const destClass = classifyUrl(url);
-  if (destClass.remote && isLoopback(host)) {
+  if (destClass.remote && isLoopback(parsed?.hostname)) {
     return LOCAL_DEST; // loopback never leaves the machine - not a transmission
   }
   return {
@@ -423,15 +423,19 @@ const LOCAL_DEST = {
 };
 
 /**
- * The host (authority) of an absolute scheme://host URL, or null when the value
- * has no scheme://host (a relative path, a bare fragment, a dynamic prefix that
- * stops before the host).
+ * The URL a value names, read the way a browser reads it (WHATWG URL), or null when it
+ * is not an absolute URL: a relative path, a bare fragment, a dynamic prefix that stops
+ * before the host. Its `host` is where the request goes - a hand-rolled reader of the
+ * authority disagrees with the browser on inputs like `http://evil\@127.0.0.1/`.
  * @param {string} s
- * @returns {?string}
+ * @returns {?URL}
  */
-function urlHost(s) {
-  const match = URL_HOST_RE.exec(s);
-  return match ? match[1] : null;
+function parsedUrl(s) {
+  try {
+    return new URL(s);
+  } catch {
+    return null;
+  }
 }
 
 /**
