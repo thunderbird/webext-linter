@@ -222,3 +222,63 @@ test("an unreadable cache file reads as empty", async () => {
   );
   assert.equal(fs.readFileSync(file, "utf8"), "{ not json", "nothing kept");
 });
+
+// The whole cycle for each of OSV's three endpoints: a seeded success is played through the
+// transport and kept as OSV's answer, which the next invocation reads without a request. A
+// seeded failure is played on every ask and never written.
+test("OSV: a played success is kept and read back, a played failure is never kept", async () => {
+  const ask = (net, name, id) =>
+    Promise.all([
+      net.postJson(VENDOR_OSV_API, query(`${name}-single`)),
+      net.postJson(VENDOR_OSV_BATCH_API, { queries: [query(`${name}-batch`)] }),
+      net.fetchJson(`${VENDOR_OSV_VULN_API}${id}`),
+    ]);
+  const single = { vulns: [{ id: "ID-s" }] };
+  const batched = { vulns: [{ id: "ID-b" }] };
+  const record = { id: "ID-b", summary: "advisory" };
+  const file = cacheFile({
+    [osvQueryKey(query("ok-single"))]: { fake: { status: 200, json: single } },
+    [osvBatchKey(query("ok-batch"))]: {
+      fake: { status: 200, json: { results: [batched] } },
+    },
+    [osvVulnKey("ID-b")]: { fake: { status: 200, json: record } },
+  });
+  const answers = [single, { results: [batched] }, record];
+  assert.deepEqual(
+    await ask(withOsvCache(defaultNet, file), "ok", "ID-b"),
+    answers
+  );
+  assert.deepEqual(read(file), {
+    [osvQueryKey(query("ok-single"))]: { answer: single },
+    [osvBatchKey(query("ok-batch"))]: { answer: batched },
+    [osvVulnKey("ID-b")]: { answer: record },
+  });
+  const { net: host, sent } = observed(defaultNet);
+  assert.deepEqual(await ask(withOsvCache(host, file), "ok", "ID-b"), answers);
+  assert.deepEqual(sent, [], "read back without a request");
+
+  const down = { fake: { status: 503 } };
+  const failing = {
+    [osvQueryKey(query("down-single"))]: down,
+    [osvBatchKey(query("down-batch"))]: down,
+    [osvVulnKey("ID-down")]: down,
+  };
+  const failed = cacheFile(failing);
+  const { net: again, sent: asked } = observed(defaultNet);
+  for (let run = 0; run < 2; run++) {
+    const net = withOsvCache(again, failed);
+    for (const request of [
+      () => net.postJson(VENDOR_OSV_API, query("down-single")),
+      () =>
+        net.postJson(VENDOR_OSV_BATCH_API, { queries: [query("down-batch")] }),
+      () => net.fetchJson(`${VENDOR_OSV_VULN_API}ID-down`),
+    ]) {
+      await assert.rejects(
+        request,
+        (err) => err instanceof NoAnswerError && /HTTP 503/.test(err.message)
+      );
+    }
+    assert.deepEqual(read(failed), failing, "nothing written");
+  }
+  assert.equal(asked.length, 6, "played on every ask");
+});

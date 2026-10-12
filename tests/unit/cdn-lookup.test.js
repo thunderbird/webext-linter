@@ -811,3 +811,63 @@ test("a cached hit is never asked again; only a seeded 404 stands in for a miss"
   const hit = { type: "npm", name: "lib", version: "1.0.0", file: "/x.min.js" };
   assert.equal(await lookups(hit), 0, "a hit is never asked again");
 });
+
+// The whole cycle for a hash lookup: jsDelivr's seeded hit is played through the transport
+// and kept as the hit, which the next review reads without a request. A seeded failure, or
+// a 404 (a miss), is played on every review and never written. The run's popularity memo
+// already knows the package, so the hash lookup is the only request a review makes.
+test("CDN lookup: a played success is kept and read back, a played failure is never kept", async () => {
+  const { rawSha256 } = await import("../../src/normalize/hash.js");
+  const hash = rawSha256(Buffer.from(MINIFIED));
+  const file = (dir) => path.join(dir, "jsdelivr-hash-lookup.json");
+  const hit = {
+    type: "npm",
+    name: "lib",
+    version: "1.0.0",
+    file: "/lib.min.js",
+  };
+  const review = async (cacheDir, net = defaultNet) => {
+    const addon = classify(addonWith({ "app/lib.min.js": MINIFIED }));
+    addon.vendor = { popularity: new Map([["npm:lib", true]]) };
+    await resolveCdnLibraries(addon, { net, cacheDir });
+    return addon.bundled.classified.find((c) => c.file === "app/lib.min.js");
+  };
+
+  const cacheDir = cdnCache({ [hash]: seeded({ status: 200, json: hit }) });
+  assert.deepEqual((await review(cacheDir)).libraryId, {
+    name: "lib",
+    version: "1.0.0",
+  });
+  assert.deepEqual(JSON.parse(fs.readFileSync(file(cacheDir), "utf8")), {
+    [hash]: hit,
+  });
+  const { net, sent } = observed(defaultNet);
+  assert.deepEqual((await review(cacheDir, net)).libraryId, {
+    name: "lib",
+    version: "1.0.0",
+  });
+  assert.deepEqual(sent, [], "read back without a request");
+
+  const down = cdnCache({ [hash]: seeded({ status: 503 }) });
+  const gone = cdnCache({ [hash]: seeded({ status: 404 }) });
+  const seededDown = fs.readFileSync(file(down), "utf8");
+  const seededGone = fs.readFileSync(file(gone), "utf8");
+  const { net: again, sent: asked } = observed(defaultNet);
+  for (let run = 0; run < 2; run++) {
+    await assert.rejects(review(down, again), NoAnswerError);
+    assert.equal(
+      fs.readFileSync(file(down), "utf8"),
+      seededDown,
+      "nothing written"
+    );
+    const missed = await review(gone, again);
+    assert.equal(missed.libraryId, undefined, "a miss");
+    assert.equal(missed.cdn, undefined, "a miss");
+    assert.equal(
+      fs.readFileSync(file(gone), "utf8"),
+      seededGone,
+      "nothing written"
+    );
+  }
+  assert.equal(lookupsIn(asked).length, 4, "played on every review");
+});

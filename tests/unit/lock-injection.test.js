@@ -274,3 +274,52 @@ test("an answer other than a 404 is not read as one", async () => {
     (err) => err instanceof NoAnswerError && /HTTP 503/.test(err.message)
   );
 });
+
+// The whole cycle for a registry question: the registry's seeded success is played through
+// the transport and kept as the tarball URL, which the next review reads without a request.
+// A seeded failure, or a 404 (no such release, so the entry is forged), is played on every
+// review and never written.
+test("npm registry: a played success is kept and read back, a played failure is never kept", async () => {
+  const odd = `${REG}tinylib/-/release.tgz`;
+  const addon = npmV3({
+    "node_modules/tinylib": { version: "1.2.1", resolved: odd },
+  });
+  const file = (dir) => path.join(dir, "npm-registry.json");
+
+  const cacheDir = seedRegistryCache({
+    "tinylib@1.2.1": seeded({ status: 200, json: { dist: { tarball: odd } } }),
+  });
+  assert.deepEqual(await forged(addon, { net: defaultNet, cacheDir }), []);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file(cacheDir), "utf8")), {
+    "tinylib@1.2.1": odd,
+  });
+  const { net, sent } = observed(defaultNet);
+  assert.deepEqual(await forged(addon, { net, cacheDir }), []);
+  assert.deepEqual(sent, [], "read back without a request");
+
+  const down = seedRegistryCache({ "tinylib@1.2.1": seeded({ status: 503 }) });
+  const gone = seedRegistryCache({ "tinylib@1.2.1": seeded({ status: 404 }) });
+  const seededDown = fs.readFileSync(file(down), "utf8");
+  const seededGone = fs.readFileSync(file(gone), "utf8");
+  const { net: again, sent: asked } = observed(defaultNet);
+  for (let review = 0; review < 2; review++) {
+    await assert.rejects(
+      findLockInjections(addon, { net: again, cacheDir: down }),
+      (err) => err instanceof NoAnswerError && /HTTP 503/.test(err.message)
+    );
+    assert.equal(
+      fs.readFileSync(file(down), "utf8"),
+      seededDown,
+      "nothing written"
+    );
+    assert.deepEqual(await forged(addon, { net: again, cacheDir: gone }), [
+      ["tinylib", "1.2.1", odd],
+    ]);
+    assert.equal(
+      fs.readFileSync(file(gone), "utf8"),
+      seededGone,
+      "nothing written"
+    );
+  }
+  assert.equal(asked.length, 4, "played on every review");
+});

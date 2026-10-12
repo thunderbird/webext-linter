@@ -156,3 +156,49 @@ test("a seeded answer is played through the transport and kept as an answer", as
   );
   assert.deepEqual(sent, []);
 });
+
+// The whole cycle for both hosts: a seeded success is played through the transport and kept
+// as the host's answer, which the next invocation reads without a request. A seeded failure,
+// or a 404, is played on every ask and never written.
+test("popularity: a played success is kept and read back, a played failure is never kept", async () => {
+  const file = cacheFile({
+    "npm:pkg": { fake: { status: 200, json: { downloads: 7 } } },
+    "gh:owner/repo": { fake: { status: 200, json: { stargazers_count: 7 } } },
+  });
+  const ask = async (net) => [
+    await net.fetchJson(npm("pkg")),
+    await net.fetchJson(gh("owner/repo")),
+  ];
+  const answers = [{ downloads: 7 }, { stargazers_count: 7 }];
+  assert.deepEqual(await ask(withPopularityCache(defaultNet, file)), answers);
+  assert.deepEqual(read(file), {
+    "npm:pkg": { answer: { downloads: 7 } },
+    "gh:owner/repo": { answer: { stargazers_count: 7 } },
+  });
+  const { net: host, sent } = observed(defaultNet);
+  assert.deepEqual(await ask(withPopularityCache(host, file)), answers);
+  assert.deepEqual(sent, [], "read back without a request");
+
+  const failing = {
+    "npm:down": { fake: { status: 503 } },
+    "gh:owner/down": { fake: { status: 503 } },
+    "npm:gone": { fake: { status: 404 } },
+    "gh:owner/gone": { fake: { status: 404 } },
+  };
+  const failed = cacheFile(failing);
+  const { net: again, sent: asked } = observed(defaultNet);
+  for (let run = 0; run < 2; run++) {
+    const net = withPopularityCache(again, failed);
+    for (const url of [npm("down"), gh("owner/down")]) {
+      await assert.rejects(
+        net.fetchJson(url),
+        (err) => err instanceof NoAnswerError && /HTTP 503/.test(err.message)
+      );
+    }
+    for (const url of [npm("gone"), gh("owner/gone")]) {
+      await assert.rejects(net.fetchJson(url), (err) => err.status === 404);
+    }
+    assert.deepEqual(read(failed), failing, "nothing written");
+  }
+  assert.equal(asked.length, 8, "played on every ask");
+});

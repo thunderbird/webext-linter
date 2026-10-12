@@ -38,6 +38,7 @@ import {
 import { DAY_MS } from "../../src/util/cache-age.js";
 import { codeloadZipUrl } from "../../src/util/download.js";
 import { EXPERIMENTS_REPO } from "../../src/config.js";
+import { NoAnswerError } from "../../src/util/net.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const EXPERIMENTS_FIXTURE = path.join(here, "..", "experiments-fixture");
@@ -631,4 +632,31 @@ test("experimentVerdict reads an extracted .xpi as the review would", async () =
     { invalid: false, groups: [["unsupported", false]] }
   );
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The whole cycle for the allowed-Experiments download: the host's seeded success is played
+// through the transport and written as the cached zip, which the next resolve reads without
+// a request (nothing is seeded then, so a request would be refused). A seeded failure is
+// played on every resolve and never written.
+test("experiments zip: a played success is kept and read back, a played failure is never kept", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "exp-cycle-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cached = cachedExperimentsPath(dir, "main");
+
+  seedDownload(cached, { status: 200, body: "the list zip" });
+  const first = await resolveExperimentsZip({ branch: "main", cacheDir: dir });
+  assert.deepEqual(first, { zipPath: cached, source: "download:main" });
+  assert.equal(fs.readFileSync(cached, "utf8"), "the list zip", "the copy");
+  const again = await resolveExperimentsZip({ branch: "main", cacheDir: dir });
+  assert.deepEqual(again, { zipPath: cached, source: "cache:main" });
+
+  seedDownload(cached, { status: 503 });
+  const seeded = fs.readFileSync(cached, "utf8");
+  for (let run = 0; run < 2; run++) {
+    await assert.rejects(
+      resolveExperimentsZip({ branch: "main", cacheDir: dir }),
+      (err) => err instanceof NoAnswerError && /HTTP 503/.test(err.message)
+    );
+    assert.equal(fs.readFileSync(cached, "utf8"), seeded, "nothing written");
+  }
 });

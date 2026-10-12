@@ -183,3 +183,62 @@ test("a seeded download is played through the transport and kept as an answer", 
   assert.deepEqual(await again.fetchJson(META), LISTING);
   assert.deepEqual(sent, []);
 });
+
+// The whole cycle for a body and a `?meta` listing: a seeded success is played through the
+// transport and kept as the host's answer, which the next review reads without a request. A
+// seeded failure, or a 404, is played on every ask and never written.
+test("sources: a played success is kept and read back, a played failure is never kept", async () => {
+  const dir = seedSourcesCache({
+    bytes: { [FILE]: seeded({ status: 200, body: "the source" }) },
+    meta: { [META]: seeded({ status: 200, json: LISTING }) },
+  });
+  const ask = async (net) => [
+    (await net.fetchBytes(FILE)).toString(),
+    await net.fetchJson(META),
+  ];
+  assert.deepEqual(await ask(withSourceCache(defaultNet, dir)), [
+    "the source",
+    LISTING,
+  ]);
+  const sha256 = createHash("sha256").update("the source").digest("hex");
+  assert.deepEqual(readIndex(dir), {
+    [bytesKey(FILE)]: { sha256 },
+    [listingKey(META)]: { answer: LISTING },
+  });
+  assert.equal(fs.readFileSync(path.join(dir, sha256), "utf8"), "the source");
+  const { net: host, sent } = observed(defaultNet);
+  assert.deepEqual(await ask(withSourceCache(host, dir)), [
+    "the source",
+    LISTING,
+  ]);
+  assert.deepEqual(sent, [], "read back without a request");
+
+  const down = "https://unpkg.com/x@1.0.0/down.js";
+  const gone = "https://unpkg.com/x@1.0.0/gone.js";
+  const downMeta = "https://unpkg.com/down@1.0.0/?meta";
+  const goneMeta = "https://unpkg.com/gone@1.0.0/?meta";
+  const failed = seedSourcesCache({
+    bytes: {
+      [down]: seeded({ status: 503 }),
+      [gone]: seeded({ status: 404 }),
+    },
+    meta: {
+      [downMeta]: seeded({ status: 503 }),
+      [goneMeta]: seeded({ status: 404 }),
+    },
+  });
+  const index = readIndex(failed);
+  const { net: again, sent: asked } = observed(defaultNet);
+  for (let review = 0; review < 2; review++) {
+    const net = withSourceCache(again, failed);
+    const noAnswer = (err) =>
+      err instanceof NoAnswerError && /HTTP 503/.test(err.message);
+    await assert.rejects(net.fetchBytes(down), noAnswer);
+    await assert.rejects(net.fetchJson(downMeta), noAnswer);
+    await assert.rejects(net.fetchBytes(gone), (err) => err.status === 404);
+    await assert.rejects(net.fetchJson(goneMeta), (err) => err.status === 404);
+    assert.deepEqual(readIndex(failed), index, "nothing written");
+    assert.deepEqual(fs.readdirSync(failed), ["sources.json"], "no body kept");
+  }
+  assert.equal(asked.length, 8, "played on every ask");
+});

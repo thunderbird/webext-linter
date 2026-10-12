@@ -22,7 +22,10 @@ import {
   allSchemaBranches,
   cachedZipPath,
   hasAllCachedSchemas,
+  resolveSchemaZip,
 } from "../../src/schema/fetch.js";
+import { NoAnswerError } from "../../src/util/net.js";
+import { seedDownload } from "../seed-caches.js";
 import { peekApplicationVersion } from "../../src/schema/load.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -270,5 +273,33 @@ test("the schema cache is stale once any branch is older than a day", () => {
     assert.equal(schemaCacheIsStale(dir, now), true, "one missing branch");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The whole cycle for a schema branch download: the host's seeded success is played through
+// the transport and written as the cached zip, which the next resolve reads without a
+// request (nothing is seeded then, so a request would be refused). A seeded failure is
+// played on every resolve and never written.
+test("schema zip: a played success is kept and read back, a played failure is never kept", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "schema-cycle-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const branch = "esr-mv3";
+  const cached = cachedZipPath(dir, branch);
+
+  seedDownload(cached, { status: 200, body: "the branch zip" });
+  const first = await resolveSchemaZip({ branch, cacheDir: dir });
+  assert.deepEqual(first, { zipPath: cached, source: `download:${branch}` });
+  assert.equal(fs.readFileSync(cached, "utf8"), "the branch zip", "the copy");
+  const again = await resolveSchemaZip({ branch, cacheDir: dir });
+  assert.deepEqual(again, { zipPath: cached, source: `cache:${branch}` });
+
+  seedDownload(cached, { status: 503 });
+  const seeded = fs.readFileSync(cached, "utf8");
+  for (let run = 0; run < 2; run++) {
+    await assert.rejects(
+      resolveSchemaZip({ branch, cacheDir: dir }),
+      (err) => err instanceof NoAnswerError && /HTTP 503/.test(err.message)
+    );
+    assert.equal(fs.readFileSync(cached, "utf8"), seeded, "nothing written");
   }
 });

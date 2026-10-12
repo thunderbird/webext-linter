@@ -189,3 +189,35 @@ test("npmNameForLibrary maps dispensary aliases and passes others through", () =
   assert.equal(npmNameForLibrary("bootstrap"), "bootstrap");
   assert.equal(npmNameForLibrary("dompurify"), "dompurify");
 });
+
+// The whole cycle for the hash DB download: the host's seeded success is played through the
+// transport and written as the cached DB, which the next resolve reads without a request
+// (nothing is seeded then, so a request would be refused). A seeded failure is played on
+// every resolve and never written.
+test("hash DB: a played success is kept and read back, a played failure is never kept", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "libhash-cycle-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cached = cachedHashesPath(dir);
+  const db = `${H} lib.2.0.0.lib.js\n`;
+
+  seedDownload(cached, { status: 200, body: db });
+  assert.deepEqual(await resolveLibraryHashes({ cacheDir: dir }), {
+    text: db,
+    source: "download",
+  });
+  assert.equal(fs.readFileSync(cached, "utf8"), db, "the copy");
+  assert.deepEqual(await resolveLibraryHashes({ cacheDir: dir }), {
+    text: db,
+    source: "cache",
+  });
+
+  seedDownload(cached, { status: 503 });
+  const seeded = fs.readFileSync(cached, "utf8");
+  for (let run = 0; run < 2; run++) {
+    await assert.rejects(
+      resolveLibraryHashes({ cacheDir: dir }),
+      (err) => err instanceof NoAnswerError && /HTTP 503/.test(err.message)
+    );
+    assert.equal(fs.readFileSync(cached, "utf8"), seeded, "nothing written");
+  }
+});
