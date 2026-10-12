@@ -21,9 +21,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import semver from "semver";
 import YAML from "yaml";
 
-import { parseVersion, cmpVersion, asArray } from "./util.js";
+import { asArray } from "./util.js";
 import { npmNameForLibrary } from "./library-hashes.js";
 
 /**
@@ -81,7 +82,9 @@ export function parseLibraryBlocks(text) {
  * Whether a (name, version) is disallowed by the policy: banned when the version is
  * strictly below `banned_below`, else unadvised when below `unadvised_below`, else
  * null. The name is normalised to its npm package (so a dispensary "angularjs"
- * matches an "angular" entry); an unparseable version or threshold never matches.
+ * matches an "angular" entry). Both sides are read as semver, coerced so a bundled
+ * "v1.5" or "4.0rc1" still compares, with a prerelease kept so "3.0.0-rc1" is below
+ * "3.0.0". A version or threshold that does not coerce never matches.
  * @param {?Map<string, LibraryBlock>} blocks
  * @param {string} name  Library name (dispensary or npm).
  * @param {string} version  The bundled/pinned version.
@@ -95,19 +98,27 @@ export function matchLibraryBlock(blocks, name, version) {
   if (!entry) {
     return null;
   }
-  const v = parseVersion(String(version).replace(/^v/i, ""));
+  const v = coerce(version);
   if (!v) {
     return null;
   }
-  const banned = entry.bannedBelow ? parseVersion(entry.bannedBelow) : null;
-  if (banned && cmpVersion(v, banned) < 0) {
+  const banned = coerce(entry.bannedBelow);
+  if (banned && semver.lt(v, banned)) {
     return { status: "banned", reason: entry.reason };
   }
-  const unadvised = entry.unadvisedBelow
-    ? parseVersion(entry.unadvisedBelow)
-    : null;
-  if (unadvised && cmpVersion(v, unadvised) < 0) {
+  const unadvised = coerce(entry.unadvisedBelow);
+  if (unadvised && semver.lt(v, unadvised)) {
     return { status: "unadvised", reason: entry.reason };
   }
   return null;
+}
+
+/**
+ * @param {?string} version
+ * @returns {?import("semver").SemVer}
+ */
+function coerce(version) {
+  return version == null
+    ? null
+    : semver.coerce(String(version), { includePrerelease: true });
 }

@@ -11,6 +11,8 @@
 // what a parser could do with it). Does NOT belong here: fetching/comparing/popularity
 // (-> src/vendor/verify.js), or the finding/manual routing (-> the check).
 
+import semver from "semver";
+
 import { VENDOR_TRUSTED_HOSTS } from "../config.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 import { isVersion } from "../lib/util.js";
@@ -48,7 +50,8 @@ const UNTRUSTED = Object.freeze({
 });
 
 /**
- * A pinned git ref: a version tag (isVersion) or a full 40-hex commit SHA.
+ * A pinned git ref: a version tag (isVersion, since a tag need not be semver) or a full
+ * 40-hex commit SHA.
  * @param {string} ref
  * @returns {boolean}
  */
@@ -175,6 +178,9 @@ export function classifySource(url) {
 }
 
 /**
+ * An npm source is pinned only by one full semver release, the way npm reads a version.
+ * A partial version (`@3`, `@3.6`), an x-range (`@1.x`) or a dist-tag (`@latest`) is
+ * resolved by the host to whatever release is newest, so it can change after review.
  * @param {string} pkg @param {?string} version @param {string} rawUrl
  * @returns {VendorSource}
  */
@@ -186,7 +192,7 @@ function npm(pkg, version, rawUrl) {
     pkg,
     version: version ?? null,
     rawUrl,
-    pinned: Boolean(version) && version !== "latest" && isVersion(version),
+    pinned: Boolean(version) && semver.valid(version) !== null,
   };
 }
 

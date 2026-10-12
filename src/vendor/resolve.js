@@ -18,6 +18,8 @@
 // deterministic VENDOR parse (-> src/normalize/vendor.js), lock parsing (->
 // src/vendor/locks.js), and URL classification (-> src/vendor/sources.js).
 
+import semver from "semver";
+
 import { readVendorDeclarations, readVendorFile } from "../normalize/vendor.js";
 import { classifySource } from "./sources.js";
 import {
@@ -111,8 +113,15 @@ import {
  *   Read by the banned-library check.
  */
 
-// An exact semver (no range operators) - a concrete pinned version.
-const EXACT = /^v?\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/;
+/**
+ * The one release a dependency spec names, or null for a range or a tag. Read loosely,
+ * as npm itself reads a spec, so `=1.2.3` and `v1.2.3` are the exact release `1.2.3`.
+ * @param {string} spec
+ * @returns {?string}
+ */
+function exactVersion(spec) {
+  return semver.valid(spec, { loose: true });
+}
 
 /**
  * Whether a packaged file is vendored: an exact VENDOR-file entry, or a file under
@@ -480,12 +489,9 @@ function classifyDeps(deps, addon, file) {
     // and the audited release are all the target's, while a finding has to quote the
     // spelling in the file or it names a declaration nobody can find.
     const target = installs ?? { name, spec };
-    if (EXACT.test(target.spec)) {
-      packages.push({
-        name: target.name,
-        version: target.spec.replace(/^v/, ""),
-        file,
-      });
+    const exact = exactVersion(target.spec);
+    if (exact) {
+      packages.push({ name: target.name, version: exact, file });
     } else if (/[:/]/.test(target.spec)) {
       // A non-registry spec. A GitHub source is allowed; every other source
       // (file:/link:/workspace:/tarball/non-github git) is not supported and is rejected

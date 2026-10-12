@@ -37,9 +37,10 @@
 // verifying the declared source is verifyVendor (src/vendor/verify.js) and the vendor
 // checks. This file makes no verdict.
 
+import semver from "semver";
+
 import { basename, dirname } from "../util/files.js";
 import { trimEndOf, trimStartOf } from "../util/text.js";
-import { isVersion } from "../lib/util.js";
 import { withExperiment } from "../addon/store.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 
@@ -196,9 +197,10 @@ function isDirSource(url) {
   // packages under `/npm/`, which is not part of the name either way.
   const named = segs[0] === "npm" ? segs.slice(1) : segs;
   const pkg = named[0]?.startsWith("@") ? named[1] : named[0];
-  // Only the LAST "@" can start a version: the version itself never holds one.
+  // Only the LAST "@" can start a version: the version itself never holds one. Pinned
+  // means one full semver release, the rule an npm file source is held to as well.
   const at = (pkg ?? "").lastIndexOf("@");
-  return at !== -1 && isVersion(pkg.slice(at + 1));
+  return at !== -1 && semver.valid(pkg.slice(at + 1)) !== null;
 }
 
 // The hosts that serve an npm package's published files, and therefore name a

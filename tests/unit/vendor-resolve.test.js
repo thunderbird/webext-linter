@@ -361,6 +361,31 @@ test("resolveVendor classifies package.json deps by source", async () => {
   );
 });
 
+// A spec is read the way npm reads it: `=1.2.3`, `v1.2.3` and `01.2.3` all name the exact
+// release 1.2.3, and the normalised version is what gets audited.
+test("resolveVendor reads an exact spec as npm does", async () => {
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({
+      dependencies: {
+        eq: "=1.2.3",
+        vee: "v1.2.3",
+        zero: "01.2.3",
+        part: "1.2",
+      },
+    }),
+  });
+  const v = await resolveVendor({ addon });
+  assert.deepEqual(v.packages, [
+    { name: "eq", version: "1.2.3", file: "package.json" },
+    { name: "vee", version: "1.2.3", file: "package.json" },
+    { name: "zero", version: "1.2.3", file: "package.json" },
+  ]);
+  assert.deepEqual(
+    v.unlocked.map((u) => u.name),
+    ["part"]
+  );
+});
+
 // A built XPI classifies its production `dependencies` only. An optionalDependency
 // usually declares a platform-specific binary, not anything the add-on ships, so it is not
 // held to a release.

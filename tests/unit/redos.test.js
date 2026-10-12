@@ -15,6 +15,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import AdmZip from "adm-zip";
+import semver from "semver";
 
 import {
   trimStartOf,
@@ -185,18 +186,30 @@ test("versions: isVersion is linear and accepts exactly what the old pattern did
   assertSame(samples(parts), isVersion, (s) => VERSION.test(s));
 });
 
-test("versions: npm and GitHub pins are judged as before", () => {
+// An npm pin is one full semver release, as npm reads it. A GitHub tag need not be semver,
+// so a ref keeps the old version-tag pattern.
+test("versions: npm pins follow semver and GitHub pins are judged as before", () => {
   const npm = (v) =>
     classifySource(`https://unpkg.com/lib@${encodeURIComponent(v)}/dist/a.js`)
       .pinned;
   assertLinear((n) => npm(`1${".1".repeat(n / 2)}!`));
-  const VERSION = /^v?\d+(\.\d+)*([.-][0-9a-z.-]+)?$/i;
   const parts = ["v", "1", "0", ".", "-", "a", "!"];
   assertSame(
-    samples(parts).filter((v) => v && v !== "latest"),
+    samples(parts).filter(Boolean),
     (v) => classifySource(`https://unpkg.com/lib@${v}/dist/a.js`).pinned,
-    (v) => VERSION.test(v)
+    (v) => semver.valid(v) !== null
   );
+  for (const [v, pinned] of [
+    ["1.0.0", true],
+    ["v1.0.0", true],
+    ["1.0.0-a.1", true],
+    ["1.0", false],
+    ["1", false],
+    ["1.0.0.0", false],
+    ["4.0rc1", false],
+  ]) {
+    assert.equal(npm(v), pinned, v);
+  }
   const GIT_REF = /^(v?\d+(\.\d+)*([.-][0-9a-z.-]+)?|[0-9a-f]{40})$/i;
   const sha = "0123456789abcdef0123456789abcdef01234567";
   for (const ref of [

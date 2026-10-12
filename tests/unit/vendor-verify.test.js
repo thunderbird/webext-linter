@@ -115,6 +115,19 @@ test("classifySource rejects untrusted hosts, non-https, and mutable refs", asyn
   assert.equal(classifySource("https://unpkg.com/foo/x.js").pinned, false);
 });
 
+// An npm source is pinned only by one full semver release: a partial version or an x-range
+// is served as the newest matching release, which can change after review.
+test("classifySource leaves a partial or ranged npm version unpinned", async () => {
+  for (const v of ["3", "3.6", "1.x", "latest"]) {
+    const s = classifySource(`https://unpkg.com/x@${v}/dist/x.js`);
+    assert.deepEqual([s.trusted, s.pinned, s.version], [true, false, v], v);
+  }
+  assert.equal(
+    classifySource("https://unpkg.com/x@3.6.0/dist/x.js").pinned,
+    true
+  );
+});
+
 test("classifySource recognizes an npm-registry tarball (whole-package source)", async () => {
   const t = classifySource(
     "https://registry.npmjs.org/ical.js/-/ical.js-2.2.1.tgz"

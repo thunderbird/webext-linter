@@ -77,6 +77,17 @@ test("matchLibraryBlock: normalizes a dispensary alias (angularjs -> angular) an
   assert.equal(matchLibraryBlock(blocks, "angularjs", "1.5.9"), null);
 });
 
+test("matchLibraryBlock: a prerelease of the bound is below it", async () => {
+  const blocks = parseLibraryBlocks(
+    `- name: jquery\n  banned_below: "3.0.0"\n  reason: "R"`
+  );
+  assert.equal(
+    matchLibraryBlock(blocks, "jquery", "3.0.0-rc1").status,
+    "banned"
+  );
+  assert.equal(matchLibraryBlock(blocks, "jquery", "3.0.0"), null);
+});
+
 test("matchLibraryBlock: unknown name, unparseable version, and empty policy never match", async () => {
   const blocks = parseLibraryBlocks(
     `- name: jquery\n  banned_below: "3.0.0"\n  reason: "R"`
