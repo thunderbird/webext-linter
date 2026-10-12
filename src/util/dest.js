@@ -88,6 +88,11 @@ export function runCache(work, dir) {
 /**
  * Every name a review uses inside its work folder, as absolute paths.
  *
+ * The top of the folder is what the reviewer reads: the trees, the report and what the
+ * agents write for the reviewer. The files the linter and its agent pass between them to
+ * run the review sit in a hidden `.review/` folder inside it, out of the reviewer's sight.
+ *
+ * At the top:
  * - `xpi`, the shipped add-on, extracted or copied there by the linter (src/addon/load.js),
  *   so every reader - the checks, a reviewer, an agent - reads one unpacked tree.
  * - `sca`, where the source archive is extracted when the review is prepared. An INPUT to
@@ -95,11 +100,6 @@ export function runCache(work, dir) {
  * - `rescued`, the preparation's copy of that source, made where its lock needs a rescue
  *   (src/prepare/steps.js). An input like `sca`: the review reads it when the rescue came
  *   out clean, and never writes it.
- * - `prepare`, reserved for the preparation of a source code review. An input like `sca`,
- *   so no review claims it.
- * - `state`, the linter's own record of the review, and `review`, the file it hands the
- *   agent one phase at a time. A pass is handed back with the work folder (--llm-handback,
- *   src/cli.js), and finds both in it by these names.
  * - `report`, the text the reviewer sends to the developer. The one document the linter
  *   writes itself (src/report/report-file.js).
  * - `summary`, where a sub-agent writes the add-on description, and `build`, where the
@@ -107,6 +107,13 @@ export function runCache(work, dir) {
  *   build phase's agent writes the difference between its build and the shipped XPI, and
  *   `buildCopy` the copy of the source archive it builds in, never the archive itself, which
  *   the reviewer and the other agents read as submitted.
+ *
+ * In `.review/`:
+ * - `prepare`, reserved for the preparation of a source code review. An input like `sca`,
+ *   so no review claims it.
+ * - `state`, the linter's own record of the review, and `review`, the file it hands the
+ *   agent one phase at a time. A pass is handed back with the work folder (--llm-handback,
+ *   src/cli.js), and finds both in it by these names.
  * - `sweep`, one sweeping agent's request and answers, per artifact it is asked about. A
  *   FUNCTION, because how many there are is the review's answer and not this module's: an
  *   XPI review has one tree with sweeps and a source review may have two, and a fixed pair
@@ -119,13 +126,14 @@ export function runCache(work, dir) {
  */
 export function workPaths(work) {
   const at = (name) => path.join(work, name);
+  const hidden = (name) => path.join(work, ".review", name);
   return {
     xpi: at("xpi"),
     sca: at("sca"),
     rescued: at("rescued"),
-    prepare: at("prepare.json"),
-    state: at("state.json"),
-    review: at("review.json"),
+    prepare: hidden("prepare.json"),
+    state: hidden("state.json"),
+    review: hidden("review.json"),
     report: at("report.md"),
     summary: at("summary.md"),
     build: at("build.md"),
@@ -134,8 +142,8 @@ export function workPaths(work) {
     sweep: (artifact) => {
       const tag = String(artifact).toLowerCase();
       return {
-        request: at(`sweep-${tag}.yaml`),
-        answers: at(`sweep-${tag}.answers.json`),
+        request: hidden(`sweep-${tag}.yaml`),
+        answers: hidden(`sweep-${tag}.answers.json`),
       };
     },
   };

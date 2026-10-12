@@ -33,8 +33,8 @@ The agent opens ONE file, ever: the review file the prompt names. It fills in ea
 entry's empty `"answer"` and hands the review's work folder back - the command is in the
 prompt. Everything the linter needs between passes is in a state file beside it that the
 agent is never pointed at, which is why `--llm-handback` takes no add-on path: the
-deterministic review ran once, and nothing re-derives it. Both files sit in the review's work folder,
-with every other file the review names (see [Where a review's files go](#where-a-reviews-files-go)).
+deterministic review ran once, and nothing re-derives it. Both files sit in the hidden `.review/`
+folder of the review's work folder (see [Where a review's files go](#where-a-reviews-files-go)).
 
 Each prompt is assembled from the same layers, so a pass never has to be read as a
 special case: a preamble on the first pass only (what is about to happen - left out where
@@ -232,14 +232,14 @@ gets two files of its own rather than reporting through the orchestrating agent:
 
 | | Written by | Format | Read back by |
 | --- | --- | --- | --- |
-| `sweep-<artifact>.yaml` | the linter | YAML - the prose is the bulk of it | nobody |
-| `sweep-<artifact>.answers.json` | the sweeping agent | JSON - one quoting rule, where a hint holding `http://host: thing` would break YAML | the linter |
+| `.review/sweep-<artifact>.yaml` | the linter | YAML - the prose is the bulk of it | nobody |
+| `.review/sweep-<artifact>.answers.json` | the sweeping agent | JSON - one quoting rule, where a hint holding `http://host: thing` would break YAML | the linter |
 
 The request stands alone, because the agent is handed a path and nothing else:
 
 ```yaml
 sweepTarget: /reviews/addon-1.2-<timestamp>/xpi/
-answerFile: /reviews/addon-1.2-<timestamp>/sweep-xpi.answers.json
+answerFile: /reviews/addon-1.2-<timestamp>/.review/sweep-xpi.answers.json
 instructions: |-
   This file holds 2 separate sweeps, listed under "sweeps" below. ...
 sweeps:
@@ -384,8 +384,8 @@ that has one, it settles the root itself before reading anything (`src/addon/sca
 and says so in its Setup feed.
 
 The reader hands the two back in the work folder's review file (`ANSWERS`, the same
-`review.json` a review pass uses) and runs `--llm-handback` on the folder. The preparation's
-own record, `prepare.json`, says where it stands, so every step is that one command; the
+`.review/review.json` a review pass uses) and runs `--llm-handback` on the folder. The preparation's
+own record, `.review/prepare.json`, says where it stands, so every step is that one command; the
 reader never chooses what comes next. A root outside `sca/`, or an Experiment folder outside
 the root, is refused, and the reader corrects the file and hands it back again.
 
@@ -439,35 +439,37 @@ too many formats for it to open, which is why that one extraction is the reader'
 ## Where a review's files go
 
 Every file a review creates - the linter's own, and each one an agent it instructs writes -
-lives in one **work folder**, under a name that is the same in every review:
+lives in one **work folder**, under a name that is the same in every review. The top of the
+folder is what the reviewer reads. The files the linter and its agent pass between them to run
+the review sit in its hidden `.review/` folder, out of the reviewer's sight:
 
 | Name | What it is | Written by |
 | --- | --- | --- |
 | `xpi/` | The shipped add-on, extracted (or, for an unpacked one, copied): `XPI_ROOT` | the linter, as the review starts |
 | `sca/` | The source archive, extracted: `EXTRACT_TO`, holding `SCA_ROOT` | the reader of the `--llm-sca-review` prompt |
 | `rescued/` | The copy of the source a rescue works in (`RESCUE_ROOT` lies inside it), reviewed instead when the rescue comes out clean, and removed when it is given up | the linter, and the reader of the rescue's steps |
-| `prepare.json` | Where the preparation of a source code review stands, and how its review is to be run - read-only, and hashed | the linter, at each step of the preparation |
-| `state.json` | The review itself, which every pass reads | the linter |
-| `review.json` | The file the agent fills in and hands back (`ANSWERS` while a source code review is prepared) | the linter, each pass |
+| `.review/prepare.json` | Where the preparation of a source code review stands, and how its review is to be run - read-only, and hashed | the linter, at each step of the preparation |
+| `.review/state.json` | The review itself, which every pass reads | the linter |
+| `.review/review.json` | The file the agent fills in and hands back (`ANSWERS` while a source code review is prepared) | the linter, each pass |
 | `report.md` | `REVIEW_REPORT` | the linter |
 | `summary.md` | `ADDON_DESCRIPTION` | a sub-agent |
 | `build.md` | `BUILD_PROCESS` | the agent, in `build-safety`, in a source code review |
 | `build/` | The copy of the source the agent builds in, never the archive itself | the agent, when the reviewer lets it build |
 | `build-diff.md` | `BUILD_DIFF` | the agent, after building |
-| `sweep-<artifact>.yaml` and `sweep-<artifact>.answers.json` | One tree's sweep request and answers | the linter, and a sweeping agent |
+| `.review/sweep-<artifact>.yaml` and `.review/sweep-<artifact>.answers.json` | One tree's sweep request and answers | the linter, and a sweeping agent |
 | `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again | the linter, whenever it audits |
 | `.cache/popularity.json` | The npm download counts and GitHub stars read during this run, kept the same way | the linter, whenever it judges a source's popularity |
 
 The folder is always `<add-on name>-<timestamp>` beside the add-on argument, named by the
 run that starts the review: no flag names another. It must not exist: the run that starts a
 review creates it, and an existing work folder is carried on by `--llm-handback` alone. The one review that starts in a folder already there is the one a preparation's
-hand-back starts, in the folder that holds `prepare.json` and `sca/`. There every name the
+hand-back starts, in the folder that holds `.review/prepare.json` and `sca/`. There every name the
 review will create is checked to be free - `--llm-review` claims every name above except
-`sca/` and `prepare.json`, since the agents it instructs write the rest later - and a name
+`sca/` and `.review/prepare.json`, since the agents it instructs write the rest later - and a name
 already there ends the run with exit 2, naming it. A start that fails before the review exists
 (a schema fetch that gets no answer, an audit that ends the review, an Experiment the command
 does not say how to read) removes what it created, so it can be run again. The `--llm-handback`
-passes rewrite `state.json`, `review.json` and `report.md` as the review moves on.
+passes rewrite `.review/state.json`, `.review/review.json` and `report.md` as the review moves on.
 
 `--sca-root` must not include the add-on: the source is reviewed where it is, so the shipped
 XPI, and the work folder created beside it, would be read as files of the source. Extract the
@@ -481,7 +483,7 @@ The caches are not part of it: they stay in `WEBEXT-LINTER-CACHE/`.
 | Option | Description |
 | --- | --- |
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Refused with `--report-format json`. |
-| `--llm-handback <dir>` | Take a phase back and hand out the next, from the review file in the work folder the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file in that folder. On a folder a source code review is being prepared in (`prepare.json`, and no review started), take the next step of the preparation instead, and once it is done, start its review. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person. |
+| `--llm-handback <dir>` | Take a phase back and hand out the next, from the review file in the work folder the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file in that folder. On a folder a source code review is being prepared in (`.review/prepare.json`, and no review started), take the next step of the preparation instead, and once it is done, start its review. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - and print the first prompt for preparing a source code review of it. It creates the review's work folder beside the `.xpi`, records there how the review is to be run, and its prompt ends in `--llm-handback` on that folder (see [Preparing a source code review](#preparing-a-source-code-review)). Refused beside any `--sca-*` flag, which is what the preparation works out. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
 | `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted early, which takes them out. The two build questions are still asked. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |

@@ -1047,8 +1047,9 @@ function claimedNames(work, llmReview) {
  * work nobody asked to discard.
  * @param {string} dir  The work folder, absolute.
  * @param {string[]} names  claimedNames' answer.
- * @returns {{dir: string, names: string[], created: ?string}}  What releaseWorkFolder needs
- *   to give it back: the names, and the outermost folder this call created, if any.
+ * @returns {{dir: string, names: string[], inner: string[], created: ?string}}  What
+ *   releaseWorkFolder needs to give it back: the names, the folders inside the work folder
+ *   they live in that were not there yet, and the outermost folder this call created, if any.
  */
 function claimWorkFolder(dir, names) {
   let created;
@@ -1068,25 +1069,37 @@ function claimWorkFolder(dir, names) {
   }
   const taken = names.filter(onDisk);
   if (taken.length) {
-    const listed = taken.map((p) => `"${path.basename(p)}"`).join(", ");
+    const listed = taken.map((p) => `"${path.relative(dir, p)}"`).join(", ");
     throw new Error(
       `The work folder "${dir}" already holds ${listed}, which this review would ` +
         "create. Nothing in a work folder is overwritten: remove what is there, and hand " +
         "the folder back again."
     );
   }
-  return { dir, names, created: created ?? null };
+  // The folders inside it that the claimed names live in (`.review/`) and that are not
+  // there yet: the review creates them as it writes, so they are this run's to give back.
+  const inner = [...new Set(names.map((p) => path.dirname(p)))].filter(
+    (folder) => folder !== dir && !onDisk(folder)
+  );
+  return { dir, names, inner, created: created ?? null };
 }
 
 /**
  * Give back what claimWorkFolder took, for a run that failed before its review existed:
  * every claimed name - each was free when it was claimed, so whatever is there now this run
- * created - and the folders the claim created, while they are empty.
- * @param {{dir: string, names: string[], created: ?string}} claim
+ * created - and the folders the claim created or found missing, while they are empty.
+ * @param {{dir: string, names: string[], inner: string[], created: ?string}} claim
  */
-function releaseWorkFolder({ dir, names, created }) {
+function releaseWorkFolder({ dir, names, inner, created }) {
   for (const name of names) {
     fs.rmSync(name, { recursive: true, force: true });
+  }
+  for (const folder of inner) {
+    try {
+      fs.rmdirSync(folder);
+    } catch (err) {
+      rethrowIfFatal(err);
+    }
   }
   if (!created) {
     return;

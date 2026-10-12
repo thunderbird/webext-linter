@@ -191,6 +191,7 @@ export function writeSweepFiles(files, preSweep, trees) {
   const written = {};
   for (const [artifact, sweeps] of byArtifact) {
     const paths = files.sweep(artifact);
+    fs.mkdirSync(path.dirname(paths.request), { recursive: true });
     fs.writeFileSync(
       paths.request,
       sweepRequest({

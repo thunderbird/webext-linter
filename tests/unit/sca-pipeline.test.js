@@ -24,7 +24,7 @@ import {
   seedCdnHits,
   seedWorkCache,
 } from "../seed-caches.js";
-import { defaultWorkFolder } from "../../src/util/dest.js";
+import { defaultWorkFolder, workPaths } from "../../src/util/dest.js";
 import { advisory, auditEntries, realPreparation } from "../prepared.js";
 
 // A cache pre-seeded from the fixtures so the schema / experiments / library-hash
@@ -678,9 +678,7 @@ test("an SCA --llm-review records whether its build is guarded", async () => {
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
-    const { run } = JSON.parse(
-      fs.readFileSync(path.join(work, "state.json"), "utf8")
-    );
+    const { run } = JSON.parse(fs.readFileSync(workPaths(work).state, "utf8"));
     return run["build-guarded"] === true;
   };
   try {

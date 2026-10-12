@@ -120,6 +120,9 @@ function run(args) {
   );
 }
 
+/** The work folder a review file is in: the parent of its `.review/` folder. */
+const workOfReviewFile = (file) => path.dirname(path.dirname(file));
+
 /** The default work folder a review of `addon` created beside it: the one folder there
  *  named after it and a moment. */
 function defaultFolderOf(addon) {
@@ -1103,7 +1106,7 @@ test("a failure building the next pass ends it cleanly, not with a stack trace",
   sweepBack(file);
   const before = fs.readFileSync(stateFile, "utf8");
 
-  const out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
+  const out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
   assert.equal(out.code, 2);
   assert.match(out.stderr, /orphan\.js/, "the error's own message");
   assert.match(out.stderr, /verify failed/);
@@ -1348,7 +1351,7 @@ test("a hand-back pass reports a case in the band its review recorded", () => {
     );
     doc.entries = doc.entries.map((e) => ({ ...e, answer: "reported" }));
     fs.writeFileSync(file, JSON.stringify(doc));
-    return run(["--llm-handback", path.dirname(file)]);
+    return run(["--llm-handback", workOfReviewFile(file)]);
   };
   const plain = settle();
   assert.equal(plain.code, 0, plain.stdout + plain.stderr);
@@ -1686,7 +1689,11 @@ test("a swept case becomes an item of its check and settles like any other", () 
   });
 
   // The next pass carries it as a case of its own check, with its locus and its hint.
-  const second = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
+  const second = run([
+    "--llm-handback",
+    workOfReviewFile(file),
+    ...OFFLINE_FLAGS,
+  ]);
   assert.equal(second.code, 0, second.stderr);
   const next = JSON.parse(fs.readFileSync(file, "utf8"));
   const swept = next.entries.find((e) => e.ruleId === "data-exfiltration");
@@ -1698,13 +1705,13 @@ test("a swept case becomes an item of its check and settles like any other", () 
   // sweeping agent's, which never leave the hint.
   next.entries = next.entries.map((e) => ({ ...e, answer: "reported" }));
   fs.writeFileSync(file, JSON.stringify(next, null, 1));
-  let out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
+  let out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
   // Every prompt but the closing one ends on the command that hands it back.
   while (/^\s+node verify\.js --llm-handback /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries = doc.entries.map((e) => ({ ...e, answer: "Clear" }));
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
-    out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
+    out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
   }
   assert.equal(out.code, 1, out.stderr);
   // The invariant clause, not the subject: what the response calls the data (user data,
@@ -1745,7 +1752,11 @@ test("a swept case of a check that files findings is verified like one", () => {
 
   // It arrives in VERIFY, as a finding: a locus and the agent's hint, and no `instructions`
   // - a finding carries no question, because it is a claim to be audited.
-  const second = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
+  const second = run([
+    "--llm-handback",
+    workOfReviewFile(file),
+    ...OFFLINE_FLAGS,
+  ]);
   assert.equal(second.code, 0, second.stderr);
   assert.match(second.stdout, /Verify every entry in ONE pass/);
   const verify = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -1763,13 +1774,13 @@ test("a swept case of a check that files findings is verified like one", () => {
   // Confirmed, it reaches the developer worded by the OWNING check - never by the sweep.
   verify.entries = verify.entries.map((e) => ({ ...e, answer: "reported" }));
   fs.writeFileSync(file, JSON.stringify(verify, null, 1));
-  let out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
+  let out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
   // Every prompt but the closing one ends on the command that hands it back.
   while (/^\s+node verify\.js --llm-handback /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries = doc.entries.map((e) => ({ ...e, answer: "Clear" }));
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
-    out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
+    out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
   }
   const report = reportOf(out.stdout);
   assert.match(report, /Data is sent over an unencrypted connection/);
@@ -1829,12 +1840,13 @@ function commandOf(stdout) {
     .filter(Boolean);
 }
 
-/** The work folder a first prompt created: the folder its ANSWERS file is in. */
-const workOf = (stdout) => path.dirname(headerValue(stdout, "ANSWERS"));
+/** The work folder a first prompt created: the one its ANSWERS file is in, in `.review/`. */
+const workOf = (stdout) =>
+  path.dirname(path.dirname(headerValue(stdout, "ANSWERS")));
 
-/** A work folder's JSON file, read back. */
+/** A work folder's JSON file, by its workPaths name, read back. */
 const readJson = (work, name) =>
-  JSON.parse(fs.readFileSync(path.join(work, name), "utf8"));
+  JSON.parse(fs.readFileSync(workPaths(work)[name], "utf8"));
 
 /**
  * Do what the first prompt asks, the way its reader would: extract the source into
@@ -1906,7 +1918,8 @@ test("--llm-sca-review creates the work folder and hands it back", () => {
     .filter((n) => /^addon-\d{4}-\d{2}-\d{2}T[\d-]+Z$/.test(n));
   assert.equal(made.length, 1, "one work folder, beside the .xpi");
   const work = path.join(dir, made[0]);
-  assert.deepEqual(fs.readdirSync(work).sort(), [
+  assert.deepEqual(fs.readdirSync(work), [".review"]);
+  assert.deepEqual(fs.readdirSync(path.join(work, ".review")).sort(), [
     "prepare.json",
     "review.json",
   ]);
@@ -1914,11 +1927,8 @@ test("--llm-sca-review creates the work folder and hands it back", () => {
     headerValue(r.stdout, "EXTRACT_TO"),
     `${path.join(work, "sca")}${path.sep}`
   );
-  assert.equal(
-    headerValue(r.stdout, "ANSWERS"),
-    path.join(work, "review.json")
-  );
-  assert.deepEqual(readJson(work, "review.json"), {
+  assert.equal(headerValue(r.stdout, "ANSWERS"), workPaths(work).review);
+  assert.deepEqual(readJson(work, "review"), {
     entries: [{ index: "SCA_ROOT", answer: null }],
   });
   assert.deepEqual(commandOf(r.stdout), [`--llm-handback ${work}`]);
@@ -1945,8 +1955,8 @@ test("the hand-back that finishes the preparation starts the review", () => {
   assert.equal(handed.stderr, "", "the review starts cleanly");
   assert.match(handed.stdout, /── LLM Prompt ──/);
   assert.doesNotMatch(handed.stdout, /SCA Review Prompt/);
-  assert.equal(readJson(work, "prepare.json").step, "done");
-  const { meta } = readJson(work, "state.json").report;
+  assert.equal(readJson(work, "prepare").step, "done");
+  const { meta } = readJson(work, "state").report;
   assert.equal(meta.xpi, path.join(dir, "addon.xpi"));
   assert.equal(meta.scaRoot, path.join(work, "sca"));
   assert.deepEqual(meta.checksRun, ["unused-files"]);
@@ -1968,7 +1978,7 @@ test("the preparation records the flags its review is started with", () => {
   // compared.
   const ownFlags = (work) =>
     Object.fromEntries(
-      Object.entries(readJson(work, "prepare.json").flags).filter(
+      Object.entries(readJson(work, "prepare").flags).filter(
         ([name]) => !/^(cache-|cdn-lib-lookup)/.test(name)
       )
     );
@@ -1989,7 +1999,7 @@ test("the preparation records the flags its review is started with", () => {
   });
   handBackRoots(only.stdout);
   assert.deepEqual(
-    readJson(workOf(only.stdout), "state.json").report.meta.checksRun,
+    readJson(workOf(only.stdout), "state").report.meta.checksRun,
     ["unused-files"],
     "the started review runs with them"
   );
@@ -2017,7 +2027,7 @@ test("the preparation records the flags its review is started with", () => {
   handBackRoots(exp.stdout, { expSource: "experiment" });
   const work = workOf(exp.stdout);
   assert.equal(
-    readJson(work, "state.json").report.meta.scaExpSource,
+    readJson(work, "state").report.meta.scaExpSource,
     path.join(work, "sca", "experiment")
   );
   fs.rmSync(dir, { recursive: true, force: true });
@@ -2041,7 +2051,7 @@ test("the preparation records --cache-work-dir for its review", () => {
   ]);
   assert.equal(r.code, 0, r.stderr);
   assert.equal(
-    readJson(workOf(r.stdout), "prepare.json").flags["cache-work-dir"],
+    readJson(workOf(r.stdout), "prepare").flags["cache-work-dir"],
     fs.realpathSync(seeded)
   );
   assert.ok(fs.existsSync(kept), "--cache-clear does not delete it");
@@ -2072,7 +2082,7 @@ test("--llm-sca-review hands a skip to the review it prepares", () => {
     prompt(run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]).stdout)
   );
   handBackRoots(r.stdout);
-  assert.deepEqual(readJson(workOf(r.stdout), "state.json").run.skip, [
+  assert.deepEqual(readJson(workOf(r.stdout), "state").run.skip, [
     "llm-skip-manual",
   ]);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -2090,7 +2100,7 @@ test("a preparation refuses an unanswered hand-back", () => {
     unanswered.stdout,
     /The hand-back was refused: SCA_ROOT still has no "answer"/
   );
-  assert.equal(readJson(work, "prepare.json").step, "extract");
+  assert.equal(readJson(work, "prepare").step, "extract");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -2139,7 +2149,10 @@ test("a prepared review refuses a record it cannot start from", (t) => {
       assert.equal(r.code, 2, r.stdout + r.stderr);
       assert.match(r.stdout, problem);
       // What the preparation left: its record and the source.
-      assert.deepEqual(fs.readdirSync(work).sort(), ["prepare.json", "sca"]);
+      assert.deepEqual(fs.readdirSync(work).sort(), [".review", "sca"]);
+      assert.deepEqual(fs.readdirSync(path.join(work, ".review")), [
+        "prepare.json",
+      ]);
     });
   refusedFor(
     "an experiments that is neither true nor false",
@@ -2286,7 +2299,7 @@ test("the hand-back starts the review of an unrescued source, which closes at on
   // are what aborted it.
   assert.match(r.stdout, /The review was aborted before it finished/);
   assert.ok(r.stdout.includes(`[report.md](${work}/report.md)`), r.stdout);
-  const { findings, meta } = readJson(work, "state.json").report;
+  const { findings, meta } = readJson(work, "state").report;
   assert.equal(meta.checksRun.at(-1), "vendor-vulnerable-indirect");
   assert.ok(findings.some((f) => f.ruleId === "vendor-vulnerable-indirect"));
   fs.rmSync(source, { recursive: true, force: true });
@@ -2326,7 +2339,7 @@ test("the hand-backs print a rescued copy's reduce and then its fix", async () =
     assert.match(next.stdout, /── SCA Review Prompt ──/);
     assert.equal(headerValue(next.stdout, "RESCUE_ROOT"), copy);
     assert.deepEqual(commandOf(next.stdout), [`--llm-handback ${work}`]);
-    assert.equal(readJson(work, "prepare.json").step, name);
+    assert.equal(readJson(work, "prepare").step, name);
     return next.stdout;
   };
   const reduce = step(r.stdout, "reduce");
@@ -2353,7 +2366,7 @@ test("the preparation quotes an argument that carries whitespace", () => {
   const handed = handBackRoots(r.stdout);
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
   assert.equal(
-    readJson(workOf(r.stdout), "state.json").report.meta.xpi,
+    readJson(workOf(r.stdout), "state").report.meta.xpi,
     path.join(dir, "addon  v2.xpi"),
     "the review reads the file the block named"
   );
@@ -2402,13 +2415,16 @@ test("--llm-sca-review starts the review of an Experiment it would reject", () =
   const work = defaultFolderOf(path.join(dir, "addon.xpi"));
   // The reject aborts the review, so its first prompt is the close, with the report.
   assert.deepEqual(fs.readdirSync(work).sort(), [
+    ".review",
     "report.md",
-    "review.json",
-    "state.json",
     "xpi",
   ]);
+  assert.deepEqual(fs.readdirSync(path.join(work, ".review")).sort(), [
+    "review.json",
+    "state.json",
+  ]);
   assert.ok(r.stdout.includes(`[report.md](${work}/report.md)`), r.stdout);
-  assert.deepEqual(readJson(work, "state.json").report.meta.checksRun, [
+  assert.deepEqual(readJson(work, "state").report.meta.checksRun, [
     "experiment-not-allowed",
   ]);
   const plain = run([
@@ -2462,7 +2478,7 @@ test("the preparation records every cache as an absolute path", () => {
     { encoding: "utf8", cwd }
   );
   assert.equal(r.status, 0, r.stderr);
-  const flags = readJson(workOf(r.stdout), "prepare.json").flags;
+  const flags = readJson(workOf(r.stdout), "prepare").flags;
   assert.deepEqual(
     Object.fromEntries(
       Object.entries(flags).filter(([name]) => name.endsWith("-dir"))
@@ -2581,7 +2597,7 @@ test("an answer too long for settle() to apply fails cleanly, not as a crash", (
   assert.equal(first.code, 0, first.stderr);
   const file = first.stdout.match(/(\S+\/review\.json)/)[1];
 
-  let out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
+  let out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
   // Every prompt but the closing one ends on the command that hands it back.
   while (/^\s+node verify\.js --llm-handback /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -2590,7 +2606,7 @@ test("an answer too long for settle() to apply fails cleanly, not as a crash", (
       answer: "answers".repeat(400),
     }));
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
-    out = run(["--llm-handback", path.dirname(file), ...OFFLINE_FLAGS]);
+    out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
   }
   assert.equal(out.code, 2, out.stdout);
   assert.match(out.stderr, /carries a \d+-character answer and the limit is/);

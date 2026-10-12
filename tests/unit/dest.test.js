@@ -49,9 +49,9 @@ test("the work folder's names are bare and fixed", () => {
       xpi: "/w/xpi",
       sca: "/w/sca",
       rescued: "/w/rescued",
-      prepare: "/w/prepare.json",
-      state: "/w/state.json",
-      review: "/w/review.json",
+      prepare: "/w/.review/prepare.json",
+      state: "/w/.review/state.json",
+      review: "/w/.review/review.json",
       report: "/w/report.md",
       summary: "/w/summary.md",
       build: "/w/build.md",
@@ -60,11 +60,11 @@ test("the work folder's names are bare and fixed", () => {
     }
   );
   assert.deepEqual(work.sweep("XPI"), {
-    request: "/w/sweep-xpi.yaml",
-    answers: "/w/sweep-xpi.answers.json",
+    request: "/w/.review/sweep-xpi.yaml",
+    answers: "/w/.review/sweep-xpi.answers.json",
   });
   assert.deepEqual(work.sweep("SCA"), {
-    request: "/w/sweep-sca.yaml",
-    answers: "/w/sweep-sca.answers.json",
+    request: "/w/.review/sweep-sca.yaml",
+    answers: "/w/.review/sweep-sca.answers.json",
   });
 });

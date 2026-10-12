@@ -1889,6 +1889,7 @@ test("the build phase is handed back empty, or refused", () => {
   );
   const fresh = buildReview(tmp());
   fresh.state.phase = "build";
+  fs.mkdirSync(path.dirname(reviewFileOf(fresh.work)), { recursive: true });
   fs.writeFileSync(
     reviewFileOf(fresh.work),
     JSON.stringify({ entries: [{ index: 1, answer: "x" }] })
