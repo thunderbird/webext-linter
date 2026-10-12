@@ -168,16 +168,11 @@ export const VENDOR_NPM_DOWNLOADS_API =
 export const VENDOR_GITHUB_REPOS_API = "https://api.github.com/repos/";
 
 /**
- * Where a source review's install may take a package from: the npm registry, or GitHub
- * (the only non-registry source a package.json may declare). A lock entry resolved
- * anywhere else installs bytes the dependency audit never read (lock-foreign-source).
- * GitHub is a URL on github.com or codeload.github.com, the scp form
- * `[user@]github.com:owner/repo` git writes without a scheme, or that form with one
- * (`git+ssh://git@github.com:owner/repo`, as pnpm writes a specifier).
+ * The npm registry's tarball root, from which the registry tarball URL of a name and
+ * version is built. Whether a lock entry installs from the registry is asked of the URL
+ * parser instead (installSource in src/vendor/locks.js).
  */
 export const NPM_REGISTRY_TARBALLS = "https://registry.npmjs.org/";
-export const GITHUB_INSTALL_SOURCE =
-  /^(?:git\+)?(?:(?:https?|ssh|git):\/\/(?:[^@/]+@)?(?:codeload\.)?github\.com[/:]|(?:[^@/:]+@)?github\.com:)/i;
 
 /**
  * The smallest gap between two requests to the same host, for every request the tool

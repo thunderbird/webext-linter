@@ -1022,6 +1022,49 @@ test("lockSourceGaps: pnpm tarball and git resolutions", () => {
   );
 });
 
+// A host is the one the URL parser reads, which is the one the installer connects to: text
+// that merely contains "github.com" before userinfo or after a backslash names another host,
+// and is reported. The parser lowercases the registry's host, so an uppercase spelling of it
+// is the registry. Every GitHub form a lock records names its repository.
+test("lockSourceGaps: a host is read as the URL parser reads it", () => {
+  const entries = {
+    evil1: "https://github.com:x@evil.example/o/r.tgz",
+    evil2: "https://evil.example\\@github.com/o/r.tgz",
+    upper: "HTTPS://REGISTRY.NPMJS.ORG/upper/-/upper-1.0.0.tgz",
+    g1: "git+ssh://git@github.com/o/r1.git#abc",
+    g2: "git+https://github.com/o/r2.git#abc",
+    g3: "https://codeload.github.com/o/r3/tar.gz/abc",
+    g4: "git@github.com:o/r4.git#abc",
+    g5: "git+ssh://git@github.com:o/r5.git#abc",
+    g6: "ssh://git@github.com:o/r6",
+  };
+  const addon = fakeAddon({
+    "package.json": JSON.stringify({ dependencies: {} }),
+    "package-lock.json": JSON.stringify({
+      lockfileVersion: 3,
+      packages: Object.fromEntries([
+        ["", { dependencies: {} }],
+        ...Object.entries(entries).map(([name, resolved]) => [
+          `node_modules/${name}`,
+          { version: "1.0.0", resolved },
+        ]),
+      ]),
+    }),
+  });
+  assert.deepEqual(
+    lockSourceGaps(addon).map((g) => g.name),
+    ["evil1", "evil2"]
+  );
+  assert.deepEqual(
+    lockedPackages(addon).map((p) => p.name),
+    ["upper"]
+  );
+  assert.deepEqual(
+    githubInstalls(addon).map((g) => g.repo),
+    ["o/r1", "o/r2", "o/r3", "o/r4", "o/r5", "o/r6"]
+  );
+});
+
 // ---- overrides ----
 
 /** A real submission's package files and lock, as npm or pnpm wrote them. */

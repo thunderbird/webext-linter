@@ -36,7 +36,6 @@ import {
   VENDOR_LOCK_MAX_PACKAGES,
   NPM_REGISTRY_TARBALLS,
   NPM_REGISTRY_CACHE,
-  GITHUB_INSTALL_SOURCE,
 } from "../config.js";
 import { stripBom } from "../util/json.js";
 import { parseJson } from "../util/json.js";
@@ -131,27 +130,58 @@ export function committedLocks(addon) {
 // release, so auditing it under that name would fabricate a hit.
 const NUMERIC_VERSION = /^\d+\.\d+/;
 
+// The npm registry's host, as the URL parser spells it (lowercase).
+const NPM_REGISTRY_HOST = new URL(NPM_REGISTRY_TARBALLS).hostname;
+
 /**
  * Where a lock entry's install takes the package from, by its `resolved` URL (npm) or
  * `resolution.tarball` (pnpm). Absent means the registry: that is what npm records when it
  * omits the field. Only a "registry" entry is a release its name and version identify, so
- * it alone is audited as one; "foreign" is what lock-foreign-source rejects.
+ * it alone is audited as one. A registry or GitHub URL is read by the URL parser, so its
+ * host is the one the installer connects to, whatever userinfo or backslash precedes it.
+ * A value that is none of the four kinds is "foreign", which lock-foreign-source rejects:
+ * what cannot be read is not passed.
  * @param {unknown} url
  * @returns {"registry"|"github"|"local"|"foreign"}
  */
 function installSource(url) {
   const s = String(url ?? "");
-  if (s === "" || s.startsWith(NPM_REGISTRY_TARBALLS)) {
+  if (s === "") {
+    return "registry";
+  }
+  const parsed = parseUrl(s);
+  if (parsed?.protocol === "https:" && parsed.hostname === NPM_REGISTRY_HOST) {
     return "registry";
   }
   if (isGithubSource(s)) {
     return "github";
   }
-  // A file:/link: spec or a bare relative path is the submission's own code.
-  if (/^(?:file|link):/i.test(s) || !/^[a-z][a-z0-9+.-]*:/i.test(s)) {
+  // A file:/link: spec or a relative path is the submission's own code. "//" opens a
+  // scheme-relative URL, which names a host and not a path.
+  const lower = s.toLowerCase();
+  if (
+    lower.startsWith("file:") ||
+    lower.startsWith("link:") ||
+    s.startsWith(".") ||
+    (s.startsWith("/") && !s.startsWith("//"))
+  ) {
     return "local";
   }
   return "foreign";
+}
+
+/**
+ * A string read as an absolute URL, or null when it is not one.
+ * @param {string} s
+ * @returns {?URL}
+ */
+function parseUrl(s) {
+  try {
+    return new URL(s);
+  } catch (err) {
+    rethrowIfFatal(err);
+    return null;
+  }
 }
 
 // The path segment that marks an installed package in an npm lockfile v2/v3 `packages` key. A
@@ -1045,8 +1075,8 @@ export function githubInstalls(addon) {
 }
 
 /**
- * Whether a recorded source installs from GitHub: GITHUB_INSTALL_SOURCE, and a repository
- * it names (githubRepo). The ONE classifier for it - installSource, pnpmSource and
+ * Whether a recorded source installs from GitHub: it names a repository there
+ * (githubRepoOf). The ONE classifier for it - installSource, pnpmSource and
  * githubInstalls all ask it - so what lock-foreign-source accepts as GitHub is exactly
  * what the popularity gate reads a repository from. A source naming no repository is not
  * GitHub, and stays foreign.
@@ -1054,30 +1084,79 @@ export function githubInstalls(addon) {
  * @returns {boolean}
  */
 function isGithubSource(source) {
-  return GITHUB_INSTALL_SOURCE.test(source) && githubRepo(source) !== null;
+  return githubRepoOf(source) !== null;
 }
 
 /**
- * The "owner/repo" a GitHub install source names, or null when it names none: the two path
- * segments after the host, without a ".git" suffix or a "#ref". The same two segments
- * for a git URL (github.com/owner/repo.git#sha), a codeload tarball
- * (codeload.github.com/owner/repo/tar.gz/sha) and the scp form (git@github.com:owner/repo).
- * @param {string} source  A source GITHUB_INSTALL_SOURCE accepts.
+ * The "owner/repo" a GitHub install source names, or null when it names none.
+ * @param {string} source
  * @returns {?string}
  */
 function githubRepo(source) {
-  const host = "github.com";
-  const at = source.toLowerCase().indexOf(host);
-  if (at === -1) {
+  const gh = githubRepoOf(source);
+  return gh ? `${gh.owner}/${gh.repo}` : null;
+}
+
+/**
+ * The GitHub repository a source names, or null when it names none. A leading "git+" is
+ * dropped. A URL is read by the URL parser, so its host is the one a fetch connects to:
+ * it must be github.com or codeload.github.com, and owner and repo are the first two path
+ * segments (github.com/owner/repo.git#sha, codeload.github.com/owner/repo/tar.gz/sha).
+ * The scp form git writes, `[user@]github.com:owner/repo`, is no URL (the parser rejects
+ * it, or reads the owner as a port), so it is read by hand: an optional `scheme://`
+ * (pnpm writes `git+ssh://git@github.com:owner/repo`), the host before the first ":"
+ * with no "/" ahead of it (git reads a "/" there as a local path) and its userinfo cut at
+ * the last "@", then owner and repo after the ":" up to a "#". A ".git" suffix is not
+ * part of the repo.
+ * @param {string} source
+ * @returns {?{owner: string, repo: string}}
+ */
+export function githubRepoOf(source) {
+  let s = String(source ?? "");
+  if (s.slice(0, 4).toLowerCase() === "git+") {
+    s = s.slice(4);
+  }
+  const url = parseUrl(s);
+  // An empty hostname is a string the parser took for a scheme and an opaque path: the
+  // scp form `github.com:owner/repo` reads that way.
+  if (url && url.hostname !== "") {
+    if (
+      url.hostname !== "github.com" &&
+      url.hostname !== "codeload.github.com"
+    ) {
+      return null;
+    }
+    const segs = url.pathname.split("/");
+    return ownerRepo(segs[1], segs[2]);
+  }
+  const scheme = s.indexOf("://");
+  if (scheme !== -1 && scheme === s.indexOf(":")) {
+    s = s.slice(scheme + 3);
+  }
+  const colon = s.indexOf(":");
+  if (colon === -1) {
     return null;
   }
-  // One separator follows the host: "/" in a URL, ":" in the scp form.
-  const [owner, repo] = cutAtFirst(
-    source.slice(at + host.length + 1),
-    "#"
-  ).split("/");
-  const name = String(repo ?? "").replace(/\.git$/i, "");
-  return owner && name ? `${owner}/${name}` : null;
+  const userHost = s.slice(0, colon);
+  const host = userHost.slice(userHost.lastIndexOf("@") + 1);
+  if (userHost.includes("/") || host.toLowerCase() !== "github.com") {
+    return null;
+  }
+  const [owner, repo] = cutAtFirst(s.slice(colon + 1), "#").split("/");
+  return ownerRepo(owner, repo);
+}
+
+/**
+ * Owner and repo as a pair, the repo without a ".git" suffix, or null when either is empty.
+ * @param {string|undefined} owner @param {string|undefined} repo
+ * @returns {?{owner: string, repo: string}}
+ */
+function ownerRepo(owner, repo) {
+  let name = String(repo ?? "");
+  if (name.toLowerCase().endsWith(".git")) {
+    name = name.slice(0, -".git".length);
+  }
+  return owner && name ? { owner, repo: name } : null;
 }
 
 /**

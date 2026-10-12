@@ -330,6 +330,7 @@ test("resolveVendor classifies package.json deps by source", async () => {
         ghurl: "git+https://github.com/a/b.git", // github url
         ghscp: "git@github.com:scp/repo.git#v3", // github SCP-style git URL
         local: "file:../x", // unsupported
+        relative: "./x", // a path npm installs from disk, not owner/repo shorthand
         aliased: "npm:other@1.0.0", // npm, exact, installed under another name
         gitlab: "git+https://gitlab.com/o/r.git", // unsupported (non-github git)
       },
@@ -357,7 +358,7 @@ test("resolveVendor classifies package.json deps by source", async () => {
   assert.equal(v.githubDeps.find((g) => g.name === "ghscp").ref, "v3");
   assert.deepEqual(
     v.unsupportedDeps.map((u) => u.name),
-    ["local", "gitlab"]
+    ["local", "relative", "gitlab"]
   );
 });
 

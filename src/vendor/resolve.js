@@ -27,6 +27,7 @@ import {
   lockedVersion,
   lockedPackages,
   githubInstalls,
+  githubRepoOf,
   localInstalls,
 } from "./locks.js";
 import { SCHEME_RE } from "../lib/util.js";
@@ -582,14 +583,19 @@ function resolvePackages(addon) {
 /**
  * Parse a package.json dependency spec pointing at GitHub into {repo, ref}, or
  * null when it is not a GitHub source. Covers npm's recognized GitHub forms: the
- * bare "owner/repo" shorthand, "github:owner/repo", and git / git+http(s) /
- * git+ssh / https URLs whose host is github.com. A trailing "#ref" (tag, commit,
- * or "semver:RANGE") becomes the ref; repo is normalized to "owner/repo".
+ * bare "owner/repo" shorthand, "github:owner/repo", and a URL or scp-form git source
+ * on GitHub as githubRepoOf reads it. A trailing "#ref" (tag, commit, or
+ * "semver:RANGE") becomes the ref, and repo is normalized to "owner/repo".
  * @param {string} spec
  * @returns {{repo: string, ref: ?string} | null}
  */
 function parseGithubSpec(spec) {
   const s = String(spec).trim();
+  const refOf = (rest) => {
+    const i = rest.indexOf("#");
+    const ref = i === -1 ? null : rest.slice(i + 1).replace(/^semver:/i, "");
+    return ref || null;
+  };
   const split = (rest) => {
     const i = rest.indexOf("#");
     const repo = (i === -1 ? rest : rest.slice(0, i))
@@ -597,27 +603,20 @@ function parseGithubSpec(spec) {
       .split("/")
       .slice(0, 2)
       .join("/");
-    const ref = i === -1 ? null : rest.slice(i + 1).replace(/^semver:/i, "");
-    return { repo, ref: ref || null };
+    return { repo, ref: refOf(rest) };
   };
-  // Bare "owner/repo" shorthand (npm reads this as GitHub): one slash, no scheme.
-  if (!SCHEME_RE.test(s) && /^[\w.-]+\/[\w.-]+(?:#.*)?$/.test(s)) {
+  // Bare "owner/repo" shorthand (npm reads this as GitHub): one slash, no scheme. A
+  // leading "." is a relative path (./x, ../x), which npm installs from disk.
+  if (
+    !SCHEME_RE.test(s) &&
+    !s.startsWith(".") &&
+    /^[\w.-]+\/[\w.-]+(?:#.*)?$/.test(s)
+  ) {
     return split(s);
   }
   if (/^github:/i.test(s)) {
     return split(s.slice("github:".length));
   }
-  const url = s.match(
-    /^(?:git\+)?(?:https?|git|ssh):\/\/(?:[^@/]+@)?github\.com\/(.+)$/i
-  );
-  if (url) {
-    return split(url[1]);
-  }
-  // SCP-style git URL: [git+][user@]github.com:owner/repo[.git][#ref] - the form
-  // npm accepts for a GitHub source without a scheme (a ":" after the host, not "/").
-  const scp = s.match(/^(?:git\+)?(?:[^@/]+@)?github\.com:(.+)$/i);
-  if (scp) {
-    return split(scp[1]);
-  }
-  return null;
+  const gh = githubRepoOf(s);
+  return gh ? { repo: `${gh.owner}/${gh.repo}`, ref: refOf(s) } : null;
 }
