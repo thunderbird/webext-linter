@@ -2257,7 +2257,7 @@ test("each block the reviewer reads ends a turn of its own, apart from every que
 // The block a turn-ending phase shows ends with the line telling the reviewer the review
 // waits for them, inside the text the agent prints verbatim.
 test("each turn-ending block ends with the line asking the reviewer to reply", () => {
-  const WAITING = "Reply to continue the review.";
+  const WAITING = 'Reply "next" to continue the review.';
   const issued = stepsByPhase(buildQuestionsReview(tmp()), goesOn());
   for (const [name, slot] of [
     ["build-review", "buildDetails"],
@@ -2318,7 +2318,7 @@ test("the closing prompt's slots carry the settled tally and details", () => {
     slots
   ).join("\n");
   assert.ok(rendered.includes(out.settled.details.split("\n")[0]));
-  assert.ok(!rendered.includes("Reply to continue the review."));
+  assert.ok(!rendered.includes('Reply "next" to continue the review.'));
 });
 
 // The two suppressions of the `ask` phase are different facts and must stay so: the skip

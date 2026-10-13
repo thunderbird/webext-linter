@@ -2248,7 +2248,7 @@ llm-phases:
 
     It prints the next prompt for you to follow.
   # Waiting: the last line of the block a turn-ending phase shows.
-  waiting: Reply to continue the review.
+  waiting: Reply "next" to continue the review.
   # Refused: the agent handed back a file that is not what the pass asked for. The prompt is
   # NOT re-printed - the agent still has it, and re-issuing the same text against the same
   # input invites a loop. "{{problem}}" names what is wrong, exactly.

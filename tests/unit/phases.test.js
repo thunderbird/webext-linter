@@ -103,7 +103,7 @@ const saying = (text) => (err) => err.message.includes(text);
 // reads it as the end of that block.
 test("the shipped turn-ending phases are the three that show a block", () => {
   const p = fresh().llmPhases();
-  assert.equal(p.waiting, "Reply to continue the review.");
+  assert.equal(p.waiting, 'Reply "next" to continue the review.');
   assert.deepEqual(
     p.phases.filter((phase) => phase.endsTurn).map((phase) => phase.name),
     ["build-review", "build-result", "details"]
