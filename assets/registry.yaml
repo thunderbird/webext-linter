@@ -2203,6 +2203,9 @@ llm-sca-review-prompt:
 #                a text appended to every phase has to be true of every phase: `spawn`
 #                starts agents and asks nothing here, and an instruction to fill slots
 #                that are not there invites an agent to invent some.
+#   WAITING      ONE text, appended by the linter to the block a phase marked `ends-turn`
+#                shows, after a blank line. The agent prints that block verbatim as the last
+#                thing of its turn, so the reviewer sees the review waits for their reply.
 #
 # `verbs` is a property of the PHASE, not of the answer's shape: `verify` and `settle` both
 # fill "answer" with a verb and accept different ones. A phase whose step names a verb not
@@ -2244,6 +2247,8 @@ llm-phases:
     {{command}}
 
     It prints the next prompt for you to follow.
+  # Waiting: the last line of the block a turn-ending phase shows.
+  waiting: Reply to continue the review.
   # Refused: the agent handed back a file that is not what the pass asked for. The prompt is
   # NOT re-printed - the agent still has it, and re-issuing the same text against the same
   # input invites a loop. "{{problem}}" names what is wrong, exactly.
@@ -2320,6 +2325,7 @@ llm-phases:
     - name: build-review
       # Asks about nothing in the review file: the block is its whole work.
       answer: none
+      ends-turn: true
       verbs: []
       intro: ""
       steps:
@@ -2418,6 +2424,7 @@ llm-phases:
     # `build-review`.
     - name: build-result
       answer: none
+      ends-turn: true
       verbs: []
       intro: ""
       steps:
@@ -2586,6 +2593,7 @@ llm-phases:
     - name: details
       # Asks about nothing in the review file: the block is its whole work.
       answer: none
+      ends-turn: true
       verbs: []
       intro: ""
       steps:

@@ -34,7 +34,7 @@ const phaseNamed = (registry, name) =>
 
 test("the shipped registry's phases load and are whole", () => {
   const p = fresh().llmPhases();
-  for (const key of ["frame", "handover", "refused"]) {
+  for (const key of ["frame", "handover", "waiting", "refused"]) {
     assert.equal(typeof p[key], "string", key);
     assert.ok(p[key].length > 0, key);
   }
@@ -85,7 +85,7 @@ test("a linter-owned text that loses its placeholder is refused", () => {
 });
 
 test("a missing linter-owned text is refused by name", () => {
-  for (const key of ["preamble", "frame", "handover", "refused"]) {
+  for (const key of ["preamble", "frame", "handover", "waiting", "refused"]) {
     const registry = fresh();
     delete registry.doc["llm-phases"][key];
     assert.throws(
@@ -94,6 +94,51 @@ test("a missing linter-owned text is refused by name", () => {
       key
     );
   }
+});
+
+// An error whose message carries `text`.
+const saying = (text) => (err) => err.message.includes(text);
+
+// The waiting line is appended to the block a turn-ending phase shows, so the reviewer
+// reads it as the end of that block.
+test("the shipped turn-ending phases are the three that show a block", () => {
+  const p = fresh().llmPhases();
+  assert.equal(p.waiting, "Reply to continue the review.");
+  assert.deepEqual(
+    p.phases.filter((phase) => phase.endsTurn).map((phase) => phase.name),
+    ["build-review", "build-result", "details"]
+  );
+});
+
+test("a blank waiting line is refused", () => {
+  const registry = fresh();
+  registry.doc["llm-phases"].waiting = "  ";
+  assert.throws(() => check(registry), saying("`waiting`"));
+});
+
+test("only an answer-none phase showing a block may end the turn", () => {
+  const asking = fresh();
+  phaseNamed(asking, "ask")["ends-turn"] = true;
+  assert.throws(
+    () => check(asking),
+    saying("phase `ask` ends the turn but answers with `words`")
+  );
+
+  const blockless = fresh();
+  const details = phaseNamed(blockless, "details");
+  for (const step of details.steps) {
+    step.text = step.text.replace("{{details}}", "the block");
+  }
+  assert.throws(
+    () => check(blockless),
+    saying(
+      "phase `details` ends the turn but shows no {{buildDetails}} or {{details}}"
+    )
+  );
+
+  const notTrue = fresh();
+  phaseNamed(notTrue, "details")["ends-turn"] = "yes";
+  assert.throws(() => check(notTrue), saying("non-boolean `ends-turn`"));
 });
 
 // The rule that stops a phase from being half-authored in two directions at once. A verb

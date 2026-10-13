@@ -296,6 +296,11 @@ shapes:
       required: true
       allow-empty: true
       why: the verdicts this pass accepts - empty for a pass that takes none
+    ends-turn:
+      kind: gate
+      why: >-
+        the pass shows a block the reviewer must read and ends the agent's turn with it,
+        the linter appending the waiting line to that block
     product:
       kind: one-of
       values: PHASE_PRODUCTS
@@ -455,6 +460,7 @@ sections:
         required: true
         why: a loop text the linter fills and prints
       handover: *loop-text
+      waiting: *loop-text
       refused: *loop-text
       phases:
         kind: entries

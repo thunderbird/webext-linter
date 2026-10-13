@@ -160,8 +160,9 @@ function askedByPerson(registry) {
  *   THIS reader, at hand-out - never stored, so the same item can be worded one way
  *   here and another for the reviewer.
  * @returns {{phase: object, steps: object[], preamble: object[], entries: object[],
- *   settled: ?ReturnType<typeof settle>}}  `preamble` is the parts of it this prompt
- *   prints; `settled` is the finished review, for the closing phase only.
+ *   settled: ?ReturnType<typeof settle>, waiting: ?string}}  `preamble` is the parts of it
+ *   this prompt prints. `settled` is the finished review, for the closing phase only.
+ *   `waiting` is the line a turn-ending phase appends to its block.
  */
 export function issue(state, work, phases, registry) {
   const ordered = orderReview(state.report.findings, state.manual);
@@ -215,20 +216,27 @@ export function issue(state, work, phases, registry) {
   }
   writeState(workPaths(work).state, state);
   writeReviewFile(workPaths(work).review, reviewFile(entries));
-  return { phase, steps, preamble, entries, settled };
+  // A phase that ends the agent's turn closes its block with the line telling the
+  // reviewer the review waits for their reply.
+  const waiting = phase.endsTurn ? registry.llmPhases().waiting : null;
+  return { phase, steps, preamble, entries, settled, waiting };
 }
 
 /**
  * Every value a phase's steps name, filled from the state - the one list both the first run
  * and every later pass print a prompt from.
  * @param {import("./state.js").LoopState} state
- * @param {{settled: ?object}} issued  What `issue` handed out: the closing phase carries the
- *   finished review, whose Review Details and tally it hands over.
+ * @param {{settled: ?object, waiting: ?string}} issued  What `issue` handed out: the
+ *   closing phase carries the finished review, whose Review Details and tally it hands
+ *   over, and a turn-ending phase the line its block ends with.
  * @param {string} work  The review's work folder.
  * @returns {Object<string, string>}
  */
 export function loopSlots(state, issued, work) {
   const paths = state.paths ?? {};
+  // The block the agent prints verbatim ends with the waiting line, so the reviewer reads
+  // it as part of that block.
+  const waiting = issued.waiting ? `\n\n${issued.waiting}` : "";
   return {
     // The file the agent fills in, and the work folder it is handed back with: the one
     // folder a later pass finds the state and the review file in, each by its fixed name.
@@ -246,15 +254,16 @@ export function loopSlots(state, issued, work) {
     // and nothing to settle opens there - and that is a phase that hands the block over.
     // The closing phase hands over the finished review's block instead, which ends on
     // what aborted it where something did.
-    details: issued.settled?.details ?? reviewDetails(state),
+    details: (issued.settled?.details ?? reviewDetails(state)) + waiting,
     tally: issued.settled?.tally ?? "",
     // The Build Review Details block: the source the review read, and the build's report and
     // output once each came back.
-    buildDetails: detailRows({
-      scaRoot: paths.scaRoot ?? undefined,
-      buildFile: reportMeta(state).buildFile,
-      buildOutput: reportMeta(state).buildOutput,
-    }).join("\n"),
+    buildDetails:
+      detailRows({
+        scaRoot: paths.scaRoot ?? undefined,
+        buildFile: reportMeta(state).buildFile,
+        buildOutput: reportMeta(state).buildOutput,
+      }).join("\n") + waiting,
     ...sweepSlots(state),
   };
 }

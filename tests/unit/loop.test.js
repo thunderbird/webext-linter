@@ -2166,14 +2166,14 @@ function stepsByPhase(made, answer) {
     issued.push({
       name: out.phase.name,
       slots,
-      steps: out.steps.map((step) => ({
-        raw: step.text,
-        rendered: REVIEWER_PHASES.includes(out.phase.name)
-          ? loopPromptLines(REGISTRY.llmPhases(), out.phase, [step], slots)
-              .map((line) => line.trim())
-              .join(" ")
-          : "",
-      })),
+      steps: out.steps.map((step) => {
+        const lines = REVIEWER_PHASES.includes(out.phase.name)
+          ? loopPromptLines(REGISTRY.llmPhases(), out.phase, [step], slots).map(
+              (line) => line.trim()
+            )
+          : [];
+        return { raw: step.text, lines, rendered: lines.join(" ") };
+      }),
     });
     handBack(made.work, (e) => answer(out.phase.name, e));
     accept(made.state, made.work, PHASES, REGISTRY);
@@ -2254,6 +2254,38 @@ test("each block the reviewer reads ends a turn of its own, apart from every que
   );
 });
 
+// The block a turn-ending phase shows ends with the line telling the reviewer the review
+// waits for them, inside the text the agent prints verbatim.
+test("each turn-ending block ends with the line asking the reviewer to reply", () => {
+  const WAITING = "Reply to continue the review.";
+  const issued = stepsByPhase(buildQuestionsReview(tmp()), goesOn());
+  for (const [name, slot] of [
+    ["build-review", "buildDetails"],
+    ["build-result", "buildDetails"],
+    ["details", "details"],
+  ]) {
+    const phase = issued.find((x) => x.name === name);
+    assert.ok(phase, name);
+    const block = phase.slots[slot].split("\n").map((line) => line.trim());
+    assert.deepEqual(block.slice(-2), ["", WAITING], name);
+    const shown = phase.steps.find((step) => step.lines.includes(block[0]));
+    assert.ok(shown, `${name} shows its block`);
+    const start = shown.lines.indexOf(block[0]);
+    assert.deepEqual(
+      shown.lines.slice(start, start + block.length),
+      block,
+      `${name} shows its block followed by the waiting line`
+    );
+  }
+  for (const phase of issued.filter(
+    (x) => !["build-review", "build-result", "details"].includes(x.name)
+  )) {
+    for (const step of phase.steps) {
+      assert.ok(!step.rendered.includes(WAITING), phase.name);
+    }
+  }
+});
+
 // The description is linked once the phase that starts its agent went back, and not
 // before: a review that never started the agent has no description to read.
 test("the details link the description only once spawn went out", () => {
@@ -2278,6 +2310,15 @@ test("the closing prompt's slots carry the settled tally and details", () => {
   assert.match(slots.details, /- Known security vulnerabilities$/);
   assert.equal(slots.tally, out.settled.tally);
   assert.match(slots.tally, /extended code review item/);
+  // The closing ends no turn the review waits on, so its block carries no waiting line.
+  const rendered = loopPromptLines(
+    REGISTRY.llmPhases(),
+    out.phase,
+    out.steps,
+    slots
+  ).join("\n");
+  assert.ok(rendered.includes(out.settled.details.split("\n")[0]));
+  assert.ok(!rendered.includes("Reply to continue the review."));
 });
 
 // The two suppressions of the `ask` phase are different facts and must stay so: the skip

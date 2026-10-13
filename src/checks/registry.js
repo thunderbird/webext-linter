@@ -594,12 +594,12 @@ export class Registry {
   }
 
   /**
-   * The REVIEW LOOP's prompts: the preamble, the three texts the linter owns, and the
+   * The REVIEW LOOP's prompts: the preamble, the four texts the linter owns, and the
    * phases it hands out one per pass.
    *
-   * `frame`, `handover` and `refused` are the linter's - authored once and printed the same
-   * way every time, so no phase can forget to say how to hand back, or that the file has
-   * changed since the last pass. The phases author only what differs: their `intro` (often
+   * `frame`, `handover`, `waiting` and `refused` are the linter's - authored once and
+   * printed the same way every time, so no phase can forget to say how to hand back, that
+   * the file has changed since the last pass, or that the review waits for a reply. The phases author only what differs: their `intro` (often
    * empty) and their `steps`. The `preamble` is a list of parts, each printed where its
    * condition holds - on the first prompt, unless that prompt is already the closing one.
    *
@@ -608,7 +608,8 @@ export class Registry {
    * filtered by one evaluator (src/checks/condition.js holds) against the facts their run
    * meets.
    * @returns {{preamble: {when: ?object, text: string}[], frame: string, handover: string,
-   *   refused: string, phases: {name: string, answer: string, verbs: string[],
+   *   waiting: string, refused: string, phases: {name: string, answer: string,
+   *   endsTurn: boolean, verbs: string[],
    *   product: ?string, verbProse: object, intro: string,
    *   steps: {when: ?object, text: string}[], question: ?string,
    *   failed: ?{label: string, description: string},
@@ -621,10 +622,12 @@ export class Registry {
       preamble: p.preamble.map(loadedStep),
       frame: p.frame,
       handover: p.handover,
+      waiting: p.waiting,
       refused: p.refused,
       phases: p.phases.map((phase) => ({
         name: phase.name,
         answer: phase.answer,
+        endsTurn: phase["ends-turn"] === true,
         verbs: [...phase.verbs],
         product: phase.product ?? null,
         // What each of those verbs MEANS, for the phase to render onto its entries. A
@@ -1550,8 +1553,11 @@ function assertOutput(phase, at) {
 // Read by assertPhaseVerbSubsets.
 const SETTLE_PHASE = "settle";
 
+// The blocks a turn-ending phase shows, each ending with the waiting line.
+const TURN_BLOCKS = ["{{buildDetails}}", "{{details}}"];
+
 /**
- * The REVIEW LOOP's texts, checked at load: the three the linter owns, the preamble, and
+ * The REVIEW LOOP's texts, checked at load: the four the linter owns, the preamble, and
  * every phase's steps, verbs and process values.
  *
  * The placeholders are checked because each one is the only way a value reaches the agent:
@@ -1637,6 +1643,26 @@ export function assertPhases(registry, at) {
         throw new Error(
           `${at2} accepts \`${verb}\`, which is not a verdict this review knows ` +
             `(expected one of: ${LOOP_VERBS.join(", ")})`
+        );
+      }
+    }
+    // A turn-ending phase asks nothing of the review file, and shows the block the waiting
+    // line is appended to: without one, that line would reach no reader.
+    if (phase["ends-turn"]) {
+      if (phase.answer !== "none") {
+        throw new Error(
+          `${at2} ends the turn but answers with \`${phase.answer}\` - only an ` +
+            "`answer: none` phase ends the turn, as nothing is asked of the review file"
+        );
+      }
+      if (
+        !phase.steps.some((step) =>
+          TURN_BLOCKS.some((slot) => step.text.includes(slot))
+        )
+      ) {
+        throw new Error(
+          `${at2} ends the turn but shows no ${TURN_BLOCKS.join(" or ")} - the waiting ` +
+            "line is appended to that block"
         );
       }
     }

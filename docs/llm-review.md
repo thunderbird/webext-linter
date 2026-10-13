@@ -71,7 +71,8 @@ A block the reviewer must read before answering (`build-review`, `build-result`,
 `details`) is shown by a pass of its own and ends the agent's turn. Text written before a
 tool call in the same turn, a question or a hand-back, can be folded away by a client that
 collapses tool rows, while the message that ends a turn stays in view. So each such pass
-costs the reviewer one reply.
+costs the reviewer one reply. The linter ends the block with the line "Reply to continue
+the review.", so the reviewer sees the review waits for them.
 
 A phase is issued only when it has **work** - steps that survive their markers, or
 entries to settle - and that is also what ends the loop. So a review with no sweep never
