@@ -11,7 +11,8 @@
 //
 // A stalled connection must fail loud (a clear throw), not hang the whole review. The
 // timeout covers the body read, not only the headers - so a host that sends headers
-// then never sends the body (`{hang: true}`) still aborts.
+// then never sends the body (`{hang: true}`) still aborts. With the network off, as here,
+// a request runs under the short NETWORK_OFF_TIMEOUT_MS, so a hang is reached at once.
 //
 // The network rule has no ambient signal to consult: navigator.onLine does not exist
 // in Node and os.networkInterfaces() reports a cable, not a route. So it uses the
@@ -36,7 +37,7 @@ import {
   NETWORK_RETRIES,
   NETWORK_MAX_WAIT_MS,
   NETWORK_ANNOUNCE_WAIT_MS,
-  VENDOR_FETCH_TIMEOUT_MS,
+  NETWORK_OFF_TIMEOUT_MS,
   VENDOR_GITHUB_REPOS_API,
   VENDOR_NPM_DOWNLOADS_API,
 } from "../../src/config.js";
@@ -160,7 +161,7 @@ test("fetchWithTimeout aborts a stalled response: no answer", async () => {
     () => ask(npm("stalled"), { hang: true }),
     (err) =>
       err instanceof NoAnswerError &&
-      err.message.includes(`timed out after ${VENDOR_FETCH_TIMEOUT_MS}ms`)
+      err.message.includes(`timed out after ${NETWORK_OFF_TIMEOUT_MS}ms`)
   );
 });
 
@@ -246,7 +247,7 @@ test("a timeout is no answer, and it is not retried", async () => {
     () => askPaced([{ hang: true }, ANSWER]),
     (err) =>
       err instanceof NoAnswerError &&
-      err.message.includes(`timed out after ${VENDOR_FETCH_TIMEOUT_MS}ms`)
+      err.message.includes(`timed out after ${NETWORK_OFF_TIMEOUT_MS}ms`)
   );
 });
 
@@ -605,12 +606,12 @@ test("the waiting is outside the abort timer", async (t) => {
     setNetworkPacing({ backoffMs: 0 });
   });
   // A backoff longer than the timeout each attempt is given.
-  setNetworkPacing({ backoffMs: VENDOR_FETCH_TIMEOUT_MS + 200 });
+  setNetworkPacing({ backoffMs: NETWORK_OFF_TIMEOUT_MS + 200 });
   const started = Date.now();
   // The answer is the ask the backoff preceded, not aborted by it.
   assert.deepEqual(await askPaced(refusals([503])), ANSWERED);
   assert.ok(
-    Date.now() - started >= VENDOR_FETCH_TIMEOUT_MS,
+    Date.now() - started >= NETWORK_OFF_TIMEOUT_MS,
     "the wait happened"
   );
 });

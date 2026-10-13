@@ -48,6 +48,8 @@
 // surfaces (seededResponse); and a success, played or live, is kept, while a 404 or a
 // failure never is. No cache ever writes a seeded entry. With the network off, a request
 // with nothing seeded throws, and with it on, a seeded response handed here is refused.
+// With no host to wait on, a request then also runs under a short timeout
+// (NETWORK_OFF_TIMEOUT_MS), as it runs unpaced.
 //
 // Belongs here: the abort-timeout wrapper, that decision, and the rate gate (the
 // per-host interval, the status a refusal is recognised by, and the two ways a refusal
@@ -59,6 +61,7 @@
 
 import {
   CONTROL_TIMEOUT_MS,
+  NETWORK_OFF_TIMEOUT_MS,
   SETUP_FETCH_TIMEOUT_MS,
   NETWORK_MIN_INTERVAL_MS,
   NETWORK_RETRIES,
@@ -529,7 +532,11 @@ async function issue(url, consume, timeoutMs, init, seeded) {
     throw wiringError(`network request in a test: ${url}`);
   }
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  // The timeout that runs, named in the message when it is reached.
+  const limit = NO_NETWORK
+    ? Math.min(timeoutMs, NETWORK_OFF_TIMEOUT_MS)
+    : timeoutMs;
+  const timer = setTimeout(() => ctrl.abort(), limit);
   let res;
   try {
     try {
@@ -547,7 +554,7 @@ async function issue(url, consume, timeoutMs, init, seeded) {
       // sent us round a redirect loop. Only a URL that does not parse reached no host,
       // and stays the caller's to read.
       if (ctrl.signal.aborted) {
-        throw timedOut(url, timeoutMs);
+        throw timedOut(url, limit);
       }
       if (isConnectionFailure(err)) {
         await assertNetwork(url, failureReason(err), seeded?.probe);
@@ -569,7 +576,7 @@ async function issue(url, consume, timeoutMs, init, seeded) {
       // reading of the response - a status, or a verdict on bytes that did arrive - and
       // stays the caller's.
       if (ctrl.signal.aborted) {
-        throw timedOut(url, timeoutMs);
+        throw timedOut(url, limit);
       }
       if (err instanceof TypeError && err.status === undefined) {
         throw new NoAnswerError(url, failureReason(err));

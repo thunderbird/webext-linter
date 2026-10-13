@@ -70,6 +70,12 @@ export const SETUP_FETCH_TIMEOUT_MS = 60000;
 // helps neither.
 export const CONTROL_TIMEOUT_MS = 5000;
 
+// The timeout every request runs under while the network is switched off, which only the
+// tests do (src/util/net.js): each request is then a seeded response, played at once, so
+// there is no host whose slowness has to be waited out, and a test of a hang need not wait
+// a real one.
+export const NETWORK_OFF_TIMEOUT_MS = 500;
+
 /**
  * jsDelivr's content-addressed reverse lookup: GET <CDN_LOOKUP_URL><sha256-hex>
  * returns `{type, name, version, file}` for a file whose exact bytes are published
