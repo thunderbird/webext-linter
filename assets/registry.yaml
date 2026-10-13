@@ -1016,12 +1016,12 @@ deterministic-phase:
   instructions-for-human: |-
     Does the source build into the submitted XPI? Follow the build process from
     a clean copy of the source archive, installing the dependencies exactly as
-    the lock file pins them (npm ci, or pnpm install --frozen-lockfile
-    --config.strict-dep-builds=false). Clear only if the build completes and
-    its result matches the submitted XPI. Files
-    that differ only by what every build changes (a timestamp, a build id) still
-    match. An install refused because package.json and the lock file disagree
-    is a failed build.
+    the lock file pins them (npm ci, or pnpm install --frozen-lockfile with the
+    pnpm release the packageManager field of package.json pins, where it pins
+    one). Clear only if the build completes and its result matches the
+    submitted XPI. Files that differ only by what every build changes (a
+    timestamp, a build id) still match. An install refused because package.json
+    and the lock file disagree is a failed build.
   response: |-
     The submitted source either could not be built by following its build instructions, or does not build into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
 
@@ -2117,11 +2117,11 @@ llm-sca-review-prompt:
 
         Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
 
-        The install step is the one command you do NOT restate as the documentation writes it. Report `npm ci`, even where the docs say `npm install`: the reviewer installs what the submitted lock file pins, not whatever the registry resolves to today. Where the submission ships a pnpm-lock.yaml, that same step is `pnpm install --frozen-lockfile --config.strict-dep-builds=false`. npm and pnpm are the only package managers a submission may use, so those are the only two spellings.
+        The install step is the one command you do NOT restate as the documentation writes it. Report `npm ci`, even where the docs say `npm install`: the reviewer installs what the submitted lock file pins, not whatever the registry resolves to today. Where the submission ships a pnpm-lock.yaml, that same step is `pnpm install --frozen-lockfile`, run with the pnpm release the `packageManager` field of package.json pins where it pins one: `npx pnpm@10.4.1 install --frozen-lockfile` for `pnpm@10.4.1`. npm and pnpm are the only package managers a submission may use, so those are the only two spellings.
 
         Report that step with NO flag that leaves dependencies out - never `--omit=dev`, `--production` or `--prod` - even where the documentation uses one. The reviewer has to run the build AND audit everything it pulls in, and a dependency that was never installed is one nobody can audit.
 
-        Under a "Safety" heading, list anything the build reaches for outside the declared dependencies - a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, code run from an install hook, or a step whose source is not in the tree. Name the file and the line for each, and say what it does. Where you find none, say so.
+        Under a "Safety" heading, list anything the build reaches for outside the declared dependencies - a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, an install hook that downloads or runs code from outside the declared dependencies, or a step whose source is not in the tree. Name the file and the line for each, and say what it does. Where you find none, say so.
 
         Write it to BUILD_PROCESS, given above, and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision.
     - text: |-
@@ -2189,7 +2189,7 @@ llm-sca-review-prompt:
     - text: |-
         The linter audited the lock file of SCA_ROOT, given above, and found no known high or critical vulnerability in it, so the add-on is built now. The linter copied the whole source archive for this step, and BUILD_ROOT, given above, is SCA_ROOT in that copy. Build in BUILD_ROOT, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in BUILD_PROCESS.
 
-        Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci`, or `pnpm install --frozen-lockfile --config.strict-dep-builds=false` where the copy has a pnpm-lock.yaml, and with no flag that leaves dependencies out. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
+        Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci`, or `pnpm install --frozen-lockfile` where the copy has a pnpm-lock.yaml, and with no flag that leaves dependencies out. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build. Where the `packageManager` field of package.json pins a pnpm release, such as `pnpm@10.4.1`, run every pnpm command of the build with that release: `npx pnpm@10.4.1` in place of `pnpm`.
     - text: |-
         Where the build failed, add a section headed "Build attempt" to the end of BUILD_PROCESS: the step that failed, and the error output it printed. Change nothing else in that file.
     - text: |-
@@ -2210,7 +2210,7 @@ llm-sca-review-prompt:
     - text: |-
         The linter audited the lock file of the source and found dependencies with known high or critical vulnerabilities, so the source is not built as submitted. RESCUE_ROOT, given above, is a copy of it the linter made for this step. Change the dependencies only there, never in the source archive itself, and run every command in your own sandbox. Never install or build anything in RESCUE_ROOT: every build runs in BUILD_ROOT, given above, which is RESCUE_ROOT in a fresh copy of the whole rescued copy. Often the vulnerable package is one the release build does not use, or one a fixed release within its declared range replaces.
 
-        Make the copy's lock clean, then build it, in the loop the next three steps describe.
+        Make the copy's lock clean, then build it, in the loop the next three steps describe. Where the `packageManager` field of package.json pins a pnpm release, such as `pnpm@10.4.1`, run every pnpm command of this loop with that release: `npx pnpm@10.4.1` in place of `pnpm`.
     - text: |-
         Change the copy's dependencies. Work out from the scripts in its package.json and its build configuration which dependencies the release build uses. Remove from package.json every dependency the release build does not use (tests, linters, type checking, formatting, git hooks), and keep every one it uses. Then refresh the lock file without running any install script: `npm install --package-lock-only --ignore-scripts`, or `pnpm install --lockfile-only --ignore-scripts` where RESCUE_ROOT has a pnpm-lock.yaml. Where a dependency the release build uses is vulnerable, update the lock file to fixed releases the same way: `npm audit fix --package-lock-only --ignore-scripts`, or `pnpm audit --fix` followed by `pnpm install --lockfile-only --ignore-scripts`.
 
@@ -2222,7 +2222,7 @@ llm-sca-review-prompt:
 
         {{copy}}
 
-        Then build in BUILD_ROOT, and only there. Install the dependencies exactly as the lock file pins them: `npm ci`, or `pnpm install --frozen-lockfile --config.strict-dep-builds=false` where BUILD_ROOT has a pnpm-lock.yaml, with no flag that leaves dependencies out. Then follow the build process described in BUILD_PROCESS.
+        Then build in BUILD_ROOT, and only there. Install the dependencies exactly as the lock file pins them: `npm ci`, or `pnpm install --frozen-lockfile` where BUILD_ROOT has a pnpm-lock.yaml, with no flag that leaves dependencies out. Then follow the build process described in BUILD_PROCESS.
 
         Where the build fails, find out why and change the dependencies again in RESCUE_ROOT, then audit again and copy again before the next build. A build often needs a dependency the trimming removed: a `prepare` script that runs `husky`, for one, fails without husky. Keep such a dependency, or remove the script from package.json where the release build does not need it. Where no change makes a clean lock build, the rescue failed.
     - text: |-
@@ -2382,11 +2382,11 @@ llm-phases:
 
             Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
 
-            The install step is the one command you do NOT restate as the documentation writes it. Report `npm ci`, even where the docs say `npm install`: the reviewer installs what the submitted lock file pins, not whatever the registry resolves to today. Where the submission ships a pnpm-lock.yaml, that same step is `pnpm install --frozen-lockfile --config.strict-dep-builds=false`. npm and pnpm are the only package managers a submission may use, so those are the only two spellings.
+            The install step is the one command you do NOT restate as the documentation writes it. Report `npm ci`, even where the docs say `npm install`: the reviewer installs what the submitted lock file pins, not whatever the registry resolves to today. Where the submission ships a pnpm-lock.yaml, that same step is `pnpm install --frozen-lockfile`, run with the pnpm release the `packageManager` field of package.json pins where it pins one: `npx pnpm@10.4.1 install --frozen-lockfile` for `pnpm@10.4.1`. npm and pnpm are the only package managers a submission may use, so those are the only two spellings.
 
             Report that step with NO flag that leaves dependencies out - never `--omit=dev`, `--production` or `--prod` - even where the documentation uses one. The reviewer has to run the build AND audit everything it pulls in, and a dependency that was never installed is one nobody can audit.
 
-            Under a "Safety" heading, list anything the build reaches for outside the declared dependencies - a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, code run from an install hook, or a step whose source is not in the tree. Name the file and the line for each, and say what it does. Where you find none, say so.
+            Under a "Safety" heading, list anything the build reaches for outside the declared dependencies - a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, an install hook that downloads or runs code from outside the declared dependencies, or a step whose source is not in the tree. Name the file and the line for each, and say what it does. Where you find none, say so.
 
             Write it to
 

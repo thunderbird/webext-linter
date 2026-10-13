@@ -18,7 +18,8 @@
         Every source-code submission asks the reviewer whether the source builds into the
         submitted XPI: does the build complete, from a clean copy with the dependencies
         installed exactly as the lock file pins them (<code>npm ci</code>, or
-        <code>pnpm install --frozen-lockfile --config.strict-dep-builds=false</code>), and does its result match what was
+        <code>pnpm install --frozen-lockfile</code> with the pnpm release the
+        <code>packageManager</code> field of package.json pins), and does its result match what was
         submitted?
       </p>
       <p>
