@@ -23,6 +23,8 @@
 // src/vendor/resolve.js + src/vendor/locks.js), and the wording (->
 // assets/registry.yaml).
 
+import semver from "semver";
+
 import { VERDICT } from "./enum.js";
 import { finding, SEVERITY } from "../report/finding.js";
 import { anchorText, declarationLine } from "./util.js";
@@ -103,10 +105,22 @@ export function vulnFindings(ctx, vulns) {
           version,
           ids: ids.join(", "),
           severity,
-          fixed: fixed.length ? fixed.join(", ") : "a patched release",
+          fixed: latestFix(fixed) ?? "a patched release",
         },
       })
     );
   }
   return findings;
+}
+
+/**
+ * The most recent of the releases the advisories were fixed in. OSV names a fixed release
+ * for every range of every advisory, older release lines included, and only the most
+ * recent one fixes them all.
+ * @param {string[]} fixed  The fixed releases of the package's advisories.
+ * @returns {?string}  The highest valid version among them, or null when there is none.
+ */
+function latestFix(fixed) {
+  const valid = fixed.filter((v) => semver.valid(v, { loose: true }));
+  return valid.length ? semver.rsort(valid, { loose: true })[0] : null;
 }
