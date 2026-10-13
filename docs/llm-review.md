@@ -406,7 +406,7 @@ and says so in its Setup feed.
 
 The same prompt has its reader **judge the build**. It writes the build report to
 `BUILD_PROCESS` (the work folder's `build.md`): the release build for Thunderbird as a short
-numbered list, its install step as `npm ci` or `pnpm install --frozen-lockfile`, and a
+numbered list, its install step as `npm ci` or `pnpm install --frozen-lockfile --config.strict-dep-builds=false`, and a
 "Safety" section listing anything the build fetches or runs from outside the declared
 dependencies. It runs nothing. Then it answers the `BUILD_SAFETY` entry of `ANSWERS` with
 `safe` or `unsafe`, the same two values the review's `build-safety` phase accepts.
@@ -452,7 +452,7 @@ the review. The record keeps the audited lock's vulnerable packages counted by s
   review, which stops on that lock.
 - **The lock is clean**: the next prompt (`build`) has the reader copy `SCA_ROOT` to
   `BUILD_COPY` (the work folder's `build/`) and build there, as `BUILD_PROCESS` describes,
-  installing exactly what the lock pins (`npm ci` or `pnpm install --frozen-lockfile`). It
+  installing exactly what the lock pins (`npm ci` or `pnpm install --frozen-lockfile --config.strict-dep-builds=false`). It
   answers the `BUILD_OUTPUT` entry with what the build produced inside `build/` (an XPI or
   zip file, or a folder), or with `The build failed`, after adding a "Build attempt" section
   (the failing step and its error output) to `build.md`. An output that is not inside

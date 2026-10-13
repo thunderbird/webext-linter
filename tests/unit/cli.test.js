@@ -2481,7 +2481,11 @@ test("the hand-back prints a clean source's build", () => {
   assert.equal(headerValue(stdout, "SCA_ROOT"), path.join(work, "sca"));
   assert.equal(headerValue(stdout, "BUILD_COPY"), workPaths(work).buildCopy);
   assert.equal(headerValue(stdout, "RESCUE_ROOT"), undefined);
-  for (const said of ["Copy SCA_ROOT to BUILD_COPY", '"Build attempt"']) {
+  for (const said of [
+    "Copy SCA_ROOT to BUILD_COPY",
+    '"Build attempt"',
+    "`pnpm install --frozen-lockfile --config.strict-dep-builds=false`",
+  ]) {
     assert.ok(unwrapped(stdout).includes(said), said);
   }
   fs.rmSync(dir, { recursive: true, force: true });
@@ -2505,6 +2509,7 @@ test("the hand-back prints a vulnerable source's rescue", () => {
     "npm audit fix --package-lock-only --ignore-scripts",
     "build NOTHING",
     "`npm ci`",
+    "`pnpm install --frozen-lockfile --config.strict-dep-builds=false`",
     "husky",
     '"label" of its one answer',
   ]) {
