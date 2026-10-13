@@ -91,9 +91,9 @@ const SEV_COLOR = {
  *   file (src/util/dest.js workPaths). Named by this tool, written and read by neither.
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
  *   in a source code review, and in the Review Details only once the phase that writes it
- *   recorded it (src/report/loop.js reportMeta).
+ *   recorded it (src/report/loop.js detailsMeta).
  * @property {string} [buildOutput]  The file or folder the agent's build produced in the
- *   preparation, as its record holds it: set by the loop (src/report/loop.js reportMeta)
+ *   preparation, as its record holds it: set by the loop (src/report/loop.js detailsMeta)
  *   only where the agent built the add-on, since the reviewer may decline the build and a
  *   build may fail.
  * @property {string} [reportFile]  Where the text the reviewer sends to the developer is
@@ -694,8 +694,7 @@ function schemaLine(meta) {
  * a timestamp, which is not what a reader wants to click. Naming each row for what it IS
  * reads the same either way, so the block does not depend on which kind a path is.
  *
- * XPI_FILE is the one row with no link: it names what was submitted, not a location, so
- * there is nothing here for a client to open.
+ * XPI_FILE links the submitted .xpi under the name it was submitted by.
  * @param {ReviewMeta} meta
  * @returns {string[]}
  */
@@ -704,36 +703,27 @@ export function detailLinkLines(meta) {
 }
 
 /**
- * The Review Details rows alone, one per path the meta names, in the block's order. The
- * whole block adds the schema line. The Build Review Details block is these rows for the
- * submitted XPI, the source root, the build's report, its judgement, the vulnerabilities
- * counted in the lock, what came of the build, its output and the agent's comparison of it
- * with the submitted XPI, so the two blocks name a file the same way. SUBMITTED_XPI and BUILD_OUTPUT are named by their own basenames, which is
- * what the submission and the build called them.
+ * The details rows alone, one per value the meta holds, in the blocks' order: every details
+ * block is these rows (src/report/loop.js detailsMeta), and the Review Details add the
+ * schema line. XPI_FILE is named by what was submitted and BUILD_OUTPUT by its own basename,
+ * which is what the submission and the build called them.
  *
  * SCA_ROOT is the reviewed source: the source archive, or after a rescue the rescued copy,
  * beside which SCA_ROOT_ORIG names the same root in the source archive. BUILD_ROOT is the
  * root in the copy the agent built in, named where it built or tried to.
- * @param {ReviewMeta & {submittedXpi?: string, scaRootOrig?: string, buildSafety?: string,
+ * @param {ReviewMeta & {scaRootOrig?: string, buildSafety?: string,
  *   buildVulnerabilities?: {moderate: number, high: number, critical: number},
- *   buildResult?: string, buildRoot?: string, buildMatch?: string}} meta  The Build Review
- *   Details' own values beside the meta: the submitted XPI's path, the original root after a
- *   rescue, the build judgement, the lock's vulnerable packages by severity, the wording of
- *   what came of the build, the root the agent built in, and the agent's comparison of its
- *   output with the submitted XPI, shown only beside that output.
+ *   buildResult?: string, buildRoot?: string, buildMatch?: string}} meta  The review's meta
+ *   and what it holds beside it: the original root after a rescue, the build judgement, the
+ *   lock's vulnerable packages by severity, the wording of what came of the build, the root
+ *   the agent built in, and the agent's comparison of its output with the submitted XPI,
+ *   shown only beside that output.
  * @returns {string[]}
  */
 export function detailRows(meta) {
   const rows = [];
-  if (meta.submittedXpi) {
-    rows.push([
-      "SUBMITTED_XPI",
-      displayLine(path.basename(meta.submittedXpi)),
-      meta.submittedXpi,
-    ]);
-  }
   if (meta.xpiFile) {
-    rows.push(["XPI_FILE", null, meta.xpiFile]);
+    rows.push(["XPI_FILE", displayLine(meta.xpiFile), meta.xpi]);
   }
   if (meta.xpiRoot) {
     rows.push(["XPI_ROOT", "extracted addon", meta.xpiRoot]);

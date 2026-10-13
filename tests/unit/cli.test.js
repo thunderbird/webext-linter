@@ -17,6 +17,7 @@ import {
   advisory,
   answer,
   auditCache,
+  buildInto,
   realPreparation,
   writeBuildReport,
 } from "../prepared.js";
@@ -2423,8 +2424,7 @@ test("a review of a source the agent built opens on its Build Review Details", a
   });
   assert.equal(state.paths.scaRootOrig, null);
   for (const row of [
-    "* SUBMITTED_XPI:",
-    `[xpi](${path.join(fixture, "xpi")})`,
+    `* XPI_FILE: [xpi](${path.join(fixture, "xpi")})`,
     `* SCA_ROOT: [source archive](${workPaths(work).sca})`,
     `* BUILD_ROOT: [build copy](${workPaths(work).buildCopy})`,
     "* BUILD_SAFETY: safe",
@@ -2550,6 +2550,143 @@ test("a rescued review names both roots and the build root", async () => {
   for (const row of rows) {
     assert.ok(details.includes(row), `${row}\n${details}`);
   }
+});
+
+/** Every row a details block can hold, in the blocks' order. */
+const DETAIL_ROWS = [
+  "XPI_FILE",
+  "XPI_ROOT",
+  "SCA_ROOT",
+  "SCA_ROOT_ORIG",
+  "SCA_EXP_SOURCE",
+  "ADDON_DESCRIPTION",
+  "BUILD_PROCESS",
+  "BUILD_SAFETY",
+  "BUILD_VULNERABILITIES",
+  "BUILD_RESULT",
+  "BUILD_ROOT",
+  "BUILD_OUTPUT",
+  "BUILD_MATCH",
+  "REVIEW_REPORT",
+];
+
+/** The details rows a prompt printed, as they read with their indent taken off. */
+const detailRowsOf = (stdout) =>
+  stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => DETAIL_ROWS.some((name) => l.startsWith(`* ${name}: `)));
+
+/** The answer a test reviewer and agent give an entry of a review's phase. */
+const WALK_ANSWERS = {
+  built: "Builds and reproduces",
+  verify: "reported",
+  settle: "cleared",
+  ask: "Clear",
+};
+
+// One review walked from the preparation's permission prompt to its close: each details
+// block holds every row of the block before it, the submitted XPI is XPI_FILE, a link, in
+// every one of them, and the Final Review Details still hold the build.
+test("each details block holds every row of the block before it", () => {
+  const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
+  const dir = submissionFolder();
+  const first = run([
+    dir,
+    "--llm-sca-review",
+    ...OFFLINE_FLAGS,
+    "--cache-work-dir",
+    auditCache({ "lint-pebble@0.4.0": [] }),
+  ]);
+  assert.equal(first.code, 0, first.stderr);
+  const work = workOf(first.stdout);
+  const sca = headerValue(first.stdout, "EXTRACT_TO");
+  fs.cpSync(path.join(fixture, "src"), sca, { recursive: true });
+  const own = { name: "lantern-sorter", version: "1.0.0" };
+  fs.writeFileSync(path.join(sca, "package.json"), JSON.stringify(own));
+  fs.writeFileSync(
+    path.join(sca, "package-lock.json"),
+    JSON.stringify({
+      ...own,
+      lockfileVersion: 3,
+      packages: { "": own, "node_modules/lint-pebble": { version: "0.4.0" } },
+    })
+  );
+  answer(work, { SCA_ROOT: sca });
+  writeBuildReport(work);
+  const permission = run(argvOf(commandOf(first.stdout)));
+  assert.equal(permission.code, 0, permission.stdout + permission.stderr);
+  answer(work, {});
+  const build = run(argvOf(commandOf(permission.stdout)));
+  assert.equal(build.code, 0, build.stdout + build.stderr);
+  const xpi = readJson(work, "prepare").submission.xpi;
+  answer(work, {
+    BUILD_OUTPUT: buildInto(workPaths(work).buildCopy),
+    BUILD_MATCH: "match",
+  });
+  let out = run(argvOf(commandOf(build.stdout)));
+  const blocks = [["permission", detailRowsOf(permission.stdout)]];
+  // Every pass up to the closing one is answered and handed back.
+  for (let pass = 0; pass < 10; pass++) {
+    assert.ok(out.code === 0 || out.code === 1, out.stdout + out.stderr);
+    const { phase } = readJson(work, "state");
+    if (phase === "built" || phase === "ask") {
+      blocks.push([phase, detailRowsOf(out.stdout)]);
+    }
+    if (phase === "close") {
+      blocks.push([phase, detailRowsOf(out.stdout)]);
+      break;
+    }
+    sweepBack(workPaths(work).review);
+    const doc = JSON.parse(fs.readFileSync(workPaths(work).review, "utf8"));
+    doc.entries = doc.entries.map((e) => ({
+      ...e,
+      answer: WALK_ANSWERS[phase],
+    }));
+    fs.writeFileSync(workPaths(work).review, JSON.stringify(doc, null, 1));
+    out = run(["--llm-handback", work]);
+  }
+  assert.deepEqual(
+    blocks.map(([name]) => name),
+    ["permission", "built", "ask", "close"]
+  );
+  const named = `* XPI_FILE: [${path.basename(xpi)}](${xpi})`;
+  for (const [i, [name, rows]] of blocks.entries()) {
+    assert.equal(rows[0], named, `${name}: XPI_FILE, a link, first`);
+    assert.ok(
+      !rows.some((row) => row.includes("SUBMITTED_XPI")),
+      `${name}: no SUBMITTED_XPI`
+    );
+    if (i > 0) {
+      for (const row of blocks[i - 1][1]) {
+        assert.ok(rows.includes(row), `${name} misses ${row}`);
+      }
+    }
+  }
+  // The build block goes out before the description agent and the report.
+  assert.ok(
+    !blocks[1][1].some((row) =>
+      ["* ADDON_DESCRIPTION: ", "* REVIEW_REPORT: "].some((n) =>
+        row.startsWith(n)
+      )
+    ),
+    blocks[1][1].join("\n")
+  );
+  const final = blocks.at(-1)[1];
+  for (const row of [
+    "* BUILD_SAFETY: safe",
+    "* BUILD_RESULT: built by the agent",
+    "* BUILD_MATCH: match",
+  ]) {
+    assert.ok(final.includes(row), `close misses ${row}\n${final.join("\n")}`);
+  }
+  for (const name of ["BUILD_VULNERABILITIES", "BUILD_ROOT", "BUILD_OUTPUT"]) {
+    assert.ok(
+      final.some((row) => row.startsWith(`* ${name}: `)),
+      `close misses ${name}`
+    );
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // A clean lock is built: the prompt after the permission names the source root, its place in

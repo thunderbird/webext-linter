@@ -170,6 +170,14 @@ function review(
  *  position, first of its kind. The fixture's other items name no registered check. */
 const CASE = `${REGISTRY.refBase("unknown-api")}.1`;
 
+/** A source code review whose build every guard vouches for, so its details hold the build
+ *  rows: the fixture's review, with no sweep. */
+function scaReview(dir) {
+  const made = review(dir, { sweep: false });
+  made.state.run = { ...made.state.run, sca: true, "build-guarded": true };
+  return made;
+}
+
 function refed(state) {
   assignRefs([...state.report.findings, ...state.manual], REGISTRY);
   return state;
@@ -487,25 +495,29 @@ test("a process value's finding is about the artifact its check reads", () => {
   assert.equal(reported.artifact, ARTIFACT_XPI);
 });
 
-// The Build Review Details block names the submitted XPI, the source the review read, the
-// build report once back, the judgement, the vulnerable packages the review's own audit
-// counted in the lock, what came of the build, and the output where the agent built it, by
-// the same rows the Review Details block uses. The XPI and the output are named by their own
-// names.
+// The Build Review Details block names the submitted XPI and where it was unpacked, the
+// source the review read, the build report once back, the judgement, the vulnerable packages
+// the review's own audit counted in the lock, what came of the build, and the output where
+// the agent built it, by the same rows the Review Details block uses. The XPI and the output
+// are named by their own names.
 test("the build details name the XPI, the source, the report, the judgement, the audit, the result and the output", () => {
   const dir = tmp();
-  const { state, work } = review(dir, { sweep: false });
+  const { state, work } = scaReview(dir);
   state.report.meta.xpi = path.join(dir, "addon-1.0.xpi");
+  state.report.meta.xpiFile = "addon-1.0.xpi";
   state.paths.scaRoot = path.join(dir, "rescued", "src");
+  state.report.meta.scaRoot = state.paths.scaRoot;
   state.paths.build = path.join(dir, "build.md");
   state.report.meta.buildFile = state.paths.build;
   const rows = () =>
     loopSlots(state, {}, work, REGISTRY).buildDetails.split("\n");
-  const xpi = `* SUBMITTED_XPI: [addon-1.0.xpi](${state.report.meta.xpi})`;
+  const xpi = `* XPI_FILE: [addon-1.0.xpi](${state.report.meta.xpi})`;
+  const unpacked = `* XPI_ROOT: [extracted addon](${state.report.meta.xpiRoot})`;
   const root = `* SCA_ROOT: [source archive](${state.paths.scaRoot})`;
   const report = `* BUILD_PROCESS: [build.md](${state.paths.build})`;
   assert.deepEqual(rows(), [
     xpi,
+    unpacked,
     root,
     "* BUILD_RESULT: not built: you build it",
   ]);
@@ -519,6 +531,7 @@ test("the build details name the XPI, the source, the report, the judgement, the
   };
   assert.deepEqual(rows(), [
     xpi,
+    unpacked,
     root,
     report,
     "* BUILD_SAFETY: safe",
@@ -560,7 +573,7 @@ test("the build details show the agent's comparison only beside its output", () 
 // Details name the same rows.
 test("the details name the reviewed root, the original root and the build root", () => {
   const dir = tmp();
-  const { state, work } = review(dir, { sweep: false });
+  const { state, work } = scaReview(dir);
   const sca = path.join(dir, "sca", "src");
   const rescued = path.join(dir, "rescued", "src");
   const built = path.join(dir, "build", "src");
@@ -617,7 +630,7 @@ test("the details name the reviewed root, the original root and the build root",
     state.build = build;
     const { buildDetails } = loopSlots(state, {}, work, REGISTRY);
     assert.deepEqual(rootRows(buildDetails), rows, name);
-    assert.deepEqual(rootRows(reviewDetails(state)), rows, name);
+    assert.deepEqual(rootRows(reviewDetails(state, REGISTRY)), rows, name);
   }
 });
 
@@ -625,7 +638,7 @@ test("the details name the reviewed root, the original root and the build root",
 // it, its build failed, the build was judged unsafe so nothing was built, or the reviewer
 // builds it - where they did not let the agent build, or nothing was prepared.
 test("the build result is worded by what came of the build", () => {
-  const { state, work } = review(tmp(), { sweep: false });
+  const { state, work } = scaReview(tmp());
   const result = () =>
     loopSlots(state, {}, work, REGISTRY)
       .buildDetails.split("\n")
@@ -2150,7 +2163,7 @@ test("the details link the build output only where the agent built the add-on", 
     state.build = build;
     const linked = `* BUILD_OUTPUT: [addon.xpi](${build.output})`;
     for (const block of [
-      reviewDetails(state),
+      reviewDetails(state, REGISTRY),
       settle(state, REGISTRY).details,
     ]) {
       assert.equal(block.includes(linked), Boolean(build.output), block);
@@ -2179,7 +2192,7 @@ test("the build report is linked once the judging phase wrote it", () => {
     const linked = /^\* BUILD_PROCESS: \[build\.md\]/m;
     for (const block of [
       loopSlots(state, next, work, REGISTRY).buildDetails,
-      reviewDetails(state),
+      reviewDetails(state, REGISTRY),
     ]) {
       if (wrote) {
         assert.match(block, linked);
@@ -2274,7 +2287,7 @@ test("each block the reviewer reads opens its question phase and ends the turn t
 });
 
 // The agent built the add-on and compared it in the preparation, and the review asks it only
-// to put the question: the reviewer reads BUILD_MATCH beside BUILD_OUTPUT and SUBMITTED_XPI.
+// to put the question: the reviewer reads BUILD_MATCH beside BUILD_OUTPUT and XPI_FILE.
 test("the build question tells the agent to build and compare nothing", () => {
   const made = buildQuestionsReview(tmp());
   made.state.build = { result: "built", output: "/w/build/dist" };
@@ -2285,7 +2298,7 @@ test("the build question tells the agent to build and compare nothing", () => {
   assert.ok(worded, built.steps.map((step) => step.raw).join(" | "));
   assert.ok(
     worded.rendered.includes(
-      "BUILD_MATCH is the agent's earlier comparison of it with SUBMITTED_XPI, which the reviewer reads beside both. Build nothing and compare nothing, only put the question below."
+      "BUILD_MATCH is the agent's earlier comparison of it with XPI_FILE, which the reviewer reads beside both. Build nothing and compare nothing, only put the question below."
     ),
     worded.rendered
   );
@@ -2338,11 +2351,14 @@ test("the details link the description only once spawn went out", () => {
   const { state, work } = review(tmp());
   state.report.meta.summaryFile = state.paths.description;
   assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "spawn");
-  assert.doesNotMatch(reviewDetails(state), /ADDON_DESCRIPTION/);
+  assert.doesNotMatch(reviewDetails(state, REGISTRY), /ADDON_DESCRIPTION/);
   swept(state, ARTIFACT_XPI);
   handBack(work, () => null);
   accept(state, work, PHASES, REGISTRY);
-  assert.match(reviewDetails(state), /^\* ADDON_DESCRIPTION: \[summary\.md\]/m);
+  assert.match(
+    reviewDetails(state, REGISTRY),
+    /^\* ADDON_DESCRIPTION: \[summary\.md\]/m
+  );
 });
 
 // The closing prompt hands over the FINISHED review's tally and details, the reasons an

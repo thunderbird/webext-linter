@@ -2470,7 +2470,7 @@ llm-phases:
             {{buildDetails}}
         - when: NOT aborted AND agent-built
           text: |-
-            The agent built the add-on: BUILD_OUTPUT in the Build Review Details names what its build produced, and BUILD_MATCH is the agent's earlier comparison of it with SUBMITTED_XPI, which the reviewer reads beside both. Build nothing and compare nothing, only put the question below.
+            The agent built the add-on: BUILD_OUTPUT in the Build Review Details names what its build produced, and BUILD_MATCH is the agent's earlier comparison of it with XPI_FILE, which the reviewer reads beside both. Build nothing and compare nothing, only put the question below.
         - when: NOT aborted AND agent-build-failed
           text: |-
             The agent's build failed, and the "Build attempt" section of BUILD_PROCESS says where. The reviewer may build the add-on themselves before they answer.

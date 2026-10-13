@@ -1386,9 +1386,10 @@ async function runPreparePass(work, registry) {
 }
 
 /**
- * The Build Review Details the permission prompt shows: the source root, the build report
- * and the judgement, as the review loop's block names them (detailRows), ending with the
- * line telling the reviewer the review waits for their reply, as a turn-ending block does.
+ * The Build Review Details the permission prompt shows: the submitted XPI, the source root,
+ * the build report and the judgement, as the review loop's blocks name them (detailRows), so
+ * the review's Build Review Details hold every row of it. It ends with the line telling the
+ * reviewer the review waits for their reply, as a turn-ending block does.
  * @param {string} work
  * @param {import("./prepare/state.js").PrepareRecord} record  At `permission`.
  * @param {ReturnType<import("./checks/registry.js").Registry["llmScaReviewPrompt"]>} prompt
@@ -1401,6 +1402,8 @@ function buildDetailLines(work, record, prompt, registry) {
   );
   return [
     ...detailRows({
+      xpiFile: path.basename(record.submission.xpi),
+      xpi: record.submission.xpi,
       scaRoot: record.roots.scaRoot,
       buildFile: workPaths(work).build,
       buildSafety: judged.label,

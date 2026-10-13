@@ -832,7 +832,7 @@ async function reviewSubmission(opts, work, prepared) {
     // why the first two are null above where the step that writes them can never print: the
     // description under --llm-skip-summary, the build report in a review that is not a
     // source code one. The Review Details name the build report only once its phase
-    // recorded it (src/report/loop.js reportMeta).
+    // recorded it (src/report/loop.js detailsMeta).
     //
     // Nothing is checked here: the work folder was found writable, and every one of these
     // names free, before the review began (runPipeline). The agents this prompt hands out

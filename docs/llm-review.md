@@ -121,7 +121,7 @@ review's build part is these steps:
 3. **`build-safety`**, only where nothing was prepared: the agent writes the build report
    and records its judgement, and builds nothing.
 4. **`built`** first shows the Build Review Details block as the last thing of the turn:
-   `SUBMITTED_XPI`, `SCA_ROOT`, `BUILD_PROCESS`, `BUILD_SAFETY`, `BUILD_VULNERABILITIES`
+   `XPI_FILE`, `XPI_ROOT`, `SCA_ROOT`, `BUILD_PROCESS`, `BUILD_SAFETY`, `BUILD_VULNERABILITIES`
    (`n moderate, n high, n critical`, the lock's vulnerable packages counted from the
    review's own audit, with no request of its own), `BUILD_RESULT` and, where the agent
    built it, `BUILD_OUTPUT` and `BUILD_MATCH` (`match` or `no match`, the agent's comparison
@@ -132,7 +132,7 @@ review's build part is these steps:
    reproduces the submitted XPI. The step before the question is worded by the build result
    (`agent-built`, `agent-build-failed`, `build-unsafe`, `self-build`), and tells the agent
    it builds and compares nothing: where it built, the reviewer reads its earlier comparison,
-   `BUILD_MATCH`, beside `BUILD_OUTPUT` and `SUBMITTED_XPI`.
+   `BUILD_MATCH`, beside `BUILD_OUTPUT` and `XPI_FILE`.
 6. **`Does not build or reproduce`**, or words the reviewer typed instead, aborts the review
    for build issues. **`Builds and reproduces`** goes on to `spawn`, `verify`, `settle`,
    `ask` and `close`.
@@ -331,20 +331,36 @@ reviewer, in the prompt or in the report.
 ## What the reviewer is handed
 
 Before the `ask` questions, the reviewer is handed a **Review details** block naming
-what this review is and where to read it:
+what this review is and where to read it. Every details block is built from the same rows,
+so each holds every row of the block before it, plus what is new:
+
+- the preparation's **Build Review Details** (the `permission` prompt): `XPI_FILE`,
+  `SCA_ROOT`, `BUILD_PROCESS` and `BUILD_SAFETY`;
+- the review's **Build Review Details** (`built`): every row below the review holds, but
+  `ADDON_DESCRIPTION` and `REVIEW_REPORT`, since `built` goes out before the description
+  agent is started and before the report is handed over;
+- the **Review Details** (`ask`): every row the review holds;
+- the **Final Review Details** (`close`): every row the review holds, and the reasons where
+  the review was aborted early.
+
+A row the review does not hold is left out: the build rows appear only in a source code
+review whose build every guard vouches for (`build-guarded`).
 
 | Name | What it names |
 | --- | --- |
-| `XPI_FILE` | What was submitted, by name - the .xpi as ATN named it, or the folder's own name where the submission arrived unpacked |
+| `XPI_FILE` | What was submitted, a link named by what it was submitted as - the .xpi as ATN named it, or the folder's own name where the submission arrived unpacked |
 | `XPI_ROOT` | The shipped package, unpacked, ready to read |
 | `SCA_ROOT` | A source code review's source root - the whole of which is reviewed - labelled "source archive" in `sca/`, or "rescued source (reduced/fixed dependencies)" where a rescue came out clean and the root lies in `rescued/` |
 | `SCA_ROOT_ORIG` | The same root in `sca/`, the source as submitted - only after a rescue, since it is `SCA_ROOT` otherwise |
 | `SCA_EXP_SOURCE` | The Experiment implementation folder, when one was named |
 | `ADDON_DESCRIPTION` | Where a sub-agent wrote a description of the add-on, for reading while answering |
 | `BUILD_PROCESS` | What building the add-on takes and whether it is safe, written by the agent in `build-safety`, in a source code review |
+| `BUILD_SAFETY` | The build judgement the review holds, the preparation's or its own: `safe` or `unsafe` |
+| `BUILD_VULNERABILITIES` | The lock's vulnerable packages counted from the review's own audit, as `n moderate, n high, n critical` |
+| `BUILD_RESULT` | What came of the build: `built by the agent`, `the agent's build failed: see build.md`, `not built: judged unsafe` or `not built: you build it` |
 | `BUILD_ROOT` | The root in `build/`, where the agent's build ran - only where the agent built or tried to |
 | `BUILD_OUTPUT` | What the agent's build produced in the preparation, a file or a folder inside `build/`, named by its own name - only where the agent built it, since the reviewer may build it themselves and a build may fail |
-| `BUILD_MATCH` | The agent's comparison of `BUILD_OUTPUT` with the submitted XPI in the preparation: `match` (the same files at the same paths with the same contents, only line endings may differ) or `no match` - in the Build Review Details only, and only beside `BUILD_OUTPUT` |
+| `BUILD_MATCH` | The agent's comparison of `BUILD_OUTPUT` with the submitted XPI in the preparation: `match` (the same files at the same paths with the same contents, only line endings may differ) or `no match` - only beside `BUILD_OUTPUT` |
 | `REVIEW_REPORT` | The text the reviewer sends to the developer, written by the linter |
 
 The linter names these files and reads none of them. The description is a sub-agent's,
@@ -435,7 +451,7 @@ That hand-back settles the roots as the review would, and records the judgement:
 - **Unsafe:** the folder is done at once. Nothing is audited or rescued, and the agent builds
   nothing, so a vulnerable lock aborts the review it starts.
 - **Safe:** the next prompt (`permission`) has the reader show the reviewer the **Build
-  Review Details** (the source root, `build.md` and the judgement) as the last thing of its
+  Review Details** (the submitted XPI, the source root, `build.md` and the judgement) as the last thing of its
   turn, ending with `Reply "next" to continue the review with the question whether the
   agent may build the add-on.` Once the reviewer has replied, it puts them one question alone, through its question tool: the `PACKAGE_MANAGERS` entry,
   "Let the agent build the add-on (including its package-manager commands), or not?". The

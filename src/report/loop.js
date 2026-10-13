@@ -279,11 +279,11 @@ export function loopSlots(state, issued, work, registry) {
     // verify or settle opens there - and that is a phase that hands the block over.
     // The closing phase hands over the finished review's block instead, which ends on
     // what aborted it where something did.
-    details: (issued.settled?.details ?? reviewDetails(state)) + waiting,
+    details:
+      (issued.settled?.details ?? reviewDetails(state, registry)) + waiting,
     tally: issued.settled?.tally ?? "",
-    // The Build Review Details block: the submitted XPI, the source the review read, the
-    // build's report and judgement, the vulnerabilities the review's audit counted in the
-    // lock, what came of the build, and what it produced where the agent built it.
+    // The Build Review Details block: the review's details without the two files the
+    // `ask` pass hands over.
     buildDetails: buildDetails(state, registry) + waiting,
     ...sweepSlots(state),
   };
@@ -488,21 +488,26 @@ function phaseEntries(state, registry, phase, ordered) {
  * @param {import("./state.js").LoopState} state
  * @param {?{intro: string, reasons: {id: string, text: string}[]}} earlyExit  What aborted the
  *   review, or null where nothing did.
+ * @param {import("../checks/registry.js").Registry} registry
  * @returns {string}
  */
-function finalDetails(state, earlyExit) {
-  return [reviewDetails(state), ...earlyExitLines(earlyExit)].join("\n");
+function finalDetails(state, earlyExit, registry) {
+  return [reviewDetails(state, registry), ...earlyExitLines(earlyExit)].join(
+    "\n"
+  );
 }
 
 /**
- * The Review Details block itself, for the phase that hands it over.
+ * The Review Details block itself, for the phase that hands it over: every row the review
+ * holds (detailsMeta).
  * @param {import("./state.js").LoopState} state
+ * @param {import("../checks/registry.js").Registry} registry
  * @returns {string}
  */
-export function reviewDetails(state) {
+export function reviewDetails(state, registry) {
   // The chat renderer, not the report's: what a phase hands over is read in a client, not
   // in a terminal, so its paths are links rather than an aligned block.
-  return detailLinkLines(reportMeta(state)).join("\n");
+  return detailLinkLines(detailsMeta(state, registry)).join("\n");
 }
 
 /**
@@ -558,7 +563,7 @@ export function settle(state, registry) {
     // The Review Details block the reviewer is left with, and the line saying the review
     // was aborted where one was. Pure from meta, which is stored - so this pass prints what a
     // settled report has always printed, without the add-on being read a second time.
-    details: finalDetails(state, earlyExit),
+    details: finalDetails(state, earlyExit, registry),
     // The tally, which only this pass can be right about: every earlier one runs before
     // the answers are applied, and would count items the reviewer is in the middle of
     // settling.
@@ -598,20 +603,33 @@ export function settle(state, registry) {
   };
 }
 
-/** The meta the Review Details block names: which add-on this is and where it can be read
- *  (the unpacked package), plus what was left for the reviewer - the description where
- *  the phase that starts its agent went out, the build report where the phase that leaves
- *  it recorded it, and the build output where the agent built the add-on. Those are what the
- *  block exists to hand over, and a file no agent was ever asked to write is not one of
- *  them. Beside them the source archive's root where a rescued copy was reviewed, and the
- *  root the agent built in where it built or tried to. */
-function reportMeta(state) {
+/**
+ * Every row the review holds, the one meta each details block renders, so each block holds
+ * every row of the block before it. Which add-on this is and where it can be read (the
+ * unpacked package), the source the review read, and what is left for the reviewer: the
+ * description once the phase that starts its agent went out, the build report once the
+ * phase that leaves it recorded it, and the report, which the linter writes. A file no agent
+ * was ever asked to write is not among them. Beside them the source archive's root where a
+ * rescued copy was reviewed, and what the review holds of the build.
+ *
+ * BUILD_SAFETY is the judgement the review holds, the preparation's or its own, and
+ * BUILD_RESULT the wording of what came of the build (buildResultFact), held where the
+ * review shows the Build Review Details: a source code review whose build every guard
+ * vouches for. BUILD_ROOT is the root the agent built in where it built or tried to, and
+ * BUILD_OUTPUT what it built, beside which BUILD_MATCH is its comparison with the submitted
+ * XPI.
+ * @param {import("./state.js").LoopState} state
+ * @param {import("../checks/registry.js").Registry} registry
+ * @returns {import("./format.js").ReviewMeta}
+ */
+function detailsMeta(state, registry) {
   const {
     prompting: _prompting,
     summaryFile,
     buildFile,
     ...rest
   } = state.report.meta;
+  const build = state.build ?? {};
   return {
     ...rest,
     ...(spawnIssued(state) ? { summaryFile } : {}),
@@ -619,35 +637,40 @@ function reportMeta(state) {
     ...(state.paths?.scaRootOrig
       ? { scaRootOrig: state.paths.scaRootOrig }
       : {}),
-    ...(state.build?.root ? { buildRoot: state.build.root } : {}),
-    ...(state.build?.output ? { buildOutput: state.build.output } : {}),
+    ...(state.values?.["build-safety"]
+      ? { buildSafety: state.values["build-safety"] }
+      : {}),
+    ...(build.vulnerabilities
+      ? { buildVulnerabilities: build.vulnerabilities }
+      : {}),
+    ...(state.run?.sca && state.run["build-guarded"]
+      ? {
+          buildResult:
+            registry.llmPhases().buildResults[buildResultFact(state)],
+        }
+      : {}),
+    ...(build.root ? { buildRoot: build.root } : {}),
+    ...(build.output ? { buildOutput: build.output } : {}),
+    ...(build.match ? { buildMatch: build.match } : {}),
     manualReview: state.manual,
   };
 }
 
 /**
- * The Build Review Details block: the rows the review holds of the build (detailRows).
- * BUILD_SAFETY is the judgement the review holds, the preparation's or its own, and
- * BUILD_RESULT the wording of what came of the build (buildResultFact). BUILD_MATCH is the
- * agent's comparison of its output with the submitted XPI, shown beside that output.
+ * The Build Review Details block: the review's details (detailsMeta) as the `built` pass
+ * shows them, which goes out before the description agent is started and before the report
+ * is handed over, so it names neither.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {string}
  */
 function buildDetails(state, registry) {
-  const meta = reportMeta(state);
-  return detailRows({
-    submittedXpi: state.report.meta.xpi,
-    scaRoot: state.paths?.scaRoot ?? undefined,
-    scaRootOrig: meta.scaRootOrig,
-    buildFile: meta.buildFile,
-    buildSafety: state.values?.["build-safety"],
-    buildVulnerabilities: state.build?.vulnerabilities ?? undefined,
-    buildResult: registry.llmPhases().buildResults[buildResultFact(state)],
-    buildRoot: meta.buildRoot,
-    buildOutput: meta.buildOutput,
-    buildMatch: state.build?.match ?? undefined,
-  }).join("\n");
+  const {
+    summaryFile: _summaryFile,
+    reportFile: _reportFile,
+    ...meta
+  } = detailsMeta(state, registry);
+  return detailRows(meta).join("\n");
 }
 
 /**

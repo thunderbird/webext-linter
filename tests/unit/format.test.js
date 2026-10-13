@@ -1657,13 +1657,13 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
 });
 
 // The LLM-facing twin of the block above: links a client can open, not a terminal's
-// aligned paths. XPI_FILE names WHAT was submitted rather than a location, so it is the one row
-// with no link at all - text on its own line, like every other value here.
-test("detailLinkLines links every location but XPI_FILE", () => {
+// aligned paths. XPI_FILE links the submitted .xpi under the name it was submitted by.
+test("detailLinkLines links every location, XPI_FILE among them", () => {
   const base = {
     schemaBranch: "release-mv3",
     applicationVersion: "155.0",
     manifestVersion: 3,
+    xpi: "/x/in/a.xpi",
     xpiFile: "a.xpi",
     xpiRoot: "/x/work/xpi/",
   };
@@ -1674,7 +1674,7 @@ test("detailLinkLines links every location but XPI_FILE", () => {
     buildFile: "/x/a.build.md",
   });
   assert.deepEqual(lines, [
-    "* XPI_FILE: a.xpi",
+    "* XPI_FILE: [a.xpi](/x/in/a.xpi)",
     "* XPI_ROOT: [extracted addon](/x/work/xpi/)",
     "* SCA_ROOT: [source archive](/x/src)",
     "* ADDON_DESCRIPTION: [summary.md](/x/work/summary.md)",
@@ -1685,7 +1685,7 @@ test("detailLinkLines links every location but XPI_FILE", () => {
   // No XPI_FILE, no XPI_ROOT: an artifact-only meta with neither prints neither row - both
   // are conditional like every other row here, not a fixed preamble.
   assert.deepEqual(detailLinkLines(base).slice(0, 2), [
-    "* XPI_FILE: a.xpi",
+    "* XPI_FILE: [a.xpi](/x/in/a.xpi)",
     "* XPI_ROOT: [extracted addon](/x/work/xpi/)",
   ]);
   assert.deepEqual(
