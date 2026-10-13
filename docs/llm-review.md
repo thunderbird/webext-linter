@@ -67,9 +67,11 @@ in the same turn, a question or a hand-back, can be folded away by a client that
 tool rows, while the message that ends a turn stays in view. So the step tells the agent
 to end its turn on the block and to go on with the question only once the reviewer has
 replied, and nothing is handed back in between. The linter ends the block with the line
-`Reply "next" to continue the review.`, so the reviewer sees the review waits for them. The
-registry refuses a turn-ending phase whose first step, past a wait for spawned agents,
-shows no block. With no question open, `ask` is not issued, and the Review Details come
+`Reply "next" to continue the review with` and what the reply leads to (for `built`, `the
+question whether the source builds and reproduces the submitted XPI.`), so the reviewer
+sees the review waits for them and what comes next. The registry refuses a turn-ending
+phase whose first step, past a wait for spawned agents, shows no block, and one with no
+`next` entry in `waiting`. With no question open, `ask` is not issued, and the Review Details come
 only with `close`.
 
 A phase is issued only when it has **work** - steps that survive their markers, or
@@ -433,8 +435,8 @@ That hand-back settles the roots as the review would, and records the judgement:
   nothing, so a vulnerable lock aborts the review it starts.
 - **Safe:** the next prompt (`permission`) has the reader show the reviewer the **Build
   Review Details** (the source root, `build.md` and the judgement) as the last thing of its
-  turn, ending with `Reply "next" to continue the review.` Once the reviewer has replied, it
-  puts them one question alone, through its question tool: the `PACKAGE_MANAGERS` entry,
+  turn, ending with `Reply "next" to continue the review with the question whether the
+  agent may build the add-on.` Once the reviewer has replied, it puts them one question alone, through its question tool: the `PACKAGE_MANAGERS` entry,
   "Let the agent build the add-on (including its package-manager commands), or not?". The
   reader records the label the reviewer picked, `Let it build` or `Do not let it build`, and
   any other answer is refused. `--llm-agent-builds` answers it up front with `Let it build`:

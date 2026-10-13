@@ -2651,7 +2651,8 @@ test("a safe build prints the Build Review Details and the permission question",
     `* BUILD_PROCESS: [build.md](${workPaths(work).build})`,
     "* BUILD_SAFETY: safe",
     "",
-    'Reply "next" to continue the review.',
+    'Reply "next" to continue the review with the question whether the agent may ' +
+      "build the add-on.",
   ]
     .map((line) => (line ? `   ${line}` : ""))
     .join("\n");

@@ -34,9 +34,12 @@ const phaseNamed = (registry, name) =>
 
 test("the shipped registry's phases load and are whole", () => {
   const p = fresh().llmPhases();
-  for (const key of ["frame", "handover", "waiting", "refused"]) {
+  for (const key of ["frame", "handover", "refused"]) {
     assert.equal(typeof p[key], "string", key);
     assert.ok(p[key].length > 0, key);
+  }
+  for (const name of ["permission", "built", "ask"]) {
+    assert.ok(p.waiting(name).length > 0, name);
   }
   // The preamble is parts, loaded like steps: text, and a parsed condition or none.
   assert.ok(p.preamble.length > 0, "the preamble has parts");
@@ -103,7 +106,11 @@ const saying = (text) => (err) => err.message.includes(text);
 // reads it as the end of that block.
 test("the shipped turn-ending phases are the two questions that show a block", () => {
   const p = fresh().llmPhases();
-  assert.equal(p.waiting, 'Reply "next" to continue the review.');
+  assert.equal(
+    p.waiting("ask"),
+    'Reply "next" to continue the review with the questions on the findings left to ' +
+      "your judgement."
+  );
   assert.deepEqual(
     p.phases.filter((phase) => phase.endsTurn).map((phase) => phase.name),
     ["built", "ask"]
@@ -112,8 +119,28 @@ test("the shipped turn-ending phases are the two questions that show a block", (
 
 test("a blank waiting line is refused", () => {
   const registry = fresh();
-  registry.doc["llm-phases"].waiting = "  ";
+  registry.doc["llm-phases"].waiting.text = "  ";
   assert.throws(() => check(registry), saying("`waiting`"));
+});
+
+// The waiting line names what the reply leads to, so every block it ends needs that named,
+// and a named step no block ends with is a drafting error.
+test("a turn-ending phase with no next step is refused", () => {
+  const registry = fresh();
+  delete registry.doc["llm-phases"].waiting.next.built;
+  assert.throws(
+    () => check(registry),
+    saying("phase `built` ends the turn but `waiting` has no `next` entry")
+  );
+});
+
+test("a next step for no block is refused", () => {
+  const registry = fresh();
+  registry.doc["llm-phases"].waiting.next.settle = "the settling";
+  assert.throws(
+    () => check(registry),
+    saying("`next` entry for `settle`, which is neither `permission`")
+  );
 });
 
 // The block is the turn-ending phase's FIRST step, past a wait for spawned agents: the turn

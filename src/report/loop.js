@@ -241,7 +241,9 @@ export function issue(state, work, phases, registry) {
   writeReviewFile(workPaths(work).review, reviewFile(entries));
   // A phase that ends the agent's turn closes its block with the line telling the
   // reviewer the review waits for their reply.
-  const waiting = phase.endsTurn ? registry.llmPhases().waiting : null;
+  const waiting = phase.endsTurn
+    ? registry.llmPhases().waiting(phase.name)
+    : null;
   return { phase, steps, preamble, entries, settled, waiting };
 }
 

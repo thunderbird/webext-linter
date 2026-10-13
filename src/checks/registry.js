@@ -608,7 +608,8 @@ export class Registry {
    *
    * `frame`, `handover`, `waiting` and `refused` are the linter's - authored once and
    * printed the same way every time, so no phase can forget to say how to hand back, that
-   * the file has changed since the last pass, or that the review waits for a reply. The phases author only what differs: their `intro` (often
+   * the file has changed since the last pass, or that the review waits for a reply. `waiting(name)` fills that line with what the reply leads
+   * to after the block of `name`. The phases author only what differs: their `intro` (often
    * empty) and their `steps`. The `preamble` is a list of parts, each printed where its
    * condition holds - on the first prompt, unless that prompt is already the closing one.
    *
@@ -621,7 +622,7 @@ export class Registry {
    * person is offered for its question, in place of the manual review's own, or null where
    * it offers those (answerChoices).
    * @returns {{preamble: {when: ?object, text: string}[], frame: string, handover: string,
-   *   waiting: string, refused: string, buildResults: Record<string, string>,
+   *   waiting: (name: string) => string, refused: string, buildResults: Record<string, string>,
    *   phases: {name: string, answer: string,
    *   endsTurn: boolean, verbs: string[],
    *   product: ?string, verbProse: object, intro: string,
@@ -636,7 +637,9 @@ export class Registry {
       preamble: p.preamble.map(loadedStep),
       frame: p.frame,
       handover: p.handover,
-      waiting: p.waiting,
+      // The waiting line ending the block of `name`, naming what the reply leads to.
+      waiting: (name) =>
+        p.waiting.text.split("{{next}}").join(p.waiting.next[name]),
       refused: p.refused,
       buildResults: { ...p["build-results"] },
       phases: p.phases.map((phase) => ({
@@ -1570,6 +1573,9 @@ function assertProcessValues(registry, phase, at) {
 // Read by assertPhaseVerbSubsets.
 const SETTLE_PHASE = "settle";
 
+// The preparation's block that ends with the waiting line, beside the turn-ending phases.
+const WAITING_PERMISSION = "permission";
+
 // The blocks a turn-ending phase shows, each ending with the waiting line.
 const TURN_BLOCKS = ["{{buildDetails}}", "{{details}}"];
 
@@ -1710,6 +1716,33 @@ export function assertPhases(registry, at) {
             "agent would be refused for doing what it was told"
         );
       }
+    }
+  }
+  // The waiting line names what the reply leads to, filled per block from `next`: a
+  // block with no entry would name nothing, and an entry for no block reaches no reader.
+  if (!doc.waiting.text.includes("{{next}}")) {
+    throw new Error(
+      `${where} \`waiting\` carries no {{next}} - the linter fills it there with what ` +
+        "the reply leads to"
+    );
+  }
+  const turnEnding = doc.phases
+    .filter((phase) => phase["ends-turn"])
+    .map((phase) => phase.name);
+  for (const name of turnEnding) {
+    if (doc.waiting.next[name] === undefined) {
+      throw new Error(
+        `${where} phase \`${name}\` ends the turn but \`waiting\` has no \`next\` ` +
+          "entry for it, so its waiting line would name nothing"
+      );
+    }
+  }
+  for (const name of Object.keys(doc.waiting.next)) {
+    if (name !== WAITING_PERMISSION && !turnEnding.includes(name)) {
+      throw new Error(
+        `${where} \`waiting\` has a \`next\` entry for \`${name}\`, which is neither ` +
+          `\`${WAITING_PERMISSION}\` nor a turn-ending phase, so no block ends with it`
+      );
     }
   }
 }

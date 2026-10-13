@@ -581,7 +581,19 @@ sections:
         required: true
         why: a loop text the linter fills and prints
       handover: *loop-text
-      waiting: *loop-text
+      waiting:
+        kind: object
+        required: true
+        noun: "`waiting` line"
+        fields:
+          text: *loop-text
+          next:
+            kind: prose-map
+            required: []
+            must-exist: true
+            why: >-
+              what the reply to the waiting line leads to, by the block it ends: `permission`
+              or a turn-ending phase
       refused: *loop-text
       build-results:
         kind: prose-map

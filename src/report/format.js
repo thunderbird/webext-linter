@@ -266,6 +266,7 @@ function stepLines(n, text, blocks = []) {
 const BLOCK_VALUES = new Set([
   "schema",
   "details",
+  "buildDetails",
   "tally",
   "command",
   "review",

@@ -1406,7 +1406,7 @@ function buildDetailLines(work, record, prompt, registry) {
       buildSafety: judged.label,
     }),
     "",
-    registry.llmPhases().waiting,
+    registry.llmPhases().waiting("permission"),
   ];
 }
 

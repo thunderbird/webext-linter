@@ -2272,18 +2272,27 @@ test("the build question tells the agent to build and compare nothing", () => {
 });
 
 // The block a turn-ending phase shows ends with the line telling the reviewer the review
-// waits for them, inside the text the agent prints verbatim.
+// waits for them and what their reply leads to, inside the text the agent prints verbatim.
 test("each turn-ending block ends with the line asking the reviewer to reply", () => {
-  const WAITING = 'Reply "next" to continue the review.';
+  const WAITING = 'Reply "next" to continue the review';
   const issued = stepsByPhase(buildQuestionsReview(tmp()), goesOn());
-  for (const [name, slot] of [
-    ["built", "buildDetails"],
-    ["ask", "details"],
+  for (const [name, slot, line] of [
+    [
+      "built",
+      "buildDetails",
+      `${WAITING} with the question whether the source builds and reproduces the ` +
+        "submitted XPI.",
+    ],
+    [
+      "ask",
+      "details",
+      `${WAITING} with the questions on the findings left to your judgement.`,
+    ],
   ]) {
     const phase = issued.find((x) => x.name === name);
     assert.ok(phase, name);
     const block = phase.slots[slot].split("\n").map((line) => line.trim());
-    assert.deepEqual(block.slice(-2), ["", WAITING], name);
+    assert.deepEqual(block.slice(-2), ["", line], name);
     const shown = phase.steps.find((step) => step.lines.includes(block[0]));
     assert.ok(shown, `${name} shows its block`);
     const start = shown.lines.indexOf(block[0]);
@@ -2334,7 +2343,7 @@ test("the closing prompt's slots carry the settled tally and details", () => {
     slots
   ).join("\n");
   assert.ok(rendered.includes(out.settled.details.split("\n")[0]));
-  assert.ok(!rendered.includes('Reply "next" to continue the review.'));
+  assert.ok(!rendered.includes('Reply "next" to continue the review'));
 });
 
 // The two suppressions of the `ask` phase are different facts and must stay so: the skip

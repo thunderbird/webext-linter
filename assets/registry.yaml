@@ -2347,8 +2347,16 @@ llm-phases:
     {{command}}
 
     It prints the next prompt for you to follow.
-  # Waiting: the last line of the block a turn-ending phase shows.
-  waiting: Reply "next" to continue the review.
+  # Waiting: the last line of a block that ends the agent's turn, naming what the reply
+  # leads to.
+  waiting:
+    text: Reply "next" to continue the review with {{next}}.
+    # By the block the line ends: the preparation's permission prompt, or the turn-ending
+    # phase of that name.
+    next:
+      permission: the question whether the agent may build the add-on
+      built: the question whether the source builds and reproduces the submitted XPI
+      ask: the questions on the findings left to your judgement
   # What BUILD_RESULT in the Build Review Details says, by the build result the review holds:
   # the agent built the add-on, its build failed, the build was judged unsafe so nothing was
   # built, or the agent was not let build (or nothing was prepared) and the reviewer builds it.
