@@ -2374,9 +2374,10 @@ test("the hand-back starts the review of an unrescued source, which closes at on
 });
 
 // A source the agent built clean in the preparation: the hand-back starts its review in the
-// folder the build ran in, and the review opens on the Build Review Details, which name what
-// the agent's build produced and count the lock's vulnerable packages from the review's own
-// audit - a moderate advisory, which decides nothing, among them.
+// folder the build ran in, and the review opens on the build question, whose first step is
+// the Build Review Details. They name what the agent's build produced and count the lock's
+// vulnerable packages from the review's own audit - a moderate advisory, which decides
+// nothing, among them.
 test("a review of a source the agent built opens on its Build Review Details", async () => {
   const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
   const source = fs.mkdtempSync(path.join(os.tmpdir(), "wl-built-"));
@@ -2411,7 +2412,7 @@ test("a review of a source the agent built opens on its Build Review Details", a
   const r = run(["--llm-handback", work]);
   assert.equal(r.code, 0, r.stdout + r.stderr);
   const state = readJson(work, "state");
-  assert.equal(state.phase, "build-result");
+  assert.equal(state.phase, "built");
   assert.deepEqual(state.build, {
     result: "built",
     root: workPaths(work).buildCopy,

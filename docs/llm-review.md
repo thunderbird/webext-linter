@@ -54,20 +54,23 @@ entry never offered are all refusals.
 | Phase | What it is for | What fills its answers |
 | --- | --- | --- |
 | `build-safety` | Source code review only: write the build report (`BUILD_PROCESS`), with a safety section listing anything the build fetches or runs from outside the declared dependencies, and judge whether building is safe. Not where the review was prepared: it starts with the judgement and the build report its preparation recorded. | A process value: `safe` / `unsafe` |
-| `build-result` | Show the Build Review Details block (see below) as the last thing of the turn, and hand back once the reviewer has replied. Where the reviewer builds themselves, this is the pause in which they build. | Nothing: the block is its whole work |
-| `built` | Source code review only: ask the reviewer, alone, whether the source builds and reproduces the submitted XPI. Its first step says who built the add-on, by the build result. | `Builds and reproduces` / `Does not build or reproduce`, or the reviewer's own words |
+| `built` | Source code review only: show the Build Review Details block (see below) as the last thing of the turn, then, once the reviewer has replied, ask them alone whether the source builds and reproduces the submitted XPI. Where the reviewer builds themselves, the pause after the block is the one in which they build. A step says who built the add-on, by the build result, and the agent builds and compares nothing. | `Builds and reproduces` / `Does not build or reproduce`, or the reviewer's own words |
 | `spawn` | Start the sub-agents the review needs - the add-on description and one sweep per tree - and read back what the sweeps found. | Nothing: each sweep's reply is written to a file of its own (see below) |
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
-| `details` | Hand the reviewer the Review Details block, before the `ask` questions, so only where `ask` follows: not under `--llm-skip-manual`. The block is the last thing of the turn, and the pass is handed back once the reviewer has replied. | Nothing: the block is its whole work |
-| `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
+| `ask` | Show the Review Details block as the last thing of the turn, then, once the reviewer has replied, put to them what only a person can answer. Not under `--llm-skip-manual`. | The reviewer's own answer |
 | `close` | The last phase, once nothing else has work: hand over the settled review. It opens on whether the review is settled or was aborted, and says only what applies to it. | Nothing: the review ends with it |
 
-A block the reviewer must read before answering (`build-result`, `details`) is shown by a pass of its own and ends the agent's turn. Text written before a
-tool call in the same turn, a question or a hand-back, can be folded away by a client that
-collapses tool rows, while the message that ends a turn stays in view. So each such pass
-costs the reviewer one reply. The linter ends the block with the line `Reply "next" to
-continue the review.`, so the reviewer sees the review waits for them.
+A block the reviewer must read before answering is the first step of the question phase
+that needs it (`built`, `ask`), and ends the agent's turn. Text written before a tool call
+in the same turn, a question or a hand-back, can be folded away by a client that collapses
+tool rows, while the message that ends a turn stays in view. So the step tells the agent
+to end its turn on the block and to go on with the question only once the reviewer has
+replied, and nothing is handed back in between. The linter ends the block with the line
+`Reply "next" to continue the review.`, so the reviewer sees the review waits for them. The
+registry refuses a turn-ending phase whose first step, past a wait for spawned agents,
+shows no block. With no question open, `ask` is not issued, and the Review Details come
+only with `close`.
 
 A phase is issued only when it has **work** - steps that survive their markers, or
 entries to settle - and that is also what ends the loop. So a review with no sweep never
@@ -87,7 +90,7 @@ prompt, `spawned` once `spawn` went out, `decided` once `verify` or `settle` did
 left with no step is not issued. The preamble's parts are conditioned the same way. A wait
 for spawned agents is a step of its own (`when: spawned AND ...`), carrying its phase's own
 condition so that a wait alone never issues a phase. The registry spells each one
-out, for example `details`' `NOT aborted AND NOT llm-skip-manual`, and refuses a
+out, for example `ask`'s `NOT aborted AND NOT llm-skip-manual`, and refuses a
 condition that does not parse or names a fact nothing answers.
 
 A condition can also read a **process value** with `value(phase, id)`. A phase answering
@@ -115,19 +118,20 @@ review's build part is these steps:
    reaches the steps below - each one reads `NOT aborted`.
 3. **`build-safety`**, only where nothing was prepared: the agent writes the build report
    and records its judgement, and builds nothing.
-4. **`build-result`** shows the Build Review Details block as the last thing of the turn:
+4. **`built`** first shows the Build Review Details block as the last thing of the turn:
    `SUBMITTED_XPI`, `SCA_ROOT`, `BUILD_PROCESS`, `BUILD_SAFETY`, `BUILD_VULNERABILITIES`
    (`n moderate, n high, n critical`, the lock's vulnerable packages counted from the
    review's own audit, with no request of its own), `BUILD_RESULT` and, where the agent
    built it, `BUILD_OUTPUT`. `BUILD_RESULT` reads `built by the agent`, `the agent's build
    failed: see build.md`, `not built: judged unsafe` or `not built: you build it` (the
    reviewer did not let the agent build, or nothing was prepared).
-5. **`built`** asks the reviewer alone whether the source builds and reproduces the
-   submitted XPI. Its first step is worded by the build result (`agent-built`,
-   `agent-build-failed`, `build-unsafe`, `self-build`).
+5. Once the reviewer has replied, **`built`** asks them alone whether the source builds and
+   reproduces the submitted XPI. The step before the question is worded by the build result
+   (`agent-built`, `agent-build-failed`, `build-unsafe`, `self-build`), and tells the agent
+   it builds and compares nothing.
 6. **`Does not build or reproduce`**, or words the reviewer typed instead, aborts the review
    for build issues. **`Builds and reproduces`** goes on to `spawn`, `verify`, `settle`,
-   `details`, `ask` and `close`.
+   `ask` and `close`.
 
 These build steps run only where every check a build relies on ran (`build-guarded`): the
 dependency-vulnerability checks, `lockfile-injection`, `lock-foreign-source` and
@@ -344,15 +348,15 @@ unchanged to `ADDON_DESCRIPTION` - not to read, summarise or print it. The build
 the Build Review Details block names them beside the submitted XPI and the source root the
 review read, right before the build question.
 
-`REVIEW_REPORT` it writes itself: as the `details` phase goes out, where one does, so the
+`REVIEW_REPORT` it writes itself: as the `ask` phase goes out, where one does, so the
 reviewer can read the report while answering the questions that follow, and again from the settled review
 once those answers are in. It is a file rather than something the agent prints because
 printing it failed - the hand-over used to carry the report and ask for it back "in a code
 block and unchanged", and that is the one text where a model rewording its input reaches the
 developer.
 
-The block is handed over twice, for two different readings. The `details` phase hands it
-over before the `ask` questions, so the reviewer can open those files while answering, and
+The block is handed over twice, for two different readings. The `ask` phase hands it
+over before its questions, so the reviewer can open those files while answering, and
 the last pass hands it over again as what they are left holding.
 
 The last pass is the `close` phase. The linter applies every answer, writes `REVIEW_REPORT`,

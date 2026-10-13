@@ -244,21 +244,13 @@ export const LOOP_VERBS = VERB_NAMES;
  *  answer that vocabulary belongs to, and neither is inferred from what it is called. The
  *  preparation reads its build's answer as `output` (src/report/handback.js outputAt), a
  *  kind no loop phase answers with. */
-export const ANSWER_KINDS = [
-  "hints",
-  "verdict",
-  "words",
-  "value",
-  "none",
-  "end",
-];
+export const ANSWER_KINDS = ["hints", "verdict", "words", "value", "end"];
 
 /** The answer kinds of a phase that asks about no review item: its work is what its steps
- *  do, so it is issued once. `hints` and `none` are handed back with an empty file - `hints`
- *  also reads the sweeps back on that hand-back, `none` reads nothing. `value` is handed
- *  back with its one process value. `end` is the closing phase: issued once nothing else
+ *  do, so it is issued once. `hints` is handed back with an empty file, and reads the
+ *  sweeps back on that hand-back. `value` is handed back with its one process value. `end` is the closing phase: issued once nothing else
  *  has work, and never handed back, because the review ends with it. */
-export const ITEMLESS_ANSWERS = ["hints", "none", "value", "end"];
+export const ITEMLESS_ANSWERS = ["hints", "value", "end"];
 
 /** What a phase's `product` can name: what its agent leaves for the reviewer, keyed as the
  *  state's `paths` key that holds it. `build` is a file the agent writes. Whether it came

@@ -175,10 +175,10 @@ function refed(state) {
   return state;
 }
 
-// The report is the one review document the LINTER writes. It is written when the `details`
-// phase goes out - that phase hands the reviewer the Review Details block, which links the
-// file, and they read it to answer the questions `ask` puts - and written again from the
-// settled review once those answers are in.
+// The report is the one review document the LINTER writes. It is written when the `ask`
+// phase goes out - its first steps hand the reviewer the Review Details block, which links
+// the file, and they read it to answer the questions that follow - and written again from
+// the settled review once those answers are in.
 test("the report file is written for the questions and rewritten once they are answered", () => {
   const dir = tmp();
   const { state, work } = review(dir);
@@ -194,10 +194,10 @@ test("the report file is written for the questions and rewritten once they are a
       break;
     }
     seen.push(out.phase.name);
-    // Written exactly when `details` hands the reviewer its link, and not before it.
+    // Written exactly when `ask` hands the reviewer its link, and not before it.
     assert.equal(
       fs.existsSync(file),
-      seen.includes("details"),
+      seen.includes("ask"),
       `after issuing ${out.phase.name}`
     );
     if (out.phase.name === "spawn") {
@@ -263,7 +263,7 @@ function swept(state, artifact, found = {}) {
 // asks about. Every route the loop has is exercised here - a sweep answered by check, a
 // finding withdrawn, a case settled, a case that becomes a question, and a person's own
 // words coming back.
-test("a review runs spawn -> verify -> settle -> details -> ask and then settles", () => {
+test("a review runs spawn -> verify -> settle -> ask and then settles", () => {
   const dir = tmp();
   const { state, work } = review(dir);
   const seen = [];
@@ -284,10 +284,10 @@ test("a review runs spawn -> verify -> settle -> details -> ask and then settles
     const { answers } = accept(state, work, PHASES, REGISTRY);
     answered.push([out.phase.name, [...answers.keys()].join(",")]);
   }
-  assert.deepEqual(seen, ["spawn", "verify", "settle", "details", "ask"]);
+  assert.deepEqual(seen, ["spawn", "verify", "settle", "ask"]);
   // The settle case became a question and was asked WITH its own index, beside the two
   // standard ones - three questions, not two.
-  assert.equal(answered[4][1].split(",").length, 3);
+  assert.equal(answered[3][1].split(",").length, 3);
   assert.deepEqual(state.answers, {
     0.1: "withdrawn",
     0.2: "reported",
@@ -397,7 +397,7 @@ function valueLoop() {
     },
     {
       name: "after",
-      answer: "none",
+      answer: "hints",
       verbs: [],
       intro: "",
       steps: [{ text: "Only when safe.", when: "value(safety, safe)" }],
@@ -633,7 +633,7 @@ test("an entry is answered from its own answers, not its phase's verbs", () => {
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
   // Marked done so this test starts where it means to - spawn has nothing to start here
   // anyway.
-  state.issued = ["spawn", "details"];
+  state.issued = ["spawn"];
   // What most screened checks declare: settle it, or clear it. No handing it on.
   state.manual[0].settleVerbs = ["reported", "cleared"];
 
@@ -666,7 +666,7 @@ test("reporting reads as the last resort only where clearing was the way out", (
   const dir = tmp();
   const skipSetup = (r) => {
     r.state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
-    r.state.issued = ["spawn", "details"];
+    r.state.issued = ["spawn"];
     return r;
   };
   const offered = (verbs) => {
@@ -768,7 +768,7 @@ test("a wrong hand-back is refused, and changes nothing", () => {
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
   // Marked done so this test starts where it means to - spawn has nothing to start here
   // anyway.
-  state.issued = ["spawn", "details"];
+  state.issued = ["spawn"];
   assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "verify");
   const before = JSON.stringify(state);
   // Each case starts from the file as it was HANDED OUT: mangling the last mangle would
@@ -824,7 +824,7 @@ test("a wrong hand-back is refused, and changes nothing", () => {
 test("an entry handed back twice is refused, and changes nothing", () => {
   const { state, work } = review(tmp(), { sweep: false });
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
-  state.issued = ["spawn", "details"];
+  state.issued = ["spawn"];
   assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "verify");
   const before = JSON.stringify(state);
   const doc = JSON.parse(fs.readFileSync(reviewFileOf(work), "utf8"));
@@ -845,7 +845,7 @@ test("a person's answer that is empty or not text is refused at the hand-back", 
     code: false,
   });
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
-  state.issued = ["spawn", "details"];
+  state.issued = ["spawn"];
   assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "ask");
   const before = JSON.stringify(state);
   for (const said of ["", { label: "Clear" }, 1]) {
@@ -1129,23 +1129,15 @@ function phasesOf(state, work) {
 test("a phase with no entries is not issued, whichever phase it is", () => {
   const cases = [
     // what the review holds                        which phases run
-    // `details` hands over the block in every review that is not told to skip it.
-    [{ findings: false, code: false, questions: false }, ["spawn", "details"]],
-    [
-      { findings: true, code: false, questions: false },
-      ["spawn", "verify", "details"],
-    ],
-    [
-      { findings: false, code: true, questions: false },
-      ["spawn", "settle", "details"],
-    ],
-    [
-      { findings: false, code: false, questions: true },
-      ["spawn", "details", "ask"],
-    ],
+    // `ask` hands over the block only where a question is open: with none, the closing
+    // hand-over is the one that carries it.
+    [{ findings: false, code: false, questions: false }, ["spawn"]],
+    [{ findings: true, code: false, questions: false }, ["spawn", "verify"]],
+    [{ findings: false, code: true, questions: false }, ["spawn", "settle"]],
+    [{ findings: false, code: false, questions: true }, ["spawn", "ask"]],
     [
       { findings: true, code: true, questions: true },
-      ["spawn", "verify", "settle", "details", "ask"],
+      ["spawn", "verify", "settle", "ask"],
     ],
   ];
   for (const [holds, expected] of cases) {
@@ -1163,8 +1155,8 @@ test("a phase with no entries is not issued, whichever phase it is", () => {
 // phase - so what drops out is the FLAG's doing and nothing else.
 //
 //   llm-skip-summary -> the description agent, and the link that hands it over
-//   llm-skip-manual  -> the details block and the questions: the entries as well as the
-//                       step that asks them
+//   llm-skip-manual  -> `ask`, its details block and its questions: the entries as well
+//                       as the step that asks them
 //   llm-skip-sweep   -> the sweep agent, the wait, and the rows it would have filled
 test("every combination of the skips issues exactly the phases it should", () => {
   const SKIPS = ["llm-skip-summary", "llm-skip-manual", "llm-skip-sweep"];
@@ -1197,13 +1189,13 @@ test("every combination of the skips issues exactly the phases it should", () =>
       "settle",
       // An XPI review asks nothing else, so --llm-skip-manual leaves no question for the
       // details block to serve and no entry for `ask`.
-      ...(skip.includes("llm-skip-manual") ? [] : ["details", "ask"]),
+      ...(skip.includes("llm-skip-manual") ? [] : ["ask"]),
     ];
     const { seen, details } = phasesOf(state, work);
     const where = `skips: ${skip.join(",") || "none"}`;
     assert.deepEqual(seen, expected, where);
 
-    // The block ends EVERY settled review, whether or not `details` showed the same
+    // The block ends EVERY settled review, whether or not `ask` showed the same
     // one earlier. That copy was for answering the questions with, and by the time they are
     // answered it is far above the reviewer - while the report they are about to send, and
     // the package it is about, are rows in this one.
@@ -1238,9 +1230,9 @@ test("a case sent on with `ask` arrives as a question, worded and answerable", (
   const { state, work } = review(dir, { sweep: false, findings: false });
   // Nothing for spawn to start either, so `settle` is the phase in flight.
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
-  // spawn has nothing to start in this config and is never issued, and `details` comes
-  // after `settle` - both marked done here anyway, so this test starts where it means to.
-  state.issued = ["spawn", "details"];
+  // spawn has nothing to start in this config and is never issued - marked done here
+  // anyway, so this test starts where it means to.
+  state.issued = ["spawn"];
   assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "settle");
   handBack(work, () => "ask");
   accept(state, work, PHASES, REGISTRY);
@@ -1271,7 +1263,7 @@ test("a case sent on with `ask` is settled by the reviewer's own answer", () => 
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
   // Marked done so this test starts where it means to - spawn has nothing to start here
   // anyway.
-  state.issued = ["spawn", "details"];
+  state.issued = ["spawn"];
 
   const sent = issue(state, work, PHASES, REGISTRY);
   assert.equal(sent.phase.name, "settle");
@@ -1323,7 +1315,7 @@ test("a reviewer who writes `ask` has answered, not asked for a move", () => {
   state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
   // Marked done so this test starts where it means to - spawn has nothing to start here
   // anyway.
-  state.issued = ["spawn", "details"];
+  state.issued = ["spawn"];
   // Real check ids, because a reported case becomes a finding of its own check and takes
   // the severity that check declares.
   state.manual.forEach((m, i) => {
@@ -1432,10 +1424,10 @@ test("a blocking finding closes the review on its first prompt", () => {
   assert.match(first.settled.details, /- Known security vulnerabilities$/);
 });
 
-// The Review Details block goes out once, in a phase of its own, before the `ask` questions -
-// and only where they follow: not in an aborted review, and not under --llm-skip-manual,
-// whatever the review. A source review's build question comes first, with its own block.
-test("the details block is handed over by its own phase, before the questions", () => {
+// The Review Details block goes out in `ask`, before its questions - and only where they
+// are put: not in an aborted review, and not under --llm-skip-manual, whatever the review.
+// A source review's build question comes first, with its own block.
+test("the details block is handed over by the ask phase, before its questions", () => {
   const blocks = (made) => {
     const shown = [];
     for (let pass = 0; pass < 10; pass++) {
@@ -1455,7 +1447,7 @@ test("the details block is handed over by its own phase, before the questions", 
     }
     return shown;
   };
-  assert.deepEqual(blocks(review(tmp(), { sweep: false })), ["details"]);
+  assert.deepEqual(blocks(review(tmp(), { sweep: false })), ["ask"]);
 
   const skipped = review(tmp(), { sweep: false });
   skipped.state.run.skip = ["llm-skip-manual"];
@@ -1478,7 +1470,7 @@ test("the details block is handed over by its own phase, before the questions", 
     );
     accept(aborted.state, aborted.work, PHASES, REGISTRY);
   }
-  assert.ok(!shown.includes("details"), shown.join(", "));
+  assert.ok(!shown.includes("ask"), shown.join(", "));
 });
 
 // The review ends with the closing phase, which carries the settled review and opens on
@@ -1681,12 +1673,10 @@ test("a source review opens with the build, and its questions come before the sw
   const { seen, handed, settled } = driveBuild(made, goesOn());
   assert.deepEqual(seen, [
     "build-safety",
-    "build-result",
     "built",
     "spawn",
     "verify",
     "settle",
-    "details",
     "ask",
   ]);
   assert.deepEqual(made.state.values, { "build-safety": "safe" });
@@ -1940,15 +1930,15 @@ test("the preamble opens the first prompt only, and close says what ran", () => 
 // and never on its own: a phase whose only surviving step is the wait is not issued.
 test("the agent wait prints only where an agent was started, and never alone", () => {
   // A source review's build question comes before any agent is started, so it does not
-  // wait; the details block, after the description agent started, does.
+  // wait; the details block of `ask`, after the description agent started, does.
   const source = promptsOf(buildQuestionsReview(tmp()));
   assert.ok(!source.built.steps.includes(WAIT), source.built.steps.join(", "));
-  assert.deepEqual(source.details.steps[0], WAIT);
-  assert.match(source.details.steps[1], /^Give the reviewer this block/);
+  assert.deepEqual(source.ask.steps[0], WAIT);
+  assert.match(source.ask.steps[1], /^Give the reviewer this block/);
 
   // An XPI review that started a sweep waits before the details block, and never builds.
   const swept = promptsOf(review(tmp()));
-  assert.equal(swept.details.steps[0], WAIT);
+  assert.equal(swept.ask.steps[0], WAIT);
   assert.ok(!("build" in swept), "no build phase made of a wait alone");
 
   // An XPI review that started nothing does not wait.
@@ -1956,13 +1946,13 @@ test("the agent wait prints only where an agent was started, and never alone", (
   quiet.state.run = { skip: ["llm-skip-summary"], sca: false };
   const prompts = promptsOf(quiet);
   assert.ok(!("spawn" in prompts));
-  assert.deepEqual(prompts.details.steps.length, 1);
-  assert.match(prompts.details.steps[0], /^Give the reviewer this block/);
+  assert.deepEqual(prompts.ask.steps.length, 2);
+  assert.match(prompts.ask.steps[0], /^Give the reviewer this block/);
 
-  // An XPI review under --llm-skip-manual asks nothing, so no details phase made of a wait.
+  // An XPI review under --llm-skip-manual asks nothing, so no ask phase made of a wait.
   const skipped = review(tmp());
   skipped.state.run.skip = ["llm-skip-manual"];
-  assert.ok(!("details" in promptsOf(skipped)));
+  assert.ok(!("ask" in promptsOf(skipped)));
 });
 
 // With one of the checks a build relies on switched off, nothing vouches for what an install
@@ -1981,41 +1971,40 @@ test("a review asks only the build question after its judgement, and builds noth
   for (const safety of ["safe", "unsafe"]) {
     const made = buildQuestionsReview(tmp());
     const { seen } = driveBuild(made, goesOn({ "build-safety": () => safety }));
-    assert.deepEqual(seen.slice(0, 4), [
-      "build-safety",
-      "build-result",
-      "built",
-      "spawn",
-    ]);
+    assert.deepEqual(seen.slice(0, 3), ["build-safety", "built", "spawn"]);
   }
 });
 
 // A prepared review starts with the judgement its preparation recorded, so the review asks
-// for none of its own: `build-safety` is not issued, and the review opens on the Build
-// Review Details.
+// for none of its own: `build-safety` is not issued, and the review opens on the build
+// question, whose first step is the Build Review Details.
 test("a review holding a recorded judgement does not ask for one", () => {
   for (const safety of ["safe", "unsafe"]) {
     const made = buildQuestionsReview(tmp());
     made.state.values = { "build-safety": safety };
     const { seen } = driveBuild(made, goesOn());
-    assert.deepEqual(seen.slice(0, 2), ["build-result", "built"]);
+    assert.deepEqual(seen.slice(0, 2), ["built", "spawn"]);
     assert.ok(!seen.includes("build-safety"), seen.join(", "));
   }
 });
 
-// The build question's first step says who built the add-on, by what came of the build: the
-// agent built it, its build failed, it was judged unsafe, or the reviewer builds it. Exactly
-// one of the four prints.
+// The build question's step after the Build Review Details says who built the add-on, by
+// what came of the build: the agent built it, its build failed, it was judged unsafe, or the
+// reviewer builds it. Exactly one of the four prints.
 test("the build question's step text is worded by what came of the build", () => {
-  const firstStep = (build, safety) => {
+  const wordedStep = (build, safety) => {
     const made = buildQuestionsReview(tmp());
     made.state.build = build;
     made.state.values = { "build-safety": safety };
     for (let pass = 0; pass < 4; pass++) {
       const out = issue(made.state, made.work, PHASES, REGISTRY);
       if (out.phase.name === "built") {
-        assert.equal(out.steps.length, 2, "one worded step and the question");
-        return out.steps[0].text;
+        assert.equal(
+          out.steps.length,
+          3,
+          "the block, one worded step and the question"
+        );
+        return out.steps[1].text;
       }
       handBack(made.work, () => BUILDS[out.phase.name]);
       accept(made.state, made.work, PHASES, REGISTRY);
@@ -2040,7 +2029,7 @@ test("the build question's step text is worded by what came of the build", () =>
       "The agent did not build the add-on",
     ],
   ]) {
-    const text = firstStep(build, safety);
+    const text = wordedStep(build, safety);
     assert.ok(text.startsWith(opening), text);
   }
 });
@@ -2073,6 +2062,8 @@ test("the review has no build choice, no build phase and no unsafe-build check",
     "build-choice",
     "build-choice-unsafe",
     "build",
+    "build-result",
+    "details",
   ]) {
     assert.ok(!names.includes(gone), gone);
   }
@@ -2084,7 +2075,7 @@ test("an XPI review never asks about a build", () => {
   const { seen } = driveLoop(state, work, (phase) =>
     phase === "verify" ? "withdrawn" : "cleared"
   );
-  for (const phase of ["build-safety", "build-result", "built"]) {
+  for (const phase of ["build-safety", "built"]) {
     assert.ok(!seen.includes(phase), seen.join(", "));
   }
 });
@@ -2094,7 +2085,7 @@ test("an aborted review never asks about a build", () => {
   const { seen } = driveLoop(state, work, (phase) =>
     phase === "verify" ? "reported" : "cleared"
   );
-  for (const phase of ["build-safety", "build-result", "built"]) {
+  for (const phase of ["build-safety", "built"]) {
     assert.ok(!seen.includes(phase), seen.join(", "));
   }
 });
@@ -2125,7 +2116,7 @@ test("the details link the build output only where the agent built the add-on", 
 // reads before the build question link the report it rests on, and only once it exists.
 test("the build report is linked once the judging phase wrote it", () => {
   for (const wrote of [true, false]) {
-    const { state, work } = buildReview(tmp());
+    const { state, work } = buildQuestionsReview(tmp());
     assert.equal(
       issue(state, work, PHASES, REGISTRY).phase.name,
       "build-safety"
@@ -2136,7 +2127,7 @@ test("the build report is linked once the judging phase wrote it", () => {
     handBack(work, () => "safe");
     accept(state, work, PHASES, REGISTRY);
     const next = issue(state, work, PHASES, REGISTRY);
-    assert.equal(next.phase.name, "build-result");
+    assert.equal(next.phase.name, "built");
     const linked = /^\* BUILD_PROCESS: \[build\.md\]/m;
     for (const block of [
       loopSlots(state, next, work, REGISTRY).buildDetails,
@@ -2157,7 +2148,7 @@ test("the build report is linked once the judging phase wrote it", () => {
  * each rendered alone into its prompt with the slots of that pass, its wrapped lines
  * joined back into one line.
  */
-const REVIEWER_PHASES = ["build-result", "built", "details", "ask"];
+const REVIEWER_PHASES = ["built", "ask"];
 function stepsByPhase(made, answer) {
   const issued = [];
   for (let pass = 0; pass < 12; pass++) {
@@ -2184,51 +2175,73 @@ function stepsByPhase(made, answer) {
   return issued;
 }
 
-// A block the reviewer must read ends the agent's turn, in a pass of its own: text written
-// before a tool call in the same turn is folded away by a client that collapses tool rows.
-// So the Build Review Details come in `build-result` ahead of the build question, the Review
-// Details in `details` ahead of the questions - and no question phase carries a block.
-test("each block the reviewer reads ends a turn of its own, apart from every question", () => {
+// A block the reviewer must read ends the agent's turn: text written before a tool call in
+// the same turn is folded away by a client that collapses tool rows. So the block is the
+// first step of the question phase that needs it, past a wait for spawned agents: the
+// agent ends its turn on it and goes on to the question only once the reviewer replied.
+// Nothing is handed back in between, so no pass of its own carries a block.
+test("each block the reviewer reads opens its question phase and ends the turn there", () => {
   const END = "Then end your turn, and put no question to them in it";
+  const ON = "Go on with the next step only once the reviewer has replied";
   const issued = stepsByPhase(buildQuestionsReview(tmp()), goesOn());
   const names = issued.map((x) => x.name);
-  for (const [before, after] of [["build-result", "built"]]) {
-    assert.ok(names.includes(before), names.join(", "));
-    assert.ok(names.indexOf(before) < names.indexOf(after), names.join(", "));
+  for (const gone of ["build-result", "details"]) {
+    assert.ok(!names.includes(gone), names.join(", "));
   }
-  for (const [name, slot, heading] of [
-    ["build-result", "buildDetails", "Build review details"],
-    ["details", "details", "Review details"],
+  for (const [name, slot, heading, question] of [
+    [
+      "built",
+      "buildDetails",
+      "Build review details",
+      "Put the one entry in the file to the reviewer ALONE",
+    ],
+    ["ask", "details", "Review details", "Put every entry in the file"],
   ]) {
     const phase = issued.find((x) => x.name === name);
+    assert.ok(phase, `${name} is issued: ${names.join(", ")}`);
     const block = phase.slots[slot].split("\n").map((line) => line.trim());
     assert.ok(block.length > 0 && block[0] !== "", `${name}: a block to show`);
+    const at = phase.steps.findIndex((step) => step.rendered.includes(heading));
     assert.ok(
-      phase.steps.some(
-        (step) =>
-          step.rendered.includes(heading) &&
-          step.rendered.includes(END) &&
-          block.every((line) => step.rendered.includes(line))
-      ),
-      `${name} shows its block and ends the turn`
+      phase.steps.slice(0, at).every((step) => step.raw === WAIT),
+      `${name}: only a wait comes before the block`
     );
-  }
-  for (const name of ["built", "ask"]) {
-    assert.ok(names.includes(name), names.join(", "));
-  }
-  for (const phase of issued) {
-    if (!["built", "ask"].includes(phase.name)) {
-      continue;
+    const shown = phase.steps[at];
+    assert.ok(
+      shown.rendered.includes(END),
+      `${name} ends the turn on its block`
+    );
+    assert.ok(shown.rendered.includes(ON), `${name} waits for the reply`);
+    assert.ok(
+      block.every((line) => shown.rendered.includes(line)),
+      `${name} shows its whole block`
+    );
+    const asks = phase.steps.findIndex((step) => step.raw.startsWith(question));
+    assert.ok(asks > at, `${name} puts its question after the block`);
+    for (const step of phase.steps.filter((_, i) => i !== at)) {
+      assert.ok(!step.raw.includes(`{{${slot}}}`), name);
+      assert.ok(!step.rendered.includes(heading), name);
     }
-    for (const step of phase.steps) {
-      for (const text of [step.raw, step.rendered]) {
-        assert.ok(!text.includes("Build review details"), phase.name);
-        assert.ok(!text.includes("Review details"), phase.name);
-        assert.ok(!text.includes("{{buildDetails}}"), phase.name);
-        assert.ok(!text.includes("{{details}}"), phase.name);
-      }
-    }
   }
+});
+
+// The agent built the add-on in the preparation, and the review asks it only to put the
+// question: comparing the build with the submitted XPI is the reviewer's.
+test("the build question tells the agent to build and compare nothing", () => {
+  const made = buildQuestionsReview(tmp());
+  made.state.build = { result: "built", output: "/w/build/dist" };
+  const built = stepsByPhase(made, goesOn()).find((x) => x.name === "built");
+  const worded = built.steps.find((step) =>
+    step.raw.startsWith("The agent built the add-on")
+  );
+  assert.ok(worded, built.steps.map((step) => step.raw).join(" | "));
+  assert.ok(
+    worded.rendered.includes(
+      "Comparing it with SUBMITTED_XPI is the reviewer's, not yours: build nothing and compare nothing, only put the question below."
+    ),
+    worded.rendered
+  );
+  assert.ok(!worded.rendered.includes("for the reviewer to compare"));
 });
 
 // The block a turn-ending phase shows ends with the line telling the reviewer the review
@@ -2237,8 +2250,8 @@ test("each turn-ending block ends with the line asking the reviewer to reply", (
   const WAITING = 'Reply "next" to continue the review.';
   const issued = stepsByPhase(buildQuestionsReview(tmp()), goesOn());
   for (const [name, slot] of [
-    ["build-result", "buildDetails"],
-    ["details", "details"],
+    ["built", "buildDetails"],
+    ["ask", "details"],
   ]) {
     const phase = issued.find((x) => x.name === name);
     assert.ok(phase, name);
@@ -2254,7 +2267,7 @@ test("each turn-ending block ends with the line asking the reviewer to reply", (
     );
   }
   for (const phase of issued.filter(
-    (x) => !["build-result", "details"].includes(x.name)
+    (x) => !["built", "ask"].includes(x.name)
   )) {
     for (const step of phase.steps) {
       assert.ok(!step.rendered.includes(WAITING), phase.name);

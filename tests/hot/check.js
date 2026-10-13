@@ -83,7 +83,7 @@ function stopOf(work) {
   const registry = loadRegistry().withPolicy({
     warningsAsErrors: state.run.warningsAsErrors,
   });
-  if (state.phase === "build-result") {
+  if (state.phase === "built") {
     const counts = state.build?.vulnerabilities ?? null;
     return {
       stop: "row-14",

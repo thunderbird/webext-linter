@@ -1654,26 +1654,6 @@ export function assertPhases(registry, at) {
         );
       }
     }
-    // A turn-ending phase asks nothing of the review file, and shows the block the waiting
-    // line is appended to: without one, that line would reach no reader.
-    if (phase["ends-turn"]) {
-      if (phase.answer !== "none") {
-        throw new Error(
-          `${at2} ends the turn but answers with \`${phase.answer}\` - only an ` +
-            "`answer: none` phase ends the turn, as nothing is asked of the review file"
-        );
-      }
-      if (
-        !phase.steps.some((step) =>
-          TURN_BLOCKS.some((slot) => step.text.includes(slot))
-        )
-      ) {
-        throw new Error(
-          `${at2} ends the turn but shows no ${TURN_BLOCKS.join(" or ")} - the waiting ` +
-            "line is appended to that block"
-        );
-      }
-    }
     assertProcessValues(registry, phase, at2);
     // Answers offered to a person in place of the manual review's own: only a phase a
     // person answers offers any, and each must settle the case it is picked for.
@@ -1689,6 +1669,19 @@ export function assertPhases(registry, at) {
     phase.steps.forEach((step, i) => {
       assertStep(step, i, at2, "step", REVIEW_PROMPT_FACTS, values);
     });
+    // A turn-ending phase shows the block the waiting line is appended to: without one,
+    // that line would reach no reader.
+    if (
+      phase["ends-turn"] &&
+      !phase.steps.some((step) =>
+        TURN_BLOCKS.some((slot) => step.text.includes(slot))
+      )
+    ) {
+      throw new Error(
+        `${at2} ends the turn but shows no ${TURN_BLOCKS.join(" or ")} - the waiting ` +
+          "line is appended to that block"
+      );
+    }
     // Both ways, over the phase's `verb-prose`. A step does not name verbs: what an
     // answer means is rendered onto the entry that offers it, so this is where the agent
     // is told, and an unworded verb is one it is offered with nothing to choose on.

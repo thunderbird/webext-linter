@@ -2398,39 +2398,29 @@ llm-phases:
 
     # A BLOCK THE REVIEWER MUST READ ENDS THE AGENT'S TURN. Text written before a tool call in
     # the same turn - a question, a hand-back - is folded away by a client that collapses
-    # tool rows, and only the message that ends a turn stays in view. So each block is shown
-    # by a pass of its own, whose last act is to end the turn, and the pass is handed back
-    # only once the reviewer has replied.
+    # tool rows, and only the message that ends a turn stays in view. So a question phase
+    # whose reader needs a block shows it as its FIRST step, whose last act is to end the
+    # turn, and goes on to its question only once the reviewer has replied. Nothing is
+    # handed back between the block and the question, so the closing step cannot pull the
+    # agent past the pause.
     #
-    # The Build Review Details, ahead of the build question: the submitted XPI, the source the
-    # review read, the build report and its judgement, the vulnerabilities the review's audit
-    # counted in the lock, and what came of the build (`build-results`), with what it produced
-    # where the agent built it. What the question is answered from, and where the reviewer
-    # builds themselves, the pause in which they build.
-    - name: build-result
-      # Asks about nothing in the review file: the block is its whole work.
-      answer: none
-      ends-turn: true
-      verbs: []
-      intro: ""
-      steps:
-        - when: sca AND build-guarded AND NOT aborted
-          text: |-
-            Give the reviewer this block under a "Build review details" heading, exactly as it is written here, as the last thing you write this turn. Then end your turn, and put no question to them in it. Hand back only once the reviewer has replied: what they reply does not matter.
-
-            {{buildDetails}}
-
-    # The build question, in a phase of its own so it is put to the reviewer ALONE, right
-    # after the Build Review Details (`build-result`): `ask` batches, and a reviewer must not be
-    # asked to install an XPI in the same breath as being asked whether the source builds into
-    # it. Only the cases of a check naming the phase (`asked-in`) open here, so it never
-    # appears in an XPI review. It offers its own two answers (`choices`), and the second
-    # aborts the review. Asked under --llm-skip-manual too: it decides whether the review goes
-    # on, which is not what that flag withholds. The first step says who built the add-on, by
-    # the build result the review holds.
+    # The build question, in a phase of its own so it is put to the reviewer ALONE: `ask`
+    # batches, and a reviewer must not be asked to install an XPI in the same breath as being
+    # asked whether the source builds into it. Only the cases of a check naming the phase
+    # (`asked-in`) open here, so it never appears in an XPI review. It offers its own two
+    # answers (`choices`), and the second aborts the review. Asked under --llm-skip-manual
+    # too: it decides whether the review goes on, which is not what that flag withholds.
+    #
+    # Its first step is the Build Review Details: the submitted XPI, the source the review
+    # read, the build report and its judgement, the vulnerabilities the review's audit counted
+    # in the lock, and what came of the build (`build-results`), with what it produced where
+    # the agent built it. What the question is answered from, and where the reviewer builds
+    # themselves, the pause in which they build. The next step says who built the add-on, by
+    # the build result the review holds. The agent builds and compares nothing here.
     - name: built
       # A person's own words, read like `ask`'s.
       answer: words
+      ends-turn: true
       verbs: []
       intro: ""
       choices:
@@ -2441,9 +2431,14 @@ llm-phases:
           verdict: reported
           description: The source does not build, or what it builds does not match the submitted XPI. The review stops here for build issues.
       steps:
+        - when: sca AND build-guarded AND NOT aborted
+          text: |-
+            Give the reviewer this block under a "Build review details" heading, exactly as it is written here, as the last thing you write this turn. Then end your turn, and put no question to them in it. Go on with the next step only once the reviewer has replied: what they reply does not matter.
+
+            {{buildDetails}}
         - when: NOT aborted AND agent-built
           text: |-
-            The agent built the add-on: BUILD_OUTPUT in the Build Review Details names what its build produced, for the reviewer to compare with SUBMITTED_XPI.
+            The agent built the add-on: BUILD_OUTPUT in the Build Review Details names what its build produced. Comparing it with SUBMITTED_XPI is the reviewer's, not yours: build nothing and compare nothing, only put the question below.
         - when: NOT aborted AND agent-build-failed
           text: |-
             The agent's build failed, and the "Build attempt" section of BUILD_PROCESS says where. The reviewer may build the add-on themselves before they answer.
@@ -2594,45 +2589,34 @@ llm-phases:
 
             Judge every API, permission and method against SCHEMA, never against what you remember: a name the schema does not have is not a name this add-on can use, whatever another version of Thunderbird offers.
 
-    # Hands the reviewer the Review Details block, once, before the `ask` questions: what this
-    # review is, and where to read it while answering - the build output among it. Its own
-    # phase so it does not hang off one particular question phase, and it ends the turn, as
-    # `build-result`. Shown only where `ask`
-    # follows: not under --llm-skip-manual, and not in a review that was aborted - the
-    # closing hand-over carries the block either way.
-    - name: details
-      # Asks about nothing in the review file: the block is its whole work.
-      answer: none
-      ends-turn: true
-      verbs: []
-      intro: ""
-      steps:
-        # The wait only where an agent was started, under the phase's own condition so it
-        # never issues the phase on its own.
-        - when: spawned AND NOT aborted AND NOT llm-skip-manual
-          text: |-
-            Wait for every agent you spawned to come back.
-        - when: NOT aborted AND NOT llm-skip-manual
-          text: |-
-            Give the reviewer this block under a "Review details" heading, exactly as it is written here, as the last thing you write this turn. Then end your turn, and put no question to them in it. Hand back only once the reviewer has replied: what they reply does not matter.
-
-            {{details}}
-
-            It names what this review is and where to read it, and its links are written for their client to open. Write nothing of your own about it: no summary, no excerpt, no link of your own making. Where a path names a file another agent wrote, the reviewer reads it themselves.
-
-    # Puts what only a person can answer to a person. Intro EMPTY: today's two ask blocks say
-    # where an entry came from, which is procedural - the agent relays both identically, and
-    # naming the difference invites it to treat them differently, which its step forbids.
+    # Puts what only a person can answer to a person. Its first steps hand the reviewer the
+    # Review Details block before the questions: what this review is, and where to read it
+    # while answering - the build output among it. The block ends the turn, as in `built`.
     # Never in a review that was aborted: nothing further is put to anyone. Nor under
-    # --llm-skip-manual, whose questions stay in the report for later.
+    # --llm-skip-manual, whose questions stay in the report for later. The closing
+    # hand-over carries the block either way. Intro EMPTY: today's two ask blocks say where
+    # an entry came from, which is procedural - the agent relays both identically, and
+    # naming the difference invites it to treat them differently, which its step forbids.
     - name: ask
       # A person's own words, whether they picked one of the labels offered or typed
       # something else. Turning "Clear" into `cleared` is the linter's job, so this phase
       # accepts no verb.
       answer: words
+      ends-turn: true
       verbs: []
       intro: ""
       steps:
+        # The wait only where an agent was started, under the phase's own condition.
+        - when: spawned AND NOT aborted AND NOT llm-skip-manual
+          text: |-
+            Wait for every agent you spawned to come back.
+        - when: NOT aborted AND NOT llm-skip-manual
+          text: |-
+            Give the reviewer this block under a "Review details" heading, exactly as it is written here, as the last thing you write this turn. Then end your turn, and put no question to them in it. Go on with the next step only once the reviewer has replied: what they reply does not matter.
+
+            {{details}}
+
+            It names what this review is and where to read it, and its links are written for their client to open. Write nothing of your own about it: no summary, no excerpt, no link of your own making. Where a path names a file another agent wrote, the reviewer reads it themselves.
         - when: NOT aborted AND NOT llm-skip-manual
           text: |-
             Put every entry in the file to the reviewer in the order the file lists them, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each entry's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under that entry's "answers", in the order they are listed, each with the label and description written there and no wording of your own.

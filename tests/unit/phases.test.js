@@ -101,12 +101,12 @@ const saying = (text) => (err) => err.message.includes(text);
 
 // The waiting line is appended to the block a turn-ending phase shows, so the reviewer
 // reads it as the end of that block.
-test("the shipped turn-ending phases are the two that show a block", () => {
+test("the shipped turn-ending phases are the two questions that show a block", () => {
   const p = fresh().llmPhases();
   assert.equal(p.waiting, 'Reply "next" to continue the review.');
   assert.deepEqual(
     p.phases.filter((phase) => phase.endsTurn).map((phase) => phase.name),
-    ["build-result", "details"]
+    ["built", "ask"]
   );
 });
 
@@ -116,28 +116,34 @@ test("a blank waiting line is refused", () => {
   assert.throws(() => check(registry), saying("`waiting`"));
 });
 
-test("only an answer-none phase showing a block may end the turn", () => {
+// The block is the turn-ending phase's FIRST step, past a wait for spawned agents: the turn
+// ends on it, so nothing of the phase is asked or handed back before the reviewer has read
+// it. A question phase may end the turn that way.
+test("a turn-ending phase shows its block", () => {
   const asking = fresh();
-  phaseNamed(asking, "ask")["ends-turn"] = true;
-  assert.throws(
-    () => check(asking),
-    saying("phase `ask` ends the turn but answers with `words`")
-  );
+  phaseNamed(asking, "built")["ends-turn"] = true;
+  assert.doesNotThrow(() => check(asking), "a question phase may end the turn");
 
   const blockless = fresh();
-  const details = phaseNamed(blockless, "details");
-  for (const step of details.steps) {
+  for (const step of phaseNamed(blockless, "ask").steps) {
     step.text = step.text.replace("{{details}}", "the block");
   }
   assert.throws(
     () => check(blockless),
     saying(
-      "phase `details` ends the turn but shows no {{buildDetails}} or {{details}}"
+      "phase `ask` ends the turn but shows no {{buildDetails}} or {{details}}"
     )
   );
 
+  const verifying = fresh();
+  phaseNamed(verifying, "verify")["ends-turn"] = true;
+  assert.throws(
+    () => check(verifying),
+    saying("phase `verify` ends the turn but shows no")
+  );
+
   const notTrue = fresh();
-  phaseNamed(notTrue, "details")["ends-turn"] = "yes";
+  phaseNamed(notTrue, "ask")["ends-turn"] = "yes";
   assert.throws(() => check(notTrue), saying("non-boolean `ends-turn`"));
 });
 
@@ -321,12 +327,10 @@ test("a phase declares the kind of answer its entries take", () => {
       .phases.map((p) => [p.name, p.answer, p.verbs.length]),
     [
       ["build-safety", "value", 0],
-      ["build-result", "none", 0],
       ["built", "words", 0],
       ["spawn", "hints", 0],
       ["verify", "verdict", 2],
       ["settle", "verdict", 3],
-      ["details", "none", 0],
       ["ask", "words", 0],
       ["close", "end", 0],
     ]
@@ -341,7 +345,7 @@ test("a phase declares the kind of answer its entries take", () => {
   phaseNamed(unknown, "verify").answer = "verdicts";
   assert.throws(
     () => check(unknown),
-    /invalid `answer` "verdicts" \(expected one of: hints, verdict, words, value, none, end\)/
+    /invalid `answer` "verdicts" \(expected one of: hints, verdict, words, value, end\)/
   );
 
   // A verdict phase with nothing to say back, and a phase that names a verb nobody will
@@ -557,7 +561,7 @@ test("the closing phase is the one last phase, and carries both hand-over slots"
   }
 
   const none = fresh();
-  phaseNamed(none, "close").answer = "none";
+  phaseNamed(none, "close").answer = "hints";
   assert.throws(() => check(none), /needs exactly one phase answering `end`/);
 
   const notLast = fresh();
@@ -677,21 +681,20 @@ test("the shipped steps carry the conditions they are printed under", () => {
       ["build-safety", "unsafe"],
     ],
   ]);
-  assert.deepEqual(when("build-result"), [["aborted", "build-guarded", "sca"]]);
   assert.deepEqual(when("built"), [
+    ["aborted", "build-guarded", "sca"],
     ["aborted", "agent-built"],
     ["aborted", "agent-build-failed"],
     ["aborted", "build-unsafe"],
     ["aborted", "self-build"],
     ["aborted"],
   ]);
-  // The wait step carries its phase's own condition beside `spawned`, so the phase is never
-  // issued with nothing but a wait in it.
-  assert.deepEqual(when("details"), [
+  // The wait step carries its phase's own condition beside `spawned`.
+  assert.deepEqual(when("ask"), [
     ["aborted", "llm-skip-manual", "spawned"],
     ["aborted", "llm-skip-manual"],
+    ["aborted", "llm-skip-manual"],
   ]);
-  assert.deepEqual(when("ask"), [["aborted", "llm-skip-manual"]]);
   assert.deepEqual(when("close"), [
     ["aborted"],
     ["aborted", "first"],

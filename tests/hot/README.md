@@ -12,8 +12,8 @@ the build, and hands back. The linter audits the lock against OSV, and the agent
 copy with the real npm or pnpm and builds the add-on, as the prompts say. The agent hands
 back until it reaches one of two stops, and goes no further:
 
-- **row 14:** the Build Review Details block (`build-result`). The agent shows the block and
-  stops before handing it back.
+- **row 14:** the Build Review Details block, the first step of `built`. The agent shows the
+  block, ends its turn on it, and goes no further.
 - **the abort:** the closing prompt of an aborted review. The agent stops on it.
 
 Then it runs `check.js` on the work folder, so the verdict is the linter's state, not the

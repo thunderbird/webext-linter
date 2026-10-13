@@ -219,9 +219,9 @@ export function issue(state, work, phases, registry) {
   // and another for the reviewer.
   const entries = askedIn(state, registry, phase, ordered);
   state.phase = phase.name;
-  // The `details` phase hands the reviewer the Review Details block, and that block links
-  // the report. Refresh the file first, so the link opens the review as it stands rather
-  // than nothing at all - the reviewer reads it to answer the questions that follow.
+  // The `ask` phase hands the reviewer the Review Details block, and that block links the
+  // report. Refresh the file first, so the link opens the review as it stands rather than
+  // nothing at all - the reviewer reads it to answer the questions that follow.
   //
   // Settled on a COPY: settle() applies the verdicts in place, and this pass is not the
   // last. What the copy answers is "what would the report say if the review ended now",
@@ -231,7 +231,7 @@ export function issue(state, work, phases, registry) {
   // a throw inside issue() would break the loop over a file nobody has been handed yet.
   if (settled) {
     writeReportFile(state.paths?.report, settled.report);
-  } else if (phase.name === "details") {
+  } else if (phase.name === "ask") {
     writeReportFile(
       state.paths?.report,
       settle(structuredClone(state), registry).report
@@ -273,8 +273,8 @@ export function loopSlots(state, issued, work, registry) {
     scaRoot: paths.scaRoot ?? "",
     xpiRoot: paths.xpiRoot,
     schema: paths.schema,
-    // Named because `details` can be the FIRST phase issued - a review with no findings
-    // and nothing to settle opens there - and that is a phase that hands the block over.
+    // Named because `ask` can be the FIRST phase issued - a review with nothing to start,
+    // verify or settle opens there - and that is a phase that hands the block over.
     // The closing phase hands over the finished review's block instead, which ends on
     // what aborted it where something did.
     details: (issued.settled?.details ?? reviewDetails(state)) + waiting,
@@ -348,9 +348,6 @@ export function accept(state, work, phases, registry) {
   }
   if (phase.answer === "value") {
     recordValue(state, registry, phase, answers);
-    return { phase, answers };
-  }
-  if (phase.answer === "none") {
     return { phase, answers };
   }
   state.answers ??= {};
@@ -477,8 +474,8 @@ function phaseEntries(state, registry, phase, ordered) {
  * What the LAST prompt hands over: every path this review named, and - where the review
  * was aborted - the line saying so.
  *
- * Handed over on EVERY settled review, including one whose `details` phase already showed the
- * same block. That is not a duplicate: the `details` copy exists to be read WHILE the questions
+ * Handed over on EVERY settled review, including one whose `ask` phase already showed the
+ * same block. That is not a duplicate: the `ask` copy exists to be read WHILE the questions
  * are answered, and by the time they have been, it is far above the reviewer. The report they
  * are about to send is one of these rows, and so is the package it is about.
  *
