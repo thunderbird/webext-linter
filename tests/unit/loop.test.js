@@ -2418,8 +2418,8 @@ test("each turn-ending block ends with the line asking the reviewer to reply", (
     [
       "built",
       "buildDetails",
-      `${WAITING} with the question whether the source builds and reproduces the ` +
-        "submitted XPI.",
+      `${WAITING} with the question whether the source is safe to build, builds, ` +
+        "and reproduces the submitted XPI.",
     ],
     [
       "ask",

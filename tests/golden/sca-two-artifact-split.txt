@@ -47,14 +47,14 @@ Suggested response: The following file(s) or folder(s) appear to be unused or hi
 
 Continue manual review for the following checks:
 
-1) Reproducing the XPI from the source: Build the add-on from the source and
-   compare the result with the submitted XPI. Follow the build process from a
-   clean copy of the source archive, installing the dependencies exactly as the
-   lock file pins them (npm ci, or pnpm install --frozen-lockfile). Clear only
-   if the build completes and its result matches the submitted XPI. Files that
-   differ only by what every build changes (a timestamp, a build id) still
-   match. Otherwise report whether it does not reproduce, does not build, or is
-   unsafe to build.
+1) Reproducing the XPI from the source: Does the build process complete and
+   reproduce the submitted XPI? Follow the build process from a clean copy of
+   the source archive, installing the dependencies exactly as the lock file pins
+   them (npm ci, or pnpm install --frozen-lockfile). An install refused because
+   package.json and the lock file disagree is a failed build. A build that
+   fetches or runs code from outside the declared dependencies is unsafe to
+   build: do not run it. Otherwise report whether it does not reproduce, does
+   not build, or is unsafe to build.
 Suggested verdict: error
 Suggested response: The submitted source could not be built into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
  - [SCA] package.json

@@ -1021,13 +1021,14 @@ deterministic-phase:
   asked-in: built
   review-early-exit: unreproducible-build
   instructions-for-human: |-
-    Build the add-on from the source and compare the result with the submitted
-    XPI. Follow the build process from a clean copy of the source archive,
-    installing the dependencies exactly as the lock file pins them (npm ci, or
-    pnpm install --frozen-lockfile). Clear only if the build completes and its
-    result matches the submitted XPI. Files that differ only by what every build
-    changes (a timestamp, a build id) still match. Otherwise report whether it
-    does not reproduce, does not build, or is unsafe to build.
+    Does the build process complete and reproduce the submitted XPI? Follow the
+    build process from a clean copy of the source archive, installing the
+    dependencies exactly as the lock file pins them (npm ci, or pnpm install
+    --frozen-lockfile). An install refused because package.json and the lock
+    file disagree is a failed build. A build that fetches or runs code from
+    outside the declared dependencies is unsafe to build: do not run it.
+    Otherwise report whether it does not reproduce, does not build, or is
+    unsafe to build.
   response: |-
     The submitted source could not be built into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
 
@@ -2402,7 +2403,7 @@ llm-phases:
     # phase of that name.
     next:
       permission: the question whether the agent may build the add-on
-      built: the question whether the source builds and reproduces the submitted XPI
+      built: the question whether the source is safe to build, builds, and reproduces the submitted XPI
       ask: the questions on the findings left to your judgement
   # What BUILD_RESULT in the Build Review Details says, by the build result the review holds:
   # the agent built the add-on, its build failed, the build was judged unsafe so nothing was
@@ -2506,7 +2507,7 @@ llm-phases:
       values:
         - value: reproduces
           label: Builds and reproduces
-          description: The build completes and its result matches the submitted XPI. Files that differ only by what every build changes (a timestamp, a build id) still match. The review goes on.
+          description: The build completes and its result matches the submitted XPI. The review goes on.
         - value: not-reproduced
           label: Does not reproduce
           description: The build completes, but its result does not match the submitted XPI.

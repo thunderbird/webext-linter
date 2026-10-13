@@ -68,7 +68,7 @@ tool rows, while the message that ends a turn stays in view. So the step tells t
 to end its turn on the block and to go on with the question only once the reviewer has
 replied, and nothing is handed back in between. The linter ends the block with the line
 `Reply "next" to continue the review with` and what the reply leads to (for `built`, `the
-question whether the source builds and reproduces the submitted XPI.`), so the reviewer
+question whether the source is safe to build, builds, and reproduces the submitted XPI.`), so the reviewer
 sees the review waits for them and what comes next. The registry refuses a turn-ending
 phase whose first step, past a wait for spawned agents, shows no block, and one with no
 `next` entry in `waiting`. With no question open, `ask` is not issued, and the Review Details come
