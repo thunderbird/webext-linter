@@ -100,6 +100,10 @@ import {
  * @property {import("./verify.js").VendorVuln[]} treeDevVulnerabilities  The same
  *   for undeclared packages installed for the BUILD only. Read by the
  *   vendor-vulnerable-indirect-dev check.
+ * @property {import("./verify.js").VendorVuln[]} moderateVulnerabilities  SCA mode
+ *   only: packages from lockPackages, declared or not, whose worst advisory is moderate
+ *   (filled by verifyScaDependencies; empty in XPI mode / offline). Read by no check: the
+ *   preparation counts them (src/prepare/audit.js).
  * @property {{path: string, source: ?string, repo: ?string}[]} unaudited
  *   GitHub-sourced VENDOR entries that could not be resolved to a verified npm
  *   identity for an OSV audit (filled by verifyVendor; empty offline). Read by
@@ -438,6 +442,10 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
     // to build with. Read by the two vendor-vulnerable-indirect checks.
     treeVulnerabilities: [],
     treeDevVulnerabilities: [],
+    // SCA mode only: packages from lockPackages, declared or not, whose worst advisory is
+    // moderate (filled by verifyScaDependencies; empty in XPI mode / offline). Read by no
+    // check: the preparation counts them for the build details.
+    moderateVulnerabilities: [],
     // Filled by verifyVendor when a github source cannot be resolved to a
     // verified npm identity (network). Empty for offline runs.
     unaudited: [],

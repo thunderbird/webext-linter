@@ -267,27 +267,29 @@ export function outputEntry(phase) {
 }
 
 /**
- * What an output phase's answer names: null for its `failed` label, else the file or folder
- * the build produced, as the real path it is.
+ * What an output answer names: null for its `failed` label, else the file or folder the
+ * build produced, as the real path it is. The one validation of a build's output, for the
+ * review loop's output phase and for the preparation's build and rescue alike.
  *
- * A relative path is resolved against the build copy, and links are followed before it is
- * held to that copy, so a link that points out of it is refused like any path outside it.
- * The copy itself is not an output: the build put something inside it.
+ * A relative path is resolved against the folder the build ran in, and links are followed
+ * before it is held to that folder, so a link that points out of it is refused like any path
+ * outside it. The folder itself is not an output: the build put something inside it.
  * @param {string} answer  What came back, already checked by answersOf.
- * @param {{name: string, failed: {label: string}}} phase
- * @param {?string} buildCopy  Where the agent built.
+ * @param {{name: string, failed: {label: string}}} phase  The entry's name and its label.
+ * @param {?string} folder  Where the agent built.
+ * @param {string} [called]  How a refusal names that folder.
  * @returns {?string}
  * @throws {HandbackRefused}
  */
-export function outputAt(answer, phase, buildCopy) {
+export function outputAt(answer, phase, folder, called = "the build copy") {
   if (answer === phase.failed.label) {
     return null;
   }
   const named = displayLine(answer);
-  const copy = realPath(buildCopy ?? "");
+  const copy = realPath(folder ?? "");
   if (!copy) {
     throw new HandbackRefused(
-      `${phase.name} names "${named}", but the build copy "${buildCopy}" does not exist: ` +
+      `${phase.name} names "${named}", but ${called} "${folder}" does not exist: ` +
         "build there"
     );
   }
@@ -301,7 +303,7 @@ export function outputAt(answer, phase, buildCopy) {
   const inside = relativeInside(real, copy);
   if (inside === null || inside === "") {
     throw new HandbackRefused(
-      `${phase.name} names "${named}", which is not inside the build copy "${copy}": ` +
+      `${phase.name} names "${named}", which is not inside ${called} "${copy}": ` +
         "name what the build produced there"
     );
   }

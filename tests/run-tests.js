@@ -75,7 +75,7 @@ const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
 // fixture's run cache folder (--cache-work-dir) ("name@version" -> [{id, severity, fixed}],
 // an empty list for a release with none), which names every release an audit asks about. It starts from the fixture's `from` folder
 // (src/ by default). With `rescued`, the agent's work in the rescued copy is the fixture's
-// src/ tree, and the copy's review runs; without, the rescue is given up, and the original
+// src/ tree, and the copy's review runs; without, the rescue fails, and the original
 // is reviewed like any other source, its lock audit answered from that same folder.
 function loadFixture(dir) {
   const file = path.join(EXPECTED_DIR, `${path.basename(dir)}.json`);

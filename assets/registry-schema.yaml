@@ -437,18 +437,68 @@ sections:
         why: >-
           the steps the prompt that shows the build details and asks whether the agent may
           build asks for, in order
-      reduce:
+      build:
         kind: list
         of: mapping
         required: true
-        noun: "`reduce` steps"
-        why: the steps the prompt that reduces a rescued copy asks for, in order
-      fix:
+        noun: "`build` steps"
+        why: the steps the prompt that builds a clean original asks for, in order
+      rescue:
         kind: list
         of: mapping
         required: true
-        noun: "`fix` steps"
-        why: the steps the prompt that audit-fixes a rescued copy asks for, in order
+        noun: "`rescue` steps"
+        why: >-
+          the steps the prompt that rescues and builds a vulnerable source's copy asks for,
+          in order
+      build-output:
+        kind: object
+        required: true
+        noun: "`build-output` question"
+        why: the entry the build prompt names what the build produced in
+        fields:
+          question:
+            kind: text
+            required: true
+            why: what the entry asks, relayed as it is written
+          failed:
+            kind: object
+            required: true
+            noun: "`failed` answer"
+            why: the one answer the entry offers besides a path
+            fields:
+              label:
+                kind: text
+                required: true
+                why: what the entry accepts back where nothing was produced
+              description:
+                kind: text
+                required: true
+                why: when that answer applies, so the one answering can choose it
+      rescue-output:
+        kind: object
+        required: true
+        noun: "`rescue-output` question"
+        why: the entry the rescue prompt names what the rescued copy's build produced in
+        fields:
+          question:
+            kind: text
+            required: true
+            why: what the entry asks, relayed as it is written
+          failed:
+            kind: object
+            required: true
+            noun: "`failed` answer"
+            why: the one answer the entry offers besides a path
+            fields:
+              label:
+                kind: text
+                required: true
+                why: what the entry accepts back where nothing was produced
+              description:
+                kind: text
+                required: true
+                why: when that answer applies, so the one answering can choose it
       build-safety:
         kind: object
         required: true

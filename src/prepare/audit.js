@@ -4,8 +4,8 @@
 //
 // The preparation asks it of the extracted source, to decide whether a rescued copy is made:
 // such a lock is often vulnerable through tooling the release build does not use, or through
-// a release the package manager's audit fix moves past. And it asks it of that copy, after
-// each step an agent took in it, to decide whether the copy is clean. Nothing the agent says
+// a release the package manager's audit fix moves past. And it asks it of that copy, once the
+// agent's rescue in it is handed back, to decide whether the copy is clean. Nothing the agent says
 // about its work is read: this audit is the whole judgement, and a copy it cannot read in full
 // is not clean.
 //
@@ -19,10 +19,10 @@
 // the archive, src/review/products.js audits its dependencies), with the same functions,
 // so the lists it answers with are the ones the review's vulnerability checks read.
 //
-// Belongs here: reading a root's lock into those lists, and the two answers the preparation
-// takes from them: is the root clean, and is it rescuable. Does NOT belong here: what the
-// preparation does with either (-> ./steps.js), the lock reading and the network audit
-// themselves (-> src/vendor/locks.js, src/vendor/verify.js).
+// Belongs here: reading a root's lock into those lists, the two answers the preparation
+// takes from them (is the root clean, and is it rescuable), and their count by severity.
+// Does NOT belong here: what the preparation does with any of it (-> ./steps.js), the lock
+// reading and the network audit themselves (-> src/vendor/locks.js, src/vendor/verify.js).
 
 import { loadSourceArchive, scaViews } from "../addon/load.js";
 import { resolveVendor } from "../vendor/resolve.js";
@@ -59,6 +59,14 @@ export const LOCK_AUDIT_LISTS = Object.freeze([
  * @property {Record<string, import("../vendor/verify.js").VendorVuln[]>} lists  The
  *   lock audit's hits, by LOCK_AUDIT_LISTS name: only high, critical and malicious
  *   advisories are recorded there.
+ * @property {import("../vendor/verify.js").VendorVuln[]} moderate  The lock's packages
+ *   whose worst advisory is moderate, which decide nothing and are only counted.
+ */
+
+/**
+ * How many of a lock's packages carry an advisory, by the worst one's severity: what the
+ * preparation records of the lock its review reads.
+ * @typedef {{moderate: number, high: number, critical: number}} VulnerabilityCounts
  */
 
 /**
@@ -78,7 +86,7 @@ export async function auditRoot(roots, { net, cacheDir } = {}) {
     archive = loadSourceArchive(roots.scaRoot);
   } catch (err) {
     rethrowIfFatal(err);
-    return { complete: false, lists: none };
+    return { complete: false, lists: none, moderate: [] };
   }
   scaViews(archive, {
     scaRoot: roots.scaRoot,
@@ -93,7 +101,7 @@ export async function auditRoot(roots, { net, cacheDir } = {}) {
     lockSourceGaps(archive).length > 0 ||
     (await findLockInjections(archive, { net, cacheDir })).length > 0
   ) {
-    return { complete: false, lists: none };
+    return { complete: false, lists: none, moderate: [] };
   }
   archive.vendor = resolveVendor({ addon: archive, reviewerInstalls: true });
   // The policy blocklist is applied as the review applies it: a banned release is recorded
@@ -105,6 +113,24 @@ export async function auditRoot(roots, { net, cacheDir } = {}) {
     complete:
       governingLock(archive) !== null && unreadableLock(archive) === null,
     lists: Object.fromEntries(LOCK_AUDIT_LISTS.map((l) => [l, vendor[l]])),
+    moderate: vendor.moderateVulnerabilities,
+  };
+}
+
+/**
+ * The audit's packages counted by severity. A malicious package is recorded as critical
+ * (src/vendor/verify.js vulnRecord), and is counted as one.
+ * @param {RootAudit} audit
+ * @returns {VulnerabilityCounts}
+ */
+export function vulnerabilityCounts(audit) {
+  const listed = LOCK_AUDIT_LISTS.flatMap((l) => audit.lists[l]);
+  const count = (severity) =>
+    listed.filter((v) => v.severity === severity).length;
+  return {
+    moderate: audit.moderate.length,
+    high: count("high"),
+    critical: count("critical"),
   };
 }
 

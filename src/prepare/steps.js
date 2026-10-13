@@ -10,26 +10,31 @@
 // alone whether the agent may build the add-on, its package-manager commands included
 // (pre-answered "yes" by --llm-agent-builds, which skips that step). Where the reviewer
 // declined, the folder is done at once: a rescue runs package-manager commands, so none is
-// tried. Otherwise it audits the root's lock (./audit.js). A root whose lock is clean, or that the audit cannot read in full, is done:
-// the review starts there, and decides everything else. A vulnerable lock gets a RESCUED COPY
-// of its source in the same work folder (`rescued/`, beside `sca/`), whose dependencies an
-// agent reduces to what the release build uses, and then, where that is not enough,
-// audit-fixes. The copy is audited after each, and a clean one is reviewed instead of the
-// original. A copy still vulnerable after both is deleted, and the original is done: it is
-// reviewed like any other source, and its vulnerability checks stop it.
+// tried. Otherwise it audits the root's lock (./audit.js). A root the audit cannot read in
+// full is done: nothing is built, and the review it starts stops on that lock. A clean lock
+// moves on to `build`: the agent builds the original in `build/`, as the lock pins it, and
+// names what the build produced, or that it failed. A vulnerable lock gets a RESCUED COPY of
+// its source in the same work folder (`rescued/`, beside `sca/`), and moves on to `rescue`:
+// the agent reduces or fixes the copy's dependencies and audits them until no high or
+// critical advisory remains, builds only then, and names what the build produced, or that
+// the rescue failed. The linter audits the copy again and checks the output it names. Where
+// both hold, the copy is reviewed instead of the original. Otherwise the copy is deleted, and
+// the original is done: it is reviewed like any other source, and its vulnerability checks
+// stop it.
 //
-// Nothing the agent did is verified except by that audit. A dependency edit the build
-// cannot use fails the build, and one that changed shipped code fails the question whether
-// the build reproduces the XPI - both asked by the review itself.
+// Nothing the agent did is verified except by that audit and that output check. A dependency
+// edit that changed shipped code fails the question whether the build reproduces the XPI,
+// asked by the review itself.
 //
 // ONE FOLDER. The work folder is the whole run: one record (./state.js), one cache, one
 // review. Each step writes the record first and changes the folder after, so a run cut short
 // is somewhere the next hand-back goes on from: a copy whose record was never moved on is made
-// again, and a give-up whose copy was not yet removed is finished. The one thing this file
+// again, a question whose review file was never written is written again, and a failed
+// rescue whose copy was not yet removed is finished. The one thing this file
 // ever removes is `rescued/`, a fixed name inside the work folder, so no record can point a
 // delete anywhere else.
 //
-// Belongs here: one step (handBack), the review file the first step reads its roots from,
+// Belongs here: one step (handBack), the review files the steps read their answers from,
 // the copy, the records each step writes, and the delete. Does NOT belong here: the command
 // line and the printing (-> src/cli.js and src/report/format.js), the audit (-> ./audit.js),
 // the record's shape (-> ./state.js), or what each prompt says (-> `llm-sca-review-prompt`
@@ -39,13 +44,19 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  BUILD_RESULT,
   PREPARE_STEP,
   markPrepare,
   readPrepare,
   recordBoolean,
   writePrepare,
 } from "./state.js";
-import { auditRoot, isClean, isRescuable } from "./audit.js";
+import {
+  auditRoot,
+  isClean,
+  isRescuable,
+  vulnerabilityCounts,
+} from "./audit.js";
 import { settleScaRoot } from "../addon/sca-root.js";
 import { loadRegistry } from "../checks/registry.js";
 import { relativeInside } from "../addon/load.js";
@@ -57,6 +68,8 @@ import {
   HandbackRefused,
   SLOT,
   answersOf,
+  outputAt,
+  outputEntry,
   productWritten,
   readHandback,
   reviewFile,
@@ -74,6 +87,9 @@ const PACKAGE_MANAGERS = "PACKAGE_MANAGERS";
 /** The review file's entry for the reader's judgement of the build, as
  *  `llm-sca-review-prompt` names it. */
 const BUILD_SAFETY = "BUILD_SAFETY";
+/** The review file's entry for what the agent's build produced, as `llm-sca-review-prompt`
+ *  names it: in `build/` after a build, in `rescued/` after a rescue. */
+const BUILD_OUTPUT = "BUILD_OUTPUT";
 /** The flag that answers the permission question up front. */
 const AGENT_BUILDS = "llm-agent-builds";
 
@@ -94,6 +110,18 @@ const AGENT_BUILDS = "llm-agent-builds";
 /**
  * The registry's permission question, as llmScaReviewPrompt gives it.
  * @typedef {ScaPrompt["packageManagers"]} PackageManagersAsk
+ */
+
+/**
+ * The registry's question for a build's output, as llmScaReviewPrompt gives it: the build's
+ * or the rescue's.
+ * @typedef {ScaPrompt["buildOutput"]} OutputAsk
+ */
+
+/**
+ * The context an audit is asked in (./audit.js auditRoot).
+ * @typedef {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}}
+ *   AuditContext
  */
 
 /**
@@ -140,15 +168,31 @@ function safetyEntry(judgement) {
 /**
  * The entry the reviewer answers whether the agent may build the add-on in, built as a
  * process value's entry is.
- * @param {PackageManagersAsk} ask
+ * @param {PackageManagersAsk} question
  * @returns {object}
  */
-function managersEntry(ask) {
+function managersEntry(question) {
   return valueEntry({
     name: PACKAGE_MANAGERS,
-    question: ask.question,
-    values: ask.values,
+    question: question.question,
+    values: question.values,
   });
+}
+
+/**
+ * The entry the agent names what its build produced in, built as an output phase's entry is.
+ * Its name is the one a refusal names the answer by.
+ * @param {OutputAsk} ask
+ * @returns {{name: string, answer: string, question: string,
+ *   failed: {label: string, description: string}}}
+ */
+function outputPhase(ask) {
+  return {
+    name: BUILD_OUTPUT,
+    answer: "output",
+    question: ask.question,
+    failed: ask.failed,
+  };
 }
 
 /**
@@ -174,19 +218,16 @@ export async function handBack(work, registry = loadRegistry()) {
     ),
     cacheDir: record.flags?.["cache-npm-registry-dir"] || undefined,
   };
+  const prompt = registry.llmScaReviewPrompt();
   switch (record.step) {
     case PREPARE_STEP.extract:
-      return extract(work, record, context, registry.llmScaReviewPrompt());
+      return extract(work, record, context, prompt);
     case PREPARE_STEP.permission:
-      return permission(
-        work,
-        record,
-        context,
-        registry.llmScaReviewPrompt().packageManagers
-      );
-    case PREPARE_STEP.reduce:
-    case PREPARE_STEP.fix:
-      return rescueStep(work, record, context);
+      return permission(work, record, context, prompt);
+    case PREPARE_STEP.build:
+      return builtOriginal(work, record, prompt.buildOutput);
+    case PREPARE_STEP.rescue:
+      return rescueStep(work, record, context, prompt.rescueOutput);
     default:
       return doneAgain(work, record);
   }
@@ -199,7 +240,7 @@ export async function handBack(work, registry = loadRegistry()) {
  * --llm-agent-builds answered it up front, straight to the audit.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record
- * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} context
+ * @param {AuditContext} context
  * @param {ScaPrompt} prompt
  * @returns {Promise<Handout>}
  */
@@ -224,76 +265,133 @@ async function extract(work, record, context, prompt) {
     Object.hasOwn(flags, AGENT_BUILDS) &&
     recordBoolean(flags[AGENT_BUILDS], `--${AGENT_BUILDS}`)
   ) {
-    return permitted(work, { ...settled, packageManagers: true }, context);
+    return permitted(
+      work,
+      { ...settled, packageManagers: true },
+      context,
+      prompt
+    );
   }
-  return askPermission(
+  return ask(
     work,
     { ...settled, step: PREPARE_STEP.permission },
-    prompt.packageManagers
+    managersEntry(prompt.packageManagers)
   );
 }
 
 /**
- * Hand out the permission question: the record at `permission`, and the review file holding
- * its one entry. The record is written first, so a run cut short before the review file
- * leaves a folder whose next hand-back writes that file again (permission).
+ * Hand out a step's one question: the record at its step, and the review file holding the
+ * question's one entry. The record is written first, so a run cut short before the review
+ * file leaves a folder whose next hand-back writes that file again (answerOf).
  * @param {string} work
- * @param {import("./state.js").PrepareRecord} record  At `permission`.
- * @param {PackageManagersAsk} ask
+ * @param {import("./state.js").PrepareRecord} record  At the step that asks.
+ * @param {object} entry  The question's entry.
  * @returns {Handout}
  */
-function askPermission(work, record, ask) {
+function ask(work, record, entry) {
   const written = writePrepare(work, record);
-  writeReviewFile(workPaths(work).review, reviewFile([managersEntry(ask)]));
+  writeReviewFile(workPaths(work).review, reviewFile([entry]));
   return { next: "step", work, record: written };
 }
 
 /**
- * The permission step, handed back: the reviewer's answer read, and the folder done where
- * they did not let the agent build, or its lock audited where they did. A review file that
- * holds no permission entry is the extract step's, left by a run cut short before it wrote
- * the question, and the question is handed out again.
+ * The answer to a step's one question, read from the review file and checked as `phase`
+ * takes it, or undefined where the file holds no entry for it: the file an earlier step
+ * left, by a run cut short before it wrote the question, which is then handed out again.
  * @param {string} work
- * @param {import("./state.js").PrepareRecord} record
- * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} context
- * @param {PackageManagersAsk} ask
- * @returns {Promise<Handout>}
+ * @param {object} entry  The question's entry, as `ask` hands it out.
+ * @param {{name: string, answer: string}} phase  How the answer is checked (answersOf).
+ * @returns {*}
+ * @throws {HandbackRefused}
  */
-async function permission(work, record, context, ask) {
+function answerOf(work, entry, phase) {
   const file = workPaths(work).review;
   const keyOf = (e) => String(e?.index);
   const entries = fs.existsSync(file) ? readHandback(file).entries : [];
-  if (!entries.some((e) => keyOf(e) === PACKAGE_MANAGERS)) {
-    return askPermission(work, record, ask);
+  if (!entries.some((e) => keyOf(e) === entry.index)) {
+    return undefined;
   }
-  const picked = answersOf(
-    entries,
-    [managersEntry(ask)],
-    { name: "permission", answer: "value" },
-    keyOf
-  ).get(PACKAGE_MANAGERS);
-  const allowed = ask.values.find((v) => v.label === picked).value === "allow";
-  return permitted(work, { ...record, packageManagers: allowed }, context);
+  return answersOf(entries, [entry], phase, keyOf).get(entry.index);
+}
+
+/**
+ * The permission step, handed back: the reviewer's answer read, and the folder done where
+ * they did not let the agent build, or its lock audited where they did.
+ * @param {string} work
+ * @param {import("./state.js").PrepareRecord} record
+ * @param {AuditContext} context
+ * @param {ScaPrompt} prompt
+ * @returns {Promise<Handout>}
+ */
+async function permission(work, record, context, prompt) {
+  const entry = managersEntry(prompt.packageManagers);
+  const picked = answerOf(work, entry, { name: "permission", answer: "value" });
+  if (picked === undefined) {
+    return ask(work, record, entry);
+  }
+  const allowed =
+    prompt.packageManagers.values.find((v) => v.label === picked).value ===
+    "allow";
+  return permitted(
+    work,
+    { ...record, packageManagers: allowed },
+    context,
+    prompt
+  );
 }
 
 /**
  * What follows the permission: where the agent may not build, the folder done at once,
  * since a rescue would run package-manager commands. Otherwise the root's lock audited, and
- * the folder done or its rescue started.
+ * its counts recorded. A lock the audit cannot read in full is done with nothing built, a
+ * clean one is handed to the agent to build, and a vulnerable one is rescued.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  With its permission.
- * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} context
+ * @param {AuditContext} context
+ * @param {ScaPrompt} prompt
  * @returns {Promise<Handout>}
  */
-async function permitted(work, record, context) {
+async function permitted(work, record, context, prompt) {
   if (!record.packageManagers) {
     return done(work, record);
   }
   const found = await auditRoot(record.roots, context);
-  if (!isRescuable(found)) {
-    return done(work, record);
+  const audited = { ...record, vulnerabilities: vulnerabilityCounts(found) };
+  if (isClean(found)) {
+    return ask(
+      work,
+      { ...audited, step: PREPARE_STEP.build },
+      outputEntry(outputPhase(prompt.buildOutput))
+    );
   }
-  return rescue(work, record);
+  if (isRescuable(found)) {
+    return rescue(work, audited, prompt.rescueOutput);
+  }
+  return done(work, record);
+}
+
+/**
+ * The build step, handed back: what the agent's build of the clean original produced, held
+ * to `build/`, or that it failed. Either way the folder is done. A path that names nothing
+ * the build produced there is refused, with nothing changed.
+ * @param {string} work
+ * @param {import("./state.js").PrepareRecord} record  At `build`.
+ * @param {OutputAsk} asked
+ * @returns {Handout}
+ * @throws {HandbackRefused}
+ */
+function builtOriginal(work, record, asked) {
+  const phase = outputPhase(asked);
+  const answer = answerOf(work, outputEntry(phase), phase);
+  if (answer === undefined) {
+    return ask(work, record, outputEntry(phase));
+  }
+  const output = outputAt(answer, phase, workPaths(work).buildCopy);
+  return done(work, {
+    ...record,
+    buildResult: output ? BUILD_RESULT.built : BUILD_RESULT.failed,
+    buildOutput: output,
+  });
 }
 
 /**
@@ -469,22 +567,23 @@ function done(work, record) {
 }
 
 /**
- * Make the rescued copy of the work folder's source, in its `rescued/`, and hand it the
- * first step.
+ * Make the rescued copy of the work folder's source, in its `rescued/`, and hand out its
+ * rescue.
  *
  * The copy is made first and the record moved on after, so a run cut short in between
- * leaves the record at `extract`, and handing the folder back makes the copy again - over
+ * leaves the record at the step that audited the lock, and handing the folder back makes the copy again - over
  * whatever the cut-short run left there, which is this run's own. Symbolic links are copied
  * as they are written: one the submission points out of itself stays pointing out, for the
  * review to report, rather than being followed into a copy of whatever it names.
  *
  * A copy that cannot be made ends the run as the tool's failure, before any prompt names it.
  * @param {string} work
- * @param {import("./state.js").PrepareRecord} record  Settled.
+ * @param {import("./state.js").PrepareRecord} record  Audited.
+ * @param {OutputAsk} asked
  * @returns {Handout}
  * @throws {Error}  The copy could not be made.
  */
-function rescue(work, record) {
+function rescue(work, record, asked) {
   const { sca: from, rescued: to } = workPaths(work);
   const real = fs.realpathSync(from);
   const into = (p) => (p ? path.join(to, path.relative(real, p)) : p);
@@ -498,58 +597,94 @@ function rescue(work, record) {
         "Hand the work folder back once that is fixed."
     );
   }
-  const copied = markPrepare(work, {
-    ...record,
-    step: PREPARE_STEP.reduce,
-    roots: {
-      scaRoot: fs.realpathSync(into(record.roots.scaRoot)),
-      scaExpSource: record.roots.scaExpSource
-        ? fs.realpathSync(into(record.roots.scaExpSource))
-        : null,
+  return ask(
+    work,
+    {
+      ...record,
+      step: PREPARE_STEP.rescue,
+      roots: {
+        scaRoot: fs.realpathSync(into(record.roots.scaRoot)),
+        scaExpSource: record.roots.scaExpSource
+          ? fs.realpathSync(into(record.roots.scaExpSource))
+          : null,
+      },
     },
-  });
-  return { next: "step", work, record: copied };
+    outputEntry(outputPhase(asked))
+  );
 }
 
 /**
- * A rescued copy's step, handed back: audited, then done when clean, on to `fix` after a
- * `reduce` that was not enough, and given up after a `fix` that was not either - the
- * folder is then done with its roots back in `sca/`, before the copy is removed.
+ * The rescue, handed back: done with the copy as the reviewed source where the output the
+ * agent named lies inside `rescued/` and the copy's lock audits clean, its counts recorded.
+ * Otherwise, or where the agent answered that the rescue failed, the rescue failed: the
+ * folder is done with its roots back in `sca/`, before the copy is removed.
  * @param {string} work
- * @param {import("./state.js").PrepareRecord} record
- * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} context
+ * @param {import("./state.js").PrepareRecord} record  At `rescue`.
+ * @param {AuditContext} context
+ * @param {OutputAsk} asked
  * @returns {Promise<Handout>}
+ * @throws {HandbackRefused}  An answer that is no path and no label.
  */
-async function rescueStep(work, record, context) {
-  const found = await auditRoot(record.roots, context);
-  if (isClean(found)) {
-    return done(work, record);
-  }
-  if (record.step === PREPARE_STEP.reduce) {
-    const fix = markPrepare(work, { ...record, step: PREPARE_STEP.fix });
-    return { next: "step", work, record: fix };
+async function rescueStep(work, record, context, asked) {
+  const phase = outputPhase(asked);
+  const answer = answerOf(work, outputEntry(phase), phase);
+  if (answer === undefined) {
+    return ask(work, record, outputEntry(phase));
   }
   const { sca, rescued } = workPaths(work);
+  const output = producedIn(answer, phase, rescued);
+  if (output) {
+    const found = await auditRoot(record.roots, context);
+    if (isClean(found)) {
+      return done(work, {
+        ...record,
+        vulnerabilities: vulnerabilityCounts(found),
+        buildResult: BUILD_RESULT.built,
+        buildOutput: output,
+      });
+    }
+  }
   const real = fs.realpathSync(rescued);
   const back = (p) =>
     p ? path.join(fs.realpathSync(sca), path.relative(real, p)) : p;
-  const givenUp = markPrepare(work, {
+  const failed = markPrepare(work, {
     ...record,
     step: PREPARE_STEP.done,
     roots: {
       scaRoot: back(record.roots.scaRoot),
       scaExpSource: back(record.roots.scaExpSource),
     },
+    buildResult: BUILD_RESULT.rescueFailed,
+    buildOutput: null,
   });
   fs.rmSync(rescued, { recursive: true, force: true });
-  return { next: "review", work, record: givenUp };
+  return { next: "review", work, record: failed };
+}
+
+/**
+ * What the rescue's build produced inside the copy, or null where the agent answered that
+ * the rescue failed or named nothing the build produced there: either way the rescue failed.
+ * @param {string} answer
+ * @param {ReturnType<typeof outputPhase>} phase
+ * @param {string} copy  The work folder's `rescued/`.
+ * @returns {?string}
+ */
+function producedIn(answer, phase, copy) {
+  try {
+    return outputAt(answer, phase, copy, "the rescued copy");
+  } catch (err) {
+    if (err instanceof HandbackRefused) {
+      return null;
+    }
+    throw err;
+  }
 }
 
 /**
  * A done folder handed back again before its review started - the start before was refused,
  * failed, or was cut short: its review is started once more. A copy its roots do not lie in is
- * no longer read - a give-up cut short before it was removed - and its removal is finished
- * first.
+ * no longer read - a failed rescue cut short before it was removed - and its removal is
+ * finished first.
  * And the review file the review claims is deleted again, in case the run that marked the
  * folder was cut short before it could.
  * @param {string} work

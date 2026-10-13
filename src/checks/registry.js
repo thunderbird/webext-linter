@@ -123,6 +123,13 @@ const RULES_DIR = path.join(here, "rules");
 const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
 
 /**
+ * An entry a preparation prompt names what the agent's build produced in: its question, and
+ * the one answer it offers besides a path.
+ * @typedef {{question: string, failed: {label: string, description: string}}}
+ *   PrepareOutputAsk
+ */
+
+/**
  * @typedef {object} LoadedCheck
  * @property {string} id
  * @property {string} title
@@ -742,12 +749,15 @@ export class Registry {
    * `buildSafety` is the judgement the first prompt asks of the agent: the two answers it
    * offers, each by its id (BUILD_SAFETY_VALUES). `packageManagers` is the question the
    * permission prompt puts to the reviewer: its text, and the two answers it offers, each by
-   * its id (PACKAGE_MANAGER_VALUES).
+   * its id (PACKAGE_MANAGER_VALUES). `buildOutput` and `rescueOutput` are the entries the
+   * build and rescue prompts name what the build produced in: the question, and the one
+   * answer each offers besides a path.
    * @returns {{intro: string,
    *   steps: Record<string, {when: ?object, text: string}[]>,
    *   buildSafety: {values: {value: string, label: string, description: string}[]},
    *   packageManagers: {question: string,
-   *     values: {value: string, label: string, description: string}[]}}}
+   *     values: {value: string, label: string, description: string}[]},
+   *   buildOutput: PrepareOutputAsk, rescueOutput: PrepareOutputAsk}}
    */
   llmScaReviewPrompt() {
     const p = this.doc["llm-sca-review-prompt"];
@@ -758,6 +768,10 @@ export class Registry {
         label,
         description,
       }));
+    const output = ({ question, failed }) => ({
+      question,
+      failed: { label: failed.label, description: failed.description },
+    });
     return {
       intro: p.intro,
       steps: Object.fromEntries(
@@ -768,6 +782,8 @@ export class Registry {
         question: ask.question,
         values: values(ask.values),
       },
+      buildOutput: output(p["build-output"]),
+      rescueOutput: output(p["rescue-output"]),
     };
   }
 

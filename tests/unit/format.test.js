@@ -1379,7 +1379,7 @@ test("the report's authored prose is required, by the names that index it", () =
 test("the preparation prompts come from the registry and every part is required", () => {
   const prompt = loadRegistry().llmScaReviewPrompt();
   assert.ok(prompt.intro.length > 0);
-  for (const name of ["extract", "permission", "reduce", "fix"]) {
+  for (const name of ["extract", "permission", "build", "rescue"]) {
     assert.ok(prompt.steps[name].length > 0, name);
     for (const step of prompt.steps[name]) {
       assert.equal(typeof step.text, "string");
@@ -1395,8 +1395,8 @@ test("the preparation prompts come from the registry and every part is required"
   assert.throws(() => checkScaPrompt(noIntro), /authors no `intro`/);
 
   const noSteps = loadRegistry();
-  noSteps.doc["llm-sca-review-prompt"].fix = [];
-  assert.throws(() => checkScaPrompt(noSteps), /authors no `fix` steps/);
+  noSteps.doc["llm-sca-review-prompt"].rescue = [];
+  assert.throws(() => checkScaPrompt(noSteps), /authors no `rescue` steps/);
 
   const blankStep = loadRegistry();
   blankStep.doc["llm-sca-review-prompt"].extract = [
@@ -1407,10 +1407,10 @@ test("the preparation prompts come from the registry and every part is required"
 
   // Every prompt prints the command that carries the preparation on.
   const noCommand = loadRegistry();
-  noCommand.doc["llm-sca-review-prompt"].fix = [{ text: "Do it." }];
+  noCommand.doc["llm-sca-review-prompt"].build = [{ text: "Do it." }];
   assert.throws(
     () => checkScaPrompt(noCommand),
-    /`fix` carries no \{\{flags\}\}/
+    /`build` carries no \{\{flags\}\}/
   );
   // The condition decides whether the Experiment step prints at all, so a fact this
   // prompt cannot evaluate - a plausible near-miss included - is refused by name rather
@@ -1424,11 +1424,11 @@ test("the preparation prompts come from the registry and every part is required"
 
   // And the shared step rule: every prompt is numbered by the renderer.
   const selfNumbered = loadRegistry();
-  selfNumbered.doc["llm-sca-review-prompt"].reduce[0].text = "1. Do it.";
+  selfNumbered.doc["llm-sca-review-prompt"].rescue[0].text = "1. Do it.";
   // Named by its prompt and its list, in full.
   assert.throws(
     () => checkScaPrompt(selfNumbered),
-    /llm-sca-review-prompt \(t\.yaml\) `reduce` step 1 numbers itself/
+    /llm-sca-review-prompt \(t\.yaml\) `rescue` step 1 numbers itself/
   );
 
   // A step acts on `when` and nothing else, so a retired marker - which reads as plausible
@@ -1470,6 +1470,18 @@ test("the preparation prompts come from the registry and every part is required"
       checkScaPrompt(managers((m) => (m.values[1].label = m.values[0].label))),
     /offers one label twice/
   );
+  // The build and the rescue each name what the build produced, or their one label.
+  assert.equal(prompt.buildOutput.failed.label, "The build failed");
+  assert.equal(prompt.rescueOutput.failed.label, "The rescue failed");
+  for (const key of ["build-output", "rescue-output"]) {
+    const noLabel = loadRegistry();
+    delete noLabel.doc["llm-sca-review-prompt"][key].failed.label;
+    assert.throws(
+      () => checkScaPrompt(noLabel),
+      (err) => err.message.includes("authors no `label`"),
+      key
+    );
+  }
   // The build judgement offers safe and unsafe once each, under labels of their own, and
   // the review's `build-safety` phase accepts each, since it reads the recorded judgement.
   assert.deepEqual(

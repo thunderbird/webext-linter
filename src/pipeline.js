@@ -705,7 +705,7 @@ async function reviewSubmission(opts, work, prepared) {
   // finished findings, manual items and the checks that ran. Each throwing check is
   // isolated so one failure can't abort all. A rejected Experiment stops at its first
   // check, experiment-not-allowed, as any review stops at a check that aborts it - and a
-  // source whose preparation gave up rescuing its lock stops at its vulnerability checks.
+  // source whose preparation failed to rescue its lock stops at its vulnerability checks.
   // The `--eslint` opt-in gates code-sanity inside loadChecks (eslintEligible).
   progress(""); // close the Setup section before runChecks prints "── Activity ──"
   const {

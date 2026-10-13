@@ -438,24 +438,38 @@ exactly as the review's own dependency audit reads it. Before that it asks wheth
 registry entry installs the release it names (`lockfile-injection`'s question): a lock that
 names one release and installs another is not audited at all, since what OSV would be asked
 about is not what the build installs. Nothing else is judged here - another reason to stop, an Experiment, `--checks-*`, the band policy: all of that stays with
-the review. Three outcomes:
+the review. The record keeps the audited lock's vulnerable packages counted by severity
+(moderate, high, critical). The outcomes:
 
-- **The lock is clean**, or the audit cannot read it in full (no lock, one that does not
-  parse, more than one lock, an entry from a source the audit cannot read, an entry that
-  installs another release than it names): the folder is done, and the same hand-back starts its review. The review decides the rest.
+- **The audit cannot read the lock in full** (no lock, one that does not parse, more than one
+  lock, an entry from a source the audit cannot read, an entry that installs another release
+  than it names): the folder is done, nothing is built, and the same hand-back starts its
+  review, which stops on that lock.
+- **The lock is clean**: the next prompt (`build`) has the reader copy `SCA_ROOT` to
+  `BUILD_COPY` (the work folder's `build/`) and build there, as `BUILD_PROCESS` describes,
+  installing exactly what the lock pins (`npm ci` or `pnpm install --frozen-lockfile`). It
+  answers the `BUILD_OUTPUT` entry with what the build produced inside `build/` (an XPI or
+  zip file, or a folder), or with `The build failed`, after adding a "Build attempt" section
+  (the failing step and its error output) to `build.md`. An output that is not inside
+  `build/` is refused. Either answer is recorded, and the folder is done.
 - **The lock installs a package with a known high or critical advisory**: the linter copies
-  the source into `rescued/` beside `sca/` in the same work folder, and hands the copy two
-  steps. First the reader
-  **reduces** the copy's dependencies to what the release build uses, then, where that is not
-  enough, applies the package manager's **audit fix** - lock-only commands with
-  `--ignore-scripts`, so no submission code runs. The copy is audited after each step, and a
-  clean one is reviewed instead of the original. A copy whose lock names one release and
-  installs another is not clean. A reader that cannot run the commands hands
-  back without changing anything. The hand-back that finds the copy clean starts its review.
-- **The copy is still vulnerable after the fix**: the copy is deleted, and the original is
-  reviewed, **unrescued**, like any other source: its vulnerability checks come early in the
-  review, and the first of them to report a vulnerable lock entry aborts it for known
-  vulnerabilities. It closes as any aborted review does. Its audit of the lock asks OSV
+  the source into `rescued/` beside `sca/` in the same work folder, and the next prompt
+  (`rescue`) hands the copy to the reader as one **autonomous loop**. It reduces the copy's
+  dependencies to what the release build uses, or applies the package manager's audit fix,
+  and refreshes the lock with lock-only commands and `--ignore-scripts`. It runs `npm audit`
+  or `pnpm audit`, and builds nothing while a high or critical advisory remains. Once none
+  does, it installs as the lock pins and builds, and where the build fails it adjusts the
+  dependencies and audits again before the next build: a `prepare` script that runs `husky`,
+  for one, needs the husky the trimming removed, or the script removed. It answers
+  `BUILD_OUTPUT` with what the build produced inside the copy, or with `The rescue failed`.
+  The hand-back then audits the copy's lock itself and checks that output. Where both hold,
+  the copy is reviewed instead of the original, and its counts replace the original's. A copy
+  whose lock names one release and installs another is not clean.
+- **The rescue failed** (the reader said so, the copy is still vulnerable, or the output is
+  not inside `rescued/`): the copy is deleted, the record says the rescue failed, and the
+  original is reviewed, **unrescued**, like any other source: its vulnerability checks come
+  early in the review, and the first of them to report a vulnerable lock entry aborts it for
+  known vulnerabilities. It closes as any aborted review does. Its audit of the lock asks OSV
   nothing the preparation already asked: every audit of the run reads OSV's answers from
   `.cache/osv.json` in the work folder.
 
@@ -500,8 +514,9 @@ let the linter's own commands run without that:
 ```
 
 The first runs the linter's hand-backs, the next four are the rescue's lock-only commands,
-and the last two are the build's installs. The add-on's own build commands have no rule:
-they run the submission's code, and the reviewer's build choice is what allows them.
+and the last two are the build's installs. The audits (`npm audit`, `pnpm audit`) and the
+add-on's own build commands have no rule: the build commands run the submission's code, and
+the reviewer's permission is what allows them.
 
 
 ## Where a review's files go
@@ -515,14 +530,14 @@ the review sit in its hidden `.review/` folder, out of the reviewer's sight:
 | --- | --- | --- |
 | `xpi/` | The shipped add-on, extracted (or, for an unpacked one, copied): `XPI_ROOT` | the linter, as the review starts |
 | `sca/` | The source archive, extracted: `EXTRACT_TO`, holding `SCA_ROOT` | the reader of the `--llm-sca-review` prompt |
-| `rescued/` | The copy of the source a rescue works in (`RESCUE_ROOT` lies inside it), reviewed instead when the rescue comes out clean, and removed when it is given up | the linter, and the reader of the rescue's steps |
+| `rescued/` | The copy of the source a rescue works in and builds (`RESCUE_ROOT` lies inside it), reviewed instead when the rescue comes out clean, and removed when it fails | the linter, and the reader of the `rescue` prompt |
 | `.review/prepare.json` | Where the preparation of a source code review stands, and how its review is to be run - read-only, and hashed | the linter, at each step of the preparation |
 | `.review/state.json` | The review itself, which every pass reads | the linter |
 | `.review/review.json` | The file the agent fills in and hands back (`ANSWERS` while a source code review is prepared) | the linter, each pass |
 | `report.md` | `REVIEW_REPORT` | the linter |
 | `summary.md` | `ADDON_DESCRIPTION` | the agent, from a sub-agent's reply |
 | `build.md` | `BUILD_PROCESS` | the agent, in `build-safety`, in a source code review |
-| `build/` | The copy of the source the agent builds in, never the archive itself, holding `BUILD_OUTPUT` | the agent, when the reviewer lets it build |
+| `build/` | The copy of a clean source the agent builds in (`BUILD_COPY`), never the archive itself, holding `BUILD_OUTPUT` | the agent, when the reviewer lets it build |
 | `.review/sweep-<artifact>.answers.json` | One tree's sweep answers | the agent, from a sweeping agent's reply |
 | `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again | the linter, whenever it audits |
 | `.cache/popularity.json` | The npm download counts and GitHub stars read during this run, kept the same way | the linter, whenever it judges a source's popularity |

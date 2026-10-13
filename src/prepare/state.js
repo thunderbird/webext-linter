@@ -2,7 +2,7 @@
 // folder for a source code review, and by every hand-back of that folder after it - and read
 // by those hand-backs and by the review that starts in the folder.
 //
-// The preparation runs in steps, and the agent following it hands back only the roots it
+// The preparation runs in steps, and the agent following it hands back only the answers it
 // worked out (src/prepare/steps.js). So everything a later step needs - which submission
 // this is, how its review is to be run, which roots were settled, where the preparation
 // stands - is recorded here by the linter and read back by the next run, never taken from
@@ -43,7 +43,7 @@ import { BUILD_SAFETY_VALUES } from "../checks/registry-vocabulary.js";
 /** Bumped when the record's shape, or what a step does with it, changes in a way an older
  *  file cannot satisfy. A preparation in flight does not survive the upgrade, and saying so
  *  beats reading it wrongly. */
-export const PREPARE_VERSION = 5;
+export const PREPARE_VERSION = 6;
 
 /** The mode every write leaves the record at: readable, and writable by nobody. */
 const READ_ONLY = 0o444;
@@ -58,18 +58,36 @@ const READ_ONLY = 0o444;
  * - `permission`: the reviewer is shown the Build Review Details and asked whether the
  *   agent may build, and the next hand-back reads the answer and audits the root where it
  *   may;
- * - `reduce` and `fix`: the rescued copy in `rescued/`, waiting for its dependencies to be
- *   reduced, then audit-fixed, and audited again after each;
+ * - `build`: the root's lock is clean, and the agent builds it in `build/` and names what
+ *   the build produced, or that it failed;
+ * - `rescue`: the root's lock is vulnerable, and the agent makes the rescued copy in
+ *   `rescued/` clean and builds it, and names what the build produced, or that the rescue
+ *   failed. The next hand-back audits the copy and checks what it named;
  * - `done`: the review may start here, and the record holds the flags it starts with.
- *   A folder whose rescue was given up is `done` too, its roots back in `sca/`.
+ *   A folder whose rescue failed is `done` too, its roots back in `sca/`.
  */
 export const PREPARE_STEP = Object.freeze({
   extract: "extract",
   permission: "permission",
-  reduce: "reduce",
-  fix: "fix",
+  build: "build",
+  rescue: "rescue",
   done: "done",
 });
+
+/**
+ * What came of the agent's build, as a done record holds it: `built` (the record names the
+ * output), `failed` (the clean original did not build), or `rescue-failed` (the rescued copy
+ * did not come out clean and built, and was deleted). A folder where the agent built nothing
+ * holds none.
+ */
+export const BUILD_RESULT = Object.freeze({
+  built: "built",
+  failed: "failed",
+  rescueFailed: "rescue-failed",
+});
+
+/** The severities a record counts the reviewed lock's vulnerable packages by. */
+const COUNTED = ["moderate", "high", "critical"];
 
 /**
  * @typedef {object} PrepareRecord
@@ -89,6 +107,16 @@ export const PREPARE_STEP = Object.freeze({
  *   --llm-agent-builds answered it up front), false after an unsafe judgement, which asks
  *   nothing, and null before either. False, the preparation audits and rescues nothing,
  *   and the review builds nothing itself.
+ * @property {?import("./audit.js").VulnerabilityCounts} vulnerabilities  The lock the
+ *   review reads, its vulnerable packages counted by severity as the linter's audit found
+ *   them: the original's, or the rescued copy's once its rescue came out clean. Held from
+ *   `build` and `rescue` on, and null where the lock was never audited or could not be
+ *   read in full.
+ * @property {?string} buildResult  A BUILD_RESULT value once the agent's build was handed
+ *   back, and null where it built nothing.
+ * @property {?string} buildOutput  What the build produced, a file or folder, absolute and
+ *   real: inside `build/`, or inside `rescued/` for a rescued copy. Held only where
+ *   `buildResult` is `built`.
  * @property {?{scaRoot: string, scaExpSource: ?string}} roots  The settled roots, absolute
  *   and real, once known: inside `sca/`, or inside `rescued/` while a rescue runs and once it
  *   came out clean - the tree the next step, or the review, reads.
@@ -175,7 +203,72 @@ export function readPrepare(work) {
   } else {
     recordBoolean(record.packageManagers, "packageManagers");
   }
+  checkBuild(record, before || record.step === PREPARE_STEP.permission);
   return record;
+}
+
+/**
+ * The record's audit counts and build result, each held only at the steps that can know
+ * it, and each of the shape the linter writes. Anything else was put there by an edit.
+ * @param {PrepareRecord} record
+ * @param {boolean} unaudited  The record is at a step before any audit.
+ * @throws {HandbackRefused}
+ */
+function checkBuild(record, unaudited) {
+  const building =
+    record.step === PREPARE_STEP.build || record.step === PREPARE_STEP.rescue;
+  if (building && (record.buildSafety !== "safe" || !record.packageManagers)) {
+    throw new HandbackRefused(
+      "the preparation's record builds where the agent may not build"
+    );
+  }
+  const counts = record.vulnerabilities;
+  // Unknown before the audit, known while the agent builds, and either once done.
+  const countsHold = unaudited
+    ? counts === null
+    : isCounts(counts) || (!building && counts === null);
+  if (!countsHold) {
+    throw new HandbackRefused(
+      "the preparation's record holds vulnerabilities as no count the linter writes"
+    );
+  }
+  const result = record.buildResult;
+  const known = Object.values(BUILD_RESULT);
+  const done = record.step === PREPARE_STEP.done;
+  if (
+    done
+      ? result !== null && (!known.includes(result) || !record.packageManagers)
+      : result !== null
+  ) {
+    throw new HandbackRefused(
+      "the preparation's record holds buildResult as no result the linter writes"
+    );
+  }
+  const output = record.buildOutput;
+  if (
+    result === BUILD_RESULT.built
+      ? typeof output !== "string" || output === ""
+      : output !== null
+  ) {
+    throw new HandbackRefused(
+      "the preparation's record holds buildOutput without a build that produced it"
+    );
+  }
+}
+
+/**
+ * Whether `value` is a count by severity as the linter writes it: each COUNTED severity, a
+ * whole number, and nothing else.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isCounts(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    Object.keys(value).length === COUNTED.length &&
+    COUNTED.every((k) => Number.isInteger(value[k]) && value[k] >= 0)
+  );
 }
 
 /**
@@ -221,6 +314,9 @@ export function startRecord({ submission, flags }) {
     buildSafety: null,
     packageManagers: null,
     roots: null,
+    vulnerabilities: null,
+    buildResult: null,
+    buildOutput: null,
   };
 }
 
@@ -265,6 +361,7 @@ function relativeFolders(record) {
     ["submission.xpi", record.submission?.xpi],
     ["roots.scaRoot", record.roots?.scaRoot],
     ["roots.scaExpSource", record.roots?.scaExpSource],
+    ["buildOutput", record.buildOutput],
     ...Object.entries(record.flags ?? {})
       .filter(([flag]) => flag.endsWith("-dir"))
       .map(([flag, value]) => [`flags.${flag}`, value]),
@@ -288,8 +385,7 @@ function recordDigest(body) {
 }
 
 /**
- * Move a folder on to a step its agent is no longer handed a review file at: the rescue's
- * `reduce` and `fix`, or `done`. The record is written FIRST and the review file deleted after, so a
+ * Move a folder on to `done`, where its agent is no longer handed a review file. The record is written FIRST and the review file deleted after, so a
  * run cut short in between leaves a folder already at its new step, and the next hand-back
  * of it deletes the file again. The review file has to go: the review that starts in a
  * `done` folder claims that name for its own (src/pipeline.js), and refuses a folder where

@@ -23,7 +23,7 @@ deterministic-phase:
 # the lock installs from, which read nothing the review computes; then lockfile-injection,
 # which may ask the npm registry; then the checks that need the vendor reading (the OSV audit,
 # the CDN identification): the four dependency-vulnerability checks and banned-library. A
-# source review whose preparation gave up rescuing its lock is reviewed like any other and
+# source review whose preparation failed to rescue its lock is reviewed like any other and
 # stops at its vulnerability checks.
 
 # Aborts the review of an Experiment that uses an UNSUPPORTED experiment (an
@@ -2079,21 +2079,23 @@ review-early-exit:
 # unsafe build ends the preparation. After a safe one the reviewer reads the Build Review
 # Details and is asked alone whether the agent may build the add-on (`permission`), unless
 # --llm-agent-builds answered that up front. Declined, the preparation ends. Allowed, the
-# linter audits that root's lock (src/prepare/audit.js). Where the lock installs a package with a
-# known high or critical advisory, the linter copies the source into the work folder's
-# rescued/, and the reader REDUCES the copy's dependencies to what the release build uses, then, where that is not enough,
-# applies the package manager's audit FIX. Both change the dependencies and nothing else,
-# with no install script run, so no submission code runs. Each step's reader may fail to do
-# it and run the next command anyway (the way out both say). A clean copy is reviewed. A copy
-# the audit still finds vulnerable after the fix is deleted, and the source as submitted is
-# reviewed like any other: its vulnerability checks, early in the phase, report the lock and
-# abort the review. Every audit of the run asks OSV through the run's cache, so that review
+# linter audits that root's lock (src/prepare/audit.js). A lock it cannot read in full ends
+# the preparation with nothing built. A clean lock is BUILT by the reader in the build copy
+# (`build`). Where the lock installs a package with a known high or critical advisory, the
+# linter copies the source into the work folder's rescued/, and the reader RESCUES the copy
+# in one loop (`rescue`): it reduces or audit-fixes the dependencies with lock-only commands,
+# audits them until no high or critical advisory remains, and only then builds. The linter
+# audits the copy again and checks the output the reader named. A clean, built copy is
+# reviewed. A failed rescue is deleted, and the source as submitted is reviewed like any
+# other: its vulnerability checks, early in the phase, report the lock and abort the
+# review. Every audit of the run asks OSV through the run's cache, so that review
 # asks nothing the preparation already did (src/vendor/osv-cache.js).
 #
 # The step lists are prompts. `extract` is printed by --llm-sca-review with the intro and
 # the Submission values, `permission` by the run that settled a safe build, with ANSWERS
-# and the Build Review Details ({{buildDetails}}), and `reduce` and `fix` by the run that
-# hands the copy a step, with the copy's root as RESCUE_ROOT. Each of them ends in the one
+# and the Build Review Details ({{buildDetails}}), `build` by the run that audited a clean
+# lock, with SCA_ROOT, BUILD_COPY and BUILD_PROCESS, and `rescue` by the run that made the
+# rescued copy, with the copy's root as RESCUE_ROOT and BUILD_PROCESS. Each of them ends in the one
 # command its reader ever runs, {{flags}}: the hand-back of a work folder.
 llm-sca-review-prompt:
   intro: |-
@@ -2185,37 +2187,72 @@ llm-sca-review-prompt:
     values:
       - value: allow
         label: Let it build
-        description: The agent may run the package-manager commands and the add-on's own build commands, which run the submission's code. Dependencies with known vulnerabilities are rescued where those commands can fix them, with lock-only commands that run no install script, and you are asked later who builds the add-on.
+        description: The agent may run the package-manager commands and the add-on's own build commands, which run the submission's code. It builds only a lock the linter audited clean, and rescues dependencies with known vulnerabilities in a copy first, where it can.
       - value: decline
         label: Do not let it build
         description: The agent runs none of them. Nothing is rescued, so known vulnerabilities in the dependencies end the review, and the agent builds nothing. You answer the build question from your own build.
-  # The copy's dependencies, reduced to what the release build uses. The release build is
-  # worked out from the copy itself: no build report exists yet, because no review has run.
-  reduce:
+  # Printed where the linter audited the root's lock clean: the agent builds the original
+  # in the build copy, as the lock pins it, and answers BUILD_OUTPUT with what the build
+  # produced there (build-output), or that it failed.
+  build:
     - text: |-
-        RESCUE_ROOT, given above, is a copy of the source the linter made for this step. Work only there, never in the source archive itself. The review of the source as submitted would stop on known vulnerabilities in its dependencies, and often the vulnerable package is one the release build does not use.
+        The linter audited the lock file of SCA_ROOT, given above, and found no known high or critical vulnerability in it, so the add-on is built now. Copy SCA_ROOT to BUILD_COPY, and build there, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in BUILD_PROCESS.
 
-        Work out from the scripts in its package.json and its build configuration which dependencies the release build uses. Remove from package.json every dependency the release build does not use (tests, linters, type checking, formatting, git hooks), keep every dependency it uses, and change nothing else in package.json. Then regenerate the lock file without running any install script: `npm install --package-lock-only --ignore-scripts`, or `pnpm install --lockfile-only --ignore-scripts` where RESCUE_ROOT has a pnpm-lock.yaml.
-
-        Use only these commands: never install, update or upgrade a package by name, never delete the lock file, and change no other file. If you cannot run these commands, run the next command without changing anything.
+        Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci`, or `pnpm install --frozen-lockfile` where the copy has a pnpm-lock.yaml, and with no flag that leaves dependencies out. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
+    - text: |-
+        Where the build failed, add a section headed "Build attempt" to the end of BUILD_PROCESS: the step that failed, and the error output it printed. Change nothing else in that file.
+    - text: |-
+        Open ANSWERS, given above. Answer its one entry, whose "index" is BUILD_OUTPUT, with where the build put what it produced: the XPI or zip file, or the folder such as `dist/`, inside BUILD_COPY. Write it as a path, absolute or relative to BUILD_COPY. Where the build failed, answer with the "label" of its one answer instead. Compare nothing and judge nothing: the reviewer reads what the build produced. Change nothing else in the file.
     - text: |-
         Run the linter with exactly these flags, and nothing else:
 
         {{flags}}
     - text: |-
-        That run checks the copy and prints the next prompt. Follow it from there - this one is done.
-  # Issued only where `reduce` left the copy short of clean.
-  fix:
+        That run reads the answer and prints the next prompt. Follow it from there - this one is done.
+  # Printed where the linter audited the root's lock vulnerable, after it made the rescued
+  # copy: the agent's whole rescue in one loop, which builds only a lock with no high or
+  # critical advisory left. The answer is what the build produced inside the copy
+  # (rescue-output), or that the rescue failed. The linter audits the copy again and checks
+  # that output, and a rescue failing either is deleted.
+  rescue:
     - text: |-
-        In RESCUE_ROOT, given above, the dependencies the release build uses still have known vulnerabilities. Update the lock file to fixed releases without running any install script: `npm audit fix --package-lock-only --ignore-scripts`, or where RESCUE_ROOT has a pnpm-lock.yaml, `pnpm audit --fix` followed by `pnpm install --lockfile-only --ignore-scripts`.
+        The linter audited the lock file of the source and found dependencies with known high or critical vulnerabilities, so the source is not built as submitted. RESCUE_ROOT, given above, is a copy of it the linter made for this step. Work only there, never in the source archive itself, and run every command in your own sandbox. Often the vulnerable package is one the release build does not use, or one a fixed release within its declared range replaces.
 
-        Use only these commands: never install, update or upgrade a package by name, never delete the lock file, and change nothing in package.json or in any other file beyond what these commands write. If you cannot run these commands, run the next command without changing anything.
+        Make the copy's lock clean, then build it, in the loop the next three steps describe.
+    - text: |-
+        Change the copy's dependencies. Work out from the scripts in its package.json and its build configuration which dependencies the release build uses. Remove from package.json every dependency the release build does not use (tests, linters, type checking, formatting, git hooks), and keep every one it uses. Then refresh the lock file without running any install script: `npm install --package-lock-only --ignore-scripts`, or `pnpm install --lockfile-only --ignore-scripts` where RESCUE_ROOT has a pnpm-lock.yaml. Where a dependency the release build uses is vulnerable, update the lock file to fixed releases the same way: `npm audit fix --package-lock-only --ignore-scripts`, or `pnpm audit --fix` followed by `pnpm install --lockfile-only --ignore-scripts`.
+
+        Use only these commands: never install, update or upgrade a package by name, never delete the lock file, and change nothing beyond package.json and what these commands write.
+    - text: |-
+        Audit the copy: `npm audit`, or `pnpm audit` where RESCUE_ROOT has a pnpm-lock.yaml. While it reports any high or critical advisory, go back to the dependencies, and build NOTHING. Where no change the step before allows removes the last of them, the rescue failed.
+    - text: |-
+        Once the audit reports no high or critical advisory, build in RESCUE_ROOT. Install the dependencies exactly as the lock file pins them: `npm ci`, or `pnpm install --frozen-lockfile` where RESCUE_ROOT has a pnpm-lock.yaml, with no flag that leaves dependencies out. Then follow the build process described in BUILD_PROCESS.
+
+        Where the build fails, find out why and change the dependencies again, then audit again before the next build. A build often needs a dependency the trimming removed: a `prepare` script that runs `husky`, for one, fails without husky. Keep such a dependency, or remove the script from package.json where the release build does not need it. Where no change makes a clean lock build, the rescue failed.
+    - text: |-
+        Open ANSWERS, given above. Answer its one entry, whose "index" is BUILD_OUTPUT, with where the build put what it produced: the XPI or zip file, or the folder such as `dist/`, inside RESCUE_ROOT, as an absolute path. Where the rescue failed, answer with the "label" of its one answer instead. Change nothing else in the file.
     - text: |-
         Run the linter with exactly these flags, and nothing else:
 
         {{flags}}
     - text: |-
-        That run checks the copy and prints the next prompt. Follow it from there - this one is done.
+        That run audits the copy, reads the answer and prints the next prompt. Follow it from there - this one is done.
+  # The BUILD_OUTPUT entry of the build prompt's ANSWERS: a path inside the build copy, or
+  # the `failed` label.
+  build-output:
+    question: |-
+      Where did the build put what it produced?
+    failed:
+      label: The build failed
+      description: A build step failed, so the build produced nothing.
+  # The BUILD_OUTPUT entry of the rescue prompt's ANSWERS: a path inside the rescued copy,
+  # or the `failed` label, which deletes the copy.
+  rescue-output:
+    question: |-
+      Where did the build of the rescued copy put what it produced?
+    failed:
+      label: The rescue failed
+      description: No build came out of a lock with no high or critical advisory left, so the rescue produced nothing.
 
 # The REVIEW LOOP's prompts: what --llm-review prints, and what each --llm-handback run
 # prints back, until the review is settled. One phase is handed out per pass.

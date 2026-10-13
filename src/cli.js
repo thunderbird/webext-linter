@@ -1306,8 +1306,9 @@ function runHandback(work, registry) {
 
 /**
  * One step of preparing a source code review (src/prepare/steps.js), then what it hands out
- * next: a rescued copy's step, or - once the preparation is done - the review itself, which
- * this hand-back starts, so the agent runs no command but this one. The review's first
+ * next: the permission question, the build or the rescue, or - once the preparation is
+ * done - the review itself, which this hand-back starts, so the agent runs no command but
+ * this one. The review's first
  * prompt is then printed by the pipeline, and the run exits as a started review does.
  *
  * A refusal is answered as the review loop answers one: the prompt is not re-printed, and
@@ -1326,22 +1327,28 @@ async function runPreparePass(work, registry) {
   const { record } = out;
   if (out.next === "step") {
     const prompt = registry.llmScaReviewPrompt();
-    const lines = scaPromptLines(
-      prompt,
-      record.step,
-      record.step === PREPARE_STEP.permission
-        ? {
-            answers: workPaths(out.work).review,
-            buildDetails: buildDetailLines(out.work, record, prompt, registry),
-            flags: handbackCommand(out.work),
-            experiments: record.submission.experiments,
-          }
-        : {
-            rescueRoot: record.roots.scaRoot,
-            flags: handbackCommand(out.work),
-            experiments: record.submission.experiments,
-          }
-    );
+    const paths = workPaths(out.work);
+    // What each step's prompt names beside the review file.
+    const named = {
+      [PREPARE_STEP.permission]: () => ({
+        buildDetails: buildDetailLines(out.work, record, prompt, registry),
+      }),
+      [PREPARE_STEP.build]: () => ({
+        scaRoot: record.roots.scaRoot,
+        buildCopy: paths.buildCopy,
+        buildProcess: paths.build,
+      }),
+      [PREPARE_STEP.rescue]: () => ({
+        rescueRoot: record.roots.scaRoot,
+        buildProcess: paths.build,
+      }),
+    }[record.step]();
+    const lines = scaPromptLines(prompt, record.step, {
+      answers: paths.review,
+      ...named,
+      flags: handbackCommand(out.work),
+      experiments: record.submission.experiments,
+    });
     for (const line of lines) {
       writeToStdout(`${line}\n`);
     }

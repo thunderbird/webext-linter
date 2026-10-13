@@ -476,8 +476,9 @@ function valueLines(entries) {
  * purpose. The VALUES are `NAME` with its value beneath it, never wrapped, so a reader takes
  * a path by looking up a name rather than by parsing a sentence: the Submission block on the
  * first prompt - EXTRACT_TO among them: this tool cannot open a source archive itself, but
- * it can still name where one should land - ANSWERS on the permission prompt's, and
- * RESCUE_ROOT on a rescued copy's. The STEPS
+ * it can still name where one should land - ANSWERS on every later prompt, and the
+ * Build block on the build and rescue prompts: SCA_ROOT, BUILD_COPY and BUILD_PROCESS on the
+ * build's, RESCUE_ROOT and BUILD_PROCESS on the rescue's. The STEPS
  * are prose, and
  * they name those given values - and the ones the reader still has to work out, <SCA_ROOT>
  * and <SCA_EXP_SOURCE> - instead of carrying paths themselves. The FLAGS are the finished
@@ -495,13 +496,15 @@ function valueLines(entries) {
  * @param {string} [values.extractTo]  Beside `submission`: where the reader extracts the
  *   source archive, the `sca` folder of the work folder (src/util/dest.js workPaths), ending
  *   in a separator so it reads as the folder it is.
- * @param {string} [values.buildProcess]  Beside `submission`: where the build report is
- *   written, the work folder's build.md.
+ * @param {string} [values.buildProcess]  Where the build report is written, the work
+ *   folder's build.md: beside `submission`, and on the build and rescue prompts.
  * @param {string} [values.answers]  The review file the answers are handed back in: beside
- *   `submission`, and on the permission prompt.
+ *   `submission`, and on every later prompt.
+ * @param {string} [values.scaRoot]  On the build prompt: the source root the agent copies.
+ * @param {string} [values.buildCopy]  On the build prompt: where it copies it and builds.
  * @param {string[]} [values.buildDetails]  On the permission prompt: the Build Review
  *   Details block, its waiting line included, filled into the step that shows it.
- * @param {string} [values.rescueRoot]  On a rescued copy's prompt: the copy's root.
+ * @param {string} [values.rescueRoot]  On the rescue prompt: the copy's root.
  * @param {string[]} values.flags  The command the prompt's run prints, composed by the
  *   front-end (src/cli.js), which owns the flag names: the finished flag lines. Laid out
  *   here, never added to, trimmed or second-guessed.
@@ -526,12 +529,17 @@ export function scaPromptLines(prompt, list, values) {
       ...valueLines([["ANSWERS", values.answers]])
     );
   }
-  if (values.rescueRoot) {
-    lines.push(
-      "",
-      "Copy:",
-      ...valueLines([["RESCUE_ROOT", values.rescueRoot]])
-    );
+  // The build and rescue prompts' folders, each where it is given.
+  const build = values.submission
+    ? []
+    : [
+        ["SCA_ROOT", values.scaRoot],
+        ["BUILD_COPY", values.buildCopy],
+        ["RESCUE_ROOT", values.rescueRoot],
+        ["BUILD_PROCESS", values.buildProcess],
+      ].filter(([, value]) => value);
+  if (build.length) {
+    lines.push("", "Build:", ...valueLines(build));
   }
   // The flags are a command, composed elsewhere - but they travel through a submission's
   // own file names, so they are made safe to show like every other line here. displayPath,

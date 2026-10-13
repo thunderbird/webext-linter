@@ -264,9 +264,9 @@ export const SCA_PROMPT_FACTS = ["experiments"];
 
 /** The preparation's prompts, one step list each, named for the step that prints it
  *  (src/prepare/state.js PREPARE_STEP): `extract` first, `permission` after a safe build
- *  judgement, then `reduce` and `fix` for a rescued copy. Once the preparation is done, the
- *  hand-back starts the review instead. */
-export const SCA_PROMPT_STEPS = ["extract", "permission", "reduce", "fix"];
+ *  judgement, then `build` for a lock audited clean or `rescue` for a vulnerable one. Once
+ *  the preparation is done, the hand-back starts the review instead. */
+export const SCA_PROMPT_STEPS = ["extract", "permission", "build", "rescue"];
 
 /** The placeholder every one of those prompts carries: the command its run prints, which is
  *  how the reader reaches the next run. A list without it would leave its reader with

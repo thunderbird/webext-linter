@@ -92,16 +92,30 @@ export function writeBuildReport(work) {
 }
 
 /**
+ * The agent's build, as a test makes one: an empty `dist/` folder inside `folder`, which is
+ * where the build put what it produced. Empty, so a rescued copy's review reads nothing new.
+ * @param {string} folder
+ * @returns {string}  The output, absolute.
+ */
+export function buildInto(folder) {
+  const output = path.join(folder, "dist");
+  fs.mkdirSync(output, { recursive: true });
+  return output;
+}
+
+/**
  * Prepare a source code review for real: the work folder a --llm-sca-review run creates, the
  * source extracted into its sca/ and handed back as the root, beside a build report judged
  * safe, the reviewer letting the agent build, and every hand-back after it.
  * Its run cache is `cache`, a seeded folder named as --cache-work-dir in its record, so every
  * step and its review read it: each audit is answered from it, a rescued copy's included.
- * A clean source is done at once.
+ * A clean source is built in build/ (buildInto) and done. One the audit cannot read in full
+ * is done at once.
  * A vulnerable one gets its rescued copy, and `rescue` is the agent's work in it: a function
- * of the copy's root, which changes what it must for the copy's audit to come out clean -
- * or null, which changes nothing, so the fix step gives the rescue up and the original is
- * done, its roots back in sca/. Each step is asserted to move as the preparation moves it.
+ * of the copy's root, which changes what it must for the copy's audit to come out clean, and
+ * after which the copy is built (buildInto) - or null, for an agent that answers that the
+ * rescue failed, so the copy is deleted and the original is done, its roots back in sca/.
+ * Each step is asserted to move as the preparation moves it.
  * @param {{source: string, xpi: string, flags?: object, cache?: string,
  *   rescue?: ?(copyRoot: string) => void}} opts
  * @returns {Promise<{next: string, work: string, record: object}>}  The handout of the
@@ -137,41 +151,43 @@ export async function realPreparation({
   answer(work, {});
   at = await step(work);
   if (at.next === "review") {
-    assert.equal(at.work, work, "a clean source is reviewed where it is");
+    assert.equal(at.work, work, "an unaudited source is reviewed where it is");
+    return at;
+  }
+  assert.equal(at.work, work, "every step is in the same work folder");
+  if (at.record.step === PREPARE_STEP.build) {
+    const output = buildInto(workPaths(work).buildCopy);
+    answer(work, { BUILD_OUTPUT: output });
+    at = await step(work);
+    assert.equal(at.next, "review", "a clean source is built and reviewed");
+    assert.equal(at.record.buildOutput, output);
     return at;
   }
   assert.equal(
     at.record.step,
-    PREPARE_STEP.reduce,
+    PREPARE_STEP.rescue,
     "a vulnerable source is rescued"
   );
-  assert.equal(at.work, work, "the copy is made in the same work folder");
   const copy = workPaths(work).rescued;
   if (rescue) {
     rescue(at.record.roots.scaRoot);
+    answer(work, { BUILD_OUTPUT: buildInto(at.record.roots.scaRoot) });
     at = await step(work);
     assert.equal(at.next, "review", "the rescued copy came out clean");
+    assert.equal(at.record.buildResult, "built");
     assert.equal(at.work, work);
     return at;
   }
+  answer(work, { BUILD_OUTPUT: "The rescue failed" });
   at = await step(work);
-  assert.equal(
-    at.record.step,
-    PREPARE_STEP.fix,
-    "a reduce that changed nothing"
-  );
-  at = await step(work);
-  assert.equal(
-    at.next,
-    "review",
-    "a fix that changed nothing gives the rescue up"
-  );
+  assert.equal(at.next, "review", "a failed rescue is reviewed unrescued");
   assert.equal(at.work, work);
+  assert.equal(at.record.buildResult, "rescue-failed");
   assert.equal(
     at.record.roots.scaRoot,
     sca,
     "the source as submitted is reviewed"
   );
-  assert.ok(!fs.existsSync(copy), "the given-up copy is deleted");
+  assert.ok(!fs.existsSync(copy), "the failed rescue's copy is deleted");
   return at;
 }

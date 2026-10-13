@@ -2151,8 +2151,8 @@ test("a preparation refuses an unanswered hand-back", () => {
 });
 
 /** A work folder whose preparation is done, made for real: the sca-unrescued fixture's
- *  source, whose lock carries a critical advisory, prepared through its rescue to the
- *  give-up, so the folder is unrescued as a real preparation leaves it. Then `over` is
+ *  source, whose lock carries a critical advisory, prepared through a rescue that fails,
+ *  so the folder is unrescued as a real preparation leaves it. Then `over` is
  *  written into that real record, the way an agent that edited the record and recomputed
  *  its hash would, so what is tested is the check behind the digest. `name` prepares
  *  another fixture instead: one with no lock, done at once, whose review asks nothing of a
@@ -2305,7 +2305,7 @@ test("a prepared review drops what a record must not say", async () => {
   );
 });
 
-// A source whose rescue was given up is reviewed as submitted: the hand-back starts that
+// A source whose rescue failed is reviewed as submitted: the hand-back starts that
 // review, its vulnerability checks abort it, so its first prompt is the close, and the run
 // exits as a rejected review does.
 test("the hand-back starts the review of an unrescued source, which closes at once", async () => {
@@ -2340,7 +2340,7 @@ test("the hand-back starts the review of an unrescued source, which closes at on
       ],
     }),
   });
-  assert.equal(record.roots.scaRoot, workPaths(work).sca, "the rescue gave up");
+  assert.equal(record.roots.scaRoot, workPaths(work).sca, "the rescue failed");
   const r = run(["--llm-handback", work]);
   assert.equal(r.code, 1, r.stdout + r.stderr);
   assert.match(r.stdout, /── LLM Prompt ──/);
@@ -2355,53 +2355,98 @@ test("the hand-back starts the review of an unrescued source, which closes at on
   fs.rmSync(source, { recursive: true, force: true });
 });
 
-// A vulnerable source is rescued through the prompts the hand-backs print: the step that
-// settles the roots and a safe build hands out the permission question, the reviewer's
-// answer the copy's `reduce`, and one that leaves the copy vulnerable its `fix`, each naming
-// the copy and the work folder to hand back. OSV is answered from the run cache folder
-// named as --cache-work-dir, which the record hands to every step.
-test("the hand-backs print a rescued copy's reduce and then its fix", async () => {
+/**
+ * The sca-unrescued fixture's source, prepared through the CLI up to the prompt that follows
+ * the reviewer's permission, its lock audited from a run cache folder seeded with `vulns`
+ * (named as --cache-work-dir, which the record hands to every step).
+ * @param {Record<string, object[]>} vulns
+ * @returns {{work: string, stdout: string, dir: string}}  The prompt that run printed.
+ */
+function permittedPrompt(vulns) {
   const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
-  const source = path.join(fixture, "src");
-  const cache = auditCache({
-    "lint-pebble@0.4.0": [
-      advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
-    ],
-    "argv-crumb@0.0.8": [],
-    "tidy-lantern@2.1.0": [],
-    "wick-trim@1.0.1": [],
-  });
   const dir = submissionFolder();
   const r = run([
     dir,
     "--llm-sca-review",
     ...OFFLINE_FLAGS,
     "--cache-work-dir",
-    cache,
+    auditCache(vulns),
   ]);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
-  fs.cpSync(source, headerValue(r.stdout, "EXTRACT_TO"), { recursive: true });
-  answer(work, { SCA_ROOT: headerValue(r.stdout, "EXTRACT_TO") });
+  const sca = headerValue(r.stdout, "EXTRACT_TO");
+  fs.cpSync(path.join(fixture, "src"), sca, { recursive: true });
+  answer(work, { SCA_ROOT: sca });
   writeBuildReport(work);
   const permission = run(argvOf(commandOf(r.stdout)));
   assert.equal(permission.code, 0, permission.stdout + permission.stderr);
   assert.equal(readJson(work, "prepare").step, "permission");
   answer(work, {});
-  const copy = path.join(work, "rescued");
-  const step = (prompt, name) => {
-    const next = run(argvOf(commandOf(prompt)));
-    assert.equal(next.code, 0, next.stdout + next.stderr);
-    assert.match(next.stdout, /── SCA Review Prompt ──/);
-    assert.equal(headerValue(next.stdout, "RESCUE_ROOT"), copy);
-    assert.deepEqual(commandOf(next.stdout), [`--llm-handback ${work}`]);
-    assert.equal(readJson(work, "prepare").step, name);
-    return next.stdout;
-  };
-  const reduce = step(permission.stdout, "reduce");
-  assert.doesNotMatch(reduce, /npm audit fix/);
-  const fix = step(reduce, "fix");
-  assert.match(fix, /npm audit fix/);
+  const next = run(argvOf(commandOf(permission.stdout)));
+  assert.equal(next.code, 0, next.stdout + next.stderr);
+  assert.ok(next.stdout.includes("── SCA Review Prompt ──"), next.stdout);
+  assert.equal(headerValue(next.stdout, "ANSWERS"), workPaths(work).review);
+  assert.equal(
+    headerValue(next.stdout, "BUILD_PROCESS"),
+    workPaths(work).build
+  );
+  assert.deepEqual(commandOf(next.stdout), [`--llm-handback ${work}`]);
+  return { work, stdout: next.stdout, dir };
+}
+
+/** A prompt's text with its wrapping undone: its lines trimmed and joined by a space, so a
+ *  phrase reads the same wherever the prompt wrapped it. */
+const unwrapped = (stdout) =>
+  stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .join(" ");
+
+/** The fixture's lock releases, none with an advisory. */
+const FIXTURE_CLEAN = {
+  "lint-pebble@0.4.0": [],
+  "argv-crumb@0.0.8": [],
+  "tidy-lantern@2.1.0": [],
+  "wick-trim@1.0.1": [],
+};
+
+// A clean lock is built: the prompt after the permission names the source root to copy, the
+// build copy to build it in and the build report, and asks for the build's output.
+test("the hand-back prints a clean source's build", () => {
+  const { work, stdout, dir } = permittedPrompt(FIXTURE_CLEAN);
+  assert.equal(readJson(work, "prepare").step, "build");
+  assert.equal(headerValue(stdout, "SCA_ROOT"), path.join(work, "sca"));
+  assert.equal(headerValue(stdout, "BUILD_COPY"), workPaths(work).buildCopy);
+  assert.equal(headerValue(stdout, "RESCUE_ROOT"), undefined);
+  for (const said of ["Copy SCA_ROOT to BUILD_COPY", '"Build attempt"']) {
+    assert.ok(unwrapped(stdout).includes(said), said);
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A vulnerable lock is rescued: the prompt after the permission names the copy and the build
+// report, and hands the agent the whole loop - lock-only commands, an audit before any
+// build, and the build of a clean lock.
+test("the hand-back prints a vulnerable source's rescue", () => {
+  const { work, stdout, dir } = permittedPrompt({
+    ...FIXTURE_CLEAN,
+    "lint-pebble@0.4.0": [
+      advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
+    ],
+  });
+  assert.equal(readJson(work, "prepare").step, "rescue");
+  assert.equal(headerValue(stdout, "RESCUE_ROOT"), path.join(work, "rescued"));
+  assert.equal(headerValue(stdout, "BUILD_COPY"), undefined);
+  for (const said of [
+    "npm install --package-lock-only --ignore-scripts",
+    "npm audit fix --package-lock-only --ignore-scripts",
+    "build NOTHING",
+    "`npm ci`",
+    "husky",
+    '"label" of its one answer',
+  ]) {
+    assert.ok(unwrapped(stdout).includes(said), said);
+  }
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

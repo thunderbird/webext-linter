@@ -372,9 +372,10 @@ export async function auditScaDependencies(addon, net = defaultNet, blocks) {
  * batch, as auditNpm skips one, so it is reported once; an unadvised one is recorded and
  * still audited.
  *
- * Only high and critical are recorded (VENDOR_TREE_BANDS): a package is worth the
- * developer's attention here when it fails the review, not when it merely appears in a
- * report. A MALICIOUS-package advisory is recorded as critical (vulnRecord), so the band
+ * Only high and critical are recorded in those lists (VENDOR_TREE_BANDS): a package is worth
+ * the developer's attention here when it fails the review, not when it merely appears in a
+ * report. A moderate one goes to vendor.moderateVulnerabilities, which only the preparation
+ * counts. A MALICIOUS-package advisory is recorded as critical (vulnRecord), so the band
  * rule keeps it.
  *
  * Each hit goes to one of four lists, by the lock's own two markers: whether a package file
@@ -417,8 +418,14 @@ async function auditLockedPackages(vendor, net, blocks) {
     return;
   }
   /** @type {{declared: VendorVuln[], declaredDev: VendorVuln[], shipped: VendorVuln[],
-   *   buildTime: VendorVuln[]}} */
-  const found = { declared: [], declaredDev: [], shipped: [], buildTime: [] };
+   *   buildTime: VendorVuln[], moderate: VendorVuln[]}} */
+  const found = {
+    declared: [],
+    declaredDev: [],
+    shipped: [],
+    buildTime: [],
+    moderate: [],
+  };
   for (let at = 0; at < queue.length; at += VENDOR_OSV_BATCH_SIZE) {
     const chunk = queue.slice(at, at + VENDOR_OSV_BATCH_SIZE);
     const res = await askOsv(VENDOR_OSV_BATCH_API, () =>
@@ -449,6 +456,12 @@ async function auditLockedPackages(vendor, net, blocks) {
         pkg.file,
         pkg.token
       );
+      // A moderate advisory is below the source review's band: kept aside for the
+      // preparation to count, and read by no check.
+      if (record?.severity === "moderate") {
+        found.moderate.push(record);
+        continue;
+      }
       if (!record || !VENDOR_TREE_BANDS.includes(record.severity)) {
         continue;
       }
@@ -463,6 +476,7 @@ async function auditLockedPackages(vendor, net, blocks) {
   vendor.devVulnerabilities.push(...found.declaredDev);
   vendor.treeVulnerabilities.push(...found.shipped);
   vendor.treeDevVulnerabilities.push(...found.buildTime);
+  (vendor.moderateVulnerabilities ??= []).push(...found.moderate);
 }
 
 /**

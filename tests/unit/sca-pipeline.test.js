@@ -1793,7 +1793,7 @@ const UNRESCUED_FIXTURE = path.join(
 
 /** A work folder whose preparation gave its rescue up, made for real: the unrescued
  *  fixture's source, whose lock carries a critical advisory on the build tool, prepared
- *  through its rescue to the give-up, its run cache the seeded folder `cache`. */
+ *  through its rescue to its failure, its run cache the seeded folder `cache`. */
 async function unrescuedFolder(cache) {
   const { work } = await realPreparation({
     source: path.join(UNRESCUED_FIXTURE, "src"),
