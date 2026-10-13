@@ -319,6 +319,14 @@ to that case: an XPI-only review halts on the same terms, and cancels the by-han
 checks too, because a submission being refused for what it ships is a submission nobody
 needs to spend that time on.
 
+A check can instead name its reason as `review-late-exit:`, for one of the same reasons.
+Its error stops nothing while the review runs: every check still runs, and under
+`--llm-review` the sweeps, verify and settle passes run as usual, so verify can withdraw
+a wrong finding first. A finding that still stands then ends the review before anyone is
+asked a question, and a review without `--llm-review` is aborted the same way at its end.
+`minified-code` and `untrusted-minified-library` do this and name *code that cannot be
+reviewed*: code nobody can read makes installing the add-on unsafe.
+
 Which section a check's cases land in is the check's own property, declared in the
 registry beside its severity - never decided per case. A check that would need both
 sections is asking two questions, and is two checks: `remote-resources` and
@@ -383,7 +391,7 @@ machine.
 | `mistyped-manifest-value` | A known manifest.json key whose value has the wrong type, validated with ajv against a JSON Schema derived from the annotated schema (warning). Thunderbird misreads such values. |
 | `native-messaging` | The `nativeMessaging` permission (in `permissions` or `optional_permissions`), which lets the add-on exchange messages with a native application outside Thunderbird - routed to manual review to confirm disclosure (No Surprises). |
 | `non-experiment-strict-max-version` | A non-Experiment that pins `strict_max_version` (warning - it only blocks installs on newer Thunderbird). |
-| `minified-code` | A script or stylesheet (not a recognized library, not obfuscated) shipped minified - by minified line geometry (a very long, dense line) (error). A script that will not parse or walk counts as minified, since nothing there can be reviewed either. |
+| `minified-code` | A script or stylesheet (not a recognized library, not obfuscated) shipped minified - by minified line geometry (a very long, dense line) (error, aborts the review late). A script that will not parse or walk counts as minified, since nothing there can be reviewed either. |
 | `obfuscated-code` | A JS file (not a recognized library) shipped obfuscated - recognized by the AST structure of a known obfuscator family via the `obfuscation-detector` library. The families a match is drawn from are pinned, so a family the library gains later decides nothing and a match needs no second opinion. High precision, partial recall - some obfuscators evade it. |
 | `privacy-policy` | Data transmitted by an overt API to a remote host the developer chose (fixed in the add-on, not entered by the user) - one case per transmission site, naming its host. A host the add-on assembles while it runs is reported too, marked rather than named, since dropping it would hide the site the tool can say least about. Routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
 | `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, aborts the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce. Whether the archive held the whole XPI is a separate question, so `sca-xpi-fully-included-in-archive` prints beside this rejection rather than in place of it. |

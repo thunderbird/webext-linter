@@ -58,21 +58,24 @@ import { BUILD_RESULT } from "../prepare/state.js";
  * and which of its steps it prints (src/report/phases.js stepsOf). What a phase asks
  * about does not depend on it, which is what lets `accept` re-derive what went out from
  * the review alone.
+ *
+ * A late-exit reason (Registry lateExitFor) halts the review only once the phase that
+ * would go out without it is `ask` or the close: the phases up to `settle` run as usual,
+ * so verify can withdraw the finding first, and the reviewer is then asked nothing.
  * @param {import("./state.js").LoopState} state
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
+ * @param {{name: string, answer: string, steps: object[]}[]} phases  In issue order.
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {{skip: string[], sca: boolean, halted: boolean, first: boolean,
  *   spawned: boolean, decided: boolean, values: Object<string, string>}}  Beside these, the
  *   build result's fact (buildResultFact) is true.
  */
-function runOf(state, ordered, registry) {
-  const halted = Boolean(
-    earlyExitOf(ordered, verdictsOf(state, ordered, registry), registry)
-  );
+function runOf(state, ordered, phases, registry) {
+  const verdicts = verdictsOf(state, ordered, registry);
   const issued = state.issued ?? [];
-  return {
+  const run = {
     ...state.run,
-    halted,
+    halted: Boolean(earlyExitOf(ordered, verdicts, registry)),
     // What the prompt about to go out can say: whether it is the review's first, whether
     // an agent was started that may still be running, and whether the agent has judged
     // anything it would account for when the review closes.
@@ -83,6 +86,11 @@ function runOf(state, ordered, registry) {
     values: state.values ?? {},
     [buildResultFact(state)]: true,
   };
+  if (!run.halted && earlyExitOf(ordered, verdicts, registry, { late: true })) {
+    const next = nextPhase(phases, ordered, state, run)?.phase;
+    run.halted = !next || next.name === "ask" || next.answer === "end";
+  }
+  return run;
 }
 
 /**
@@ -189,7 +197,7 @@ function askedByPerson(registry) {
  */
 export function issue(state, work, phases, registry) {
   const ordered = orderReview(state.report.findings, state.manual);
-  const run = runOf(state, ordered, registry);
+  const run = runOf(state, ordered, phases, registry);
   const next = nextPhase(phases, ordered, state, run);
   if (!next) {
     // The registry refuses a loop without a closing phase, and that phase always has a
@@ -549,11 +557,12 @@ export function settle(state, registry) {
   resolveHolds(findings);
   // Decided HERE, on the review with every answer applied: a review the deterministic
   // checks did not abort can still be aborted by what a pass reported - a case settled as
-  // reported, a build that did not reproduce. An aborted review hands over no to-do item at
-  // all: nothing was put to anyone, and nobody is asked to carry on with a submission it
-  // already settles.
+  // reported, a build that did not reproduce - or by a late-exit finding verify left
+  // standing, which counts here as the review is past `settle`. An aborted review hands
+  // over no to-do item at all: nothing was put to anyone, and nobody is asked to carry on
+  // with a submission it already settles.
   const ordered = orderReview(findings, state.manual);
-  const earlyExit = earlyExitOf(ordered, {}, registry);
+  const earlyExit = earlyExitOf(ordered, {}, registry, { late: true });
   const manual = earlyExit ? [] : state.manual;
   return {
     applied,

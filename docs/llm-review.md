@@ -193,15 +193,34 @@ What an aborted review does under `--llm-review`:
 | The report | ends on the reason it is incomplete, one line per distinct cause. |
 | The `close` phase | opens with a step of its own (`when: aborted`), because telling an agent "the review is settled" about one that was cut short is not true. The summary and the details that follow are the same. |
 
-A finding that aborts the review is never put to the agent to verify, so no verdict takes it
-back. That is also why a check that authors a sweep may not abort a review: a sweep's hints
-are merged unverified, and the registry refuses a check that does both.
+A finding that aborts the review early is never put to the agent to verify, so no verdict
+takes it back. That is also why a check that authors a sweep may not abort a review early: a
+sweep's hints are merged unverified, and the registry refuses a check that does both.
 
 A review run without `--llm-review` is aborted on the same terms. A check that aborts it is
 the last check that runs: nothing after it is checked, and nothing it would have needed is
 computed. The printed report holds what the checks up to the abort found, drops every to-do
 item a reviewer would have been **asked**, and keeps the code-review items those checks
 authored, because reading code is safe.
+
+### Aborted late
+
+A check can instead name its reason as `review-late-exit:`, for one of the same reasons.
+`minified-code` and `untrusted-minified-library` do, and name *code that cannot be
+reviewed*: code nobody can read makes installing the add-on unsafe, so the reviewer is
+asked nothing. When each kind decides:
+
+| | |
+| --- | --- |
+| Early (`review-early-exit`) | The moment the error stands. A deterministic check that reports it stops the checks there, and the loop closes on its first prompt. A case a pass reports stops the loop at that pass. |
+| Late (`review-late-exit`) | Once only `ask` and `close` are left. Every check runs, and `build-safety`, `built`, `spawn`, `verify` and `settle` run as usual. Then `ask` is skipped, and `close` closes the aborted review with the reason, as an early abort does. |
+
+Since verify runs first, a late-exit finding verify **withdrew** does not stand and aborts
+nothing: the questions are asked and the review closes settled. A late-exit check may author
+a sweep, as it is judged after the sweeps. The registry holds it to the early exit's other
+terms: severity `error` or `auto`, a reason `review-early-exit` defines, and never both keys
+on one check. A review run without `--llm-review` has no pass to wait for, so a late-exit
+error aborts it at its end, on the same terms as an early one.
 
 
 ## What an answer may say

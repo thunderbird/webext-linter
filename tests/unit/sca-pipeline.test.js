@@ -15,6 +15,8 @@ import path from "node:path";
 import { runPipeline } from "../../src/pipeline.js";
 import { formatText } from "../../src/report/format.js";
 import { loadRegistry } from "../../src/checks/registry.js";
+import { isQuestion, orderReview } from "../../src/report/order.js";
+import { SEVERITY } from "../../src/report/finding.js";
 import {
   cdnMissCache,
   fixtureCacheOpts,
@@ -1826,6 +1828,46 @@ test("an aborting check is the last check the review runs", async () => {
     meta.earlyExit.reasons.map((r) => r.id),
     [loadRegistry().earlyExitFor("sca-lock-file-missing")]
   );
+});
+
+/** A plain review of a packed stylesheet: a `minified-code` error, which aborts it late. */
+const MINIFIED = path.resolve("tests/addons/minified-stylesheet");
+const reviewMinified = () =>
+  runReview({
+    addonPath: MINIFIED,
+    ...OFFLINE,
+    cdnLookupCache: cdnMissCache(MINIFIED),
+  });
+
+// A check that aborts the review LATE stops nothing while it runs: its error is reported,
+// and every check after it in the registry still runs.
+test("the review runs past a check that aborts it late", async () => {
+  const registry = loadRegistry();
+  assert.equal(registry.lateExitFor("minified-code"), "unreviewable-code");
+  const { findings, meta } = await reviewMinified();
+  assert.ok(
+    findings.some(
+      (f) => f.ruleId === "minified-code" && f.severity === SEVERITY.ERROR
+    )
+  );
+  const ids = registry.checkIds();
+  const after = ids.slice(ids.indexOf("minified-code") + 1);
+  assert.ok(after.length > 0);
+  assert.ok(after.some((id) => meta.checksRun.includes(id)));
+  assert.notEqual(meta.checksRun.at(-1), "minified-code");
+});
+
+// A plain review has no pass to run before the abort, so a late-exit error aborts it at
+// its end: the report lists the reason, and the questions are withheld.
+test("a late-exit error aborts a plain review and withholds its questions", async () => {
+  const { meta } = await reviewMinified();
+  assert.deepEqual(
+    meta.earlyExit?.reasons.map((r) => r.text),
+    ["Code that cannot be reviewed"]
+  );
+  const left = orderReview([], meta.manualReview);
+  assert.ok(left.length > 0, "the code-review items stay");
+  assert.deepEqual(left.filter(isQuestion), []);
 });
 
 // A source whose preparation gave its rescue up: its vulnerability checks, early in the phase,

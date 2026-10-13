@@ -6371,6 +6371,57 @@ test("a check that sweeps and aborts the review is refused", async () => {
   );
 });
 
+/** The doc entry of the first check authoring a sweep, so an edit reaches the load. */
+function sweepingEntry(registry) {
+  const sweeping = registry.allEntries().find((e) => e["sweep-instruction"]);
+  return Object.values(registry.doc)
+    .filter(Array.isArray)
+    .flat()
+    .find((e) => e?.check === sweeping.check);
+}
+
+// A late abort is decided after the sweeps and verify have run, so a check that sweeps may
+// abort the review late, at error severity, for a reason the registry defines.
+test("a check that sweeps and aborts the review late is accepted", async () => {
+  const registry = loadRegistry();
+  const entry = sweepingEntry(registry);
+  entry["review-late-exit"] = "unreviewable-code";
+  entry.severity = "error";
+  checkEarlyExit(registry);
+});
+
+// A late-exit check is held to the early exit's terms: one key, an error band, a defined
+// reason.
+test("a late exit with both keys, a non-error severity or an undefined reason is refused", async () => {
+  const both = loadRegistry();
+  const entry = both.doc["deterministic-phase"].find(
+    (e) => e["review-early-exit"]
+  );
+  entry["review-late-exit"] = "unreviewable-code";
+  assert.throws(
+    () => checkEarlyExit(both),
+    /authors both `review-early-exit` and `review-late-exit`/
+  );
+
+  const warning = loadRegistry();
+  const warned = sweepingEntry(warning);
+  warned["review-late-exit"] = "unreviewable-code";
+  warned.severity = "warning";
+  assert.throws(
+    () => checkEarlyExit(warning),
+    /aborts the review but is severity `warning`/
+  );
+
+  const undefinedReason = loadRegistry();
+  const named = sweepingEntry(undefinedReason);
+  named["review-late-exit"] = "no-such-reason";
+  named.severity = "error";
+  assert.throws(
+    () => checkEarlyExit(undefinedReason),
+    /which `review-early-exit` does not define/
+  );
+});
+
 // The other direction: wording no report can reach, which is the same dead-prose failure
 // a closed `prose-map` already refuses in the schema.
 test("a reason no check names is refused", async () => {

@@ -65,6 +65,18 @@ flowchart TD
         the build instructions needed to produce the final package.
       </div>
 
+      <div class="outcome">
+        <strong>It aborts the review late</strong>
+        Code nobody can read makes installing the add-on unsafe, so when this check
+        reports at error severity the reviewer is asked nothing. It does not cut the
+        review short: every other check still runs, and under <code>--llm-review</code>
+        the sweeps, verify and settle passes run first, so verify can withdraw a wrong
+        finding. A finding that still stands then ends the review: the questions are
+        not asked, and the developer&rsquo;s text ends on the reason it is incomplete
+        (&ldquo;Code that cannot be reviewed&rdquo;). A review without
+        <code>--llm-review</code> is aborted the same way at its end.
+      </div>
+
       <p>
         It runs in <strong>both</strong> review modes: in an ordinary review it flags
         packed code in the built add-on, and in a source code archive review

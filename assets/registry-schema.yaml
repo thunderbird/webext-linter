@@ -148,6 +148,12 @@ shapes:
       why: >-
         it names the reason the report gives for aborting, and a reason with no name cannot
         be looked up
+    review-late-exit:
+      kind: text
+      why: >-
+        it names the reason the report gives for aborting once the review has run to the end
+        of `settle`, one of the `review-early-exit` reasons, and a reason with no name cannot
+        be looked up
     asked-in:
       kind: text
       why: >-
@@ -183,6 +189,7 @@ shapes:
     sweep-instruction-for-sca: *only-a-check-that-runs
     settle-verbs: *only-a-check-that-runs
     review-early-exit: *only-a-check-that-runs
+    review-late-exit: *only-a-check-that-runs
     asked-in: *only-a-check-that-runs
 
   # The token vocabulary that can justify a permission. The two version bounds are
@@ -426,7 +433,7 @@ sections:
         must-exist: true
         why: >-
           what the report calls each reason a review can stop for - the ids a check names in
-          `review-early-exit`
+          `review-early-exit` or `review-late-exit`
 
   llm-sca-review-prompt:
     kind: object

@@ -630,6 +630,9 @@ deterministic-phase:
   severity: error
   check: minified-code
   input: source
+  # Aborts the review late: code nobody can read is unsafe to install, so the reviewer is
+  # asked nothing. The review still runs to the end of `settle`.
+  review-late-exit: unreviewable-code
   response-for-xpi: |-
     The following script(s) or stylesheet(s) cannot be reviewed in this form: they are minified, machine-generated, or not parsable. If a file is a third-party library, declare it and link its source so the (unmodified) bundled copy can be verified against the linked version - a VENDOR.md file at the add-on root is common practice. If it is your own code, ship the original, readable source instead - the add-on need not be minified. Where a build step produces it, supply the build's sources and the instructions to reproduce the shipped XPI, using the source code upload field at submission or on the version page. Note that this route slows review down: the build must be verified by hand. If a file is not code at all - data carrying a .js or .css name - give it an extension that matches its content.
     Read more #1: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
@@ -647,6 +650,9 @@ deterministic-phase:
   severity: error
   check: untrusted-minified-library
   input: source
+  # Aborts the review late: code nobody can read is unsafe to install, so the reviewer is
+  # asked nothing. The review still runs to the end of `settle`.
+  review-late-exit: unreviewable-code
   response-for-xpi: |-
     The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies, and they are minified or otherwise machine-generated, so they cannot be reviewed in this form. Vendor the library's readable build instead. It is then reviewed as authored code, so a finding may be reported against library code.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/vendoring.html.
@@ -2041,6 +2047,13 @@ verdict-intros:
 # carries the phase a person is asked it in (src/report/early-exit.js withoutQuestions). An
 # error from such a check also stops the review: no check after it runs. The code-review
 # sections keep what the checks up to it authored, because reading code is safe.
+#
+# A check that names its reason as `review-late-exit: <id>` aborts LATE, for one of the same
+# reasons. Its error stops nothing while the review runs: every check runs, and the loop
+# still spawns, verifies and settles, so verify can withdraw a wrong finding first. The
+# review is aborted once only the reviewer's questions and the close are left, and a plain
+# report is aborted at its end. Such a check may author a sweep, as it is judged after the
+# sweeps.
 review-early-exit:
   intro: |-
     The review was not completed and the report is incomplete due to the following issues:
@@ -2049,6 +2062,7 @@ review-early-exit:
     lockfile-injection: Lock file entries that install another release
     known-vulnerabilities: Known security vulnerabilities
     disallowed-library-versions: Disallowed library versions
+    unreviewable-code: Code that cannot be reviewed
     unreproducible-build: Build process issues
 
 # The prompts that PREPARE a source code review: what --llm-sca-review prints, and what each

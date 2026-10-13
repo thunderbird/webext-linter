@@ -1636,6 +1636,46 @@ test("an aborted review hands over the reason and drops the questions", () => {
   assert.deepEqual(settled.meta.manualReview, []);
 });
 
+/** The small review, with its findings reported by a check that aborts the review late. */
+function lateReview(dir) {
+  const made = review(dir, { sweep: false });
+  for (const f of made.state.report.findings) {
+    f.ruleId = "minified-code";
+  }
+  made.state.run = { skip: [], sca: false };
+  return made;
+}
+
+// A late abort lets the review run to the end of `settle`: the agent is started, the
+// findings verified and the cases settled. Then nothing is put to the reviewer, and the
+// close ends the aborted review with the reason.
+test("a late-exit finding skips ask and closes the review aborted", () => {
+  const { state, work } = lateReview(tmp());
+  const { seen, closing } = driveLoop(state, work, (phase) =>
+    phase === "verify" ? "reported" : "cleared"
+  );
+  assert.deepEqual(seen, ["spawn", "verify", "settle"]);
+  assert.equal(closing.phase.name, "close");
+  assert.equal(closing.settled.earlyExit, true);
+  assert.equal(
+    closing.settled.details.split("\n").at(-1),
+    "- Code that cannot be reviewed"
+  );
+  assert.deepEqual(closing.settled.review.meta.manualReview, []);
+});
+
+// Verify runs before a late abort is decided, so a finding it withdrew aborts nothing: the
+// questions are asked, and the review closes settled.
+test("a late-exit finding verify withdrew aborts nothing", () => {
+  assert.equal(REGISTRY.lateExitFor("minified-code"), "unreviewable-code");
+  const { state, work } = lateReview(tmp());
+  const { seen, closing } = driveLoop(state, work, (phase) =>
+    phase === "verify" ? "withdrawn" : "cleared"
+  );
+  assert.deepEqual(seen, ["spawn", "verify", "settle", "ask"]);
+  assert.equal(closing.settled.earlyExit, false);
+});
+
 /** The small review as a source code review whose build checks all ran: the build
  *  phases' paths named, as the pipeline names them for one. */
 function buildReview(dir) {

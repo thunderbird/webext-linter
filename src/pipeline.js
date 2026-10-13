@@ -993,7 +993,8 @@ async function reviewSubmission(opts, work, prepared) {
   // same way manualReview and preSweep are dropped from the JSON rather than emptied.
   if (!prompting) {
     const ordered = orderReview(findings, meta.manualReview ?? []);
-    const earlyExit = earlyExitOf(ordered, {}, registry);
+    // A late-exit reason counts here too: a plain report has no pass left to run first.
+    const earlyExit = earlyExitOf(ordered, {}, registry, { late: true });
     if (earlyExit) {
       meta.earlyExit = earlyExit;
       meta.manualReview = withoutQuestions(ordered);

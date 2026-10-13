@@ -745,6 +745,21 @@ export class Registry {
   }
 
   /**
+   * The reason this check gives for aborting the review LATE, or null when it names none.
+   * An error from such a check stops nothing while the review runs: every check runs, and
+   * the loop still spawns, verifies and settles, so verify can withdraw a wrong finding
+   * first. The review is aborted once nothing but the reviewer's questions and the close
+   * is left (src/report/loop.js runOf), and a plain report is aborted at its end. The
+   * reason is one of the same `review-early-exit` reasons (assertEarlyExit).
+   * @param {string} ruleId
+   * @returns {?string}
+   */
+  lateExitFor(ruleId) {
+    const reason = this.checkEntry(ruleId)?.["review-late-exit"];
+    return typeof reason === "string" && reason !== "" ? reason : null;
+  }
+
+  /**
    * The early exit's authored prose: the line introducing the list, and the reason texts
    * by id. Returned whole rather than resolved per id, because the renderer needs the id
    * ORDER as authored - that is what makes two runs over one submission list the same
@@ -1920,7 +1935,8 @@ export function assertAskedIn(registry, at) {
 
 /**
  * Assert the early exit's two halves agree: every check that names a reason has one to
- * name, and every reason authored is named by a check.
+ * name, and every reason authored is named by a check. A check names it under
+ * `review-early-exit` or `review-late-exit`, and both keys count as naming it.
  *
  * Both directions matter, and they fail differently. A reference nothing defines would
  * abort a review and then print a bullet with nothing in it - the report would say the
@@ -1935,9 +1951,18 @@ export function assertEarlyExit(registry, at) {
   const ids = Object.keys(reasons);
   const named = new Set();
   for (const entry of registry.allEntries()) {
-    const reason = entry["review-early-exit"];
-    if (reason === undefined) {
+    const early = entry["review-early-exit"];
+    const late = entry["review-late-exit"];
+    if (early === undefined && late === undefined) {
       continue;
+    }
+    // One entry aborts one way: an early abort already ends the review before a late one
+    // could be decided, so a second key would say two things about one finding.
+    if (early !== undefined && late !== undefined) {
+      throw new Error(
+        `\`${entry.check}\` authors both \`review-early-exit\` and \`review-late-exit\` - ` +
+          `a check aborts the review one way (${at})`
+      );
     }
     // A halt is triggered by a finding this check reported at ERROR, decided once the
     // review is final. A band it cannot reach on its own would make that decision
@@ -1951,16 +1976,18 @@ export function assertEarlyExit(registry, at) {
           `only \`error\` or \`auto\` can report one at the band a halt is decided on (${at})`
       );
     }
+    const reason = early ?? late;
     assertReasonDefined(
       reason,
       `\`${entry.check}\` aborts the review for`,
       ids,
       at
     );
-    // A sweep's hints are merged into the review unverified, and an aborted review verifies
-    // nothing. A check whose sweep could abort the review would let one unaudited hint
-    // settle the submission, so it may do one or the other, never both.
-    if (sweepTargetsOf(entry).length) {
+    // A sweep's hints are merged into the review unverified, and an early abort verifies
+    // nothing. A check whose sweep could abort the review early would let one unaudited
+    // hint settle the submission, so it may do one or the other, never both. A late abort
+    // is decided after the sweeps and verify have run, so it may sweep.
+    if (early !== undefined && sweepTargetsOf(entry).length) {
       throw new Error(
         `\`${entry.check}\` aborts the review and authors a sweep - a sweep's hints are ` +
           `merged unverified, so they may not abort a review (${at})`
@@ -2410,6 +2437,7 @@ export async function runChecks(registry, opts = {}, siblings) {
  * reason (src/report/early-exit.js) settles the submission. Read off the stamped severity,
  * the band the report will show. A case a check only escalates aborts later, if at all,
  * once someone reports it - that is the review loop's to decide (src/report/loop.js).
+ * A check naming a late-exit reason (lateExitFor) stops nothing here: every check runs.
  */
 export function abortsReview(registry, checkId, findings) {
   return Boolean(

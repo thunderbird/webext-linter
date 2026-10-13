@@ -21,8 +21,10 @@
 // review asks it in src/pipeline.js, and the --llm-review loop asks it again on every pass
 // (src/report/loop.js), because a pass may report a case no check had judged yet. Only the
 // plain report keeps the items nobody would be asked (withoutQuestions). An aborted loop
-// hands over no to-do item at all. A finding that aborts the review is never put to
-// anyone, as an aborted review verifies nothing, so what aborted it stays aborting it.
+// hands over no to-do item at all. A finding that aborts the review early is never put to
+// anyone, as an aborted review verifies nothing, so what aborted it stays aborting it. A
+// check naming a late-exit reason aborts it only once the loop has verified and settled,
+// and a finding verify withdrew aborts nothing.
 //
 // Belongs here: whether a review was aborted, and what an aborted review withholds. Does NOT
 // belong here: how the closing block is drawn (-> src/report/format.js), which items a
@@ -40,9 +42,10 @@ import { VERB, verbNamed } from "./verbs.js";
  * whether the report will show it as one.
  *
  * Two shapes reach here, because a check settles a submission from either. A FINDING
- * stands at the severity it was reported at. One that would abort the review is never put
- * to the agent to verify - an aborted review hands out no such phase - so no verdict can
- * take it back.
+ * stands at the severity it was reported at, unless verify withdrew it. One that aborts the
+ * review early is never put to the agent to verify, as an aborted review hands out no such
+ * phase. One that aborts it late is verified first, and a finding verify withdrew stands
+ * for nothing, as applyVerdicts drops it from the settled review.
  *
  * A TO-DO item stands only once it is REPORTED, at the severity the registry stamps on a
  * reported case (`suggestedVerdict`, the same read applyVerdicts makes) - because being
@@ -62,7 +65,9 @@ import { VERB, verbNamed } from "./verbs.js";
  */
 function standsAsError(item, verdict, registry) {
   if (item.kind === "finding") {
-    return item.target?.severity === SEVERITY.ERROR;
+    return (
+      verdict !== VERB.withdrawn && item.target?.severity === SEVERITY.ERROR
+    );
   }
   return (
     verdict === VERB.reported &&
@@ -75,7 +80,9 @@ function standsAsError(item, verdict, registry) {
  * them. Empty means it was not aborted.
  *
  * An entry counts when two things are true of it: its check names a reason, and it stands
- * as an ERROR (standsAsError). Severity is the whole of the threshold, which is what makes
+ * as an ERROR (standsAsError). A late-exit reason (Registry lateExitFor) counts only when
+ * `late` is set, which the caller decides: the plain report and the settled review always
+ * count it, and the loop once nothing but `ask` and `close` is left. Severity is the whole of the threshold, which is what makes
  * this "high and above" without restating any band - an advisory check maps its band to a
  * severity already (src/lib/vuln-findings.js), so a moderate advisory arrives here as a
  * warning and aborts nothing, while a malicious-package advisory, which states no band at
@@ -94,9 +101,10 @@ function standsAsError(item, verdict, registry) {
  *   a review with no agent in it, where an escalated case stands for nothing because
  *   nobody has judged it.
  * @param {Registry} registry
+ * @param {boolean} late  Whether late-exit reasons count.
  * @returns {{id: string, text: string}[]}
  */
-function earlyExitReasons(ordered, answers, registry) {
+function earlyExitReasons(ordered, answers, registry, late) {
   const { reasons } = registry.earlyExitProse();
   const hit = new Set();
   for (const item of ordered) {
@@ -111,7 +119,10 @@ function earlyExitReasons(ordered, answers, registry) {
     if (!standsAsError(item, verdict, registry)) {
       continue;
     }
-    const reason = registry.earlyExitFor(item.target?.ruleId);
+    const ruleId = item.target?.ruleId;
+    const reason =
+      registry.earlyExitFor(ruleId) ??
+      (late ? registry.lateExitFor(ruleId) : null);
     if (reason) {
       hit.add(reason);
     }
@@ -135,10 +146,12 @@ function earlyExitReasons(ordered, answers, registry) {
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
  * @param {Record<string, *>} answers  Verdicts recorded so far, by item reference.
  * @param {Registry} registry
+ * @param {{late?: boolean}} [opts]  `late`: whether late-exit reasons count
+ *   (earlyExitReasons).
  * @returns {?{intro: string, reasons: {id: string, text: string}[]}}
  */
-export function earlyExitOf(ordered, answers, registry) {
-  const reasons = earlyExitReasons(ordered, answers, registry);
+export function earlyExitOf(ordered, answers, registry, { late = false } = {}) {
+  const reasons = earlyExitReasons(ordered, answers, registry, late);
   return reasons.length
     ? { intro: registry.earlyExitProse().intro, reasons }
     : null;
@@ -151,7 +164,7 @@ export function earlyExitOf(ordered, answers, registry) {
  * sections are rendered from it, and the Summary re-orders the same array for its counts
  * (src/report/format.js), so the sections and the tally cannot disagree about what is
  * left. The sweep list is untouched: reading code is safe. It holds what the checks up to
- * the aborting one authored, because no check after it runs (src/checks/registry.js
+ * an early-aborting one authored, because no check after it runs (src/checks/registry.js
  * abortsReview).
  *
  * A reviewer would have been asked an item that is a question by its section, or that

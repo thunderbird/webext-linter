@@ -119,19 +119,20 @@ test("two reasons produce two lines, in the order the registry authors them", ()
   assert.deepEqual(reasonsFor([...both].reverse()), reasonsFor(both));
 });
 
-// A finding that aborts the review is never put to anyone to verify - an aborted review
-// hands out no such phase - so what decides it is the band it was reported at, and only
-// that: no recorded answer takes it back.
-test("a finding aborts the review at the band it was reported at", () => {
+// What decides whether a finding aborts the review is the band it was reported at, and
+// whether verify withdrew it: a withdrawn finding stands for nothing, as applyVerdicts drops
+// it from the settled review. Only a late abort is ever verified first.
+test("a finding aborts the review at the band it was reported at, unless withdrawn", () => {
   const findings = [finding("vendor-vulnerable")];
   const ordered = refOrdered(findings, []);
   const index = ordered[0].ref;
-  for (const answers of [{}, { [index]: "withdrawn" }]) {
+  for (const answers of [{}, { [index]: "reported" }]) {
     assert.deepEqual(
       earlyExitOf(ordered, answers, registry).reasons.map((r) => r.text),
       ["Known security vulnerabilities"]
     );
   }
+  assert.equal(earlyExitOf(ordered, { [index]: "withdrawn" }, registry), null);
 });
 
 // An ESCALATING check aborts a review too, but only from the far side of a verdict: it
