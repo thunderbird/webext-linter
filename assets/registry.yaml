@@ -2074,8 +2074,12 @@ review-early-exit:
 # where the source archive's own extraction goes (EXTRACT_TO, the work folder's sca/ -
 # path math, not archive reading), and the reader does what only opening the archive can
 # settle: extracting it there, and deciding where the code root is and which folder holds the
-# Experiment implementation. They hand those two paths back in ANSWERS, and the linter
-# audits that root's lock (src/prepare/audit.js). Where the lock installs a package with a
+# Experiment implementation. They also write the build report (BUILD_PROCESS) and judge
+# whether building is safe. They hand the two paths and the judgement back in ANSWERS. An
+# unsafe build ends the preparation. After a safe one the reviewer reads the Build Review
+# Details and is asked alone whether the agent may build the add-on (`permission`), unless
+# --llm-agent-builds answered that up front. Declined, the preparation ends. Allowed, the
+# linter audits that root's lock (src/prepare/audit.js). Where the lock installs a package with a
 # known high or critical advisory, the linter copies the source into the work folder's
 # rescued/, and the reader REDUCES the copy's dependencies to what the release build uses, then, where that is not enough,
 # applies the package manager's audit FIX. Both change the dependencies and nothing else,
@@ -2087,9 +2091,10 @@ review-early-exit:
 # asks nothing the preparation already did (src/vendor/osv-cache.js).
 #
 # The step lists are prompts. `extract` is printed by --llm-sca-review with the intro and
-# the Submission values; `reduce` and `fix` by the run that hands the copy a step, with the
-# copy's root as RESCUE_ROOT. Each of them ends in the one command its reader ever runs,
-# {{flags}}: the hand-back of a work folder.
+# the Submission values, `permission` by the run that settled a safe build, with ANSWERS
+# and the Build Review Details ({{buildDetails}}), and `reduce` and `fix` by the run that
+# hands the copy a step, with the copy's root as RESCUE_ROOT. Each of them ends in the one
+# command its reader ever runs, {{flags}}: the hand-back of a work folder.
 llm-sca-review-prompt:
   intro: |-
     This is the first half of a source code review. The add-on was submitted in two parts: the built XPI users install, and an archive of the source it was built from. A source archive has no fixed shape - the developer lays it out however they like - so where the add-on's own code sits inside it can only be found by looking. Work that out from the values below, then run the command the steps name. That run prints what to do next, until it starts the review itself and prints the review's first prompt.
@@ -2101,10 +2106,6 @@ llm-sca-review-prompt:
   # (src/checks/condition.js), checked against the one fact these prompts can evaluate
   # (SCA_PROMPT_FACTS).
   extract:
-    - text: |-
-        Open ANSWERS, given above. Put its entry whose "index" is PACKAGE_MANAGERS to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
-
-        Record the label they picked as that entry's "answer", and change nothing else in the file. Only those labels are accepted: if they answer anything else, ask the question again.
     - text: |-
         Extract SOURCE_ARCHIVE into EXTRACT_TO, given above.
 
@@ -2118,33 +2119,76 @@ llm-sca-review-prompt:
     - when: experiments
       text: |-
         Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under <SCA_ROOT>. Its path relative to <SCA_ROOT> is <SCA_EXP_SOURCE>.
+    - text: |-
+        Work out what building this add-on takes. Read the documentation and the build files in <SCA_ROOT>, and report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
+
+        Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
+
+        The install step is the one command you do NOT restate as the documentation writes it. Report `npm ci`, even where the docs say `npm install`: the reviewer installs what the submitted lock file pins, not whatever the registry resolves to today. Where the submission ships a pnpm-lock.yaml, that same step is `pnpm install --frozen-lockfile`. npm and pnpm are the only package managers a submission may use, so those are the only two spellings.
+
+        Report that step with NO flag that leaves dependencies out - never `--omit=dev`, `--production` or `--prod` - even where the documentation uses one. The reviewer has to run the build AND audit everything it pulls in, and a dependency that was never installed is one nobody can audit.
+
+        Under a "Safety" heading, list anything the build reaches for outside the declared dependencies - a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, code run from an install hook, or a step whose source is not in the tree. Name the file and the line for each, and say what it does. Where you find none, say so.
+
+        Write it to BUILD_PROCESS, given above, and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision.
+    - text: |-
+        Open ANSWERS, given above. Answer its entry whose "index" is BUILD_SAFETY with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. It is your judgement of what the safety section lists. Change nothing else in the file.
     - when: NOT experiments
       text: |-
-        Open ANSWERS, given above. Write <SCA_ROOT> as the "answer" of the entry whose "index" is SCA_ROOT, and change nothing else in the file.
+        In ANSWERS, write <SCA_ROOT> as the "answer" of the entry whose "index" is SCA_ROOT, and change nothing else in the file.
     - when: experiments
       text: |-
-        Open ANSWERS, given above. Write <SCA_ROOT> as the "answer" of the entry whose "index" is SCA_ROOT, and <SCA_EXP_SOURCE> as the "answer" of the entry whose "index" is SCA_EXP_SOURCE. Change nothing else in the file.
+        In ANSWERS, write <SCA_ROOT> as the "answer" of the entry whose "index" is SCA_ROOT, and <SCA_EXP_SOURCE> as the "answer" of the entry whose "index" is SCA_EXP_SOURCE. Change nothing else in the file.
     - text: |-
         Run the linter with exactly these flags, and nothing else:
 
         {{flags}}
     - text: |-
         That run checks the source and prints the next prompt. Follow it from there - this one is done.
-  # The question the first prompt puts to the reviewer before anything else, as the
-  # PACKAGE_MANAGERS entry of ANSWERS: whether the agent may run package-manager commands.
-  # Declined, the preparation audits and rescues nothing, and the review asks no build
-  # choice and runs no build (`package-managers-declined`). The `built` question is
-  # still asked, answered from the reviewer's own build.
+  # Printed after a SAFE judgement, unless --llm-agent-builds answered its question up
+  # front. The Build Review Details end the agent's turn, as a turn-ending pass of the
+  # review loop does, and the question is put once the reviewer has replied.
+  permission:
+    - text: |-
+        Give the reviewer this block under a "Build review details" heading, exactly as it is written here, as the last thing you write this turn. Then end your turn, and put no question to them in it. Go on with the next step only once the reviewer has replied: what they reply does not matter.
+
+        {{buildDetails}}
+    - text: |-
+        Open ANSWERS, given above. Put its entry whose "index" is PACKAGE_MANAGERS to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+
+        Record the label they picked as that entry's "answer", and change nothing else in the file. Only those labels are accepted: if they answer anything else, ask the question again.
+    - text: |-
+        Run the linter with exactly these flags, and nothing else:
+
+        {{flags}}
+    - text: |-
+        That run reads the answer and prints the next prompt. Follow it from there - this one is done.
+  # The agent's judgement of the build it reported, as the BUILD_SAFETY entry of ANSWERS.
+  # The same two values the review loop's `build-safety` phase accepts, which is how the
+  # review reads the recorded judgement. Unsafe ends the preparation: nothing is audited or
+  # rescued, and the agent builds nothing.
+  build-safety:
+    values:
+      - value: safe
+        label: safe
+        description: Nothing in the build is fetched or run from outside the dependencies declared in package.json and its lock file.
+      - value: unsafe
+        label: unsafe
+        description: At least one build step fetches or runs code or resources from outside the declared dependencies, as the report's safety section lists.
+  # The question the permission prompt puts to the reviewer, as the PACKAGE_MANAGERS entry
+  # of ANSWERS. Declined, the preparation audits and rescues nothing, and the review asks
+  # no build choice and runs no build (`package-managers-declined`). The `built` question
+  # is still asked, answered from the reviewer's own build.
   package-managers:
     question: |-
-      This review can have the agent run package-manager commands. To rescue dependencies with known vulnerabilities, it runs `npm install --package-lock-only --ignore-scripts` and `npm audit fix --package-lock-only --ignore-scripts`, or for pnpm `pnpm install --lockfile-only --ignore-scripts` and `pnpm audit --fix`. These change only the lock file and run no install script. To build the add-on, where you later choose that it builds, it runs `npm ci` or `pnpm install --frozen-lockfile` and the add-on's own build commands, which run the submission's code. May the agent run these commands?
+      Let the agent build the add-on (including its package-manager commands), or not?
     values:
       - value: allow
-        label: Allow
-        description: The agent may run these commands. Dependencies with known vulnerabilities are rescued where these commands can fix them, and you are asked later who builds the add-on.
+        label: Let it build
+        description: The agent may run the package-manager commands and the add-on's own build commands, which run the submission's code. Dependencies with known vulnerabilities are rescued where those commands can fix them, with lock-only commands that run no install script, and you are asked later who builds the add-on.
       - value: decline
-        label: Do not allow
-        description: The agent runs none of them. Nothing is rescued, so known vulnerabilities in the dependencies end the review, and the agent builds nothing. You answer the build questions from your own build.
+        label: Do not let it build
+        description: The agent runs none of them. Nothing is rescued, so known vulnerabilities in the dependencies end the review, and the agent builds nothing. You answer the build question from your own build.
   # The copy's dependencies, reduced to what the release build uses. The release build is
   # worked out from the copy itself: no build report exists yet, because no review has run.
   reduce:
@@ -2274,6 +2318,10 @@ llm-phases:
     # review and settle no item. The agent judges whether building is safe, and the reviewer
     # then chooses who builds - or, where the agent judged it unsafe, may stop the review,
     # which `abort` does by reporting build-unsafe.
+    #
+    # `build-safety` runs only where the review holds no judgement yet: a prepared review
+    # starts with the one its preparation recorded (src/pipeline.js), and build.md is the
+    # preparation's.
     - name: build-safety
       answer: value
       verbs: []
@@ -2287,7 +2335,7 @@ llm-phases:
           label: unsafe
           description: At least one build step fetches or runs code or resources from outside the declared dependencies, as the report's safety section lists.
       steps:
-        - when: sca AND build-guarded AND NOT aborted
+        - when: sca AND build-guarded AND NOT aborted AND NOT value(build-safety, safe) AND NOT value(build-safety, unsafe)
           text: |-
             Work out what building this add-on takes. This is a source code review, so the add-on is built from its source before anything else is reviewed. Read the documentation and the build files in
 
@@ -2308,7 +2356,7 @@ llm-phases:
             {{build}}
 
             and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision.
-        - when: sca AND build-guarded AND NOT aborted
+        - when: sca AND build-guarded AND NOT aborted AND NOT value(build-safety, safe) AND NOT value(build-safety, unsafe)
           text: |-
             Then answer the one entry in the file with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. It is your judgement of what the safety section lists, and the reviewer decides what follows from it.
 

@@ -1,10 +1,14 @@
 // The STEPS of the preparation of a source code review: what one hand-back of a work folder
 // does to it, and which prompt comes next.
 //
-// The run that creates the work folder has the source extracted into its `sca/`, and the
-// roots its reader works out handed back in the review file (`extract`), beside the
-// reviewer's answer whether the agent may run package-manager commands. That hand-back
-// settles the roots as the review settles them (src/addon/sca-root.js). Where the reviewer
+// The run that creates the work folder has the source extracted into its `sca/`, its build
+// reported in build.md, and the roots its reader works out handed back in the review file
+// (`extract`), beside the reader's judgement whether the build is safe. That hand-back
+// settles the roots as the review settles them (src/addon/sca-root.js). An unsafe build is
+// done at once: the agent builds nothing, and runs no package-manager command. A safe one
+// moves on to `permission`, which shows the reviewer the Build Review Details and asks them
+// alone whether the agent may build the add-on, its package-manager commands included
+// (pre-answered "yes" by --llm-agent-builds, which skips that step). Where the reviewer
 // declined, the folder is done at once: a rescue runs package-manager commands, so none is
 // tried. Otherwise it audits the root's lock (./audit.js). A root whose lock is clean, or that the audit cannot read in full, is done:
 // the review starts there, and decides everything else. A vulnerable lock gets a RESCUED COPY
@@ -38,6 +42,7 @@ import {
   PREPARE_STEP,
   markPrepare,
   readPrepare,
+  recordBoolean,
   writePrepare,
 } from "./state.js";
 import { auditRoot, isClean, isRescuable } from "./audit.js";
@@ -52,6 +57,7 @@ import {
   HandbackRefused,
   SLOT,
   answersOf,
+  productWritten,
   readHandback,
   reviewFile,
   valueEntry,
@@ -62,26 +68,37 @@ import { displayLine } from "../util/text.js";
 /** The review file's entries for the roots, keyed by the names the prompt gives them. */
 const ROOT = "SCA_ROOT";
 const EXP_SOURCE = "SCA_EXP_SOURCE";
-/** The review file's entry for the reviewer's answer whether the agent may run
- *  package-manager commands, as `llm-sca-review-prompt` names it. */
+/** The review file's entry for the reviewer's answer whether the agent may build the add-on,
+ *  its package-manager commands included, as `llm-sca-review-prompt` names it. */
 const PACKAGE_MANAGERS = "PACKAGE_MANAGERS";
+/** The review file's entry for the reader's judgement of the build, as
+ *  `llm-sca-review-prompt` names it. */
+const BUILD_SAFETY = "BUILD_SAFETY";
+/** The flag that answers the permission question up front. */
+const AGENT_BUILDS = "llm-agent-builds";
 
 /**
- * What a hand-back hands out next: the prompt for a rescued copy's step (`step`), or the
- * review (`review`), which the hand-back starts in that folder from that record.
+ * What a hand-back hands out next: the prompt for the record's step (`step`), the permission
+ * question or a rescued copy's step, or the review (`review`), which the hand-back starts in
+ * that folder from that record.
  * @typedef {{next: "step"|"review", work: string,
  *   record: import("./state.js").PrepareRecord}} Handout
  */
 
 /**
- * The registry's package-manager question, as llmScaReviewPrompt gives it.
- * @typedef {ReturnType<import("../checks/registry.js").Registry["llmScaReviewPrompt"]>
- *   ["packageManagers"]} PackageManagersAsk
+ * The registry's preparation texts, as llmScaReviewPrompt gives them.
+ * @typedef {ReturnType<import("../checks/registry.js").Registry["llmScaReviewPrompt"]>}
+ *   ScaPrompt
+ */
+
+/**
+ * The registry's permission question, as llmScaReviewPrompt gives it.
+ * @typedef {ScaPrompt["packageManagers"]} PackageManagersAsk
  */
 
 /**
  * Start the preparation in a work folder just created for it: its record, at `extract`, and
- * the review file its reader hands the roots and the reviewer's answer back in.
+ * the review file its reader hands the build judgement and the roots back in.
  * @param {string} work  The work folder, absolute and real.
  * @param {import("./state.js").PrepareRecord} record  From startRecord.
  * @param {import("../checks/registry.js").Registry} [registry]  The authored registry,
@@ -93,7 +110,7 @@ export function startPreparation(work, record, registry = loadRegistry()) {
   writeReviewFile(
     workPaths(work).review,
     reviewFile([
-      managersEntry(registry.llmScaReviewPrompt().packageManagers),
+      safetyEntry(registry.llmScaReviewPrompt().buildSafety),
       ...rootEntries(record),
     ])
   );
@@ -112,8 +129,17 @@ function rootEntries(record) {
 }
 
 /**
- * The entry the reviewer answers whether the agent may run package-manager commands in,
- * built as a process value's entry is.
+ * The entry the reader judges the build in, built as a process value's entry is.
+ * @param {ScaPrompt["buildSafety"]} judgement
+ * @returns {object}
+ */
+function safetyEntry(judgement) {
+  return valueEntry({ name: BUILD_SAFETY, values: judgement.values });
+}
+
+/**
+ * The entry the reviewer answers whether the agent may build the add-on in, built as a
+ * process value's entry is.
  * @param {PackageManagersAsk} ask
  * @returns {object}
  */
@@ -150,7 +176,9 @@ export async function handBack(work, registry = loadRegistry()) {
   };
   switch (record.step) {
     case PREPARE_STEP.extract:
-      return extract(
+      return extract(work, record, context, registry.llmScaReviewPrompt());
+    case PREPARE_STEP.permission:
+      return permission(
         work,
         record,
         context,
@@ -165,33 +193,113 @@ export async function handBack(work, registry = loadRegistry()) {
 }
 
 /**
- * The first step: the roots the reader handed back, settled, and their lock audited - or,
- * where the reviewer did not allow package-manager commands, the folder done at once, since
- * a rescue would run them.
+ * The first step: the roots the reader handed back, settled, with the build judgement and
+ * the build report it rests on. An unsafe build is done at once, with no package-manager
+ * command allowed. A safe one moves on to the permission question, or, where
+ * --llm-agent-builds answered it up front, straight to the audit.
+ * @param {string} work
+ * @param {import("./state.js").PrepareRecord} record
+ * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} context
+ * @param {ScaPrompt} prompt
+ * @returns {Promise<Handout>}
+ */
+async function extract(work, record, context, prompt) {
+  const { roots, buildSafety } = answeredRoots(
+    work,
+    record,
+    prompt.buildSafety
+  );
+  const build = workPaths(work).build;
+  if (!productWritten(build)) {
+    throw new HandbackRefused(
+      `"${build}" holds no build report: write it there, as the prompt says`
+    );
+  }
+  const settled = { ...record, buildSafety, roots };
+  if (buildSafety !== "safe") {
+    return done(work, { ...settled, packageManagers: false });
+  }
+  const flags = record.flags ?? {};
+  if (
+    Object.hasOwn(flags, AGENT_BUILDS) &&
+    recordBoolean(flags[AGENT_BUILDS], `--${AGENT_BUILDS}`)
+  ) {
+    return permitted(work, { ...settled, packageManagers: true }, context);
+  }
+  return askPermission(
+    work,
+    { ...settled, step: PREPARE_STEP.permission },
+    prompt.packageManagers
+  );
+}
+
+/**
+ * Hand out the permission question: the record at `permission`, and the review file holding
+ * its one entry. The record is written first, so a run cut short before the review file
+ * leaves a folder whose next hand-back writes that file again (permission).
+ * @param {string} work
+ * @param {import("./state.js").PrepareRecord} record  At `permission`.
+ * @param {PackageManagersAsk} ask
+ * @returns {Handout}
+ */
+function askPermission(work, record, ask) {
+  const written = writePrepare(work, record);
+  writeReviewFile(workPaths(work).review, reviewFile([managersEntry(ask)]));
+  return { next: "step", work, record: written };
+}
+
+/**
+ * The permission step, handed back: the reviewer's answer read, and the folder done where
+ * they did not let the agent build, or its lock audited where they did. A review file that
+ * holds no permission entry is the extract step's, left by a run cut short before it wrote
+ * the question, and the question is handed out again.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record
  * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} context
  * @param {PackageManagersAsk} ask
  * @returns {Promise<Handout>}
  */
-async function extract(work, record, context, ask) {
-  const { roots, packageManagers } = answeredRoots(work, record, ask);
-  const settled = { ...record, packageManagers, roots };
-  if (!packageManagers) {
-    return done(work, settled);
+async function permission(work, record, context, ask) {
+  const file = workPaths(work).review;
+  const keyOf = (e) => String(e?.index);
+  const entries = fs.existsSync(file) ? readHandback(file).entries : [];
+  if (!entries.some((e) => keyOf(e) === PACKAGE_MANAGERS)) {
+    return askPermission(work, record, ask);
   }
-  const found = await auditRoot(roots, context);
+  const picked = answersOf(
+    entries,
+    [managersEntry(ask)],
+    { name: "permission", answer: "value" },
+    keyOf
+  ).get(PACKAGE_MANAGERS);
+  const allowed = ask.values.find((v) => v.label === picked).value === "allow";
+  return permitted(work, { ...record, packageManagers: allowed }, context);
+}
+
+/**
+ * What follows the permission: where the agent may not build, the folder done at once,
+ * since a rescue would run package-manager commands. Otherwise the root's lock audited, and
+ * the folder done or its rescue started.
+ * @param {string} work
+ * @param {import("./state.js").PrepareRecord} record  With its permission.
+ * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} context
+ * @returns {Promise<Handout>}
+ */
+async function permitted(work, record, context) {
+  if (!record.packageManagers) {
+    return done(work, record);
+  }
+  const found = await auditRoot(record.roots, context);
   if (!isRescuable(found)) {
-    return done(work, settled);
+    return done(work, record);
   }
-  return rescue(work, settled);
+  return rescue(work, record);
 }
 
 /**
  * The roots the reader handed back in the review file, held to the folder the source was
- * extracted into and settled as the review settles them, and the reviewer's answer whether
- * the agent may run package-manager commands, which must be one of the labels its entry
- * offered. Every way they can be wrong is refused, with nothing changed, so the reader can
+ * extracted into and settled as the review settles them, and the reader's judgement of the
+ * build, which must be one of the labels its entry offered. Every way they can be wrong is refused, with nothing changed, so the reader can
  * correct the file and hand it back again.
  *
  * Both are taken as the folders they really are, links followed, and asked of that target:
@@ -199,18 +307,17 @@ async function extract(work, record, context, ask) {
  * the Experiment folder inside the root, resolved against it as the review resolves it.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record
- * @param {PackageManagersAsk} ask
- * @returns {{roots: {scaRoot: string, scaExpSource: ?string},
- *   packageManagers: boolean}}
+ * @param {ScaPrompt["buildSafety"]} judgement
+ * @returns {{roots: {scaRoot: string, scaExpSource: ?string}, buildSafety: string}}
  * @throws {HandbackRefused}
  */
-function answeredRoots(work, record, ask) {
+function answeredRoots(work, record, judgement) {
   const paths = workPaths(work);
   const asked = rootEntries(record);
   const keyOf = (e) => String(e?.index);
   const all = readHandback(paths.review).entries;
-  // Every entry but the reviewer's answer names a folder.
-  const handed = all.filter((e) => keyOf(e) !== PACKAGE_MANAGERS);
+  // Every entry but the judgement names a folder.
+  const handed = all.filter((e) => keyOf(e) !== BUILD_SAFETY);
   // A blank answer names no folder, and would otherwise resolve to the folder it is
   // resolved against.
   for (const entry of handed) {
@@ -227,13 +334,13 @@ function answeredRoots(work, record, ask) {
     { name: "extract", answer: "words" },
     keyOf
   );
-  // The reviewer's answer is a process value, checked against the labels its entry offered.
+  // The judgement is a process value, checked against the labels its entry offered.
   const picked = answersOf(
-    all.filter((e) => keyOf(e) === PACKAGE_MANAGERS),
-    [managersEntry(ask)],
+    all.filter((e) => keyOf(e) === BUILD_SAFETY),
+    [safetyEntry(judgement)],
     { name: "extract", answer: "value" },
     keyOf
-  ).get(PACKAGE_MANAGERS);
+  ).get(BUILD_SAFETY);
   const sca = realSca(paths);
   const root = realFolder(path.resolve(sca, answers.get(ROOT).trim()));
   if (!root || relativeInside(root, sca) === null) {
@@ -263,8 +370,7 @@ function answeredRoots(work, record, ask) {
       scaRoot: settled.scaRoot,
       scaExpSource: settled.scaExpSource ?? null,
     },
-    packageManagers:
-      ask.values.find((v) => v.label === picked).value === "allow",
+    buildSafety: judgement.values.find((v) => v.label === picked).value,
   };
 }
 

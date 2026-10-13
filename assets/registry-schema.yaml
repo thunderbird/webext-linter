@@ -262,8 +262,8 @@ shapes:
       values: PACKAGE_MANAGER_VALUES
       required: true
       why: >-
-        the id the preparation records the answer as, which decides whether the agent runs
-        package-manager commands
+        the id the preparation records the answer as, which decides whether the agent builds
+        the add-on and runs its package-manager commands
     label:
       kind: text
       required: true
@@ -272,6 +272,24 @@ shapes:
       kind: text
       required: true
       why: what follows from it, so the reviewer can choose
+
+  # One answer the preparation's BUILD_SAFETY judgement offers.
+  build-safety-value-entry:
+    value:
+      kind: one-of
+      values: BUILD_SAFETY_VALUES
+      required: true
+      why: >-
+        the id the preparation records the judgement as, which decides whether the reviewer
+        is asked to let the agent build
+    label:
+      kind: text
+      required: true
+      why: what the answer is called where it is offered, and what comes back
+    description:
+      kind: text
+      required: true
+      why: when it applies, so the agent can judge
 
   # One pass of the review loop: what it asks, what it accepts back, and its steps.
   loop-phase-entry:
@@ -411,6 +429,14 @@ sections:
         required: true
         noun: "`extract` steps"
         why: the steps the first prompt asks for, in order
+      permission:
+        kind: list
+        of: mapping
+        required: true
+        noun: "`permission` steps"
+        why: >-
+          the steps the prompt that shows the build details and asks whether the agent may
+          build asks for, in order
       reduce:
         kind: list
         of: mapping
@@ -423,13 +449,26 @@ sections:
         required: true
         noun: "`fix` steps"
         why: the steps the prompt that audit-fixes a rescued copy asks for, in order
+      build-safety:
+        kind: object
+        required: true
+        noun: "`build-safety` judgement"
+        why: the agent's judgement of the build, which the first prompt asks for
+        fields:
+          values:
+            kind: entries
+            shape: build-safety-value-entry
+            name-key: value
+            required: true
+            noun: "`values`"
+            why: the two answers the judgement offers, safe and unsafe
       package-managers:
         kind: object
         required: true
         noun: "`package-managers` question"
         why: >-
-          the question the first prompt puts to the reviewer, whether the agent may run
-          package-manager commands
+          the question the permission prompt puts to the reviewer, whether the agent may
+          build the add-on, its package-manager commands included
         fields:
           question:
             kind: text

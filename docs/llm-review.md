@@ -53,10 +53,10 @@ entry never offered are all refusals.
 
 | Phase | What it is for | What fills its answers |
 | --- | --- | --- |
-| `build-safety` | Source code review only: write the build report (`BUILD_PROCESS`), with a safety section listing anything the build fetches or runs from outside the declared dependencies, and judge whether building is safe. | A process value: `safe` / `unsafe` |
-| `build-review` | Show the Build Review Details block (the source the review read, the build report) as the last thing of the turn, and hand back once the reviewer has replied. Not where the reviewer declined package-manager commands. | Nothing: the block is its whole work |
-| `build-choice` | After a `safe` judgement: ask the reviewer, alone, who builds. Not asked where the reviewer declined package-manager commands while the review was prepared. | A process value: LLM builds / Build myself |
-| `build-choice-unsafe` | After an `unsafe` judgement: the same, and the reviewer may also stop the review. Not asked where the reviewer declined package-manager commands. | A process value: Abort / LLM builds anyway / Build myself |
+| `build-safety` | Source code review only: write the build report (`BUILD_PROCESS`), with a safety section listing anything the build fetches or runs from outside the declared dependencies, and judge whether building is safe. Not where the review was prepared: it starts with the judgement and the build report its preparation recorded. | A process value: `safe` / `unsafe` |
+| `build-review` | Show the Build Review Details block (the source the review read, the build report) as the last thing of the turn, and hand back once the reviewer has replied. Not where the preparation did not let the agent build. | Nothing: the block is its whole work |
+| `build-choice` | After a `safe` judgement: ask the reviewer, alone, who builds. Not asked where the preparation did not let the agent build. | A process value: LLM builds / Build myself |
+| `build-choice-unsafe` | After an `unsafe` judgement: the same, and the reviewer may also stop the review. Not asked where the preparation did not let the agent build. | A process value: Abort / LLM builds anyway / Build myself |
 | `build` | Where the reviewer chose the agent: build the add-on in a copy of the source, in the agent's own sandbox. | Where the build put what it produced (an XPI, a zip or a folder inside the copy), or that it failed |
 | `build-result` | Show the Build Review Details block again, now with what the build produced where the agent built, as the last thing of the turn, and hand back once the reviewer has replied. Where the reviewer builds themselves, this is the pause in which they build. | Nothing: the block is its whole work |
 | `built` | Source code review only: ask the reviewer, alone, whether the source builds into the submitted XPI. | The reviewer's own answer |
@@ -85,8 +85,8 @@ Which steps a phase prints is decided by each step's `when:` condition: `AND`, `
 and parentheses over the facts of this run - the `--llm-skip-*` flags it was given,
 `aborted` once a finding has aborted the review, `sca` for a source code review,
 `build-guarded` when every check a build relies on ran,
-`package-managers-declined` when the reviewer declined package-manager commands while the
-review was prepared, `sweep-xpi` / `sweep-sca` for a tree with a sweep to run, `first` on the review's first
+`package-managers-declined` when the preparation did not let the agent build (an unsafe
+judgement, or the reviewer declined), `sweep-xpi` / `sweep-sca` for a tree with a sweep to run, `first` on the review's first
 prompt, `spawned` once `spawn` went out, `decided` once `verify` or `settle` did, and
 `closing` in the closing prompt. A step with no condition prints in every run, and a phase
 left with no step is not issued. The preamble's parts are conditioned the same way. A wait
@@ -399,27 +399,40 @@ on that being answered correctly - handed a root with no `package.json` and one 
 that has one, it settles the root itself before reading anything (`src/addon/sca-root.js`)
 and says so in its Setup feed.
 
-Before anything else, the prompt has its reader put one question to the reviewer, alone,
-through its question tool: the `PACKAGE_MANAGERS` entry of `ANSWERS`, which asks whether the
-agent may run package-manager commands. Its message names every one it would run: in a
-rescue, `npm install --package-lock-only --ignore-scripts` and
-`npm audit fix --package-lock-only --ignore-scripts`, or for pnpm
-`pnpm install --lockfile-only --ignore-scripts` and `pnpm audit --fix`, and in the review's
-build, `npm ci` or `pnpm install --frozen-lockfile` and the add-on's own build commands. The
-reader records the label the reviewer picked, `Allow` or `Do not allow`, and any other answer
-is refused. Declined, the hand-back settles the roots and the folder is done at once: the
-lock is not audited and nothing is rescued, so a vulnerable lock aborts the review it starts.
-That review asks no build choice and runs no build (`package-managers-declined`), and the
-`built` question is still asked, of the reviewer's own build.
+The same prompt has its reader **judge the build**. It writes the build report to
+`BUILD_PROCESS` (the work folder's `build.md`): the release build for Thunderbird as a short
+numbered list, its install step as `npm ci` or `pnpm install --frozen-lockfile`, and a
+"Safety" section listing anything the build fetches or runs from outside the declared
+dependencies. It runs nothing. Then it answers the `BUILD_SAFETY` entry of `ANSWERS` with
+`safe` or `unsafe`, the same two values the review's `build-safety` phase accepts.
 
-The reader hands the two back in the work folder's review file (`ANSWERS`, the same
+The reader hands the roots and the judgement back in the work folder's review file (`ANSWERS`, the same
 `.review/review.json` a review pass uses) and runs `--llm-handback` on the folder. The preparation's
-own record, `.review/prepare.json`, says where it stands, so every step is that one command; the
-reader never chooses what comes next. A root outside `sca/`, or an Experiment folder outside
-the root, is refused, and the reader corrects the file and hands it back again.
+own record, `.review/prepare.json`, says where it stands, so every step is that one command. The
+reader never chooses what comes next. A root outside `sca/`, an Experiment folder outside
+the root, a judgement that is not one of the two labels, or a missing `build.md` is refused,
+and the reader corrects it and hands it back again.
 
-That hand-back settles the roots as the review would, and then, where the reviewer allowed
-package-manager commands, **audits the root's lock**
+That hand-back settles the roots as the review would, and records the judgement:
+
+- **Unsafe:** the folder is done at once. Nothing is audited or rescued, and the agent builds
+  nothing, so a vulnerable lock aborts the review it starts.
+- **Safe:** the next prompt (`permission`) has the reader show the reviewer the **Build
+  Review Details** (the source root, `build.md` and the judgement) as the last thing of its
+  turn, ending with `Reply "next" to continue the review.` Once the reviewer has replied, it
+  puts them one question alone, through its question tool: the `PACKAGE_MANAGERS` entry,
+  "Let the agent build the add-on (including its package-manager commands), or not?". The
+  reader records the label the reviewer picked, `Let it build` or `Do not let it build`, and
+  any other answer is refused. `--llm-agent-builds` answers it up front with `Let it build`:
+  that prompt is skipped. Not letting it build, the folder is done at once, as after an
+  unsafe judgement.
+
+Where the agent may not build, the review asks no build choice and runs no build
+(`package-managers-declined`), and the `built` question is still asked, of the reviewer's
+own build. Every prepared review starts with the recorded judgement as its `build-safety`
+value and `build.md` as that phase's report, so it does not ask for them again.
+
+Where the reviewer let the agent build, the hand-back **audits the root's lock**
 (`src/prepare/audit.js`): every package it installs, against OSV and the policy blocklist,
 exactly as the review's own dependency audit reads it. Before that it asks whether every
 registry entry installs the release it names (`lockfile-injection`'s question): a lock that
@@ -539,6 +552,7 @@ The caches are not part of it: they stay in `WEBEXT-LINTER-CACHE/`.
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Refused with `--report-format json`. |
 | `--llm-handback <dir>` | Take a phase back and hand out the next, from the review file in the work folder the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file in that folder. On a folder a source code review is being prepared in (`.review/prepare.json`, and no review started), take the next step of the preparation instead, and once it is done, start its review. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - and print the first prompt for preparing a source code review of it. It creates the review's work folder beside the `.xpi`, records there how the review is to be run, and its prompt ends in `--llm-handback` on that folder (see [Preparing a source code review](#preparing-a-source-code-review)). Refused beside any `--sca-*` flag, which is what the preparation works out. |
+| `--llm-agent-builds` | With `--llm-sca-review`: answer the preparation's build question up front with `Let it build`, so it is not put to the reviewer. Where the agent judges the build safe, it may then build the add-on, its package-manager commands included. Recorded with the preparation's flags. Refused without `--llm-sca-review`, the one run that asks it. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
 | `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted early, which takes them out. The build question is still asked. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
 | `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. No sweeping agent is spawned, and the sweep is not handed to the reviewer either. |

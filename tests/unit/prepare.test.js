@@ -26,7 +26,13 @@ import { NoAnswerError } from "../../src/util/net.js";
 import { runCache, workPaths } from "../../src/util/dest.js";
 import { loadSourceArchive } from "../../src/addon/load.js";
 import depsChanged from "../../src/checks/rules/sca-dependencies-changed.js";
-import { advisory, answer, auditCache, writeTree } from "../prepared.js";
+import {
+  advisory,
+  answer,
+  auditCache,
+  writeBuildReport,
+  writeTree,
+} from "../prepared.js";
 import { osvEntries, seeded, seedWorkCache } from "../seed-caches.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -88,7 +94,12 @@ function npmLock(tool = "0.4.0", extraPackages = {}) {
  */
 function workFolder(
   files,
-  { experiments = false, vulns = {}, cache = auditCache(vulns) } = {}
+  {
+    experiments = false,
+    vulns = {},
+    cache = auditCache(vulns),
+    flags = {},
+  } = {}
 ) {
   const parent = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "wl-prepare-"))
@@ -99,7 +110,7 @@ function workFolder(
     work,
     startRecord({
       submission: { xpi: path.join(parent, "addon.xpi"), experiments },
-      flags: cache ? { "cache-work-dir": cache } : {},
+      flags: { ...flags, ...(cache ? { "cache-work-dir": cache } : {}) },
     })
   );
   writeTree(workPaths(work).sca, {
@@ -110,10 +121,23 @@ function workFolder(
   return work;
 }
 
-/** The first step: the extracted source handed back as the root, sca/ itself, with
- *  `answers` filled in beside it. */
-const first = (work, answers = {}) => {
+/** The extract step alone: the extracted source handed back as the root, sca/ itself, with
+ *  the build report written and `answers` filled in beside it (the build judged safe unless
+ *  they say otherwise). */
+const extractStep = (work, answers = {}) => {
   answer(work, { SCA_ROOT: workPaths(work).sca, ...answers });
+  writeBuildReport(work);
+  return handBack(work);
+};
+
+/** The first step, and the permission step after a safe build: the reviewer's answer is
+ *  read from `answers` too, letting the agent build unless they say otherwise. */
+const first = async (work, answers = {}) => {
+  const at = await extractStep(work, answers);
+  if (at.record.step !== PREPARE_STEP.permission) {
+    return at;
+  }
+  answer(work, answers);
   return handBack(work);
 };
 
@@ -202,34 +226,137 @@ test("a clean source is done, and its review starts in the folder", async () => 
   cleanup(work);
 });
 
-// The reviewer is asked first whether the agent may run package-manager commands, and the
-// record holds no answer until the first hand-back reads one.
-test("the first step asks the reviewer about package-manager commands", () => {
+// The first prompt asks the agent to judge the build, and the record holds no judgement
+// and no permission until the first hand-back reads them.
+test("the first step asks for the build judgement", () => {
   const work = workFolder({ "package.json": packageFile() });
-  const [managers] = JSON.parse(
+  const [safety, root] = JSON.parse(
     fs.readFileSync(workPaths(work).review, "utf8")
   ).entries;
-  assert.equal(managers.index, "PACKAGE_MANAGERS");
-  assert.equal(managers.answer, null);
-  assert.match(managers.message, /npm install --package-lock-only/);
-  assert.match(managers.message, /npm ci/);
+  assert.equal(safety.index, "BUILD_SAFETY");
+  assert.equal(safety.answer, null);
   assert.deepEqual(
-    managers.answers.map((a) => a.label),
-    ["Allow", "Do not allow"]
+    safety.answers.map((a) => a.label),
+    ["safe", "unsafe"]
   );
+  assert.equal(root.index, "SCA_ROOT");
+  assert.equal(recordOf(work).buildSafety, null);
   assert.equal(recordOf(work).packageManagers, null);
   cleanup(work);
 });
 
-// Declined, nothing is audited and nothing rescued: a rescue runs package-manager commands.
-// The lock is vulnerable and OSV is given no answer, so any audit would ask the switched-off
-// network and fail. The folder is done at once, its roots in sca/.
-test("declined package-manager commands are done at once, with nothing audited", async () => {
-  const work = workFolder({
-    "package.json": packageFile(),
-    "package-lock.json": npmLock(),
+// A safe build is recorded, and the reviewer is asked alone whether the agent may build:
+// the review file holds that one question, and nothing is audited yet. The lock is
+// vulnerable and OSV is given no answer, so an audit would ask the switched-off network.
+test("a safe build moves on to the permission question, with nothing audited", async () => {
+  const work = workFolder(
+    { "package.json": packageFile(), "package-lock.json": npmLock() },
+    { cache: auditCache() }
+  );
+  const at = await extractStep(work);
+  assert.equal(at.next, "step");
+  assert.equal(at.record.step, PREPARE_STEP.permission);
+  assert.equal(at.record.buildSafety, "safe");
+  assert.equal(at.record.packageManagers, null);
+  assert.deepEqual(at.record.roots, {
+    scaRoot: workPaths(work).sca,
+    scaExpSource: null,
   });
-  const at = await first(work, { PACKAGE_MANAGERS: "Do not allow" });
+  assert.deepEqual(recordOf(work), at.record);
+  const [managers, ...rest] = JSON.parse(
+    fs.readFileSync(workPaths(work).review, "utf8")
+  ).entries;
+  assert.deepEqual(rest, []);
+  assert.equal(managers.index, "PACKAGE_MANAGERS");
+  assert.equal(managers.answer, null);
+  assert.equal(
+    managers.message,
+    "Let the agent build the add-on (including its package-manager commands), or not?"
+  );
+  assert.deepEqual(
+    managers.answers.map((a) => a.label),
+    ["Let it build", "Do not let it build"]
+  );
+  cleanup(work);
+});
+
+// An unsafe build ends the preparation: the folder is done with nothing audited and nothing
+// rescued, and no question is put to the reviewer. The agent may run no package-manager
+// command, which the review reads as it reads a declined permission.
+test("an unsafe build is done at once, with nothing audited", async () => {
+  const work = workFolder(
+    { "package.json": packageFile(), "package-lock.json": npmLock() },
+    { cache: auditCache() }
+  );
+  const at = await extractStep(work, { BUILD_SAFETY: "unsafe" });
+  assert.equal(at.next, "review");
+  assert.equal(at.record.step, PREPARE_STEP.done);
+  assert.equal(at.record.buildSafety, "unsafe");
+  assert.equal(at.record.packageManagers, false);
+  assert.deepEqual(recordOf(work), at.record);
+  assert.ok(!fs.existsSync(workPaths(work).review), "the review file is gone");
+  assert.ok(!fs.existsSync(workPaths(work).rescued), "no copy is made");
+  cleanup(work);
+});
+
+// --llm-agent-builds answered the permission question up front: a safe build goes straight
+// to the audit, recorded as let it build.
+test("--llm-agent-builds skips the permission question", async () => {
+  const work = workFolder(
+    { "package.json": packageFile(), "package-lock.json": npmLock() },
+    { vulns: TOOL_CLEAN, flags: { "llm-agent-builds": true } }
+  );
+  const at = await extractStep(work);
+  assert.equal(at.next, "review");
+  assert.equal(at.record.step, PREPARE_STEP.done);
+  assert.equal(at.record.buildSafety, "safe");
+  assert.equal(at.record.packageManagers, true);
+  cleanup(work);
+});
+
+// The judgement is one of the labels its entry offered, and comes with the build report it
+// rests on. Anything else is refused with the folder unchanged.
+test("a build judgement that is no label, or has no build report, is refused", async () => {
+  const work = workFolder({ "package.json": packageFile() });
+  await assert.rejects(
+    extractStep(work, { BUILD_SAFETY: "fine" }),
+    refused(/BUILD_SAFETY answers "fine", which this entry does not accept/)
+  );
+  await assert.rejects(
+    extractStep(work, { BUILD_SAFETY: null }),
+    refused(/BUILD_SAFETY still has no "answer"/)
+  );
+  answer(work, { SCA_ROOT: workPaths(work).sca });
+  fs.rmSync(workPaths(work).build, { force: true });
+  await assert.rejects(handBack(work), refused(/holds no build report/));
+  assert.equal(recordOf(work).step, PREPARE_STEP.extract);
+  cleanup(work);
+});
+
+// Let it build: the root's lock is audited, as it is today, and a clean one is done.
+test("letting the agent build audits the lock", async () => {
+  const work = workFolder(
+    { "package.json": packageFile(), "package-lock.json": npmLock() },
+    { vulns: TOOL_CLEAN }
+  );
+  await extractStep(work);
+  answer(work, { PACKAGE_MANAGERS: "Let it build" });
+  const at = await handBack(work);
+  assert.equal(at.next, "review");
+  assert.equal(at.record.step, PREPARE_STEP.done);
+  assert.equal(at.record.packageManagers, true);
+  cleanup(work);
+});
+
+// Not letting it build: nothing is audited and nothing rescued, since a rescue runs
+// package-manager commands. The lock is vulnerable and OSV is given no answer, so any
+// audit would ask the switched-off network and fail. The folder is done at once.
+test("not letting the agent build is done at once, with nothing audited", async () => {
+  const work = workFolder(
+    { "package.json": packageFile(), "package-lock.json": npmLock() },
+    { cache: auditCache() }
+  );
+  const at = await first(work, { PACKAGE_MANAGERS: "Do not let it build" });
   assert.equal(at.next, "review");
   assert.equal(at.record.step, PREPARE_STEP.done);
   assert.equal(at.record.packageManagers, false);
@@ -244,19 +371,38 @@ test("declined package-manager commands are done at once, with nothing audited",
 
 // The answer is one of the labels its entry offered, and anything else is refused with the
 // folder unchanged.
-test("an answer about package-manager commands that is no label is refused", async () => {
+test("an answer to the permission question that is no label is refused", async () => {
   const work = workFolder({ "package.json": packageFile() });
-  await assert.rejects(
-    first(work, { PACKAGE_MANAGERS: "Maybe" }),
-    refused(
-      /PACKAGE_MANAGERS answers "Maybe", which this entry does not accept/
-    )
+  await extractStep(work);
+  for (const [given, problem] of [
+    [
+      "Maybe",
+      /PACKAGE_MANAGERS answers "Maybe", which this entry does not accept/,
+    ],
+    [null, /PACKAGE_MANAGERS still has no "answer"/],
+  ]) {
+    answer(work, { PACKAGE_MANAGERS: given });
+    await assert.rejects(handBack(work), refused(problem));
+  }
+  assert.equal(recordOf(work).step, PREPARE_STEP.permission);
+  cleanup(work);
+});
+
+// A run cut short after it moved the record to `permission` and before it wrote the
+// question leaves the extract step's review file: the next hand-back writes the question
+// and hands it out again, with nothing else changed.
+test("a permission step without its question hands the question out again", async () => {
+  const work = workFolder({ "package.json": packageFile() });
+  await extractStep(work);
+  const file = workPaths(work).review;
+  fs.writeFileSync(file, JSON.stringify({ entries: [{ index: "SCA_ROOT" }] }));
+  const at = await handBack(work);
+  assert.equal(at.next, "step");
+  assert.equal(at.record.step, PREPARE_STEP.permission);
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(file, "utf8")).entries.map((e) => e.index),
+    ["PACKAGE_MANAGERS"]
   );
-  await assert.rejects(
-    first(work, { PACKAGE_MANAGERS: null }),
-    refused(/PACKAGE_MANAGERS still has no "answer"/)
-  );
-  assert.equal(recordOf(work).step, PREPARE_STEP.extract);
   cleanup(work);
 });
 
@@ -711,11 +857,11 @@ test("a copy the audit cannot vouch for is not clean", async (t) => {
 
 // OSV answering 404 is no answer: it says nothing about the tree, so the preparation ends as
 // the tool's failure, with the record where it was, for the folder to be handed back once OSV
-// answers again - at the first step, and at a rescued copy's.
+// answers again - at the step that audits the root, and at a rescued copy's.
 test("an audit OSV does not answer ends the preparation", async (t) => {
   const noAnswer = (err) =>
     err instanceof NoAnswerError && /querybatch \(HTTP 404\)/.test(err.message);
-  await t.test("at the first step", async () => {
+  await t.test("at the permission step", async () => {
     const work = workFolder(
       {
         "package.json": packageFile(),
@@ -724,7 +870,7 @@ test("an audit OSV does not answer ends the preparation", async (t) => {
       { cache: seedWorkCache({ osv: batchDown("lint-pebble@0.4.0") }) }
     );
     await assert.rejects(first(work), noAnswer);
-    assert.equal(recordOf(work).step, PREPARE_STEP.extract);
+    assert.equal(recordOf(work).step, PREPARE_STEP.permission);
     cleanup(work);
   });
   await t.test("at a rescued copy's step", async () => {
@@ -906,10 +1052,28 @@ test("a packageManagers that is neither true nor false is refused", async () => 
   cleanup(work);
 });
 
+// The judgement is one the agent can give, and the record of a step it is known at holds
+// one: anything else was put there by an edit.
+test("a buildSafety that is no judgement is refused", async () => {
+  const { work } = await rescued();
+  for (const buildSafety of ["maybe", null]) {
+    writePrepare(work, { ...recordOf(work), buildSafety });
+    await assert.rejects(
+      later(work),
+      refused(/holds buildSafety as no judgement the agent can give/)
+    );
+    writePrepare(work, {
+      ...JSON.parse(fs.readFileSync(workPaths(work).prepare, "utf8")),
+      buildSafety: "safe",
+    });
+  }
+  cleanup(work);
+});
+
 // The copy is the run's own, inside its work folder: one an earlier hand-back left behind, cut
 // short before the record moved on, is simply made again. A copy that cannot be made ends the
-// run before any prompt names it, and the record stays at its first step, so handing the
-// folder back retries.
+// run before any prompt names it, and the record stays at the step that audited, so handing
+// the folder back retries.
 test("a rescued copy is made again over a stale one", async () => {
   const work = workFolder(
     {
@@ -940,9 +1104,11 @@ test("a rescued copy that cannot be made ends the preparation", async (t) => {
     },
     { vulns: TOOL_HIGH }
   );
+  await extractStep(work);
+  answer(work, {});
   fs.chmodSync(work, 0o555);
   try {
-    await assert.rejects(first(work), (err) => {
+    await assert.rejects(handBack(work), (err) => {
       assert.ok(!(err instanceof HandbackRefused), err.message);
       assert.match(
         err.message,
@@ -953,7 +1119,7 @@ test("a rescued copy that cannot be made ends the preparation", async (t) => {
   } finally {
     fs.chmodSync(work, 0o755);
   }
-  assert.equal(recordOf(work).step, PREPARE_STEP.extract);
+  assert.equal(recordOf(work).step, PREPARE_STEP.permission);
   cleanup(work);
 });
 

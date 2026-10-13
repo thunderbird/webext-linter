@@ -72,6 +72,7 @@ import { assignRefs, orderReview } from "./report/order.js";
 import { earlyExitOf, withoutQuestions } from "./report/early-exit.js";
 import { STATE_VERSION } from "./report/state.js";
 import { issue, loopSlots } from "./report/loop.js";
+import { productWritten } from "./report/handback.js";
 import { headerLines, loopPromptLines, schemaLines } from "./report/format.js";
 import { sweepRequests } from "./report/sweep-files.js";
 import { sweepRun } from "./checks/registry-vocabulary.js";
@@ -244,7 +245,7 @@ export async function runPipeline(opts) {
   const prepared = readPrepare(opts.workFolder);
   const claim = claimWorkFolder(
     opts.workFolder,
-    claimedNames(work, opts.llmReview)
+    claimedNames(work, opts.llmReview, prepared)
   );
   try {
     return await reviewSubmission(opts, work, prepared);
@@ -873,8 +874,8 @@ async function reviewSubmission(opts, work, prepared) {
           )
           ? { "build-guarded": true }
           : {}),
-        // The reviewer did not allow the agent to run package-manager commands when the
-        // preparation asked, so the review builds nothing itself.
+        // The preparation did not let the agent build (an unsafe judgement, or the reviewer
+        // declined), so the review builds nothing itself.
         ...(prepared?.packageManagers === false
           ? { "package-managers-declined": true }
           : {}),
@@ -914,6 +915,17 @@ async function reviewSubmission(opts, work, prepared) {
         schema: schemaLines(meta, opts.schemaCache).join("\n"),
       },
       answers: {},
+      // The judgement a preparation recorded, as the `build-safety` value its phase would
+      // return, so that phase is not issued (its steps' `when:`), and build.md, which the
+      // preparation wrote, as that phase's product.
+      ...(prepared?.buildSafety
+        ? {
+            values: { "build-safety": prepared.buildSafety },
+            ...(buildPath && productWritten(buildPath)
+              ? { products: ["build"] }
+              : {}),
+          }
+        : {}),
       issued: [],
     };
   }
@@ -1018,18 +1030,24 @@ const WORK_INPUTS = new Set(["sca", "rescued", "prepare"]);
  * sweep answers file for each artifact - whether or not this review turns out to use each
  * one: an XPI review never builds and may sweep nothing, but which of them it will use is
  * only known once it has run, and a review refused at the end for a name it needed is a
- * review paid for and thrown away.
+ * review paid for and thrown away. A preparation that judged the build wrote build.md,
+ * which its review reads and never claims.
  * @param {ReturnType<typeof workPaths>} work
  * @param {boolean} [llmReview]
+ * @param {?import("./prepare/state.js").PrepareRecord} [prepared]
  * @returns {string[]}  Absolute paths.
  */
-function claimedNames(work, llmReview) {
+function claimedNames(work, llmReview, prepared = null) {
   if (!llmReview) {
     return [work.xpi];
   }
+  const judged = Boolean(prepared?.buildSafety);
   const outputs = Object.entries(work)
     .filter(
-      ([key, value]) => typeof value === "string" && !WORK_INPUTS.has(key)
+      ([key, value]) =>
+        typeof value === "string" &&
+        !WORK_INPUTS.has(key) &&
+        !(judged && key === "build")
     )
     .map(([, value]) => value);
   const sweeps = [ARTIFACT_XPI, ARTIFACT_SCA].map(work.sweep);

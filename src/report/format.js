@@ -432,13 +432,15 @@ function isValueBlock(paragraph) {
 /** The values the first prompt of the preparation hands its reader, in the order the steps
  *  use them. Named here because the prompt's steps name them: the facts are a table the
  *  reader looks up, never a sentence they have to extract a path from. The first three are
- *  read off the submission. EXTRACT_TO and ANSWERS are the work folder's own: where the
- *  source archive is extracted, and the review file the roots are handed back in. */
+ *  read off the submission. EXTRACT_TO, BUILD_PROCESS and ANSWERS are the work folder's own:
+ *  where the source archive is extracted, where the build report is written, and the review
+ *  file the roots and the build judgement are handed back in. */
 const SUBMISSION_VALUES = [
   ["XPI", (v) => v.submission.xpi],
   ["SOURCE_ARCHIVE", (v) => v.submission.source],
   ["FOLDER", (v) => v.submission.folder],
   ["EXTRACT_TO", (v) => v.extractTo],
+  ["BUILD_PROCESS", (v) => v.buildProcess],
   ["ANSWERS", (v) => v.answers],
 ];
 
@@ -474,7 +476,8 @@ function valueLines(entries) {
  * purpose. The VALUES are `NAME` with its value beneath it, never wrapped, so a reader takes
  * a path by looking up a name rather than by parsing a sentence: the Submission block on the
  * first prompt - EXTRACT_TO among them: this tool cannot open a source archive itself, but
- * it can still name where one should land - and RESCUE_ROOT on a rescued copy's. The STEPS
+ * it can still name where one should land - ANSWERS on the permission prompt's, and
+ * RESCUE_ROOT on a rescued copy's. The STEPS
  * are prose, and
  * they name those given values - and the ones the reader still has to work out, <SCA_ROOT>
  * and <SCA_EXP_SOURCE> - instead of carrying paths themselves. The FLAGS are the finished
@@ -492,8 +495,12 @@ function valueLines(entries) {
  * @param {string} [values.extractTo]  Beside `submission`: where the reader extracts the
  *   source archive, the `sca` folder of the work folder (src/util/dest.js workPaths), ending
  *   in a separator so it reads as the folder it is.
- * @param {string} [values.answers]  Beside `submission`: the review file the roots are
- *   handed back in.
+ * @param {string} [values.buildProcess]  Beside `submission`: where the build report is
+ *   written, the work folder's build.md.
+ * @param {string} [values.answers]  The review file the answers are handed back in: beside
+ *   `submission`, and on the permission prompt.
+ * @param {string[]} [values.buildDetails]  On the permission prompt: the Build Review
+ *   Details block, its waiting line included, filled into the step that shows it.
  * @param {string} [values.rescueRoot]  On a rescued copy's prompt: the copy's root.
  * @param {string[]} values.flags  The command the prompt's run prints, composed by the
  *   front-end (src/cli.js), which owns the flag names: the finished flag lines. Laid out
@@ -510,6 +517,13 @@ export function scaPromptLines(prompt, list, values) {
       "",
       "Submission:",
       ...valueLines(SUBMISSION_VALUES.map(([name, of]) => [name, of(values)]))
+    );
+  }
+  if (values.answers && !values.submission) {
+    lines.push(
+      "",
+      "Review file:",
+      ...valueLines([["ANSWERS", values.answers]])
     );
   }
   if (values.rescueRoot) {
@@ -536,7 +550,10 @@ export function scaPromptLines(prompt, list, values) {
     // lines is a command to reassemble - so they are rendered here and slotted in.
     lines.push(
       "",
-      ...stepLines(i + 1, step.text, [{ name: "{{flags}}", lines: command }])
+      ...stepLines(i + 1, step.text, [
+        { name: "{{flags}}", lines: command },
+        { name: "{{buildDetails}}", lines: values.buildDetails ?? [] },
+      ])
     );
   });
   return lines;
@@ -671,8 +688,8 @@ export function detailLinkLines(meta) {
 /**
  * The Review Details rows alone, one per path the meta names, in the block's order. The
  * whole block adds the schema line. The Build Review Details block is these rows for the
- * source root and the build's report and output, so the two blocks name a file the same
- * way. BUILD_OUTPUT is named by its own basename, which is what the build called it.
+ * source root, the build's report, its judgement and its output, so the two blocks name a
+ * file the same way. BUILD_OUTPUT is named by its own basename, which is what the build called it.
  * @param {ReviewMeta} meta
  * @returns {string[]}
  */
@@ -695,6 +712,9 @@ export function detailRows(meta) {
   }
   if (meta.buildFile) {
     rows.push(["BUILD_PROCESS", "build.md", meta.buildFile]);
+  }
+  if (meta.buildSafety) {
+    rows.push(["BUILD_SAFETY", null, meta.buildSafety]);
   }
   if (meta.buildOutput) {
     rows.push([

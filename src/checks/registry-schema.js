@@ -24,6 +24,7 @@ import {
   ANSWER_KINDS,
   PHASE_PRODUCTS,
   PACKAGE_MANAGER_VALUES,
+  BUILD_SAFETY_VALUES,
 } from "./registry-vocabulary.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -44,6 +45,7 @@ const VOCABULARIES = {
   ANSWER_KINDS: new Set(ANSWER_KINDS),
   PHASE_PRODUCTS: new Set(PHASE_PRODUCTS),
   PACKAGE_MANAGER_VALUES: new Set(PACKAGE_MANAGER_VALUES),
+  BUILD_SAFETY_VALUES: new Set(BUILD_SAFETY_VALUES),
   SEVERITY_BANDS: Object.values(SEVERITY),
   VERDICT_KEYS,
 };

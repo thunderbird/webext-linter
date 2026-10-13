@@ -184,8 +184,9 @@ export const sweepAnswersSlot = (artifact) => `${sweepSlot(artifact)}Answers`;
  *  - `decided`: the agent has judged something - `verify` or `settle` went out;
  *  - `closing`: the prompt being printed is the closing one (its phase answers `end`).
  *
- *  - `package-managers-declined`: the reviewer did not allow the agent to run package-manager
- *    commands when the preparation asked (src/prepare/steps.js), so the agent builds nothing.
+ *  - `package-managers-declined`: the preparation did not let the agent build the add-on or
+ *    run package-manager commands (src/prepare/steps.js): the agent judged the build unsafe,
+ *    or the reviewer declined. The agent builds nothing.
  *    A review started without a preparation has no such fact.
  *
  *  `first`, `spawned` and `decided` are read off the review each pass (runOf); `closing`
@@ -262,9 +263,10 @@ export const PHASE_PRODUCTS = ["build", "buildOutput"];
 export const SCA_PROMPT_FACTS = ["experiments"];
 
 /** The preparation's prompts, one step list each, named for the step that prints it
- *  (src/prepare/state.js PREPARE_STEP): `extract` first, then `reduce` and `fix` for a
- *  rescued copy. Once the preparation is done, the hand-back starts the review instead. */
-export const SCA_PROMPT_STEPS = ["extract", "reduce", "fix"];
+ *  (src/prepare/state.js PREPARE_STEP): `extract` first, `permission` after a safe build
+ *  judgement, then `reduce` and `fix` for a rescued copy. Once the preparation is done, the
+ *  hand-back starts the review instead. */
+export const SCA_PROMPT_STEPS = ["extract", "permission", "reduce", "fix"];
 
 /** The placeholder every one of those prompts carries: the command its run prints, which is
  *  how the reader reaches the next run. A list without it would leave its reader with
@@ -272,6 +274,12 @@ export const SCA_PROMPT_STEPS = ["extract", "reduce", "fix"];
 export const SCA_PROMPT_COMMAND = "{{flags}}";
 
 /** The values the preparation's PACKAGE_MANAGERS question accepts back, by id: whether the
- *  reviewer allows the agent to run package-manager commands. Each id is offered exactly
- *  once (assertScaPrompt), so every answer reads as one of the two. */
+ *  reviewer lets the agent build the add-on, its package-manager commands included. Each id
+ *  is offered exactly once (assertScaPrompt), so every answer reads as one of the two. */
 export const PACKAGE_MANAGER_VALUES = ["allow", "decline"];
+
+/** The values the preparation's BUILD_SAFETY judgement accepts back, by id: the agent's
+ *  judgement of the build it reported. Each id is offered exactly once (assertScaPrompt),
+ *  and the review's `build-safety` phase accepts each, since the review reads the recorded
+ *  judgement as that phase's value. */
+export const BUILD_SAFETY_VALUES = ["safe", "unsafe"];

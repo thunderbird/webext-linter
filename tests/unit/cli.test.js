@@ -13,7 +13,13 @@ import AdmZip from "adm-zip";
 
 import { pipelineOptsFromArgv } from "../../src/cli.js";
 import { readPrepare, writePrepare } from "../../src/prepare/state.js";
-import { advisory, answer, auditCache, realPreparation } from "../prepared.js";
+import {
+  advisory,
+  answer,
+  auditCache,
+  realPreparation,
+  writeBuildReport,
+} from "../prepared.js";
 import {
   addonOutsideRepo,
   cdnMissCache,
@@ -1844,32 +1850,47 @@ const readJson = (work, name) =>
 
 /**
  * Do what the first prompt asks, the way its reader would: extract the source into
- * EXTRACT_TO, answer ANSWERS (package-manager commands allowed, and the roots), and run the hand-back it prints - which, with
- * nothing to rescue, starts the review.
+ * EXTRACT_TO, write the build report to BUILD_PROCESS, answer ANSWERS (the build judged
+ * safe, and the roots), and run the hand-back it prints. Where that prints the permission
+ * prompt, answer it too (the agent let build) and run its hand-back - which, with nothing
+ * to rescue, starts the review.
  * @param {string} stdout  The --llm-sca-review run's output.
- * @param {{expSource?: string, typed?: (work: string) => string, managers?: string}}
- *   [opts]  The Experiment folder to answer, relative to the root, for an add-on that
- *   declares Experiments, how the work folder is typed, where not as the prompt prints it,
- *   and the reviewer's answer about package-manager commands.
- * @returns {{code: number, stdout: string, stderr: string}}  The hand-back's run.
+ * @param {{expSource?: string, typed?: (work: string) => string, safety?: string,
+ *   managers?: string}} [opts]  The Experiment folder to answer, relative to the root, for
+ *   an add-on that declares Experiments, how the work folder is typed, where not as the
+ *   prompt prints it, the agent's build judgement, and the reviewer's answer to the
+ *   permission question.
+ * @returns {{code: number, stdout: string, stderr: string}}  The last hand-back's run.
  */
-function handBackRoots(stdout, { expSource, typed, managers = "Allow" } = {}) {
+function handBackRoots(
+  stdout,
+  { expSource, typed, safety = "safe", managers = "Let it build" } = {}
+) {
   const root = headerValue(stdout, "EXTRACT_TO");
   fs.cpSync(NO_LOCK_SOURCE, root, { recursive: true });
   if (expSource) {
     fs.mkdirSync(path.join(root, expSource), { recursive: true });
   }
+  fs.writeFileSync(headerValue(stdout, "BUILD_PROCESS"), "1. `npm ci`\n");
   const answers = headerValue(stdout, "ANSWERS");
-  const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
-  const given = { PACKAGE_MANAGERS: managers, SCA_ROOT: root };
-  doc.entries = doc.entries.map((e) => ({
-    ...e,
-    answer: e.index in given ? given[e.index] : expSource,
-  }));
-  fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
-  return typed
-    ? run(["--llm-handback", typed(workOf(stdout))])
-    : run(argvOf(commandOf(stdout)));
+  const fill = (given) => {
+    const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
+    doc.entries = doc.entries.map((e) => ({
+      ...e,
+      answer: e.index in given ? given[e.index] : expSource,
+    }));
+    fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
+  };
+  const work = workOf(stdout);
+  const handBack = (out) =>
+    typed ? run(["--llm-handback", typed(work)]) : run(argvOf(commandOf(out)));
+  fill({ BUILD_SAFETY: safety, SCA_ROOT: root });
+  const handed = handBack(stdout);
+  if (handed.code !== 0 || readJson(work, "prepare").step !== "permission") {
+    return handed;
+  }
+  fill({ PACKAGE_MANAGERS: managers });
+  return handBack(handed.stdout);
 }
 
 /** A printed command, one flag per line, as the argv it stands for. */
@@ -1924,12 +1945,13 @@ test("--llm-sca-review creates the work folder and hands it back", () => {
     `${path.join(work, "sca")}${path.sep}`
   );
   assert.equal(headerValue(r.stdout, "ANSWERS"), workPaths(work).review);
-  const [managers, ...roots] = readJson(work, "review").entries;
-  assert.equal(managers.index, "PACKAGE_MANAGERS");
-  assert.equal(managers.answer, null);
+  assert.equal(headerValue(r.stdout, "BUILD_PROCESS"), workPaths(work).build);
+  const [safety, ...roots] = readJson(work, "review").entries;
+  assert.equal(safety.index, "BUILD_SAFETY");
+  assert.equal(safety.answer, null);
   assert.deepEqual(
-    managers.answers.map((a) => a.label),
-    ["Allow", "Do not allow"]
+    safety.answers.map((a) => a.label),
+    ["safe", "unsafe"]
   );
   assert.deepEqual(roots, [{ index: "SCA_ROOT", answer: null }]);
   assert.deepEqual(commandOf(r.stdout), [`--llm-handback ${work}`]);
@@ -1981,7 +2003,9 @@ test("declined package-manager commands reach the review it starts", () => {
   ]);
   assert.equal(prepared.code, 0, prepared.stderr);
   const work = workOf(prepared.stdout);
-  const handed = handBackRoots(prepared.stdout, { managers: "Do not allow" });
+  const handed = handBackRoots(prepared.stdout, {
+    managers: "Do not let it build",
+  });
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
   assert.equal(readJson(work, "prepare").packageManagers, false);
   assert.equal(readJson(work, "state").run["package-managers-declined"], true);
@@ -2038,7 +2062,7 @@ test("the preparation records the flags its review is started with", () => {
   // records one - and the steps renumber over what survives.
   const plain = prepared();
   assert.doesNotMatch(plain.stdout, /SCA_EXP_SOURCE|Experiment/);
-  assert.match(plain.stdout, /\n6\. That run checks the source/);
+  assert.match(plain.stdout, /\n7\. That run checks the source/);
 
   // An add-on that ships an Experiment needs the folder, so the .xpi's own manifest.json
   // decides: the prompt asks for it, the review file has a slot for it, and the started
@@ -2170,8 +2194,12 @@ test("a prepared review refuses a record it cannot start from", (t) => {
       const r = run(["--llm-handback", work]);
       assert.equal(r.code, 2, r.stdout + r.stderr);
       assert.match(r.stdout, problem);
-      // What the preparation left: its record and the source.
-      assert.deepEqual(fs.readdirSync(work).sort(), [".review", "sca"]);
+      // What the preparation left: its record, the build report and the source.
+      assert.deepEqual(fs.readdirSync(work).sort(), [
+        ".review",
+        "build.md",
+        "sca",
+      ]);
       assert.deepEqual(fs.readdirSync(path.join(work, ".review")), [
         "prepare.json",
       ]);
@@ -2328,9 +2356,10 @@ test("the hand-back starts the review of an unrescued source, which closes at on
 });
 
 // A vulnerable source is rescued through the prompts the hand-backs print: the step that
-// settles the roots hands out the copy's `reduce`, and one that leaves the copy vulnerable
-// its `fix`, each naming the copy and the work folder to hand back. OSV is answered from the
-// run cache folder named as --cache-work-dir, which the record hands to every step.
+// settles the roots and a safe build hands out the permission question, the reviewer's
+// answer the copy's `reduce`, and one that leaves the copy vulnerable its `fix`, each naming
+// the copy and the work folder to hand back. OSV is answered from the run cache folder
+// named as --cache-work-dir, which the record hands to every step.
 test("the hand-backs print a rescued copy's reduce and then its fix", async () => {
   const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
   const source = path.join(fixture, "src");
@@ -2354,6 +2383,11 @@ test("the hand-backs print a rescued copy's reduce and then its fix", async () =
   const work = workOf(r.stdout);
   fs.cpSync(source, headerValue(r.stdout, "EXTRACT_TO"), { recursive: true });
   answer(work, { SCA_ROOT: headerValue(r.stdout, "EXTRACT_TO") });
+  writeBuildReport(work);
+  const permission = run(argvOf(commandOf(r.stdout)));
+  assert.equal(permission.code, 0, permission.stdout + permission.stderr);
+  assert.equal(readJson(work, "prepare").step, "permission");
+  answer(work, {});
   const copy = path.join(work, "rescued");
   const step = (prompt, name) => {
     const next = run(argvOf(commandOf(prompt)));
@@ -2364,10 +2398,116 @@ test("the hand-backs print a rescued copy's reduce and then its fix", async () =
     assert.equal(readJson(work, "prepare").step, name);
     return next.stdout;
   };
-  const reduce = step(r.stdout, "reduce");
+  const reduce = step(permission.stdout, "reduce");
   assert.doesNotMatch(reduce, /npm audit fix/);
   const fix = step(reduce, "fix");
   assert.match(fix, /npm audit fix/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A safe build is shown to the reviewer before they are asked: the permission prompt names
+// the review file and shows the Build Review Details - the source root, the build report
+// and the judgement - as a block that ends the turn with the waiting line, and then puts
+// the question. Its hand-back carries the preparation on.
+test("a safe build prints the Build Review Details and the permission question", () => {
+  const dir = submissionFolder();
+  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+  assert.equal(r.code, 0, r.stderr);
+  const work = workOf(r.stdout);
+  const sca = headerValue(r.stdout, "EXTRACT_TO");
+  fs.cpSync(NO_LOCK_SOURCE, sca, { recursive: true });
+  answer(work, { SCA_ROOT: sca });
+  writeBuildReport(work);
+  const asked = run(argvOf(commandOf(r.stdout)));
+  assert.equal(asked.code, 0, asked.stdout + asked.stderr);
+  assert.equal(readJson(work, "prepare").step, "permission");
+  assert.match(asked.stdout, /── SCA Review Prompt ──/);
+  assert.equal(headerValue(asked.stdout, "ANSWERS"), workPaths(work).review);
+  const block = [
+    `* SCA_ROOT: [source archive](${path.join(work, "sca")})`,
+    `* BUILD_PROCESS: [build.md](${workPaths(work).build})`,
+    "* BUILD_SAFETY: safe",
+    "",
+    'Reply "next" to continue the review.',
+  ]
+    .map((line) => (line ? `   ${line}` : ""))
+    .join("\n");
+  assert.ok(asked.stdout.includes(block), asked.stdout);
+  assert.ok(
+    asked.stdout.indexOf(block) < asked.stdout.indexOf("PACKAGE_MANAGERS"),
+    "the block comes before the question"
+  );
+  assert.deepEqual(commandOf(asked.stdout), [`--llm-handback ${work}`]);
+  answer(work, {});
+  const started = run(argvOf(commandOf(asked.stdout)));
+  assert.notEqual(started.code, 2, started.stdout + started.stderr);
+  assert.equal(readJson(work, "prepare").packageManagers, true);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// --llm-agent-builds answers the permission question up front: it is recorded with the
+// flags, the safe build goes straight on to the audit, and the review starts with no
+// question put.
+test("--llm-agent-builds skips the permission question", () => {
+  const dir = submissionFolder();
+  const r = run([
+    dir,
+    "--llm-sca-review",
+    "--llm-agent-builds",
+    ...OFFLINE_FLAGS,
+  ]);
+  assert.equal(r.code, 0, r.stderr);
+  const work = workOf(r.stdout);
+  assert.equal(readJson(work, "prepare").flags["llm-agent-builds"], true);
+  const handed = handBackRoots(r.stdout);
+  assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
+  assert.doesNotMatch(handed.stdout, /SCA Review Prompt/);
+  const record = readJson(work, "prepare");
+  assert.equal(record.step, "done");
+  assert.equal(record.buildSafety, "safe");
+  assert.equal(record.packageManagers, true);
+  // The review starts with the recorded judgement, and build.md as its product.
+  const state = readJson(work, "state");
+  assert.deepEqual(state.values, { "build-safety": "safe" });
+  assert.deepEqual(state.products, ["build"]);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The flag answers a question only the preparation asks, so every other run refuses it.
+test("--llm-agent-builds is refused without --llm-sca-review", () => {
+  const dir = submissionFolder();
+  for (const argv of [
+    [path.join(dir, "addon.xpi"), "--llm-agent-builds", ...OFFLINE_FLAGS],
+    [path.join(dir, "addon.xpi"), "--llm-review", "--llm-agent-builds"],
+    ["--llm-handback", dir, "--llm-agent-builds"],
+  ]) {
+    const r = run(argv);
+    assert.equal(r.code, 2, r.stdout);
+    assert.match(
+      r.stderr,
+      /--llm-agent-builds answers the build question of the preparation, so it needs --llm-sca-review/
+    );
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// An unsafe build ends the preparation: the review starts at once, with the judgement the
+// preparation recorded and its build report, and the agent builds nothing.
+test("an unsafe build starts the review with its judgement", () => {
+  const dir = submissionFolder();
+  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+  assert.equal(r.code, 0, r.stderr);
+  const work = workOf(r.stdout);
+  const handed = handBackRoots(r.stdout, { safety: "unsafe" });
+  assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
+  assert.match(handed.stdout, /── LLM Prompt ──/);
+  const record = readJson(work, "prepare");
+  assert.equal(record.buildSafety, "unsafe");
+  assert.equal(record.packageManagers, false);
+  const state = readJson(work, "state");
+  assert.deepEqual(state.values, { "build-safety": "unsafe" });
+  assert.deepEqual(state.products, ["build"]);
+  assert.equal(state.run["package-managers-declined"], true);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

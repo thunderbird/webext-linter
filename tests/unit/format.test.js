@@ -1379,7 +1379,7 @@ test("the report's authored prose is required, by the names that index it", () =
 test("the preparation prompts come from the registry and every part is required", () => {
   const prompt = loadRegistry().llmScaReviewPrompt();
   assert.ok(prompt.intro.length > 0);
-  for (const name of ["extract", "reduce", "fix"]) {
+  for (const name of ["extract", "permission", "reduce", "fix"]) {
     assert.ok(prompt.steps[name].length > 0, name);
     for (const step of prompt.steps[name]) {
       assert.equal(typeof step.text, "string");
@@ -1469,6 +1469,39 @@ test("the preparation prompts come from the registry and every part is required"
     () =>
       checkScaPrompt(managers((m) => (m.values[1].label = m.values[0].label))),
     /offers one label twice/
+  );
+  // The build judgement offers safe and unsafe once each, under labels of their own, and
+  // the review's `build-safety` phase accepts each, since it reads the recorded judgement.
+  assert.deepEqual(
+    prompt.buildSafety.values.map((v) => v.value),
+    ["safe", "unsafe"]
+  );
+  const judgement = (mutate) => {
+    const r = loadRegistry();
+    mutate(r.doc["llm-sca-review-prompt"]["build-safety"]);
+    return r;
+  };
+  assert.throws(
+    () => checkScaPrompt(judgement((j) => (j.values[1].value = "maybe"))),
+    /invalid `value` "maybe"/
+  );
+  assert.throws(
+    () => checkScaPrompt(judgement((j) => (j.values[1].value = "safe"))),
+    /`build-safety` offers `safe` other than once/
+  );
+  assert.throws(
+    () =>
+      checkScaPrompt(judgement((j) => (j.values[1].label = j.values[0].label))),
+    /`build-safety` offers one label twice/
+  );
+  const unread = loadRegistry();
+  const phase = unread.doc["llm-phases"].phases.find(
+    (p) => p.name === "build-safety"
+  );
+  phase.values = phase.values.filter((v) => v.value !== "unsafe");
+  assert.throws(
+    () => checkScaPrompt(unread),
+    /`build-safety` records `unsafe`, which the review's `build-safety` phase does not accept/
   );
 });
 

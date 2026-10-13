@@ -38,11 +38,12 @@ import { rethrowIfFatal, wiringError } from "../lib/errors.js";
 import { PACKAGE_FILE } from "../vendor/package-file.js";
 import { TREE_LOCKS } from "../vendor/locks.js";
 import { HandbackRefused } from "../report/handback.js";
+import { BUILD_SAFETY_VALUES } from "../checks/registry-vocabulary.js";
 
 /** Bumped when the record's shape, or what a step does with it, changes in a way an older
  *  file cannot satisfy. A preparation in flight does not survive the upgrade, and saying so
  *  beats reading it wrongly. */
-export const PREPARE_VERSION = 4;
+export const PREPARE_VERSION = 5;
 
 /** The mode every write leaves the record at: readable, and writable by nobody. */
 const READ_ONLY = 0o444;
@@ -50,8 +51,13 @@ const READ_ONLY = 0o444;
 /**
  * Where a preparation stands, which is what the next hand-back of the folder does:
  *
- * - `extract`: the source is to be extracted into `sca/` and its roots handed back in the
- *   review file, and the next hand-back settles and audits them;
+ * - `extract`: the source is to be extracted into `sca/`, its build reported in build.md,
+ *   and its roots and the build judgement handed back in the review file. The next
+ *   hand-back settles them, and moves a safe build on to `permission` (or, where
+ *   --llm-agent-builds answered that up front, audits the root) and an unsafe one to `done`;
+ * - `permission`: the reviewer is shown the Build Review Details and asked whether the
+ *   agent may build, and the next hand-back reads the answer and audits the root where it
+ *   may;
  * - `reduce` and `fix`: the rescued copy in `rescued/`, waiting for its dependencies to be
  *   reduced, then audit-fixed, and audited again after each;
  * - `done`: the review may start here, and the record holds the flags it starts with.
@@ -59,6 +65,7 @@ const READ_ONLY = 0o444;
  */
 export const PREPARE_STEP = Object.freeze({
   extract: "extract",
+  permission: "permission",
   reduce: "reduce",
   fix: "fix",
   done: "done",
@@ -74,9 +81,14 @@ export const PREPARE_STEP = Object.freeze({
  * @property {Record<string, string|boolean>} flags  The flags the review is to be run with,
  *   as parsed (src/cli.js), named without their dashes. A folder among them is absolute, so
  *   it names the same folder wherever the review starts.
- * @property {?boolean} packageManagers  Whether the reviewer allows the agent to run
- *   package-manager commands, as the first hand-back read it, and null before it. Declined,
- *   the preparation audits and rescues nothing, and the review builds nothing itself.
+ * @property {?string} buildSafety  The agent's judgement of the build it reported in
+ *   build.md, a BUILD_SAFETY_VALUES id, as the first hand-back read it, and null before it.
+ *   The review starts with it as its `build-safety` value.
+ * @property {?boolean} packageManagers  Whether the agent may build the add-on and run its
+ *   package-manager commands: the reviewer's answer to the permission question (true where
+ *   --llm-agent-builds answered it up front), false after an unsafe judgement, which asks
+ *   nothing, and null before either. False, the preparation audits and rescues nothing,
+ *   and the review builds nothing itself.
  * @property {?{scaRoot: string, scaExpSource: ?string}} roots  The settled roots, absolute
  *   and real, once known: inside `sca/`, or inside `rescued/` while a rescue runs and once it
  *   came out clean - the tree the next step, or the review, reads.
@@ -136,8 +148,25 @@ export function readPrepare(work) {
     throw new HandbackRefused("the preparation's record names no submission");
   }
   recordBoolean(record.submission.experiments, "submission.experiments");
-  // Unknown until the first hand-back reads the reviewer's answer, and known after it.
-  if (record.step === PREPARE_STEP.extract) {
+  // The judgement is unknown until the first hand-back reads it, and the permission until
+  // the reviewer answered it or an unsafe judgement settled it.
+  const before = record.step === PREPARE_STEP.extract;
+  if (before ? record.buildSafety !== null : !isJudgement(record.buildSafety)) {
+    throw new HandbackRefused(
+      before
+        ? "the preparation's record holds buildSafety before the agent judged the build"
+        : "the preparation's record holds buildSafety as no judgement the agent can give"
+    );
+  }
+  if (
+    record.step === PREPARE_STEP.permission &&
+    record.buildSafety !== "safe"
+  ) {
+    throw new HandbackRefused(
+      "the preparation's record asks the reviewer about a build judged unsafe"
+    );
+  }
+  if (before || record.step === PREPARE_STEP.permission) {
     if (record.packageManagers !== null) {
       throw new HandbackRefused(
         "the preparation's record holds packageManagers before the reviewer answered it"
@@ -147,6 +176,15 @@ export function readPrepare(work) {
     recordBoolean(record.packageManagers, "packageManagers");
   }
   return record;
+}
+
+/**
+ * Whether `value` is a judgement the agent can give the build.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isJudgement(value) {
+  return BUILD_SAFETY_VALUES.includes(value);
 }
 
 /**
@@ -180,6 +218,7 @@ export function startRecord({ submission, flags }) {
     step: PREPARE_STEP.extract,
     submission,
     flags,
+    buildSafety: null,
     packageManagers: null,
     roots: null,
   };

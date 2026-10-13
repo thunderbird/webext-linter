@@ -1953,6 +1953,22 @@ test("a review whose reviewer declined package-manager commands builds nothing",
   }
 });
 
+// A prepared review starts with the judgement its preparation recorded, so the review asks
+// for none of its own: `build-safety` is not issued, and the judgement steers the build
+// choice as the phase's own answer would.
+test("a review holding a recorded judgement does not ask for one", () => {
+  for (const [safety, choice] of [
+    ["safe", "build-choice"],
+    ["unsafe", "build-choice-unsafe"],
+  ]) {
+    const made = buildQuestionsReview(tmp());
+    made.state.values = { "build-safety": safety };
+    const { seen } = driveBuild(made, goesOn());
+    assert.deepEqual(seen.slice(0, 2), ["build-review", choice]);
+    assert.ok(!seen.includes("build-safety"), seen.join(", "));
+  }
+});
+
 test("an XPI review never builds", () => {
   const { state, work } = review(tmp(), { sweep: false });
   const { seen } = driveLoop(state, work, (phase) =>

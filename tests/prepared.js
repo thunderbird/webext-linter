@@ -69,18 +69,32 @@ export function writeTree(dir, files) {
 }
 
 /** Fill in the review file the way the agent does: each entry's answer by its index. The
- *  reviewer allows package-manager commands unless `answers` says otherwise. */
+ *  agent judges the build safe and the reviewer lets it build unless `answers` says
+ *  otherwise. */
 export function answer(work, answers) {
   const file = workPaths(work).review;
   const doc = JSON.parse(fs.readFileSync(file, "utf8"));
-  const given = { PACKAGE_MANAGERS: "Allow", ...answers };
+  const given = {
+    BUILD_SAFETY: "safe",
+    PACKAGE_MANAGERS: "Let it build",
+    ...answers,
+  };
   doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));
   fs.writeFileSync(file, JSON.stringify(doc));
 }
 
+/** Write the build report the first prompt asks for, as the agent does. */
+export function writeBuildReport(work) {
+  fs.writeFileSync(
+    workPaths(work).build,
+    "1. `npm ci`\n\n## Safety\n\nNone.\n"
+  );
+}
+
 /**
  * Prepare a source code review for real: the work folder a --llm-sca-review run creates, the
- * source extracted into its sca/ and handed back as the root, and every hand-back after it.
+ * source extracted into its sca/ and handed back as the root, beside a build report judged
+ * safe, the reviewer letting the agent build, and every hand-back after it.
  * Its run cache is `cache`, a seeded folder named as --cache-work-dir in its record, so every
  * step and its review read it: each audit is answered from it, a rescued copy's included.
  * A clean source is done at once.
@@ -112,8 +126,16 @@ export async function realPreparation({
   const sca = workPaths(work).sca;
   fs.cpSync(source, sca, { recursive: true });
   answer(work, { SCA_ROOT: sca });
+  writeBuildReport(work);
   const step = (folder) => handBack(folder);
   let at = await step(work);
+  assert.equal(
+    at.record.step,
+    PREPARE_STEP.permission,
+    "a safe build asks the reviewer"
+  );
+  answer(work, {});
+  at = await step(work);
   if (at.next === "review") {
     assert.equal(at.work, work, "a clean source is reviewed where it is");
     return at;
