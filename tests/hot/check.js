@@ -7,7 +7,8 @@
 // review of an aborted one, and that the rescued copy, where there is one, holds no
 // node_modules/: nothing is ever installed or built in it. Prints each difference and exits 1
 // on a mismatch, 0 on a match, 2 when it cannot read the case or the folder. Asserts
-// outcomes, never package versions.
+// outcomes, never package versions. BUILD_MATCH is printed and never compared: a case's lock
+// is newer than the one its XPI was built from.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -94,6 +95,7 @@ function stopOf(work) {
       BUILD_OUTPUT: state.build?.output
         ? areaOf(work, state.build.output)
         : false,
+      BUILD_MATCH: state.build?.match ?? null,
       SCA_ROOT: areaOf(work, state.paths?.scaRoot ?? null),
     };
   }
@@ -182,6 +184,11 @@ function main(argv) {
     process.stderr.write(`${folder}: ${err.message}\n`);
     return 2;
   }
+  // Reported beside the outcome, and never compared (differences reads only what a case
+  // names, and no case names it).
+  const reported = got.BUILD_MATCH
+    ? `  BUILD_MATCH: ${got.BUILD_MATCH} (reported, not compared)\n`
+    : "";
   const diff = [
     ...differences(hot.expect, got),
     ...installedIn(workPaths(fs.realpathSync(folder)).rescued).map(
@@ -190,11 +197,11 @@ function main(argv) {
   ];
   if (diff.length) {
     process.stdout.write(
-      `${id}: MISMATCH\n${diff.map((d) => `  ${d}\n`).join("")}`
+      `${id}: MISMATCH\n${diff.map((d) => `  ${d}\n`).join("")}${reported}`
     );
     return 1;
   }
-  process.stdout.write(`${id}: match (${got.stop})\n`);
+  process.stdout.write(`${id}: match (${got.stop})\n${reported}`);
   return 0;
 }
 

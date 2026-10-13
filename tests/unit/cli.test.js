@@ -2019,6 +2019,7 @@ test("declined package-manager commands start a review the reviewer builds for",
     result: null,
     root: null,
     output: null,
+    match: null,
     vulnerabilities: null,
   });
   fs.rmSync(dir, { recursive: true, force: true });
@@ -2417,6 +2418,7 @@ test("a review of a source the agent built opens on its Build Review Details", a
     result: "built",
     root: workPaths(work).buildCopy,
     output: record.buildOutput,
+    match: "no match",
     vulnerabilities: { moderate: 1, high: 0, critical: 0 },
   });
   assert.equal(state.paths.scaRootOrig, null);
@@ -2429,6 +2431,7 @@ test("a review of a source the agent built opens on its Build Review Details", a
     "* BUILD_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
     "* BUILD_RESULT: built by the agent",
     `* BUILD_OUTPUT: [dist](${record.buildOutput})`,
+    "* BUILD_MATCH: no match",
   ]) {
     assert.ok(r.stdout.includes(row), `${row}\n${r.stdout}`);
   }
@@ -2481,6 +2484,15 @@ const unwrapped = (stdout) =>
     .split("\n")
     .map((l) => l.trim())
     .join(" ");
+
+/** What the build and rescue prompts say of the agent's comparison of its output with the
+ *  submitted XPI, which it answers as BUILD_MATCH. */
+const COMPARED = [
+  "compare it with SUBMITTED_XPI, given above: it holds the same files at the same paths, each with the same contents, where only line endings may differ.",
+  'Answer its entry whose "index" is BUILD_MATCH with the "label" of one of its "answers", and with nothing else',
+  "`match` means exactly the comparison above holds, and nothing less.",
+  "Write no notes and no list of differences",
+];
 
 /** The fixture's lock releases, none with an advisory. */
 const FIXTURE_CLEAN = {
@@ -2541,8 +2553,9 @@ test("a rescued review names both roots and the build root", async () => {
 });
 
 // A clean lock is built: the prompt after the permission names the source root, its place in
-// the build copy the linter made to build it in and the build report, and asks for the
-// build's final artifact. The agent copies nothing.
+// the build copy the linter made to build it in, the build report and the submitted XPI, and
+// asks for the build's final artifact and its comparison with that XPI. The agent copies
+// nothing.
 test("the hand-back prints a clean source's build", () => {
   const { work, stdout, dir } = permittedPrompt(FIXTURE_CLEAN);
   assert.equal(readJson(work, "prepare").step, "build");
@@ -2553,11 +2566,17 @@ test("the hand-back prints a clean source's build", () => {
   assert.ok(
     fs.existsSync(path.join(workPaths(work).buildCopy, "package.json"))
   );
+  assert.equal(
+    headerValue(stdout, "SUBMITTED_XPI"),
+    readJson(work, "prepare").submission.xpi
+  );
   assert.ok(!unwrapped(stdout).includes("Copy SCA_ROOT"));
   for (const said of [
     "Build in BUILD_ROOT, and only there",
     "Write it as an absolute path.",
     '"Build attempt"',
+    ...COMPARED,
+    'Where the build failed, leave its "answer" null.',
   ]) {
     assert.ok(unwrapped(stdout).includes(said), said);
   }
@@ -2578,6 +2597,10 @@ test("the hand-back prints a vulnerable source's rescue", () => {
   assert.equal(headerValue(stdout, "RESCUE_ROOT"), path.join(work, "rescued"));
   assert.equal(headerValue(stdout, "BUILD_ROOT"), workPaths(work).buildCopy);
   assert.equal(headerValue(stdout, "BUILD_COPY"), undefined);
+  assert.equal(
+    headerValue(stdout, "SUBMITTED_XPI"),
+    readJson(work, "prepare").submission.xpi
+  );
   // The agent replaces build/ with a copy of the whole rescued/ before each build, with
   // exactly these two commands, printed as they are run.
   const commands = [
@@ -2597,6 +2620,8 @@ test("the hand-back prints a vulnerable source's rescue", () => {
     "`npm ci`",
     "husky",
     '"label" of its one answer',
+    ...COMPARED,
+    'Where the rescue failed, leave its "answer" null.',
   ]) {
     assert.ok(unwrapped(stdout).includes(said), said);
   }

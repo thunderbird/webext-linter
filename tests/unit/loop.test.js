@@ -514,6 +514,7 @@ test("the build details name the XPI, the source, the report, the judgement, the
   state.build = {
     result: "built",
     output: path.join(dir, "build", "addon-1.0.xpi"),
+    match: "no match",
     vulnerabilities: { moderate: 1, high: 0, critical: 0 },
   };
   assert.deepEqual(rows(), [
@@ -524,7 +525,33 @@ test("the build details name the XPI, the source, the report, the judgement, the
     "* BUILD_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
     "* BUILD_RESULT: built by the agent",
     `* BUILD_OUTPUT: [addon-1.0.xpi](${state.build.output})`,
+    "* BUILD_MATCH: no match",
   ]);
+});
+
+// BUILD_MATCH is the agent's comparison of its output with the submitted XPI, shown after
+// BUILD_OUTPUT and only beside it: a build that produced nothing compared nothing.
+test("the build details show the agent's comparison only beside its output", () => {
+  for (const [build, shown] of [
+    [{ result: "built", output: "/w/build/dist", match: "match" }, "match"],
+    [
+      { result: "built", output: "/w/build/dist", match: "no match" },
+      "no match",
+    ],
+    [{ result: "failed", output: null, match: "match" }, null],
+    [{ result: null, output: null, match: null }, null],
+  ]) {
+    const { state, work } = review(tmp(), { sweep: false });
+    state.build = build;
+    const rows = loopSlots(state, {}, work, REGISTRY).buildDetails.split("\n");
+    const at = rows.findIndex((row) => row.startsWith("* BUILD_MATCH"));
+    if (shown === null) {
+      assert.equal(at, -1, rows.join("\n"));
+      continue;
+    }
+    assert.equal(rows[at], `* BUILD_MATCH: ${shown}`);
+    assert.ok(rows[at - 1].startsWith("* BUILD_OUTPUT: "), rows.join("\n"));
+  }
 });
 
 // SCA_ROOT is labelled by where the reviewed source lies: the source archive, or the rescued
@@ -2225,8 +2252,8 @@ test("each block the reviewer reads opens its question phase and ends the turn t
   }
 });
 
-// The agent built the add-on in the preparation, and the review asks it only to put the
-// question: comparing the build with the submitted XPI is the reviewer's.
+// The agent built the add-on and compared it in the preparation, and the review asks it only
+// to put the question: the reviewer reads BUILD_MATCH beside BUILD_OUTPUT and SUBMITTED_XPI.
 test("the build question tells the agent to build and compare nothing", () => {
   const made = buildQuestionsReview(tmp());
   made.state.build = { result: "built", output: "/w/build/dist" };
@@ -2237,7 +2264,7 @@ test("the build question tells the agent to build and compare nothing", () => {
   assert.ok(worded, built.steps.map((step) => step.raw).join(" | "));
   assert.ok(
     worded.rendered.includes(
-      "Comparing it with SUBMITTED_XPI is the reviewer's, not yours: build nothing and compare nothing, only put the question below."
+      "BUILD_MATCH is the agent's earlier comparison of it with SUBMITTED_XPI, which the reviewer reads beside both. Build nothing and compare nothing, only put the question below."
     ),
     worded.rendered
   );

@@ -284,3 +284,8 @@ export const PACKAGE_MANAGER_VALUES = ["allow", "decline"];
  *  and the review's `build-safety` phase accepts each, since the review reads the recorded
  *  judgement as that phase's value. */
 export const BUILD_SAFETY_VALUES = ["safe", "unsafe"];
+
+/** The values the preparation's BUILD_MATCH entry accepts back, by id: the agent's
+ *  comparison of what its build produced with the submitted XPI. Each id is offered exactly
+ *  once (assertScaPrompt), and the record holds the id it was answered with. */
+export const BUILD_MATCH_VALUES = ["match", "no match"];

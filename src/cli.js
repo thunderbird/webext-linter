@@ -1334,7 +1334,7 @@ async function runPreparePass(work, registry) {
     const prompt = registry.llmScaReviewPrompt();
     const paths = workPaths(out.work);
     // What each step's prompt names beside the review file. Every build runs at the root's
-    // place in `build/`, and the rescue's agent makes `build/` a copy of the whole
+    // place in `build/`, its output is compared with the submitted XPI, and the rescue's agent makes `build/` a copy of the whole
     // `rescued/` before each build, with the two commands named here.
     const buildRoot = () => treeRoots(out.work, record.roots.scaRoot).buildRoot;
     const named = {
@@ -1345,11 +1345,13 @@ async function runPreparePass(work, registry) {
         scaRoot: record.roots.scaRoot,
         buildRoot: buildRoot(),
         buildProcess: paths.build,
+        submittedXpi: record.submission.xpi,
       }),
       [PREPARE_STEP.rescue]: () => ({
         rescueRoot: record.roots.scaRoot,
         buildRoot: buildRoot(),
         buildProcess: paths.build,
+        submittedXpi: record.submission.xpi,
         copy: [
           `rm -rf ${shellArg(paths.buildCopy)}`,
           `cp -a ${shellArg(paths.rescued)} ${shellArg(paths.buildCopy)}`,

@@ -2184,6 +2184,8 @@ llm-sca-review-prompt:
   # Printed where the linter audited the root's lock clean and copied the whole source archive
   # into build/: the agent builds the original in BUILD_ROOT, as the lock pins it, and answers
   # BUILD_OUTPUT with what the build produced in build/ (build-output), or that it failed.
+  # Where it produced something, the agent compares it with SUBMITTED_XPI and answers
+  # BUILD_MATCH (build-match).
   build:
     - text: |-
         The linter audited the lock file of SCA_ROOT, given above, and found no known high or critical vulnerability in it, so the add-on is built now. The linter copied the whole source archive for this step, and BUILD_ROOT, given above, is SCA_ROOT in that copy. Build in BUILD_ROOT, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in BUILD_PROCESS.
@@ -2192,7 +2194,11 @@ llm-sca-review-prompt:
     - text: |-
         Where the build failed, add a section headed "Build attempt" to the end of BUILD_PROCESS: the step that failed, and the error output it printed. Change nothing else in that file.
     - text: |-
-        Open ANSWERS, given above. Answer its one entry, whose "index" is BUILD_OUTPUT, with the final artifact the build process produced: the XPI or zip file where it makes one, wherever in the copy it lands (next to BUILD_ROOT, for one), or else the folder such as `dist/`. Write it as an absolute path. Where the build failed, answer with the "label" of its one answer instead. Compare nothing and judge nothing: the reviewer reads what the build produced. Change nothing else in the file.
+        Where the build produced its output, compare it with SUBMITTED_XPI, given above: it holds the same files at the same paths, each with the same contents, where only line endings may differ. Compare only that, and change nothing.
+    - text: |-
+        Open ANSWERS, given above. Answer its entry whose "index" is BUILD_OUTPUT with the final artifact the build process produced: the XPI or zip file where it makes one, wherever in the copy it lands (next to BUILD_ROOT, for one), or else the folder such as `dist/`. Write it as an absolute path. Where the build failed, answer with the "label" of its one answer instead.
+
+        Answer its entry whose "index" is BUILD_MATCH with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. `match` means exactly the comparison above holds, and nothing less. Write no notes and no list of differences, there or anywhere else. Where the build failed, leave its "answer" null. Change nothing else in the file.
     - text: |-
         Run the linter with exactly these flags, and nothing else:
 
@@ -2203,8 +2209,9 @@ llm-sca-review-prompt:
   # copy: the agent's whole rescue in one loop, which changes only the copy's package.json and
   # lock, and builds only a lock with no high or critical advisory left, in a fresh copy of the
   # whole rescued copy in build/. The answer is what the build produced inside build/
-  # (rescue-output), or that the rescue failed. The linter audits the copy again and checks
-  # that output, and a rescue failing either is deleted.
+  # (rescue-output), or that the rescue failed, and BUILD_MATCH where the build produced
+  # something (build-match). The linter audits the copy again and checks that output, and a
+  # rescue failing either is deleted.
   rescue:
     - text: |-
         The linter audited the lock file of the source and found dependencies with known high or critical vulnerabilities, so the source is not built as submitted. RESCUE_ROOT, given above, is a copy of it the linter made for this step. Change the dependencies only there, never in the source archive itself, and run every command in your own sandbox. Never install or build anything in RESCUE_ROOT: every build runs in BUILD_ROOT, given above, which is RESCUE_ROOT in a fresh copy of the whole rescued copy. Often the vulnerable package is one the release build does not use, or one a fixed release within its declared range replaces.
@@ -2225,7 +2232,11 @@ llm-sca-review-prompt:
 
         Where the build fails, find out why and change the dependencies again in RESCUE_ROOT, then audit again and copy again before the next build. A build often needs a dependency the trimming removed: a `prepare` script that runs `husky`, for one, fails without husky. Keep such a dependency, or remove the script from package.json where the release build does not need it. Where no change makes a clean lock build, the rescue failed.
     - text: |-
-        Open ANSWERS, given above. Answer its one entry, whose "index" is BUILD_OUTPUT, with the final artifact the last build produced: the XPI or zip file where it makes one, wherever in the build copy it lands (next to BUILD_ROOT, for one), or else the folder such as `dist/`. Write it as an absolute path. Where the rescue failed, answer with the "label" of its one answer instead. Change nothing else in the file.
+        Where the last build produced its output, compare it with SUBMITTED_XPI, given above: it holds the same files at the same paths, each with the same contents, where only line endings may differ. Compare only that, and change nothing.
+    - text: |-
+        Open ANSWERS, given above. Answer its entry whose "index" is BUILD_OUTPUT with the final artifact the last build produced: the XPI or zip file where it makes one, wherever in the build copy it lands (next to BUILD_ROOT, for one), or else the folder such as `dist/`. Write it as an absolute path. Where the rescue failed, answer with the "label" of its one answer instead.
+
+        Answer its entry whose "index" is BUILD_MATCH with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. `match` means exactly the comparison above holds, and nothing less. Write no notes and no list of differences, there or anywhere else. Where the rescue failed, leave its "answer" null. Change nothing else in the file.
     - text: |-
         Run the linter with exactly these flags, and nothing else:
 
@@ -2248,6 +2259,19 @@ llm-sca-review-prompt:
     failed:
       label: The rescue failed
       description: No build came out of a lock with no high or critical advisory left, so the rescue produced nothing.
+  # The BUILD_MATCH entry of the build and rescue prompts' ANSWERS: the agent's comparison of
+  # what the build produced with SUBMITTED_XPI, answered only where the build produced
+  # something and null otherwise. The record holds its id, and the Build Review Details show it.
+  build-match:
+    question: |-
+      Is what the build produced the same as SUBMITTED_XPI?
+    values:
+      - value: match
+        label: match
+        description: The build produced the same files at the same paths as SUBMITTED_XPI, each with the same contents, where only line endings differ.
+      - value: no match
+        label: no match
+        description: Anything else, a single difference included.
 
 # The REVIEW LOOP's prompts: what --llm-review prints, and what each --llm-handback run
 # prints back, until the review is settled. One phase is handed out per pass.
@@ -2438,7 +2462,7 @@ llm-phases:
             {{buildDetails}}
         - when: NOT aborted AND agent-built
           text: |-
-            The agent built the add-on: BUILD_OUTPUT in the Build Review Details names what its build produced. Comparing it with SUBMITTED_XPI is the reviewer's, not yours: build nothing and compare nothing, only put the question below.
+            The agent built the add-on: BUILD_OUTPUT in the Build Review Details names what its build produced, and BUILD_MATCH is the agent's earlier comparison of it with SUBMITTED_XPI, which the reviewer reads beside both. Build nothing and compare nothing, only put the question below.
         - when: NOT aborted AND agent-build-failed
           text: |-
             The agent's build failed, and the "Build attempt" section of BUILD_PROCESS says where. The reviewer may build the add-on themselves before they answer.

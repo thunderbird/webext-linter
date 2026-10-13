@@ -122,13 +122,15 @@ review's build part is these steps:
    `SUBMITTED_XPI`, `SCA_ROOT`, `BUILD_PROCESS`, `BUILD_SAFETY`, `BUILD_VULNERABILITIES`
    (`n moderate, n high, n critical`, the lock's vulnerable packages counted from the
    review's own audit, with no request of its own), `BUILD_RESULT` and, where the agent
-   built it, `BUILD_OUTPUT`. `BUILD_RESULT` reads `built by the agent`, `the agent's build
+   built it, `BUILD_OUTPUT` and `BUILD_MATCH` (`match` or `no match`, the agent's comparison
+   of that output with the submitted XPI in the preparation). `BUILD_RESULT` reads `built by the agent`, `the agent's build
    failed: see build.md`, `not built: judged unsafe` or `not built: you build it` (the
    reviewer did not let the agent build, or nothing was prepared).
 5. Once the reviewer has replied, **`built`** asks them alone whether the source builds and
    reproduces the submitted XPI. The step before the question is worded by the build result
    (`agent-built`, `agent-build-failed`, `build-unsafe`, `self-build`), and tells the agent
-   it builds and compares nothing.
+   it builds and compares nothing: where it built, the reviewer reads its earlier comparison,
+   `BUILD_MATCH`, beside `BUILD_OUTPUT` and `SUBMITTED_XPI`.
 6. **`Does not build or reproduce`**, or words the reviewer typed instead, aborts the review
    for build issues. **`Builds and reproduces`** goes on to `spawn`, `verify`, `settle`,
    `ask` and `close`.
@@ -340,6 +342,7 @@ what this review is and where to read it:
 | `BUILD_PROCESS` | What building the add-on takes and whether it is safe, written by the agent in `build-safety`, in a source code review |
 | `BUILD_ROOT` | The root in `build/`, where the agent's build ran - only where the agent built or tried to |
 | `BUILD_OUTPUT` | What the agent's build produced in the preparation, a file or a folder inside `build/`, named by its own name - only where the agent built it, since the reviewer may build it themselves and a build may fail |
+| `BUILD_MATCH` | The agent's comparison of `BUILD_OUTPUT` with the submitted XPI in the preparation: `match` (the same files at the same paths with the same contents, only line endings may differ) or `no match` - in the Build Review Details only, and only beside `BUILD_OUTPUT` |
 | `REVIEW_REPORT` | The text the reviewer sends to the developer, written by the linter |
 
 The linter names these files and reads none of them. The description is a sub-agent's,
@@ -463,7 +466,12 @@ the review. The record keeps the audited lock's vulnerable packages counted by s
   final artifact the build produced inside `build/` (an XPI or zip file, or a folder), as an
   absolute path, or with `The build failed`, after adding a "Build attempt" section (the
   failing step and its error output) to `build.md`. An output that is not inside `build/` is
-  refused. Either answer is recorded, and the folder is done.
+  refused. Where the build produced an output, the reader compares it with `SUBMITTED_XPI`,
+  which the prompt names, and answers the `BUILD_MATCH` entry with the label alone: `match`
+  where it holds the same files at the same paths with the same contents, only line endings
+  differing, and `no match` otherwise, with no notes and no list of differences. Beside
+  `The build failed`, `BUILD_MATCH` stays null. A match answer without an output, or an
+  output without one, is refused. Either answer is recorded, and the folder is done.
 - **The lock installs a package with a known high or critical advisory**: the linter copies
   the whole `sca/` into `rescued/` in the same work folder, and the next prompt (`rescue`)
   hands the copy to the reader as one **autonomous loop**. It reduces the copy's
@@ -477,6 +485,7 @@ the review. The record keeps the audited lock's vulnerable packages counted by s
   `rescued/` and audits and copies again before the next build: a `prepare` script that runs
   `husky`, for one, needs the husky the trimming removed, or the script removed. It answers
   `BUILD_OUTPUT` with the final artifact the build produced inside `build/`, or with
+  `The rescue failed`, and `BUILD_MATCH` as the build prompt has it, null beside
   `The rescue failed`.
   The hand-back then audits the copy's lock itself and checks that output. Where both hold,
   the copy is reviewed instead of the original, and its counts replace the original's. A copy

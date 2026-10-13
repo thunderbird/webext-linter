@@ -65,6 +65,7 @@ import {
   SCA_PROMPT_COMMAND,
   PACKAGE_MANAGER_VALUES,
   BUILD_SAFETY_VALUES,
+  BUILD_MATCH_VALUES,
   REVIEW_PROMPT_FACTS,
 } from "./registry-vocabulary.js";
 import { rethrowIfFatal, wiringError } from "../lib/errors.js";
@@ -774,13 +775,17 @@ export class Registry {
    * permission prompt puts to the reviewer: its text, and the two answers it offers, each by
    * its id (PACKAGE_MANAGER_VALUES). `buildOutput` and `rescueOutput` are the entries the
    * build and rescue prompts name what the build produced in: the question, and the one
-   * answer each offers besides a path.
+   * answer each offers besides a path. `buildMatch` is the entry both compare that output
+   * with the submitted XPI in: its question, and the two answers it offers, each by its id
+   * (BUILD_MATCH_VALUES).
    * @returns {{intro: string,
    *   steps: Record<string, {when: ?object, text: string}[]>,
    *   buildSafety: {values: {value: string, label: string, description: string}[]},
    *   packageManagers: {question: string,
    *     values: {value: string, label: string, description: string}[]},
-   *   buildOutput: PrepareOutputAsk, rescueOutput: PrepareOutputAsk}}
+   *   buildOutput: PrepareOutputAsk, rescueOutput: PrepareOutputAsk,
+   *   buildMatch: {question: string,
+   *     values: {value: string, label: string, description: string}[]}}}
    */
   llmScaReviewPrompt() {
     const p = this.doc["llm-sca-review-prompt"];
@@ -807,6 +812,10 @@ export class Registry {
       },
       buildOutput: output(p["build-output"]),
       rescueOutput: output(p["rescue-output"]),
+      buildMatch: {
+        question: p["build-match"].question,
+        values: values(p["build-match"].values),
+      },
     };
   }
 
@@ -1733,6 +1742,7 @@ export function assertScaPrompt(registry, at) {
   for (const [key, ids] of [
     ["package-managers", PACKAGE_MANAGER_VALUES],
     ["build-safety", BUILD_SAFETY_VALUES],
+    ["build-match", BUILD_MATCH_VALUES],
   ]) {
     const values = prompt[key].values;
     for (const id of ids) {

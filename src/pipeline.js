@@ -935,8 +935,8 @@ async function reviewSubmission(opts, work, prepared) {
         schema: schemaLines(meta, opts.schemaCache).join("\n"),
       },
       answers: {},
-      // What came of the agent's build in the preparation, and what it produced where it
-      // built, as the record holds them, and the vulnerable packages this review's own audit
+      // What came of the agent's build in the preparation, what it produced where it built
+      // and how that compares with the submitted XPI, as the record holds them, and the vulnerable packages this review's own audit
       // counted in the lock it read (lockVulnerabilities). The Build Review Details show
       // them, and the `built` step is worded by them (src/report/loop.js buildResultFact).
       build: {
@@ -950,6 +950,10 @@ async function reviewSubmission(opts, work, prepared) {
         output:
           prepared?.buildResult === BUILD_RESULT.built
             ? prepared.buildOutput
+            : null,
+        match:
+          prepared?.buildResult === BUILD_RESULT.built
+            ? prepared.buildMatch
             : null,
         vulnerabilities: lockVulnerabilities(
           scaArchive,

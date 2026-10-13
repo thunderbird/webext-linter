@@ -626,7 +626,8 @@ function reportMeta(state) {
 /**
  * The Build Review Details block: the rows the review holds of the build (detailRows).
  * BUILD_SAFETY is the judgement the review holds, the preparation's or its own, and
- * BUILD_RESULT the wording of what came of the build (buildResultFact).
+ * BUILD_RESULT the wording of what came of the build (buildResultFact). BUILD_MATCH is the
+ * agent's comparison of its output with the submitted XPI, shown beside that output.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {string}
@@ -643,6 +644,7 @@ function buildDetails(state, registry) {
     buildResult: registry.llmPhases().buildResults[buildResultFact(state)],
     buildRoot: meta.buildRoot,
     buildOutput: meta.buildOutput,
+    buildMatch: state.build?.match ?? undefined,
   }).join("\n");
 }
 

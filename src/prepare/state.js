@@ -40,12 +40,15 @@ import { rethrowIfFatal, wiringError } from "../lib/errors.js";
 import { PACKAGE_FILE } from "../vendor/package-file.js";
 import { TREE_LOCKS } from "../vendor/locks.js";
 import { HandbackRefused } from "../report/handback.js";
-import { BUILD_SAFETY_VALUES } from "../checks/registry-vocabulary.js";
+import {
+  BUILD_MATCH_VALUES,
+  BUILD_SAFETY_VALUES,
+} from "../checks/registry-vocabulary.js";
 
 /** Bumped when the record's shape, or what a step does with it, changes in a way an older
  *  file cannot satisfy. A preparation in flight does not survive the upgrade, and saying so
  *  beats reading it wrongly. */
-export const PREPARE_VERSION = 7;
+export const PREPARE_VERSION = 8;
 
 /** The mode every write leaves the record at: readable, and writable by nobody. */
 const READ_ONLY = 0o444;
@@ -61,10 +64,11 @@ const READ_ONLY = 0o444;
  *   agent may build, and the next hand-back reads the answer and audits the root where it
  *   may;
  * - `build`: the root's lock is clean, the linter copies `sca/` into `build/`, and the agent
- *   builds it there and names what the build produced, or that it failed;
+ *   builds it there and names what the build produced and whether it matches the submitted
+ *   XPI, or that it failed;
  * - `rescue`: the root's lock is vulnerable, and the agent makes the lock of the rescued copy
- *   in `rescued/` clean, builds a copy of it in `build/`, and names what the build produced,
- *   or that the rescue failed. The next hand-back audits the copy and checks what it named;
+ *   in `rescued/` clean, builds a copy of it in `build/`, and names what the build produced
+ *   and whether it matches the submitted XPI, or that the rescue failed. The next hand-back audits the copy and checks what it named;
  * - `done`: the review may start here, and the record holds the flags it starts with.
  *   A folder whose rescue failed is `done` too, its roots back in `sca/`.
  */
@@ -119,6 +123,8 @@ const COUNTED = ["moderate", "high", "critical"];
  * @property {?string} buildOutput  What the build produced, a file or folder, absolute and
  *   real: inside `build/`. Held only where
  *   `buildResult` is `built`.
+ * @property {?string} buildMatch  The agent's comparison of that output with the submitted
+ *   XPI, a BUILD_MATCH_VALUES id. Held only where `buildResult` is `built`.
  * @property {?{scaRoot: string, scaExpSource: ?string}} roots  The settled roots, absolute
  *   and real, once known: inside `sca/`, or inside `rescued/` while a rescue runs and once it
  *   came out clean - the tree the next step, or the review, reads.
@@ -210,8 +216,8 @@ export function readPrepare(work) {
 }
 
 /**
- * The record's audit counts and build result, each held only at the steps that can know
- * it, and each of the shape the linter writes. Anything else was put there by an edit.
+ * The record's audit counts, build result, output and comparison, each held only where the
+ * record can know it, and each of the shape the linter writes. Anything else was put there by an edit.
  * @param {PrepareRecord} record
  * @param {boolean} unaudited  The record is at a step before any audit.
  * @throws {HandbackRefused}
@@ -254,6 +260,19 @@ function checkBuild(record, unaudited) {
   ) {
     throw new HandbackRefused(
       "the preparation's record holds buildOutput without a build that produced it"
+    );
+  }
+  const match = record.buildMatch;
+  if (result !== BUILD_RESULT.built && match !== null) {
+    throw new HandbackRefused(
+      "the preparation's record holds buildMatch without a build that produced an output"
+    );
+  }
+  if (result === BUILD_RESULT.built && !BUILD_MATCH_VALUES.includes(match)) {
+    throw new HandbackRefused(
+      match === null || match === undefined
+        ? "the preparation's record holds a built result without buildMatch"
+        : "the preparation's record holds buildMatch as no answer the agent can give"
     );
   }
 }
@@ -319,6 +338,7 @@ export function startRecord({ submission, flags }) {
     vulnerabilities: null,
     buildResult: null,
     buildOutput: null,
+    buildMatch: null,
   };
 }
 

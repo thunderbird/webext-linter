@@ -478,7 +478,8 @@ function valueLines(entries) {
  * first prompt - EXTRACT_TO among them: this tool cannot open a source archive itself, but
  * it can still name where one should land - ANSWERS on every later prompt, and the
  * Build block on the build and rescue prompts: SCA_ROOT, BUILD_ROOT and BUILD_PROCESS on the
- * build's, RESCUE_ROOT, BUILD_ROOT and BUILD_PROCESS on the rescue's. The STEPS
+ * build's, RESCUE_ROOT, BUILD_ROOT and BUILD_PROCESS on the rescue's, and SUBMITTED_XPI on
+ * both, which the build's output is compared with. The STEPS
  * are prose, and
  * they name those given values - and the ones the reader still has to work out, <SCA_ROOT>
  * and <SCA_EXP_SOURCE> - instead of carrying paths themselves. The FLAGS are the finished
@@ -507,6 +508,8 @@ function valueLines(entries) {
  * @param {string[]} [values.buildDetails]  On the permission prompt: the Build Review
  *   Details block, its waiting line included, filled into the step that shows it.
  * @param {string} [values.rescueRoot]  On the rescue prompt: the copy's root.
+ * @param {string} [values.submittedXpi]  On the build and rescue prompts: the submitted
+ *   XPI, absolute.
  * @param {string[]} [values.copy]  On the rescue prompt: the commands that replace `build/`
  *   with a copy of the whole `rescued/`, composed by the front-end.
  * @param {string[]} values.flags  The command the prompt's run prints, composed by the
@@ -541,6 +544,7 @@ export function scaPromptLines(prompt, list, values) {
         ["RESCUE_ROOT", values.rescueRoot],
         ["BUILD_ROOT", values.buildRoot],
         ["BUILD_PROCESS", values.buildProcess],
+        ["SUBMITTED_XPI", values.submittedXpi],
       ].filter(([, value]) => value);
   if (build.length) {
     lines.push("", "Build:", ...valueLines(build));
@@ -702,8 +706,8 @@ export function detailLinkLines(meta) {
  * The Review Details rows alone, one per path the meta names, in the block's order. The
  * whole block adds the schema line. The Build Review Details block is these rows for the
  * submitted XPI, the source root, the build's report, its judgement, the vulnerabilities
- * counted in the lock, what came of the build and its output, so the two blocks name a file
- * the same way. SUBMITTED_XPI and BUILD_OUTPUT are named by their own basenames, which is
+ * counted in the lock, what came of the build, its output and the agent's comparison of it
+ * with the submitted XPI, so the two blocks name a file the same way. SUBMITTED_XPI and BUILD_OUTPUT are named by their own basenames, which is
  * what the submission and the build called them.
  *
  * SCA_ROOT is the reviewed source: the source archive, or after a rescue the rescued copy,
@@ -711,10 +715,11 @@ export function detailLinkLines(meta) {
  * root in the copy the agent built in, named where it built or tried to.
  * @param {ReviewMeta & {submittedXpi?: string, scaRootOrig?: string, buildSafety?: string,
  *   buildVulnerabilities?: {moderate: number, high: number, critical: number},
- *   buildResult?: string, buildRoot?: string}} meta  The Build Review Details' own values
- *   beside the meta: the submitted XPI's path, the original root after a rescue, the build
- *   judgement, the lock's vulnerable packages by severity, the wording of what came of the
- *   build, and the root the agent built in.
+ *   buildResult?: string, buildRoot?: string, buildMatch?: string}} meta  The Build Review
+ *   Details' own values beside the meta: the submitted XPI's path, the original root after a
+ *   rescue, the build judgement, the lock's vulnerable packages by severity, the wording of
+ *   what came of the build, the root the agent built in, and the agent's comparison of its
+ *   output with the submitted XPI, shown only beside that output.
  * @returns {string[]}
  */
 export function detailRows(meta) {
@@ -776,6 +781,9 @@ export function detailRows(meta) {
       displayLine(path.basename(meta.buildOutput)),
       meta.buildOutput,
     ]);
+    if (meta.buildMatch) {
+      rows.push(["BUILD_MATCH", null, meta.buildMatch]);
+    }
   }
   if (meta.reportFile) {
     rows.push(["REVIEW_REPORT", "report.md", meta.reportFile]);

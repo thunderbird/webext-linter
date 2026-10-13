@@ -150,9 +150,18 @@ const first = async (work, answers = {}) => {
 /** A later step: the folder handed back, nothing to fill in. */
 const later = (work) => handBack(work);
 
-/** The build or rescue step handed back with `output` as its BUILD_OUTPUT answer. */
-const handOutput = (work, output) => {
-  answer(work, { BUILD_OUTPUT: output });
+/** The labels a build or rescue answers BUILD_OUTPUT with where it produced nothing. */
+const FAILED = ["The build failed", "The rescue failed"];
+
+/** The build or rescue step handed back with `output` as its BUILD_OUTPUT answer, and `match`
+ *  as its BUILD_MATCH answer: `no match` beside an output, and null beside a failed label,
+ *  unless the test says otherwise. */
+const handOutput = (
+  work,
+  output,
+  match = FAILED.includes(output) ? null : "no match"
+) => {
+  answer(work, { BUILD_OUTPUT: output, BUILD_MATCH: match });
   return handBack(work);
 };
 
@@ -250,13 +259,19 @@ test("a clean source moves on to the build", async () => {
   assert.deepEqual(at.record.vulnerabilities, NONE);
   assert.equal(at.record.buildResult, null);
   assert.deepEqual(recordOf(work), at.record);
-  const [output, ...rest] = reviewEntries(work);
+  const [output, match, ...rest] = reviewEntries(work);
   assert.deepEqual(rest, []);
   assert.equal(output.index, "BUILD_OUTPUT");
   assert.equal(output.message, "Where did the build put what it produced?");
   assert.deepEqual(
     output.answers.map((a) => a.label),
     ["The build failed"]
+  );
+  assert.equal(match.index, "BUILD_MATCH");
+  assert.equal(match.answer, null);
+  assert.deepEqual(
+    match.answers.map((a) => a.label),
+    ["match", "no match"]
   );
   assert.ok(!fs.existsSync(workPaths(work).rescued), "no copy is made");
   assert.ok(fs.existsSync(workPaths(work).buildCopy), "the build copy is made");
@@ -352,6 +367,51 @@ test("a failed build is recorded, and the folder done", async () => {
   cleanup(work);
 });
 
+// The agent's comparison of its output with the submitted XPI is recorded as the id it
+// answered, beside the output.
+test("a build output is recorded with the agent's comparison", async () => {
+  for (const match of ["match", "no match"]) {
+    const { work } = await clean();
+    const output = buildInto(workPaths(work).buildCopy);
+    const at = await handOutput(work, output, match);
+    assert.equal(at.record.buildResult, "built");
+    assert.equal(at.record.buildOutput, output);
+    assert.equal(at.record.buildMatch, match);
+    assert.deepEqual(recordOf(work), at.record);
+    cleanup(work);
+  }
+  const { work } = await clean();
+  const at = await handOutput(work, "The build failed");
+  assert.equal(at.record.buildMatch, null, "a failed build compares nothing");
+  cleanup(work);
+});
+
+// BUILD_MATCH goes with an output only: a failed build that answers it, and an output that
+// leaves it open or answers it with no label it offers, are refused, with nothing changed.
+test("a comparison that does not go with the build's answer is refused", async () => {
+  const { work } = await clean();
+  const output = buildInto(workPaths(work).buildCopy);
+  for (const [named, match, problem] of [
+    [
+      "The build failed",
+      "match",
+      'BUILD_MATCH answers "match", but BUILD_OUTPUT answers "The build failed": ' +
+        'leave its "answer" null',
+    ],
+    [output, null, 'BUILD_MATCH still has no "answer"'],
+    [
+      output,
+      "close enough",
+      'BUILD_MATCH answers "close enough", which this entry',
+    ],
+  ]) {
+    await assert.rejects(handOutput(work, named, match), refused(problem));
+  }
+  assert.equal(recordOf(work).step, PREPARE_STEP.build);
+  assert.ok(fs.existsSync(workPaths(work).review), "nothing moved");
+  cleanup(work);
+});
+
 // An output is something the build produced in build/. Anything else is refused, with the
 // folder unchanged, so the agent can correct the answer and hand it back again.
 test("a build output outside build/, or missing, is refused", async () => {
@@ -395,7 +455,7 @@ test("a build step without its question hands the question out again", async () 
   assert.equal(at.record.step, PREPARE_STEP.build);
   assert.deepEqual(
     reviewEntries(work).map((e) => e.index),
-    ["BUILD_OUTPUT"]
+    ["BUILD_OUTPUT", "BUILD_MATCH"]
   );
   cleanup(work);
 });
@@ -632,12 +692,17 @@ test("a source stopped only by a locked vulnerability gets a rescued copy", asyn
   assert.deepEqual(at.record.vulnerabilities, ONE_HIGH);
   assert.equal(at.record.buildResult, null);
   assert.deepEqual(recordOf(work), at.record);
-  const [output, ...rest] = reviewEntries(work);
+  const [output, match, ...rest] = reviewEntries(work);
   assert.deepEqual(rest, []);
   assert.equal(output.index, "BUILD_OUTPUT");
   assert.deepEqual(
     output.answers.map((a) => a.label),
     ["The rescue failed"]
+  );
+  assert.equal(match.index, "BUILD_MATCH");
+  assert.deepEqual(
+    match.answers.map((a) => a.label),
+    ["match", "no match"]
   );
   assert.equal(
     fs.readFileSync(path.join(copy, "package.json"), "utf8"),
@@ -920,6 +985,7 @@ function rescueFailed(work, at) {
   assert.equal(at.record.step, PREPARE_STEP.done);
   assert.equal(at.record.buildResult, "rescue-failed");
   assert.equal(at.record.buildOutput, null);
+  assert.equal(at.record.buildMatch, null);
   assert.equal(at.record.roots.scaRoot, workPaths(work).sca);
   assert.deepEqual(at.record.vulnerabilities, ONE_HIGH);
   assert.deepEqual(recordOf(work), at.record);
@@ -957,6 +1023,36 @@ test("a clean copy with its build output is done with the copy's roots", async (
   assert.deepEqual(recordOf(work), at.record);
   assert.ok(fs.existsSync(copy));
   assert.ok(!fs.existsSync(workPaths(work).review), "the review file is gone");
+  cleanup(work);
+});
+
+// A rescue's comparison is recorded beside its output, and goes with an output only, as a
+// build's does.
+test("a rescue's comparison is recorded, and refused without an output", async () => {
+  const { work, root } = await rescued({
+    ...TOOL_HIGH,
+    "lint-pebble@0.4.1": [],
+  });
+  writeTree(root, {
+    "package.json": packageFile("0.4.1"),
+    "package-lock.json": npmLock("0.4.1"),
+  });
+  const output = buildRescued(work, root);
+  for (const [named, match, problem] of [
+    [
+      "The rescue failed",
+      "no match",
+      'BUILD_MATCH answers "no match", but BUILD_OUTPUT answers "The rescue failed"',
+    ],
+    [output, null, 'BUILD_MATCH still has no "answer"'],
+  ]) {
+    await assert.rejects(handOutput(work, named, match), refused(problem));
+  }
+  assert.equal(recordOf(work).step, PREPARE_STEP.rescue);
+  const at = await handOutput(work, output, "match");
+  assert.equal(at.record.buildResult, "built");
+  assert.equal(at.record.buildMatch, "match");
+  assert.deepEqual(recordOf(work), at.record);
   cleanup(work);
 });
 
@@ -1160,7 +1256,7 @@ test("a rescue without its question hands the question out again", async () => {
   assert.equal(again.record.step, PREPARE_STEP.rescue);
   assert.deepEqual(
     reviewEntries(work).map((e) => e.index),
-    ["BUILD_OUTPUT"]
+    ["BUILD_OUTPUT", "BUILD_MATCH"]
   );
   cleanup(work);
 });
@@ -1383,6 +1479,37 @@ test("a build record the linter would not write is refused", async (t) => {
         buildOutput: r.roots.scaRoot,
       }),
       "holds buildOutput without a build that produced it",
+    ],
+    [
+      "a comparison without a build",
+      (r) => ({
+        ...r,
+        step: PREPARE_STEP.done,
+        buildResult: "failed",
+        buildMatch: "no match",
+      }),
+      "holds buildMatch without a build that produced an output",
+    ],
+    [
+      "a build without its comparison",
+      (r) => ({
+        ...r,
+        step: PREPARE_STEP.done,
+        buildResult: "built",
+        buildOutput: r.roots.scaRoot,
+      }),
+      "holds a built result without buildMatch",
+    ],
+    [
+      "a comparison the agent cannot give",
+      (r) => ({
+        ...r,
+        step: PREPARE_STEP.done,
+        buildResult: "built",
+        buildOutput: r.roots.scaRoot,
+        buildMatch: "close enough",
+      }),
+      "holds buildMatch as no answer the agent can give",
     ],
     [
       "a build the reviewer did not allow",

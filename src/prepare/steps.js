@@ -92,6 +92,9 @@ const BUILD_SAFETY = "BUILD_SAFETY";
 /** The review file's entry for what the agent's build produced, as `llm-sca-review-prompt`
  *  names it: in `build/` after a build and after a rescue. */
 const BUILD_OUTPUT = "BUILD_OUTPUT";
+/** The review file's entry for the agent's comparison of that output with the submitted XPI,
+ *  as `llm-sca-review-prompt` names it: answered only where the build produced an output. */
+const BUILD_MATCH = "BUILD_MATCH";
 /** The flag that answers the permission question up front. */
 const AGENT_BUILDS = "llm-agent-builds";
 
@@ -118,6 +121,11 @@ const AGENT_BUILDS = "llm-agent-builds";
  * The registry's question for a build's output, as llmScaReviewPrompt gives it: the build's
  * or the rescue's.
  * @typedef {ScaPrompt["buildOutput"]} OutputAsk
+ */
+
+/**
+ * The registry's comparison entry, as llmScaReviewPrompt gives it.
+ * @typedef {ScaPrompt["buildMatch"]} MatchAsk
  */
 
 /**
@@ -198,6 +206,87 @@ function outputPhase(ask) {
 }
 
 /**
+ * The entry the agent compares its build's output with the submitted XPI in, built as a
+ * process value's entry is.
+ * @param {MatchAsk} question
+ * @returns {object}
+ */
+function matchEntry(question) {
+  return valueEntry({
+    name: BUILD_MATCH,
+    question: question.question,
+    values: question.values,
+  });
+}
+
+/**
+ * The two entries the build and rescue prompts hand out: where the build put its output, and
+ * how that output compares with the submitted XPI.
+ * @param {OutputAsk} asked
+ * @param {MatchAsk} match
+ * @returns {object[]}
+ */
+function buildEntries(asked, match) {
+  return [outputEntry(outputPhase(asked)), matchEntry(match)];
+}
+
+/**
+ * The build or rescue step's two answers, read from the review file, or undefined where the
+ * file holds no BUILD_OUTPUT entry: the file an earlier step left, by a run cut short before
+ * it wrote the question, which is then handed out again.
+ *
+ * BUILD_OUTPUT is checked as an output phase takes it. BUILD_MATCH belongs to an output only:
+ * beside the `failed` label it must stay null, and beside a path it must be one of the
+ * labels its entry offers. Either way round is refused, with nothing changed. The match comes
+ * back as its id.
+ * @param {string} work
+ * @param {OutputAsk} asked
+ * @param {MatchAsk} match
+ * @returns {{answer: string, match: ?string}|undefined}
+ * @throws {HandbackRefused}
+ */
+function builtAnswers(work, asked, match) {
+  const file = workPaths(work).review;
+  const keyOf = (e) => String(e?.index);
+  const entries = fs.existsSync(file) ? readHandback(file).entries : [];
+  if (!entries.some((e) => keyOf(e) === BUILD_OUTPUT)) {
+    return undefined;
+  }
+  const phase = outputPhase(asked);
+  const answer = answersOf(
+    entries.filter((e) => keyOf(e) !== BUILD_MATCH),
+    [outputEntry(phase)],
+    phase,
+    keyOf
+  ).get(BUILD_OUTPUT);
+  const compared = entries.filter((e) => keyOf(e) === BUILD_MATCH);
+  if (answer === phase.failed.label) {
+    if (compared.length !== 1) {
+      throw new HandbackRefused(
+        `${BUILD_MATCH} ${compared.length ? "appears twice" : "is missing from the file"}`
+      );
+    }
+    if (compared[0][SLOT] !== null && compared[0][SLOT] !== undefined) {
+      throw new HandbackRefused(
+        `${BUILD_MATCH} answers "${displayLine(String(compared[0][SLOT]))}", but ` +
+          `${BUILD_OUTPUT} answers "${phase.failed.label}": leave its "${SLOT}" null`
+      );
+    }
+    return { answer, match: null };
+  }
+  const picked = answersOf(
+    compared,
+    [matchEntry(match)],
+    { name: phase.name, answer: "value" },
+    keyOf
+  ).get(BUILD_MATCH);
+  return {
+    answer,
+    match: match.values.find((v) => v.label === picked).value,
+  };
+}
+
+/**
  * Take the next step of the preparation in `work`, and say what comes next.
  * @param {string} work  The work folder handed back, absolute and real, holding a record.
  * @param {import("../checks/registry.js").Registry} [registry]  The authored registry,
@@ -227,9 +316,15 @@ export async function handBack(work, registry = loadRegistry()) {
     case PREPARE_STEP.permission:
       return permission(work, record, context, prompt);
     case PREPARE_STEP.build:
-      return builtOriginal(work, record, prompt.buildOutput);
+      return builtOriginal(work, record, prompt.buildOutput, prompt.buildMatch);
     case PREPARE_STEP.rescue:
-      return rescueStep(work, record, context, prompt.rescueOutput);
+      return rescueStep(
+        work,
+        record,
+        context,
+        prompt.rescueOutput,
+        prompt.buildMatch
+      );
     default:
       return doneAgain(work, record);
   }
@@ -274,25 +369,23 @@ async function extract(work, record, context, prompt) {
       prompt
     );
   }
-  return ask(
-    work,
-    { ...settled, step: PREPARE_STEP.permission },
-    managersEntry(prompt.packageManagers)
-  );
+  return ask(work, { ...settled, step: PREPARE_STEP.permission }, [
+    managersEntry(prompt.packageManagers),
+  ]);
 }
 
 /**
- * Hand out a step's one question: the record at its step, and the review file holding the
- * question's one entry. The record is written first, so a run cut short before the review
- * file leaves a folder whose next hand-back writes that file again (answerOf).
+ * Hand out a step's question: the record at its step, and the review file holding the
+ * question's entries. The record is written first, so a run cut short before the review
+ * file leaves a folder whose next hand-back writes that file again (answerOf, builtAnswers).
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At the step that asks.
- * @param {object} entry  The question's entry.
+ * @param {object[]} entries  The question's entries.
  * @returns {Handout}
  */
-function ask(work, record, entry) {
+function ask(work, record, entries) {
   const written = writePrepare(work, record);
-  writeReviewFile(workPaths(work).review, reviewFile([entry]));
+  writeReviewFile(workPaths(work).review, reviewFile(entries));
   return { next: "step", work, record: written };
 }
 
@@ -329,7 +422,7 @@ async function permission(work, record, context, prompt) {
   const entry = managersEntry(prompt.packageManagers);
   const picked = answerOf(work, entry, { name: "permission", answer: "value" });
   if (picked === undefined) {
-    return ask(work, record, entry);
+    return ask(work, record, [entry]);
   }
   const allowed =
     prompt.packageManagers.values.find((v) => v.label === picked).value ===
@@ -366,36 +459,42 @@ async function permitted(work, record, context, prompt) {
     return ask(
       work,
       { ...audited, step: PREPARE_STEP.build },
-      outputEntry(outputPhase(prompt.buildOutput))
+      buildEntries(prompt.buildOutput, prompt.buildMatch)
     );
   }
   if (isRescuable(found)) {
-    return rescue(work, audited, prompt.rescueOutput);
+    return rescue(work, audited, prompt.rescueOutput, prompt.buildMatch);
   }
   return done(work, record);
 }
 
 /**
  * The build step, handed back: what the agent's build of the clean original produced, held
- * to `build/`, or that it failed. Either way the folder is done. A path that names nothing
- * the build produced there is refused, with nothing changed.
+ * to `build/`, and how it compares with the submitted XPI, or that it failed. Either way the
+ * folder is done. A path that names nothing the build produced there is refused, with nothing
+ * changed.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `build`.
  * @param {OutputAsk} asked
+ * @param {MatchAsk} match
  * @returns {Handout}
  * @throws {HandbackRefused}
  */
-function builtOriginal(work, record, asked) {
-  const phase = outputPhase(asked);
-  const answer = answerOf(work, outputEntry(phase), phase);
-  if (answer === undefined) {
-    return ask(work, record, outputEntry(phase));
+function builtOriginal(work, record, asked, match) {
+  const answers = builtAnswers(work, asked, match);
+  if (answers === undefined) {
+    return ask(work, record, buildEntries(asked, match));
   }
-  const output = outputAt(answer, phase, workPaths(work).buildCopy);
+  const output = outputAt(
+    answers.answer,
+    outputPhase(asked),
+    workPaths(work).buildCopy
+  );
   return done(work, {
     ...record,
     buildResult: output ? BUILD_RESULT.built : BUILD_RESULT.failed,
     buildOutput: output,
+    buildMatch: answers.match,
   });
 }
 
@@ -585,10 +684,11 @@ function done(work, record) {
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  Audited.
  * @param {OutputAsk} asked
+ * @param {MatchAsk} match
  * @returns {Handout}
  * @throws {Error}  The copy could not be made.
  */
-function rescue(work, record, asked) {
+function rescue(work, record, asked, match) {
   const { sca: from, rescued: to } = workPaths(work);
   const real = fs.realpathSync(from);
   const into = (p) => (p ? path.join(to, path.relative(real, p)) : p);
@@ -605,7 +705,7 @@ function rescue(work, record, asked) {
           : null,
       },
     },
-    outputEntry(outputPhase(asked))
+    buildEntries(asked, match)
   );
 }
 
@@ -635,24 +735,27 @@ function wholeCopy(from, to, called) {
 
 /**
  * The rescue, handed back: done with the copy as the reviewed source where the output the
- * agent named lies inside `build/` and the copy's lock audits clean, its counts recorded.
- * Otherwise, or where the agent answered that the rescue failed, the rescue failed: the
- * folder is done with its roots back in `sca/`, before the copy and `build/` are removed.
+ * agent named lies inside `build/` and the copy's lock audits clean, its counts and the
+ * agent's comparison recorded. Otherwise, or where the agent answered that the rescue failed,
+ * the rescue failed: the folder is done with its roots back in `sca/`, before the copy and
+ * `build/` are removed.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `rescue`.
  * @param {AuditContext} context
  * @param {OutputAsk} asked
+ * @param {MatchAsk} match
  * @returns {Promise<Handout>}
- * @throws {HandbackRefused}  An answer that is no path and no label.
+ * @throws {HandbackRefused}  An answer that is no path and no label, or a comparison that
+ *   does not go with it.
  */
-async function rescueStep(work, record, context, asked) {
+async function rescueStep(work, record, context, asked, match) {
   const phase = outputPhase(asked);
-  const answer = answerOf(work, outputEntry(phase), phase);
-  if (answer === undefined) {
-    return ask(work, record, outputEntry(phase));
+  const answers = builtAnswers(work, asked, match);
+  if (answers === undefined) {
+    return ask(work, record, buildEntries(asked, match));
   }
   const { sca, rescued, buildCopy } = workPaths(work);
-  const output = producedIn(answer, phase, buildCopy);
+  const output = producedIn(answers.answer, phase, buildCopy);
   if (output) {
     const found = await auditRoot(record.roots, context);
     if (isClean(found)) {
@@ -661,6 +764,7 @@ async function rescueStep(work, record, context, asked) {
         vulnerabilities: vulnerabilityCounts(found),
         buildResult: BUILD_RESULT.built,
         buildOutput: output,
+        buildMatch: answers.match,
       });
     }
   }
@@ -676,6 +780,7 @@ async function rescueStep(work, record, context, asked) {
     },
     buildResult: BUILD_RESULT.rescueFailed,
     buildOutput: null,
+    buildMatch: null,
   });
   removeRescue(work);
   return { next: "review", work, record: failed };

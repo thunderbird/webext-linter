@@ -46,10 +46,11 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   because a later pass prints them and cannot re-derive a moment - and `report` is also
  *   where a later pass WRITES, so losing it would leave the reviewer holding a link to a
  *   file nothing refreshes.
- * @property {{result: ?string, output: ?string, vulnerabilities: ?{moderate: number,
- *   high: number, critical: number}}} build  What came of the agent's build in the
- *   preparation (a BUILD_RESULT value, src/prepare/state.js, or null where it built
- *   nothing), what it produced where it built, and the lock's vulnerable packages as this
+ * @property {{result: ?string, output: ?string, match: ?string,
+ *   vulnerabilities: ?{moderate: number, high: number, critical: number}}} build  What came
+ *   of the agent's build in the preparation (a BUILD_RESULT value, src/prepare/state.js, or
+ *   null where it built nothing), what it produced where it built and the agent's comparison
+ *   of that with the submitted XPI, and the lock's vulnerable packages as this
  *   review's own audit counted them, null where that audit was not made in full. The Build
  *   Review Details show them, and the `built` step is worded by them.
  * @property {?string} phase  The phase in flight - what went out last, and so what the

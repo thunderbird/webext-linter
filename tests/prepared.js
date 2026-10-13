@@ -129,9 +129,10 @@ export function buildRescued(work, root) {
  * of the copy's root, which changes what it must for the copy's audit to come out clean, and
  * after which a copy of it is built in build/ (buildRescued) - or null, for an agent that answers that the
  * rescue failed, so the copy is deleted and the original is done, its roots back in sca/.
- * Each step is asserted to move as the preparation moves it.
+ * Each step is asserted to move as the preparation moves it. A build's output is compared
+ * with the submitted XPI as `match` says, `no match` unless it says otherwise.
  * @param {{source: string, xpi: string, flags?: object, cache?: string,
- *   rescue?: ?(copyRoot: string) => void}} opts
+ *   rescue?: ?(copyRoot: string) => void, match?: string}} opts
  * @returns {Promise<{next: string, work: string, record: object}>}  The handout of the
  *   last step: the folder whose review starts, and its record.
  */
@@ -141,6 +142,7 @@ export async function realPreparation({
   flags = {},
   cache = auditCache(),
   rescue = null,
+  match = "no match",
 }) {
   const work = freshWorkFolder();
   fs.mkdirSync(work);
@@ -171,10 +173,11 @@ export async function realPreparation({
   assert.equal(at.work, work, "every step is in the same work folder");
   if (at.record.step === PREPARE_STEP.build) {
     const output = buildInto(workPaths(work).buildCopy);
-    answer(work, { BUILD_OUTPUT: output });
+    answer(work, { BUILD_OUTPUT: output, BUILD_MATCH: match });
     at = await step(work);
     assert.equal(at.next, "review", "a clean source is built and reviewed");
     assert.equal(at.record.buildOutput, output);
+    assert.equal(at.record.buildMatch, match);
     return at;
   }
   assert.equal(
@@ -187,6 +190,7 @@ export async function realPreparation({
     rescue(at.record.roots.scaRoot);
     answer(work, {
       BUILD_OUTPUT: buildRescued(work, at.record.roots.scaRoot),
+      BUILD_MATCH: match,
     });
     at = await step(work);
     assert.equal(at.next, "review", "the rescued copy came out clean");
@@ -194,7 +198,7 @@ export async function realPreparation({
     assert.equal(at.work, work);
     return at;
   }
-  answer(work, { BUILD_OUTPUT: "The rescue failed" });
+  answer(work, { BUILD_OUTPUT: "The rescue failed", BUILD_MATCH: null });
   at = await step(work);
   assert.equal(at.next, "review", "a failed rescue is reviewed unrescued");
   assert.equal(at.work, work);

@@ -1482,6 +1482,28 @@ test("the preparation prompts come from the registry and every part is required"
       key
     );
   }
+  // The build and the rescue each compare what the build produced with the submitted XPI,
+  // answered as match or no match, each offered once under a label of its own.
+  assert.deepEqual(
+    prompt.buildMatch.values.map((v) => [v.value, v.label]),
+    [
+      ["match", "match"],
+      ["no match", "no match"],
+    ]
+  );
+  const compared = (mutate) => {
+    const r = loadRegistry();
+    mutate(r.doc["llm-sca-review-prompt"]["build-match"]);
+    return r;
+  };
+  assert.throws(
+    () => checkScaPrompt(compared((m) => (m.values[1].value = "match"))),
+    /offers `match` other than once/
+  );
+  assert.throws(
+    () => checkScaPrompt(compared((m) => (m.values[1].value = "close"))),
+    /invalid `value` "close"/
+  );
   // The build judgement offers safe and unsafe once each, under labels of their own, and
   // the review's `build-safety` phase accepts each, since it reads the recorded judgement.
   assert.deepEqual(
