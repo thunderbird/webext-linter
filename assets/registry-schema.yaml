@@ -281,7 +281,7 @@ shapes:
       required: true
       why: what follows from it, so the reviewer can choose
 
-  # One answer the preparation's BUILD_SAFETY judgement offers.
+  # One answer the preparation's LLM_BUILD_SAFETY judgement offers.
   build-safety-value-entry:
     value:
       kind: one-of
@@ -299,7 +299,7 @@ shapes:
       required: true
       why: when it applies, so the agent can judge
 
-  # One answer the preparation's BUILD_MATCH entry offers.
+  # One answer the preparation's LLM_BUILD_XPI_MATCH entry offers.
   build-match-value-entry:
     value:
       kind: one-of
@@ -592,10 +592,10 @@ sections:
       refused: *loop-text
       build-results:
         kind: prose-map
-        required: BUILD_RESULT_FACTS
+        required: WORDED_BUILD_FACTS
         closed: true
         noun: prose
-        why: what the Build Review Details say came of the build, per build result
+        why: what the Build Review Details say came of the agent's build, per result shown
       phases:
         kind: entries
         shape: loop-phase-entry

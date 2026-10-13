@@ -11,7 +11,7 @@
 // report byte for byte) is really a completeness check on this shape.
 //
 // WHY THE AGENT NEVER SEES IT: what the linter needs across passes would otherwise become
-// a contract. A value a step names (BUILD_PROCESS, say) is handed over in the prompt, and
+// a contract. A value a step names (LLM_BUILD_PROCESS, say) is handed over in the prompt, and
 // the rest stays here.
 import fs from "node:fs";
 import path from "node:path";

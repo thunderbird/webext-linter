@@ -512,13 +512,8 @@ test("the build details name the XPI, the source, the report, the judgement, the
   const xpi = `* XPI_FILE: [addon-1.0.xpi](${state.report.meta.xpi})`;
   const unpacked = `* XPI_ROOT: [extracted addon](${state.report.meta.xpiRoot})`;
   const root = `* SCA_ROOT: [source archive](${state.paths.scaRoot})`;
-  const report = `* BUILD_PROCESS: [build.md](${state.paths.build})`;
-  assert.deepEqual(rows(), [
-    xpi,
-    unpacked,
-    root,
-    "* BUILD_RESULT: not built: you build it",
-  ]);
+  const report = `* LLM_BUILD_PROCESS: [build.md](${state.paths.build})`;
+  assert.deepEqual(rows(), [xpi, unpacked, root]);
   state.products = ["build"];
   state.values = { "build-safety": "safe" };
   state.build = {
@@ -532,16 +527,16 @@ test("the build details name the XPI, the source, the report, the judgement, the
     unpacked,
     root,
     report,
-    "* BUILD_SAFETY: safe",
+    "* LLM_BUILD_SAFETY: safe",
     "* BUILD_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
-    "* BUILD_RESULT: built by the agent",
-    `* BUILD_OUTPUT: [addon-1.0.xpi](${state.build.output})`,
-    "* BUILD_MATCH: no match",
+    "* LLM_BUILD_RESULT: build succeeded",
+    `* LLM_BUILD_OUTPUT: [addon-1.0.xpi](${state.build.output})`,
+    "* LLM_BUILD_XPI_MATCH: no match",
   ]);
 });
 
-// BUILD_MATCH is the agent's comparison of its output with the submitted XPI, shown after
-// BUILD_OUTPUT and only beside it: a build that produced nothing compared nothing.
+// LLM_BUILD_XPI_MATCH is the agent's comparison of its output with the submitted XPI, shown after
+// LLM_BUILD_OUTPUT and only beside it: a build that produced nothing compared nothing.
 test("the build details show the agent's comparison only beside its output", () => {
   for (const [build, shown] of [
     [{ result: "built", output: "/w/build/dist", match: "match" }, "match"],
@@ -555,18 +550,18 @@ test("the build details show the agent's comparison only beside its output", () 
     const { state, work } = review(tmp(), { sweep: false });
     state.build = build;
     const rows = loopSlots(state, {}, work, REGISTRY).buildDetails.split("\n");
-    const at = rows.findIndex((row) => row.startsWith("* BUILD_MATCH"));
+    const at = rows.findIndex((row) => row.startsWith("* LLM_BUILD_XPI_MATCH"));
     if (shown === null) {
       assert.equal(at, -1, rows.join("\n"));
       continue;
     }
-    assert.equal(rows[at], `* BUILD_MATCH: ${shown}`);
-    assert.ok(rows[at - 1].startsWith("* BUILD_OUTPUT: "), rows.join("\n"));
+    assert.equal(rows[at], `* LLM_BUILD_XPI_MATCH: ${shown}`);
+    assert.ok(rows[at - 1].startsWith("* LLM_BUILD_OUTPUT: "), rows.join("\n"));
   }
 });
 
 // SCA_ROOT is labelled by where the reviewed source lies: the source archive, or the rescued
-// copy, beside which SCA_ROOT_ORIG names the same root in the source archive. BUILD_ROOT names
+// copy, beside which SCA_ROOT_ORIG names the same root in the source archive. LLM_BUILD_ROOT names
 // the root in the build copy where the agent built or tried to, and nowhere else. The Review
 // Details name the same rows.
 test("the details name the reviewed root, the original root and the build root", () => {
@@ -579,7 +574,7 @@ test("the details name the reviewed root, the original root and the build root",
     block
       .split("\n")
       .filter((row) =>
-        ["* SCA_ROOT", "* BUILD_ROOT"].some((n) => row.startsWith(n))
+        ["* SCA_ROOT", "* LLM_BUILD_ROOT"].some((n) => row.startsWith(n))
       );
   const cases = [
     [
@@ -596,7 +591,7 @@ test("the details name the reviewed root, the original root and the build root",
       { result: "built", root: built, output: path.join(built, "dist") },
       [
         `* SCA_ROOT: [source archive](${sca})`,
-        `* BUILD_ROOT: [build copy](${built})`,
+        `* LLM_BUILD_ROOT: [build copy](${built})`,
       ],
     ],
     [
@@ -606,7 +601,7 @@ test("the details name the reviewed root, the original root and the build root",
       { result: "failed", root: built, output: null },
       [
         `* SCA_ROOT: [source archive](${sca})`,
-        `* BUILD_ROOT: [build copy](${built})`,
+        `* LLM_BUILD_ROOT: [build copy](${built})`,
       ],
     ],
     [
@@ -617,7 +612,7 @@ test("the details name the reviewed root, the original root and the build root",
       [
         `* SCA_ROOT: [rescued source (reduced/fixed dependencies)](${rescued})`,
         `* SCA_ROOT_ORIG: [source archive](${sca})`,
-        `* BUILD_ROOT: [build copy](${built})`,
+        `* LLM_BUILD_ROOT: [build copy](${built})`,
       ],
     ],
   ];
@@ -632,30 +627,32 @@ test("the details name the reviewed root, the original root and the build root",
   }
 });
 
-// BUILD_RESULT words what came of the build, one wording per build result: the agent built
-// it, its build failed, the build was judged unsafe so nothing was built, or the reviewer
-// builds it - where they did not let the agent build, or nothing was prepared.
-test("the build result is worded by what came of the build", () => {
+// LLM_BUILD_RESULT reports the agent's attempt, one wording per build result: the agent built
+// it, its build failed, or the build was judged unsafe so nothing was built. Where the
+// reviewer builds it (the agent was not let build, nothing was prepared, or its rescue
+// failed) the row is absent.
+test("the build result is worded by what came of the agent's attempt", () => {
   const { state, work } = scaReview(tmp());
   const result = () =>
     loopSlots(state, {}, work, REGISTRY)
       .buildDetails.split("\n")
-      .find((row) => row.startsWith("* BUILD_RESULT: "));
+      .find((row) => row.startsWith("* LLM_BUILD_RESULT: "));
   const cases = [
-    [
-      { result: "built", output: "/w/build/dist" },
-      "safe",
-      "built by the agent",
-    ],
-    [{ result: "failed" }, "safe", "the agent's build failed: see build.md"],
-    [{ result: null }, "unsafe", "not built: judged unsafe"],
-    [{ result: null }, "safe", "not built: you build it"],
-    [undefined, undefined, "not built: you build it"],
+    [{ result: "built", output: "/w/build/dist" }, "safe", "build succeeded"],
+    [{ result: "failed" }, "safe", "build failed: see build.md"],
+    [{ result: null }, "unsafe", "not built: unsafe"],
+    [{ result: null }, "safe", null],
+    [{ result: "rescue-failed" }, "safe", null],
+    [undefined, undefined, null],
   ];
   for (const [build, safety, said] of cases) {
     state.build = build;
     state.values = safety ? { "build-safety": safety } : {};
-    assert.equal(result(), `* BUILD_RESULT: ${said}`, String(build?.result));
+    assert.equal(
+      result(),
+      said === null ? undefined : `* LLM_BUILD_RESULT: ${said}`,
+      String(build?.result)
+    );
   }
 });
 
@@ -2176,7 +2173,7 @@ test("the build question's step text is worded by what came of the build", () =>
     [
       { result: "built", output: "/w/build/dist" },
       "safe",
-      "The agent built the add-on: BUILD_OUTPUT",
+      "The agent built the add-on: LLM_BUILD_OUTPUT",
     ],
     [{ result: "failed", output: null }, "safe", "The agent's build failed"],
     [
@@ -2265,13 +2262,13 @@ test("the details link the build output only where the agent built the add-on", 
   ]) {
     const { state } = buildQuestionsReview(tmp());
     state.build = build;
-    const linked = `* BUILD_OUTPUT: [addon.xpi](${build.output})`;
+    const linked = `* LLM_BUILD_OUTPUT: [addon.xpi](${build.output})`;
     for (const block of [
       reviewDetails(state, REGISTRY),
       settle(state, REGISTRY).details,
     ]) {
       assert.equal(block.includes(linked), Boolean(build.output), block);
-      assert.equal(block.includes("BUILD_OUTPUT"), Boolean(build.output));
+      assert.equal(block.includes("LLM_BUILD_OUTPUT"), Boolean(build.output));
     }
   }
 });
@@ -2293,7 +2290,7 @@ test("the build report is linked once the judging phase wrote it", () => {
     accept(state, work, PHASES, REGISTRY);
     const next = issue(state, work, PHASES, REGISTRY);
     assert.equal(next.phase.name, "built");
-    const linked = /^\* BUILD_PROCESS: \[build\.md\]/m;
+    const linked = /^\* LLM_BUILD_PROCESS: \[build\.md\]/m;
     for (const block of [
       loopSlots(state, next, work, REGISTRY).buildDetails,
       reviewDetails(state, REGISTRY),
@@ -2301,7 +2298,7 @@ test("the build report is linked once the judging phase wrote it", () => {
       if (wrote) {
         assert.match(block, linked);
       } else {
-        assert.doesNotMatch(block, /BUILD_PROCESS/);
+        assert.doesNotMatch(block, /LLM_BUILD_PROCESS/);
       }
     }
   }
@@ -2391,7 +2388,7 @@ test("each block the reviewer reads opens its question phase and ends the turn t
 });
 
 // The agent built the add-on and compared it in the preparation, and the review asks it only
-// to put the question: the reviewer reads BUILD_MATCH beside BUILD_OUTPUT and XPI_FILE.
+// to put the question: the reviewer reads LLM_BUILD_XPI_MATCH beside LLM_BUILD_OUTPUT and XPI_FILE.
 test("the build question tells the agent to build and compare nothing", () => {
   const made = buildQuestionsReview(tmp());
   made.state.build = { result: "built", output: "/w/build/dist" };
@@ -2402,7 +2399,7 @@ test("the build question tells the agent to build and compare nothing", () => {
   assert.ok(worded, built.steps.map((step) => step.raw).join(" | "));
   assert.ok(
     worded.rendered.includes(
-      "BUILD_MATCH is the agent's earlier comparison of it with XPI_FILE, which the reviewer reads beside both. Build nothing and compare nothing, only put the question below."
+      "LLM_BUILD_XPI_MATCH is the agent's earlier comparison of it with XPI_FILE, which the reviewer reads beside both. Build nothing and compare nothing, only put the question below."
     ),
     worded.rendered
   );

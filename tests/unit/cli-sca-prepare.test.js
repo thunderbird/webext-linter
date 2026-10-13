@@ -84,9 +84,12 @@ test("--llm-sca-review creates the work folder and hands it back", () => {
     `${path.join(work, "sca")}${path.sep}`
   );
   assert.equal(headerValue(r.stdout, "ANSWERS"), workPaths(work).review);
-  assert.equal(headerValue(r.stdout, "BUILD_PROCESS"), workPaths(work).build);
+  assert.equal(
+    headerValue(r.stdout, "LLM_BUILD_PROCESS"),
+    workPaths(work).build
+  );
   const [safety, ...roots] = readJson(work, "review").entries;
-  assert.equal(safety.index, "BUILD_SAFETY");
+  assert.equal(safety.index, "LLM_BUILD_SAFETY");
   assert.equal(safety.answer, null);
   assert.deepEqual(
     safety.answers.map((a) => a.label),
@@ -556,12 +559,12 @@ test("a review of a source the agent built opens on its Build Review Details", a
   for (const row of [
     `* XPI_FILE: [xpi](${path.join(fixture, "xpi")})`,
     `* SCA_ROOT: [source archive](${workPaths(work).sca})`,
-    `* BUILD_ROOT: [build copy](${workPaths(work).buildCopy})`,
-    "* BUILD_SAFETY: safe",
+    `* LLM_BUILD_ROOT: [build copy](${workPaths(work).buildCopy})`,
+    "* LLM_BUILD_SAFETY: safe",
     "* BUILD_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
-    "* BUILD_RESULT: built by the agent",
-    `* BUILD_OUTPUT: [dist](${record.buildOutput})`,
-    "* BUILD_MATCH: no match",
+    "* LLM_BUILD_RESULT: build succeeded",
+    `* LLM_BUILD_OUTPUT: [dist](${record.buildOutput})`,
+    "* LLM_BUILD_XPI_MATCH: no match",
   ]) {
     assert.ok(r.stdout.includes(row), `${row}\n${r.stdout}`);
   }

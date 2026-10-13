@@ -1,15 +1,15 @@
 {
-  "_comment": "The hot-run cases (tests/hot/README.md). Each submission folder holds one .xpi and one source archive made from a real submission by changing only package.json and the lock. `expect` is what tests/hot/check.js compares the work folder with: `stop` is `row-14` (the Build Review Details block) or `abort` (the closing prompt of an aborted review). BUILD_VULNERABILITIES names only the severities the case pins. BUILD_OUTPUT is the folder the output lies in, always build, or false where the block names none. BUILD_MATCH is never named here: check.js prints it and compares nothing, since a case's lock is newer than the one its XPI was built from. SCA_ROOT is the folder the reviewed root lies in, sca or rescued. A rescued/ left in the work folder must hold no node_modules/. `reasons` are the early-exit ids, and `findings` the error findings the aborted review must hold.",
+  "_comment": "The hot-run cases (tests/hot/README.md). Each submission folder holds one .xpi and one source archive made from a real submission by changing only package.json and the lock. `expect` is what tests/hot/check.js compares the work folder with: `stop` is `row-14` (the Build Review Details block) or `abort` (the closing prompt of an aborted review). BUILD_VULNERABILITIES names only the severities the case pins. LLM_BUILD_OUTPUT is the folder the output lies in, always build, or false where the block names none. LLM_BUILD_XPI_MATCH is never named here: check.js prints it and compares nothing, since a case's lock is newer than the one its XPI was built from. SCA_ROOT is the folder the reviewed root lies in, sca or rescued. A rescued/ left in the work folder must hold no node_modules/. `reasons` are the early-exit ids, and `findings` the error findings the aborted review must hold.",
   "cases": [
     {
       "id": "clean-builds",
       "submission": "/home/john/Downloads/reviews/hot/clean-builds",
       "expect": {
         "stop": "row-14",
-        "BUILD_SAFETY": "safe",
+        "LLM_BUILD_SAFETY": "safe",
         "BUILD_VULNERABILITIES": { "high": 0, "critical": 0 },
-        "BUILD_RESULT": "built by the agent",
-        "BUILD_OUTPUT": "build",
+        "LLM_BUILD_RESULT": "build succeeded",
+        "LLM_BUILD_OUTPUT": "build",
         "SCA_ROOT": "sca"
       }
     },
@@ -18,10 +18,10 @@
       "submission": "/home/john/Downloads/reviews/hot/clean-fails",
       "expect": {
         "stop": "row-14",
-        "BUILD_SAFETY": "safe",
+        "LLM_BUILD_SAFETY": "safe",
         "BUILD_VULNERABILITIES": { "high": 0, "critical": 0 },
-        "BUILD_RESULT": "the agent's build failed: see build.md",
-        "BUILD_OUTPUT": false,
+        "LLM_BUILD_RESULT": "build failed: see build.md",
+        "LLM_BUILD_OUTPUT": false,
         "SCA_ROOT": "sca"
       }
     },
@@ -30,10 +30,10 @@
       "submission": "/home/john/Downloads/reviews/hot/reduce-builds",
       "expect": {
         "stop": "row-14",
-        "BUILD_SAFETY": "safe",
+        "LLM_BUILD_SAFETY": "safe",
         "BUILD_VULNERABILITIES": { "high": 0, "critical": 0 },
-        "BUILD_RESULT": "built by the agent",
-        "BUILD_OUTPUT": "build",
+        "LLM_BUILD_RESULT": "build succeeded",
+        "LLM_BUILD_OUTPUT": "build",
         "SCA_ROOT": "rescued"
       }
     },
@@ -50,10 +50,10 @@
       "submission": "/home/john/Downloads/reviews/hot/fix-builds",
       "expect": {
         "stop": "row-14",
-        "BUILD_SAFETY": "safe",
+        "LLM_BUILD_SAFETY": "safe",
         "BUILD_VULNERABILITIES": { "high": 0, "critical": 0 },
-        "BUILD_RESULT": "built by the agent",
-        "BUILD_OUTPUT": "build",
+        "LLM_BUILD_RESULT": "build succeeded",
+        "LLM_BUILD_OUTPUT": "build",
         "SCA_ROOT": "rescued"
       }
     },
@@ -78,10 +78,10 @@
       "submission": "/home/john/Downloads/reviews/hot/husky-trap",
       "expect": {
         "stop": "row-14",
-        "BUILD_SAFETY": "safe",
+        "LLM_BUILD_SAFETY": "safe",
         "BUILD_VULNERABILITIES": { "high": 0, "critical": 0 },
-        "BUILD_RESULT": "built by the agent",
-        "BUILD_OUTPUT": "build",
+        "LLM_BUILD_RESULT": "build succeeded",
+        "LLM_BUILD_OUTPUT": "build",
         "SCA_ROOT": "rescued"
       }
     },
@@ -90,10 +90,10 @@
       "submission": "/home/john/Downloads/reviews/hot/moderate-only",
       "expect": {
         "stop": "row-14",
-        "BUILD_SAFETY": "safe",
+        "LLM_BUILD_SAFETY": "safe",
         "BUILD_VULNERABILITIES": { "moderate": 1, "high": 0, "critical": 0 },
-        "BUILD_RESULT": "built by the agent",
-        "BUILD_OUTPUT": "build",
+        "LLM_BUILD_RESULT": "build succeeded",
+        "LLM_BUILD_OUTPUT": "build",
         "SCA_ROOT": "sca"
       }
     },
@@ -102,10 +102,10 @@
       "submission": "/home/john/Downloads/reviews/hot/unsafe",
       "expect": {
         "stop": "row-14",
-        "BUILD_SAFETY": "unsafe",
+        "LLM_BUILD_SAFETY": "unsafe",
         "BUILD_VULNERABILITIES": { "high": 0, "critical": 0 },
-        "BUILD_RESULT": "not built: judged unsafe",
-        "BUILD_OUTPUT": false,
+        "LLM_BUILD_RESULT": "not built: unsafe",
+        "LLM_BUILD_OUTPUT": false,
         "SCA_ROOT": "sca"
       }
     },
@@ -123,10 +123,10 @@
       "submission": "/home/john/Downloads/reviews/hot/pnpm-reduce",
       "expect": {
         "stop": "row-14",
-        "BUILD_SAFETY": "safe",
+        "LLM_BUILD_SAFETY": "safe",
         "BUILD_VULNERABILITIES": { "high": 0, "critical": 0 },
-        "BUILD_RESULT": "built by the agent",
-        "BUILD_OUTPUT": "build",
+        "LLM_BUILD_RESULT": "build succeeded",
+        "LLM_BUILD_OUTPUT": "build",
         "SCA_ROOT": "rescued"
       }
     }

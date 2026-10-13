@@ -7,7 +7,7 @@
 // review of an aborted one, and that the rescued copy, where there is one, holds no
 // node_modules/: nothing is ever installed or built in it. Prints each difference and exits 1
 // on a mismatch, 0 on a match, 2 when it cannot read the case or the folder. Asserts
-// outcomes, never package versions. BUILD_MATCH is printed and never compared: a case's lock
+// outcomes, never package versions. LLM_BUILD_XPI_MATCH is printed and never compared: a case's lock
 // is newer than the one its XPI was built from.
 import fs from "node:fs";
 import path from "node:path";
@@ -88,14 +88,14 @@ function stopOf(work) {
     const counts = state.build?.vulnerabilities ?? null;
     return {
       stop: "row-14",
-      BUILD_SAFETY: state.values?.["build-safety"] ?? null,
+      LLM_BUILD_SAFETY: state.values?.["build-safety"] ?? null,
       BUILD_VULNERABILITIES: counts,
-      BUILD_RESULT:
+      LLM_BUILD_RESULT:
         registry.llmPhases().buildResults[buildResultFact(state)] ?? null,
-      BUILD_OUTPUT: state.build?.output
+      LLM_BUILD_OUTPUT: state.build?.output
         ? areaOf(work, state.build.output)
         : false,
-      BUILD_MATCH: state.build?.match ?? null,
+      LLM_BUILD_XPI_MATCH: state.build?.match ?? null,
       SCA_ROOT: areaOf(work, state.paths?.scaRoot ?? null),
     };
   }
@@ -186,8 +186,8 @@ function main(argv) {
   }
   // Reported beside the outcome, and never compared (differences reads only what a case
   // names, and no case names it).
-  const reported = got.BUILD_MATCH
-    ? `  BUILD_MATCH: ${got.BUILD_MATCH} (reported, not compared)\n`
+  const reported = got.LLM_BUILD_XPI_MATCH
+    ? `  LLM_BUILD_XPI_MATCH: ${got.LLM_BUILD_XPI_MATCH} (reported, not compared)\n`
     : "";
   const diff = [
     ...differences(hot.expect, got),

@@ -451,18 +451,21 @@ test("a phase authors neither `choices` nor `question`", () => {
   }
 });
 
-// What the Build Review Details say came of the build is authored once per build result,
-// and a result with no wording is refused at load.
-test("each build result is worded", () => {
+// What the Build Review Details say came of the agent's build is authored once per result
+// of its attempt, and a result with no wording, or a wording for the reviewer's own build,
+// is refused at load.
+test("each result of the agent's attempt is worded", () => {
   assert.deepEqual(Object.keys(fresh().llmPhases().buildResults).sort(), [
     "agent-build-failed",
     "agent-built",
     "build-unsafe",
-    "self-build",
   ]);
   const missing = fresh();
-  delete missing.doc["llm-phases"]["build-results"]["self-build"];
-  assert.throws(() => check(missing), saying("self-build"));
+  delete missing.doc["llm-phases"]["build-results"]["build-unsafe"];
+  assert.throws(() => check(missing), saying("build-unsafe"));
+  const extra = fresh();
+  extra.doc["llm-phases"]["build-results"]["self-build"] = "not built";
+  assert.throws(() => check(extra), saying("self-build"));
 });
 
 // A process value is declared by the phase that asks for it, and every name a condition

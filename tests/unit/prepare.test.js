@@ -152,18 +152,18 @@ const first = async (work, answers = {}) => {
 /** A later step: the folder handed back, nothing to fill in. */
 const later = (work) => handBack(work);
 
-/** The labels a build or rescue answers BUILD_OUTPUT with where it produced nothing. */
+/** The labels a build or rescue answers LLM_BUILD_OUTPUT with where it produced nothing. */
 const FAILED = ["The build failed", "The rescue failed"];
 
-/** The build or rescue step handed back with `output` as its BUILD_OUTPUT answer, and `match`
- *  as its BUILD_MATCH answer: `no match` beside an output, and null beside a failed label,
+/** The build or rescue step handed back with `output` as its LLM_BUILD_OUTPUT answer, and `match`
+ *  as its LLM_BUILD_XPI_MATCH answer: `no match` beside an output, and null beside a failed label,
  *  unless the test says otherwise. */
 const handOutput = (
   work,
   output,
   match = FAILED.includes(output) ? null : "no match"
 ) => {
-  answer(work, { BUILD_OUTPUT: output, BUILD_MATCH: match });
+  answer(work, { LLM_BUILD_OUTPUT: output, LLM_BUILD_XPI_MATCH: match });
   return handBack(work);
 };
 
@@ -263,13 +263,13 @@ test("a clean source moves on to the build", async () => {
   assert.deepEqual(recordOf(work), at.record);
   const [output, match, ...rest] = reviewEntries(work);
   assert.deepEqual(rest, []);
-  assert.equal(output.index, "BUILD_OUTPUT");
+  assert.equal(output.index, "LLM_BUILD_OUTPUT");
   assert.equal(output.message, "Where did the build put what it produced?");
   assert.deepEqual(
     output.answers.map((a) => a.label),
     ["The build failed"]
   );
-  assert.equal(match.index, "BUILD_MATCH");
+  assert.equal(match.index, "LLM_BUILD_XPI_MATCH");
   assert.equal(match.answer, null);
   assert.deepEqual(
     match.answers.map((a) => a.label),
@@ -388,7 +388,7 @@ test("a build output is recorded with the agent's comparison", async () => {
   cleanup(work);
 });
 
-// BUILD_MATCH goes with an output only: a failed build that answers it, and an output that
+// LLM_BUILD_XPI_MATCH goes with an output only: a failed build that answers it, and an output that
 // leaves it open or answers it with no label it offers, are refused, with nothing changed.
 test("a comparison that does not go with the build's answer is refused", async () => {
   const { work } = await clean();
@@ -397,14 +397,14 @@ test("a comparison that does not go with the build's answer is refused", async (
     [
       "The build failed",
       "match",
-      'BUILD_MATCH answers "match", but BUILD_OUTPUT answers "The build failed": ' +
+      'LLM_BUILD_XPI_MATCH answers "match", but LLM_BUILD_OUTPUT answers "The build failed": ' +
         'leave its "answer" null',
     ],
-    [output, null, 'BUILD_MATCH still has no "answer"'],
+    [output, null, 'LLM_BUILD_XPI_MATCH still has no "answer"'],
     [
       output,
       "close enough",
-      'BUILD_MATCH answers "close enough", which this entry',
+      'LLM_BUILD_XPI_MATCH answers "close enough", which this entry',
     ],
   ]) {
     await assert.rejects(handOutput(work, named, match), refused(problem));
@@ -423,7 +423,7 @@ test("a build output outside build/, or missing, is refused", async () => {
   await assert.rejects(
     handOutput(work, "dist"),
     refused(
-      `BUILD_OUTPUT names "dist", but the build copy "${copy}" does not exist`
+      `LLM_BUILD_OUTPUT names "dist", but the build copy "${copy}" does not exist`
     )
   );
   buildInto(copy);
@@ -457,7 +457,7 @@ test("a build step without its question hands the question out again", async () 
   assert.equal(at.record.step, PREPARE_STEP.build);
   assert.deepEqual(
     reviewEntries(work).map((e) => e.index),
-    ["BUILD_OUTPUT", "BUILD_MATCH"]
+    ["LLM_BUILD_OUTPUT", "LLM_BUILD_XPI_MATCH"]
   );
   cleanup(work);
 });
@@ -469,7 +469,7 @@ test("the first step asks for the build judgement", () => {
   const [safety, root] = JSON.parse(
     fs.readFileSync(workPaths(work).review, "utf8")
   ).entries;
-  assert.equal(safety.index, "BUILD_SAFETY");
+  assert.equal(safety.index, "LLM_BUILD_SAFETY");
   assert.equal(safety.answer, null);
   assert.equal(recordOf(work).vulnerabilities, null);
   assert.equal(recordOf(work).buildResult, null);
@@ -527,7 +527,7 @@ test("an unsafe build is done at once, with nothing audited", async () => {
     { "package.json": packageFile(), "package-lock.json": npmLock() },
     { cache: auditCache() }
   );
-  const at = await extractStep(work, { BUILD_SAFETY: "unsafe" });
+  const at = await extractStep(work, { LLM_BUILD_SAFETY: "unsafe" });
   assert.equal(at.next, "review");
   assert.equal(at.record.step, PREPARE_STEP.done);
   assert.equal(at.record.buildSafety, "unsafe");
@@ -560,12 +560,12 @@ test("agentBuilds skips the permission question", async () => {
 test("a build judgement that is no label, or has no build report, is refused", async () => {
   const work = workFolder({ "package.json": packageFile() });
   await assert.rejects(
-    extractStep(work, { BUILD_SAFETY: "fine" }),
-    refused(/BUILD_SAFETY answers "fine", which this entry does not accept/)
+    extractStep(work, { LLM_BUILD_SAFETY: "fine" }),
+    refused(/LLM_BUILD_SAFETY answers "fine", which this entry does not accept/)
   );
   await assert.rejects(
-    extractStep(work, { BUILD_SAFETY: null }),
-    refused(/BUILD_SAFETY still has no "answer"/)
+    extractStep(work, { LLM_BUILD_SAFETY: null }),
+    refused(/LLM_BUILD_SAFETY still has no "answer"/)
   );
   answer(work, { SCA_ROOT: workPaths(work).sca });
   fs.rmSync(workPaths(work).build, { force: true });
@@ -696,12 +696,12 @@ test("a source stopped only by a locked vulnerability gets a rescued copy", asyn
   assert.deepEqual(recordOf(work), at.record);
   const [output, match, ...rest] = reviewEntries(work);
   assert.deepEqual(rest, []);
-  assert.equal(output.index, "BUILD_OUTPUT");
+  assert.equal(output.index, "LLM_BUILD_OUTPUT");
   assert.deepEqual(
     output.answers.map((a) => a.label),
     ["The rescue failed"]
   );
-  assert.equal(match.index, "BUILD_MATCH");
+  assert.equal(match.index, "LLM_BUILD_XPI_MATCH");
   assert.deepEqual(
     match.answers.map((a) => a.label),
     ["match", "no match"]
@@ -1044,9 +1044,9 @@ test("a rescue's comparison is recorded, and refused without an output", async (
     [
       "The rescue failed",
       "no match",
-      'BUILD_MATCH answers "no match", but BUILD_OUTPUT answers "The rescue failed"',
+      'LLM_BUILD_XPI_MATCH answers "no match", but LLM_BUILD_OUTPUT answers "The rescue failed"',
     ],
-    [output, null, 'BUILD_MATCH still has no "answer"'],
+    [output, null, 'LLM_BUILD_XPI_MATCH still has no "answer"'],
   ]) {
     await assert.rejects(handOutput(work, named, match), refused(problem));
   }
@@ -1107,7 +1107,7 @@ test("a rescue answer that names no path is refused", async () => {
   await assert.rejects(
     handOutput(work, "  "),
     refused(
-      'BUILD_OUTPUT names no path and does not answer "The rescue failed"'
+      'LLM_BUILD_OUTPUT names no path and does not answer "The rescue failed"'
     )
   );
   assert.equal(recordOf(work).step, PREPARE_STEP.rescue);
@@ -1258,7 +1258,7 @@ test("a rescue without its question hands the question out again", async () => {
   assert.equal(again.record.step, PREPARE_STEP.rescue);
   assert.deepEqual(
     reviewEntries(work).map((e) => e.index),
-    ["BUILD_OUTPUT", "BUILD_MATCH"]
+    ["LLM_BUILD_OUTPUT", "LLM_BUILD_XPI_MATCH"]
   );
   cleanup(work);
 });

@@ -1680,7 +1680,7 @@ test("detailLinkLines links every location, XPI_FILE among them", () => {
     "* XPI_ROOT: [extracted addon](/x/work/xpi/)",
     "* SCA_ROOT: [source archive](/x/src)",
     "* ADDON_DESCRIPTION: [summary.md](/x/work/summary.md)",
-    "* BUILD_PROCESS: [build.md](/x/a.build.md)",
+    "* LLM_BUILD_PROCESS: [build.md](/x/a.build.md)",
     "",
     "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
   ]);

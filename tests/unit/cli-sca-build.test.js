@@ -66,7 +66,7 @@ function permittedPrompt(vulns) {
   assert.ok(next.stdout.includes("── SCA Review Prompt ──"), next.stdout);
   assert.equal(headerValue(next.stdout, "ANSWERS"), workPaths(work).review);
   assert.equal(
-    headerValue(next.stdout, "BUILD_PROCESS"),
+    headerValue(next.stdout, "LLM_BUILD_PROCESS"),
     workPaths(work).build
   );
   assert.deepEqual(commandOf(next.stdout), [`--llm-handback ${work}`]);
@@ -74,10 +74,10 @@ function permittedPrompt(vulns) {
 }
 
 /** What the build and rescue prompts say of the agent's comparison of its output with the
- *  submitted XPI, which it answers as BUILD_MATCH. */
+ *  submitted XPI, which it answers as LLM_BUILD_XPI_MATCH. */
 const COMPARED = [
   "compare it with SUBMITTED_XPI, given above: it holds the same files at the same paths, each with the same contents, where only line endings may differ.",
-  'Answer its entry whose "index" is BUILD_MATCH with the "label" of one of its "answers", and with nothing else',
+  'Answer its entry whose "index" is LLM_BUILD_XPI_MATCH with the "label" of one of its "answers", and with nothing else',
   "`match` means exactly the comparison above holds, and nothing less.",
   "Write no notes and no list of differences",
 ];
@@ -132,7 +132,7 @@ test("a rescued review names both roots and the build root", async () => {
   const rows = [
     `* SCA_ROOT: [rescued source (reduced/fixed dependencies)](${rescued})`,
     `* SCA_ROOT_ORIG: [source archive](${sca})`,
-    `* BUILD_ROOT: [build copy](${buildCopy})`,
+    `* LLM_BUILD_ROOT: [build copy](${buildCopy})`,
   ];
   const details = loopSlots(state, {}, work, loadRegistry()).buildDetails;
   for (const row of rows) {
@@ -148,13 +148,13 @@ const DETAIL_ROWS = [
   "SCA_ROOT_ORIG",
   "SCA_EXP_SOURCE",
   "ADDON_DESCRIPTION",
-  "BUILD_PROCESS",
-  "BUILD_SAFETY",
+  "LLM_BUILD_PROCESS",
+  "LLM_BUILD_SAFETY",
   "BUILD_VULNERABILITIES",
-  "BUILD_RESULT",
-  "BUILD_ROOT",
-  "BUILD_OUTPUT",
-  "BUILD_MATCH",
+  "LLM_BUILD_RESULT",
+  "LLM_BUILD_ROOT",
+  "LLM_BUILD_OUTPUT",
+  "LLM_BUILD_XPI_MATCH",
   "REVIEW_REPORT",
 ];
 
@@ -209,8 +209,8 @@ test("each details block holds every row of the block before it", () => {
   assert.equal(build.code, 0, build.stdout + build.stderr);
   const xpi = readJson(work, "prepare").submission.xpi;
   answer(work, {
-    BUILD_OUTPUT: buildInto(workPaths(work).buildCopy),
-    BUILD_MATCH: "match",
+    LLM_BUILD_OUTPUT: buildInto(workPaths(work).buildCopy),
+    LLM_BUILD_XPI_MATCH: "match",
   });
   let out = run(argvOf(commandOf(build.stdout)));
   const blocks = [["permission", detailRowsOf(permission.stdout)]];
@@ -262,13 +262,17 @@ test("each details block holds every row of the block before it", () => {
   );
   const final = blocks.at(-1)[1];
   for (const row of [
-    "* BUILD_SAFETY: safe",
-    "* BUILD_RESULT: built by the agent",
-    "* BUILD_MATCH: match",
+    "* LLM_BUILD_SAFETY: safe",
+    "* LLM_BUILD_RESULT: build succeeded",
+    "* LLM_BUILD_XPI_MATCH: match",
   ]) {
     assert.ok(final.includes(row), `close misses ${row}\n${final.join("\n")}`);
   }
-  for (const name of ["BUILD_VULNERABILITIES", "BUILD_ROOT", "BUILD_OUTPUT"]) {
+  for (const name of [
+    "BUILD_VULNERABILITIES",
+    "LLM_BUILD_ROOT",
+    "LLM_BUILD_OUTPUT",
+  ]) {
     assert.ok(
       final.some((row) => row.startsWith(`* ${name}: `)),
       `close misses ${name}`
@@ -285,7 +289,10 @@ test("the hand-back prints a clean source's build", () => {
   const { work, stdout, dir } = permittedPrompt(FIXTURE_CLEAN);
   assert.equal(readJson(work, "prepare").step, "build");
   assert.equal(headerValue(stdout, "SCA_ROOT"), path.join(work, "sca"));
-  assert.equal(headerValue(stdout, "BUILD_ROOT"), workPaths(work).buildCopy);
+  assert.equal(
+    headerValue(stdout, "LLM_BUILD_ROOT"),
+    workPaths(work).buildCopy
+  );
   assert.equal(headerValue(stdout, "BUILD_COPY"), undefined);
   assert.equal(headerValue(stdout, "RESCUE_ROOT"), undefined);
   assert.ok(
@@ -297,7 +304,7 @@ test("the hand-back prints a clean source's build", () => {
   );
   assert.ok(!unwrapped(stdout).includes("Copy SCA_ROOT"));
   for (const said of [
-    "Build in BUILD_ROOT, and only there",
+    "Build in LLM_BUILD_ROOT, and only there",
     "Write it as an absolute path.",
     '"Build attempt"',
     ...COMPARED,
@@ -320,7 +327,10 @@ test("the hand-back prints a vulnerable source's rescue", () => {
   });
   assert.equal(readJson(work, "prepare").step, "rescue");
   assert.equal(headerValue(stdout, "RESCUE_ROOT"), path.join(work, "rescued"));
-  assert.equal(headerValue(stdout, "BUILD_ROOT"), workPaths(work).buildCopy);
+  assert.equal(
+    headerValue(stdout, "LLM_BUILD_ROOT"),
+    workPaths(work).buildCopy
+  );
   assert.equal(headerValue(stdout, "BUILD_COPY"), undefined);
   assert.equal(
     headerValue(stdout, "SUBMITTED_XPI"),
@@ -338,7 +348,7 @@ test("the hand-back prints a vulnerable source's rescue", () => {
   assert.equal(lines[at + 1], commands[1]);
   for (const said of [
     "Never install or build anything in RESCUE_ROOT",
-    "Then build in BUILD_ROOT, and only there.",
+    "Then build in LLM_BUILD_ROOT, and only there.",
     "npm install --package-lock-only --ignore-scripts",
     "npm audit fix --package-lock-only --ignore-scripts",
     "build NOTHING",
@@ -373,8 +383,8 @@ test("a safe build prints the Build Review Details and the permission question",
   assert.equal(headerValue(asked.stdout, "ANSWERS"), workPaths(work).review);
   const block = [
     `* SCA_ROOT: [source archive](${path.join(work, "sca")})`,
-    `* BUILD_PROCESS: [build.md](${workPaths(work).build})`,
-    "* BUILD_SAFETY: safe",
+    `* LLM_BUILD_PROCESS: [build.md](${workPaths(work).build})`,
+    "* LLM_BUILD_SAFETY: safe",
     "",
     'Reply "next" to continue the review with the question whether the agent may ' +
       "build the add-on.",

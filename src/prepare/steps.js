@@ -87,13 +87,13 @@ const EXP_SOURCE = "SCA_EXP_SOURCE";
 const PACKAGE_MANAGERS = "PACKAGE_MANAGERS";
 /** The review file's entry for the reader's judgement of the build, as
  *  `llm-sca-review-prompt` names it. */
-const BUILD_SAFETY = "BUILD_SAFETY";
+const LLM_BUILD_SAFETY = "LLM_BUILD_SAFETY";
 /** The review file's entry for what the agent's build produced, as `llm-sca-review-prompt`
  *  names it: in `build/` after a build and after a rescue. */
-const BUILD_OUTPUT = "BUILD_OUTPUT";
+const LLM_BUILD_OUTPUT = "LLM_BUILD_OUTPUT";
 /** The review file's entry for the agent's comparison of that output with the submitted XPI,
  *  as `llm-sca-review-prompt` names it: answered only where the build produced an output. */
-const BUILD_MATCH = "BUILD_MATCH";
+const LLM_BUILD_XPI_MATCH = "LLM_BUILD_XPI_MATCH";
 /** Whether the hot runs switched the agent's builds on (WEBEXT_LINTER_AGENT_BUILDS=1): their
  *  stand-in for the reviewer's "Let it build", which nothing documents. Read once: no setter,
  *  nothing to undo. */
@@ -183,7 +183,7 @@ function rootEntries(record) {
  * @returns {object}
  */
 function safetyEntry(judgement) {
-  return valueEntry({ name: BUILD_SAFETY, values: judgement.values }, null);
+  return valueEntry({ name: LLM_BUILD_SAFETY, values: judgement.values }, null);
 }
 
 /**
@@ -208,7 +208,7 @@ function managersEntry(question) {
  */
 function outputPhase(ask) {
   return {
-    name: BUILD_OUTPUT,
+    name: LLM_BUILD_OUTPUT,
     answer: "output",
     question: ask.question,
     failed: ask.failed,
@@ -223,7 +223,7 @@ function outputPhase(ask) {
  */
 function matchEntry(question) {
   return valueEntry(
-    { name: BUILD_MATCH, values: question.values },
+    { name: LLM_BUILD_XPI_MATCH, values: question.values },
     question.question
   );
 }
@@ -241,11 +241,11 @@ function buildEntries(asked, match) {
 
 /**
  * The build or rescue step's two answers, read from the review file, or undefined where the
- * file holds no BUILD_OUTPUT entry: the file an earlier step left, by a run cut short before
+ * file holds no LLM_BUILD_OUTPUT entry: the file an earlier step left, by a run cut short before
  * it wrote the question, which is then handed out again.
  *
- * BUILD_OUTPUT is checked as an output phase takes it. BUILD_MATCH belongs to an output only:
- * beside the `failed` label it must stay null, and beside a path it must be one of the
+ * LLM_BUILD_OUTPUT is checked as an output phase takes it. LLM_BUILD_XPI_MATCH belongs to an
+ * output only: beside the `failed` label it must stay null, and beside a path it must be one of the
  * labels its entry offers. Either way round is refused, with nothing changed. The match comes
  * back as its id.
  * @param {string} work
@@ -258,27 +258,27 @@ function builtAnswers(work, asked, match) {
   const file = workPaths(work).review;
   const keyOf = (e) => String(e?.index);
   const entries = fs.existsSync(file) ? readHandback(file).entries : [];
-  if (!entries.some((e) => keyOf(e) === BUILD_OUTPUT)) {
+  if (!entries.some((e) => keyOf(e) === LLM_BUILD_OUTPUT)) {
     return undefined;
   }
   const phase = outputPhase(asked);
   const answer = answersOf(
-    entries.filter((e) => keyOf(e) !== BUILD_MATCH),
+    entries.filter((e) => keyOf(e) !== LLM_BUILD_XPI_MATCH),
     [outputEntry(phase)],
     phase,
     keyOf
-  ).get(BUILD_OUTPUT);
-  const compared = entries.filter((e) => keyOf(e) === BUILD_MATCH);
+  ).get(LLM_BUILD_OUTPUT);
+  const compared = entries.filter((e) => keyOf(e) === LLM_BUILD_XPI_MATCH);
   if (answer === phase.failed.label) {
     if (compared.length !== 1) {
       throw new HandbackRefused(
-        `${BUILD_MATCH} ${compared.length ? "appears twice" : "is missing from the file"}`
+        `${LLM_BUILD_XPI_MATCH} ${compared.length ? "appears twice" : "is missing from the file"}`
       );
     }
     if (compared[0][SLOT] !== null && compared[0][SLOT] !== undefined) {
       throw new HandbackRefused(
-        `${BUILD_MATCH} answers "${displayLine(String(compared[0][SLOT]))}", but ` +
-          `${BUILD_OUTPUT} answers "${phase.failed.label}": leave its "${SLOT}" null`
+        `${LLM_BUILD_XPI_MATCH} answers "${displayLine(String(compared[0][SLOT]))}", but ` +
+          `${LLM_BUILD_OUTPUT} answers "${phase.failed.label}": leave its "${SLOT}" null`
       );
     }
     return { answer, match: null };
@@ -288,7 +288,7 @@ function builtAnswers(work, asked, match) {
     [matchEntry(match)],
     { name: phase.name, answer: "value" },
     keyOf
-  ).get(BUILD_MATCH);
+  ).get(LLM_BUILD_XPI_MATCH);
   return {
     answer,
     match: match.values.find((v) => v.label === picked).value,
@@ -524,7 +524,7 @@ function answeredRoots(work, record, judgement) {
   const keyOf = (e) => String(e?.index);
   const all = readHandback(paths.review).entries;
   // Every entry but the judgement names a folder.
-  const handed = all.filter((e) => keyOf(e) !== BUILD_SAFETY);
+  const handed = all.filter((e) => keyOf(e) !== LLM_BUILD_SAFETY);
   // A blank answer names no folder, and would otherwise resolve to the folder it is
   // resolved against.
   for (const entry of handed) {
@@ -543,11 +543,11 @@ function answeredRoots(work, record, judgement) {
   );
   // The judgement is a process value, checked against the labels its entry offered.
   const picked = answersOf(
-    all.filter((e) => keyOf(e) === BUILD_SAFETY),
+    all.filter((e) => keyOf(e) === LLM_BUILD_SAFETY),
     [safetyEntry(judgement)],
     { name: "extract", answer: "value" },
     keyOf
-  ).get(BUILD_SAFETY);
+  ).get(LLM_BUILD_SAFETY);
   const sca = realSca(paths);
   const root = realFolder(path.resolve(sca, answers.get(ROOT).trim()));
   if (!root || relativeInside(root, sca) === null) {

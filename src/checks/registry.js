@@ -617,8 +617,8 @@ export class Registry {
    * carries none - the same shape the SCA prompt's steps come back in, so all of them are
    * filtered by one evaluator (src/checks/condition.js holds) against the facts their run
    * meets.
-   * `buildResults` words what came of the build in the Build Review Details, by the build
-   * result the review holds (BUILD_RESULT_FACTS). A phase is `routed` where a check asks
+   * `buildResults` words what came of the agent's build in the Build Review Details, by the
+   * build result the review holds (WORDED_BUILD_FACTS). A phase is `routed` where a check asks
    * its question there (`asked-in`), which ties issuing it to that check's open to-do
    * (src/report/phases.js nextPhase).
    * @returns {{preamble: {when: ?object, text: string}[], frame: string, handover: string,

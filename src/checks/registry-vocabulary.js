@@ -166,18 +166,21 @@ export const sweepSlot = (artifact) =>
   `sweep${artifact.charAt(0)}${artifact.slice(1).toLowerCase()}`;
 export const sweepAnswersSlot = (artifact) => `${sweepSlot(artifact)}Answers`;
 
-/** What came of the build, as the review loop names it: the agent built the add-on in the
- *  preparation (`agent-built`), its build failed (`agent-build-failed`), the build was judged
- *  unsafe so nothing was built (`build-unsafe`), or the agent was not let build, or nothing
- *  was prepared, and the reviewer builds it (`self-build`). Exactly one holds in every
- *  review (src/report/loop.js buildResultFact), and the Build Review Details word it
- *  (`build-results`, assets/registry.yaml). */
-export const BUILD_RESULT_FACTS = [
+/** The build results that report the agent's attempt: it built the add-on in the
+ *  preparation (`agent-built`), its build failed (`agent-build-failed`), or the build was
+ *  judged unsafe so nothing was built (`build-unsafe`). The Build Review Details word
+ *  exactly these in their LLM_BUILD_RESULT row (`build-results`, assets/registry.yaml). */
+export const WORDED_BUILD_FACTS = [
   "agent-built",
   "agent-build-failed",
   "build-unsafe",
-  "self-build",
 ];
+
+/** What came of the build, as the review loop names it: one of WORDED_BUILD_FACTS, or the
+ *  agent was not let build, nothing was prepared, or its rescue failed, and the reviewer
+ *  builds it (`self-build`). Exactly one holds in every review (src/report/loop.js
+ *  buildResultFact). */
+export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
 
 /** The facts the review loop's `when:` conditions can name (src/checks/condition.js), and
  *  so what a step of it is printed under (stepsOf, src/report/phases.js):
@@ -279,13 +282,13 @@ export const SCA_PROMPT_COMMAND = "{{flags}}";
  *  is offered exactly once (assertScaPrompt), so every answer reads as one of the two. */
 export const PACKAGE_MANAGER_VALUES = ["allow", "decline"];
 
-/** The values the preparation's BUILD_SAFETY judgement accepts back, by id: the agent's
+/** The values the preparation's LLM_BUILD_SAFETY judgement accepts back, by id: the agent's
  *  judgement of the build it reported. Each id is offered exactly once (assertScaPrompt),
  *  and the review's `build-safety` phase accepts each, since the review reads the recorded
  *  judgement as that phase's value. */
 export const BUILD_SAFETY_VALUES = ["safe", "unsafe"];
 
-/** The values the preparation's BUILD_MATCH entry accepts back, by id: the agent's
+/** The values the preparation's LLM_BUILD_XPI_MATCH entry accepts back, by id: the agent's
  *  comparison of what its build produced with the submitted XPI. Each id is offered exactly
  *  once (assertScaPrompt), and the record holds the id it was answered with. */
 export const BUILD_MATCH_VALUES = ["match", "no match"];

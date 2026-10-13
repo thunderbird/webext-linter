@@ -42,10 +42,10 @@ of `npm test`: the add-on harness reads `tests/addons/` and the unit runner
    cannot read the case or the folder.
 
 `check.js` reads the review's state (`.review/state.json`) through the linter's own
-readers. At row 14 it compares `BUILD_SAFETY`, the counts of `BUILD_VULNERABILITIES` the case
-names, `BUILD_RESULT`, the folder `BUILD_OUTPUT` lies in (always `build`, or `false` where
+readers. At row 14 it compares `LLM_BUILD_SAFETY`, the counts of `BUILD_VULNERABILITIES` the case
+names, `LLM_BUILD_RESULT` (`null` where the block shows none), the folder `LLM_BUILD_OUTPUT` lies in (always `build`, or `false` where
 the block names none) and the folder `SCA_ROOT` lies in (`sca` or `rescued`). It prints
-`BUILD_MATCH` and never compares it, since a case's lock is newer than the one its XPI was
+`LLM_BUILD_XPI_MATCH` and never compares it, since a case's lock is newer than the one its XPI was
 built from. Whatever the
 stop, a `rescued/` in the work folder must hold no `node_modules/`, since nothing is installed
 or built in it. At an

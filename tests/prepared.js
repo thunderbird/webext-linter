@@ -75,7 +75,7 @@ export function answer(work, answers) {
   const file = workPaths(work).review;
   const doc = JSON.parse(fs.readFileSync(file, "utf8"));
   const given = {
-    BUILD_SAFETY: "safe",
+    LLM_BUILD_SAFETY: "safe",
     PACKAGE_MANAGERS: "Let it build",
     ...answers,
   };
@@ -174,7 +174,7 @@ export async function realPreparation({
   assert.equal(at.work, work, "every step is in the same work folder");
   if (at.record.step === PREPARE_STEP.build) {
     const output = buildInto(workPaths(work).buildCopy);
-    answer(work, { BUILD_OUTPUT: output, BUILD_MATCH: match });
+    answer(work, { LLM_BUILD_OUTPUT: output, LLM_BUILD_XPI_MATCH: match });
     at = await step(work);
     assert.equal(at.next, "review", "a clean source is built and reviewed");
     assert.equal(at.record.buildOutput, output);
@@ -190,8 +190,8 @@ export async function realPreparation({
   if (rescue) {
     rescue(at.record.roots.scaRoot);
     answer(work, {
-      BUILD_OUTPUT: buildRescued(work, at.record.roots.scaRoot),
-      BUILD_MATCH: match,
+      LLM_BUILD_OUTPUT: buildRescued(work, at.record.roots.scaRoot),
+      LLM_BUILD_XPI_MATCH: match,
     });
     at = await step(work);
     assert.equal(at.next, "review", "the rescued copy came out clean");
@@ -199,7 +199,10 @@ export async function realPreparation({
     assert.equal(at.work, work);
     return at;
   }
-  answer(work, { BUILD_OUTPUT: "The rescue failed", BUILD_MATCH: null });
+  answer(work, {
+    LLM_BUILD_OUTPUT: "The rescue failed",
+    LLM_BUILD_XPI_MATCH: null,
+  });
   at = await step(work);
   assert.equal(at.next, "review", "a failed rescue is reviewed unrescued");
   assert.equal(at.work, work);

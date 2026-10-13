@@ -433,7 +433,7 @@ function isValueBlock(paragraph) {
 /** The values the first prompt of the preparation hands its reader, in the order the steps
  *  use them. Named here because the prompt's steps name them: the facts are a table the
  *  reader looks up, never a sentence they have to extract a path from. The first three are
- *  read off the submission. EXTRACT_TO, BUILD_PROCESS and ANSWERS are the work folder's own:
+ *  read off the submission. EXTRACT_TO, LLM_BUILD_PROCESS and ANSWERS are the work folder's own:
  *  where the source archive is extracted, where the build report is written, and the review
  *  file the roots and the build judgement are handed back in. */
 const SUBMISSION_VALUES = [
@@ -441,7 +441,7 @@ const SUBMISSION_VALUES = [
   ["SOURCE_ARCHIVE", (v) => v.submission.source],
   ["FOLDER", (v) => v.submission.folder],
   ["EXTRACT_TO", (v) => v.extractTo],
-  ["BUILD_PROCESS", (v) => v.buildProcess],
+  ["LLM_BUILD_PROCESS", (v) => v.buildProcess],
   ["ANSWERS", (v) => v.answers],
 ];
 
@@ -478,9 +478,9 @@ function valueLines(entries) {
  * a path by looking up a name rather than by parsing a sentence: the Submission block on the
  * first prompt - EXTRACT_TO among them: this tool cannot open a source archive itself, but
  * it can still name where one should land - ANSWERS on every later prompt, and the
- * Build block on the build and rescue prompts: SCA_ROOT, BUILD_ROOT and BUILD_PROCESS on the
- * build's, RESCUE_ROOT, BUILD_ROOT and BUILD_PROCESS on the rescue's, and SUBMITTED_XPI on
- * both, which the build's output is compared with. The STEPS
+ * Build block on the build and rescue prompts: SCA_ROOT, LLM_BUILD_ROOT and LLM_BUILD_PROCESS
+ * on the build's, RESCUE_ROOT, LLM_BUILD_ROOT and LLM_BUILD_PROCESS on the rescue's, and
+ * SUBMITTED_XPI on both, which the build's output is compared with. The STEPS
  * are prose, and
  * they name those given values - and the ones the reader still has to work out, <SCA_ROOT>
  * and <SCA_EXP_SOURCE> - instead of carrying paths themselves. The FLAGS are the finished
@@ -543,8 +543,8 @@ export function scaPromptLines(prompt, list, values) {
     : [
         ["SCA_ROOT", values.scaRoot],
         ["RESCUE_ROOT", values.rescueRoot],
-        ["BUILD_ROOT", values.buildRoot],
-        ["BUILD_PROCESS", values.buildProcess],
+        ["LLM_BUILD_ROOT", values.buildRoot],
+        ["LLM_BUILD_PROCESS", values.buildProcess],
         ["SUBMITTED_XPI", values.submittedXpi],
       ].filter(([, value]) => value);
   if (build.length) {
@@ -705,11 +705,11 @@ export function detailLinkLines(meta) {
 /**
  * The details rows alone, one per value the meta holds, in the blocks' order: every details
  * block is these rows (src/report/loop.js detailsMeta), and the Review Details add the
- * schema line. XPI_FILE is named by what was submitted and BUILD_OUTPUT by its own basename,
+ * schema line. XPI_FILE is named by what was submitted and LLM_BUILD_OUTPUT by its own basename,
  * which is what the submission and the build called them.
  *
  * SCA_ROOT is the reviewed source: the source archive, or after a rescue the rescued copy,
- * beside which SCA_ROOT_ORIG names the same root in the source archive. BUILD_ROOT is the
+ * beside which SCA_ROOT_ORIG names the same root in the source archive. LLM_BUILD_ROOT is the
  * root in the copy the agent built in, named where it built or tried to.
  * @param {ReviewMeta & {scaRootOrig?: string, buildSafety?: string,
  *   buildVulnerabilities?: {moderate: number, high: number, critical: number},
@@ -747,10 +747,10 @@ export function detailRows(meta) {
     rows.push(["ADDON_DESCRIPTION", "summary.md", meta.summaryFile]);
   }
   if (meta.buildFile) {
-    rows.push(["BUILD_PROCESS", "build.md", meta.buildFile]);
+    rows.push(["LLM_BUILD_PROCESS", "build.md", meta.buildFile]);
   }
   if (meta.buildSafety) {
-    rows.push(["BUILD_SAFETY", null, meta.buildSafety]);
+    rows.push(["LLM_BUILD_SAFETY", null, meta.buildSafety]);
   }
   if (meta.buildVulnerabilities) {
     const { moderate, high, critical } = meta.buildVulnerabilities;
@@ -761,19 +761,19 @@ export function detailRows(meta) {
     ]);
   }
   if (meta.buildResult) {
-    rows.push(["BUILD_RESULT", null, meta.buildResult]);
+    rows.push(["LLM_BUILD_RESULT", null, meta.buildResult]);
   }
   if (meta.buildRoot) {
-    rows.push(["BUILD_ROOT", "build copy", meta.buildRoot]);
+    rows.push(["LLM_BUILD_ROOT", "build copy", meta.buildRoot]);
   }
   if (meta.buildOutput) {
     rows.push([
-      "BUILD_OUTPUT",
+      "LLM_BUILD_OUTPUT",
       displayLine(path.basename(meta.buildOutput)),
       meta.buildOutput,
     ]);
     if (meta.buildMatch) {
-      rows.push(["BUILD_MATCH", null, meta.buildMatch]);
+      rows.push(["LLM_BUILD_XPI_MATCH", null, meta.buildMatch]);
     }
   }
   if (meta.reportFile) {

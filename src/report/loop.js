@@ -98,7 +98,7 @@ function runOf(state, ordered, phases, registry) {
  * as the preparation recorded it (`agent-built`, `agent-build-failed`), else a build judged
  * unsafe (`build-unsafe`), by the preparation or by this review's `build-safety` phase, which
  * nothing builds, else a build the reviewer makes (`self-build`): the agent was not let
- * build, or nothing was prepared.
+ * build, nothing was prepared, or its rescue failed.
  * @param {import("./state.js").LoopState} state
  * @returns {string}
  */
@@ -644,12 +644,13 @@ export function settle(state, registry) {
  * was ever asked to write is not among them. Beside them the source archive's root where a
  * rescued copy was reviewed, and what the review holds of the build.
  *
- * BUILD_SAFETY is the judgement the review holds, the preparation's or its own, and
- * BUILD_RESULT the wording of what came of the build (buildResultFact), held where the
- * review shows the Build Review Details: a source code review whose build every guard
- * vouches for. BUILD_ROOT is the root the agent built in where it built or tried to, and
- * BUILD_OUTPUT what it built, beside which BUILD_MATCH is its comparison with the submitted
- * XPI.
+ * LLM_BUILD_SAFETY is the judgement the review holds, the preparation's or its own, and
+ * LLM_BUILD_RESULT the wording of what came of the agent's build (buildResultFact), held where
+ * the review shows the Build Review Details, a source code review whose build every guard
+ * vouches for, and only for a result with a wording: not where the reviewer builds it.
+ * LLM_BUILD_ROOT is the root the agent built in where it built or tried to, and
+ * LLM_BUILD_OUTPUT what it built, beside which LLM_BUILD_XPI_MATCH is its comparison with the
+ * submitted XPI.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {import("./format.js").ReviewMeta}
@@ -662,6 +663,10 @@ function detailsMeta(state, registry) {
     ...rest
   } = state.report.meta;
   const build = state.build ?? {};
+  const worded =
+    state.run?.sca && state.run["build-guarded"]
+      ? registry.llmPhases().buildResults[buildResultFact(state)]
+      : undefined;
   return {
     ...rest,
     ...(spawnIssued(state) ? { summaryFile } : {}),
@@ -675,12 +680,7 @@ function detailsMeta(state, registry) {
     ...(build.vulnerabilities
       ? { buildVulnerabilities: build.vulnerabilities }
       : {}),
-    ...(state.run?.sca && state.run["build-guarded"]
-      ? {
-          buildResult:
-            registry.llmPhases().buildResults[buildResultFact(state)],
-        }
-      : {}),
+    ...(worded ? { buildResult: worded } : {}),
     ...(build.root ? { buildRoot: build.root } : {}),
     ...(build.output ? { buildOutput: build.output } : {}),
     ...(build.match ? { buildMatch: build.match } : {}),
