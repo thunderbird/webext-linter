@@ -118,8 +118,7 @@ review's build part is these steps:
 1. **The review starts** with the source, the build judgement, the build result and output
    the preparation recorded.
 2. **The deterministic checks run.** A source whose preparation gave its rescue up aborts
-   here for build issues: `build-fails` is reported without a question, beside the
-   vulnerability findings, which stay listed. A review that was **aborted early** never
+   here: its vulnerability findings end the review. A review that was **aborted early** never
    reaches the steps below - each one reads `NOT aborted`.
 3. **`build-safety`**, only where nothing was prepared: the agent writes the build report
    and records its judgement, and builds nothing.
@@ -539,9 +538,8 @@ the review. The record keeps the audited lock's vulnerable packages counted by s
 - **The rescue failed** (the reader said so, the copy is still vulnerable, or the output is
   not inside `build/`): the copy and `build/` are deleted, the record says the rescue failed, and the
   original is reviewed, **unrescued**: its vulnerability checks come early in the review,
-  the first of them to report a vulnerable lock entry stops the checks, and the review is
-  aborted for build issues too (`build-fails`, asked of nobody), its vulnerability
-  findings listed. It closes as any aborted review does. Its audit of the lock asks OSV
+  the first of them to report a vulnerable lock entry stops the checks, and its
+  vulnerability findings end the review. It closes as any aborted review does. Its audit of the lock asks OSV
   nothing the preparation already asked: every audit of the run reads OSV's answers from
   `.cache/osv.json` in the work folder.
 

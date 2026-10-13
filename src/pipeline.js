@@ -67,7 +67,7 @@ import {
   renderManualItems,
   withDefaultNotes,
 } from "./report/responses.js";
-import { finding, resolveHolds } from "./report/finding.js";
+import { resolveHolds } from "./report/finding.js";
 import { assignRefs, orderReview } from "./report/order.js";
 import { earlyExitOf, withoutQuestions } from "./report/early-exit.js";
 import { STATE_VERSION } from "./report/state.js";
@@ -707,8 +707,7 @@ async function reviewSubmission(opts, work, prepared) {
   // finished findings, manual items and the checks that ran. Each throwing check is
   // isolated so one failure can't abort all. A rejected Experiment stops at its first
   // check, experiment-not-allowed, as any review stops at a check that aborts it - and a
-  // source whose preparation failed to rescue its lock stops at its vulnerability checks,
-  // and is then reported for build issues below.
+  // source whose preparation failed to rescue its lock stops at its vulnerability checks.
   // The `--eslint` opt-in gates code-sanity inside loadChecks (eslintEligible).
   progress(""); // close the Setup section before runChecks prints "── Activity ──"
   const {
@@ -721,25 +720,6 @@ async function reviewSubmission(opts, work, prepared) {
     siblings
   );
   findings.push(...reviewFindings);
-  // A source whose preparation gave its rescue up has no clean build to reproduce the XPI
-  // from: the check for a source that cannot be built reports it here, without a question,
-  // and the review ends for build issues through the early exit, beside the vulnerability
-  // findings that started the rescue.
-  if (
-    prepared?.buildResult === BUILD_RESULT.rescueFailed &&
-    checkSelected(BUILD_FAILS_CHECK, {
-      only: opts.checksOnly,
-      skip: opts.checksSkip,
-    })
-  ) {
-    findings.push(
-      finding({
-        ruleId: BUILD_FAILS_CHECK,
-        severity: registry.checkEntry(BUILD_FAILS_CHECK).severity,
-        artifact: ARTIFACT_SCA,
-      })
-    );
-  }
 
   // The review-derived half of meta (the base half - action/xpi/... - is the `meta` setup
   // step's): the schema stamps, the checks that ran, and the manual-review to-do list.
@@ -1067,9 +1047,6 @@ async function reviewSubmission(opts, work, prepared) {
  *  every build of the preparation runs in, and that preparation's record. A review claiming them
  *  would refuse the very folder it was prepared in. */
 const WORK_INPUTS = new Set(["sca", "rescued", "buildCopy", "prepare"]);
-
-/** The check a source that cannot be built reports. */
-const BUILD_FAILS_CHECK = "build-fails";
 
 /**
  * The vulnerable packages of the lock this review read, counted by severity from its own

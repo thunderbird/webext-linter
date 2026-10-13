@@ -1871,11 +1871,10 @@ test("a late-exit error aborts a plain review and withholds its questions", asyn
 });
 
 // A source whose preparation gave its rescue up: its vulnerability checks, early in the phase,
-// report the lock and stop the checks, and the check for a source that cannot be built is
-// reported without a question, so the review ends for build issues beside the
-// vulnerabilities. Its audit of the lock is answered from the run cache folder its
-// preparation read too, so OSV is asked nothing.
-test("an unrescued review ends for build issues and keeps its vulnerability findings", async () => {
+// report the lock and stop the checks, so the review ends on the known vulnerabilities alone,
+// with no build-fails finding. Its audit of the lock is answered from the run cache folder
+// its preparation read too, so OSV is asked nothing.
+test("an unrescued review ends on its known vulnerabilities alone", async () => {
   // OSV's answers to the audit, and npm's download counts, which every source review asks
   // for its declared packages. Nothing else is answered, OSV above all.
   const workCache = seedWorkCache({
@@ -1914,13 +1913,11 @@ test("an unrescued review ends for build issues and keeps its vulnerability find
   );
   assert.deepEqual(
     findings.map((f) => [f.ruleId, f.file, f.loc?.line]),
-    [
-      ["vendor-vulnerable-dev", "package-lock.json", 13],
-      ["build-fails", null, undefined],
-    ]
+    [["vendor-vulnerable-dev", "package-lock.json", 13]]
   );
+  assert.ok(!has(findings, "build-fails"));
   assert.deepEqual(
-    meta.earlyExit.reasons.map((r) => r.id),
-    ["known-vulnerabilities", "unreproducible-build"]
+    meta.earlyExit.reasons.map((r) => [r.id, r.text]),
+    [["known-vulnerabilities", "Known security vulnerabilities"]]
   );
 });

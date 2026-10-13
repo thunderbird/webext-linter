@@ -225,8 +225,8 @@ which means either nothing was built or the build output was committed beside th
   preparation, where it did), and the build question is asked alone right after, answered
   `Builds and reproduces`, `Does not reproduce`, `Does not build` or `Is unsafe to
   build`. The last three report `build-not-reproduced`, `build-fails` or `build-unsafe`,
-  so the developer is told why the review stopped, and a source whose preparation gave its
-  rescue up reports `build-fails` without a question. The review itself builds
+  so the developer is told why the review stopped. A source whose preparation gave its
+  rescue up ends the review through its vulnerability findings. The review itself builds
   nothing. With any check the build relies on switched off (`build-guard` in the
   registry), the Build Review Details are not shown, and the question is still asked.
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the

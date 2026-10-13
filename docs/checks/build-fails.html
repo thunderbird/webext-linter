@@ -25,8 +25,8 @@
         instead, whose one response covers every reason. Under <code>--llm-review</code> that question is put
         to the reviewer alone in the <code>built</code> phase, with four answers, and
         answering <em>Does not build</em> reports this check in its place. A source
-        whose preparation gave its rescue up reports it without a question, since nothing
-        clean can be built from it.
+        whose preparation gave its rescue up does not report it: its vulnerability
+        findings end the review.
       </p>
 
       <h2>Decision flow</h2>
@@ -36,7 +36,6 @@ flowchart TD
   A["A source-code submission<br/>under --llm-review"] --> Q{"Reproducing the XPI<br/>from the source"}
   Q -- "Builds and reproduces" --> OK([the review goes on])
   Q -- "Does not build" --> ERR([ERROR: source cannot be built<br/>the review is aborted])
-  R["A preparation whose rescue<br/>was given up"] --> ERR
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -64,7 +63,7 @@ flowchart TD
 
       <p class="source-note">
         Source of truth: <code>src/checks/rules/build-fails.js</code>, the <code>built</code>
-        phase and the entry in <code>assets/registry.yaml</code>, and <code>src/pipeline.js</code> for a rescue given up.
+        phase and the entry in <code>assets/registry.yaml</code>.
       </p>
     </main>
 

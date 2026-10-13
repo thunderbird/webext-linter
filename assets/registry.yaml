@@ -1035,8 +1035,7 @@ deterministic-phase:
 # SCA only: the three reasons a source does not build into the shipped XPI, one check each so
 # the developer is told which. Nothing in the files decides any of them, so their rules raise
 # nothing. Each is the finding of one answer of the `built` phase (its value `reports` it,
-# src/report/loop.js recordValue), and a preparation whose rescue was given up reports
-# build-fails without a question (src/pipeline.js). Each aborts the review for build issues.
+# src/report/loop.js recordValue). Each aborts the review for build issues.
 - title: Source does not build into the submitted XPI
   severity: error
   check: build-not-reproduced
@@ -2124,8 +2123,8 @@ review-early-exit:
 # build/, so nothing is installed or built in rescued/. The linter audits the copy again and
 # checks the output the reader named, which lies in build/. A clean, built copy is reviewed.
 # A failed rescue is deleted with build/, and the source as submitted is reviewed: its
-# vulnerability checks report the lock, and the review ends for build issues
-# (build-reproduces-xpi, src/pipeline.js). Every audit of the run asks OSV through the run's cache, so that review
+# vulnerability checks report the lock and end the review. Every audit of the run asks OSV
+# through the run's cache, so that review
 # asks nothing the preparation already did (src/vendor/osv-cache.js).
 #
 # The step lists are prompts. `extract` is printed by --llm-sca-review with the intro and

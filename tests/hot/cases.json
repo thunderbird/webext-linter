@@ -42,8 +42,7 @@
       "submission": "/home/john/Downloads/reviews/hot/reduce-fails",
       "expect": {
         "stop": "abort",
-        "reasons": ["known-vulnerabilities", "unreproducible-build"],
-        "findings": ["build-fails"]
+        "reasons": ["known-vulnerabilities"]
       }
     },
     {
@@ -63,8 +62,7 @@
       "submission": "/home/john/Downloads/reviews/hot/fix-fails",
       "expect": {
         "stop": "abort",
-        "reasons": ["known-vulnerabilities", "unreproducible-build"],
-        "findings": ["build-fails"]
+        "reasons": ["known-vulnerabilities"]
       }
     },
     {
@@ -72,8 +70,7 @@
       "submission": "/home/john/Downloads/reviews/hot/fix-impossible",
       "expect": {
         "stop": "abort",
-        "reasons": ["known-vulnerabilities", "unreproducible-build"],
-        "findings": ["build-fails"]
+        "reasons": ["known-vulnerabilities"]
       }
     },
     {
