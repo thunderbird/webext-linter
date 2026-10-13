@@ -104,6 +104,20 @@ export function buildInto(folder) {
 }
 
 /**
+ * The agent's build in a rescue, as the rescue prompt has it made: `build/` replaced with a
+ * copy of the whole `rescued/`, and built at the root's place in it (buildInto).
+ * @param {string} work  The work folder, real.
+ * @param {string} root  The rescued copy's root.
+ * @returns {string}  The output, absolute.
+ */
+export function buildRescued(work, root) {
+  const { rescued, buildCopy } = workPaths(work);
+  fs.rmSync(buildCopy, { recursive: true, force: true });
+  fs.cpSync(rescued, buildCopy, { recursive: true, verbatimSymlinks: true });
+  return buildInto(path.join(buildCopy, path.relative(rescued, root)));
+}
+
+/**
  * Prepare a source code review for real: the work folder a --llm-sca-review run creates, the
  * source extracted into its sca/ and handed back as the root, beside a build report judged
  * safe, the reviewer letting the agent build, and every hand-back after it.
@@ -113,7 +127,7 @@ export function buildInto(folder) {
  * is done at once.
  * A vulnerable one gets its rescued copy, and `rescue` is the agent's work in it: a function
  * of the copy's root, which changes what it must for the copy's audit to come out clean, and
- * after which the copy is built (buildInto) - or null, for an agent that answers that the
+ * after which a copy of it is built in build/ (buildRescued) - or null, for an agent that answers that the
  * rescue failed, so the copy is deleted and the original is done, its roots back in sca/.
  * Each step is asserted to move as the preparation moves it.
  * @param {{source: string, xpi: string, flags?: object, cache?: string,
@@ -171,7 +185,9 @@ export async function realPreparation({
   const copy = workPaths(work).rescued;
   if (rescue) {
     rescue(at.record.roots.scaRoot);
-    answer(work, { BUILD_OUTPUT: buildInto(at.record.roots.scaRoot) });
+    answer(work, {
+      BUILD_OUTPUT: buildRescued(work, at.record.roots.scaRoot),
+    });
     at = await step(work);
     assert.equal(at.next, "review", "the rescued copy came out clean");
     assert.equal(at.record.buildResult, "built");

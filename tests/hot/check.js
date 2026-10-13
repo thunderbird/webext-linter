@@ -4,9 +4,10 @@
 //
 // Reads only the linter's own files in the work folder, through the readers the linter
 // uses itself: the review's state at the Build Review Details (row 14), or the settled
-// review of an aborted one. Prints each difference and exits 1 on a mismatch, 0 on a
-// match, 2 when it cannot read the case or the folder. Asserts outcomes, never package
-// versions.
+// review of an aborted one, and that the rescued copy, where there is one, holds no
+// node_modules/: nothing is ever installed or built in it. Prints each difference and exits 1
+// on a mismatch, 0 on a match, 2 when it cannot read the case or the folder. Asserts
+// outcomes, never package versions.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,6 +36,33 @@ function areaOf(work, target) {
     return null;
   }
   return rel.split(path.sep)[0];
+}
+
+/**
+ * Every node_modules/ folder inside `folder`, links not followed, relative to it.
+ * @param {string} folder
+ * @returns {string[]}
+ */
+function installedIn(folder) {
+  if (!fs.existsSync(folder)) {
+    return [];
+  }
+  const found = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const at = path.join(dir, entry.name);
+      if (entry.name === "node_modules") {
+        found.push(path.relative(folder, at));
+      } else {
+        walk(at);
+      }
+    }
+  };
+  walk(folder);
+  return found;
 }
 
 /**
@@ -154,7 +182,12 @@ function main(argv) {
     process.stderr.write(`${folder}: ${err.message}\n`);
     return 2;
   }
-  const diff = differences(hot.expect, got);
+  const diff = [
+    ...differences(hot.expect, got),
+    ...installedIn(workPaths(fs.realpathSync(folder)).rescued).map(
+      (at) => `rescued/ holds ${at}: nothing is installed in the rescued copy`
+    ),
+  ];
   if (diff.length) {
     process.stdout.write(
       `${id}: MISMATCH\n${diff.map((d) => `  ${d}\n`).join("")}`

@@ -25,7 +25,12 @@ import { runPipeline } from "./pipeline.js";
 import { loadRegistry } from "./checks/registry.js";
 import { scaSubmission } from "./addon/submission.js";
 import { defaultWorkFolder, workPaths } from "./util/dest.js";
-import { PREPARE_STEP, recordBoolean, startRecord } from "./prepare/state.js";
+import {
+  PREPARE_STEP,
+  recordBoolean,
+  startRecord,
+  treeRoots,
+} from "./prepare/state.js";
 import { handBack, recordedRoots, startPreparation } from "./prepare/steps.js";
 import {
   extractXpiToTemp,
@@ -1328,19 +1333,27 @@ async function runPreparePass(work, registry) {
   if (out.next === "step") {
     const prompt = registry.llmScaReviewPrompt();
     const paths = workPaths(out.work);
-    // What each step's prompt names beside the review file.
+    // What each step's prompt names beside the review file. Every build runs at the root's
+    // place in `build/`, and the rescue's agent makes `build/` a copy of the whole
+    // `rescued/` before each build, with the two commands named here.
+    const buildRoot = () => treeRoots(out.work, record.roots.scaRoot).buildRoot;
     const named = {
       [PREPARE_STEP.permission]: () => ({
         buildDetails: buildDetailLines(out.work, record, prompt, registry),
       }),
       [PREPARE_STEP.build]: () => ({
         scaRoot: record.roots.scaRoot,
-        buildCopy: paths.buildCopy,
+        buildRoot: buildRoot(),
         buildProcess: paths.build,
       }),
       [PREPARE_STEP.rescue]: () => ({
         rescueRoot: record.roots.scaRoot,
+        buildRoot: buildRoot(),
         buildProcess: paths.build,
+        copy: [
+          `rm -rf ${shellArg(paths.buildCopy)}`,
+          `cp -a ${shellArg(paths.rescued)} ${shellArg(paths.buildCopy)}`,
+        ],
       }),
     }[record.step]();
     const lines = scaPromptLines(prompt, record.step, {

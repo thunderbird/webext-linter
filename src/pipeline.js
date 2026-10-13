@@ -30,7 +30,7 @@ import { workPaths, runCache } from "./util/dest.js";
 import { defaultNet } from "./vendor/verify.js";
 import { withRunCache } from "./vendor/run-cache.js";
 import { withSourceCache } from "./vendor/source-cache.js";
-import { originalPackages, readPrepare } from "./prepare/state.js";
+import { originalPackages, readPrepare, treeRoots } from "./prepare/state.js";
 import {
   resolveSchemaZip,
   refreshAllSchemas,
@@ -808,6 +808,10 @@ async function reviewSubmission(opts, work, prepared) {
     opts.llmReview &&
     !opts.llmSkipSweep &&
     Boolean(meta.preSweep?.items?.length);
+  // Where the reviewed root lies in the prepared work folder's trees (src/prepare/state.js
+  // treeRoots), for a review the preparation started.
+  const preparedRoots =
+    prepared && opts.scaRoot ? treeRoots(opts.workFolder, opts.scaRoot) : null;
   // A run that PROMPTS is the loop's first pass, and the only one that reads the add-on:
   // everything after it works from the state this run writes.
   const prompting = opts.llmReview;
@@ -917,6 +921,9 @@ async function reviewSubmission(opts, work, prepared) {
         // and `--sca-root` is extracted before the run, so both are readable directories
         // by the time anything is handed out.
         scaRoot: opts.scaRoot ?? null,
+        // The same root in the source archive, where the review reads a rescued copy: the
+        // Review Details name both.
+        scaRootOrig: preparedRoots?.scaRootOrig ?? null,
         xpiRoot: meta.xpiRoot,
         // Each tree's sweep request, as the text its step hands over, and the file its
         // answers are written to. Carried so the step prints the request this run made and
@@ -934,6 +941,12 @@ async function reviewSubmission(opts, work, prepared) {
       // them, and the `built` step is worded by them (src/report/loop.js buildResultFact).
       build: {
         result: prepared?.buildResult ?? null,
+        // The root in the copy the agent built in, where it built or tried to.
+        root:
+          prepared?.buildResult === BUILD_RESULT.built ||
+          prepared?.buildResult === BUILD_RESULT.failed
+            ? (preparedRoots?.buildRoot ?? null)
+            : null,
         output:
           prepared?.buildResult === BUILD_RESULT.built
             ? prepared.buildOutput
@@ -1045,8 +1058,8 @@ async function reviewSubmission(opts, work, prepared) {
 }
 
 /** The work folder's names a review never writes: the source archive's extraction, put
- *  there when a source code review is prepared, the copy of it a rescue makes, the copy the
- *  agent builds the clean source in, and that preparation's record. A review claiming them
+ *  there when a source code review is prepared, the copy of it a rescue makes, the copy
+ *  every build of the preparation runs in, and that preparation's record. A review claiming them
  *  would refuse the very folder it was prepared in. */
 const WORK_INPUTS = new Set(["sca", "rescued", "buildCopy", "prepare"]);
 

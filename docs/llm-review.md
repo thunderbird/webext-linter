@@ -329,11 +329,13 @@ what this review is and where to read it:
 | --- | --- |
 | `XPI_FILE` | What was submitted, by name - the .xpi as ATN named it, or the folder's own name where the submission arrived unpacked |
 | `XPI_ROOT` | The shipped package, unpacked, ready to read |
-| `SCA_ROOT` | A source code review's source root - the whole of which is reviewed |
+| `SCA_ROOT` | A source code review's source root - the whole of which is reviewed - labelled "source archive" in `sca/`, or "rescued source (reduced/fixed dependencies)" where a rescue came out clean and the root lies in `rescued/` |
+| `SCA_ROOT_ORIG` | The same root in `sca/`, the source as submitted - only after a rescue, since it is `SCA_ROOT` otherwise |
 | `SCA_EXP_SOURCE` | The Experiment implementation folder, when one was named |
 | `ADDON_DESCRIPTION` | Where a sub-agent wrote a description of the add-on, for reading while answering |
 | `BUILD_PROCESS` | What building the add-on takes and whether it is safe, written by the agent in `build-safety`, in a source code review |
-| `BUILD_OUTPUT` | What the agent's build produced in the preparation, a file or a folder inside `build/` or `rescued/`, named by its own name - only where the agent built it, since the reviewer may build it themselves and a build may fail |
+| `BUILD_ROOT` | The root in `build/`, where the agent's build ran - only where the agent built or tried to |
+| `BUILD_OUTPUT` | What the agent's build produced in the preparation, a file or a folder inside `build/`, named by its own name - only where the agent built it, since the reviewer may build it themselves and a build may fail |
 | `REVIEW_REPORT` | The text the reviewer sends to the developer, written by the linter |
 
 The linter names these files and reads none of them. The description is a sub-agent's,
@@ -450,28 +452,34 @@ the review. The record keeps the audited lock's vulnerable packages counted by s
   lock, an entry from a source the audit cannot read, an entry that installs another release
   than it names): the folder is done, nothing is built, and the same hand-back starts its
   review, which stops on that lock.
-- **The lock is clean**: the next prompt (`build`) has the reader copy `SCA_ROOT` to
-  `BUILD_COPY` (the work folder's `build/`) and build there, as `BUILD_PROCESS` describes,
-  installing exactly what the lock pins (`npm ci` or `pnpm install --frozen-lockfile --config.strict-dep-builds=false`). It
-  answers the `BUILD_OUTPUT` entry with what the build produced inside `build/` (an XPI or
-  zip file, or a folder), or with `The build failed`, after adding a "Build attempt" section
-  (the failing step and its error output) to `build.md`. An output that is not inside
-  `build/` is refused. Either answer is recorded, and the folder is done.
+- **The lock is clean**: the linter copies the whole `sca/` into the work folder's `build/`,
+  and the next prompt (`build`) has the reader build in `BUILD_ROOT`, `SCA_ROOT`'s place in
+  that copy, as `BUILD_PROCESS` describes, installing exactly what the lock pins (`npm ci` or
+  `pnpm install --frozen-lockfile --config.strict-dep-builds=false`). A build that writes
+  next to its root still writes inside `build/`. It answers the `BUILD_OUTPUT` entry with the
+  final artifact the build produced inside `build/` (an XPI or zip file, or a folder), as an
+  absolute path, or with `The build failed`, after adding a "Build attempt" section (the
+  failing step and its error output) to `build.md`. An output that is not inside `build/` is
+  refused. Either answer is recorded, and the folder is done.
 - **The lock installs a package with a known high or critical advisory**: the linter copies
-  the source into `rescued/` beside `sca/` in the same work folder, and the next prompt
-  (`rescue`) hands the copy to the reader as one **autonomous loop**. It reduces the copy's
+  the whole `sca/` into `rescued/` in the same work folder, and the next prompt (`rescue`)
+  hands the copy to the reader as one **autonomous loop**. It reduces the copy's
   dependencies to what the release build uses, or applies the package manager's audit fix,
-  and refreshes the lock with lock-only commands and `--ignore-scripts`. It runs `npm audit`
-  or `pnpm audit`, and builds nothing while a high or critical advisory remains. Once none
-  does, it installs as the lock pins and builds, and where the build fails it adjusts the
-  dependencies and audits again before the next build: a `prepare` script that runs `husky`,
-  for one, needs the husky the trimming removed, or the script removed. It answers
-  `BUILD_OUTPUT` with what the build produced inside the copy, or with `The rescue failed`.
+  and refreshes the lock with lock-only commands and `--ignore-scripts`, so only
+  `package.json` and the lock change in `rescued/`. It runs `npm audit` or `pnpm audit`, and
+  builds nothing while a high or critical advisory remains. Once none does, it replaces
+  `build/` with a copy of the whole `rescued/` (the two commands the prompt prints), installs
+  as the lock pins and builds in `BUILD_ROOT`, the root's place in that copy. Nothing is ever
+  installed or built in `rescued/`. Where the build fails it adjusts the dependencies in
+  `rescued/` and audits and copies again before the next build: a `prepare` script that runs
+  `husky`, for one, needs the husky the trimming removed, or the script removed. It answers
+  `BUILD_OUTPUT` with the final artifact the build produced inside `build/`, or with
+  `The rescue failed`.
   The hand-back then audits the copy's lock itself and checks that output. Where both hold,
   the copy is reviewed instead of the original, and its counts replace the original's. A copy
   whose lock names one release and installs another is not clean.
 - **The rescue failed** (the reader said so, the copy is still vulnerable, or the output is
-  not inside `rescued/`): the copy is deleted, the record says the rescue failed, and the
+  not inside `build/`): the copy and `build/` are deleted, the record says the rescue failed, and the
   original is reviewed, **unrescued**: its vulnerability checks come early in the review,
   the first of them to report a vulnerable lock entry stops the checks, and the review is
   aborted for build issues too (`build-reproduces-xpi`, asked of nobody), its vulnerability
@@ -536,14 +544,14 @@ the review sit in its hidden `.review/` folder, out of the reviewer's sight:
 | --- | --- | --- |
 | `xpi/` | The shipped add-on, extracted (or, for an unpacked one, copied): `XPI_ROOT` | the linter, as the review starts |
 | `sca/` | The source archive, extracted: `EXTRACT_TO`, holding `SCA_ROOT` | the reader of the `--llm-sca-review` prompt |
-| `rescued/` | The copy of the source a rescue works in and builds (`RESCUE_ROOT` lies inside it), reviewed instead when the rescue comes out clean, and removed when it fails | the linter, and the reader of the `rescue` prompt |
+| `rescued/` | The copy of the whole `sca/` a rescue changes the dependencies of (`RESCUE_ROOT` lies inside it), only its `package.json` and lock, never installed or built in: reviewed instead when the rescue comes out clean, and removed when it fails | the linter, and the reader of the `rescue` prompt |
 | `.review/prepare.json` | Where the preparation of a source code review stands, and how its review is to be run - read-only, and hashed | the linter, at each step of the preparation |
 | `.review/state.json` | The review itself, which every pass reads | the linter |
 | `.review/review.json` | The file the agent fills in and hands back (`ANSWERS` while a source code review is prepared) | the linter, each pass |
 | `report.md` | `REVIEW_REPORT` | the linter |
 | `summary.md` | `ADDON_DESCRIPTION` | the agent, from a sub-agent's reply |
 | `build.md` | `BUILD_PROCESS` | the agent, in `build-safety`, in a source code review |
-| `build/` | The copy of a clean source the agent builds in (`BUILD_COPY`), never the archive itself, holding `BUILD_OUTPUT` | the agent, in the preparation, when the reviewer lets it build |
+| `build/` | Where every build of the preparation runs (`BUILD_ROOT` lies inside it), holding `BUILD_OUTPUT`: a copy of the whole `sca/` for a clean source, or of the whole `rescued/` before each build of a rescue, and removed when the rescue fails | the linter for a clean source, the reader of the `rescue` prompt for a rescue |
 | `.review/sweep-<artifact>.answers.json` | One tree's sweep answers | the agent, from a sweeping agent's reply |
 | `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again | the linter, whenever it audits |
 | `.cache/popularity.json` | The npm download counts and GitHub stars read during this run, kept the same way | the linter, whenever it judges a source's popularity |

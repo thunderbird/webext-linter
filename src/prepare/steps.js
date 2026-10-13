@@ -12,13 +12,15 @@
 // declined, the folder is done at once: a rescue runs package-manager commands, so none is
 // tried. Otherwise it audits the root's lock (./audit.js). A root the audit cannot read in
 // full is done: nothing is built, and the review it starts stops on that lock. A clean lock
-// moves on to `build`: the agent builds the original in `build/`, as the lock pins it, and
-// names what the build produced, or that it failed. A vulnerable lock gets a RESCUED COPY of
-// its source in the same work folder (`rescued/`, beside `sca/`), and moves on to `rescue`:
-// the agent reduces or fixes the copy's dependencies and audits them until no high or
-// critical advisory remains, builds only then, and names what the build produced, or that
-// the rescue failed. The linter audits the copy again and checks the output it names. Where
-// both hold, the copy is reviewed instead of the original. Otherwise the copy is deleted, and
+// moves on to `build`: the linter copies the whole `sca/` into `build/`, and the agent builds
+// the original there, as the lock pins it, and names what the build produced, or that it
+// failed. A vulnerable lock gets a RESCUED COPY of the whole `sca/` in the same work folder
+// (`rescued/`), and moves on to `rescue`: the agent reduces or fixes the copy's dependencies
+// with lock-only commands and audits them until no high or critical advisory remains. Only
+// then it builds, in a fresh copy of the whole `rescued/` in `build/`, so nothing is ever
+// installed or built in the rescued copy. It names what the build produced, or that the rescue
+// failed. The linter audits the copy again and checks the output it names. Where both hold, the
+// copy is reviewed instead of the original. Otherwise the copy and `build/` are deleted, and
 // the original is done: it is reviewed like any other source, and its vulnerability checks
 // stop it.
 //
@@ -30,9 +32,9 @@
 // review. Each step writes the record first and changes the folder after, so a run cut short
 // is somewhere the next hand-back goes on from: a copy whose record was never moved on is made
 // again, a question whose review file was never written is written again, and a failed
-// rescue whose copy was not yet removed is finished. The one thing this file
-// ever removes is `rescued/`, a fixed name inside the work folder, so no record can point a
-// delete anywhere else.
+// rescue whose copies were not yet removed is finished. The only things this file
+// ever removes are `rescued/` and `build/`, fixed names inside the work folder, so no record
+// can point a delete anywhere else.
 //
 // Belongs here: one step (handBack), the review files the steps read their answers from,
 // the copy, the records each step writes, and the delete. Does NOT belong here: the command
@@ -88,7 +90,7 @@ const PACKAGE_MANAGERS = "PACKAGE_MANAGERS";
  *  `llm-sca-review-prompt` names it. */
 const BUILD_SAFETY = "BUILD_SAFETY";
 /** The review file's entry for what the agent's build produced, as `llm-sca-review-prompt`
- *  names it: in `build/` after a build, in `rescued/` after a rescue. */
+ *  names it: in `build/` after a build and after a rescue. */
 const BUILD_OUTPUT = "BUILD_OUTPUT";
 /** The flag that answers the permission question up front. */
 const AGENT_BUILDS = "llm-agent-builds";
@@ -344,7 +346,8 @@ async function permission(work, record, context, prompt) {
  * What follows the permission: where the agent may not build, the folder done at once,
  * since a rescue would run package-manager commands. Otherwise the root's lock audited, and
  * its counts recorded. A lock the audit cannot read in full is done with nothing built, a
- * clean one is handed to the agent to build, and a vulnerable one is rescued.
+ * clean one is copied whole into `build/` and handed to the agent to build there, and a
+ * vulnerable one is rescued.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  With its permission.
  * @param {AuditContext} context
@@ -358,6 +361,8 @@ async function permitted(work, record, context, prompt) {
   const found = await auditRoot(record.roots, context);
   const audited = { ...record, vulnerabilities: vulnerabilityCounts(found) };
   if (isClean(found)) {
+    const { sca, buildCopy } = workPaths(work);
+    wholeCopy(sca, buildCopy, "build copy");
     return ask(
       work,
       { ...audited, step: PREPARE_STEP.build },
@@ -587,16 +592,7 @@ function rescue(work, record, asked) {
   const { sca: from, rescued: to } = workPaths(work);
   const real = fs.realpathSync(from);
   const into = (p) => (p ? path.join(to, path.relative(real, p)) : p);
-  try {
-    fs.rmSync(to, { recursive: true, force: true });
-    fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true });
-  } catch (err) {
-    rethrowIfFatal(err);
-    throw new Error(
-      `The rescued copy "${to}" could not be made (${err.code ?? err.message}). ` +
-        "Hand the work folder back once that is fixed."
-    );
-  }
+  wholeCopy(from, to, "rescued copy");
   return ask(
     work,
     {
@@ -614,10 +610,34 @@ function rescue(work, record, asked) {
 }
 
 /**
+ * A whole-tree copy of `from` in `to`, over whatever was there: the rescued copy of `sca/`,
+ * or the copy of `sca/` a clean source is built in. Symbolic links are copied as they are
+ * written. A copy that cannot be made ends the run as the tool's failure, before any prompt
+ * names it.
+ * @param {string} from
+ * @param {string} to
+ * @param {string} called  How the failure names the copy.
+ * @returns {void}
+ * @throws {Error}  The copy could not be made.
+ */
+function wholeCopy(from, to, called) {
+  try {
+    fs.rmSync(to, { recursive: true, force: true });
+    fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true });
+  } catch (err) {
+    rethrowIfFatal(err);
+    throw new Error(
+      `The ${called} "${to}" could not be made (${err.code ?? err.message}). ` +
+        "Hand the work folder back once that is fixed."
+    );
+  }
+}
+
+/**
  * The rescue, handed back: done with the copy as the reviewed source where the output the
- * agent named lies inside `rescued/` and the copy's lock audits clean, its counts recorded.
+ * agent named lies inside `build/` and the copy's lock audits clean, its counts recorded.
  * Otherwise, or where the agent answered that the rescue failed, the rescue failed: the
- * folder is done with its roots back in `sca/`, before the copy is removed.
+ * folder is done with its roots back in `sca/`, before the copy and `build/` are removed.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `rescue`.
  * @param {AuditContext} context
@@ -631,8 +651,8 @@ async function rescueStep(work, record, context, asked) {
   if (answer === undefined) {
     return ask(work, record, outputEntry(phase));
   }
-  const { sca, rescued } = workPaths(work);
-  const output = producedIn(answer, phase, rescued);
+  const { sca, rescued, buildCopy } = workPaths(work);
+  const output = producedIn(answer, phase, buildCopy);
   if (output) {
     const found = await auditRoot(record.roots, context);
     if (isClean(found)) {
@@ -657,21 +677,33 @@ async function rescueStep(work, record, context, asked) {
     buildResult: BUILD_RESULT.rescueFailed,
     buildOutput: null,
   });
-  fs.rmSync(rescued, { recursive: true, force: true });
+  removeRescue(work);
   return { next: "review", work, record: failed };
 }
 
 /**
- * What the rescue's build produced inside the copy, or null where the agent answered that
- * the rescue failed or named nothing the build produced there: either way the rescue failed.
+ * Remove what a failed rescue leaves: the rescued copy and the build copy it was built in.
+ * @param {string} work
+ * @returns {void}
+ */
+function removeRescue(work) {
+  const { rescued, buildCopy } = workPaths(work);
+  fs.rmSync(rescued, { recursive: true, force: true });
+  fs.rmSync(buildCopy, { recursive: true, force: true });
+}
+
+/**
+ * What the rescue's build produced inside the build copy, or null where the agent answered
+ * that the rescue failed or named nothing the build produced there: either way the rescue
+ * failed.
  * @param {string} answer
  * @param {ReturnType<typeof outputPhase>} phase
- * @param {string} copy  The work folder's `rescued/`.
+ * @param {string} copy  The work folder's `build/`.
  * @returns {?string}
  */
 function producedIn(answer, phase, copy) {
   try {
-    return outputAt(answer, phase, copy, "the rescued copy");
+    return outputAt(answer, phase, copy);
   } catch (err) {
     if (err instanceof HandbackRefused) {
       return null;
@@ -684,7 +716,7 @@ function producedIn(answer, phase, copy) {
  * A done folder handed back again before its review started - the start before was refused,
  * failed, or was cut short: its review is started once more. A copy its roots do not lie in is
  * no longer read - a failed rescue cut short before it was removed - and its removal is
- * finished first.
+ * finished first, the build copy of a failed rescue with it.
  * And the review file the review claims is deleted again, in case the run that marked the
  * folder was cut short before it could.
  * @param {string} work
@@ -692,7 +724,9 @@ function producedIn(answer, phase, copy) {
  * @returns {Handout}
  */
 function doneAgain(work, record) {
-  if (!inCopy(work, record.roots?.scaRoot)) {
+  if (record.buildResult === BUILD_RESULT.rescueFailed) {
+    removeRescue(work);
+  } else if (!inCopy(work, record.roots?.scaRoot)) {
     fs.rmSync(workPaths(work).rescued, { recursive: true, force: true });
   }
   return { next: "review", work, record: markPrepare(work, record) };

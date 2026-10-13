@@ -31,6 +31,7 @@ import {
   answer,
   auditCache,
   buildInto,
+  buildRescued,
   writeBuildReport,
   writeTree,
 } from "../prepared.js";
@@ -234,7 +235,8 @@ async function clean() {
 }
 
 // A clean lock is built: the agent is handed the build, its one entry asking where the build
-// put what it produced, and the lock's counts are recorded. Nothing is copied by the linter.
+// put what it produced, and the lock's counts are recorded. The linter copies the source into
+// build/ for it, and makes no rescued copy.
 test("a clean source moves on to the build", async () => {
   const { work, at } = await clean();
   assert.equal(at.next, "step");
@@ -257,7 +259,52 @@ test("a clean source moves on to the build", async () => {
     ["The build failed"]
   );
   assert.ok(!fs.existsSync(workPaths(work).rescued), "no copy is made");
-  assert.ok(!fs.existsSync(workPaths(work).buildCopy), "the agent builds");
+  assert.ok(fs.existsSync(workPaths(work).buildCopy), "the build copy is made");
+  cleanup(work);
+});
+
+// The build copy is the whole source archive, never only its root: a build that writes next
+// to its root still writes inside build/. A stale build/ is replaced, and sca/ is unchanged.
+test("the build pass copies the whole source archive into build/", async () => {
+  const work = workFolder(
+    {
+      "proj/package.json": packageFile(),
+      "proj/package-lock.json": npmLock(),
+      "beside.txt": "next to the root",
+    },
+    { vulns: TOOL_CLEAN }
+  );
+  const { sca, buildCopy } = workPaths(work);
+  writeTree(buildCopy, { "left-over.txt": "stale" });
+  const at = await first(work, { SCA_ROOT: path.join(sca, "proj") });
+  assert.equal(at.record.step, PREPARE_STEP.build);
+  assert.equal(at.record.roots.scaRoot, path.join(sca, "proj"));
+  for (const file of [
+    "beside.txt",
+    "manifest.json",
+    "bg.js",
+    "proj/package.json",
+    "proj/package-lock.json",
+  ]) {
+    assert.equal(
+      fs.readFileSync(path.join(buildCopy, file), "utf8"),
+      fs.readFileSync(path.join(sca, file), "utf8"),
+      file
+    );
+  }
+  assert.ok(!fs.existsSync(path.join(buildCopy, "left-over.txt")));
+  assert.ok(!fs.existsSync(path.join(sca, "left-over.txt")));
+  // An output written next to the root lies inside build/, and is taken.
+  writeTree(buildCopy, { "lantern-sorter.xpi": "PK" });
+  const done = await handOutput(
+    work,
+    path.join(buildCopy, "lantern-sorter.xpi")
+  );
+  assert.equal(done.record.buildResult, "built");
+  assert.equal(
+    done.record.buildOutput,
+    path.join(buildCopy, "lantern-sorter.xpi")
+  );
   cleanup(work);
 });
 
@@ -310,6 +357,7 @@ test("a failed build is recorded, and the folder done", async () => {
 test("a build output outside build/, or missing, is refused", async () => {
   const { work } = await clean();
   const copy = workPaths(work).buildCopy;
+  fs.rmSync(copy, { recursive: true });
   await assert.rejects(
     handOutput(work, "dist"),
     refused(
@@ -876,6 +924,7 @@ function rescueFailed(work, at) {
   assert.deepEqual(at.record.vulnerabilities, ONE_HIGH);
   assert.deepEqual(recordOf(work), at.record);
   assert.ok(!fs.existsSync(workPaths(work).rescued), "the copy is deleted");
+  assert.ok(!fs.existsSync(workPaths(work).buildCopy), "the build is deleted");
 }
 
 // The copy's lock audits clean, and the output the agent named lies inside it: the folder is
@@ -892,7 +941,7 @@ test("a clean copy with its build output is done with the copy's roots", async (
     "package.json": packageFile("0.4.1"),
     "package-lock.json": npmLock("0.4.1"),
   });
-  const output = buildInto(root);
+  const output = buildRescued(work, root);
   const at = await handOutput(work, output);
   assert.equal(at.next, "review");
   assert.equal(at.work, work);
@@ -915,7 +964,7 @@ test("a clean copy with its build output is done with the copy's roots", async (
 // the agent built from it.
 test("a copy still vulnerable on its audit fails the rescue", async () => {
   const { work, root } = await rescued();
-  rescueFailed(work, await handOutput(work, buildInto(root)));
+  rescueFailed(work, await handOutput(work, buildRescued(work, root)));
   // Handed back again, its review is handed out once more, asking nothing.
   const again = await later(work);
   assert.equal(again.next, "review");
@@ -931,13 +980,15 @@ test("a rescue the agent answers as failed fails", async () => {
   cleanup(work);
 });
 
-// An output is something the copy's build produced inside rescued/. One that names
-// anything else fails the rescue, even where the copy itself is clean.
-test("a rescue output outside the copy fails the rescue", async (t) => {
+// An output is something the build produced inside build/, never in the rescued copy, where
+// nothing is built. One that names anything else fails the rescue, even where the copy itself
+// is clean.
+test("a rescue output outside build/ fails the rescue", async (t) => {
   for (const [name, named] of [
-    ["outside the copy", (work) => workPaths(work).sca],
-    ["the copy itself", (work) => workPaths(work).rescued],
-    ["missing", (work) => path.join(workPaths(work).rescued, "dist")],
+    ["outside the copies", (work) => workPaths(work).sca],
+    ["inside the rescued copy", (work, root) => buildInto(root)],
+    ["build/ itself", (work) => workPaths(work).buildCopy],
+    ["missing", (work) => path.join(workPaths(work).buildCopy, "dist")],
   ]) {
     await t.test(name, async () => {
       const { work, root } = await rescued();
@@ -945,7 +996,8 @@ test("a rescue output outside the copy fails the rescue", async (t) => {
         "package.json": packageFile(null),
         "package-lock.json": npmLock(null),
       });
-      rescueFailed(work, await handOutput(work, named(work)));
+      writeTree(workPaths(work).buildCopy, { "notes.txt": "" });
+      rescueFailed(work, await handOutput(work, named(work, root)));
       cleanup(work);
     });
   }
@@ -983,7 +1035,7 @@ test("the audit reads the run's OSV cache", async () => {
   // The copy's audit reads the same lock from the same cache, and finds it vulnerable.
   rescueFailed(
     work,
-    await handOutput(work, buildInto(at.record.roots.scaRoot))
+    await handOutput(work, buildRescued(work, at.record.roots.scaRoot))
   );
   cleanup(work);
 });
@@ -1047,8 +1099,9 @@ test("a copy the audit cannot vouch for is not clean", async (t) => {
   for (const [name, edit] of Object.entries(cases)) {
     await t.test(name, async () => {
       const { work, root } = await rescued();
+      const output = buildRescued(work, root);
       edit(root);
-      rescueFailed(work, await handOutput(work, buildInto(root)));
+      rescueFailed(work, await handOutput(work, output));
       cleanup(work);
     });
   }
@@ -1082,9 +1135,10 @@ test("an audit OSV does not answer ends the preparation", async (t) => {
       }),
     });
     seedRunOsv(work, batchDown("argv-crumb@0.0.8"));
-    await assert.rejects(handOutput(work, buildInto(root)), noAnswer);
+    await assert.rejects(handOutput(work, buildRescued(work, root)), noAnswer);
     assert.equal(recordOf(work).step, PREPARE_STEP.rescue);
     assert.ok(fs.existsSync(workPaths(work).rescued), "the copy stays");
+    assert.ok(fs.existsSync(workPaths(work).buildCopy), "the build stays");
     cleanup(work);
   });
 });
@@ -1133,18 +1187,20 @@ test("a clean rescue handed back again keeps its copy", async () => {
     "package.json": packageFile(null),
     "package-lock.json": npmLock(null),
   });
-  await handOutput(work, buildInto(root));
+  await handOutput(work, buildRescued(work, root));
   const again = await later(work);
   assert.equal(again.next, "review");
   assert.equal(again.record.roots.scaRoot, root);
   assert.ok(fs.existsSync(copy));
+  assert.ok(fs.existsSync(workPaths(work).buildCopy), "its build stays");
   cleanup(work);
 });
 
-// A failed rescue cut short after the folder was marked done leaves the copy behind; the next
-// hand-back finishes removing it, and hands the review out.
+// A failed rescue cut short after the folder was marked done leaves the copy and its build
+// behind. The next hand-back finishes removing both, and hands the review out.
 test("a copy left behind by a failed rescue cut short is removed", async () => {
-  const { work, copy } = await rescued();
+  const { work, copy, root } = await rescued();
+  buildRescued(work, root);
   writePrepare(work, {
     ...recordOf(work),
     step: PREPARE_STEP.done,
@@ -1156,12 +1212,13 @@ test("a copy left behind by a failed rescue cut short is removed", async () => {
   assert.equal(at.next, "review");
   assert.equal(at.work, work);
   assert.ok(!fs.existsSync(copy));
+  assert.ok(!fs.existsSync(workPaths(work).buildCopy));
   cleanup(work);
 });
 
 // The agent can write any file, records included, so no record decides what is deleted: the
-// one folder the preparation ever removes is the work folder's own rescued/, whatever the
-// record names.
+// only folders the preparation ever removes are the work folder's own rescued/ and build/,
+// whatever the record names.
 test("a forged record never removes a folder outside the work folder", async () => {
   const { work } = await rescued();
   const stray = path.join(path.dirname(work), "stray");

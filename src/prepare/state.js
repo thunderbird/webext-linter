@@ -16,13 +16,15 @@
 // changed record could still decide is checked as the linter would write it (recordBoolean).
 //
 // One record per work folder, which is the whole run: the source is extracted into its `sca/`,
-// and a rescue copies that into `rescued/` beside it. The hand-back that finds the folder
+// a rescue copies that whole folder into `rescued/` beside it, and every build runs in a whole
+// copy of one of the two in `build/`. The hand-back that finds the folder
 // done starts its review from this record (src/cli.js), and that review reads it too
 // (src/pipeline.js): a rescued review reads the package files of the root it was copied
 // from, in `sca/`, to tell the developer the rescue changed them (originalPackages).
 //
 // Belongs here: the record's shape and version, reading and writing it, marking a folder at
-// a step, and reading the package files of the root a rescue copied. Does NOT belong
+// a step, where a root lies in each of the folders, and reading the package files of the root
+// a rescue copied. Does NOT belong
 // here: what each step does and when the record moves on (-> ./steps.js), the audit that
 // decides it (-> ./audit.js), the folder's names (-> src/util/dest.js workPaths), or how a
 // prompt is printed (-> src/report/format.js).
@@ -43,7 +45,7 @@ import { BUILD_SAFETY_VALUES } from "../checks/registry-vocabulary.js";
 /** Bumped when the record's shape, or what a step does with it, changes in a way an older
  *  file cannot satisfy. A preparation in flight does not survive the upgrade, and saying so
  *  beats reading it wrongly. */
-export const PREPARE_VERSION = 6;
+export const PREPARE_VERSION = 7;
 
 /** The mode every write leaves the record at: readable, and writable by nobody. */
 const READ_ONLY = 0o444;
@@ -58,11 +60,11 @@ const READ_ONLY = 0o444;
  * - `permission`: the reviewer is shown the Build Review Details and asked whether the
  *   agent may build, and the next hand-back reads the answer and audits the root where it
  *   may;
- * - `build`: the root's lock is clean, and the agent builds it in `build/` and names what
- *   the build produced, or that it failed;
- * - `rescue`: the root's lock is vulnerable, and the agent makes the rescued copy in
- *   `rescued/` clean and builds it, and names what the build produced, or that the rescue
- *   failed. The next hand-back audits the copy and checks what it named;
+ * - `build`: the root's lock is clean, the linter copies `sca/` into `build/`, and the agent
+ *   builds it there and names what the build produced, or that it failed;
+ * - `rescue`: the root's lock is vulnerable, and the agent makes the lock of the rescued copy
+ *   in `rescued/` clean, builds a copy of it in `build/`, and names what the build produced,
+ *   or that the rescue failed. The next hand-back audits the copy and checks what it named;
  * - `done`: the review may start here, and the record holds the flags it starts with.
  *   A folder whose rescue failed is `done` too, its roots back in `sca/`.
  */
@@ -115,7 +117,7 @@ const COUNTED = ["moderate", "high", "critical"];
  * @property {?string} buildResult  A BUILD_RESULT value once the agent's build was handed
  *   back, and null where it built nothing.
  * @property {?string} buildOutput  What the build produced, a file or folder, absolute and
- *   real: inside `build/`, or inside `rescued/` for a rescued copy. Held only where
+ *   real: inside `build/`. Held only where
  *   `buildResult` is `built`.
  * @property {?{scaRoot: string, scaExpSource: ?string}} roots  The settled roots, absolute
  *   and real, once known: inside `sca/`, or inside `rescued/` while a rescue runs and once it
@@ -400,6 +402,33 @@ export function markPrepare(work, record) {
   return written;
 }
 
+/**
+ * Where a root the record holds lies in the work folder's trees: inside `rescued/` while a
+ * rescue runs and once it came out clean, else inside `sca/`. `scaRootOrig` is the same place
+ * in `sca/` for a root in `rescued/`, and null for one in `sca/`, where it is that root itself.
+ * `buildRoot` is the same place in `build/`, where every build runs, and null for a root in
+ * neither tree.
+ * @param {string} work  The work folder.
+ * @param {string} root  The root, absolute and real.
+ * @returns {{scaRootOrig: ?string, buildRoot: ?string}}
+ */
+export function treeRoots(work, root) {
+  const paths = workPaths(work);
+  const inside = (tree) => {
+    if (!fs.existsSync(tree)) {
+      return null;
+    }
+    const rel = path.relative(fs.realpathSync(tree), root);
+    return rel.startsWith("..") || path.isAbsolute(rel) ? null : rel;
+  };
+  const rescued = inside(paths.rescued);
+  const rel = rescued ?? inside(paths.sca);
+  return {
+    scaRootOrig: rescued === null ? null : path.join(paths.sca, rescued),
+    buildRoot: rel === null ? null : path.join(paths.buildCopy, rel),
+  };
+}
+
 /** The root files that say what a source archive installs: package.json and the locks. */
 const PACKAGE_FILES = [PACKAGE_FILE, ...TREE_LOCKS];
 
@@ -418,15 +447,10 @@ const PACKAGE_FILES = [PACKAGE_FILE, ...TREE_LOCKS];
  */
 export function originalPackages(work, record) {
   const reviewed = record?.roots?.scaRoot;
-  const paths = workPaths(work);
-  if (!reviewed || !fs.existsSync(paths.rescued)) {
+  const root = reviewed ? treeRoots(work, reviewed).scaRootOrig : null;
+  if (root === null) {
     return null;
   }
-  const inCopy = path.relative(fs.realpathSync(paths.rescued), reviewed);
-  if (inCopy.startsWith("..") || path.isAbsolute(inCopy)) {
-    return null;
-  }
-  const root = path.join(paths.sca, inCopy);
   if (!fs.statSync(root, { throwIfNoEntry: false })?.isDirectory()) {
     throw new Error(
       `The source root this rescued copy was made from is gone: ${root}. The review ` +

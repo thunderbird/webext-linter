@@ -604,7 +604,8 @@ export function settle(state, registry) {
  *  the phase that starts its agent went out, the build report where the phase that leaves
  *  it recorded it, and the build output where the agent built the add-on. Those are what the
  *  block exists to hand over, and a file no agent was ever asked to write is not one of
- *  them. */
+ *  them. Beside them the source archive's root where a rescued copy was reviewed, and the
+ *  root the agent built in where it built or tried to. */
 function reportMeta(state) {
   const {
     prompting: _prompting,
@@ -616,6 +617,10 @@ function reportMeta(state) {
     ...rest,
     ...(spawnIssued(state) ? { summaryFile } : {}),
     ...(state.products?.includes("build") ? { buildFile } : {}),
+    ...(state.paths?.scaRootOrig
+      ? { scaRootOrig: state.paths.scaRootOrig }
+      : {}),
+    ...(state.build?.root ? { buildRoot: state.build.root } : {}),
     ...(state.build?.output ? { buildOutput: state.build.output } : {}),
     manualReview: state.manual,
   };
@@ -634,10 +639,12 @@ function buildDetails(state, registry) {
   return detailRows({
     submittedXpi: state.report.meta.xpi,
     scaRoot: state.paths?.scaRoot ?? undefined,
+    scaRootOrig: meta.scaRootOrig,
     buildFile: meta.buildFile,
     buildSafety: state.values?.["build-safety"],
     buildVulnerabilities: state.build?.vulnerabilities ?? undefined,
     buildResult: registry.llmPhases().buildResults[buildResultFact(state)],
+    buildRoot: meta.buildRoot,
     buildOutput: meta.buildOutput,
   }).join("\n");
 }

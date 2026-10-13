@@ -477,13 +477,14 @@ function valueLines(entries) {
  * a path by looking up a name rather than by parsing a sentence: the Submission block on the
  * first prompt - EXTRACT_TO among them: this tool cannot open a source archive itself, but
  * it can still name where one should land - ANSWERS on every later prompt, and the
- * Build block on the build and rescue prompts: SCA_ROOT, BUILD_COPY and BUILD_PROCESS on the
- * build's, RESCUE_ROOT and BUILD_PROCESS on the rescue's. The STEPS
+ * Build block on the build and rescue prompts: SCA_ROOT, BUILD_ROOT and BUILD_PROCESS on the
+ * build's, RESCUE_ROOT, BUILD_ROOT and BUILD_PROCESS on the rescue's. The STEPS
  * are prose, and
  * they name those given values - and the ones the reader still has to work out, <SCA_ROOT>
  * and <SCA_EXP_SOURCE> - instead of carrying paths themselves. The FLAGS are the finished
- * command, one flag per line, filled into the step that says to run it. The intro opens the
- * first prompt only: it says what the preparation is, once.
+ * command, one flag per line, filled into the step that says to run it, and the COPY is the
+ * rescue's two commands that make the build copy, filled into its step the same way. The
+ * intro opens the first prompt only: it says what the preparation is, once.
  *
  * A step whose `when:` does not hold is dropped, and the surviving steps are numbered 1..N
  * here, so no step may number itself.
@@ -500,11 +501,14 @@ function valueLines(entries) {
  *   folder's build.md: beside `submission`, and on the build and rescue prompts.
  * @param {string} [values.answers]  The review file the answers are handed back in: beside
  *   `submission`, and on every later prompt.
- * @param {string} [values.scaRoot]  On the build prompt: the source root the agent copies.
- * @param {string} [values.buildCopy]  On the build prompt: where it copies it and builds.
+ * @param {string} [values.scaRoot]  On the build prompt: the source root, in `sca/`.
+ * @param {string} [values.buildRoot]  On the build and rescue prompts: the root in
+ *   `build/`, where the agent builds.
  * @param {string[]} [values.buildDetails]  On the permission prompt: the Build Review
  *   Details block, its waiting line included, filled into the step that shows it.
  * @param {string} [values.rescueRoot]  On the rescue prompt: the copy's root.
+ * @param {string[]} [values.copy]  On the rescue prompt: the commands that replace `build/`
+ *   with a copy of the whole `rescued/`, composed by the front-end.
  * @param {string[]} values.flags  The command the prompt's run prints, composed by the
  *   front-end (src/cli.js), which owns the flag names: the finished flag lines. Laid out
  *   here, never added to, trimmed or second-guessed.
@@ -534,8 +538,8 @@ export function scaPromptLines(prompt, list, values) {
     ? []
     : [
         ["SCA_ROOT", values.scaRoot],
-        ["BUILD_COPY", values.buildCopy],
         ["RESCUE_ROOT", values.rescueRoot],
+        ["BUILD_ROOT", values.buildRoot],
         ["BUILD_PROCESS", values.buildProcess],
       ].filter(([, value]) => value);
   if (build.length) {
@@ -561,6 +565,7 @@ export function scaPromptLines(prompt, list, values) {
       ...stepLines(i + 1, step.text, [
         { name: "{{flags}}", lines: command },
         { name: "{{buildDetails}}", lines: values.buildDetails ?? [] },
+        { name: "{{copy}}", lines: (values.copy ?? []).map(displayPath) },
       ])
     );
   });
@@ -700,11 +705,16 @@ export function detailLinkLines(meta) {
  * counted in the lock, what came of the build and its output, so the two blocks name a file
  * the same way. SUBMITTED_XPI and BUILD_OUTPUT are named by their own basenames, which is
  * what the submission and the build called them.
- * @param {ReviewMeta & {submittedXpi?: string, buildSafety?: string,
+ *
+ * SCA_ROOT is the reviewed source: the source archive, or after a rescue the rescued copy,
+ * beside which SCA_ROOT_ORIG names the same root in the source archive. BUILD_ROOT is the
+ * root in the copy the agent built in, named where it built or tried to.
+ * @param {ReviewMeta & {submittedXpi?: string, scaRootOrig?: string, buildSafety?: string,
  *   buildVulnerabilities?: {moderate: number, high: number, critical: number},
- *   buildResult?: string}} meta  The Build Review Details' own values beside the meta:
- *   the submitted XPI's path, the build judgement, the lock's vulnerable packages by
- *   severity, and the wording of what came of the build.
+ *   buildResult?: string, buildRoot?: string}} meta  The Build Review Details' own values
+ *   beside the meta: the submitted XPI's path, the original root after a rescue, the build
+ *   judgement, the lock's vulnerable packages by severity, the wording of what came of the
+ *   build, and the root the agent built in.
  * @returns {string[]}
  */
 export function detailRows(meta) {
@@ -723,7 +733,16 @@ export function detailRows(meta) {
     rows.push(["XPI_ROOT", "extracted addon", meta.xpiRoot]);
   }
   if (meta.scaRoot) {
-    rows.push(["SCA_ROOT", "source archive", meta.scaRoot]);
+    rows.push([
+      "SCA_ROOT",
+      meta.scaRootOrig
+        ? "rescued source (reduced/fixed dependencies)"
+        : "source archive",
+      meta.scaRoot,
+    ]);
+  }
+  if (meta.scaRootOrig) {
+    rows.push(["SCA_ROOT_ORIG", "source archive", meta.scaRootOrig]);
   }
   if (meta.scaExpSource) {
     rows.push(["SCA_EXP_SOURCE", "experiment source", meta.scaExpSource]);
@@ -747,6 +766,9 @@ export function detailRows(meta) {
   }
   if (meta.buildResult) {
     rows.push(["BUILD_RESULT", null, meta.buildResult]);
+  }
+  if (meta.buildRoot) {
+    rows.push(["BUILD_ROOT", "build copy", meta.buildRoot]);
   }
   if (meta.buildOutput) {
     rows.push([

@@ -527,6 +527,73 @@ test("the build details name the XPI, the source, the report, the judgement, the
   ]);
 });
 
+// SCA_ROOT is labelled by where the reviewed source lies: the source archive, or the rescued
+// copy, beside which SCA_ROOT_ORIG names the same root in the source archive. BUILD_ROOT names
+// the root in the build copy where the agent built or tried to, and nowhere else. The Review
+// Details name the same rows.
+test("the details name the reviewed root, the original root and the build root", () => {
+  const dir = tmp();
+  const { state, work } = review(dir, { sweep: false });
+  const sca = path.join(dir, "sca", "src");
+  const rescued = path.join(dir, "rescued", "src");
+  const built = path.join(dir, "build", "src");
+  const rootRows = (block) =>
+    block
+      .split("\n")
+      .filter((row) =>
+        ["* SCA_ROOT", "* BUILD_ROOT"].some((n) => row.startsWith(n))
+      );
+  const cases = [
+    [
+      "the source archive, not built",
+      sca,
+      null,
+      { result: null, root: null, output: null },
+      [`* SCA_ROOT: [source archive](${sca})`],
+    ],
+    [
+      "the source archive, built",
+      sca,
+      null,
+      { result: "built", root: built, output: path.join(built, "dist") },
+      [
+        `* SCA_ROOT: [source archive](${sca})`,
+        `* BUILD_ROOT: [build copy](${built})`,
+      ],
+    ],
+    [
+      "the source archive, its build failed",
+      sca,
+      null,
+      { result: "failed", root: built, output: null },
+      [
+        `* SCA_ROOT: [source archive](${sca})`,
+        `* BUILD_ROOT: [build copy](${built})`,
+      ],
+    ],
+    [
+      "the rescued copy, built",
+      rescued,
+      sca,
+      { result: "built", root: built, output: path.join(built, "dist") },
+      [
+        `* SCA_ROOT: [rescued source (reduced/fixed dependencies)](${rescued})`,
+        `* SCA_ROOT_ORIG: [source archive](${sca})`,
+        `* BUILD_ROOT: [build copy](${built})`,
+      ],
+    ],
+  ];
+  for (const [name, scaRoot, scaRootOrig, build, rows] of cases) {
+    state.paths.scaRoot = scaRoot;
+    state.paths.scaRootOrig = scaRootOrig;
+    state.report.meta.scaRoot = scaRoot;
+    state.build = build;
+    const { buildDetails } = loopSlots(state, {}, work, REGISTRY);
+    assert.deepEqual(rootRows(buildDetails), rows, name);
+    assert.deepEqual(rootRows(reviewDetails(state)), rows, name);
+  }
+});
+
 // BUILD_RESULT words what came of the build, one wording per build result: the agent built
 // it, its build failed, the build was judged unsafe so nothing was built, or the reviewer
 // builds it - where they did not let the agent build, or nothing was prepared.

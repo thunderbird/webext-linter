@@ -97,17 +97,18 @@ export function runCache(work, dir) {
  *   so every reader - the checks, a reviewer, an agent - reads one unpacked tree.
  * - `sca`, where the source archive is extracted when the review is prepared. An INPUT to
  *   the review, never written by it.
- * - `rescued`, the preparation's copy of that source, made where its lock needs a rescue
- *   (src/prepare/steps.js). An input like `sca`: the review reads it when the rescue came
- *   out clean, and never writes it.
+ * - `rescued`, the preparation's copy of that whole source, made where its lock needs a
+ *   rescue (src/prepare/steps.js), whose package.json and lock alone the rescue changes. An
+ *   input like `sca`: the review reads it when the rescue came out clean, and never writes it.
  * - `report`, the text the reviewer sends to the developer. The one document the linter
  *   writes itself (src/report/report-file.js).
  * - `summary`, where a sub-agent writes the add-on description, and `build`, where the
  *   agent writes what building it takes (the preparation, or the build-safety phase).
- *   `buildCopy` is the copy of the source archive the preparation's agent builds a clean
- *   source in (src/prepare/steps.js), never the archive itself, which the reviewer and the
- *   other agents read as submitted. What that build produces lies inside it, wherever the
- *   build put it. An input like `sca`: the review never writes it.
+ *   `buildCopy` is where every build of the preparation runs (src/prepare/steps.js): a
+ *   copy of the whole `sca` for a clean source, or of the whole `rescued` for a rescue,
+ *   never the archive itself, which the reviewer and the other agents read as submitted.
+ *   What that build produces lies inside it, wherever the build put it. An input like
+ *   `sca`: the review never writes it.
  *
  * In `.review/`:
  * - `prepare`, reserved for the preparation of a source code review. An input like `sca`,

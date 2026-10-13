@@ -32,6 +32,8 @@ import {
 } from "../seed-caches.js";
 import { relativeInside } from "../../src/addon/load.js";
 import { workPaths } from "../../src/util/dest.js";
+import { loopSlots } from "../../src/report/loop.js";
+import { loadRegistry } from "../../src/checks/registry.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..", "..");
@@ -2009,6 +2011,7 @@ test("declined package-manager commands start a review the reviewer builds for",
   assert.equal(readJson(work, "prepare").packageManagers, false);
   assert.deepEqual(readJson(work, "state").build, {
     result: null,
+    root: null,
     output: null,
     vulnerabilities: null,
   });
@@ -2354,7 +2357,10 @@ test("the hand-back starts the review of an unrescued source, which closes at on
   assert.match(r.stdout, /The review was aborted before it finished/);
   assert.ok(r.stdout.includes(`[report.md](${work}/report.md)`), r.stdout);
   assert.ok(r.stdout.includes("- Build process issues"), r.stdout);
-  const { findings, meta } = readJson(work, "state").report;
+  const state = readJson(work, "state");
+  assert.equal(state.paths.scaRootOrig, null, "the source archive is reviewed");
+  assert.equal(state.build.root, null, "nothing of the rescue was built");
+  const { findings, meta } = state.report;
   assert.equal(meta.checksRun.at(-1), "vendor-vulnerable-indirect");
   assert.ok(findings.some((f) => f.ruleId === "vendor-vulnerable-indirect"));
   assert.ok(findings.some((f) => f.ruleId === "build-reproduces-xpi"));
@@ -2402,12 +2408,16 @@ test("a review of a source the agent built opens on its Build Review Details", a
   assert.equal(state.phase, "build-result");
   assert.deepEqual(state.build, {
     result: "built",
+    root: workPaths(work).buildCopy,
     output: record.buildOutput,
     vulnerabilities: { moderate: 1, high: 0, critical: 0 },
   });
+  assert.equal(state.paths.scaRootOrig, null);
   for (const row of [
     "* SUBMITTED_XPI:",
     `[xpi](${path.join(fixture, "xpi")})`,
+    `* SCA_ROOT: [source archive](${workPaths(work).sca})`,
+    `* BUILD_ROOT: [build copy](${workPaths(work).buildCopy})`,
     "* BUILD_SAFETY: safe",
     "* BUILD_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
     "* BUILD_RESULT: built by the agent",
@@ -2473,16 +2483,73 @@ const FIXTURE_CLEAN = {
   "wick-trim@1.0.1": [],
 };
 
-// A clean lock is built: the prompt after the permission names the source root to copy, the
-// build copy to build it in and the build report, and asks for the build's output.
+// A source rescued clean: its review reads the rescued copy, named as such, beside the same
+// root in the source archive, and the root in the build copy the agent built in.
+test("a rescued review names both roots and the build root", async () => {
+  const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
+  const own = { name: "lantern-sorter", version: "1.0.0" };
+  const { work, record } = await realPreparation({
+    source: path.join(fixture, "src"),
+    xpi: path.join(fixture, "xpi"),
+    flags: {
+      "cache-schema-dir": CACHE,
+      "cache-hash-db-dir": CACHE,
+      "cache-experiments-dir": CACHE,
+      "cache-cdn-lookup-dir": CDN_CACHE,
+      "cache-npm-registry-dir": CACHE,
+    },
+    cache: auditCache({
+      "lint-pebble@0.4.0": [
+        advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
+      ],
+      "argv-crumb@0.0.8": [],
+      "tidy-lantern@2.1.0": [],
+      "wick-trim@1.0.1": [],
+    }),
+    rescue: (root) => {
+      fs.writeFileSync(path.join(root, "package.json"), JSON.stringify(own));
+      fs.writeFileSync(
+        path.join(root, "package-lock.json"),
+        JSON.stringify({ ...own, lockfileVersion: 3, packages: { "": own } })
+      );
+    },
+  });
+  const { sca, rescued, buildCopy } = workPaths(work);
+  assert.equal(record.roots.scaRoot, rescued);
+  const r = run(["--llm-handback", work]);
+  assert.notEqual(r.code, 2, r.stdout + r.stderr);
+  const state = readJson(work, "state");
+  assert.equal(state.paths.scaRoot, rescued);
+  assert.equal(state.paths.scaRootOrig, sca);
+  assert.equal(state.build.root, buildCopy);
+  const rows = [
+    `* SCA_ROOT: [rescued source (reduced/fixed dependencies)](${rescued})`,
+    `* SCA_ROOT_ORIG: [source archive](${sca})`,
+    `* BUILD_ROOT: [build copy](${buildCopy})`,
+  ];
+  const details = loopSlots(state, {}, work, loadRegistry()).buildDetails;
+  for (const row of rows) {
+    assert.ok(details.includes(row), `${row}\n${details}`);
+  }
+});
+
+// A clean lock is built: the prompt after the permission names the source root, its place in
+// the build copy the linter made to build it in and the build report, and asks for the
+// build's final artifact. The agent copies nothing.
 test("the hand-back prints a clean source's build", () => {
   const { work, stdout, dir } = permittedPrompt(FIXTURE_CLEAN);
   assert.equal(readJson(work, "prepare").step, "build");
   assert.equal(headerValue(stdout, "SCA_ROOT"), path.join(work, "sca"));
-  assert.equal(headerValue(stdout, "BUILD_COPY"), workPaths(work).buildCopy);
+  assert.equal(headerValue(stdout, "BUILD_ROOT"), workPaths(work).buildCopy);
+  assert.equal(headerValue(stdout, "BUILD_COPY"), undefined);
   assert.equal(headerValue(stdout, "RESCUE_ROOT"), undefined);
+  assert.ok(
+    fs.existsSync(path.join(workPaths(work).buildCopy, "package.json"))
+  );
+  assert.ok(!unwrapped(stdout).includes("Copy SCA_ROOT"));
   for (const said of [
-    "Copy SCA_ROOT to BUILD_COPY",
+    "Build in BUILD_ROOT, and only there",
+    "Write it as an absolute path.",
     '"Build attempt"',
     "`pnpm install --frozen-lockfile --config.strict-dep-builds=false`",
   ]) {
@@ -2503,8 +2570,21 @@ test("the hand-back prints a vulnerable source's rescue", () => {
   });
   assert.equal(readJson(work, "prepare").step, "rescue");
   assert.equal(headerValue(stdout, "RESCUE_ROOT"), path.join(work, "rescued"));
+  assert.equal(headerValue(stdout, "BUILD_ROOT"), workPaths(work).buildCopy);
   assert.equal(headerValue(stdout, "BUILD_COPY"), undefined);
+  // The agent replaces build/ with a copy of the whole rescued/ before each build, with
+  // exactly these two commands, printed as they are run.
+  const commands = [
+    `rm -rf ${workPaths(work).buildCopy}`,
+    `cp -a ${workPaths(work).rescued} ${workPaths(work).buildCopy}`,
+  ];
+  const lines = stdout.split("\n").map((l) => l.trim());
+  const at = lines.indexOf(commands[0]);
+  assert.ok(at > 0, stdout);
+  assert.equal(lines[at + 1], commands[1]);
   for (const said of [
+    "Never install or build anything in RESCUE_ROOT",
+    "Then build in BUILD_ROOT, and only there.",
     "npm install --package-lock-only --ignore-scripts",
     "npm audit fix --package-lock-only --ignore-scripts",
     "build NOTHING",
