@@ -105,6 +105,7 @@ function workFolder(
     vulns = {},
     cache = auditCache(vulns),
     flags = {},
+    agentBuilds = false,
   } = {}
 ) {
   const parent = fs.realpathSync(
@@ -117,6 +118,7 @@ function workFolder(
     startRecord({
       submission: { xpi: path.join(parent, "addon.xpi"), experiments },
       flags: { ...flags, ...(cache ? { "cache-work-dir": cache } : {}) },
+      agentBuilds,
     })
   );
   writeTree(workPaths(work).sca, {
@@ -538,12 +540,12 @@ test("an unsafe build is done at once, with nothing audited", async () => {
   cleanup(work);
 });
 
-// --llm-agent-builds answered the permission question up front: a safe build goes straight
-// to the audit, recorded as let it build, and a clean lock to the build.
-test("--llm-agent-builds skips the permission question", async () => {
+// A record holding agentBuilds answered the permission question up front: a safe build goes
+// straight to the audit, recorded as let it build, and a clean lock to the build.
+test("agentBuilds skips the permission question", async () => {
   const work = workFolder(
     { "package.json": packageFile(), "package-lock.json": npmLock() },
-    { vulns: TOOL_CLEAN, flags: { "llm-agent-builds": true } }
+    { vulns: TOOL_CLEAN, agentBuilds: true }
   );
   const at = await extractStep(work);
   assert.equal(at.next, "step");
@@ -1398,6 +1400,16 @@ test("a record boolean that is neither true nor false is refused", async () => {
   await assert.rejects(
     later(work),
     refused(/holds submission\.experiments as neither true nor false/)
+  );
+  cleanup(work);
+});
+
+test("an agentBuilds that is neither true nor false is refused", async () => {
+  const work = workFolder({ "package.json": packageFile() });
+  writePrepare(work, { ...recordOf(work), agentBuilds: "yes" });
+  await assert.rejects(
+    extractStep(work),
+    refused(/holds agentBuilds as neither true nor false/)
   );
   cleanup(work);
 });

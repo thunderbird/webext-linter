@@ -456,8 +456,7 @@ That hand-back settles the roots as the review would, and records the judgement:
   agent may build the add-on.` Once the reviewer has replied, it puts them one question alone, through its question tool: the `PACKAGE_MANAGERS` entry,
   "Let the agent build the add-on (including its package-manager commands), or not?". The
   reader records the label the reviewer picked, `Let it build` or `Do not let it build`, and
-  any other answer is refused. `--llm-agent-builds` answers it up front with `Let it build`:
-  that prompt is skipped. Not letting it build, the folder is done at once, as after an
+  any other answer is refused. Not letting it build, the folder is done at once, as after an
   unsafe judgement.
 
 Where the agent may not build, the review's Build Review Details say `not built: you build
@@ -613,7 +612,6 @@ The caches are not part of it: they stay in `WEBEXT-LINTER-CACHE/`.
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Refused with `--report-format json`. |
 | `--llm-handback <dir>` | Take a phase back and hand out the next, from the review file in the work folder the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file in that folder. On a folder a source code review is being prepared in (`.review/prepare.json`, and no review started), take the next step of the preparation instead, and once it is done, start its review. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - and print the first prompt for preparing a source code review of it. It creates the review's work folder beside the `.xpi`, records there how the review is to be run, and its prompt ends in `--llm-handback` on that folder (see [Preparing a source code review](#preparing-a-source-code-review)). Refused beside any `--sca-*` flag, which is what the preparation works out. |
-| `--llm-agent-builds` | With `--llm-sca-review`: answer the preparation's build question up front with `Let it build`, so it is not put to the reviewer. Where the agent judges the build safe, it may then build the add-on, its package-manager commands included. Recorded with the preparation's flags. Refused without `--llm-sca-review`, the one run that asks it. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
 | `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted early, which takes them out. The build question is still asked. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
 | `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. No sweeping agent is spawned, and the sweep is not handed to the reviewer either. |

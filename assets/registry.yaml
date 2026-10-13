@@ -2065,7 +2065,7 @@ review-early-exit:
 # whether building is safe. They hand the two paths and the judgement back in ANSWERS. An
 # unsafe build ends the preparation. After a safe one the reviewer reads the Build Review
 # Details and is asked alone whether the agent may build the add-on (`permission`), unless
-# --llm-agent-builds answered that up front. Declined, the preparation ends. Allowed, the
+# the agent-builds test switch answered that up front. Declined, the preparation ends. Allowed, the
 # linter audits that root's lock (src/prepare/audit.js). A lock it cannot read in full ends
 # the preparation with nothing built. A clean lock is BUILT by the reader in the work folder's
 # build/, which the linter fills with a copy of the whole sca/ (`build`). Where the lock
@@ -2137,8 +2137,8 @@ llm-sca-review-prompt:
         {{flags}}
     - text: |-
         That run checks the source and prints the next prompt. Follow it from there - this one is done.
-  # Printed after a SAFE judgement, unless --llm-agent-builds answered its question up
-  # front. The Build Review Details end the agent's turn, as a turn-ending pass of the
+  # Printed after a SAFE judgement, unless the agent-builds test switch answered its
+  # question up front. The Build Review Details end the agent's turn, as a turn-ending pass of the
   # review loop does, and the question is put once the reviewer has replied.
   permission:
     - text: |-

@@ -8,7 +8,7 @@
 // done at once: the agent builds nothing, and runs no package-manager command. A safe one
 // moves on to `permission`, which shows the reviewer the Build Review Details and asks them
 // alone whether the agent may build the add-on, its package-manager commands included
-// (pre-answered "yes" by --llm-agent-builds, which skips that step). Where the reviewer
+// (pre-answered "yes" where the record holds agentBuilds, which skips that step). Where the reviewer
 // declined, the folder is done at once: a rescue runs package-manager commands, so none is
 // tried. Otherwise it audits the root's lock (./audit.js). A root the audit cannot read in
 // full is done: nothing is built, and the review it starts stops on that lock. A clean lock
@@ -50,7 +50,6 @@ import {
   PREPARE_STEP,
   markPrepare,
   readPrepare,
-  recordBoolean,
   writePrepare,
 } from "./state.js";
 import {
@@ -95,8 +94,20 @@ const BUILD_OUTPUT = "BUILD_OUTPUT";
 /** The review file's entry for the agent's comparison of that output with the submitted XPI,
  *  as `llm-sca-review-prompt` names it: answered only where the build produced an output. */
 const BUILD_MATCH = "BUILD_MATCH";
-/** The flag that answers the permission question up front. */
-const AGENT_BUILDS = "llm-agent-builds";
+/** Whether the hot runs switched the agent's builds on (WEBEXT_LINTER_AGENT_BUILDS=1): their
+ *  stand-in for the reviewer's "Let it build", which nothing documents. Read once: no setter,
+ *  nothing to undo. */
+const AGENT_BUILDS = process.env.WEBEXT_LINTER_AGENT_BUILDS === "1";
+
+/**
+ * Whether the hot runs answered the permission question up front. Read only by the run that
+ * creates the work folder, which records it (`agentBuilds`), so every hand-back after reads
+ * the record and never the environment.
+ * @returns {boolean}
+ */
+export function agentBuildsSwitchedOn() {
+  return AGENT_BUILDS;
+}
 
 /**
  * What a hand-back hands out next: the prompt for the record's step (`step`), the permission
@@ -334,7 +345,7 @@ export async function handBack(work, registry = loadRegistry()) {
  * The first step: the roots the reader handed back, settled, with the build judgement and
  * the build report it rests on. An unsafe build is done at once, with no package-manager
  * command allowed. A safe one moves on to the permission question, or, where
- * --llm-agent-builds answered it up front, straight to the audit.
+ * the record holds agentBuilds, straight to the audit.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record
  * @param {AuditContext} context
@@ -357,11 +368,7 @@ async function extract(work, record, context, prompt) {
   if (buildSafety !== "safe") {
     return done(work, { ...settled, packageManagers: false });
   }
-  const flags = record.flags ?? {};
-  if (
-    Object.hasOwn(flags, AGENT_BUILDS) &&
-    recordBoolean(flags[AGENT_BUILDS], `--${AGENT_BUILDS}`)
-  ) {
+  if (record.agentBuilds) {
     return permitted(
       work,
       { ...settled, packageManagers: true },

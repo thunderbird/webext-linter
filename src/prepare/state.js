@@ -48,7 +48,7 @@ import {
 /** Bumped when the record's shape, or what a step does with it, changes in a way an older
  *  file cannot satisfy. A preparation in flight does not survive the upgrade, and saying so
  *  beats reading it wrongly. */
-export const PREPARE_VERSION = 8;
+export const PREPARE_VERSION = 9;
 
 /** The mode every write leaves the record at: readable, and writable by nobody. */
 const READ_ONLY = 0o444;
@@ -59,7 +59,7 @@ const READ_ONLY = 0o444;
  * - `extract`: the source is to be extracted into `sca/`, its build reported in build.md,
  *   and its roots and the build judgement handed back in the review file. The next
  *   hand-back settles them, and moves a safe build on to `permission` (or, where
- *   --llm-agent-builds answered that up front, audits the root) and an unsafe one to `done`;
+ *   the record holds agentBuilds, audits the root) and an unsafe one to `done`;
  * - `permission`: the reviewer is shown the Build Review Details and asked whether the
  *   agent may build, and the next hand-back reads the answer and audits the root where it
  *   may;
@@ -105,12 +105,15 @@ const COUNTED = ["moderate", "high", "critical"];
  * @property {Record<string, string|boolean>} flags  The flags the review is to be run with,
  *   as parsed (src/cli.js), named without their dashes. A folder among them is absolute, so
  *   it names the same folder wherever the review starts.
+ * @property {boolean} agentBuilds  Whether the hot runs answered the permission question up
+ *   front (src/prepare/steps.js agentBuildsSwitchedOn), as the run that created the work
+ *   folder read it. Not a flag, so the review never sees it.
  * @property {?string} buildSafety  The agent's judgement of the build it reported in
  *   build.md, a BUILD_SAFETY_VALUES id, as the first hand-back read it, and null before it.
  *   The review starts with it as its `build-safety` value.
  * @property {?boolean} packageManagers  Whether the agent may build the add-on and run its
  *   package-manager commands: the reviewer's answer to the permission question (true where
- *   --llm-agent-builds answered it up front), false after an unsafe judgement, which asks
+ *   `agentBuilds` answered it up front), false after an unsafe judgement, which asks
  *   nothing, and null before either. False, the preparation audits and rescues nothing,
  *   and the agent builds nothing.
  * @property {?import("./audit.js").VulnerabilityCounts} vulnerabilities  The lock the
@@ -131,9 +134,9 @@ const COUNTED = ["moderate", "high", "critical"];
  * @property {string} digest  The hash over every other field, as writePrepare stored it
  *   (recordDigest). A record whose digest does not match was changed after it was written.
  *
- * Every boolean in the record - `submission.experiments`, `packageManagers`, a boolean flag - is
- * `true` or `false`, which is all the linter writes. Anything else was put there by an edit,
- * and the record is refused rather than read (recordBoolean).
+ * Every boolean in the record - `submission.experiments`, `agentBuilds`, `packageManagers`, a
+ * boolean flag - is `true` or `false`, which is all the linter writes. Anything else was put
+ * there by an edit, and the record is refused rather than read (recordBoolean).
  */
 
 /**
@@ -184,6 +187,7 @@ export function readPrepare(work) {
     throw new HandbackRefused("the preparation's record names no submission");
   }
   recordBoolean(record.submission.experiments, "submission.experiments");
+  recordBoolean(record.agentBuilds, "agentBuilds");
   // The judgement is unknown until the first hand-back reads it, and the permission until
   // the reviewer answered it or an unsafe judgement settled it.
   const before = record.step === PREPARE_STEP.extract;
@@ -323,15 +327,16 @@ export function recordBoolean(value, what) {
 /**
  * The record of a preparation that has not started: at its first step, with what the run
  * that created the work folder alone knows, and nothing worked out yet.
- * @param {Pick<PrepareRecord, "submission" | "flags">} known
+ * @param {Pick<PrepareRecord, "submission" | "flags" | "agentBuilds">} known
  * @returns {PrepareRecord}
  */
-export function startRecord({ submission, flags }) {
+export function startRecord({ submission, flags, agentBuilds }) {
   return {
     version: PREPARE_VERSION,
     step: PREPARE_STEP.extract,
     submission,
     flags,
+    agentBuilds,
     buildSafety: null,
     packageManagers: null,
     roots: null,

@@ -98,8 +98,11 @@ function reportOf(stdout) {
 }
 
 /** Run a root entry file, capturing stdout/stderr/exit code. */
-function runFile(file, args = []) {
-  const r = spawnSync(process.execPath, [file, ...args], { encoding: "utf8" });
+function runFile(file, args = [], env = {}) {
+  const r = spawnSync(process.execPath, [file, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+  });
   return { code: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
@@ -112,8 +115,9 @@ const FIXTURES = path.join(ROOT, "tests", "addons");
 const READ_FOLDER_FLAGS = new Set(["--sca-root", "--sca-exp-source"]);
 
 /** Run the review entry (verify.js), with an add-on from the fixtures' folder replaced by a
- *  copy outside the repository, so no review writes its work folder into tests/addons. */
-function run(args) {
+ *  copy outside the repository, so no review writes its work folder into tests/addons, and
+ *  with `env` added to this process's environment. */
+function run(args, env = {}) {
   return runFile(
     REVIEW,
     args.map((a, i) =>
@@ -124,7 +128,8 @@ function run(args) {
       fs.existsSync(a)
         ? addonOutsideRepo(a)
         : a
-    )
+    ),
+    env
   );
 }
 
@@ -2806,20 +2811,18 @@ test("a safe build prints the Build Review Details and the permission question",
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// --llm-agent-builds answers the permission question up front: it is recorded with the
-// flags, the safe build goes straight on to the audit, and the review starts with no
-// question put.
-test("--llm-agent-builds skips the permission question", () => {
+// The agent-builds test switch answers the permission question up front: the start run
+// records it, the safe build goes straight on to the audit, and the review starts with no
+// question put. The hand-back runs without the switch, so the record decides.
+test("WEBEXT_LINTER_AGENT_BUILDS=1 skips the permission question", () => {
   const dir = submissionFolder();
-  const r = run([
-    dir,
-    "--llm-sca-review",
-    "--llm-agent-builds",
-    ...OFFLINE_FLAGS,
-  ]);
+  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS], {
+    WEBEXT_LINTER_AGENT_BUILDS: "1",
+  });
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
-  assert.equal(readJson(work, "prepare").flags["llm-agent-builds"], true);
+  assert.equal(readJson(work, "prepare").agentBuilds, true);
+  assert.ok(!("llm-agent-builds" in readJson(work, "prepare").flags));
   const handed = handBackRoots(r.stdout);
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
   assert.doesNotMatch(handed.stdout, /SCA Review Prompt/);
@@ -2834,21 +2837,17 @@ test("--llm-agent-builds skips the permission question", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The flag answers a question only the preparation asks, so every other run refuses it.
-test("--llm-agent-builds is refused without --llm-sca-review", () => {
+// The permission question is answered up front only by the test switch: no option does it.
+test("--llm-agent-builds is an unknown option", () => {
   const dir = submissionFolder();
-  for (const argv of [
-    [path.join(dir, "addon.xpi"), "--llm-agent-builds", ...OFFLINE_FLAGS],
-    [path.join(dir, "addon.xpi"), "--llm-review", "--llm-agent-builds"],
-    ["--llm-handback", dir, "--llm-agent-builds"],
-  ]) {
-    const r = run(argv);
-    assert.equal(r.code, 2, r.stdout);
-    assert.match(
-      r.stderr,
-      /--llm-agent-builds answers the build question of the preparation, so it needs --llm-sca-review/
-    );
-  }
+  const r = run([
+    dir,
+    "--llm-sca-review",
+    "--llm-agent-builds",
+    ...OFFLINE_FLAGS,
+  ]);
+  assert.equal(r.code, 2, r.stdout);
+  assert.match(r.stderr, /Unknown option '--llm-agent-builds'/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

@@ -4,7 +4,7 @@ A hot run is the source code review's build procedure run for real, end to end, 
 add-on. An agent (Claude, in this repo) receives
 
 ```sh
-node verify.js <submission folder> --llm-sca-review --llm-agent-builds
+WEBEXT_LINTER_AGENT_BUILDS=1 node verify.js <submission folder> --llm-sca-review
 ```
 
 and follows every prompt with real tools: it extracts the archive, writes build.md, judges

@@ -151,6 +151,7 @@ export async function realPreparation({
     startRecord({
       submission: { xpi, experiments: false },
       flags: { ...flags, "cache-work-dir": cache },
+      agentBuilds: false,
     })
   );
   const sca = workPaths(work).sca;

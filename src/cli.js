@@ -31,7 +31,12 @@ import {
   startRecord,
   treeRoots,
 } from "./prepare/state.js";
-import { handBack, recordedRoots, startPreparation } from "./prepare/steps.js";
+import {
+  agentBuildsSwitchedOn,
+  handBack,
+  recordedRoots,
+  startPreparation,
+} from "./prepare/steps.js";
 import {
   extractXpiToTemp,
   readPackedManifest,
@@ -209,10 +214,6 @@ function helpText(checkIds) {
       "Read the add-on argument as a submission FOLDER - one built .xpi and one archive of the source it was built from - and print the prompt for preparing a source code review of it. It creates the review's work folder at its default place, beside the .xpi, and the prompt has the source extracted into it and the roots its reader worked out handed back with --llm-handback and that work folder, beside the build report it wrote and its judgement whether the build is safe. An unsafe build is reviewed at once, and after a safe one the reviewer is asked whether the agent may build. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the source (rescued/ in the work folder) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags: of the copy, or of the source as submitted, whose review the vulnerabilities then abort. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any --sca-* flag, which is what it exists to produce.",
     ],
     [
-      "--llm-agent-builds",
-      'With --llm-sca-review: answer the preparation\'s build question up front with "let it build", so it is not put to the reviewer. Where the agent judges the build safe, it may then build the add-on, its package-manager commands included. Refused without --llm-sca-review, the one run that asks it.',
-    ],
-    [
       "--llm-handback <dir>",
       "Take one pass of the review loop, or one step of preparing a source code review: apply what the review file in this work folder carries and print the next prompt - the last one, once nothing else is left, hands over the settled review. A preparation that is done starts its review here, and prints that review's first prompt. The folder is the work folder the review or its preparation started in, and no add-on is named again. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person.",
     ],
@@ -351,7 +352,6 @@ const OPTIONS = {
   "sca-exp-source": { type: "string" },
   "report-format": { type: "string" },
   "llm-sca-review": { type: "boolean" },
-  "llm-agent-builds": { type: "boolean" },
   "llm-review": { type: "boolean" },
   "llm-skip-summary": { type: "boolean" },
   "llm-skip-manual": { type: "boolean" },
@@ -753,17 +753,6 @@ export async function main(argv) {
     return 2;
   }
 
-  // --llm-agent-builds answers a question only the preparation asks, so it says nothing
-  // without one: a review started by --llm-review is not prepared, and a --llm-handback pass
-  // reads the answer from the record its --llm-sca-review run wrote.
-  if (values["llm-agent-builds"] && !values["llm-sca-review"]) {
-    writeToStderr(
-      "--llm-agent-builds answers the build question of the preparation, so it needs " +
-        "--llm-sca-review: no other run asks it.\n"
-    );
-    return 2;
-  }
-
   // The band a review publishes a warning at belongs to the REVIEW, recorded by the run that
   // started it (state.run) and read back by every pass after. Accepting it here too would put
   // the same fact in two places, and a pass given it where the review was not would settle a
@@ -916,6 +905,7 @@ export async function main(argv) {
       startRecord({
         submission: { xpi: submission.xpi, experiments },
         flags: forwardedFlags(values),
+        agentBuilds: agentBuildsSwitchedOn(),
       }),
       registry
     );
