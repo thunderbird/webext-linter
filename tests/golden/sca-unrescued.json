@@ -45,19 +45,19 @@
     "info": 0,
     "byRule": {
       "vendor-vulnerable-dev": 1,
-      "build-reproduces-xpi": 1
+      "build-fails": 1
     }
   },
   "findings": [
     {
-      "ruleId": "build-reproduces-xpi",
+      "ruleId": "build-fails",
       "severity": "error",
       "file": null,
       "loc": null,
       "item": null,
       "hint": null,
       "artifact": "SCA",
-      "message": "The submitted source either could not be built by following its build instructions, or does not build into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions."
+      "message": "The submitted source could not be built by following its build instructions. Please make sure the instructions are complete and that the build succeeds from a clean copy of the submitted archive, with the dependencies installed exactly as the lock file pins them.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     },
     {
       "ruleId": "vendor-vulnerable-dev",

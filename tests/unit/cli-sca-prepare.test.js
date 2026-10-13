@@ -501,7 +501,7 @@ test("the hand-back starts the review of an unrescued source, which closes at on
   const { findings, meta } = state.report;
   assert.equal(meta.checksRun.at(-1), "vendor-vulnerable-indirect");
   assert.ok(findings.some((f) => f.ruleId === "vendor-vulnerable-indirect"));
-  assert.ok(findings.some((f) => f.ruleId === "build-reproduces-xpi"));
+  assert.ok(findings.some((f) => f.ruleId === "build-fails"));
   fs.rmSync(source, { recursive: true, force: true });
 });
 

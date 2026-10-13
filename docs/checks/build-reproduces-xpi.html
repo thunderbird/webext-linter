@@ -3,31 +3,31 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Source does not build into the XPI</title>
+    <title>Reproducing the XPI from the source</title>
     <link rel="stylesheet" href="../assets/style.css" />
   </head>
   <body>
     <main class="page">
       <header class="check-header">
-        <h1>Source does not build into the XPI <span class="badge error">error</span></h1>
+        <h1>Reproducing the XPI from the source <span class="badge error">error</span></h1>
         <div class="check-id">build-reproduces-xpi</div>
       </header>
 
       <h2>What it asks</h2>
       <p class="lead">
-        Every source-code submission asks the reviewer whether the source builds into the
-        submitted XPI: does the build complete, from a clean copy with the dependencies
-        installed exactly as the lock file pins them (<code>npm ci</code>, or
-        <code>pnpm install --frozen-lockfile</code>), and does its result match what was
-        submitted?
+        Every source-code submission asks the reviewer to build the add-on from the source
+        and compare the result with the submitted XPI: does the build complete, from a clean
+        copy with the dependencies installed exactly as the lock file pins them
+        (<code>npm ci</code>, or <code>pnpm install --frozen-lockfile</code>), and does its
+        result match what was submitted?
       </p>
       <p>
         Reproducing the build is the reviewer's attestation that the shipped XPI comes
         from the source they read, which is what a source-code review rests on. The
         reviewer answers by comparing the build output the review links, where the agent
-        built the add-on, or their own build, with the submitted XPI. Files that differ only by what every build changes (a
-        timestamp, a build id) still match. An install refused because
-        <code>package.json</code> and the lock file disagree is a failed build.
+        built the add-on, or their own build, with the submitted XPI. Files that differ only
+        by what every build changes (a timestamp, a build id) still match. Otherwise they
+        report whether it does not reproduce, does not build, or is unsafe to build.
       </p>
 
       <h2>Decision flow</h2>
@@ -35,13 +35,16 @@
         <pre class="mermaid">
 flowchart TD
   A["The build, from a clean copy"] --> Q{"Does it complete, and does<br/>its result match the submitted XPI?"}
-  Q -- yes --> OK([cleared: the remaining<br/>questions follow])
-  Q -- "no, or the reviewer's own words" --> ERR([ERROR: the source does not build into the XPI<br/>the review is aborted])
+  Q -- "Builds and reproduces" --> OK([cleared: the remaining<br/>questions follow])
+  Q -- "plain report: reported" --> ERR([ERROR: the source could not be built<br/>into the XPI, the review is aborted])
+  Q -- "--llm-review: Does not reproduce" --> NR([ERROR: build-not-reproduced])
+  Q -- "--llm-review: Does not build" --> BF([ERROR: build-fails])
+  Q -- "--llm-review: Is unsafe to build" --> BU([ERROR: build-unsafe])
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
-  class ERR err;
+  class ERR,NR,BF,BU err;
   class OK ok;
   class Q manual;
         </pre>
@@ -49,24 +52,31 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told that the submitted source either could not be built by its build
-        instructions, or does not build into the submitted XPI, so the review cannot
-        continue, and that the instructions must be complete, the build must succeed from a
-        clean copy, and the submitted XPI must be built from exactly the submitted source.
+        In a plain report, the add-on is told that the submitted source could not be built
+        into the submitted XPI, so the review cannot continue, and that the instructions
+        must be complete, the build must succeed from a clean copy, and the submitted XPI
+        must be built from exactly the submitted source.
       </div>
 
       <div class="outcome">
         <strong>It aborts the review</strong>
-        A &ldquo;no&rdquo; settles the submission on its own. Nothing further is put to a
-        reviewer: the report drops every to-do item they would have been asked, keeps the code-review sections of a printed report (an aborted <code>--llm-review</code> hands over no to-do item at all), and the developer&rsquo;s text ends on the reason it is
+        A reported answer settles the submission on its own. Nothing further is put to a
+        reviewer: the report drops every to-do item they would have been asked, keeps the
+        code-review sections of a printed report (an aborted <code>--llm-review</code> hands
+        over no to-do item at all), and the developer&rsquo;s text ends on the reason it is
         incomplete (&ldquo;Build process issues&rdquo;). Under <code>--llm-review</code> the
         question is asked ALONE, in the <code>built</code> phase, right after the Build
         Review Details and before the sweeps - <code>ask</code> batches, and nobody may be
         asked to install an XPI in the same breath as being asked whether the source builds
-        into it. Its two answers are <em>Builds and reproduces</em> and <em>Does not build
-        or reproduce</em>. It is asked under <code>--llm-skip-manual</code> too. A source
-        whose preparation gave its rescue up reports it without a question, since nothing
-        clean was built from it.
+        into it. Its four answers are <em>Builds and reproduces</em>, which clears it, and
+        <em>Does not reproduce</em>, <em>Does not build</em> and <em>Is unsafe to
+        build</em>, which clear it and report
+        <a href="build-not-reproduced.html"><code>build-not-reproduced</code></a>,
+        <a href="build-fails.html"><code>build-fails</code></a> or
+        <a href="build-unsafe.html"><code>build-unsafe</code></a>, so the developer is told
+        why. It is asked under <code>--llm-skip-manual</code> too. A source whose
+        preparation gave its rescue up reports <code>build-fails</code> without a question,
+        since nothing clean was built from it.
       </div>
 
       <p class="source-note">

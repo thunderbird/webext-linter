@@ -722,20 +722,20 @@ async function reviewSubmission(opts, work, prepared) {
   );
   findings.push(...reviewFindings);
   // A source whose preparation gave its rescue up has no clean build to reproduce the XPI
-  // from: the build check reports it here, without a question, and the review ends for
-  // build issues through the early exit, beside the vulnerability findings that started the
-  // rescue.
+  // from: the check for a source that cannot be built reports it here, without a question,
+  // and the review ends for build issues through the early exit, beside the vulnerability
+  // findings that started the rescue.
   if (
     prepared?.buildResult === BUILD_RESULT.rescueFailed &&
-    checkSelected(REPRODUCES_CHECK, {
+    checkSelected(BUILD_FAILS_CHECK, {
       only: opts.checksOnly,
       skip: opts.checksSkip,
     })
   ) {
     findings.push(
       finding({
-        ruleId: REPRODUCES_CHECK,
-        severity: registry.checkEntry(REPRODUCES_CHECK).severity,
+        ruleId: BUILD_FAILS_CHECK,
+        severity: registry.checkEntry(BUILD_FAILS_CHECK).severity,
         artifact: ARTIFACT_SCA,
       })
     );
@@ -1068,8 +1068,8 @@ async function reviewSubmission(opts, work, prepared) {
  *  would refuse the very folder it was prepared in. */
 const WORK_INPUTS = new Set(["sca", "rescued", "buildCopy", "prepare"]);
 
-/** The one build check: whether the source builds into the shipped XPI. */
-const REPRODUCES_CHECK = "build-reproduces-xpi";
+/** The check a source that cannot be built reports. */
+const BUILD_FAILS_CHECK = "build-fails";
 
 /**
  * The vulnerable packages of the lock this review read, counted by severity from its own

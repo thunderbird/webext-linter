@@ -1,8 +1,9 @@
 // SCA only: asks the reviewer whether the source builds into the shipped XPI. Nothing in
 // the files can answer it - only a build can - so EVERY source-code submission raises it,
-// and the reviewer answers it once the build ran (by the agent, or by hand). A "no" aborts
-// the review (review-early-exit): a source that does not build into the shipped XPI attests
-// nothing about it, so nobody is then asked to install it.
+// and the reviewer answers it once the build ran (by the agent, or by hand). Any answer but
+// "Builds and reproduces" reports the check naming why (build-not-reproduced, build-fails,
+// build-unsafe) and aborts the review: a source that does not build into the shipped XPI
+// attests nothing about it, so nobody is then asked to install it.
 //
 // Belongs here: raising the question, anchored at the submission's package.json. Does NOT
 // belong here: when it is asked (-> asked-in, assets/registry.yaml) or the wording

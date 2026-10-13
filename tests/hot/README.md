@@ -108,7 +108,7 @@ safety concern, and the case would end as judged unsafe instead of failed.
 | clean-builds | A | none (lock regenerated) | 0 high, 0 critical | row 14: built in `build/`, `SCA_ROOT` in `sca/` |
 | clean-fails | A | `turndown` removed | 0 high, 0 critical | row 14: the agent's build failed, `SCA_ROOT` in `sca/` |
 | reduce-builds | A | devDependency `"lodash": "4.17.20"`, unused | 1 high | row 14: built in `build/`, `SCA_ROOT` in `rescued/` |
-| reduce-fails | A | as reduce-builds, and `turndown` removed | 1 high | abort: known vulnerabilities and build issues (`build-reproduces-xpi`) |
+| reduce-fails | A | as reduce-builds, and `turndown` removed | 1 high | abort: known vulnerabilities and build issues (`build-fails`) |
 | fix-builds | A | `"dompurify": ">=3.1.2 <=3.1.3"`, locked at 3.1.2 | 1 high | row 14: built in `build/`, `SCA_ROOT` in `rescued/` |
 | fix-fails | A | as fix-builds, and `turndown` removed | 1 high | abort: known vulnerabilities and build issues |
 | fix-impossible | A | `"dompurify": ">=3.0.0 <=3.1.2"`, locked at 3.1.2 | 1 high | abort: known vulnerabilities and build issues |

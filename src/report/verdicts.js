@@ -40,7 +40,6 @@ import { displayLine } from "../util/text.js";
 import { MAX_NOTE } from "../config.js";
 import { finding } from "./finding.js";
 import { orderReview, hasLocus } from "./order.js";
-import { phaseOf } from "./phases.js";
 import { VERB, VERB_NAMES, verbNamed } from "./verbs.js";
 import { locationLine } from "./format.js";
 
@@ -70,7 +69,7 @@ const VERBS = new Set(VERB_NAMES.filter((v) => v !== String(VERB.ask)));
  *   on with `ask` is answered by a reviewer while keeping the section it was filed under.
  * @param {string} ref  The item's reference, for the refusal texts.
  * @param {{label: string, verdict: string, description: string}[]} choices  The answers the
- *   question offered, those of the phase it was asked in (registry.answerChoices).
+ *   question offered (registry.manualReviewChoices).
  * @returns {{verdict: string, note: ?string}}
  */
 function settleAnswer(answer, asked, ref, choices) {
@@ -203,13 +202,12 @@ export function applyVerdicts({
         `--llm-handback: item ${ref} is not an item of this review`
       );
     }
-    // Read against the answers the item's question offered: the phase it is asked in may
-    // offer its own (registry.answerChoices).
+    // Read against the answers the item's question offered.
     const { verdict, note } = settleAnswer(
       answer,
       asking(item),
       ref,
-      registry.answerChoices(phaseOf(item))
+      registry.manualReviewChoices()
     );
     // Named in the audit line, so a misaimed verdict is legible there rather than only
     // in the re-rendered report.

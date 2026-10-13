@@ -183,7 +183,7 @@ function rootEntries(record) {
  * @returns {object}
  */
 function safetyEntry(judgement) {
-  return valueEntry({ name: BUILD_SAFETY, values: judgement.values });
+  return valueEntry({ name: BUILD_SAFETY, values: judgement.values }, null);
 }
 
 /**
@@ -193,11 +193,10 @@ function safetyEntry(judgement) {
  * @returns {object}
  */
 function managersEntry(question) {
-  return valueEntry({
-    name: PACKAGE_MANAGERS,
-    question: question.question,
-    values: question.values,
-  });
+  return valueEntry(
+    { name: PACKAGE_MANAGERS, values: question.values },
+    question.question
+  );
 }
 
 /**
@@ -223,11 +222,10 @@ function outputPhase(ask) {
  * @returns {object}
  */
 function matchEntry(question) {
-  return valueEntry({
-    name: BUILD_MATCH,
-    question: question.question,
-    values: question.values,
-  });
+  return valueEntry(
+    { name: BUILD_MATCH, values: question.values },
+    question.question
+  );
 }
 
 /**

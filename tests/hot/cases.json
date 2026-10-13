@@ -43,7 +43,7 @@
       "expect": {
         "stop": "abort",
         "reasons": ["known-vulnerabilities", "unreproducible-build"],
-        "findings": ["build-reproduces-xpi"]
+        "findings": ["build-fails"]
       }
     },
     {
@@ -64,7 +64,7 @@
       "expect": {
         "stop": "abort",
         "reasons": ["known-vulnerabilities", "unreproducible-build"],
-        "findings": ["build-reproduces-xpi"]
+        "findings": ["build-fails"]
       }
     },
     {
@@ -73,7 +73,7 @@
       "expect": {
         "stop": "abort",
         "reasons": ["known-vulnerabilities", "unreproducible-build"],
-        "findings": ["build-reproduces-xpi"]
+        "findings": ["build-fails"]
       }
     },
     {

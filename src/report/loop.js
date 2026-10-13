@@ -152,8 +152,8 @@ function verdictsOf(state, ordered, registry) {
   for (const x of ordered) {
     if (x.ref in answers && asking(x)) {
       out[x.ref] =
-        pickedChoice(answers[x.ref], registry.answerChoices(phaseOf(x)))
-          ?.verdict ?? String(VERB.reported);
+        pickedChoice(answers[x.ref], registry.manualReviewChoices())?.verdict ??
+        String(VERB.reported);
     }
   }
   return out;
@@ -379,7 +379,8 @@ export { HandbackRefused };
 
 /**
  * What a phase hands out and checks the hand-back against: a process-value phase its one
- * entry, an itemless phase nothing, any other phase its open items.
+ * entry, worded by the open to-do routed to it where it has one, an itemless phase nothing,
+ * any other phase its open items.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
  * @param {object} phase
@@ -388,7 +389,8 @@ export { HandbackRefused };
  */
 function askedIn(state, registry, phase, ordered) {
   if (phase.answer === "value") {
-    return [valueEntry(phase)];
+    const [routed] = renderedOpen(state, registry, phase.name, ordered);
+    return [valueEntry(phase, routed?.message ?? null)];
   }
   return ITEMLESS_ANSWERS.includes(phase.answer)
     ? []
@@ -396,10 +398,13 @@ function askedIn(state, registry, phase, ordered) {
 }
 
 /**
- * Record the process value a phase returned, by the id its `when:` readers name. It settles
- * no item, so it never goes into `answers`. A value that `reports` a check adds that check's
- * finding, which aborts the review the way any finding of an aborting check does - with its
- * reason and its response, and nothing for the loop to decide on its own.
+ * Record the process value a phase returned, by the id its `when:` readers name. The value
+ * itself settles no item, so it never goes into `answers`. Every open to-do routed to the
+ * phase is its question, so each is cleared, recorded as a cleared answer is. A value that
+ * `reports` a check then adds that check's finding, which aborts the review the way any
+ * finding of an aborting check does - with its reason and its response, and nothing for the
+ * loop to decide on its own. So a reported value leaves exactly one finding, the one it
+ * names.
  * @param {import("./state.js").LoopState} state  Mutated.
  * @param {import("../checks/registry.js").Registry} registry
  * @param {{name: string, values: {value: string, label: string, reports: ?string}[]}} phase
@@ -409,6 +414,11 @@ function recordValue(state, registry, phase, answers) {
   const label = answers.get(phase.name);
   const picked = phase.values.find((v) => v.label === label);
   state.values = { ...(state.values ?? {}), [phase.name]: picked.value };
+  const ordered = orderReview(state.report.findings, state.manual);
+  state.answers ??= {};
+  for (const x of openIn(phase.name, ordered, state)) {
+    state.answers[x.ref] = String(VERB.cleared);
+  }
   if (!picked.reports) {
     return;
   }
@@ -457,7 +467,27 @@ function artifactRead(input, sca) {
  * @returns {object[]}
  */
 function phaseEntries(state, registry, phase, ordered) {
-  const open = openIn(phase.name, ordered, state);
+  return entriesFor(
+    renderedOpen(state, registry, phase.name, ordered),
+    phase,
+    // Keyed by the artifact a finding carries, so resolving a path is a lookup rather
+    // than a branch on the review mode - and asked of the module that owns the names, so
+    // this cannot drift from what a locus is stamped with.
+    artifactRoots(state.paths)
+  );
+}
+
+/**
+ * The items still open in one phase, each as reviewItems renders it: a to-do carries the
+ * `message` a person is asked, the one wording every phase that asks a person relays.
+ * @param {import("./state.js").LoopState} state
+ * @param {import("../checks/registry.js").Registry} registry
+ * @param {string} phaseName
+ * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
+ * @returns {object[]}
+ */
+function renderedOpen(state, registry, phaseName, ordered) {
+  const open = openIn(phaseName, ordered, state);
   if (open.length === 0) {
     return [];
   }
@@ -466,18 +496,11 @@ function phaseEntries(state, registry, phase, ordered) {
     reviewItems({
       findings: state.report.findings,
       manual: state.manual,
-      choices: registry.answerChoices(phase.name),
+      choices: registry.manualReviewChoices(),
       labelOf: locusLabeler(mode),
     }).map((item) => [item.ref, item])
   );
-  return entriesFor(
-    open.map((x) => rendered.get(x.ref)).filter(Boolean),
-    phase,
-    // Keyed by the artifact a finding carries, so resolving a path is a lookup rather
-    // than a branch on the review mode - and asked of the module that owns the names, so
-    // this cannot drift from what a locus is stamped with.
-    artifactRoots(state.paths)
-  );
+  return open.map((x) => rendered.get(x.ref)).filter(Boolean);
 }
 
 /**

@@ -360,18 +360,6 @@ shapes:
       kind: map-of
       shape: verb-prose-entry
       why: what each verdict this pass accepts means, worded per verb
-    question:
-      kind: text
-      why: >-
-        the question a process-value pass hands over, relayed as it is written
-    choices:
-      kind: entries
-      shape: choice-entry
-      name-key: label
-      noun: "`choices`"
-      why: >-
-        the answers a person is offered for this pass's question in place of the manual
-        review's own, each with the verdict it settles the case with
     values:
       kind: entries
       shape: phase-value-entry

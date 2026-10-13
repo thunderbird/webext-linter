@@ -618,21 +618,25 @@ export class Registry {
    * filtered by one evaluator (src/checks/condition.js holds) against the facts their run
    * meets.
    * `buildResults` words what came of the build in the Build Review Details, by the build
-   * result the review holds (BUILD_RESULT_FACTS). A phase's `choices` are the answers a
-   * person is offered for its question, in place of the manual review's own, or null where
-   * it offers those (answerChoices).
+   * result the review holds (BUILD_RESULT_FACTS). A phase is `routed` where a check asks
+   * its question there (`asked-in`), which ties issuing it to that check's open to-do
+   * (src/report/phases.js nextPhase).
    * @returns {{preamble: {when: ?object, text: string}[], frame: string, handover: string,
    *   waiting: (name: string) => string, refused: string, buildResults: Record<string, string>,
    *   phases: {name: string, answer: string,
    *   endsTurn: boolean, verbs: string[],
    *   product: ?string, verbProse: object, intro: string,
-   *   steps: {when: ?object, text: string}[], question: ?string,
-   *   choices: ?{label: string, verdict: string, description: string}[],
+   *   steps: {when: ?object, text: string}[], routed: boolean,
    *   values: {value: string, label: string, description: string,
    *   reports: ?string}[]}[]}}
    */
   llmPhases() {
     const p = this.doc["llm-phases"];
+    const routed = new Set(
+      this.allEntries()
+        .map((e) => e["asked-in"])
+        .filter((name) => typeof name === "string")
+    );
     return {
       preamble: p.preamble.map(loadedStep),
       frame: p.frame,
@@ -659,15 +663,8 @@ export class Registry {
         ),
         intro: phase.intro,
         steps: phase.steps.map(loadedStep),
-        // A process-value phase's question, and what it accepts back.
-        question: phase.question ?? null,
-        choices: phase.choices
-          ? phase.choices.map((c) => ({
-              label: c.label,
-              verdict: c.verdict,
-              description: c.description,
-            }))
-          : null,
+        routed: routed.has(phase.name),
+        // What a process-value phase accepts back.
         values: (phase.values ?? []).map((v) => ({
           value: v.value,
           label: v.label,
@@ -697,19 +694,6 @@ export class Registry {
       // what someone typed into the yaml alongside it.
       description: c.description.replace("{{maxNote}}", String(MAX_NOTE)),
     }));
-  }
-
-  /**
-   * The answers a person is offered for a question asked in `phaseName`, with the verdict
-   * each settles the case with: the phase's own `choices`, or the manual review's answers
-   * (manualReviewChoices) where it authors none. One reading for every place that offers or
-   * reads them, so what was offered and what an answer settles with cannot disagree.
-   * @param {?string} phaseName
-   * @returns {{label: string, verdict: string, description: string}[]}
-   */
-  answerChoices(phaseName) {
-    const phase = this.llmPhases().phases.find((p) => p.name === phaseName);
-    return phase?.choices ?? this.manualReviewChoices();
   }
 
   /**
@@ -938,7 +922,7 @@ export class Registry {
    * else is asked: a build that did not succeed, or did not reproduce the XPI, aborts the
    * review before anyone is asked to install that XPI, so the question cannot wait in the
    * batch beside those that would. assertAskedIn guarantees the phase exists, takes a
-   * person's words, and that the check asks a question at all.
+   * person's words or one of its values, and that the check asks a question at all.
    * @param {string} ruleId
    * @returns {?string}
    */
@@ -1528,13 +1512,11 @@ function loadedStep(step) {
  */
 function assertProcessValues(registry, phase, at) {
   if (phase.answer !== "value") {
-    for (const key of ["values", "question"]) {
-      if (phase[key] !== undefined) {
-        throw new Error(
-          `${at} answers with \`${phase.answer}\` but authors \`${key}\` - only a ` +
-            "`value` phase hands over a question"
-        );
-      }
+    if (phase.values !== undefined) {
+      throw new Error(
+        `${at} answers with \`${phase.answer}\` but authors \`values\` - only a ` +
+          "`value` phase hands over a question"
+      );
     }
     return;
   }
@@ -1685,17 +1667,6 @@ export function assertPhases(registry, at) {
       }
     }
     assertProcessValues(registry, phase, at2);
-    // Answers offered to a person in place of the manual review's own: only a phase a
-    // person answers offers any, and each must settle the case it is picked for.
-    if (phase.choices !== undefined) {
-      if (phase.answer !== "words") {
-        throw new Error(
-          `${at2} answers with \`${phase.answer}\` but authors \`choices\` - only a ` +
-            "`words` phase puts a question to a person"
-        );
-      }
-      assertChoiceVerdicts(phase.choices, `${at2} \`choices\``);
-    }
     phase.steps.forEach((step, i) => {
       assertStep(step, i, at2, "step", REVIEW_PROMPT_FACTS, values);
     });
@@ -1893,12 +1864,12 @@ function assertRegistry(registry, at, { partial = false } = {}) {
 }
 
 /**
- * Assert every `asked-in`: it names a loop phase that takes a person's words, and the check
- * is a question only a person answers (Extended Manual Review - human wording alone). A
- * phase that does not exist would route the case where nothing opens it; one an agent
- * answers would hand a reviewer's question to a model; and a case an agent screens put to
- * a person this way would be neither listed as a question nor dropped as one when the
- * review is aborted.
+ * Assert every `asked-in`: it names a loop phase that takes a person's words or one of its
+ * values (`words` or `value`), and the check is a question only a person answers (Extended
+ * Manual Review - human wording alone). A phase that does not exist would route the case
+ * where nothing opens it, one an agent answers with a verdict would hand a reviewer's
+ * question to a model, and a case an agent screens put to a person this way would be
+ * neither listed as a question nor dropped as one when the review is aborted.
  * @param {Registry} registry @param {string} at
  * @returns {void}
  */
@@ -1910,7 +1881,7 @@ export function assertAskedIn(registry, at) {
       continue;
     }
     const phase = phases.find((p) => p.name === name);
-    if (phase?.answer !== "words") {
+    if (phase?.answer !== "words" && phase?.answer !== "value") {
       throw new Error(
         `Registry ${at}: "${stem(entry.check)}" is asked in \`${name}\`, which is not a ` +
           "phase a person answers"

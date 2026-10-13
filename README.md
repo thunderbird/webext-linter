@@ -217,13 +217,16 @@ which means either nothing was built or the build output was committed beside th
   whether the build pulls from the declared dependencies alone - no raw URL, `curl|sh`,
   unpinned `git clone`, CDN or postinstall hook - and names any step the linter could not
   follow statically; under `--llm-review` the agent settles it in `settle`.
-  `build-reproduces-xpi` (Extended Manual Review) asks the reviewer whether the source
-  builds into the shipped XPI. Any of the three
+  `build-reproduces-xpi` (Extended Manual Review) asks the reviewer to build the add-on
+  from the source and compare the result with the shipped XPI. Any of the three
   reported aborts the review. Under `--llm-review` a source review opens with its build,
   before the sweeps: the agent judges the build safe or unsafe where nothing was prepared,
   the reviewer reads the Build Review Details (with what the agent built in the
   preparation, where it did), and the build question is asked alone right after, answered
-  `Builds and reproduces` or `Does not build or reproduce`. The review itself builds
+  `Builds and reproduces`, `Does not reproduce`, `Does not build` or `Is unsafe to
+  build`. The last three report `build-not-reproduced`, `build-fails` or `build-unsafe`,
+  so the developer is told why the review stopped, and a source whose preparation gave its
+  rescue up reports `build-fails` without a question. The review itself builds
   nothing. With any check the build relies on switched off (`build-guard` in the
   registry), the Build Review Details are not shown, and the question is still asked.
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
@@ -291,21 +294,23 @@ not the developer's, so accepting it is a judgement a person owns), and
 so no scan of its surface settles what it does).
 
 Some findings abort the review outright. A check can declare that it does by naming the
-reason the report gives (`review-early-exit:` in the registry) - today eighteen do, across
+reason the report gives (`review-early-exit:` in the registry) - today twenty do, across
 five reasons: `experiment-not-allowed` names *Experiment APIs not accepted*,
 `lockfile-injection` names *lock file entries that install another release*, the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
-names *disallowed library versions*, and the ten that
+names *disallowed library versions*, and the thirteen that
 decide a source submission cannot be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
 `sca-lock-file-multiple`, `lock-foreign-source`, `build-registry-redirect`, `build-lifecycle-hook`,
-`undeclared-build-source` and `build-reproduces-xpi` - name
+`undeclared-build-source`, `build-reproduces-xpi`, `build-not-reproduced`, `build-fails` and
+`build-unsafe` - name
 *a build that cannot be reproduced*. These lead the review, ordered so a submission they reject stops
 before the rest is computed: `experiment-not-allowed`; then the source archive's package.json
 and lock checks (`sca-package-file-*`, `sca-lock-file-*`, `build-registry-redirect`,
 `lock-foreign-source`), which read nothing the review computes; then `lockfile-injection`;
 then the four dependency-vulnerability checks and `banned-library`, which need the vendor
-reading. The four build checks that only escalate stay where they are. When
+reading. The four build checks that only escalate, and the three whose finding an answer
+adds, stay where they are. When
 one of them reports at error
 severity, the review stops there: no check after it runs, and nothing further is put to a
 reviewer. The report holds what the checks up to it found, drops every to-do item a

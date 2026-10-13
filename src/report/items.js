@@ -51,7 +51,7 @@ import { SECTION_TITLES, manualQuestion } from "./format.js";
  * @param {import("./finding.js").Finding[]} args.findings
  * @param {import("./finding.js").ManualItem[]} args.manual
  * @param {{label: string, description: string}[]} args.choices  The answers a question
- *   offers, from registry.answerChoices() for the phase handing it out, in the order the
+ *   offers, from registry.manualReviewChoices(), in the order the
  *   reviewer sees them.
  *   REQUIRED, and not defaulted: a question with no answers is one a reviewer cannot
  *   answer, which the registry itself refuses to author.

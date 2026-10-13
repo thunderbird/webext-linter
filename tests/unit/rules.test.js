@@ -864,6 +864,9 @@ test("where a check runs: the route says it, or the flag says what a route canno
   for (const id of [
     "undeclared-build-source",
     "build-reproduces-xpi",
+    "build-not-reproduced",
+    "build-fails",
+    "build-unsafe",
     "build-registry-redirect",
     "lock-foreign-source",
     "build-lifecycle-hook",
@@ -1010,9 +1013,12 @@ test("every check's severity is pinned to its band", async () => {
     error: [
       "background-module",
       "background-page-module",
+      "build-fails",
       "build-lifecycle-hook",
+      "build-not-reproduced",
       "build-registry-redirect",
       "build-reproduces-xpi",
+      "build-unsafe",
       "bundled-files",
       "cleartext-transmission",
       "committed-build-artifact",
@@ -1898,9 +1904,12 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
   // set is both "what they read" and "where they run" - the dependency-tree audits belong
   // to it for the second reason: what they read is prepared for the archive alone.
   assert.deepEqual(sca, [
+    "build-fails",
     "build-lifecycle-hook",
+    "build-not-reproduced",
     "build-registry-redirect",
     "build-reproduces-xpi",
+    "build-unsafe",
     "committed-build-artifact",
     "committed-node-modules",
     "lock-foreign-source",

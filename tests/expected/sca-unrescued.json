@@ -1,5 +1,5 @@
 {
-  "_comment": "A source-code submission whose preparation could not rescue its dependencies: its preparation is run for real and its rescue fails (its lock carries a high advisory on a package it pulls in for production, and a critical one on a declared build tool). The original is then reviewed like any other source, its lock audit answered from the fixture's seeded run cache folder, which its preparation read too. The vulnerability checks come early, and the first that reports stops the checks: the declared build tool's critical advisory, at its lock line. The check that would report the production package's advisory comes after it, so it never runs. A failed rescue leaves nothing clean to build, so the build check is reported too, and the review is aborted for known vulnerabilities and for build issues.",
+  "_comment": "A source-code submission whose preparation could not rescue its dependencies: its preparation is run for real and its rescue fails (its lock carries a high advisory on a package it pulls in for production, and a critical one on a declared build tool). The original is then reviewed like any other source, its lock audit answered from the fixture's seeded run cache folder, which its preparation read too. The vulnerability checks come early, and the first that reports stops the checks: the declared build tool's critical advisory, at its lock line. The check that would report the production package's advisory comes after it, so it never runs. A failed rescue leaves nothing clean to build, so the check for a source that cannot be built is reported too, and the review is aborted for known vulnerabilities and for build issues.",
   "preparation": {
     "advisories": {
       "argv-crumb@0.0.8": [],
@@ -23,7 +23,7 @@
   },
   "expect": {
     "vendor-vulnerable-dev": ["package-lock.json:13"],
-    "build-reproduces-xpi": ["(add-on)"]
+    "build-fails": ["(add-on)"]
   },
   "network": {
     "https://api.npmjs.org/downloads/point/last-month/lint-pebble": {

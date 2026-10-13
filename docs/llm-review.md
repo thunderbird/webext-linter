@@ -54,7 +54,7 @@ entry never offered are all refusals.
 | Phase | What it is for | What fills its answers |
 | --- | --- | --- |
 | `build-safety` | Source code review only: write the build report (`BUILD_PROCESS`), with a safety section listing anything the build fetches or runs from outside the declared dependencies, and judge whether building is safe. Not where the review was prepared: it starts with the judgement and the build report its preparation recorded. | A process value: `safe` / `unsafe` |
-| `built` | Source code review only: show the Build Review Details block (see below) as the last thing of the turn, then, once the reviewer has replied, ask them alone whether the source builds and reproduces the submitted XPI. Where the reviewer builds themselves, the pause after the block is the one in which they build. A step says who built the add-on, by the build result, and the agent builds and compares nothing. | `Builds and reproduces` / `Does not build or reproduce`, or the reviewer's own words |
+| `built` | Source code review only: show the Build Review Details block (see below) as the last thing of the turn, then, once the reviewer has replied, relay the build to-do (`build-reproduces-xpi`) to them alone as the question. Where the reviewer builds themselves, the pause after the block is the one in which they build. A step says who built the add-on, by the build result, and the agent builds and compares nothing. Issued only while that to-do is open. | A process value: `Builds and reproduces` / `Does not reproduce` / `Does not build` / `Is unsafe to build` |
 | `spawn` | Start the sub-agents the review needs - the add-on description and one sweep per tree - and read back what the sweeps found. | Nothing: each sweep's reply is written to a file of its own (see below) |
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
@@ -103,7 +103,10 @@ description, accepts only one of those labels, and records the value's id. So
 unsafe)`, only where no judgement is held yet. The registry refuses a call naming a phase
 that asks for no value, or an id that phase never returns. A value may `report` a check:
 picking it adds that check's finding, which aborts the review like any finding of an
-aborting check.
+aborting check. A value phase a check asks its question in (`asked-in`) relays that open
+to-do's message as its question, worded as `ask` words it, and is issued only while the
+to-do is open. Any answer clears the to-do, so a value that reports a check leaves that
+check's finding as the one finding.
 
 A source code review **opens with its build**, before the sweeps and the verify and settle
 passes, so a source that does not build into the XPI ends the review before any of that
@@ -115,7 +118,7 @@ review's build part is these steps:
 1. **The review starts** with the source, the build judgement, the build result and output
    the preparation recorded.
 2. **The deterministic checks run.** A source whose preparation gave its rescue up aborts
-   here for build issues: `build-reproduces-xpi` is reported without a question, beside the
+   here for build issues: `build-fails` is reported without a question, beside the
    vulnerability findings, which stay listed. A review that was **aborted early** never
    reaches the steps below - each one reads `NOT aborted`.
 3. **`build-safety`**, only where nothing was prepared: the agent writes the build report
@@ -128,14 +131,18 @@ review's build part is these steps:
    of that output with the submitted XPI in the preparation). `BUILD_RESULT` reads `built by the agent`, `the agent's build
    failed: see build.md`, `not built: judged unsafe` or `not built: you build it` (the
    reviewer did not let the agent build, or nothing was prepared).
-5. Once the reviewer has replied, **`built`** asks them alone whether the source builds and
-   reproduces the submitted XPI. The step before the question is worded by the build result
+5. Once the reviewer has replied, **`built`** asks them alone to build the add-on from the
+   source and compare the result with the submitted XPI, relaying the `build-reproduces-xpi`
+   to-do as the question. The step before the question is worded by the build result
    (`agent-built`, `agent-build-failed`, `build-unsafe`, `self-build`), and tells the agent
    it builds and compares nothing: where it built, the reviewer reads its earlier comparison,
-   `BUILD_MATCH`, beside `BUILD_OUTPUT` and `XPI_FILE`.
-6. **`Does not build or reproduce`**, or words the reviewer typed instead, aborts the review
-   for build issues. **`Builds and reproduces`** goes on to `spawn`, `verify`, `settle`,
-   `ask` and `close`.
+   `BUILD_MATCH`, beside `BUILD_OUTPUT` and `XPI_FILE`. Where the agent judged the build
+   unsafe, it says the reviewer may answer `Is unsafe to build`.
+6. **`Does not reproduce`**, **`Does not build`** and **`Is unsafe to build`** report
+   `build-not-reproduced`, `build-fails` and `build-unsafe`, and abort the review for build
+   issues, with that check's response telling the developer why. **`Builds and
+   reproduces`** goes on to `spawn`, `verify`, `settle`, `ask` and `close`. Any other
+   answer is refused, and the question is asked again.
 
 These build steps run only where every check a build relies on ran (`build-guarded`): the
 dependency-vulnerability checks, `lockfile-injection`, `lock-foreign-source` and
@@ -149,8 +156,9 @@ reported there they still abort the review.
 The build question is in a phase of its own so it is put to the reviewer ALONE - `ask`
 batches, and nobody may be asked to install an XPI in the same breath as being asked whether
 the source builds into it. The check names its phase (`asked-in:` in the registry), the case
-carries it, and the phase offers its own two answers (`choices`) in place of the manual
-review's. A "no" aborts the review: that case becomes its finding, every `ask` question is
+carries it, and the phase relays it with its own four answers (`values`) in place of the
+manual review's. Every answer clears the case, and each of the three that stop the review
+reports its own check (`reports`), so the developer is told why: every `ask` question is
 dropped, and the report ends on "Build process issues". The question is asked under
 `--llm-skip-manual` too: it decides whether the review goes on, which is not what that flag
 withholds.
@@ -165,15 +173,16 @@ loop would do is ask a reviewer to **reproduce the build** - running that tree o
 machine, on the strength of a question the linter issued knowing better.
 
 A check declares that it aborts the review by naming the reason the report gives
-(`review-early-exit:` in the registry). Today seventeen do, across five reasons:
+(`review-early-exit:` in the registry). Today twenty do, across five reasons:
 `experiment-not-allowed` names _Experiment APIs not accepted_, `lockfile-injection` names
 _lock file entries that install another release_, the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
-names *disallowed library versions*, and the ten that decide a source submission cannot
-be built from - `sca-package-file-missing`,
+names *disallowed library versions*, and the thirteen that decide a source submission
+cannot be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
 `sca-lock-file-multiple`, `build-registry-redirect`, `lock-foreign-source`, `build-lifecycle-hook`,
-`undeclared-build-source` and `build-reproduces-xpi` -
+`undeclared-build-source`, `build-reproduces-xpi`, `build-not-reproduced`, `build-fails` and
+`build-unsafe` -
 name *a build that cannot be reproduced*. The threshold is the finding's severity, so an advisory
 that lands as a warning aborts nothing.
 
@@ -531,7 +540,7 @@ the review. The record keeps the audited lock's vulnerable packages counted by s
   not inside `build/`): the copy and `build/` are deleted, the record says the rescue failed, and the
   original is reviewed, **unrescued**: its vulnerability checks come early in the review,
   the first of them to report a vulnerable lock entry stops the checks, and the review is
-  aborted for build issues too (`build-reproduces-xpi`, asked of nobody), its vulnerability
+  aborted for build issues too (`build-fails`, asked of nobody), its vulnerability
   findings listed. It closes as any aborted review does. Its audit of the lock asks OSV
   nothing the preparation already asked: every audit of the run reads OSV's answers from
   `.cache/osv.json` in the work folder.

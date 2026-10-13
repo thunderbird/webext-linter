@@ -1010,25 +1010,58 @@ deterministic-phase:
 # reviewer's attestation that the shipped XPI comes from the source they read, which is what
 # an SCA review rests on. So a source that does not build into the shipped XPI aborts the
 # review before anyone is asked to install that XPI. Asked ALONE, in a phase of its own
-# (`asked-in: built`), right after the Build Review Details and before the sweeps, with that
-# phase's own two answers (`choices`). A source whose preparation gave its rescue up reports
-# this check without a question (src/pipeline.js), as nothing clean was built from it.
-- title: Source does not build into the XPI
+# (`asked-in: built`), right after the Build Review Details and before the sweeps. That phase
+# relays this text as its question and offers its own four answers (`values`): three of them
+# report the check below that names the reason, so the developer is told why. A plain report
+# prints this to-do with its one generic response.
+- title: Reproducing the XPI from the source
   severity: error
   check: build-reproduces-xpi
   input: sca
   asked-in: built
   review-early-exit: unreproducible-build
   instructions-for-human: |-
-    Does the source build into the submitted XPI? Follow the build process from
-    a clean copy of the source archive, installing the dependencies exactly as
-    the lock file pins them (npm ci, or pnpm install --frozen-lockfile). Clear
-    only if the build completes and its result matches the submitted XPI. Files
-    that differ only by what every build changes (a timestamp, a build id) still
-    match. An install refused because package.json and the lock file disagree
-    is a failed build.
+    Build the add-on from the source and compare the result with the submitted
+    XPI. Follow the build process from a clean copy of the source archive,
+    installing the dependencies exactly as the lock file pins them (npm ci, or
+    pnpm install --frozen-lockfile). Clear only if the build completes and its
+    result matches the submitted XPI. Files that differ only by what every build
+    changes (a timestamp, a build id) still match. Otherwise report whether it
+    does not reproduce, does not build, or is unsafe to build.
   response: |-
-    The submitted source either could not be built by following its build instructions, or does not build into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
+    The submitted source could not be built into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
+
+# SCA only: the three reasons a source does not build into the shipped XPI, one check each so
+# the developer is told which. Nothing in the files decides any of them, so their rules raise
+# nothing. Each is the finding of one answer of the `built` phase (its value `reports` it,
+# src/report/loop.js recordValue), and a preparation whose rescue was given up reports
+# build-fails without a question (src/pipeline.js). Each aborts the review for build issues.
+- title: Source does not build into the submitted XPI
+  severity: error
+  check: build-not-reproduced
+  input: sca
+  review-early-exit: unreproducible-build
+  response: |-
+    The submitted source builds, but the result does not match the submitted XPI. Please make sure the XPI is built from exactly the submitted source by the build instructions you provided.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
+- title: Source cannot be built
+  severity: error
+  check: build-fails
+  input: sca
+  review-early-exit: unreproducible-build
+  response: |-
+    The submitted source could not be built by following its build instructions. Please make sure the instructions are complete and that the build succeeds from a clean copy of the submitted archive, with the dependencies installed exactly as the lock file pins them.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
+- title: Unsafe build process
+  severity: error
+  check: build-unsafe
+  input: sca
+  review-early-exit: unreproducible-build
+  response: |-
+    The build process of the submitted source is not safe to run: it fetches or runs code from outside the dependencies declared in package.json and the lock file. Please make the build use only those dependencies.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Two rules about the SHAPE of a source-code submission, one per entry below, kept apart
 # because each has its own remedy and a shared wording could state neither plainly.
@@ -2452,10 +2485,12 @@ llm-phases:
     #
     # The build question, in a phase of its own so it is put to the reviewer ALONE: `ask`
     # batches, and a reviewer must not be asked to install an XPI in the same breath as being
-    # asked whether the source builds into it. Only the cases of a check naming the phase
-    # (`asked-in`) open here, so it never appears in an XPI review. It offers its own two
-    # answers (`choices`), and the second aborts the review. Asked under --llm-skip-manual
-    # too: it decides whether the review goes on, which is not what that flag withholds.
+    # asked whether the source builds into it. A PROCESS VALUE (`answer: value`) whose entry
+    # relays the open to-do a check routes here (`asked-in`), so it is issued only while that
+    # to-do is open and never in an XPI review. Any answer clears that to-do. One of the four
+    # lets the review go on, and each of the other three reports the check naming the reason
+    # the review stops (`reports`). Asked under --llm-skip-manual too: it decides
+    # whether the review goes on, which is not what that flag withholds.
     #
     # Its first step is the Build Review Details: the submitted XPI, the source the review
     # read, the build report and its judgement, the vulnerabilities the review's audit counted
@@ -2464,18 +2499,26 @@ llm-phases:
     # themselves, the pause in which they build. The next step says who built the add-on, by
     # the build result the review holds. The agent builds and compares nothing here.
     - name: built
-      # A person's own words, read like `ask`'s.
-      answer: words
+      answer: value
       ends-turn: true
       verbs: []
       intro: ""
-      choices:
-        - label: Builds and reproduces
-          verdict: cleared
-          description: The source builds, and what it builds matches the submitted XPI. The review goes on.
-        - label: Does not build or reproduce
-          verdict: reported
-          description: The source does not build, or what it builds does not match the submitted XPI. The review stops here for build issues.
+      values:
+        - value: reproduces
+          label: Builds and reproduces
+          description: The build completes and its result matches the submitted XPI. Files that differ only by what every build changes (a timestamp, a build id) still match. The review goes on.
+        - value: not-reproduced
+          label: Does not reproduce
+          description: The build completes, but its result does not match the submitted XPI.
+          reports: build-not-reproduced
+        - value: fails
+          label: Does not build
+          description: The build fails, including an install refused because package.json and the lock file disagree.
+          reports: build-fails
+        - value: unsafe
+          label: Is unsafe to build
+          description: The build would fetch or run code from outside the declared dependencies, or do something you will not run on your machine. Nothing was built.
+          reports: build-unsafe
       steps:
         - when: sca AND build-guarded AND NOT aborted
           text: |-
@@ -2490,15 +2533,15 @@ llm-phases:
             The agent's build failed, and the "Build attempt" section of BUILD_PROCESS says where. The reviewer may build the add-on themselves before they answer.
         - when: NOT aborted AND build-unsafe
           text: |-
-            The agent judged the build unsafe and built nothing. The reviewer builds the add-on themselves, where they judge it safe to, before they answer.
+            The agent judged the build unsafe and built nothing. The reviewer builds the add-on themselves, where they judge it safe to, before they answer, and may answer "Is unsafe to build".
         - when: NOT aborted AND self-build
           text: |-
             The agent did not build the add-on. The reviewer builds it themselves, following BUILD_PROCESS, before they answer.
         - when: NOT aborted
           text: |-
-            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
 
-            Record what they answered in its "answer", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
+            Record the label they picked as that entry's "answer", and change nothing else in the file. Only those labels are accepted: if they answer anything else, ask the question again.
 
     # Every sub-agent the review needs started, once a source review's build has settled
     # whether it goes on.

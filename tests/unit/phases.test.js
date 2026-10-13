@@ -354,7 +354,7 @@ test("a phase declares the kind of answer its entries take", () => {
       .phases.map((p) => [p.name, p.answer, p.verbs.length]),
     [
       ["build-safety", "value", 0],
-      ["built", "words", 0],
+      ["built", "value", 0],
       ["spawn", "hints", 0],
       ["verify", "verdict", 2],
       ["settle", "verdict", 3],
@@ -423,41 +423,30 @@ function withValuePhase(extra = {}) {
   return registry;
 }
 
-// A phase may offer a person its own answers in place of the manual review's: the build
-// question offers two. Only a phase a person answers may, and each must settle the case
-// with a verdict a reviewer's answer can carry.
-test("a phase's own answers are offered only by a phase a person answers, and settle", () => {
-  assert.deepEqual(
-    fresh()
-      .answerChoices("built")
-      .map((c) => [c.label, c.verdict]),
+// A phase offers no answers of its own and puts no question of its own: a person is
+// offered the manual review's answers, and a process-value phase's question is the to-do
+// routed to it. Either key authored on a phase is refused at load.
+test("a phase authors neither `choices` nor `question`", () => {
+  for (const [name, key, value] of [
     [
-      ["Builds and reproduces", "cleared"],
-      ["Does not build or reproduce", "reported"],
-    ]
-  );
-  assert.deepEqual(
-    fresh().answerChoices("ask"),
-    fresh().manualReviewChoices(),
-    "a phase with none offers the manual review's"
-  );
-  const valued = withValuePhase({
-    choices: [{ label: "Yes", verdict: "cleared", description: "y" }],
-  });
-  assert.throws(
-    () => check(valued),
-    saying("answers with `value` but authors `choices` - only a `words` phase")
-  );
-  for (const verdict of ["ask", "maybe"]) {
-    const asking = fresh();
-    phaseNamed(asking, "built").choices[0].verdict = verdict;
+      "ask",
+      "choices",
+      [{ label: "Yes", verdict: "cleared", description: "y" }],
+    ],
+    [
+      "built",
+      "choices",
+      [{ label: "Yes", verdict: "cleared", description: "y" }],
+    ],
+    ["ask", "question", "Who builds?"],
+    ["built", "question", "Does it build?"],
+  ]) {
+    const authored = fresh();
+    phaseNamed(authored, name)[key] = value;
     assert.throws(
-      () => check(asking),
-      saying(
-        `\`choices\` answer 1 settles with \`${verdict}\`, which is not a verdict a ` +
-          "reviewer's answer can carry"
-      ),
-      verdict
+      () => check(authored),
+      saying(`authors \`${key}\`, which nothing reads`),
+      `${name} ${key}`
     );
   }
 });
@@ -499,10 +488,10 @@ test("a process-value phase declares its values, and conditions read only those"
     /answers with `value` but offers no `values`/
   );
   const stray = fresh();
-  phaseNamed(stray, "ask").question = "Who builds?";
+  phaseNamed(stray, "ask").values = phaseNamed(stray, "built").values;
   assert.throws(
     () => check(stray),
-    /answers with `words` but authors `question` - only a `value` phase/
+    /answers with `words` but authors `values` - only a `value` phase/
   );
   const twice = withValuePhase();
   phaseNamed(twice, "safety").values[1].value = "safe";
@@ -739,10 +728,11 @@ test("the shipped steps carry the conditions they are printed under", () => {
   );
 });
 
-// A check asked in a phase of its own names one a PERSON answers, and is itself a question
-// only a person answers: a phase that does not exist would route its case where nothing
-// opens it, one an agent answers would hand a reviewer's question to a model, and a case an
-// agent screens would be neither listed as a question nor dropped as one on an abort.
+// A check asked in a phase of its own names one a PERSON answers, with their words or one of
+// its values, and is itself a question only a person answers: a phase that does not exist
+// would route its case where nothing opens it, one an agent answers with a verdict would
+// hand a reviewer's question to a model, and a case an agent screens would be neither
+// listed as a question nor dropped as one on an abort.
 test("asked-in names a phase a person answers, on a question only a person answers", () => {
   // The raw entry in the document: allEntries hands out copies.
   const entry = (r) =>
@@ -750,6 +740,11 @@ test("asked-in names a phase a person answers, on a question only a person answe
       (e) => e.check === "build-reproduces-xpi"
     );
   assertAskedIn(fresh(), "t.yaml");
+  for (const answer of ["value", "words"]) {
+    const asked = fresh();
+    phaseNamed(asked, "built").answer = answer;
+    assertAskedIn(asked, "t.yaml");
+  }
 
   for (const [phase, refusal] of [
     ["builds", /is asked in `builds`, which is not a phase a person answers/],

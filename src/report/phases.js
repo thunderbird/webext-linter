@@ -132,8 +132,11 @@ export function nextPhase(phases, ordered, state, run) {
     // whatever its steps would otherwise say. An itemless phase (`spawn`, `build-safety`) is the
     // exception by nature: its work is what its steps do, and it is issued ONCE, because a
     // second pass would do all of it again. A run whose markers leave it no step never
-    // gets here - the check above has already passed it over.
-    if (ITEMLESS_ANSWERS.includes(phase.answer)) {
+    // gets here - the check above has already passed it over. A process-value phase a
+    // check asks its question in (`routed`) is not itemless: it puts that open to-do as its
+    // question, so it is issued only while one is open, and a review that skipped the check
+    // is asked nothing there.
+    if (ITEMLESS_ANSWERS.includes(phase.answer) && !phase.routed) {
       if (!issued.has(phase.name)) {
         return { phase, steps, items };
       }

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Source cannot be built</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Source cannot be built <span class="badge error">error</span></h1>
+        <div class="check-id">build-fails</div>
+      </header>
+
+      <h2>What it reports</h2>
+      <p class="lead">
+        A source-code submission that cannot be built by following its build instructions,
+        including an install refused because <code>package.json</code> and the lock file
+        disagree.
+      </p>
+      <p>
+        Nothing in the files decides it, so the check raises nothing itself. A plain review
+        asks <a href="build-reproduces-xpi.html"><code>build-reproduces-xpi</code></a>
+        instead, whose one response covers every reason. Under <code>--llm-review</code> that question is put
+        to the reviewer alone in the <code>built</code> phase, with four answers, and
+        answering <em>Does not build</em> reports this check in its place. A source
+        whose preparation gave its rescue up reports it without a question, since nothing
+        clean can be built from it.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A source-code submission<br/>under --llm-review"] --> Q{"Reproducing the XPI<br/>from the source"}
+  Q -- "Builds and reproduces" --> OK([the review goes on])
+  Q -- "Does not build" --> ERR([ERROR: source cannot be built<br/>the review is aborted])
+  R["A preparation whose rescue<br/>was given up"] --> ERR
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class ERR err;
+  class OK ok;
+  class Q manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that the submitted source could not be built by following its
+        build instructions, and that the instructions must be complete and the build must
+        succeed from a clean copy of the archive, with the dependencies installed exactly as
+        the lock file pins them.
+      </div>
+
+      <div class="outcome">
+        <strong>It aborts the review</strong>
+        It settles the submission on its own: nothing further is put to a reviewer, and the
+        developer&rsquo;s text ends on the reason it is incomplete (&ldquo;Build process
+        issues&rdquo;). The build question is cleared, so this is the one build finding.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/build-fails.js</code>, the <code>built</code>
+        phase and the entry in <code>assets/registry.yaml</code>, and <code>src/pipeline.js</code> for a rescue given up.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

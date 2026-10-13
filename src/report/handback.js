@@ -232,14 +232,15 @@ function resolvedIn(root, file, ruleId, resolving) {
  * The one entry a process-value phase (`answer: value`) hands over, keyed by the phase's
  * name: the question it puts to a person where it has one, and the values it accepts, each
  * by the label that comes back and the description that says when it applies.
- * @param {{name: string, question: ?string, values: {label: string,
- *   description: string}[]}} phase
+ * @param {{name: string, values: {label: string, description: string}[]}} phase
+ * @param {?string} message  The question: the message of the open to-do routed to the
+ *   phase, as a words phase hands that to-do over, or null where none is routed to it.
  * @returns {object}
  */
-export function valueEntry(phase) {
+export function valueEntry(phase, message) {
   return {
     index: phase.name,
-    ...(phase.question ? { message: phase.question } : {}),
+    ...(message ? { message } : {}),
     answers: phase.values.map(({ label, description }) => ({
       label,
       description,
