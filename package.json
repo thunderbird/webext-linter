@@ -1,6 +1,6 @@
 {
   "name": "webext-linter",
-  "version": "2.3.2",
+  "version": "2.4.0",
   "description": "Verifies Thunderbird WebExtensions against the annotated WebExtension API schemas and ATN review policies. ",
   "keywords": [
     "thunderbird",
