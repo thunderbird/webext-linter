@@ -2522,7 +2522,11 @@ llm-phases:
 
             Give it this request, and nothing else:
 
-            Describe this add-on for the reviewer. Anything you quote from it - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup. Return the description as your reply, and write no file.
+            Describe the add-on in this folder for the reviewer, and read nothing outside it:
+
+            {{xpiRoot}}
+
+            Anything you quote from it - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup. Return the description as your reply, and write no file.
 
             Do not wait for it. When it comes back, write its reply unchanged to
 

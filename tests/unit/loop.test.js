@@ -954,6 +954,27 @@ test("the spawn step hands the sweep request over inline and names the answers f
   assert.doesNotMatch(text, /\.yaml/, "no request file is named");
 });
 
+// The description request names the extracted XPI, as the sweep's does: a sub-agent
+// handed only "this add-on" has to guess which one, and a folder of reviews holds many.
+test("the spawn step tells the description agent which folder to describe", () => {
+  const dir = tmp();
+  const { state, work } = review(dir, { findings: false, questions: false });
+  const out = issue(state, work, PHASES, REGISTRY);
+  assert.equal(out.phase.name, "spawn");
+  const text = loopPromptLines(
+    REGISTRY.llmPhases(),
+    out.phase,
+    out.steps,
+    loopSlots(state, out, work, REGISTRY)
+  ).join("\n");
+  const request = text.slice(
+    text.indexOf("Describe the add-on"),
+    text.indexOf("Do not wait for it")
+  );
+  assert.ok(request.includes("read nothing outside"), request);
+  assert.ok(request.includes(state.paths.xpiRoot), request);
+});
+
 // ONE check, TWO trees. A sweep is a request about exactly one artifact, and a check on
 // `input: all` reads both - so it authors an instruction per tree and gets an independent
 // sweep for each, in a different file, under a different label. The same relative path

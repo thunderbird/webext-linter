@@ -348,7 +348,8 @@ what this review is and where to read it:
 | `REVIEW_REPORT` | The text the reviewer sends to the developer, written by the linter |
 
 The linter names these files and reads none of them. The description is a sub-agent's,
-returned as its reply, and the agent conducting the review is told only to write that reply
+given the extracted XPI (`XPI_ROOT`) to describe and nothing outside it, returned as its
+reply, and the agent conducting the review is told only to write that reply
 unchanged to `ADDON_DESCRIPTION` - not to read, summarise or print it. The build report and the build output are the agent's own, and
 the Build Review Details block names them beside the submitted XPI and the source root the
 review read, right before the build question.
