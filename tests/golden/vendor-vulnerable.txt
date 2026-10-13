@@ -5,11 +5,11 @@ Thank you for your submission. We appreciate the effort you’ve put into creati
 1) A dependency this add-on bundles has known security vulnerabilities: marked (4.0.0) is affected by published advisories of high severity (CVE-2022-21680). Update marked to 4.0.10 or later.
  - VENDORS.md:2
 
-You can run an automated review yourself before submitting:
-https://github.com/thunderbird/webext-linter
-
 The review was not completed and the report is incomplete due to the following issues:
 - Known security vulnerabilities
+
+You can run an automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
 
 ── Summary ──
 

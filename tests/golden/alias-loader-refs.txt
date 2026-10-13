@@ -1,6 +1,9 @@
 ── Found Issues ──
 The automated review did not find any issues.
 
+You can run an automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
+
 ── Standard Code Review ──
 
 Continue manual review for the following checks:

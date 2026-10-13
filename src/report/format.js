@@ -877,8 +877,8 @@ function squared(lines) {
  * @param {(f: import("./finding.js").Finding) => string} [labelOf]
  * @param {import("../lib/enum.js").ReviewMode} [mode]
  * @param {?{intro: string, reasons: {id: string, text: string}[]}} [earlyExit]  Why the review was aborted,
- *   when it was. Rendered LAST, so the developer's text ends on the reason it is incomplete -
- *   and rendered here rather than by each caller, because this body is the developer's
+ *   when it was. Rendered after the findings, just above the tool pointer, so the reason the
+ *   text is incomplete closes the developer's text - and rendered here rather than by each caller, because this body is the developer's
  *   text in both places it is produced: under Found Issues in the terminal, and in the
  *   slot the review loop's last prompt hands over.
  * @returns {string[]}
@@ -896,7 +896,7 @@ export function issuesBodyLines(
   const issues = items.map((x) => x.target);
   if (issues.length === 0) {
     out.push(intros.none ?? "The automated review did not find any issues.");
-    return squared([...out, ...earlyExitLines(earlyExit)]);
+    return finished(out, earlyExit);
   }
   const intro = intros[verdictKey(issues)];
   let n = 0;
@@ -928,12 +928,25 @@ export function issuesBodyLines(
     out.push(grey("[XPI] = source file in the submitted XPI"));
     out.push(grey("[SCA] = source file in the submitted source code archive"));
   }
-  // A pointer to the tool: the developer can run this same automated review before
-  // submitting and fix the findings above first. Shown in both modes.
-  out.push("");
-  out.push(grey("You can run an automated review yourself before submitting:"));
-  out.push(grey("https://github.com/thunderbird/webext-linter"));
-  return squared([...out, ...earlyExitLines(earlyExit)]);
+  return finished(out, earlyExit);
+}
+
+/**
+ * The developer's text finished: the body, the abort lines when the review was aborted, then
+ * the pointer at this tool, all squared off. Every report ends on the pointer, a clean one
+ * too, because the developer can run this same review before submitting the next version.
+ * @param {string[]} out  The body: the verdict, the findings and the legend.
+ * @param {?{intro: string, reasons: {id: string, text: string}[]}} [earlyExit]
+ * @returns {string[]}
+ */
+function finished(out, earlyExit) {
+  return squared([
+    ...out,
+    ...earlyExitLines(earlyExit),
+    "",
+    grey("You can run an automated review yourself before submitting:"),
+    grey("https://github.com/thunderbird/webext-linter"),
+  ]);
 }
 
 /**
@@ -942,7 +955,7 @@ export function issuesBodyLines(
  * it unconditionally.
  *
  * The reasons arrive already deduplicated and ordered (src/report/early-exit.js); this
- * only draws them. Uncoloured, unlike the legend and the tool pointer above it: those are
+ * only draws them. Uncoloured, unlike the legend and the tool pointer around it: those are
  * the linter's chrome around the developer's text, and this is part of the text.
  * @param {?{intro: string, reasons: {id: string, text: string}[]}} [earlyExit]
  * @returns {string[]}

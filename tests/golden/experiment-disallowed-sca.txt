@@ -9,11 +9,11 @@ Read more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temp
 [XPI] = source file in the submitted XPI
 [SCA] = source file in the submitted source code archive
 
-You can run an automated review yourself before submitting:
-https://github.com/thunderbird/webext-linter
-
 The review was not completed and the report is incomplete due to the following issues:
 - Experiment APIs not accepted
+
+You can run an automated review yourself before submitting:
+https://github.com/thunderbird/webext-linter
 
 ── Summary ──
 

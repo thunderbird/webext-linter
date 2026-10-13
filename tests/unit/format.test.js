@@ -14,7 +14,9 @@ import {
   detailLinkLines,
   locusLabeler,
   locationLine,
+  issuesBodyLines,
 } from "../../src/report/format.js";
+import { withoutColor } from "../../src/util/color.js";
 import { orderReview, hasLocus } from "../../src/report/order.js";
 import { renderManualItems } from "../../src/report/responses.js";
 import {
@@ -1885,4 +1887,58 @@ test("the schema sentence is the same in every renderer that names it", () => {
     headerLines(meta).includes(`schema ${sentence}`),
     "the header labels the same sentence"
   );
+});
+
+/** The developer's text for these findings, uncoloured, as the loop writes it. */
+function developerText(findings, earlyExit = null) {
+  const registry = loadRegistry();
+  return issuesBodyLines(
+    orderReview(findings, []).filter((x) => x.kind === "finding"),
+    registry.issueHeadings(),
+    registry.verdictIntros(),
+    undefined,
+    { sca: false },
+    earlyExit
+  ).map(withoutColor);
+}
+
+const POINTER = [
+  "",
+  "You can run an automated review yourself before submitting:",
+  "https://github.com/thunderbird/webext-linter",
+];
+
+const issue = {
+  ruleId: "sync-xhr",
+  severity: SEVERITY.WARNING,
+  file: "background.js",
+  line: 3,
+  message: "x",
+};
+
+test("a clean report ends with the pointer at this tool", () => {
+  const lines = developerText([]);
+  assert.deepEqual(lines.slice(-3), POINTER);
+  assert.equal(lines.filter((l) => l === POINTER[1]).length, 1);
+});
+
+test("a report with findings ends with the pointer at this tool", () => {
+  const lines = developerText([issue]);
+  assert.deepEqual(lines.slice(-3), POINTER);
+  assert.equal(lines.filter((l) => l === POINTER[1]).length, 1);
+});
+
+test("an aborted report ends with the pointer, after the abort lines", () => {
+  const earlyExit = {
+    intro: "Aborted because:",
+    reasons: [{ id: "a", text: "A" }],
+  };
+  const lines = developerText([issue], earlyExit);
+  assert.deepEqual(lines.slice(-6), [
+    "",
+    "Aborted because:",
+    "- A",
+    ...POINTER,
+  ]);
+  assert.equal(lines.filter((l) => l === POINTER[1]).length, 1);
 });
