@@ -22,7 +22,7 @@
 // is the developer's. Which of the two it is follows from the item's `kind`.
 //
 // `answers` carries every label and description the reviewer will read, in order. They are
-// the same for every item, and repeated on every item all the same: what it takes to ask
+// the same for every item a phase hands out, and repeated on every item all the same: what it takes to ask
 // one is then in one place, and a reader assembling a question from two places is a reader
 // that can assemble it from one of them alone.
 //
@@ -51,7 +51,8 @@ import { SECTION_TITLES, manualQuestion } from "./format.js";
  * @param {import("./finding.js").Finding[]} args.findings
  * @param {import("./finding.js").ManualItem[]} args.manual
  * @param {{label: string, description: string}[]} args.choices  The answers a question
- *   offers, from registry.manualReviewChoices(), in the order the reviewer sees them.
+ *   offers, from registry.answerChoices() for the phase handing it out, in the order the
+ *   reviewer sees them.
  *   REQUIRED, and not defaulted: a question with no answers is one a reviewer cannot
  *   answer, which the registry itself refuses to author.
  * @param {(x: object) => string} [args.labelOf]  Artifact label ([XPI]/[SCA]) for a

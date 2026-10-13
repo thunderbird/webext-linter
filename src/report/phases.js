@@ -129,7 +129,7 @@ export function nextPhase(phases, ordered, state, run) {
       continue;
     }
     // A phase exists to settle ENTRIES, so with none there is nothing to issue it for -
-    // whatever its steps would otherwise say. An itemless phase (`spawn`, `build`) is the
+    // whatever its steps would otherwise say. An itemless phase (`spawn`, `build-result`) is the
     // exception by nature: its work is what its steps do, and it is issued ONCE, because a
     // second pass would do all of it again. A run whose markers leave it no step never
     // gets here - the check above has already passed it over.
@@ -165,6 +165,6 @@ export function nextPhase(phases, ordered, state, run) {
  * @returns {import("./order.js").OrderedItem[]}
  */
 export function openIn(phaseName, ordered, state) {
-  // An itemless phase (spawn, build) needs no case here: no item is ever routed to it.
+  // An itemless phase (spawn, build-result) needs no case here: no item is ever routed to it.
   return ordered.filter((x) => isOpen(x, state) && phaseOf(x) === phaseName);
 }

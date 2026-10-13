@@ -1983,16 +1983,15 @@ test("the hand-back that finishes the preparation starts the review", () => {
   assert.equal(meta.xpi, path.join(dir, "addon.xpi"));
   assert.equal(meta.scaRoot, path.join(work, "sca"));
   assert.deepEqual(meta.checksRun, ["unused-files"]);
-  assert.ok(!("package-managers-declined" in readJson(work, "state").run));
   // From here on the folder holds a review, and its hand-back is a pass of the loop.
   const next = run(["--llm-handback", work]);
   assert.doesNotMatch(next.stdout, /SCA Review Prompt/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A reviewer who declines package-manager commands has the review started at once, and
-// told so: the started review records the fact its build steps read.
-test("declined package-manager commands reach the review it starts", () => {
+// A reviewer who declines package-manager commands has the review started at once, with no
+// build of the agent's: the reviewer builds the add-on themselves.
+test("declined package-manager commands start a review the reviewer builds for", () => {
   const dir = submissionFolder();
   const prepared = run([
     dir,
@@ -2008,7 +2007,11 @@ test("declined package-manager commands reach the review it starts", () => {
   });
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
   assert.equal(readJson(work, "prepare").packageManagers, false);
-  assert.equal(readJson(work, "state").run["package-managers-declined"], true);
+  assert.deepEqual(readJson(work, "state").build, {
+    result: null,
+    output: null,
+    vulnerabilities: null,
+  });
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -2306,8 +2309,9 @@ test("a prepared review drops what a record must not say", async () => {
 });
 
 // A source whose rescue failed is reviewed as submitted: the hand-back starts that
-// review, its vulnerability checks abort it, so its first prompt is the close, and the run
-// exits as a rejected review does.
+// review, its vulnerability checks stop it and the build check ends it for build issues,
+// asked of nobody, so its first prompt is the close, and the run exits as a rejected review
+// does.
 test("the hand-back starts the review of an unrescued source, which closes at once", async () => {
   // The fixture's source with nothing declared, so the review asks npm for no package's
   // downloads, and only the vulnerable build tool its lock installs.
@@ -2349,9 +2353,68 @@ test("the hand-back starts the review of an unrescued source, which closes at on
   // are what aborted it.
   assert.match(r.stdout, /The review was aborted before it finished/);
   assert.ok(r.stdout.includes(`[report.md](${work}/report.md)`), r.stdout);
+  assert.ok(r.stdout.includes("- Build process issues"), r.stdout);
   const { findings, meta } = readJson(work, "state").report;
   assert.equal(meta.checksRun.at(-1), "vendor-vulnerable-indirect");
   assert.ok(findings.some((f) => f.ruleId === "vendor-vulnerable-indirect"));
+  assert.ok(findings.some((f) => f.ruleId === "build-reproduces-xpi"));
+  fs.rmSync(source, { recursive: true, force: true });
+});
+
+// A source the agent built clean in the preparation: the hand-back starts its review in the
+// folder the build ran in, and the review opens on the Build Review Details, which name what
+// the agent's build produced and count the lock's vulnerable packages from the review's own
+// audit - a moderate advisory, which decides nothing, among them.
+test("a review of a source the agent built opens on its Build Review Details", async () => {
+  const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
+  const source = fs.mkdtempSync(path.join(os.tmpdir(), "wl-built-"));
+  fs.cpSync(path.join(fixture, "src"), source, { recursive: true });
+  const own = { name: "lantern-sorter", version: "1.0.0" };
+  fs.writeFileSync(path.join(source, "package.json"), JSON.stringify(own));
+  fs.writeFileSync(
+    path.join(source, "package-lock.json"),
+    JSON.stringify({
+      ...own,
+      lockfileVersion: 3,
+      packages: { "": own, "node_modules/lint-pebble": { version: "0.4.0" } },
+    })
+  );
+  const { work, record } = await realPreparation({
+    source,
+    xpi: path.join(fixture, "xpi"),
+    flags: {
+      "cache-schema-dir": CACHE,
+      "cache-hash-db-dir": CACHE,
+      "cache-experiments-dir": CACHE,
+      "cache-cdn-lookup-dir": CDN_CACHE,
+      "cache-npm-registry-dir": CACHE,
+    },
+    cache: auditCache({
+      "lint-pebble@0.4.0": [
+        advisory("GHSA-fixture-pebble", "MODERATE", "lint-pebble", "0.4.1"),
+      ],
+    }),
+  });
+  assert.equal(record.buildResult, "built");
+  const r = run(["--llm-handback", work]);
+  assert.equal(r.code, 0, r.stdout + r.stderr);
+  const state = readJson(work, "state");
+  assert.equal(state.phase, "build-result");
+  assert.deepEqual(state.build, {
+    result: "built",
+    output: record.buildOutput,
+    vulnerabilities: { moderate: 1, high: 0, critical: 0 },
+  });
+  for (const row of [
+    "* SUBMITTED_XPI:",
+    `[xpi](${path.join(fixture, "xpi")})`,
+    "* BUILD_SAFETY: safe",
+    "* BUILD_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
+    "* BUILD_RESULT: built by the agent",
+    `* BUILD_OUTPUT: [dist](${record.buildOutput})`,
+  ]) {
+    assert.ok(r.stdout.includes(row), `${row}\n${r.stdout}`);
+  }
   fs.rmSync(source, { recursive: true, force: true });
 });
 
@@ -2552,7 +2615,7 @@ test("an unsafe build starts the review with its judgement", () => {
   const state = readJson(work, "state");
   assert.deepEqual(state.values, { "build-safety": "unsafe" });
   assert.deepEqual(state.products, ["build"]);
-  assert.equal(state.run["package-managers-declined"], true);
+  assert.equal(state.build.result, null);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

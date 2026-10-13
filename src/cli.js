@@ -1570,7 +1570,7 @@ async function runLoopPass(work, base) {
       texts,
       next.phase,
       next.steps,
-      loopSlots(state, next, folder),
+      loopSlots(state, next, folder, registry),
       next.preamble
     );
   } catch (err) {

@@ -30,7 +30,6 @@ import { reviewData } from "../../src/review/products.js";
 import syncXhr from "../../src/checks/rules/sync-xhr.js";
 import debuggerStatement from "../../src/checks/rules/debugger-statement.js";
 import asyncOnMessage from "../../src/checks/rules/async-onmessage.js";
-import buildUnsafe from "../../src/checks/rules/build-unsafe.js";
 import minimizeHostPermissions from "../../src/checks/rules/minimize-host-permissions.js";
 import codeSanity from "../../src/checks/rules/code-sanity.js";
 import deprecatedApi from "../../src/checks/rules/deprecated-api.js";
@@ -864,7 +863,6 @@ test("where a check runs: the route says it, or the flag says what a route canno
   // Said by the ROUTE: the archive is the artifact these read, and an XPI review has none.
   for (const id of [
     "undeclared-build-source",
-    "build-unsafe",
     "build-reproduces-xpi",
     "build-registry-redirect",
     "lock-foreign-source",
@@ -1015,7 +1013,6 @@ test("every check's severity is pinned to its band", async () => {
       "build-lifecycle-hook",
       "build-registry-redirect",
       "build-reproduces-xpi",
-      "build-unsafe",
       "bundled-files",
       "cleartext-transmission",
       "committed-build-artifact",
@@ -1904,7 +1901,6 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "build-lifecycle-hook",
     "build-registry-redirect",
     "build-reproduces-xpi",
-    "build-unsafe",
     "committed-build-artifact",
     "committed-node-modules",
     "lock-foreign-source",
@@ -6901,19 +6897,6 @@ test("abortsReview: only an error from a check naming an early-exit reason stops
   assert.equal(abortsReview(registry, aborting, at(SEVERITY.WARNING)), false);
   assert.equal(abortsReview(registry, aborting, []), false);
   assert.equal(abortsReview(registry, plain, at(SEVERITY.ERROR)), false);
-});
-
-// build-unsafe reports what a reviewer decided, not what a file says: its rule raises nothing,
-// and its one finding comes from the loop, when the unsafe build's question is answered with
-// `abort` (src/report/loop.js recordValue).
-test("build-unsafe raises nothing of its own", () => {
-  assert.deepEqual(buildUnsafe.run(), { findings: [] });
-  assert.ok(
-    loadRegistry()
-      .llmPhases()
-      .phases.some((p) => p.values.some((v) => v.reports === "build-unsafe")),
-    "a process value reports it"
-  );
 });
 
 // The checks a build relies on: with any of them switched off, the review builds nothing

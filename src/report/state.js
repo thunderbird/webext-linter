@@ -32,22 +32,26 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   null when no check that ran authors one.
  * @property {{skip: string[], sca: boolean, warningsAsErrors: boolean}} run
  *   What this run was told to leave out (PROMPT_SKIPS), whether it is a source code review,
- *   whether every check a build relies on runs (`build-guarded`), whether the reviewer
- *   declined package-manager commands in the preparation (`package-managers-declined`),
- *   which trees it sweeps
+ *   whether every check a build relies on runs (`build-guarded`), which trees it sweeps
  *   (one sweepRun key each), and the band it publishes a warning at (--warnings-as-errors). One
  *   record, read by everything that asks: a step prints by it, the routing drops entries by
  *   it, the registry is read under it, and both legs of a hand-over ask it the same question.
- * @property {object} paths  The values a step names: description, build, buildCopy,
- *   report (all in the review's work folder, src/util/dest.js workPaths, which
- *   also holds this file and the review file and is not recorded: the state is read from
- *   it), buildOutput once the build phase named what its build produced, schemaCache, schema, the two artifact roots
+ * @property {object} paths  The values a step names: description, build, report (all in
+ *   the review's work folder, src/util/dest.js workPaths, which also holds this file and
+ *   the review file and is not recorded: the state is read from it), schemaCache, schema,
+ *   the two artifact roots
  *   (scaRoot, xpiRoot) an entry's paths are resolved against, and `sweeps` - each tree's sweep
  *   request (the text its step hands over) and answers file, by artifact, which is also
  *   what says WHICH trees this review asked about. Held here
  *   because a later pass prints them and cannot re-derive a moment - and `report` is also
  *   where a later pass WRITES, so losing it would leave the reviewer holding a link to a
  *   file nothing refreshes.
+ * @property {{result: ?string, output: ?string, vulnerabilities: ?{moderate: number,
+ *   high: number, critical: number}}} build  What came of the agent's build in the
+ *   preparation (a BUILD_RESULT value, src/prepare/state.js, or null where it built
+ *   nothing), what it produced where it built, and the lock's vulnerable packages as this
+ *   review's own audit counted them, null where that audit was not made in full. The Build
+ *   Review Details show them, and the `built` step is worded by them.
  * @property {?string} phase  The phase in flight - what went out last, and so what the
  *   next hand-back is read as. Unset until the first prompt goes out, which is how a prompt
  *   knows it is the first (`first`, src/report/loop.js runOf).
@@ -133,5 +137,8 @@ export function readState(file) {
  *  `paths.sweeps` as the text its step hands over, where a v15 file names a request file
  *  that no step hands over and no review writes any more. Version 17 has the build phase
  *  answer where its build put what it produced, kept as `paths.buildOutput`, where a v16 file
- *  names a `paths.buildDiff` no step writes and its build phase asks nothing. */
-export const STATE_VERSION = 17;
+ *  names a `paths.buildDiff` no step writes and its build phase asks nothing. Version 18 builds
+ *  nothing in the review: it holds the preparation's build in `build`, which the Build Review
+ *  Details and the `built` step read, where a v17 file has no `build` and may be waiting on
+ *  a `build` phase this review does not have. */
+export const STATE_VERSION = 18;

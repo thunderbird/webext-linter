@@ -67,7 +67,7 @@ import {
   renderManualItems,
   withDefaultNotes,
 } from "./report/responses.js";
-import { resolveHolds } from "./report/finding.js";
+import { finding, resolveHolds } from "./report/finding.js";
 import { assignRefs, orderReview } from "./report/order.js";
 import { earlyExitOf, withoutQuestions } from "./report/early-exit.js";
 import { STATE_VERSION } from "./report/state.js";
@@ -83,6 +83,8 @@ import { debug, progress, report, warn, FEED } from "./util/log.js";
 import { DEFAULT_CACHE, SOURCES_CACHE } from "./config.js";
 import { rethrowIfFatal, wiringError } from "./lib/errors.js";
 import { reviewData } from "./review/products.js";
+import { LOCK_AUDIT_LISTS, vulnerabilityCounts } from "./prepare/audit.js";
+import { BUILD_RESULT } from "./prepare/state.js";
 
 /** @typedef {import("./report/finding.js").Finding} Finding */
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
@@ -705,7 +707,8 @@ async function reviewSubmission(opts, work, prepared) {
   // finished findings, manual items and the checks that ran. Each throwing check is
   // isolated so one failure can't abort all. A rejected Experiment stops at its first
   // check, experiment-not-allowed, as any review stops at a check that aborts it - and a
-  // source whose preparation failed to rescue its lock stops at its vulnerability checks.
+  // source whose preparation failed to rescue its lock stops at its vulnerability checks,
+  // and is then reported for build issues below.
   // The `--eslint` opt-in gates code-sanity inside loadChecks (eslintEligible).
   progress(""); // close the Setup section before runChecks prints "── Activity ──"
   const {
@@ -718,6 +721,25 @@ async function reviewSubmission(opts, work, prepared) {
     siblings
   );
   findings.push(...reviewFindings);
+  // A source whose preparation gave its rescue up has no clean build to reproduce the XPI
+  // from: the build check reports it here, without a question, and the review ends for
+  // build issues through the early exit, beside the vulnerability findings that started the
+  // rescue.
+  if (
+    prepared?.buildResult === BUILD_RESULT.rescueFailed &&
+    checkSelected(REPRODUCES_CHECK, {
+      only: opts.checksOnly,
+      skip: opts.checksSkip,
+    })
+  ) {
+    findings.push(
+      finding({
+        ruleId: REPRODUCES_CHECK,
+        severity: registry.checkEntry(REPRODUCES_CHECK).severity,
+        artifact: ARTIFACT_SCA,
+      })
+    );
+  }
 
   // The review-derived half of meta (the base half - action/xpi/... - is the `meta` setup
   // step's): the schema stamps, the checks that ran, and the manual-review to-do list.
@@ -770,7 +792,6 @@ async function reviewSubmission(opts, work, prepared) {
   // withheld by --llm-skip-summary, the build report by a review that is not a source code one.
   let summaryPath = null;
   let buildPath = null;
-  let buildCopyPath = null;
   let reportPath = null;
   // Each tree's sweep request and answers file, by artifact - empty when this run sweeps
   // nothing. The keys are what says which trees were asked: a step prints for one, and
@@ -797,9 +818,6 @@ async function reviewSubmission(opts, work, prepared) {
     meta.prompting = true;
     summaryPath = skip.includes("llm-skip-summary") ? null : work.summary;
     buildPath = mode.sca ? work.build : null;
-    // Where the build phase builds, named only where it can be issued: a source code review
-    // (its steps' `sca` condition in assets/registry.yaml).
-    buildCopyPath = mode.sca ? work.buildCopy : null;
     // Ungated, unlike the two above: every review has a report, and this one is written by
     // the linter (src/report/report-file.js) rather than asked of an agent, so there is no
     // step whose absence could leave the path naming nothing.
@@ -866,18 +884,14 @@ async function reviewSubmission(opts, work, prepared) {
         skip,
         sca: mode.sca,
         // Whether every check an agent's build relies on runs: with one switched off, nothing
-        // vouches for what the build would install, so the review builds nothing itself.
+        // vouches for what the build would install, so the review neither judges the build
+        // nor shows the Build Review Details, and asks the build question alone.
         ...(registry
           .buildGuardIds()
           .every((id) =>
             checkSelected(id, { only: opts.checksOnly, skip: opts.checksSkip })
           )
           ? { "build-guarded": true }
-          : {}),
-        // The preparation did not let the agent build (an unsafe judgement, or the reviewer
-        // declined), so the review builds nothing itself.
-        ...(prepared?.packageManagers === false
-          ? { "package-managers-declined": true }
           : {}),
         // One condition per tree that has a sweep to run, keyed the way the step names
         // it. Read off the REQUESTS rather than off `sweeping` and `preSweep` separately:
@@ -896,7 +910,6 @@ async function reviewSubmission(opts, work, prepared) {
       paths: {
         description: summaryPath,
         build: buildPath,
-        buildCopy: buildCopyPath,
         report: reportPath,
         schemaCache: opts.schemaCache,
         // The two roots every reported path is relative to, so a later pass can resolve
@@ -915,6 +928,21 @@ async function reviewSubmission(opts, work, prepared) {
         schema: schemaLines(meta, opts.schemaCache).join("\n"),
       },
       answers: {},
+      // What came of the agent's build in the preparation, and what it produced where it
+      // built, as the record holds them, and the vulnerable packages this review's own audit
+      // counted in the lock it read (lockVulnerabilities). The Build Review Details show
+      // them, and the `built` step is worded by them (src/report/loop.js buildResultFact).
+      build: {
+        result: prepared?.buildResult ?? null,
+        output:
+          prepared?.buildResult === BUILD_RESULT.built
+            ? prepared.buildOutput
+            : null,
+        vulnerabilities: lockVulnerabilities(
+          scaArchive,
+          registry.buildGuardIds().every((id) => ranIds.has(id))
+        ),
+      },
       // The judgement a preparation recorded, as the `build-safety` value its phase would
       // return, so that phase is not issued (its steps' `when:`), and build.md, which the
       // preparation wrote, as that phase's product.
@@ -978,7 +1006,7 @@ async function reviewSubmission(opts, work, prepared) {
       texts,
       first.phase,
       first.steps,
-      loopSlots(state, first, opts.workFolder),
+      loopSlots(state, first, opts.workFolder, registry),
       // The preamble parts its conditions chose: this is the first prompt, so it prints
       // unless the review closes right here.
       first.preamble
@@ -1017,10 +1045,35 @@ async function reviewSubmission(opts, work, prepared) {
 }
 
 /** The work folder's names a review never writes: the source archive's extraction, put
- *  there when a source code review is prepared, the copy of it a rescue makes, and that
- *  preparation's record. A review claiming them would refuse the very folder it was
- *  prepared in. */
-const WORK_INPUTS = new Set(["sca", "rescued", "prepare"]);
+ *  there when a source code review is prepared, the copy of it a rescue makes, the copy the
+ *  agent builds the clean source in, and that preparation's record. A review claiming them
+ *  would refuse the very folder it was prepared in. */
+const WORK_INPUTS = new Set(["sca", "rescued", "buildCopy", "prepare"]);
+
+/** The one build check: whether the source builds into the shipped XPI. */
+const REPRODUCES_CHECK = "build-reproduces-xpi";
+
+/**
+ * The vulnerable packages of the lock this review read, counted by severity from its own
+ * audit, as the preparation counts a lock it audited (vulnerabilityCounts). Null where the
+ * audit was not made in full: every check that reads it (`build-guard`) has to have run,
+ * since one that was skipped or not reached may leave it unasked.
+ * @param {?import("./addon/load.js").Addon} archive  The source archive, or null.
+ * @param {boolean} audited  Every `build-guard` check ran.
+ * @returns {?import("./prepare/audit.js").VulnerabilityCounts}
+ */
+function lockVulnerabilities(archive, audited) {
+  const vendor = archive?.vendor;
+  if (!vendor || !audited) {
+    return null;
+  }
+  return vulnerabilityCounts({
+    lists: Object.fromEntries(
+      LOCK_AUDIT_LISTS.map((l) => [l, vendor[l] ?? []])
+    ),
+    moderate: vendor.moderateVulnerabilities ?? [],
+  });
+}
 
 /**
  * The names a run will create in its work folder (src/util/dest.js workPaths).

@@ -101,12 +101,12 @@ const saying = (text) => (err) => err.message.includes(text);
 
 // The waiting line is appended to the block a turn-ending phase shows, so the reviewer
 // reads it as the end of that block.
-test("the shipped turn-ending phases are the three that show a block", () => {
+test("the shipped turn-ending phases are the two that show a block", () => {
   const p = fresh().llmPhases();
   assert.equal(p.waiting, 'Reply "next" to continue the review.');
   assert.deepEqual(
     p.phases.filter((phase) => phase.endsTurn).map((phase) => phase.name),
-    ["build-review", "build-result", "details"]
+    ["build-result", "details"]
   );
 });
 
@@ -321,10 +321,6 @@ test("a phase declares the kind of answer its entries take", () => {
       .phases.map((p) => [p.name, p.answer, p.verbs.length]),
     [
       ["build-safety", "value", 0],
-      ["build-review", "none", 0],
-      ["build-choice", "value", 0],
-      ["build-choice-unsafe", "value", 0],
-      ["build", "output", 0],
       ["build-result", "none", 0],
       ["built", "words", 0],
       ["spawn", "hints", 0],
@@ -345,7 +341,7 @@ test("a phase declares the kind of answer its entries take", () => {
   phaseNamed(unknown, "verify").answer = "verdicts";
   assert.throws(
     () => check(unknown),
-    /invalid `answer` "verdicts" \(expected one of: hints, verdict, words, value, output, none, end\)/
+    /invalid `answer` "verdicts" \(expected one of: hints, verdict, words, value, none, end\)/
   );
 
   // A verdict phase with nothing to say back, and a phase that names a verb nobody will
@@ -396,52 +392,57 @@ function withValuePhase(extra = {}) {
   return registry;
 }
 
-// The build phase answers with where its build put what it produced: one entry, its
-// question and the `failed` answer, and the path kept as its product. Each of those three is
-// required at load, and no other kind authors `failed`.
-test("an output phase declares its question, its failed answer and its product", () => {
-  const loaded = fresh()
-    .llmPhases()
-    .phases.find((p) => p.name === "build");
-  assert.equal(loaded.answer, "output");
-  assert.equal(loaded.product, "buildOutput");
-  assert.equal(loaded.question, "Where did the build put what it produced?");
-  assert.equal(loaded.failed.label, "The build failed");
-  assert.equal(typeof loaded.failed.description, "string");
-
-  for (const key of ["question", "failed", "product"]) {
-    const missing = fresh();
-    delete phaseNamed(missing, "build")[key];
-    assert.throws(
-      () => check(missing),
-      new RegExp(`answers with \`output\` but authors no \`${key}\``),
-      key
-    );
-  }
-  const listed = fresh();
-  phaseNamed(listed, "build").values = [
-    { value: "done", label: "Done", description: "built" },
-  ];
-  assert.throws(
-    () => check(listed),
-    /answers with `output` but authors `values`/
+// A phase may offer a person its own answers in place of the manual review's: the build
+// question offers two. Only a phase a person answers may, and each must settle the case
+// with a verdict a reviewer's answer can carry.
+test("a phase's own answers are offered only by a phase a person answers, and settle", () => {
+  assert.deepEqual(
+    fresh()
+      .answerChoices("built")
+      .map((c) => [c.label, c.verdict]),
+    [
+      ["Builds and reproduces", "cleared"],
+      ["Does not build or reproduce", "reported"],
+    ]
+  );
+  assert.deepEqual(
+    fresh().answerChoices("ask"),
+    fresh().manualReviewChoices(),
+    "a phase with none offers the manual review's"
   );
   const valued = withValuePhase({
-    failed: { label: "Failed", description: "nothing built" },
+    choices: [{ label: "Yes", verdict: "cleared", description: "y" }],
   });
   assert.throws(
     () => check(valued),
-    /answers with `value` but authors `failed` - only an `output` phase/
+    saying("answers with `value` but authors `choices` - only a `words` phase")
   );
-  const worded = fresh();
-  phaseNamed(worded, "ask").failed = { label: "x", description: "y" };
-  assert.throws(
-    () => check(worded),
-    /answers with `words` but authors `failed`/
-  );
-  const blank = fresh();
-  delete phaseNamed(blank, "build").failed.description;
-  assert.throws(() => check(blank), /authors no `description`/);
+  for (const verdict of ["ask", "maybe"]) {
+    const asking = fresh();
+    phaseNamed(asking, "built").choices[0].verdict = verdict;
+    assert.throws(
+      () => check(asking),
+      saying(
+        `\`choices\` answer 1 settles with \`${verdict}\`, which is not a verdict a ` +
+          "reviewer's answer can carry"
+      ),
+      verdict
+    );
+  }
+});
+
+// What the Build Review Details say came of the build is authored once per build result,
+// and a result with no wording is refused at load.
+test("each build result is worded", () => {
+  assert.deepEqual(Object.keys(fresh().llmPhases().buildResults).sort(), [
+    "agent-build-failed",
+    "agent-built",
+    "build-unsafe",
+    "self-build",
+  ]);
+  const missing = fresh();
+  delete missing.doc["llm-phases"]["build-results"]["self-build"];
+  assert.throws(() => check(missing), saying("self-build"));
 });
 
 // A process value is declared by the phase that asks for it, and every name a condition
@@ -470,7 +471,7 @@ test("a process-value phase declares its values, and conditions read only those"
   phaseNamed(stray, "ask").question = "Who builds?";
   assert.throws(
     () => check(stray),
-    /answers with `words` but authors `question` - only a `value` or `output` phase/
+    /answers with `words` but authors `question` - only a `value` phase/
   );
   const twice = withValuePhase();
   phaseNamed(twice, "safety").values[1].value = "safe";
@@ -655,11 +656,9 @@ test("the shipped steps carry the conditions they are printed under", () => {
   ]);
   assert.deepEqual(when("verify"), [["aborted"]]);
   assert.deepEqual(when("settle"), [["aborted"]]);
-  // The build opening: only a source review whose install is vouched for, and each choice
-  // only after the judgement it answers, and only where the reviewer allowed package-manager
-  // commands. The Build Review Details ahead of the choice show under the choice's own
-  // condition, less the judgement; those ahead of the build question show wherever the build
-  // was vouched for. The build itself runs only where the reviewer chose the agent to build.
+  // The build opening: only a source review whose install is vouched for, and the judgement
+  // only where none is held yet. The Build Review Details show wherever the build was
+  // vouched for, and the build question's first step is worded by the build result.
   const calls = (name) =>
     loaded
       .find((p) => p.name === name)
@@ -668,28 +667,24 @@ test("the shipped steps carry the conditions they are printed under", () => {
     ["aborted", "build-guarded", "sca"],
     ["aborted", "build-guarded", "sca"],
   ]);
-  assert.deepEqual(when("build-review"), [
-    ["aborted", "build-guarded", "package-managers-declined", "sca"],
-  ]);
-  assert.deepEqual(calls("build-review"), [[]]);
-  for (const [name, value] of [
-    ["build-choice", "safe"],
-    ["build-choice-unsafe", "unsafe"],
-  ]) {
-    assert.deepEqual(when(name), [
-      ["aborted", "build-guarded", "package-managers-declined", "sca"],
-    ]);
-    assert.deepEqual(calls(name), [[["build-safety", value]]]);
-  }
-  assert.deepEqual(when("build"), [["aborted", "sca"]]);
-  assert.deepEqual(calls("build"), [
+  assert.deepEqual(calls("build-safety"), [
     [
-      ["build-choice", "llm"],
-      ["build-choice-unsafe", "llm"],
+      ["build-safety", "safe"],
+      ["build-safety", "unsafe"],
+    ],
+    [
+      ["build-safety", "safe"],
+      ["build-safety", "unsafe"],
     ],
   ]);
   assert.deepEqual(when("build-result"), [["aborted", "build-guarded", "sca"]]);
-  assert.deepEqual(when("built"), [["aborted"]]);
+  assert.deepEqual(when("built"), [
+    ["aborted", "agent-built"],
+    ["aborted", "agent-build-failed"],
+    ["aborted", "build-unsafe"],
+    ["aborted", "self-build"],
+    ["aborted"],
+  ]);
   // The wait step carries its phase's own condition beside `spawned`, so the phase is never
   // issued with nothing but a wait in it.
   assert.deepEqual(when("details"), [

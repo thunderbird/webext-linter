@@ -30,20 +30,35 @@
         {
           "id": "known-vulnerabilities",
           "text": "Known security vulnerabilities"
+        },
+        {
+          "id": "unreproducible-build",
+          "text": "Build process issues"
         }
       ]
     }
   },
   "summary": {
-    "error": 1,
+    "error": 2,
     "hold": 0,
     "warning": 0,
     "info": 0,
     "byRule": {
-      "vendor-vulnerable-dev": 1
+      "vendor-vulnerable-dev": 1,
+      "build-reproduces-xpi": 1
     }
   },
   "findings": [
+    {
+      "ruleId": "build-reproduces-xpi",
+      "severity": "error",
+      "file": null,
+      "loc": null,
+      "item": null,
+      "hint": null,
+      "artifact": "SCA",
+      "message": "The submitted source either could not be built by following its build instructions, or does not build into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions."
+    },
     {
       "ruleId": "vendor-vulnerable-dev",
       "severity": "error",

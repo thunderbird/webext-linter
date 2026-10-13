@@ -40,6 +40,7 @@ import { displayLine } from "../util/text.js";
 import { MAX_NOTE } from "../config.js";
 import { finding } from "./finding.js";
 import { orderReview, hasLocus } from "./order.js";
+import { phaseOf } from "./phases.js";
 import { VERB, VERB_NAMES, verbNamed } from "./verbs.js";
 import { locationLine } from "./format.js";
 
@@ -68,10 +69,8 @@ const VERBS = new Set(VERB_NAMES.filter((v) => v !== String(VERB.ask)));
  *   a question to a person. The PHASE decides it, never the item: a case the agent sent
  *   on with `ask` is answered by a reviewer while keeping the section it was filed under.
  * @param {string} ref  The item's reference, for the refusal texts.
- * @param {{label: string, verdict: string, description: string}[]} choices  The answers a
- *   question offered, read once per review by the caller: the registry cannot change
- *   between two answers of one file, and an accessor documented as "read once" is read
- *   once.
+ * @param {{label: string, verdict: string, description: string}[]} choices  The answers the
+ *   question offered, those of the phase it was asked in (registry.answerChoices).
  * @returns {{verdict: string, note: ?string}}
  */
 function settleAnswer(answer, asked, ref, choices) {
@@ -191,9 +190,6 @@ export function applyVerdicts({
   for (const item of orderReview(findings, manual)) {
     byRef.set(item.ref, item);
   }
-  // The answers every question offered, read ONCE: they are the same for every item, and
-  // the registry cannot change while one file is applied.
-  const choices = registry.manualReviewChoices();
   const applied = [];
   const dropFindings = new Set();
   const dropManual = new Set();
@@ -207,7 +203,14 @@ export function applyVerdicts({
         `--llm-handback: item ${ref} is not an item of this review`
       );
     }
-    const { verdict, note } = settleAnswer(answer, asking(item), ref, choices);
+    // Read against the answers the item's question offered: the phase it is asked in may
+    // offer its own (registry.answerChoices).
+    const { verdict, note } = settleAnswer(
+      answer,
+      asking(item),
+      ref,
+      registry.answerChoices(phaseOf(item))
+    );
     // Named in the audit line, so a misaimed verdict is legible there rather than only
     // in the re-rendered report.
     const locus = refOf(item.target, labelOf);

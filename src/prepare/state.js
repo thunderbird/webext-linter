@@ -106,7 +106,7 @@ const COUNTED = ["moderate", "high", "critical"];
  *   package-manager commands: the reviewer's answer to the permission question (true where
  *   --llm-agent-builds answered it up front), false after an unsafe judgement, which asks
  *   nothing, and null before either. False, the preparation audits and rescues nothing,
- *   and the review builds nothing itself.
+ *   and the agent builds nothing.
  * @property {?import("./audit.js").VulnerabilityCounts} vulnerabilities  The lock the
  *   review reads, its vulnerable packages counted by severity as the linter's audit found
  *   them: the original's, or the rescued copy's once its rescue came out clean. Held from

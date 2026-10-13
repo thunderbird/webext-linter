@@ -24,8 +24,8 @@
       <p>
         Reproducing the build is the reviewer's attestation that the shipped XPI comes
         from the source they read, which is what a source-code review rests on. The
-        reviewer answers by comparing the build output the review links, or their own
-        build, with the submitted XPI. Files that differ only by what every build changes (a
+        reviewer answers by comparing the build output the review links, where the agent
+        built the add-on, or their own build, with the submitted XPI. Files that differ only by what every build changes (a
         timestamp, a build id) still match. An install refused because
         <code>package.json</code> and the lock file disagree is a failed build.
       </p>
@@ -60,10 +60,13 @@ flowchart TD
         A &ldquo;no&rdquo; settles the submission on its own. Nothing further is put to a
         reviewer: the report drops every to-do item they would have been asked, keeps the code-review sections of a printed report (an aborted <code>--llm-review</code> hands over no to-do item at all), and the developer&rsquo;s text ends on the reason it is
         incomplete (&ldquo;Build process issues&rdquo;). Under <code>--llm-review</code> the
-        question is asked ALONE, in the <code>built</code> phase, right after the build
-        and before the sweeps - <code>ask</code> batches, and nobody may be asked to
-        install an XPI in the same breath as being asked whether the source builds into it.
-        It is asked under <code>--llm-skip-manual</code> too.
+        question is asked ALONE, in the <code>built</code> phase, right after the Build
+        Review Details and before the sweeps - <code>ask</code> batches, and nobody may be
+        asked to install an XPI in the same breath as being asked whether the source builds
+        into it. Its two answers are <em>Builds and reproduces</em> and <em>Does not build
+        or reproduce</em>. It is asked under <code>--llm-skip-manual</code> too. A source
+        whose preparation gave its rescue up reports it without a question, since nothing
+        clean was built from it.
       </div>
 
       <p class="source-note">

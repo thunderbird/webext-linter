@@ -221,11 +221,12 @@ which means either nothing was built or the build output was committed beside th
   `build-reproduces-xpi` (Extended Manual Review) asks the reviewer whether the source
   builds into the shipped XPI. Any of the three
   reported aborts the review. Under `--llm-review` a source review opens with its build,
-  before the sweeps: the agent writes the build report and judges it safe or unsafe, the
-  reviewer chooses who builds (or, after an unsafe judgement, stops the review, which
-  reports `build-unsafe`), and the build question is asked alone right after.
-  With any check the build relies on switched off (`build-guard` in the registry), nothing
-  is built by the agent, and the two questions are still asked.
+  before the sweeps: the agent judges the build safe or unsafe where nothing was prepared,
+  the reviewer reads the Build Review Details (with what the agent built in the
+  preparation, where it did), and the build question is asked alone right after, answered
+  `Builds and reproduces` or `Does not build or reproduce`. The review itself builds
+  nothing. With any check the build relies on switched off (`build-guard` in the
+  registry), the Build Review Details are not shown, and the question is still asked.
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
   manifest.json, the experiments and the file-completeness checks (bundled /
   web-accessible / unused / locales). It gets the same library and parse passes in either
@@ -295,18 +296,17 @@ reason the report gives (`review-early-exit:` in the registry) - today eighteen 
 five reasons: `experiment-not-allowed` names *Experiment APIs not accepted*,
 `lockfile-injection` names *lock file entries that install another release*, the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
-names *disallowed library versions*, and the eleven that
+names *disallowed library versions*, and the ten that
 decide a source submission cannot be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
 `sca-lock-file-multiple`, `lock-foreign-source`, `build-registry-redirect`, `build-lifecycle-hook`,
-`undeclared-build-source`, `build-unsafe` and `build-reproduces-xpi` - name
+`undeclared-build-source` and `build-reproduces-xpi` - name
 *a build that cannot be reproduced*. These lead the review, ordered so a submission they reject stops
 before the rest is computed: `experiment-not-allowed`; then the source archive's package.json
 and lock checks (`sca-package-file-*`, `sca-lock-file-*`, `build-registry-redirect`,
 `lock-foreign-source`), which read nothing the review computes; then `lockfile-injection`;
 then the four dependency-vulnerability checks and `banned-library`, which need the vendor
-reading. The four build checks that only escalate, and `build-unsafe`, which raises nothing
-itself, stay where they are. When
+reading. The four build checks that only escalate stay where they are. When
 one of them reports at error
 severity, the review stops there: no check after it runs, and nothing further is put to a
 reviewer. The report holds what the checks up to it found, drops every to-do item a

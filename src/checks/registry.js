@@ -396,7 +396,7 @@ export class Registry {
 
   /**
    * Ids of the checks an agent's build relies on (`build-guard`): with any of them switched
-   * off, the review builds nothing itself.
+   * off, the review neither judges the build nor shows the Build Review Details.
    * @returns {string[]}
    */
   buildGuardIds() {
@@ -615,12 +615,17 @@ export class Registry {
    * carries none - the same shape the SCA prompt's steps come back in, so all of them are
    * filtered by one evaluator (src/checks/condition.js holds) against the facts their run
    * meets.
+   * `buildResults` words what came of the build in the Build Review Details, by the build
+   * result the review holds (BUILD_RESULT_FACTS). A phase's `choices` are the answers a
+   * person is offered for its question, in place of the manual review's own, or null where
+   * it offers those (answerChoices).
    * @returns {{preamble: {when: ?object, text: string}[], frame: string, handover: string,
-   *   waiting: string, refused: string, phases: {name: string, answer: string,
+   *   waiting: string, refused: string, buildResults: Record<string, string>,
+   *   phases: {name: string, answer: string,
    *   endsTurn: boolean, verbs: string[],
    *   product: ?string, verbProse: object, intro: string,
    *   steps: {when: ?object, text: string}[], question: ?string,
-   *   failed: ?{label: string, description: string},
+   *   choices: ?{label: string, verdict: string, description: string}[],
    *   values: {value: string, label: string, description: string,
    *   reports: ?string}[]}[]}}
    */
@@ -632,6 +637,7 @@ export class Registry {
       handover: p.handover,
       waiting: p.waiting,
       refused: p.refused,
+      buildResults: { ...p["build-results"] },
       phases: p.phases.map((phase) => ({
         name: phase.name,
         answer: phase.answer,
@@ -649,10 +655,14 @@ export class Registry {
         ),
         intro: phase.intro,
         steps: phase.steps.map(loadedStep),
-        // A process-value or output phase's question, and what it accepts back.
+        // A process-value phase's question, and what it accepts back.
         question: phase.question ?? null,
-        failed: phase.failed
-          ? { label: phase.failed.label, description: phase.failed.description }
+        choices: phase.choices
+          ? phase.choices.map((c) => ({
+              label: c.label,
+              verdict: c.verdict,
+              description: c.description,
+            }))
           : null,
         values: (phase.values ?? []).map((v) => ({
           value: v.value,
@@ -683,6 +693,19 @@ export class Registry {
       // what someone typed into the yaml alongside it.
       description: c.description.replace("{{maxNote}}", String(MAX_NOTE)),
     }));
+  }
+
+  /**
+   * The answers a person is offered for a question asked in `phaseName`, with the verdict
+   * each settles the case with: the phase's own `choices`, or the manual review's answers
+   * (manualReviewChoices) where it authors none. One reading for every place that offers or
+   * reads them, so what was offered and what an answer settles with cannot disagree.
+   * @param {?string} phaseName
+   * @returns {{label: string, verdict: string, description: string}[]}
+   */
+  answerChoices(phaseName) {
+    const phase = this.llmPhases().phases.find((p) => p.name === phaseName);
+    return phase?.choices ?? this.manualReviewChoices();
   }
 
   /**
@@ -1469,8 +1492,7 @@ function loadedStep(step) {
 
 /**
  * A process-value phase's values, checked at load. A phase answering `value` must offer some,
- * and no other kind may author them, or a question nobody asks. An `output` phase is checked
- * by assertOutput, and only it authors `failed`. Each id is a name a `when:`
+ * and no other kind may author them, or a question nobody asks. Each id is a name a `when:`
  * can read, and two equal ids or labels would make an answer mean either. A value that
  * `reports` a check aborts the review through that check, so the check must exist and abort.
  * @param {Registry} registry
@@ -1478,26 +1500,16 @@ function loadedStep(step) {
  * @param {string} at  How it is named in a message.
  */
 function assertProcessValues(registry, phase, at) {
-  if (phase.answer === "output") {
-    assertOutput(phase, at);
-    return;
-  }
   if (phase.answer !== "value") {
-    for (const key of ["values", "question", "failed"]) {
+    for (const key of ["values", "question"]) {
       if (phase[key] !== undefined) {
         throw new Error(
           `${at} answers with \`${phase.answer}\` but authors \`${key}\` - only a ` +
-            "`value` or `output` phase hands over a question"
+            "`value` phase hands over a question"
         );
       }
     }
     return;
-  }
-  if (phase.failed !== undefined) {
-    throw new Error(
-      `${at} answers with \`value\` but authors \`failed\` - only an \`output\` ` +
-        "phase offers it"
-    );
   }
   const values = phase.values ?? [];
   if (values.length === 0) {
@@ -1540,33 +1552,6 @@ function assertProcessValues(registry, phase, at) {
       throw new Error(
         `${at} value \`${v.value}\` reports \`${v.reports}\`, whose \`input: ` +
           `${entry.input}\` reads no single artifact the finding could be about`
-      );
-    }
-  }
-}
-
-/**
- * An output phase, checked at load. Its one entry is the question and the `failed` answer,
- * so it must author both, and the path that comes back is kept as its `product`, so it must
- * name one. It offers no process values: what comes back is a path, not one of a list.
- * @param {object} phase  The phase as authored.
- * @param {string} at  How it is named in a message.
- */
-function assertOutput(phase, at) {
-  if (phase.values !== undefined) {
-    throw new Error(
-      `${at} answers with \`output\` but authors \`values\` - it accepts a path, ` +
-        "not one of a list"
-    );
-  }
-  for (const [key, why] of [
-    ["question", "its one entry would ask nothing"],
-    ["failed", "a build that produced nothing could not be answered"],
-    ["product", "the path that comes back would be kept nowhere"],
-  ]) {
-    if (phase[key] === undefined) {
-      throw new Error(
-        `${at} answers with \`output\` but authors no \`${key}\` - ${why}`
       );
     }
   }
@@ -1690,6 +1675,17 @@ export function assertPhases(registry, at) {
       }
     }
     assertProcessValues(registry, phase, at2);
+    // Answers offered to a person in place of the manual review's own: only a phase a
+    // person answers offers any, and each must settle the case it is picked for.
+    if (phase.choices !== undefined) {
+      if (phase.answer !== "words") {
+        throw new Error(
+          `${at2} answers with \`${phase.answer}\` but authors \`choices\` - only a ` +
+            "`words` phase puts a question to a person"
+        );
+      }
+      assertChoiceVerdicts(phase.choices, `${at2} \`choices\``);
+    }
     phase.steps.forEach((step, i) => {
       assertStep(step, i, at2, "step", REVIEW_PROMPT_FACTS, values);
     });
@@ -1784,7 +1780,19 @@ export function assertScaPrompt(registry, at) {
  * @param {string} at  The registry path, for the message.
  */
 export function assertChoices(registry, at) {
-  registry.doc["llm-manual-review-choices"].forEach((c, i) => {
+  assertChoiceVerdicts(
+    registry.doc["llm-manual-review-choices"],
+    `llm-manual-review-choices (${at})`
+  );
+}
+
+/**
+ * Assert each answer offered to a person settles with a verdict a reviewer's answer can carry.
+ * @param {{verdict: string}[]} choices
+ * @param {string} where  How the list is named in a message.
+ */
+function assertChoiceVerdicts(choices, where) {
+  choices.forEach((c, i) => {
     // The verdict must NAME one, and one that settles. A word that spells no verb reaches
     // the apply step as nothing at all, where every branch declines it and the case is
     // dropped with no finding - a reviewer's "Report" silently clearing the thing they
@@ -1793,9 +1801,9 @@ export function assertChoices(registry, at) {
     const verb = verbNamed(c.verdict);
     if (!verb || verb === VERB.ask) {
       throw new Error(
-        `llm-manual-review-choices answer ${i + 1} settles with \`${c.verdict}\`, which is ` +
+        `${where} answer ${i + 1} settles with \`${c.verdict}\`, which is ` +
           "not a verdict a reviewer's answer can carry " +
-          `(expected one of: ${VERB_NAMES.filter((v) => v !== String(VERB.ask)).join(", ")}) (${at})`
+          `(expected one of: ${VERB_NAMES.filter((v) => v !== String(VERB.ask)).join(", ")})`
       );
     }
   });

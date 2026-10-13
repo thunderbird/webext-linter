@@ -54,12 +54,8 @@ entry never offered are all refusals.
 | Phase | What it is for | What fills its answers |
 | --- | --- | --- |
 | `build-safety` | Source code review only: write the build report (`BUILD_PROCESS`), with a safety section listing anything the build fetches or runs from outside the declared dependencies, and judge whether building is safe. Not where the review was prepared: it starts with the judgement and the build report its preparation recorded. | A process value: `safe` / `unsafe` |
-| `build-review` | Show the Build Review Details block (the source the review read, the build report) as the last thing of the turn, and hand back once the reviewer has replied. Not where the preparation did not let the agent build. | Nothing: the block is its whole work |
-| `build-choice` | After a `safe` judgement: ask the reviewer, alone, who builds. Not asked where the preparation did not let the agent build. | A process value: LLM builds / Build myself |
-| `build-choice-unsafe` | After an `unsafe` judgement: the same, and the reviewer may also stop the review. Not asked where the preparation did not let the agent build. | A process value: Abort / LLM builds anyway / Build myself |
-| `build` | Where the reviewer chose the agent: build the add-on in a copy of the source, in the agent's own sandbox. | Where the build put what it produced (an XPI, a zip or a folder inside the copy), or that it failed |
-| `build-result` | Show the Build Review Details block again, now with what the build produced where the agent built, as the last thing of the turn, and hand back once the reviewer has replied. Where the reviewer builds themselves, this is the pause in which they build. | Nothing: the block is its whole work |
-| `built` | Source code review only: ask the reviewer, alone, whether the source builds into the submitted XPI. | The reviewer's own answer |
+| `build-result` | Show the Build Review Details block (see below) as the last thing of the turn, and hand back once the reviewer has replied. Where the reviewer builds themselves, this is the pause in which they build. | Nothing: the block is its whole work |
+| `built` | Source code review only: ask the reviewer, alone, whether the source builds and reproduces the submitted XPI. Its first step says who built the add-on, by the build result. | `Builds and reproduces` / `Does not build or reproduce`, or the reviewer's own words |
 | `spawn` | Start the sub-agents the review needs - the add-on description and one sweep per tree - and read back what the sweeps found. | Nothing: each sweep's reply is written to a file of its own (see below) |
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
@@ -67,8 +63,7 @@ entry never offered are all refusals.
 | `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
 | `close` | The last phase, once nothing else has work: hand over the settled review. It opens on whether the review is settled or was aborted, and says only what applies to it. | Nothing: the review ends with it |
 
-A block the reviewer must read before answering (`build-review`, `build-result`,
-`details`) is shown by a pass of its own and ends the agent's turn. Text written before a
+A block the reviewer must read before answering (`build-result`, `details`) is shown by a pass of its own and ends the agent's turn. Text written before a
 tool call in the same turn, a question or a hand-back, can be folded away by a client that
 collapses tool rows, while the message that ends a turn stays in view. So each such pass
 costs the reviewer one reply. The linter ends the block with the line `Reply "next" to
@@ -84,9 +79,9 @@ prompt is printed, and every phase reads that one folder.
 Which steps a phase prints is decided by each step's `when:` condition: `AND`, `OR`, `NOT`
 and parentheses over the facts of this run - the `--llm-skip-*` flags it was given,
 `aborted` once a finding has aborted the review, `sca` for a source code review,
-`build-guarded` when every check a build relies on ran,
-`package-managers-declined` when the preparation did not let the agent build (an unsafe
-judgement, or the reviewer declined), `sweep-xpi` / `sweep-sca` for a tree with a sweep to run, `first` on the review's first
+`build-guarded` when every check a build relies on ran, the build result (`agent-built`,
+`agent-build-failed`, `build-unsafe` or `self-build`, exactly one of them),
+`sweep-xpi` / `sweep-sca` for a tree with a sweep to run, `first` on the review's first
 prompt, `spawned` once `spawn` went out, `decided` once `verify` or `settle` did, and
 `closing` in the closing prompt. A step with no condition prints in every run, and a phase
 left with no step is not issued. The preamble's parts are conditioned the same way. A wait
@@ -99,48 +94,58 @@ A condition can also read a **process value** with `value(phase, id)`. A phase a
 `value` asks for one: an answer that steers the review and settles no item. It hands out
 one entry offering the values the registry declares for it, each with a label and a
 description, accepts only one of those labels, and records the value's id. So
-`build-choice` prints under `value(build-safety, safe)`, and `build` under
-`value(build-choice, llm) OR value(build-choice-unsafe, llm)`. The registry refuses a call
-naming a phase that asks for no value, or an id that phase never returns. A value may
-`report` a check: picking it adds that check's finding, which aborts the review like any
-finding of an aborting check.
+`build-safety` prints under `NOT value(build-safety, safe) AND NOT value(build-safety,
+unsafe)`, only where no judgement is held yet. The registry refuses a call naming a phase
+that asks for no value, or an id that phase never returns. A value may `report` a check:
+picking it adds that check's finding, which aborts the review like any finding of an
+aborting check.
 
 A source code review **opens with its build**, before the sweeps and the verify and settle
-passes, so a build that is unsafe, fails or does not reproduce the XPI ends the review
-before any of that work is spent. A review that was **aborted early** never reaches any of
-it - each step reads `NOT aborted`.
+passes, so a source that does not build into the XPI ends the review before any of that
+work is spent. The review builds nothing itself: the agent built the add-on in the
+preparation, where it judged the build safe and the reviewer let it (see [Preparing a source
+code review](#preparing-a-source-code-review)), and otherwise the reviewer builds it. The
+review's build part is these steps:
 
-The agent writes the build report and judges it `safe` or `unsafe`. The reviewer is then
-shown the Build Review Details block, which links that report, and chooses who builds.
-After an `unsafe` judgement they may also stop the review: `Abort` reports `build-unsafe`.
-Where the agent builds, it builds in a copy of the source archive, installing the
-dependencies exactly as the lock pins them (`npm ci` / `pnpm install --frozen-lockfile`),
-and answers the `build` phase's one entry (`answer: output`) with where the build put what it
-produced: the XPI or zip file, or a folder such as `dist/`, as a path absolute or relative to
-the build copy, or the offered label `The build failed`. The linter accepts a path only where
-it exists and lies inside the build copy once links are followed, and is a file or a folder,
-and links it as `BUILD_OUTPUT`. It judges nothing else: the reviewer compares that output with
-the shipped XPI to answer the build question.
+1. **The review starts** with the source, the build judgement, the build result and output
+   the preparation recorded.
+2. **The deterministic checks run.** A source whose preparation gave its rescue up aborts
+   here for build issues: `build-reproduces-xpi` is reported without a question, beside the
+   vulnerability findings, which stay listed. A review that was **aborted early** never
+   reaches the steps below - each one reads `NOT aborted`.
+3. **`build-safety`**, only where nothing was prepared: the agent writes the build report
+   and records its judgement, and builds nothing.
+4. **`build-result`** shows the Build Review Details block as the last thing of the turn:
+   `SUBMITTED_XPI`, `SCA_ROOT`, `BUILD_PROCESS`, `BUILD_SAFETY`, `BUILD_VULNERABILITIES`
+   (`n moderate, n high, n critical`, the lock's vulnerable packages counted from the
+   review's own audit, with no request of its own), `BUILD_RESULT` and, where the agent
+   built it, `BUILD_OUTPUT`. `BUILD_RESULT` reads `built by the agent`, `the agent's build
+   failed: see build.md`, `not built: judged unsafe` or `not built: you build it` (the
+   reviewer did not let the agent build, or nothing was prepared).
+5. **`built`** asks the reviewer alone whether the source builds and reproduces the
+   submitted XPI. Its first step is worded by the build result (`agent-built`,
+   `agent-build-failed`, `build-unsafe`, `self-build`).
+6. **`Does not build or reproduce`**, or words the reviewer typed instead, aborts the review
+   for build issues. **`Builds and reproduces`** goes on to `spawn`, `verify`, `settle`,
+   `details`, `ask` and `close`.
 
 These build steps run only where every check a build relies on ran (`build-guarded`): the
 dependency-vulnerability checks, `lockfile-injection`, `lock-foreign-source` and
 `build-registry-redirect` carry `build-guard` in the registry. With one of them switched off
 by `--checks-only` / `--checks-skip`, nothing vouches for what an install pulls in, and the
-review builds nothing itself. The two build questions are still asked, of a build the
-reviewer makes.
+review opens at the build question, of a build the reviewer makes.
 
 `undeclared-build-source` and `build-lifecycle-hook` are still settled in `settle`, and
 reported there they still abort the review.
 
-After the build comes the build question, in a phase of its own so it is put to the
-reviewer ALONE - `ask` batches, and nobody may be asked to install an XPI in the same breath
-as being asked whether the source builds into it. `built` asks whether the source builds,
-from a clean copy with the dependencies installed as the lock file pins them, into the
-submitted XPI (`build-reproduces-xpi`). The check names its phase (`asked-in:` in the
-registry), and the case carries it. A "no" - Report, or the reviewer's own words - aborts the
-review: that case becomes its finding, every `ask` question is dropped, and the report ends
-on "Build process issues". The question is asked under `--llm-skip-manual` too: it decides
-whether the review goes on, which is not what that flag withholds.
+The build question is in a phase of its own so it is put to the reviewer ALONE - `ask`
+batches, and nobody may be asked to install an XPI in the same breath as being asked whether
+the source builds into it. The check names its phase (`asked-in:` in the registry), the case
+carries it, and the phase offers its own two answers (`choices`) in place of the manual
+review's. A "no" aborts the review: that case becomes its finding, every `ask` question is
+dropped, and the report ends on "Build process issues". The question is asked under
+`--llm-skip-manual` too: it decides whether the review goes on, which is not what that flag
+withholds.
 
 
 ## When the review is aborted early
@@ -152,15 +157,15 @@ loop would do is ask a reviewer to **reproduce the build** - running that tree o
 machine, on the strength of a question the linter issued knowing better.
 
 A check declares that it aborts the review by naming the reason the report gives
-(`review-early-exit:` in the registry). Today eighteen do, across five reasons:
+(`review-early-exit:` in the registry). Today seventeen do, across five reasons:
 `experiment-not-allowed` names _Experiment APIs not accepted_, `lockfile-injection` names
 _lock file entries that install another release_, the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
-names *disallowed library versions*, and the eleven that decide a source submission cannot
+names *disallowed library versions*, and the ten that decide a source submission cannot
 be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
 `sca-lock-file-multiple`, `build-registry-redirect`, `lock-foreign-source`, `build-lifecycle-hook`,
-`undeclared-build-source`, `build-unsafe` and `build-reproduces-xpi` -
+`undeclared-build-source` and `build-reproduces-xpi` -
 name *a build that cannot be reproduced*. The threshold is the finding's severity, so an advisory
 that lands as a warning aborts nothing.
 
@@ -175,7 +180,7 @@ What an aborted review does under `--llm-review`:
 | | |
 | --- | --- |
 | A review the deterministic checks aborted | asks nothing at all: its first prompt is the `close` phase. Nothing is built, no agent is started (no description, no sweep), and nothing is verified or settled - every step before `close` carries `NOT aborted`. What it hands over is decided before any pass, so no pass could change it. |
-| A review a pass aborted | (a case reported that aborts it, a build that did not reproduce) stops there: the phases that would follow are not issued, so nothing further is built, swept or put to a reviewer. |
+| A review a pass aborted | (a case reported that aborts it, a build that did not reproduce) stops there: the phases that would follow are not issued, so nothing further is swept or put to a reviewer. |
 | The hand-over | carries no to-do item: the tally counts none, and the Final Review Details name no file an agent was never asked to write. |
 | The report | ends on the reason it is incomplete, one line per distinct cause. |
 | The `close` phase | opens with a step of its own (`when: aborted`), because telling an agent "the review is settled" about one that was cut short is not true. The summary and the details that follow are the same. |
@@ -328,14 +333,14 @@ what this review is and where to read it:
 | `SCA_EXP_SOURCE` | The Experiment implementation folder, when one was named |
 | `ADDON_DESCRIPTION` | Where a sub-agent wrote a description of the add-on, for reading while answering |
 | `BUILD_PROCESS` | What building the add-on takes and whether it is safe, written by the agent in `build-safety`, in a source code review |
-| `BUILD_OUTPUT` | What the agent's build produced, a file or a folder inside the build copy, named by its own name - only once the `build` phase named it, since the reviewer may build it themselves and a build may fail |
+| `BUILD_OUTPUT` | What the agent's build produced in the preparation, a file or a folder inside `build/` or `rescued/`, named by its own name - only where the agent built it, since the reviewer may build it themselves and a build may fail |
 | `REVIEW_REPORT` | The text the reviewer sends to the developer, written by the linter |
 
 The linter names these files and reads none of them. The description is a sub-agent's,
 returned as its reply, and the agent conducting the review is told only to write that reply
 unchanged to `ADDON_DESCRIPTION` - not to read, summarise or print it. The build report and the build output are the agent's own, and
-the Build Review Details block names the source root the review read and those two, right
-before the build choice and the build questions.
+the Build Review Details block names them beside the submitted XPI and the source root the
+review read, right before the build question.
 
 `REVIEW_REPORT` it writes itself: as the `details` phase goes out, where one does, so the
 reviewer can read the report while answering the questions that follow, and again from the settled review
@@ -427,9 +432,9 @@ That hand-back settles the roots as the review would, and records the judgement:
   that prompt is skipped. Not letting it build, the folder is done at once, as after an
   unsafe judgement.
 
-Where the agent may not build, the review asks no build choice and runs no build
-(`package-managers-declined`), and the `built` question is still asked, of the reviewer's
-own build. Every prepared review starts with the recorded judgement as its `build-safety`
+Where the agent may not build, the review's Build Review Details say `not built: you build
+it` (`self-build`), or `not built: judged unsafe` after an unsafe judgement, and the `built`
+question is asked of the reviewer's own build. Every prepared review starts with the recorded judgement as its `build-safety`
 value and `build.md` as that phase's report, so it does not ask for them again.
 
 Where the reviewer let the agent build, the hand-back **audits the root's lock**
@@ -467,9 +472,10 @@ the review. The record keeps the audited lock's vulnerable packages counted by s
   whose lock names one release and installs another is not clean.
 - **The rescue failed** (the reader said so, the copy is still vulnerable, or the output is
   not inside `rescued/`): the copy is deleted, the record says the rescue failed, and the
-  original is reviewed, **unrescued**, like any other source: its vulnerability checks come
-  early in the review, and the first of them to report a vulnerable lock entry aborts it for
-  known vulnerabilities. It closes as any aborted review does. Its audit of the lock asks OSV
+  original is reviewed, **unrescued**: its vulnerability checks come early in the review,
+  the first of them to report a vulnerable lock entry stops the checks, and the review is
+  aborted for build issues too (`build-reproduces-xpi`, asked of nobody), its vulnerability
+  findings listed. It closes as any aborted review does. Its audit of the lock asks OSV
   nothing the preparation already asked: every audit of the run reads OSV's answers from
   `.cache/osv.json` in the work folder.
 
@@ -537,7 +543,7 @@ the review sit in its hidden `.review/` folder, out of the reviewer's sight:
 | `report.md` | `REVIEW_REPORT` | the linter |
 | `summary.md` | `ADDON_DESCRIPTION` | the agent, from a sub-agent's reply |
 | `build.md` | `BUILD_PROCESS` | the agent, in `build-safety`, in a source code review |
-| `build/` | The copy of a clean source the agent builds in (`BUILD_COPY`), never the archive itself, holding `BUILD_OUTPUT` | the agent, when the reviewer lets it build |
+| `build/` | The copy of a clean source the agent builds in (`BUILD_COPY`), never the archive itself, holding `BUILD_OUTPUT` | the agent, in the preparation, when the reviewer lets it build |
 | `.review/sweep-<artifact>.answers.json` | One tree's sweep answers | the agent, from a sweeping agent's reply |
 | `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again | the linter, whenever it audits |
 | `.cache/popularity.json` | The npm download counts and GitHub stars read during this run, kept the same way | the linter, whenever it judges a source's popularity |
@@ -547,7 +553,8 @@ run that starts the review: no flag names another. It must not exist: the run th
 review creates it, and an existing work folder is carried on by `--llm-handback` alone. The one review that starts in a folder already there is the one a preparation's
 hand-back starts, in the folder that holds `.review/prepare.json` and `sca/`. There every name the
 review will create is checked to be free - `--llm-review` claims every name above except
-`sca/` and `.review/prepare.json`, since the agents it instructs write the rest later - and a name
+`sca/`, `rescued/`, `build/` and `.review/prepare.json`, the preparation's, since the agents it
+instructs write the rest later - and a name
 already there ends the run with exit 2, naming it. A start that fails before the review exists
 (a schema fetch that gets no answer, an audit that ends the review, an Experiment the command
 does not say how to read) removes what it created, so it can be run again. The `--llm-handback`

@@ -944,9 +944,9 @@ deterministic-phase:
 # a FINDING halts a review, and an escalated case becomes one only when it is reported at
 # this check's severity (src/report/verdicts.js). So a benign `husky prepare` that is
 # cleared aborts nothing, and a plain review with nobody to judge the hook aborts nothing
-# either. It is settled in the `settle` phase. Under --llm-review a source review builds
-# first, so a hook is screened before any install by the build-safety judgement and the
-# reviewer's build choice, and this check is what reports a remote-fetching hook.
+# either. It is settled in the `settle` phase. Under --llm-review a hook is screened before
+# any install by the build-safety judgement and the reviewer's permission to build, and this
+# check is what reports a remote-fetching hook.
 - title: Build install hook
   severity: error
   review-early-exit: unreproducible-build
@@ -974,10 +974,10 @@ deterministic-phase:
 # must not fetch or execute code/resources from an UNDECLARED external source (a raw URL,
 # curl|sh, a git clone of an unpinned repo, a CDN, a postinstall hook) - only installing the
 # declared dependencies (npm ci from node_modules, importing a declared package) is allowed.
-# Settled by the agent in `settle`. Under --llm-review a source review builds first, so the
-# same question is screened before anything is built by the build-safety judgement and the
-# reviewer's build choice, and this check is what reports such a build. A plain review lists
-# it under Extended Code Review, ahead of the build question below.
+# Settled by the agent in `settle`. Under --llm-review the same question is screened before
+# anything is built by the build-safety judgement and the reviewer's permission to build, and
+# this check is what reports such a build. A plain review lists it under Extended Code
+# Review, ahead of the build question below.
 # {{unresolvedBuildSteps}} names the steps the linter could not follow.
 - title: Build process review
   severity: error
@@ -1000,11 +1000,13 @@ deterministic-phase:
   response: |-
     The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 
-# SCA only: the build question, asked of every source review once the build ran. Reproducing
-# the build is the reviewer's attestation that the shipped XPI comes from the source they
-# read, which is what an SCA review rests on. So a source that does not build into the
-# shipped XPI aborts the review before anyone is asked to install that XPI. Asked ALONE, in
-# a phase of its own (`asked-in: built`), right after the build and before the sweeps.
+# SCA only: the build question, asked of every source review. Reproducing the build is the
+# reviewer's attestation that the shipped XPI comes from the source they read, which is what
+# an SCA review rests on. So a source that does not build into the shipped XPI aborts the
+# review before anyone is asked to install that XPI. Asked ALONE, in a phase of its own
+# (`asked-in: built`), right after the Build Review Details and before the sweeps, with that
+# phase's own two answers (`choices`). A source whose preparation gave its rescue up reports
+# this check without a question (src/pipeline.js), as nothing clean was built from it.
 - title: Source does not build into the XPI
   severity: error
   check: build-reproduces-xpi
@@ -1021,21 +1023,6 @@ deterministic-phase:
     is a failed build.
   response: |-
     The submitted source either could not be built by following its build instructions, or does not build into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
-
-# SCA only: a build the reviewer judged unsafe to run. Nothing here is detected: under
-# --llm-review the agent judges the build process (the `build-safety` phase), and where it
-# finds steps that fetch or run code from outside the declared dependencies the reviewer may
-# stop the review. That answer reports this check (`reports: build-unsafe` on the `abort`
-# value), so the review ends through the early exit with this reason and this response. Its
-# rule raises nothing, so a plain review never lists it.
-- title: Unsafe build process
-  severity: error
-  check: build-unsafe
-  input: sca
-  review-early-exit: unreproducible-build
-  response: |-
-    The build process fetches or runs code from outside the dependencies declared in package.json and its lock file, so it cannot be built safely for review. Every part of the build must come only from the declared dependencies. Please remove those steps from the build.
-    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Two rules about the SHAPE of a source-code submission, one per entry below, kept apart
 # because each has its own remedy and a shared wording could state neither plainly.
@@ -2086,9 +2073,9 @@ review-early-exit:
 # in one loop (`rescue`): it reduces or audit-fixes the dependencies with lock-only commands,
 # audits them until no high or critical advisory remains, and only then builds. The linter
 # audits the copy again and checks the output the reader named. A clean, built copy is
-# reviewed. A failed rescue is deleted, and the source as submitted is reviewed like any
-# other: its vulnerability checks, early in the phase, report the lock and abort the
-# review. Every audit of the run asks OSV through the run's cache, so that review
+# reviewed. A failed rescue is deleted, and the source as submitted is reviewed: its
+# vulnerability checks report the lock, and the review ends for build issues
+# (build-reproduces-xpi, src/pipeline.js). Every audit of the run asks OSV through the run's cache, so that review
 # asks nothing the preparation already did (src/vendor/osv-cache.js).
 #
 # The step lists are prompts. `extract` is printed by --llm-sca-review with the intro and
@@ -2178,9 +2165,9 @@ llm-sca-review-prompt:
         label: unsafe
         description: At least one build step fetches or runs code or resources from outside the declared dependencies, as the report's safety section lists.
   # The question the permission prompt puts to the reviewer, as the PACKAGE_MANAGERS entry
-  # of ANSWERS. Declined, the preparation audits and rescues nothing, and the review asks
-  # no build choice and runs no build (`package-managers-declined`). The `built` question
-  # is still asked, answered from the reviewer's own build.
+  # of ANSWERS. Declined, the preparation audits and rescues nothing, and the agent builds
+  # nothing: the review's Build Review Details say the reviewer builds it (`self-build`),
+  # and the `built` question is answered from their own build.
   package-managers:
     question: |-
       Let the agent build the add-on (including its package-manager commands), or not?
@@ -2272,7 +2259,8 @@ llm-sca-review-prompt:
 #                as llm-sca-review-prompt's step lists do. No step numbers itself. A
 #                condition is AND / OR / NOT over the facts REVIEW_PROMPT_FACTS names - the
 #                flags given, `aborted`, `sca`, `build-guarded`, `sweep-<artifact>`,
-#                `first`, `spawned`, `decided`, `closing` and `package-managers-declined` -
+#                `first`, `spawned`, `decided`, `closing`, and the build result:
+#                `agent-built`, `agent-build-failed`, `build-unsafe` or `self-build` -
 #                and over the process values
 #                recorded so far, read with value(phase, id) (src/checks/condition.js).
 #   HANDOVER     ONE text, appended by the linter as the last numbered step of every phase
@@ -2293,8 +2281,7 @@ llm-sca-review-prompt:
 # listed here, or lists one no step names, is a drafting error - assertPhases refuses both.
 #
 # Placeholders the linter fills: {{review}} the review file, {{command}} the hand-back,
-# {{description}} and {{build}} the files an agent writes, {{buildCopy}}
-# where the agent builds, {{xpiRoot}} the extracted XPI, {{sweepXpi}} and
+# {{description}} and {{build}} the files an agent writes, {{xpiRoot}} the extracted XPI, {{sweepXpi}} and
 # {{sweepSca}} the sweep request for each tree - one sub-agent's whole brief, so the step
 # that starts it relays nothing else - {{sweepXpiAnswers}} and {{sweepScaAnswers}} the
 # file each sweep's reply is written to, {{scaRoot}} the source root, {{details}} the Review
@@ -2330,6 +2317,14 @@ llm-phases:
     It prints the next prompt for you to follow.
   # Waiting: the last line of the block a turn-ending phase shows.
   waiting: Reply "next" to continue the review.
+  # What BUILD_RESULT in the Build Review Details says, by the build result the review holds:
+  # the agent built the add-on, its build failed, the build was judged unsafe so nothing was
+  # built, or the agent was not let build (or nothing was prepared) and the reviewer builds it.
+  build-results:
+    agent-built: built by the agent
+    agent-build-failed: "the agent's build failed: see build.md"
+    build-unsafe: "not built: judged unsafe"
+    self-build: "not built: you build it"
   # Refused: the agent handed back a file that is not what the pass asked for. The prompt is
   # NOT re-printed - the agent still has it, and re-issuing the same text against the same
   # input invites a loop. "{{problem}}" names what is wrong, exactly.
@@ -2344,20 +2339,16 @@ llm-phases:
   # `intro` is EMPTY unless the steps alone would let the agent do work that is not its own.
   # Two of them earn text, and both for that reason.
   phases:
-    # A source review opens with its BUILD, before anything else is spent on it: a build that
-    # is unsafe, fails or does not reproduce the shipped XPI ends the review here, before any
-    # sweep, verify or settle pass. Only where every check the build relies on ran
-    # (`build-guarded`): with one of them switched off, nothing vouches for what an install
-    # pulls in, and the review builds nothing itself - the build question is still
-    # asked, of a build the reviewer makes.
+    # A source review opens with its BUILD, before anything else is spent on it: a source that
+    # does not build into the shipped XPI ends the review here, before any sweep, verify or
+    # settle pass. The review builds nothing itself. The agent built the add-on in the
+    # preparation where it judged the build safe and the reviewer let it (src/prepare/steps.js),
+    # and otherwise the reviewer builds it.
     #
-    # The first three phases ask for PROCESS VALUES (`answer: value`): answers that steer the
-    # review and settle no item. The agent judges whether building is safe, and the reviewer
-    # then chooses who builds - or, where the agent judged it unsafe, may stop the review,
-    # which `abort` does by reporting build-unsafe.
-    #
-    # `build-safety` runs only where the review holds no judgement yet: a prepared review
-    # starts with the one its preparation recorded (src/pipeline.js), and build.md is the
+    # `build-safety` asks for a PROCESS VALUE (`answer: value`): an answer that steers the
+    # review and settles no item. It runs only where the review holds no judgement yet, and
+    # only where every check a build relies on ran (`build-guarded`): a prepared review starts
+    # with the one its preparation recorded (src/pipeline.js), and build.md is the
     # preparation's.
     - name: build-safety
       answer: value
@@ -2403,134 +2394,60 @@ llm-phases:
     # by a pass of its own, whose last act is to end the turn, and the pass is handed back
     # only once the reviewer has replied.
     #
-    # The Build Review Details, ahead of the build choice: the source the review read and the
-    # build report the choice rests on. Not where the reviewer declined package-manager
-    # commands: no build choice follows, and `build-result` shows the block before the build
-    # question.
-    - name: build-review
+    # The Build Review Details, ahead of the build question: the submitted XPI, the source the
+    # review read, the build report and its judgement, the vulnerabilities the review's audit
+    # counted in the lock, and what came of the build (`build-results`), with what it produced
+    # where the agent built it. What the question is answered from, and where the reviewer
+    # builds themselves, the pause in which they build.
+    - name: build-result
       # Asks about nothing in the review file: the block is its whole work.
       answer: none
       ends-turn: true
       verbs: []
       intro: ""
       steps:
-        - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined
-          text: &build-details-end-turn |-
+        - when: sca AND build-guarded AND NOT aborted
+          text: |-
             Give the reviewer this block under a "Build review details" heading, exactly as it is written here, as the last thing you write this turn. Then end your turn, and put no question to them in it. Hand back only once the reviewer has replied: what they reply does not matter.
 
             {{buildDetails}}
 
-    # The reviewer's choice after a SAFE judgement: who builds, put to them ALONE once they
-    # have read the Build Review Details (`build-review`).
-    # Not asked where the reviewer declined package-manager commands in the preparation:
-    # the agent builds nothing, and the reviewer answers the build questions from their own.
-    - name: build-choice
-      answer: value
-      verbs: []
-      intro: ""
-      question: |-
-        The agent read the build process and found nothing fetched or run from outside the declared dependencies. Its report is in BUILD_PROCESS. Building runs the submission's own code. Who builds the add-on?
-      values:
-        - value: llm
-          label: LLM builds
-          description: The agent builds the add-on from a copy of the source archive in its sandbox, and the review links what the build produced.
-        - value: user
-          label: Build myself
-          description: Nothing is built here. You build the add-on yourself and answer the build question from your own build.
-      steps:
-        - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined AND value(build-safety, safe)
-          text: &build-choice-ask |-
-            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
-
-            Record the label they picked in its "answer". Only those labels are accepted: if they answer anything else, ask the question again.
-
-    # The reviewer's choice after an UNSAFE judgement: stop the review, or build anyway, by
-    # the agent or by hand, having read why the agent judged it unsafe.
-    # Not asked where the reviewer declined package-manager commands, as `build-choice`.
-    - name: build-choice-unsafe
-      answer: value
-      verbs: []
-      intro: ""
-      question: |-
-        The agent found build steps that fetch or run code from outside the declared dependencies. They are listed in the safety section of BUILD_PROCESS. How should the review go on?
-      values:
-        - value: abort
-          label: Abort
-          description: The review stops here. The developer is told that the build must not fetch or run code from outside the declared dependencies.
-          reports: build-unsafe
-        - value: llm
-          label: LLM builds anyway
-          description: You judged those steps harmless. The agent builds the add-on from a copy of the source archive in its sandbox, and the review links what the build produced.
-        - value: user
-          label: Build myself
-          description: You judged those steps harmless. You build the add-on yourself and answer the build question from your own build.
-      steps:
-        - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined AND value(build-safety, unsafe)
-          text: *build-choice-ask
-
-    # Builds the add-on and says where the build put what it produced, for the reviewer to
-    # compare with the shipped XPI before the build questions. Only where the reviewer chose
-    # the agent to build, which a reviewer who declined package-manager commands is never
-    # asked. The answer is a path inside the build copy, which the linter
-    # validates and the Build Review Details block links, or the `failed` label. The linter
-    # judges nothing else here.
-    - name: build
-      answer: output
-      verbs: []
-      product: buildOutput
-      intro: ""
-      question: |-
-        Where did the build put what it produced?
-      failed:
-        label: The build failed
-        description: A build step failed, so the build produced nothing.
-      steps:
-        - when: sca AND NOT aborted AND (value(build-choice, llm) OR value(build-choice-unsafe, llm))
-          text: |-
-            Copy
-
-            {{scaRoot}}
-
-            to
-
-            {{buildCopy}}
-
-            and build there, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in
-
-            {{build}}
-
-            Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci`, or `pnpm install --frozen-lockfile` where the copy has a pnpm-lock.yaml, and with no flag that leaves dependencies out. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
-
-            Then answer the one entry in the file with where the build put what it produced: the XPI or zip file, or the folder such as `dist/`, inside {{buildCopy}}. Write it as a path, absolute or relative to {{buildCopy}}. Where the build failed, answer with the "label" of its one answer instead. Compare nothing and judge nothing: the reviewer reads what the build produced.
-
-    # The Build Review Details again, ahead of the build question, now with what the build
-    # produced where the agent built: what the question is answered from. Where the reviewer
-    # builds themselves, this is the pause in which they build. Ends the turn, as
-    # `build-review`.
-    - name: build-result
-      answer: none
-      ends-turn: true
-      verbs: []
-      intro: ""
-      steps:
-        - when: sca AND build-guarded AND NOT aborted
-          text: *build-details-end-turn
-
     # The build question, in a phase of its own so it is put to the reviewer ALONE, right
-    # after the Build Review Details (`build-result`): `ask` batches, and a reviewer must not be asked to install an XPI in
-    # the same breath as being asked whether the source builds into it. Only the cases of a
-    # check naming the phase (`asked-in`) open here, so it never appears in an XPI review.
-    # Asked under --llm-skip-manual too: it decides whether the review goes on, which is not
-    # what that flag withholds. A "no" aborts the review, so `ask` is never asked after it.
+    # after the Build Review Details (`build-result`): `ask` batches, and a reviewer must not be
+    # asked to install an XPI in the same breath as being asked whether the source builds into
+    # it. Only the cases of a check naming the phase (`asked-in`) open here, so it never
+    # appears in an XPI review. It offers its own two answers (`choices`), and the second
+    # aborts the review. Asked under --llm-skip-manual too: it decides whether the review goes
+    # on, which is not what that flag withholds. The first step says who built the add-on, by
+    # the build result the review holds.
     - name: built
       # A person's own words, read like `ask`'s.
       answer: words
       verbs: []
       intro: ""
+      choices:
+        - label: Builds and reproduces
+          verdict: cleared
+          description: The source builds, and what it builds matches the submitted XPI. The review goes on.
+        - label: Does not build or reproduce
+          verdict: reported
+          description: The source does not build, or what it builds does not match the submitted XPI. The review stops here for build issues.
       steps:
+        - when: NOT aborted AND agent-built
+          text: |-
+            The agent built the add-on: BUILD_OUTPUT in the Build Review Details names what its build produced, for the reviewer to compare with SUBMITTED_XPI.
+        - when: NOT aborted AND agent-build-failed
+          text: |-
+            The agent's build failed, and the "Build attempt" section of BUILD_PROCESS says where. The reviewer may build the add-on themselves before they answer.
+        - when: NOT aborted AND build-unsafe
+          text: |-
+            The agent judged the build unsafe and built nothing. The reviewer builds the add-on themselves, where they judge it safe to, before they answer.
+        - when: NOT aborted AND self-build
+          text: |-
+            The agent did not build the add-on. The reviewer builds it themselves, following BUILD_PROCESS, before they answer.
         - when: NOT aborted
           text: |-
-            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Where they build the add-on themselves, it is the question they answer once they have. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
 
             Record what they answered in its "answer", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
 
@@ -2672,7 +2589,7 @@ llm-phases:
     # Hands the reviewer the Review Details block, once, before the `ask` questions: what this
     # review is, and where to read it while answering - the build output among it. Its own
     # phase so it does not hang off one particular question phase, and it ends the turn, as
-    # `build-review`. Shown only where `ask`
+    # `build-result`. Shown only where `ask`
     # follows: not under --llm-skip-manual, and not in a review that was aborted - the
     # closing hand-over carries the block either way.
     - name: details

@@ -1781,8 +1781,8 @@ test("a manifest whose name and version are not strings still reviews", async ()
 });
 
 // ---- a source review its preparation could not rescue ----
-// The work folder's record is done, its roots back in sca/. The review is an ordinary one, and its
-// vulnerability checks stop it.
+// The work folder's record is done, its roots back in sca/. Its vulnerability checks stop the
+// checks, and the review ends for build issues too.
 
 const UNRESCUED_FIXTURE = path.join(
   path.dirname(new URL(import.meta.url).pathname),
@@ -1828,10 +1828,11 @@ test("an aborting check is the last check the review runs", async () => {
   );
 });
 
-// A source whose preparation gave its rescue up is reviewed like any other: its vulnerability
-// checks, early in the phase, report the lock and abort the review. Its audit of the lock is
+// A source whose preparation gave its rescue up: its vulnerability checks, early in the phase,
+// report the lock and stop the checks, and the build check is reported without a question, so
+// the review ends for build issues beside the vulnerabilities. Its audit of the lock is
 // answered from the run cache folder its preparation read too, so OSV is asked nothing.
-test("an unrescued review is an ordinary review, its audit answered from the run's cache", async () => {
+test("an unrescued review ends for build issues and keeps its vulnerability findings", async () => {
   // OSV's answers to the audit, and npm's download counts, which every source review asks
   // for its declared packages. Nothing else is answered, OSV above all.
   const workCache = seedWorkCache({
@@ -1870,10 +1871,13 @@ test("an unrescued review is an ordinary review, its audit answered from the run
   );
   assert.deepEqual(
     findings.map((f) => [f.ruleId, f.file, f.loc?.line]),
-    [["vendor-vulnerable-dev", "package-lock.json", 13]]
+    [
+      ["vendor-vulnerable-dev", "package-lock.json", 13],
+      ["build-reproduces-xpi", null, undefined],
+    ]
   );
   assert.deepEqual(
     meta.earlyExit.reasons.map((r) => r.id),
-    ["known-vulnerabilities"]
+    ["known-vulnerabilities", "unreproducible-build"]
   );
 });

@@ -115,7 +115,8 @@ shapes:
       kind: gate
       why: >-
         it marks a check an agent's build relies on: with any of these switched off
-        (--checks-only / --checks-skip), the review builds nothing itself
+        (--checks-only / --checks-skip), the review neither judges the build nor shows the
+        Build Review Details
     collapse:
       kind: one-of
       values: COLLAPSE_MODES
@@ -337,21 +338,15 @@ shapes:
     question:
       kind: text
       why: >-
-        the question a process-value or output pass hands over, relayed as it is written
-    failed:
-      kind: object
-      noun: "`failed` answer"
-      fields:
-        label:
-          kind: text
-          required: true
-          why: what an output pass accepts back where its build produced nothing
-        description:
-          kind: text
-          required: true
-          why: when that answer applies, so the one answering can choose it
+        the question a process-value pass hands over, relayed as it is written
+    choices:
+      kind: entries
+      shape: choice-entry
+      name-key: label
+      noun: "`choices`"
       why: >-
-        the one answer an output pass offers besides a path, for a build that failed
+        the answers a person is offered for this pass's question in place of the manual
+        review's own, each with the verdict it settles the case with
     values:
       kind: entries
       shape: phase-value-entry
@@ -551,6 +546,12 @@ sections:
       handover: *loop-text
       waiting: *loop-text
       refused: *loop-text
+      build-results:
+        kind: prose-map
+        required: BUILD_RESULT_FACTS
+        closed: true
+        noun: prose
+        why: what the Build Review Details say came of the build, per build result
       phases:
         kind: entries
         shape: loop-phase-entry

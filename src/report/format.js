@@ -92,10 +92,10 @@ const SEV_COLOR = {
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
  *   in a source code review, and in the Review Details only once the phase that writes it
  *   recorded it (src/report/loop.js reportMeta).
- * @property {string} [buildOutput]  The file or folder the build phase's agent named as
- *   what its build produced, inside the build copy: set by the loop (src/report/loop.js
- *   reportMeta) only once that answer was accepted, since the reviewer may decline the
- *   build and a build may fail.
+ * @property {string} [buildOutput]  The file or folder the agent's build produced in the
+ *   preparation, as its record holds it: set by the loop (src/report/loop.js reportMeta)
+ *   only where the agent built the add-on, since the reviewer may decline the build and a
+ *   build may fail.
  * @property {string} [reportFile]  Where the text the reviewer sends to the developer is
  *   written - in the work folder with the other two. Unlike them this tool WRITES it
  *   (src/report/report-file.js), which is why it is named for every review rather than
@@ -696,13 +696,26 @@ export function detailLinkLines(meta) {
 /**
  * The Review Details rows alone, one per path the meta names, in the block's order. The
  * whole block adds the schema line. The Build Review Details block is these rows for the
- * source root, the build's report, its judgement and its output, so the two blocks name a
- * file the same way. BUILD_OUTPUT is named by its own basename, which is what the build called it.
- * @param {ReviewMeta} meta
+ * submitted XPI, the source root, the build's report, its judgement, the vulnerabilities
+ * counted in the lock, what came of the build and its output, so the two blocks name a file
+ * the same way. SUBMITTED_XPI and BUILD_OUTPUT are named by their own basenames, which is
+ * what the submission and the build called them.
+ * @param {ReviewMeta & {submittedXpi?: string, buildSafety?: string,
+ *   buildVulnerabilities?: {moderate: number, high: number, critical: number},
+ *   buildResult?: string}} meta  The Build Review Details' own values beside the meta:
+ *   the submitted XPI's path, the build judgement, the lock's vulnerable packages by
+ *   severity, and the wording of what came of the build.
  * @returns {string[]}
  */
 export function detailRows(meta) {
   const rows = [];
+  if (meta.submittedXpi) {
+    rows.push([
+      "SUBMITTED_XPI",
+      displayLine(path.basename(meta.submittedXpi)),
+      meta.submittedXpi,
+    ]);
+  }
   if (meta.xpiFile) {
     rows.push(["XPI_FILE", null, meta.xpiFile]);
   }
@@ -723,6 +736,17 @@ export function detailRows(meta) {
   }
   if (meta.buildSafety) {
     rows.push(["BUILD_SAFETY", null, meta.buildSafety]);
+  }
+  if (meta.buildVulnerabilities) {
+    const { moderate, high, critical } = meta.buildVulnerabilities;
+    rows.push([
+      "BUILD_VULNERABILITIES",
+      null,
+      `${moderate} moderate, ${high} high, ${critical} critical`,
+    ]);
+  }
+  if (meta.buildResult) {
+    rows.push(["BUILD_RESULT", null, meta.buildResult]);
   }
   if (meta.buildOutput) {
     rows.push([

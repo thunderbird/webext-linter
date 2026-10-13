@@ -16,8 +16,6 @@ import {
   answersOf,
   productWritten,
   entriesFor,
-  outputAt,
-  outputEntry,
   readHandback,
   reviewFile,
   valueEntry,
@@ -46,6 +44,7 @@ import { applyVerdicts, pickedChoice } from "./verdicts.js";
 import { renderFindings } from "./responses.js";
 import { VERB } from "./verbs.js";
 import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
+import { BUILD_RESULT } from "../prepare/state.js";
 
 /**
  * What this run was told, plus what the review has since decided for itself.
@@ -63,7 +62,8 @@ import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {{skip: string[], sca: boolean, halted: boolean, first: boolean,
- *   spawned: boolean, decided: boolean, values: Object<string, string>}}
+ *   spawned: boolean, decided: boolean, values: Object<string, string>}}  Beside these, the
+ *   build result's fact (buildResultFact) is true.
  */
 function runOf(state, ordered, registry) {
   const halted = Boolean(
@@ -81,7 +81,30 @@ function runOf(state, ordered, registry) {
     decided: issued.includes("verify") || issued.includes("settle"),
     // The process values returned so far, which value(phase, id) reads.
     values: state.values ?? {},
+    [buildResultFact(state)]: true,
   };
+}
+
+/**
+ * What came of the build, as the one BUILD_RESULT_FACTS name that holds: the agent's build
+ * as the preparation recorded it (`agent-built`, `agent-build-failed`), else a build judged
+ * unsafe (`build-unsafe`), by the preparation or by this review's `build-safety` phase, which
+ * nothing builds, else a build the reviewer makes (`self-build`): the agent was not let
+ * build, or nothing was prepared.
+ * @param {import("./state.js").LoopState} state
+ * @returns {string}
+ */
+export function buildResultFact(state) {
+  const result = state.build?.result;
+  if (result === BUILD_RESULT.built) {
+    return "agent-built";
+  }
+  if (result === BUILD_RESULT.failed) {
+    return "agent-build-failed";
+  }
+  return state.values?.["build-safety"] === "unsafe"
+    ? "build-unsafe"
+    : "self-build";
 }
 
 /**
@@ -117,12 +140,12 @@ function spawnIssued(state) {
 function verdictsOf(state, ordered, registry) {
   const answers = state.answers ?? {};
   const asking = askedByPerson(registry);
-  const choices = registry.manualReviewChoices();
   const out = { ...answers };
   for (const x of ordered) {
     if (x.ref in answers && asking(x)) {
       out[x.ref] =
-        pickedChoice(answers[x.ref], choices)?.verdict ?? String(VERB.reported);
+        pickedChoice(answers[x.ref], registry.answerChoices(phaseOf(x)))
+          ?.verdict ?? String(VERB.reported);
     }
   }
   return out;
@@ -230,9 +253,10 @@ export function issue(state, work, phases, registry) {
  *   closing phase carries the finished review, whose Review Details and tally it hands
  *   over, and a turn-ending phase the line its block ends with.
  * @param {string} work  The review's work folder.
+ * @param {import("../checks/registry.js").Registry} registry  Words the build result.
  * @returns {Object<string, string>}
  */
-export function loopSlots(state, issued, work) {
+export function loopSlots(state, issued, work, registry) {
   const paths = state.paths ?? {};
   // The block the agent prints verbatim ends with the waiting line, so the reviewer reads
   // it as part of that block.
@@ -246,7 +270,6 @@ export function loopSlots(state, issued, work) {
     schemaCache: paths.schemaCache ?? "",
     description: paths.description ?? "",
     build: paths.build ?? "",
-    buildCopy: paths.buildCopy ?? "",
     scaRoot: paths.scaRoot ?? "",
     xpiRoot: paths.xpiRoot,
     schema: paths.schema,
@@ -256,14 +279,10 @@ export function loopSlots(state, issued, work) {
     // what aborted it where something did.
     details: (issued.settled?.details ?? reviewDetails(state)) + waiting,
     tally: issued.settled?.tally ?? "",
-    // The Build Review Details block: the source the review read, and the build's report and
-    // output once each came back.
-    buildDetails:
-      detailRows({
-        scaRoot: paths.scaRoot ?? undefined,
-        buildFile: reportMeta(state).buildFile,
-        buildOutput: reportMeta(state).buildOutput,
-      }).join("\n") + waiting,
+    // The Build Review Details block: the submitted XPI, the source the review read, the
+    // build's report and judgement, the vulnerabilities the review's audit counted in the
+    // lock, what came of the build, and what it produced where the agent built it.
+    buildDetails: buildDetails(state, registry) + waiting,
     ...sweepSlots(state),
   };
 }
@@ -312,12 +331,6 @@ export function accept(state, work, phases, registry) {
   // leave the review exactly as it was - the agent fixes that one file and hands back
   // again.
   const swept = phase.answer === "hints" ? sweptResults(state) : null;
-  // The same for a build's output: a path that names nothing the build produced is refused
-  // before anything is recorded.
-  const output =
-    phase.answer === "output"
-      ? outputAt(answers.get(phase.name), phase, state.paths?.buildCopy)
-      : null;
   // Recorded only once every check above has passed, so a refusal leaves the review
   // exactly as it was.
   state.issued ??= [];
@@ -327,15 +340,6 @@ export function accept(state, work, phases, registry) {
   if (phase.answer === "hints") {
     state.sweep = swept;
     return { phase, answers, swept: routeSweep(state, registry) };
-  }
-  // An output phase's product is the path its answer named, kept under the product's key.
-  // A build that failed named none, and leaves no product.
-  if (phase.answer === "output") {
-    if (output) {
-      state.paths[phase.product] = output;
-      state.products = [...(state.products ?? []), phase.product];
-    }
-    return { phase, answers };
   }
   // A product exists only where the reviewer wanted the work that makes it, so whether it
   // came back is recorded here, once, and every later pass says the same thing about it.
@@ -367,8 +371,8 @@ export function accept(state, work, phases, registry) {
 export { HandbackRefused };
 
 /**
- * What a phase hands out and checks the hand-back against: a process-value or output phase
- * its one entry, an itemless phase nothing, any other phase its open items.
+ * What a phase hands out and checks the hand-back against: a process-value phase its one
+ * entry, an itemless phase nothing, any other phase its open items.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
  * @param {object} phase
@@ -378,9 +382,6 @@ export { HandbackRefused };
 function askedIn(state, registry, phase, ordered) {
   if (phase.answer === "value") {
     return [valueEntry(phase)];
-  }
-  if (phase.answer === "output") {
-    return [outputEntry(phase)];
   }
   return ITEMLESS_ANSWERS.includes(phase.answer)
     ? []
@@ -458,7 +459,7 @@ function phaseEntries(state, registry, phase, ordered) {
     reviewItems({
       findings: state.report.findings,
       manual: state.manual,
-      choices: registry.manualReviewChoices(),
+      choices: registry.answerChoices(phase.name),
       labelOf: locusLabeler(mode),
     }).map((item) => [item.ref, item])
   );
@@ -600,9 +601,10 @@ export function settle(state, registry) {
 
 /** The meta the Review Details block names: which add-on this is and where it can be read
  *  (the unpacked package), plus what was left for the reviewer - the description where
- *  the phase that starts its agent went out, and the build report and the build output where
- *  the phase that leaves each recorded it. Those are what the block exists to hand over, and a file no
- *  agent was ever asked to write is not one of them. */
+ *  the phase that starts its agent went out, the build report where the phase that leaves
+ *  it recorded it, and the build output where the agent built the add-on. Those are what the
+ *  block exists to hand over, and a file no agent was ever asked to write is not one of
+ *  them. */
 function reportMeta(state) {
   const {
     prompting: _prompting,
@@ -614,11 +616,30 @@ function reportMeta(state) {
     ...rest,
     ...(spawnIssued(state) ? { summaryFile } : {}),
     ...(state.products?.includes("build") ? { buildFile } : {}),
-    ...(state.products?.includes("buildOutput")
-      ? { buildOutput: state.paths.buildOutput }
-      : {}),
+    ...(state.build?.output ? { buildOutput: state.build.output } : {}),
     manualReview: state.manual,
   };
+}
+
+/**
+ * The Build Review Details block: the rows the review holds of the build (detailRows).
+ * BUILD_SAFETY is the judgement the review holds, the preparation's or its own, and
+ * BUILD_RESULT the wording of what came of the build (buildResultFact).
+ * @param {import("./state.js").LoopState} state
+ * @param {import("../checks/registry.js").Registry} registry
+ * @returns {string}
+ */
+function buildDetails(state, registry) {
+  const meta = reportMeta(state);
+  return detailRows({
+    submittedXpi: state.report.meta.xpi,
+    scaRoot: state.paths?.scaRoot ?? undefined,
+    buildFile: meta.buildFile,
+    buildSafety: state.values?.["build-safety"],
+    buildVulnerabilities: state.build?.vulnerabilities ?? undefined,
+    buildResult: registry.llmPhases().buildResults[buildResultFact(state)],
+    buildOutput: meta.buildOutput,
+  }).join("\n");
 }
 
 /**

@@ -166,6 +166,19 @@ export const sweepSlot = (artifact) =>
   `sweep${artifact.charAt(0)}${artifact.slice(1).toLowerCase()}`;
 export const sweepAnswersSlot = (artifact) => `${sweepSlot(artifact)}Answers`;
 
+/** What came of the build, as the review loop names it: the agent built the add-on in the
+ *  preparation (`agent-built`), its build failed (`agent-build-failed`), the build was judged
+ *  unsafe so nothing was built (`build-unsafe`), or the agent was not let build, or nothing
+ *  was prepared, and the reviewer builds it (`self-build`). Exactly one holds in every
+ *  review (src/report/loop.js buildResultFact), and the Build Review Details word it
+ *  (`build-results`, assets/registry.yaml). */
+export const BUILD_RESULT_FACTS = [
+  "agent-built",
+  "agent-build-failed",
+  "build-unsafe",
+  "self-build",
+];
+
 /** The facts the review loop's `when:` conditions can name (src/checks/condition.js), and
  *  so what a step of it is printed under (stepsOf, src/report/phases.js):
  *
@@ -182,16 +195,12 @@ export const sweepAnswersSlot = (artifact) => `${sweepSlot(artifact)}Answers`;
  *  - `first`: this is the review's first prompt - no phase has gone out yet;
  *  - `spawned`: `spawn` went out, so agents may still be running;
  *  - `decided`: the agent has judged something - `verify` or `settle` went out;
- *  - `closing`: the prompt being printed is the closing one (its phase answers `end`).
+ *  - `closing`: the prompt being printed is the closing one (its phase answers `end`);
+ *  - the build result, exactly one of BUILD_RESULT_FACTS.
  *
- *  - `package-managers-declined`: the preparation did not let the agent build the add-on or
- *    run package-manager commands (src/prepare/steps.js): the agent judged the build unsafe,
- *    or the reviewer declined. The agent builds nothing.
- *    A review started without a preparation has no such fact.
- *
- *  `first`, `spawned` and `decided` are read off the review each pass (runOf); `closing`
- *  comes from the phase being printed (stepsOf). Every other name but `aborted`, `closing`
- *  and the flags is the key the run record answers under. */
+ *  `first`, `spawned`, `decided` and the build result are read off the review each pass
+ *  (runOf); `closing` comes from the phase being printed (stepsOf). Every other name but
+ *  `aborted`, `closing` and the flags is the key the run record answers under. */
 export const REVIEW_PROMPT_FACTS = [
   ...PROMPT_SKIPS,
   "aborted",
@@ -202,7 +211,7 @@ export const REVIEW_PROMPT_FACTS = [
   "spawned",
   "decided",
   "closing",
-  "package-managers-declined",
+  ...BUILD_RESULT_FACTS,
 ];
 
 /**
@@ -230,16 +239,16 @@ export const LOOP_VERBS = VERB_NAMES;
  *  over in and what the linter accepts back: `hints` is what a sweep found, a list per
  *  check; `verdict` is one of the phase's own verbs; `words` is a person's answer, theirs
  *  to write and not ours to judge; `value` is a process value, one of the phase's own
- *  `values`, which steers the review and settles no item. `output` is where a build put
- *  what it produced, a path inside the build copy, or the phase's `failed` label. Named as data because the loop reads it rather than the
- *  phase's name - a phase carries its vocabulary AND the kind of answer that vocabulary
- *  belongs to, and neither is inferred from what it is called. */
+ *  `values`, which steers the review and settles no item. Named as data because the loop
+ *  reads it rather than the phase's name - a phase carries its vocabulary AND the kind of
+ *  answer that vocabulary belongs to, and neither is inferred from what it is called. The
+ *  preparation reads its build's answer as `output` (src/report/handback.js outputAt), a
+ *  kind no loop phase answers with. */
 export const ANSWER_KINDS = [
   "hints",
   "verdict",
   "words",
   "value",
-  "output",
   "none",
   "end",
 ];
@@ -247,15 +256,15 @@ export const ANSWER_KINDS = [
 /** The answer kinds of a phase that asks about no review item: its work is what its steps
  *  do, so it is issued once. `hints` and `none` are handed back with an empty file - `hints`
  *  also reads the sweeps back on that hand-back, `none` reads nothing. `value` is handed
- *  back with its one process value, `output` with its one path. `end` is the closing phase: issued once nothing else
+ *  back with its one process value. `end` is the closing phase: issued once nothing else
  *  has work, and never handed back, because the review ends with it. */
-export const ITEMLESS_ANSWERS = ["hints", "none", "value", "output", "end"];
+export const ITEMLESS_ANSWERS = ["hints", "none", "value", "end"];
 
 /** What a phase's `product` can name: what its agent leaves for the reviewer, keyed as the
- *  state's `paths` key that holds it. `build` is a file the agent writes, `buildOutput` the
- *  file or folder an `output` phase's answer names. Whether it came back is recorded when
- *  the phase comes back, and the Review Details block links it only then. */
-export const PHASE_PRODUCTS = ["build", "buildOutput"];
+ *  state's `paths` key that holds it. `build` is a file the agent writes. Whether it came
+ *  back is recorded when the phase comes back, and the Review Details block links it only
+ *  then. */
+export const PHASE_PRODUCTS = ["build"];
 
 /** The one fact the preparation prompts' `when:` conditions can name: whether the built
  *  add-on declares Experiments, which decides whether the first asks its reader for the
