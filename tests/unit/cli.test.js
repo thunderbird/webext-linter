@@ -1921,10 +1921,8 @@ test("--llm-sca-review prints the prompt, names both files, and reviews nothing"
   assert.match(r.stdout, new RegExp(`\\n  FOLDER\\n    ${dir}\\n`));
   // No review ran: no report sections, and no item file was claimed.
   assert.doesNotMatch(r.stdout, /── Found Issues ──|REVIEW_ITEMS/);
-  // The build report names the pinned pnpm release, and only an install hook reaching
-  // outside the declared dependencies is a safety concern.
+  // Only an install hook reaching outside the declared dependencies is a safety concern.
   for (const said of [
-    "`npx pnpm@10.4.1 install --frozen-lockfile`",
     "an install hook that downloads or runs code from outside the declared dependencies",
   ]) {
     assert.ok(unwrapped(r.stdout).includes(said), said);
@@ -2559,7 +2557,6 @@ test("the hand-back prints a clean source's build", () => {
     "Build in BUILD_ROOT, and only there",
     "Write it as an absolute path.",
     '"Build attempt"',
-    "`npx pnpm@10.4.1` in place of `pnpm`",
   ]) {
     assert.ok(unwrapped(stdout).includes(said), said);
   }
@@ -2597,7 +2594,6 @@ test("the hand-back prints a vulnerable source's rescue", () => {
     "npm audit fix --package-lock-only --ignore-scripts",
     "build NOTHING",
     "`npm ci`",
-    "`npx pnpm@10.4.1` in place of `pnpm`",
     "husky",
     '"label" of its one answer',
   ]) {

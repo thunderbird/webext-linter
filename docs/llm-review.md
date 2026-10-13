@@ -455,8 +455,8 @@ the review. The record keeps the audited lock's vulnerable packages counted by s
 - **The lock is clean**: the linter copies the whole `sca/` into the work folder's `build/`,
   and the next prompt (`build`) has the reader build in `BUILD_ROOT`, `SCA_ROOT`'s place in
   that copy, as `BUILD_PROCESS` describes, installing exactly what the lock pins (`npm ci` or
-  `pnpm install --frozen-lockfile`, run with the pnpm release the `packageManager` field of
-  package.json pins where it pins one). A build that writes next to its root still writes inside `build/`. It answers the `BUILD_OUTPUT` entry with the
+  `pnpm install --frozen-lockfile`, which runs the pnpm release the `packageManager` field of
+  package.json pins, where it pins one). A build that writes next to its root still writes inside `build/`. It answers the `BUILD_OUTPUT` entry with the
   final artifact the build produced inside `build/` (an XPI or zip file, or a folder), as an
   absolute path, or with `The build failed`, after adding a "Build attempt" section (the
   failing step and its error output) to `build.md`. An output that is not inside `build/` is

@@ -50,11 +50,10 @@ Continue manual review for the following checks:
 1) Source does not build into the XPI: Does the source build into the submitted
    XPI? Follow the build process from a clean copy of the source archive,
    installing the dependencies exactly as the lock file pins them (npm ci, or
-   pnpm install --frozen-lockfile with the pnpm release the packageManager field
-   of package.json pins, where it pins one). Clear only if the build completes
-   and its result matches the submitted XPI. Files that differ only by what
-   every build changes (a timestamp, a build id) still match. An install refused
-   because package.json and the lock file disagree is a failed build.
+   pnpm install --frozen-lockfile). Clear only if the build completes and its
+   result matches the submitted XPI. Files that differ only by what every build
+   changes (a timestamp, a build id) still match. An install refused because
+   package.json and the lock file disagree is a failed build.
 Suggested verdict: error
 Suggested response: The submitted source either could not be built by following its build instructions, or does not build into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
  - [SCA] package.json
