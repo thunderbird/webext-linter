@@ -54,16 +54,24 @@ entry never offered are all refusals.
 | Phase | What it is for | What fills its answers |
 | --- | --- | --- |
 | `build-safety` | Source code review only: write the build report (`BUILD_PROCESS`), with a safety section listing anything the build fetches or runs from outside the declared dependencies, and judge whether building is safe. | A process value: `safe` / `unsafe` |
-| `build-choice` | After a `safe` judgement: show the Build Review Details block and ask the reviewer, alone, who builds. Not asked where the reviewer declined package-manager commands while the review was prepared. | A process value: LLM builds / Build myself |
+| `build-review` | Show the Build Review Details block (the source the review read, the build report) as the last thing of the turn, and hand back once the reviewer has replied. Not where the reviewer declined package-manager commands. | Nothing: the block is its whole work |
+| `build-choice` | After a `safe` judgement: ask the reviewer, alone, who builds. Not asked where the reviewer declined package-manager commands while the review was prepared. | A process value: LLM builds / Build myself |
 | `build-choice-unsafe` | After an `unsafe` judgement: the same, and the reviewer may also stop the review. Not asked where the reviewer declined package-manager commands. | A process value: Abort / LLM builds anyway / Build myself |
 | `build` | Where the reviewer chose the agent: build the add-on in a copy of the source, in the agent's own sandbox. | Where the build put what it produced (an XPI, a zip or a folder inside the copy), or that it failed |
+| `build-result` | Show the Build Review Details block again, now with what the build produced where the agent built, as the last thing of the turn, and hand back once the reviewer has replied. Where the reviewer builds themselves, this is the pause in which they build. | Nothing: the block is its whole work |
 | `built` | Source code review only: ask the reviewer, alone, whether the source builds into the submitted XPI. | The reviewer's own answer |
 | `spawn` | Start the sub-agents the review needs - the add-on description and one sweep per tree - and read back what the sweeps found. | Nothing: each sweep's reply is written to a file of its own (see below) |
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
-| `details` | Hand the reviewer the Review Details block, before the `ask` questions, so only where `ask` follows: not under `--llm-skip-manual`. | Nothing: the block is its whole work |
+| `details` | Hand the reviewer the Review Details block, before the `ask` questions, so only where `ask` follows: not under `--llm-skip-manual`. The block is the last thing of the turn, and the pass is handed back once the reviewer has replied. | Nothing: the block is its whole work |
 | `ask` | Put to a reviewer what only a person can answer. | The reviewer's own answer |
 | `close` | The last phase, once nothing else has work: hand over the settled review. It opens on whether the review is settled or was aborted, and says only what applies to it. | Nothing: the review ends with it |
+
+A block the reviewer must read before answering (`build-review`, `build-result`,
+`details`) is shown by a pass of its own and ends the agent's turn. Text written before a
+tool call in the same turn, a question or a hand-back, can be folded away by a client that
+collapses tool rows, while the message that ends a turn stays in view. So each such pass
+costs the reviewer one reply.
 
 A phase is issued only when it has **work** - steps that survive their markers, or
 entries to settle - and that is also what ends the loop. So a review with no sweep never

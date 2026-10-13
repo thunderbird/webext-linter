@@ -2307,8 +2307,30 @@ llm-phases:
           text: |-
             Then answer the one entry in the file with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. It is your judgement of what the safety section lists, and the reviewer decides what follows from it.
 
-    # The reviewer's choice after a SAFE judgement: who builds. Asked alone, beside the Build
-    # Review Details block that links the report the choice rests on.
+    # A BLOCK THE REVIEWER MUST READ ENDS THE AGENT'S TURN. Text written before a tool call in
+    # the same turn - a question, a hand-back - is folded away by a client that collapses
+    # tool rows, and only the message that ends a turn stays in view. So each block is shown
+    # by a pass of its own, whose last act is to end the turn, and the pass is handed back
+    # only once the reviewer has replied.
+    #
+    # The Build Review Details, ahead of the build choice: the source the review read and the
+    # build report the choice rests on. Not where the reviewer declined package-manager
+    # commands: no build choice follows, and `build-result` shows the block before the build
+    # question.
+    - name: build-review
+      # Asks about nothing in the review file: the block is its whole work.
+      answer: none
+      verbs: []
+      intro: ""
+      steps:
+        - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined
+          text: &build-details-end-turn |-
+            Give the reviewer this block under a "Build review details" heading, exactly as it is written here, as the last thing you write this turn. Then end your turn, and put no question to them in it. Hand back only once the reviewer has replied: what they reply does not matter.
+
+            {{buildDetails}}
+
+    # The reviewer's choice after a SAFE judgement: who builds, put to them ALONE once they
+    # have read the Build Review Details (`build-review`).
     # Not asked where the reviewer declined package-manager commands in the preparation:
     # the agent builds nothing, and the reviewer answers the build questions from their own.
     - name: build-choice
@@ -2325,11 +2347,6 @@ llm-phases:
           label: Build myself
           description: Nothing is built here. You build the add-on yourself and answer the build question from your own build.
       steps:
-        - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined AND value(build-safety, safe)
-          text: |-
-            Give the reviewer this block under a "Build review details" heading, exactly as it is written here:
-
-            {{buildDetails}}
         - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined AND value(build-safety, safe)
           text: &build-choice-ask |-
             Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
@@ -2357,11 +2374,6 @@ llm-phases:
           label: Build myself
           description: You judged those steps harmless. You build the add-on yourself and answer the build question from your own build.
       steps:
-        - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined AND value(build-safety, unsafe)
-          text: |-
-            Give the reviewer this block under a "Build review details" heading, exactly as it is written here:
-
-            {{buildDetails}}
         - when: sca AND build-guarded AND NOT aborted AND NOT package-managers-declined AND value(build-safety, unsafe)
           text: *build-choice-ask
 
@@ -2400,8 +2412,20 @@ llm-phases:
 
             Then answer the one entry in the file with where the build put what it produced: the XPI or zip file, or the folder such as `dist/`, inside {{buildCopy}}. Write it as a path, absolute or relative to {{buildCopy}}. Where the build failed, answer with the "label" of its one answer instead. Compare nothing and judge nothing: the reviewer reads what the build produced.
 
+    # The Build Review Details again, ahead of the build question, now with what the build
+    # produced where the agent built: what the question is answered from. Where the reviewer
+    # builds themselves, this is the pause in which they build. Ends the turn, as
+    # `build-review`.
+    - name: build-result
+      answer: none
+      verbs: []
+      intro: ""
+      steps:
+        - when: sca AND build-guarded AND NOT aborted
+          text: *build-details-end-turn
+
     # The build question, in a phase of its own so it is put to the reviewer ALONE, right
-    # after the build: `ask` batches, and a reviewer must not be asked to install an XPI in
+    # after the Build Review Details (`build-result`): `ask` batches, and a reviewer must not be asked to install an XPI in
     # the same breath as being asked whether the source builds into it. Only the cases of a
     # check naming the phase (`asked-in`) open here, so it never appears in an XPI review.
     # Asked under --llm-skip-manual too: it decides whether the review goes on, which is not
@@ -2412,13 +2436,6 @@ llm-phases:
       verbs: []
       intro: ""
       steps:
-        # The build's files again, the build output among them now where the agent built:
-        # what the question is answered from.
-        - when: sca AND build-guarded AND NOT aborted
-          text: |-
-            Give the reviewer this block under a "Build review details" heading, exactly as it is written here:
-
-            {{buildDetails}}
         - when: NOT aborted
           text: |-
             Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Where they build the add-on themselves, it is the question they answer once they have. Ask its "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
@@ -2562,7 +2579,8 @@ llm-phases:
 
     # Hands the reviewer the Review Details block, once, before the `ask` questions: what this
     # review is, and where to read it while answering - the build output among it. Its own
-    # phase so it does not hang off one particular question phase. Shown only where `ask`
+    # phase so it does not hang off one particular question phase, and it ends the turn, as
+    # `build-review`. Shown only where `ask`
     # follows: not under --llm-skip-manual, and not in a review that was aborted - the
     # closing hand-over carries the block either way.
     - name: details
@@ -2578,11 +2596,11 @@ llm-phases:
             Wait for every agent you spawned to come back.
         - when: NOT aborted AND NOT llm-skip-manual
           text: |-
-            Give the reviewer this block before you put anything to them, under a "Review details" heading and otherwise exactly as it is written here:
+            Give the reviewer this block under a "Review details" heading, exactly as it is written here, as the last thing you write this turn. Then end your turn, and put no question to them in it. Hand back only once the reviewer has replied: what they reply does not matter.
 
             {{details}}
 
-            It names what this review is and where to read it, and its links are written for their client to open. Write nothing of your own about it: no summary, no excerpt, no link of your own making. Where a path names a file another agent wrote, the reviewer reads it themselves, while you work.
+            It names what this review is and where to read it, and its links are written for their client to open. Write nothing of your own about it: no summary, no excerpt, no link of your own making. Where a path names a file another agent wrote, the reviewer reads it themselves.
 
     # Puts what only a person can answer to a person. Intro EMPTY: today's two ask blocks say
     # where an entry came from, which is procedural - the agent relays both identically, and

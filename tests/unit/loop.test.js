@@ -1566,16 +1566,19 @@ function ruleAt(made, ref) {
   )?.target?.ruleId;
 }
 
-// A source review opens with its build: the agent judges it, the reviewer chooses who
-// builds, and the build question follows the build, in a phase of its own so it is put to
-// the reviewer ALONE - all before the sweeps and the verify and settle passes.
+// A source review opens with its build: the agent judges it, the reviewer reads the Build
+// Review Details and chooses who builds, and reads them again before the build question,
+// which follows the build in a phase of its own so it is put to the reviewer ALONE - all
+// before the sweeps and the verify and settle passes.
 test("a source review opens with the build, and its questions come before the sweeps", () => {
   const made = buildQuestionsReview(tmp());
   const { seen, handed, settled } = driveBuild(made, goesOn());
   assert.deepEqual(seen, [
     "build-safety",
+    "build-review",
     "build-choice",
     "build",
+    "build-result",
     "built",
     "spawn",
     "verify",
@@ -1869,9 +1872,11 @@ test("a reviewer who builds it themselves skips the build phase", () => {
       made,
       goesOn({ "build-safety": () => safety, [choice]: () => label })
     );
-    assert.deepEqual(seen.slice(0, 4), [
+    assert.deepEqual(seen.slice(0, 6), [
       "build-safety",
+      "build-review",
       choice,
+      "build-result",
       "built",
       "spawn",
     ]);
@@ -1884,8 +1889,9 @@ test("a reviewer who builds it themselves skips the build phase", () => {
 test("an unsafe build is built anyway, or aborts the review with build-unsafe", () => {
   const anyway = buildQuestionsReview(tmp());
   const built = driveBuild(anyway, goesOn({ "build-safety": () => "unsafe" }));
-  assert.deepEqual(built.seen.slice(0, 3), [
+  assert.deepEqual(built.seen.slice(0, 4), [
     "build-safety",
+    "build-review",
     "build-choice-unsafe",
     "build",
   ]);
@@ -1898,7 +1904,11 @@ test("an unsafe build is built anyway, or aborts the review with build-unsafe", 
       "build-choice-unsafe": () => "Abort",
     })
   );
-  assert.deepEqual(seen, ["build-safety", "build-choice-unsafe"]);
+  assert.deepEqual(seen, [
+    "build-safety",
+    "build-review",
+    "build-choice-unsafe",
+  ]);
   assert.match(closing.steps[0].text, /^The review was aborted/);
   assert.equal(settled.earlyExit, true);
   assert.match(settled.report, /- Build process issues/);
@@ -1920,14 +1930,24 @@ test("a review whose build checks did not all run opens at the build question", 
 
 // A reviewer who declined package-manager commands in the preparation is asked no build
 // choice, and the agent builds nothing. The build question is still asked, of the
-// reviewer's own build.
+// reviewer's own build, once they have read the Build Review Details.
 test("a review whose reviewer declined package-manager commands builds nothing", () => {
   for (const safety of ["safe", "unsafe"]) {
     const made = buildQuestionsReview(tmp());
     made.state.run["package-managers-declined"] = true;
     const { seen } = driveBuild(made, goesOn({ "build-safety": () => safety }));
-    assert.deepEqual(seen.slice(0, 3), ["build-safety", "built", "spawn"]);
-    for (const phase of ["build-choice", "build-choice-unsafe", "build"]) {
+    assert.deepEqual(seen.slice(0, 4), [
+      "build-safety",
+      "build-result",
+      "built",
+      "spawn",
+    ]);
+    for (const phase of [
+      "build-review",
+      "build-choice",
+      "build-choice-unsafe",
+      "build",
+    ]) {
       assert.ok(!seen.includes(phase), seen.join(", "));
     }
   }
@@ -2090,7 +2110,8 @@ test("the details link the build output only when the build phase named one", ()
 
 // A process-value phase can have a product too: the build report is written by the phase
 // that judges the build. Recorded as that phase comes back, so the blocks the reviewer
-// chooses who builds from link the report the choice rests on, and only once it exists.
+// reads before choosing who builds link the report the choice rests on, and only once it
+// exists.
 test("the build report is linked once the judging phase wrote it", () => {
   for (const wrote of [true, false]) {
     const { state, work } = buildReview(tmp());
@@ -2104,7 +2125,7 @@ test("the build report is linked once the judging phase wrote it", () => {
     handBack(work, () => "safe");
     accept(state, work, PHASES, REGISTRY);
     const next = issue(state, work, PHASES, REGISTRY);
-    assert.equal(next.phase.name, "build-choice");
+    assert.equal(next.phase.name, "build-review");
     const linked = /^\* BUILD_PROCESS: \[build\.md\]/m;
     for (const block of [
       loopSlots(state, next, work).buildDetails,
@@ -2117,6 +2138,120 @@ test("the build report is linked once the judging phase wrote it", () => {
       }
     }
   }
+});
+
+/**
+ * Drive a source review to its close the way `driveBuild` does, and keep each phase's
+ * steps: raw, and - for the phases that show a block or put a question to the reviewer -
+ * each rendered alone into its prompt with the slots of that pass, its wrapped lines
+ * joined back into one line.
+ */
+const REVIEWER_PHASES = [
+  "build-review",
+  "build-choice",
+  "build-choice-unsafe",
+  "build-result",
+  "built",
+  "details",
+  "ask",
+];
+function stepsByPhase(made, answer) {
+  const issued = [];
+  for (let pass = 0; pass < 12; pass++) {
+    const out = issue(made.state, made.work, PHASES, REGISTRY);
+    if (out.phase.answer === "end") {
+      break;
+    }
+    const slots = loopSlots(made.state, out, made.work);
+    issued.push({
+      name: out.phase.name,
+      slots,
+      steps: out.steps.map((step) => ({
+        raw: step.text,
+        rendered: REVIEWER_PHASES.includes(out.phase.name)
+          ? loopPromptLines(REGISTRY.llmPhases(), out.phase, [step], slots)
+              .map((line) => line.trim())
+              .join(" ")
+          : "",
+      })),
+    });
+    handBack(made.work, (e) => answer(out.phase.name, e));
+    accept(made.state, made.work, PHASES, REGISTRY);
+  }
+  return issued;
+}
+
+// A block the reviewer must read ends the agent's turn, in a pass of its own: text written
+// before a tool call in the same turn is folded away by a client that collapses tool rows.
+// So the Build Review Details come in `build-review` ahead of the build choice and in
+// `build-result` ahead of the build question, the Review Details in `details` ahead of the
+// questions - and no question phase carries a block.
+test("each block the reviewer reads ends a turn of its own, apart from every question", () => {
+  const END = "Then end your turn, and put no question to them in it";
+  const issued = stepsByPhase(buildQuestionsReview(tmp()), goesOn());
+  const names = issued.map((x) => x.name);
+  for (const [before, after] of [
+    ["build-review", "build-choice"],
+    ["build-result", "built"],
+  ]) {
+    assert.ok(names.includes(before), names.join(", "));
+    assert.ok(names.indexOf(before) < names.indexOf(after), names.join(", "));
+  }
+  for (const [name, slot, heading] of [
+    ["build-review", "buildDetails", "Build review details"],
+    ["build-result", "buildDetails", "Build review details"],
+    ["details", "details", "Review details"],
+  ]) {
+    const phase = issued.find((x) => x.name === name);
+    const block = phase.slots[slot].split("\n").map((line) => line.trim());
+    assert.ok(block.length > 0 && block[0] !== "", `${name}: a block to show`);
+    assert.ok(
+      phase.steps.some(
+        (step) =>
+          step.rendered.includes(heading) &&
+          step.rendered.includes(END) &&
+          block.every((line) => step.rendered.includes(line))
+      ),
+      `${name} shows its block and ends the turn`
+    );
+  }
+  for (const name of ["build-choice", "built", "ask"]) {
+    assert.ok(names.includes(name), names.join(", "));
+  }
+  const unsafe = stepsByPhase(
+    buildQuestionsReview(tmp()),
+    goesOn({ "build-safety": () => "unsafe" })
+  );
+  assert.ok(unsafe.some((x) => x.name === "build-choice-unsafe"));
+  for (const phase of [...issued, ...unsafe]) {
+    if (
+      !["build-choice", "build-choice-unsafe", "built", "ask"].includes(
+        phase.name
+      )
+    ) {
+      continue;
+    }
+    for (const step of phase.steps) {
+      for (const text of [step.raw, step.rendered]) {
+        assert.ok(!text.includes("Build review details"), phase.name);
+        assert.ok(!text.includes("Review details"), phase.name);
+        assert.ok(!text.includes("{{buildDetails}}"), phase.name);
+        assert.ok(!text.includes("{{details}}"), phase.name);
+      }
+    }
+  }
+
+  // A reviewer who declined package-manager commands is asked no build choice: the block
+  // comes once, ahead of the build question.
+  const declined = buildQuestionsReview(tmp());
+  declined.state.run["package-managers-declined"] = true;
+  const without = stepsByPhase(declined, goesOn()).map((x) => x.name);
+  assert.ok(!without.includes("build-review"), without.join(", "));
+  assert.ok(without.includes("build-result"), without.join(", "));
+  assert.ok(
+    without.indexOf("build-result") < without.indexOf("built"),
+    without.join(", ")
+  );
 });
 
 // The description is linked once the phase that starts its agent went back, and not

@@ -276,9 +276,11 @@ test("a phase declares the kind of answer its entries take", () => {
       .phases.map((p) => [p.name, p.answer, p.verbs.length]),
     [
       ["build-safety", "value", 0],
+      ["build-review", "none", 0],
       ["build-choice", "value", 0],
       ["build-choice-unsafe", "value", 0],
       ["build", "output", 0],
+      ["build-result", "none", 0],
       ["built", "words", 0],
       ["spawn", "hints", 0],
       ["verify", "verdict", 2],
@@ -610,8 +612,9 @@ test("the shipped steps carry the conditions they are printed under", () => {
   assert.deepEqual(when("settle"), [["aborted"]]);
   // The build opening: only a source review whose install is vouched for, and each choice
   // only after the judgement it answers, and only where the reviewer allowed package-manager
-  // commands. The build itself runs only where the reviewer chose
-  // the agent to build.
+  // commands. The Build Review Details ahead of the choice show under the choice's own
+  // condition, less the judgement; those ahead of the build question show wherever the build
+  // was vouched for. The build itself runs only where the reviewer chose the agent to build.
   const calls = (name) =>
     loaded
       .find((p) => p.name === name)
@@ -620,18 +623,18 @@ test("the shipped steps carry the conditions they are printed under", () => {
     ["aborted", "build-guarded", "sca"],
     ["aborted", "build-guarded", "sca"],
   ]);
+  assert.deepEqual(when("build-review"), [
+    ["aborted", "build-guarded", "package-managers-declined", "sca"],
+  ]);
+  assert.deepEqual(calls("build-review"), [[]]);
   for (const [name, value] of [
     ["build-choice", "safe"],
     ["build-choice-unsafe", "unsafe"],
   ]) {
     assert.deepEqual(when(name), [
       ["aborted", "build-guarded", "package-managers-declined", "sca"],
-      ["aborted", "build-guarded", "package-managers-declined", "sca"],
     ]);
-    assert.deepEqual(calls(name), [
-      [["build-safety", value]],
-      [["build-safety", value]],
-    ]);
+    assert.deepEqual(calls(name), [[["build-safety", value]]]);
   }
   assert.deepEqual(when("build"), [["aborted", "sca"]]);
   assert.deepEqual(calls("build"), [
@@ -640,10 +643,8 @@ test("the shipped steps carry the conditions they are printed under", () => {
       ["build-choice-unsafe", "llm"],
     ],
   ]);
-  assert.deepEqual(when("built"), [
-    ["aborted", "build-guarded", "sca"],
-    ["aborted"],
-  ]);
+  assert.deepEqual(when("build-result"), [["aborted", "build-guarded", "sca"]]);
+  assert.deepEqual(when("built"), [["aborted"]]);
   // The wait step carries its phase's own condition beside `spawned`, so the phase is never
   // issued with nothing but a wait in it.
   assert.deepEqual(when("details"), [
