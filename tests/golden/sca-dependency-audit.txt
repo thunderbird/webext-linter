@@ -101,8 +101,14 @@ Suggested response: Please add a privacy policy to this add-on that details whic
 [2]: https://www.mozilla.org/en-US/privacy/
 
 8) User-data exfiltration: Message content and headers, attachments, contacts,
-   credentials, or anything derived from them, reaching a remote host without
-   the user asking.
+   credentials, or anything derived from them, leaving the user's machine by any
+   route: a network request, or mail or a message the add-on composes and sends
+   itself (for example `compose.beginForward`, `beginNew` or `sendMessage`).
+   Report it unless the user enabled that specific transmission beforehand, on
+   an options page or first-run page that says what is sent and to whom, or by
+   an off-by-default opt-in. Triggering the feature with a click or menu item is
+   not enough on its own. Where the destination is fixed in the add-on, list the
+   location here as well as under any privacy-policy sweep.
 Sweep: <root>/tests/addons/sca-dependency-audit/src
 Suggested verdict: error
 Suggested response: The following code location(s) send user data or telemetry to a remote server without an explicit opt-in. User data or telemetry may be transmitted only when the user actively enables it on an options page that discloses what is sent.

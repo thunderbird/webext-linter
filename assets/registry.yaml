@@ -1622,8 +1622,10 @@ deterministic-phase:
   response: |-
     Remotely fetched code is executed at the following location(s). Remote code execution is not allowed - bundle all code with the add-on so it can be reviewed.
 
-# normal transmission (fetch and friends) to a remote host - allowed
-# only with an options-page opt-in, judged from the options page in evidence.
+# normal transmission of user data - a network request (fetch and friends) or mail the
+# add-on composes and sends itself - allowed only with an options-page opt-in, judged from
+# the options page in evidence. The deterministic scan finds network sinks only, so the
+# mail route is reached through the sweep alone.
 - title: User-data exfiltration
   severity: error
   check: data-exfiltration
@@ -1638,19 +1640,28 @@ deterministic-phase:
     credentials on an options page that says what is sent, or through an
     explicit off-by-default opt-in for a hardcoded URL. Thunderbird has no
     built-in data-collection consent prompt, so there is no implicit consent
-    to rely on. Clear a location where consent of that kind exists; report
-    one where it does not.
+    to rely on. Triggering the feature with a click or menu item is not
+    consent on its own. Clear a location where consent of that kind exists;
+    report one where it does not.
   instructions-for-human: |-
     Check, for each location below, whether the user actively enabled the
     transmission. User data - message content, attachments, contacts,
     credentials - may be sent only where they entered the destination or
     credentials on an options page that says what is sent, or turned on an
     explicit off-by-default opt-in. Thunderbird has no built-in consent
-    prompt, so there is no implicit consent to fall back on. Report a
+    prompt, so there is no implicit consent to fall back on. Triggering the
+    feature with a click or menu item is not consent on its own. Report a
     location where no such consent exists.
   sweep-instruction: |-
     Message content and headers, attachments, contacts, credentials, or anything
-    derived from them, reaching a remote host without the user asking.
+    derived from them, leaving the user's machine by any route: a network
+    request, or mail or a message the add-on composes and sends itself (for
+    example `compose.beginForward`, `beginNew` or `sendMessage`). Report it
+    unless the user enabled that specific transmission beforehand, on an
+    options page or first-run page that says what is sent and to whom, or by
+    an off-by-default opt-in. Triggering the feature with a click or menu item
+    is not enough on its own. Where the destination is fixed in the add-on,
+    list the location here as well as under any privacy-policy sweep.
   response: |-
     The following code location(s) send user data or telemetry to a remote server without an explicit opt-in. User data or telemetry may be transmitted only when the user actively enables it on an options page that discloses what is sent.
 

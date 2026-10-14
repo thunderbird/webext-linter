@@ -34,6 +34,17 @@
         concern handled by the disguised-* checks; this check covers only the
         overt channels.
       </p>
+      <p>
+        Mail is a channel too: message content the add-on puts into a mail or
+        message it composes and sends itself (for example with
+        <code>compose.beginForward</code>, <code>beginNew</code> or
+        <code>sendMessage</code>) leaves the machine like a network request. The
+        deterministic scan finds network sinks only, so this route is reached
+        through the sweep alone. Triggering the feature with a click or menu item
+        is not consent on its own: the user must have enabled that transmission
+        beforehand, on an options page or first-run page that says what is sent
+        and to whom, or by an off-by-default opt-in.
+      </p>
 
       <h2>Decision flow</h2>
       <div class="flow">

@@ -9,6 +9,9 @@
 // Disguising transmission as a resource load is a separate, always-error
 // concern (-> the disguised-* checks); this check is only the overt channels.
 //
+// Mail the add-on composes and sends itself carries user data off the machine as well, but
+// this scan finds network sinks only: that route is reached through the check's sweep.
+//
 // Belongs here: one escalation per overt remote sink, carrying file:line and the
 // channel it sends on. Does NOT belong here: the sink scan (->
 // src/parse/network-sinks.js, aggregated by src/lib/outbound-sinks.js), the
