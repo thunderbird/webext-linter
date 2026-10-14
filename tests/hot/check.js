@@ -4,7 +4,7 @@
 //
 // Reads only the linter's own files in the work folder, through the readers the linter
 // uses itself: the review's state at the Build Review Details (row 14), or the settled
-// review of an aborted one, and that the rescued copy, where there is one, holds no
+// review of an aborted one (at its close or its downgrade question), and that the rescued copy, where there is one, holds no
 // node_modules/: nothing is ever installed or built in it. Prints each difference and exits 1
 // on a mismatch, 0 on a match, 2 when it cannot read the case or the folder. Asserts
 // outcomes, never package versions. LLM_BUILD_XPI_MATCH is printed and never compared: a case's lock
@@ -14,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadRegistry } from "../../src/checks/registry.js";
+import { DOWNGRADE_PHASE } from "../../src/checks/registry-vocabulary.js";
 import { readPrepare } from "../../src/prepare/state.js";
 import { buildResultFact, settle } from "../../src/report/loop.js";
 import { readState } from "../../src/report/state.js";
@@ -103,14 +104,16 @@ function stopOf(work) {
       SCA_ROOT: areaOf(work, state.paths?.scaRoot ?? null),
     };
   }
-  if (state.phase === "close") {
+  // The closing prompt and the downgrade question both hand over the settled review, and
+  // its abort reasons are read the same way at either.
+  if (state.phase === "close" || state.phase === DOWNGRADE_PHASE) {
     const settled = settle(structuredClone(state), registry);
     const earlyExit = settled.review.meta.earlyExit;
     if (!earlyExit) {
-      return { stop: "close, not aborted" };
+      return { stop: `${state.phase}, not aborted` };
     }
     return {
-      stop: "abort",
+      stop: state.phase === "close" ? "abort" : "downgrade",
       ...shown,
       reasons: earlyExit.reasons.map((r) => r.id),
       findings: settled.review.findings

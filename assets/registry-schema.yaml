@@ -371,7 +371,7 @@ shapes:
       kind: text
       why: >-
         the question a process-value pass hands over where no check routes a to-do to it,
-        relayed as it is written
+        relayed as it is written, with {{abortReasons}} filled from what aborted the review
     values:
       kind: entries
       shape: phase-value-entry
@@ -607,7 +607,7 @@ sections:
         required: WORDED_BUILD_FACTS
         closed: true
         noun: prose
-        why: what the Build Review Details say came of the agent's build, per result shown
+        why: what the details blocks' LLM_BUILD_RESULT row says came of the agent's build, per result shown
       phases:
         kind: entries
         shape: loop-phase-entry

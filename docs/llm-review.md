@@ -191,7 +191,7 @@ cannot be built from - `sca-package-file-missing`,
 `sca-lock-file-multiple`, `build-registry-redirect`, `lock-foreign-source`, `build-lifecycle-hook`,
 `undeclared-build-source`, `build-reproduces-xpi`, `build-not-reproduced`, `build-fails` and
 `build-unsafe` -
-name *a build that cannot be reproduced*. The threshold is the finding's severity, so an advisory
+name *build process issues*. The threshold is the finding's severity, so an advisory
 that lands as a warning aborts nothing.
 
 That threshold is also what lets `build-lifecycle-hook` carry the flag while it reports
@@ -349,8 +349,11 @@ It is asked about in 2 separate sweeps, each listed below under its label. ...
 Label 9: Check the package for unacceptable content
 Content shipped inside the package ...
 
-Return your answers as your reply: one JSON document {"answers": {"<label>": [...]}} that
-lists every label above ...
+Return your answers as your reply, as one JSON document of this shape:
+
+  {"answers": {"<label>": [...]}}
+
+It lists every label above, ...
 ```
 
 The reply is one JSON document with a list per label:

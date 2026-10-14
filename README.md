@@ -215,12 +215,12 @@ that copy, so the submission is rejected before any build check runs.
   `package.json`, and what `undeclared-build-source` reads of it is the steps that trace
   could not follow.
   Nothing in those files says for certain what the build **does**, so every source
-  submission raises three build items. `undeclared-build-source` (Extended Code Review) asks
+  submission raises two build items. `undeclared-build-source` (Extended Code Review) asks
   whether the build pulls from the declared dependencies alone - no raw URL, `curl|sh`,
   unpinned `git clone`, CDN or postinstall hook - and names any step the linter could not
   follow statically; under `--llm-review` the agent settles it in `settle`.
   `build-reproduces-xpi` (Extended Manual Review) asks the reviewer to build the add-on
-  from the source and compare the result with the shipped XPI. Any of the three
+  from the source and compare the result with the shipped XPI. Either of the two
   reported aborts the review. Under `--llm-review` a source review opens with its build,
   before the sweeps: the agent judges the build safe or unsafe where nothing was prepared,
   the reviewer reads the Build Review Details (with what the agent built in the
@@ -307,13 +307,13 @@ decide a source submission cannot be built from - `sca-package-file-missing`,
 `sca-lock-file-multiple`, `lock-foreign-source`, `build-registry-redirect`, `build-lifecycle-hook`,
 `undeclared-build-source`, `build-reproduces-xpi`, `build-not-reproduced`, `build-fails` and
 `build-unsafe` - name
-*a build that cannot be reproduced*. These lead the review, ordered so a submission they reject stops
+*build process issues*. These lead the review, ordered so a submission they reject stops
 before the rest is computed: `experiment-not-allowed`; then
 `sca-xpi-fully-included-in-archive`; then the source archive's package.json
 and lock checks (`sca-package-file-*`, `sca-lock-file-*`, `build-registry-redirect`,
 `lock-foreign-source`), which read nothing the review computes; then `lockfile-injection`;
 then the four dependency-vulnerability checks and `banned-library`, which need the vendor
-reading. The four build checks that only escalate, and the three whose finding an answer
+reading. The three build checks that only escalate, and the three whose finding an answer
 adds, stay where they are. When
 one of them reports at error
 severity, the review stops there: no check after it runs, and nothing further is put to a

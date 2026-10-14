@@ -1,5 +1,5 @@
 {
-  "_comment": "The hot-run cases (tests/hot/README.md). Each submission folder holds one .xpi and one source archive made from a real submission by changing only package.json and the lock. `expect` is what tests/hot/check.js compares the work folder with: `stop` is `row-14` (the Build Review Details block) or `abort` (the closing prompt of an aborted review). SCA_VULNERABILITIES and LLM_RESCUED_VULNERABILITIES name only the severities the case pins, each count exact or { \"atLeast\": n }. LLM_BUILD_OUTPUT is the folder the output lies in, always build, or false where the block names none. LLM_BUILD_XPI_MATCH is never named here: check.js prints it and compares nothing, since a case's lock is newer than the one its XPI was built from. SCA_ROOT is the folder the reviewed root lies in, sca or rescued. A rescued/ left in the work folder must hold no node_modules/. `reasons` are the early-exit ids, and `findings` the error findings the aborted review must hold.",
+  "_comment": "The hot-run cases (tests/hot/README.md). Each submission folder holds one .xpi and one source archive made from a real submission by changing only package.json and the lock. `expect` is what tests/hot/check.js compares the work folder with: `stop` is `row-14` (the Build Review Details block), `abort` (the closing prompt of an aborted review) or `downgrade` (the question whether an aborted review whose XPI could be reviewed alone restarts as an XPI review). SCA_VULNERABILITIES and LLM_RESCUED_VULNERABILITIES name only the severities the case pins, each count exact or { \"atLeast\": n }. LLM_BUILD_OUTPUT is the folder the output lies in, always build, or false where the block names none. LLM_BUILD_XPI_MATCH is never named here: check.js prints it and compares nothing, since a case's lock is newer than the one its XPI was built from. SCA_ROOT is the folder the reviewed root lies in, sca or rescued. A rescued/ left in the work folder must hold no node_modules/. `reasons` are the early-exit ids of an abort or a downgrade, and `findings` the error findings the aborted review must hold.",
   "cases": [
     {
       "id": "clean-builds",
@@ -31,7 +31,8 @@
       "expect": {
         "stop": "row-14",
         "SCA_BUILD_SAFETY_ASSESSMENT": "safe",
-        "SCA_VULNERABILITIES": { "high": 0, "critical": 0 },
+        "SCA_VULNERABILITIES": { "high": 1, "critical": 0 },
+        "LLM_RESCUED_VULNERABILITIES": { "high": 0, "critical": 0 },
         "LLM_BUILD_RESULT": "build succeeded",
         "LLM_BUILD_OUTPUT": "build",
         "SCA_ROOT": "rescued"
@@ -53,7 +54,8 @@
       "expect": {
         "stop": "row-14",
         "SCA_BUILD_SAFETY_ASSESSMENT": "safe",
-        "SCA_VULNERABILITIES": { "high": 0, "critical": 0 },
+        "SCA_VULNERABILITIES": { "high": 1, "critical": 0 },
+        "LLM_RESCUED_VULNERABILITIES": { "high": 0, "critical": 0 },
         "LLM_BUILD_RESULT": "build succeeded",
         "LLM_BUILD_OUTPUT": "build",
         "SCA_ROOT": "rescued"
@@ -85,7 +87,8 @@
       "expect": {
         "stop": "row-14",
         "SCA_BUILD_SAFETY_ASSESSMENT": "safe",
-        "SCA_VULNERABILITIES": { "high": 0, "critical": 0 },
+        "SCA_VULNERABILITIES": { "high": 1, "critical": 0 },
+        "LLM_RESCUED_VULNERABILITIES": { "high": 0, "critical": 0 },
         "LLM_BUILD_RESULT": "build succeeded",
         "LLM_BUILD_OUTPUT": "build",
         "SCA_ROOT": "rescued"
@@ -119,7 +122,7 @@
       "id": "not-auditable",
       "submission": "/home/john/Downloads/reviews/hot/not-auditable",
       "expect": {
-        "stop": "abort",
+        "stop": "downgrade",
         "reasons": ["unreproducible-build"],
         "findings": ["sca-lock-file-multiple"]
       }
@@ -130,7 +133,8 @@
       "expect": {
         "stop": "row-14",
         "SCA_BUILD_SAFETY_ASSESSMENT": "safe",
-        "SCA_VULNERABILITIES": { "high": 0, "critical": 0 },
+        "SCA_VULNERABILITIES": { "high": 1, "critical": 0 },
+        "LLM_RESCUED_VULNERABILITIES": { "high": 0, "critical": 0 },
         "LLM_BUILD_RESULT": "build succeeded",
         "LLM_BUILD_OUTPUT": "build",
         "SCA_ROOT": "rescued"
