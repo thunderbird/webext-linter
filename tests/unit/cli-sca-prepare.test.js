@@ -85,11 +85,11 @@ test("--llm-sca-review creates the work folder and hands it back", () => {
   );
   assert.equal(headerValue(r.stdout, "ANSWERS"), workPaths(work).review);
   assert.equal(
-    headerValue(r.stdout, "LLM_BUILD_PROCESS"),
+    headerValue(r.stdout, "SCA_BUILD_PROCESS"),
     workPaths(work).build
   );
   const [safety, ...roots] = readJson(work, "review").entries;
-  assert.equal(safety.index, "LLM_BUILD_SAFETY");
+  assert.equal(safety.index, "SCA_BUILD_SAFETY_ASSESSMENT");
   assert.equal(safety.answer, null);
   assert.deepEqual(
     safety.answers.map((a) => a.label),
@@ -155,6 +155,7 @@ test("declined package-manager commands start a review the reviewer builds for",
     output: null,
     match: null,
     vulnerabilities: null,
+    rescuedVulnerabilities: null,
   });
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -454,7 +455,9 @@ test("a prepared review drops what a record must not say", async () => {
 
 // A source whose rescue failed is reviewed as submitted: the hand-back starts that
 // review, and its vulnerability checks stop it and end it on the known vulnerabilities
-// alone, so its first prompt is the close, and the run exits as a rejected review does.
+// alone, so its first prompt is the close, and the run exits as a rejected review does. Its
+// details say the rescue failed, and count the submitted lock and the rescued copy's lock
+// as the preparation audited them.
 test("the hand-back starts the review of an unrescued source, which closes at once", async () => {
   // The fixture's source with nothing declared, so the review asks npm for no package's
   // downloads, and only the vulnerable build tool its lock installs.
@@ -498,6 +501,13 @@ test("the hand-back starts the review of an unrescued source, which closes at on
   assert.ok(r.stdout.includes(`[report.md](${work}/report.md)`), r.stdout);
   assert.ok(r.stdout.includes("- Known security vulnerabilities"), r.stdout);
   assert.ok(!r.stdout.includes("- Build process issues"), r.stdout);
+  for (const row of [
+    "* SCA_VULNERABILITIES: 0 moderate, 0 high, 1 critical",
+    "* LLM_BUILD_RESULT: not built: rescue failed",
+    "* LLM_RESCUED_VULNERABILITIES: 0 moderate, 0 high, 1 critical",
+  ]) {
+    assert.ok(r.stdout.includes(row), `${row}\n${r.stdout}`);
+  }
   const state = readJson(work, "state");
   assert.equal(state.paths.scaRootOrig, null, "the source archive is reviewed");
   assert.equal(state.build.root, null, "nothing of the rescue was built");
@@ -511,8 +521,8 @@ test("the hand-back starts the review of an unrescued source, which closes at on
 // A source the agent built clean in the preparation: the hand-back starts its review in the
 // folder the build ran in, and the review opens on the build question, whose first step is
 // the Build Review Details. They name what the agent's build produced and count the lock's
-// vulnerable packages from the review's own audit - a moderate advisory, which decides
-// nothing, among them.
+// vulnerable packages as the preparation's audit found them - a moderate advisory, which
+// decides nothing, among them - every row in the rows' order.
 test("a review of a source the agent built opens on its Build Review Details", async () => {
   const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
   const source = fs.mkdtempSync(path.join(os.tmpdir(), "wl-built-"));
@@ -554,19 +564,25 @@ test("a review of a source the agent built opens on its Build Review Details", a
     output: record.buildOutput,
     match: "no match",
     vulnerabilities: { moderate: 1, high: 0, critical: 0 },
+    rescuedVulnerabilities: null,
   });
   assert.equal(state.paths.scaRootOrig, null);
-  for (const row of [
+  const rows = [
     `* XPI_FILE: [xpi](${path.join(fixture, "xpi")})`,
+    "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
     `* SCA_ROOT: [source archive](${workPaths(work).sca})`,
-    `* LLM_BUILD_ROOT: [build copy](${workPaths(work).buildCopy})`,
-    "* LLM_BUILD_SAFETY: safe",
-    "* BUILD_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
-    "* LLM_BUILD_RESULT: build succeeded",
+    "* SCA_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
     `* LLM_BUILD_OUTPUT: [dist](${record.buildOutput})`,
+    "* LLM_BUILD_RESULT: build succeeded",
+    `* LLM_BUILD_ROOT: [build copy](${workPaths(work).buildCopy})`,
     "* LLM_BUILD_XPI_MATCH: no match",
-  ]) {
-    assert.ok(r.stdout.includes(row), `${row}\n${r.stdout}`);
-  }
+  ];
+  const at = rows.map((row) => r.stdout.indexOf(row));
+  rows.forEach((row, i) => assert.ok(at[i] >= 0, `${row}\n${r.stdout}`));
+  assert.deepEqual(
+    at,
+    [...at].sort((a, b) => a - b),
+    "the rows are in their order"
+  );
   fs.rmSync(source, { recursive: true, force: true });
 });

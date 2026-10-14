@@ -66,7 +66,7 @@ function permittedPrompt(vulns) {
   assert.ok(next.stdout.includes("── SCA Review Prompt ──"), next.stdout);
   assert.equal(headerValue(next.stdout, "ANSWERS"), workPaths(work).review);
   assert.equal(
-    headerValue(next.stdout, "LLM_BUILD_PROCESS"),
+    headerValue(next.stdout, "SCA_BUILD_PROCESS"),
     workPaths(work).build
   );
   assert.deepEqual(commandOf(next.stdout), [`--llm-handback ${work}`]);
@@ -148,9 +148,9 @@ const DETAIL_ROWS = [
   "SCA_ROOT_ORIG",
   "SCA_EXP_SOURCE",
   "ADDON_DESCRIPTION",
-  "LLM_BUILD_PROCESS",
-  "LLM_BUILD_SAFETY",
-  "BUILD_VULNERABILITIES",
+  "SCA_BUILD_PROCESS",
+  "SCA_BUILD_SAFETY_ASSESSMENT",
+  "SCA_VULNERABILITIES",
   "LLM_BUILD_RESULT",
   "LLM_BUILD_ROOT",
   "LLM_BUILD_OUTPUT",
@@ -262,14 +262,14 @@ test("each details block holds every row of the block before it", () => {
   );
   const final = blocks.at(-1)[1];
   for (const row of [
-    "* LLM_BUILD_SAFETY: safe",
+    "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
     "* LLM_BUILD_RESULT: build succeeded",
     "* LLM_BUILD_XPI_MATCH: match",
   ]) {
     assert.ok(final.includes(row), `close misses ${row}\n${final.join("\n")}`);
   }
   for (const name of [
-    "BUILD_VULNERABILITIES",
+    "SCA_VULNERABILITIES",
     "LLM_BUILD_ROOT",
     "LLM_BUILD_OUTPUT",
   ]) {
@@ -364,9 +364,9 @@ test("the hand-back prints a vulnerable source's rescue", () => {
 });
 
 // A safe build is shown to the reviewer before they are asked: the permission prompt names
-// the review file and shows the Build Review Details - the source root, the build report
-// and the judgement - as a block that ends the turn with the waiting line, and then puts
-// the question. Its hand-back carries the preparation on.
+// the review file and shows the Build Review Details - the build report, the judgement and
+// the source root, in the rows' order - as a block that ends the turn with the waiting line,
+// and then puts the question. Its hand-back carries the preparation on.
 test("a safe build prints the Build Review Details and the permission question", () => {
   const dir = submissionFolder();
   const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
@@ -382,9 +382,9 @@ test("a safe build prints the Build Review Details and the permission question",
   assert.match(asked.stdout, /── SCA Review Prompt ──/);
   assert.equal(headerValue(asked.stdout, "ANSWERS"), workPaths(work).review);
   const block = [
+    `* SCA_BUILD_PROCESS: [build.md](${workPaths(work).build})`,
+    "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
     `* SCA_ROOT: [source archive](${path.join(work, "sca")})`,
-    `* LLM_BUILD_PROCESS: [build.md](${workPaths(work).build})`,
-    "* LLM_BUILD_SAFETY: safe",
     "",
     'Reply "next" to continue the review with the question whether the agent may ' +
       "build the add-on.",

@@ -95,10 +95,10 @@ function runOf(state, ordered, phases, registry) {
 
 /**
  * What came of the build, as the one BUILD_RESULT_FACTS name that holds: the agent's build
- * as the preparation recorded it (`agent-built`, `agent-build-failed`), else a build judged
- * unsafe (`build-unsafe`), by the preparation or by this review's `build-safety` phase, which
- * nothing builds, else a build the reviewer makes (`self-build`): the agent was not let
- * build, nothing was prepared, or its rescue failed.
+ * as the preparation recorded it (`agent-built`, `agent-build-failed`, `rescue-failed`), else
+ * a build judged unsafe (`build-unsafe`), by the preparation or by this review's
+ * `build-safety` phase, which nothing builds, else a build the reviewer makes (`self-build`):
+ * the agent was not let build, or nothing was prepared.
  * @param {import("./state.js").LoopState} state
  * @returns {string}
  */
@@ -109,6 +109,9 @@ export function buildResultFact(state) {
   }
   if (result === BUILD_RESULT.failed) {
     return "agent-build-failed";
+  }
+  if (result === BUILD_RESULT.rescueFailed) {
+    return "rescue-failed";
   }
   return state.values?.["build-safety"] === "unsafe"
     ? "build-unsafe"
@@ -644,13 +647,14 @@ export function settle(state, registry) {
  * was ever asked to write is not among them. Beside them the source archive's root where a
  * rescued copy was reviewed, and what the review holds of the build.
  *
- * LLM_BUILD_SAFETY is the judgement the review holds, the preparation's or its own, and
- * LLM_BUILD_RESULT the wording of what came of the agent's build (buildResultFact), held where
- * the review shows the Build Review Details, a source code review whose build every guard
- * vouches for, and only for a result with a wording: not where the reviewer builds it.
- * LLM_BUILD_ROOT is the root the agent built in where it built or tried to, and
- * LLM_BUILD_OUTPUT what it built, beside which LLM_BUILD_XPI_MATCH is its comparison with the
- * submitted XPI.
+ * SCA_BUILD_SAFETY_ASSESSMENT is the judgement the review holds, the preparation's or its
+ * own, SCA_VULNERABILITIES the submitted lock's count, and LLM_RESCUED_VULNERABILITIES the
+ * rescued copy's where a rescue was attempted. LLM_BUILD_RESULT is the wording of what came
+ * of the agent's build (buildResultFact), held where the review shows the Build Review
+ * Details, a source code review whose build every guard vouches for, and only for a result
+ * with a wording: not where the reviewer builds it. LLM_BUILD_ROOT is the root the agent
+ * built in where it built or tried to, and LLM_BUILD_OUTPUT what it built, beside which
+ * LLM_BUILD_XPI_MATCH is its comparison with the submitted XPI.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {import("./format.js").ReviewMeta}
@@ -679,6 +683,9 @@ function detailsMeta(state, registry) {
       : {}),
     ...(build.vulnerabilities
       ? { buildVulnerabilities: build.vulnerabilities }
+      : {}),
+    ...(build.rescuedVulnerabilities
+      ? { rescuedVulnerabilities: build.rescuedVulnerabilities }
       : {}),
     ...(worded ? { buildResult: worded } : {}),
     ...(build.root ? { buildRoot: build.root } : {}),

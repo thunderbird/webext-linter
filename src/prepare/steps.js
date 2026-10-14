@@ -19,8 +19,9 @@
 // with lock-only commands and audits them until no high or critical advisory remains. Only
 // then it builds, in a fresh copy of the whole `rescued/` in `build/`, so nothing is ever
 // installed or built in the rescued copy. It names what the build produced, or that the rescue
-// failed. The linter audits the copy again and checks the output it names. Where both hold, the
-// copy is reviewed instead of the original. Otherwise the copy and `build/` are deleted, and
+// failed. The linter audits the copy again, whatever the agent answered, records its counts
+// beside the submitted lock's, and checks the output it names. Where both hold, the copy is
+// reviewed instead of the original. Otherwise the copy and `build/` are deleted, and
 // the original is done: it is reviewed like any other source, and its vulnerability checks
 // stop it.
 //
@@ -87,7 +88,7 @@ const EXP_SOURCE = "SCA_EXP_SOURCE";
 const PACKAGE_MANAGERS = "PACKAGE_MANAGERS";
 /** The review file's entry for the reader's judgement of the build, as
  *  `llm-sca-review-prompt` names it. */
-const LLM_BUILD_SAFETY = "LLM_BUILD_SAFETY";
+const SCA_BUILD_SAFETY_ASSESSMENT = "SCA_BUILD_SAFETY_ASSESSMENT";
 /** The review file's entry for what the agent's build produced, as `llm-sca-review-prompt`
  *  names it: in `build/` after a build and after a rescue. */
 const LLM_BUILD_OUTPUT = "LLM_BUILD_OUTPUT";
@@ -183,7 +184,10 @@ function rootEntries(record) {
  * @returns {object}
  */
 function safetyEntry(judgement) {
-  return valueEntry({ name: LLM_BUILD_SAFETY, values: judgement.values }, null);
+  return valueEntry(
+    { name: SCA_BUILD_SAFETY_ASSESSMENT, values: judgement.values },
+    null
+  );
 }
 
 /**
@@ -524,7 +528,7 @@ function answeredRoots(work, record, judgement) {
   const keyOf = (e) => String(e?.index);
   const all = readHandback(paths.review).entries;
   // Every entry but the judgement names a folder.
-  const handed = all.filter((e) => keyOf(e) !== LLM_BUILD_SAFETY);
+  const handed = all.filter((e) => keyOf(e) !== SCA_BUILD_SAFETY_ASSESSMENT);
   // A blank answer names no folder, and would otherwise resolve to the folder it is
   // resolved against.
   for (const entry of handed) {
@@ -543,11 +547,11 @@ function answeredRoots(work, record, judgement) {
   );
   // The judgement is a process value, checked against the labels its entry offered.
   const picked = answersOf(
-    all.filter((e) => keyOf(e) === LLM_BUILD_SAFETY),
+    all.filter((e) => keyOf(e) === SCA_BUILD_SAFETY_ASSESSMENT),
     [safetyEntry(judgement)],
     { name: "extract", answer: "value" },
     keyOf
-  ).get(LLM_BUILD_SAFETY);
+  ).get(SCA_BUILD_SAFETY_ASSESSMENT);
   const sca = realSca(paths);
   const root = realFolder(path.resolve(sca, answers.get(ROOT).trim()));
   if (!root || relativeInside(root, sca) === null) {
@@ -739,11 +743,12 @@ function wholeCopy(from, to, called) {
 }
 
 /**
- * The rescue, handed back: done with the copy as the reviewed source where the output the
- * agent named lies inside `build/` and the copy's lock audits clean, its counts and the
- * agent's comparison recorded. Otherwise, or where the agent answered that the rescue failed,
- * the rescue failed: the folder is done with its roots back in `sca/`, before the copy and
- * `build/` are removed.
+ * The rescue, handed back: the copy's lock audited, whatever the agent answered, and its
+ * counts recorded beside the submitted lock's, null where the audit cannot read it in full.
+ * Done with the copy as the reviewed source where the output the agent named lies inside
+ * `build/` and the copy's lock audits clean, with the agent's comparison recorded. Otherwise,
+ * or where the agent answered that the rescue failed, the rescue failed: the folder is done
+ * with its roots back in `sca/`, before the copy and `build/` are removed.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `rescue`.
  * @param {AuditContext} context
@@ -761,23 +766,25 @@ async function rescueStep(work, record, context, asked, match) {
   }
   const { sca, rescued, buildCopy } = workPaths(work);
   const output = producedIn(answers.answer, phase, buildCopy);
-  if (output) {
-    const found = await auditRoot(record.roots, context);
-    if (isClean(found)) {
-      return done(work, {
-        ...record,
-        vulnerabilities: vulnerabilityCounts(found),
-        buildResult: BUILD_RESULT.built,
-        buildOutput: output,
-        buildMatch: answers.match,
-      });
-    }
+  const found = await auditRoot(record.roots, context);
+  const rescuedVulnerabilities = found.complete
+    ? vulnerabilityCounts(found)
+    : null;
+  if (output && isClean(found)) {
+    return done(work, {
+      ...record,
+      rescuedVulnerabilities,
+      buildResult: BUILD_RESULT.built,
+      buildOutput: output,
+      buildMatch: answers.match,
+    });
   }
   const real = fs.realpathSync(rescued);
   const back = (p) =>
     p ? path.join(fs.realpathSync(sca), path.relative(real, p)) : p;
   const failed = markPrepare(work, {
     ...record,
+    rescuedVulnerabilities,
     step: PREPARE_STEP.done,
     roots: {
       scaRoot: back(record.roots.scaRoot),

@@ -281,7 +281,7 @@ shapes:
       required: true
       why: what follows from it, so the reviewer can choose
 
-  # One answer the preparation's LLM_BUILD_SAFETY judgement offers.
+  # One answer the preparation's SCA_BUILD_SAFETY_ASSESSMENT judgement offers.
   build-safety-value-entry:
     value:
       kind: one-of

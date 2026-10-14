@@ -201,7 +201,7 @@ export const readJson = (work, name) =>
 
 /**
  * Do what the first prompt asks, the way its reader would: extract the source into
- * EXTRACT_TO, write the build report to LLM_BUILD_PROCESS, answer ANSWERS (the build judged
+ * EXTRACT_TO, write the build report to SCA_BUILD_PROCESS, answer ANSWERS (the build judged
  * safe, and the roots), and run the hand-back it prints. Where that prints the permission
  * prompt, answer it too (the agent let build) and run its hand-back - which, with nothing
  * to rescue, starts the review.
@@ -222,7 +222,7 @@ export function handBackRoots(
   if (expSource) {
     fs.mkdirSync(path.join(root, expSource), { recursive: true });
   }
-  fs.writeFileSync(headerValue(stdout, "LLM_BUILD_PROCESS"), "1. `npm ci`\n");
+  fs.writeFileSync(headerValue(stdout, "SCA_BUILD_PROCESS"), "1. `npm ci`\n");
   const answers = headerValue(stdout, "ANSWERS");
   const fill = (given) => {
     const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
@@ -235,7 +235,7 @@ export function handBackRoots(
   const work = workOf(stdout);
   const handBack = (out) =>
     typed ? run(["--llm-handback", typed(work)]) : run(argvOf(commandOf(out)));
-  fill({ LLM_BUILD_SAFETY: safety, SCA_ROOT: root });
+  fill({ SCA_BUILD_SAFETY_ASSESSMENT: safety, SCA_ROOT: root });
   const handed = handBack(stdout);
   if (handed.code !== 0 || readJson(work, "prepare").step !== "permission") {
     return handed;

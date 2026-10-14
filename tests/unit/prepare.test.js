@@ -469,7 +469,7 @@ test("the first step asks for the build judgement", () => {
   const [safety, root] = JSON.parse(
     fs.readFileSync(workPaths(work).review, "utf8")
   ).entries;
-  assert.equal(safety.index, "LLM_BUILD_SAFETY");
+  assert.equal(safety.index, "SCA_BUILD_SAFETY_ASSESSMENT");
   assert.equal(safety.answer, null);
   assert.equal(recordOf(work).vulnerabilities, null);
   assert.equal(recordOf(work).buildResult, null);
@@ -527,7 +527,7 @@ test("an unsafe build is done at once, with nothing audited", async () => {
     { "package.json": packageFile(), "package-lock.json": npmLock() },
     { cache: auditCache() }
   );
-  const at = await extractStep(work, { LLM_BUILD_SAFETY: "unsafe" });
+  const at = await extractStep(work, { SCA_BUILD_SAFETY_ASSESSMENT: "unsafe" });
   assert.equal(at.next, "review");
   assert.equal(at.record.step, PREPARE_STEP.done);
   assert.equal(at.record.buildSafety, "unsafe");
@@ -560,12 +560,14 @@ test("agentBuilds skips the permission question", async () => {
 test("a build judgement that is no label, or has no build report, is refused", async () => {
   const work = workFolder({ "package.json": packageFile() });
   await assert.rejects(
-    extractStep(work, { LLM_BUILD_SAFETY: "fine" }),
-    refused(/LLM_BUILD_SAFETY answers "fine", which this entry does not accept/)
+    extractStep(work, { SCA_BUILD_SAFETY_ASSESSMENT: "fine" }),
+    refused(
+      /SCA_BUILD_SAFETY_ASSESSMENT answers "fine", which this entry does not accept/
+    )
   );
   await assert.rejects(
-    extractStep(work, { LLM_BUILD_SAFETY: null }),
-    refused(/LLM_BUILD_SAFETY still has no "answer"/)
+    extractStep(work, { SCA_BUILD_SAFETY_ASSESSMENT: null }),
+    refused(/SCA_BUILD_SAFETY_ASSESSMENT still has no "answer"/)
   );
   answer(work, { SCA_ROOT: workPaths(work).sca });
   fs.rmSync(workPaths(work).build, { force: true });
@@ -979,9 +981,10 @@ async function rescued(vulns = TOOL_HIGH) {
   return { work, copy: workPaths(work).rescued, root: at.record.roots.scaRoot };
 }
 
-/** A rescue that failed: done, its roots back in sca/, the copy deleted, and the original
- *  lock's counts recorded. */
-function rescueFailed(work, at) {
+/** A rescue that failed: done, its roots back in sca/, the copy deleted, the original
+ *  lock's counts recorded, and beside them the copy's, as its audit found them before it
+ *  was deleted. */
+function rescueFailed(work, at, copyCounts) {
   assert.equal(at.next, "review");
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.done);
@@ -990,14 +993,15 @@ function rescueFailed(work, at) {
   assert.equal(at.record.buildMatch, null);
   assert.equal(at.record.roots.scaRoot, workPaths(work).sca);
   assert.deepEqual(at.record.vulnerabilities, ONE_HIGH);
+  assert.deepEqual(at.record.rescuedVulnerabilities, copyCounts);
   assert.deepEqual(recordOf(work), at.record);
   assert.ok(!fs.existsSync(workPaths(work).rescued), "the copy is deleted");
   assert.ok(!fs.existsSync(workPaths(work).buildCopy), "the build is deleted");
 }
 
 // The copy's lock audits clean, and the output the agent named lies inside it: the folder is
-// done with the copy as the reviewed source, its build recorded, and the copy's own counts -
-// a moderate advisory left in it included - in place of the original's.
+// done with the copy as the reviewed source, its build recorded, the original's counts kept,
+// and the copy's own counts beside them, a moderate advisory left in it included.
 test("a clean copy with its build output is done with the copy's roots", async () => {
   const { work, copy, root } = await rescued({
     ...TOOL_HIGH,
@@ -1017,7 +1021,8 @@ test("a clean copy with its build output is done with the copy's roots", async (
   assert.equal(at.record.roots.scaRoot, root, "the copy is what is reviewed");
   assert.equal(at.record.buildResult, "built");
   assert.equal(at.record.buildOutput, output);
-  assert.deepEqual(at.record.vulnerabilities, {
+  assert.deepEqual(at.record.vulnerabilities, ONE_HIGH);
+  assert.deepEqual(at.record.rescuedVulnerabilities, {
     moderate: 1,
     high: 0,
     critical: 0,
@@ -1062,7 +1067,11 @@ test("a rescue's comparison is recorded, and refused without an output", async (
 // the agent built from it.
 test("a copy still vulnerable on its audit fails the rescue", async () => {
   const { work, root } = await rescued();
-  rescueFailed(work, await handOutput(work, buildRescued(work, root)));
+  rescueFailed(
+    work,
+    await handOutput(work, buildRescued(work, root)),
+    ONE_HIGH
+  );
   // Handed back again, its review is handed out once more, asking nothing.
   const again = await later(work);
   assert.equal(again.next, "review");
@@ -1070,11 +1079,25 @@ test("a copy still vulnerable on its audit fails the rescue", async () => {
   cleanup(work);
 });
 
-// The agent's own word that the rescue failed is taken: nothing is audited, and the copy
-// goes.
+// The agent's own word that the rescue failed is taken, and the copy goes. It is audited
+// first, so the record counts what the agent left in it: here a fixed release with a
+// moderate advisory, which the original lock does not hold.
 test("a rescue the agent answers as failed fails", async () => {
-  const { work } = await rescued();
-  rescueFailed(work, await handOutput(work, "The rescue failed"));
+  const { work, root } = await rescued({
+    ...TOOL_HIGH,
+    "lint-pebble@0.4.1": [
+      advisory("GHSA-tool-moderate", "MODERATE", "lint-pebble", "0.4.2"),
+    ],
+  });
+  writeTree(root, {
+    "package.json": packageFile("0.4.1"),
+    "package-lock.json": npmLock("0.4.1"),
+  });
+  rescueFailed(work, await handOutput(work, "The rescue failed"), {
+    moderate: 1,
+    high: 0,
+    critical: 0,
+  });
   cleanup(work);
 });
 
@@ -1095,7 +1118,7 @@ test("a rescue output outside build/ fails the rescue", async (t) => {
         "package-lock.json": npmLock(null),
       });
       writeTree(workPaths(work).buildCopy, { "notes.txt": "" });
-      rescueFailed(work, await handOutput(work, named(work, root)));
+      rescueFailed(work, await handOutput(work, named(work, root)), NONE);
       cleanup(work);
     });
   }
@@ -1133,7 +1156,8 @@ test("the audit reads the run's OSV cache", async () => {
   // The copy's audit reads the same lock from the same cache, and finds it vulnerable.
   rescueFailed(
     work,
-    await handOutput(work, buildRescued(work, at.record.roots.scaRoot))
+    await handOutput(work, buildRescued(work, at.record.roots.scaRoot)),
+    ONE_HIGH
   );
   cleanup(work);
 });
@@ -1199,7 +1223,7 @@ test("a copy the audit cannot vouch for is not clean", async (t) => {
       const { work, root } = await rescued();
       const output = buildRescued(work, root);
       edit(root);
-      rescueFailed(work, await handOutput(work, output));
+      rescueFailed(work, await handOutput(work, output), null);
       cleanup(work);
     });
   }
@@ -1466,6 +1490,21 @@ test("a build record the linter would not write is refused", async (t) => {
       "a count of another severity",
       (r) => ({ ...r, vulnerabilities: { ...ONE_HIGH, low: 0 } }),
       "holds vulnerabilities as no count the linter writes",
+    ],
+    [
+      "a rescued count while the agent builds",
+      (r) => ({ ...r, rescuedVulnerabilities: ONE_HIGH }),
+      "holds rescuedVulnerabilities as no count the linter writes",
+    ],
+    [
+      "a rescued count of another severity",
+      (r) => ({
+        ...r,
+        step: PREPARE_STEP.done,
+        buildResult: "rescue-failed",
+        rescuedVulnerabilities: { ...ONE_HIGH, low: 0 },
+      }),
+      "holds rescuedVulnerabilities as no count the linter writes",
     ],
     [
       "a result before the build is handed back",

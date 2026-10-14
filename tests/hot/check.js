@@ -84,14 +84,18 @@ function stopOf(work) {
   const registry = loadRegistry().withPolicy({
     warningsAsErrors: state.run.warningsAsErrors,
   });
+  // The rows both stops show: the counts, and the wording of what came of the agent's build.
+  const shown = {
+    SCA_VULNERABILITIES: state.build?.vulnerabilities ?? null,
+    LLM_RESCUED_VULNERABILITIES: state.build?.rescuedVulnerabilities ?? null,
+    LLM_BUILD_RESULT:
+      registry.llmPhases().buildResults[buildResultFact(state)] ?? null,
+  };
   if (state.phase === "built") {
-    const counts = state.build?.vulnerabilities ?? null;
     return {
       stop: "row-14",
-      LLM_BUILD_SAFETY: state.values?.["build-safety"] ?? null,
-      BUILD_VULNERABILITIES: counts,
-      LLM_BUILD_RESULT:
-        registry.llmPhases().buildResults[buildResultFact(state)] ?? null,
+      SCA_BUILD_SAFETY_ASSESSMENT: state.values?.["build-safety"] ?? null,
+      ...shown,
       LLM_BUILD_OUTPUT: state.build?.output
         ? areaOf(work, state.build.output)
         : false,
@@ -107,6 +111,7 @@ function stopOf(work) {
     }
     return {
       stop: "abort",
+      ...shown,
       reasons: earlyExit.reasons.map((r) => r.id),
       findings: settled.review.findings
         .filter((f) => f.severity === "error")
@@ -133,12 +138,21 @@ function differences(expect, got) {
       continue;
     }
     const have = got[key];
-    if (key === "BUILD_VULNERABILITIES") {
-      // Only the severities the case names: the rest move with what OSV publishes.
+    if (
+      key === "SCA_VULNERABILITIES" ||
+      key === "LLM_RESCUED_VULNERABILITIES"
+    ) {
+      // Only the severities the case names: the rest move with what OSV publishes. A count
+      // is exact, or `{ "atLeast": n }` where the case pins only a floor.
       for (const [severity, n] of Object.entries(want)) {
-        if (have?.[severity] !== n) {
+        const got = have?.[severity];
+        const holds =
+          typeof n === "number"
+            ? got === n
+            : Number.isInteger(got) && got >= n.atLeast;
+        if (!holds) {
           out.push(
-            `${key}.${severity}: expected ${n}, got ${show(have?.[severity] ?? null)}`
+            `${key}.${severity}: expected ${show(n)}, got ${show(got ?? null)}`
           );
         }
       }

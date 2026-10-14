@@ -53,7 +53,7 @@ entry never offered are all refusals.
 
 | Phase | What it is for | What fills its answers |
 | --- | --- | --- |
-| `build-safety` | Source code review only: write the build report (`LLM_BUILD_PROCESS`), with a safety section listing anything the build fetches or runs from outside the declared dependencies, and judge whether building is safe. Not where the review was prepared: it starts with the judgement and the build report its preparation recorded. | A process value: `safe` / `unsafe` |
+| `build-safety` | Source code review only: write the build report (`SCA_BUILD_PROCESS`), with a safety section listing anything the build fetches or runs from outside the declared dependencies, and judge whether building is safe. Not where the review was prepared: it starts with the judgement and the build report its preparation recorded. | A process value: `safe` / `unsafe` |
 | `built` | Source code review only: show the Build Review Details block (see below) as the last thing of the turn, then, once the reviewer has replied, relay the build to-do (`build-reproduces-xpi`) to them alone as the question. Where the reviewer builds themselves, the pause after the block is the one in which they build. A step says who built the add-on, by the build result, and the agent builds and compares nothing. Issued only while that to-do is open. | A process value: `Builds and reproduces` / `Does not reproduce` / `Does not build` / `Is unsafe to build` |
 | `spawn` | Start the sub-agents the review needs - the add-on description and one sweep per tree - and read back what the sweeps found. | Nothing: each sweep's reply is written to a file of its own (see below) |
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
@@ -85,7 +85,7 @@ Which steps a phase prints is decided by each step's `when:` condition: `AND`, `
 and parentheses over the facts of this run - the `--llm-skip-*` flags it was given,
 `aborted` once a finding has aborted the review, `sca` for a source code review,
 `build-guarded` when every check a build relies on ran, the build result (`agent-built`,
-`agent-build-failed`, `build-unsafe` or `self-build`, exactly one of them),
+`agent-build-failed`, `rescue-failed`, `build-unsafe` or `self-build`, exactly one of them),
 `sweep-xpi` / `sweep-sca` for a tree with a sweep to run, `first` on the review's first
 prompt, `spawned` once `spawn` went out, `decided` once `verify` or `settle` did, and
 `closing` in the closing prompt. A step with no condition prints in every run, and a phase
@@ -123,14 +123,17 @@ review's build part is these steps:
 3. **`build-safety`**, only where nothing was prepared: the agent writes the build report
    and records its judgement, and builds nothing.
 4. **`built`** first shows the Build Review Details block as the last thing of the turn:
-   `XPI_FILE`, `XPI_ROOT`, `SCA_ROOT`, `LLM_BUILD_PROCESS`, `LLM_BUILD_SAFETY`, `BUILD_VULNERABILITIES`
-   (`n moderate, n high, n critical`, the lock's vulnerable packages counted from the
-   review's own audit, with no request of its own), `LLM_BUILD_RESULT` and, where the agent
-   built it, `LLM_BUILD_OUTPUT` and `LLM_BUILD_XPI_MATCH` (`match` or `no match`, the agent's comparison
+   `XPI_FILE`, `XPI_ROOT`, `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT`, `SCA_ROOT`,
+   `SCA_VULNERABILITIES` (`n moderate, n high, n critical`, the submitted lock's vulnerable
+   packages as the preparation counted them, or the review's own audit where it counted
+   none), and, where the agent built it, `LLM_BUILD_OUTPUT`, `LLM_BUILD_RESULT`,
+   `LLM_BUILD_ROOT` and `LLM_BUILD_XPI_MATCH` (`match` or `no match`, the agent's comparison
    of that output with the submitted XPI in the preparation). `LLM_BUILD_RESULT` reports the
-   agent's attempt only: `build succeeded`, `build failed: see build.md` or `not built:
-   unsafe`. It is absent where the reviewer builds the add-on (`self-build`: the reviewer did
-   not let the agent build, nothing was prepared, or the rescue failed).
+   agent's attempt only: `build succeeded`, `build failed: see build.md`, `not built: rescue
+   failed` or `not built: unsafe`. It is absent where the reviewer builds the add-on
+   (`self-build`: the reviewer did not let the agent build, or nothing was prepared). A
+   failed rescue always aborts the review in step 2, so only the Final Review Details show
+   `not built: rescue failed`.
 5. Once the reviewer has replied, **`built`** asks them alone to build the add-on from the
    source and compare the result with the submitted XPI, relaying the `build-reproduces-xpi`
    to-do as the question. The step before the question is worded by the build result
@@ -363,7 +366,7 @@ what this review is and where to read it. Every details block is built from the 
 so each holds every row of the block before it, plus what is new:
 
 - the preparation's **Build Review Details** (the `permission` prompt): `XPI_FILE`,
-  `SCA_ROOT`, `LLM_BUILD_PROCESS` and `LLM_BUILD_SAFETY`;
+  `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT` and `SCA_ROOT`;
 - the review's **Build Review Details** (`built`): every row below the review holds, but
   `ADDON_DESCRIPTION` and `REVIEW_REPORT`, since `built` goes out before the description
   agent is started and before the report is handed over;
@@ -372,23 +375,31 @@ so each holds every row of the block before it, plus what is new:
   the review was aborted early.
 
 A row the review does not hold is left out: the build rows appear only in a source code
-review whose build every guard vouches for (`build-guarded`).
+review whose build every guard vouches for (`build-guarded`), and `SCA_VULNERABILITIES` in
+every source code review whose lock was audited.
+
+The rows are grouped by prefix and sorted by name within each group, in the table's order.
+`XPI_` and `SCA_` rows describe the submission: the build report and its safety assessment
+are about how the source builds, whoever wrote them. `LLM_` rows are what the agent's own
+build attempt produced. `ADDON_DESCRIPTION` and `REVIEW_REPORT`, which only the later blocks
+carry, come last.
 
 | Name | What it names |
 | --- | --- |
 | `XPI_FILE` | What was submitted, a link named by what it was submitted as - the .xpi as ATN named it, or the folder's own name where the submission arrived unpacked |
 | `XPI_ROOT` | The shipped package, unpacked, ready to read |
+| `SCA_BUILD_PROCESS` | What building the add-on takes and whether it is safe, written by the agent in `build-safety`, in a source code review |
+| `SCA_BUILD_SAFETY_ASSESSMENT` | The build judgement the review holds, the preparation's or its own: `safe` or `unsafe` |
+| `SCA_EXP_SOURCE` | The Experiment implementation folder, when one was named |
 | `SCA_ROOT` | A source code review's source root - the whole of which is reviewed - labelled "source archive" in `sca/`, or "rescued source (reduced/fixed dependencies)" where a rescue came out clean and the root lies in `rescued/` |
 | `SCA_ROOT_ORIG` | The same root in `sca/`, the source as submitted - only after a rescue, since it is `SCA_ROOT` otherwise |
-| `SCA_EXP_SOURCE` | The Experiment implementation folder, when one was named |
-| `ADDON_DESCRIPTION` | Where a sub-agent wrote a description of the add-on, for reading while answering |
-| `LLM_BUILD_PROCESS` | What building the add-on takes and whether it is safe, written by the agent in `build-safety`, in a source code review |
-| `LLM_BUILD_SAFETY` | The build judgement the review holds, the preparation's or its own: `safe` or `unsafe` |
-| `BUILD_VULNERABILITIES` | The lock's vulnerable packages counted from the review's own audit, as `n moderate, n high, n critical` |
-| `LLM_BUILD_RESULT` | What came of the agent's attempt: `build succeeded`, `build failed: see build.md` or `not built: unsafe` - absent where the reviewer builds the add-on |
-| `LLM_BUILD_ROOT` | The root in `build/`, where the agent's build ran - only where the agent built or tried to |
+| `SCA_VULNERABILITIES` | The submitted lock's vulnerable packages, as `n moderate, n high, n critical`: the preparation's first audit, or where nothing was audited there the review's own, held once any dependency-vulnerability check read the lock |
 | `LLM_BUILD_OUTPUT` | What the agent's build produced in the preparation, a file or a folder inside `build/`, named by its own name - only where the agent built it, since the reviewer may build it themselves and a build may fail |
+| `LLM_BUILD_RESULT` | What came of the agent's attempt: `build succeeded`, `build failed: see build.md`, `not built: rescue failed` or `not built: unsafe` - absent where the reviewer builds the add-on |
+| `LLM_BUILD_ROOT` | The root in `build/`, where the agent's build ran - only where the agent built or tried to |
 | `LLM_BUILD_XPI_MATCH` | The agent's comparison of `LLM_BUILD_OUTPUT` with the submitted XPI in the preparation: `match` (the same files at the same paths with the same contents, only line endings may differ) or `no match` - only beside `LLM_BUILD_OUTPUT` |
+| `LLM_RESCUED_VULNERABILITIES` | The rescued copy's vulnerable packages, as the linter's audit at the rescue's hand-back counted them, whether the rescue came out clean or failed - only where a rescue was attempted and its lock could be read in full |
+| `ADDON_DESCRIPTION` | Where a sub-agent wrote a description of the add-on, for reading while answering |
 | `REVIEW_REPORT` | The text the reviewer sends to the developer, written by the linter |
 
 The linter names these files and reads none of them. The description is a sub-agent's,
@@ -461,10 +472,10 @@ that has one, it settles the root itself before reading anything (`src/addon/sca
 and says so in its Setup feed.
 
 The same prompt has its reader **judge the build**. It writes the build report to
-`LLM_BUILD_PROCESS` (the work folder's `build.md`): the release build for Thunderbird as a short
+`SCA_BUILD_PROCESS` (the work folder's `build.md`): the release build for Thunderbird as a short
 numbered list, its install step as `npm ci` or `pnpm install --frozen-lockfile`, and a
 "Safety" section listing anything the build fetches or runs from outside the declared
-dependencies. It runs nothing. Then it answers the `LLM_BUILD_SAFETY` entry of `ANSWERS` with
+dependencies. It runs nothing. Then it answers the `SCA_BUILD_SAFETY_ASSESSMENT` entry of `ANSWERS` with
 `safe` or `unsafe`, the same two values the review's `build-safety` phase accepts.
 
 The reader hands the roots and the judgement back in the work folder's review file (`ANSWERS`, the same
@@ -498,8 +509,9 @@ exactly as the review's own dependency audit reads it. Before that it asks wheth
 registry entry installs the release it names (`lockfile-injection`'s question): a lock that
 names one release and installs another is not audited at all, since what OSV would be asked
 about is not what the build installs. Nothing else is judged here - another reason to stop, an Experiment, `--checks-*`, the band policy: all of that stays with
-the review. The record keeps the audited lock's vulnerable packages counted by severity
-(moderate, high, critical). The outcomes:
+the review. The record keeps the submitted lock's vulnerable packages counted by severity
+(moderate, high, critical) as `vulnerabilities`, which nothing replaces, and shows them as
+`SCA_VULNERABILITIES`. The outcomes:
 
 - **The audit cannot read the lock in full** (no lock, one that does not parse, more than one
   lock, an entry from a source the audit cannot read, an entry that installs another release
@@ -507,7 +519,7 @@ the review. The record keeps the audited lock's vulnerable packages counted by s
   review, which stops on that lock.
 - **The lock is clean**: the linter copies the whole `sca/` into the work folder's `build/`,
   and the next prompt (`build`) has the reader build in `LLM_BUILD_ROOT`, `SCA_ROOT`'s place in
-  that copy, as `LLM_BUILD_PROCESS` describes, installing exactly what the lock pins (`npm ci` or
+  that copy, as `SCA_BUILD_PROCESS` describes, installing exactly what the lock pins (`npm ci` or
   `pnpm install --frozen-lockfile`). A build that writes next to its root still writes inside `build/`. It answers the `LLM_BUILD_OUTPUT` entry with the
   final artifact the build produced inside `build/` (an XPI or zip file, or a folder), as an
   absolute path, or with `The build failed`, after adding a "Build attempt" section (the
@@ -533,11 +545,14 @@ the review. The record keeps the audited lock's vulnerable packages counted by s
   `LLM_BUILD_OUTPUT` with the final artifact the build produced inside `build/`, or with
   `The rescue failed`, and `LLM_BUILD_XPI_MATCH` as the build prompt has it, null beside
   `The rescue failed`.
-  The hand-back then audits the copy's lock itself and checks that output. Where both hold,
-  the copy is reviewed instead of the original, and its counts replace the original's. A copy
+  The hand-back then audits the copy's lock itself, whatever the reader answered, and records
+  its counts beside the original's as `rescuedVulnerabilities`, shown as
+  `LLM_RESCUED_VULNERABILITIES`, or null where the copy's lock cannot be read in full. It also
+  checks that output. Where both hold, the copy is reviewed instead of the original. A copy
   whose lock names one release and installs another is not clean.
 - **The rescue failed** (the reader said so, the copy is still vulnerable, or the output is
-  not inside `build/`): the copy and `build/` are deleted, the record says the rescue failed, and the
+  not inside `build/`): the copy is audited first, as above, then the copy and `build/` are
+  deleted, the record says the rescue failed (`LLM_BUILD_RESULT: not built: rescue failed`), and the
   original is reviewed, **unrescued**: its vulnerability checks come early in the review,
   the first of them to report a vulnerable lock entry stops the checks, and its
   vulnerability findings end the review. It closes as any aborted review does. Its audit of the lock asks OSV
@@ -607,7 +622,7 @@ the review sit in its hidden `.review/` folder, out of the reviewer's sight:
 | `.review/review.json` | The file the agent fills in and hands back (`ANSWERS` while a source code review is prepared) | the linter, each pass |
 | `report.md` | `REVIEW_REPORT` | the linter |
 | `summary.md` | `ADDON_DESCRIPTION` | the agent, from a sub-agent's reply |
-| `build.md` | `LLM_BUILD_PROCESS` | the agent, in `build-safety`, in a source code review |
+| `build.md` | `SCA_BUILD_PROCESS` | the agent, in `build-safety`, in a source code review |
 | `build/` | Where every build of the preparation runs (`LLM_BUILD_ROOT` lies inside it), holding `LLM_BUILD_OUTPUT`: a copy of the whole `sca/` for a clean source, or of the whole `rescued/` before each build of a rescue, and removed when the rescue fails | the linter for a clean source, the reader of the `rescue` prompt for a rescue |
 | `.review/sweep-<artifact>.answers.json` | One tree's sweep answers | the agent, from a sweeping agent's reply |
 | `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again | the linter, whenever it audits |

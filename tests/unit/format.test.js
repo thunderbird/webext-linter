@@ -12,6 +12,7 @@ import {
   headerLines,
   schemaLines,
   detailLinkLines,
+  detailRows,
   locusLabeler,
   locationLine,
   issuesBodyLines,
@@ -1678,9 +1679,9 @@ test("detailLinkLines links every location, XPI_FILE among them", () => {
   assert.deepEqual(lines, [
     "* XPI_FILE: [a.xpi](/x/in/a.xpi)",
     "* XPI_ROOT: [extracted addon](/x/work/xpi/)",
+    "* SCA_BUILD_PROCESS: [build.md](/x/a.build.md)",
     "* SCA_ROOT: [source archive](/x/src)",
     "* ADDON_DESCRIPTION: [summary.md](/x/work/summary.md)",
-    "* LLM_BUILD_PROCESS: [build.md](/x/a.build.md)",
     "",
     "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
   ]);
@@ -1694,6 +1695,47 @@ test("detailLinkLines links every location, XPI_FILE among them", () => {
     detailLinkLines({ ...base, xpiFile: undefined }).slice(0, 1),
     ["* XPI_ROOT: [extracted addon](/x/work/xpi/)"]
   );
+});
+
+// Every details block lists its rows grouped by prefix, XPI_ then SCA_ then LLM_, sorted by
+// name within each group, and ADDON_DESCRIPTION and REVIEW_REPORT, which only the later
+// blocks carry, last.
+test("detailRows lists every row in its order", () => {
+  const names = detailRows({
+    reportFile: "/w/report.md",
+    summaryFile: "/w/summary.md",
+    rescuedVulnerabilities: { moderate: 0, high: 1, critical: 0 },
+    buildMatch: "match",
+    buildRoot: "/w/build/src",
+    buildResult: "build succeeded",
+    buildOutput: "/w/build/src/dist",
+    buildVulnerabilities: { moderate: 1, high: 2, critical: 0 },
+    scaRootOrig: "/w/sca/src",
+    scaRoot: "/w/rescued/src",
+    scaExpSource: "/w/rescued/src/api",
+    buildSafety: "safe",
+    buildFile: "/w/build.md",
+    xpiRoot: "/w/xpi/",
+    xpiFile: "a.xpi",
+    xpi: "/in/a.xpi",
+  }).map((row) => row.slice(2, row.indexOf(":")));
+  assert.deepEqual(names, [
+    "XPI_FILE",
+    "XPI_ROOT",
+    "SCA_BUILD_PROCESS",
+    "SCA_BUILD_SAFETY_ASSESSMENT",
+    "SCA_EXP_SOURCE",
+    "SCA_ROOT",
+    "SCA_ROOT_ORIG",
+    "SCA_VULNERABILITIES",
+    "LLM_BUILD_OUTPUT",
+    "LLM_BUILD_RESULT",
+    "LLM_BUILD_ROOT",
+    "LLM_BUILD_XPI_MATCH",
+    "LLM_RESCUED_VULNERABILITIES",
+    "ADDON_DESCRIPTION",
+    "REVIEW_REPORT",
+  ]);
 });
 
 // A reviewer's own words are never folded away. The display cap does lose a note past 25

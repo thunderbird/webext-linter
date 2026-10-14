@@ -2108,7 +2108,7 @@ review-early-exit:
 # where the source archive's own extraction goes (EXTRACT_TO, the work folder's sca/ -
 # path math, not archive reading), and the reader does what only opening the archive can
 # settle: extracting it there, and deciding where the code root is and which folder holds the
-# Experiment implementation. They also write the build report (LLM_BUILD_PROCESS) and judge
+# Experiment implementation. They also write the build report (SCA_BUILD_PROCESS) and judge
 # whether building is safe. They hand the two paths and the judgement back in ANSWERS. An
 # unsafe build ends the preparation. After a safe one the reviewer reads the Build Review
 # Details and is asked alone whether the agent may build the add-on (`permission`), unless
@@ -2130,9 +2130,9 @@ review-early-exit:
 # The step lists are prompts. `extract` is printed by --llm-sca-review with the intro and
 # the Submission values, `permission` by the run that settled a safe build, with ANSWERS
 # and the Build Review Details ({{buildDetails}}), `build` by the run that audited a clean
-# lock, with SCA_ROOT, LLM_BUILD_ROOT (the root's place in build/) and LLM_BUILD_PROCESS, and `rescue`
+# lock, with SCA_ROOT, LLM_BUILD_ROOT (the root's place in build/) and SCA_BUILD_PROCESS, and `rescue`
 # by the run that made the rescued copy, with the copy's root as RESCUE_ROOT, LLM_BUILD_ROOT and
-# LLM_BUILD_PROCESS, and the two commands that make build/ a copy of rescued/ ({{copy}}). Each of
+# SCA_BUILD_PROCESS, and the two commands that make build/ a copy of rescued/ ({{copy}}). Each of
 # them ends in the one command its reader ever runs, {{flags}}: the hand-back of a work folder.
 llm-sca-review-prompt:
   intro: |-
@@ -2169,9 +2169,9 @@ llm-sca-review-prompt:
 
         Under a "Safety" heading, list anything the build reaches for outside the declared dependencies - a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, an install hook that downloads or runs code from outside the declared dependencies, or a step whose source is not in the tree. Name the file and the line for each, and say what it does. Where you find none, say so.
 
-        Write it to LLM_BUILD_PROCESS, given above, and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision.
+        Write it to SCA_BUILD_PROCESS, given above, and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision.
     - text: |-
-        Open ANSWERS, given above. Answer its entry whose "index" is LLM_BUILD_SAFETY with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. It is your judgement of what the safety section lists. Change nothing else in the file.
+        Open ANSWERS, given above. Answer its entry whose "index" is SCA_BUILD_SAFETY_ASSESSMENT with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. It is your judgement of what the safety section lists. Change nothing else in the file.
     - when: NOT experiments
       text: |-
         In ANSWERS, write <SCA_ROOT> as the "answer" of the entry whose "index" is SCA_ROOT, and change nothing else in the file.
@@ -2202,7 +2202,7 @@ llm-sca-review-prompt:
         {{flags}}
     - text: |-
         That run reads the answer and prints the next prompt. Follow it from there - this one is done.
-  # The agent's judgement of the build it reported, as the LLM_BUILD_SAFETY entry of ANSWERS.
+  # The agent's judgement of the build it reported, as the SCA_BUILD_SAFETY_ASSESSMENT entry of ANSWERS.
   # The same two values the review loop's `build-safety` phase accepts, which is how the
   # review reads the recorded judgement. Unsafe ends the preparation: nothing is audited or
   # rescued, and the agent builds nothing.
@@ -2235,11 +2235,11 @@ llm-sca-review-prompt:
   # LLM_BUILD_XPI_MATCH (build-match).
   build:
     - text: |-
-        The linter audited the lock file of SCA_ROOT, given above, and found no known high or critical vulnerability in it, so the add-on is built now. The linter copied the whole source archive for this step, and LLM_BUILD_ROOT, given above, is SCA_ROOT in that copy. Build in LLM_BUILD_ROOT, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in LLM_BUILD_PROCESS.
+        The linter audited the lock file of SCA_ROOT, given above, and found no known high or critical vulnerability in it, so the add-on is built now. The linter copied the whole source archive for this step, and LLM_BUILD_ROOT, given above, is SCA_ROOT in that copy. Build in LLM_BUILD_ROOT, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in SCA_BUILD_PROCESS.
 
         Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci`, or `pnpm install --frozen-lockfile` where the copy has a pnpm-lock.yaml, and with no flag that leaves dependencies out. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
     - text: |-
-        Where the build failed, add a section headed "Build attempt" to the end of LLM_BUILD_PROCESS: the step that failed, and the error output it printed. Change nothing else in that file.
+        Where the build failed, add a section headed "Build attempt" to the end of SCA_BUILD_PROCESS: the step that failed, and the error output it printed. Change nothing else in that file.
     - text: |-
         Where the build produced its output, compare it with SUBMITTED_XPI, given above: it holds the same files at the same paths, each with the same contents, where only line endings may differ. Compare only that, and change nothing.
     - text: |-
@@ -2275,7 +2275,7 @@ llm-sca-review-prompt:
 
         {{copy}}
 
-        Then build in LLM_BUILD_ROOT, and only there. Install the dependencies exactly as the lock file pins them: `npm ci`, or `pnpm install --frozen-lockfile` where LLM_BUILD_ROOT has a pnpm-lock.yaml, with no flag that leaves dependencies out. Then follow the build process described in LLM_BUILD_PROCESS.
+        Then build in LLM_BUILD_ROOT, and only there. Install the dependencies exactly as the lock file pins them: `npm ci`, or `pnpm install --frozen-lockfile` where LLM_BUILD_ROOT has a pnpm-lock.yaml, with no flag that leaves dependencies out. Then follow the build process described in SCA_BUILD_PROCESS.
 
         Where the build fails, find out why and change the dependencies again in RESCUE_ROOT, then audit again and copy again before the next build. A build often needs a dependency the trimming removed: a `prepare` script that runs `husky`, for one, fails without husky. Keep such a dependency, or remove the script from package.json where the release build does not need it. Where no change makes a clean lock build, the rescue failed.
     - text: |-
@@ -2339,7 +2339,8 @@ llm-sca-review-prompt:
 #                condition is AND / OR / NOT over the facts REVIEW_PROMPT_FACTS names - the
 #                flags given, `aborted`, `sca`, `build-guarded`, `sweep-<artifact>`,
 #                `first`, `spawned`, `decided`, `closing`, and the build result:
-#                `agent-built`, `agent-build-failed`, `build-unsafe` or `self-build` -
+#                `agent-built`, `agent-build-failed`, `rescue-failed`, `build-unsafe` or
+#                `self-build` -
 #                and over the process values
 #                recorded so far, read with value(phase, id) (src/checks/condition.js).
 #   HANDOVER     ONE text, appended by the linter as the last numbered step of every phase
@@ -2404,12 +2405,14 @@ llm-phases:
       permission: the question whether the agent may build the add-on
       built: the question whether the source is safe to build, builds, and reproduces the submitted XPI
       ask: the questions on the findings left to your judgement
-  # What LLM_BUILD_RESULT in the Build Review Details says of the agent's attempt: it built
-  # the add-on, its build failed, or the build was judged unsafe so nothing was built. The
-  # row is shown only for these three results.
+  # What LLM_BUILD_RESULT in the details blocks says of the agent's attempt: it built the
+  # add-on, its build failed, its rescue failed so nothing was built, or the build was judged
+  # unsafe so nothing was built. The row is shown only for these four results. A failed
+  # rescue always aborts the review, so no `built` step names it.
   build-results:
     agent-built: build succeeded
     agent-build-failed: "build failed: see build.md"
+    rescue-failed: "not built: rescue failed"
     build-unsafe: "not built: unsafe"
   # Refused: the agent handed back a file that is not what the pass asked for. The prompt is
   # NOT re-printed - the agent still has it, and re-issuing the same text against the same
@@ -2492,8 +2495,8 @@ llm-phases:
     # whether the review goes on, which is not what that flag withholds.
     #
     # Its first step is the Build Review Details: the submitted XPI, the source the review
-    # read, the build report and its judgement, the vulnerabilities the review's audit counted
-    # in the lock, and what came of the build (`build-results`), with what it produced where
+    # read, the build report and its judgement, the vulnerabilities counted in the submitted
+    # lock, and what came of the build (`build-results`), with what it produced where
     # the agent built it. What the question is answered from, and where the reviewer builds
     # themselves, the pause in which they build. The next step says who built the add-on, by
     # the build result the review holds. The agent builds and compares nothing here.
@@ -2529,13 +2532,13 @@ llm-phases:
             The agent built the add-on: LLM_BUILD_OUTPUT in the Build Review Details names what its build produced, and LLM_BUILD_XPI_MATCH is the agent's earlier comparison of it with XPI_FILE, which the reviewer reads beside both. Build nothing and compare nothing, only put the question below.
         - when: NOT aborted AND agent-build-failed
           text: |-
-            The agent's build failed, and the "Build attempt" section of LLM_BUILD_PROCESS says where. The reviewer may build the add-on themselves before they answer.
+            The agent's build failed, and the "Build attempt" section of SCA_BUILD_PROCESS says where. The reviewer may build the add-on themselves before they answer.
         - when: NOT aborted AND build-unsafe
           text: |-
             The agent judged the build unsafe and built nothing. The reviewer builds the add-on themselves, where they judge it safe to, before they answer, and may answer "Is unsafe to build".
         - when: NOT aborted AND self-build
           text: |-
-            The agent did not build the add-on. The reviewer builds it themselves, following LLM_BUILD_PROCESS, before they answer.
+            The agent did not build the add-on. The reviewer builds it themselves, following SCA_BUILD_PROCESS, before they answer.
         - when: NOT aborted
           text: |-
             Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.

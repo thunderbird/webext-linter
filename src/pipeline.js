@@ -916,9 +916,12 @@ async function reviewSubmission(opts, work, prepared) {
       },
       answers: {},
       // What came of the agent's build in the preparation, what it produced where it built
-      // and how that compares with the submitted XPI, as the record holds them, and the vulnerable packages this review's own audit
-      // counted in the lock it read (lockVulnerabilities). The Build Review Details show
-      // them, and the `built` step is worded by them (src/report/loop.js buildResultFact).
+      // and how that compares with the submitted XPI, as the record holds them. Beside them
+      // the submitted lock's vulnerable packages, as the preparation counted them, or where
+      // it counted none as this review's own audit did (lockVulnerabilities), and the
+      // rescued copy's, as the preparation counted them at the rescue's hand-back. The
+      // details blocks show them, and the `built` step is worded by them (src/report/loop.js
+      // buildResultFact).
       build: {
         result: prepared?.buildResult ?? null,
         // The root in the copy the agent built in, where it built or tried to.
@@ -935,10 +938,19 @@ async function reviewSubmission(opts, work, prepared) {
           prepared?.buildResult === BUILD_RESULT.built
             ? prepared.buildMatch
             : null,
-        vulnerabilities: lockVulnerabilities(
-          scaArchive,
-          registry.buildGuardIds().every((id) => ranIds.has(id))
-        ),
+        vulnerabilities:
+          prepared?.vulnerabilities ??
+          lockVulnerabilities(
+            scaArchive,
+            registry
+              .checkIds()
+              .some(
+                (id) =>
+                  registry.earlyExitFor(id) === VULNERABILITY_EXIT &&
+                  ranIds.has(id)
+              )
+          ),
+        rescuedVulnerabilities: prepared?.rescuedVulnerabilities ?? null,
       },
       // The judgement a preparation recorded, as the `build-safety` value its phase would
       // return, so that phase is not issued (its steps' `when:`), and build.md, which the
@@ -1048,13 +1060,18 @@ async function reviewSubmission(opts, work, prepared) {
  *  would refuse the very folder it was prepared in. */
 const WORK_INPUTS = new Set(["sca", "rescued", "buildCopy", "prepare"]);
 
+/** The early-exit reason the dependency-vulnerability checks share: the checks that read
+ *  the lock audit's lists (src/prepare/audit.js LOCK_AUDIT_LISTS). */
+const VULNERABILITY_EXIT = "known-vulnerabilities";
+
 /**
  * The vulnerable packages of the lock this review read, counted by severity from its own
  * audit, as the preparation counts a lock it audited (vulnerabilityCounts). Null where the
- * audit was not made in full: every check that reads it (`build-guard`) has to have run,
- * since one that was skipped or not reached may leave it unasked.
+ * audit did not happen. It happened once any dependency-vulnerability check ran: each reads
+ * the vendor reading, which audits the whole lock first and records every list at once, or
+ * ends the run (src/vendor/verify.js auditLockedPackages).
  * @param {?import("./addon/load.js").Addon} archive  The source archive, or null.
- * @param {boolean} audited  Every `build-guard` check ran.
+ * @param {boolean} audited  A dependency-vulnerability check ran.
  * @returns {?import("./prepare/audit.js").VulnerabilityCounts}
  */
 function lockVulnerabilities(archive, audited) {

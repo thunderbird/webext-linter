@@ -48,7 +48,7 @@ import {
 /** Bumped when the record's shape, or what a step does with it, changes in a way an older
  *  file cannot satisfy. A preparation in flight does not survive the upgrade, and saying so
  *  beats reading it wrongly. */
-export const PREPARE_VERSION = 9;
+export const PREPARE_VERSION = 10;
 
 /** The mode every write leaves the record at: readable, and writable by nobody. */
 const READ_ONLY = 0o444;
@@ -92,7 +92,7 @@ export const BUILD_RESULT = Object.freeze({
   rescueFailed: "rescue-failed",
 });
 
-/** The severities a record counts the reviewed lock's vulnerable packages by. */
+/** The severities a record counts a lock's vulnerable packages by. */
 const COUNTED = ["moderate", "high", "critical"];
 
 /**
@@ -116,11 +116,14 @@ const COUNTED = ["moderate", "high", "critical"];
  *   `agentBuilds` answered it up front), false after an unsafe judgement, which asks
  *   nothing, and null before either. False, the preparation audits and rescues nothing,
  *   and the agent builds nothing.
- * @property {?import("./audit.js").VulnerabilityCounts} vulnerabilities  The lock the
- *   review reads, its vulnerable packages counted by severity as the linter's audit found
- *   them: the original's, or the rescued copy's once its rescue came out clean. Held from
- *   `build` and `rescue` on, and null where the lock was never audited or could not be
- *   read in full.
+ * @property {?import("./audit.js").VulnerabilityCounts} vulnerabilities  The submitted
+ *   lock's vulnerable packages, counted by severity as the linter's first audit found them.
+ *   Held from `build` and `rescue` on, never replaced, and null where the lock was never
+ *   audited or could not be read in full.
+ * @property {?import("./audit.js").VulnerabilityCounts} rescuedVulnerabilities  The rescued
+ *   copy's lock, counted the same way by the audit at the rescue's hand-back, whether the
+ *   rescue came out clean or failed. Held only in a done record whose rescue was attempted,
+ *   and null where no rescue was attempted or the copy's lock could not be read in full.
  * @property {?string} buildResult  A BUILD_RESULT value once the agent's build was handed
  *   back, and null where it built nothing.
  * @property {?string} buildOutput  What the build produced, a file or folder, absolute and
@@ -247,6 +250,17 @@ function checkBuild(record, unaudited) {
   const result = record.buildResult;
   const known = Object.values(BUILD_RESULT);
   const done = record.step === PREPARE_STEP.done;
+  // Counted only at a rescue's hand-back, which leaves the folder done with a result, and
+  // only beside the submitted lock's own count.
+  const rescued = record.rescuedVulnerabilities;
+  const rescuedHold =
+    rescued === null ||
+    (done && result !== null && isCounts(counts) && isCounts(rescued));
+  if (!rescuedHold) {
+    throw new HandbackRefused(
+      "the preparation's record holds rescuedVulnerabilities as no count the linter writes"
+    );
+  }
   if (
     done
       ? result !== null && (!known.includes(result) || !record.packageManagers)
@@ -341,6 +355,7 @@ export function startRecord({ submission, flags, agentBuilds }) {
     packageManagers: null,
     roots: null,
     vulnerabilities: null,
+    rescuedVulnerabilities: null,
     buildResult: null,
     buildOutput: null,
     buildMatch: null,

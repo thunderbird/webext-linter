@@ -433,7 +433,7 @@ function isValueBlock(paragraph) {
 /** The values the first prompt of the preparation hands its reader, in the order the steps
  *  use them. Named here because the prompt's steps name them: the facts are a table the
  *  reader looks up, never a sentence they have to extract a path from. The first three are
- *  read off the submission. EXTRACT_TO, LLM_BUILD_PROCESS and ANSWERS are the work folder's own:
+ *  read off the submission. EXTRACT_TO, SCA_BUILD_PROCESS and ANSWERS are the work folder's own:
  *  where the source archive is extracted, where the build report is written, and the review
  *  file the roots and the build judgement are handed back in. */
 const SUBMISSION_VALUES = [
@@ -441,7 +441,7 @@ const SUBMISSION_VALUES = [
   ["SOURCE_ARCHIVE", (v) => v.submission.source],
   ["FOLDER", (v) => v.submission.folder],
   ["EXTRACT_TO", (v) => v.extractTo],
-  ["LLM_BUILD_PROCESS", (v) => v.buildProcess],
+  ["SCA_BUILD_PROCESS", (v) => v.buildProcess],
   ["ANSWERS", (v) => v.answers],
 ];
 
@@ -478,8 +478,8 @@ function valueLines(entries) {
  * a path by looking up a name rather than by parsing a sentence: the Submission block on the
  * first prompt - EXTRACT_TO among them: this tool cannot open a source archive itself, but
  * it can still name where one should land - ANSWERS on every later prompt, and the
- * Build block on the build and rescue prompts: SCA_ROOT, LLM_BUILD_ROOT and LLM_BUILD_PROCESS
- * on the build's, RESCUE_ROOT, LLM_BUILD_ROOT and LLM_BUILD_PROCESS on the rescue's, and
+ * Build block on the build and rescue prompts: SCA_ROOT, LLM_BUILD_ROOT and SCA_BUILD_PROCESS
+ * on the build's, RESCUE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_PROCESS on the rescue's, and
  * SUBMITTED_XPI on both, which the build's output is compared with. The STEPS
  * are prose, and
  * they name those given values - and the ones the reader still has to work out, <SCA_ROOT>
@@ -544,7 +544,7 @@ export function scaPromptLines(prompt, list, values) {
         ["SCA_ROOT", values.scaRoot],
         ["RESCUE_ROOT", values.rescueRoot],
         ["LLM_BUILD_ROOT", values.buildRoot],
-        ["LLM_BUILD_PROCESS", values.buildProcess],
+        ["SCA_BUILD_PROCESS", values.buildProcess],
         ["SUBMITTED_XPI", values.submittedXpi],
       ].filter(([, value]) => value);
   if (build.length) {
@@ -708,25 +708,44 @@ export function detailLinkLines(meta) {
  * schema line. XPI_FILE is named by what was submitted and LLM_BUILD_OUTPUT by its own basename,
  * which is what the submission and the build called them.
  *
+ * The rows are grouped by prefix and sorted by name within each group. XPI_ and SCA_ describe
+ * the submission, the build report and its safety assessment among them, since both are about
+ * how the source builds. LLM_ is what the agent's own build attempt produced.
+ * ADDON_DESCRIPTION and REVIEW_REPORT, which only the later blocks carry, come last.
+ *
  * SCA_ROOT is the reviewed source: the source archive, or after a rescue the rescued copy,
- * beside which SCA_ROOT_ORIG names the same root in the source archive. LLM_BUILD_ROOT is the
- * root in the copy the agent built in, named where it built or tried to.
+ * beside which SCA_ROOT_ORIG names the same root in the source archive. SCA_VULNERABILITIES
+ * counts the submitted lock, and LLM_RESCUED_VULNERABILITIES the rescued copy's lock where
+ * the agent attempted a rescue. LLM_BUILD_ROOT is the root in the copy the agent built in,
+ * named where it built or tried to.
  * @param {ReviewMeta & {scaRootOrig?: string, buildSafety?: string,
- *   buildVulnerabilities?: {moderate: number, high: number, critical: number},
- *   buildResult?: string, buildRoot?: string, buildMatch?: string}} meta  The review's meta
- *   and what it holds beside it: the original root after a rescue, the build judgement, the
- *   lock's vulnerable packages by severity, the wording of what came of the build, the root
- *   the agent built in, and the agent's comparison of its output with the submitted XPI,
- *   shown only beside that output.
+ *   buildVulnerabilities?: import("../prepare/audit.js").VulnerabilityCounts,
+ *   rescuedVulnerabilities?: import("../prepare/audit.js").VulnerabilityCounts,
+ *   buildResult?: string, buildRoot?: string, buildMatch?: string}} meta  The review's meta and what it holds
+ *   beside it: the original root after a rescue, the build judgement, the submitted lock's
+ *   vulnerable packages by severity and the rescued copy's, the wording of what came of the
+ *   build, the root the agent built in, and the agent's comparison of its output with the
+ *   submitted XPI, shown only beside that output.
  * @returns {string[]}
  */
 export function detailRows(meta) {
+  const counted = ({ moderate, high, critical }) =>
+    `${moderate} moderate, ${high} high, ${critical} critical`;
   const rows = [];
   if (meta.xpiFile) {
     rows.push(["XPI_FILE", displayLine(meta.xpiFile), meta.xpi]);
   }
   if (meta.xpiRoot) {
     rows.push(["XPI_ROOT", "extracted addon", meta.xpiRoot]);
+  }
+  if (meta.buildFile) {
+    rows.push(["SCA_BUILD_PROCESS", "build.md", meta.buildFile]);
+  }
+  if (meta.buildSafety) {
+    rows.push(["SCA_BUILD_SAFETY_ASSESSMENT", null, meta.buildSafety]);
+  }
+  if (meta.scaExpSource) {
+    rows.push(["SCA_EXP_SOURCE", "experiment source", meta.scaExpSource]);
   }
   if (meta.scaRoot) {
     rows.push([
@@ -740,24 +759,18 @@ export function detailRows(meta) {
   if (meta.scaRootOrig) {
     rows.push(["SCA_ROOT_ORIG", "source archive", meta.scaRootOrig]);
   }
-  if (meta.scaExpSource) {
-    rows.push(["SCA_EXP_SOURCE", "experiment source", meta.scaExpSource]);
-  }
-  if (meta.summaryFile) {
-    rows.push(["ADDON_DESCRIPTION", "summary.md", meta.summaryFile]);
-  }
-  if (meta.buildFile) {
-    rows.push(["LLM_BUILD_PROCESS", "build.md", meta.buildFile]);
-  }
-  if (meta.buildSafety) {
-    rows.push(["LLM_BUILD_SAFETY", null, meta.buildSafety]);
-  }
   if (meta.buildVulnerabilities) {
-    const { moderate, high, critical } = meta.buildVulnerabilities;
     rows.push([
-      "BUILD_VULNERABILITIES",
+      "SCA_VULNERABILITIES",
       null,
-      `${moderate} moderate, ${high} high, ${critical} critical`,
+      counted(meta.buildVulnerabilities),
+    ]);
+  }
+  if (meta.buildOutput) {
+    rows.push([
+      "LLM_BUILD_OUTPUT",
+      displayLine(path.basename(meta.buildOutput)),
+      meta.buildOutput,
     ]);
   }
   if (meta.buildResult) {
@@ -766,15 +779,18 @@ export function detailRows(meta) {
   if (meta.buildRoot) {
     rows.push(["LLM_BUILD_ROOT", "build copy", meta.buildRoot]);
   }
-  if (meta.buildOutput) {
+  if (meta.buildOutput && meta.buildMatch) {
+    rows.push(["LLM_BUILD_XPI_MATCH", null, meta.buildMatch]);
+  }
+  if (meta.rescuedVulnerabilities) {
     rows.push([
-      "LLM_BUILD_OUTPUT",
-      displayLine(path.basename(meta.buildOutput)),
-      meta.buildOutput,
+      "LLM_RESCUED_VULNERABILITIES",
+      null,
+      counted(meta.rescuedVulnerabilities),
     ]);
-    if (meta.buildMatch) {
-      rows.push(["LLM_BUILD_XPI_MATCH", null, meta.buildMatch]);
-    }
+  }
+  if (meta.summaryFile) {
+    rows.push(["ADDON_DESCRIPTION", "summary.md", meta.summaryFile]);
   }
   if (meta.reportFile) {
     rows.push(["REVIEW_REPORT", "report.md", meta.reportFile]);

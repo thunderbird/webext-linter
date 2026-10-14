@@ -512,7 +512,7 @@ test("the build details name the XPI, the source, the report, the judgement, the
   const xpi = `* XPI_FILE: [addon-1.0.xpi](${state.report.meta.xpi})`;
   const unpacked = `* XPI_ROOT: [extracted addon](${state.report.meta.xpiRoot})`;
   const root = `* SCA_ROOT: [source archive](${state.paths.scaRoot})`;
-  const report = `* LLM_BUILD_PROCESS: [build.md](${state.paths.build})`;
+  const report = `* SCA_BUILD_PROCESS: [build.md](${state.paths.build})`;
   assert.deepEqual(rows(), [xpi, unpacked, root]);
   state.products = ["build"];
   state.values = { "build-safety": "safe" };
@@ -525,12 +525,12 @@ test("the build details name the XPI, the source, the report, the judgement, the
   assert.deepEqual(rows(), [
     xpi,
     unpacked,
-    root,
     report,
-    "* LLM_BUILD_SAFETY: safe",
-    "* BUILD_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
-    "* LLM_BUILD_RESULT: build succeeded",
+    "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
+    root,
+    "* SCA_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
     `* LLM_BUILD_OUTPUT: [addon-1.0.xpi](${state.build.output})`,
+    "* LLM_BUILD_RESULT: build succeeded",
     "* LLM_BUILD_XPI_MATCH: no match",
   ]);
 });
@@ -628,9 +628,9 @@ test("the details name the reviewed root, the original root and the build root",
 });
 
 // LLM_BUILD_RESULT reports the agent's attempt, one wording per build result: the agent built
-// it, its build failed, or the build was judged unsafe so nothing was built. Where the
-// reviewer builds it (the agent was not let build, nothing was prepared, or its rescue
-// failed) the row is absent.
+// it, its build failed, its rescue failed, or the build was judged unsafe so nothing was
+// built. Where the reviewer builds it (the agent was not let build, or nothing was prepared)
+// the row is absent.
 test("the build result is worded by what came of the agent's attempt", () => {
   const { state, work } = scaReview(tmp());
   const result = () =>
@@ -642,7 +642,7 @@ test("the build result is worded by what came of the agent's attempt", () => {
     [{ result: "failed" }, "safe", "build failed: see build.md"],
     [{ result: null }, "unsafe", "not built: unsafe"],
     [{ result: null }, "safe", null],
-    [{ result: "rescue-failed" }, "safe", null],
+    [{ result: "rescue-failed" }, "safe", "not built: rescue failed"],
     [undefined, undefined, null],
   ];
   for (const [build, safety, said] of cases) {
@@ -2290,7 +2290,7 @@ test("the build report is linked once the judging phase wrote it", () => {
     accept(state, work, PHASES, REGISTRY);
     const next = issue(state, work, PHASES, REGISTRY);
     assert.equal(next.phase.name, "built");
-    const linked = /^\* LLM_BUILD_PROCESS: \[build\.md\]/m;
+    const linked = /^\* SCA_BUILD_PROCESS: \[build\.md\]/m;
     for (const block of [
       loopSlots(state, next, work, REGISTRY).buildDetails,
       reviewDetails(state, REGISTRY),
@@ -2298,7 +2298,7 @@ test("the build report is linked once the judging phase wrote it", () => {
       if (wrote) {
         assert.match(block, linked);
       } else {
-        assert.doesNotMatch(block, /LLM_BUILD_PROCESS/);
+        assert.doesNotMatch(block, /SCA_BUILD_PROCESS/);
       }
     }
   }

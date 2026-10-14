@@ -28,6 +28,8 @@ import {
 } from "../seed-caches.js";
 import { defaultWorkFolder, workPaths } from "../../src/util/dest.js";
 import { advisory, auditEntries, realPreparation } from "../prepared.js";
+import { readState } from "../../src/report/state.js";
+import { reviewDetails } from "../../src/report/loop.js";
 
 // A cache pre-seeded from the fixtures so the schema / experiments / library-hash
 // fetches all hit disk - these runs stay offline.
@@ -1919,5 +1921,53 @@ test("an unrescued review ends on its known vulnerabilities alone", async () => 
   assert.deepEqual(
     meta.earlyExit.reasons.map((r) => [r.id, r.text]),
     [["known-vulnerabilities", "Known security vulnerabilities"]]
+  );
+});
+
+// A source review with no preparation counts the lock from its own audit, which the first
+// vulnerability check that read the lock completed. So a review aborted there, before the
+// other vulnerability checks ran, still names the submitted lock's count in its details.
+test("an aborted review without a preparation counts the lock it audited", async () => {
+  const workCache = seedWorkCache({
+    osv: auditEntries({
+      "lint-pebble@0.4.0": [
+        advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
+      ],
+      "argv-crumb@0.0.8": [],
+      "tidy-lantern@2.1.0": [],
+      "wick-trim@1.0.1": [],
+    }),
+    popularity: popularityEntries({
+      npm: {
+        "lint-pebble": { downloads: 1_000_000 },
+        "tidy-lantern": { downloads: 1_000_000 },
+      },
+    }),
+  });
+  const workFolder = freshWorkFolder();
+  const { meta } = await runReview({
+    addonPath: path.join(UNRESCUED_FIXTURE, "xpi"),
+    scaRoot: path.join(UNRESCUED_FIXTURE, "src"),
+    llmReview: true,
+    workFolder,
+    workCache,
+    ...OFFLINE,
+    cdnLookupCache: cdnMissCache(
+      path.join(UNRESCUED_FIXTURE, "xpi"),
+      path.join(UNRESCUED_FIXTURE, "src")
+    ),
+  });
+  assert.equal(meta.checksRun.at(-1), "vendor-vulnerable-dev");
+  const state = readState(workPaths(workFolder).state);
+  assert.deepEqual(state.build.vulnerabilities, {
+    moderate: 0,
+    high: 0,
+    critical: 1,
+  });
+  assert.equal(state.build.rescuedVulnerabilities, null);
+  assert.ok(
+    reviewDetails(state, loadRegistry())
+      .split("\n")
+      .includes("* SCA_VULNERABILITIES: 0 moderate, 0 high, 1 critical")
   );
 });

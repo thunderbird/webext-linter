@@ -75,7 +75,7 @@ export function answer(work, answers) {
   const file = workPaths(work).review;
   const doc = JSON.parse(fs.readFileSync(file, "utf8"));
   const given = {
-    LLM_BUILD_SAFETY: "safe",
+    SCA_BUILD_SAFETY_ASSESSMENT: "safe",
     PACKAGE_MANAGERS: "Let it build",
     ...answers,
   };

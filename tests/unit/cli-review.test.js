@@ -82,7 +82,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
   ]);
   assert.equal(rejected.code, 1, rejected.stderr);
   assert.match(rejected.stdout, /── LLM Prompt ──/);
-  assert.doesNotMatch(rejected.stdout, /LLM_BUILD_PROCESS/);
+  assert.doesNotMatch(rejected.stdout, /SCA_BUILD_PROCESS/);
   assert.ok(
     !rejected.stdout.split("\n").some((l) => /\/build\.md$/.test(l.trim())),
     "no build report is asked for"

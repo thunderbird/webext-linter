@@ -167,18 +167,20 @@ export const sweepSlot = (artifact) =>
 export const sweepAnswersSlot = (artifact) => `${sweepSlot(artifact)}Answers`;
 
 /** The build results that report the agent's attempt: it built the add-on in the
- *  preparation (`agent-built`), its build failed (`agent-build-failed`), or the build was
- *  judged unsafe so nothing was built (`build-unsafe`). The Build Review Details word
- *  exactly these in their LLM_BUILD_RESULT row (`build-results`, assets/registry.yaml). */
+ *  preparation (`agent-built`), its build failed (`agent-build-failed`), its rescue failed so
+ *  nothing was built (`rescue-failed`), or the build was judged unsafe so nothing was built
+ *  (`build-unsafe`). The details blocks word exactly these in their LLM_BUILD_RESULT row
+ *  (`build-results`, assets/registry.yaml). */
 export const WORDED_BUILD_FACTS = [
   "agent-built",
   "agent-build-failed",
+  "rescue-failed",
   "build-unsafe",
 ];
 
 /** What came of the build, as the review loop names it: one of WORDED_BUILD_FACTS, or the
- *  agent was not let build, nothing was prepared, or its rescue failed, and the reviewer
- *  builds it (`self-build`). Exactly one holds in every review (src/report/loop.js
+ *  agent was not let build or nothing was prepared, and the reviewer builds it
+ *  (`self-build`). Exactly one holds in every review (src/report/loop.js
  *  buildResultFact). */
 export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
 
@@ -282,7 +284,7 @@ export const SCA_PROMPT_COMMAND = "{{flags}}";
  *  is offered exactly once (assertScaPrompt), so every answer reads as one of the two. */
 export const PACKAGE_MANAGER_VALUES = ["allow", "decline"];
 
-/** The values the preparation's LLM_BUILD_SAFETY judgement accepts back, by id: the agent's
+/** The values the preparation's SCA_BUILD_SAFETY_ASSESSMENT judgement accepts back, by id: the agent's
  *  judgement of the build it reported. Each id is offered exactly once (assertScaPrompt),
  *  and the review's `build-safety` phase accepts each, since the review reads the recorded
  *  judgement as that phase's value. */

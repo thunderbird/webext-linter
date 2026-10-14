@@ -11,7 +11,7 @@
 // report byte for byte) is really a completeness check on this shape.
 //
 // WHY THE AGENT NEVER SEES IT: what the linter needs across passes would otherwise become
-// a contract. A value a step names (LLM_BUILD_PROCESS, say) is handed over in the prompt, and
+// a contract. A value a step names (SCA_BUILD_PROCESS, say) is handed over in the prompt, and
 // the rest stays here.
 import fs from "node:fs";
 import path from "node:path";
@@ -47,12 +47,15 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   where a later pass WRITES, so losing it would leave the reviewer holding a link to a
  *   file nothing refreshes.
  * @property {{result: ?string, output: ?string, match: ?string,
- *   vulnerabilities: ?{moderate: number, high: number, critical: number}}} build  What came
- *   of the agent's build in the preparation (a BUILD_RESULT value, src/prepare/state.js, or
- *   null where it built nothing), what it produced where it built and the agent's comparison
- *   of that with the submitted XPI, and the lock's vulnerable packages as this
- *   review's own audit counted them, null where that audit was not made in full. The Build
- *   Review Details show them, and the `built` step is worded by them.
+ *   vulnerabilities: ?{moderate: number, high: number, critical: number},
+ *   rescuedVulnerabilities: ?{moderate: number, high: number, critical: number}}} build
+ *   What came of the agent's build in the preparation (a BUILD_RESULT value,
+ *   src/prepare/state.js, or null where it built nothing), what it produced where it built
+ *   and the agent's comparison of that with the submitted XPI, the submitted lock's
+ *   vulnerable packages as the preparation counted them, or this review's own audit where it
+ *   counted none, null where neither audit happened, and the rescued copy's, null where no
+ *   rescue was attempted. The details blocks show them, and the `built` step is worded by
+ *   them.
  * @property {?string} phase  The phase in flight - what went out last, and so what the
  *   next hand-back is read as. Unset until the first prompt goes out, which is how a prompt
  *   knows it is the first (`first`, src/report/loop.js runOf).
