@@ -37,7 +37,10 @@ test("the preparation quotes an argument that carries whitespace", () => {
   // keep the run of spaces the file name has.
   assert.match(r.stdout, new RegExp(`\n  FOLDER\n    ${dir}\n`));
   assert.equal(headerValue(r.stdout, "XPI"), path.join(dir, "addon  v2.xpi"));
-  assert.match(r.stdout, new RegExp(`--llm-handback '${dir}/addon__v2-`));
+  assert.match(
+    r.stdout,
+    new RegExp(`--llm-handback '${dir}/sca-review-addon__v2-`)
+  );
   const handed = handBackRoots(r.stdout);
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
   assert.equal(
@@ -87,7 +90,7 @@ test("--llm-sca-review starts the review of an Experiment it would reject", () =
   assert.equal(r.code, 1, r.stderr);
   assert.doesNotMatch(r.stdout, /SCA Review Prompt/);
   assert.match(r.stdout, /── LLM Prompt ──/);
-  const work = defaultFolderOf(path.join(dir, "addon.xpi"));
+  const work = defaultFolderOf(path.join(dir, "addon.xpi"), "sca");
   // The reject aborts the review, so its first prompt is the close, with the report.
   assert.deepEqual(fs.readdirSync(work).sort(), [
     ".review",
@@ -117,7 +120,7 @@ test("--llm-sca-review starts the review of an Experiment it would reject", () =
       fs
         .readdirSync(dir)
         .map((n) => path.join(dir, n))
-        .find((p) => /addon-[\d-]+T[\d-]+Z$/.test(p) && p !== work)
+        .find((p) => /xpi-review-addon-[\d-]+T[\d-]+Z$/.test(p) && p !== work)
     ),
     "the review --llm-review of the .xpi starts"
   );

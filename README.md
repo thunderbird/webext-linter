@@ -518,16 +518,17 @@ report's **Standard Manual Review** to-do list, unless the review was aborted ea
 
 ```sh
 # Review a submitted xpi against the matching schema (report only - the submission
-# is never modified, though it is extracted to ./submission-<timestamp>/xpi/ to be read)
+# is never modified, though it is extracted to ./xpi-review-submission-<timestamp>/xpi/ to be read)
 node verify.js ./submission.xpi
 
-# Review an already-unpacked folder (copied to ./my-addon-<timestamp>/xpi/ and read there)
+# Review an already-unpacked folder (copied to ./xpi-review-my-addon-<timestamp>/xpi/ and read there)
 node verify.js ./my-addon
 
 # machine-readable JSON output
 node verify.js ./submission.xpi --report-format json
 
-# Review a source-code submission (the built XPI plus its readable source)
+# Review a source-code submission (the built XPI plus its readable source, in
+# ./sca-review-built-<timestamp>/)
 node verify.js ./built.xpi --sca-root ./source
 ```
 

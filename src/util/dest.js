@@ -37,7 +37,9 @@ export function submissionLeaf(p) {
 }
 
 /**
- * The work folder a review starts in: `<name>-<stamp>`, beside the add-on argument.
+ * The work folder a review starts in: `<kind>-review-<name>-<stamp>`, beside the add-on
+ * argument. The kind says what is reviewed, `xpi` for the XPI alone and `sca` for its
+ * source code, so a reviewer tells the two apart in a listing.
  *
  * Beside it, because that is the folder the reviewer downloaded the submission into and is
  * working out of: what they are handed opens where they are looking. For an unpacked
@@ -55,13 +57,15 @@ export function submissionLeaf(p) {
  * `My Add-on 1.0.xpi` is an ordinary name, and anything outside [A-Za-z0-9._@-] can still
  * upset a shell.
  * @param {string} addonPath  The add-on argument, absolute.
+ * @param {"xpi"|"sca"} kind  What the review reviews.
  * @returns {string}
  */
-export function defaultWorkFolder(addonPath) {
-  const name = `${submissionLeaf(addonPath)}-${pathStamp()}`.replace(
-    /[^A-Za-z0-9._@-]/g,
-    "_"
-  );
+export function defaultWorkFolder(addonPath, kind) {
+  const name =
+    `${kind}-review-${submissionLeaf(addonPath)}-${pathStamp()}`.replace(
+      /[^A-Za-z0-9._@-]/g,
+      "_"
+    );
   return path.join(path.dirname(addonPath), name);
 }
 

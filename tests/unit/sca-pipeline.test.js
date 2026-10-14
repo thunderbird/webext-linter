@@ -1769,11 +1769,14 @@ test("a manifest whose name and version are not strings still reviews", async ()
     const { meta, findings } = await runReview({
       addonPath: addon,
       llmReview: true,
-      workFolder: defaultWorkFolder(addon),
+      workFolder: defaultWorkFolder(addon, "xpi"),
       ...OFFLINE,
     });
     // Named from the folder, so neither value was ever read for it.
-    assert.match(path.basename(path.dirname(meta.reportFile)), /^brokenname-/);
+    assert.match(
+      path.basename(path.dirname(meta.reportFile)),
+      /^xpi-review-brokenname-/
+    );
     // And the findings survive.
     assert.ok(
       findings.some((f) => f.ruleId === "mistyped-manifest-value"),

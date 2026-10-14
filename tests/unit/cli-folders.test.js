@@ -35,7 +35,7 @@ test("a plain review of a packed .xpi extracts it into the work folder", () => {
   const r = run([file, ...OFFLINE_FLAGS]);
   assert.notEqual(r.code, 2, r.stderr);
   // The review gets its folder beside the add-on, named after it.
-  const work = defaultFolderOf(file);
+  const work = defaultFolderOf(file, "xpi");
   const extracted = path.join(work, "xpi");
   assert.equal(
     fs.readFileSync(path.join(extracted, "manifest.json"), "utf8"),
@@ -63,7 +63,7 @@ test("a folder add-on is copied into the work folder and its parent left alone",
   const before = fs.readdirSync(addon).sort();
   const r = run([addon, ...OFFLINE_FLAGS]);
   assert.notEqual(r.code, 2, r.stderr);
-  const work = defaultFolderOf(addon);
+  const work = defaultFolderOf(addon, "xpi");
   const copy = path.join(work, "xpi");
   assert.equal(headerValue(r.stdout, "XPI_ROOT"), `${copy}${path.sep}`);
   assert.deepEqual(fs.readdirSync(copy).sort(), before);
@@ -171,8 +171,54 @@ test("--sca-root must not include the add-on", () => {
   // Without --sca-root nothing is reviewed in place, and the default beside it is fine.
   const xpiOnly = run([addon, ...OFFLINE_FLAGS]);
   assert.notEqual(xpiOnly.code, 2, xpiOnly.stderr);
-  const work = defaultFolderOf(addon);
+  const work = defaultFolderOf(addon, "xpi");
   assert.ok(fs.existsSync(path.join(work, "xpi", "manifest.json")));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The work folder says what kind of review it holds: `xpi-review-` for a review of the XPI
+// alone, plain or with --llm-review, and `sca-review-` for a source code review, whether it
+// is prepared with --llm-sca-review or started with --sca-root.
+test("the work folder is named by the kind of review", () => {
+  const madeBeside = (target, args) => {
+    const parent = path.dirname(target);
+    const before = new Set(fs.readdirSync(parent));
+    const r = run([target, ...args]);
+    assert.notEqual(r.code, 2, r.stderr);
+    const made = fs.readdirSync(parent).filter((n) => !before.has(n));
+    assert.equal(made.length, 1, args.join(" "));
+    return made[0];
+  };
+  const clean = path.join(ROOT, "tests", "addons", "clean");
+  for (const args of [OFFLINE_FLAGS, ["--llm-review", ...OFFLINE_FLAGS]]) {
+    const name = madeBeside(addonOutsideRepo(clean), args);
+    assert.ok(name.startsWith("xpi-review-clean-"), name);
+  }
+  const fixture = path.join(ROOT, "tests", "addons", "build-hygiene-sca");
+  for (const extra of [[], ["--llm-review"]]) {
+    const src = addonOutsideRepo(path.join(fixture, "src"));
+    const name = madeBeside(addonOutsideRepo(path.join(fixture, "xpi")), [
+      "--sca-root",
+      src,
+      ...extra,
+      ...OFFLINE_FLAGS,
+    ]);
+    assert.ok(name.startsWith("sca-review-xpi-"), name);
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-kind-"));
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":2,"name":"x","version":"1"}')
+  );
+  zip.writeZip(path.join(dir, "a.xpi"));
+  fs.writeFileSync(path.join(dir, "src.zip"), "");
+  const before = new Set(fs.readdirSync(dir));
+  const prepared = run(["--llm-sca-review", dir]);
+  assert.equal(prepared.code, 0, prepared.stderr);
+  const made = fs.readdirSync(dir).filter((n) => !before.has(n));
+  assert.equal(made.length, 1);
+  assert.ok(made[0].startsWith("sca-review-a-"), made[0]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -186,7 +232,7 @@ test("folders named through a link are reviewed as their targets", () => {
   const r = run([addonLink, ...OFFLINE_FLAGS]);
   assert.notEqual(r.code, 2, r.stderr);
   // The work folder goes beside the target, the folder the add-on really is.
-  const work = defaultFolderOf(target);
+  const work = defaultFolderOf(target, "xpi");
   assert.ok(fs.existsSync(path.join(work, "xpi", "manifest.json")));
   const fixture = path.join(ROOT, "tests", "addons", "build-hygiene-sca");
   const srcLink = path.join(dir, "src");

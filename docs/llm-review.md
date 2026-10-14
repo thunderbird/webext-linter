@@ -297,7 +297,7 @@ answers as the reply:
 ```text
 Sweep this folder, and read nothing outside it:
 
-  /reviews/addon-1.2-<timestamp>/xpi/
+  /reviews/xpi-review-addon-1.2-<timestamp>/xpi/
 
 It is asked about in 2 separate sweeps, each listed below under its label. ...
 
@@ -628,8 +628,9 @@ the review sit in its hidden `.review/` folder, out of the reviewer's sight:
 | `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again | the linter, whenever it audits |
 | `.cache/popularity.json` | The npm download counts and GitHub stars read during this run, kept the same way | the linter, whenever it judges a source's popularity |
 
-The folder is always `<add-on name>-<timestamp>` beside the add-on argument, named by the
-run that starts the review: no flag names another. It must not exist: the run that starts a
+The folder is always `xpi-review-<add-on name>-<timestamp>` beside the add-on argument, or
+`sca-review-<add-on name>-<timestamp>` for a source code review, named by the run that starts
+the review: no flag names another. It must not exist: the run that starts a
 review creates it, and an existing work folder is carried on by `--llm-handback` alone. The one review that starts in a folder already there is the one a preparation's
 hand-back starts, in the folder that holds `.review/prepare.json` and `sca/`. There every name the
 review will create is checked to be free - `--llm-review` claims every name above except

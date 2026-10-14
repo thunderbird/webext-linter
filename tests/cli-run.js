@@ -108,13 +108,15 @@ export function run(args, env = {}) {
 export const workOfReviewFile = (file) => path.dirname(path.dirname(file));
 
 /** The default work folder a review of `addon` created beside it: the one folder there
- *  named after it and a moment. */
-export function defaultFolderOf(addon) {
+ *  named after the kind of review (`xpi` or `sca`), the add-on and a moment. */
+export function defaultFolderOf(addon, kind) {
   const leaf = path.basename(addon).replace(/\.xpi$/, "");
   const made = fs
     .readdirSync(path.dirname(addon))
     .filter((n) =>
-      new RegExp(`^${leaf}-\\d{4}-\\d{2}-\\d{2}T[\\d-]+Z$`).test(n)
+      new RegExp(`^${kind}-review-${leaf}-\\d{4}-\\d{2}-\\d{2}T[\\d-]+Z$`).test(
+        n
+      )
     );
   assert.equal(made.length, 1, "one default work folder, beside the add-on");
   return path.join(path.dirname(addon), made[0]);

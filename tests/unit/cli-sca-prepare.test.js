@@ -71,7 +71,7 @@ test("--llm-sca-review creates the work folder and hands it back", () => {
   assert.equal(r.code, 0, r.stderr);
   const made = fs
     .readdirSync(dir)
-    .filter((n) => /^addon-\d{4}-\d{2}-\d{2}T[\d-]+Z$/.test(n));
+    .filter((n) => /^sca-review-addon-\d{4}-\d{2}-\d{2}T[\d-]+Z$/.test(n));
   assert.equal(made.length, 1, "one work folder, beside the .xpi");
   const work = path.join(dir, made[0]);
   assert.deepEqual(fs.readdirSync(work), [".review"]);
@@ -270,7 +270,7 @@ test("--llm-sca-review hands a skip to the review it prepares", () => {
   const prompt = (out) =>
     out
       .split("── SCA Review Prompt ──")[1]
-      .replace(/addon-\d{4}-\d{2}-\d{2}T[\d-]+Z/g, "<WORK>");
+      .replace(/sca-review-addon-\d{4}-\d{2}-\d{2}T[\d-]+Z/g, "<WORK>");
   assert.equal(
     prompt(r.stdout),
     prompt(run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]).stdout)

@@ -11,20 +11,26 @@ import {
   workPaths,
 } from "../../src/util/dest.js";
 
-// The default folder is named after the submission and read off the PATH the run was
-// given - never off the manifest.json, whose name is submission data of any shape. It sits
-// beside the add-on argument, for a packed and an unpacked one alike.
+// The default folder is named after the kind of review and the submission, read off the
+// PATH the run was given - never off the manifest.json, whose name is submission data of
+// any shape. It sits beside the add-on argument, for a packed and an unpacked one alike.
 test("the default work folder is named after the submission, beside it", () => {
-  for (const p of ["/dl/foo.xpi", "/dl/foo"]) {
-    const work = defaultWorkFolder(p);
-    assert.equal(path.dirname(work), "/dl", p);
-    assert.match(path.basename(work), /^foo-\d{4}-\d{2}-\d{2}T[\d-]+Z$/, p);
+  for (const kind of ["xpi", "sca"]) {
+    for (const p of ["/dl/foo.xpi", "/dl/foo"]) {
+      const work = defaultWorkFolder(p, kind);
+      assert.equal(path.dirname(work), "/dl", p);
+      assert.match(
+        path.basename(work),
+        new RegExp(`^${kind}-review-foo-\\d{4}-\\d{2}-\\d{2}T[\\d-]+Z$`),
+        p
+      );
+    }
   }
   // Escaped, not because a leaf could escape a directory - it cannot - but because an
   // ordinary name like this one would otherwise upset a shell.
   assert.match(
-    path.basename(defaultWorkFolder("/dl/My Add-on 1.0.xpi")),
-    /^My_Add-on_1\.0-/
+    path.basename(defaultWorkFolder("/dl/My Add-on 1.0.xpi", "xpi")),
+    /^xpi-review-My_Add-on_1\.0-/
   );
 });
 

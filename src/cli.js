@@ -870,7 +870,7 @@ export async function main(argv) {
     // the review starts: at its default place, beside the .xpi, as every review's is. Not
     // recursive, and an existing one is refused: the folder is fresh by its moment, so one
     // already there belongs to another review.
-    const work = defaultWorkFolder(submission.xpi);
+    const work = defaultWorkFolder(submission.xpi, "sca");
     try {
       fs.mkdirSync(work);
     } catch (err) {
@@ -1040,8 +1040,12 @@ export async function main(argv) {
   }
   // The work folder is always the default, beside the add-on, and must not exist: it is
   // stamped with the moment the run starts, so only two runs started in the same moment
-  // reach this, and the second is refused before it reads anything.
-  const workFolder = defaultWorkFolder(addonPath);
+  // reach this, and the second is refused before it reads anything. A review given
+  // --sca-root reviews source code, and its folder is named for that.
+  const workFolder = defaultWorkFolder(
+    addonPath,
+    values["sca-root"] ? "sca" : "xpi"
+  );
   if (fs.lstatSync(workFolder, { throwIfNoEntry: false })) {
     writeToStderr(`The work folder "${workFolder}" must not exist.\n`);
     return 2;
