@@ -805,12 +805,13 @@ function sweptResults(state) {
     return null;
   }
   const out = [];
+  const roots = artifactRoots(state.paths);
   for (const [artifact, paths] of trees) {
     const asked = (state.preSweep?.items ?? []).filter(
       (s) => s.artifact === artifact
     );
     try {
-      out.push(...readSweepAnswers(paths.answers, asked));
+      out.push(...readSweepAnswers(paths.answers, asked, roots[artifact]));
     } catch (err) {
       rethrowIfFatal(err);
       throw new HandbackRefused(err.message);

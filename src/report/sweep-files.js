@@ -70,7 +70,7 @@ function sweepRequest({ sweepTarget, sweeps }) {
     "Return your answers as your reply, as one JSON document of this shape:",
     indent(`{"${ANSWERS}": {"<label>": [...]}}`, 2),
     "It lists every label above, each with a list of what you found for it, and an empty list where you found nothing. Put nothing else in the reply: no words before or after it, and no code fence around it.",
-    `Each thing you found is one entry in that list, with a "file" (its path relative to the folder above), a "hint" - a short phrase of at most ${MAX_HINT} characters naming what is there - and a "line" where it sits on one, left out where it does not. Nothing else: no verdict, and no wording for the developer, which is the linter's. Answered, your reply reads:\n\n${indent(example, 2)}`,
+    `Each thing you found is one entry in that list, with a "file" (the path of a file in the folder above, relative to it), a "hint" - a short phrase of at most ${MAX_HINT} characters naming what is there - and a "line" - that file's own line number, counted from its first line, where it sits on one, left out where it does not. Nothing else: no verdict, and no wording for the developer, which is the linter's. Answered, your reply reads:\n\n${indent(example, 2)}`,
     "Write no file.",
   ].join("\n\n");
 }
@@ -193,11 +193,13 @@ export function sweepSlots(state) {
  * else about where its finding goes.
  * @param {string} file  The answers file's path.
  * @param {{label: number, check: string, artifact: string}[]} asked  This tree's sweeps.
+ * @param {string} root  The folder the sweep read, which every result's file and line
+ *   are held to.
  * @returns {{check: string, artifact: string, file: string, line: ?number,
  *   hint: ?string}[]}
  * @throws {Error} Naming what is wrong, for the caller to refuse with.
  */
-export function readSweepAnswers(file, asked) {
+export function readSweepAnswers(file, asked, root) {
   const where = path.basename(file);
   let raw;
   try {
@@ -227,6 +229,8 @@ export function readSweepAnswers(file, asked) {
     }
   }
   const results = [];
+  // Each file is read once per reply, however many results name it.
+  const lineCounts = new Map();
   for (const [label, sweep] of wanted) {
     const value = answers[label];
     if (value === undefined || value === null) {
@@ -242,8 +246,8 @@ export function readSweepAnswers(file, asked) {
     value.forEach((found, i) => {
       const at = `${where}, label ${label}, entry ${i + 1}`;
       // Shape-checked by checkedResult, so its path guards - inside the add-on, never
-      // absolute, never a way out - hold here.
-      const hit = checkedResult(at, found);
+      // absolute, never a way out - hold here, and its file and line exist in the tree.
+      const hit = checkedResult(at, found, root, lineCounts);
       // The check and the artifact come from what was ASKED, never from the file: the
       // agent names a label, and where its finding lands is the review's to know.
       results.push({ ...hit, check: sweep.check, artifact: sweep.artifact });

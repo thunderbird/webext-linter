@@ -29,8 +29,10 @@
 // wording of either (-> assets/registry.yaml), or running the sweep, which the linter
 // never does - an agent does, into a file of its own.
 
+import fs from "node:fs";
 import path from "node:path";
-import { hasParentSegment } from "../addon/load.js";
+import { hasParentSegment, relativeInside } from "../addon/load.js";
+import { rethrowIfFatal } from "../lib/errors.js";
 import { manualEscalations } from "../checks/escalation.js";
 import { renderManualItems } from "./responses.js";
 import { finding } from "./finding.js";
@@ -58,7 +60,7 @@ export const RESULT_SHAPE =
 // for the developer, which is the registry's job. Exported, like RESULT_SHAPE, so the
 // sweep request states the limit this refuses past (src/report/sweep-files.js), and the
 // two are kept in step.
-export const MAX_HINT = 200;
+export const MAX_HINT = 350;
 
 /**
  * One thing a sweep found, checked.
@@ -71,11 +73,18 @@ export const MAX_HINT = 200;
  * names it in a phrase; where it lands and how it reads to a developer are the linter's,
  * from the owning check's registry entry. A result that set its own severity or response
  * would be an agent wording the report.
+ * A result is also held to the tree it was found in: its file is a regular file inside
+ * the folder the sweep read, and its line is one that file has. A line counted across
+ * several files, or a file the agent misremembered, would hand the reader a location
+ * pointing at nothing.
  * @param {string} where  Names the slot it was written into, for the message.
  * @param {*} raw
+ * @param {string} root  The folder the sweep read, absolute.
+ * @param {Map<string, number>} [lineCounts]  Line counts by real path, shared across one
+ *   reply, since one reply can name the same file many times.
  * @returns {{file: string, line: ?number, hint: ?string}}
  */
-export function checkedResult(where, raw) {
+export function checkedResult(where, raw, root, lineCounts = new Map()) {
   const at = where;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error(`${at} must be an object, e.g. ${RESULT_SHAPE}`);
@@ -120,6 +129,17 @@ export function checkedResult(where, raw) {
       `${at} has line ${JSON.stringify(raw.line)} (expected a whole number from 1)`
     );
   }
+  const count = lineCountOf(root, raw.file, lineCounts);
+  if (count === null) {
+    throw new Error(
+      `${at} names file ${JSON.stringify(raw.file)}, which is not a file in the folder the sweep read`
+    );
+  }
+  if (raw.line !== undefined && raw.line > count) {
+    throw new Error(
+      `${at} names line ${raw.line} of ${JSON.stringify(raw.file)}, which has ${count} lines - a line is that file's own line number, counted from its first line`
+    );
+  }
   if (
     raw.hint !== undefined &&
     (typeof raw.hint !== "string" || raw.hint === "")
@@ -138,6 +158,46 @@ export function checkedResult(where, raw) {
     line: raw.line ?? null,
     hint: raw.hint ?? null,
   };
+}
+
+/**
+ * How many lines a file in the swept tree has, or null when `file` does not name a regular
+ * file inside `root`. Resolved through links, so a link pointing out of the tree is not a
+ * file in it. The count is the number of newlines, plus one for a last line without one.
+ * @param {string} root
+ * @param {string} file  Relative to root, already held to the path guards.
+ * @param {Map<string, number>} lineCounts  Counts already taken, by real path.
+ * @returns {?number}
+ */
+function lineCountOf(root, file, lineCounts) {
+  let real;
+  try {
+    real = fs.realpathSync(path.join(root, file));
+    if (!fs.statSync(real).isFile()) {
+      return null;
+    }
+  } catch (err) {
+    rethrowIfFatal(err);
+    return null;
+  }
+  const inside = relativeInside(real, fs.realpathSync(root));
+  if (inside === null || inside === "") {
+    return null;
+  }
+  if (!lineCounts.has(real)) {
+    const bytes = fs.readFileSync(real);
+    let count = 0;
+    for (const byte of bytes) {
+      if (byte === 0x0a) {
+        count++;
+      }
+    }
+    if (bytes.length > 0 && bytes[bytes.length - 1] !== 0x0a) {
+      count++;
+    }
+    lineCounts.set(real, count);
+  }
+  return lineCounts.get(real);
 }
 
 /**

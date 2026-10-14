@@ -292,6 +292,18 @@ test("retired flags are unknown options", () => {
   }
 });
 
+/** Give the review's own copy of the add-on the file a sweep result names, at least
+ *  `lines` long: whatever it holds, then empty lines up to that count. A result names a
+ *  file the swept tree has, and a line that file has. */
+function planted(reviewFile, rel, lines) {
+  const state = JSON.parse(
+    fs.readFileSync(path.join(path.dirname(reviewFile), "state.json"), "utf8")
+  );
+  const file = path.join(state.paths.xpiRoot, rel);
+  const had = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  fs.writeFileSync(file, had + "\n".repeat(lines));
+}
+
 // A sweep, end to end through the loop. The blind spot the sweep covers is the one thing
 // the deterministic checks cannot find for themselves, so what it hands back has to become
 // an item of the check it names - routed, numbered, and settled like any other.
@@ -307,6 +319,7 @@ test("a swept case becomes an item of its check and settles like any other", () 
   // The spawn pass asks nothing in this file - the sweeping agents answer in their own,
   // where an empty list is "swept and clean" and a null is "never looked".
   assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).entries, []);
+  planted(file, "background.js", 12);
   sweepBack(file, {
     "data-exfiltration": [
       {
@@ -373,6 +386,7 @@ test("a swept case of a check that files findings is verified like one", () => {
   assert.equal(first.code, 0, first.stderr);
   const file = first.stdout.match(/(\S+\/review\.json)/)[1];
 
+  planted(file, "sync.js", 12);
   sweepBack(file, {
     "cleartext-transmission": [
       { file: "sync.js", line: 12, hint: "posts over http://" },

@@ -22,6 +22,19 @@ import { workPaths } from "../../src/util/dest.js";
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "wxl-sweepfiles-"));
 
+/** The swept tree these answers are read against: every file they name, each long
+ *  enough for the line it is named at. */
+const TREE = tmp();
+for (const [rel, lines] of [
+  ["a.js", 1],
+  ["background.js", 40],
+  ["bg.js", 40],
+  ["lib/net.js", 12],
+]) {
+  fs.mkdirSync(path.dirname(path.join(TREE, rel)), { recursive: true });
+  fs.writeFileSync(path.join(TREE, rel), "x\n".repeat(lines));
+}
+
 /** One tree's request, made the way the review makes it. */
 function requested(sweeps, sweepTarget = "/tmp/tree/") {
   const asked = sweepRequests(
@@ -103,9 +116,28 @@ test("the request and the refusal name the hint's limit", () => {
     () =>
       readSweepAnswers(
         answered(dir, { 3: [{ file: "a.js", hint: "" }], 4: [] }),
-        SWEEPS
+        SWEEPS,
+        TREE
       ),
     (err) => err.message.includes(`at most ${MAX_HINT} characters`)
+  );
+});
+
+// A sweep reading several files at once can number its lines across all of them. The
+// request says a line is the file's own, and that the file is one in the folder it read.
+test("the request says a file is in the folder and a line is that file's own", () => {
+  const { request } = requested(SWEEPS);
+  assert.ok(
+    request.includes(
+      'a "file" (the path of a file in the folder above, relative to it)'
+    ),
+    request
+  );
+  assert.ok(
+    request.includes(
+      `a "line" - that file's own line number, counted from its first line, where it sits on one, left out where it does not.`
+    ),
+    request
   );
 });
 
@@ -128,7 +160,7 @@ test("the worked example fixes the shape without suggesting a finding", () => {
   assert.deepEqual(Object.keys(JSON.parse(example).answers), ["3", "4"]);
   const file = path.join(tmp(), "a.answers.json");
   fs.writeFileSync(file, example);
-  assert.equal(readSweepAnswers(file, SWEEPS).length, 1);
+  assert.equal(readSweepAnswers(file, SWEEPS, TREE).length, 1);
 });
 
 // ---- one request per tree ----
@@ -194,7 +226,7 @@ test("answers come back resolved to their check and their tree", () => {
     3: [{ file: "lib/net.js", line: 12, hint: "posts over http://" }],
     4: [{ file: "bg.js", line: 40, hint: "sends the digest onward" }],
   });
-  assert.deepEqual(readSweepAnswers(file, SWEEPS), [
+  assert.deepEqual(readSweepAnswers(file, SWEEPS, TREE), [
     {
       check: "cleartext-transmission",
       artifact: ARTIFACT_SCA,
@@ -212,7 +244,7 @@ test("answers come back resolved to their check and their tree", () => {
   ]);
   // A sweep that found nothing contributes nothing, and says so by answering.
   assert.deepEqual(
-    readSweepAnswers(answered(dir, { 3: [], 4: [] }), SWEEPS),
+    readSweepAnswers(answered(dir, { 3: [], 4: [] }), SWEEPS, TREE),
     []
   );
 });
@@ -223,7 +255,7 @@ test("a file that cannot be acted on is refused, saying which thing is wrong", (
   const dir = tmp();
   const refused = (found, re, what) =>
     assert.throws(
-      () => readSweepAnswers(answered(dir, found), SWEEPS),
+      () => readSweepAnswers(answered(dir, found), SWEEPS, TREE),
       re,
       what
     );
@@ -267,15 +299,53 @@ test("a file that cannot be acted on is refused, saying which thing is wrong", (
   const dir2 = tmp();
   const bad = path.join(dir2, "a.answers.json");
   fs.writeFileSync(bad, "{ not json");
-  assert.throws(() => readSweepAnswers(bad, SWEEPS), /is not readable JSON/);
+  assert.throws(
+    () => readSweepAnswers(bad, SWEEPS, TREE),
+    /is not readable JSON/
+  );
   fs.writeFileSync(bad, JSON.stringify({ nope: {} }));
-  assert.throws(() => readSweepAnswers(bad, SWEEPS), /names no "answers"/);
+  assert.throws(
+    () => readSweepAnswers(bad, SWEEPS, TREE),
+    /names no "answers"/
+  );
   // A list is an object too, and would read as "no labels at all" rather than as a file
   // written to the wrong shape.
   fs.writeFileSync(bad, JSON.stringify({ answers: [] }));
-  assert.throws(() => readSweepAnswers(bad, SWEEPS), /names no "answers"/);
   assert.throws(
-    () => readSweepAnswers(path.join(dir2, "gone.json"), SWEEPS),
+    () => readSweepAnswers(bad, SWEEPS, TREE),
+    /names no "answers"/
+  );
+  assert.throws(
+    () => readSweepAnswers(path.join(dir2, "gone.json"), SWEEPS, TREE),
     /could not be read/
+  );
+});
+
+// The door holds every reply to the tree it was asked about, so a file that tree lacks,
+// or a line past a file's end, is refused by the entry that names it.
+test("a reply naming a file or line the tree lacks is refused by its entry", () => {
+  const dir = tmp();
+  const refused = (found, says) =>
+    assert.throws(
+      () =>
+        readSweepAnswers(answered(dir, { 3: [found], 4: [] }), SWEEPS, TREE),
+      (err) => err.message.includes(says)
+    );
+  refused(
+    { file: "gone.js", line: 1 },
+    'a.answers.json, label 3, entry 1 names file "gone.js", which is not a file in the folder the sweep read'
+  );
+  refused(
+    { file: "lib/net.js", line: 13 },
+    'a.answers.json, label 3, entry 1 names line 13 of "lib/net.js", which has 12 lines'
+  );
+  // The same file named many times in one reply is read against the same count.
+  const many = Array.from({ length: 5 }, (_, i) => ({
+    file: "lib/net.js",
+    line: 12 - i,
+  }));
+  assert.equal(
+    readSweepAnswers(answered(dir, { 3: many, 4: [] }), SWEEPS, TREE).length,
+    5
   );
 });

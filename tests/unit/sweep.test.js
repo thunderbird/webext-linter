@@ -10,10 +10,31 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { checkedResult, mergeSweepResults } from "../../src/report/sweep.js";
+import {
+  checkedResult,
+  MAX_HINT,
+  mergeSweepResults,
+} from "../../src/report/sweep.js";
 import { loadRegistry } from "../../src/checks/registry.js";
 
 const registry = loadRegistry();
+
+/** A swept tree on disk, holding `files` (relative path to content). */
+function tree(files) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "wxl-sweep-"));
+  for (const [rel, text] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+    fs.writeFileSync(path.join(root, rel), text);
+  }
+  return root;
+}
+
+/** The tree the shape tests read: every file they name, each a few lines long. */
+const ROOT = tree({
+  "a.js": "one\ntwo\nthree\n",
+  "sub/a.js": "one\n",
+  "lib/deep/widget.js": "one\ntwo\n",
+});
 
 /** One result as it reaches the merge: already saying which check it answers and which
  *  tree it was found in. Both were resolved from its label by whoever read the answers
@@ -39,12 +60,14 @@ function merge(results, manual = [], findings = [], mode = undefined) {
 
 test("a malformed sweep result is rejected with a reason", () => {
   const bad = (entry, re) =>
-    assert.throws(() => checkedResult("row 1", entry), re);
+    assert.throws(() => checkedResult("row 1", entry, ROOT), re);
   bad("nope", /must be an object/);
   bad({}, /names no "file"/);
   bad({ file: "a.js", line: 0 }, /has line 0/);
   bad({ file: "a.js", hint: "" }, /has hint ""/);
-  bad({ file: "a.js", hint: "x".repeat(201) }, /201-character hint/);
+  bad({ file: "a.js", hint: "x".repeat(MAX_HINT + 1) }, (err) =>
+    err.message.includes(`${MAX_HINT + 1}-character hint`)
+  );
   // WHICH sweep a result answers is the slot it was written into, never something it
   // says: a result naming one would be an agent choosing where its hint lands.
   bad({ check: "privacy-policy", file: "a.js" }, /may only set/);
@@ -55,8 +78,77 @@ test("a malformed sweep result is rejected with a reason", () => {
     /may only set "file", "line", "hint"/
   );
 
-  assert.deepEqual(checkedResult("row 1", { file: "a.js" }), {
+  assert.deepEqual(checkedResult("row 1", { file: "a.js" }, ROOT), {
     file: "a.js",
+    line: null,
+    hint: null,
+  });
+});
+
+// A hint up to the limit is a phrase, and the limit leaves room for one naming a call and
+// what it carries.
+test("a hint of 350 characters is accepted, and one past the limit refused", () => {
+  assert.equal(MAX_HINT, 350);
+  const hint = "x".repeat(MAX_HINT);
+  assert.equal(checkedResult("row", { file: "a.js", hint }, ROOT).hint, hint);
+  assert.throws(
+    () => checkedResult("row", { file: "a.js", hint: `${hint}x` }, ROOT),
+    (err) => err.message.includes("351-character hint")
+  );
+});
+
+// A result names a location the reader opens. A file the agent misremembered, or a line
+// counted across several files read together, points at nothing, so both are refused
+// where the agent can correct them.
+test("a result names a file in the swept tree and a line that file has", () => {
+  const root = tree({
+    "ends.js": "one\ntwo\nthree\n",
+    "open.js": "one\ntwo\nthree",
+    "lib/x.js": "",
+  });
+  const outside = tree({ "secret.js": "one\n" });
+  fs.symlinkSync(path.join(outside, "secret.js"), path.join(root, "linked.js"));
+  const refused = (raw, says, what) =>
+    assert.throws(
+      () => checkedResult("row", raw, root),
+      (err) => err.message.includes(says),
+      what
+    );
+
+  refused(
+    { file: "gone.js", line: 1 },
+    'row names file "gone.js", which is not a file in the folder the sweep read',
+    "a file the tree does not have"
+  );
+  refused({ file: "lib" }, 'names file "lib", which is not a file', "a folder");
+  refused(
+    { file: "linked.js" },
+    'names file "linked.js", which is not a file',
+    "a link out of the tree"
+  );
+  refused(
+    { file: "ends.js", line: 4 },
+    `row names line 4 of "ends.js", which has 3 lines - a line is that file's own line number, counted from its first line`,
+    "one past the last line"
+  );
+  refused(
+    { file: "open.js", line: 501 },
+    "which has 3 lines",
+    "a running count"
+  );
+
+  // The last line itself, with and without a trailing newline.
+  assert.equal(
+    checkedResult("row", { file: "ends.js", line: 3 }, root).line,
+    3
+  );
+  assert.equal(
+    checkedResult("row", { file: "open.js", line: 3 }, root).line,
+    3
+  );
+  // A result with no line needs only the file.
+  assert.deepEqual(checkedResult("row", { file: "lib/x.js" }, root), {
+    file: "lib/x.js",
     line: null,
     hint: null,
   });
@@ -253,7 +345,7 @@ test("a swept result says which artifact it is in, whichever branch it takes", (
 test("a sweep result naming a path outside the add-on is refused", () => {
   const refused = (file, what) =>
     assert.throws(
-      () => checkedResult("r[0]", { file, line: 1 }),
+      () => checkedResult("r[0]", { file, line: 1 }, ROOT),
       /names a file INSIDE the add-on/,
       what
     );
@@ -263,7 +355,7 @@ test("a sweep result naming a path outside the add-on is refused", () => {
 
   // An ordinary nested path is still fine - the guard is about escaping, not depth.
   assert.equal(
-    checkedResult("r[0]", { file: "lib/deep/widget.js", line: 2 }).file,
+    checkedResult("r[0]", { file: "lib/deep/widget.js", line: 2 }, ROOT).file,
     "lib/deep/widget.js"
   );
 });
@@ -276,13 +368,13 @@ test("a sweep result naming a path outside the add-on is refused", () => {
 test("a result naming the add-on root is refused, not resolved later", () => {
   for (const file of [".", "./", "sub/.."]) {
     assert.throws(
-      () => checkedResult("row", { file }),
+      () => checkedResult("row", { file }, ROOT),
       /never an absolute path, a way out of one, or the root itself/,
       `expected ${JSON.stringify(file)} to be refused`
     );
   }
   // A path INSIDE the add-on still passes, including one that dips through a directory.
   for (const file of ["a.js", "sub/a.js", "sub/./a.js"]) {
-    assert.equal(checkedResult("row", { file }).file, file);
+    assert.equal(checkedResult("row", { file }, ROOT).file, file);
   }
 });

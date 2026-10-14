@@ -268,6 +268,12 @@ function swept(state, artifact, found = {}) {
   return paths.answers;
 }
 
+/** Put a file of `lines` lines into a swept tree, for a hint to name. */
+function planted(root, rel, lines) {
+  fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+  fs.writeFileSync(path.join(root, rel), "x\n".repeat(lines));
+}
+
 // The shape of a whole review: which phases are issued, in what order, and what each one
 // asks about. Every route the loop has is exercised here - a sweep answered by check, a
 // finding withdrawn, a case settled, a case that becomes a question, and a person's own
@@ -329,6 +335,7 @@ test("an answer recorded before the sweep stays on its item", () => {
 
   const out = issue(state, work, PHASES, REGISTRY);
   assert.equal(out.phase.name, "spawn");
+  planted(state.paths.xpiRoot, "lib/net.js", 7);
   swept(state, ARTIFACT_XPI, {
     2: [{ file: "lib/net.js", line: 7, hint: "sends it" }],
   });
@@ -994,6 +1001,40 @@ test("the sweep phase asks for nothing in the review file, and answers in its ow
   assert.deepEqual(state.sweep, [], "both ran, neither found anything");
 });
 
+// A hint is held to the tree its sweep read: the file is one that tree has, and the line
+// one that file has. Refused at the hand-back, where the agent can correct it.
+test("a swept result naming a file or line the tree lacks is refused", () => {
+  const dir = tmp();
+  const { state, work } = review(dir);
+  assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "spawn");
+  handBack(work, () => null);
+  planted(state.paths.xpiRoot, "lib/net.js", 7);
+  const before = JSON.stringify(state);
+  const refused = (found, says) => {
+    swept(state, ARTIFACT_XPI, { 2: [found] });
+    assert.throws(
+      () => accept(state, work, PHASES, REGISTRY),
+      (err) => err instanceof HandbackRefused && err.problem.includes(says)
+    );
+    assert.equal(JSON.stringify(state), before, "a refusal changes nothing");
+  };
+  refused(
+    { file: "lib/gone.js", line: 1 },
+    'names file "lib/gone.js", which is not a file in the folder the sweep read'
+  );
+  refused(
+    { file: "lib/net.js", line: 501 },
+    'names line 501 of "lib/net.js", which has 7 lines'
+  );
+
+  swept(state, ARTIFACT_XPI, { 2: [{ file: "lib/net.js", line: 7 }] });
+  accept(state, work, PHASES, REGISTRY);
+  assert.deepEqual(
+    state.sweep.map((r) => [r.file, r.line]),
+    [["lib/net.js", 7]]
+  );
+});
+
 // The sweep request travels INLINE: the step that spawns the agent prints the whole of it -
 // the tree to read and each sweep's instruction under its label - and names the file the
 // agent's reply is written to. No request file exists for it to name.
@@ -1087,6 +1128,8 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
   const hit = (tree) => [
     { file: "lib/net.js", line: 7, hint: `sends from the ${tree}` },
   ];
+  planted(state.paths.xpiRoot, "lib/net.js", 7);
+  planted(state.paths.scaRoot, "lib/net.js", 7);
   swept(state, ARTIFACT_XPI, { 1: hit(ARTIFACT_XPI) });
   swept(state, ARTIFACT_SCA, { 2: hit(ARTIFACT_SCA) });
   handBack(work, () => null);
