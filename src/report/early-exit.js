@@ -106,7 +106,26 @@ function standsAsError(item, verdict, registry) {
  */
 function earlyExitReasons(ordered, answers, registry, late) {
   const { reasons } = registry.earlyExitProse();
-  const hit = new Set();
+  const hit = new Set(
+    aborting(ordered, answers, registry, late).map((a) => a.reason)
+  );
+  return Object.keys(reasons)
+    .filter((id) => hit.has(id))
+    .map((id) => ({ id, text: reasons[id] }));
+}
+
+/**
+ * The entries that abort this review, each with its check and the reason it names: those
+ * whose check names a reason and that stand as an ERROR (standsAsError). Arguments as for
+ * earlyExitReasons.
+ * @param {import("./order.js").OrderedItem[]} ordered
+ * @param {Record<string, *>} answers
+ * @param {Registry} registry
+ * @param {boolean} late
+ * @returns {{ruleId: string, reason: string}[]}
+ */
+function aborting(ordered, answers, registry, late) {
+  const out = [];
   for (const item of ordered) {
     // An ordered entry WRAPS what it is about: `target` is the finding or the to-do item,
     // while the entry's own `section` is the band it is listed under and `ref` is what a
@@ -124,12 +143,30 @@ function earlyExitReasons(ordered, answers, registry, late) {
       registry.earlyExitFor(ruleId) ??
       (late ? registry.lateExitFor(ruleId) : null);
     if (reason) {
-      hit.add(reason);
+      out.push({ ruleId, reason });
     }
   }
-  return Object.keys(reasons)
-    .filter((id) => hit.has(id))
-    .map((id) => ({ id, text: reasons[id] }));
+  return out;
+}
+
+/**
+ * The checks whose entries abort this review, read with the one standing rule the reasons
+ * are counted by (earlyExitReasons), deduplicated. Empty means it was not aborted.
+ * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
+ * @param {Record<string, *>} answers  Verdicts recorded so far, by item reference.
+ * @param {Registry} registry
+ * @param {{late?: boolean}} [opts]  `late`: whether late-exit reasons count.
+ * @returns {string[]}
+ */
+export function abortingChecks(
+  ordered,
+  answers,
+  registry,
+  { late = false } = {}
+) {
+  return [
+    ...new Set(aborting(ordered, answers, registry, late).map((a) => a.ruleId)),
+  ];
 }
 
 /**

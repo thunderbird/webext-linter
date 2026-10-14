@@ -104,7 +104,7 @@ const saying = (text) => (err) => err.message.includes(text);
 
 // The waiting line is appended to the block a turn-ending phase shows, so the reviewer
 // reads it as the end of that block.
-test("the shipped turn-ending phases are the two questions that show a block", () => {
+test("the shipped turn-ending phases are the three questions that show a block", () => {
   const p = fresh().llmPhases();
   assert.equal(
     p.waiting("ask"),
@@ -113,7 +113,7 @@ test("the shipped turn-ending phases are the two questions that show a block", (
   );
   assert.deepEqual(
     p.phases.filter((phase) => phase.endsTurn).map((phase) => phase.name),
-    ["built", "ask"]
+    ["built", "ask", "downgrade"]
   );
 });
 
@@ -359,6 +359,7 @@ test("a phase declares the kind of answer its entries take", () => {
       ["verify", "verdict", 2],
       ["settle", "verdict", 3],
       ["ask", "words", 0],
+      ["downgrade", "value", 0],
       ["close", "end", 0],
     ]
   );
@@ -423,32 +424,35 @@ function withValuePhase(extra = {}) {
   return registry;
 }
 
-// A phase offers no answers of its own and puts no question of its own: a person is
-// offered the manual review's answers, and a process-value phase's question is the to-do
-// routed to it. Either key authored on a phase is refused at load.
-test("a phase authors neither `choices` nor `question`", () => {
-  for (const [name, key, value] of [
-    [
-      "ask",
-      "choices",
-      [{ label: "Yes", verdict: "cleared", description: "y" }],
-    ],
-    [
-      "built",
-      "choices",
-      [{ label: "Yes", verdict: "cleared", description: "y" }],
-    ],
-    ["ask", "question", "Who builds?"],
-    ["built", "question", "Does it build?"],
-  ]) {
+// A phase offers no answers of its own: a person is offered the manual review's answers.
+// Only a process-value phase puts a question of its own, the one it hands over where no
+// check routes a to-do to it, so `question` on any other phase is refused at load.
+test("a phase authors no `choices`, and only a value phase a `question`", () => {
+  for (const name of ["ask", "built"]) {
     const authored = fresh();
-    phaseNamed(authored, name)[key] = value;
+    phaseNamed(authored, name).choices = [
+      { label: "Yes", verdict: "cleared", description: "y" },
+    ];
     assert.throws(
       () => check(authored),
-      saying(`authors \`${key}\`, which nothing reads`),
-      `${name} ${key}`
+      saying("authors `choices`, which nothing reads"),
+      name
     );
   }
+  for (const name of ["ask", "verify", "spawn"]) {
+    const authored = fresh();
+    phaseNamed(authored, name).question = "Who builds?";
+    assert.throws(
+      () => check(authored),
+      saying(
+        "but authors `question` - only a `value` phase hands over a question"
+      ),
+      name
+    );
+  }
+  const built = fresh();
+  phaseNamed(built, "built").question = "Does it build?";
+  check(built);
 });
 
 // What the Build Review Details say came of the agent's build is authored once per result
@@ -715,13 +719,24 @@ test("the shipped steps carry the conditions they are printed under", () => {
     ["aborted", "llm-skip-manual"],
     ["aborted", "llm-skip-manual"],
   ]);
+  // The downgrade question: only a review that can be restarted as an XPI review.
+  assert.deepEqual(when("downgrade"), [["downgradable"], ["downgradable"]]);
+  // After `keep`, the close shows nothing `downgrade` already showed.
   assert.deepEqual(when("close"), [
     ["aborted"],
     ["aborted", "first"],
     ["spawned"],
-    null,
     ["decided"],
-    null,
+    ["decided"],
+    [],
+  ]);
+  assert.deepEqual(calls("close"), [
+    [],
+    [],
+    [],
+    [["downgrade", "keep"]],
+    [],
+    [["downgrade", "keep"]],
   ]);
   // The preamble: the first prompt only, and never above a first-pass close.
   assert.deepEqual(

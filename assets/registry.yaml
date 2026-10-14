@@ -26,6 +26,12 @@ deterministic-phase:
 # the CDN identification): the four dependency-vulnerability checks and banned-library. A
 # source review whose preparation failed to rescue its lock is reviewed like any other and
 # stops at its vulnerability checks.
+#
+# `review-downgrade: true` on an aborting check of the source archive says a review of the
+# XPI alone cures its finding: the archive or its build is what is wrong, not the shipped
+# code. A source review aborted only by such checks, whose XPI is readable, is offered a
+# restart as an XPI review (the `downgrade` phase in llm-phases). vendor-vulnerable-indirect
+# carries no marker, as it reports code the XPI ships.
 
 # Aborts the review of an Experiment that uses an UNSUPPORTED experiment (an
 # unknown API draft, or one shadowing a built-in). A recognised but modified draft
@@ -81,6 +87,7 @@ deterministic-phase:
 - title: The built XPI is fully included in the source archive
   severity: error
   check: sca-xpi-fully-included-in-archive
+  review-downgrade: true
   input: all
   review-early-exit: archive-is-xpi
   response: |-
@@ -101,6 +108,7 @@ deterministic-phase:
   severity: error
   review-early-exit: unreproducible-build
   check: sca-package-file-missing
+  review-downgrade: true
   input: sca
   response: |-
     The submitted source archive contains no package.json, so there is no build process the shipped add-on can be reproduced from.
@@ -121,6 +129,7 @@ deterministic-phase:
   severity: error
   review-early-exit: unreproducible-build
   check: sca-package-file-invalid
+  review-downgrade: true
   input: sca
   response: |-
     The committed package.json cannot be read, so the build it defines cannot be run. Please commit a valid package.json.
@@ -145,6 +154,7 @@ deterministic-phase:
   severity: error
   review-early-exit: unreproducible-build
   check: sca-lock-file-missing
+  review-downgrade: true
   input: sca
   response: |-
     The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
@@ -161,6 +171,7 @@ deterministic-phase:
   severity: error
   review-early-exit: unreproducible-build
   check: sca-lock-file-invalid
+  review-downgrade: true
   input: sca
   response: |-
     The committed lock file cannot be read, so the dependencies it installs cannot be checked. Please run the install again and commit the lock file it writes. The supported package managers are npm and pnpm.
@@ -179,6 +190,7 @@ deterministic-phase:
   severity: error
   review-early-exit: unreproducible-build
   check: sca-lock-file-multiple
+  review-downgrade: true
   input: sca
   response: |-
     The submitted source includes more than one lock file. The review checks one lock file and the build installs from one, so only the lock file of the package manager you use may be committed: package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm. Please remove the others and commit only that one.
@@ -200,6 +212,7 @@ deterministic-phase:
   severity: error
   review-early-exit: unreproducible-build
   check: build-registry-redirect
+  review-downgrade: true
   build-guard: true
   input: sca
   response: |-
@@ -215,6 +228,7 @@ deterministic-phase:
   severity: error
   review-early-exit: unreproducible-build
   check: lock-foreign-source
+  review-downgrade: true
   build-guard: true
   input: sca
   response: |-
@@ -232,6 +246,7 @@ deterministic-phase:
 - title: Lock file entries that install another release
   severity: error
   check: lockfile-injection
+  review-downgrade: true
   build-guard: true
   input: sca
   review-early-exit: lockfile-injection
@@ -268,6 +283,7 @@ deterministic-phase:
   severity: error
   review-early-exit: known-vulnerabilities
   check: vendor-vulnerable-dev
+  review-downgrade: true
   build-guard: true
   input: sca
   response: |-
@@ -304,6 +320,7 @@ deterministic-phase:
   severity: error
   review-early-exit: known-vulnerabilities
   check: vendor-vulnerable-indirect-dev
+  review-downgrade: true
   build-guard: true
   input: sca
   response: |-
@@ -1004,6 +1021,7 @@ deterministic-phase:
   severity: error
   review-early-exit: unreproducible-build
   check: build-lifecycle-hook
+  review-downgrade: true
   input: sca
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1035,6 +1053,7 @@ deterministic-phase:
 - title: Build process review
   severity: error
   check: undeclared-build-source
+  review-downgrade: true
   input: sca
   settle-verbs: [reported, cleared]
   review-early-exit: unreproducible-build
@@ -1064,6 +1083,7 @@ deterministic-phase:
 - title: Reproducing the XPI from the source
   severity: error
   check: build-reproduces-xpi
+  review-downgrade: true
   input: sca
   asked-in: built
   review-early-exit: unreproducible-build
@@ -1086,6 +1106,7 @@ deterministic-phase:
 - title: Source does not build into the submitted XPI
   severity: error
   check: build-not-reproduced
+  review-downgrade: true
   input: sca
   review-early-exit: unreproducible-build
   response: |-
@@ -1095,6 +1116,7 @@ deterministic-phase:
 - title: Source cannot be built
   severity: error
   check: build-fails
+  review-downgrade: true
   input: sca
   review-early-exit: unreproducible-build
   response: |-
@@ -1104,11 +1126,23 @@ deterministic-phase:
 - title: Unsafe build process
   severity: error
   check: build-unsafe
+  review-downgrade: true
   input: sca
   review-early-exit: unreproducible-build
   response: |-
     The build process of the submitted source is not safe to run: it fetches or runs code from outside the dependencies declared in package.json and the lock file. Please make the build use only those dependencies.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
+# An XPI review restarted from a source review the `downgrade` phase offered to restart
+# (src/cli.js runLoopPass): the archive was not needed, and the developer is told so.
+# Nothing in the files decides it, so its rule raises nothing. The pipeline adds its one
+# finding to a review started with `downgradedFrom` (src/pipeline.js), which no flag sets.
+- title: Source archive not needed
+  severity: info
+  check: sca-not-needed
+  input: xpi
+  response: |-
+    This add-on was submitted with a source-code archive, but its XPI could be reviewed on its own, so it was reviewed without the archive. Please submit just the XPI next time: it is reviewed considerably faster.
 
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the repo-name candidate and proves it by content hash);
@@ -2424,6 +2458,7 @@ llm-phases:
       permission: the question whether the agent may build the add-on
       built: the question whether the source is safe to build, builds, and reproduces the submitted XPI
       ask: the questions on the findings left to your judgement
+      downgrade: the question whether the review should be restarted as a pure XPI review
   # What LLM_BUILD_RESULT in the details blocks says of the agent's attempt: it built the
   # add-on, its build failed, its rescue failed so nothing was built, or the build was judged
   # unsafe so nothing was built. The row is shown only for these four results. A failed
@@ -2737,13 +2772,54 @@ llm-phases:
 
             Record what they answered in that entry's "answer", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
 
+    # A source review aborted for faults of the archive or its build alone, whose XPI is
+    # readable (`downgradable`, src/report/loop.js runOf), is offered a restart as an XPI
+    # review. A PROCESS VALUE no check routes here, so its entry is worded by its own
+    # `question`, with {{abortReasons}} filled from what aborted the review. Its block is the
+    # aborted review's closing block, settled as the close settles it (src/report/loop.js
+    # issue), so the reviewer has read the report before the question, and it ends the turn as
+    # in `built`. `xpi` starts the XPI review from the hand-back (src/cli.js runLoopPass),
+    # in a work folder of its own, and this review's folder stays as it is. `keep` goes on to
+    # the close, which then shows nothing a second time.
+    - name: downgrade
+      answer: value
+      ends-turn: true
+      verbs: []
+      intro: ""
+      question: The SCA review failed for {{abortReasons}}, but it looks like this submission does not actually need an SCA review. The XPI is not minified and could be reviewed directly. Should the review be restarted as a pure XPI review?
+      values:
+        - value: xpi
+          label: Restart as an XPI review
+          description: "The source archive is not needed, and the review starts again as a review of the XPI alone. If the XPI review fails as well, judge which report to send: this source review's, or the XPI review's."
+        - value: keep
+          label: Keep this result
+          description: The review ends with its abort, and its report stands.
+      steps:
+        - when: downgradable
+          text: |-
+            Give the reviewer what follows, each part under a heading of its own and in this order, as the last thing you write this turn. Then end your turn, and put no question to them in it. Go on with the next step only once the reviewer has replied: what they reply does not matter.
+
+            Under "Summary", this, as it is written here:
+
+            {{tally}}
+
+            Under "Final Review Details", this, as it is written here - every path this review named, the report among them, and nothing of what is in any of them:
+
+            {{details}}
+        - when: downgradable
+          text: |-
+            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+
+            Record the label they picked as that entry's "answer", and change nothing else in the file. Only those labels are accepted: if they answer anything else, ask the question again.
+
     # The closing hand-over: what the reviewer is left with once nothing else has work. The
     # linter settles the review before printing it (src/report/loop.js issue), and whether
     # the review was aborted is read off that settled review - so at most one of the two
     # openings prints. Telling an agent "the review is settled" about one that was cut short
     # is what the two openings exist to avoid. Each later step says only what applies: the
-    # wait where an agent was started, "LLM decisions" where the agent judged anything; the
-    # summary and the details always. Nothing is handed back after it: the review ends here.
+    # wait where an agent was started, "LLM decisions" where the agent judged anything, the
+    # summary and the details unless `downgrade` showed them. Nothing is handed back after
+    # it: the review ends here.
     - name: close
       answer: end
       verbs: []
@@ -2760,14 +2836,18 @@ llm-phases:
         - when: spawned
           text: |-
             Wait for every agent you spawned to come back.
-        - text: |-
+        # After `keep`, the `downgrade` phase already showed the Summary and the Final Review
+        # Details, so the close shows them no second time.
+        - when: decided OR NOT value(downgrade, keep)
+          text: |-
             Give the reviewer what follows, each part under a heading of its own and in this order. Print nothing between the parts and nothing after them.
         # Only where the agent judged anything - a review with no finding to audit and no case
         # to settle leaves it nothing to account for.
         - when: decided
           text: |-
             Under "LLM decisions", your own account in two sections: under "Found Issues", each finding you withdrew and why; under "Extended Code Review", the verdict you reached for each entry and why. This part is yours to write and the only part that is.
-        - text: |-
+        - when: NOT value(downgrade, keep)
+          text: |-
             Under "Summary", this, as it is written here:
 
             {{tally}}

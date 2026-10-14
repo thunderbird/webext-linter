@@ -59,10 +59,11 @@ entry never offered are all refusals.
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
 | `ask` | Show the Review Details block as the last thing of the turn, then, once the reviewer has replied, put to them what only a person can answer. Not under `--llm-skip-manual`. | The reviewer's own answer |
+| `downgrade` | Source code review only, aborted only by checks a review of the XPI alone cures, with a readable XPI (`downgradable`): show the aborted review's Summary and Final Review Details as the last thing of the turn, then, once the reviewer has replied, ask them alone whether to restart as an XPI review (see [Restarting as an XPI review](#restarting-as-an-xpi-review)). | A process value: `Restart as an XPI review` / `Keep this result` |
 | `close` | The last phase, once nothing else has work: hand over the settled review. It opens on whether the review is settled or was aborted, and says only what applies to it. | Nothing: the review ends with it |
 
 A block the reviewer must read before answering is the first step of the question phase
-that needs it (`built`, `ask`), and ends the agent's turn. Text written before a tool call
+that needs it (`built`, `ask`, `downgrade`), and ends the agent's turn. Text written before a tool call
 in the same turn, a question or a hand-back, can be folded away by a client that collapses
 tool rows, while the message that ends a turn stays in view. So the step tells the agent
 to end its turn on the block and to go on with the question only once the reviewer has
@@ -87,8 +88,9 @@ and parentheses over the facts of this run - the `--llm-skip-*` flags it was giv
 `build-guarded` when every check a build relies on ran, the build result (`agent-built`,
 `agent-build-failed`, `rescue-failed`, `build-unsafe` or `self-build`, exactly one of them),
 `sweep-xpi` / `sweep-sca` for a tree with a sweep to run, `first` on the review's first
-prompt, `spawned` once `spawn` went out, `decided` once `verify` or `settle` did, and
-`closing` in the closing prompt. A step with no condition prints in every run, and a phase
+prompt, `spawned` once `spawn` went out, `decided` once `verify` or `settle` did,
+`downgradable` for a halted source review that may restart as an XPI review, and `closing`
+in the closing prompt. A step with no condition prints in every run, and a phase
 left with no step is not issued. The preamble's parts are conditioned the same way. A wait
 for spawned agents is a step of its own (`when: spawned AND ...`), carrying its phase's own
 condition so that a wait alone never issues a phase. The registry spells each one
@@ -106,7 +108,8 @@ picking it adds that check's finding, which aborts the review like any finding o
 aborting check. A value phase a check asks its question in (`asked-in`) relays that open
 to-do's message as its question, worded as `ask` words it, and is issued only while the
 to-do is open. Any answer clears the to-do, so a value that reports a check leaves that
-check's finding as the one finding.
+check's finding as the one finding. A value phase no check routes a to-do to asks the
+`question:` it authors itself, and is issued once.
 
 A source code review **opens with its build**, before the sweeps and the verify and settle
 passes, so a source that does not build into the XPI ends the review before any of that
@@ -201,11 +204,11 @@ What an aborted review does under `--llm-review`:
 
 | | |
 | --- | --- |
-| A review the deterministic checks aborted | asks nothing at all: its first prompt is the `close` phase. Nothing is built, no agent is started (no description, no sweep), and nothing is verified or settled - every step before `close` carries `NOT aborted`. What it hands over is decided before any pass, so no pass could change it. |
+| A review the deterministic checks aborted | asks nothing about the submission: its first prompt is the `close` phase, or `downgrade` for a source review that may restart as an XPI review (see below). Nothing is built, no agent is started (no description, no sweep), and nothing is verified or settled - every step before `downgrade` carries `NOT aborted`. What it hands over is decided before any pass, so no pass could change it. |
 | A review a pass aborted | (a case reported that aborts it, a build that did not reproduce) stops there: the phases that would follow are not issued, so nothing further is swept or put to a reviewer. |
 | The hand-over | carries no to-do item: the tally counts none, and the Final Review Details name no file an agent was never asked to write. |
 | The report | ends on the reason it is incomplete, one line per distinct cause. |
-| The `close` phase | opens with a step of its own (`when: aborted`), because telling an agent "the review is settled" about one that was cut short is not true. The summary and the details that follow are the same. |
+| The `close` phase | opens with a step of its own (`when: aborted`), because telling an agent "the review is settled" about one that was cut short is not true. The summary and the details that follow are the same, and where `downgrade` already showed them, they are not shown again. |
 
 A finding that aborts the review early is never put to the agent to verify, so no verdict
 takes it back. That is also why a check that authors a sweep may not abort a review early: a
@@ -235,6 +238,46 @@ a sweep, as it is judged after the sweeps. The registry holds it to the early ex
 terms: severity `error` or `auto`, a reason `review-early-exit` defines, and never both keys
 on one check. A review run without `--llm-review` has no pass to wait for, so a late-exit
 error aborts it at its end, on the same terms as an early one.
+
+### Restarting as an XPI review
+
+A source code review is often submitted for an add-on whose XPI could be reviewed on its own,
+and then aborts for a fault of the archive: a copy of the XPI with no `package.json`, or a
+build that cannot run. An aborting check of the source archive can say that a review of the
+XPI alone cures its finding (`review-downgrade: true` in the registry): the
+`sca-xpi-fully-included-in-archive`, `sca-package-file-*` and `sca-lock-file-*` checks,
+`build-registry-redirect`, `lock-foreign-source`, `build-lifecycle-hook`,
+`undeclared-build-source`, `build-reproduces-xpi`, `build-not-reproduced`, `build-fails`,
+`build-unsafe`, `lockfile-injection`, `vendor-vulnerable-dev` and
+`vendor-vulnerable-indirect-dev`. `vendor-vulnerable-indirect` carries no marker, as it reports
+code the XPI ships. The registry refuses the marker on a check that aborts nothing, and on one
+whose `input` is not `sca` or `all`.
+
+After its checks, a source review under `--llm-review` asks the classifiers whether the XPI
+could be reviewed on its own: no file or inline script in it is minified first-party code,
+obfuscated, or an untrusted minified library. Asked directly, so a review aborted before any
+check read the XPI is answered too. The verdict per file goes to the feed, and the answer is
+recorded as `xpi-reviewable` in the state. A review is `downgradable` when it is a source
+review, its XPI is reviewable, it is halted (early or late), and every check whose finding
+aborts it carries the marker. A review that did not abort is never asked.
+
+Then `downgrade` goes out before `close`. It shows the aborted review's Summary and Final
+Review Details, settled as `close` settles them and ending on the abort reasons, as the last
+thing of the turn, with the waiting line naming the question that follows. Once the reviewer
+has replied, it asks them alone: _The SCA review failed for build process issues, but it looks
+like this submission does not actually need an SCA review. The XPI is not minified and could
+be reviewed directly. Should the review be restarted as a pure XPI review?_, naming every
+abort reason.
+
+- **`Keep this result`** goes on to `close`, which opens with its aborted line and shows the
+  Summary and the Final Review Details no second time.
+- **`Restart as an XPI review`** makes the hand-back start the XPI review itself, the way a
+  finished preparation starts its review: the submitted XPI, with the flags the source review
+  was started with (recorded in its state, without any `--sca-*` flag), in a new
+  `xpi-review-*` work folder beside it. Its first prompt is that hand-back's output. The source
+  review's folder stays as it is, aborted. The XPI review carries the `sca-not-needed` finding
+  (info), which tells the developer to submit just the XPI next time. If the XPI review fails
+  as well, the reviewer judges which of the two reports to send.
 
 
 ## What an answer may say
@@ -642,6 +685,9 @@ already there ends the run with exit 2, naming it. A start that fails before the
 (a schema fetch that gets no answer, an audit that ends the review, an Experiment the command
 does not say how to read) removes what it created, so it can be run again. The `--llm-handback`
 passes rewrite `.review/state.json`, `.review/review.json` and `report.md` as the review moves on.
+A source review the reviewer restarts as an XPI review (see [Restarting as an XPI
+review](#restarting-as-an-xpi-review)) is left in its folder, and the XPI review starts in a new
+`xpi-review-<add-on name>-<timestamp>` folder beside the add-on.
 
 `--sca-root` must not include the add-on: the source is reviewed where it is, so the shipped
 XPI, and the work folder created beside it, would be read as files of the source. Extract the

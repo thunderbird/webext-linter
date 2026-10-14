@@ -1113,6 +1113,7 @@ test("every check's severity is pinned to its band", async () => {
       "minimize-host-permissions",
       "missing-library",
       "sca-dependencies-changed",
+      "sca-not-needed",
       "unparsable-file",
       "unrecognized-manifest-key",
       "unsafe-html",
@@ -1877,6 +1878,9 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "mistyped-manifest-value",
     "native-messaging",
     "non-experiment-strict-max-version",
+    // Reads nothing: its one finding is the pipeline's, in an XPI review restarted from a
+    // source review, and the XPI is what that review judges.
+    "sca-not-needed",
     "shipped-icon-trademark-imitation",
     "trademark-thunderbird-locale",
     "trademark-thunderbird-name",
@@ -6397,6 +6401,80 @@ test("a check that sweeps and aborts the review late is accepted", async () => {
   entry["review-late-exit"] = "unreviewable-code";
   entry.severity = "error";
   checkEarlyExit(registry);
+});
+
+/** The doc entry of the check `id`, so an edit reaches the load. */
+function docEntry(registry, id) {
+  return Object.values(registry.doc)
+    .filter(Array.isArray)
+    .flat()
+    .find((e) => e?.check === id);
+}
+
+// The checks whose abort a review of the XPI alone cures: the faults of the archive, its
+// lock and its build. The one vulnerability check left out reports code the XPI ships.
+test("review-downgrade marks the aborting checks of the archive and its build", async () => {
+  const registry = loadRegistry();
+  assert.deepEqual(
+    registry
+      .checkIds()
+      .filter((id) => registry.downgrades(id))
+      .sort(),
+    [
+      "build-fails",
+      "build-lifecycle-hook",
+      "build-not-reproduced",
+      "build-registry-redirect",
+      "build-reproduces-xpi",
+      "build-unsafe",
+      "lock-foreign-source",
+      "lockfile-injection",
+      "sca-lock-file-invalid",
+      "sca-lock-file-missing",
+      "sca-lock-file-multiple",
+      "sca-package-file-invalid",
+      "sca-package-file-missing",
+      "sca-xpi-fully-included-in-archive",
+      "undeclared-build-source",
+      "vendor-vulnerable-dev",
+      "vendor-vulnerable-indirect-dev",
+    ]
+  );
+  assert.equal(registry.downgrades("vendor-vulnerable-indirect"), false);
+});
+
+// The marker says what cures an abort, of a check reading the source archive: on a check
+// that aborts nothing, or one reading only the XPI or the review target, it is refused.
+test("review-downgrade is refused without an abort, and on input source or xpi", async () => {
+  const saying = (text) => (err) => err.message.includes(text);
+  const marked = (id, edit = () => {}) => {
+    const registry = loadRegistry();
+    const entry = docEntry(registry, id);
+    entry["review-downgrade"] = true;
+    edit(entry);
+    return () => checkEarlyExit(registry);
+  };
+  assert.throws(
+    marked("sca-dependencies-changed"),
+    saying(
+      "`sca-dependencies-changed` authors `review-downgrade` but aborts no review"
+    )
+  );
+  assert.throws(
+    marked("vendor-vulnerable"),
+    saying("`vendor-vulnerable` authors `review-downgrade` on `input: source`")
+  );
+  assert.throws(
+    marked("experiment-not-allowed"),
+    saying(
+      "`experiment-not-allowed` authors `review-downgrade` on `input: xpi`"
+    )
+  );
+  // A late abort names a reason too, so the marker is accepted beside one.
+  marked("vendor-vulnerable-indirect", (entry) => {
+    delete entry["review-early-exit"];
+    entry["review-late-exit"] = "known-vulnerabilities";
+  })();
 });
 
 // A late-exit check is held to the early exit's terms: one key, an error band, a defined

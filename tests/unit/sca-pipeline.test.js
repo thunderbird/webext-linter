@@ -1667,6 +1667,62 @@ test("SCA e2e: an archive that is the XPI ends the review before its package.jso
   }
 });
 
+// Whether the built XPI could be reviewed on its own is recorded for the loop, which offers
+// an aborted source review a restart as an XPI review. Asked of the classifiers directly, so
+// a review aborted before any check read the XPI (here by its missing package.json) is
+// answered too: a readable XPI records it, a minified or obfuscated one does not.
+test("SCA --llm-review: the readability of the XPI is recorded, in an aborted review too", async () => {
+  const obfuscated = fs.readFileSync(
+    path.join(
+      path.dirname(new URL(import.meta.url).pathname),
+      "..",
+      "addons",
+      "obfuscated-code",
+      "obf.js"
+    ),
+    "utf8"
+  );
+  const withSource = { ...SRC_FILES };
+  const noPackage = { "src/main.js": "console.log('source');\n" };
+  for (const [name, xpiFiles, srcFiles, reviewable, aborted] of [
+    ["readable", READABLE_XPI, withSource, true, false],
+    ["readable, aborted", READABLE_XPI, noPackage, true, true],
+    ["minified, aborted", XPI_FILES, noPackage, false, true],
+    [
+      "obfuscated, aborted",
+      { ...READABLE_XPI, "obf.js": obfuscated },
+      noPackage,
+      false,
+      true,
+    ],
+  ]) {
+    const xpi = tmpDir(xpiFiles);
+    const src = tmpDir(srcFiles);
+    const work = freshWorkFolder();
+    try {
+      await runReview({
+        addonPath: xpi,
+        scaRoot: src,
+        workFolder: work,
+        llmReview: true,
+        ...OFFLINE,
+        cdnLookupCache: cdnMissCache(xpi, src),
+      });
+      const state = readState(workPaths(work).state);
+      assert.equal(
+        state.report.findings.some(
+          (f) => f.ruleId === "sca-package-file-missing"
+        ),
+        aborted,
+        name
+      );
+      assert.equal(state.run["xpi-reviewable"] === true, reviewable, name);
+    } finally {
+      [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+    }
+  }
+});
+
 test("SCA e2e: a minified-XPI submission stays in SCA mode (a legitimate SCA)", async () => {
   const xpi = tmpDir(XPI_FILES); // background.js ships minified -> the XPI is not reviewable as-is
   const src = tmpDir(SRC_FILES);

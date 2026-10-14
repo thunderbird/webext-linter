@@ -51,6 +51,10 @@ import {
   loopPromptLines,
 } from "./report/format.js";
 import { readState } from "./report/state.js";
+import {
+  DOWNGRADE_PHASE,
+  DOWNGRADE_RESTART,
+} from "./checks/registry-vocabulary.js";
 import { accept, issue, loopSlots, HandbackRefused } from "./report/loop.js";
 import {
   DEFAULT_CACHE,
@@ -1068,9 +1072,13 @@ export async function main(argv) {
 
 /**
  * Run a review from parsed values: the one start every caller shares. A command line naming
- * an add-on (main), --llm-sca-review for an Experiment the review rejects (main), and the
+ * an add-on (main), --llm-sca-review for an Experiment the review rejects (main), the
  * hand-back that finds a source code review prepared (runPreparePass), which builds the
- * values from the preparation's record.
+ * values from the preparation's record, and the hand-back that restarts an aborted source
+ * review as an XPI review (runLoopPass), from the flags that review recorded.
+ *
+ * The review records the values it was started with, minus the --sca-* ones and those of
+ * one run alone (forwardedFlags), for an XPI review restarted from it.
  *
  * Reading the options can fail the same way the review can - a bad option value is a bad
  * config, not a bad add-on - so it is inside the caller's catch and reported like one.
@@ -1078,9 +1086,17 @@ export async function main(argv) {
  * @param {string} addonPath  The add-on, absolute.
  * @param {string} workFolder  The work folder, absolute.
  * @param {import("./checks/registry.js").Registry} registry
+ * @param {{downgradedFrom?: string}} [internal]  Pipeline options no command-line flag
+ *   sets: the work folder of the source review an XPI review is restarted from.
  * @returns {Promise<import("./pipeline.js").PipelineResult>}
  */
-async function startReview(values, addonPath, workFolder, registry) {
+async function startReview(
+  values,
+  addonPath,
+  workFolder,
+  registry,
+  internal = {}
+) {
   const opts = pipelineOptsFromValues(values);
   // --cache-clear: wipe every cache dir up front so the resolvers re-fetch each source from
   // scratch during this review, exactly as on a first run. cacheDirs lists every cache dir
@@ -1095,6 +1111,8 @@ async function startReview(values, addonPath, workFolder, registry) {
     ...opts,
     workFolder,
     registry,
+    flags: forwardedFlags(values),
+    ...internal,
   });
 }
 
@@ -1569,6 +1587,15 @@ async function runLoopPass(work, base) {
     writeToStderr(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
+  // The reviewer chose to restart this aborted source review as an XPI review: it starts
+  // here, the way a finished preparation starts its review, and its first prompt is this
+  // pass's output. This review's folder stays as it is.
+  if (
+    state.phase === DOWNGRADE_PHASE &&
+    state.values?.[DOWNGRADE_PHASE] === DOWNGRADE_RESTART
+  ) {
+    return restartAsXpiReview(state, folder, base);
+  }
   // A failure from here on is the tool's: the hand-back was accepted. So it is not a
   // refusal - the agent did nothing to correct - and it cannot be redone either: the answer
   // a closing settle refuses is already recorded, and nothing re-prints a prompt for one
@@ -1593,7 +1620,8 @@ async function runLoopPass(work, base) {
   // verdicts did is this tool's note to whoever ran the command, and a line inside the
   // prompt is a line that can be copied along with it. The report the prompt links is
   // already written (issue), so the link is live the moment the reviewer is told to open it.
-  const { settled } = next;
+  // The downgrade phase carries the settled review too, and is not the close.
+  const settled = next.phase.answer === "end" ? next.settled : null;
   if (settled?.applied.length) {
     writeToStdout(
       `Applied ${settled.applied.length} verdict(s): ${settled.applied.join(", ")}\n\n`
@@ -1604,6 +1632,40 @@ async function runLoopPass(work, base) {
   }
   writeToStdout("\n");
   return settled && hasErrors(settled.review.findings) ? 1 : 0;
+}
+
+/**
+ * Start the XPI review an aborted source review is restarted as: with the flags that review
+ * was started with (which hold no --sca-* flag), of the XPI it was submitted with, in a new
+ * work folder of its own beside it, named as an XPI review's is. `downgradedFrom` names the
+ * source review's folder, which adds the finding telling the developer to submit just the
+ * XPI (src/pipeline.js).
+ * @param {import("./report/state.js").LoopState} state  The source review's.
+ * @param {string} folder  The source review's work folder.
+ * @param {import("./checks/registry.js").Registry} registry  The authored registry.
+ * @returns {Promise<number>}
+ */
+async function restartAsXpiReview(state, folder, registry) {
+  const addonPath = state.report.meta.xpi;
+  const workFolder = defaultWorkFolder(addonPath, "xpi");
+  if (fs.lstatSync(workFolder, { throwIfNoEntry: false })) {
+    writeToStderr(`The work folder "${workFolder}" must not exist.\n`);
+    return 2;
+  }
+  let result;
+  try {
+    result = await startReview(
+      { ...state.flags, "llm-review": true },
+      addonPath,
+      workFolder,
+      registry,
+      { downgradedFrom: folder }
+    );
+  } catch (err) {
+    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
+    return 2;
+  }
+  return printReview(result, "text");
 }
 
 /** Fill a linter-owned text's placeholders. The same substitution the prompt uses, so a

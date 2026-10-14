@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Source archive not needed</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Source archive not needed <span class="badge info">info</span></h1>
+        <div class="check-id">sca-not-needed</div>
+      </header>
+
+      <h2>What it reports</h2>
+      <p class="lead">
+        An add-on submitted with a source-code archive it did not need: its source review
+        was restarted as a review of the XPI alone, and the developer is told to submit
+        just the XPI next time.
+      </p>
+      <p>
+        Nothing in the files decides it, so the check raises nothing itself. Under
+        <code>--llm-review</code>, a source review aborted only by checks a review of the
+        XPI alone cures (<code>review-downgrade</code> in the registry), whose XPI holds no
+        minified, obfuscated or untrusted minified code, is asked in the
+        <code>downgrade</code> phase whether to restart as an XPI review. Answering
+        <em>Restart as an XPI review</em> starts that review in a work folder of its own,
+        and it reports this check. A plain XPI review never does.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A source review under --llm-review,<br/>aborted only by checks the XPI cures,<br/>with a readable XPI"] --> Q{"Restart as an XPI review?"}
+  Q -- "Keep this result" --> KEEP([the source review ends aborted])
+  Q -- "Restart as an XPI review" --> INFO([INFO: the XPI review reports<br/>the archive was not needed])
+
+  classDef info fill:#e6f1f1,stroke:#2c7a7b,color:#1d4d4d;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  class INFO info;
+  class KEEP ok;
+  class Q manual;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told that the add-on was submitted with a source-code archive,
+        that its XPI could be reviewed on its own and so was reviewed without the archive,
+        and that submitting just the XPI next time is reviewed considerably faster.
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/sca-not-needed.js</code>, the finding added
+        in <code>src/pipeline.js</code>, the <code>downgrade</code> phase and the entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

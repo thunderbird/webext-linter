@@ -79,6 +79,7 @@
       "build-not-reproduced",
       "build-fails",
       "build-unsafe",
+      "sca-not-needed",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",

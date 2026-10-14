@@ -159,6 +159,12 @@ shapes:
       why: >-
         it names the loop phase a person is asked this check's question in, alone, where it
         cannot wait in the batch beside the others
+    review-downgrade:
+      kind: gate
+      why: >-
+        it says a review of the XPI alone cures this aborting check's finding, so a source
+        review aborted only by such checks, whose XPI is readable, is offered a restart as
+        an XPI review
     escalation:
       kind: refused
       why: >-
@@ -191,6 +197,7 @@ shapes:
     review-early-exit: *only-a-check-that-runs
     review-late-exit: *only-a-check-that-runs
     asked-in: *only-a-check-that-runs
+    review-downgrade: *only-a-check-that-runs
 
   # The token vocabulary that can justify a permission. The two version bounds are
   # snake_case where every other field is kebab - deliberately, because they echo the
@@ -360,6 +367,11 @@ shapes:
       kind: map-of
       shape: verb-prose-entry
       why: what each verdict this pass accepts means, worded per verb
+    question:
+      kind: text
+      why: >-
+        the question a process-value pass hands over where no check routes a to-do to it,
+        relayed as it is written
     values:
       kind: entries
       shape: phase-value-entry

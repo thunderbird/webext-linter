@@ -58,16 +58,25 @@ import { settleScaRoot } from "./addon/sca-root.js";
 import {
   checkSelected,
   ctxForRule,
+  formatNote,
   loadRegistry,
   runChecks,
 } from "./checks/registry.js";
+import {
+  classifyAddonJs,
+  classifyInlineScripts,
+  isMinifiedFirstParty,
+} from "./lib/bundled.js";
+import { artifactLabel } from "./report/artifact.js";
+import { displayLine } from "./util/text.js";
+import { VERDICT } from "./lib/enum.js";
 import { buildXpiCtx, buildScaCtx, buildAllCtx } from "./checks/context.js";
 import {
   renderFindings,
   renderManualItems,
   withDefaultNotes,
 } from "./report/responses.js";
-import { resolveHolds } from "./report/finding.js";
+import { finding, resolveHolds } from "./report/finding.js";
 import { assignRefs, orderReview } from "./report/order.js";
 import { earlyExitOf, withoutQuestions } from "./report/early-exit.js";
 import { STATE_VERSION } from "./report/state.js";
@@ -207,6 +216,12 @@ export const SETUP_STEPS = Object.freeze([
  *   --llm-skip-manual drops the steps that put the manual items to a reviewer,
  *   and no phase puts them to anyone - they stay in the report, for the
  *   reviewer to work through later.
+ * @property {Record<string, string|boolean>} [flags]  The command-line values the review
+ *   was started with, minus the --sca-* ones and those of one run alone (src/cli.js
+ *   forwardedFlags), recorded in the loop's state for an XPI review restarted from it.
+ * @property {string} [downgradedFrom]  The work folder of the source review this XPI review
+ *   was restarted from (src/cli.js runLoopPass), which adds its sca-not-needed finding. No
+ *   command-line flag sets it.
  */
 
 /**
@@ -720,6 +735,29 @@ async function reviewSubmission(opts, work, prepared) {
     siblings
   );
   findings.push(...reviewFindings);
+  // An XPI review restarted from a source review that did not need its archive (src/cli.js
+  // runLoopPass): its one finding tells the developer to submit just the XPI next time.
+  if (
+    opts.downgradedFrom &&
+    checkSelected(SCA_NOT_NEEDED_CHECK, {
+      only: opts.checksOnly,
+      skip: opts.checksSkip,
+    })
+  ) {
+    findings.push(
+      finding({
+        ruleId: SCA_NOT_NEEDED_CHECK,
+        severity: registry.checkEntry(SCA_NOT_NEEDED_CHECK).severity,
+        artifact: ARTIFACT_XPI,
+      })
+    );
+  }
+  // Whether the built XPI of a source review could be reviewed on its own, which the loop
+  // reads to offer an aborted review a restart as an XPI review (src/report/loop.js runOf).
+  // Asked of the classifiers directly, so a review aborted before any check read the XPI is
+  // answered too, and the work a check already did is reused.
+  const xpiReviewable =
+    opts.llmReview && mode.sca ? await readableXpi(siblings.xpi, mode) : false;
 
   // The review-derived half of meta (the base half - action/xpi/... - is the `meta` setup
   // step's): the schema stamps, the checks that ran, and the manual-review to-do list.
@@ -884,12 +922,18 @@ async function reviewSubmission(opts, work, prepared) {
         ...Object.fromEntries(
           Object.keys(sweepFiles).map((a) => [sweepRun(a), true])
         ),
+        // Whether the built XPI of this source review could be reviewed on its own.
+        ...(xpiReviewable ? { "xpi-reviewable": true } : {}),
         // The band policy, so a later pass reads the review under the one it was started
         // with. The findings below are already published at it, but a case REPORTED on a
         // later pass becomes a finding there and then (src/report/verdicts.js asFinding),
         // and that pass is never handed the flag again.
         warningsAsErrors: registry.warningsAsErrors,
       },
+      // The flags the review was started with, minus the --sca-* ones and those of one run
+      // alone (src/cli.js forwardedFlags): what an XPI review restarted from this one is
+      // started with.
+      flags: opts.flags ?? {},
       sweep: null,
       paths: {
         description: summaryPath,
@@ -1059,6 +1103,64 @@ async function reviewSubmission(opts, work, prepared) {
  *  every build of the preparation runs in, and that preparation's record. A review claiming them
  *  would refuse the very folder it was prepared in. */
 const WORK_INPUTS = new Set(["sca", "rescued", "buildCopy", "prepare"]);
+
+/** The check an XPI review restarted from a source review reports (opts.downgradedFrom). */
+const SCA_NOT_NEEDED_CHECK = "sca-not-needed";
+
+/**
+ * Whether the built XPI could be reviewed on its own: no file or inline script in it is
+ * minified first-party code, obfuscated, or an untrusted minified library. Each verdict goes
+ * to the feed, so the reviewer sees why.
+ * @param {import("./checks/registry.js").RunContext} xpiCtx  The built XPI's ctx.
+ * @param {{sca: boolean}} mode
+ * @returns {Promise<boolean>}
+ */
+async function readableXpi(xpiCtx, mode) {
+  progress("XPI readability", FEED.STEP);
+  const label = artifactLabel({ artifact: ARTIFACT_XPI, mode });
+  let readable = true;
+  // `unreadable` names why a file cannot be reviewed, or is null for one that can.
+  const verdict = (file, loc, unreadable, fine) => {
+    readable &&= !unreadable;
+    progress(
+      formatNote(
+        displayLine(file),
+        loc,
+        unreadable ?? fine,
+        unreadable ? VERDICT.FAIL : VERDICT.PASS,
+        label
+      ),
+      FEED.DETAIL
+    );
+  };
+  for (const c of await classifyAddonJs(xpiCtx)) {
+    verdict(
+      c.file,
+      null,
+      c.obfuscation.fail
+        ? "obfuscated"
+        : isMinifiedFirstParty(c)
+          ? "minified"
+          : c.untrusted && c.minified
+            ? "untrusted minified library"
+            : null,
+      "readable"
+    );
+  }
+  for (const site of await classifyInlineScripts(xpiCtx)) {
+    verdict(
+      site.file,
+      site.loc,
+      site.obfuscation.fail
+        ? "obfuscated inline script"
+        : site.minified
+          ? "minified inline script"
+          : null,
+      "readable inline script"
+    );
+  }
+  return readable;
+}
 
 /** The early-exit reason the dependency-vulnerability checks share: the checks that read
  *  the lock audit's lists (src/prepare/audit.js LOCK_AUDIT_LISTS). */

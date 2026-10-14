@@ -328,6 +328,14 @@ to that case: an XPI-only review halts on the same terms, and cancels the by-han
 checks too, because a submission being refused for what it ships is a submission nobody
 needs to spend that time on.
 
+An aborting check of the source archive can say that a review of the XPI alone cures its
+finding (`review-downgrade: true` in the registry): the shape, package.json and lock checks,
+the build checks, `lockfile-injection` and the two build-dependency vulnerability checks.
+`vendor-vulnerable-indirect` cannot, as it reports code the XPI ships. A source review under
+`--llm-review` aborted only by such checks, whose XPI holds no minified, obfuscated or
+untrusted minified code, shows its closing block and then asks the reviewer whether to
+restart as an XPI review (see [Restarting as an XPI review](docs/llm-review.md#restarting-as-an-xpi-review)).
+
 A check can instead name its reason as `review-late-exit:`, for one of the same reasons.
 Its error stops nothing while the review runs: every check still runs, and under
 `--llm-review` the sweeps, verify and settle passes run as usual, so verify can withdraw
@@ -408,6 +416,7 @@ machine.
 | `sca-lock-file-multiple` | A source submission that commits more than one lock file at its root (any two of `npm-shrinkwrap.json`, `package-lock.json`, `pnpm-lock.yaml`) (error, aborts the review). Every check reads one lock, while the build picks its package manager by the lock it finds, so with two the tree audited need not be the tree installed. The preparation neither audits nor rescues such a source. |
 | `sca-lock-file-invalid` | A committed lock file that cannot be read: it does not parse, or it is not a recognisable npm or pnpm lock (error). The dependency audit reads the installed tree from it, so the review is aborted. Whether a readable lock matches `package.json` is left to `npm ci` / `pnpm install --frozen-lockfile` at the build. |
 | `sca-dependencies-changed` | The source reviewed is a rescued copy (see [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review)): its dependencies were reduced to what the release build uses, or audit-fixed, to get past known vulnerabilities. Says so once, at `package.json`, and tells the developer to run their package manager's audit, since their own files still have the vulnerabilities (info). Compared lock to lock: silent for a source that is no rescued copy, or a copy whose lock installs what the original's did. |
+| `sca-not-needed` | An XPI review restarted from a source review that did not need its archive (see [Restarting as an XPI review](docs/llm-review.md#restarting-as-an-xpi-review)): tells the developer to submit just the XPI next time (info). Raised by nothing in the files, only by that restart. |
 | `lockfile-injection` | A lock entry that names one release and installs another: its `version` says 1.2.2 while its `resolved` URL (or pnpm's `resolution.tarball`) fetches 1.2.1, or another package (error, aborts the review). The audit asks about the name and version, the install fetches the URL. A URL on the registry's tarball path is compared offline, any other registry URL is asked of the registry once and cached (`--cache-npm-registry-dir`). It runs before the vulnerability checks, so a forged lock stops the review before the lock is audited, and the preparation does not audit or rescue such a lock. |
 | `lock-foreign-source` | A lock entry the install takes from a source other than the npm registry or GitHub (error, aborts the review). The audit identifies a package by name and version, while the installer fetches the URL the lock records, so such an entry installs bytes the audit never read. |
 | `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, aborts the review). The lock is owed by the `package.json`, not by what it declares: both installers refuse without one whatever it holds. A build using a package manager the review does not install from commits no lock that counts, so it is rejected here. |

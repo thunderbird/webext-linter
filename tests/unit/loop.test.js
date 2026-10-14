@@ -1671,6 +1671,117 @@ test("a late-exit finding verify withdrew aborts nothing", () => {
   assert.equal(closing.settled.earlyExit, false);
 });
 
+/** The small review as a source review aborted by one error finding of each check in
+ *  `ruleIds`, whose XPI could be reviewed on its own or not. */
+function abortedScaReview(dir, ruleIds, { reviewable = true } = {}) {
+  const made = review(dir, { sweep: false, code: false, questions: false });
+  made.state.report.sca = true;
+  made.state.report.findings = ruleIds.map((ruleId, i) => ({
+    ruleId,
+    severity: "error",
+    file: null,
+    loc: null,
+    artifact: ruleId === "experiment-not-allowed" ? ARTIFACT_XPI : ARTIFACT_SCA,
+    message: `finding ${i}`,
+  }));
+  made.state.run = {
+    skip: [],
+    sca: true,
+    ...(reviewable ? { "xpi-reviewable": true } : {}),
+  };
+  refed(made.state);
+  return made;
+}
+
+// A source review aborted only by a fault of its archive, whose XPI is readable, is asked
+// whether to restart as an XPI review. Its first prompt shows the aborted review's closing
+// block, ends the turn, and then puts the question, which names what aborted the review.
+test("a source review aborted by its archive, with a readable XPI, issues downgrade", () => {
+  const { state, work } = abortedScaReview(tmp(), ["sca-package-file-missing"]);
+  const first = issue(state, work, PHASES, REGISTRY);
+  assert.equal(first.phase.name, "downgrade");
+  assert.equal(first.settled.earlyExit, true);
+  assert.ok(first.steps[0].text.includes("{{tally}}"));
+  assert.ok(first.steps[0].text.includes("{{details}}"));
+  const slots = loopSlots(state, first, work, REGISTRY);
+  assert.ok(
+    slots.details.endsWith(
+      "- Build process issues\n\n" + REGISTRY.llmPhases().waiting("downgrade")
+    ),
+    slots.details
+  );
+  assert.equal(slots.tally, first.settled.tally);
+  const [entry] = first.entries;
+  assert.equal(
+    entry.message,
+    "The SCA review failed for build process issues, but it looks like this " +
+      "submission does not actually need an SCA review. The XPI is not minified and " +
+      "could be reviewed directly. Should the review be restarted as a pure XPI review?"
+  );
+  assert.deepEqual(
+    entry.answers.map((a) => a.label),
+    ["Restart as an XPI review", "Keep this result"]
+  );
+});
+
+// Not where the XPI cannot be reviewed on its own, and not where any aborting check is one
+// a review of the XPI does not cure: the review closes on its first prompt, as it does
+// without the question. The same review, readable and aborted by its archive alone, is
+// asked.
+test("downgrade is not issued for an unreadable XPI or an abort the XPI shares", () => {
+  const asked = abortedScaReview(tmp(), ["sca-package-file-missing"]);
+  assert.equal(
+    issue(asked.state, asked.work, PHASES, REGISTRY).phase.name,
+    "downgrade"
+  );
+  for (const [ruleIds, opts] of [
+    [["sca-package-file-missing"], { reviewable: false }],
+    [["sca-package-file-missing", "experiment-not-allowed"], {}],
+    [["sca-package-file-missing", "vendor-vulnerable-indirect"], {}],
+  ]) {
+    const { state, work } = abortedScaReview(tmp(), ruleIds, opts);
+    assert.equal(
+      issue(state, work, PHASES, REGISTRY).phase.name,
+      "close",
+      ruleIds.join(" ")
+    );
+  }
+});
+
+// A source review that did not abort is never asked, whatever its XPI.
+test("a review that did not abort never sees downgrade", () => {
+  assert.ok(PHASES.some((phase) => phase.name === "downgrade"));
+  const { state, work } = review(tmp(), { sweep: false });
+  state.report.sca = true;
+  state.run = { skip: [], sca: true, "xpi-reviewable": true };
+  const { seen, closing } = driveLoop(state, work, (phase) =>
+    phase === "verify" ? "reported" : "cleared"
+  );
+  assert.ok(!seen.includes("downgrade"), seen.join(" "));
+  assert.equal(closing.settled.earlyExit, false);
+});
+
+// "Keep this result": the review closes aborted, with its aborted line, and the close does
+// not show the Summary and the Final Review Details a second time.
+test("keeping the result closes the review aborted, without its block again", () => {
+  const { state, work } = abortedScaReview(tmp(), ["sca-package-file-missing"]);
+  assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "downgrade");
+  handBack(work, () => "Keep this result");
+  accept(state, work, PHASES, REGISTRY);
+  assert.equal(state.values.downgrade, "keep");
+  const closing = issue(state, work, PHASES, REGISTRY);
+  assert.equal(closing.phase.name, "close");
+  assert.equal(closing.settled.earlyExit, true);
+  assert.match(closing.steps[0].text, /^The review was aborted/);
+  assert.ok(
+    !closing.steps.some(
+      (step) =>
+        step.text.includes("{{tally}}") || step.text.includes("{{details}}")
+    ),
+    "the block is not shown again"
+  );
+});
+
 /** The small review as a source code review whose build checks all ran: the build
  *  phases' paths named, as the pipeline names them for one. */
 function buildReview(dir) {

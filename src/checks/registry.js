@@ -626,7 +626,7 @@ export class Registry {
    *   phases: {name: string, answer: string,
    *   endsTurn: boolean, verbs: string[],
    *   product: ?string, verbProse: object, intro: string,
-   *   steps: {when: ?object, text: string}[], routed: boolean,
+   *   steps: {when: ?object, text: string}[], routed: boolean, question: ?string,
    *   values: {value: string, label: string, description: string,
    *   reports: ?string}[]}[]}}
    */
@@ -664,6 +664,8 @@ export class Registry {
         intro: phase.intro,
         steps: phase.steps.map(loadedStep),
         routed: routed.has(phase.name),
+        // A process-value phase's own question, for one no check routes a to-do to.
+        question: phase.question ?? null,
         // What a process-value phase accepts back.
         values: (phase.values ?? []).map((v) => ({
           value: v.value,
@@ -741,6 +743,19 @@ export class Registry {
   lateExitFor(ruleId) {
     const reason = this.checkEntry(ruleId)?.["review-late-exit"];
     return typeof reason === "string" && reason !== "" ? reason : null;
+  }
+
+  /**
+   * Whether a review of the XPI alone cures this aborting check's finding
+   * (`review-downgrade`): the archive or its build is what is wrong, not the shipped code. A
+   * source review aborted only by such checks is offered a restart as an XPI review
+   * (src/report/loop.js runOf). assertEarlyExit holds the marker to aborting checks of the
+   * source archive.
+   * @param {string} ruleId
+   * @returns {boolean}
+   */
+  downgrades(ruleId) {
+    return this.checkEntry(ruleId)?.["review-downgrade"] === true;
   }
 
   /**
@@ -1512,11 +1527,13 @@ function loadedStep(step) {
  */
 function assertProcessValues(registry, phase, at) {
   if (phase.answer !== "value") {
-    if (phase.values !== undefined) {
-      throw new Error(
-        `${at} answers with \`${phase.answer}\` but authors \`values\` - only a ` +
-          "`value` phase hands over a question"
-      );
+    for (const key of ["values", "question"]) {
+      if (phase[key] !== undefined) {
+        throw new Error(
+          `${at} answers with \`${phase.answer}\` but authors \`${key}\` - only a ` +
+            "`value` phase hands over a question"
+        );
+      }
     }
     return;
   }
@@ -1924,6 +1941,7 @@ export function assertEarlyExit(registry, at) {
   for (const entry of registry.allEntries()) {
     const early = entry["review-early-exit"];
     const late = entry["review-late-exit"];
+    assertDowngrade(entry, early !== undefined || late !== undefined, at);
     if (early === undefined && late === undefined) {
       continue;
     }
@@ -1973,6 +1991,32 @@ export function assertEarlyExit(registry, at) {
           `report can reach it (${at})`
       );
     }
+  }
+}
+
+/**
+ * Assert a `review-downgrade` marker: only a check that aborts the review carries one, as
+ * it says what cures that abort, and only one reading the source archive (`input: sca` or
+ * `all`), as a review of the XPI alone cures nothing a check of the XPI found.
+ * @param {object} entry
+ * @param {boolean} aborts  The entry names an early-exit or late-exit reason.
+ * @param {string} at
+ */
+function assertDowngrade(entry, aborts, at) {
+  if (entry["review-downgrade"] === undefined) {
+    return;
+  }
+  if (!aborts) {
+    throw new Error(
+      `\`${entry.check}\` authors \`review-downgrade\` but aborts no review - the marker ` +
+        `says what cures an abort (${at})`
+    );
+  }
+  if (entry.input !== "sca" && entry.input !== "all") {
+    throw new Error(
+      `\`${entry.check}\` authors \`review-downgrade\` on \`input: ${entry.input}\` - only ` +
+        `a check reading the source archive (sca or all) is cured by reviewing the XPI (${at})`
+    );
   }
 }
 

@@ -10,7 +10,7 @@
 // That is what makes this half of the tool testable without talking to an agent.
 import { assignRefs, orderReview } from "./order.js";
 import { nextPhase, openIn, phaseOf, stepsOf } from "./phases.js";
-import { earlyExitOf } from "./early-exit.js";
+import { abortingChecks, earlyExitOf } from "./early-exit.js";
 import {
   HandbackRefused,
   answersOf,
@@ -43,7 +43,10 @@ import {
 import { applyVerdicts, pickedChoice } from "./verdicts.js";
 import { renderFindings } from "./responses.js";
 import { VERB } from "./verbs.js";
-import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
+import {
+  DOWNGRADE_PHASE,
+  ITEMLESS_ANSWERS,
+} from "../checks/registry-vocabulary.js";
 import { BUILD_RESULT } from "../prepare/state.js";
 
 /**
@@ -62,12 +65,18 @@ import { BUILD_RESULT } from "../prepare/state.js";
  * A late-exit reason (Registry lateExitFor) halts the review only once the phase that
  * would go out without it is `ask` or the close: the phases up to `settle` run as usual,
  * so verify can withdraw the finding first, and the reviewer is then asked nothing.
+ *
+ * `downgradable` is read once the review is halted: a source review whose XPI is readable
+ * (`xpi-reviewable`, src/pipeline.js), aborted only by checks a review of the XPI alone
+ * cures (Registry downgrades), early or late. The aborting checks are those the abort
+ * reasons are counted from (src/report/early-exit.js abortingChecks).
  * @param {import("./state.js").LoopState} state
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
  * @param {{name: string, answer: string, steps: object[]}[]} phases  In issue order.
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {{skip: string[], sca: boolean, halted: boolean, first: boolean,
- *   spawned: boolean, decided: boolean, values: Object<string, string>}}  Beside these, the
+ *   spawned: boolean, decided: boolean, downgradable: boolean,
+ *   values: Object<string, string>}}  Beside these, the
  *   build result's fact (buildResultFact) is true.
  */
 function runOf(state, ordered, phases, registry) {
@@ -90,6 +99,14 @@ function runOf(state, ordered, phases, registry) {
     const next = nextPhase(phases, ordered, state, run)?.phase;
     run.halted = !next || next.name === "ask" || next.answer === "end";
   }
+  run.downgradable = Boolean(
+    run.sca &&
+    run["xpi-reviewable"] &&
+    run.halted &&
+    abortingChecks(ordered, verdicts, registry, { late: true }).every((id) =>
+      registry.downgrades(id)
+    )
+  );
   return run;
 }
 
@@ -195,7 +212,8 @@ function askedByPerson(registry) {
  *   here and another for the reviewer.
  * @returns {{phase: object, steps: object[], preamble: object[], entries: object[],
  *   settled: ?ReturnType<typeof settle>, waiting: ?string}}  `preamble` is the parts of it
- *   this prompt prints. `settled` is the finished review, for the closing phase only.
+ *   this prompt prints. `settled` is the finished review, for the closing phase and the
+ *   downgrade phase only.
  *   `waiting` is the line a turn-ending phase appends to its block.
  */
 export function issue(state, work, phases, registry) {
@@ -213,8 +231,12 @@ export function issue(state, work, phases, registry) {
   // rather than the run's - a verdict applied only now can still decide it - so the steps
   // are chosen again against it. Settled on a COPY, as below: the state is written after
   // this, and a review settled in place would be settled twice by anything that read it.
+  // The downgrade phase shows the aborted review's closing block before its question, so it
+  // hands over the same finished review.
   const settled =
-    phase.answer === "end" ? settle(structuredClone(state), registry) : null;
+    phase.answer === "end" || phase.name === DOWNGRADE_PHASE
+      ? settle(structuredClone(state), registry)
+      : null;
   const steps = settled
     ? stepsOf(phase, { ...run, halted: settled.earlyExit })
     : next.steps;
@@ -382,8 +404,8 @@ export { HandbackRefused };
 
 /**
  * What a phase hands out and checks the hand-back against: a process-value phase its one
- * entry, worded by the open to-do routed to it where it has one, an itemless phase nothing,
- * any other phase its open items.
+ * entry, worded by the open to-do routed to it where it has one and by its own `question`
+ * otherwise, an itemless phase nothing, any other phase its open items.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
  * @param {object} phase
@@ -393,11 +415,40 @@ export { HandbackRefused };
 function askedIn(state, registry, phase, ordered) {
   if (phase.answer === "value") {
     const [routed] = renderedOpen(state, registry, phase.name, ordered);
-    return [valueEntry(phase, routed?.message ?? null)];
+    return [
+      valueEntry(
+        phase,
+        routed?.message ?? phaseQuestion(state, registry, phase, ordered)
+      ),
+    ];
   }
   return ITEMLESS_ANSWERS.includes(phase.answer)
     ? []
     : phaseEntries(state, registry, phase, ordered);
+}
+
+/**
+ * A process-value phase's own question, or null where it has none. {{abortReasons}} names
+ * what aborted the review: each abort reason's text, starting in lower case, joined with
+ * " and ", as the closing block lists them.
+ * @param {import("./state.js").LoopState} state
+ * @param {import("../checks/registry.js").Registry} registry
+ * @param {{question: ?string}} phase
+ * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
+ * @returns {?string}
+ */
+function phaseQuestion(state, registry, phase, ordered) {
+  if (!phase.question) {
+    return null;
+  }
+  const reasons =
+    earlyExitOf(ordered, verdictsOf(state, ordered, registry), registry, {
+      late: true,
+    })?.reasons ?? [];
+  const named = reasons
+    .map(({ text }) => text.charAt(0).toLowerCase() + text.slice(1))
+    .join(" and ");
+  return phase.question.split("{{abortReasons}}").join(named);
 }
 
 /**

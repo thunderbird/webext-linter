@@ -234,7 +234,8 @@ function resolvedIn(root, file, ruleId, resolving) {
  * by the label that comes back and the description that says when it applies.
  * @param {{name: string, values: {label: string, description: string}[]}} phase
  * @param {?string} message  The question: the message of the open to-do routed to the
- *   phase, as a words phase hands that to-do over, or null where none is routed to it.
+ *   phase, as a words phase hands that to-do over, else the phase's own `question`, or null
+ *   where it has neither.
  * @returns {object}
  */
 export function valueEntry(phase, message) {

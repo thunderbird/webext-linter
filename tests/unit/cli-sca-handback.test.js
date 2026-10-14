@@ -9,10 +9,13 @@ import os from "node:os";
 import path from "node:path";
 import AdmZip from "adm-zip";
 import { workPaths } from "../../src/util/dest.js";
+import { cdnMissCache } from "../seed-caches.js";
 import {
   ROOT,
   REVIEW,
+  CACHE,
   OFFLINE_FLAGS,
+  cacheFlags,
   headerValue,
   run,
   workOfReviewFile,
@@ -495,6 +498,93 @@ test("an XPI holding a symlink is invalid, exit 2", () => {
       r.stderr,
       /Invalid XPI: lib\/a\.js is a symbolic link \(an add-on must contain regular files only\)\./
     );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// "Restart as an XPI review": the hand-back of an aborted source review whose XPI is
+// readable starts the XPI review itself, in a work folder of its own, with the flags the
+// source review was started with minus every --sca-* one, and prints its first prompt. Its
+// report tells the developer the archive was not needed. The source review's folder stays
+// as it is. A plain --llm-review of the same XPI carries no such finding.
+test("restarting an aborted source review starts an XPI review of its own", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-downgrade-"));
+  const xpi = path.join(dir, "addon");
+  const src = path.join(dir, "src");
+  const files = {
+    "manifest.json": JSON.stringify({
+      manifest_version: 3,
+      name: "Readable",
+      version: "1.0",
+      background: { scripts: ["bg.js"] },
+    }),
+    "bg.js": "console.log('readable shipped code');\n",
+  };
+  fs.mkdirSync(xpi);
+  for (const [name, content] of Object.entries(files)) {
+    fs.writeFileSync(path.join(xpi, name), content);
+  }
+  // No package.json: the source review aborts on it, which the XPI review cures.
+  fs.mkdirSync(src);
+  fs.writeFileSync(path.join(src, "bg.js"), "console.log('source');\n");
+  const flags = cacheFlags(CACHE, cdnMissCache(dir));
+  try {
+    const started = run([
+      xpi,
+      "--sca-root",
+      src,
+      "--llm-review",
+      "--warnings-as-errors",
+      ...flags,
+    ]);
+    assert.equal(started.code, 1, started.stderr);
+    const scaWork = defaultFolderOf(xpi, "sca");
+    const scaState = readJson(scaWork, "state");
+    assert.equal(scaState.phase, "downgrade");
+    assert.ok(
+      !Object.keys(scaState.flags).some((name) => name.startsWith("sca-")),
+      JSON.stringify(scaState.flags)
+    );
+    assert.equal(scaState.flags["warnings-as-errors"], true);
+
+    const file = workPaths(scaWork).review;
+    const doc = JSON.parse(fs.readFileSync(file, "utf8"));
+    doc.entries[0].answer = "Restart as an XPI review";
+    fs.writeFileSync(file, JSON.stringify(doc, null, 1));
+    const before = fs.readFileSync(workPaths(scaWork).state, "utf8");
+    const handed = run(["--llm-handback", scaWork]);
+    assert.equal(handed.code, 0, handed.stderr);
+    assert.equal(
+      fs.readFileSync(workPaths(scaWork).state, "utf8"),
+      before,
+      "the source review's folder stays as it is"
+    );
+
+    const xpiWork = defaultFolderOf(xpi, "xpi");
+    assert.ok(handed.stdout.includes(workPaths(xpiWork).review), "its prompt");
+    const xpiState = readJson(xpiWork, "state");
+    assert.equal(xpiState.run.sca, false);
+    assert.equal(xpiState.run.warningsAsErrors, true);
+    assert.deepEqual(xpiState.flags, scaState.flags);
+    assert.deepEqual(
+      xpiState.report.findings
+        .filter((f) => f.ruleId === "sca-not-needed")
+        .map((f) => f.severity),
+      ["info"]
+    );
+
+    const plainDir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-plain-"));
+    const plainXpi = path.join(plainDir, "addon");
+    fs.cpSync(xpi, plainXpi, { recursive: true });
+    const plain = run([plainXpi, "--llm-review", ...flags]);
+    assert.notEqual(plain.code, 2, plain.stderr);
+    assert.ok(
+      !readJson(defaultFolderOf(plainXpi, "xpi"), "state").report.findings.some(
+        (f) => f.ruleId === "sca-not-needed"
+      )
+    );
+    fs.rmSync(plainDir, { recursive: true, force: true });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

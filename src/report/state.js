@@ -32,10 +32,15 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   null when no check that ran authors one.
  * @property {{skip: string[], sca: boolean, warningsAsErrors: boolean}} run
  *   What this run was told to leave out (PROMPT_SKIPS), whether it is a source code review,
- *   whether every check a build relies on runs (`build-guarded`), which trees it sweeps
- *   (one sweepRun key each), and the band it publishes a warning at (--warnings-as-errors). One
- *   record, read by everything that asks: a step prints by it, the routing drops entries by
- *   it, the registry is read under it, and both legs of a hand-over ask it the same question.
+ *   whether every check a build relies on runs (`build-guarded`), whether the built XPI
+ *   of a source review could be reviewed on its own (`xpi-reviewable`), which trees it
+ *   sweeps (one sweepRun key each), and the band it publishes a warning at
+ *   (--warnings-as-errors). One record, read by everything that asks: a step prints by it,
+ *   the routing drops entries by it, the registry is read under it, and both legs of a
+ *   hand-over ask it the same question.
+ * @property {Record<string, string|boolean>} flags  The command-line values the review was
+ *   started with, minus the --sca-* ones and those of one run alone (src/cli.js
+ *   forwardedFlags): what an XPI review restarted from this one is started with.
  * @property {object} paths  The values a step names: description, build, report (all in
  *   the review's work folder, src/util/dest.js workPaths, which also holds this file and
  *   the review file and is not recorded: the state is read from it), schemaCache, schema,

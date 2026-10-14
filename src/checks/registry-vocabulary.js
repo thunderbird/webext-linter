@@ -201,10 +201,12 @@ export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
  *  - `spawned`: `spawn` went out, so agents may still be running;
  *  - `decided`: the agent has judged something - `verify` or `settle` went out;
  *  - `closing`: the prompt being printed is the closing one (its phase answers `end`);
+ *  - `downgradable`: a source review aborted only by checks a review of the XPI alone
+ *    cures (`review-downgrade`), whose XPI is readable, so it may restart as an XPI review;
  *  - the build result, exactly one of BUILD_RESULT_FACTS.
  *
- *  `first`, `spawned`, `decided` and the build result are read off the review each pass
- *  (runOf); `closing` comes from the phase being printed (stepsOf). Every other name but
+ *  `first`, `spawned`, `decided`, `downgradable` and the build result are read off the
+ *  review each pass (runOf); `closing` comes from the phase being printed (stepsOf). Every other name but
  *  `aborted`, `closing` and the flags is the key the run record answers under. */
 export const REVIEW_PROMPT_FACTS = [
   ...PROMPT_SKIPS,
@@ -216,6 +218,7 @@ export const REVIEW_PROMPT_FACTS = [
   "spawned",
   "decided",
   "closing",
+  "downgradable",
   ...BUILD_RESULT_FACTS,
 ];
 
@@ -256,6 +259,13 @@ export const ANSWER_KINDS = ["hints", "verdict", "words", "value", "end"];
  *  sweeps back on that hand-back. `value` is handed back with its one process value. `end` is the closing phase: issued once nothing else
  *  has work, and never handed back, because the review ends with it. */
 export const ITEMLESS_ANSWERS = ["hints", "value", "end"];
+
+/** The loop phase that offers an aborted source review a restart as an XPI review, and the
+ *  value of it that restarts it (src/cli.js runLoopPass). The phase settles the review as
+ *  the close does, as it shows the aborted review's closing block (src/report/loop.js
+ *  issue). */
+export const DOWNGRADE_PHASE = "downgrade";
+export const DOWNGRADE_RESTART = "xpi";
 
 /** What a phase's `product` can name: what its agent leaves for the reviewer, keyed as the
  *  state's `paths` key that holds it. `build` is a file the agent writes. Whether it came
