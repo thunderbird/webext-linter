@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import AdmZip from "adm-zip";
 import { workPaths } from "../../src/util/dest.js";
+import { MAX_NOTE } from "../../src/config.js";
 import { cdnMissCache } from "../seed-caches.js";
 import {
   ROOT,
@@ -262,12 +263,10 @@ test("--llm-sca-review refuses a folder that is not a submission", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// An answer that reaches settle() already invalid - too long to have been typed into the
-// question it answers - fails cleanly, not as a raw stack trace. It cannot be redone: the
-// answer is already in the state by the time settle() sees it, so this is a terminal
-// failure of the review, the same as a state file this build cannot read - not a
-// HandbackRefused, which exists only for a hand-back that can still be corrected.
-test("an answer too long for settle() to apply fails cleanly, not as a crash", () => {
+// An answer in a reviewer's own words too long to become a note is refused at the hand-back,
+// as the `refused` text the agent reads, so it can ask that question again. Taken instead,
+// it would be refused only once the review settles, which no hand-back can redo.
+test("an answer too long to be a note is refused at the hand-back", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const first = run([
     addon,
@@ -290,9 +289,14 @@ test("an answer too long for settle() to apply fails cleanly, not as a crash", (
     out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
   }
   assert.equal(out.code, 2, out.stdout);
-  assert.match(out.stderr, /carries a \d+-character answer and the limit is/);
-  assert.match(out.stderr, /verify failed/);
-  assert.doesNotMatch(out.stderr, /at settleAnswer|at applyVerdicts|at Object/);
+  assert.ok(out.stdout.includes("The hand-back was refused: "), out.stdout);
+  assert.ok(
+    out.stdout.includes(
+      `carries a 2800-character answer and the limit is ${MAX_NOTE}`
+    ),
+    out.stdout
+  );
+  assert.ok(!out.stderr.includes("verify failed"), out.stderr);
 });
 
 // The live feed and the report are two renderings of one review, so they must not

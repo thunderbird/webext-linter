@@ -55,8 +55,10 @@ export const RESULT_SHAPE =
 
 // A hint names what sits at one location and is printed on that location's line. Past
 // roughly this it stops being an annotation and starts being a paragraph someone wrote
-// for the developer, which is the registry's job.
-const MAX_HINT = 200;
+// for the developer, which is the registry's job. Exported, like RESULT_SHAPE, so the
+// sweep request states the limit this refuses past (src/report/sweep-files.js), and the
+// two are kept in step.
+export const MAX_HINT = 200;
 
 /**
  * One thing a sweep found, checked.
@@ -123,7 +125,7 @@ export function checkedResult(where, raw) {
     (typeof raw.hint !== "string" || raw.hint === "")
   ) {
     throw new Error(
-      `${at} has hint ${JSON.stringify(raw.hint)} (expected a short phrase naming what is there)`
+      `${at} has hint ${JSON.stringify(raw.hint)} (expected a short phrase of at most ${MAX_HINT} characters naming what is there)`
     );
   }
   if (typeof raw.hint === "string" && raw.hint.length > MAX_HINT) {

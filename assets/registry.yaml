@@ -2296,7 +2296,7 @@ llm-sca-review-prompt:
     - text: |-
         Where the build produced its output, compare it with SUBMITTED_XPI, given above: it holds the same files at the same paths, each with the same contents, where only line endings may differ. Compare only that, and change nothing.
     - text: |-
-        Open ANSWERS, given above. Answer its entry whose "index" is LLM_BUILD_OUTPUT with the final artifact the build process produced: the XPI or zip file where it makes one, wherever in the copy it lands (next to LLM_BUILD_ROOT, for one), or else the folder such as `dist/`. Write it as an absolute path. Where the build failed, answer with the "label" of its one answer instead.
+        Open ANSWERS, given above. Answer its entry whose "index" is LLM_BUILD_OUTPUT with the final artifact the build process produced: the XPI or zip file where it makes one, wherever in the copy it lands (next to LLM_BUILD_ROOT, for one), or else the folder such as `dist/`. Write it as an existing file or folder inside LLM_BUILD_ROOT's copy, not the copy itself, as an absolute path. Where the build failed, answer with the "label" of its one answer instead.
 
         Answer its entry whose "index" is LLM_BUILD_XPI_MATCH with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. `match` means exactly the comparison above holds, and nothing less. Write no notes and no list of differences, there or anywhere else. Where the build failed, leave its "answer" null. Change nothing else in the file.
     - text: |-
@@ -2334,7 +2334,7 @@ llm-sca-review-prompt:
     - text: |-
         Where the last build produced its output, compare it with SUBMITTED_XPI, given above: it holds the same files at the same paths, each with the same contents, where only line endings may differ. Compare only that, and change nothing.
     - text: |-
-        Open ANSWERS, given above. Answer its entry whose "index" is LLM_BUILD_OUTPUT with the final artifact the last build produced: the XPI or zip file where it makes one, wherever in the build copy it lands (next to LLM_BUILD_ROOT, for one), or else the folder such as `dist/`. Write it as an absolute path. Where the rescue failed, answer with the "label" of its one answer instead.
+        Open ANSWERS, given above. Answer its entry whose "index" is LLM_BUILD_OUTPUT with the final artifact the last build produced: the XPI or zip file where it makes one, wherever in the build copy it lands (next to LLM_BUILD_ROOT, for one), or else the folder such as `dist/`. Write it as an existing file or folder inside LLM_BUILD_ROOT's copy, not the copy itself, as an absolute path. Where the rescue failed, answer with the "label" of its one answer instead.
 
         Answer its entry whose "index" is LLM_BUILD_XPI_MATCH with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. `match` means exactly the comparison above holds, and nothing less. Write no notes and no list of differences, there or anywhere else. Where the rescue failed, leave its "answer" null. Change nothing else in the file.
     - text: |-
@@ -2770,7 +2770,7 @@ llm-phases:
           text: |-
             Put every entry in the file to the reviewer in the order the file lists them, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each entry's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under that entry's "answers", in the order they are listed, each with the label and description written there and no wording of your own.
 
-            Record what they answered in that entry's "answer", exactly as they gave it: the label they picked, or the words they typed instead. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
+            Record what they answered in that entry's "answer", exactly as they gave it: the label they picked, or the words they typed instead. Their words are at most {{maxNote}} characters long, and never empty. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
 
     # A source review aborted for faults of the archive or its build alone, whose XPI is
     # readable (`downgradable`, src/report/loop.js runOf), is offered a restart as an XPI

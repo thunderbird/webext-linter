@@ -22,6 +22,7 @@ import {
   writeReviewFile,
 } from "./handback.js";
 import { writeState } from "./state.js";
+import { MAX_NOTE } from "../config.js";
 import { workPaths } from "../util/dest.js";
 import { shellArg } from "../util/text.js";
 import { rethrowIfFatal } from "../lib/errors.js";
@@ -40,7 +41,7 @@ import {
   locusLabeler,
   summaryBodyLines,
 } from "./format.js";
-import { applyVerdicts, pickedChoice } from "./verdicts.js";
+import { applyVerdicts, checkedNote, pickedChoice } from "./verdicts.js";
 import { renderFindings } from "./responses.js";
 import { VERB } from "./verbs.js";
 import {
@@ -157,9 +158,8 @@ function spawnIssued(state) {
  * anything further is put to them, rather than only in the closing report.
  *
  * Keyed on the RECORDED answers, never on open items: an answered item is not open. And
- * nothing is validated here - an empty or overlong answer is refused when the review is
- * settled, and refusing it on every pass instead would break a loop that has already
- * accepted it.
+ * nothing is validated here - an empty or overlong answer is refused at the hand-back
+ * (accept), so none is recorded.
  * @param {import("./state.js").LoopState} state
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
  * @param {import("../checks/registry.js").Registry} registry
@@ -315,6 +315,8 @@ export function loopSlots(state, issued, work, registry) {
     details:
       (issued.settled?.details ?? reviewDetails(state, registry)) + waiting,
     tally: issued.settled?.tally ?? "",
+    // The longest answer in a reviewer's own words the hand-back takes (checkedNote).
+    maxNote: String(MAX_NOTE),
     // The Build Review Details block: the review's details without the two files the
     // `ask` pass hands over.
     buildDetails: buildDetails(state, registry) + waiting,
@@ -362,6 +364,21 @@ export function accept(state, work, phases, registry) {
   const answers = answersOf(entries, asked, phase, (e) =>
     String(e.index ?? "undefined")
   );
+  // A person's own words become the note their case is reported with, so they are held to
+  // the note's rule here, where the agent can still ask the question again. Taken anyway,
+  // they would be refused only once the review settles, which no hand-back can redo.
+  if (phase.answer === "words") {
+    const choices = registry.manualReviewChoices();
+    for (const [ref, value] of answers) {
+      if (pickedChoice(value, choices)) {
+        continue;
+      }
+      const { problem } = checkedNote(value);
+      if (problem) {
+        throw new HandbackRefused(`${ref} ${problem}`);
+      }
+    }
+  }
   // Read BEFORE anything is recorded, because a sweep file that cannot be acted on has to
   // leave the review exactly as it was - the agent fixes that one file and hands back
   // again.

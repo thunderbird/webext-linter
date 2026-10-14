@@ -27,6 +27,7 @@ import {
   HandbackRefused,
 } from "../../src/report/loop.js";
 import { workPaths } from "../../src/util/dest.js";
+import { MAX_NOTE } from "../../src/config.js";
 import { loopPromptLines } from "../../src/report/format.js";
 import { sweepRequests } from "../../src/report/sweep-files.js";
 
@@ -892,6 +893,66 @@ test("a person's answer that is empty or not text is refused at the hand-back", 
     );
   }
   assert.equal(JSON.stringify(state), before);
+});
+
+// A person's own words become the note their case is reported with, so they are held to the
+// note's rule where the agent can still ask the question again: at the hand-back, not at
+// settle, where the answer is already recorded and the run can only fail. The ask step
+// states the limit before anything is asked, and the review stays at its phase until a
+// corrected answer comes back.
+test("a person's words too long or empty once cleaned up are refused at the hand-back", () => {
+  const { state, work } = review(tmp(), {
+    sweep: false,
+    findings: false,
+    code: false,
+  });
+  state.run = { skip: ["llm-skip-summary"], sca: false, sweep: false };
+  state.issued = ["spawn"];
+  const out = issue(state, work, PHASES, REGISTRY);
+  assert.equal(out.phase.name, "ask");
+  const text = loopPromptLines(
+    REGISTRY.llmPhases(),
+    out.phase,
+    out.steps,
+    loopSlots(state, out, work, REGISTRY)
+  )
+    .join(" ")
+    .split(" ")
+    .filter(Boolean)
+    .join(" ");
+  assert.ok(
+    text.includes(`at most ${MAX_NOTE} characters`),
+    "the ask step states the limit"
+  );
+  assert.ok(!text.includes("{{maxNote}}"), "filled, not left as its slot");
+
+  const before = JSON.stringify(state);
+  for (const [said, problem] of [
+    ["x".repeat(MAX_NOTE + 1), `the limit is ${MAX_NOTE}`],
+    ["- \n  \n*", "carries an answer with nothing in it"],
+  ]) {
+    handBack(work, () => said);
+    assert.throws(
+      () => accept(state, work, PHASES, REGISTRY),
+      (err) => err instanceof HandbackRefused && err.problem.includes(problem),
+      problem
+    );
+    assert.equal(
+      JSON.stringify(state),
+      before,
+      "the review stays at its phase"
+    );
+  }
+  handBack(work, () => "x".repeat(MAX_NOTE));
+  const { answers } = accept(state, work, PHASES, REGISTRY);
+  assert.ok(answers.size > 0);
+  for (const ref of answers.keys()) {
+    assert.equal(
+      state.answers[ref],
+      "x".repeat(MAX_NOTE),
+      "the stated limit is taken"
+    );
+  }
 });
 
 // The sweep asks nothing of the file every other phase uses: its work is starting the

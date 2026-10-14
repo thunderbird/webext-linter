@@ -90,22 +90,43 @@ function settleAnswer(answer, asked, ref, choices) {
     return { verdict: verbNamed(picked.verdict), note: null };
   }
   // Their own words, then: the case is reported and the words travel with it.
+  const { note, problem } = checkedNote(answer);
+  if (problem) {
+    throw new Error(`${at} ${problem}`);
+  }
+  return { verdict: VERB.reported, note };
+}
+
+/**
+ * A reviewer's own words as the note they become, held to the one rule a note has: once
+ * cleaned up (reviewerNote) something is left, and it is at most MAX_NOTE characters.
+ * The one copy of that rule, read where the hand-back takes a words answer
+ * (src/report/loop.js accept), which refuses a bad one so the question can be asked again,
+ * and where the review settles (settleAnswer).
+ * @param {string} answer  What the reviewer typed.
+ * @returns {{note: string, problem: ?string}}  `problem` completes a sentence opened by
+ *   the item it is about, null where the note holds.
+ */
+export function checkedNote(answer) {
   const note = reviewerNote(answer);
   if (note === "") {
-    throw new Error(
-      `${at} carries an answer with nothing in it - leave the item out, or carry what the reviewer said`
-    );
+    return {
+      note,
+      problem:
+        "carries an answer with nothing in it - ask the reviewer that question again and carry what they said",
+    };
   }
   // Counted in CODE POINTS, not UTF-16 units: an emoji is one character to the person who
   // typed it, and a refusal calling their 1001 characters 2002 tells them something they
   // cannot act on.
   const length = [...note].length;
   if (length > MAX_NOTE) {
-    throw new Error(
-      `${at} carries a ${length}-character answer and the limit is ${MAX_NOTE} - ask the reviewer to shorten it and answer that question again, rather than shortening their words yourself`
-    );
+    return {
+      note,
+      problem: `carries a ${length}-character answer and the limit is ${MAX_NOTE} - ask the reviewer to shorten it and answer that question again, rather than shortening their words yourself`,
+    };
   }
-  return { verdict: VERB.reported, note };
+  return { note, problem: null };
 }
 
 /**

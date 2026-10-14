@@ -17,6 +17,7 @@ import {
   sweepRequests,
   sweepSlots,
 } from "../../src/report/sweep-files.js";
+import { MAX_HINT } from "../../src/report/sweep.js";
 import { workPaths } from "../../src/util/dest.js";
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "wxl-sweepfiles-"));
@@ -84,6 +85,28 @@ test("the request names its tree and every sweep, and asks for the reply", () =>
   // artifact. It is told which folder and what to look for, and answers by label.
   assert.ok(!request.includes("cleartext-transmission"), "no check id");
   assert.ok(!request.includes(ARTIFACT_SCA), "no artifact name");
+});
+
+// A sub-agent's reply cannot be edited by the agent that relays it, so a hint the door
+// refuses as too long costs a whole sweep. The request states the limit the door holds it
+// to, read from the one constant, and so does the refusal of a hint that is no phrase.
+test("the request and the refusal name the hint's limit", () => {
+  const { request } = requested(SWEEPS);
+  assert.ok(
+    request.includes(
+      `a "hint" - a short phrase of at most ${MAX_HINT} characters naming what is there -`
+    ),
+    request
+  );
+  const dir = tmp();
+  assert.throws(
+    () =>
+      readSweepAnswers(
+        answered(dir, { 3: [{ file: "a.js", hint: "" }], 4: [] }),
+        SWEEPS
+      ),
+    (err) => err.message.includes(`at most ${MAX_HINT} characters`)
+  );
 });
 
 // The example is the part an agent copies, so it has to be the shape the door accepts -

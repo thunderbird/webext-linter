@@ -35,7 +35,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseJson } from "../util/json.js";
 import { rethrowIfFatal } from "../lib/errors.js";
-import { checkedResult, RESULT_SHAPE } from "./sweep.js";
+import { checkedResult, MAX_HINT, RESULT_SHAPE } from "./sweep.js";
 import { sweepAnswersSlot, sweepSlot } from "../checks/registry-vocabulary.js";
 
 /** The key the answers hold everything under. A wrapper rather than a bare map, so the
@@ -70,7 +70,7 @@ function sweepRequest({ sweepTarget, sweeps }) {
     "Return your answers as your reply, as one JSON document of this shape:",
     indent(`{"${ANSWERS}": {"<label>": [...]}}`, 2),
     "It lists every label above, each with a list of what you found for it, and an empty list where you found nothing. Put nothing else in the reply: no words before or after it, and no code fence around it.",
-    `Each thing you found is one entry in that list, with a "file" (its path relative to the folder above), a "hint" - a short phrase naming what is there - and a "line" where it sits on one, left out where it does not. Nothing else: no verdict, and no wording for the developer, which is the linter's. Answered, your reply reads:\n\n${indent(example, 2)}`,
+    `Each thing you found is one entry in that list, with a "file" (its path relative to the folder above), a "hint" - a short phrase of at most ${MAX_HINT} characters naming what is there - and a "line" where it sits on one, left out where it does not. Nothing else: no verdict, and no wording for the developer, which is the linter's. Answered, your reply reads:\n\n${indent(example, 2)}`,
     "Write no file.",
   ].join("\n\n");
 }
