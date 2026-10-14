@@ -28,6 +28,8 @@
       const CHECKS = [
         // Deterministic phase
         { id: "experiment-not-allowed", group: "Deterministic phase", title: "Experiment APIs not accepted", severity: "error" },
+        { id: "sca-xpi-declares-vendoring", group: "Deterministic phase", title: "The built XPI declares its own vendoring", severity: "warning" },
+        { id: "sca-xpi-fully-included-in-archive", group: "Deterministic phase", title: "The built XPI is fully included in the source archive", severity: "error" },
         { id: "sca-package-file-missing", group: "Deterministic phase", title: "Missing package.json", severity: "error" },
         { id: "sca-package-file-invalid", group: "Deterministic phase", title: "Invalid package.json", severity: "error" },
         { id: "sca-lock-file-missing", group: "Deterministic phase", title: "Missing lock file", severity: "error" },
@@ -96,8 +98,6 @@
         { id: "build-not-reproduced", group: "Deterministic phase", title: "Source does not build into the submitted XPI", severity: "error" },
         { id: "build-fails", group: "Deterministic phase", title: "Source cannot be built", severity: "error" },
         { id: "build-unsafe", group: "Deterministic phase", title: "Unsafe build process", severity: "error" },
-        { id: "sca-xpi-declares-vendoring", group: "Deterministic phase", title: "The built XPI declares its own vendoring", severity: "warning" },
-        { id: "sca-xpi-fully-included-in-archive", group: "Deterministic phase", title: "The built XPI is fully included in the source archive", severity: "warning" },
         { id: "vendor-vuln-unknown", group: "Deterministic phase", title: "Vendored library not vulnerability-checked", severity: "info" },
         { id: "unpinned-vendor-source", group: "Deterministic phase", title: "Unpinned vendored source", severity: "error" },
         { id: "vendor-modified", group: "Deterministic phase", title: "Modified vendored library", severity: "error" },

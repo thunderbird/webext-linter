@@ -12,6 +12,8 @@
     "manifestVersion": 3,
     "checksRun": [
       "experiment-not-allowed",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
       "vendor-vulnerable"
     ],
     "earlyExit": {

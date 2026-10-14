@@ -17,12 +17,14 @@
 // shipped already readable in what was submitted?" has no answer from one side - and no
 // question at all in a review that has only the one, where this returns early.
 //
-// Nothing is narrowed by this: THIS review stays a full source review whatever the answer.
-// No content test can be trusted to route, because a committed unminified build is its own
-// twin under any of them, and routing on that would let a build be dressed up as source.
+// Nothing is re-routed by this: the review is never turned into a review of the XPI. No
+// content test can be trusted to route, because a committed unminified build is its own twin
+// under any of them, and routing on that would let a build be dressed up as source. The
+// finding ends the review instead, since an archive holding the built XPI could trick the
+// build.
 //
 // Belongs here: the comparison. Does NOT belong here: the wording
-// (-> assets/registry.yaml) or the severity (-> that entry).
+// (-> assets/registry.yaml), or the severity and the abort (-> that entry).
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";

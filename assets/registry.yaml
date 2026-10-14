@@ -19,7 +19,8 @@ deterministic-phase:
 # THE HEAD OF THE PHASE: every check that can stop a review on its own, ordered so a
 # submission they reject stops before the rest of the review is computed - a check that
 # reports an error stops the review (src/checks/registry.js abortsReview). The Experiment verdict
-# first, read from records alone; then the source archive's package.json and lock and where
+# first, read from records alone; then the shape of a source submission, whose archive must
+# not hold the built XPI; then the source archive's package.json and lock and where
 # the lock installs from, which read nothing the review computes; then lockfile-injection,
 # which may ask the npm registry; then the checks that need the vendor reading (the OSV audit,
 # the CDN identification): the four dependency-vulnerability checks and banned-library. A
@@ -39,6 +40,52 @@ deterministic-phase:
   response: |-
     We are currently not accepting new submissions using Experiment APIs, except unmodified copies of the latest published API drafts (https://github.com/thunderbird/webext-experiments). A resubmission without them is reviewed in full. The following cannot be accepted:
     Read more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews
+
+# Two rules about the SHAPE of a source-code submission, one per entry below, kept apart
+# because each has its own remedy and a shared wording could state neither plainly.
+#
+# Both take `input: all`, the only route carrying more than one artifact. Each asks after
+# the archive it needs and returns early without it: a review with one artifact has neither
+# rule to break, and the route says what is there rather than how much. Neither re-routes
+# the review to the XPI, because no content test can be trusted to route (a committed
+# unminified build is its own twin under any of them, so routing would let a build be
+# dressed up as source).
+#
+# RULE 2 rejects the submission and ends the review: an archive holding the built XPI could
+# trick the build, which may hand back that copy instead of what it builds from the source.
+# It sits here, right after the Experiment verdict and above the package.json and lock
+# checks, so it is the reason such a review ends even where the archive has no build at
+# all. RULE 1 stays a warning: --warnings-as-errors lets a new submission be refused at
+# intake, while an update that got its packaging wrong only gets told what to change.
+
+# RULE 1: the built XPI must not carry vendoring information. Those files are the archive's
+# - the copy the reviewer reads and the build installs from - so a shipped one says the
+# submission type was misread, or that an XPI-only submission was meant all along.
+#
+# The one check here that names files. It mints each locus from `ctx.xpi` - the side those
+# files are in - because a route carrying two artifacts names neither, and asking the holder
+# is how a finding says which it means. The response names none of them, so they collapse
+# into one entry listing the files once.
+- title: The built XPI declares its own vendoring
+  severity: warning
+  check: sca-xpi-declares-vendoring
+  input: all
+  response: |-
+    This add-on was submitted as a source-code archive, but the built XPI carries vendoring information of its own. In a source-code submission a VENDOR file, a package.json and a lock file belong in the archive - the copy the reviewer reads and the build installs from - not in the package you ship. Remove the file(s) below from the XPI and declare the dependencies in the archive instead. If the add-on needs no archive behind it, submit just the XPI.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
+# RULE 2: the archive must not hold the built XPI entire. Two submissions look like this and
+# the check cannot tell them apart - nothing was built, or the build's OUTPUT was committed
+# beside the real source - so the response gives a remedy for each rather than assuming one.
+# The finding names no file: every shipped file is the subject, so listing them lists the XPI.
+- title: The built XPI is fully included in the source archive
+  severity: error
+  check: sca-xpi-fully-included-in-archive
+  input: all
+  review-early-exit: archive-is-xpi
+  response: |-
+    This add-on was submitted as a source-code archive, but the archive contains the built XPI in full: every file the XPI ships is in the archive byte for byte. A source-code archive holds the readable source of an XPI that was built (bundled, transpiled or otherwise transformed) and cannot be reviewed directly, not a copy of that XPI. If the XPI can be reviewed directly, submit just the XPI (which is reviewed considerably faster). If the add-on must be built, but the archive also includes the built XPI by mistake, please remove it.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Deterministic (SCA only): the source archive has no package.json, so there is no build to
 # reproduce the shipped XPI from. The build's entry point is the root package.json
@@ -1063,46 +1110,6 @@ deterministic-phase:
     The build process of the submitted source is not safe to run: it fetches or runs code from outside the dependencies declared in package.json and the lock file. Please make the build use only those dependencies.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# Two rules about the SHAPE of a source-code submission, one per entry below, kept apart
-# because each has its own remedy and a shared wording could state neither plainly.
-#
-# Both take `input: all`, the only route carrying more than one artifact. Each asks after
-# the archive it needs and returns early without it: a review with one artifact has neither
-# rule to break, and the route says what is there rather than how much. Neither narrows THIS
-# review - it stays a full source review whatever they answer, because no content test can
-# be trusted to route (a committed unminified build is its own twin under any of them, so
-# routing would let a build be dressed up as source). At warning severity
-# --warnings-as-errors lets a new submission be refused at intake, while an update that got
-# its packaging wrong only gets told what to change.
-
-# RULE 1: the built XPI must not carry vendoring information. Those files are the archive's
-# - the copy the reviewer reads and the build installs from - so a shipped one says the
-# submission type was misread, or that an XPI-only submission was meant all along.
-#
-# The one check here that names files. It mints each locus from `ctx.xpi` - the side those
-# files are in - because a route carrying two artifacts names neither, and asking the holder
-# is how a finding says which it means. The response names none of them, so they collapse
-# into one entry listing the files once.
-- title: The built XPI declares its own vendoring
-  severity: warning
-  check: sca-xpi-declares-vendoring
-  input: all
-  response: |-
-    This add-on was submitted as a source-code archive, but the built XPI carries vendoring information of its own. In a source-code submission a VENDOR file, a package.json and a lock file belong in the archive - the copy the reviewer reads and the build installs from - not in the package you ship. Remove the file(s) below from the XPI and declare the dependencies in the archive instead. If the add-on needs no archive behind it, submit just the XPI.
-    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
-
-# RULE 2: the archive must not hold the built XPI entire. Two submissions look like this and
-# the check cannot tell them apart - nothing was built, or the build's OUTPUT was committed
-# beside the real source - so the response gives a remedy for each rather than assuming one.
-# The finding names no file: every shipped file is the subject, so listing them lists the XPI.
-- title: The built XPI is fully included in the source archive
-  severity: warning
-  check: sca-xpi-fully-included-in-archive
-  input: all
-  response: |-
-    This add-on was submitted as a source-code archive, but the archive contains the built XPI in full: every file the XPI ships is in the archive byte for byte. A source-code archive holds the readable source of an XPI that was built (bundled, transpiled or otherwise transformed) and cannot be reviewed directly, not a copy of that XPI. If the XPI can be reviewed directly, submit just the XPI (which is reviewed considerably faster). If the add-on must be built, but the archive also includes the built XPI by mistake, please remove it.
-    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
-
 # A vendored library the pre-step could not match to an npm package (src/vendor/
 # verify.js auditGithub tries the repo-name candidate and proves it by content hash);
 # surfaced as info so the reviewer knows it went unaudited. The source URL renders on the location line
@@ -2108,6 +2115,7 @@ review-early-exit:
     disallowed-library-versions: Disallowed library versions
     unreviewable-code: Code that cannot be reviewed
     unreproducible-build: Build process issues
+    archive-is-xpi: Source archive contains the built XPI
 
 # The prompts that PREPARE a source code review: what --llm-sca-review prints, and what each
 # --llm-handback run on the work folder it created prints after it, until the preparation is

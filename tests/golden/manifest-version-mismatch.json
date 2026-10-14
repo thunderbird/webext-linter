@@ -12,6 +12,8 @@
     "manifestVersion": 2,
     "checksRun": [
       "experiment-not-allowed",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
       "vendor-vulnerable",
       "banned-library",
       "core-symbol-in-webext",
@@ -56,8 +58,6 @@
       "xpi-lock-file-missing",
       "xpi-lock-file-invalid",
       "unsupported-dependency",
-      "sca-xpi-declares-vendoring",
-      "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",

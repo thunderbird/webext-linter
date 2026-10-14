@@ -14,9 +14,8 @@
 // NOT silent when the shipped XPI happens to be the archive's own code. That the shipped
 // bytes are readable says nothing about whether this source produces them, which is what a
 // reviewer reproduces the build to establish - and with no build there is nothing to
-// reproduce, so the review is aborted here either way. Whether the archive held the whole XPI
-// is INDEPENDENT of this (sca-xpi-fully-included-in-archive): that asks what the archive
-// contains, and prints beside this rejection rather than in place of it.
+// reproduce, so the review is aborted here either way. An archive holding the whole XPI never
+// reaches this check: sca-xpi-fully-included-in-archive runs first and ends that review.
 //
 // Belongs here: asking whether the package file is there. Does NOT belong here: whether it can
 // be used (-> sca-package-file-invalid), what it declares (-> src/vendor/package-file.js), and

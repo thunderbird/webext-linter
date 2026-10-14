@@ -14,6 +14,8 @@
     "manifestVersion": 3,
     "checksRun": [
       "experiment-not-allowed",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
       "sca-package-file-missing",
       "sca-package-file-invalid",
       "sca-lock-file-missing",
@@ -78,8 +80,6 @@
       "build-not-reproduced",
       "build-fails",
       "build-unsafe",
-      "sca-xpi-declares-vendoring",
-      "sca-xpi-fully-included-in-archive",
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",

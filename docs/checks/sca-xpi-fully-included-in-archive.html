@@ -11,7 +11,7 @@
       <header class="check-header">
         <h1>
           The built XPI is fully included in the source archive
-          <span class="badge warning">warning</span>
+          <span class="badge error">error</span>
         </h1>
         <div class="check-id">sca-xpi-fully-included-in-archive</div>
       </header>
@@ -24,13 +24,13 @@
         shipped package, not a copy of that package.
       </p>
       <p>
-        <strong>This does not re-route the review.</strong> A source archive is always
-        reviewed as one, and this finding changes nothing about the review it appears in.
-        Routing on it would be a bypass: a committed, unminified <code>dist/</code> in the
-        archive is its own twin under any content test, so a build could be dressed up as
-        source and shrink its own review. At warning severity
-        <code>--warnings-as-errors</code> can still refuse a submission at intake, while an
-        update that got its packaging wrong is simply told what to change.
+        <strong>This does not re-route the review.</strong> A source archive is never
+        reviewed as the XPI it contains. Routing on it would be a bypass: a committed,
+        unminified <code>dist/</code> in the archive is its own twin under any content
+        test, so a build could be dressed up as source and shrink its own review.
+        <strong>It rejects the submission instead:</strong> an archive holding the built
+        XPI could trick the build into handing back that copy rather than what it builds
+        from the source.
       </p>
       <p>
         <strong>Two submissions look like this, and the check cannot tell them apart</strong>
@@ -48,25 +48,25 @@
         since every shipped file is its subject, so the entry carries no location line.
       </p>
       <p>
-        Nothing about the build enters into it. A submission whose build
-        cannot be reproduced (a missing <code>package.json</code>, an unusable
-        lock) is
-        rejected, and its review stops before this check runs.
+        Nothing about the build enters into it. It runs right after the Experiment
+        verdict and before the <code>package.json</code> and lock checks, so an archive
+        that is a copy of the XPI with no build at all is rejected for holding the XPI,
+        not for its missing <code>package.json</code>.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["--sca-root submitted"] --> S["a source code review — the source IS reviewed,<br/>whatever the answer below"]
+  A["--sca-root submitted"] --> S["a source code review, never re-routed to the XPI"]
   S --> X{"Is every file the XPI ships byte-identical<br/>to some file in the archive?"}
   X -- "no (something was built)" --> OK([no finding — the archive was needed])
-  X -- yes --> WARN([WARNING: nothing built, or the build output was committed])
+  X -- yes --> ERR([ERROR: nothing built, or the build output was committed.<br/>The review is aborted])
 
-  classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
   classDef step fill:#eaf1fd,stroke:#2d6cdf,color:#1a3d7c;
-  class WARN warn;
+  class ERR err;
   class OK ok;
   class S step;
         </pre>
@@ -77,8 +77,16 @@ flowchart TD
         The archive already holds every byte the XPI ships. The developer is asked to
         submit just the XPI if it does not need to be built &mdash; source submissions take
         considerably longer to review &mdash; or, if it does, to remove the build output from
-        the archive and submit only the source the build runs on. This review itself is
-        unaffected: it is a full source review either way.
+        the archive and submit only the source the build runs on.
+      </div>
+
+      <div class="outcome">
+        <strong>It aborts the review</strong>
+        This check is one of the few that settle the submission on their own. When it
+        reports, no check after it runs and nothing further is put to a reviewer: the
+        report drops every to-do item they would have been asked, and the
+        developer&rsquo;s text ends on the reason it is incomplete (&ldquo;Source archive
+        contains the built XPI&rdquo;).
       </div>
 
       <p class="source-note">

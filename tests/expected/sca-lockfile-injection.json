@@ -1,5 +1,5 @@
 {
-  "_comment": "SCA (src/ + xpi/) whose committed lock records tinylib at 1.2.2 while its resolved URL fetches the 1.2.1 tarball: the audit would ask about a release npm ci never installs. lockfile-injection reports the entry at its line and stops the review, so the lock is never audited: no OSV request, no CDN lookup, no parse. The URL is on the registry's tarball path, so the comparison is offline. The shipped background.js is minified, so sca-xpi-fully-included-in-archive would stay silent had the review gone on.",
+  "_comment": "SCA (src/ + xpi/) whose committed lock records tinylib at 1.2.2 while its resolved URL fetches the 1.2.1 tarball: the audit would ask about a release npm ci never installs. lockfile-injection reports the entry at its line and stops the review, so the lock is never audited: no OSV request, no CDN lookup, no parse. The URL is on the registry's tarball path, so the comparison is offline. The shipped background.js is minified, so sca-xpi-fully-included-in-archive, which runs before the lock checks, stays silent.",
   "expect": {
     "lockfile-injection": ["package-lock.json:14"]
   }

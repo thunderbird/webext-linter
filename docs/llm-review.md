@@ -176,8 +176,10 @@ loop would do is ask a reviewer to **reproduce the build** - running that tree o
 machine, on the strength of a question the linter issued knowing better.
 
 A check declares that it aborts the review by naming the reason the report gives
-(`review-early-exit:` in the registry). Today twenty do, across five reasons:
-`experiment-not-allowed` names _Experiment APIs not accepted_, `lockfile-injection` names
+(`review-early-exit:` in the registry). Today twenty-one do, across six reasons:
+`experiment-not-allowed` names _Experiment APIs not accepted_,
+`sca-xpi-fully-included-in-archive` names _source archive contains the built XPI_,
+`lockfile-injection` names
 _lock file entries that install another release_, the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
 names *disallowed library versions*, and the thirteen that decide a source submission

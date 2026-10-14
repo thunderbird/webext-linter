@@ -1489,8 +1489,7 @@ const READABLE_XPI = {
 };
 
 // The two ways a submission says it did not need to be one, end to end. Neither changes the
-// MODE: a source submission is always reviewed as a source submission, and the warning is
-// only ever about the NEXT one.
+// MODE: a source submission is always reviewed as a source submission.
 test("SCA e2e: the two submission-shape checks fire independently", async () => {
   const xpi = tmpDir(READABLE_XPI);
   const base = {
@@ -1562,11 +1561,11 @@ test("SCA e2e: the two submission-shape checks fire independently", async () => 
   }
 });
 
-test("SCA e2e: an archive holding the whole XPI is reported, and is still reviewed as SCA", async () => {
+test("SCA e2e: an archive holding the whole XPI is reported, and ends the review", async () => {
   const xpi = tmpDir(READABLE_XPI);
   // Every shipped file is byte-identical here, so the archive holds the whole XPI and the
   // check fires. The source ALSO carries a fake API in a file the XPI lacks: unknown-api
-  // catching it is what proves the source was reviewed anyway - this does not narrow it.
+  // staying silent is what proves the review ended at the rejection.
   const src = tmpDir({
     "package.json": JSON.stringify({
       name: "dg",
@@ -1600,11 +1599,14 @@ test("SCA e2e: an archive holding the whole XPI is reported, and is still review
       has(findings, "sca-xpi-fully-included-in-archive"),
       "the archive holding every shipped byte is reported"
     );
+    assert.deepEqual(
+      result.meta.earlyExit?.reasons.map((r) => r.id),
+      ["archive-is-xpi"],
+      "the rejection ends the review"
+    );
     assert.ok(
-      hasItem(result.meta, "unknown-api", (m) =>
-        /totallyFakeNamespace/.test(m.item ?? "")
-      ),
-      "and the source IS still reviewed - that is the point of not downgrading"
+      !hasItem(result.meta, "unknown-api") && !has(findings, "unknown-api"),
+      "no check after the rejection runs"
     );
     // Lock the rendered entry: it must explain the cost of the source-archive route,
     // and it must carry NO locus line - every shipped file is the subject, so naming one
@@ -1632,6 +1634,34 @@ test("SCA e2e: an archive holding the whole XPI is reported, and is still review
       "",
       "the entry is followed by a blank line, not a locus"
     );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
+// An archive that is the XPI itself, with no package.json: the rejection for holding the
+// built XPI comes first, so the review ends on it before the missing package.json is asked.
+test("SCA e2e: an archive that is the XPI ends the review before its package.json is asked", async () => {
+  const xpi = tmpDir(READABLE_XPI);
+  const src = tmpDir(READABLE_XPI);
+  try {
+    const { findings, meta } = await runReview({
+      addonPath: xpi,
+      scaRoot: src,
+      ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
+    });
+    assert.deepEqual(
+      findings.map((f) => [f.ruleId, f.severity]),
+      [["sca-xpi-fully-included-in-archive", SEVERITY.ERROR]],
+      "the rejection is the only finding"
+    );
+    assert.deepEqual(
+      meta.earlyExit?.reasons.map((r) => r.id),
+      ["archive-is-xpi"]
+    );
+    assert.equal(meta.checksRun.at(-1), "sca-xpi-fully-included-in-archive");
+    assert.ok(!meta.checksRun.includes("sca-package-file-missing"));
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
   }

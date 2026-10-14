@@ -260,8 +260,9 @@ flowchart TB
         than one artifact, and which each of them leaves early without an archive:
         <code>sca-xpi-declares-vendoring</code> warns when the XPI carries vendoring
         information that belongs in the archive, naming the files, and
-        <code>sca-xpi-fully-included-in-archive</code> warns when every file the XPI
-        ships is already in the archive. Routing on either answer would be a bypass: a
+        <code>sca-xpi-fully-included-in-archive</code> rejects the submission and ends
+        the review when every file the XPI ships is already in the archive, since such
+        an archive could trick the build. Routing on either answer would be a bypass: a
         committed, unminified <code>dist/</code> in the archive is its own twin under
         any content test, so a build could be dressed up as source and shrink its
         own review. In SCA the readable source has getters of its own

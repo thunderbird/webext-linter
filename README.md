@@ -156,12 +156,14 @@ A source archive is always reviewed as one - the review is never re-routed to th
 the strength of what the XPI looks like. SCA is what you need when the shipped XPI is not
 the code you wrote: minified, obfuscated, transpiled, or bundled.
 
-Two rules govern the shape of such a submission, and each is its own check (both warning,
-neither narrowing the review it appears in). `sca-xpi-declares-vendoring` - the built XPI
+Two rules govern the shape of such a submission, and each is its own check (neither
+re-routing the review to the XPI). `sca-xpi-declares-vendoring` (a warning) - the built XPI
 must not carry a VENDOR file, or a `package.json` or lock file at its root, because those are the
 archive's, the copy the reviewer reads and the build installs from. It names the offending
-files. `sca-xpi-fully-included-in-archive` - the archive must not hold the built XPI entire,
-which means either nothing was built or the build output was committed beside the source.
+files. `sca-xpi-fully-included-in-archive` (an error that aborts the review) - the archive
+must not hold the built XPI entire, which means either nothing was built or the build output
+was committed beside the source. Such an archive could trick the build into handing back
+that copy, so the submission is rejected before any build check runs.
 
 - `--sca-root` is the **extracted** source archive that holds `package.json` /
   the lock file. Setting it switches on SCA mode. It must be a folder: unlike the
@@ -294,8 +296,9 @@ not the developer's, so accepting it is a judgement a person owns), and
 so no scan of its surface settles what it does).
 
 Some findings abort the review outright. A check can declare that it does by naming the
-reason the report gives (`review-early-exit:` in the registry) - today twenty do, across
-five reasons: `experiment-not-allowed` names *Experiment APIs not accepted*,
+reason the report gives (`review-early-exit:` in the registry) - today twenty-one do, across
+six reasons: `experiment-not-allowed` names *Experiment APIs not accepted*,
+`sca-xpi-fully-included-in-archive` names *source archive contains the built XPI*,
 `lockfile-injection` names *lock file entries that install another release*, the four
 dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
 names *disallowed library versions*, and the thirteen that
@@ -305,7 +308,8 @@ decide a source submission cannot be built from - `sca-package-file-missing`,
 `undeclared-build-source`, `build-reproduces-xpi`, `build-not-reproduced`, `build-fails` and
 `build-unsafe` - name
 *a build that cannot be reproduced*. These lead the review, ordered so a submission they reject stops
-before the rest is computed: `experiment-not-allowed`; then the source archive's package.json
+before the rest is computed: `experiment-not-allowed`; then
+`sca-xpi-fully-included-in-archive`; then the source archive's package.json
 and lock checks (`sca-package-file-*`, `sca-lock-file-*`, `build-registry-redirect`,
 `lock-foreign-source`), which read nothing the review computes; then `lockfile-injection`;
 then the four dependency-vulnerability checks and `banned-library`, which need the vendor
@@ -399,7 +403,7 @@ machine.
 | `minified-code` | A script or stylesheet (not a recognized library, not obfuscated) shipped minified - by minified line geometry (a very long, dense line) (error, aborts the review late). A script that will not parse or walk counts as minified, since nothing there can be reviewed either. |
 | `obfuscated-code` | A JS file (not a recognized library) shipped obfuscated - recognized by the AST structure of a known obfuscator family via the `obfuscation-detector` library. The families a match is drawn from are pinned, so a family the library gains later decides nothing and a match needs no second opinion. High precision, partial recall - some obfuscators evade it. |
 | `privacy-policy` | Data transmitted by an overt API to a remote host the developer chose (fixed in the add-on, not entered by the user) - one case per transmission site, naming its host. A host the add-on assembles while it runs is reported too, marked rather than named, since dropping it would hide the site the tool can say least about. Routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
-| `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, aborts the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. It reports even where the shipped add-on IS the archive's code: with no build there is nothing to reproduce. Whether the archive held the whole XPI is a separate question, so `sca-xpi-fully-included-in-archive` prints beside this rejection rather than in place of it. |
+| `sca-package-file-missing` | A source submission with no `package.json` at its root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, aborts the review). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. An archive holding the whole XPI never reaches it: `sca-xpi-fully-included-in-archive` runs first and ends that review. |
 | `sca-package-file-invalid` | A `package.json` that is present but unusable - it does not parse, or it parses to something other than a JSON object - so the build it defines cannot be run (error, aborts the review). Presence is decided by name and usability by reading, so exactly one of this and the check above ever speaks. |
 | `sca-lock-file-multiple` | A source submission that commits more than one lock file at its root (any two of `npm-shrinkwrap.json`, `package-lock.json`, `pnpm-lock.yaml`) (error, aborts the review). Every check reads one lock, while the build picks its package manager by the lock it finds, so with two the tree audited need not be the tree installed. The preparation neither audits nor rescues such a source. |
 | `sca-lock-file-invalid` | A committed lock file that cannot be read: it does not parse, or it is not a recognisable npm or pnpm lock (error). The dependency audit reads the installed tree from it, so the review is aborted. Whether a readable lock matches `package.json` is left to `npm ci` / `pnpm install --frozen-lockfile` at the build. |
