@@ -462,7 +462,9 @@ test("a process value is asked once and read by value(phase, id)", () => {
 });
 
 // A value that reports a check aborts the review through that check: its finding is in
-// the review, so the next prompt is the closing one and the report names its reason.
+// the review, recorded as reported, and the report names its reason. The check aborts late,
+// so the review still runs to the end of settle, and the finding is the person's answer:
+// verify is never asked about it, and withdrawing everything withdraws nothing of it.
 test("a process value that reports a check aborts the review", () => {
   const { reg, phases } = valueLoop();
   const { state, work } = review(tmp(), { sweep: false });
@@ -476,8 +478,29 @@ test("a process value that reports a check aborts the review", () => {
   assert.ok(reported, "the reported check's finding is in the review");
   assert.equal(reported.ref, `${reg.refBase("build-reproduces-xpi")}.1`);
   assert.equal(reported.artifact, ARTIFACT_SCA, "the artifact its check reads");
-  const closing = issue(state, work, phases, reg);
-  assert.equal(closing.phase.name, "close");
+  assert.equal(state.answers[reported.ref], "reported");
+  const seen = [];
+  let closing = null;
+  for (let pass = 0; pass < 8; pass++) {
+    const out = issue(state, work, phases, reg);
+    if (out.phase.answer === "end") {
+      closing = out;
+      break;
+    }
+    seen.push(out.phase.name);
+    if (out.phase.name === "verify") {
+      assert.ok(
+        !out.entries.some((e) => e.index === reported.ref),
+        "verify is not asked about the person's answer"
+      );
+    }
+    handBack(work, () =>
+      out.phase.name === "verify" ? "withdrawn" : "cleared"
+    );
+    accept(state, work, phases, reg);
+  }
+  assert.ok(!seen.includes("ask"), seen.join(", "));
+  assert.ok(seen.includes("verify"), seen.join(", "));
   assert.match(closing.steps[0].text, /^The review was aborted/);
   assert.match(closing.settled.details, /Build process issues/);
 });
@@ -1549,21 +1572,20 @@ function driveLoop(state, work, answer, reg = REGISTRY) {
   return { seen, closing, settled: settle(state, reg) };
 }
 
-/** The review above, with its findings reported by a check that aborts the review. */
+/** The review above, with its findings reported by a check that aborts the review early. */
 function blockingReview(dir) {
   const made = review(dir, { sweep: false });
   for (const f of made.state.report.findings) {
-    f.ruleId = "vendor-vulnerable";
+    f.ruleId = "experiment-not-allowed";
   }
   made.state.run = { skip: [], sca: true, sweep: false };
   return made;
 }
 
-// The case this exists for: the very next thing the loop would do is ask a reviewer to
-// reproduce a build the review has already rejected. A review the deterministic checks
-// aborted asks nothing at all: what it hands over is decided before any pass, so its first
-// prompt is the closing one - no preamble, no agent started, nothing verified or settled -
-// and it names no file an agent was never asked to write.
+// A review the deterministic checks aborted early asks nothing at all: what it hands over is
+// decided before any pass, so its first prompt is the closing one - no preamble, no agent
+// started, nothing verified or settled - and it names no file an agent was never asked to
+// write.
 test("a blocking finding closes the review on its first prompt", () => {
   const dir = tmp();
   const { state, work } = blockingReview(dir);
@@ -1581,7 +1603,7 @@ test("a blocking finding closes the review on its first prompt", () => {
   assert.deepEqual(first.settled.review.meta.manualReview, []);
   assert.match(first.settled.tally, /0 extended code review item\(s\)/);
   assert.doesNotMatch(first.settled.details, /summary\.md|build\.md/);
-  assert.match(first.settled.details, /- Known security vulnerabilities$/);
+  assert.match(first.settled.details, /- Experiment APIs not accepted$/);
 });
 
 // The Review Details block goes out in `ask`, before its questions - and only where they
@@ -1661,10 +1683,7 @@ test("the closing phase opens on how the review ended, and takes nothing back", 
   const handover = (close) =>
     close.steps.find((step) => /^Give the reviewer/.test(step.text)).text;
   assert.equal(handover(abortedClose), handover(settledClose));
-  assert.match(
-    abortedClose.settled.details,
-    /- Known security vulnerabilities$/
-  );
+  assert.match(abortedClose.settled.details, /- Experiment APIs not accepted$/);
 });
 
 // A review with nothing to do at all still closes: its first pass is the closing one.
@@ -1700,7 +1719,7 @@ test("an aborted review closes its details block with the reason", () => {
     lines.at(-2),
     "The review was not completed and the report is incomplete due to the following issues:"
   );
-  assert.equal(lines.at(-1), "- Known security vulnerabilities");
+  assert.equal(lines.at(-1), "- Experiment APIs not accepted");
 
   // ... and a review that ran to the end closes with the block itself. Nothing says a
   // review was aborted unless one was.
@@ -1728,7 +1747,7 @@ test("an aborted review hands over the reason and drops the questions", () => {
     phase === "verify" ? "reported" : "cleared"
   );
   assert.match(report, /The review was not completed/);
-  assert.match(report, /- Known security vulnerabilities/);
+  assert.match(report, /- Experiment APIs not accepted/);
   assert.match(tally, /0 extended manual review item\(s\)/);
   assert.match(tally, /0 standard manual review item\(s\)/);
   assert.match(tally, /0 extended code review item\(s\)/);
@@ -1797,13 +1816,37 @@ function abortedScaReview(dir, ruleIds, { reviewable = true } = {}) {
   return made;
 }
 
+/**
+ * Drive the loop until it issues `stop` or its close, answering each phase plainly: verify
+ * keeps every finding, every other phase clears. Returns that prompt and the phases before it.
+ */
+function untilPhase(made, stop) {
+  const seen = [];
+  for (let pass = 0; pass < 8; pass++) {
+    const out = issue(made.state, made.work, PHASES, REGISTRY);
+    if (out.phase.name === stop || out.phase.answer === "end") {
+      return { out, seen };
+    }
+    seen.push(out.phase.name);
+    handBack(made.work, () =>
+      out.phase.name === "verify" ? "reported" : "cleared"
+    );
+    accept(made.state, made.work, PHASES, REGISTRY);
+  }
+  throw new Error(`never reached ${stop}: ${seen.join(", ")}`);
+}
+
 // A source review aborted only by a fault of its archive, whose XPI is readable, is asked
-// whether to restart as an XPI review. Its first prompt shows the aborted review's closing
-// block, ends the turn, and then puts the question, which names what aborted the review.
+// whether to restart as an XPI review. Its archive faults abort it late, so the question
+// comes once the review has run to the end of settle. The prompt shows the aborted review's
+// closing block, ends the turn, and then puts the question, which names what aborted the
+// review.
 test("a source review aborted by its archive, with a readable XPI, issues downgrade", () => {
-  const { state, work } = abortedScaReview(tmp(), ["sca-package-file-missing"]);
-  const first = issue(state, work, PHASES, REGISTRY);
+  const made = abortedScaReview(tmp(), ["sca-package-file-missing"]);
+  const { state, work } = made;
+  const { out: first, seen } = untilPhase(made, "downgrade");
   assert.equal(first.phase.name, "downgrade");
+  assert.equal(seen.at(-1), "verify", seen.join(", "));
   assert.equal(first.settled.earlyExit, true);
   assert.ok(first.steps[0].text.includes("{{tally}}"));
   assert.ok(first.steps[0].text.includes("{{details}}"));
@@ -1829,27 +1872,44 @@ test("a source review aborted by its archive, with a readable XPI, issues downgr
 });
 
 // Not where the XPI cannot be reviewed on its own, and not where any aborting check is one
-// a review of the XPI does not cure: the review closes on its first prompt, as it does
-// without the question. The same review, readable and aborted by its archive alone, is
-// asked.
+// a review of the XPI does not cure: the review closes as it does without the question. The
+// same review, readable and aborted by its archive alone, is asked. An early abort closes on
+// the first prompt, the others once the agent's passes are done.
 test("downgrade is not issued for an unreadable XPI or an abort the XPI shares", () => {
   const asked = abortedScaReview(tmp(), ["sca-package-file-missing"]);
-  assert.equal(
-    issue(asked.state, asked.work, PHASES, REGISTRY).phase.name,
-    "downgrade"
-  );
-  for (const [ruleIds, opts] of [
-    [["sca-package-file-missing"], { reviewable: false }],
-    [["sca-package-file-missing", "experiment-not-allowed"], {}],
-    [["sca-package-file-missing", "vendor-vulnerable-indirect"], {}],
+  assert.equal(untilPhase(asked, "downgrade").out.phase.name, "downgrade");
+  for (const [ruleIds, opts, before] of [
+    [["sca-package-file-missing"], { reviewable: false }, "verify"],
+    [["sca-package-file-missing", "experiment-not-allowed"], {}, undefined],
+    [["sca-package-file-missing", "vendor-vulnerable-indirect"], {}, "verify"],
   ]) {
-    const { state, work } = abortedScaReview(tmp(), ruleIds, opts);
-    assert.equal(
-      issue(state, work, PHASES, REGISTRY).phase.name,
-      "close",
-      ruleIds.join(" ")
-    );
+    const made = abortedScaReview(tmp(), ruleIds, opts);
+    const { out, seen } = untilPhase(made, "downgrade");
+    assert.equal(out.phase.name, "close", ruleIds.join(" "));
+    assert.equal(seen.at(-1), before, `${ruleIds.join(" ")}: ${seen}`);
   }
+});
+
+// The cases a source review gets for the shape of its archive: a copy of the XPI with no
+// lock is asked about the restart, as both faults are the archive's. Code a reviewer cannot
+// read keeps it from being asked, whether the XPI cannot be read on its own or the
+// unreadable file is the archive's alone (a minified file under tests/ that verify kept).
+test("an archive holding the XPI and no lock is offered the restart, unreadable code is not", () => {
+  const shape = ["sca-xpi-fully-included-in-archive", "sca-lock-file-missing"];
+  const offered = abortedScaReview(tmp(), shape);
+  const { out } = untilPhase(offered, "downgrade");
+  assert.equal(out.phase.name, "downgrade");
+  assert.equal(out.settled.earlyExit, true);
+
+  const unreadableXpi = abortedScaReview(tmp(), shape, { reviewable: false });
+  assert.equal(untilPhase(unreadableXpi, "downgrade").out.phase.name, "close");
+
+  const dir = tmp();
+  const archiveOnly = abortedScaReview(dir, [...shape, "minified-code"]);
+  archiveOnly.state.paths.scaRoot = path.join(dir, "sca");
+  const minified = archiveOnly.state.report.findings.at(-1);
+  minified.file = "tests/fixture.min.js";
+  assert.equal(untilPhase(archiveOnly, "downgrade").out.phase.name, "close");
 });
 
 // A source review that did not abort is never asked, whatever its XPI.
@@ -1868,8 +1928,9 @@ test("a review that did not abort never sees downgrade", () => {
 // "Keep this result": the review closes aborted, with its aborted line, and the close does
 // not show the Summary and the Final Review Details a second time.
 test("keeping the result closes the review aborted, without its block again", () => {
-  const { state, work } = abortedScaReview(tmp(), ["sca-package-file-missing"]);
-  assert.equal(issue(state, work, PHASES, REGISTRY).phase.name, "downgrade");
+  const made = abortedScaReview(tmp(), ["sca-package-file-missing"]);
+  const { state, work } = made;
+  assert.equal(untilPhase(made, "downgrade").out.phase.name, "downgrade");
   handBack(work, () => "Keep this result");
   accept(state, work, PHASES, REGISTRY);
   assert.equal(state.values.downgrade, "keep");
@@ -2055,10 +2116,12 @@ test("the build question is the single entry of its own phase", () => {
   }
 });
 
-// Each answer but "Builds and reproduces" aborts the review there for build issues: its
-// own check is the one build finding, carrying that check's response, the build to-do is
-// cleared rather than reported beside it, the questions still pending are never put, and
-// the report ends on why. Words a reviewer typed instead of a label are refused.
+// Each answer but "Builds and reproduces" aborts the review for build issues, late: the
+// sweeps, verify and settle still run, the questions still pending are never put, and the
+// report ends on why. Its own check is the one build finding, carrying that check's response,
+// and the build to-do is cleared rather than reported beside it. The finding is the
+// reviewer's answer, so a verify that withdraws everything leaves it standing. Words a
+// reviewer typed instead of a label are refused.
 test("each build answer that stops the review reports its own check", () => {
   for (const [said, rule] of [
     ["Does not reproduce", "build-not-reproduced"],
@@ -2070,9 +2133,8 @@ test("each build answer that stops the review reports its own check", () => {
       made,
       goesOn({ built: () => said })
     );
-    for (const later of ["spawn", "ask"]) {
-      assert.ok(!seen.includes(later), `${said}: ${seen.join(", ")}`);
-    }
+    assert.ok(seen.includes("spawn"), `${said}: ${seen.join(", ")}`);
+    assert.ok(!seen.includes("ask"), `${said}: ${seen.join(", ")}`);
     assert.equal(settled.earlyExit, true, said);
     assert.match(closing.steps[0].text, /^The review was aborted/);
     assert.match(settled.report, /- Build process issues/);
@@ -2132,6 +2194,55 @@ test("the build question is issued only while its to-do is open", () => {
   assert.ok(!seen.includes("built"), seen.join(", "));
   assert.ok(seen.includes("spawn"), seen.join(", "));
   assert.equal(made.state.values.built, undefined);
+});
+
+// A source no build can be made from asks nobody to build it: a finding of a check marked
+// `review-unbuildable` (here the missing lock), or a failed rescue, skips both build phases,
+// and the review goes straight on to its passes and is aborted late. A source the review
+// rejects but that can be built - a vulnerable tree with its lock - is still asked, with
+// the vulnerabilities in the details its reviewer reads first.
+test("an unbuildable source skips the build phases, a buildable rejected one does not", () => {
+  const withFinding = (ruleId) => {
+    const made = buildQuestionsReview(tmp());
+    made.state.report.findings.push({
+      ruleId,
+      severity: "error",
+      file: "package.json",
+      loc: null,
+      artifact: ARTIFACT_SCA,
+      message: ruleId,
+    });
+    refed(made.state);
+    return made;
+  };
+  // A failed rescue leaves the vulnerable tree it could not fix, which alone is buildable:
+  // the failed rescue is what makes it unbuildable.
+  const failed = withFinding("vendor-vulnerable-dev");
+  failed.state.build = { result: "rescue-failed" };
+  for (const made of [withFinding("sca-lock-file-missing"), failed]) {
+    const { seen, settled } = driveBuild(
+      made,
+      goesOn({ verify: () => "reported" })
+    );
+    assert.ok(!seen.includes("build-safety"), seen.join(", "));
+    assert.ok(!seen.includes("built"), seen.join(", "));
+    assert.equal(seen[0], "spawn", seen.join(", "));
+    assert.ok(!seen.includes("ask"), seen.join(", "));
+    assert.equal(made.state.values?.built, undefined);
+    assert.equal(settled.earlyExit, true);
+  }
+  const buildable = withFinding("vendor-vulnerable-dev");
+  const { seen, settled } = driveBuild(
+    buildable,
+    goesOn({ verify: () => "reported" })
+  );
+  assert.deepEqual(
+    seen.slice(0, 2),
+    ["build-safety", "built"],
+    seen.join(", ")
+  );
+  assert.ok(!seen.includes("ask"), seen.join(", "));
+  assert.equal(settled.earlyExit, true);
 });
 
 // undeclared-build-source is still settled in `settle`, after the build, and reported there
@@ -2685,7 +2796,7 @@ test("the closing prompt's slots carry the settled tally and details", () => {
   assert.equal(out.phase.name, "close");
   const slots = loopSlots(state, out, work, REGISTRY);
   assert.equal(slots.details, out.settled.details);
-  assert.match(slots.details, /- Known security vulnerabilities$/);
+  assert.match(slots.details, /- Experiment APIs not accepted$/);
   assert.equal(slots.tally, out.settled.tally);
   assert.match(slots.tally, /extended code review item/);
   // The closing ends no turn the review waits on, so its block carries no waiting line.

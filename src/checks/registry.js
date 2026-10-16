@@ -732,9 +732,9 @@ export class Registry {
 
   /**
    * The reason this check gives for aborting the review LATE, or null when it names none.
-   * An error from such a check stops nothing while the review runs: every check runs, and
-   * the loop still spawns, verifies and settles, so verify can withdraw a wrong finding
-   * first. The review is aborted once nothing but the reviewer's questions and the close
+   * The default way to abort. An error from such a check stops nothing while the review
+   * runs: every check runs, and the loop still spawns, verifies and settles, so verify can
+   * withdraw a wrong finding first. The review is aborted once nothing but the reviewer's questions and the close
    * is left (src/report/loop.js runOf), and a plain report is aborted at its end. The
    * reason is one of the same `review-early-exit` reasons (assertEarlyExit).
    * @param {string} ruleId
@@ -756,6 +756,19 @@ export class Registry {
    */
   downgrades(ruleId) {
     return this.checkEntry(ruleId)?.["review-downgrade"] === true;
+  }
+
+  /**
+   * Whether this aborting check's finding makes a build impossible by the review's own rules
+   * (`review-unbuildable`): no usable package.json, or no single readable lock to install
+   * from. A source review holding one asks nobody to build it, and goes on without the build
+   * phases (src/report/loop.js runOf). assertEarlyExit holds the marker to aborting checks of
+   * the source archive.
+   * @param {string} ruleId
+   * @returns {boolean}
+   */
+  unbuildable(ruleId) {
+    return this.checkEntry(ruleId)?.["review-unbuildable"] === true;
   }
 
   /**
@@ -1520,7 +1533,9 @@ function loadedStep(step) {
  * A process-value phase's values, checked at load. A phase answering `value` must offer some,
  * and no other kind may author them, or a question nobody asks. Each id is a name a `when:`
  * can read, and two equal ids or labels would make an answer mean either. A value that
- * `reports` a check aborts the review through that check, so the check must exist and abort.
+ * `reports` a check aborts the review through that check, so the check must exist and abort,
+ * early or late. The finding is the reviewer's answer, so it stands as reported: verify is
+ * never asked about it (src/report/loop.js recordValue).
  * @param {Registry} registry
  * @param {object} phase  The phase as authored.
  * @param {string} at  How it is named in a message.
@@ -1566,10 +1581,13 @@ function assertProcessValues(registry, phase, at) {
     const entry = registry
       .allEntries()
       .find((e) => stem(e.check) === v.reports);
-    if (!entry?.["review-early-exit"] || entry.severity !== SEVERITY.ERROR) {
+    const aborts =
+      entry?.["review-early-exit"] !== undefined ||
+      entry?.["review-late-exit"] !== undefined;
+    if (!aborts || entry.severity !== SEVERITY.ERROR) {
       throw new Error(
         `${at} value \`${v.value}\` reports \`${v.reports}\`, which is not an error ` +
-          "check with a review-early-exit reason - the value could not abort the review"
+          "check with an early-exit or late-exit reason - the value could not abort the review"
       );
     }
     // The finding names no file, so the check's input is what says which artifact it is
@@ -1926,6 +1944,10 @@ export function assertAskedIn(registry, at) {
  * name, and every reason authored is named by a check. A check names it under
  * `review-early-exit` or `review-late-exit`, and both keys count as naming it.
  *
+ * Every check that aborts early comes before every check that aborts late. An early abort
+ * verifies nothing, so a late finding reported before it would be counted unverified as a
+ * reason the review was aborted for.
+ *
  * Both directions matter, and they fail differently. A reference nothing defines would
  * abort a review and then print a bullet with nothing in it - the report would say the
  * submission could not be reviewed without saying why. A reason nothing references is
@@ -1941,8 +1963,10 @@ export function assertEarlyExit(registry, at) {
   for (const entry of registry.allEntries()) {
     const early = entry["review-early-exit"];
     const late = entry["review-late-exit"];
-    assertDowngrade(entry, early !== undefined || late !== undefined, at);
-    if (early === undefined && late === undefined) {
+    const aborts = early !== undefined || late !== undefined;
+    assertSourceMarker(entry, "review-downgrade", aborts, at);
+    assertSourceMarker(entry, "review-unbuildable", aborts, at);
+    if (!aborts) {
       continue;
     }
     // One entry aborts one way: an early abort already ends the review before a late one
@@ -1992,30 +2016,46 @@ export function assertEarlyExit(registry, at) {
       );
     }
   }
+  // Asked once every entry holds on its own, so a fault of one entry is named as that fault.
+  let firstLate = null;
+  for (const entry of registry.allEntries()) {
+    if (entry["review-early-exit"] !== undefined && firstLate !== null) {
+      throw new Error(
+        `\`${entry.check}\` aborts the review early but comes after \`${firstLate}\`, ` +
+          `which aborts it late - every early abort comes first (${at})`
+      );
+    }
+    if (entry["review-late-exit"] !== undefined) {
+      firstLate ??= entry.check;
+    }
+  }
 }
 
 /**
- * Assert a `review-downgrade` marker: only a check that aborts the review carries one, as
- * it says what cures that abort, and only one reading the source archive (`input: sca` or
- * `all`), as a review of the XPI alone cures nothing a check of the XPI found.
+ * Assert a marker that says something about an abort of the source archive:
+ * `review-downgrade` (a review of the XPI alone cures it) or `review-unbuildable` (no build
+ * can be made from the source). Only a check that aborts the review carries one, as each
+ * describes that abort, and only one reading the source archive (`input: sca` or `all`), as a
+ * check of the XPI says nothing about the archive or its build.
  * @param {object} entry
+ * @param {string} key  The marker.
  * @param {boolean} aborts  The entry names an early-exit or late-exit reason.
  * @param {string} at
  */
-function assertDowngrade(entry, aborts, at) {
-  if (entry["review-downgrade"] === undefined) {
+function assertSourceMarker(entry, key, aborts, at) {
+  if (entry[key] === undefined) {
     return;
   }
   if (!aborts) {
     throw new Error(
-      `\`${entry.check}\` authors \`review-downgrade\` but aborts no review - the marker ` +
-        `says what cures an abort (${at})`
+      `\`${entry.check}\` authors \`${key}\` but aborts no review - the marker ` +
+        `describes an abort (${at})`
     );
   }
   if (entry.input !== "sca" && entry.input !== "all") {
     throw new Error(
-      `\`${entry.check}\` authors \`review-downgrade\` on \`input: ${entry.input}\` - only ` +
-        `a check reading the source archive (sca or all) is cured by reviewing the XPI (${at})`
+      `\`${entry.check}\` authors \`${key}\` on \`input: ${entry.input}\` - only ` +
+        `a check reading the source archive (sca or all) may carry it (${at})`
     );
   }
 }
@@ -2426,7 +2466,8 @@ export async function runChecks(registry, opts = {}, siblings) {
     findings.push(...out.findings);
     manualItems.push(...out.manualItems);
     checksRun.push(check);
-    // No check after an aborting one runs, and nothing it would have asked for is computed.
+    // No check after one that aborts early runs, and nothing it would have asked for is
+    // computed.
     if (abortsReview(registry, check.id, out.findings)) {
       break;
     }
@@ -2452,7 +2493,8 @@ export async function runChecks(registry, opts = {}, siblings) {
  * reason (src/report/early-exit.js) settles the submission. Read off the stamped severity,
  * the band the report will show. A case a check only escalates aborts later, if at all,
  * once someone reports it - that is the review loop's to decide (src/report/loop.js).
- * A check naming a late-exit reason (lateExitFor) stops nothing here: every check runs.
+ * A check naming a late-exit reason (lateExitFor), the default, stops nothing here: every
+ * check runs.
  */
 export function abortsReview(registry, checkId, findings) {
   return Boolean(

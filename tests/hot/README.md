@@ -14,10 +14,12 @@ back until it reaches one of three stops, and goes no further:
 
 - **row 14:** the Build Review Details block, the first step of `built`. The agent shows the
   block, ends its turn on it, and goes no further.
-- **the abort:** the closing prompt of an aborted review. The agent stops on it.
+- **the abort:** the closing prompt of an aborted review. Every abort but a rejected
+  Experiment or a forged lock comes late, so the agent first works through the sweeps,
+  verify and settle, and then stops on it.
 - **the downgrade:** an aborted review whose XPI could be reviewed alone does not close. It
-  asks whether to restart as an XPI review. The agent stops on that question and does not
-  answer it.
+  asks whether to restart as an XPI review, once settle is done. The agent stops on that
+  question and does not answer it.
 
 Then it runs `check.js` on the work folder, so the verdict is the linter's state, not the
 agent's word.
@@ -152,8 +154,9 @@ Each case, and why it lands where it does:
 - **unsafe:** the build script pipes a downloaded script into `sh`. The URL is never fetched:
   the judgement ends the preparation before anything runs.
 - **not-auditable:** two lock files. The preparation does not audit such a lock, and the
-  review aborts on `sca-lock-file-multiple`. That check opts in to the downgrade and the XPI
-  is readable, so the review stops at the question whether to restart as an XPI review. Both locks are empty, so no vulnerability check
+  review aborts on `sca-lock-file-multiple`, late. Two locks leave no build to make, so the
+  build question is not asked. That check opts in to the downgrade and the XPI is readable,
+  so after settle the review stops at the question whether to restart as an XPI review. Both locks are empty, so no vulnerability check
   adds a reason, whatever the agent judges the Makefile's submodule fetch to be.
 
 To rebuild a case: extract the base's original archive into an empty folder, rename its top

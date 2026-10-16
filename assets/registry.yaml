@@ -16,22 +16,34 @@
 # simply not a phase.
 
 deterministic-phase:
-# THE HEAD OF THE PHASE: every check that can stop a review on its own, ordered so a
-# submission they reject stops before the rest of the review is computed - a check that
-# reports an error stops the review (src/checks/registry.js abortsReview). The Experiment verdict
-# first, read from records alone; then the shape of a source submission, whose archive must
-# not hold the built XPI; then the source archive's package.json and lock and where
-# the lock installs from, which read nothing the review computes; then lockfile-injection,
-# which may ask the npm registry; then the checks that need the vendor reading (the OSV audit,
-# the CDN identification): the four dependency-vulnerability checks and banned-library. A
-# source review whose preparation failed to rescue its lock is reviewed like any other and
-# stops at its vulnerability checks.
+# THE HEAD OF THE PHASE: the two checks that end a review EARLY (`review-early-exit`), where
+# an error stops the run at once (src/checks/registry.js abortsReview). The Experiment verdict
+# first, read from records alone, as such a submission is refused whatever its code says;
+# then lockfile-injection, as the audit would read the forged lock. Both come before every
+# check that ends a review LATE (`review-late-exit`), so no late finding is reported in a
+# review that never reaches verify (assertEarlyExit holds the order).
+#
+# Every other check that can end a review ends it late: every check runs, and the review
+# stops before anyone is asked to install or test the add-on. They follow in the order a
+# reader meets their reasons: the shape of a source submission, whose archive must not hold
+# the built XPI; then the source archive's package.json and lock and where the lock installs
+# from; then the checks that need the vendor reading (the OSV audit, the CDN identification):
+# the four dependency-vulnerability checks and banned-library. A source review whose
+# preparation failed to rescue its lock is reviewed like any other and reports its
+# vulnerabilities.
 #
 # `review-downgrade: true` on an aborting check of the source archive says a review of the
 # XPI alone cures its finding: the archive or its build is what is wrong, not the shipped
 # code. A source review aborted only by such checks, whose XPI is readable, is offered a
 # restart as an XPI review (the `downgrade` phase in llm-phases). vendor-vulnerable-indirect
 # carries no marker, as it reports code the XPI ships.
+#
+# `review-unbuildable: true` on an aborting check of the source archive says no build can be
+# made from the source by the review's own rules: no usable package.json, or no single
+# readable lock for `npm ci` or `pnpm install --frozen-lockfile` to install from. A source
+# review holding such a finding asks nobody to build it: the `build-safety` and `built`
+# phases are skipped (the `unbuildable` fact, src/report/loop.js runOf), and the review goes
+# on to the sweeps and ends late.
 
 # Aborts the review of an Experiment that uses an UNSUPPORTED experiment (an
 # unknown API draft, or one shadowing a built-in). A recognised but modified draft
@@ -48,6 +60,26 @@ deterministic-phase:
     Read more: https://thunderbird.topicbox.com/groups/addons/T6ff545fb6d479da5/temporary-pause-on-new-experiment-api-add-on-reviews
     The following cannot be accepted:
 
+# Deterministic (SCA only): a lock entry that names one release while its URL installs
+# another - a `version` of 1.2.2 beside the 1.2.1 tarball, or another package entirely. The
+# audit asks about the name and version, the install fetches the URL, so the audit would vouch
+# for a release the build never installs. An early exit, so nothing reads the forged lock to
+# audit it, and second in the phase, so no late finding is reported before it ends the review.
+# It reads no other check's answer: a missing or unreadable lock, and an entry from an
+# unsupported source, leave it nothing to compare. A URL on the registry's tarball path is
+# compared offline, any other registry URL is asked of the registry, once and cached
+# (src/vendor/locks.js findLockInjections); {{item}} names the entry and what it installs.
+- title: Lock file entries that install another release
+  severity: error
+  check: lockfile-injection
+  review-downgrade: true
+  build-guard: true
+  input: sca
+  review-early-exit: lockfile-injection
+  response: |-
+    The committed lock file records the following package(s) at one release but installs another, so the release the review would audit is not the one the build installs. Please regenerate the lock file with your package manager and commit it as it writes it.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
 # Two rules about the SHAPE of a source-code submission, one per entry below, kept apart
 # because each has its own remedy and a shared wording could state neither plainly.
 #
@@ -58,11 +90,10 @@ deterministic-phase:
 # unminified build is its own twin under any of them, so routing would let a build be
 # dressed up as source).
 #
-# RULE 2 rejects the submission and ends the review: an archive holding the built XPI could
-# trick the build, which may hand back that copy instead of what it builds from the source.
-# It sits here, right after the Experiment verdict and above the package.json and lock
-# checks, so it is the reason such a review ends even where the archive has no build at
-# all. RULE 1 stays a warning: --warnings-as-errors lets a new submission be refused at
+# RULE 2 rejects the submission and ends the review late: an archive holding the built XPI
+# could trick the build, which may hand back that copy instead of what it builds from the
+# source. The rest of the review still runs, as the archive may hold the real source beside
+# that copy. RULE 1 stays a warning: --warnings-as-errors lets a new submission be refused at
 # intake, while an update that got its packaging wrong only gets told what to change.
 
 # RULE 1: the built XPI must not carry vendoring information. Those files are the archive's
@@ -90,7 +121,7 @@ deterministic-phase:
   check: sca-xpi-fully-included-in-archive
   review-downgrade: true
   input: all
-  review-early-exit: archive-is-xpi
+  review-late-exit: archive-is-xpi
   response: |-
     This add-on was submitted as a source-code archive, but the archive contains the built XPI in full: every file the XPI ships is in the archive byte for byte. A source-code archive holds the readable source of an XPI that was built (bundled, transpiled or otherwise transformed) and cannot be reviewed directly, not a copy of that XPI. If the XPI can be reviewed directly, submit just the XPI (which is reviewed considerably faster). If the add-on must be built, but the archive also includes the built XPI by mistake, please remove it.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
@@ -107,9 +138,10 @@ deterministic-phase:
 # reproducing the build establishes, and with no build there is nothing to reproduce.
 - title: Missing package.json
   severity: error
-  review-early-exit: unreproducible-build
+  review-late-exit: unreproducible-build
   check: sca-package-file-missing
   review-downgrade: true
+  review-unbuildable: true
   input: sca
   response: |-
     The submitted source archive contains no package.json, so there is no build process the shipped add-on can be reproduced from.
@@ -128,9 +160,10 @@ deterministic-phase:
 # code.
 - title: Invalid package.json
   severity: error
-  review-early-exit: unreproducible-build
+  review-late-exit: unreproducible-build
   check: sca-package-file-invalid
   review-downgrade: true
+  review-unbuildable: true
   input: sca
   response: |-
     The committed package.json cannot be read, so the build it defines cannot be run. Please commit a valid package.json.
@@ -153,9 +186,10 @@ deterministic-phase:
 # because the root is named by someone who has not looked inside the archive yet.
 - title: Missing lock file
   severity: error
-  review-early-exit: unreproducible-build
+  review-late-exit: unreproducible-build
   check: sca-lock-file-missing
   review-downgrade: true
+  review-unbuildable: true
   input: sca
   response: |-
     The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
@@ -170,9 +204,10 @@ deterministic-phase:
 # two it was rides the location line as {{item}}.
 - title: Invalid lock file
   severity: error
-  review-early-exit: unreproducible-build
+  review-late-exit: unreproducible-build
   check: sca-lock-file-invalid
   review-downgrade: true
+  review-unbuildable: true
   input: sca
   response: |-
     The committed lock file cannot be read, so the dependencies it installs cannot be checked. Please run the install again and commit the lock file it writes. The supported package managers are npm and pnpm.
@@ -189,9 +224,10 @@ deterministic-phase:
 # lock, so the report names them all.
 - title: More than one lock file
   severity: error
-  review-early-exit: unreproducible-build
+  review-late-exit: unreproducible-build
   check: sca-lock-file-multiple
   review-downgrade: true
+  review-unbuildable: true
   input: sca
   response: |-
     The submitted source includes more than one lock file. The review checks one lock file and the build installs from one, so only the lock file of the package manager you use may be committed: package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm. Please remove the others and commit only that one.
@@ -205,13 +241,13 @@ deterministic-phase:
 # the raw value is surfaced as {{item}}. The ARCHIVE'S OWN .npmrc is the one read - npm takes
 # its config from the directory the install runs in, and the review runs it at --sca-root -
 # so a config deeper in the tree is never asked for.
-# review-early-exit for the same reason as the other build rejects, reached from the other
+# Ends the review for the same reason as the other build rejects, reached from the other
 # direction: the install would RUN, but what it fetches is not what the submission declares,
 # so reproducing it attests nothing - and it would pull code from a developer-chosen host
-# onto the reviewer's own machine. Asking them to build is uninformative and unsafe at once.
+# onto the reviewer's own machine, which the Build Review Details tell them before they build.
 - title: Build registry override
   severity: error
-  review-early-exit: unreproducible-build
+  review-late-exit: unreproducible-build
   check: build-registry-redirect
   review-downgrade: true
   build-guard: true
@@ -227,32 +263,13 @@ deterministic-phase:
 # (src/vendor/locks.js lockSourceGaps); {{item}} names the package and the recorded source.
 - title: Lock file installs from an unsupported source
   severity: error
-  review-early-exit: unreproducible-build
+  review-late-exit: unreproducible-build
   check: lock-foreign-source
   review-downgrade: true
   build-guard: true
   input: sca
   response: |-
     The committed lock file installs the following package(s) from a source the review does not support. Every dependency must install from the npm registry (registry.npmjs.org) or from GitHub. Please install the dependencies from those sources and commit the regenerated lock file.
-    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
-
-# Deterministic (SCA only): a lock entry that names one release while its URL installs
-# another - a `version` of 1.2.2 beside the 1.2.1 tarball, or another package entirely. The
-# audit asks about the name and version, the install fetches the URL, so the audit would vouch
-# for a release the build never installs. After the checks that read the package and lock
-# files and before any that need the vendor reading, so a forged lock stops the review before
-# anything reads the lock to audit it. A URL on the registry's tarball path is
-# compared offline, any other registry URL is asked of the registry, once and cached
-# (src/vendor/locks.js findLockInjections); {{item}} names the entry and what it installs.
-- title: Lock file entries that install another release
-  severity: error
-  check: lockfile-injection
-  review-downgrade: true
-  build-guard: true
-  input: sca
-  review-early-exit: lockfile-injection
-  response: |-
-    The committed lock file records the following package(s) at one release but installs another, so the release the review would audit is not the one the build installs. Please regenerate the lock file with your package manager and commit it as it writes it.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Each pinned npm name@version - a package.json dependency of a built XPI, a package the
@@ -265,7 +282,7 @@ deterministic-phase:
 # band (high/critical -> error, moderate/medium -> warning, else info).
 - title: Vulnerable dependency
   severity: auto
-  review-early-exit: known-vulnerabilities
+  review-late-exit: known-vulnerabilities
   check: vendor-vulnerable
   build-guard: true
   input: source
@@ -282,7 +299,7 @@ deterministic-phase:
 # vendor-vulnerable-indirect-dev below.
 - title: Vulnerable build dependency
   severity: error
-  review-early-exit: known-vulnerabilities
+  review-late-exit: known-vulnerabilities
   check: vendor-vulnerable-dev
   review-downgrade: true
   build-guard: true
@@ -302,7 +319,7 @@ deterministic-phase:
 # fills the {{severity}} slot. `input: sca` - a lock is only read in a source review.
 - title: Vulnerable indirect dependency
   severity: error
-  review-early-exit: known-vulnerabilities
+  review-late-exit: known-vulnerabilities
   check: vendor-vulnerable-indirect
   build-guard: true
   input: sca
@@ -319,7 +336,7 @@ deterministic-phase:
 # reported by the two entries above instead.
 - title: Vulnerable indirect build dependency
   severity: error
-  review-early-exit: known-vulnerabilities
+  review-late-exit: known-vulnerabilities
   check: vendor-vulnerable-indirect-dev
   review-downgrade: true
   build-guard: true
@@ -336,7 +353,7 @@ deterministic-phase:
 # severity:auto - banned -> error, unadvised -> warning (set by the banned-library check).
 - title: Banned library
   severity: auto
-  review-early-exit: disallowed-library-versions
+  review-late-exit: disallowed-library-versions
   check: banned-library
   input: source
   response: |-
@@ -1011,8 +1028,8 @@ deterministic-phase:
 # says which this is, so every hook escalates for a reviewer to read rather than being
 # asserted as a finding. undeclared-build-source asks about hooks too, among every other
 # build step, while this check names each hook. The hook and its command ride the locus.
-# review-early-exit, and the first ESCALATING check to carry one - which works because only
-# a FINDING halts a review, and an escalated case becomes one only when it is reported at
+# An ESCALATING check that ends a review late - which works because only a FINDING
+# ends a review, and an escalated case becomes one only when it is reported at
 # this check's severity (src/report/verdicts.js). So a benign `husky prepare` that is
 # cleared aborts nothing, and a plain review with nobody to judge the hook aborts nothing
 # either. It is settled in the `settle` phase. Under --llm-review a hook is screened before
@@ -1020,7 +1037,7 @@ deterministic-phase:
 # check is what reports a remote-fetching hook.
 - title: Build install hook
   severity: error
-  review-early-exit: unreproducible-build
+  review-late-exit: unreproducible-build
   check: build-lifecycle-hook
   review-downgrade: true
   input: sca
@@ -1057,7 +1074,7 @@ deterministic-phase:
   review-downgrade: true
   input: sca
   settle-verbs: [reported, cleared]
-  review-early-exit: unreproducible-build
+  review-late-exit: unreproducible-build
   instructions-for-llm: |-
     Read the build: package.json's scripts and every script, configuration file
     and file they run. Report it if any step fetches or runs code or resources
@@ -1075,9 +1092,10 @@ deterministic-phase:
 
 # SCA only: the build question, asked of every source review. Reproducing the build is the
 # reviewer's attestation that the shipped XPI comes from the source they read, which is what
-# an SCA review rests on. So a source that does not build into the shipped XPI aborts the
+# an SCA review rests on. So a source that does not build into the shipped XPI ends the
 # review before anyone is asked to install that XPI. Asked ALONE, in a phase of its own
-# (`asked-in: built`), right after the Build Review Details and before the sweeps. That phase
+# (`asked-in: built`), right after the Build Review Details and before the sweeps, except of
+# a source a build is impossible from (`unbuildable`), which is never asked. That phase
 # relays this text as its question and offers its own four answers (`values`): three of them
 # report the check below that names the reason, so the developer is told why. A plain report
 # prints this to-do with its one generic response.
@@ -1087,7 +1105,7 @@ deterministic-phase:
   review-downgrade: true
   input: sca
   asked-in: built
-  review-early-exit: unreproducible-build
+  review-late-exit: unreproducible-build
   instructions-for-human: |-
     Does the build process complete and reproduce the submitted XPI? Follow the
     build process from a clean copy of the source archive, installing the
@@ -1109,7 +1127,7 @@ deterministic-phase:
   check: build-not-reproduced
   review-downgrade: true
   input: sca
-  review-early-exit: unreproducible-build
+  review-late-exit: unreproducible-build
   response: |-
     The submitted source builds, but the result does not match the submitted XPI. Please make sure the XPI is built from exactly the submitted source by the build instructions you provided.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
@@ -1119,7 +1137,7 @@ deterministic-phase:
   check: build-fails
   review-downgrade: true
   input: sca
-  review-early-exit: unreproducible-build
+  review-late-exit: unreproducible-build
   response: |-
     The submitted source could not be built by following its build instructions. Please make sure the instructions are complete and that the build succeeds from a clean copy of the submitted archive, with the dependencies installed exactly as the lock file pins them.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
@@ -1129,7 +1147,7 @@ deterministic-phase:
   check: build-unsafe
   review-downgrade: true
   input: sca
-  review-early-exit: unreproducible-build
+  review-late-exit: unreproducible-build
   response: |-
     The build process of the submitted source is not safe to run: it fetches or runs code from outside the dependencies declared in package.json and the lock file. Please make the build use only those dependencies.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
@@ -2117,29 +2135,31 @@ verdict-intros:
   hold: "Thank you for your contribution."
   rejected: "Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form."
 
-# The EARLY EXIT: some findings settle the submission on their own, and the review is
-# aborted rather than asking anyone to carry on with it. The case it exists for: a dependency tree
-# with known high/critical advisories, where the very next thing the review would ask is
-# for a reviewer to reproduce the build - running that tree on their own machine, on the
-# strength of a question the linter issued knowing better.
+# The REVIEW EXIT: some findings settle the submission on their own, and the review is
+# aborted rather than asking anyone to carry on with it - above all, before anyone is asked
+# to install or test the add-on.
 #
-# A check declares it blocks by naming a REASON here (`review-early-exit: <id>`), never by
-# a flag: the closing text is a LIST, so two blocking causes have to produce two bullets
-# without any wording being rewritten. Reasons render deduplicated, in the order they are
-# written below, so two runs over one submission cannot disagree.
+# A check declares it blocks by naming a REASON here, never by a flag: the closing text is a
+# LIST, so two blocking causes have to produce two bullets without any wording being
+# rewritten. Reasons render deduplicated, in the order they are written below, so two runs
+# over one submission cannot disagree.
 #
 # What is withheld is not listed here and is not a property of these entries: it is every
 # to-do item a REVIEWER would have been asked: a question by its section, or one that
-# carries the phase a person is asked it in (src/report/early-exit.js withoutQuestions). An
-# error from such a check also stops the review: no check after it runs. The code-review
-# sections keep what the checks up to it authored, because reading code is safe.
+# carries the phase a person is asked it in (src/report/early-exit.js withoutQuestions).
 #
-# A check that names its reason as `review-late-exit: <id>` aborts LATE, for one of the same
-# reasons. Its error stops nothing while the review runs: every check runs, and the loop
-# still spawns, verifies and settles, so verify can withdraw a wrong finding first. The
-# review is aborted once only the reviewer's questions and the close are left, and a plain
-# report is aborted at its end. Such a check may author a sweep, as it is judged after the
-# sweeps.
+# A check names its reason in one of two ways. `review-late-exit: <id>` is the default: its
+# error stops nothing while the review runs. Every check runs, and the loop still builds,
+# spawns, verifies and settles, so the developer is told everything in one round and verify
+# can withdraw a wrong finding first. The review is aborted once only the reviewer's
+# questions and the close are left, and a plain report is aborted at its end. Such a check
+# may author a sweep, as it is judged after the sweeps.
+#
+# `review-early-exit: <id>` is for the two cases where the rest of the review is no use: a
+# submission refused whatever its code says (experiment-not-allowed), and a forged lock,
+# which every later reading of the lock would take at its word (lockfile-injection). Its
+# error stops the review at once: no check after it runs, and the code-review sections keep
+# what the checks up to it authored, because reading code is safe.
 review-early-exit:
   intro: |-
     The review was not completed and the report is incomplete due to the following issues:
@@ -2177,7 +2197,7 @@ review-early-exit:
 # build/, so nothing is installed or built in rescued/. The linter audits the copy again and
 # checks the output the reader named, which lies in build/. A clean, built copy is reviewed.
 # A failed rescue is deleted with build/, and the source as submitted is reviewed: its
-# vulnerability checks report the lock and end the review. Every audit of the run asks OSV
+# vulnerability checks report the lock and end the review late. Every audit of the run asks OSV
 # through the run's cache, so that review
 # asks nothing the preparation already did (src/vendor/osv-cache.js).
 #
@@ -2464,7 +2484,7 @@ llm-phases:
   # What LLM_BUILD_RESULT in the details blocks says of the agent's attempt: it built the
   # add-on, its build failed, its rescue failed so nothing was built, or the build was judged
   # unsafe so nothing was built. The row is shown only for these four results. A failed
-  # rescue always aborts the review, so no `built` step names it.
+  # rescue leaves nothing to build (`unbuildable`), so no `built` step names it.
   build-results:
     agent-built: build succeeded
     agent-build-failed: "build failed: see build.md"
@@ -2485,10 +2505,11 @@ llm-phases:
   # Two of them earn text, and both for that reason.
   phases:
     # A source review opens with its BUILD, before anything else is spent on it: a source that
-    # does not build into the shipped XPI ends the review here, before any sweep, verify or
-    # settle pass. The review builds nothing itself. The agent built the add-on in the
-    # preparation where it judged the build safe and the reviewer let it (src/prepare/steps.js),
-    # and otherwise the reviewer builds it.
+    # does not build into the shipped XPI ends the review late, once it has run to the end of
+    # settle, and a reviewer who declines to build ends it the same way. The review builds
+    # nothing itself. The agent built the add-on in the preparation where it judged the build
+    # safe and the reviewer let it (src/prepare/steps.js), and otherwise the reviewer builds it.
+    # A source no build can be made from (`unbuildable`) skips both phases.
     #
     # `build-safety` asks for a PROCESS VALUE (`answer: value`): an answer that steers the
     # review and settles no item. It runs only where the review holds no judgement yet, and
@@ -2508,7 +2529,7 @@ llm-phases:
           label: unsafe
           description: At least one build step fetches or runs code or resources from outside the declared dependencies, as the report's safety section lists.
       steps:
-        - when: sca AND build-guarded AND NOT aborted AND NOT value(build-safety, safe) AND NOT value(build-safety, unsafe)
+        - when: sca AND build-guarded AND NOT aborted AND NOT unbuildable AND NOT value(build-safety, safe) AND NOT value(build-safety, unsafe)
           text: |-
             Work out what building this add-on takes. This is a source code review, so the add-on is built from its source before anything else is reviewed. Read the documentation and the build files in
 
@@ -2529,7 +2550,7 @@ llm-phases:
             {{build}}
 
             and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision.
-        - when: sca AND build-guarded AND NOT aborted AND NOT value(build-safety, safe) AND NOT value(build-safety, unsafe)
+        - when: sca AND build-guarded AND NOT aborted AND NOT unbuildable AND NOT value(build-safety, safe) AND NOT value(build-safety, unsafe)
           text: |-
             Then answer the one entry in the file with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. It is your judgement of what the safety section lists, and the reviewer decides what follows from it.
 
@@ -2578,24 +2599,24 @@ llm-phases:
           description: The build would fetch or run code from outside the declared dependencies, or do something you will not run on your machine. Nothing was built.
           reports: build-unsafe
       steps:
-        - when: sca AND build-guarded AND NOT aborted
+        - when: sca AND build-guarded AND NOT aborted AND NOT unbuildable
           text: |-
             Give the reviewer this block under a "Build review details" heading, exactly as it is written here, as the last thing you write this turn. Then end your turn, and put no question to them in it. Go on with the next step only once the reviewer has replied: what they reply does not matter.
 
             {{buildDetails}}
-        - when: NOT aborted AND agent-built
+        - when: NOT aborted AND NOT unbuildable AND agent-built
           text: |-
             The agent built the add-on: LLM_BUILD_OUTPUT in the Build Review Details names what its build produced, and LLM_BUILD_XPI_MATCH is the agent's earlier comparison of it with XPI_FILE, which the reviewer reads beside both. Build nothing and compare nothing, only put the question below.
-        - when: NOT aborted AND agent-build-failed
+        - when: NOT aborted AND NOT unbuildable AND agent-build-failed
           text: |-
             The agent's build failed, and the "Build attempt" section of SCA_BUILD_PROCESS says where. The reviewer may build the add-on themselves before they answer.
-        - when: NOT aborted AND build-unsafe
+        - when: NOT aborted AND NOT unbuildable AND build-unsafe
           text: |-
             The agent judged the build unsafe and built nothing. The reviewer builds the add-on themselves, where they judge it safe to, before they answer, and may answer "Is unsafe to build".
-        - when: NOT aborted AND self-build
+        - when: NOT aborted AND NOT unbuildable AND self-build
           text: |-
             The agent did not build the add-on. The reviewer builds it themselves, following SCA_BUILD_PROCESS, before they answer.
-        - when: NOT aborted
+        - when: NOT aborted AND NOT unbuildable
           text: |-
             Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
 

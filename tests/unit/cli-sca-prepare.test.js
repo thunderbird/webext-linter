@@ -25,6 +25,7 @@ import {
   workOf,
   readJson,
   handBackRoots,
+  handBackUntil,
   unwrapped,
 } from "../cli-run.js";
 
@@ -453,12 +454,12 @@ test("a prepared review drops what a record must not say", async () => {
   );
 });
 
-// A source whose rescue failed is reviewed as submitted: the hand-back starts that
-// review, and its vulnerability checks stop it and end it on the known vulnerabilities
-// alone, so its first prompt is the close, and the run exits as a rejected review does. Its
-// details say the rescue failed, and count the submitted lock and the rescued copy's lock
-// as the preparation audited them.
-test("the hand-back starts the review of an unrescued source, which closes at once", async () => {
+// A source whose rescue failed is reviewed as submitted: the hand-back starts that review.
+// Nothing is left to build, so no build question is put: the review opens on its passes,
+// and its vulnerability checks abort it late and end it on the known vulnerabilities alone,
+// and the run exits as a rejected review does. Its details say the rescue failed, and count
+// the submitted lock and the rescued copy's lock as the preparation audited them.
+test("the hand-back starts the review of an unrescued source, which is aborted late", async () => {
   // The fixture's source with nothing declared, so the review asks npm for no package's
   // downloads, and only the vulnerable build tool its lock installs.
   const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
@@ -491,12 +492,14 @@ test("the hand-back starts the review of an unrescued source, which closes at on
     }),
   });
   assert.equal(record.roots.scaRoot, workPaths(work).sca, "the rescue failed");
-  const r = run(["--llm-handback", work]);
+  const started = run(["--llm-handback", work]);
+  assert.notEqual(started.code, 2, started.stdout + started.stderr);
+  assert.match(started.stdout, /── LLM Prompt ──/);
+  assert.doesNotMatch(started.stdout, /SCA Review Prompt/);
+  assert.notEqual(readJson(work, "state").phase, "built", "nothing to build");
+  const { out: r } = handBackUntil(work, "close");
   assert.equal(r.code, 1, r.stdout + r.stderr);
-  assert.match(r.stdout, /── LLM Prompt ──/);
-  assert.doesNotMatch(r.stdout, /SCA Review Prompt/);
-  // The first prompt is the close, its report already written, and its vulnerability checks
-  // are what aborted it.
+  // The close, its report already written, and its vulnerability checks are what aborted it.
   assert.match(r.stdout, /The review was aborted before it finished/);
   assert.ok(r.stdout.includes(`[report.md](${work}/report.md)`), r.stdout);
   assert.ok(r.stdout.includes("- Known security vulnerabilities"), r.stdout);
@@ -511,8 +514,7 @@ test("the hand-back starts the review of an unrescued source, which closes at on
   const state = readJson(work, "state");
   assert.equal(state.paths.scaRootOrig, null, "the source archive is reviewed");
   assert.equal(state.build.root, null, "nothing of the rescue was built");
-  const { findings, meta } = state.report;
-  assert.equal(meta.checksRun.at(-1), "vendor-vulnerable-indirect");
+  const { findings } = state.report;
   assert.ok(findings.some((f) => f.ruleId === "vendor-vulnerable-indirect"));
   assert.ok(!findings.some((f) => f.ruleId === "build-fails"));
   fs.rmSync(source, { recursive: true, force: true });

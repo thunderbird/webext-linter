@@ -147,6 +147,45 @@ export function sweepBack(reviewFile, found = {}) {
   }
 }
 
+/**
+ * Hand a --llm-review back until its state reaches the phase `stop` or the close, the way a
+ * plain agent would: every sweep answers nothing, the summary is written, a finding is kept
+ * (`reported`), and every other entry is cleared where it may be, else given its first answer.
+ * @param {string} work  The review's work folder.
+ * @param {string} stop  The phase to stop at.
+ * @returns {{state: object, out: ?{code: number, stdout: string, stderr: string}}}  The
+ *   state at that phase, and the hand-back that printed its prompt (null where the review was
+ *   already there).
+ */
+export function handBackUntil(work, stop) {
+  const files = workPaths(work);
+  let out = null;
+  for (let pass = 0; pass < 10; pass++) {
+    const state = readJson(work, "state");
+    if (state.phase === stop || state.phase === "close") {
+      return { state, out };
+    }
+    sweepBack(files.review);
+    const summary = state.report.meta.summaryFile;
+    if (summary && !fs.existsSync(summary)) {
+      fs.writeFileSync(summary, "A summary.\n");
+    }
+    const doc = JSON.parse(fs.readFileSync(files.review, "utf8"));
+    doc.entries = doc.entries.map((e) => {
+      const labels = (e.answers ?? []).map((a) => a.label);
+      const answer =
+        ["cleared", "reported"].find((l) => labels.includes(l)) ??
+        labels[0] ??
+        null;
+      return { ...e, answer };
+    });
+    fs.writeFileSync(files.review, JSON.stringify(doc, null, 1));
+    out = run(["--llm-handback", work]);
+    assert.notEqual(out.code, 2, out.stdout + out.stderr);
+  }
+  throw new Error(`the review never reached ${stop}`);
+}
+
 /** A submission folder: one built add-on, one source archive, and the usual clutter. The
  *  add-on is a real one, because the hand-back that finishes the preparation reviews it. */
 export function submissionFolder(name = "addon.xpi") {

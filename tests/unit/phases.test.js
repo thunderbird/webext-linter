@@ -514,7 +514,7 @@ test("a process-value phase declares its values, and conditions read only those"
   phaseNamed(notAborting, "safety").values[1].reports = "unused-files";
   assert.throws(
     () => check(notAborting),
-    /reports `unused-files`, which is not an error check with a review-early-exit/
+    /reports `unused-files`, which is not an error check with an early-exit or late-exit/
   );
 
   // A check that reads no single artifact: the finding names no file, so nothing could say
@@ -684,16 +684,17 @@ test("the shipped steps carry the conditions they are printed under", () => {
   ]);
   assert.deepEqual(when("verify"), [["aborted"]]);
   assert.deepEqual(when("settle"), [["aborted"]]);
-  // The build opening: only a source review whose install is vouched for, and the judgement
-  // only where none is held yet. The Build Review Details show wherever the build was
-  // vouched for, and the build question's first step is worded by the build result.
+  // The build opening: only a source review whose install is vouched for and that a build
+  // can be made from (`unbuildable`), and the judgement only where none is held yet. The
+  // Build Review Details show wherever the build was vouched for, and the build question's
+  // first step is worded by the build result.
   const calls = (name) =>
     loaded
       .find((p) => p.name === name)
       .steps.map((x) => (x.when ? callsOf(x.when).map((c) => c.args) : null));
   assert.deepEqual(when("build-safety"), [
-    ["aborted", "build-guarded", "sca"],
-    ["aborted", "build-guarded", "sca"],
+    ["aborted", "build-guarded", "sca", "unbuildable"],
+    ["aborted", "build-guarded", "sca", "unbuildable"],
   ]);
   assert.deepEqual(calls("build-safety"), [
     [
@@ -706,12 +707,12 @@ test("the shipped steps carry the conditions they are printed under", () => {
     ],
   ]);
   assert.deepEqual(when("built"), [
-    ["aborted", "build-guarded", "sca"],
-    ["aborted", "agent-built"],
-    ["aborted", "agent-build-failed"],
-    ["aborted", "build-unsafe"],
-    ["aborted", "self-build"],
-    ["aborted"],
+    ["aborted", "build-guarded", "sca", "unbuildable"],
+    ["aborted", "agent-built", "unbuildable"],
+    ["aborted", "agent-build-failed", "unbuildable"],
+    ["aborted", "build-unsafe", "unbuildable"],
+    ["aborted", "self-build", "unbuildable"],
+    ["aborted", "unbuildable"],
   ]);
   // The wait step carries its phase's own condition beside `spawned`.
   assert.deepEqual(when("ask"), [

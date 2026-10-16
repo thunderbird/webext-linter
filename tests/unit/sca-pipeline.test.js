@@ -378,6 +378,7 @@ test("SCA e2e: a flat layout audits the root lock file's dependencies", async ()
       scaRoot: src,
       ...OFFLINE,
       workCache,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.ok(
       has(findings, "vendor-vulnerable-dev", (f) => /build-tool/.test(f.item)),
@@ -1090,6 +1091,7 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
       scaRoot: src,
       ...OFFLINE,
       workCache,
+      cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.ok(
       has(findings, "vendor-vulnerable-dev", (f) => /build-tool/.test(f.item)),
@@ -1561,11 +1563,11 @@ test("SCA e2e: the two submission-shape checks fire independently", async () => 
   }
 });
 
-test("SCA e2e: an archive holding the whole XPI is reported, and ends the review", async () => {
+test("SCA e2e: an archive holding the whole XPI is reported, and the rest of the review runs", async () => {
   const xpi = tmpDir(READABLE_XPI);
   // Every shipped file is byte-identical here, so the archive holds the whole XPI and the
   // check fires. The source ALSO carries a fake API in a file the XPI lacks: unknown-api
-  // staying silent is what proves the review ended at the rejection.
+  // reporting it is what proves the rejection ends the review late, after every check ran.
   const src = tmpDir({
     "package.json": JSON.stringify({
       name: "dg",
@@ -1605,8 +1607,8 @@ test("SCA e2e: an archive holding the whole XPI is reported, and ends the review
       "the rejection ends the review"
     );
     assert.ok(
-      !hasItem(result.meta, "unknown-api") && !has(findings, "unknown-api"),
-      "no check after the rejection runs"
+      hasItem(result.meta, "unknown-api") || has(findings, "unknown-api"),
+      "the checks after the rejection run"
     );
     // Lock the rendered entry: it must explain the cost of the source-archive route,
     // and it must carry NO locus line - every shipped file is the subject, so naming one
@@ -1639,9 +1641,9 @@ test("SCA e2e: an archive holding the whole XPI is reported, and ends the review
   }
 });
 
-// An archive that is the XPI itself, with no package.json: the rejection for holding the
-// built XPI comes first, so the review ends on it before the missing package.json is asked.
-test("SCA e2e: an archive that is the XPI ends the review before its package.json is asked", async () => {
+// An archive that is the XPI itself, with no package.json: both are true of it, and both
+// abort the review late, so the developer is told both in one round.
+test("SCA e2e: an archive that is the XPI is reported beside its missing package.json", async () => {
   const xpi = tmpDir(READABLE_XPI);
   const src = tmpDir(READABLE_XPI);
   try {
@@ -1651,17 +1653,22 @@ test("SCA e2e: an archive that is the XPI ends the review before its package.jso
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
-    assert.deepEqual(
-      findings.map((f) => [f.ruleId, f.severity]),
-      [["sca-xpi-fully-included-in-archive", SEVERITY.ERROR]],
-      "the rejection is the only finding"
-    );
+    for (const ruleId of [
+      "sca-xpi-fully-included-in-archive",
+      "sca-package-file-missing",
+    ]) {
+      assert.ok(
+        findings.some(
+          (f) => f.ruleId === ruleId && f.severity === SEVERITY.ERROR
+        ),
+        ruleId
+      );
+    }
     assert.deepEqual(
       meta.earlyExit?.reasons.map((r) => r.id),
-      ["archive-is-xpi"]
+      ["unreproducible-build", "archive-is-xpi"]
     );
-    assert.equal(meta.checksRun.at(-1), "sca-xpi-fully-included-in-archive");
-    assert.ok(!meta.checksRun.includes("sca-package-file-missing"));
+    assert.ok(meta.checksRun.includes("sca-package-file-missing"));
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
   }
@@ -1721,6 +1728,34 @@ test("SCA --llm-review: the readability of the XPI is recorded, in an aborted re
       [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
     }
   }
+});
+
+// The shape threadline was submitted in: an archive holding the whole readable XPI, with a
+// package.json that declares a dependency and no lock. Both faults are reported in one round,
+// both are the archive's, and the missing lock leaves no build to make: the --llm-review
+// opens on its passes, not on the build question, and is offered the restart as an XPI
+// review once they are done (the loop tests drive that part).
+test("SCA --llm-review: an archive holding the XPI and no lock opens on its passes", async () => {
+  const fixture = path.resolve("tests/addons/sca-xpi-in-archive-broken-build");
+  const xpi = path.join(fixture, "xpi");
+  const src = path.join(fixture, "src");
+  const work = freshWorkFolder();
+  await runReview({
+    addonPath: xpi,
+    scaRoot: src,
+    workFolder: work,
+    llmReview: true,
+    ...OFFLINE,
+    cdnLookupCache: cdnMissCache(xpi, src),
+  });
+  const state = readState(workPaths(work).state);
+  const ids = state.report.findings.map((f) => f.ruleId);
+  assert.ok(ids.includes("sca-xpi-fully-included-in-archive"), ids.join(", "));
+  assert.ok(ids.includes("sca-lock-file-missing"), ids.join(", "));
+  assert.equal(state.run["xpi-reviewable"], true);
+  assert.notEqual(state.phase, "build-safety");
+  assert.notEqual(state.phase, "built");
+  assert.equal(state.phase, "spawn");
 });
 
 test("SCA e2e: a minified-XPI submission stays in SCA mode (a legitimate SCA)", async () => {
@@ -1896,9 +1931,10 @@ async function unrescuedFolder(cache) {
   return work;
 }
 
-// A check that aborts stops the review: the missing lock is reported, and no check after it
-// in the registry runs.
-test("an aborting check is the last check the review runs", async () => {
+// A missing lock aborts the review late, as every check but the two early ones does: it is
+// reported, every check after it in the registry still runs, and the report ends on its
+// reason.
+test("a missing lock aborts the review, and every later check still runs", async () => {
   const fixture = path.join(UNRESCUED_FIXTURE, "..", "missing-lock-sca");
   const { findings, meta } = await runReview({
     addonPath: path.join(fixture, "xpi"),
@@ -1909,15 +1945,16 @@ test("an aborting check is the last check the review runs", async () => {
       path.join(fixture, "src")
     ),
   });
-  const ids = loadRegistry().checkIds();
+  const registry = loadRegistry();
+  const ids = registry.checkIds();
   const stop = ids.indexOf("sca-lock-file-missing");
-  assert.equal(meta.checksRun.at(-1), "sca-lock-file-missing");
-  assert.ok(meta.checksRun.length < ids.length);
-  assert.ok(ids.slice(stop + 1).every((id) => !meta.checksRun.includes(id)));
+  assert.ok(meta.checksRun.includes("sca-lock-file-missing"));
+  assert.notEqual(meta.checksRun.at(-1), "sca-lock-file-missing");
+  assert.ok(ids.slice(stop + 1).some((id) => meta.checksRun.includes(id)));
   assert.ok(has(findings, "sca-lock-file-missing"));
   assert.deepEqual(
     meta.earlyExit.reasons.map((r) => r.id),
-    [loadRegistry().earlyExitFor("sca-lock-file-missing")]
+    [registry.lateExitFor("sca-lock-file-missing")]
   );
 });
 
@@ -1961,11 +1998,11 @@ test("a late-exit error aborts a plain review and withholds its questions", asyn
   assert.deepEqual(left.filter(isQuestion), []);
 });
 
-// A source whose preparation gave its rescue up: its vulnerability checks, early in the phase,
-// report the lock and stop the checks, so the review ends on the known vulnerabilities alone,
-// with no build-fails finding. Its audit of the lock is answered from the run cache folder
-// its preparation read too, so OSV is asked nothing.
-test("an unrescued review ends on its known vulnerabilities alone", async () => {
+// A source whose preparation gave its rescue up: its vulnerability checks report the lock and
+// abort the review late, so every check runs and the review ends on the known
+// vulnerabilities, with no build-fails finding. Its audit of the lock is answered from the run
+// cache folder its preparation read too, so OSV is asked nothing.
+test("an unrescued review ends on its known vulnerabilities, after every check ran", async () => {
   // OSV's answers to the audit, and npm's download counts, which every source review asks
   // for its declared packages. Nothing else is answered, OSV above all.
   const workCache = seedWorkCache({
@@ -1996,15 +2033,21 @@ test("an unrescued review ends on its known vulnerabilities alone", async () => 
       path.join(UNRESCUED_FIXTURE, "src")
     ),
   });
-  // The head of the phase, up to the first vulnerability check that reports.
   const ids = loadRegistry().checkIds();
-  assert.deepEqual(
-    meta.checksRun,
-    ids.slice(0, ids.indexOf("vendor-vulnerable-dev") + 1)
+  assert.ok(
+    meta.checksRun.at(-1) !== "vendor-vulnerable-dev" &&
+      ids
+        .slice(ids.indexOf("vendor-vulnerable-dev") + 1)
+        .some((id) => meta.checksRun.includes(id)),
+    "the checks after the vulnerability checks run"
   );
-  assert.deepEqual(
-    findings.map((f) => [f.ruleId, f.file, f.loc?.line]),
-    [["vendor-vulnerable-dev", "package-lock.json", 13]]
+  assert.ok(
+    findings.some(
+      (f) =>
+        f.ruleId === "vendor-vulnerable-dev" &&
+        f.file === "package-lock.json" &&
+        f.loc?.line === 13
+    )
   );
   assert.ok(!has(findings, "build-fails"));
   assert.deepEqual(
@@ -2014,8 +2057,8 @@ test("an unrescued review ends on its known vulnerabilities alone", async () => 
 });
 
 // A source review with no preparation counts the lock from its own audit, which the first
-// vulnerability check that read the lock completed. So a review aborted there, before the
-// other vulnerability checks ran, still names the submitted lock's count in its details.
+// vulnerability check that read the lock completed. So a review its vulnerability checks
+// abort names the submitted lock's count in its details.
 test("an aborted review without a preparation counts the lock it audited", async () => {
   const workCache = seedWorkCache({
     osv: auditEntries({
@@ -2046,7 +2089,7 @@ test("an aborted review without a preparation counts the lock it audited", async
       path.join(UNRESCUED_FIXTURE, "src")
     ),
   });
-  assert.equal(meta.checksRun.at(-1), "vendor-vulnerable-dev");
+  assert.ok(meta.checksRun.includes("vendor-vulnerable-dev"));
   const state = readState(workPaths(workFolder).state);
   assert.deepEqual(state.build.vulnerabilities, {
     moderate: 0,

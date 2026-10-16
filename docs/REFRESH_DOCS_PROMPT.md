@@ -56,11 +56,16 @@ that no longer exist.
    (the class of code the check cannot see, listed in the report's Standard Code Review
    section - or `sweep-instruction-for-xpi`/`sweep-instruction-for-sca` on `input: all`,
    which names no tree of its own and so says which per sweep), `default-note` (the marker a reported case carries when the reviewer wrote
-   nothing) or `review-early-exit` (the id of a reason in the top-level
-   `review-early-exit:` section: a check naming one STOPS the review when it
-   reports at error severity, so no check after it runs and the report puts nothing
-   further to a reviewer - such a check's page must say so, and so must the page of
-   any check whose escalation is thereby withheld). The check-bearing section IS
+   nothing), `review-late-exit` or `review-early-exit` (the id of a reason in the
+   top-level `review-early-exit:` section). A check naming a reason ABORTS the review
+   when it reports at error severity, and the report puts nothing further to a
+   reviewer - such a check's page must say so, and so must the page of any check whose
+   escalation is thereby withheld. Late is the default: every check and pass still runs,
+   and the review is aborted at its end. Early stops the review at once, so no check
+   after it runs; only `experiment-not-allowed` and `lockfile-injection` do this. Two
+   markers describe an abort of the source archive: `review-downgrade` (a review of the
+   XPI alone cures it) and `review-unbuildable` (no build can be made from the source,
+   so nobody is asked to build it). The check-bearing section IS
    the phase - a check's phase IS the section it lives in, never a field on the
    entry: `deterministic-phase`, whose first check, `experiment-not-allowed`, stops a
    rejected Experiment before any other runs. `manual-checks` is NOT a phase: it is

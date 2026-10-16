@@ -1,7 +1,7 @@
-// Unit tests for the early exit (src/report/early-exit.js): whether a review was aborted,
+// Unit tests for the review exit (src/report/early-exit.js): whether a review was aborted,
 // and what an aborted review withholds. The registry decides WHICH checks abort one, so these
-// run against the shipped registry rather than a fixture - a check losing its
-// `review-early-exit` is exactly the regression worth catching.
+// run against the shipped registry rather than a fixture - a check losing its exit reason is
+// exactly the regression worth catching.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -13,6 +13,9 @@ import { loadRegistry } from "../../src/checks/registry.js";
 import { SECTION, SEVERITY } from "../../src/report/finding.js";
 
 const registry = loadRegistry();
+
+/** Count late reasons too, as a review that has run to its end does. */
+const LATE = { late: true };
 
 /** The review ordered, its items carrying the references answers are recorded under, as
  *  the loop gives them (assignRefs). */
@@ -29,10 +32,12 @@ const finding = (ruleId, severity = SEVERITY.ERROR) => ({
   message: "x",
 });
 
-/** The reason TEXTS a review of these findings is aborted for, or [] when it is not. */
-const reasonsFor = (findings, answers = {}) =>
+/** The reason TEXTS a review of these findings is aborted for, or [] when it is not. Late
+ *  reasons count, as they do once the review has run to its end. */
+const reasonsFor = (findings, answers = {}, { late = true } = {}) =>
   (
-    earlyExitOf(orderReview(findings, []), answers, registry)?.reasons ?? []
+    earlyExitOf(orderReview(findings, []), answers, registry, { late })
+      ?.reasons ?? []
   ).map((r) => r.text);
 
 // The case the feature exists for, at its simplest: a high/critical advisory reported
@@ -42,6 +47,25 @@ test("an error from a blocking check aborts the review", () => {
   assert.deepEqual(reasonsFor([finding("vendor-vulnerable")]), [
     "Known security vulnerabilities",
   ]);
+});
+
+// Late is the default way to abort: such a reason counts only once the review has run to its
+// end, while an early one counts the moment it stands. Only the two checks after which the
+// rest of a review is no use abort early.
+test("a late reason counts only at the end, an early one at once", () => {
+  assert.deepEqual(
+    reasonsFor([finding("vendor-vulnerable")], {}, { late: false }),
+    []
+  );
+  assert.deepEqual(
+    reasonsFor([finding("lockfile-injection")], {}, { late: false }),
+    ["Lock file entries that install another release"]
+  );
+  const early = registry
+    .checkIds()
+    .filter((id) => registry.earlyExitFor(id))
+    .sort();
+  assert.deepEqual(early, ["experiment-not-allowed", "lockfile-injection"]);
 });
 
 // The threshold is the SEVERITY and nothing else. vendor-vulnerable is severity:auto, so
@@ -74,9 +98,10 @@ test("--warnings-as-errors makes a moderate advisory abort the review", () => {
   // The band the check publishes it at under this policy - the value runOneCheck stamps.
   moderate.severity = strict.bandOf(moderate.severity);
   assert.deepEqual(
-    (earlyExitOf(orderReview([moderate], []), {}, strict)?.reasons ?? []).map(
-      (r) => r.text
-    ),
+    (
+      earlyExitOf(orderReview([moderate], []), {}, strict, { late: true })
+        ?.reasons ?? []
+    ).map((r) => r.text),
     ["Known security vulnerabilities"]
   );
 });
@@ -128,11 +153,14 @@ test("a finding aborts the review at the band it was reported at, unless withdra
   const index = ordered[0].ref;
   for (const answers of [{}, { [index]: "reported" }]) {
     assert.deepEqual(
-      earlyExitOf(ordered, answers, registry).reasons.map((r) => r.text),
+      earlyExitOf(ordered, answers, registry, LATE).reasons.map((r) => r.text),
       ["Known security vulnerabilities"]
     );
   }
-  assert.equal(earlyExitOf(ordered, { [index]: "withdrawn" }, registry), null);
+  assert.equal(
+    earlyExitOf(ordered, { [index]: "withdrawn" }, registry, LATE),
+    null
+  );
 });
 
 // An ESCALATING check aborts a review too, but only from the far side of a verdict: it
@@ -152,10 +180,13 @@ test("an escalated case aborts the review once it is reported, and not before", 
   const ordered = refOrdered([], todo);
   const index = ordered[0].ref;
   // Nobody has judged it: a plain review with no agent in it aborts nothing.
-  assert.equal(earlyExitOf(ordered, {}, registry), null);
-  assert.equal(earlyExitOf(ordered, { [index]: "cleared" }, registry), null);
+  assert.equal(earlyExitOf(ordered, {}, registry, LATE), null);
+  assert.equal(
+    earlyExitOf(ordered, { [index]: "cleared" }, registry, LATE),
+    null
+  );
   assert.deepEqual(
-    earlyExitOf(ordered, { [index]: "reported" }, registry).reasons.map(
+    earlyExitOf(ordered, { [index]: "reported" }, registry, LATE).reasons.map(
       (r) => r.text
     ),
     ["Build process issues"]
@@ -180,14 +211,14 @@ test("the build question aborts the review once it is reported, and not before",
     ]
   );
   const index = ordered[0].ref;
-  assert.equal(earlyExitOf(ordered, {}, registry), null, ruleId);
+  assert.equal(earlyExitOf(ordered, {}, registry, LATE), null, ruleId);
   assert.equal(
-    earlyExitOf(ordered, { [index]: "cleared" }, registry),
+    earlyExitOf(ordered, { [index]: "cleared" }, registry, LATE),
     null,
     ruleId
   );
   assert.deepEqual(
-    earlyExitOf(ordered, { [index]: "reported" }, registry).reasons.map(
+    earlyExitOf(ordered, { [index]: "reported" }, registry, LATE).reasons.map(
       (r) => r.text
     ),
     ["Build process issues"],
@@ -297,7 +328,8 @@ test("each reason carries the id that named it", () => {
   const exit = earlyExitOf(
     orderReview([finding("banned-library")], []),
     {},
-    registry
+    registry,
+    LATE
   );
   assert.deepEqual(exit.reasons, [
     { id: "disallowed-library-versions", text: "Disallowed library versions" },

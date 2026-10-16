@@ -54,8 +54,8 @@ import { BUILD_RESULT } from "../prepare/state.js";
  * What this run was told, plus what the review has since decided for itself.
  *
  * `state.run` records the flags the review was STARTED with, and never changes. Whether
- * the review was aborted early is not one of those: it is derived from what stands so far,
- * so a pass can abort it - a case reported that aborts the review, a build that did not
+ * the review was aborted is not one of those: it is derived from what stands so far, so a
+ * pass can abort it - a case reported that aborts the review, a build that did not
  * reproduce - and the passes after it are cut short.
  *
  * Derived in ONE place, every pass, and read by `issue` to decide which phase goes out
@@ -67,6 +67,11 @@ import { BUILD_RESULT } from "../prepare/state.js";
  * would go out without it is `ask` or the close: the phases up to `settle` run as usual,
  * so verify can withdraw the finding first, and the reviewer is then asked nothing.
  *
+ * `unbuildable` says no build can be made from this source by the review's own rules: a
+ * finding of a check marked `review-unbuildable` stands (no usable package.json, no single
+ * readable lock), or the preparation's rescue failed and deleted what it would have built.
+ * The build phases ask nothing then, so nobody is asked to build what cannot be built.
+ *
  * `downgradable` is read once the review is halted: a source review whose XPI is readable
  * (`xpi-reviewable`, src/pipeline.js), aborted only by checks a review of the XPI alone
  * cures (Registry downgrades), early or late. The aborting checks are those the abort
@@ -76,13 +81,14 @@ import { BUILD_RESULT } from "../prepare/state.js";
  * @param {{name: string, answer: string, steps: object[]}[]} phases  In issue order.
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {{skip: string[], sca: boolean, halted: boolean, first: boolean,
- *   spawned: boolean, decided: boolean, downgradable: boolean,
+ *   spawned: boolean, decided: boolean, unbuildable: boolean, downgradable: boolean,
  *   values: Object<string, string>}}  Beside these, the
  *   build result's fact (buildResultFact) is true.
  */
 function runOf(state, ordered, phases, registry) {
   const verdicts = verdictsOf(state, ordered, registry);
   const issued = state.issued ?? [];
+  const buildResult = buildResultFact(state);
   const run = {
     ...state.run,
     halted: Boolean(earlyExitOf(ordered, verdicts, registry)),
@@ -94,7 +100,12 @@ function runOf(state, ordered, phases, registry) {
     decided: issued.includes("verify") || issued.includes("settle"),
     // The process values returned so far, which value(phase, id) reads.
     values: state.values ?? {},
-    [buildResultFact(state)]: true,
+    unbuildable:
+      buildResult === "rescue-failed" ||
+      abortingChecks(ordered, verdicts, registry, { late: true }).some((id) =>
+        registry.unbuildable(id)
+      ),
+    [buildResult]: true,
   };
   if (!run.halted && earlyExitOf(ordered, verdicts, registry, { late: true })) {
     const next = nextPhase(phases, ordered, state, run)?.phase;
@@ -475,7 +486,8 @@ function phaseQuestion(state, registry, phase, ordered) {
  * `reports` a check then adds that check's finding, which aborts the review the way any
  * finding of an aborting check does - with its reason and its response, and nothing for the
  * loop to decide on its own. So a reported value leaves exactly one finding, the one it
- * names.
+ * names. That finding is the reviewer's answer, so it is recorded as reported at once: verify
+ * is never asked to withdraw what a person said.
  * @param {import("./state.js").LoopState} state  Mutated.
  * @param {import("../checks/registry.js").Registry} registry
  * @param {{name: string, values: {value: string, label: string, reports: ?string}[]}} phase
@@ -495,17 +507,14 @@ function recordValue(state, registry, phase, answers) {
   }
   // It names no file, so no holder answers which artifact it is about: the reported check
   // does, by the one it reads (its `input`, held to a single artifact at load).
-  state.report.findings.push(
-    finding({
-      ruleId: picked.reports,
-      severity: registry.checkEntry(picked.reports).severity,
-      artifact: artifactRead(
-        registry.inputFor(picked.reports),
-        state.report.sca
-      ),
-    })
-  );
+  const reported = finding({
+    ruleId: picked.reports,
+    severity: registry.checkEntry(picked.reports).severity,
+    artifact: artifactRead(registry.inputFor(picked.reports), state.report.sca),
+  });
+  state.report.findings.push(reported);
   assignRefs([...state.report.findings, ...state.manual], registry);
+  state.answers[reported.ref] = String(VERB.reported);
   renderFindings(state.report.findings, registry, { sca: state.report.sca });
 }
 

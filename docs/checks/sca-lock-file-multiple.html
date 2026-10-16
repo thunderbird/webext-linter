@@ -66,9 +66,9 @@ flowchart TD
       <div class="outcome">
         <strong>It aborts the review</strong>
         This check settles the submission on its own (&ldquo;Build process
-        issues&rdquo;), and runs right after the other lock file checks, before
-        either lock is audited. Nothing further is put to a reviewer, and no
-        build step is handed out.
+        issues&rdquo;). It aborts the review late, once every check ran. Nothing
+        further is put to a reviewer, and nobody is asked to build the add-on: two
+        locks leave no build to make.
       </div>
 
       <p class="source-note">

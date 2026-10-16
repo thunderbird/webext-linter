@@ -82,11 +82,12 @@ flowchart TD
 
       <div class="outcome">
         <strong>It aborts the review</strong>
-        This check is one of the few that settle the submission on their own. When it
-        reports, no check after it runs and nothing further is put to a reviewer: the
-        report drops every to-do item they would have been asked, and the
-        developer&rsquo;s text ends on the reason it is incomplete (&ldquo;Source archive
-        contains the built XPI&rdquo;).
+        This check is one of the few that settle the submission on their own. It aborts
+        the review late: every check after it still runs, as the archive may hold the real
+        source beside the copy, and nothing further is put to a reviewer: the report drops
+        every to-do item they would have been asked, and the developer&rsquo;s text ends
+        on the reasons it is incomplete (&ldquo;Source archive contains the built
+        XPI&rdquo;, and any other found).
       </div>
 
       <p class="source-note">

@@ -14,6 +14,7 @@
     "manifestVersion": 3,
     "checksRun": [
       "experiment-not-allowed",
+      "lockfile-injection",
       "sca-xpi-declares-vendoring",
       "sca-xpi-fully-included-in-archive",
       "sca-package-file-missing",
@@ -23,7 +24,6 @@
       "sca-lock-file-multiple",
       "build-registry-redirect",
       "lock-foreign-source",
-      "lockfile-injection",
       "vendor-vulnerable",
       "vendor-vulnerable-dev",
       "vendor-vulnerable-indirect",

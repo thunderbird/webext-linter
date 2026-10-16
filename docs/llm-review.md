@@ -10,7 +10,7 @@ flags in the context of every other option.
 
 - [The round trip](#the-round-trip)
 - [The phases](#the-phases)
-- [When the review is aborted early](#when-the-review-is-aborted-early)
+- [When the review is aborted](#when-the-review-is-aborted)
 - [What an answer may say](#what-an-answer-may-say)
 - [The sweep](#the-sweep)
 - [What the reviewer is handed](#what-the-reviewer-is-handed)
@@ -105,24 +105,29 @@ description, accepts only one of those labels, and records the value's id. So
 unsafe)`, only where no judgement is held yet. The registry refuses a call naming a phase
 that asks for no value, or an id that phase never returns. A value may `report` a check:
 picking it adds that check's finding, which aborts the review like any finding of an
-aborting check. A value phase a check asks its question in (`asked-in`) relays that open
+aborting check. The finding is the person's answer, so it is recorded as reported at once and
+never put to verify. A value phase a check asks its question in (`asked-in`) relays that open
 to-do's message as its question, worded as `ask` words it, and is issued only while the
 to-do is open. Any answer clears the to-do, so a value that reports a check leaves that
 check's finding as the one finding. A value phase no check routes a to-do to asks the
 `question:` it authors itself, and is issued once.
 
 A source code review **opens with its build**, before the sweeps and the verify and settle
-passes, so a source that does not build into the XPI ends the review before any of that
-work is spent. The review builds nothing itself: the agent built the add-on in the
+passes. A source that does not build into the XPI, or that the reviewer declines to build,
+aborts the review late: the passes still run, so the developer is told everything in one
+round, and nobody is asked to install the add-on. The review builds nothing itself: the agent built the add-on in the
 preparation, where it judged the build safe and the reviewer let it (see [Preparing a source
 code review](#preparing-a-source-code-review)), and otherwise the reviewer builds it. The
 review's build part is these steps:
 
 1. **The review starts** with the source, the build judgement, the build result and output
    the preparation recorded.
-2. **The deterministic checks run.** A source whose preparation gave its rescue up aborts
-   here: its vulnerability findings end the review. A review that was **aborted early** never
-   reaches the steps below - each one reads `NOT aborted`.
+2. **The deterministic checks run.** A review that was **aborted early** (a rejected
+   Experiment, a forged lock) never reaches the steps below - each one reads `NOT aborted`.
+   Nor does a source no build can be made from (`unbuildable`, which each one reads too): a
+   finding of a check marked `review-unbuildable` (no usable package.json, or no single
+   readable lock) stands, or the preparation gave its rescue up. Such a review goes straight
+   on to `spawn`, and its findings abort it late.
 3. **`build-safety`**, only where nothing was prepared: the agent writes the build report
    and records its judgement, and builds nothing.
 4. **`built`** first shows the Build Review Details block as the last thing of the turn:
@@ -135,8 +140,8 @@ review's build part is these steps:
    agent's attempt only: `build succeeded`, `build failed: see build.md`, `not built: rescue
    failed` or `not built: unsafe`. It is absent where the reviewer builds the add-on
    (`self-build`: the reviewer did not let the agent build, or nothing was prepared). A
-   failed rescue always aborts the review in step 2, so only the Final Review Details show
-   `not built: rescue failed`.
+   failed rescue leaves nothing to build and skips this phase, so only the Final Review
+   Details show `not built: rescue failed`.
 5. Once the reviewer has replied, **`built`** asks them alone to build the add-on from the
    source and compare the result with the submitted XPI, relaying the `build-reproduces-xpi`
    to-do as the question. The step before the question is worded by the build result
@@ -145,10 +150,11 @@ review's build part is these steps:
    `LLM_BUILD_XPI_MATCH`, beside `LLM_BUILD_OUTPUT` and `XPI_FILE`. Where the agent judged the build
    unsafe, it says the reviewer may answer `Is unsafe to build`.
 6. **`Does not reproduce`**, **`Does not build`** and **`Is unsafe to build`** report
-   `build-not-reproduced`, `build-fails` and `build-unsafe`, and abort the review for build
-   issues, with that check's response telling the developer why. **`Builds and
-   reproduces`** goes on to `spawn`, `verify`, `settle`, `ask` and `close`. Any other
-   answer is refused, and the question is asked again.
+   `build-not-reproduced`, `build-fails` and `build-unsafe`, which abort the review late for
+   build issues, with that check's response telling the developer why: the review goes on to
+   `spawn`, `verify` and `settle`, and then closes aborted. **`Builds and reproduces`** goes
+   on to `spawn`, `verify`, `settle`, `ask` and `close`. Any other answer is refused, and the
+   question is asked again.
 
 These build steps run only where every check a build relies on ran (`build-guarded`): the
 dependency-vulnerability checks, `lockfile-injection`, `lock-foreign-source` and
@@ -164,80 +170,68 @@ batches, and nobody may be asked to install an XPI in the same breath as being a
 the source builds into it. The check names its phase (`asked-in:` in the registry), the case
 carries it, and the phase relays it with its own four answers (`values`) in place of the
 manual review's. Every answer clears the case, and each of the three that stop the review
-reports its own check (`reports`), so the developer is told why: every `ask` question is
-dropped, and the report ends on "Build process issues". The question is asked under
+reports its own check (`reports`), so the developer is told why: the passes still run, every
+`ask` question is dropped, and the report ends on "Build process issues". The question is asked under
 `--llm-skip-manual` too: it decides whether the review goes on, which is not what that flag
 withholds.
 
 
-## When the review is aborted early
+## When the review is aborted
 
-Some findings settle the submission on their own, and carrying on would ask someone to do
-work the review has already ruled out. The case it exists for: a source submission whose
-dependency tree carries known high or critical advisories, where the very next thing the
-loop would do is ask a reviewer to **reproduce the build** - running that tree on their own
-machine, on the strength of a question the linter issued knowing better.
+Some findings settle the submission on their own. The review is then aborted rather than
+asking anyone to carry on with it - above all, before anyone is asked to install or test the
+add-on.
 
-A check declares that it aborts the review by naming the reason the report gives
-(`review-early-exit:` in the registry). Today twenty-one do, across six reasons:
-`experiment-not-allowed` names _Experiment APIs not accepted_,
-`sca-xpi-fully-included-in-archive` names _source archive contains the built XPI_,
-`lockfile-injection` names
-_lock file entries that install another release_, the four
-dependency-vulnerability checks name *known security vulnerabilities*, `banned-library`
-names *disallowed library versions*, and the thirteen that decide a source submission
-cannot be built from - `sca-package-file-missing`,
+A check declares that it aborts the review by naming the reason the report gives, under one
+of two keys in the registry. Twenty-three do, across seven reasons:
+`experiment-not-allowed` names _Experiment APIs not accepted_, `lockfile-injection` names
+_lock file entries that install another release_, `sca-xpi-fully-included-in-archive` names
+_source archive contains the built XPI_, the four dependency-vulnerability checks name
+*known security vulnerabilities*, `banned-library` names *disallowed library versions*,
+`minified-code` and `untrusted-minified-library` name *code that cannot be reviewed*, and the
+thirteen that decide a source submission cannot be built from - `sca-package-file-missing`,
 `sca-package-file-invalid`, `sca-lock-file-missing`, `sca-lock-file-invalid`,
-`sca-lock-file-multiple`, `build-registry-redirect`, `lock-foreign-source`, `build-lifecycle-hook`,
-`undeclared-build-source`, `build-reproduces-xpi`, `build-not-reproduced`, `build-fails` and
-`build-unsafe` -
-name *build process issues*. The threshold is the finding's severity, so an advisory
-that lands as a warning aborts nothing.
+`sca-lock-file-multiple`, `build-registry-redirect`, `lock-foreign-source`,
+`build-lifecycle-hook`, `undeclared-build-source`, `build-reproduces-xpi`,
+`build-not-reproduced`, `build-fails` and `build-unsafe` - name *build process issues*. The
+threshold is the finding's severity, so an advisory that lands as a warning aborts nothing.
 
-That threshold is also what lets `build-lifecycle-hook` carry the flag while it reports
+That threshold is also what lets `build-lifecycle-hook` abort a review while it reports
 nothing itself. It escalates its install hook to the agent, and an escalated case becomes a
 finding of its own check only when the agent **reports** it, at that check's severity. So a
 hook the agent clears aborts nothing, and neither does a review with no agent to judge it -
 the review is aborted once someone has determined the hook fetches code.
 
-What an aborted review does under `--llm-review`:
+When each kind decides:
 
 | | |
 | --- | --- |
-| A review the deterministic checks aborted | asks nothing about the submission: its first prompt is the `close` phase, or `downgrade` for a source review that may restart as an XPI review (see below). Nothing is built, no agent is started (no description, no sweep), and nothing is verified or settled - every step before `downgrade` carries `NOT aborted`. What it hands over is decided before any pass, so no pass could change it. |
-| A review a pass aborted | (a case reported that aborts it, a build that did not reproduce) stops there: the phases that would follow are not issued, so nothing further is swept or put to a reviewer. |
-| The hand-over | carries no to-do item: the tally counts none, and the Final Review Details name no file an agent was never asked to write. |
-| The report | ends on the reason it is incomplete, one line per distinct cause. |
-| The `close` phase | opens with a step of its own (`when: aborted`), because telling an agent "the review is settled" about one that was cut short is not true. The summary and the details that follow are the same, and where `downgrade` already showed them, they are not shown again. |
-
-A finding that aborts the review early is never put to the agent to verify, so no verdict
-takes it back. That is also why a check that authors a sweep may not abort a review early: a
-sweep's hints are merged unverified, and the registry refuses a check that does both.
-
-A review run without `--llm-review` is aborted on the same terms. A check that aborts it is
-the last check that runs: nothing after it is checked, and nothing it would have needed is
-computed. The printed report holds what the checks up to the abort found, drops every to-do
-item a reviewer would have been **asked**, and keeps the code-review items those checks
-authored, because reading code is safe.
-
-### Aborted late
-
-A check can instead name its reason as `review-late-exit:`, for one of the same reasons.
-`minified-code` and `untrusted-minified-library` do, and name *code that cannot be
-reviewed*: code nobody can read makes installing the add-on unsafe, so the reviewer is
-asked nothing. When each kind decides:
-
-| | |
-| --- | --- |
-| Early (`review-early-exit`) | The moment the error stands. A deterministic check that reports it stops the checks there, and the loop closes on its first prompt. A case a pass reports stops the loop at that pass. |
-| Late (`review-late-exit`) | Once only `ask` and `close` are left. Every check runs, and `build-safety`, `built`, `spawn`, `verify` and `settle` run as usual. Then `ask` is skipped, and `close` closes the aborted review with the reason, as an early abort does. |
+| Late (`review-late-exit`), the default | Once only `ask` and `close` are left. Every check runs, and `build-safety`, `built`, `spawn`, `verify` and `settle` run as usual. Then `ask` is skipped, and `close` closes the aborted review with the reasons. The developer is told everything in one round. |
+| Early (`review-early-exit`) | The moment the error stands. Only `experiment-not-allowed` and `lockfile-injection` do this: a submission refused whatever its code says, and a forged lock every later reading would take at its word. A deterministic check that reports it stops the checks there, and the loop closes on its first prompt: nothing is built, no agent is started, and nothing is verified or settled - every step before `downgrade` carries `NOT aborted`. |
 
 Since verify runs first, a late-exit finding verify **withdrew** does not stand and aborts
-nothing: the questions are asked and the review closes settled. A late-exit check may author
-a sweep, as it is judged after the sweeps. The registry holds it to the early exit's other
-terms: severity `error` or `auto`, a reason `review-early-exit` defines, and never both keys
-on one check. A review run without `--llm-review` has no pass to wait for, so a late-exit
-error aborts it at its end, on the same terms as an early one.
+nothing: the questions are asked and the review closes settled. A finding a person's answer
+added (a `built` answer) is never put to verify, so no verdict takes it back. A late-exit
+check may author a sweep, as it is judged after the sweeps. An early abort verifies nothing,
+so a check that authors a sweep may not abort a review early: a sweep's hints are merged
+unverified, and the registry refuses a check that does both. Every early-exit check also
+comes before every late-exit one, so no late finding is counted unverified by an early abort.
+The registry holds both kinds to the same other terms: severity `error` or `auto`, a reason
+`review-early-exit` defines, and never both keys on one check.
+
+What an aborted review hands over under `--llm-review`:
+
+| | |
+| --- | --- |
+| The hand-over | carries no to-do item: the tally counts none, and the Final Review Details name no file an agent was never asked to write. |
+| The report | ends on the reasons it is incomplete, one line per distinct cause. |
+| The `close` phase | opens with a step of its own (`when: aborted`), because telling an agent "the review is settled" about one that was cut short is not true. The summary and the details that follow are the same, and where `downgrade` already showed them, they are not shown again. |
+
+A review run without `--llm-review` is aborted on the same terms. It has no pass to wait for,
+so a late-exit error aborts it at its end. An early-exit check is the last check that runs:
+nothing after it is checked, and nothing it would have needed is computed. Either way the
+printed report drops every to-do item a reviewer would have been **asked**, and keeps the
+code-review items, because reading code is safe.
 
 ### Restarting as an XPI review
 
@@ -420,7 +414,7 @@ so each holds every row of the block before it, plus what is new:
   agent is started and before the report is handed over;
 - the **Review Details** (`ask`): every row the review holds;
 - the **Final Review Details** (`close`): every row the review holds, and the reasons where
-  the review was aborted early.
+  the review was aborted.
 
 A row the review does not hold is left out: the build rows appear only in a source code
 review whose build every guard vouches for (`build-guarded`), and `SCA_VULNERABILITIES` in
@@ -601,9 +595,9 @@ the review. The record keeps the submitted lock's vulnerable packages counted by
 - **The rescue failed** (the reader said so, the copy is still vulnerable, or the output is
   not inside `build/`): the copy is audited first, as above, then the copy and `build/` are
   deleted, the record says the rescue failed (`LLM_BUILD_RESULT: not built: rescue failed`), and the
-  original is reviewed, **unrescued**: its vulnerability checks come early in the review,
-  the first of them to report a vulnerable lock entry stops the checks, and its
-  vulnerability findings end the review. It closes as any aborted review does. Its audit of the lock asks OSV
+  original is reviewed, **unrescued**: nothing is left to build, so no build question is
+  put, every check and pass runs, and its vulnerability findings abort the review late. It
+  closes as any aborted review does. Its audit of the lock asks OSV
   nothing the preparation already asked: every audit of the run reads OSV's answers from
   `.cache/osv.json` in the work folder.
 
@@ -707,5 +701,5 @@ The caches are not part of it: they stay in `WEBEXT-LINTER-CACHE/`.
 | `--llm-handback <dir>` | Take a phase back and hand out the next, from the review file in the work folder the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file in that folder. On a folder a source code review is being prepared in (`.review/prepare.json`, and no review started), take the next step of the preparation instead, and once it is done, start its review. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - and print the first prompt for preparing a source code review of it. It creates the review's work folder beside the `.xpi`, records there how the review is to be run, and its prompt ends in `--llm-handback` on that folder (see [Preparing a source code review](#preparing-a-source-code-review)). Refused beside any `--sca-*` flag, which is what the preparation works out. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
-| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted early, which takes them out. The build question is still asked. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
+| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted, which takes them out. The build question is still asked. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
 | `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. No sweeping agent is spawned, and the sweep is not handed to the reviewer either. |

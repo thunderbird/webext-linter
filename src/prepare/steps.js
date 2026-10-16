@@ -11,7 +11,7 @@
 // (pre-answered "yes" where the record holds agentBuilds, which skips that step). Where the reviewer
 // declined, the folder is done at once: a rescue runs package-manager commands, so none is
 // tried. Otherwise it audits the root's lock (./audit.js). A root the audit cannot read in
-// full is done: nothing is built, and the review it starts stops on that lock. A clean lock
+// full is done: nothing is built, and the review it starts aborts on that lock. A clean lock
 // moves on to `build`: the linter copies the whole `sca/` into `build/`, and the agent builds
 // the original there, as the lock pins it, and names what the build produced, or that it
 // failed. A vulnerable lock gets a RESCUED COPY of the whole `sca/` in the same work folder
@@ -23,7 +23,7 @@
 // beside the submitted lock's, and checks the output it names. Where both hold, the copy is
 // reviewed instead of the original. Otherwise the copy and `build/` are deleted, and
 // the original is done: it is reviewed like any other source, and its vulnerability checks
-// stop it.
+// abort it.
 //
 // Nothing the agent did is verified except by that audit and that output check. A dependency
 // edit that changed shipped code fails the question whether the build reproduces the XPI,

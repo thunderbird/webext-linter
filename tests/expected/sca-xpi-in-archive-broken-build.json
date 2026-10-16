@@ -1,6 +1,7 @@
 {
-  "_comment": "The sca-xpi-in-archive submission with one thing changed: its package.json declares a dependency and no lock file is committed. The archive still holds every byte the XPI ships, so sca-xpi-fully-included-in-archive rejects it and the review stops there, before sca-lock-file-missing could report the missing lock. An archive holding the built XPI ends the review whatever its build looks like.",
+  "_comment": "The sca-xpi-in-archive submission with one thing changed: its package.json declares a dependency and no lock file is committed. The archive still holds every byte the XPI ships, so sca-xpi-fully-included-in-archive rejects it, and sca-lock-file-missing reports the missing lock beside it: both abort the review late, so the developer is told both in one round.",
   "expect": {
-    "sca-xpi-fully-included-in-archive": ["(add-on)"]
+    "sca-xpi-fully-included-in-archive": ["(add-on)"],
+    "sca-lock-file-missing": ["package.json"]
   }
 }

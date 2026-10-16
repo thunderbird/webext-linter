@@ -721,8 +721,8 @@ async function reviewSubmission(opts, work, prepared) {
   // Run the review, then finalize. runChecks runs the deterministic phase and returns the
   // finished findings, manual items and the checks that ran. Each throwing check is
   // isolated so one failure can't abort all. A rejected Experiment stops at its first
-  // check, experiment-not-allowed, as any review stops at a check that aborts it - and a
-  // source whose preparation failed to rescue its lock stops at its vulnerability checks.
+  // check, experiment-not-allowed, and a forged lock at lockfile-injection, the two checks
+  // that end a review early. Every other check that aborts a review lets the rest run.
   // The `--eslint` opt-in gates code-sanity inside loadChecks (eslintEligible).
   progress(""); // close the Setup section before runChecks prints "── Activity ──"
   const {
@@ -990,8 +990,8 @@ async function reviewSubmission(opts, work, prepared) {
               .checkIds()
               .some(
                 (id) =>
-                  registry.earlyExitFor(id) === VULNERABILITY_EXIT &&
-                  ranIds.has(id)
+                  (registry.earlyExitFor(id) ?? registry.lateExitFor(id)) ===
+                    VULNERABILITY_EXIT && ranIds.has(id)
               )
           ),
         rescuedVulnerabilities: prepared?.rescuedVulnerabilities ?? null,
@@ -1162,8 +1162,8 @@ async function readableXpi(xpiCtx, mode) {
   return readable;
 }
 
-/** The early-exit reason the dependency-vulnerability checks share: the checks that read
- *  the lock audit's lists (src/prepare/audit.js LOCK_AUDIT_LISTS). */
+/** The abort reason the dependency-vulnerability checks share: the checks that read the
+ *  lock audit's lists (src/prepare/audit.js LOCK_AUDIT_LISTS). */
 const VULNERABILITY_EXIT = "known-vulnerabilities";
 
 /**

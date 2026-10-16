@@ -1,15 +1,16 @@
-// The EARLY EXIT: some cases settle the submission on their own, and the review is aborted
-// there rather than asking anyone to carry on with it.
+// The REVIEW EXIT: some cases settle the submission on their own, and the review is aborted
+// rather than asking anyone to carry on with it - above all, before anyone is asked to
+// install or test the add-on.
 //
-// The case it exists for: a source submission whose dependency tree carries known
-// high/critical advisories, where the very next thing the review would ask is for a
-// reviewer to reproduce the build - running that tree on their own machine, on the
-// strength of a question the linter issued knowing better. The linter knows before it
-// asks, so it should not ask.
+// Two ways to abort. LATE is the default (`review-late-exit`): every check runs, the loop
+// still builds, spawns, verifies and settles, and the review is aborted once only the
+// reviewer's questions and the close are left, so the developer is told everything in one
+// round. EARLY (`review-early-exit`) is for the two cases where the rest of the review is no
+// use: a submission refused whatever its code says, and a forged lock every later reading
+// would take at its word. It stops the deterministic run at once.
 //
 // Two decisions, and they are deliberately separate. WHETHER to abort is the registry's:
-// a check names the reason it aborts a review (`review-early-exit`), and the report lists
-// those reasons. WHAT is withheld is not per-check at all: it is every to-do item a
+// a check names the reason it aborts a review, and the report lists those reasons. WHAT is withheld is not per-check at all: it is every to-do item a
 // REVIEWER would have been asked. Tying the second to the first would mean a table of
 // items to strip, maintained beside the table of checks that strip them, drifting apart.
 //

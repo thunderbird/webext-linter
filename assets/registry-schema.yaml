@@ -146,14 +146,15 @@ shapes:
     review-early-exit:
       kind: text
       why: >-
-        it names the reason the report gives for aborting, and a reason with no name cannot
-        be looked up
+        it names the reason the report gives for aborting at once, for the few findings
+        after which the rest of the review is no use, and a reason with no name cannot be
+        looked up
     review-late-exit:
       kind: text
       why: >-
         it names the reason the report gives for aborting once the review has run to the end
-        of `settle`, one of the `review-early-exit` reasons, and a reason with no name cannot
-        be looked up
+        of `settle`, the default way to abort, one of the `review-early-exit` reasons, and a
+        reason with no name cannot be looked up
     asked-in:
       kind: text
       why: >-
@@ -165,6 +166,12 @@ shapes:
         it says a review of the XPI alone cures this aborting check's finding, so a source
         review aborted only by such checks, whose XPI is readable, is offered a restart as
         an XPI review
+    review-unbuildable:
+      kind: gate
+      why: >-
+        it says this aborting check's finding makes a build impossible by the review's own
+        rules, so a source review holding one asks nobody to build it and skips the build
+        phases
     escalation:
       kind: refused
       why: >-
@@ -198,6 +205,7 @@ shapes:
     review-late-exit: *only-a-check-that-runs
     asked-in: *only-a-check-that-runs
     review-downgrade: *only-a-check-that-runs
+    review-unbuildable: *only-a-check-that-runs
 
   # The token vocabulary that can justify a permission. The two version bounds are
   # snake_case where every other field is kebab - deliberately, because they echo the

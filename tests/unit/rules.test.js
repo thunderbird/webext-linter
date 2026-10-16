@@ -6477,6 +6477,47 @@ test("review-downgrade is refused without an abort, and on input source or xpi",
   })();
 });
 
+// The unbuildable marker describes an abort of the source archive as the downgrade marker
+// does, so it is refused on the same terms.
+test("review-unbuildable is refused without an abort, and on input source or xpi", () => {
+  const saying = (text) => (err) => err.message.includes(text);
+  const marked = (id) => {
+    const registry = loadRegistry();
+    docEntry(registry, id)["review-unbuildable"] = true;
+    return () => checkEarlyExit(registry);
+  };
+  assert.throws(
+    marked("sca-dependencies-changed"),
+    saying(
+      "`sca-dependencies-changed` authors `review-unbuildable` but aborts no review"
+    )
+  );
+  assert.throws(
+    marked("vendor-vulnerable"),
+    saying(
+      "`vendor-vulnerable` authors `review-unbuildable` on `input: source`"
+    )
+  );
+  marked("build-fails")();
+});
+
+// An early abort verifies nothing, so a late finding reported before it would count
+// unverified. Every check that aborts early therefore runs before every one that aborts late.
+test("a check that aborts early may not follow one that aborts late", () => {
+  const registry = loadRegistry();
+  const entry = docEntry(registry, "banned-library");
+  delete entry["review-late-exit"];
+  entry["review-early-exit"] = "disallowed-library-versions";
+  assert.throws(
+    () => checkEarlyExit(registry),
+    (err) =>
+      err.message.includes(
+        "`banned-library` aborts the review early but comes after " +
+          "`sca-xpi-fully-included-in-archive`, which aborts it late"
+      )
+  );
+});
+
 // A late-exit check is held to the early exit's terms: one key, an error band, a defined
 // reason.
 test("a late exit with both keys, a non-error severity or an undefined reason is refused", async () => {
@@ -7022,19 +7063,42 @@ test("experiment-schema-invalid reports a packaged schema Thunderbird cannot rea
 });
 
 // An aborting check stops the review (runChecks breaks after it): an ERROR from a check that
-// names an early-exit reason. A warning from that check, or an error from a check with no
-// reason, lets the review go on.
+// names an early-exit reason. A warning from that check, an error from a check that aborts
+// late, or one from a check with no reason, lets the review go on.
 test("abortsReview: only an error from a check naming an early-exit reason stops the review", () => {
   const registry = loadRegistry();
-  const aborting = "vendor-vulnerable";
+  const aborting = "lockfile-injection";
+  const late = "vendor-vulnerable";
   const plain = "sync-xhr";
   assert.ok(registry.earlyExitFor(aborting));
+  assert.ok(!registry.earlyExitFor(late) && registry.lateExitFor(late));
   assert.ok(!registry.earlyExitFor(plain));
   const at = (severity) => [{ ruleId: "x", severity }];
   assert.equal(abortsReview(registry, aborting, at(SEVERITY.ERROR)), true);
   assert.equal(abortsReview(registry, aborting, at(SEVERITY.WARNING)), false);
   assert.equal(abortsReview(registry, aborting, []), false);
+  assert.equal(abortsReview(registry, late, at(SEVERITY.ERROR)), false);
   assert.equal(abortsReview(registry, plain, at(SEVERITY.ERROR)), false);
+});
+
+// The checks that say no build can be made from the source: with one of their findings
+// standing, the review asks nobody to build it. Pinned, so a check joining or leaving the
+// set is a decision made here.
+test("review-unbuildable marks exactly the package.json and lock checks", () => {
+  const registry = loadRegistry();
+  assert.deepEqual(
+    registry
+      .checkIds()
+      .filter((id) => registry.unbuildable(id))
+      .sort(),
+    [
+      "sca-lock-file-invalid",
+      "sca-lock-file-missing",
+      "sca-lock-file-multiple",
+      "sca-package-file-invalid",
+      "sca-package-file-missing",
+    ]
+  );
 });
 
 // The checks a build relies on: with any of them switched off, the review builds nothing

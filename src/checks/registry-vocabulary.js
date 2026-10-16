@@ -201,11 +201,14 @@ export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
  *  - `spawned`: `spawn` went out, so agents may still be running;
  *  - `decided`: the agent has judged something - `verify` or `settle` went out;
  *  - `closing`: the prompt being printed is the closing one (its phase answers `end`);
+ *  - `unbuildable`: no build can be made from this source by the review's own rules - a
+ *    finding of a check marked `review-unbuildable` stands, or the rescue failed - so the
+ *    build phases ask nothing;
  *  - `downgradable`: a source review aborted only by checks a review of the XPI alone
  *    cures (`review-downgrade`), whose XPI is readable, so it may restart as an XPI review;
  *  - the build result, exactly one of BUILD_RESULT_FACTS.
  *
- *  `first`, `spawned`, `decided`, `downgradable` and the build result are read off the
+ *  `first`, `spawned`, `decided`, `unbuildable`, `downgradable` and the build result are read off the
  *  review each pass (runOf); `closing` comes from the phase being printed (stepsOf). Every other name but
  *  `aborted`, `closing` and the flags is the key the run record answers under. */
 export const REVIEW_PROMPT_FACTS = [
@@ -218,6 +221,7 @@ export const REVIEW_PROMPT_FACTS = [
   "spawned",
   "decided",
   "closing",
+  "unbuildable",
   "downgradable",
   ...BUILD_RESULT_FACTS,
 ];
