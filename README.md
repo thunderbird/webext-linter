@@ -228,7 +228,8 @@ may hold the real source beside the copy.
   preparation, where it did), and the build question is asked alone right after, answered
   `Builds and reproduces`, `Does not reproduce`, `Does not build` or `Is unsafe to
   build`. The last three report `build-not-reproduced`, `build-fails` or `build-unsafe`,
-  so the developer is told why the review stopped. A source whose preparation gave its
+  so the developer is told why the review stopped. `Is unsafe to build` is not offered
+  where the reviewer let the agent build in the preparation, as they judged it safe then. A source whose preparation gave its
   rescue up ends the review through its vulnerability findings, and is not built. A
   source with no usable package.json or no single readable lock skips the build question.
   The review itself builds nothing. With any check the build relies on switched off (`build-guard` in the

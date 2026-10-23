@@ -7,7 +7,7 @@
 // looks finished. Each rule below is one way that can happen.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { stepsOf } from "../../src/report/phases.js";
+import { stepsOf, valuesOf } from "../../src/report/phases.js";
 import {
   callsOf,
   namesOf,
@@ -423,6 +423,66 @@ function withValuePhase(extra = {}) {
   });
   return registry;
 }
+
+// A value may be offered under a condition, read with the facts a step is printed by, so an
+// answer that means nothing in this review is not offered in it. The condition is checked as
+// a step's is, and a phase always keeps one value it offers in every run.
+test("a process value may be offered under a condition, checked as a step's is", () => {
+  const conditioned = withValuePhase();
+  phaseNamed(conditioned, "safety").values[1].when = "NOT build-allowed";
+  check(conditioned);
+  const loaded = conditioned
+    .llmPhases()
+    .phases.find((p) => p.name === "safety");
+  const offered = (run) => valuesOf(loaded, run).map((v) => v.value);
+  assert.deepEqual(offered({}), ["safe", "unsafe"]);
+  assert.deepEqual(offered({ "build-allowed": true }), ["safe"]);
+
+  for (const [when, refused] of [
+    ["NOT", /value `unsafe` has a `when` that does not parse/],
+    [
+      "no-such-fact",
+      /value `unsafe` is conditioned on `no-such-fact`, which this prompt does not know/,
+    ],
+    [
+      "value(nowhere, safe)",
+      /value `unsafe` reads `value\(nowhere, safe\)`, but no phase of this prompt returns/,
+    ],
+  ]) {
+    const bad = withValuePhase();
+    phaseNamed(bad, "safety").values[1].when = when;
+    assert.throws(() => check(bad), refused, when);
+  }
+
+  const hidden = withValuePhase();
+  for (const v of phaseNamed(hidden, "safety").values) {
+    v.when = "NOT build-allowed";
+  }
+  assert.throws(
+    () => check(hidden),
+    /offers every value under a `when` - at least one must be offered in every run/
+  );
+});
+
+// The build question offers "Is unsafe to build" only where nobody let the agent build: a
+// reviewer who let it build in the preparation has already judged the build safe to run.
+test("the build question offers 'Is unsafe to build' only where nobody let the agent build", () => {
+  const built = fresh()
+    .llmPhases()
+    .phases.find((p) => p.name === "built");
+  const labels = (run) => valuesOf(built, run).map((v) => v.label);
+  assert.deepEqual(labels({}), [
+    "Builds and reproduces",
+    "Does not reproduce",
+    "Does not build",
+    "Is unsafe to build",
+  ]);
+  assert.deepEqual(labels({ "build-allowed": true }), [
+    "Builds and reproduces",
+    "Does not reproduce",
+    "Does not build",
+  ]);
+});
 
 // A phase offers no answers of its own: a person is offered the manual review's answers.
 // Only a process-value phase puts a question of its own, the one it hands over where no

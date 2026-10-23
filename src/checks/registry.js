@@ -672,6 +672,9 @@ export class Registry {
           label: v.label,
           description: v.description,
           reports: v.reports ?? null,
+          // The condition the value is offered under, parsed once as a step's is
+          // (loadedStep), or null for a value offered in every run.
+          when: v.when === undefined ? null : parseCondition(v.when),
         })),
       })),
     };
@@ -1480,9 +1483,21 @@ function assertStep(step, i, where, noun, facts, values = new Map()) {
   if (step.when === undefined) {
     return;
   }
+  assertCondition(step.when, nth, facts, values);
+}
+
+/**
+ * Assert a `when:` condition, of a step or of a process value: it parses, names only facts
+ * its prompt knows, and every value(phase, id) it reads names a phase returning that id.
+ * @param {string} when  The condition as authored.
+ * @param {string} nth  How its owner is named in a message.
+ * @param {string[]} facts  The facts the prompt knows.
+ * @param {Map<string, string[]>} values  The process values a condition may read, by phase.
+ */
+function assertCondition(when, nth, facts, values) {
   let tree;
   try {
-    tree = parseCondition(step.when);
+    tree = parseCondition(when);
   } catch (err) {
     throw new Error(
       `${nth} has a \`when\` that does not parse: ${err.message}`
@@ -1535,12 +1550,15 @@ function loadedStep(step) {
  * can read, and two equal ids or labels would make an answer mean either. A value that
  * `reports` a check aborts the review through that check, so the check must exist and abort,
  * early or late. The finding is the reviewer's answer, so it stands as reported: verify is
- * never asked about it (src/report/loop.js recordValue).
+ * never asked about it (src/report/loop.js recordValue). A value may be offered under a
+ * `when:`, checked as a step's is, and at least one value carries none, so the phase always
+ * has an answer to offer.
  * @param {Registry} registry
  * @param {object} phase  The phase as authored.
  * @param {string} at  How it is named in a message.
+ * @param {Map<string, string[]>} conditionValues  The process values a condition may read.
  */
-function assertProcessValues(registry, phase, at) {
+function assertProcessValues(registry, phase, at, conditionValues) {
   if (phase.answer !== "value") {
     for (const key of ["values", "question"]) {
       if (phase[key] !== undefined) {
@@ -1567,10 +1585,24 @@ function assertProcessValues(registry, phase, at) {
       seen.add(v[key]);
     }
   }
+  if (values.every((v) => v.when !== undefined)) {
+    throw new Error(
+      `${at} offers every value under a \`when\` - at least one must be offered in every ` +
+        "run, or the phase could ask with nothing to answer"
+    );
+  }
   for (const v of values) {
     if (!/^[a-z][a-z0-9-]*$/.test(v.value)) {
       throw new Error(
         `${at} value \`${v.value}\` is not a lower-case name a condition can read`
+      );
+    }
+    if (v.when !== undefined) {
+      assertCondition(
+        v.when,
+        `${at} value \`${v.value}\``,
+        REVIEW_PROMPT_FACTS,
+        conditionValues
       );
     }
     if (v.reports === undefined) {
@@ -1701,7 +1733,7 @@ export function assertPhases(registry, at) {
         );
       }
     }
-    assertProcessValues(registry, phase, at2);
+    assertProcessValues(registry, phase, at2, values);
     phase.steps.forEach((step, i) => {
       assertStep(step, i, at2, "step", REVIEW_PROMPT_FACTS, values);
     });

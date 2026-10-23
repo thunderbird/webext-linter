@@ -277,6 +277,11 @@ shapes:
       why: >-
         the check whose finding this value adds to the review - the one way a process value
         aborts it, with that check's reason and response
+    when:
+      kind: text
+      why: >-
+        the condition the value is offered under, read like a step's `when:`, so an answer
+        that means nothing in this review is not offered in it
 
   # One answer the preparation's PACKAGE_MANAGERS question offers.
   package-manager-value-entry:

@@ -915,6 +915,12 @@ async function reviewSubmission(opts, work, prepared) {
           )
           ? { "build-guarded": true }
           : {}),
+        // Whether the reviewer let the agent build the add-on in the preparation: they read
+        // the Build Review Details and judged the build safe to run, so the build question
+        // does not offer to call it unsafe.
+        ...(prepared?.packageManagers === true
+          ? { "build-allowed": true }
+          : {}),
         // One condition per tree that has a sweep to run, keyed the way the step names
         // it. Read off the REQUESTS rather than off `sweeping` and `preSweep` separately:
         // a step exists to hand an agent a request, so the request existing is the whole

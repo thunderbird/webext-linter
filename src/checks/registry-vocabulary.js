@@ -201,6 +201,8 @@ export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
  *  - `spawned`: `spawn` went out, so agents may still be running;
  *  - `decided`: the agent has judged something - `verify` or `settle` went out;
  *  - `closing`: the prompt being printed is the closing one (its phase answers `end`);
+ *  - `build-allowed`: the reviewer let the agent build the add-on in the preparation, so its
+ *    build has been judged safe to run;
  *  - `unbuildable`: no build can be made from this source by the review's own rules - a
  *    finding of a check marked `review-unbuildable` stands, or the rescue failed - so the
  *    build phases ask nothing;
@@ -216,6 +218,7 @@ export const REVIEW_PROMPT_FACTS = [
   "aborted",
   "sca",
   "build-guarded",
+  "build-allowed",
   ...Object.keys(SWEEP_INSTRUCTIONS).map(sweepRun),
   "first",
   "spawned",

@@ -70,6 +70,37 @@ export function isOpen(item, state) {
  * @returns {object[]}
  */
 export function stepsOf(phase, run = {}) {
+  const facts = factsOf(phase, run);
+  return phase.steps.filter(
+    (step) => !step.when || holds(step.when, facts, run.values ?? {})
+  );
+}
+
+/**
+ * The values a process-value phase offers this run: those with no `when:` condition, and
+ * those whose condition holds over the facts its steps are printed by (stepsOf). An answer
+ * that means nothing in this review is not offered in it, and an answer not offered is
+ * refused when it comes back.
+ * @param {{answer?: string, values: {when: ?object}[]}} phase
+ * @param {{skip: string[], halted: boolean}} run  The run record (stepsOf).
+ * @returns {object[]}
+ */
+export function valuesOf(phase, run = {}) {
+  const facts = factsOf(phase, run);
+  return phase.values.filter(
+    (v) => !v.when || holds(v.when, facts, run.values ?? {})
+  );
+}
+
+/**
+ * The facts a phase's conditions read this run: the flags the run was given, `aborted` once
+ * a finding has aborted the review, `closing` for the phase the review ends with, and every
+ * other name the run record answers true.
+ * @param {{answer?: string}} phase
+ * @param {{skip?: string[], halted?: boolean}} run
+ * @returns {Set<string>}
+ */
+function factsOf(phase, run) {
   const facts = new Set(run.skip ?? []);
   if (run.halted === true) {
     facts.add("aborted");
@@ -84,9 +115,7 @@ export function stepsOf(phase, run = {}) {
       facts.add(name);
     }
   }
-  return phase.steps.filter(
-    (step) => !step.when || holds(step.when, facts, run.values ?? {})
-  );
+  return facts;
 }
 
 /**

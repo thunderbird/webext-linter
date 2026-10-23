@@ -150,6 +150,11 @@ test("declined package-manager commands start a review the reviewer builds for",
   });
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
   assert.equal(readJson(work, "prepare").packageManagers, false);
+  assert.equal(
+    readJson(work, "state").run["build-allowed"],
+    undefined,
+    "a reviewer who refused is not recorded as having let the agent build"
+  );
   assert.deepEqual(readJson(work, "state").build, {
     result: null,
     root: null,
@@ -560,6 +565,13 @@ test("a review of a source the agent built opens on its Build Review Details", a
   assert.equal(r.code, 0, r.stdout + r.stderr);
   const state = readJson(work, "state");
   assert.equal(state.phase, "built");
+  // The reviewer let the agent build, so the build question does not offer to call the
+  // build unsafe.
+  assert.equal(state.run["build-allowed"], true);
+  assert.deepEqual(
+    readJson(work, "review").entries[0].answers.map((a) => a.label),
+    ["Builds and reproduces", "Does not reproduce", "Does not build"]
+  );
   assert.deepEqual(state.build, {
     result: "built",
     root: workPaths(work).buildCopy,

@@ -2568,8 +2568,10 @@ llm-phases:
     # relays the open to-do a check routes here (`asked-in`), so it is issued only while that
     # to-do is open and never in an XPI review. Any answer clears that to-do. One of the four
     # lets the review go on, and each of the other three reports the check naming the reason
-    # the review stops (`reports`). Asked under --llm-skip-manual too: it decides
-    # whether the review goes on, which is not what that flag withholds.
+    # the review stops (`reports`). "Is unsafe to build" is offered only where nobody let the
+    # agent build (`build-allowed`): a reviewer who let it build has already judged the build
+    # safe to run. Asked under --llm-skip-manual too: it decides whether the review goes on,
+    # which is not what that flag withholds.
     #
     # Its first step is the Build Review Details: the submitted XPI, the source the review
     # read, the build report and its judgement, the vulnerabilities counted in the submitted
@@ -2598,6 +2600,7 @@ llm-phases:
           label: Is unsafe to build
           description: The build would fetch or run code from outside the declared dependencies, or do something you will not run on your machine. Nothing was built.
           reports: build-unsafe
+          when: NOT build-allowed
       steps:
         - when: sca AND build-guarded AND NOT aborted AND NOT unbuildable
           text: |-

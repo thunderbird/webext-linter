@@ -9,7 +9,7 @@
 // state + review file` is a pure file-to-file transformation, and so is `state -> report`.
 // That is what makes this half of the tool testable without talking to an agent.
 import { assignRefs, orderReview } from "./order.js";
-import { nextPhase, openIn, phaseOf, stepsOf } from "./phases.js";
+import { nextPhase, openIn, phaseOf, stepsOf, valuesOf } from "./phases.js";
 import { abortingChecks, earlyExitOf } from "./early-exit.js";
 import {
   HandbackRefused,
@@ -261,7 +261,7 @@ export function issue(state, work, phases, registry) {
   // each product lands in a file of its own. Every other phase hands over its open items,
   // rendered for THIS reader - never stored, so the same item can be worded one way here
   // and another for the reviewer.
-  const entries = askedIn(state, registry, phase, ordered);
+  const entries = askedIn(state, registry, phase, ordered, run);
   state.phase = phase.name;
   // The `ask` phase hands the reviewer the Review Details block, and that block links the
   // report. Refresh the file first, so the link opens the review as it stands rather than
@@ -371,7 +371,15 @@ export function accept(state, work, phases, registry) {
   // The one ordering of this hand-back: what went out is read from it, and an answer that
   // moves a case finds that case in it by its reference.
   const ordered = orderReview(state.report.findings, state.manual);
-  const asked = askedIn(state, registry, phase, ordered);
+  // Read against the run's facts as `issue` read them, so a value offered only under a
+  // condition is accepted only where it was offered.
+  const asked = askedIn(
+    state,
+    registry,
+    phase,
+    ordered,
+    runOf(state, ordered, phases, registry)
+  );
   const answers = answersOf(entries, asked, phase, (e) =>
     String(e.index ?? "undefined")
   );
@@ -438,14 +446,16 @@ export { HandbackRefused };
  * @param {import("../checks/registry.js").Registry} registry
  * @param {object} phase
  * @param {import("./order.js").OrderedItem[]} ordered
+ * @param {object} run  The run record (runOf): a process value is offered only where its
+ *   `when:` holds over it (valuesOf).
  * @returns {object[]}
  */
-function askedIn(state, registry, phase, ordered) {
+function askedIn(state, registry, phase, ordered, run) {
   if (phase.answer === "value") {
     const [routed] = renderedOpen(state, registry, phase.name, ordered);
     return [
       valueEntry(
-        phase,
+        { ...phase, values: valuesOf(phase, run) },
         routed?.message ?? phaseQuestion(state, registry, phase, ordered)
       ),
     ];

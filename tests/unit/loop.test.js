@@ -2177,6 +2177,47 @@ test("each build answer that stops the review reports its own check", () => {
   throw new Error("the build question was never issued");
 });
 
+// A reviewer who let the agent build has already judged the build safe to run, so the build
+// question offers no "Is unsafe to build", and that answer handed back anyway is refused,
+// with nothing recorded. Where nobody let the agent build, all four answers are offered.
+test("a review whose reviewer let the agent build is not offered 'Is unsafe to build'", () => {
+  const toBuilt = (made) => {
+    for (let pass = 0; pass < 4; pass++) {
+      const out = issue(made.state, made.work, PHASES, REGISTRY);
+      if (out.phase.name === "built") {
+        return out;
+      }
+      handBack(made.work, () => BUILDS[out.phase.name]);
+      accept(made.state, made.work, PHASES, REGISTRY);
+    }
+    throw new Error("the build question was never issued");
+  };
+  const labelsOf = (made) =>
+    JSON.parse(
+      fs.readFileSync(reviewFileOf(made.work), "utf8")
+    ).entries[0].answers.map((a) => a.label);
+
+  const allowed = buildQuestionsReview(tmp());
+  allowed.state.run["build-allowed"] = true;
+  toBuilt(allowed);
+  assert.deepEqual(labelsOf(allowed), [
+    "Builds and reproduces",
+    "Does not reproduce",
+    "Does not build",
+  ]);
+  const before = JSON.stringify(allowed.state);
+  handBack(allowed.work, () => "Is unsafe to build");
+  assert.throws(
+    () => accept(allowed.state, allowed.work, PHASES, REGISTRY),
+    /answers "Is unsafe to build", which this entry does not accept/
+  );
+  assert.equal(JSON.stringify(allowed.state), before, "nothing is recorded");
+
+  const asked = buildQuestionsReview(tmp());
+  toBuilt(asked);
+  assert.ok(labelsOf(asked).includes("Is unsafe to build"));
+});
+
 // The build question is a process value put while the build to-do is open. A review whose
 // build check did not run holds no such to-do, so the question has nothing to put and is
 // not issued, and the review goes on without the value.

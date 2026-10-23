@@ -85,7 +85,8 @@ prompt is printed, and every phase reads that one folder.
 Which steps a phase prints is decided by each step's `when:` condition: `AND`, `OR`, `NOT`
 and parentheses over the facts of this run - the `--llm-skip-*` flags it was given,
 `aborted` once a finding has aborted the review, `sca` for a source code review,
-`build-guarded` when every check a build relies on ran, the build result (`agent-built`,
+`build-guarded` when every check a build relies on ran, `build-allowed` when the reviewer let
+the agent build the add-on in the preparation, the build result (`agent-built`,
 `agent-build-failed`, `rescue-failed`, `build-unsafe` or `self-build`, exactly one of them),
 `sweep-xpi` / `sweep-sca` for a tree with a sweep to run, `first` on the review's first
 prompt, `spawned` once `spawn` went out, `decided` once `verify` or `settle` did,
@@ -103,7 +104,11 @@ one entry offering the values the registry declares for it, each with a label an
 description, accepts only one of those labels, and records the value's id. So
 `build-safety` prints under `NOT value(build-safety, safe) AND NOT value(build-safety,
 unsafe)`, only where no judgement is held yet. The registry refuses a call naming a phase
-that asks for no value, or an id that phase never returns. A value may `report` a check:
+that asks for no value, or an id that phase never returns. A value may itself carry a
+`when:`, read with the same facts: it is offered only where its condition holds, and an
+answer that was not offered is refused when it comes back. The registry checks it as it
+checks a step's, and refuses a phase that offers every value under a condition. A value may
+`report` a check:
 picking it adds that check's finding, which aborts the review like any finding of an
 aborting check. The finding is the person's answer, so it is recorded as reported at once and
 never put to verify. A value phase a check asks its question in (`asked-in`) relays that open
@@ -148,7 +153,9 @@ review's build part is these steps:
    (`agent-built`, `agent-build-failed`, `build-unsafe`, `self-build`), and tells the agent
    it builds and compares nothing: where it built, the reviewer reads its earlier comparison,
    `LLM_BUILD_XPI_MATCH`, beside `LLM_BUILD_OUTPUT` and `XPI_FILE`. Where the agent judged the build
-   unsafe, it says the reviewer may answer `Is unsafe to build`.
+   unsafe, it says the reviewer may answer `Is unsafe to build`. That answer is offered only
+   where nobody let the agent build (`NOT build-allowed`): a reviewer who let it build in the
+   preparation has already judged the build safe to run.
 6. **`Does not reproduce`**, **`Does not build`** and **`Is unsafe to build`** report
    `build-not-reproduced`, `build-fails` and `build-unsafe`, which abort the review late for
    build issues, with that check's response telling the developer why: the review goes on to
