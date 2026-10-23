@@ -2471,7 +2471,8 @@ llm-phases:
 
     It prints the next prompt for you to follow.
   # Waiting: the last line of a block that ends the agent's turn, naming what the reply
-  # leads to.
+  # leads to. The `ask` entry also says how many questions follow ({{count}}), the one entry
+  # that takes it, since only `ask` hands out a batch.
   waiting:
     text: Reply "next" to continue the review with {{next}}.
     # By the block the line ends: the preparation's permission prompt, or the turn-ending
@@ -2479,7 +2480,7 @@ llm-phases:
     next:
       permission: the question whether the agent may build the add-on
       built: the question whether the source is safe to build, builds, and reproduces the submitted XPI
-      ask: the questions on the findings left to your judgement
+      ask: the {{count}} manual review questions
       downgrade: the question whether the review should be restarted as a pure XPI review
   # What LLM_BUILD_RESULT in the details blocks says of the agent's attempt: it built the
   # add-on, its build failed, its rescue failed so nothing was built, or the build was judged

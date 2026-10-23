@@ -613,7 +613,8 @@ sections:
             must-exist: true
             why: >-
               what the reply to the waiting line leads to, by the block it ends: `permission`
-              or a turn-ending phase
+              or a turn-ending phase. The entry for `ask` names how many questions follow
+              ({{count}})
       refused: *loop-text
       build-results:
         kind: prose-map

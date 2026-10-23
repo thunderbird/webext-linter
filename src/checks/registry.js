@@ -622,7 +622,7 @@ export class Registry {
    * its question there (`asked-in`), which ties issuing it to that check's open to-do
    * (src/report/phases.js nextPhase).
    * @returns {{preamble: {when: ?object, text: string}[], frame: string, handover: string,
-   *   waiting: (name: string) => string, refused: string, buildResults: Record<string, string>,
+   *   waiting: (name: string, count?: number) => string, refused: string, buildResults: Record<string, string>,
    *   phases: {name: string, answer: string,
    *   endsTurn: boolean, verbs: string[],
    *   product: ?string, verbProse: object, intro: string,
@@ -642,8 +642,12 @@ export class Registry {
       frame: p.frame,
       handover: p.handover,
       // The waiting line ending the block of `name`, naming what the reply leads to.
-      waiting: (name) =>
-        p.waiting.text.split("{{next}}").join(p.waiting.next[name]),
+      waiting: (name, count) =>
+        p.waiting.text
+          .split("{{next}}")
+          .join(p.waiting.next[name])
+          .split("{{count}}")
+          .join(String(count)),
       refused: p.refused,
       buildResults: { ...p["build-results"] },
       phases: p.phases.map((phase) => ({
@@ -1640,6 +1644,9 @@ const SETTLE_PHASE = "settle";
 // The preparation's block that ends with the waiting line, beside the turn-ending phases.
 const WAITING_PERMISSION = "permission";
 
+// The turn-ending phase whose waiting line says how many questions follow.
+const WAITING_ASK = "ask";
+
 // The blocks a turn-ending phase shows, each ending with the waiting line.
 const TURN_BLOCKS = ["{{buildDetails}}", "{{details}}"];
 
@@ -1787,6 +1794,25 @@ export function assertPhases(registry, at) {
       throw new Error(
         `${where} phase \`${name}\` ends the turn but \`waiting\` has no \`next\` ` +
           "entry for it, so its waiting line would name nothing"
+      );
+    }
+  }
+  // Only `ask` hands out a batch, so only its entry says how many questions follow, and it
+  // has to: a line naming a count in another block would print one nobody computed.
+  if (doc.waiting.text.includes("{{count}}")) {
+    throw new Error(
+      `${where} \`waiting\` carries {{count}} - only its \`next\` entry for \`ask\` says ` +
+        "how many questions follow"
+    );
+  }
+  for (const [name, text] of Object.entries(doc.waiting.next)) {
+    if ((name === WAITING_ASK) !== String(text).includes("{{count}}")) {
+      throw new Error(
+        name === WAITING_ASK
+          ? `${where} \`waiting\` entry \`next.${name}\` carries no {{count}} - its ` +
+              "line says how many questions follow"
+          : `${where} \`waiting\` entry \`next.${name}\` carries {{count}} - only ` +
+              `\`${WAITING_ASK}\` hands out a batch to count`
       );
     }
   }

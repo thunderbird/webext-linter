@@ -102,14 +102,35 @@ test("a missing linter-owned text is refused by name", () => {
 // An error whose message carries `text`.
 const saying = (text) => (err) => err.message.includes(text);
 
+// Only `ask` hands out a batch, so only its waiting entry says how many questions follow,
+// and it must: a count in any other line would be one nobody computed.
+test("only the ask waiting line counts its questions", () => {
+  const uncounted = fresh();
+  uncounted.doc["llm-phases"].waiting.next.ask = "the manual review questions";
+  assert.throws(
+    () => check(uncounted),
+    saying("`waiting` entry `next.ask` carries no {{count}}")
+  );
+  const elsewhere = fresh();
+  elsewhere.doc["llm-phases"].waiting.next.built =
+    "the {{count}} build questions";
+  assert.throws(
+    () => check(elsewhere),
+    saying("`waiting` entry `next.built` carries {{count}} - only `ask`")
+  );
+  const inText = fresh();
+  inText.doc["llm-phases"].waiting.text =
+    'Reply "next" for {{count}}: {{next}}.';
+  assert.throws(() => check(inText), saying("`waiting` carries {{count}}"));
+});
+
 // The waiting line is appended to the block a turn-ending phase shows, so the reviewer
 // reads it as the end of that block.
 test("the shipped turn-ending phases are the three questions that show a block", () => {
   const p = fresh().llmPhases();
   assert.equal(
-    p.waiting("ask"),
-    'Reply "next" to continue the review with the questions on the findings left to ' +
-      "your judgement."
+    p.waiting("ask", 12),
+    'Reply "next" to continue the review with the 12 manual review questions.'
   );
   assert.deepEqual(
     p.phases.filter((phase) => phase.endsTurn).map((phase) => phase.name),

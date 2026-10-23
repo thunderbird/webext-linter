@@ -2689,6 +2689,7 @@ function stepsByPhase(made, answer) {
     issued.push({
       name: out.phase.name,
       slots,
+      entries: out.entries.length,
       steps: out.steps.map((step) => {
         const lines = REVIEWER_PHASES.includes(out.phase.name)
           ? loopPromptLines(REGISTRY.llmPhases(), out.phase, [step], slots).map(
@@ -2775,9 +2776,12 @@ test("the build question tells the agent to build and compare nothing", () => {
 
 // The block a turn-ending phase shows ends with the line telling the reviewer the review
 // waits for them and what their reply leads to, inside the text the agent prints verbatim.
+// The `ask` line says how many questions follow: the entries that prompt handed out.
 test("each turn-ending block ends with the line asking the reviewer to reply", () => {
   const WAITING = 'Reply "next" to continue the review';
   const issued = stepsByPhase(buildQuestionsReview(tmp()), goesOn());
+  const asked = issued.find((x) => x.name === "ask").entries;
+  assert.ok(asked > 1, String(asked));
   for (const [name, slot, line] of [
     [
       "built",
@@ -2785,11 +2789,7 @@ test("each turn-ending block ends with the line asking the reviewer to reply", (
       `${WAITING} with the question whether the source is safe to build, builds, ` +
         "and reproduces the submitted XPI.",
     ],
-    [
-      "ask",
-      "details",
-      `${WAITING} with the questions on the findings left to your judgement.`,
-    ],
+    ["ask", "details", `${WAITING} with the ${asked} manual review questions.`],
   ]) {
     const phase = issued.find((x) => x.name === name);
     assert.ok(phase, name);
