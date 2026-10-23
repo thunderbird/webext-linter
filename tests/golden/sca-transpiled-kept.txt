@@ -8,9 +8,11 @@ https://github.com/thunderbird/webext-linter
 
 Continue manual review for the following checks:
 
-1) Build process review: Confirm the build pulls ONLY from the dependencies
-   declared in package.json/lock - no remote code or resources from a raw URL,
-   curl/wget, a git clone of an unpinned repo, a CDN, or a postinstall hook.
+1) Build process review: Read the build instructions the source gives, and the
+   scripts and files they run, and confirm the build pulls ONLY from the
+   dependencies declared in package.json/lock - no remote code or resources from
+   a raw URL, curl/wget, a git clone of an unpinned repo, a CDN, or a
+   postinstall hook.
 Suggested verdict: error
 Suggested response: The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
  - [SCA] package.json

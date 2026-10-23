@@ -172,7 +172,7 @@ export function buildAllCtx(env, { xpi, sca = null }) {
       bundled: none("The classification"),
       jsSources: none("The parsed sources"),
       apiUsages: none("The API usage"),
-      buildReview: none("The build trace"),
+      buildReview: none("The build review"),
       lockInstalls: none("The lock file's install sources"),
     },
   });

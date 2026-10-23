@@ -182,7 +182,7 @@ test("buildScaCtx puts the archive on ctx.artifact, with its sources", async () 
   });
   // ONE ctx over the archive: the build checks and the code checks read the same object,
   // and what separates them is the route each declared. Everything the archive carries is
-  // reachable, buildReview (the build trace) included - the input:sca checks
+  // reachable, buildReview (the build review) included - the input:sca checks
   // read it.
   const archive = {
     ...source,
@@ -190,7 +190,7 @@ test("buildScaCtx puts the archive on ctx.artifact, with its sources", async () 
     archives: ["dist.zip"],
     symlinks: [{ path: "libs/out", cause: SYMLINK_CAUSE.OUTSIDE }],
     directories: ["libs"],
-    buildReview: { unresolved: [], anchor: "package.json" },
+    buildReview: { anchor: "package.json" },
   };
 
   const scaCtx = buildScaCtx(archive, dataFor(archive, parsed(source)), env);
@@ -205,7 +205,6 @@ test("buildScaCtx puts the archive on ctx.artifact, with its sources", async () 
   // the file:/link: walk a lock check runs reads it
   assert.deepEqual(scaCtx.artifact.directories, ["libs"]);
   assert.deepEqual(await scaCtx.buildReview(), {
-    unresolved: [],
     anchor: "package.json",
   }); // build-review checks read it
   // And it carries the parsed source: one ctx serves both routes, so the build checks and

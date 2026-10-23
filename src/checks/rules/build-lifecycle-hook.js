@@ -8,8 +8,8 @@
 // and its command ride the locus, so the hooks collapse into one entry.
 //
 // Belongs here: reading the install-hook scripts and escalating each. Does NOT
-// belong here: parsing package.json for anything else (build "scripts" reachability is
-// src/build/collect.js), or the wording (-> assets/registry.yaml).
+// belong here: parsing package.json for anything else, or the wording
+// (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
 import { jsonLine } from "../../lib/util.js";

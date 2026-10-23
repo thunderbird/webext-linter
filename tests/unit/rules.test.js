@@ -2025,15 +2025,13 @@ const scaCtx = (review) =>
     artifact: { ...addonOf({}, ARTIFACT_SCA), buildReview: review },
   });
 const review = (over) => ({
-  unresolved: [],
   anchor: "package.json",
   ...over,
 });
 
 // EVERY source-code submission raises this: the reviewer's attestation that the shipped
 // XPI comes from the source they read is what the SCA review rests on, so a submission
-// documenting no build at all is still checked against the XPI. The entry carries
-// whatever steps the linter could not follow.
+// documenting no build at all is still checked against the XPI.
 test("undeclared-build-source escalates every SCA, build documented or not", async () => {
   const out = await undeclaredBuildSource.run(withManifest(scaCtx(review())));
   assert.equal(out.findings.length, 0);
@@ -2043,19 +2041,6 @@ test("undeclared-build-source escalates every SCA, build documented or not", asy
   // and is not the case's to say - the reviewer must reproduce the build themselves,
   // which reading the code cannot replace.
   assert.equal(out.escalations[0].manualReview, undefined);
-
-  // A step the linter could not statically bound is named in the entry.
-  const unresolved = await undeclaredBuildSource.run(
-    withManifest(
-      scaCtx(
-        review({ unresolved: [{ kind: "network", detail: "curl evil.com" }] })
-      )
-    )
-  );
-  assert.match(
-    unresolved.escalations[0].data.unresolvedBuildSteps,
-    /curl evil\.com/
-  );
 
   // No build entry point at all still escalates - but with NO locus, rather than
   // pointing the reviewer at a package.json the submission does not have.
@@ -2068,57 +2053,6 @@ test("undeclared-build-source escalates every SCA, build documented or not", asy
   // the reviewer still needs to be told which artifact that is.
   assert.equal(none.escalations[0].file, null);
   assert.equal(none.escalations[0].artifact, ARTIFACT_SCA);
-});
-
-// The sentence a REVIEWER reads, so it is pinned as prose rather than as a shape. Two things
-// it must not do: restate the instruction it lands in, which already opens by asking them to
-// reproduce the build - what this adds is WHICH steps went unaccounted for - and punctuate a
-// list with semicolons, whatever the number of steps.
-test("the unresolved steps read as an English list, and add to the instruction", async () => {
-  const steps = async (...unresolved) =>
-    (
-      await undeclaredBuildSource.run(
-        withManifest(scaCtx(review({ unresolved })))
-      )
-    ).escalations[0].data.unresolvedBuildSteps;
-
-  const one = await steps({ kind: "network", detail: "b.sh" });
-  assert.match(one, /\(a network fetch in b\.sh\)/);
-  assert.match(
-    one,
-    /so what it found may be incomplete - check those steps yourself\.$/
-  );
-  assert.doesNotMatch(
-    one,
-    /reproduce the build/,
-    "the instruction already says that"
-  );
-
-  assert.match(
-    await steps(
-      { kind: "tool", detail: "make" },
-      { kind: "network", detail: "b.sh" }
-    ),
-    /\(an unrecognized build tool \(`make`\) and a network fetch in b\.sh\)/
-  );
-  assert.match(
-    await steps(
-      { kind: "tool", detail: "make" },
-      { kind: "network", detail: "b.sh" },
-      { kind: "tool", detail: "gradle" }
-    ),
-    /\(an unrecognized build tool \(`make`\), a network fetch in b\.sh and an unrecognized build tool \(`gradle`\)\)/
-  );
-
-  for (const n of [1, 2, 3]) {
-    const many = await steps(
-      ...Array.from({ length: n }, (_, i) => ({
-        kind: "tool",
-        detail: `t${i}`,
-      }))
-    );
-    assert.doesNotMatch(many, /;/, `no semicolon with ${n} step(s)`);
-  }
 });
 
 // ---- build-registry-redirect (SCA deterministic: .npmrc registry) ----
@@ -2183,8 +2117,7 @@ test("build-registry-redirect rejects any registry setting in .npmrc", async () 
 
 // Only the ARCHIVE'S OWN .npmrc is read: npm takes its config from the directory the
 // install runs in, and the review runs it at --sca-root. A config deeper in the tree
-// belongs to a directory this review never installs from, so it is not read - and the build
-// trace does not collect it either (src/build/collect.js seeds the root one only).
+// belongs to a directory this review never installs from, so it is not read.
 test("build-registry-redirect reads the root .npmrc and ignores a nested one", async () => {
   const at = async (path, npmrc) =>
     (
@@ -5447,7 +5380,7 @@ test("a check that returns a bare array is refused, not read as findings", async
   assert.deepEqual(none.findings, []);
 });
 
-// Data only some artifacts have - a build trace, a vendor reading - is asked of a getter,
+// Data only some artifacts have - a build review, a vendor reading - is asked of a getter,
 // and the getter of an artifact that never has it throws: a check routed to the wrong one
 // would otherwise find nothing, which reads as a clean submission. runOneCheck does not
 // contain it: the run exits 2.
@@ -5480,7 +5413,7 @@ test("reading data an artifact never has is a wiring error, not an empty result"
       assert.equal(err.class, ERROR_CLASS.WIRING);
       assert.match(
         err.message,
-        /build trace is never computed for the built XPI/
+        /build review is never computed for the built XPI/
       );
       return true;
     }

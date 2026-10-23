@@ -127,8 +127,8 @@ deterministic-phase:
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Deterministic (SCA only): the source archive has no package.json, so there is no build to
-# reproduce the shipped XPI from. The build's entry point is the root package.json
-# (src/build/collect.js seeds from it), so its absence is the absence of a build. Reported as
+# reproduce the shipped XPI from. The build's entry point is the root package.json, where
+# `npm ci` and `pnpm install` run, so its absence is the absence of a build. Reported as
 # the bare fact: nothing here says WHY it is missing, and nothing in the archive could.
 # Presence is tested by NAME, not by parse - one that exists but cannot be used is not
 # MISSING, and sca-package-file-invalid reports it. The pair mirrors sca-lock-file-missing /
@@ -179,8 +179,8 @@ deterministic-phase:
 # xpi-lock-file-invalid). The lock is owed by the package.json, never by what it happens to
 # declare: both installers refuse without one whatever it holds, and a root declaring nothing
 # itself is a workspace root or a package.json whose declarations moved, not a submission
-# that installs nothing. Only the ROOT package.json is read - the build's entry point
-# (src/build/collect.js), and the directory the install runs in. Nothing here goes looking
+# that installs nothing. Only the ROOT package.json is read - the build's entry point, and
+# the directory the install runs in. Nothing here goes looking
 # for a package.json or a lock deeper in the archive: they sit at the root, which is what the
 # root IS. WHICH folder that is was settled before any check ran (src/addon/sca-root.js),
 # because the root is named by someone who has not looked inside the archive yet.
@@ -1058,16 +1058,14 @@ deterministic-phase:
     The package.json declares an npm install lifecycle hook that fetches or executes remote code when the dependencies are installed. Every part of the build must come only from the dependencies declared in package.json/lock. Please remove the remote fetch or execution from the hook.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# SCA only: the build review. analyzeBuild traces the build ONCE, when a check first asks
-# (src/build/analyze.js, ctx.buildReview()); this check reads it. A build
-# must not fetch or execute code/resources from an UNDECLARED external source (a raw URL,
+# SCA only: the build review, anchored at the submission's package.json (src/build/analyze.js,
+# ctx.buildReview()). A build must not fetch or execute code/resources from an UNDECLARED external source (a raw URL,
 # curl|sh, a git clone of an unpinned repo, a CDN, a postinstall hook) - only installing the
 # declared dependencies (npm ci from node_modules, importing a declared package) is allowed.
 # Settled by the agent in `settle`. Under --llm-review the same question is screened before
 # anything is built by the build-safety judgement and the reviewer's permission to build, and
 # this check is what reports such a build. A plain review lists it under Extended Code
 # Review, ahead of the build question below.
-# {{unresolvedBuildSteps}} names the steps the linter could not follow.
 - title: Build process review
   severity: error
   check: undeclared-build-source
@@ -1076,17 +1074,17 @@ deterministic-phase:
   settle-verbs: [reported, cleared]
   review-late-exit: unreproducible-build
   instructions-for-llm: |-
-    Read the build: package.json's scripts and every script, configuration file
-    and file they run. Report it if any step fetches or runs code or resources
-    from outside the dependencies declared in package.json/lock - a raw URL,
-    curl/wget, a git clone of an unpinned repo, a CDN, or an install hook that
-    downloads. Clear it only when you have accounted for every step.
-    {{unresolvedBuildSteps}}
+    Read the build: the build instructions the source gives, package.json's
+    scripts, and every script, configuration file and file they run. Report it if
+    any step fetches or runs code or resources from outside the dependencies
+    declared in package.json/lock - a raw URL, curl/wget, a git clone of an
+    unpinned repo, a CDN, or an install hook that downloads. Clear it only when you
+    have accounted for every step.
   instructions-for-human: |-
-    Confirm the build pulls ONLY from the dependencies declared in
+    Read the build instructions the source gives, and the scripts and files they
+    run, and confirm the build pulls ONLY from the dependencies declared in
     package.json/lock - no remote code or resources from a raw URL, curl/wget, a
     git clone of an unpinned repo, a CDN, or a postinstall hook.
-    {{unresolvedBuildSteps}}
   response: |-
     The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
 

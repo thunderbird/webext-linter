@@ -110,7 +110,7 @@ import { BUILD_RESULT } from "./prepare/state.js";
  * answers, so they cannot depend on which checks ran first), the source archive (the
  * artifact the checks are routed to), and the record of what was reviewed. Everything else
  * the review computes - the vendor reading and its audits, the classification, the CDN
- * lookup, the parse, the build trace - is computed when a check first asks for it
+ * lookup, the parse, the build review - is computed when a check first asks for it
  * (src/review/products.js).
  *
  * The ONE place that order and that count are stated. The feed's total is the count of the
@@ -305,12 +305,11 @@ async function reviewSubmission(opts, work, prepared) {
   // So downstream: read `reviewTarget` for the code under review, `xpiAddon` for the
   // shipped artifact - no further mode checks. The only other mode forks are the
   // dependency resolution (--sca-root vs the XPI's VENDOR/package.json) and the
-  // check gates (ctx.mode -> modeEligible, and a check's `when: sca`). Minified code is non-authored (and rejected)
-  // in both modes: a source-code submission's promise is readable source, so a minified
-  // file in the archive is rejected like one in an XPI, not scanned as authored.
-  // The source view holds every file but the Experiment, and collectBuildFiles traces the
-  // build over both off the root package.json - the code and the tooling are one set of
-  // files, which is what the build checks want.
+  // check gates (ctx.mode -> modeEligible, and a check's `when: sca`). Minified code is
+  // non-authored (and rejected) in both modes: a source-code submission's promise is
+  // readable source, so a minified file in the archive is rejected like one in an XPI, not
+  // scanned as authored. The source view holds every file but the Experiment - the code
+  // and the tooling are one set of files, which is what the build checks want.
   //
   // The review mode is DERIVED from one fact below and assigned nowhere, so it cannot drift
   // from the steps that ran: --sca-root makes it a source code review. Every reader - the

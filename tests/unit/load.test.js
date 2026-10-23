@@ -648,9 +648,8 @@ test("scaViews puts every file in the right part, and the Experiment in only one
 });
 
 // The source view is the archive minus the Experiment source (scaExpSource) and minus a
-// recorded node_modules. Nothing else is withheld, which is what lets the build trace run
-// over it: a build may read anything the archive carries, and where a file sits says nothing
-// about whether a build step reaches it.
+// recorded node_modules. Nothing else is withheld: a build may read anything the archive
+// carries, and where a file sits says nothing about whether a build step reaches it.
 test("the source view holds the archive minus the Experiment and node_modules", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scab-"));
   fs.mkdirSync(path.join(root, "src", "experiment"), { recursive: true });
@@ -723,8 +722,7 @@ test("the source view holds the archive minus the Experiment and node_modules", 
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// Every file is a build candidate, and collectBuildFiles (called by analyzeBuild) still
-// traces the build off the root package.json.
+// Every file is a build candidate: the source view keeps the whole root.
 test("the whole root stays a set of build candidates", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scab0-"));
   fs.writeFileSync(

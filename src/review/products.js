@@ -1,6 +1,6 @@
 // The review's DATA, computed when a check first asks for it. Every piece a check reads
 // beyond the artifact's own files - its vendor reading and audits, the classification of its
-// bundled code, its parsed sources and their API usage, the build trace - sits behind an
+// bundled code, its parsed sources and their API usage, the build review - sits behind an
 // async getter on the check's context (ctx.vendor(), ctx.bundled(), ctx.jsSources(),
 // ctx.apiUsages(), ctx.buildReview(), ctx.lockInstalls()). A getter answers from what was already computed, or
 // computes it first, once per artifact. So a review computes what its checks read and
@@ -46,7 +46,6 @@ import { collectJsSources } from "../addon/sources.js";
 import { runExtractionPass, apiUsageOf } from "../checks/extract.js";
 import { analyzeBuild } from "../build/analyze.js";
 import { findLockInjections } from "../vendor/locks.js";
-import { withExperiment } from "../addon/store.js";
 import { isExperiment } from "../lib/util.js";
 import { experimentApiNamespaces } from "../lib/experiments.js";
 import { ERROR_CLASS } from "../lib/enum.js";
@@ -163,7 +162,7 @@ export function deriveApiUsages(jsSources) {
  *   unverified answer nothing reads;
  * - the classification and the parse exist on every artifact: what an artifact's bytes ARE
  *   is a fact about it, and the input:xpi checks read the shipped XPI in both modes;
- * - the build trace and the check of the lock's install sources exist on the archive only.
+ * - the build review and the check of the lock's install sources exist on the archive only.
  * A getter for data an artifact never has throws: a check that reads it was routed wrong,
  * and a silent empty answer would read as a clean submission.
  * @param {object} deps
@@ -261,7 +260,7 @@ export function reviewData({ opts, schema, manifest, xpi, archive, target }) {
     extractReview(archive, { schema, manifest })
   );
   const scaBuild = stage("Analyzing the build", [], () =>
-    analyzeBuild({ build: { files: withExperiment(archive) } })
+    analyzeBuild({ build: { files: archive.files } })
   );
   const scaLockInstalls = stage("Checking the lock file's sources", [], () =>
     findLockInjections(archive, { net, cacheDir: opts.npmRegistryCache })
@@ -309,7 +308,7 @@ export function reviewData({ opts, schema, manifest, xpi, archive, target }) {
         apiUsages: () => usages(),
         buildReview: async () => {
           if (artifact === xpi) {
-            throw absent("A build trace", artifact);
+            throw absent("A build review", artifact);
           }
           return scaBuild();
         },

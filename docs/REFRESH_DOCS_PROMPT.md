@@ -84,7 +84,7 @@ that no longer exist.
    (`check-flow.html`). Read the stage order OFF THE CODE rather than from this
    list. The eager steps are `SETUP_STEPS`, the declared list one loop walks; the
    review's data (the vendor reading and audits, classification, CDN identification,
-   parse, build trace) is computed when a check first asks, through the getters
+   parse, build review) is computed when a check first asks, through the getters
    `src/review/products.js` builds, each stage after the ones it depends on. The
    shipped-XPI chain (resolveVendor → verifyVendor → classifyBundled → CDN
    identification → extractReview) is the same in BOTH modes: the shipped artifact is

@@ -1,17 +1,14 @@
-// SCA only: the build review - the build must NOT load or fetch remote resources.
-// Everything must ship in the source; the only allowed copy-in is installed libraries via
-// `npm ci` (from node_modules). A curl/wget/git-clone/CDN fetch is a reject.
+// SCA only: the build review - the build must use only the submitted source and the
+// dependencies declared in package.json/lock. Everything must ship in the source; the only
+// allowed copy-in is installed libraries via `npm ci` (from node_modules).
 //
 // Nothing decides that from the files, so EVERY source-code submission raises this, for
-// the agent to settle in `settle`, after the build (or, with no agent, for
-// the reviewer). Whether the source then builds into the shipped XPI is a question of its
-// own (build-reproduces-xpi). The deterministic
-// `unresolved` signals from collectBuildFiles (a network fetch, an orchestrator the linter
-// could not follow) ride along, so the entry names what could not be followed.
+// the agent to settle in `settle`, after the build (or, with no agent, for the reviewer),
+// anchored at the submission's package.json. Whether the source then builds into the
+// shipped XPI is a question of its own (build-reproduces-xpi).
 //
-// Belongs here: raising the escalation and the detail it carries. Does NOT
-// belong here: the analysis (-> src/build/analyze.js), the collection policy
-// (-> src/build/collect.js), or the wording (-> assets/registry.yaml).
+// Belongs here: raising the escalation. Does NOT belong here: where it anchors
+// (-> src/build/analyze.js), or the wording (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
 
@@ -24,11 +21,9 @@ export default {
    * @returns {{findings: [], escalations?: Escalation[]}}
    */
   async run(ctx) {
-    const review = await ctx.buildReview();
-    const { unresolved } = review;
     // Null when the source documents no build at all: the entry then carries no locus
     // rather than pointing the reviewer at a package.json the submission lacks.
-    const anchor = review.anchor;
+    const { anchor } = await ctx.buildReview();
 
     ctx.note?.(
       ctx.artifact.at(anchor),
@@ -42,39 +37,8 @@ export default {
           // `anchor` is null when the source documents no build at all, which the locus
           // says by naming the artifact and no file in it.
           ...ctx.artifact.at(anchor),
-          data: {
-            unresolvedBuildSteps: formatUnresolved(unresolved),
-          },
         },
       ],
     };
   },
 };
-
-/**
- * One sentence naming the build steps the linter could not statically bound, or "" when there
- * are none (the registry template is authored to read with the slot empty).
- * @param {{kind: string, detail: string}[]} [unresolved]
- * @returns {string}
- */
-function formatUnresolved(unresolved) {
-  if (!unresolved?.length) {
-    return "";
-  }
-  const parts = unresolved.map((u) =>
-    u.kind === "tool"
-      ? `an unrecognized build tool (\`${u.detail}\`)`
-      : u.kind === "network"
-        ? `a network fetch in ${u.detail}`
-        : u.detail
-  );
-  // An ordinary English list: the reviewer reads this mid-sentence, where a semicolon would
-  // sit wrong however many steps there are.
-  const listed =
-    parts.length > 1
-      ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`
-      : parts[0];
-  // NOT "check the build": the instruction this lands in opens by asking for exactly that,
-  // so what this adds is WHICH steps went unaccounted for.
-  return `The linter could not statically analyze part of the build (${listed}), so what it found may be incomplete - check those steps yourself.`;
-}

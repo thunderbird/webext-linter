@@ -179,9 +179,7 @@ export function fileView(store, { keys }) {
  *     not exempt;
  *   - the vendor pass - a library declared inside the Experiment folder is a declared
  *     library like any other, and matching it against `files` alone would call it missing
- *     and skip its audit;
- *   - the build trace - a build step may name a script kept in the Experiment folder, and
- *     it runs on the reviewer's machine like any other.
+ *     and skip its audit.
  *
  * A single lookup reads through fileIn below, which gives the same answer without the
  * copy.

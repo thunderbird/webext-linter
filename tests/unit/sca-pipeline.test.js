@@ -147,8 +147,8 @@ test("SCA e2e: a flat layout is accepted and fully reviewed", async () => {
         ),
         "the root source file is reviewed by the code checks"
       );
-      // The build review works flat: collectBuildFiles traced the build off the root
-      // package.json, and the check that reads that trace ran.
+      // The build review works flat: it anchors at the root package.json, and the check
+      // that reads it ran.
       assert.ok(
         meta.checksRun.includes("undeclared-build-source"),
         "the build review runs in a flat layout"
@@ -532,7 +532,7 @@ test("SCA e2e: an undeclared source-bundled library the CDN identifies is not re
 });
 
 // The --sca-root tree is read ONCE and the archive is shared by the review and the build
-// trace (loadSourceArchive, then collectBuildFiles over the same view), so it is not walked
+// review (loadSourceArchive, then analyzeBuild over the same view), so it is not walked
 // (nor its symlinks warned) twice - a loadAddon(scaRoot) per reader would read the root
 // twice.
 test("SCA: the --sca-root archive is read once, not twice", async () => {
@@ -1108,10 +1108,10 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
   }
 });
 
-// The build files (the archive's tooling) are reviewed by the build analysis (analyzeBuild)
-// + the deterministic undeclared-build-source check. This proves the pipeline wires
-// analyzeBuild -> scaCtx (ctx.buildReview()) -> the check: analyzeBuild stores the unresolved signals and the anchor, and the check escalates
-// the build to Extended Code Review, which every source-code submission reaches.
+// The build files (the archive's tooling) are reviewed through undeclared-build-source. This
+// proves the pipeline wires analyzeBuild -> scaCtx (ctx.buildReview()) -> the check:
+// analyzeBuild stores the anchor, and the check escalates the build to Extended Code
+// Review, which every source-code submission reaches.
 test("SCA e2e: a build script outside the source is reviewed by undeclared-build-source", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({

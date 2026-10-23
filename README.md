@@ -212,14 +212,13 @@ may hold the real source beside the copy.
   reviewer's machine. Beyond those, the build must not commit a `node_modules` folder or a
   built archive (`.xpi` / `.zip` - both are build output, never shipped in a source
   submission), and any `package.json` install hook (`postinstall`, …) escalates and aborts
-  the review once reported. The build is traced once, over the files reached from
-  `package.json`, and what `undeclared-build-source` reads of it is the steps that trace
-  could not follow.
+  the review once reported.
   Nothing in those files says for certain what the build **does**, so every source
   submission raises two build items. `undeclared-build-source` (Extended Code Review) asks
   whether the build pulls from the declared dependencies alone - no raw URL, `curl|sh`,
-  unpinned `git clone`, CDN or postinstall hook - and names any step the linter could not
-  follow statically; under `--llm-review` the agent settles it in `settle`.
+  unpinned `git clone`, CDN or postinstall hook - for its reader to judge from the build
+  instructions and the files they run; under `--llm-review` the agent settles it in
+  `settle`.
   `build-reproduces-xpi` (Extended Manual Review) asks the reviewer to build the add-on
   from the source and compare the result with the shipped XPI. Either of the two
   reported aborts the review. Under `--llm-review` a source review opens with its build,

@@ -2,7 +2,7 @@
 //
 // A source archive's root is the folder the build runs in: the one holding package.json and
 // the lock the reviewer installs from. Everything downstream reads those from the TOP LEVEL
-// of --sca-root and nowhere else (src/build/collect.js, src/vendor/locks.js), which is what
+// of --sca-root and nowhere else (src/vendor/locks.js, the package.json readers), which is what
 // makes "the root" mean something. This decides which folder that is. It does not soften
 // that rule - it runs before it.
 //

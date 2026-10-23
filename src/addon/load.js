@@ -29,9 +29,7 @@
 // WebExtManifestRecord typedefs, and the load-time path guards.
 //
 // Does NOT belong here: reviewing the add-on - all verdicts live in the checks
-// (src/checks/*). Which of the build candidates the build actually RUNS is a
-// collection policy, seeded from package.json (-> src/build/collect.js
-// collectBuildFiles). Enumerating which JS sources to scan is src/addon/sources.js.
+// (src/checks/*). Enumerating which JS sources to scan is src/addon/sources.js.
 // Parsing CSS/HTML/CSP content is src/scan/*. Schema files load via
 // src/schema/load.js. Naming the folder the copy goes to is src/util/dest.js workPaths,
 // and claiming it for a review is src/pipeline.js.
@@ -564,10 +562,8 @@ export function hasParentSegment(value) {
  *   source      everything the archive holds, MINUS the Experiment subtree. The whole of
  *               it, because a build script may put any file anywhere: nothing in the
  *               archive can be assumed unused, so the archive IS what the review reads and
- *               there is no narrower add-on subtree to carve out of it. With the
- *               experiment view it is what the build trace runs over (src/build/collect.js
- *               collectBuildFiles, via analyzeBuild), which narrows it to the files reached from the root
- *               package.json. An installed dependency tree is in neither: loadAddon records
+ *               there is no narrower add-on subtree to carve out of it. An installed
+ *               dependency tree is in neither: loadAddon records
  *               the directory paths for committed-node-modules and reads none of it.
  *   experiment  the Experiment implementation at `scaExpSource`, wherever it sits - inside
  *               the source or beside it. Privileged, non-WebExtension code: it is recorded

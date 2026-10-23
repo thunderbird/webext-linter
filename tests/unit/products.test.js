@@ -65,7 +65,7 @@ test("data an artifact never has is a wiring error", async () => {
   );
   await assert.rejects(
     () => dataOf(xpi).buildReview(),
-    /build trace is never computed for the built XPI/
+    /build review is never computed for the built XPI/
   );
 });
 

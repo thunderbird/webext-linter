@@ -164,7 +164,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  *   to (its declared `input`), linked by reference: ctx.artifact IS the object the loader
  *   produced, so a reader can see which artifact a set of files belongs to. A check reads what
  *   that artifact was LOADED with off it - its views, the recorded path lists; what the review
- *   COMPUTES about it (vendor reading, classification, parsed sources, build trace) comes
+ *   COMPUTES about it (vendor reading, classification, parsed sources, build review) comes
  *   through the data getters below, never off the artifact. Nothing shipped-authoritative is
  *   on it: the manifest.json record and the experiment classification are asked of the built
  *   XPI once and shared, as ctx.manifest / ctx.experiments below, so a check cannot pair one
@@ -193,7 +193,7 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {() => Promise<object[]>} jsSources  The artifact's parsed JS sources (see
  *   addon/sources.js).
  * @property {() => Promise<object[]>} apiUsages  Per-source extracted API usage.
- * @property {() => Promise<object>} buildReview  The build trace - the source archive only.
+ * @property {() => Promise<object>} buildReview  The build review - the source archive only.
  * @property {() => Promise<object[]>} lockInstalls  The lock entries that install another
  *   release than they name (src/vendor/locks.js findLockInjections) - the source archive
  *   only.
