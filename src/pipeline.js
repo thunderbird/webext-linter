@@ -305,7 +305,7 @@ async function reviewSubmission(opts, work, prepared) {
   // So downstream: read `reviewTarget` for the code under review, `xpiAddon` for the
   // shipped artifact - no further mode checks. The only other mode forks are the
   // dependency resolution (--sca-root vs the XPI's VENDOR/package.json) and the
-  // check gate (ctx.mode -> modeEligible). Minified code is non-authored (and rejected)
+  // check gates (ctx.mode -> modeEligible, and a check's `when: sca`). Minified code is non-authored (and rejected)
   // in both modes: a source-code submission's promise is readable source, so a minified
   // file in the archive is rejected like one in an XPI, not scanned as authored.
   // The source view holds every file but the Experiment, and collectBuildFiles traces the
@@ -723,7 +723,8 @@ async function reviewSubmission(opts, work, prepared) {
   // isolated so one failure can't abort all. A rejected Experiment stops at its first
   // check, experiment-not-allowed, and a forged lock at lockfile-injection, the two checks
   // that end a review early. Every other check that aborts a review lets the rest run.
-  // The `--eslint` opt-in gates code-sanity inside loadChecks (eslintEligible).
+  // A check's `when:` (over `sca` and `eslint`) is read inside loadChecks
+  // (conditionEligible), so code-sanity runs only under --eslint.
   progress(""); // close the Setup section before runChecks prints "── Activity ──"
   const {
     findings: reviewFindings,
@@ -731,7 +732,12 @@ async function reviewSubmission(opts, work, prepared) {
     checksRun,
   } = await runChecks(
     registry,
-    { only: opts.checksOnly, skip: opts.checksSkip, eslint: opts.eslint },
+    {
+      only: opts.checksOnly,
+      skip: opts.checksSkip,
+      eslint: opts.eslint,
+      sca: mode.sca,
+    },
     siblings
   );
   findings.push(...reviewFindings);

@@ -39,7 +39,7 @@ import { displayLine } from "../util/text.js";
 
 import { finding, SECTION, SEVERITY } from "../report/finding.js";
 import { MAX_NOTE } from "../config.js";
-import { callsOf, namesOf, parseCondition } from "./condition.js";
+import { callsOf, holds, namesOf, parseCondition } from "./condition.js";
 import { artifactLabel } from "../report/artifact.js";
 import { ARTIFACT_NONE, assertLocus } from "../lib/artifacts.js";
 import { VERB, VERB_NAMES, verbNamed } from "../report/verbs.js";
@@ -67,6 +67,7 @@ import {
   BUILD_SAFETY_VALUES,
   BUILD_MATCH_VALUES,
   REVIEW_PROMPT_FACTS,
+  CHECK_FACTS,
 } from "./registry-vocabulary.js";
 import { rethrowIfFatal, wiringError } from "../lib/errors.js";
 import { verdictLabel } from "../report/verdict-label.js";
@@ -139,8 +140,8 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {boolean} [warningsAsErrors]  The run's band policy (--warnings-as-errors),
  *   applied to each finding's FINAL severity in runOneCheck - which is the only value a
  *   check that delegates has. Carried here because runOneCheck takes no registry.
- * @property {boolean} ["skip-in-sca-review"]  Keeps a check that judges the shipped XPI out
- *   of a source review (modeEligible); absent means it runs in both.
+ * @property {?object} when  The condition the check runs under (`when:`), parsed, or null for
+ *   a check that runs wherever its route does (conditionEligible).
  * @property {"source"|"xpi"|"sca"|"all"|undefined} input  Which artifact is
  *   ctx.artifact when the check runs (VALID_CHECK_INPUTS, registry-vocabulary.js). NOT what its findings
  *   are about - a locus answers that, from the holder that minted it. Required for every
@@ -1116,11 +1117,39 @@ function assertEntry(entry, at) {
     }
     assertSettleVerbs(entry, where, authored("instructions") || forLlm);
     assertSweepInstruction(entry, where, severity);
+    assertCheckCondition(entry, where);
   }
   // Outside the manual/rule branch: a manual-checks entry carries a response too, and
   // both kinds are listed in either review mode.
   assertResponse(entry, where);
   assertDefaultNote(entry, where);
+}
+
+/**
+ * Assert a check's `when:` condition: it parses and names only facts known before any check
+ * runs (CHECK_FACTS), with no value(phase, id), which only a loop prompt can read. It holds
+ * in at least one run, or the check would never run. A `build-guard` check carries none:
+ * whether every guard check runs decides `build-guarded` (src/pipeline.js), from the run's
+ * selection alone.
+ * @param {object} entry
+ * @param {string} where
+ */
+function assertCheckCondition(entry, where) {
+  if (entry.when === undefined) {
+    return;
+  }
+  assertCondition(entry.when, where, CHECK_FACTS, new Map());
+  if (![true, false].some((sca) => mayRunInMode(entry, sca))) {
+    throw new Error(
+      `${where} has a \`when\` that holds in no run - the check would never run`
+    );
+  }
+  if (entry["build-guard"]) {
+    throw new Error(
+      `${where} is a \`build-guard\` check and carries a \`when\` - whether every guard ` +
+        "check runs decides `build-guarded`, from the run's selection alone"
+    );
+  }
 }
 
 /**
@@ -1293,7 +1322,7 @@ function assertResponse(entry, where) {
   }
   // A check that runs in ONE mode has no use for the other mode's wording, and authoring it
   // would leave text nothing can print. Both directions, because the reasons differ: one is
-  // read off the route, the other is declared.
+  // read off the route, the other off the check's condition.
   if (SCA_ONLY_INPUTS.has(entry.input)) {
     throw new Error(
       `${where} reads the source archive (\`input: ${entry.input}\`) but words its ` +
@@ -1301,12 +1330,15 @@ function assertResponse(entry, where) {
         `\`${MODE_RESPONSES.xpi}\` is text nothing can print. Word one \`response\` instead`
     );
   }
-  if (entry["skip-in-sca-review"]) {
-    throw new Error(
-      `${where} declares \`skip-in-sca-review\` but words its response per review mode - ` +
-        `the check runs only in an XPI review, so \`${MODE_RESPONSES.sca}\` is text ` +
-        "nothing can print. Word one `response` instead"
-    );
+  for (const sca of [true, false]) {
+    if (!mayRunInMode(entry, sca)) {
+      throw new Error(
+        `${where} runs only in ${sca ? "an XPI" : "a source code"} review (its \`when\`) but ` +
+          "words its response per review mode, so " +
+          `\`${sca ? MODE_RESPONSES.sca : MODE_RESPONSES.xpi}\` is text nothing can print. ` +
+          "Word one `response` instead"
+      );
+    }
   }
 }
 
@@ -2197,22 +2229,24 @@ export function checkSelected(id, { only, skip } = {}) {
  * @param {object} [opts]
  * @param {string[]} [opts.only]  If set, only these ids load.
  * @param {string[]} [opts.skip]  These ids are excluded.
- * @param {boolean} [opts.eslint]  The `--eslint` flag: an `eslint: true` check (code-sanity)
- *   loads only when set (eslintEligible). Gated here, before the import, so the eslint
- *   dependency is not pulled in when the check will not run.
+ * @param {boolean} [opts.eslint]  The `--eslint` flag, the `eslint` fact of a check's `when:`.
+ * @param {boolean} [opts.sca]  A source code review, the `sca` fact of a check's `when:`.
+ *   A check whose condition fails is not loaded (conditionEligible): gated here, before the
+ *   import, so code-sanity's eslint dependency is not pulled in when it will not run.
  * @returns {Promise<Map<string, LoadedCheck[]>>}  Phase -> its checks, in registry order.
  */
-export async function loadChecks(registry, { only, skip, eslint } = {}) {
+export async function loadChecks(registry, { only, skip, eslint, sca } = {}) {
+  const facts = checkFacts({ sca, eslint });
   const byPhase = new Map(Object.keys(PHASE_SECTIONS).map((p) => [p, []]));
   for (const entry of registry.checkEntries()) {
     const id = stem(entry.check);
     if (!checkSelected(id, { only, skip })) {
       continue;
     }
-    // The `--eslint` opt-in gate, applied HERE (unlike the mode gate, which gates in runChecks
-    // after the import): code-sanity top-level imports the eslint dependency, so skipping it
+    // The check's condition, applied HERE, before the import (the route's mode gate gates
+    // in runChecks): code-sanity top-level imports the eslint dependency, so skipping it
     // before the import below avoids loading eslint when it will not run.
-    if (!eslintEligible(entry, Boolean(eslint))) {
+    if (!conditionEligible(entry, facts)) {
       continue;
     }
     // `check:` is the check id; the module is rules/<id>.js (a stray trailing
@@ -2241,8 +2275,7 @@ export async function loadChecks(registry, { only, skip, eslint } = {}) {
       // its own, so the declared value above cannot answer for it.
       warningsAsErrors: registry.warningsAsErrors,
       input: entry.input,
-      "skip-in-sca-review":
-        entry["skip-in-sca-review"] === true ? true : undefined,
+      when: entry.when === undefined ? null : parseCondition(entry.when),
       section: registry.sectionFor(id),
       // The permission-prompts token entries: registry data every check carries, read by
       // the one that scans for them. It version-filters at run time (versionInBounds) with
@@ -2296,30 +2329,15 @@ export function formatNote(file, loc, item, verdict, label = "") {
 }
 
 /**
- * Whether a registry entry runs in the current review REVIEW_MODE.
+ * Whether a registry entry's ROUTE runs in the current review REVIEW_MODE: an `input` in
+ * SCA_ONLY_INPUTS names an artifact that exists only in a source-code-archive review
+ * (--sca-root), so such a check runs there and nowhere else. Nothing is declared for that
+ * case, so nothing can be declared wrongly. What a route cannot say is the check's condition
+ * (conditionEligible).
  *
- * Read from the ROUTE first: an `input` in SCA_ONLY_INPUTS names an artifact that exists
- * only in a source-code-archive review (--sca-root), so such a check runs there and nowhere
- * else. Nothing is declared for that case, so nothing can be declared wrongly.
- *
- * `skip-in-sca-review` says the one thing a route cannot: that the review TARGET must be the
- * built XPI. Two checks need that - xpi-lock-file-missing and xpi-lock-file-invalid ask what
- * pins a shipped vendored copy. Their route is `input: xpi`, the artifact they judge, but the
- * built XPI is analysed in BOTH modes, and only the review target has a vendor reading
- * (src/review/products.js). `input: source` would not say it either: it names the target
- * without saying which artifact that is. Nor is it the question their sca-side counterparts
- * ask: a source archive ships no copy and installs at build time, so its lock pins what will
- * be INSTALLED rather than what was shipped.
- *
- * It is for a check that genuinely cannot run on a source archive, never a way to exempt a
- * source archive's declared files from review: a declaration nothing verified exempts
- * nothing, and here the question does not disappear, it moves to the two sca lock checks.
- *
- * Named for the AXIS rather than for one side of it, like eslintEligible beside it: the flag
- * is deliberately one-sided, so the function that weighs it against the route must not be.
  * Exported because it IS the answer, not a step towards one: the pin that says where each
  * check runs has to ask the rule the review asks, or it pins a copy of the rule instead.
- * @param {{input?: string, "skip-in-sca-review"?: boolean}} entry
+ * @param {{input?: string}} entry
  * @param {boolean} inScaMode
  * @returns {boolean}
  */
@@ -2327,26 +2345,55 @@ export function modeEligible(entry, inScaMode) {
   if (SCA_ONLY_INPUTS.has(entry.input)) {
     return inScaMode;
   }
-  if (entry["skip-in-sca-review"]) {
-    return !inScaMode;
-  }
   return true;
 }
 
 /**
- * Whether a registry entry runs given the `--eslint` flag, per its `eslint` field:
- * `eslint: true` is opt-in - it runs only with `--eslint` - and an
- * omitted `eslint` runs always. Unlike the mode gate this is applied in loadChecks
- * (BEFORE the module import), because the sole `eslint: true` check (code-sanity) top-level
- * imports the heavy `eslint` dependency: gating it here skips that import when it will not run.
- * @param {{eslint?: boolean}} entry @param {boolean} inEslintMode
+ * Whether a registry entry runs given the run's facts, per its `when:` condition (over
+ * CHECK_FACTS): a check with none runs wherever its route does. It says what a route
+ * cannot. xpi-lock-file-missing and xpi-lock-file-invalid ask what pins a shipped vendored
+ * copy, so they run only where the review TARGET is the built XPI (`NOT sca`): their route
+ * is `input: xpi`, the artifact they judge, but the built XPI is analysed in both modes, and
+ * only the review target has a vendor reading (src/review/products.js). A source archive
+ * asks that question of the tree it installs, in the two sca lock checks. code-sanity runs
+ * only under --eslint (`eslint`).
+ *
+ * Exported for the same reason as modeEligible: the pins ask the rule the review asks.
+ * @param {{when?: string|object|null}} entry  As authored (a string) or loaded (parsed).
+ * @param {Set<string>} facts  The run's facts (checkFacts).
  * @returns {boolean}
  */
-function eslintEligible(entry, inEslintMode) {
-  if (entry.eslint === true) {
-    return inEslintMode;
+export function conditionEligible(entry, facts) {
+  if (entry.when === undefined || entry.when === null) {
+    return true;
   }
-  return true;
+  const tree =
+    typeof entry.when === "string" ? parseCondition(entry.when) : entry.when;
+  return holds(tree, facts);
+}
+
+/**
+ * The facts a check's condition reads in a run: each of CHECK_FACTS that holds.
+ * @param {{sca?: boolean, eslint?: boolean}} run
+ * @returns {Set<string>}
+ */
+export function checkFacts({ sca, eslint } = {}) {
+  return new Set(
+    [sca ? "sca" : null, eslint ? "eslint" : null].filter(Boolean)
+  );
+}
+
+/**
+ * Whether a check's condition lets it run in some review of this mode, under either value
+ * of every other fact.
+ * @param {object} entry
+ * @param {boolean} sca
+ * @returns {boolean}
+ */
+function mayRunInMode(entry, sca) {
+  return [true, false].some((eslint) =>
+    conditionEligible(entry, checkFacts({ sca, eslint }))
+  );
 }
 
 /**

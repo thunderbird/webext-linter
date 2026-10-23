@@ -261,8 +261,11 @@ A section it never asks for is inert.
   rejects an Experiment bundling an unsupported API draft (without `--allow-experiments`)
   and aborts the review, so no other check runs. Each case is decided in code, offline apart
   from the one-time vendor source fetch, and becomes either a finding or an escalation
-  of a case the code cannot settle. A check's `input` mostly settles where it runs, and
-  `skip-in-sca-review: true` keeps the few that judge the shipped XPI out of a source review.
+  of a case the code cannot settle. A check's `input` mostly settles where it runs, and a
+  check may carry a `when:` condition for what a route cannot say, over the facts known
+  before any check runs (`sca`, `eslint`), in the syntax the loop's steps use:
+  `when: NOT sca` keeps the two that judge the shipped XPI's own lock out of a source
+  review, and `when: eslint` runs `code-sanity` only under `--eslint`.
 - **`manual-checks`** - checks the tool can't make itself, surfaced as a todo list. Not
   a phase: the orchestrator never asks for this section.
 

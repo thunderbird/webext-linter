@@ -184,6 +184,16 @@ export const WORDED_BUILD_FACTS = [
  *  buildResultFact). */
 export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
 
+/** The facts a CHECK's `when:` condition can name (src/checks/registry.js loadChecks), all
+ *  known before any check runs:
+ *
+ *  - `sca`: a source code review;
+ *  - `eslint`: the run was given --eslint.
+ *
+ *  Never a loop fact or a --llm-skip-* flag: those shape what the loop hands out, and a
+ *  check's findings do not depend on them. */
+export const CHECK_FACTS = ["sca", "eslint"];
+
 /** The facts the review loop's `when:` conditions can name (src/checks/condition.js), and
  *  so what a step of it is printed under (stepsOf, src/report/phases.js):
  *

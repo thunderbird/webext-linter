@@ -101,16 +101,14 @@ shapes:
         A check that reads NO artifact - only the shared records, ctx.manifest and
         ctx.experiments - declares xpi, because both of those are the built XPI's:
         the route is then inert, and xpi is the artifact such a check is judging
-    skip-in-sca-review:
-      kind: gate
+    when:
+      kind: text
       why: >-
-        it keeps a check that judges the shipped XPI out of a source review - the one thing
-        a route cannot say, since `input: source` names the review target without saying
-        which artifact that is
-    eslint:
-      kind: gate
-      why: >-
-        it makes the check opt-in, run only under --eslint; leaving it out runs it always
+        the condition the check runs under, over the facts known before any check runs
+        (`sca`, `eslint`), in the syntax a prompt step's `when:` uses - for what a route
+        cannot say, such as a check that judges the shipped XPI and must stay out of a
+        source review (`NOT sca`), or one that runs only under --eslint (`eslint`).
+        Leaving it out runs the check wherever its route does
     build-guard:
       kind: gate
       why: >-

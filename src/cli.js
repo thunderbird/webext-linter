@@ -207,7 +207,7 @@ function helpText(checkIds) {
     ],
     [
       "--llm-skip-manual",
-      "With --llm-review or --llm-sca-review: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted early, which takes them out. The build question is still asked. Given with --llm-skip-summary, the review verifies only the add-on's code.",
+      "With --llm-review or --llm-sca-review: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted, which takes them out. The build question is still asked. Given with --llm-skip-summary, the review verifies only the add-on's code.",
     ],
     [
       "--llm-skip-sweep",

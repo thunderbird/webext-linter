@@ -106,6 +106,8 @@ import {
   assertRequiredSections,
   Registry,
   modeEligible,
+  conditionEligible,
+  checkFacts,
   ctxForRule,
 } from "../../src/checks/registry.js";
 import { finding, SEVERITY } from "../../src/report/finding.js";
@@ -826,8 +828,8 @@ test("unanalysable-file skips a script body the page declares as data", async ()
   assert.deepEqual((await unanalysableFile.run(allOf(ctx))).findings, []);
 });
 
-// The eslint gate (eslintEligible): code-sanity is eslint:true, so it loads ONLY with the
-// --eslint flag. Gated in loadChecks, before the import, so the eslint dependency is not
+// The eslint gate (conditionEligible): code-sanity runs under `when: eslint`, so it loads
+// ONLY with the --eslint flag. Gated in loadChecks, before the import, so the eslint dependency is not
 // pulled in when the check will not run.
 test("code-sanity is gated by the --eslint flag", async () => {
   const off = allChecks(await loadChecks(loadRegistry()));
@@ -842,19 +844,23 @@ test("code-sanity is gated by the --eslint flag", async () => {
   );
 });
 
-// The SCA mode gate (modeEligible): the build and dependency checks read the archive, so
-// their route keeps them to a source review, and the other routes run in both modes. Only
-// the two XPI lock checks declare `skip-in-sca-review`, and the flag is there for a check
-// that genuinely cannot run on a source archive - never to exempt a source archive's
-// declared files from review, which a declaration nothing verified cannot buy.
-test("where a check runs: the route says it, or the flag says what a route cannot", async () => {
+// The SCA mode gate: the build and dependency checks read the archive, so their route
+// (modeEligible) keeps them to a source review, and the other routes run in both modes.
+// Only the two XPI lock checks carry `when: NOT sca` (conditionEligible), and the condition
+// is there for a check that genuinely cannot run on a source archive - never to exempt a
+// source archive's declared files from review, which a declaration nothing verified cannot
+// buy.
+test("where a check runs: the route says it, or the condition says what a route cannot", async () => {
   const checks = allChecks(await loadChecks(loadRegistry()));
   const by = (id) => checks.find((x) => x.id === id);
   // Read the ANSWER, not one field: an input whose artifact exists only in a source
   // review already says "SCA only", and nothing is declared beside it to disagree with.
+  // Both gates the review asks, in both modes.
   const runsIn = (id) => {
     const c = by(id);
-    return [modeEligible(c, true), modeEligible(c, false)];
+    return [true, false].map(
+      (sca) => modeEligible(c, sca) && conditionEligible(c, checkFacts({ sca }))
+    );
   };
   const SCA_ONLY = [true, false];
   const XPI_ONLY = [false, true];
@@ -892,13 +898,13 @@ test("where a check runs: the route says it, or the flag says what a route canno
     assert.deepEqual(runsIn(id), SCA_ONLY, id);
   }
 
-  // Said by the FLAG, because no route says "the built XPI, only when it is the review
+  // Said by the CONDITION, because no route says "the built XPI, only when it is the review
   // target": `input: xpi` is analysed in both modes. The pinnability requirement is worded
   // per submission type, so its XPI half must NOT run on a source archive, which asks the
   // same question of the tree it installs instead. Two checks, because a range with no lock
   // and a range the committed lock does not cover have different remedies.
   assert.deepEqual(
-    checks.filter((c) => c["skip-in-sca-review"]).map((c) => c.id),
+    checks.filter((c) => c.when).map((c) => c.id),
     ["xpi-lock-file-missing", "xpi-lock-file-invalid"]
   );
   assert.deepEqual(runsIn("xpi-lock-file-missing"), XPI_ONLY);
@@ -921,7 +927,7 @@ test("where a check runs: the route says it, or the flag says what a route canno
     "eval-call",
     "unknown-api",
   ]) {
-    assert.equal(by(id)["skip-in-sca-review"], undefined, id);
+    assert.equal(by(id).when, null, id);
     assert.deepEqual(runsIn(id), BOTH, id);
   }
 });
@@ -1387,10 +1393,13 @@ test("the shape pass refuses a key no section declares, and names the near miss"
 
   // Unknown, and the separator/case slips a yaml typo actually takes.
   bad(withRule({ bogus: 1 }), /authors `bogus`, which nothing reads\./);
+  bad(withRule({ settle_verbs: ["cleared"] }), /did you mean `settle-verbs`\?/);
+  // The two gates a check's `when:` replaced are refused as keys nothing reads.
   bad(
-    withRule({ skip_in_sca_review: true }),
-    /did you mean `skip-in-sca-review`\?/
+    withRule({ "skip-in-sca-review": true }),
+    /authors `skip-in-sca-review`, which nothing reads\./
   );
+  bad(withRule({ eslint: true }), /authors `eslint`, which nothing reads\./);
   bad(
     withRule({ "INSTRUCTIONS-FOR-LLM": "x" }),
     /did you mean `instructions-for-llm`\?/
@@ -1399,7 +1408,7 @@ test("the shape pass refuses a key no section declares, and names the near miss"
   // because a missing `severity` and a misspelt one read the same to it.
   bad(withRule({ sevrity: "error" }), /did you mean `severity`\?/);
   // The message lists what the section does accept, so the author can see the vocabulary.
-  bad(withRule({ bogus: 1 }), /This section accepts: .*\bskip-in-sca-review\b/);
+  bad(withRule({ bogus: 1 }), /This section accepts: .*\bwhen\b/);
 
   // A route valid on a check, refused on a to-do item that runs nothing - the two shapes
   // declare `input` over their own vocabularies, so neither can borrow the other's.
@@ -1652,6 +1661,41 @@ test("an `input: all` check sweeps one tree per instruction it authors", async (
   ]);
 });
 
+// A check's `when:` is a condition over the facts known before any check runs, in the
+// syntax a prompt step's takes, and it is checked at load as a step's is: it parses, names
+// only those facts, reads no loop value, and holds in some run. A check a build relies on
+// carries none, since whether every such check runs decides `build-guarded`.
+test("a check's condition is checked at load", () => {
+  const rule = (extra) => ({
+    title: "X",
+    check: "sync-xhr",
+    severity: "error",
+    input: "source",
+    response: "r",
+    ...extra,
+  });
+  const load = (extra) => () =>
+    assertEntries(
+      new Registry({ "deterministic-phase": [rule(extra)] }),
+      "t.yaml"
+    );
+  load({ when: "NOT sca" })();
+  load({ when: "eslint AND NOT sca" })();
+  for (const [when, refused] of [
+    ["NOT", /has a `when` that does not parse/],
+    ["aborted", /is conditioned on `aborted`, which this prompt does not know/],
+    ["llm-skip-manual", /is conditioned on `llm-skip-manual`/],
+    ["value(built, unsafe)", /reads `value\(built, unsafe\)`/],
+    ["sca AND NOT sca", /has a `when` that holds in no run/],
+  ]) {
+    assert.throws(load({ when }), refused, when);
+  }
+  assert.throws(
+    load({ when: "sca", "build-guard": true }),
+    /is a `build-guard` check and carries a `when`/
+  );
+});
+
 // A check words its developer-facing response ONCE for both review modes (`response`) or
 // ONCE PER mode (`response-for-xpi` and `response-for-sca`). The forms are exclusive: a
 // mix leaves the entry unable to say which text a review prints, and the losing key rots.
@@ -1728,12 +1772,12 @@ test("a response worded per review mode is all-or-nothing, and never beside a ba
 
   // Absence already says false, so writing it says nothing twice.
   bad(
-    { "deterministic-phase": [rule({ "skip-in-sca-review": false })] },
+    { "deterministic-phase": [rule({ "review-downgrade": false })] },
     /which is what leaving it out already means/
   );
 
   // A check that runs in ONE mode has no use for the other's wording. Both directions: the
-  // route says one (the archive exists in no XPI review), the flag says the other.
+  // route says one (the archive exists in no XPI review), the condition the other.
   bad(
     {
       "deterministic-phase": [
@@ -1750,7 +1794,7 @@ test("a response worded per review mode is all-or-nothing, and never beside a ba
     {
       "deterministic-phase": [
         rule({
-          "skip-in-sca-review": true,
+          when: "NOT sca",
           "response-for-xpi": "x",
           "response-for-sca": "s",
         }),
@@ -1892,7 +1936,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "unused-permission",
     "update-url",
     // The XPI type's lock checks: they judge the shipped XPI's own package.json and lock,
-    // and skip-in-sca-review keeps them to a review whose target that XPI is.
+    // and `when: NOT sca` keeps them to a review whose target that XPI is.
     "xpi-lock-file-invalid",
     "xpi-lock-file-missing",
   ]);

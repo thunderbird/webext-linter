@@ -634,7 +634,7 @@ deterministic-phase:
   severity: info
   check: code-sanity
   input: source
-  eslint: true
+  when: eslint
   response: |-
     Static analysis flagged the following likely code error(s).
 
@@ -921,16 +921,16 @@ deterministic-phase:
 # and a lock was but it resolves nothing for that name. resolveVendor decides which
 # (classifyDeps), so a dependency is never reported by both.
 #
-# `input: xpi`, and skip-in-sca-review on both - the XPI type's half of the pinnability
+# `input: xpi`, and `when: NOT sca` on both - the XPI type's half of the pinnability
 # question. The route names the artifact they judge, the shipped XPI, but the XPI is reviewed
-# in both modes; the flag says the one thing a route cannot, that they run only when the XPI
-# is the review target. A source archive asks the question of the tree it installs instead
+# in both modes; the condition says the one thing a route cannot, that they run only when the
+# XPI is the review target. A source archive asks the question of the tree it installs instead
 # (sca-lock-file-missing / sca-lock-file-invalid).
 # Whether the SOURCE a declaration names is supported is a separate axis
 # (unsupported-dependency), which applies to both types.
 - title: Missing lock file for a ranged dependency
   severity: error
-  skip-in-sca-review: true
+  when: NOT sca
   check: xpi-lock-file-missing
   input: xpi
   response: |-
@@ -942,7 +942,7 @@ deterministic-phase:
 # thing that would settle it.
 - title: Dependency the lock file does not pin
   severity: error
-  skip-in-sca-review: true
+  when: NOT sca
   check: xpi-lock-file-invalid
   input: xpi
   response: |-

@@ -648,8 +648,8 @@ flowchart LR
 title: runChecks()
 ---
 flowchart TB
-  IN(["called by runPipeline() with<br/>registry · opts (only · skip · eslint) · siblings"]) --> LC["loadChecks()<br/>one list per phase section · the --eslint gate drops code-sanity before import (eslintEligible)"]
-  LC --> GATE["select the phase's eligible checks<br/>the mode gate reads ctx.mode; the --eslint gate ran in loadChecks"]
+  IN(["called by runPipeline() with<br/>registry · opts (only · skip · eslint · sca) · siblings"]) --> LC["loadChecks()<br/>one list per phase section · a check whose when: fails is dropped before import (conditionEligible)"]
+  LC --> GATE["select the phase's eligible checks<br/>the route's mode gate reads ctx.mode; the when: gate ran in loadChecks"]
   GATE --> RDET[["run the deterministic-phase"]]
 
   RDET --> COLL1

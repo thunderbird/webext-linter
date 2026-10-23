@@ -69,7 +69,7 @@ function projectCtx(env, { artifact, data }) {
     buildReview: data.buildReview,
     lockInstalls: data.lockInstalls,
     // "xpi" (a built add-on) or "sca" (a source-code archive review, --sca-root). Gates checks
-    // via modeEligible.
+    // via modeEligible (the route) and a check's `when:` (the `sca` fact).
     mode: env.mode,
     // The authoritative manifest.json and experiments are the SHIPPED artifact's (the built
     // XPI) - what Thunderbird actually loads. Explicit shared context like `schema`, so the
