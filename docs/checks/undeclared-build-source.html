@@ -24,15 +24,16 @@
       <p>
         Nothing in the files says for certain what a build <em>does</em>, so this check emits
         no finding of its own and
-        escalates EVERY source-code submission - one whose source documents no build at all
-        included - for its build to be read: does any step reach outside the declared
-        dependencies?
+        escalates EVERY source-code submission reviewed without an agent - one whose source
+        documents no build at all included - for its build to be read: does any step reach
+        outside the declared dependencies?
       </p>
       <p>
-        Under <code>--llm-review</code> the agent settles it in the <code>settle</code> phase.
-        The same question is screened before anything is built by the agent's safety
-        judgement and the reviewer's permission to build. In a review with no agent it is listed under
-        Extended Code Review, ahead of the build question. Whether the source then builds
+        It runs only in a review with no agent (<code>when: NOT llm-review</code>), where it
+        is a question for the reviewer, listed under Extended Manual Review beside the build
+        question. Under <code>--llm-review</code> the same question is asked by the agent's
+        build judgement and settled by the reviewer's answer to the build question, so this
+        check does not run there. Whether the source then builds
         into the shipped XPI is a question of its own
         (<a href="build-reproduces-xpi.html">Reproducing the XPI from the source</a>). Its
         reader judges the build from the instructions the source gives and the files they
@@ -46,7 +47,7 @@
 flowchart TD
   A["The build instructions<br/>and the files they run"] --> B{"a source-code<br/>submission?"}
   B -- no --> OK([nothing to review<br/>— an XPI submission has no build])
-  B -- yes --> M{"does any build step reach outside<br/>the declared dependencies?<br/>(agent in settle, or the reviewer)"}
+  B -- yes --> M{"does any build step reach outside<br/>the declared dependencies?<br/>(the reviewer, in a review with no agent)"}
   M -- no --> CL([cleared])
   M -- yes --> ERR([ERROR: undeclared build source<br/>the review is aborted])
 
@@ -62,8 +63,8 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told that every part of the build must come only from the dependencies
-        declared in the package file and lock file, never from a remote source.
+        The add-on is told that every part of the build must come from the submitted source or
+        the dependencies declared in the package file and lock file, and from nowhere else.
       </div>
 
       <div class="outcome">

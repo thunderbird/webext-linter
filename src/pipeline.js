@@ -736,6 +736,7 @@ async function reviewSubmission(opts, work, prepared) {
       skip: opts.checksSkip,
       eslint: opts.eslint,
       sca: mode.sca,
+      llmReview: Boolean(opts.llmReview),
     },
     siblings
   );

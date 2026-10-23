@@ -905,10 +905,22 @@ test("where a check runs: the route says it, or the condition says what a route 
   // and a range the committed lock does not cover have different remedies.
   assert.deepEqual(
     checks.filter((c) => c.when).map((c) => c.id),
-    ["xpi-lock-file-missing", "xpi-lock-file-invalid"]
+    [
+      "xpi-lock-file-missing",
+      "xpi-lock-file-invalid",
+      "undeclared-build-source",
+    ]
   );
   assert.deepEqual(runsIn("xpi-lock-file-missing"), XPI_ONLY);
   assert.deepEqual(runsIn("xpi-lock-file-invalid"), XPI_ONLY);
+  // The build review asks the reviewer of a review with no agent. In an agent review the
+  // build judgement and the reviewer's answer at `built` ask it, so it does not run there.
+  const build = by("undeclared-build-source");
+  assert.equal(conditionEligible(build, checkFacts({ sca: true })), true);
+  assert.equal(
+    conditionEligible(build, checkFacts({ sca: true, llmReview: true })),
+    false
+  );
 
   // Neither: these run in both modes. minified-code because a minified file is
   // non-authored and rejected whether it ships in a built XPI or sits in a source
@@ -978,7 +990,6 @@ test("every escalating check lands in the section its reader implies", async () 
       "strict-min-version-api",
       "trademark-thunderbird-locale",
       "unacceptable-package-content",
-      "undeclared-build-source",
       "unknown-api",
       "unused-files",
       "unused-permission",
@@ -988,6 +999,7 @@ test("every escalating check lands in the section its reader implies", async () 
       "experiment-manual-review",
       "native-messaging",
       "trademark-thunderbird-name",
+      "undeclared-build-source",
       "vendored-remote-resources",
     ],
   });
@@ -1681,12 +1693,14 @@ test("a check's condition is checked at load", () => {
     );
   load({ when: "NOT sca" })();
   load({ when: "eslint AND NOT sca" })();
+  load({ when: "NOT llm-review" })();
   for (const [when, refused] of [
     ["NOT", /has a `when` that does not parse/],
     ["aborted", /is conditioned on `aborted`, which this prompt does not know/],
     ["llm-skip-manual", /is conditioned on `llm-skip-manual`/],
     ["value(built, unsafe)", /reads `value\(built, unsafe\)`/],
     ["sca AND NOT sca", /has a `when` that holds in no run/],
+    ["llm-review AND NOT llm-review", /has a `when` that holds in no run/],
   ]) {
     assert.throws(load({ when }), refused, when);
   }

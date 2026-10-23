@@ -53,7 +53,7 @@ that no longer exist.
    `severity`, the `manual-checks` ones included - the loader refuses one that does not.
    EVERY entry declares an `input` too - a route for a check that runs, `none` for a
    by-hand one. Entries may also carry `when` (the condition a check runs under, over `sca`
-   and `eslint`, e.g. `NOT sca` or `eslint` - a page must say where its check runs), `sweep-instruction`
+   `eslint` and `llm-review`, e.g. `NOT sca` or `eslint` - a page must say where its check runs), `sweep-instruction`
    (the class of code the check cannot see, listed in the report's Standard Code Review
    section - or `sweep-instruction-for-xpi`/`sweep-instruction-for-sca` on `input: all`,
    which names no tree of its own and so says which per sweep), `default-note` (the marker a reported case carries when the reviewer wrote

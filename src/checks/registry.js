@@ -2231,12 +2231,16 @@ export function checkSelected(id, { only, skip } = {}) {
  * @param {string[]} [opts.skip]  These ids are excluded.
  * @param {boolean} [opts.eslint]  The `--eslint` flag, the `eslint` fact of a check's `when:`.
  * @param {boolean} [opts.sca]  A source code review, the `sca` fact of a check's `when:`.
+ * @param {boolean} [opts.llmReview]  An agent reviews, the `llm-review` fact.
  *   A check whose condition fails is not loaded (conditionEligible): gated here, before the
  *   import, so code-sanity's eslint dependency is not pulled in when it will not run.
  * @returns {Promise<Map<string, LoadedCheck[]>>}  Phase -> its checks, in registry order.
  */
-export async function loadChecks(registry, { only, skip, eslint, sca } = {}) {
-  const facts = checkFacts({ sca, eslint });
+export async function loadChecks(
+  registry,
+  { only, skip, eslint, sca, llmReview } = {}
+) {
+  const facts = checkFacts({ sca, eslint, llmReview });
   const byPhase = new Map(Object.keys(PHASE_SECTIONS).map((p) => [p, []]));
   for (const entry of registry.checkEntries()) {
     const id = stem(entry.check);
@@ -2377,22 +2381,28 @@ export function conditionEligible(entry, facts) {
  * @param {{sca?: boolean, eslint?: boolean}} run
  * @returns {Set<string>}
  */
-export function checkFacts({ sca, eslint } = {}) {
+export function checkFacts({ sca, eslint, llmReview } = {}) {
   return new Set(
-    [sca ? "sca" : null, eslint ? "eslint" : null].filter(Boolean)
+    [
+      sca ? "sca" : null,
+      eslint ? "eslint" : null,
+      llmReview ? "llm-review" : null,
+    ].filter(Boolean)
   );
 }
 
 /**
- * Whether a check's condition lets it run in some review of this mode, under either value
- * of every other fact.
+ * Whether a check's condition lets it run in some review of this mode, under any value of
+ * every other fact.
  * @param {object} entry
  * @param {boolean} sca
  * @returns {boolean}
  */
 function mayRunInMode(entry, sca) {
   return [true, false].some((eslint) =>
-    conditionEligible(entry, checkFacts({ sca, eslint }))
+    [true, false].some((llmReview) =>
+      conditionEligible(entry, checkFacts({ sca, eslint, llmReview }))
+    )
   );
 }
 

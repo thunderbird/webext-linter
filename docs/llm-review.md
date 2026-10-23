@@ -169,8 +169,11 @@ dependency-vulnerability checks, `lockfile-injection`, `lock-foreign-source` and
 by `--checks-only` / `--checks-skip`, nothing vouches for what an install pulls in, and the
 review opens at the build question, of a build the reviewer makes.
 
-`undeclared-build-source` and `build-lifecycle-hook` are still settled in `settle`, and
-reported there they still abort the review.
+`build-lifecycle-hook` is still settled in `settle`, and reported there it still aborts the
+review. `undeclared-build-source` does not run in a review with an agent (`when: NOT
+llm-review`): its question, whether the build uses anything other than the submitted source
+and the declared dependencies, is the one the build judgement and the reviewer's answer at
+`built` already settle.
 
 The build question is in a phase of its own so it is put to the reviewer ALONE - `ask`
 batches, and nobody may be asked to install an XPI in the same breath as being asked whether

@@ -1059,34 +1059,27 @@ deterministic-phase:
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # SCA only: the build review, anchored at the submission's package.json (src/build/analyze.js,
-# ctx.buildReview()). A build must not fetch or execute code/resources from an UNDECLARED external source (a raw URL,
-# curl|sh, a git clone of an unpinned repo, a CDN, a postinstall hook) - only installing the
-# declared dependencies (npm ci from node_modules, importing a declared package) is allowed.
-# Settled by the agent in `settle`. Under --llm-review the same question is screened before
-# anything is built by the build-safety judgement and the reviewer's permission to build, and
-# this check is what reports such a build. A plain review lists it under Extended Code
-# Review, ahead of the build question below.
+# ctx.buildReview()). A build must not fetch or execute code/resources from an UNDECLARED
+# external source (a raw URL, curl|sh, a git clone of an unpinned repo, a CDN, a postinstall
+# hook) - only installing the declared dependencies (npm ci from node_modules, importing a
+# declared package) is allowed. It asks the reviewer of a review with no agent, so a plain
+# report lists it under Extended Manual Review, beside the build question below. In an agent
+# review the build judgement and the reviewer's answer at `built` ask it, so it does not run
+# there (`when: NOT llm-review`).
 - title: Build process review
   severity: error
   check: undeclared-build-source
   review-downgrade: true
   input: sca
-  settle-verbs: [reported, cleared]
+  when: NOT llm-review
   review-late-exit: unreproducible-build
-  instructions-for-llm: |-
-    Read the build: the build instructions the source gives, package.json's
-    scripts, and every script, configuration file and file they run. Report it if
-    any step fetches or runs code or resources from outside the dependencies
-    declared in package.json/lock - a raw URL, curl/wget, a git clone of an
-    unpinned repo, a CDN, or an install hook that downloads. Clear it only when you
-    have accounted for every step.
   instructions-for-human: |-
     Read the build instructions the source gives, and the scripts and files they
     run, and confirm the build pulls ONLY from the dependencies declared in
     package.json/lock - no remote code or resources from a raw URL, curl/wget, a
     git clone of an unpinned repo, a CDN, or a postinstall hook.
   response: |-
-    The build must not fetch or execute code or resources from a remote source. Every part of the build must come only from the dependencies declared in package.json/lock (resolved from npm or the committed lock file).
+    Every part of the build must come from the submitted source or from the dependencies declared in package.json/lock (resolved from npm or the committed lock file), and from nowhere else.
 
 # SCA only: the build question, asked of every source review. Reproducing the build is the
 # reviewer's attestation that the shipped XPI comes from the source they read, which is what

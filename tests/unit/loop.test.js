@@ -1959,9 +1959,9 @@ function buildReview(dir) {
 }
 
 /**
- * The source review above, carrying the two build items every source review raises, as the
- * pipeline renders them: undeclared-build-source for the agent to settle, and the build
- * question, naming the phase it is asked in (`asked-in`).
+ * The source review above, carrying two build items as the pipeline renders them: an
+ * install hook (build-lifecycle-hook) for the agent to settle, and the build question,
+ * naming the phase it is asked in (`asked-in`).
  */
 function buildQuestionsReview(dir) {
   const made = buildReview(dir);
@@ -1979,9 +1979,9 @@ function buildQuestionsReview(dir) {
   });
   made.state.paths.scaRoot = path.join(dir, "src");
   made.state.manual.push(
-    todo("undeclared-build-source", {
+    todo("build-lifecycle-hook", {
       section: "code-review",
-      llmInstructions: "read the build",
+      llmInstructions: "read the hook",
       settleVerbs: ["reported", "cleared"],
     }),
     todo("build-reproduces-xpi", { section: "manual-review" })
@@ -2074,8 +2074,8 @@ test("a source review opens with the build, and its questions come before the sw
   const asked = handed.ask;
   assert.ok(!asked.includes("build-reproduces-xpi"), asked.join(", "));
   assert.ok(
-    handed.settle.includes("undeclared-build-source"),
-    "the agent settles the build sources"
+    handed.settle.includes("build-lifecycle-hook"),
+    "the agent settles the install hook"
   );
   assert.equal(settled.earlyExit, false);
 });
@@ -2286,15 +2286,15 @@ test("an unbuildable source skips the build phases, a buildable rejected one doe
   assert.equal(settled.earlyExit, true);
 });
 
-// undeclared-build-source is still settled in `settle`, after the build, and reported there
-// it still aborts the review.
-test("undeclared build sources reported in settle abort the review", () => {
+// An install hook is still settled in `settle`, after the build, and reported there it
+// still aborts the review.
+test("an install hook reported in settle aborts the review", () => {
   const made = buildQuestionsReview(tmp());
   const { seen, settled } = driveBuild(
     made,
     goesOn({
       settle: (e) =>
-        ruleAt(made, e.index) === "undeclared-build-source"
+        ruleAt(made, e.index) === "build-lifecycle-hook"
           ? "reported"
           : "cleared",
     })
@@ -2302,7 +2302,7 @@ test("undeclared build sources reported in settle abort the review", () => {
   assert.deepEqual(seen.slice(-3), ["spawn", "verify", "settle"]);
   assert.equal(settled.earlyExit, true);
   assert.ok(
-    settled.review.findings.some((f) => f.ruleId === "undeclared-build-source")
+    settled.review.findings.some((f) => f.ruleId === "build-lifecycle-hook")
   );
 });
 

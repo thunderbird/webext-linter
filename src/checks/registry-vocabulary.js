@@ -188,11 +188,13 @@ export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
  *  known before any check runs:
  *
  *  - `sca`: a source code review;
- *  - `eslint`: the run was given --eslint.
+ *  - `eslint`: the run was given --eslint;
+ *  - `llm-review`: an agent reviews (--llm-review, which a review a preparation starts and
+ *    one a downgrade restarts run as too).
  *
  *  Never a loop fact or a --llm-skip-* flag: those shape what the loop hands out, and a
  *  check's findings do not depend on them. */
-export const CHECK_FACTS = ["sca", "eslint"];
+export const CHECK_FACTS = ["sca", "eslint", "llm-review"];
 
 /** The facts the review loop's `when:` conditions can name (src/checks/condition.js), and
  *  so what a step of it is printed under (stepsOf, src/report/phases.js):

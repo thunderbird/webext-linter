@@ -214,12 +214,13 @@ may hold the real source beside the copy.
   submission), and any `package.json` install hook (`postinstall`, …) escalates and aborts
   the review once reported.
   Nothing in those files says for certain what the build **does**, so every source
-  submission raises two build items. `undeclared-build-source` (Extended Code Review) asks
-  whether the build pulls from the declared dependencies alone - no raw URL, `curl|sh`,
-  unpinned `git clone`, CDN or postinstall hook - for its reader to judge from the build
-  instructions and the files they run; under `--llm-review` the agent settles it in
-  `settle`.
-  `build-reproduces-xpi` (Extended Manual Review) asks the reviewer to build the add-on
+  submission raises two build items, both under Extended Manual Review.
+  `undeclared-build-source` asks whether the build pulls from the declared dependencies
+  alone - no raw URL, `curl|sh`, unpinned `git clone`, CDN or postinstall hook - for the
+  reviewer to judge from the build instructions and the files they run. It is asked only in
+  a review with no agent: under `--llm-review` the agent's build judgement and the
+  reviewer's answer to the build question ask the same.
+  `build-reproduces-xpi` asks the reviewer to build the add-on
   from the source and compare the result with the shipped XPI. Either of the two
   reported aborts the review. Under `--llm-review` a source review opens with its build,
   before the sweeps: the agent judges the build safe or unsafe where nothing was prepared,
@@ -262,9 +263,10 @@ A section it never asks for is inert.
   from the one-time vendor source fetch, and becomes either a finding or an escalation
   of a case the code cannot settle. A check's `input` mostly settles where it runs, and a
   check may carry a `when:` condition for what a route cannot say, over the facts known
-  before any check runs (`sca`, `eslint`), in the syntax the loop's steps use:
+  before any check runs (`sca`, `eslint`, `llm-review`), in the syntax the loop's steps use:
   `when: NOT sca` keeps the two that judge the shipped XPI's own lock out of a source
-  review, and `when: eslint` runs `code-sanity` only under `--eslint`.
+  review, `when: eslint` runs `code-sanity` only under `--eslint`, and
+  `when: NOT llm-review` asks `undeclared-build-source` only where no agent reviews.
 - **`manual-checks`** - checks the tool can't make itself, surfaced as a todo list. Not
   a phase: the orchestrator never asks for this section.
 

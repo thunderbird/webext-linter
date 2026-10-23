@@ -105,7 +105,7 @@ shapes:
       kind: text
       why: >-
         the condition the check runs under, over the facts known before any check runs
-        (`sca`, `eslint`), in the syntax a prompt step's `when:` uses - for what a route
+        (`sca`, `eslint`, `llm-review`), in the syntax a prompt step's `when:` uses - for what a route
         cannot say, such as a check that judges the shipped XPI and must stay out of a
         source review (`NOT sca`), or one that runs only under --eslint (`eslint`).
         Leaving it out runs the check wherever its route does

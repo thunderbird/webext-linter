@@ -1143,6 +1143,45 @@ test("SCA e2e: a build script outside the source is reviewed by undeclared-build
   }
 });
 
+// The build review asks the reviewer of a review with no agent, as a question only a person
+// answers. In an agent review the build judgement and the reviewer's answer at `built` ask
+// it, so the check does not run there and no case of it reaches `settle`.
+test("SCA: the build review runs only where no agent reviews", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir(SRC_FILES);
+  const work = freshWorkFolder();
+  try {
+    const plain = await runReview({
+      addonPath: xpi,
+      scaRoot: src,
+      ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
+    });
+    assert.ok(plain.meta.checksRun.includes("undeclared-build-source"));
+    const asked = plain.meta.manualReview.find(
+      (m) => m.ruleId === "undeclared-build-source"
+    );
+    assert.equal(asked?.section, "manual-review");
+
+    const agent = await runReview({
+      addonPath: xpi,
+      scaRoot: src,
+      workFolder: work,
+      llmReview: true,
+      ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
+    });
+    assert.ok(!agent.meta.checksRun.includes("undeclared-build-source"));
+    const state = readState(workPaths(work).state);
+    assert.ok(
+      !state.manual.some((m) => m.ruleId === "undeclared-build-source"),
+      "no case of it is put to the agent"
+    );
+  } finally {
+    [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+  }
+});
+
 // The deterministic build-policy checks run offline over the build files (outside the
 // review source): an .npmrc registry redirect is a Build registry override reject.
 test("SCA e2e: a redirected registry is flagged offline", async () => {
