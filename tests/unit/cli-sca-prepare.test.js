@@ -131,7 +131,10 @@ test("the hand-back that finishes the preparation starts the review", () => {
   assert.equal(readJson(work, "prepare").step, "done");
   const { meta } = readJson(work, "state").report;
   assert.equal(meta.xpi, path.join(dir, "addon.xpi"));
-  assert.equal(meta.scaBuild, path.join(work, "sca"));
+  assert.deepEqual(meta.scaFolders, {
+    extracted: path.join(work, "sca"),
+    build: path.join(work, "sca"),
+  });
   assert.deepEqual(meta.checksRun, ["unused-files"]);
   // From here on the folder holds a review, and its hand-back is a pass of the loop.
   const next = run(["--llm-handback", work]);
@@ -153,7 +156,6 @@ test("a reviewer who builds it themselves starts a review they build for", () =>
   assert.equal(readJson(work, "prepare").packageManagers, false);
   assert.deepEqual(readJson(work, "state").build, {
     result: null,
-    root: null,
     output: null,
     match: null,
     vulnerabilities: { moderate: 0, high: 0, critical: 0 },
@@ -225,7 +227,7 @@ test("the preparation records the flags its review is started with", () => {
   handBackRoots(exp.stdout, { experimentsFolder: "experiment" });
   const work = workOf(exp.stdout);
   assert.equal(
-    readJson(work, "state").report.meta.scaExperiments,
+    readJson(work, "state").report.meta.scaFolders.experiments,
     path.join(work, "sca", "experiment")
   );
   fs.rmSync(dir, { recursive: true, force: true });
@@ -373,7 +375,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
   refusedFor(
     "no roots",
     { roots: null },
-    /The hand-back was refused: the preparation's record names no settled build folder\. /
+    /The hand-back was refused: the preparation's record holds no extracted copy and build folder of the shape the linter writes\. /
   );
   refusedFor(
     "no submission",
@@ -381,14 +383,12 @@ test("a prepared review refuses a record it cannot start from", (t) => {
     /The hand-back was refused: the preparation's record names no submission to review\. /
   );
   refusedFor(
-    "neither",
-    { roots: null, submission: { xpi: "", experiments: false } },
-    /The hand-back was refused: the preparation's record names no submission to review and no settled build folder\. /
-  );
-  refusedFor(
     "a root that is gone",
     (work) => ({
-      roots: { scaBuild: path.join(work, "sca", "gone"), scaExperiments: null },
+      roots: {
+        extracted: path.join(work, "sca"),
+        build: path.join(work, "sca", "gone"),
+      },
     }),
     /The hand-back was refused: the preparation's record names a build folder ".*gone" that is not a folder inside /
   );
@@ -396,7 +396,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
   // so each root is followed to where it really is, and must still be where it was put.
   refusedFor(
     "a root that is the work folder itself",
-    (work) => ({ roots: { scaBuild: work, scaExperiments: null } }),
+    (work) => ({ roots: { extracted: path.join(work, "sca"), build: work } }),
     /The hand-back was refused: the preparation's record names a build folder ".*" that is not a folder inside ".*[/]sca"/
   );
   refusedFor(
@@ -404,7 +404,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
     (work) => {
       const link = path.join(work, "sca", "out");
       fs.symlinkSync(fs.mkdtempSync(path.join(os.tmpdir(), "wl-out-")), link);
-      return { roots: { scaBuild: link, scaExperiments: null } };
+      return { roots: { extracted: path.join(work, "sca"), build: link } };
     },
     /The hand-back was refused: the preparation's record names a build folder ".*out" that is not a folder inside /
   );
@@ -413,8 +413,10 @@ test("a prepared review refuses a record it cannot start from", (t) => {
     (work) => {
       const link = path.join(work, "sca", "exp");
       fs.symlinkSync(fs.mkdtempSync(path.join(os.tmpdir(), "wl-out-")), link);
+      const sca = path.join(work, "sca");
       return {
-        roots: { scaBuild: path.join(work, "sca"), scaExperiments: link },
+        submission: { ...readPrepare(work).submission, experiments: true },
+        roots: { extracted: sca, build: sca, experiments: link },
       };
     },
     /The hand-back was refused: the preparation's record names an Experiment folder ".*exp" that is not a folder inside /
@@ -427,7 +429,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
       fs.cpSync(sca, moved, { recursive: true });
       fs.rmSync(sca, { recursive: true });
       fs.symlinkSync(moved, sca);
-      return { roots: { scaBuild: sca, scaExperiments: null } };
+      return { roots: { extracted: sca, build: sca } };
     },
     /The hand-back was refused: ".*[/]sca" is not the folder the source was extracted into/
   );
@@ -503,7 +505,7 @@ test("the hand-back starts the review of an unrescued source, which is aborted l
       ],
     }),
   });
-  assert.equal(record.roots.scaBuild, workPaths(work).sca, "the rescue failed");
+  assert.equal(record.roots.build, workPaths(work).sca, "the rescue failed");
   const started = run(["--llm-handback", work]);
   assert.notEqual(started.code, 2, started.stdout + started.stderr);
   assert.match(started.stdout, /── LLM Prompt ──/);
@@ -524,12 +526,14 @@ test("the hand-back starts the review of an unrescued source, which is aborted l
     assert.ok(r.stdout.includes(row), `${row}\n${r.stdout}`);
   }
   const state = readJson(work, "state");
-  assert.equal(
-    state.paths.scaBuildOrig,
-    null,
+  assert.ok(
+    !Object.hasOwn(state.paths, "scaBuildOrig"),
     "the source archive is reviewed"
   );
-  assert.equal(state.build.root, null, "nothing of the rescue was built");
+  assert.ok(
+    !Object.hasOwn(state.build, "root"),
+    "nothing of the rescue was built"
+  );
   const { findings } = state.report;
   assert.ok(findings.some((f) => f.ruleId === "vendor-vulnerable-indirect"));
   assert.ok(!findings.some((f) => f.ruleId === "build-fails"));
@@ -592,11 +596,12 @@ test("a review of a source the agent built opens on its Build Review Details", a
     safety: "safe",
     safe: true,
   });
-  assert.equal(state.paths.scaBuildOrig, null);
+  assert.ok(!Object.hasOwn(state.paths, "scaBuildOrig"));
   const rows = [
     `* XPI_FILE: [xpi](${path.join(fixture, "xpi")})`,
+    `* SCA_EXTRACTED: [source archive](${workPaths(work).sca})`,
     "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
-    `* SCA_BUILD: [source archive](${workPaths(work).sca})`,
+    `* SCA_BUILD: [build folder](${workPaths(work).sca})`,
     "* SCA_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
     `* LLM_BUILD_OUTPUT: [dist](${record.buildOutput})`,
     "* LLM_BUILD_RESULT: build succeeded",

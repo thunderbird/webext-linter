@@ -15,9 +15,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runPipeline } from "../src/pipeline.js";
-import { relativeInside } from "../src/addon/load.js";
-import { settleScaBuild } from "../src/addon/sca-build.js";
-import { workPaths } from "../src/util/dest.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
 import { formatReview } from "../src/report/format.js";
 import {
@@ -192,7 +189,8 @@ function preparationEntries(preparation) {
  * @param {string} dir  The fixture.
  * @param {{from?: string, rescued?: boolean}} preparation
  * @param {string} cache
- * @returns {Promise<{workFolder: string, scaExtracted: string, scaBuild: string}>}
+ * @returns {Promise<{workFolder: string,
+ *   scaFolders: import("../src/addon/sca-build.js").ScaFolders}>}
  */
 async function preparedFixture(dir, preparation, cache) {
   const at = await realPreparation({
@@ -204,18 +202,9 @@ async function preparedFixture(dir, preparation, cache) {
           fs.cpSync(path.join(dir, "src"), copyRoot, { recursive: true })
       : null,
   });
-  // The extracted source is the copy the root sits in, as the hand-back names it (src/cli.js
-  // preparedReview): the rescued one where a rescue came out clean, else `sca/`.
-  const { sca, rescued } = workPaths(at.work);
-  const scaBuild = at.record.roots.scaBuild;
-  const inRescued =
-    fs.existsSync(rescued) &&
-    relativeInside(scaBuild, fs.realpathSync(rescued)) !== null;
-  return {
-    workFolder: at.work,
-    scaExtracted: fs.realpathSync(inRescued ? rescued : sca),
-    scaBuild,
-  };
+  // The folders as the record holds them, which the hand-back starts the review with (src/cli.js
+  // preparedReview): the rescued copy where a rescue came out clean, else `sca/`.
+  return { workFolder: at.work, scaFolders: at.record.roots };
 }
 
 // A fixture is an SCA (source-code archive) review when it holds two artifacts as
@@ -373,30 +362,38 @@ async function main() {
       let { workFolder } = base;
       let review;
       if (isScaFixture(dir)) {
-        // SCA mode: the shipped XPI is the authoritative artifact (addonPath), the src/ tree
-        // is the submitted archive (scaExtracted), which the review reads whole, and the review
-        // finds the build folder inside it, as it does for a command line naming no
-        // --sca-build. Where the Experiment sits inside the archive comes from the spec's "sca"
-        // block. Named absolutely, like every other path opt, since that is what the arg reader
-        // hands the pipeline.
-        let scaExtracted = path.join(dir, "src");
-        let scaBuild = settleScaBuild({ scaBuild: scaExtracted }).scaBuild;
+        // SCA mode: the shipped XPI is the authoritative artifact (addonPath), and the src/
+        // tree is the submitted archive (--sca-extracted), which the review reads whole. The
+        // folders are worked out the way a command line naming no --sca-build has them worked
+        // out (src/cli.js scaFoldersOf), the Experiment folder from the spec's "sca" block.
+        let scaFolders;
+        let scaMoved = {};
         if (preparation) {
-          ({ workFolder, scaExtracted, scaBuild } = await preparedFixture(
+          ({ workFolder, scaFolders } = await preparedFixture(
             dir,
             preparation,
             workCache
           ));
+        } else {
+          const opts = pipelineOptsFromArgv([
+            ...argv,
+            "--sca-extracted",
+            path.join(dir, "src"),
+            ...(sca.experimentsFolder
+              ? ["--sca-experiments", sca.experimentsFolder]
+              : []),
+          ]);
+          scaFolders = opts.scaFolders;
+          scaMoved = opts.scaMovedFrom
+            ? { scaMovedFrom: opts.scaMovedFrom }
+            : {};
         }
-        const inRoot = (value) =>
-          value ? path.join(scaExtracted, value) : undefined;
         review = await runPipeline({
           ...base,
           workFolder,
           addonPath: path.join(dir, "xpi"),
-          scaExtracted,
-          ...(preparation ? { scaBuild } : {}),
-          scaExperiments: inRoot(sca.experimentsFolder),
+          scaFolders,
+          ...scaMoved,
         });
       } else {
         // XPI mode: the fixture folder IS the add-on, and the pipeline loads it - the

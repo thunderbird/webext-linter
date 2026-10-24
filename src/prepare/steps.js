@@ -182,8 +182,9 @@ export function startPreparation(work, record) {
  */
 export function asksExperiments(record) {
   return (
+    record.step === PREPARE_STEP.analyze &&
     record.submission.experiments &&
-    typeof record.roots?.scaExperiments !== "string"
+    !Object.hasOwn(record.roots, "experiments")
   );
 }
 
@@ -367,12 +368,9 @@ export async function handBack(work, registry = loadRegistry()) {
  * @throws {HandbackRefused}
  */
 function unpacked(work, record) {
-  const { scaBuild } = settleScaBuild({ scaBuild: realSca(workPaths(work)) });
-  const analyzing = {
-    ...record,
-    step: PREPARE_STEP.analyze,
-    roots: { scaBuild, scaExperiments: null },
-  };
+  const extracted = realSca(workPaths(work));
+  const { folders } = settleScaBuild({ extracted, build: extracted });
+  const analyzing = { ...record, step: PREPARE_STEP.analyze, roots: folders };
   return ask(work, analyzing, analyzeEntries(analyzing));
 }
 
@@ -575,14 +573,13 @@ function builtOriginal(work, record, asked, match) {
  * reader can correct the file and hand it back again.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `analyze`, its build folder known.
- * @returns {{roots: {scaBuild: string, scaExperiments: ?string},
+ * @returns {{roots: import("../addon/sca-build.js").ScaFolders,
  *   buildIssues: {file: string, line: ?number, hint: string}[]}}
  * @throws {HandbackRefused}
  */
 function analyzedAnswers(work, record) {
   const keyOf = (e) => String(e?.index);
   const all = readHandback(workPaths(work).review).entries;
-  const root = record.roots.scaBuild;
   const buildIssues = buildIssuesOf(
     all.find((e) => keyOf(e) === SCA_BUILD_SAFETY_ISSUES),
     realSca(workPaths(work))
@@ -604,32 +601,27 @@ function analyzedAnswers(work, record) {
     { name: "analyze", answer: "words" },
     keyOf
   ).get(EXPERIMENTS);
-  // Named relative to the extracted archive, which the build analysis reads whole.
-  const extracted = realSca(workPaths(work));
+  // Named relative to the extracted archive, which the build analysis reads whole: the
+  // record's, which must still be `sca/` itself, not a link put in its place.
+  const { extracted } = record.roots;
+  if (realSca(workPaths(work)) !== extracted) {
+    throw new HandbackRefused(
+      `"${workPaths(work).sca}" is no longer the folder the source was extracted into`
+    );
+  }
   const exp = realFolder(path.resolve(extracted, answer.trim()));
   if (!exp || relativeInside(exp, extracted) === null) {
     throw new HandbackRefused(
       `${EXPERIMENTS} "${displayLine(answer)}" is not a folder inside "${extracted}"`
     );
   }
-  let settled;
   try {
-    settled = settleScaBuild({
-      scaExtracted: extracted,
-      scaBuild: root,
-      scaExperiments: exp,
-    });
+    const { folders } = settleScaBuild({ ...record.roots, experiments: exp });
+    return { roots: folders, buildIssues };
   } catch (err) {
     rethrowIfFatal(err);
     throw new HandbackRefused(err.message);
   }
-  return {
-    roots: {
-      scaBuild: settled.scaBuild,
-      scaExperiments: settled.scaExperiments ?? null,
-    },
-    buildIssues,
-  };
 }
 
 /**
@@ -714,50 +706,53 @@ function buildGuarded(record, registry) {
  * The folders a review is started with, asked again of the folder it starts in: the agent
  * works there between the step that settled them and the start, and can swap a folder for
  * a link. So each is followed to the folder it really is, and must still be one where the
- * preparation put it - the build folder inside `sca/`, or inside `rescued/` for a rescued
- * copy, and the Experiment folder inside that same copy.
+ * preparation put it - the extracted copy `sca/`, or `rescued/` for a rescued copy, and the
+ * build and Experiment folders inside that copy.
  * @param {string} work  The work folder the review starts in.
- * @param {{scaBuild: string, scaExperiments: ?string}} roots  As the record holds them.
- * @returns {{scaBuild: string, scaExperiments: ?string}}  The real folders, which the review
+ * @param {import("../addon/sca-build.js").ScaFolders} roots  As the record holds them.
+ * @returns {import("../addon/sca-build.js").ScaFolders}  The real folders, which the review
  *   reads.
  * @throws {HandbackRefused}
  */
 export function recordedRoots(work, roots) {
-  const sca = realSca(workPaths(work));
-  const root = realFolder(roots.scaBuild);
-  if (!root || !(relativeInside(root, sca) !== null || inCopy(work, root))) {
+  const paths = workPaths(work);
+  const sca = realSca(paths);
+  const extracted = realFolder(roots.extracted);
+  if (extracted !== sca && extracted !== realFolder(paths.rescued)) {
     throw new HandbackRefused(
-      `the preparation's record names a build folder "${displayLine(roots.scaBuild)}" ` +
-        `that is not a folder inside "${sca}" or its rescued copy`
+      `the preparation's record names an extracted copy "${displayLine(roots.extracted)}" ` +
+        `that is neither "${sca}" nor its rescued copy`
     );
   }
-  if (typeof roots.scaExperiments !== "string") {
-    return { scaBuild: root, scaExperiments: null };
-  }
-  // The copy the build folder lies in, which the review reads whole.
-  const copy = inCopy(work, root) ? realFolder(workPaths(work).rescued) : sca;
-  const exp = realFolder(roots.scaExperiments);
-  if (!exp || relativeInside(exp, copy) === null) {
-    throw new HandbackRefused(
-      "the preparation's record names an Experiment folder " +
-        `"${displayLine(roots.scaExperiments)}" that is not a folder inside "${copy}"`
-    );
-  }
-  return { scaBuild: root, scaExperiments: exp };
+  const inside = (key, what) => {
+    const real = realFolder(roots[key]);
+    if (!real || relativeInside(real, extracted) === null) {
+      throw new HandbackRefused(
+        `the preparation's record names ${what} "${displayLine(roots[key])}" ` +
+          `that is not a folder inside "${extracted}"`
+      );
+    }
+    return real;
+  };
+  return {
+    extracted,
+    build: inside("build", "a build folder"),
+    ...(Object.hasOwn(roots, "experiments")
+      ? { experiments: inside("experiments", "an Experiment folder") }
+      : {}),
+  };
 }
 
 /**
- * Whether `root` lies in the work folder's rescued copy - which is how a record says its
- * review reads the copy: a rescue that came out clean leaves its roots there, and every other
- * record names `sca/`.
- * @param {string} work
- * @param {?string} root
- * @returns {boolean}
+ * Every folder of `roots` mapped by `to`, the Experiment folder only where it is there.
+ * @param {import("../addon/sca-build.js").ScaFolders} roots
+ * @param {(folder: string) => string} to
+ * @returns {import("../addon/sca-build.js").ScaFolders}
  */
-function inCopy(work, root) {
-  const copy = realFolder(workPaths(work).rescued);
-  const real = root ? realFolder(root) : null;
-  return copy !== null && real !== null && relativeInside(real, copy) !== null;
+function mapFolders(roots, to) {
+  return Object.fromEntries(
+    Object.entries(roots).map(([key, folder]) => [key, to(folder)])
+  );
 }
 
 /**
@@ -827,19 +822,14 @@ function done(work, record) {
 function rescue(work, record, asked, match) {
   const { sca: from, rescued: to } = workPaths(work);
   const real = fs.realpathSync(from);
-  const into = (p) => (p ? path.join(to, path.relative(real, p)) : p);
+  const into = (p) => path.join(to, path.relative(real, p));
   wholeCopy(from, to, "rescued copy");
   return ask(
     work,
     {
       ...record,
       step: PREPARE_STEP.rescue,
-      roots: {
-        scaBuild: fs.realpathSync(into(record.roots.scaBuild)),
-        scaExperiments: record.roots.scaExperiments
-          ? fs.realpathSync(into(record.roots.scaExperiments))
-          : null,
-      },
+      roots: mapFolders(record.roots, (p) => fs.realpathSync(into(p))),
     },
     buildEntries(asked, match)
   );
@@ -851,20 +841,18 @@ function rescue(work, record, asked, match) {
  * there, and the folders given inside it mapped to their place in the copy. From here on the
  * preparation reads only the copy.
  * @param {string} work  The work folder, just created.
- * @param {{extracted: string, scaBuild: string, scaExperiments: ?string}} given  Absolute and
- *   real: the extracted source, and the build and Experiment folders inside it.
- * @returns {{scaBuild: string, scaExperiments: ?string}}
+ * @param {import("../addon/sca-build.js").ScaFolders} given  Absolute and real: the
+ *   extracted source, and the build and Experiment folders inside it.
+ * @returns {import("../addon/sca-build.js").ScaFolders}  The same folders in the copy.
  * @throws {Error}  The copy could not be made.
  */
 export function copySource(work, given) {
   const { sca } = workPaths(work);
   wholeCopy(given.extracted, sca, "source copy");
   const real = fs.realpathSync(sca);
-  const inCopy = (p) => path.join(real, path.relative(given.extracted, p));
-  return {
-    scaBuild: inCopy(given.scaBuild),
-    scaExperiments: given.scaExperiments ? inCopy(given.scaExperiments) : null,
-  };
+  return mapFolders(given, (p) =>
+    path.join(real, path.relative(given.extracted, p))
+  );
 }
 
 /**
@@ -929,16 +917,12 @@ async function rescueStep(work, record, context, asked, match) {
     });
   }
   const real = fs.realpathSync(rescued);
-  const back = (p) =>
-    p ? path.join(fs.realpathSync(sca), path.relative(real, p)) : p;
+  const back = (p) => path.join(fs.realpathSync(sca), path.relative(real, p));
   const failed = markPrepare(work, {
     ...record,
     rescuedVulnerabilities,
     step: PREPARE_STEP.done,
-    roots: {
-      scaBuild: back(record.roots.scaBuild),
-      scaExperiments: back(record.roots.scaExperiments),
-    },
+    roots: mapFolders(record.roots, back),
     buildResult: BUILD_RESULT.rescueFailed,
     buildOutput: null,
     buildMatch: null,
@@ -992,7 +976,7 @@ function producedIn(answer, phase, copy) {
 function doneAgain(work, record) {
   if (record.buildResult === BUILD_RESULT.rescueFailed) {
     removeRescue(work);
-  } else if (!inCopy(work, record.roots?.scaBuild)) {
+  } else if (record.roots.extracted !== realFolder(workPaths(work).rescued)) {
     fs.rmSync(workPaths(work).rescued, { recursive: true, force: true });
   }
   return { next: "review", work, record: markPrepare(work, record) };

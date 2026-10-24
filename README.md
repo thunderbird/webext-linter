@@ -126,7 +126,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | --- | --- |
 | `--sca-extracted <folder>` | The **extracted** source archive, all of it - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode, and is what the review reads as the source: every path the report names is relative to it. Every other `--sca-*` folder lies inside it, and it must not include the add-on. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
 | `--sca-build <folder>` | The build folder inside `--sca-extracted`: the folder holding `package.json` and its lock file (`package-lock.json` or `pnpm-lock.yaml`), where the build runs and the package file and the lock are read. Left out, the linter finds it. Needs `--sca-extracted`. |
-| `--sca-experiments <path>` | The Experiment implementation folder, **inside** `--sca-extracted`, anywhere in it, relative to it or absolute. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission checks. Needs `--sca-extracted`, and is required for an Experiment. |
+| `--sca-experiments <path>` | The Experiment implementation folder, **inside** `--sca-extracted`, anywhere in it, relative to it or absolute. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission checks. Needs `--sca-extracted`, and is required for an Experiment and refused for any other add-on. |
 
 **Other:**
 

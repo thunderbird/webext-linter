@@ -30,7 +30,6 @@ const envWith = (over = {}) => ({
   schema: { s: 1 },
   options: {},
   mode: REVIEW_MODE.XPI,
-  scaExperiments: undefined,
   manifest: noManifest(),
   experiments: null,
   previous: null,
@@ -120,10 +119,7 @@ test("buildXpiCtx carries the XPI's own sources", async () => {
   const withPaths = buildXpiCtx(
     xpi,
     dataFor(xpi, xpiParsed),
-    envWith({
-      mode: REVIEW_MODE.SCA,
-      scaExperiments: "/r/src/experiments",
-    })
+    envWith({ mode: REVIEW_MODE.SCA })
   );
   assert.equal(withPaths.scaExperiments, undefined);
 });

@@ -1,5 +1,8 @@
 {
-  "_comment": "A source code submission that keeps a vendored library and a build script inside the folder --sca-experiments names. That folder is split out of the archive's files so the WebExtension checks (API, permission, eval) do not read privileged code - but the vendor pass is a question about EVERY file the submission holds, so it reads it too (withExperiment). What pins that: the VENDORS.md entry for experiment/lib/thing.js resolves, so there is no missing-vendor-file, and the declared library gets the same audit as any other - its GitHub source cannot be OSV-audited, so vendor-vuln-unknown reports it. The xpi/ carries no Experiment declaration: the split is the flag's doing alone, and bg.js loads the library so nothing in the XPI reads as unused.",
+  "_comment": "A source code submission that keeps a vendored library and a build script inside the folder --sca-experiments names. That folder is split out of the archive's files so the WebExtension checks (API, permission, eval) do not read privileged code - but the vendor pass is a question about EVERY file the submission holds, so it reads it too (withExperiment). What pins that: the VENDORS.md entry for experiment/lib/thing.js resolves, so there is no missing-vendor-file, and the declared library gets the same audit as any other - its GitHub source cannot be OSV-audited, so vendor-vuln-unknown reports it. The xpi/ declares an Experiment, as --sca-experiments needs, and bg.js loads the library so nothing in the XPI reads as unused.",
+  "options": {
+    "--allow-experiments": true
+  },
   "sca": {
     "experimentsFolder": "experiment"
   },

@@ -140,7 +140,6 @@ function review(
         // The roots an entry's paths are resolved against (handback.js entriesFor). The
         // state carries both; without xpiRoot the loop would hand out relative paths.
         xpiRoot: "/tmp/work/xpi/",
-        scaBuild: null,
         // Each tree's sweep request and answers file, which is also what says WHICH trees
         // were asked. The request is printed by the step, and the answers file is the one
         // this loop opens.
@@ -539,17 +538,19 @@ test("the build details name the XPI, the source, the report, the judgement, the
   const { state, work } = scaReview(dir);
   state.report.meta.xpi = path.join(dir, "addon-1.0.xpi");
   state.report.meta.xpiFile = "addon-1.0.xpi";
-  state.paths.scaBuild = path.join(dir, "rescued", "src");
-  state.report.meta.scaBuild = state.paths.scaBuild;
+  const rescuedSrc = path.join(dir, "rescued", "src");
+  state.paths.scaFolders = { extracted: rescuedSrc, build: rescuedSrc };
+  state.report.meta.scaFolders = state.paths.scaFolders;
   state.paths.build = path.join(dir, "build.md");
   state.report.meta.buildFile = state.paths.build;
   const rows = () =>
     loopSlots(state, {}, work, REGISTRY).buildDetails.split("\n");
   const xpi = `* XPI_FILE: [addon-1.0.xpi](${state.report.meta.xpi})`;
   const unpacked = `* XPI_ROOT: [extracted addon](${state.report.meta.xpiRoot})`;
-  const root = `* SCA_BUILD: [source archive](${state.paths.scaBuild})`;
+  const extracted = `* SCA_EXTRACTED: [source archive](${rescuedSrc})`;
+  const root = `* SCA_BUILD: [build folder](${rescuedSrc})`;
   const report = `* SCA_BUILD_PROCESS: [build.md](${state.paths.build})`;
-  assert.deepEqual(rows(), [xpi, unpacked, root]);
+  assert.deepEqual(rows(), [xpi, unpacked, extracted, root]);
   state.products = ["build"];
   state.build = {
     result: "built",
@@ -561,6 +562,7 @@ test("the build details name the XPI, the source, the report, the judgement, the
   assert.deepEqual(rows(), [
     xpi,
     unpacked,
+    extracted,
     report,
     "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
     root,
@@ -603,59 +605,68 @@ test("the build details show the agent's comparison only beside its output", () 
 test("the details name the reviewed root, the original root and the build root", () => {
   const dir = tmp();
   const { state, work } = scaReview(dir);
-  const sca = path.join(dir, "sca", "src");
-  const rescued = path.join(dir, "rescued", "src");
+  const scaTree = path.join(dir, "sca");
+  const rescuedTree = path.join(dir, "rescued");
+  const sca = path.join(scaTree, "src");
+  const rescued = path.join(rescuedTree, "src");
   const built = path.join(dir, "build", "src");
   const rootRows = (block) =>
     block
       .split("\n")
       .filter((row) =>
-        ["* SCA_BUILD", "* LLM_BUILD_ROOT"].some((n) => row.startsWith(n))
+        [
+          "* SCA_EXTRACTED",
+          "* SCA_BUILD:",
+          "* SCA_BUILD_ORIG",
+          "* LLM_BUILD_ROOT",
+        ].some((n) => row.startsWith(n))
       );
+  const inArchive = [
+    `* SCA_EXTRACTED: [source archive](${scaTree})`,
+    `* SCA_BUILD: [build folder](${sca})`,
+  ];
   const cases = [
     [
       "the source archive, not built",
-      sca,
+      { extracted: scaTree, build: sca },
       null,
-      { result: null, root: null, output: null },
-      [`* SCA_BUILD: [source archive](${sca})`],
+      { result: null, output: null },
+      inArchive,
     ],
     [
       "the source archive, built",
-      sca,
+      { extracted: scaTree, build: sca },
       null,
       { result: "built", root: built, output: path.join(built, "dist") },
-      [
-        `* SCA_BUILD: [source archive](${sca})`,
-        `* LLM_BUILD_ROOT: [build copy](${built})`,
-      ],
+      [...inArchive, `* LLM_BUILD_ROOT: [build copy](${built})`],
     ],
     [
       "the source archive, its build failed",
-      sca,
+      { extracted: scaTree, build: sca },
       null,
       { result: "failed", root: built, output: null },
-      [
-        `* SCA_BUILD: [source archive](${sca})`,
-        `* LLM_BUILD_ROOT: [build copy](${built})`,
-      ],
+      [...inArchive, `* LLM_BUILD_ROOT: [build copy](${built})`],
     ],
     [
       "the rescued copy, built",
-      rescued,
+      { extracted: rescuedTree, build: rescued },
       sca,
       { result: "built", root: built, output: path.join(built, "dist") },
       [
-        `* SCA_BUILD: [rescued source (reduced/fixed dependencies)](${rescued})`,
+        `* SCA_EXTRACTED: [rescued source (reduced/fixed dependencies)](${rescuedTree})`,
+        `* SCA_BUILD: [build folder](${rescued})`,
         `* SCA_BUILD_ORIG: [source archive](${sca})`,
         `* LLM_BUILD_ROOT: [build copy](${built})`,
       ],
     ],
   ];
-  for (const [name, scaBuild, scaBuildOrig, build, rows] of cases) {
-    state.paths.scaBuild = scaBuild;
-    state.paths.scaBuildOrig = scaBuildOrig;
-    state.report.meta.scaBuild = scaBuild;
+  for (const [name, scaFolders, scaBuildOrig, build, rows] of cases) {
+    state.paths.scaFolders = scaFolders;
+    delete state.paths.scaBuildOrig;
+    if (scaBuildOrig) {
+      state.paths.scaBuildOrig = scaBuildOrig;
+    }
+    state.report.meta.scaFolders = scaFolders;
     state.build = build;
     const { buildDetails } = loopSlots(state, {}, work, REGISTRY);
     assert.deepEqual(rootRows(buildDetails), rows, name);
@@ -1128,7 +1139,10 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
     questions: false,
   });
   // Both trees exist for this one, so the review is a source-code review.
-  state.paths.scaBuild = path.join(dir, "src");
+  state.paths.scaFolders = {
+    extracted: path.join(dir, "src"),
+    build: path.join(dir, "src"),
+  };
   state.paths.sweeps[ARTIFACT_SCA] = {
     request: "Sweep the source.",
     answers: path.join(dir, "r.sweep-sca.answers.json"),
@@ -1157,7 +1171,7 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
     { file: "lib/net.js", line: 7, hint: `sends from the ${tree}` },
   ];
   planted(state.paths.xpiRoot, "lib/net.js", 7);
-  planted(state.paths.scaBuild, "lib/net.js", 7);
+  planted(state.paths.scaFolders.extracted, "lib/net.js", 7);
   swept(state, ARTIFACT_XPI, { 1: hit(ARTIFACT_XPI) });
   swept(state, ARTIFACT_SCA, { 2: hit(ARTIFACT_SCA) });
   handBack(work, () => null);
@@ -1910,7 +1924,10 @@ test("an archive holding the XPI and no lock is offered the restart, unreadable 
 
   const dir = tmp();
   const archiveOnly = abortedScaReview(dir, [...shape, "minified-code"]);
-  archiveOnly.state.paths.scaBuild = path.join(dir, "sca");
+  archiveOnly.state.paths.scaFolders = {
+    extracted: path.join(dir, "sca"),
+    build: path.join(dir, "sca"),
+  };
   const minified = archiveOnly.state.report.findings.at(-1);
   minified.file = "tests/fixture.min.js";
   assert.equal(untilPhase(archiveOnly, "downgrade").out.phase.name, "close");
@@ -1958,7 +1975,10 @@ function buildReview(dir) {
   made.state.run = { skip: [], sca: true, "build-guarded": true };
   made.state.paths.build = path.join(dir, "build.md");
   made.state.report.meta.buildFile = made.state.paths.build;
-  made.state.paths.scaBuild = path.join(dir, "sca");
+  made.state.paths.scaFolders = {
+    extracted: path.join(dir, "sca"),
+    build: path.join(dir, "sca"),
+  };
   return made;
 }
 
@@ -1981,7 +2001,10 @@ function buildQuestionsReview(dir) {
     askedIn: REGISTRY.askedIn(ruleId),
     ...extra,
   });
-  made.state.paths.scaBuild = path.join(dir, "src");
+  made.state.paths.scaFolders = {
+    extracted: path.join(dir, "src"),
+    build: path.join(dir, "src"),
+  };
   made.state.manual.push(
     todo("build-lifecycle-hook", {
       section: "code-review",
@@ -2917,7 +2940,9 @@ test("settle words a per-mode response from the state's review mode", () => {
       state.report.sca = sca;
       // A source review has both roots, and every finding says which one its path is in
       // - the loop resolves the path for the agent from exactly that pair.
-      state.paths.scaBuild = sca ? "/tmp/src/" : null;
+      if (sca) {
+        state.paths.scaFolders = { extracted: "/tmp/src/", build: "/tmp/src/" };
+      }
       state.report.findings = [
         {
           ruleId: "untrusted-library",

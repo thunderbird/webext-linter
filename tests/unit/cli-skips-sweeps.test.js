@@ -40,9 +40,11 @@ test("--sca-extracted / --sca-build / --sca-experiments map to the sca pipeline 
     "--sca-experiments",
     "exp",
   ]);
-  assert.equal(o.scaExtracted, path.resolve("extracted"));
-  assert.equal(o.scaBuild, path.resolve("extracted", "pkg"));
-  assert.equal(o.scaExperiments, path.resolve("extracted", "exp"));
+  assert.deepEqual(o.scaFolders, {
+    extracted: path.resolve("extracted"),
+    build: path.resolve("extracted", "pkg"),
+    experiments: path.resolve("extracted", "exp"),
+  });
   // Every spelling of the same folder arrives as one value.
   for (const written of [
     "exp",
@@ -59,14 +61,22 @@ test("--sca-extracted / --sca-build / --sca-experiments map to the sca pipeline 
       written,
     ]);
     assert.equal(
-      each.scaExperiments,
+      each.scaFolders.experiments,
       path.resolve("extracted", "exp"),
       written
     );
   }
-  assert.ok(!pipelineOptsFromArgv([]).scaExtracted);
-  assert.ok(!pipelineOptsFromArgv([]).scaBuild);
-  assert.ok(!pipelineOptsFromArgv([]).scaExperiments);
+  // Left out, the build folder is worked out from --sca-extracted, and the Experiment folder
+  // is not there at all.
+  assert.deepEqual(
+    pipelineOptsFromArgv(["--sca-extracted", "extracted"]).scaFolders,
+    {
+      extracted: path.resolve("extracted"),
+      build: path.resolve("extracted"),
+    }
+  );
+  // An XPI review carries no source folders.
+  assert.ok(!Object.hasOwn(pipelineOptsFromArgv([]), "scaFolders"));
 });
 
 // The two skips end to end: the same round trip, minus the two parts that need a person.

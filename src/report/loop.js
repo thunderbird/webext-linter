@@ -318,7 +318,6 @@ export function loopSlots(state, issued, work, registry) {
     proseStyle: registry.proseStyle(),
     description: paths.description ?? "",
     build: paths.build ?? "",
-    scaBuild: paths.scaBuild ?? "",
     xpiRoot: paths.xpiRoot,
     schema: paths.schema,
     // Named because `ask` can be the FIRST phase issued - a review with nothing to start,

@@ -54,7 +54,7 @@ import {
   readWebExtManifest,
   scaViews,
 } from "./addon/load.js";
-import { settleScaBuild } from "./addon/sca-build.js";
+import { scaFoldersMisfit, settleScaBuild } from "./addon/sca-build.js";
 import {
   checkSelected,
   ctxForRule,
@@ -179,23 +179,17 @@ export const SETUP_STEPS = Object.freeze([
  *   (--warnings-as-errors): the band the registry hands out IS an error, so the report,
  *   the tally, the early exit and the exit code all follow (src/checks/registry.js
  *   bandUnder). Off by default.
- * @property {string} [scaExtracted]  SCA mode: the extracted source archive, absolute
- *   (--sca-extracted). Setting it switches the review to SCA mode, which reviews all of it as
- *   the readable source.
- * @property {string} [scaBuild]  SCA mode: the build folder, absolute, inside scaExtracted -
- *   the folder holding package.json/lock, found inside scaExtracted where it is left out. Its
- *   declared dependencies are audited. The positional XPI is the shipped artifact against which
- *   the manifest.json, experiments and file-completeness (`input: xpi`) checks all run (a
- *   separate shipped context the orchestrator routes them to - see buildXpiCtx in
+ * @property {import("./addon/sca-build.js").ScaFolders} [scaFolders]  SCA mode, and only
+ *   there: the extracted source archive (--sca-extracted), which the review reads whole as the
+ *   readable source; the build folder inside it (--sca-build), where package.json and the lock
+ *   are read and the declared dependencies audited; and the Experiment implementation folder
+ *   (--sca-experiments), there exactly when the add-on declares Experiments (runPipeline
+ *   refuses either mismatch). The Experiment folder's privileged files are excluded from the
+ *   WebExtension code checks. The positional XPI is the shipped artifact the manifest.json,
+ *   experiments and file-completeness (`input: xpi`) checks run against (buildXpiCtx,
  *   src/checks/context.js).
- * @property {string} [scaExperiments]  SCA mode: the Experiment implementation folder,
- *   absolute and inside the extracted archive, never that folder itself nor one holding
- *   scaBuild. It reaches the review as an archive partition (scaViews), which gives it its
- *   own view, keyed in the extracted archive like every source file. Its privileged,
- *   non-WebExtension files are excluded from the WebExtension code checks (which review all
- *   of the readable source, having no reachability tree there). REQUIRED in SCA mode when the add-on is an
- *   Experiment (runPipeline refuses to start): without it, Experiment code cannot be told
- *   apart from WebExtension code.
+ * @property {string} [scaMovedFrom]  The build folder named before the CLI settled it one
+ *   level down, there only when it moved, so the run can say so.
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
  * @property {boolean} [cdnLookup]  Identify an unrecognized bundled library (minified,
  *   or a large readable file) by a jsDelivr content-hash lookup (on by default;
@@ -324,20 +318,20 @@ async function reviewSubmission(opts, work, prepared) {
   });
 
   // Which folder is the build folder, settled before anything reads it
-  // (src/addon/sca-build.js): found inside --sca-extracted where no --sca-build was named, and below
-  // a named one that holds no package file. Whoever named the folder had not looked inside it
-  // yet - an archive is extracted by whoever prepares the review, into a destination worked
-  // out by path math - so an archive carrying its contents in one directory of its own leaves
-  // the build files a level below it.
+  // (src/addon/sca-build.js): below a named one that holds no package file. Whoever named the
+  // folder had not looked inside it yet - an archive is extracted by whoever prepares the
+  // review, into a destination worked out by path math - so an archive carrying its contents
+  // in one directory of its own leaves the build files a level below it.
   //
-  // Rebound onto `opts`, once, rather than threaded: every reader below asks opts.scaBuild,
+  // Rebound onto `opts`, once, rather than threaded: every reader below asks opts.scaFolders,
   // and a settled value beside the one it was given is two answers to one question. The
-  // narration comes later, with the rest of Setup.
-  const scaMove = settleScaBuild({
-    ...opts,
-    scaBuild: opts.scaBuild ?? opts.scaExtracted,
-  });
-  opts = { ...opts, ...scaMove };
+  // narration comes later, with the rest of Setup, of this move or of the one the CLI made.
+  let scaMovedFrom = opts.scaMovedFrom;
+  if (opts.scaFolders) {
+    const settledFolders = settleScaBuild(opts.scaFolders);
+    opts = { ...opts, scaFolders: settledFolders.folders };
+    scaMovedFrom = settledFolders.movedFrom ?? scaMovedFrom;
+  }
 
   // Load the .xpi. Read before the "Setup" banner because it sizes the feed - it gives
   // the mode and whether the add-on is an Experiment. The eager steps below (the schema
@@ -367,11 +361,17 @@ async function reviewSubmission(opts, work, prepared) {
   let experimentVerification = null;
   const xpiRoot = `${work.xpi}${path.sep}`;
   const isExp = isExperiment(webExtManifestRecord?.json);
+  const misfit = opts.scaFolders
+    ? scaFoldersMisfit(opts.scaFolders, isExp)
+    : null;
+  if (misfit) {
+    throw new Error(misfit);
+  }
 
   // The facts each step's `when` is asked of, from what the fast .xpi read already gives
   // us: the mode, and whether this is an Experiment.
   const setupFacts = {
-    sca: Boolean(opts.scaBuild),
+    sca: Boolean(opts.scaFolders),
     isExp,
     // What the review IS, derived here and nowhere else: the steps that depend on it, the
     // ctx builders and the report all read it, so none of them re-spells the rule.
@@ -507,9 +507,9 @@ async function reviewSubmission(opts, work, prepared) {
         // Said where the source archive is read, because that is what it is about, and said
         // at all because the build folder is then not the folder the command named - the
         // reviewer has to be able to see which folder their verdicts are about.
-        if (scaMove.movedFrom) {
+        if (scaMovedFrom) {
           progress(
-            `Build folder: ${opts.scaBuild} (${scaMove.movedFrom} holds no package.json)`,
+            `Build folder: ${opts.scaFolders.build} (${scaMovedFrom} holds no package.json)`,
             FEED.DETAIL
           );
         }
@@ -520,25 +520,11 @@ async function reviewSubmission(opts, work, prepared) {
         // loads, so none is read - ctx.manifest is the shipped one and must be the only
         // answer. The built add-on above is loaded the ordinary way, where a node_modules
         // folder is shipped content like any other and the manifest.json IS the artifact's.
-        // The archive cannot say which of its folders holds the Experiment - only the
-        // flag does - and without it the privileged code is reviewed as WebExtension code
-        // and rejected for being what an Experiment is. So the review does not start.
-        if (isExp && !opts.scaExperiments) {
-          throw new Error(
-            "This add-on ships an Experiment (its manifest.json declares experiment_apis): " +
-              "name the folder of the source archive that holds the Experiment " +
-              "implementation with --sca-experiments."
-          );
-        }
         // The whole extracted archive is the source, so code a build takes from beside or
         // above the build folder is reviewed like the rest. The build folder is the place in
         // it the package file and the lock are read at.
-        scaArchive = loadSourceArchive(opts.scaExtracted ?? opts.scaBuild);
-        scaViews(scaArchive, {
-          scaExtracted: opts.scaExtracted,
-          scaBuild: opts.scaBuild,
-          scaExperiments: opts.scaExperiments,
-        });
+        scaArchive = loadSourceArchive(opts.scaFolders.extracted);
+        scaViews(scaArchive, opts.scaFolders);
         // Where the source is a rescued copy, the package files of the build folder it was copied
         // from - what the developer submitted - for the check that tells them the review
         // ran on changed dependencies. Null for every other source.
@@ -561,9 +547,12 @@ async function reviewSubmission(opts, work, prepared) {
       }
       // Warn when --sca-experiments matches nothing: a mis-typed path would exclude nothing
       // and flood the report with false positives on the privileged Experiment code.
-      if (opts.scaExperiments && scaArchive.experiment.size === 0) {
+      if (
+        Object.hasOwn(opts.scaFolders, "experiments") &&
+        scaArchive.experiment.size === 0
+      ) {
         warn(
-          `--sca-experiments "${opts.scaExperiments}" matched no files under --sca-extracted; ` +
+          `--sca-experiments "${opts.scaFolders.experiments}" matched no files under --sca-extracted; ` +
             "nothing will be excluded from the WebExtension code checks."
         );
       }
@@ -602,23 +591,11 @@ async function reviewSubmission(opts, work, prepared) {
         // Named iff the readable source is what was reviewed: `scaArchive` is set by
         // `source-archive`, which runs only then. meta names the artifacts this review
         // READ, so the step that loaded one is what decides whether it appears here.
-        ...(scaArchive
-          ? {
-              // The extracted source archive, named where the build folder lies below it.
-              ...(opts.scaExtracted && opts.scaExtracted !== opts.scaBuild
-                ? { scaExtracted: opts.scaExtracted }
-                : {}),
-              scaBuild: opts.scaBuild,
-              // The one input that NARROWS the review: that subtree is privileged code and is
-              // excluded from the WebExtension checks. Named only when it was given, because a
-              // name printed for a value nobody supplied says something false - and unnamed, a
-              // reader of the report or of the JSON could not see that anything was excluded,
-              // or from where.
-              ...(opts.scaExperiments
-                ? { scaExperiments: opts.scaExperiments }
-                : {}),
-            }
-          : {}),
+        // Its folders as the review read them, the Experiment folder among them exactly where
+        // the add-on declares Experiments: that subtree is privileged code and is excluded
+        // from the WebExtension checks, which a reader of the report or of the JSON must be
+        // able to see.
+        ...(scaArchive ? { scaFolders: opts.scaFolders } : {}),
         reviewed: true,
       };
     },
@@ -861,10 +838,9 @@ async function reviewSubmission(opts, work, prepared) {
     Boolean(meta.preSweep?.items?.length);
   // Where the build folder lies in the prepared work folder's trees (src/prepare/state.js
   // treeRoots), for a review the preparation started.
-  const preparedRoots =
-    prepared && opts.scaBuild
-      ? treeRoots(opts.workFolder, opts.scaBuild)
-      : null;
+  const preparedRoots = prepared
+    ? treeRoots(opts.workFolder, opts.scaFolders.build)
+    : null;
   // A run that PROMPTS is the loop's first pass, and the only one that reads the add-on:
   // everything after it works from the state this run writes.
   const prompting = opts.llmReview;
@@ -982,16 +958,17 @@ async function reviewSubmission(opts, work, prepared) {
         build: buildPath,
         report: reportPath,
         schemaCache: opts.schemaCache,
-        // The two roots every reported path is relative to, so a later pass can resolve
-        // one without the review it came from: the shipped add-on, copied in setup, and the
-        // extracted source archive, extracted before the run, so both are readable
+        // The roots every reported path is relative to, so a later pass can resolve one
+        // without the review it came from: the shipped add-on, copied in setup, and in a
+        // source review its folders, extracted before the run, so all are readable
         // directories by the time anything is handed out. The build folder is a place in
         // the extracted archive, where the agent is told the build runs.
-        scaExtracted: opts.scaExtracted ?? opts.scaBuild ?? null,
-        scaBuild: opts.scaBuild ?? null,
+        ...(mode.sca ? { scaFolders: opts.scaFolders } : {}),
         // The same build folder in `sca/`, where the review reads a rescued copy: the
         // Review Details name both.
-        scaBuildOrig: preparedRoots?.scaBuildOrig ?? null,
+        ...(preparedRoots && Object.hasOwn(preparedRoots, "scaBuildOrig")
+          ? { scaBuildOrig: preparedRoots.scaBuildOrig }
+          : {}),
         xpiRoot: meta.xpiRoot,
         // Each tree's sweep request, as the text its step hands over, and the file its
         // answers are written to. Carried so the step prints the request this run made and
@@ -1012,12 +989,14 @@ async function reviewSubmission(opts, work, prepared) {
       // buildResultFact).
       build: {
         result: prepared?.buildResult ?? null,
-        // The build folder in the copy the agent built in, where it built or tried to.
-        root:
-          prepared?.buildResult === BUILD_RESULT.built ||
-          prepared?.buildResult === BUILD_RESULT.failed
-            ? (preparedRoots?.buildRoot ?? null)
-            : null,
+        // The build folder in the copy the agent built in, there only where it built or tried
+        // to.
+        ...((prepared?.buildResult === BUILD_RESULT.built ||
+          prepared?.buildResult === BUILD_RESULT.failed) &&
+        preparedRoots &&
+        Object.hasOwn(preparedRoots, "buildRoot")
+          ? { root: preparedRoots.buildRoot }
+          : {}),
         output:
           prepared?.buildResult === BUILD_RESULT.built
             ? prepared.buildOutput

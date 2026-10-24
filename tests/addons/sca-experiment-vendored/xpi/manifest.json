@@ -11,5 +11,13 @@
   "icons": {
     "16": "icon.png",
     "48": "icon.png"
+  },
+  "experiment_apis": {
+    "myapi": {}
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "strict_max_version": "140.*"
+    }
   }
 }

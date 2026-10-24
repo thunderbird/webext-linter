@@ -4,7 +4,10 @@
     "xpi": "<root>/tests/addons/build-hygiene-sca/xpi",
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
-    "scaBuild": "<root>/tests/addons/build-hygiene-sca/src",
+    "scaFolders": {
+      "extracted": "<root>/tests/addons/build-hygiene-sca/src",
+      "build": "<root>/tests/addons/build-hygiene-sca/src"
+    },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

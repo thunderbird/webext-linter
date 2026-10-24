@@ -4,7 +4,10 @@
     "xpi": "<root>/tests/addons/sca-no-build/xpi",
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
-    "scaBuild": "<root>/tests/addons/sca-no-build/src",
+    "scaFolders": {
+      "extracted": "<root>/tests/addons/sca-no-build/src",
+      "build": "<root>/tests/addons/sca-no-build/src"
+    },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

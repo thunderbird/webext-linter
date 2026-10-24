@@ -73,6 +73,7 @@ test("manual review splits into code, manual, then standard sections", () => {
     meta: {
       action: "review",
       xpi: "x",
+      xpiRoot: "/x/work/xpi/",
       reviewed: true,
       manualReview: [
         {
@@ -143,6 +144,7 @@ test("Manual review groups by message and lists each item's locus", () => {
     meta: {
       action: "review",
       xpi: "x",
+      xpiRoot: "/x/work/xpi/",
       reviewed: true,
       manualReview: [
         exfil("bg.js", 80),
@@ -180,6 +182,7 @@ test("Manual review prints the response between instructions and the locus list"
     meta: {
       action: "review",
       xpi: "x",
+      xpiRoot: "/x/work/xpi/",
       reviewed: true,
       manualReview: [
         {
@@ -235,6 +238,7 @@ test("a manual-review item renders with its own wording and its response", () =>
     meta: {
       action: "review",
       xpi: "x",
+      xpiRoot: "/x/work/xpi/",
       reviewed: true,
       manualReview: [{ ...item, extended: true }],
     },
@@ -285,6 +289,7 @@ test("an escalation prints the verdict a reported case carries", () => {
     meta: {
       action: "review",
       xpi: "x",
+      xpiRoot: "/x/work/xpi/",
       reviewed: true,
       manualReview: [
         ...items.map((i) => ({ ...i, extended: true })),
@@ -485,6 +490,7 @@ test("issues render under Issues/JSON; manual items under Manual review", () => 
     meta: {
       action: "review",
       xpi: "x",
+      xpiRoot: "/x/work/xpi/",
       reviewed: true,
       manualReview: [
         {
@@ -535,7 +541,12 @@ test("Issues are grouped by severity under headings with continuous numbering", 
       mk("info", "info one", "c.js", null),
       mk("error", "err one", "a.js", 1),
     ],
-    meta: { action: "review", xpi: "x", reviewed: true },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+    },
     issueHeadings: {
       error: "ERR HEADING:",
       warning: "WARN HEADING:",
@@ -583,7 +594,12 @@ test("Issues group findings by identical message into one entry", () => {
       mk("same message", "a.js", 20),
       mk("same message", "c.js", 5),
     ],
-    meta: { action: "review", xpi: "x", reviewed: true },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+    },
   };
   const out = formatText(r);
   const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
@@ -620,7 +636,12 @@ test("Issues print a location line only when it carries something", () => {
   const body = (f) => {
     const out = formatText({
       findings: [f],
-      meta: { action: "review", xpi: "x", reviewed: true },
+      meta: {
+        action: "review",
+        xpi: "x",
+        xpiRoot: "/x/work/xpi/",
+        reviewed: true,
+      },
     }).split("── Found Issues ──")[1];
     return out.split("\n").filter((l) => l.trim().startsWith("- "));
   };
@@ -656,7 +677,12 @@ test("Issues list the identifier on the location line when listItem is set", () 
       mk(null, null, "name", true), // bare item (no file)
       mk("bg.js", 4, "browser.x", false), // item already in message -> where only
     ],
-    meta: { action: "review", xpi: "x", reviewed: true },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+    },
   };
   const issues = formatText(r).split("── Found Issues ──")[1];
   assert.match(issues, /\n - manifest\.json:13 - frobnicate\n/);
@@ -680,7 +706,7 @@ const mkFinding = (severity, message, file = "a.js", line = 1) => ({
 });
 const withReview = (findings, verdictIntros) => ({
   findings,
-  meta: { action: "review", xpi: "x", reviewed: true },
+  meta: { action: "review", xpi: "x", xpiRoot: "/x/work/xpi/", reviewed: true },
   issueHeadings: { error: "ERR:", warning: "WARN:", info: "INFO:" },
   verdictIntros,
 });
@@ -690,7 +716,13 @@ const withReview = (findings, verdictIntros) => ({
 test("the Summary tally is the report's last section", () => {
   const r = {
     findings: [mkFinding("info", "an info finding", "manifest.json", null)],
-    meta: { action: "review", xpi: "x", reviewed: true, manualReview: [] },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+      manualReview: [],
+    },
     issueHeadings: { error: "E:", warning: "W:", info: "I:" },
   };
   const out = formatText(r);
@@ -773,7 +805,12 @@ test("collapse:subject prints one line per subject and counts the rest", () => {
   ];
   const out = formatText({
     findings,
-    meta: { action: "review", xpi: "x", reviewed: true },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+    },
   });
   const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
 
@@ -824,7 +861,12 @@ test("collapse:subject keys on the detail as well as the subject", () => {
       at("b.js", "host.example.com", "GET"),
       at("c.js", "host.example.com", "POST"),
     ],
-    meta: { action: "review", xpi: "x", reviewed: true },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+    },
   });
   const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
   assert.match(
@@ -849,7 +891,12 @@ test("an entry with no collapse declaration lists every case", () => {
   });
   const out = formatText({
     findings: [at("a.js"), at("b.js"), at("c.js")],
-    meta: { action: "review", xpi: "x", reviewed: true },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+    },
   });
   const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
   assert.equal((issues.match(/^ - /gm) || []).length, 3);
@@ -872,7 +919,12 @@ test("Issues cap a grouped list at 25 locations with a 'more' marker", () => {
   }));
   const r = {
     findings,
-    meta: { action: "review", xpi: "x", reviewed: true },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+    },
   };
   const out = formatText(r);
   const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
@@ -897,7 +949,12 @@ test("Issues add no marker for a list of 25 or fewer", () => {
   }));
   const out = formatText({
     findings,
-    meta: { action: "review", xpi: "x", reviewed: true },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+    },
   });
   const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
   assert.equal((issues.match(/^ - f\d+\.js:/gm) || []).length, 25);
@@ -923,7 +980,13 @@ test("Manual review caps a grouped locus list at 25 with a marker", () => {
   });
   const out = formatText({
     findings: [],
-    meta: { action: "review", xpi: "x", reviewed: true, manualReview },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+      manualReview,
+    },
   });
   const extended = out
     .split("── Extended Code Review ──")[1]
@@ -969,7 +1032,12 @@ test("SCA review labels file:line by artifact ([XPI]/[SCA]) with a footer", () =
         message: "Unknown permission.",
       },
     ],
-    meta: { action: "review", xpi: "x", reviewed: false },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: false,
+    },
   };
   const out = formatText(r);
   assert.match(out, /\[XPI\] orphan\.js:2/);
@@ -1019,7 +1087,13 @@ test("control characters from the submission never reach the report", () => {
         loc: { line: 3 },
       },
     ],
-    meta: { action: "review", xpi: "x", reviewed: false, manualReview: [] },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: false,
+      manualReview: [],
+    },
   };
   const text = formatText(r);
   assert.ok(!text.includes(ESC), "no escape survived into the text report");
@@ -1098,6 +1172,7 @@ test("the enumeration is exactly the order the report prints", () => {
     meta: {
       action: "review",
       xpi: "x",
+      xpiRoot: "/x/work/xpi/",
       reviewed: true,
       manualReview: manual,
     },
@@ -1158,7 +1233,12 @@ test("a locus-less finding is its own entry, so every item is on the page", () =
   const findings = [f("A", "a.js"), f("A", null), f("B", "b.js")];
   const out = formatText({
     findings,
-    meta: { action: "review", xpi: "x", reviewed: true },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+    },
     issueHeadings: registry.issueHeadings(),
     verdictIntros: registry.verdictIntros(),
   });
@@ -1197,7 +1277,12 @@ test("a hold alone opens the section with the hold verdict", () => {
   );
   const out = formatText({
     findings,
-    meta: { action: "review", xpi: "x", reviewed: true },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+    },
     issueHeadings: registry.issueHeadings(),
     verdictIntros: registry.verdictIntros(),
   });
@@ -1239,7 +1324,12 @@ test("a hold beside an error becomes an error, everywhere at once", () => {
   );
   const review = {
     findings,
-    meta: { action: "review", xpi: "x", reviewed: true },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+    },
     issueHeadings: registry.issueHeadings(),
     verdictIntros: registry.verdictIntros(),
   };
@@ -1638,8 +1728,11 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
   assert.deepEqual(
     headerLines({
       ...base,
-      scaBuild: "/x/src",
-      scaExperiments: "/x/src/addon/experiment-api",
+      scaFolders: {
+        extracted: "/x",
+        build: "/x/src",
+        experiments: "/x/src/addon/experiment-api",
+      },
     }),
     [
       ...head,
@@ -1647,10 +1740,13 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
       "    a.xpi",
       "  XPI_ROOT",
       "    /x/work/xpi/",
+      // Every [SCA] path is relative to the extracted archive, so it is named.
+      "  SCA_EXTRACTED",
+      "    /x",
       "  SCA_BUILD",
       "    /x/src",
-      // The optional one of the two: what it names was excluded from the WebExtension
-      // checks, and nothing else in the report says so.
+      // There for an Experiment: what it names was excluded from the WebExtension checks,
+      // and nothing else in the report says so.
       "  SCA_EXPERIMENTS",
       "    /x/src/addon/experiment-api",
       ...schema,
@@ -1688,15 +1784,16 @@ test("detailLinkLines links every location, XPI_FILE among them", () => {
   };
   const lines = detailLinkLines({
     ...base,
-    scaBuild: "/x/src",
+    scaFolders: { extracted: "/x/src", build: "/x/src" },
     summaryFile: "/x/work/summary.md",
     buildFile: "/x/a.build.md",
   });
   assert.deepEqual(lines, [
     "* XPI_FILE: [a.xpi](/x/in/a.xpi)",
     "* XPI_ROOT: [extracted addon](/x/work/xpi/)",
+    "* SCA_EXTRACTED: [source archive](/x/src)",
     "* SCA_BUILD_PROCESS: [build.md](/x/a.build.md)",
-    "* SCA_BUILD: [source archive](/x/src)",
+    "* SCA_BUILD: [build folder](/x/src)",
     "* ADDON_DESCRIPTION: [summary.md](/x/work/summary.md)",
     "",
     "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
@@ -1727,8 +1824,11 @@ test("detailRows lists every row in its order", () => {
     buildOutput: "/w/build/src/dist",
     buildVulnerabilities: { moderate: 1, high: 2, critical: 0 },
     scaBuildOrig: "/w/sca/src",
-    scaBuild: "/w/rescued/src",
-    scaExperiments: "/w/rescued/src/api",
+    scaFolders: {
+      extracted: "/w/rescued",
+      build: "/w/rescued/src",
+      experiments: "/w/rescued/api",
+    },
     buildSafety: "safe",
     buildFile: "/w/build.md",
     xpiRoot: "/w/xpi/",
@@ -1738,6 +1838,7 @@ test("detailRows lists every row in its order", () => {
   assert.deepEqual(names, [
     "XPI_FILE",
     "XPI_ROOT",
+    "SCA_EXTRACTED",
     "SCA_BUILD_PROCESS",
     "SCA_BUILD_SAFETY_ASSESSMENT",
     "SCA_EXPERIMENTS",
@@ -1778,7 +1879,12 @@ test("collapse:subject keeps a case a reviewer wrote about", () => {
       at("c.js", null),
       at("d.js", null),
     ],
-    meta: { action: "review", xpi: "x", reviewed: true },
+    meta: {
+      action: "review",
+      xpi: "x",
+      xpiRoot: "/x/work/xpi/",
+      reviewed: true,
+    },
   });
   const issues = out.split("── Found Issues ──")[1].split("── Summary ──")[0];
   // Each distinct answer keeps its own line; only the unanswered cases fold.

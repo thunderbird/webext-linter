@@ -4,7 +4,10 @@
     "xpi": "<root>/tests/addons/sca-lock-foreign-source/xpi",
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
-    "scaBuild": "<root>/tests/addons/sca-lock-foreign-source/src",
+    "scaFolders": {
+      "extracted": "<root>/tests/addons/sca-lock-foreign-source/src",
+      "build": "<root>/tests/addons/sca-lock-foreign-source/src"
+    },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

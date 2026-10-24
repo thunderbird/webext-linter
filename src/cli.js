@@ -39,7 +39,7 @@ import {
   recordedRoots,
   startPreparation,
 } from "./prepare/steps.js";
-import { settleScaBuild } from "./addon/sca-build.js";
+import { scaFoldersMisfit, settleScaBuild } from "./addon/sca-build.js";
 import {
   extractXpiToTemp,
   readPackedManifest,
@@ -238,7 +238,7 @@ function helpText(checkIds) {
     ],
     [
       "--sca-experiments <path>",
-      "The Experiment implementation folder, inside --sca-extracted - relative to it or absolute within it, anywhere under it (e.g. addon/experiment-api, or a sibling of the source like experiment), but never --sca-extracted itself, which would exclude nothing, nor a folder holding --sca-build. Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-extracted; REQUIRED in SCA mode for an Experiment add-on.",
+      "The Experiment implementation folder, inside --sca-extracted - relative to it or absolute within it, anywhere under it (e.g. addon/experiment-api, or a sibling of the source like experiment), but never --sca-extracted itself, which would exclude nothing, nor a folder holding --sca-build. Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-extracted. Required for an Experiment add-on, and refused for any other.",
     ],
   ];
 
@@ -550,7 +550,7 @@ function realFolder(p) {
  * it differently. A file, a missing path and an unreadable one are all "no".
  * @param {string} flag  The flag's name, for the message.
  * @param {string} value  The value as it was given.
- * @param {string} base  What the value is relative to: the folder it names a folder inside,
+ * @param {string} [base]  What the value is relative to: the folder it names a folder inside,
  *   and the value's own path otherwise.
  * @param {?string} [within]  The flag naming the folder the value must resolve into however
  *   it was written, or null for one that names a folder of its own.
@@ -715,10 +715,13 @@ export async function main(argv) {
     positionals[0] = realFolder(positionals[0]);
   }
   // Named inside the extracted archive, so followed from there - the folder the review
-  // resolves it to.
-  if (values["sca-experiments"] !== undefined) {
+  // resolves it to. Without --sca-extracted it names nothing, which is refused below.
+  if (
+    values["sca-experiments"] !== undefined &&
+    values["sca-extracted"] !== undefined
+  ) {
     values["sca-experiments"] = realFolder(
-      path.resolve(values["sca-extracted"] ?? ".", values["sca-experiments"])
+      path.resolve(values["sca-extracted"], values["sca-experiments"])
     );
   }
 
@@ -1000,8 +1003,9 @@ export async function main(argv) {
       "sca-build": "sca-extracted",
       "sca-experiments": "sca-extracted",
     }[flag];
-    const base = within ? values["sca-extracted"] : undefined;
-    const problem = folderProblem(flag, value, base ?? ".", within ?? null);
+    const problem = within
+      ? folderProblem(flag, value, values[within], within)
+      : folderProblem(flag, value);
     if (problem) {
       const what =
         flag === "sca-extracted" && !problem.escape
@@ -1074,16 +1078,24 @@ export async function main(argv) {
  * @returns {Promise<number>}
  */
 async function startSourcePreparation(values, addonPath, work, registry) {
-  if (values["cache-clear"]) {
-    clearCaches(cacheDirs(pipelineOptsFromValues(values)));
-  }
+  let folders;
   let experiments;
   let rejected;
   try {
+    ({ folders } = scaFoldersOf(values));
+    if (values["cache-clear"]) {
+      clearCaches(cacheDirs(pipelineOptsFromValues(values)));
+    }
     ({ experiments, rejected } = await experimentGate(addonPath, values));
   } catch (err) {
     rethrowIfFatal(err);
     writeToStderr(`${err.message}\n${red("verify failed")}\n`);
+    return 2;
+  }
+  // An Experiment folder named for an add-on without Experiments is refused before anything is
+  // created. One left out for an add-on with them is asked for at `analyze`.
+  if (!experiments && Object.hasOwn(folders, "experiments")) {
+    writeToStderr(`${scaFoldersMisfit(folders, false)}\n`);
     return 2;
   }
   try {
@@ -1112,11 +1124,7 @@ async function startSourcePreparation(values, addonPath, work, registry) {
   }
   let roots;
   try {
-    roots = copySource(work, {
-      extracted: values["sca-extracted"],
-      scaBuild: rootOf(values),
-      scaExperiments: values["sca-experiments"] ?? null,
-    });
+    roots = copySource(work, folders);
   } catch (err) {
     rethrowIfFatal(err);
     writeToStderr(`${err.message}\n${red("verify failed")}\n`);
@@ -1327,23 +1335,24 @@ function clearCaches(dirs) {
 }
 
 /**
- * The build folder, where the package file and the lock are read: --sca-build where it was named, else the
- * one found inside --sca-extracted by the rule the review finds one by (settleScaBuild), that
- * folder itself where it holds the package file or the walk cannot decide. Undefined outside
- * SCA mode, and where --sca-extracted names no folder, which its own check refuses.
- * @param {Record<string, string|boolean|string[]>} values
- * @returns {string|undefined}
+ * The source folders a review given --sca-extracted works with, each resolved the one way its
+ * flag is written: --sca-extracted and --sca-build against the working directory, and
+ * --sca-experiments against --sca-extracted, which it names a folder inside. The build folder
+ * is --sca-build where it was named, else --sca-extracted, and either is settled by the rule
+ * the review settles one by (settleScaBuild), with the Experiment folder held to it. The
+ * Experiment folder is there only where it was named.
+ * @param {Record<string, string|boolean|string[]>} values  With --sca-extracted.
+ * @returns {{folders: import("./addon/sca-build.js").ScaFolders, movedFrom?: string}}
  */
-function rootOf(values) {
-  if (
-    values["sca-build"] !== undefined ||
-    values["sca-extracted"] === undefined
-  ) {
-    return values["sca-build"];
-  }
-  return pointsAtFolder(values["sca-extracted"])
-    ? settleScaBuild({ scaBuild: values["sca-extracted"] }).scaBuild
-    : undefined;
+function scaFoldersOf(values) {
+  const extracted = path.resolve(values["sca-extracted"]);
+  return settleScaBuild({
+    extracted,
+    build: path.resolve(values["sca-build"] ?? extracted),
+    ...(values["sca-experiments"] === undefined
+      ? {}
+      : { experiments: path.resolve(extracted, values["sca-experiments"]) }),
+  });
 }
 
 /**
@@ -1362,19 +1371,9 @@ function rootOf(values) {
  * @returns {Partial<PipelineOpts>}
  */
 function pipelineOptsFromValues(values) {
-  // A build folder left out is passed on left out, and the review finds it inside
-  // --sca-extracted (src/pipeline.js).
-  const scaBuild = values["sca-build"]
-    ? path.resolve(values["sca-build"])
-    : undefined;
-  const scaExtracted = values["sca-extracted"]
-    ? path.resolve(values["sca-extracted"])
-    : undefined;
-  // --sca-experiments names a folder inside the extracted archive, so it is resolved there.
-  const inRoot = (value) =>
-    value === undefined
-      ? undefined
-      : path.resolve(scaExtracted ?? scaBuild ?? ".", value);
+  // SCA mode, and only there: the source folders, settled, and the build folder named before
+  // a move, so the review can say so.
+  const sca = values["sca-extracted"] ? scaFoldersOf(values) : null;
   return {
     ...Object.fromEntries(
       CACHES.map((c) => [c.opt, values[c.flag] || c.folder])
@@ -1387,11 +1386,8 @@ function pipelineOptsFromValues(values) {
     eslint: values.eslint,
     allowExperiments: values["allow-experiments"],
     warningsAsErrors: values["warnings-as-errors"],
-    scaExtracted: values["sca-extracted"]
-      ? path.resolve(values["sca-extracted"])
-      : undefined,
-    scaBuild,
-    scaExperiments: inRoot(values["sca-experiments"]),
+    ...(sca ? { scaFolders: sca.folders } : {}),
+    ...(sca?.movedFrom ? { scaMovedFrom: sca.movedFrom } : {}),
     llmReview: Boolean(values["llm-review"]),
     llmSkip: reviewSkips(values),
     // Not a PROMPT_SKIPS member: no `when:` names it. What it withholds is every
@@ -1508,7 +1504,7 @@ async function runPreparePass(work, registry) {
 function preparationPrompt(work, record, registry, start = {}) {
   const prompt = registry.llmScaReviewPrompt();
   const paths = workPaths(work);
-  const buildRoot = () => treeRoots(work, record.roots.scaBuild).buildRoot;
+  const buildRoot = () => treeRoots(work, record.roots.build).buildRoot;
   const named = {
     [PREPARE_STEP.unpack]: () => ({
       submission: start.submission,
@@ -1516,8 +1512,8 @@ function preparationPrompt(work, record, registry, start = {}) {
     }),
     [PREPARE_STEP.analyze]: () => ({
       answers: paths.review,
-      scaExtracted: fs.realpathSync(paths.sca),
-      scaBuild: record.roots.scaBuild,
+      scaExtracted: record.roots.extracted,
+      scaBuild: record.roots.build,
       buildProcess: paths.build,
       findExperiment: asksExperiments(record),
     }),
@@ -1527,14 +1523,14 @@ function preparationPrompt(work, record, registry, start = {}) {
     }),
     [PREPARE_STEP.build]: () => ({
       answers: paths.review,
-      scaBuild: record.roots.scaBuild,
+      scaBuild: record.roots.build,
       buildRoot: buildRoot(),
       buildProcess: paths.build,
       submittedXpi: record.submission.xpi,
     }),
     [PREPARE_STEP.rescue]: () => ({
       answers: paths.review,
-      rescueRoot: record.roots.scaBuild,
+      rescueRoot: record.roots.build,
       buildRoot: buildRoot(),
       buildProcess: paths.build,
       submittedXpi: record.submission.xpi,
@@ -1567,7 +1563,7 @@ function buildDetailLines(work, record, prompt, registry) {
     ...detailRows({
       xpiFile: path.basename(record.submission.xpi),
       xpi: record.submission.xpi,
-      scaBuild: record.roots.scaBuild,
+      scaFolders: record.roots,
       buildFile: workPaths(work).build,
       buildSafety: record.buildSafety,
       buildIssuesFile: workPaths(work).buildIssues,
@@ -1588,10 +1584,6 @@ const RECORD_FIELDS = [
     holds: (r) =>
       typeof r.submission?.xpi === "string" && r.submission.xpi !== "",
     missing: "no submission to review",
-  },
-  {
-    holds: (r) => typeof r.roots?.scaBuild === "string",
-    missing: "no settled build folder",
   },
 ];
 
@@ -1646,19 +1638,12 @@ function preparedReview(record, checkIds, work) {
     values[name] = value;
   }
   values["llm-review"] = true;
-  // The extracted source is the copy the build folder sits in: the rescued one where a rescue
-  // came out clean, else `sca/`.
-  const paths = workPaths(work);
-  const rescued = fs.existsSync(paths.rescued)
-    ? fs.realpathSync(paths.rescued)
-    : null;
-  values["sca-extracted"] =
-    rescued && relativeInside(roots.scaBuild, rescued) !== null
-      ? rescued
-      : fs.realpathSync(paths.sca);
-  values["sca-build"] = roots.scaBuild;
-  if (roots.scaExperiments !== null) {
-    values["sca-experiments"] = roots.scaExperiments;
+  // The folders as the preparation recorded them: the extracted copy is `rescued/` where a
+  // rescue came out clean, else `sca/`.
+  values["sca-extracted"] = roots.extracted;
+  values["sca-build"] = roots.build;
+  if (Object.hasOwn(roots, "experiments")) {
+    values["sca-experiments"] = roots.experiments;
   }
   const within = {
     "sca-build": "sca-extracted",
@@ -1671,12 +1656,14 @@ function preparedReview(record, checkIds, work) {
     SCA_FLAGS.map((flag) =>
       values[flag] === undefined
         ? null
-        : folderProblem(
-            flag,
-            values[flag],
-            within[flag] ? values[within[flag]] : ".",
-            within[flag] ?? null
-          )
+        : within[flag]
+          ? folderProblem(
+              flag,
+              values[flag],
+              values[within[flag]],
+              within[flag]
+            )
+          : folderProblem(flag, values[flag])
     ).find(Boolean)?.text;
   if (problem) {
     // Without its full stop: the refusal text goes on after it.

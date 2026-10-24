@@ -33,7 +33,49 @@ import path from "node:path";
 import { relativeInside } from "./load.js";
 import { PACKAGE_FILE } from "../vendor/package-file.js";
 import { TREE_LOCKS } from "../vendor/locks.js";
-import { rethrowIfFatal } from "../lib/errors.js";
+import { rethrowIfFatal, wiringError } from "../lib/errors.js";
+
+/**
+ * The folders of a source review, every one given and none standing in for another: the
+ * extracted source archive, the build folder inside it, and the Experiment folder inside it
+ * exactly when the add-on declares Experiments. Absolute.
+ * @typedef {{extracted: string, build: string, experiments?: string}} ScaFolders
+ */
+
+/** The keys a ScaFolders may carry. */
+const SCA_FOLDER_KEYS = ["extracted", "build", "experiments"];
+
+/**
+ * Assert that `folders` is a ScaFolders: `extracted` and `build` absolute, `experiments`
+ * absolute where it is there, and nothing else. Checked, never filled in: a folder a caller
+ * did not hand over is a caller that forgot it.
+ * @param {*} folders
+ * @param {string} who  The reader asking, named in the error.
+ * @returns {ScaFolders}
+ * @throws {import("../lib/errors.js").LinterError}  A wiring error.
+ */
+export function assertScaFolders(folders, who) {
+  const bad = (what) => wiringError(`${who} was handed source folders ${what}`);
+  if (!folders || typeof folders !== "object") {
+    throw bad("that are not an object");
+  }
+  const extra = Object.keys(folders).filter(
+    (k) => !SCA_FOLDER_KEYS.includes(k)
+  );
+  if (extra.length) {
+    throw bad(`with a key it does not take (${extra.join(", ")})`);
+  }
+  for (const key of SCA_FOLDER_KEYS) {
+    const value = folders[key];
+    if (key === "experiments" && !Object.hasOwn(folders, key)) {
+      continue;
+    }
+    if (typeof value !== "string" || !path.isAbsolute(value)) {
+      throw bad(`whose \`${key}\` is no absolute folder`);
+    }
+  }
+  return folders;
+}
 
 /**
  * Whether `dir` holds a package file at its top level.
@@ -121,10 +163,39 @@ function buildRootBelow(root) {
 }
 
 /**
- * Settle which folder this review treats as --sca-build, and --sca-experiments with it.
+ * Why the source folders do not fit the add-on, or null where they do: the Experiment folder is
+ * named exactly when the shipped manifest declares Experiments. The archive cannot say which
+ * of its folders holds the Experiment, only the flag does, and without it the privileged code
+ * is reviewed as WebExtension code and rejected for being what an Experiment is. One named for
+ * an add-on without Experiments would exclude WebExtension code from the review instead.
+ * @param {ScaFolders} folders
+ * @param {boolean} isExp  Whether the shipped manifest declares experiment_apis.
+ * @returns {?string}
+ */
+export function scaFoldersMisfit(folders, isExp) {
+  const named = Object.hasOwn(folders, "experiments");
+  if (isExp && !named) {
+    return (
+      "This add-on ships an Experiment (its manifest.json declares experiment_apis): " +
+      "name the folder of the source archive that holds the Experiment " +
+      "implementation with --sca-experiments."
+    );
+  }
+  if (!isExp && named) {
+    return (
+      `--sca-experiments "${folders.experiments}" names an Experiment folder, but this ` +
+      "add-on declares no Experiments (its manifest.json has no experiment_apis). " +
+      "Drop --sca-experiments."
+    );
+  }
+  return null;
+}
+
+/**
+ * Settle which folder this review treats as --sca-build, and hold --sca-experiments to it.
  *
- * Returns the pair to use, corrected or not. The caller applies it wholesale rather than
- * reading the flags again, so `scaBuild` and `scaExperiments` can never be read from two
+ * Returns the folders to use, corrected or not. The caller applies them wholesale rather than
+ * reading the flags again, so the build and the Experiment folder can never be read from two
  * different answers.
  *
  * The build folder moves only when it holds no package file AND exactly one folder below can be
@@ -134,38 +205,34 @@ function buildRootBelow(root) {
  *
  * The Experiment folder (--sca-experiments) does not move with it: it may lie anywhere in the
  * extracted source archive. A folder found inside it is no build folder, so the folder given
- * stands, as where none is found. Once the build folder stands, the pair is held to what the
- * Experiment folder may be (settled).
- * @param {{scaExtracted?: string, scaBuild?: string, scaExperiments?: string}} opts  Absolute
- *   paths, as the CLI resolved them. The extracted folder is the build folder where none is
- *   named.
- * @returns {{scaBuild?: string, scaExperiments?: string, movedFrom: ?string}}
- *   The pair to review with. `movedFrom` is the build folder given when it was corrected,
- *   and null when it stands - the run narrates the difference rather than changing it silently.
+ * stands, as where none is found. Once the build folder stands, the folders are held to what
+ * the Experiment folder may be (settled).
+ * @param {ScaFolders} folders  As the caller resolved them.
+ * @returns {{folders: ScaFolders, movedFrom?: string}}  The folders to review with.
+ *   `movedFrom` is the build folder given, there only when it was corrected - the run
+ *   narrates the difference rather than changing it silently.
  */
-export function settleScaBuild(opts) {
-  const given = {
-    scaBuild: opts.scaBuild,
-    scaExperiments: opts.scaExperiments,
-    movedFrom: null,
-  };
-  const base = opts.scaExtracted ?? opts.scaBuild;
-  if (!opts.scaBuild || hasPackageFile(opts.scaBuild)) {
-    return settled(given, base);
+export function settleScaBuild(folders) {
+  assertScaFolders(folders, "settleScaBuild");
+  if (hasPackageFile(folders.build)) {
+    return { folders: settled(folders) };
   }
-  const scaBuild = buildRootBelow(opts.scaBuild);
+  const build = buildRootBelow(folders.build);
   if (
-    !scaBuild ||
-    (opts.scaExperiments &&
-      relativeInside(scaBuild, opts.scaExperiments) !== null)
+    !build ||
+    (Object.hasOwn(folders, "experiments") &&
+      relativeInside(build, folders.experiments) !== null)
   ) {
-    return settled(given, base);
+    return { folders: settled(folders) };
   }
-  return settled({ ...given, scaBuild, movedFrom: opts.scaBuild }, base);
+  return {
+    folders: settled({ ...folders, build }),
+    movedFrom: folders.build,
+  };
 }
 
 /**
- * The pair, once nothing else can change it: --sca-experiments names the Experiment
+ * The folders, once nothing else can change them: --sca-experiments names the Experiment
  * implementation, so it may neither BE the extracted folder nor HOLD the build folder.
  *
  * Either excludes the wrong code. `scaViews` partitions on a prefix: the prefix of the
@@ -176,25 +243,23 @@ export function settleScaBuild(opts) {
  * WebExtension review instead. Preventing exactly that is what the flag is for, so it ends the
  * run rather than warning.
  *
- * Asked HERE because this is where the pair stops moving.
- * @param {{scaBuild?: string, scaExperiments?: string, movedFrom: ?string}} pair
- * @param {?string} base  The extracted source archive, absolute.
- * @returns {{scaBuild?: string, scaExperiments?: string, movedFrom: ?string}} The same pair.
+ * Asked HERE because this is where the folders stop moving.
+ * @param {ScaFolders} folders
+ * @returns {ScaFolders}  The same folders.
  */
-function settled(pair, base) {
-  if (!pair.scaExperiments) {
-    return pair;
+function settled(folders) {
+  if (!Object.hasOwn(folders, "experiments")) {
+    return folders;
   }
-  const isBase = base && relativeInside(pair.scaExperiments, base) === "";
-  const holdsBuild =
-    pair.scaBuild &&
-    relativeInside(pair.scaBuild, pair.scaExperiments) !== null;
+  const { extracted, build, experiments } = folders;
+  const isBase = relativeInside(experiments, extracted) === "";
+  const holdsBuild = relativeInside(build, experiments) !== null;
   if (!isBase && !holdsBuild) {
-    return pair;
+    return folders;
   }
   const because = isBase
-    ? `--sca-experiments "${pair.scaExperiments}" is the extracted source archive itself`
-    : `--sca-experiments "${pair.scaExperiments}" holds the build folder "${pair.scaBuild}"`;
+    ? `--sca-experiments "${experiments}" is the extracted source archive itself`
+    : `--sca-experiments "${experiments}" holds the build folder "${build}"`;
   throw new Error(
     `${because}. It names the Experiment implementation, a folder of its own inside the ` +
       "extracted source archive beside or below the WebExtension code, so it cannot be the " +

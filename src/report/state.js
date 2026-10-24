@@ -42,8 +42,8 @@ import { rethrowIfFatal } from "../lib/errors.js";
  * @property {object} paths  The values a step names: description, build, report (all in
  *   the review's work folder, src/util/dest.js workPaths, which also holds this file and
  *   the review file and is not recorded: the state is read from it), schemaCache, schema,
- *   the two artifact roots
- *   (scaExtracted, xpiRoot) an entry's paths are resolved against, and `sweeps` - each tree's sweep
+ *   the artifact roots an entry's paths are resolved against (xpiRoot, and in a source review
+ *   `scaFolders`, src/lib/artifacts.js artifactRoots), and `sweeps` - each tree's sweep
  *   request (the text its step hands over) and answers file, by artifact, which is also
  *   what says WHICH trees this review asked about. Held here
  *   because a later pass prints them and cannot re-derive a moment - and `report` is also

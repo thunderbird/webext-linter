@@ -54,6 +54,7 @@ import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
 import { FileStore, fileView, folderView } from "./store.js";
 import { SYMLINK_CAUSE } from "../lib/enum.js";
 import { rethrowIfFatal } from "../lib/errors.js";
+import { assertScaFolders } from "./sca-build.js";
 
 /**
  * @typedef {object} GeckoSettings
@@ -511,7 +512,7 @@ export function extractedRelative(value, scaExtracted, flag = "SCA path") {
 }
 
 /**
- * The same question without the throw: where `value` sits inside `scaBuild`, or null when it
+ * The same question without the throw: where `value` sits inside `folder`, or null when it
  * sits outside it.
  *
  * Every layer that asks it - the CLI guard, which turns the answer into a usage line naming
@@ -520,12 +521,12 @@ export function extractedRelative(value, scaExtracted, flag = "SCA path") {
  * Either path may be written absolute or relative. Both are resolved first, so "inside" is
  * a fact about the filesystem rather than about spelling.
  * @param {string} value
- * @param {string} scaBuild
- * @returns {?string} A posix path relative to scaBuild ("" for that folder itself), or null.
+ * @param {string} folder
+ * @returns {?string} A posix path relative to folder ("" for that folder itself), or null.
  */
-export function relativeInside(value, scaBuild) {
+export function relativeInside(value, folder) {
   const rel = path.relative(
-    path.resolve(scaBuild),
+    path.resolve(folder),
     path.resolve(String(value ?? ""))
   );
   if (path.isAbsolute(rel) || hasParentSegment(rel)) {
@@ -564,7 +565,7 @@ export function hasParentSegment(value) {
  *               there is no narrower add-on subtree to carve out of it. An installed
  *               dependency tree is in neither: loadAddon records
  *               the directory paths for committed-node-modules and reads none of it.
- *   experiment  the Experiment implementation at `scaExperiments`, wherever it sits - inside
+ *   experiment  the Experiment implementation at `folders.experiments`, wherever it sits - inside
  *               the source or beside it. Privileged, non-WebExtension code: it is recorded
  *               here ONCE so nothing downstream has to re-derive where it went.
  *
@@ -586,23 +587,31 @@ export function hasParentSegment(value) {
  * the extracted folder itself), with its own files keyed relative to it (`buildFiles`), the
  * one frame the package file and the lock are read in (src/vendor/package-file.js
  * submissionFiles, buildKey).
- * @param {Addon} archive  The extracted archive, loaded ONCE (loadSourceArchive).
- * @param {{scaExtracted?: string, scaBuild: string, scaExperiments?: string}} where  Absolute
- *   paths, resolved by the arg-array reader (src/cli.js). The build folder and scaExperiments
- *   may sit anywhere in the extracted folder, which is the build folder where none is named.
+ * @param {Addon} archive  The extracted archive, loaded ONCE (loadSourceArchive), from
+ *   `folders.extracted`.
+ * @param {import("./sca-build.js").ScaFolders} folders  The review's source folders. The
+ *   build folder and the Experiment folder may sit anywhere in the extracted folder.
  * @returns {Addon}  The SAME archive, now carrying its two views. Not a new object:
  *   the store and the recorded path lists already describe this submission, and copying
  *   them onto parts is how they came to disagree.
  */
-export function scaViews(archive, { scaExtracted, scaBuild, scaExperiments }) {
+export function scaViews(archive, folders) {
+  assertScaFolders(folders, "scaViews");
   const store = archive.store;
   // The archive is walked from the extracted folder, so every key is relative to it. The
   // build folder and the Experiment folder are two places in that keyspace.
-  const base = scaExtracted ?? scaBuild;
-  const exp = scaExperiments
-    ? extractedRelative(scaExperiments, base, "--sca-experiments")
+  const exp = Object.hasOwn(folders, "experiments")
+    ? extractedRelative(
+        folders.experiments,
+        folders.extracted,
+        "--sca-experiments"
+      )
     : null;
-  const build = extractedRelative(scaBuild, base, "--sca-build");
+  const build = extractedRelative(
+    folders.build,
+    folders.extracted,
+    "--sca-build"
+  );
   archive.buildPrefix = build;
   archive.buildFiles = build ? folderView(store, build) : undefined;
   // A prefix that was never given (no --sca-experiments) is under nothing.

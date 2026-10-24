@@ -102,19 +102,21 @@ export function assertLocus(at, who) {
  * on whether this review even has that tree - and a second table written out beside one
  * of them is one that drifts from what a locus is stamped with.
  *
- * Takes whatever carries the two roots, because they travel under those names everywhere:
- * the review's `meta`, and the loop state's `paths`. `null` for a tree this review has
- * not got, which is every source archive in an XPI review - the absence IS the answer,
- * and a caller asks it rather than asking the review mode a second time.
- * The source archive's root is the extracted folder, the one its paths are keyed from, and
- * the build folder where no extracted folder is named, which is then the same folder.
- * @param {{xpiRoot?: ?string, scaExtracted?: ?string, scaBuild?: ?string}} where
- * @returns {Record<string, ?string>}
+ * Takes whatever carries the roots, because they travel under those names everywhere: the
+ * review's `meta`, and the loop state's `paths`. A source review carries its folders as
+ * `scaFolders`, and the source archive's root is the extracted folder, the one its paths are
+ * keyed from. An XPI review carries none, and has no source tree: the key is absent, which IS
+ * the answer, and a caller asks it rather than asking the review mode a second time.
+ * @param {{xpiRoot: string, scaFolders?: import("../addon/sca-build.js").ScaFolders}} where
+ * @returns {Record<string, string>}
  */
 export function artifactRoots(where) {
+  if (typeof where?.xpiRoot !== "string") {
+    throw wiringError("artifactRoots was handed no xpiRoot");
+  }
   return {
-    [ARTIFACT_XPI]: where?.xpiRoot ?? null,
-    [ARTIFACT_SCA]: where?.scaExtracted ?? where?.scaBuild ?? null,
+    [ARTIFACT_XPI]: where.xpiRoot,
+    ...(where.scaFolders ? { [ARTIFACT_SCA]: where.scaFolders.extracted } : {}),
   };
 }
 

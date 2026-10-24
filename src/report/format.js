@@ -73,14 +73,11 @@ const SEV_COLOR = {
  * @property {string} xpiFile  What was submitted, by name and not by path - the .xpi as
  *   ATN named it, or the folder's name where the submission arrived unpacked. It is what
  *   a reviewer recognises the submission by. Always set, alongside xpiRoot.
- * @property {string} [scaExtracted]  SCA review: the extracted source archive, the reviewed
- *   source, named where the build folder lies below it.
- * @property {string} [scaBuild]  SCA review: the build folder, where the package file and the
- *   lock are read (--sca-build, or found inside --sca-extracted), resolved.
- * @property {string} [scaExperiments]  SCA review: the Experiment implementation folder
- *   (--sca-experiments), resolved, when one was named. Its files are privileged code and are
- *   excluded from the WebExtension checks, so naming it is how a reader sees that anything
- *   was.
+ * @property {import("../addon/sca-build.js").ScaFolders} [scaFolders]  SCA review, and only
+ *   there: the extracted source archive, the reviewed source; the build folder, where the
+ *   package file and the lock are read; and the Experiment implementation folder where the
+ *   add-on declares Experiments. Its files are privileged code and are excluded from the
+ *   WebExtension checks, so naming it is how a reader sees that anything was.
  * @property {boolean} reviewed
  * @property {string} [schemaBranch]
  * @property {string} [schemaSource]
@@ -302,7 +299,7 @@ const BLOCK_VALUES = new Set([
  * @param {{name: string, intro: string}} phase
  * @param {{text: string}[]} steps  Already filtered by src/report/phases.js stepsOf.
  * @param {Object<string, string>} values  What the texts and steps name: review, command,
- *   schemaCache, description, build, scaBuild, schema, details, tally. The review file, the
+ *   schemaCache, description, build, schema, details, tally. The review file, the
  *   command and the last three are laid out as blocks rather than substituted into prose
  *   (BLOCK_VALUES).
  * @param {{text: string}[]} [preamble]  The preamble parts this prompt prints, already
@@ -514,7 +511,7 @@ function valueLines(entries) {
  *   `build/`, where the agent builds.
  * @param {string[]} [values.buildDetails]  On the permission prompt: the Build Review
  *   Details block, its waiting line included, filled into the step that shows it.
- * @param {string} [values.rescueRoot]  On the rescue prompt: the copy's root.
+ * @param {string} [values.rescueRoot]  On the rescue prompt: the build folder in the rescued copy.
  * @param {string} [values.submittedXpi]  On the build and rescue prompts: the submitted
  *   XPI, absolute.
  * @param {string[]} [values.copy]  On the rescue prompt: the commands that replace `build/`
@@ -643,13 +640,18 @@ export function headerLines(meta) {
     ["XPI_FILE", meta.xpiFile],
     ["XPI_ROOT", meta.xpiRoot],
   ];
-  if (meta.scaBuild) {
-    values.push(["SCA_BUILD", meta.scaBuild]);
-  }
-  // Only when it was given: it is the optional one of the three, and what it names was
-  // excluded from the WebExtension code checks - which nothing else in the report says.
-  if (meta.scaExperiments) {
-    values.push(["SCA_EXPERIMENTS", meta.scaExperiments]);
+  // The source folders: the extracted archive, which every [SCA] path is relative to, the
+  // build folder, and the Experiment folder where there is one, whose files were excluded from
+  // the WebExtension code checks - which nothing else in the report says.
+  const folders = meta.scaFolders;
+  if (folders) {
+    values.push(
+      ["SCA_EXTRACTED", folders.extracted],
+      ["SCA_BUILD", folders.build],
+      ...(Object.hasOwn(folders, "experiments")
+        ? [["SCA_EXPERIMENTS", folders.experiments]]
+        : [])
+    );
   }
   return [
     ...section("Review Details"),
@@ -722,9 +724,8 @@ export function detailLinkLines(meta) {
  *
  * The reviewed source is the whole extracted archive, or after a rescue the rescued copy,
  * beside which SCA_BUILD_ORIG names the build folder in the source archive. It is
- * SCA_EXTRACTED where the build folder lies below it, and SCA_BUILD, the build folder, then
- * names only where the package file and the lock are read. Where the two are one folder,
- * SCA_BUILD names it alone, as the reviewed source. SCA_VULNERABILITIES counts the submitted
+ * SCA_EXTRACTED is the reviewed source, and SCA_BUILD the build folder inside it, where the
+ * package file and the lock are read. SCA_VULNERABILITIES counts the submitted
  * lock, and LLM_RESCUED_VULNERABILITIES the rescued copy's lock where the agent attempted a
  * rescue. LLM_BUILD_ROOT is the build folder in the copy the agent built in, named where it
  * built or tried to.
@@ -752,8 +753,9 @@ export function detailRows(meta) {
   const reviewed = meta.scaBuildOrig
     ? "rescued source (reduced/fixed dependencies)"
     : "source archive";
-  if (meta.scaExtracted) {
-    rows.push(["SCA_EXTRACTED", reviewed, meta.scaExtracted]);
+  const folders = meta.scaFolders;
+  if (folders) {
+    rows.push(["SCA_EXTRACTED", reviewed, folders.extracted]);
   }
   if (meta.buildFile) {
     rows.push(["SCA_BUILD_PROCESS", "build.md", meta.buildFile]);
@@ -768,15 +770,11 @@ export function detailRows(meta) {
       meta.buildIssuesFile,
     ]);
   }
-  if (meta.scaExperiments) {
-    rows.push(["SCA_EXPERIMENTS", "experiment source", meta.scaExperiments]);
+  if (folders && Object.hasOwn(folders, "experiments")) {
+    rows.push(["SCA_EXPERIMENTS", "experiment source", folders.experiments]);
   }
-  if (meta.scaBuild) {
-    rows.push([
-      "SCA_BUILD",
-      meta.scaExtracted ? "build folder" : reviewed,
-      meta.scaBuild,
-    ]);
+  if (folders) {
+    rows.push(["SCA_BUILD", "build folder", folders.build]);
   }
   if (meta.scaBuildOrig) {
     rows.push(["SCA_BUILD_ORIG", "source archive", meta.scaBuildOrig]);
@@ -1351,7 +1349,13 @@ export function formatJson(review) {
   const meta = Object.fromEntries(
     Object.entries(rawMeta).map(([key, value]) => [
       key,
-      typeof value === "string" ? displayPath(value) : value,
+      typeof value === "string"
+        ? displayPath(value)
+        : key === "scaFolders"
+          ? Object.fromEntries(
+              Object.entries(value).map(([k, v]) => [k, displayPath(v)])
+            )
+          : value,
     ])
   );
   const issues = review.findings;

@@ -4,8 +4,11 @@
     "xpi": "<root>/tests/addons/sca-nested-layout/xpi",
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
-    "scaBuild": "<root>/tests/addons/sca-nested-layout/src",
-    "scaExperiments": "<root>/tests/addons/sca-nested-layout/src/addon/experiment",
+    "scaFolders": {
+      "extracted": "<root>/tests/addons/sca-nested-layout/src",
+      "build": "<root>/tests/addons/sca-nested-layout/src",
+      "experiments": "<root>/tests/addons/sca-nested-layout/src/addon/experiment"
+    },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

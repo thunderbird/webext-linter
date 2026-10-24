@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   advisory,
@@ -33,6 +34,9 @@ import {
   argvOf,
   unwrapped,
   UNSAFE_ISSUE,
+  packAddon,
+  answerAnalyze,
+  answerPermission,
 } from "../cli-run.js";
 
 /**
@@ -130,15 +134,19 @@ test("a rescued review names both roots and the build root", async () => {
     },
   });
   const { sca, rescued, buildCopy } = workPaths(work);
-  assert.equal(record.roots.scaBuild, rescued);
+  assert.deepEqual(record.roots, { extracted: rescued, build: rescued });
   const r = run(["--llm-handback", work]);
   assert.notEqual(r.code, 2, r.stdout + r.stderr);
   const state = readJson(work, "state");
-  assert.equal(state.paths.scaBuild, rescued);
+  assert.deepEqual(state.paths.scaFolders, {
+    extracted: rescued,
+    build: rescued,
+  });
   assert.equal(state.paths.scaBuildOrig, sca);
   assert.equal(state.build.root, buildCopy);
   const rows = [
-    `* SCA_BUILD: [rescued source (reduced/fixed dependencies)](${rescued})`,
+    `* SCA_EXTRACTED: [rescued source (reduced/fixed dependencies)](${rescued})`,
+    `* SCA_BUILD: [build folder](${rescued})`,
     `* SCA_BUILD_ORIG: [source archive](${sca})`,
     `* LLM_BUILD_ROOT: [build copy](${buildCopy})`,
   ];
@@ -395,10 +403,11 @@ test("a safe build prints the Build Review Details and the permission question",
   assert.match(asked.stdout, /── SCA Review Prompt ──/);
   assert.equal(headerValue(asked.stdout, "ANSWERS"), workPaths(work).review);
   const block = [
+    `* SCA_EXTRACTED: [source archive](${path.join(work, "sca")})`,
     `* SCA_BUILD_PROCESS: [build.md](${workPaths(work).build})`,
     "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
     `* SCA_BUILD_SAFETY_ISSUES: [build-issues.md](${workPaths(work).buildIssues})`,
-    `* SCA_BUILD: [source archive](${path.join(work, "sca")})`,
+    `* SCA_BUILD: [build folder](${path.join(work, "sca")})`,
     "",
     'Reply "next" to continue the review with the question how to build the add-on.',
   ]
@@ -555,4 +564,73 @@ test("an unsafe build is reported where the reviewer holds it unsafe", () => {
     );
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// The Experiment folder may lie anywhere in the extracted archive, beside the build folder
+// too. The lock audit after the permission reads the archive the review reads, the whole
+// extracted copy, so such a layout gets past the permission instead of being refused as an
+// Experiment folder outside the build folder.
+test("an Experiment folder beside the build folder gets past the permission", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-sibling-"));
+  const xpi = path.join(dir, "a.xpi");
+  packAddon(xpi, { experiment_apis: { foo: {} } });
+  const src = path.join(dir, "src");
+  fs.cpSync(NO_LOCK_SOURCE, path.join(src, "addon"), { recursive: true });
+  fs.mkdirSync(path.join(src, "experiment"));
+  fs.writeFileSync(path.join(src, "experiment", "p.js"), "1;\n");
+  const started = run([
+    ...OFFLINE_FLAGS,
+    "--allow-experiments",
+    xpi,
+    "--llm-review",
+    "--sca-extracted",
+    src,
+    "--sca-experiments",
+    "experiment",
+  ]);
+  assert.equal(started.code, 0, started.stdout + started.stderr);
+  const work = workOf(started.stdout);
+  assert.equal(
+    headerValue(started.stdout, "SCA_BUILD"),
+    path.join(workPaths(work).sca, "addon")
+  );
+  const asked = run(answerAnalyze(started.stdout));
+  assert.equal(asked.code, 0, asked.stdout + asked.stderr);
+  const permitted = run(answerPermission(asked.stdout, "Let the agent build"));
+  assert.notEqual(permitted.code, 2, permitted.stdout + permitted.stderr);
+  assert.notEqual(readJson(work, "prepare").step, "permission");
+  assert.deepEqual(readJson(work, "prepare").roots, {
+    extracted: workPaths(work).sca,
+    build: path.join(workPaths(work).sca, "addon"),
+    experiments: path.join(workPaths(work).sca, "experiment"),
+  });
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// An Experiment folder named for an add-on without Experiments would take WebExtension code
+// out of the review, so the preparation refuses it before it creates anything.
+test("--sca-experiments for an add-on without Experiments is refused before preparing", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-noexp-"));
+  const xpi = path.join(dir, "a.xpi");
+  packAddon(xpi);
+  const src = path.join(dir, "src");
+  fs.cpSync(NO_LOCK_SOURCE, src, { recursive: true });
+  fs.mkdirSync(path.join(src, "experiment"));
+  const r = run([
+    ...OFFLINE_FLAGS,
+    xpi,
+    "--llm-review",
+    "--sca-extracted",
+    src,
+    "--sca-experiments",
+    "experiment",
+  ]);
+  assert.equal(r.code, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /declares no Experiments/);
+  assert.deepEqual(
+    fs.readdirSync(dir).sort(),
+    ["a.xpi", "src"],
+    "no work folder is created"
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
 });

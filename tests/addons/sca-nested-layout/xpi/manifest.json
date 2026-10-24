@@ -2,7 +2,21 @@
   "manifest_version": 3,
   "name": "__MSG_extName__",
   "version": "1.0",
-  "background": { "scripts": ["background.js"] },
-  "icons": { "16": "icon.png" },
-  "default_locale": "en"
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "icons": {
+    "16": "icon.png"
+  },
+  "default_locale": "en",
+  "experiment_apis": {
+    "myapi": {}
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "strict_max_version": "140.*"
+    }
+  }
 }

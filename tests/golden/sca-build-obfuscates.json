@@ -4,7 +4,10 @@
     "xpi": "<root>/tests/addons/sca-build-obfuscates/xpi",
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
-    "scaBuild": "<root>/tests/addons/sca-build-obfuscates/src",
+    "scaFolders": {
+      "extracted": "<root>/tests/addons/sca-build-obfuscates/src",
+      "build": "<root>/tests/addons/sca-build-obfuscates/src"
+    },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

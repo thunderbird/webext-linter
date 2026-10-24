@@ -2571,7 +2571,7 @@ llm-sca-review-prompt:
 # {{description}} and {{build}} the files an agent writes, {{xpiRoot}} the extracted XPI, {{sweepXpi}} and
 # {{sweepSca}} the sweep request for each tree - one sub-agent's whole brief, so the step
 # that starts it relays nothing else - {{sweepXpiAnswers}} and {{sweepScaAnswers}} the
-# file each sweep's reply is written to, {{scaBuild}} the build folder, {{details}} the Review
+# file each sweep's reply is written to, {{details}} the Review
 # Details block, {{buildDetails}} the Build Review Details block, {{tally}} the closing
 # summary, {{maxNote}} the longest answer in a reviewer's own words, and {{schema}} - what
 # a verdict is judged against, printed by the phases

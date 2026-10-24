@@ -4,7 +4,10 @@
     "xpi": "<root>/tests/addons/sca-package-range-dep/xpi",
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
-    "scaBuild": "<root>/tests/addons/sca-package-range-dep/src",
+    "scaFolders": {
+      "extracted": "<root>/tests/addons/sca-package-range-dep/src",
+      "build": "<root>/tests/addons/sca-package-range-dep/src"
+    },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

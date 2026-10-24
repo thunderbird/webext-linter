@@ -144,10 +144,12 @@ const COUNTED = ["moderate", "high", "critical"];
  *   `buildResult` is `built`.
  * @property {?string} buildMatch  The agent's comparison of that output with the submitted
  *   XPI, a BUILD_MATCH_VALUES id. Held only where `buildResult` is `built`.
- * @property {?{scaBuild: string, scaExperiments: ?string}} roots  The settled roots, absolute
- *   and real, once known (from `analyze` on): inside `sca/`, or inside `rescued/` while a
- *   rescue runs and once it came out clean - the tree the next step, or the review, reads.
- *   The Experiment folder is null until it is known.
+ * @property {import("../addon/sca-build.js").ScaFolders} [roots]  The settled folders,
+ *   absolute and real, there from `analyze` on: the extracted copy is `sca/`, or `rescued/`
+ *   while a rescue runs and once it came out clean - the tree the next step, or the review,
+ *   reads - and the build folder and the Experiment folder lie inside it. The Experiment
+ *   folder is there exactly when the add-on declares Experiments, from `permission` on; at
+ *   `analyze` it may still be asked for (checkRoots).
  * @property {string} digest  The hash over every other field, as writePrepare stored it
  *   (recordDigest). A record whose digest does not match was changed after it was written.
  *
@@ -230,7 +232,51 @@ export function readPrepare(work) {
     checkDecision(record);
   }
   checkBuild(record, before || record.step === PREPARE_STEP.permission);
+  checkRoots(record);
   return record;
+}
+
+/**
+ * The record's folders, of the shape the linter writes: none before `analyze`, then the
+ * extracted copy and the build folder, and the Experiment folder exactly where the add-on
+ * declares Experiments - where it may still be missing at `analyze`, which asks for it.
+ * @param {PrepareRecord} record
+ * @throws {HandbackRefused}
+ */
+function checkRoots(record) {
+  const has = Object.hasOwn(record, "roots");
+  if (record.step === PREPARE_STEP.unpack) {
+    if (has) {
+      throw new HandbackRefused(
+        "the preparation's record holds folders before the archive was extracted"
+      );
+    }
+    return;
+  }
+  const roots = record.roots;
+  const keys =
+    has && roots && typeof roots === "object" ? Object.keys(roots) : [];
+  const folder = (key) => typeof roots?.[key] === "string" && roots[key] !== "";
+  const shaped =
+    folder("extracted") &&
+    folder("build") &&
+    keys.every((k) => ["extracted", "build", "experiments"].includes(k)) &&
+    (!keys.includes("experiments") || folder("experiments"));
+  if (!shaped) {
+    throw new HandbackRefused(
+      "the preparation's record holds no extracted copy and build folder of the shape the linter writes"
+    );
+  }
+  const named = keys.includes("experiments");
+  const owed =
+    record.submission.experiments && record.step !== PREPARE_STEP.analyze;
+  if (named ? !record.submission.experiments : owed) {
+    throw new HandbackRefused(
+      named
+        ? "the preparation's record names an Experiment folder for an add-on without Experiments"
+        : "the preparation's record names no Experiment folder for an add-on with Experiments"
+    );
+  }
 }
 
 /**
@@ -404,14 +450,13 @@ export function recordBoolean(value, what) {
 
 /**
  * The record of a preparation that has not started, with what the run that created the work
- * folder alone knows. Without roots it starts at `unpack` (--llm-sca-review, whose agent
+ * folder alone knows. Without folders it starts at `unpack` (--llm-sca-review, whose agent
  * extracts the source); with them at `analyze` (a review given --sca-extracted, whose source the
  * linter copied into `sca/`).
- * @param {Pick<PrepareRecord, "submission" | "flags" | "agentBuilds"> &
- *   {roots?: PrepareRecord["roots"]}} known
+ * @param {Pick<PrepareRecord, "submission" | "flags" | "agentBuilds" | "roots">} known
  * @returns {PrepareRecord}
  */
-export function startRecord({ submission, flags, agentBuilds, roots = null }) {
+export function startRecord({ submission, flags, agentBuilds, roots }) {
   return {
     step: roots ? PREPARE_STEP.analyze : PREPARE_STEP.unpack,
     submission,
@@ -422,7 +467,7 @@ export function startRecord({ submission, flags, agentBuilds, roots = null }) {
     buildSafe: null,
     buildReasons: null,
     packageManagers: null,
-    roots,
+    ...(roots ? { roots } : {}),
     vulnerabilities: null,
     rescuedVulnerabilities: null,
     buildResult: null,
@@ -470,8 +515,10 @@ export function writePrepare(work, record) {
 function relativeFolders(record) {
   const named = [
     ["submission.xpi", record.submission?.xpi],
-    ["roots.scaBuild", record.roots?.scaBuild],
-    ["roots.scaExperiments", record.roots?.scaExperiments],
+    ...Object.entries(record.roots ?? {}).map(([key, value]) => [
+      `roots.${key}`,
+      value,
+    ]),
     ["buildOutput", record.buildOutput],
     ...Object.entries(record.flags ?? {})
       .filter(([flag]) => flag.endsWith("-dir"))
@@ -514,12 +561,12 @@ export function markPrepare(work, record) {
 /**
  * Where a build folder the record holds lies in the work folder's trees: inside `rescued/`
  * while a rescue runs and once it came out clean, else inside `sca/`. `scaBuildOrig` is the
- * same place in `sca/` for one in `rescued/`, and null for one in `sca/`, where it is itself.
- * `buildRoot` is the same place in `build/`, where every build runs, and null for one in
- * neither tree.
+ * same place in `sca/` for one in `rescued/`, and there only then: in `sca/` it is itself.
+ * `buildRoot` is the same place in `build/`, where every build runs, and there only for one
+ * in either tree.
  * @param {string} work  The work folder.
  * @param {string} root  The build folder, absolute and real.
- * @returns {{scaBuildOrig: ?string, buildRoot: ?string}}
+ * @returns {{scaBuildOrig?: string, buildRoot?: string}}
  */
 export function treeRoots(work, root) {
   const paths = workPaths(work);
@@ -533,8 +580,10 @@ export function treeRoots(work, root) {
   const rescued = inside(paths.rescued);
   const rel = rescued ?? inside(paths.sca);
   return {
-    scaBuildOrig: rescued === null ? null : path.join(paths.sca, rescued),
-    buildRoot: rel === null ? null : path.join(paths.buildCopy, rel),
+    ...(rescued === null
+      ? {}
+      : { scaBuildOrig: path.join(paths.sca, rescued) }),
+    ...(rel === null ? {} : { buildRoot: path.join(paths.buildCopy, rel) }),
   };
 }
 
@@ -555,9 +604,11 @@ const PACKAGE_FILES = [PACKAGE_FILE, ...TREE_LOCKS];
  * @returns {?{files: Map<string, Buffer>}}
  */
 export function originalPackages(work, record) {
-  const reviewed = record?.roots?.scaBuild;
-  const root = reviewed ? treeRoots(work, reviewed).scaBuildOrig : null;
-  if (root === null) {
+  if (!record?.roots) {
+    return null;
+  }
+  const { scaBuildOrig: root } = treeRoots(work, record.roots.build);
+  if (root === undefined) {
     return null;
   }
   if (!fs.statSync(root, { throwIfNoEntry: false })?.isDirectory()) {

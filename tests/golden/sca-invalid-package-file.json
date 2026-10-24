@@ -4,7 +4,10 @@
     "xpi": "<root>/tests/addons/sca-invalid-package-file/xpi",
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
-    "scaBuild": "<root>/tests/addons/sca-invalid-package-file/src",
+    "scaFolders": {
+      "extracted": "<root>/tests/addons/sca-invalid-package-file/src",
+      "build": "<root>/tests/addons/sca-invalid-package-file/src"
+    },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

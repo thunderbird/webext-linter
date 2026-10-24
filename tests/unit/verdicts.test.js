@@ -490,6 +490,7 @@ test("a question's locus is the locus line the report prints", () => {
     meta: {
       action: "review",
       xpi: "x",
+      xpiRoot: "/x/work/xpi/",
       reviewed: true,
       manualReview: manual,
     },
@@ -781,6 +782,7 @@ function settled(manual, answers) {
       meta: {
         action: "review",
         xpi: "x",
+        xpiRoot: "/x/work/xpi/",
         reviewed: true,
         manualReview: manual,
       },
@@ -992,7 +994,12 @@ test("the JSON carries a note only where there is one", () => {
   const doc = JSON.parse(
     formatJson({
       findings,
-      meta: { action: "review", xpi: "x", reviewed: true },
+      meta: {
+        action: "review",
+        xpi: "x",
+        xpiRoot: "/x/work/xpi/",
+        reviewed: true,
+      },
     })
   );
   assert.deepEqual(

@@ -4,7 +4,10 @@
     "xpi": "<root>/tests/addons/sca-multiple-vendor-files/xpi",
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
-    "scaBuild": "<root>/tests/addons/sca-multiple-vendor-files/src",
+    "scaFolders": {
+      "extracted": "<root>/tests/addons/sca-multiple-vendor-files/src",
+      "build": "<root>/tests/addons/sca-multiple-vendor-files/src"
+    },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

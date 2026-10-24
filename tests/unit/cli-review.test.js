@@ -73,7 +73,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
     review.stdout.includes(workPaths(work).build),
     "and the build report"
   );
-  assert.equal(readJson(work, "state").report.meta.scaBuild, root);
+  assert.equal(readJson(work, "state").report.meta.scaFolders.build, root);
   fs.rmSync(work, { recursive: true, force: true });
 
   // A rejected Experiment submitted WITH --sca-extracted is not prepared: the review rejects it
@@ -242,6 +242,7 @@ test("a warning reaches stderr, held back to the end of a prompt run", () => {
     path.join(dir, "src"),
     "--sca-experiments",
     "emptyexp",
+    "--allow-experiments",
     ...OFFLINE_FLAGS,
   ];
   const WARNING = /matched no files under --sca-extracted/;
@@ -308,6 +309,7 @@ test("a failure outside main still dumps the held messages", () => {
     path.join(dir, "src"),
     "--sca-experiments",
     "emptyexp",
+    "--allow-experiments",
     "--llm-review",
     ...OFFLINE_FLAGS,
   ]);

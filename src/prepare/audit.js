@@ -71,7 +71,7 @@ export const LOCK_AUDIT_LISTS = Object.freeze([
 
 /**
  * Audit one build folder's lock.
- * @param {{scaBuild: string, scaExperiments: ?string}} roots  Settled, absolute.
+ * @param {import("../addon/sca-build.js").ScaFolders} roots  Settled, absolute.
  * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} [context]
  *   The network the audit asks, the run's, behind its cache (./steps.js handBack), and where
  *   the npm registry's answers about the lock's tarball URLs are cached.
@@ -79,19 +79,17 @@ export const LOCK_AUDIT_LISTS = Object.freeze([
  */
 export async function auditRoot(roots, { net, cacheDir } = {}) {
   const none = Object.fromEntries(LOCK_AUDIT_LISTS.map((l) => [l, []]));
-  // A build folder the loader refuses - a file it cannot read, more than it reads at all - is one
+  // The archive the review loads, the whole extracted copy, read through the build folder's
+  // view. One the loader refuses - a file it cannot read, more than it reads at all - is one
   // the review refuses too. Not read in full, so neither clean nor rescuable.
   let archive;
   try {
-    archive = loadSourceArchive(roots.scaBuild);
+    archive = loadSourceArchive(roots.extracted);
   } catch (err) {
     rethrowIfFatal(err);
     return { complete: false, lists: none, moderate: [] };
   }
-  scaViews(archive, {
-    scaBuild: roots.scaBuild,
-    scaExperiments: roots.scaExperiments ?? undefined,
-  });
+  scaViews(archive, roots);
   // Asked before the audit, which would otherwise vouch for releases the install does not
   // fetch: the review aborts on each of these, and nothing is asked of OSV for such a lock.
   // More than one lock comes first, since it needs no network: the audit would read one while
