@@ -214,10 +214,7 @@ export const SETUP_STEPS = Object.freeze([
  *   printing the report. Changes nothing about the review itself, only what is printed
  *   and what is written for the passes that follow.
  * @property {string[]} [llmSkip]  What that prompt leaves out (PROMPT_SKIPS, src/config.js):
- *   --llm-skip-summary drops the add-on description and the file named for it;
- *   --llm-skip-manual drops the steps that put the manual items to a reviewer,
- *   and no phase puts them to anyone - they stay in the report, for the
- *   reviewer to work through later.
+ *   --llm-skip-summary drops the add-on description and the file named for it.
  * @property {Record<string, string|boolean>} [flags]  The command-line values the review
  *   was started with, minus the --sca-* ones and those of one run alone (src/cli.js
  *   forwardedFlags), recorded in the loop's state for an XPI review restarted from it.
@@ -829,9 +826,8 @@ async function reviewSubmission(opts, work, prepared) {
     preSweep: preSweepOf(registry, ranIds, mode, siblings, artifactRoots(meta)),
   });
 
-  // What this run was told to leave out (--llm-skip-summary / --llm-skip-manual). Read
-  // once: a phase drops steps by it, the routing drops entries by it, and the
-  // description file is named by it.
+  // What this run was told to leave out (--llm-skip-summary). Read once: a phase drops
+  // steps by it, and the description file is named by it.
   const skip = opts.llmSkip ?? [];
   // Where the prompt's reader writes the add-on description, and where it writes what
   // building the add-on takes. Both sit in the review's work folder, and this tool writes

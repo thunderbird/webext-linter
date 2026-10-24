@@ -10,7 +10,7 @@
 // (src/report/loop.js accept). It is the one function: a process value is declared in the
 // registry and read in the registry, so its names never reach the code as constants.
 //
-// Names are lower-case words, digits and hyphens (`llm-skip-manual`, `sca`); the operators
+// Names are lower-case words, digits and hyphens (`llm-skip-summary`, `sca`); the operators
 // are upper case, so a name can never be read as one. NOT binds tightest, then AND, then OR.
 //
 // Belongs here: the grammar - parsing a condition, naming what it reads, and evaluating it

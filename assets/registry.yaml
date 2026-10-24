@@ -2675,8 +2675,7 @@ llm-phases:
     # to-do is open and never in an XPI review. Any answer clears that to-do. It asks the
     # outcome only, since the reviewer decided whether the build is safe in the preparation. One
     # of the three lets the review go on, and each of the other two reports the check naming
-    # the reason the review stops (`reports`). Asked under --llm-skip-manual too: it decides
-    # whether the review goes on, which is not what that flag withholds.
+    # the reason the review stops (`reports`).
     #
     # Its first step is the Build Review Details: the submitted XPI, the source the review
     # read, the build report and the safety verdict, the vulnerabilities counted in the submitted
@@ -2864,8 +2863,7 @@ llm-phases:
     # Puts what only a person can answer to a person. Its first steps hand the reviewer the
     # Review Details block before the questions: what this review is, and where to read it
     # while answering - the build output among it. The block ends the turn, as in `built`.
-    # Never in a review that was aborted: nothing further is put to anyone. Nor under
-    # --llm-skip-manual, whose questions stay in the report for later. The closing
+    # Never in a review that was aborted: nothing further is put to anyone. The closing
     # hand-over carries the block either way. Intro EMPTY: today's two ask blocks say where
     # an entry came from, which is procedural - the agent relays both identically, and
     # naming the difference invites it to treat them differently, which its step forbids.
@@ -2879,17 +2877,17 @@ llm-phases:
       intro: ""
       steps:
         # The wait only where an agent was started, under the phase's own condition.
-        - when: spawned AND NOT aborted AND NOT llm-skip-manual
+        - when: spawned AND NOT aborted
           text: |-
             Wait for every agent you spawned to come back.
-        - when: NOT aborted AND NOT llm-skip-manual
+        - when: NOT aborted
           text: |-
             Give the reviewer this block under a "Review details" heading, exactly as it is written here, as the last thing you write this turn. Then end your turn, and put no question to them in it. Go on with the next step only once the reviewer has replied: what they reply does not matter.
 
             {{details}}
 
             It names what this review is and where to read it, and its links are written for their client to open. Write nothing of your own about it: no summary, no excerpt, no link of your own making. Where a path names a file another agent wrote, the reviewer reads it themselves.
-        - when: NOT aborted AND NOT llm-skip-manual
+        - when: NOT aborted
           text: |-
             Put every entry in the file to the reviewer in the order the file lists them, batched: ask as many at once as your question tool allows in a single call, and wait for each batch to be answered before asking the next. Ask each entry's "message" as the question and its "label" as the question's label. Both are opaque strings: pass them through exactly as they are, read nothing into them, and compose nothing of your own. Offer the answers under that entry's "answers", in the order they are listed, each with the label and description written there and no wording of your own.
 

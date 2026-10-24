@@ -57,7 +57,7 @@ entry never offered are all refusals.
 | `spawn` | Start the sub-agents the review needs - the add-on description and one sweep per tree - and read back what the sweeps found. | Nothing: each sweep's reply is written to a file of its own (see below) |
 | `verify` | Audit what the deterministic checks claimed, but never a finding of a check with `llm-verification: false`: a person's decision or a fact from outside the add-on. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
-| `ask` | Show the Review Details block as the last thing of the turn, then, once the reviewer has replied, put to them what only a person can answer. Not under `--llm-skip-manual`. | The reviewer's own answer |
+| `ask` | Show the Review Details block as the last thing of the turn, then, once the reviewer has replied, put to them what only a person can answer. | The reviewer's own answer |
 | `downgrade` | Source code review only, aborted only by checks a review of the XPI alone cures, with a readable XPI (`downgradable`): show the aborted review's Summary and Final Review Details as the last thing of the turn, then, once the reviewer has replied, ask them alone whether to restart as an XPI review (see [Restarting as an XPI review](#restarting-as-an-xpi-review)). | A process value: `Restart as an XPI review` / `Keep this result` |
 | `close` | The last phase, once nothing else has work: hand over the settled review. It opens on whether the review is settled or was aborted, and says only what applies to it. | Nothing: the review ends with it |
 
@@ -93,7 +93,7 @@ in the closing prompt. A step with no condition prints in every run, and a phase
 left with no step is not issued. The preamble's parts are conditioned the same way. A wait
 for spawned agents is a step of its own (`when: spawned AND ...`), carrying its phase's own
 condition so that a wait alone never issues a phase. The registry spells each one
-out, for example `ask`'s `NOT aborted AND NOT llm-skip-manual`, and refuses a
+out, for example `ask`'s `NOT aborted`, and refuses a
 condition that does not parse or names a fact nothing answers.
 
 A condition can also read a **process value** with `value(phase, id)`. A phase answering
@@ -182,9 +182,7 @@ the source builds into it. The check names its phase (`asked-in:` in the registr
 carries it, and the phase relays it with its own three answers (`values`) in place of the
 manual review's. Every answer clears the case, and each of the two that stop the review
 reports its own check (`reports`), so the developer is told why: the passes still run, every
-`ask` question is dropped, and the report ends on "Build process issues". The question is asked under
-`--llm-skip-manual` too: it decides whether the review goes on, which is not what that flag
-withholds.
+`ask` question is dropped, and the report ends on "Build process issues".
 
 
 ## When the review is aborted
@@ -739,5 +737,4 @@ The caches are not part of it: they stay in `WEBEXT-LINTER-CACHE/`.
 | `--llm-handback <dir>` | Take a phase back and hand out the next, from the review file in the work folder the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file in that folder. On a folder a source code review is being prepared in (`.review/prepare.json`, and no review started), take the next step of the preparation instead, and once it is done, start its review. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - and print the first prompt for preparing a source code review of it. It creates the review's work folder beside the `.xpi`, records there how the review is to be run, and its prompt ends in `--llm-handback` on that folder (see [Preparing a source code review](#preparing-a-source-code-review)). Refused beside any `--sca-*` flag, which is what the preparation works out. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |
-| `--llm-skip-manual` | With `--llm-review` or `--llm-sca-review`: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted, which takes them out. The build question is still asked. Given with `--llm-skip-summary`, the review verifies only the add-on's **code**. |
 | `--llm-skip-sweep` | With `--llm-review` or `--llm-sca-review`: leave out the sweep. No sweeping agent is spawned, and the sweep is not handed to the reviewer either. |

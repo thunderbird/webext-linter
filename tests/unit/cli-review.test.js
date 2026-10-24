@@ -21,6 +21,7 @@ import {
   headerValue,
   readJson,
   workOf,
+  handBackUntil,
 } from "../cli-run.js";
 import { workPaths } from "../../src/util/dest.js";
 
@@ -446,7 +447,6 @@ test("a hand-back pass reports a case in the band its review recorded", () => {
       ...OFFLINE_FLAGS,
       "--llm-review",
       "--llm-skip-summary",
-      "--llm-skip-manual",
       "--llm-skip-sweep",
       "--checks-only",
       "unused-permission",
@@ -461,7 +461,11 @@ test("a hand-back pass reports a case in the band its review recorded", () => {
     );
     doc.entries = doc.entries.map((e) => ({ ...e, answer: "reported" }));
     fs.writeFileSync(file, JSON.stringify(doc));
-    return run(["--llm-handback", workOfReviewFile(file)]);
+    const work = workOfReviewFile(file);
+    const settled = run(["--llm-handback", work]);
+    assert.notEqual(settled.code, 2, settled.stdout + settled.stderr);
+    // The manual questions are put next, and the close follows them.
+    return handBackUntil(work, "close").out ?? settled;
   };
   const plain = settle();
   assert.equal(plain.code, 0, plain.stdout + plain.stderr);

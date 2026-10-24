@@ -189,11 +189,11 @@ export function nextPhase(phases, ordered, state, run) {
  * answers means a phase issued for entries it never shows, or entries shown that nothing
  * asked for.
  *
- * Whether the items are put to anyone at all is not decided here. A flag that withholds
- * them (--llm-skip-manual) or an abort withholds the PHASE, through the steps its `when:`
- * leaves out (stepsOf) - a phase with no step is never issued, so its entries never go
- * out - and an aborted report drops the same items rather than leaving a to-do list under
- * a line saying it was never finished (src/report/early-exit.js).
+ * Whether the items are put to anyone at all is not decided here. An abort withholds the
+ * PHASE, through the steps its `when:` leaves out (stepsOf) - a phase with no step is never
+ * issued, so its entries never go out - and an aborted report drops the same items rather
+ * than leaving a to-do list under a line saying it was never finished
+ * (src/report/early-exit.js).
  * @param {string} phaseName
  * @param {import("./order.js").OrderedItem[]} ordered
  * @param {import("./state.js").LoopState} state

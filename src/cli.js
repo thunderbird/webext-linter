@@ -210,10 +210,6 @@ function helpText(checkIds) {
       "With --llm-review or --llm-sca-review: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes.",
     ],
     [
-      "--llm-skip-manual",
-      "With --llm-review or --llm-sca-review: leave out the manual review items. No phase puts them to a reviewer - they stay in the report, for the reviewer to work through later, unless the review was aborted, which takes them out. The build question is still asked. Given with --llm-skip-summary, the review verifies only the add-on's code.",
-    ],
-    [
       "--llm-skip-sweep",
       "With --llm-review or --llm-sca-review: leave out the sweep. The prompt neither spawns it nor stops for it, and the sweep is not handed to the reviewer either.",
     ],
@@ -367,7 +363,6 @@ const OPTIONS = {
   "llm-sca-review": { type: "boolean" },
   "llm-review": { type: "boolean" },
   "llm-skip-summary": { type: "boolean" },
-  "llm-skip-manual": { type: "boolean" },
   "llm-skip-sweep": { type: "boolean" },
   "llm-handback": { type: "string" },
   "warnings-as-errors": { type: "boolean" },

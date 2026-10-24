@@ -806,11 +806,11 @@ test("nothing to ask: the review settles after the last settle", () => {
   const dir = tmp();
   const { state, work } = review(dir, { sweep: false });
   state.manual = state.manual.filter((m) => m.extended);
-  // skip:manual drops only the questions. spawn is skipped too (nothing to start) - so
-  // what this pins is that `ask` is not issued either, once it has nothing to put to
-  // anyone - and neither is the details block, which exists to answer questions with.
+  // spawn is skipped (nothing to start), so what this pins is that `ask` is not issued
+  // either, once it has nothing to put to anyone - and neither is the details block, which
+  // exists to answer questions with.
   state.run = {
-    skip: ["llm-skip-manual", "llm-skip-summary"],
+    skip: ["llm-skip-summary"],
     sca: false,
     sweep: false,
   };
@@ -1209,34 +1209,6 @@ test("a refusal is its own class, so the caller can answer it differently", () =
   }
 });
 
-// --llm-skip-manual means those items are not put to ANYONE: they stay in the report for
-// the reviewer to work through later. Withholding only the step that asks them would hand
-// the agent the questions with no instruction about them - and a handover demanding an
-// answer for each, which is the opposite of leaving them alone.
-//
-// With nothing left to ask, the phase is not issued at all: it exists to put questions to
-// someone, and the Review Details block it would have handed over travels with the report
-// instead.
-test("--llm-skip-manual withholds the entries, so the ask phase is not issued", () => {
-  const dir = tmp();
-  const { state, work } = review(dir, { sweep: false });
-  state.run = { skip: ["llm-skip-manual"], sca: false, sweep: false };
-  const seen = [];
-  for (let pass = 0; pass < 8; pass++) {
-    const out = issue(state, work, PHASES, REGISTRY);
-    if (out.phase.answer === "end") break;
-    seen.push(out.phase.name);
-    handBack(work, () =>
-      out.phase.name === "verify" ? "reported" : "cleared"
-    );
-    accept(state, work, PHASES, REGISTRY);
-  }
-  assert.ok(!seen.includes("ask"), `ask was issued: ${seen.join(", ")}`);
-  // The two findings and the code-review case were settled; NEITHER question was. They
-  // stay open, which is what puts them in the report rather than in a verdict.
-  assert.deepEqual(Object.keys(state.answers).sort(), ["0.1", "0.2", CASE]);
-});
-
 // The same phase, reached the other way: nothing produced an ask verdict and there are no
 // standard questions, so there is nothing to ask and the review goes straight to the
 // report. Driven by the REVIEW having no questions, not by a flag emptying it.
@@ -1352,16 +1324,14 @@ test("a phase with no entries is not issued, whichever phase it is", () => {
   }
 });
 
-// Every combination of the three skips, over a review that holds something for every
+// Every combination of the two skips, over a review that holds something for every
 // phase - so what drops out is the FLAG's doing and nothing else.
 //
 //   llm-skip-summary -> the description agent, and the link that hands it over
-//   llm-skip-manual  -> `ask`, its details block and its questions: the entries as well
-//                       as the step that asks them
 //   llm-skip-sweep   -> the sweep agent, the wait, and the rows it would have filled
 test("every combination of the skips issues exactly the phases it should", () => {
-  const SKIPS = ["llm-skip-summary", "llm-skip-manual", "llm-skip-sweep"];
-  for (let bits = 0; bits < 8; bits++) {
+  const SKIPS = ["llm-skip-summary", "llm-skip-sweep"];
+  for (let bits = 0; bits < 4; bits++) {
     const skip = SKIPS.filter((_, i) => bits & (1 << i));
     const sweeps = !skip.includes("llm-skip-sweep");
     const dir = tmp();
@@ -1388,9 +1358,7 @@ test("every combination of the skips issues exactly the phases it should", () =>
       ...(!skip.includes("llm-skip-summary") || sweeps ? ["spawn"] : []),
       "verify",
       "settle",
-      // An XPI review asks nothing else, so --llm-skip-manual leaves no question for the
-      // details block to serve and no entry for `ask`.
-      ...(skip.includes("llm-skip-manual") ? [] : ["ask"]),
+      "ask",
     ];
     const { seen, details } = phasesOf(state, work);
     const where = `skips: ${skip.join(",") || "none"}`;
@@ -1624,7 +1592,7 @@ test("a blocking finding closes the review on its first prompt", () => {
 });
 
 // The Review Details block goes out in `ask`, before its questions - and only where they
-// are put: not in an aborted review, and not under --llm-skip-manual, whatever the review.
+// are put: not in an aborted review.
 // A source review's build question comes first, with its own block.
 test("the details block is handed over by the ask phase, before its questions", () => {
   const blocks = (made) => {
@@ -1647,14 +1615,6 @@ test("the details block is handed over by the ask phase, before its questions", 
     return shown;
   };
   assert.deepEqual(blocks(review(tmp(), { sweep: false })), ["ask"]);
-
-  const skipped = review(tmp(), { sweep: false });
-  skipped.state.run.skip = ["llm-skip-manual"];
-  assert.deepEqual(blocks(skipped), []);
-
-  const source = buildQuestionsReview(tmp());
-  source.state.run.skip = ["llm-skip-manual"];
-  assert.deepEqual(blocks(source), []);
 
   const aborted = blockingReview(tmp());
   const shown = [];
@@ -1711,7 +1671,7 @@ test("a review with no other work is closed on its first pass", () => {
     code: false,
     questions: false,
   });
-  state.run = { skip: ["llm-skip-summary", "llm-skip-manual"], sca: false };
+  state.run = { skip: ["llm-skip-summary"], sca: false };
   const out = issue(state, work, PHASES, REGISTRY);
   assert.equal(out.phase.name, "close");
   assert.ok(out.settled, "it carries the settled review");
@@ -2300,16 +2260,6 @@ test("an install hook reported in settle aborts the review", () => {
   );
 });
 
-// --llm-skip-manual withholds the questions in `ask`, not the build question: it decides
-// whether the review goes on at all.
-test("--llm-skip-manual still asks the build question", () => {
-  const made = buildQuestionsReview(tmp());
-  made.state.run.skip = ["llm-skip-manual"];
-  const { seen } = driveBuild(made, goesOn());
-  assert.ok(seen.includes("built"), seen.join(", "));
-  assert.ok(!seen.includes("ask"), seen.join(", "));
-});
-
 // A case is routed by what it IS, not by its number: a sweep that files cases ahead of the
 // build question renumbers the review, and the question still opens in its own phase.
 test("a renumbered review still asks the build question in its own phase", () => {
@@ -2414,7 +2364,7 @@ test("a one-pass review's only prompt says only what applies", () => {
     code: false,
     questions: false,
   });
-  state.run = { skip: ["llm-skip-summary", "llm-skip-manual"], sca: false };
+  state.run = { skip: ["llm-skip-summary"], sca: false };
   const prompts = promptsOf({ state, work });
   assert.deepEqual(Object.keys(prompts), ["close"]);
   assert.equal(prompts.close.preamble, 0, "no preamble above it");
@@ -2493,11 +2443,6 @@ test("the agent wait prints only where an agent was started, and never alone", (
   assert.ok(!("spawn" in prompts));
   assert.deepEqual(prompts.ask.steps.length, 2);
   assert.match(prompts.ask.steps[0], /^Give the reviewer this block/);
-
-  // An XPI review under --llm-skip-manual asks nothing, so no ask phase made of a wait.
-  const skipped = review(tmp());
-  skipped.state.run.skip = ["llm-skip-manual"];
-  assert.ok(!("ask" in promptsOf(skipped)));
 });
 
 // With one of the checks a build relies on switched off, nothing vouches for what an install
@@ -2886,36 +2831,6 @@ test("the closing prompt's slots carry the settled tally and details", () => {
   ).join("\n");
   assert.ok(rendered.includes(out.settled.details.split("\n")[0]));
   assert.ok(!rendered.includes('Reply "next" to continue the review'));
-});
-
-// The two suppressions of the `ask` phase are different facts and must stay so: the skip
-// leaves the items in the report for a reviewer to work through later, the halt takes
-// them out because nobody is going to.
-test("a skip and a halt suppress the same phase and leave different reports", () => {
-  const skipped = review(tmp(), { sweep: false });
-  skipped.state.run = { skip: ["llm-skip-manual"], sca: false, sweep: false };
-  const { settled: skippedOut } = driveLoop(
-    skipped.state,
-    skipped.work,
-    (phase) => (phase === "verify" ? "reported" : "cleared")
-  );
-  assert.equal(skippedOut.earlyExit, false);
-  assert.ok(
-    skippedOut.review.meta.manualReview.some((m) => !m.extended),
-    "a skip leaves the questions in the report"
-  );
-
-  const halted = blockingReview(tmp());
-  halted.state.run = { skip: ["llm-skip-manual"], sca: true, sweep: false };
-  const { settled } = driveLoop(halted.state, halted.work, (phase) =>
-    phase === "verify" ? "reported" : "cleared"
-  );
-  assert.equal(settled.earlyExit, true);
-  assert.equal(
-    settled.review.meta.manualReview.some((m) => !m.extended),
-    false,
-    "a halt takes them out, even with the skip also on"
-  );
 });
 
 // A per-mode response must read the same on the pass that FOUND the case and on the pass

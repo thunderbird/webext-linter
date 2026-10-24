@@ -434,7 +434,7 @@ test("--help is answered before every guard that judges a run", () => {
   for (const extra of [
     [],
     ["--report-format", "xml"],
-    ["--llm-skip-manual"],
+    ["--llm-skip-summary"],
     ["--sca-package-root="],
     ["--checks-only", "no-such-check"],
     ["some.xpi", "another.xpi"],

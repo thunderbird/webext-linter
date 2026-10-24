@@ -271,7 +271,7 @@ test("--llm-sca-review hands a skip to the review it prepares", () => {
     dir,
     "--llm-sca-review",
     ...OFFLINE_FLAGS,
-    "--llm-skip-manual",
+    "--llm-skip-summary",
   ]);
   assert.equal(r.code, 0, r.stderr);
   // The prompt itself is unchanged: the skip belongs to the review, not to this run, which
@@ -287,7 +287,7 @@ test("--llm-sca-review hands a skip to the review it prepares", () => {
   );
   handBackRoots(r.stdout);
   assert.deepEqual(readJson(workOf(r.stdout), "state").run.skip, [
-    "llm-skip-manual",
+    "llm-skip-summary",
   ]);
   fs.rmSync(dir, { recursive: true, force: true });
 });

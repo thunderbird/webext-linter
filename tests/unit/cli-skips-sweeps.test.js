@@ -91,7 +91,6 @@ test("the two skips withhold the description and the manual items", () => {
     ...OFFLINE_FLAGS,
     "--llm-review",
     "--llm-skip-summary",
-    "--llm-skip-manual",
   ]);
   const lines = on.stdout.split("\n");
   const intro = lines.findIndex((l) =>
@@ -151,24 +150,6 @@ test("each skip leaves out its own part and nothing else", () => {
     /Spawn an independent sub-agent NOW to describe/,
     "no description agent is spawned"
   );
-
-  // The questions go, the description stays: the file carries no manual entry.
-  const noManual = run([
-    addon,
-    ...OFFLINE_FLAGS,
-    "--llm-review",
-    "--llm-skip-manual",
-  ]);
-  assert.equal(noManual.code, 0, noManual.stderr);
-  assert.match(noManual.stdout, /^\s*\S+\/summary\.md$/m);
-  assert.ok(
-    !entriesOf(noManual.stdout).some((e) => "answers" in e),
-    "no questions asked"
-  );
-  assert.ok(
-    !itemsOf(noManual).some((x) => manualSections.includes(x.section)),
-    "no manual entry in the file"
-  );
 });
 
 // The description file is named only when the step that writes it PRINTS. Two things
@@ -181,7 +162,6 @@ test("a review with nothing to settle names no description file", () => {
     addon,
     ...OFFLINE_FLAGS,
     "--llm-review",
-    "--llm-skip-manual",
     "--checks-only",
     "debugger-statement",
   ]);
@@ -210,29 +190,25 @@ test("a review with nothing to settle names no description file", () => {
 // guard, and the wording names the flags that were actually given.
 test("a skip without --llm-review is refused", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
-  const one = run([addon, ...OFFLINE_FLAGS, "--llm-skip-manual"]);
+  const one = run([addon, ...OFFLINE_FLAGS, "--llm-skip-summary"]);
   assert.equal(one.code, 2);
-  assert.match(one.stderr, /--llm-skip-manual names part/);
+  assert.match(one.stderr, /--llm-skip-summary names part/);
   assert.match(one.stderr, /it needs --llm-review, or --llm-sca-review/);
-
-  const both = run([
-    addon,
-    ...OFFLINE_FLAGS,
-    "--llm-skip-summary",
-    "--llm-skip-manual",
-  ]);
-  assert.equal(both.code, 2);
-  assert.match(
-    both.stderr,
-    /--llm-skip-summary and --llm-skip-manual name parts/
-  );
-  assert.match(both.stderr, /they need --llm-review, or --llm-sca-review/);
 
   // --llm-skip-sweep is not one of them - it names no `skip:` step, so it feeds the
   // `run: sweep` condition instead - but the rule it lives under is the same one.
   const sweep = run([addon, ...OFFLINE_FLAGS, "--llm-skip-sweep"]);
   assert.equal(sweep.code, 2);
   assert.match(sweep.stderr, /--llm-skip-sweep names part/);
+});
+
+// The manual questions are always put to the reviewer: there is no flag to leave them out,
+// and the one that did is refused like any option the tool does not know.
+test("--llm-skip-manual is no longer an option", () => {
+  const addon = path.join(ROOT, "tests", "addons", "clean");
+  const r = run([addon, ...OFFLINE_FLAGS, "--llm-review", "--llm-skip-manual"]);
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /Unknown option '--llm-skip-manual'/);
 });
 
 // --llm-review carries its own guards, and a skip changes none of them: the prompt is
@@ -243,7 +219,7 @@ test("a skipped review carries the same guards", () => {
     addon,
     ...OFFLINE_FLAGS,
     "--llm-review",
-    "--llm-skip-manual",
+    "--llm-skip-summary",
     "--report-format",
     "json",
   ]);
@@ -280,13 +256,8 @@ test("a review flag carries only the prompt decision into the run", () => {
   assert.deepEqual(full.llmSkip, []);
   assert.deepEqual(shape({ ...full, llmReview: false }), shape(bare));
 
-  const cut = pipelineOptsFromArgv([
-    "--llm-review",
-    "--llm-skip-manual",
-    "--llm-skip-summary",
-  ]);
-  // Authored order, never the order the flags were given: the registry names the steps.
-  assert.deepEqual(cut.llmSkip, ["llm-skip-summary", "llm-skip-manual"]);
+  const cut = pipelineOptsFromArgv(["--llm-review", "--llm-skip-summary"]);
+  assert.deepEqual(cut.llmSkip, ["llm-skip-summary"]);
   assert.deepEqual(
     shape({ ...cut, llmReview: false, llmSkip: [] }),
     shape(bare)

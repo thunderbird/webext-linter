@@ -712,9 +712,9 @@ test("a step prints when its condition holds over the run's facts", () => {
       step(null, "always"),
       step("NOT aborted", "running"),
       step("aborted", "aborted"),
-      step("NOT aborted AND NOT llm-skip-manual", "asking"),
+      step("NOT aborted AND NOT llm-skip-summary", "asking"),
       step("sca AND NOT aborted", "building"),
-      step("NOT aborted AND (sca OR NOT llm-skip-manual)", "either"),
+      step("NOT aborted AND (sca OR NOT llm-skip-summary)", "either"),
     ],
   };
   const texts = (run) => stepsOf(phase, run).map((s) => s.text);
@@ -728,14 +728,14 @@ test("a step prints when its condition holds over the run's facts", () => {
     "always",
     "aborted",
   ]);
-  // --llm-skip-manual withholds a step that needs it off ...
+  // --llm-skip-summary withholds a step that needs it off ...
   assert.deepEqual(
-    texts({ skip: ["llm-skip-manual"], halted: false, sca: false }),
+    texts({ skip: ["llm-skip-summary"], halted: false, sca: false }),
     ["always", "running"]
   );
   // ... while a step with an OR still prints where its other arm holds.
   assert.deepEqual(
-    texts({ skip: ["llm-skip-manual"], halted: false, sca: true }),
+    texts({ skip: ["llm-skip-summary"], halted: false, sca: true }),
     ["always", "running", "building", "either"]
   );
 });
@@ -772,9 +772,9 @@ test("the shipped steps carry the conditions they are printed under", () => {
   ]);
   // The wait step carries its phase's own condition beside `spawned`.
   assert.deepEqual(when("ask"), [
-    ["aborted", "llm-skip-manual", "spawned"],
-    ["aborted", "llm-skip-manual"],
-    ["aborted", "llm-skip-manual"],
+    ["aborted", "spawned"],
+    ["aborted"],
+    ["aborted"],
   ]);
   // The downgrade question: only a review that can be restarted as an XPI review.
   assert.deepEqual(when("downgrade"), [["downgradable"], ["downgradable"]]);
