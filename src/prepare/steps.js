@@ -584,7 +584,7 @@ function analyzedAnswers(work, record) {
   const root = record.roots.scaRoot;
   const buildIssues = buildIssuesOf(
     all.find((e) => keyOf(e) === SCA_BUILD_SAFETY_ISSUES),
-    root
+    realSca(workPaths(work))
   );
   if (!asksExpSource(record)) {
     return { roots: record.roots, buildIssues };
@@ -627,10 +627,11 @@ function analyzedAnswers(work, record) {
 
 /**
  * The build's safety issues as the reader handed them back: a list, each entry a result held by
- * the checker a sweep's results are held by (checkedResult), against the root, and each with a
- * hint, which is what its finding says. An empty list is a safe build.
+ * the checker a sweep's results are held by (checkedResult), against the extracted archive
+ * (`sca/`), which the build analysis reads whole, and each with a hint, which is what its
+ * finding says. An empty list is a safe build.
  * @param {?object} entry  The SCA_BUILD_SAFETY_ISSUES entry of the review file.
- * @param {string} root  The source root, absolute.
+ * @param {string} root  The extracted archive, absolute and real.
  * @returns {{file: string, line: ?number, hint: string}[]}
  * @throws {HandbackRefused}
  */

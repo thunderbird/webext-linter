@@ -505,6 +505,8 @@ function valueLines(entries) {
  *   folder's build.md: on the analyze, build and rescue prompts.
  * @param {string} [values.answers]  The review file the answers are handed back in: on every
  *   prompt after `unpack`.
+ * @param {string} [values.scaExtracted]  On the analyze prompt: the extracted source
+ *   archive, `sca/`, all of which the build analysis reads.
  * @param {string} [values.scaRoot]  On the analyze and build prompts: the source root, in
  *   `sca/`.
  * @param {string} [values.buildRoot]  On the build and rescue prompts: the root in
@@ -544,6 +546,7 @@ export function scaPromptLines(prompt, list, values) {
   }
   // The analyze, build and rescue prompts' folders, each where it is given.
   const build = [
+    ["SCA_EXTRACTED", values.scaExtracted],
     ["SCA_ROOT", values.scaRoot],
     ["RESCUE_ROOT", values.rescueRoot],
     ["LLM_BUILD_ROOT", values.buildRoot],

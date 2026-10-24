@@ -52,6 +52,7 @@ import {
   loadAddon,
   loadSourceArchive,
   readWebExtManifest,
+  relativeInside,
   scaViews,
 } from "./addon/load.js";
 import { settleScaRoot } from "./addon/sca-root.js";
@@ -548,7 +549,11 @@ async function reviewSubmission(opts, work, prepared) {
         // the issues the build analysis listed, which build-unsafe reports. Null and none for
         // every other source.
         scaArchive.buildReasons = prepared?.buildReasons ?? null;
-        scaArchive.buildIssues = prepared?.buildIssues ?? [];
+        scaArchive.buildIssues = reviewedIssues(
+          prepared?.buildIssues ?? [],
+          opts.workFolder,
+          opts.scaRoot
+        );
       }
     },
 
@@ -1139,6 +1144,33 @@ const WORK_INPUTS = new Set(["sca", "rescued", "buildCopy", "prepare"]);
 
 /** The check an XPI review restarted from a source review reports (opts.downgradedFrom). */
 const SCA_NOT_NEEDED_CHECK = "sca-not-needed";
+
+/**
+ * The build analysis's issues as build-unsafe reports them: each file, recorded relative to the
+ * extracted archive the analysis read (`sca/`), taken into the reviewed root's keyspace, the
+ * one a finding is keyed in. An issue above the root has no key there, so it keeps its place
+ * in its hint and names no file, and its finding stands at the build's anchor.
+ * @param {{file: string, line: ?number, hint: string}[]} issues
+ * @param {string} workFolder
+ * @param {string} scaRoot  The reviewed root, absolute.
+ * @returns {{file: ?string, line: ?number, hint: string}[]}
+ */
+function reviewedIssues(issues, workFolder, scaRoot) {
+  if (!issues.length) {
+    return [];
+  }
+  const sca = fs.realpathSync(workPaths(workFolder).sca);
+  return issues.map(({ file, line, hint }) => {
+    const inRoot = relativeInside(path.join(sca, file), scaRoot);
+    return inRoot === null || inRoot === ""
+      ? {
+          file: null,
+          line: null,
+          hint: `${line === null ? file : `${file}:${line}`} - ${hint}`,
+        }
+      : { file: inRoot, line, hint };
+  });
+}
 
 /**
  * Whether the built XPI could be reviewed on its own: no file or inline script in it is

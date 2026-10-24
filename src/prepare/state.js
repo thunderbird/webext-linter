@@ -117,7 +117,7 @@ const COUNTED = ["moderate", "high", "critical"];
  *   folder read it. Not a flag, so the review never sees it.
  * @property {?{file: string, line: ?number, hint: string}[]} buildIssues  What the build
  *   reaches for outside the declared dependencies, as the `analyze` hand-back read it, each
- *   at its file relative to the root, and null before it. Also in the work folder's
+ *   at its file relative to the extracted archive (`sca/`), and null before it. Also in the work folder's
  *   build-issues.md, which the review links, and reported by build-unsafe where the reviewer
  *   trusts the verdict.
  * @property {?string} buildSafety  The verdict read off `buildIssues`, a BUILD_SAFETY_VALUES

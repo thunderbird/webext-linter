@@ -1513,6 +1513,7 @@ function preparationPrompt(work, record, registry, start = {}) {
     }),
     [PREPARE_STEP.analyze]: () => ({
       answers: paths.review,
+      scaExtracted: fs.realpathSync(paths.sca),
       scaRoot: record.roots.scaRoot,
       buildProcess: paths.build,
       findExperiment: asksExpSource(record),

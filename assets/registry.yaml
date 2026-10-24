@@ -2215,7 +2215,7 @@ review-early-exit:
 #
 # The step lists are prompts. `unpack` is printed by --llm-sca-review with the intro and the
 # Submission values, `analyze` by the run that derived the root (or first, with the intro, by
-# --llm-review given --sca-extracted), with SCA_ROOT, SCA_BUILD_PROCESS and ANSWERS, `permission` by
+# --llm-review given --sca-extracted), with SCA_EXTRACTED, SCA_ROOT, SCA_BUILD_PROCESS and ANSWERS, `permission` by
 # the run that read the verdict, with ANSWERS and the Build Review Details
 # ({{buildDetails}}), `build` by the run that audited a clean lock, with SCA_ROOT, LLM_BUILD_ROOT
 # (the root's place in build/) and SCA_BUILD_PROCESS, and `rescue` by the run that made the
@@ -2250,7 +2250,7 @@ llm-sca-review-prompt:
       text: |-
         Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under SCA_ROOT, given above. Its path relative to SCA_ROOT is <SCA_EXP_SOURCE>.
     - text: |-
-        Work out what building this add-on takes. Read the documentation and the build files in SCA_ROOT, given above, and report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
+        Work out what building this add-on takes. Read the documentation and the build files of the whole extracted archive, SCA_EXTRACTED, given above: the build may be driven from anywhere in it, and the node project, with package.json and its lock file, is SCA_ROOT inside it. Follow the release build from where it starts, and work out which files it actually runs or reads: only those are part of it, wherever they lie. Report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
 
         Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
 
@@ -2260,9 +2260,9 @@ llm-sca-review-prompt:
 
         Write it to SCA_BUILD_PROCESS, given above, and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision.
     - text: |-
-        Find everything the build reaches for outside the declared dependencies: a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, an install hook that downloads or runs code from outside the declared dependencies, or a step whose source is not in the tree.
+        Find everything the release build reaches for outside the declared dependencies, in the files it actually runs or reads, and in no other: a script, target or hook the release build never reaches is not part of it, whatever it holds. What to look for: a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, an install hook that downloads or runs code from outside the declared dependencies, or a step whose source is not in the tree.
 
-        Open ANSWERS, given above. Answer its entry whose "index" is SCA_BUILD_SAFETY_ISSUES with a list holding one entry for each thing you found, and an empty list, [], where you found nothing. An entry names the "file" it is in, relative to SCA_ROOT, the "line" it sits on, left out where it sits on none, and a "hint" of at most {{maxHint}} characters saying what it does. Nothing else: no verdict, which the linter reads off the list. An entry reads:
+        Open ANSWERS, given above. Answer its entry whose "index" is SCA_BUILD_SAFETY_ISSUES with a list holding one entry for each thing you found, and an empty list, [], where you found nothing. An entry names the "file" it is in, relative to SCA_EXTRACTED, the "line" it sits on, left out where it sits on none, and a "hint" of at most {{maxHint}} characters saying what it does. Nothing else: no verdict, which the linter reads off the list. An entry reads:
 
         {{issueShape}}
 
@@ -2313,11 +2313,11 @@ llm-sca-review-prompt:
           description: The build is safe, but the agent runs none of its commands. Nothing is rescued, so known vulnerabilities in the dependencies end the review. You answer the build question from your own build.
     unsafe:
       question: |-
-        The agent judged the build unsafe, for the issues SCA_BUILD_SAFETY_ISSUES lists. Trust the verdict and build nothing, or clear those issues and let the agent build anyhow? To give reasons of your own why building it is unsafe, answer in your own words.
+        The agent judged the build unsafe, for the issues listed in build-issues.md (SCA_BUILD_SAFETY_ISSUES in the Build Review Details). Trust the verdict and build nothing, or clear those issues and let the agent build anyhow? To give reasons of your own why building it is unsafe, answer in your own words.
       values:
         - value: skip
           label: Trust the verdict, do not build
-          description: The build is unsafe. Nobody builds it, and the review reports each issue SCA_BUILD_SAFETY_ISSUES lists to the developer as an unsafe build.
+          description: The build is unsafe. Nobody builds it, and the review reports each issue listed in build-issues.md to the developer as an unsafe build.
         - value: override
           label: Build anyhow
           description: The build issues the agent found are cleared, and the build is safe. The agent runs the package-manager commands and the add-on's own build commands, as for a safe build.

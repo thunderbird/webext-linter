@@ -527,13 +527,17 @@ rule the review itself asks it by, and where the verdict rejects, it starts that
 once instead of printing the preparation's prompt. That review is the one `--llm-review` of the `.xpi`
 starts: `experiment-not-allowed` aborts it, so its first prompt is the `close` phase.
 
-The `analyze` prompt has its reader **work out the build**. It writes the build report to
-`SCA_BUILD_PROCESS` (the work folder's `build.md`): the release build for Thunderbird as a short
-numbered list, and its install step as `npm ci` or `pnpm install --frozen-lockfile`. It runs
-nothing. Then it answers the `SCA_BUILD_SAFETY_ISSUES` entry of `ANSWERS` with a list of
-everything the build reaches for outside the declared dependencies (a download, an unpinned
-git clone, a CDN, an install hook that fetches or runs code, a step whose source is not in the
-tree), one entry each, in the shape a sweep's result has: its file relative to `SCA_ROOT`, its
+The `analyze` prompt has its reader **work out the build**. It reads the whole extracted
+archive (`SCA_EXTRACTED`, the work folder's `sca/`), since a build may be driven from anywhere
+in it, with the node project at `SCA_ROOT` inside it, and follows the release build to the
+files it actually runs or reads. It writes the build report to `SCA_BUILD_PROCESS` (the work
+folder's `build.md`): the release build for Thunderbird as a short numbered list, and its
+install step as `npm ci` or `pnpm install --frozen-lockfile`. It runs nothing. Then it answers
+the `SCA_BUILD_SAFETY_ISSUES` entry of `ANSWERS` with a list of everything the release build
+reaches for outside the declared dependencies (a download, an unpinned git clone, a CDN, an
+install hook that fetches or runs code, a step whose source is not in the tree), in the files it
+uses and no other, one entry each, in the shape a sweep's result has: its file relative to
+`SCA_EXTRACTED`, its
 line where it sits on one, and a hint of at most 500 characters saying what it does. An empty
 list is a safe build. The linter reads the verdict off the list, `unsafe` where it holds an
 entry, and writes the list to the work folder's `build-issues.md`. For an Experiment whose folder was not given, it also works
@@ -568,7 +572,8 @@ whether the agent may build. Only `Let the agent build` and `Build anyhow` let i
 go on to the audit below. Every other answer ends the preparation at once: the reviewer builds
 it themselves after `Build it myself`, and nobody builds it where it is held unsafe, which the
 review reports as `build-unsafe`: one finding per issue the agent listed, at its file and line
-with its hint, where the reviewer trusted the verdict, and one finding carrying their own words
+with its hint, where the reviewer trusted the verdict (an issue above `SCA_ROOT`, which the
+review does not read, is reported at the build's anchor, its hint naming where it is), and one finding carrying their own words
 where they gave reasons of their own. With a check the build relies on switched off (`build-guard`
 in the registry, by `--checks-only` or `--checks-skip`), the folder is done at once too, and
 nobody is asked: nothing vouches for what an install pulls in, so the agent builds nothing,
