@@ -895,7 +895,8 @@ async function reviewSubmission(opts, work, prepared) {
           work,
           meta.preSweep,
           artifactRoots(meta),
-          registry.proseStyle()
+          registry.proseStyle(),
+          registry.readingRule()
         )
       : {};
   }

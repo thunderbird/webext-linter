@@ -338,13 +338,15 @@ a file of its own.
 | `.review/sweep-<artifact>.answers.json` | the orchestrating agent, from the sweeping agent's reply | JSON - one quoting rule, where a hint holding `http://host: thing` would break YAML | the linter |
 
 The request stands alone, because the agent is handed it and nothing else. It names the
-folder to read, says how to judge, lists each sweep under its label, and asks for the
-answers as the reply:
+folder, has every line of every file in it read (`reading-rule`), says how to judge, lists
+each sweep under its label, and asks for the answers as the reply:
 
 ```text
 Sweep this folder, and read nothing outside it:
 
   /reviews/xpi-review-addon-1.2-<timestamp>/xpi/
+
+Read every file in the folder above in full, every line of it, before you answer: ...
 
 It is asked about in 2 separate sweeps, each listed below under its label. ...
 
@@ -455,7 +457,7 @@ carry, come last.
 | `REVIEW_REPORT` | The text the reviewer sends to the developer, written by the linter |
 
 The linter names these files and reads none of them. The description is a sub-agent's,
-given the extracted XPI (`XPI_ROOT`) to describe and nothing outside it, returned as its
+given the extracted XPI (`XPI_ROOT`) to read in full and describe, nothing outside it, returned as its
 reply, and the agent conducting the review is told only to write that reply
 unchanged to `ADDON_DESCRIPTION` - not to read, summarise or print it. The build report and the build output are the agent's own, and
 the Build Review Details block names them beside the submitted XPI and the source the review

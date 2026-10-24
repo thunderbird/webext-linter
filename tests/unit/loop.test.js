@@ -2419,6 +2419,13 @@ test("the writing rule is said once per reader", () => {
     spawnText.includes("{{proseStyle}}"),
     "the description request names it"
   );
+  // The description sub-agent reads every line of the add-on: the request carries the reading
+  // rule, filled from the registry.
+  assert.ok(
+    spawnText.includes("{{readingRule}}"),
+    "the description reads in full"
+  );
+  assert.equal(slots.readingRule, REGISTRY.readingRule());
 });
 
 // The wait for spawned agents is its own step, printed only where an agent was started -

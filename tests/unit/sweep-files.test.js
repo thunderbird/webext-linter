@@ -36,8 +36,9 @@ for (const [rel, lines] of [
   fs.writeFileSync(path.join(TREE, rel), "x\n".repeat(lines));
 }
 
-/** The writing rule a sweep request carries, as the registry authors it. */
+/** The writing rule and the reading rule a sweep request carries, as the registry authors them. */
 const STYLE = loadRegistry().proseStyle();
+const READING = loadRegistry().readingRule();
 
 /** One tree's request, made the way the review makes it. */
 function requested(sweeps, sweepTarget = "/tmp/tree/") {
@@ -45,7 +46,8 @@ function requested(sweeps, sweepTarget = "/tmp/tree/") {
     workPaths("/w"),
     { items: sweeps },
     { [ARTIFACT_SCA]: sweepTarget, [ARTIFACT_XPI]: sweepTarget },
-    STYLE
+    STYLE,
+    READING
   );
   return asked[sweeps[0].artifact];
 }
@@ -95,6 +97,11 @@ test("the request names its tree and every sweep, and asks for the reply", () =>
   assert.match(request, /^Label 4: User-data exfiltration\nMessage content/m);
   // How its hints are written, as every agent is told, since this reader sees no other prompt.
   assert.ok(request.includes(STYLE), "the writing rule");
+  // How it reads the tree: every line of every file, said right after the folder it names.
+  assert.ok(
+    request.includes(`  /tmp/tree/\n\n${READING}\n\nIt is asked about`),
+    "the reading rule, after the folder"
+  );
   // The answers come back as the reply, and nothing is written.
   assert.match(request, /Return your answers as your reply/);
   assert.match(request, /^ {2}\{"answers": \{"<label>": \[\.\.\.\]\}\}$/m);

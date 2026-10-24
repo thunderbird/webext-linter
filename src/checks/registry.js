@@ -828,6 +828,15 @@ export class Registry {
   }
 
   /**
+   * How the agents that read the add-on's files read them (`llm-phases.reading-rule`): every
+   * line of every file, said in the description request and in each sweep request.
+   * @returns {string}
+   */
+  readingRule() {
+    return this.doc["llm-phases"]["reading-rule"];
+  }
+
+  /**
    * The texts of the preparation of a source code review: the intro the first prompt opens
    * with, and one list of steps per prompt (SCA_PROMPT_STEPS). Required, all of them: a run
    * whose whole output is one of these has nothing to print without it.

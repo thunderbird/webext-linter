@@ -619,6 +619,12 @@ sections:
         why: >-
           how an agent writes the prose of its own the reviewer and the developer read, said
           once in the first prompt of a run and in each request a sub-agent is handed
+      reading-rule:
+        kind: text
+        required: true
+        why: >-
+          how the agents that read the add-on's files read them, every line of every file,
+          said in the description request and in each sweep request
       waiting:
         kind: object
         required: true

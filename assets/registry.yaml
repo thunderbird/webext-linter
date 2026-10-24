@@ -2573,7 +2573,8 @@ llm-sca-review-prompt:
 # that starts it relays nothing else - {{sweepXpiAnswers}} and {{sweepScaAnswers}} the
 # file each sweep's reply is written to, {{details}} the Review
 # Details block, {{buildDetails}} the Build Review Details block, {{tally}} the closing
-# summary, {{maxNote}} the longest answer in a reviewer's own words, and {{schema}} - what
+# summary, {{maxNote}} the longest answer in a reviewer's own words, {{readingRule}} how the
+# add-on's files are read, and {{schema}} - what
 # a verdict is judged against, printed by the phases
 # that judge and by no other. The artifacts are NOT named here: each entry carries its own resolved paths
 # (src/report/handback.js), so nothing is left for the agent to join. A path is printed by
@@ -2587,6 +2588,12 @@ llm-phases:
   # style of every text here. What they quote and what a reviewer typed stay as they are.
   prose-style: |-
     Wherever you write prose of your own - a report, a hint, a description, an answer - end a sentence with a full stop instead of joining two with a semicolon, and use the plain hyphen-minus (-), never an en dash, an em dash or any other dash character. Two things stay exactly as they are: what you quote from the add-on, in a code span, and words a reviewer typed, which you copy verbatim.
+  # How an agent reads the add-on's files, said to the readers of those files alone: the
+  # description sub-agent ({{readingRule}}) and every sweep agent, right after the folder line
+  # their request names (src/report/sweep-files.js). The loop's own phases judge the entries
+  # they are handed, and the preparation's `analyze` reads the build files only.
+  reading-rule: |-
+    Read every file in the folder above in full, every line of it, before you answer: every script, page, stylesheet, manifest, locale and data file. Images, fonts and other binary files are the only exception. A search, a grep or a skim does not replace reading: it finds only what you already thought to look for. A file too long to read at once is read in parts, one after the other, to its last line. Never answer with a file, or part of one, left unread.
   # Printed above the first prompt only, and not where that prompt is already the closing
   # one: a review with nothing but `close` to do runs no passes, so describing them would
   # only send the reader looking for a file and a command that do not exist.
@@ -2760,6 +2767,8 @@ llm-phases:
             Describe the add-on in this folder for the reviewer, and read nothing outside it:
 
             {{xpiRoot}}
+
+            {{readingRule}}
 
             Anything you quote from it - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup. {{proseStyle}} Return the description as your reply, and write no file.
 

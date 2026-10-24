@@ -315,6 +315,8 @@ export function loopSlots(state, issued, work, registry) {
     schemaCache: paths.schemaCache ?? "",
     // How the agent and the sub-agents it starts write their own prose.
     proseStyle: registry.proseStyle(),
+    // How the description agent reads the add-on's files.
+    readingRule: registry.readingRule(),
     description: paths.description ?? "",
     xpiRoot: paths.xpiRoot,
     schema: paths.schema,

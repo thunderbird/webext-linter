@@ -88,7 +88,15 @@ test("a linter-owned text that loses its placeholder is refused", () => {
 });
 
 test("a missing linter-owned text is refused by name", () => {
-  for (const key of ["preamble", "frame", "handover", "waiting", "refused"]) {
+  for (const key of [
+    "preamble",
+    "frame",
+    "handover",
+    "waiting",
+    "refused",
+    "prose-style",
+    "reading-rule",
+  ]) {
     const registry = fresh();
     delete registry.doc["llm-phases"][key];
     assert.throws(

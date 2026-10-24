@@ -54,14 +54,16 @@ const ANSWERS = "answers";
  * @param {string} args.sweepTarget  The tree to read, absolute.
  * @param {{label: number, title: string, instruction: string}[]} args.sweeps
  * @param {string} [args.proseStyle]  How its hints are written (registry proseStyle).
+ * @param {string} [args.readingRule]  How the folder is read (registry readingRule).
  * @returns {string}
  */
-function sweepRequest({ sweepTarget, sweeps, proseStyle }) {
+function sweepRequest({ sweepTarget, sweeps, proseStyle, readingRule }) {
   const n = sweeps.length;
   const example = exampleAnswers(sweeps);
   return [
     "Sweep this folder, and read nothing outside it:",
     indent(sweepTarget, 2),
+    ...(readingRule ? [readingRule] : []),
     `It is asked about in ${n} ${n === 1 ? "sweep" : "separate sweeps"}, each listed below under its label. Each one is its own request: the scans could not settle it, so it is handed to you. Answer them all, from the folder above and from nothing else.`,
     "Judge by EFFECT, never by the METHOD used - an unfamiliar form counts as much as a familiar one. Where a sweep is about code, resolve values assembled or supplied at runtime and follow them through helpers and bundled libraries.",
     ...sweeps.map(
@@ -136,11 +138,12 @@ function indent(text, by) {
  * @param {Record<string, ?string>} trees  This review's trees by artifact
  *   (artifactRoots).
  * @param {string} proseStyle  How the sweeping agent writes its hints (registry proseStyle).
+ * @param {string} readingRule  How it reads the folder (registry readingRule).
  * @returns {Record<string, {request: string, answers: string}>}  By artifact: the request
  *   text and the answers file's path, for the steps that print them and the pass that
  *   reads the answers back.
  */
-export function sweepRequests(files, preSweep, trees, proseStyle) {
+export function sweepRequests(files, preSweep, trees, proseStyle, readingRule) {
   const byArtifact = new Map();
   for (const item of preSweep?.items ?? []) {
     byArtifact.set(item.artifact, [
@@ -155,6 +158,7 @@ export function sweepRequests(files, preSweep, trees, proseStyle) {
         sweepTarget: trees[artifact],
         sweeps,
         proseStyle,
+        readingRule,
       }),
       answers: files.sweep(artifact),
     };
