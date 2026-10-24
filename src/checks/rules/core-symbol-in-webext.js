@@ -10,7 +10,7 @@
 //
 // Asked of EVERY artifact the review has (`input: all`, via perArtifact), and the exclusion
 // above is what makes that safe. A source archive has its Experiment split out by
-// --sca-exp-source, so the check never meets privileged code there; the shipped XPI carries
+// --sca-experiments, so the check never meets privileged code there; the shipped XPI carries
 // that code like any other file, and the closure is what keeps it out of the answer. What
 // the shipped side adds is the case an archive cannot show: a build that lands a privileged
 // symbol in a file a WebExtension entry point actually reaches.

@@ -26,23 +26,23 @@ function reportOf(stdout) {
   return fs.readFileSync(at[1], "utf8");
 }
 
-// --sca-extracted / --sca-root / --sca-exp-source flow through to the source-code submission
+// --sca-extracted / --sca-build / --sca-experiments flow through to the source-code submission
 // pipeline opts (--sca-extracted switches the review to SCA mode).
 // The reader is where a path stops being a spelling and becomes a place: --sca-extracted and
-// --sca-root against the working directory, and the one that names a folder inside the root
+// --sca-build against the working directory, and the one that names a folder inside the root
 // against the RESOLVED root. Everything downstream is handed absolutes and re-resolves nothing.
-test("--sca-extracted / --sca-root / --sca-exp-source map to the sca pipeline opts", () => {
+test("--sca-extracted / --sca-build / --sca-experiments map to the sca pipeline opts", () => {
   const o = pipelineOptsFromArgv([
     "--sca-extracted",
     "extracted",
-    "--sca-root",
+    "--sca-build",
     "extracted/pkg",
-    "--sca-exp-source",
+    "--sca-experiments",
     "exp",
   ]);
   assert.equal(o.scaExtracted, path.resolve("extracted"));
-  assert.equal(o.scaRoot, path.resolve("extracted", "pkg"));
-  assert.equal(o.scaExpSource, path.resolve("extracted", "pkg", "exp"));
+  assert.equal(o.scaBuild, path.resolve("extracted", "pkg"));
+  assert.equal(o.scaExperiments, path.resolve("extracted", "pkg", "exp"));
   // Every spelling of the same folder arrives as one value.
   for (const written of [
     "exp",
@@ -53,20 +53,20 @@ test("--sca-extracted / --sca-root / --sca-exp-source map to the sca pipeline op
     const each = pipelineOptsFromArgv([
       "--sca-extracted",
       "extracted",
-      "--sca-root",
+      "--sca-build",
       "extracted/pkg",
-      "--sca-exp-source",
+      "--sca-experiments",
       written,
     ]);
     assert.equal(
-      each.scaExpSource,
+      each.scaExperiments,
       path.resolve("extracted", "pkg", "exp"),
       written
     );
   }
   assert.ok(!pipelineOptsFromArgv([]).scaExtracted);
-  assert.ok(!pipelineOptsFromArgv([]).scaRoot);
-  assert.ok(!pipelineOptsFromArgv([]).scaExpSource);
+  assert.ok(!pipelineOptsFromArgv([]).scaBuild);
+  assert.ok(!pipelineOptsFromArgv([]).scaExperiments);
 });
 
 // The two skips end to end: the same round trip, minus the two parts that need a person.

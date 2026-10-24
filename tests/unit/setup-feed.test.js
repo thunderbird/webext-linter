@@ -119,7 +119,7 @@ test("every declared step is narratable and named once", () => {
 test("the narrated count per run is the total the feed shows", () => {
   const narrated = (facts) =>
     SETUP_STEPS.filter((s) => "label" in s && s.when(facts)).length;
-  // The mode derived as the pipeline derives it (setupFacts.mode): --sca-root or not.
+  // The mode derived as the pipeline derives it (setupFacts.mode): --sca-build or not.
   const facts = (over) => ({
     sca: false,
     isExp: false,
@@ -269,7 +269,7 @@ test("a rejected Experiment submitted as source computes nothing either", () => 
       path.join(dir, "xpi"),
       "--sca-extracted",
       path.join(dir, "src"),
-      "--sca-exp-source",
+      "--sca-experiments",
       path.join(dir, "src", "experiment"),
     ]),
     {

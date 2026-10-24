@@ -2400,7 +2400,7 @@ export function formatNote(file, loc, item, verdict, label = "") {
 /**
  * Whether a registry entry's ROUTE runs in the current review REVIEW_MODE: an `input` in
  * SCA_ONLY_INPUTS names an artifact that exists only in a source-code-archive review
- * (--sca-root), so such a check runs there and nowhere else. Nothing is declared for that
+ * (--sca-build), so such a check runs there and nowhere else. Nothing is declared for that
  * case, so nothing can be declared wrongly. What a route cannot say is the check's condition
  * (conditionEligible).
  *

@@ -270,8 +270,8 @@ test("a clean source moves on to the build", async () => {
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.build);
   assert.deepEqual(at.record.roots, {
-    scaRoot: workPaths(work).sca,
-    scaExpSource: null,
+    scaBuild: workPaths(work).sca,
+    scaExperiments: null,
   });
   assert.equal(at.record.packageManagers, true, "the reviewer allowed them");
   assert.deepEqual(at.record.vulnerabilities, NONE);
@@ -311,7 +311,7 @@ test("the build pass copies the whole source archive into build/", async () => {
   writeTree(buildCopy, { "left-over.txt": "stale" });
   const at = await first(work);
   assert.equal(at.record.step, PREPARE_STEP.build);
-  assert.equal(at.record.roots.scaRoot, path.join(sca, "proj"));
+  assert.equal(at.record.roots.scaBuild, path.join(sca, "proj"));
   for (const file of [
     "beside.txt",
     "manifest.json",
@@ -486,7 +486,7 @@ test("the analyze step asks for the build's safety issues", async () => {
   assert.deepEqual(reviewEntries(work), []);
   const at = await unpackStep(work);
   assert.equal(at.record.step, PREPARE_STEP.analyze);
-  assert.equal(at.record.roots.scaRoot, workPaths(work).sca);
+  assert.equal(at.record.roots.scaBuild, workPaths(work).sca);
   const [safety, ...rest] = reviewEntries(work);
   assert.deepEqual(rest, [], "the root is the linter's, and asked of nobody");
   assert.deepEqual(safety, { index: "SCA_BUILD_SAFETY_ISSUES", answer: null });
@@ -514,8 +514,8 @@ test("a safe build moves on to the permission question, with nothing audited", a
   assert.equal(at.record.buildSafe, null);
   assert.equal(at.record.vulnerabilities, null, "nothing is audited");
   assert.deepEqual(at.record.roots, {
-    scaRoot: workPaths(work).sca,
-    scaExpSource: null,
+    scaBuild: workPaths(work).sca,
+    scaExperiments: null,
   });
   assert.deepEqual(recordOf(work), at.record);
   const [managers, ...rest] = JSON.parse(
@@ -734,8 +734,8 @@ test("not letting the agent build is done at once, with nothing audited", async 
   assert.equal(at.record.vulnerabilities, null);
   assert.equal(at.record.buildResult, null, "nothing is built");
   assert.deepEqual(at.record.roots, {
-    scaRoot: workPaths(work).sca,
-    scaExpSource: null,
+    scaBuild: workPaths(work).sca,
+    scaExperiments: null,
   });
   assert.deepEqual(recordOf(work), at.record);
   assert.ok(!fs.existsSync(workPaths(work).rescued), "no copy is made");
@@ -797,7 +797,7 @@ test("a source in a wrapper folder is rooted in the folder below", async () => {
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.rescue);
   assert.equal(
-    at.record.roots.scaRoot,
+    at.record.roots.scaBuild,
     path.join(workPaths(work).rescued, "proj")
   );
   cleanup(work);
@@ -822,7 +822,7 @@ test("a source stopped only by a locked vulnerability gets a rescued copy", asyn
   assert.equal(at.next, "step");
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.rescue);
-  assert.equal(at.record.roots.scaRoot, copy);
+  assert.equal(at.record.roots.scaBuild, copy);
   assert.deepEqual(at.record.vulnerabilities, ONE_HIGH);
   assert.equal(at.record.buildResult, null);
   assert.deepEqual(recordOf(work), at.record);
@@ -912,7 +912,7 @@ test("a root the walk cannot decide is sca/ itself", async () => {
     "two/package.json": packageFile(),
   });
   const at = await unpackStep(work);
-  assert.equal(at.record.roots.scaRoot, workPaths(work).sca);
+  assert.equal(at.record.roots.scaBuild, workPaths(work).sca);
   cleanup(work);
 });
 
@@ -924,7 +924,7 @@ test("a wrapper folder that is a link out of the source is not the root", async 
   writeTree(elsewhere, { "package.json": packageFile() });
   fs.symlinkSync(elsewhere, path.join(workPaths(work).sca, "out"));
   const at = await unpackStep(work);
-  assert.equal(at.record.roots.scaRoot, workPaths(work).sca);
+  assert.equal(at.record.roots.scaBuild, workPaths(work).sca);
   cleanup(work);
 });
 
@@ -950,20 +950,20 @@ test("an Experiment folder is read against the root, and must lie inside it", as
   // Asked for, so an answer missing is refused like any other.
   await assert.rejects(
     first(work, {}),
-    refused(/SCA_EXP_SOURCE still has no "answer"/)
+    refused(/SCA_EXPERIMENTS still has no "answer"/)
   );
   await assert.rejects(
-    first(work, { SCA_EXP_SOURCE: "../.." }),
-    refused(/SCA_EXP_SOURCE "\.\.\/\.\." is not a folder inside/)
+    first(work, { SCA_EXPERIMENTS: "../.." }),
+    refused(/SCA_EXPERIMENTS "\.\.\/\.\." is not a folder inside/)
   );
   // The root itself excludes nothing, and the review refuses it - so the hand-back does.
   await assert.rejects(
-    first(work, { SCA_EXP_SOURCE: "." }),
-    refused(/sca-exp-source/)
+    first(work, { SCA_EXPERIMENTS: "." }),
+    refused(/sca-experiments/)
   );
   assert.equal(recordOf(work).step, PREPARE_STEP.analyze, "nothing moved");
-  const at = await first(work, { SCA_EXP_SOURCE: "exp" });
-  assert.equal(at.record.roots.scaExpSource, path.join(sca, "exp"));
+  const at = await first(work, { SCA_EXPERIMENTS: "exp" });
+  assert.equal(at.record.roots.scaExperiments, path.join(sca, "exp"));
   cleanup(work);
 });
 
@@ -1093,7 +1093,11 @@ async function rescued(vulns = TOOL_HIGH) {
     { vulns }
   );
   const at = await first(work);
-  return { work, copy: workPaths(work).rescued, root: at.record.roots.scaRoot };
+  return {
+    work,
+    copy: workPaths(work).rescued,
+    root: at.record.roots.scaBuild,
+  };
 }
 
 /** A rescue that failed: done, its roots back in sca/, the copy deleted, the original
@@ -1106,7 +1110,7 @@ function rescueFailed(work, at, copyCounts) {
   assert.equal(at.record.buildResult, "rescue-failed");
   assert.equal(at.record.buildOutput, null);
   assert.equal(at.record.buildMatch, null);
-  assert.equal(at.record.roots.scaRoot, workPaths(work).sca);
+  assert.equal(at.record.roots.scaBuild, workPaths(work).sca);
   assert.deepEqual(at.record.vulnerabilities, ONE_HIGH);
   assert.deepEqual(at.record.rescuedVulnerabilities, copyCounts);
   assert.deepEqual(recordOf(work), at.record);
@@ -1133,7 +1137,7 @@ test("a clean copy with its build output is done with the copy's roots", async (
   assert.equal(at.next, "review");
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.done);
-  assert.equal(at.record.roots.scaRoot, root, "the copy is what is reviewed");
+  assert.equal(at.record.roots.scaBuild, root, "the copy is what is reviewed");
   assert.equal(at.record.buildResult, "built");
   assert.equal(at.record.buildOutput, output);
   assert.deepEqual(at.record.vulnerabilities, ONE_HIGH);
@@ -1271,7 +1275,7 @@ test("the audit reads the run's OSV cache", async () => {
   // The copy's audit reads the same lock from the same cache, and finds it vulnerable.
   rescueFailed(
     work,
-    await handOutput(work, buildRescued(work, at.record.roots.scaRoot)),
+    await handOutput(work, buildRescued(work, at.record.roots.scaBuild)),
     ONE_HIGH
   );
   cleanup(work);
@@ -1427,7 +1431,7 @@ test("a clean rescue handed back again keeps its copy", async () => {
   await handOutput(work, buildRescued(work, root));
   const again = await later(work);
   assert.equal(again.next, "review");
-  assert.equal(again.record.roots.scaRoot, root);
+  assert.equal(again.record.roots.scaBuild, root);
   assert.ok(fs.existsSync(copy));
   assert.ok(fs.existsSync(workPaths(work).buildCopy), "its build stays");
   cleanup(work);
@@ -1441,7 +1445,7 @@ test("a copy left behind by a failed rescue cut short is removed", async () => {
   writePrepare(work, {
     ...recordOf(work),
     step: PREPARE_STEP.done,
-    roots: { scaRoot: workPaths(work).sca, scaExpSource: null },
+    roots: { scaBuild: workPaths(work).sca, scaExperiments: null },
     buildResult: "rescue-failed",
   });
   assert.ok(fs.existsSync(copy));
@@ -1465,7 +1469,7 @@ test("a forged record never removes a folder outside the work folder", async () 
   writePrepare(work, {
     ...recordOf(work),
     step: PREPARE_STEP.done,
-    roots: { scaRoot: stray, scaExpSource: null },
+    roots: { scaBuild: stray, scaExperiments: null },
   });
   await later(work);
   assert.ok(fs.existsSync(stray));
@@ -1503,27 +1507,13 @@ test("a record changed after the linter wrote it is refused", async () => {
   const { work } = await rescued();
   const file = workPaths(work).prepare;
   const record = JSON.parse(fs.readFileSync(file, "utf8"));
-  record.roots.scaExpSource = record.roots.scaRoot;
+  record.roots.scaExperiments = record.roots.scaBuild;
   fs.chmodSync(file, 0o644);
   fs.writeFileSync(file, JSON.stringify(record, null, 1));
   await assert.rejects(
     later(work),
     refused(/changed after the linter wrote it/)
   );
-  cleanup(work);
-});
-
-// A record from the version of this tool before the hash has none, and is told apart as
-// another version's rather than read as a changed one.
-test("a record of another version of this tool is refused as one", async () => {
-  const work = workFolder({ "package.json": packageFile() });
-  const file = workPaths(work).prepare;
-  const record = JSON.parse(fs.readFileSync(file, "utf8"));
-  delete record.digest;
-  record.version = 1;
-  fs.chmodSync(file, 0o644);
-  fs.writeFileSync(file, JSON.stringify(record));
-  await assert.rejects(later(work), /written by another version/);
   cleanup(work);
 });
 
@@ -1632,7 +1622,7 @@ test("a build record the linter would not write is refused", async (t) => {
     ],
     [
       "a result before the build is handed back",
-      (r) => ({ ...r, buildResult: "built", buildOutput: r.roots.scaRoot }),
+      (r) => ({ ...r, buildResult: "built", buildOutput: r.roots.scaBuild }),
       "holds buildResult as no result the linter writes",
     ],
     [
@@ -1651,7 +1641,7 @@ test("a build record the linter would not write is refused", async (t) => {
         ...r,
         step: PREPARE_STEP.done,
         buildResult: "failed",
-        buildOutput: r.roots.scaRoot,
+        buildOutput: r.roots.scaBuild,
       }),
       "holds buildOutput without a build that produced it",
     ],
@@ -1671,7 +1661,7 @@ test("a build record the linter would not write is refused", async (t) => {
         ...r,
         step: PREPARE_STEP.done,
         buildResult: "built",
-        buildOutput: r.roots.scaRoot,
+        buildOutput: r.roots.scaBuild,
       }),
       "holds a built result without buildMatch",
     ],
@@ -1681,7 +1671,7 @@ test("a build record the linter would not write is refused", async (t) => {
         ...r,
         step: PREPARE_STEP.done,
         buildResult: "built",
-        buildOutput: r.roots.scaRoot,
+        buildOutput: r.roots.scaBuild,
         buildMatch: "close enough",
       }),
       "holds buildMatch as no answer the agent can give",
@@ -1764,8 +1754,10 @@ test("a record holding a relative path is never written", async () => {
     "submission.xpi": {
       submission: { ...record.submission, xpi: "addon.xpi" },
     },
-    "roots.scaRoot": { roots: { ...record.roots, scaRoot: "sca" } },
-    "roots.scaExpSource": { roots: { ...record.roots, scaExpSource: "exp" } },
+    "roots.scaBuild": { roots: { ...record.roots, scaBuild: "sca" } },
+    "roots.scaExperiments": {
+      roots: { ...record.roots, scaExperiments: "exp" },
+    },
     buildOutput: { buildOutput: "build/dist" },
     "flags.cache-schema-dir": { flags: { "cache-schema-dir": "cache" } },
   };

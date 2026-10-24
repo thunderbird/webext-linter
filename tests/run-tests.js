@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import { runPipeline } from "../src/pipeline.js";
 import { relativeInside } from "../src/addon/load.js";
-import { settleScaRoot } from "../src/addon/sca-root.js";
+import { settleScaBuild } from "../src/addon/sca-build.js";
 import { workPaths } from "../src/util/dest.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
 import { formatReview } from "../src/report/format.js";
@@ -67,8 +67,8 @@ const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
 // hiding one would mean the harness loading the add-on itself and deleting the key before
 // handing it over - a test-only input on runPipeline.
 // A spec may also carry an "sca" block naming where the add-on code and the Experiment
-// implementation sit INSIDE the fixture's src/ tree (the --sca-root), as paths relative to
-// it: { "source": "addon", "expSource": "experiment" }. Omitting it is the flat layout,
+// implementation sit INSIDE the fixture's src/ tree (the --sca-build), as paths relative to
+// it: { "source": "addon", "experimentsFolder": "experiment" }. Omitting it is the flat layout,
 // where the source IS the root. The block is the only way a fixture can express a NESTED
 // submission, and the keyspaces only differ there - flat means the prefix is empty, so the
 // review source and the archive key a file identically.
@@ -195,7 +195,7 @@ function preparationEntries(preparation) {
  * @param {string} dir  The fixture.
  * @param {{from?: string, rescued?: boolean}} preparation
  * @param {string} cache
- * @returns {Promise<{workFolder: string, scaExtracted: string, scaRoot: string}>}
+ * @returns {Promise<{workFolder: string, scaExtracted: string, scaBuild: string}>}
  */
 async function preparedFixture(dir, preparation, cache) {
   const at = await realPreparation({
@@ -210,14 +210,14 @@ async function preparedFixture(dir, preparation, cache) {
   // The extracted source is the copy the root sits in, as the hand-back names it (src/cli.js
   // preparedReview): the rescued one where a rescue came out clean, else `sca/`.
   const { sca, rescued } = workPaths(at.work);
-  const scaRoot = at.record.roots.scaRoot;
+  const scaBuild = at.record.roots.scaBuild;
   const inRescued =
     fs.existsSync(rescued) &&
-    relativeInside(scaRoot, fs.realpathSync(rescued)) !== null;
+    relativeInside(scaBuild, fs.realpathSync(rescued)) !== null;
   return {
     workFolder: at.work,
     scaExtracted: fs.realpathSync(inRescued ? rescued : sca),
-    scaRoot,
+    scaBuild,
   };
 }
 
@@ -378,28 +378,28 @@ async function main() {
       if (isScaFixture(dir)) {
         // SCA mode: the shipped XPI is the authoritative artifact (addonPath), the
         // src/ tree is the submitted archive (scaExtracted), and the review finds the root inside
-        // it, as it does for a command line naming no --sca-root. Where the add-on code and
+        // it, as it does for a command line naming no --sca-build. Where the add-on code and
         // the Experiment sit inside the root comes from the spec's "sca" block; with none, the
         // source IS the root - the flat layout. Named absolutely, like every other path
         // opt, since that is what the arg reader hands the pipeline.
         let scaExtracted = path.join(dir, "src");
-        let scaRoot = settleScaRoot({ scaRoot: scaExtracted }).scaRoot;
+        let scaBuild = settleScaBuild({ scaBuild: scaExtracted }).scaBuild;
         if (preparation) {
-          ({ workFolder, scaExtracted, scaRoot } = await preparedFixture(
+          ({ workFolder, scaExtracted, scaBuild } = await preparedFixture(
             dir,
             preparation,
             workCache
           ));
         }
         const inRoot = (value) =>
-          value ? path.join(scaRoot, value) : undefined;
+          value ? path.join(scaBuild, value) : undefined;
         review = await runPipeline({
           ...base,
           workFolder,
           addonPath: path.join(dir, "xpi"),
           scaExtracted,
-          ...(preparation ? { scaRoot } : {}),
-          scaExpSource: inRoot(sca.expSource),
+          ...(preparation ? { scaBuild } : {}),
+          scaExperiments: inRoot(sca.experimentsFolder),
         });
       } else {
         // XPI mode: the fixture folder IS the add-on, and the pipeline loads it - the

@@ -46,11 +46,6 @@ import {
   BUILD_SAFETY_VALUES,
 } from "../checks/registry-vocabulary.js";
 
-/** Bumped when the record's shape, or what a step does with it, changes in a way an older
- *  file cannot satisfy. A preparation in flight does not survive the upgrade, and saying so
- *  beats reading it wrongly. */
-export const PREPARE_VERSION = 13;
-
 /** The mode every write leaves the record at: readable, and writable by nobody. */
 const READ_ONLY = 0o444;
 
@@ -58,7 +53,7 @@ const READ_ONLY = 0o444;
  * Where a preparation stands, which is what the next hand-back of the folder does:
  *
  * - `unpack`: the source archive is to be extracted into `sca/` (--llm-sca-review only). The
- *   next hand-back derives the root inside it (src/addon/sca-root.js) and moves on to
+ *   next hand-back derives the root inside it (src/addon/sca-build.js) and moves on to
  *   `analyze`;
  * - `analyze`: the root is known, in `sca/`, and its build is to be reported in build.md, with
  *   the build judgement (and the Experiment folder, where the add-on declares Experiments and
@@ -104,7 +99,6 @@ const COUNTED = ["moderate", "high", "critical"];
 
 /**
  * @typedef {object} PrepareRecord
- * @property {number} version  PREPARE_VERSION.
  * @property {string} step  A PREPARE_STEP value.
  * @property {{xpi: string, experiments: boolean}} submission  The built add-on, absolute,
  *   and whether its manifest.json declares Experiments - which decides whether the roots
@@ -150,7 +144,7 @@ const COUNTED = ["moderate", "high", "critical"];
  *   `buildResult` is `built`.
  * @property {?string} buildMatch  The agent's comparison of that output with the submitted
  *   XPI, a BUILD_MATCH_VALUES id. Held only where `buildResult` is `built`.
- * @property {?{scaRoot: string, scaExpSource: ?string}} roots  The settled roots, absolute
+ * @property {?{scaBuild: string, scaExperiments: ?string}} roots  The settled roots, absolute
  *   and real, once known (from `analyze` on): inside `sca/`, or inside `rescued/` while a
  *   rescue runs and once it came out clean - the tree the next step, or the review, reads.
  *   The Experiment folder is null until it is known.
@@ -188,11 +182,6 @@ export function readPrepare(work) {
   const record = parseJson(raw);
   if (record === null || typeof record !== "object") {
     throw new Error(`The preparation's record is not JSON: ${file}`);
-  }
-  if (record.version !== PREPARE_VERSION) {
-    throw new Error(
-      `The preparation's record was written by another version of this tool: ${file}`
-    );
   }
   const { digest, ...body } = record;
   if (digest !== recordDigest(body)) {
@@ -424,7 +413,6 @@ export function recordBoolean(value, what) {
  */
 export function startRecord({ submission, flags, agentBuilds, roots = null }) {
   return {
-    version: PREPARE_VERSION,
     step: roots ? PREPARE_STEP.analyze : PREPARE_STEP.unpack,
     submission,
     flags,
@@ -482,8 +470,8 @@ export function writePrepare(work, record) {
 function relativeFolders(record) {
   const named = [
     ["submission.xpi", record.submission?.xpi],
-    ["roots.scaRoot", record.roots?.scaRoot],
-    ["roots.scaExpSource", record.roots?.scaExpSource],
+    ["roots.scaBuild", record.roots?.scaBuild],
+    ["roots.scaExperiments", record.roots?.scaExperiments],
     ["buildOutput", record.buildOutput],
     ...Object.entries(record.flags ?? {})
       .filter(([flag]) => flag.endsWith("-dir"))
@@ -525,13 +513,13 @@ export function markPrepare(work, record) {
 
 /**
  * Where a root the record holds lies in the work folder's trees: inside `rescued/` while a
- * rescue runs and once it came out clean, else inside `sca/`. `scaRootOrig` is the same place
+ * rescue runs and once it came out clean, else inside `sca/`. `scaBuildOrig` is the same place
  * in `sca/` for a root in `rescued/`, and null for one in `sca/`, where it is that root itself.
  * `buildRoot` is the same place in `build/`, where every build runs, and null for a root in
  * neither tree.
  * @param {string} work  The work folder.
  * @param {string} root  The root, absolute and real.
- * @returns {{scaRootOrig: ?string, buildRoot: ?string}}
+ * @returns {{scaBuildOrig: ?string, buildRoot: ?string}}
  */
 export function treeRoots(work, root) {
   const paths = workPaths(work);
@@ -545,7 +533,7 @@ export function treeRoots(work, root) {
   const rescued = inside(paths.rescued);
   const rel = rescued ?? inside(paths.sca);
   return {
-    scaRootOrig: rescued === null ? null : path.join(paths.sca, rescued),
+    scaBuildOrig: rescued === null ? null : path.join(paths.sca, rescued),
     buildRoot: rel === null ? null : path.join(paths.buildCopy, rel),
   };
 }
@@ -567,8 +555,8 @@ const PACKAGE_FILES = [PACKAGE_FILE, ...TREE_LOCKS];
  * @returns {?{files: Map<string, Buffer>}}
  */
 export function originalPackages(work, record) {
-  const reviewed = record?.roots?.scaRoot;
-  const root = reviewed ? treeRoots(work, reviewed).scaRootOrig : null;
+  const reviewed = record?.roots?.scaBuild;
+  const root = reviewed ? treeRoots(work, reviewed).scaBuildOrig : null;
   if (root === null) {
     return null;
   }

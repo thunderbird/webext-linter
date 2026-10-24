@@ -167,11 +167,11 @@ test("a rejected Experiment without its reject check reviews as an allowed one",
   );
   const { meta } = await runReview({
     addonPath: path.join(fixture, "xpi"),
-    scaRoot: path.join(fixture, "src"),
-    scaExpSource: path.join(fixture, "src", "experiment"),
+    scaBuild: path.join(fixture, "src"),
+    scaExperiments: path.join(fixture, "src", "experiment"),
     ...OFFLINE,
   });
-  assert.equal(meta.scaRoot, path.join(fixture, "src"));
+  assert.equal(meta.scaBuild, path.join(fixture, "src"));
   assert.deepEqual(meta.checksRun, ["experiment-not-allowed"]);
 });
 

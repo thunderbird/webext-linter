@@ -75,10 +75,10 @@ const SEV_COLOR = {
  *   a reviewer recognises the submission by. Always set, alongside xpiRoot.
  * @property {string} [scaExtracted]  SCA review: the extracted source archive, named where the
  *   root lies below it.
- * @property {string} [scaRoot]  SCA review: the source root the run was given
- *   (--sca-root, or found inside --sca-extracted), resolved.
- * @property {string} [scaExpSource]  SCA review: the Experiment implementation folder
- *   (--sca-exp-source), resolved, when one was named. Its files are privileged code and are
+ * @property {string} [scaBuild]  SCA review: the source root the run was given
+ *   (--sca-build, or found inside --sca-extracted), resolved.
+ * @property {string} [scaExperiments]  SCA review: the Experiment implementation folder
+ *   (--sca-experiments), resolved, when one was named. Its files are privileged code and are
  *   excluded from the WebExtension checks, so naming it is how a reader sees that anything
  *   was.
  * @property {boolean} reviewed
@@ -302,7 +302,7 @@ const BLOCK_VALUES = new Set([
  * @param {{name: string, intro: string}} phase
  * @param {{text: string}[]} steps  Already filtered by src/report/phases.js stepsOf.
  * @param {Object<string, string>} values  What the texts and steps name: review, command,
- *   schemaCache, description, build, scaRoot, schema, details, tally. The review file, the
+ *   schemaCache, description, build, scaBuild, schema, details, tally. The review file, the
  *   command and the last three are laid out as blocks rather than substituted into prose
  *   (BLOCK_VALUES).
  * @param {{text: string}[]} [preamble]  The preamble parts this prompt prints, already
@@ -479,11 +479,11 @@ function valueLines(entries) {
  * a path by looking up a name rather than by parsing a sentence: the Submission block on the
  * `unpack` prompt - EXTRACT_TO among them: this tool cannot open a source archive itself, but
  * it can still name where one should land - ANSWERS on every later prompt, and the
- * Build block: SCA_ROOT and SCA_BUILD_PROCESS on the `analyze` prompt, SCA_ROOT, LLM_BUILD_ROOT
+ * Build block: SCA_BUILD and SCA_BUILD_PROCESS on the `analyze` prompt, SCA_BUILD, LLM_BUILD_ROOT
  * and SCA_BUILD_PROCESS on the build's, RESCUE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_PROCESS on the
  * rescue's, and SUBMITTED_XPI on both, which the build's output is compared with. The STEPS
  * are prose, and they name those given values - and the one the reader may still have to
- * work out, <SCA_EXP_SOURCE> - instead of carrying paths themselves. The FLAGS are the
+ * work out, <SCA_EXPERIMENTS> - instead of carrying paths themselves. The FLAGS are the
  * finished command, one flag per line, filled into the step that says to run it, and the COPY
  * is the rescue's two commands that make the build copy, filled into its step the same way.
  * The intro opens a run's first prompt only (`first`): it says what the preparation is, once.
@@ -507,7 +507,7 @@ function valueLines(entries) {
  *   prompt after `unpack`.
  * @param {string} [values.scaExtracted]  On the analyze prompt: the extracted source
  *   archive, `sca/`, all of which the build analysis reads.
- * @param {string} [values.scaRoot]  On the analyze and build prompts: the source root, in
+ * @param {string} [values.scaBuild]  On the analyze and build prompts: the source root, in
  *   `sca/`.
  * @param {string} [values.buildRoot]  On the build and rescue prompts: the root in
  *   `build/`, where the agent builds.
@@ -522,7 +522,7 @@ function valueLines(entries) {
  *   front-end (src/cli.js), which owns the flag names: the finished flag lines. Laid out
  *   here, never added to, trimmed or second-guessed.
  * @param {boolean} [values.findExperiment]  Whether `analyze` asks for the Experiment folder
- *   (src/prepare/steps.js asksExpSource).
+ *   (src/prepare/steps.js asksExperiments).
  * @returns {string[]}
  */
 export function scaPromptLines(prompt, list, values) {
@@ -547,7 +547,7 @@ export function scaPromptLines(prompt, list, values) {
   // The analyze, build and rescue prompts' folders, each where it is given.
   const build = [
     ["SCA_EXTRACTED", values.scaExtracted],
-    ["SCA_ROOT", values.scaRoot],
+    ["SCA_BUILD", values.scaBuild],
     ["RESCUE_ROOT", values.rescueRoot],
     ["LLM_BUILD_ROOT", values.buildRoot],
     ["SCA_BUILD_PROCESS", values.buildProcess],
@@ -623,7 +623,7 @@ export function schemaLines(meta, schemaCache) {
  * labels every locus [XPI]/[SCA], and the block names the artifacts behind those labels -
  * the shipped add-on as XPI_FILE (what was submitted, by name) and XPI_ROOT (where its
  * files can be READ, packed or not), and the [SCA] side as the
- * values the run was GIVEN: SCA_ROOT, and SCA_EXP_SOURCE when one was named.
+ * values the run was GIVEN: SCA_BUILD, and SCA_EXPERIMENTS when one was named.
  * Each stands on its own line rather than being composed into one path, because each is a
  * value its reader hands back - to this tool as a flag, or to an agent as a folder to read.
  *
@@ -642,13 +642,13 @@ export function headerLines(meta) {
     ["XPI_FILE", meta.xpiFile],
     ["XPI_ROOT", meta.xpiRoot],
   ];
-  if (meta.scaRoot) {
-    values.push(["SCA_ROOT", meta.scaRoot]);
+  if (meta.scaBuild) {
+    values.push(["SCA_BUILD", meta.scaBuild]);
   }
   // Only when it was given: it is the optional one of the three, and what it names was
   // excluded from the WebExtension code checks - which nothing else in the report says.
-  if (meta.scaExpSource) {
-    values.push(["SCA_EXP_SOURCE", meta.scaExpSource]);
+  if (meta.scaExperiments) {
+    values.push(["SCA_EXPERIMENTS", meta.scaExperiments]);
   }
   return [
     ...section("Review Details"),
@@ -719,13 +719,13 @@ export function detailLinkLines(meta) {
  * how the source builds. LLM_ is what the agent's own build attempt produced.
  * ADDON_DESCRIPTION and REVIEW_REPORT, which only the later blocks carry, come last.
  *
- * SCA_ROOT is the reviewed source: the source archive, or after a rescue the rescued copy,
- * beside which SCA_ROOT_ORIG names the same root in the source archive. SCA_EXTRACTED is the whole
+ * SCA_BUILD is the reviewed source: the source archive, or after a rescue the rescued copy,
+ * beside which SCA_BUILD_ORIG names the same root in the source archive. SCA_EXTRACTED is the whole
  * extracted archive the root lies in, named where the root lies below it. SCA_VULNERABILITIES
  * counts the submitted lock, and LLM_RESCUED_VULNERABILITIES the rescued copy's lock where
  * the agent attempted a rescue. LLM_BUILD_ROOT is the root in the copy the agent built in,
  * named where it built or tried to.
- * @param {ReviewMeta & {scaRootOrig?: string, buildSafety?: string,
+ * @param {ReviewMeta & {scaBuildOrig?: string, buildSafety?: string,
  *   buildVulnerabilities?: import("../prepare/audit.js").VulnerabilityCounts,
  *   rescuedVulnerabilities?: import("../prepare/audit.js").VulnerabilityCounts,
  *   buildResult?: string, buildRoot?: string, buildMatch?: string}} meta  The review's meta and what it holds
@@ -761,20 +761,20 @@ export function detailRows(meta) {
       meta.buildIssuesFile,
     ]);
   }
-  if (meta.scaExpSource) {
-    rows.push(["SCA_EXP_SOURCE", "experiment source", meta.scaExpSource]);
+  if (meta.scaExperiments) {
+    rows.push(["SCA_EXPERIMENTS", "experiment source", meta.scaExperiments]);
   }
-  if (meta.scaRoot) {
+  if (meta.scaBuild) {
     rows.push([
-      "SCA_ROOT",
-      meta.scaRootOrig
+      "SCA_BUILD",
+      meta.scaBuildOrig
         ? "rescued source (reduced/fixed dependencies)"
         : "source archive",
-      meta.scaRoot,
+      meta.scaBuild,
     ]);
   }
-  if (meta.scaRootOrig) {
-    rows.push(["SCA_ROOT_ORIG", "source archive", meta.scaRootOrig]);
+  if (meta.scaBuildOrig) {
+    rows.push(["SCA_BUILD_ORIG", "source archive", meta.scaBuildOrig]);
   }
   if (meta.buildVulnerabilities) {
     rows.push([

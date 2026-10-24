@@ -15,7 +15,6 @@ import { loadRegistry } from "../../src/checks/registry.js";
 import { REVIEW_MODE } from "../../src/lib/enum.js";
 import { ARTIFACT_SCA, ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 import { renderFindings } from "../../src/report/responses.js";
-import { STATE_VERSION, readState } from "../../src/report/state.js";
 import { assignRefs, orderReview } from "../../src/report/order.js";
 import { writeReportFile } from "../../src/report/report-file.js";
 import {
@@ -77,7 +76,6 @@ function review(
   const made = {
     work: dir,
     state: {
-      version: STATE_VERSION,
       report: {
         findings: findings ? [finding(1, "a"), finding(2, "b")] : [],
         // What the Review Details block is built from - the artifacts this review is of,
@@ -140,7 +138,7 @@ function review(
         // The roots an entry's paths are resolved against (handback.js entriesFor). The
         // state carries both; without xpiRoot the loop would hand out relative paths.
         xpiRoot: "/tmp/work/xpi/",
-        scaRoot: null,
+        scaBuild: null,
         // Each tree's sweep request and answers file, which is also what says WHICH trees
         // were asked. The request is printed by the step, and the answers file is the one
         // this loop opens.
@@ -534,15 +532,15 @@ test("the build details name the XPI, the source, the report, the judgement, the
   const { state, work } = scaReview(dir);
   state.report.meta.xpi = path.join(dir, "addon-1.0.xpi");
   state.report.meta.xpiFile = "addon-1.0.xpi";
-  state.paths.scaRoot = path.join(dir, "rescued", "src");
-  state.report.meta.scaRoot = state.paths.scaRoot;
+  state.paths.scaBuild = path.join(dir, "rescued", "src");
+  state.report.meta.scaBuild = state.paths.scaBuild;
   state.paths.build = path.join(dir, "build.md");
   state.report.meta.buildFile = state.paths.build;
   const rows = () =>
     loopSlots(state, {}, work, REGISTRY).buildDetails.split("\n");
   const xpi = `* XPI_FILE: [addon-1.0.xpi](${state.report.meta.xpi})`;
   const unpacked = `* XPI_ROOT: [extracted addon](${state.report.meta.xpiRoot})`;
-  const root = `* SCA_ROOT: [source archive](${state.paths.scaRoot})`;
+  const root = `* SCA_BUILD: [source archive](${state.paths.scaBuild})`;
   const report = `* SCA_BUILD_PROCESS: [build.md](${state.paths.build})`;
   assert.deepEqual(rows(), [xpi, unpacked, root]);
   state.products = ["build"];
@@ -591,8 +589,8 @@ test("the build details show the agent's comparison only beside its output", () 
   }
 });
 
-// SCA_ROOT is labelled by where the reviewed source lies: the source archive, or the rescued
-// copy, beside which SCA_ROOT_ORIG names the same root in the source archive. LLM_BUILD_ROOT names
+// SCA_BUILD is labelled by where the reviewed source lies: the source archive, or the rescued
+// copy, beside which SCA_BUILD_ORIG names the same root in the source archive. LLM_BUILD_ROOT names
 // the root in the build copy where the agent built or tried to, and nowhere else. The Review
 // Details name the same rows.
 test("the details name the reviewed root, the original root and the build root", () => {
@@ -605,7 +603,7 @@ test("the details name the reviewed root, the original root and the build root",
     block
       .split("\n")
       .filter((row) =>
-        ["* SCA_ROOT", "* LLM_BUILD_ROOT"].some((n) => row.startsWith(n))
+        ["* SCA_BUILD", "* LLM_BUILD_ROOT"].some((n) => row.startsWith(n))
       );
   const cases = [
     [
@@ -613,7 +611,7 @@ test("the details name the reviewed root, the original root and the build root",
       sca,
       null,
       { result: null, root: null, output: null },
-      [`* SCA_ROOT: [source archive](${sca})`],
+      [`* SCA_BUILD: [source archive](${sca})`],
     ],
     [
       "the source archive, built",
@@ -621,7 +619,7 @@ test("the details name the reviewed root, the original root and the build root",
       null,
       { result: "built", root: built, output: path.join(built, "dist") },
       [
-        `* SCA_ROOT: [source archive](${sca})`,
+        `* SCA_BUILD: [source archive](${sca})`,
         `* LLM_BUILD_ROOT: [build copy](${built})`,
       ],
     ],
@@ -631,7 +629,7 @@ test("the details name the reviewed root, the original root and the build root",
       null,
       { result: "failed", root: built, output: null },
       [
-        `* SCA_ROOT: [source archive](${sca})`,
+        `* SCA_BUILD: [source archive](${sca})`,
         `* LLM_BUILD_ROOT: [build copy](${built})`,
       ],
     ],
@@ -641,16 +639,16 @@ test("the details name the reviewed root, the original root and the build root",
       sca,
       { result: "built", root: built, output: path.join(built, "dist") },
       [
-        `* SCA_ROOT: [rescued source (reduced/fixed dependencies)](${rescued})`,
-        `* SCA_ROOT_ORIG: [source archive](${sca})`,
+        `* SCA_BUILD: [rescued source (reduced/fixed dependencies)](${rescued})`,
+        `* SCA_BUILD_ORIG: [source archive](${sca})`,
         `* LLM_BUILD_ROOT: [build copy](${built})`,
       ],
     ],
   ];
-  for (const [name, scaRoot, scaRootOrig, build, rows] of cases) {
-    state.paths.scaRoot = scaRoot;
-    state.paths.scaRootOrig = scaRootOrig;
-    state.report.meta.scaRoot = scaRoot;
+  for (const [name, scaBuild, scaBuildOrig, build, rows] of cases) {
+    state.paths.scaBuild = scaBuild;
+    state.paths.scaBuildOrig = scaBuildOrig;
+    state.report.meta.scaBuild = scaBuild;
     state.build = build;
     const { buildDetails } = loopSlots(state, {}, work, REGISTRY);
     assert.deepEqual(rootRows(buildDetails), rows, name);
@@ -1123,7 +1121,7 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
     questions: false,
   });
   // Both trees exist for this one, so the review is a source-code review.
-  state.paths.scaRoot = path.join(dir, "src");
+  state.paths.scaBuild = path.join(dir, "src");
   state.paths.sweeps[ARTIFACT_SCA] = {
     request: "Sweep the source.",
     answers: path.join(dir, "r.sweep-sca.answers.json"),
@@ -1151,7 +1149,7 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
     { file: "lib/net.js", line: 7, hint: `sends from the ${tree}` },
   ];
   planted(state.paths.xpiRoot, "lib/net.js", 7);
-  planted(state.paths.scaRoot, "lib/net.js", 7);
+  planted(state.paths.scaBuild, "lib/net.js", 7);
   swept(state, ARTIFACT_XPI, { 1: hit(ARTIFACT_XPI) });
   swept(state, ARTIFACT_SCA, { 2: hit(ARTIFACT_SCA) });
   handBack(work, () => null);
@@ -1904,7 +1902,7 @@ test("an archive holding the XPI and no lock is offered the restart, unreadable 
 
   const dir = tmp();
   const archiveOnly = abortedScaReview(dir, [...shape, "minified-code"]);
-  archiveOnly.state.paths.scaRoot = path.join(dir, "sca");
+  archiveOnly.state.paths.scaBuild = path.join(dir, "sca");
   const minified = archiveOnly.state.report.findings.at(-1);
   minified.file = "tests/fixture.min.js";
   assert.equal(untilPhase(archiveOnly, "downgrade").out.phase.name, "close");
@@ -1952,7 +1950,7 @@ function buildReview(dir) {
   made.state.run = { skip: [], sca: true, "build-guarded": true };
   made.state.paths.build = path.join(dir, "build.md");
   made.state.report.meta.buildFile = made.state.paths.build;
-  made.state.paths.scaRoot = path.join(dir, "sca");
+  made.state.paths.scaBuild = path.join(dir, "sca");
   return made;
 }
 
@@ -1975,7 +1973,7 @@ function buildQuestionsReview(dir) {
     askedIn: REGISTRY.askedIn(ruleId),
     ...extra,
   });
-  made.state.paths.scaRoot = path.join(dir, "src");
+  made.state.paths.scaBuild = path.join(dir, "src");
   made.state.manual.push(
     todo("build-lifecycle-hook", {
       section: "code-review",
@@ -2911,7 +2909,7 @@ test("settle words a per-mode response from the state's review mode", () => {
       state.report.sca = sca;
       // A source review has both roots, and every finding says which one its path is in
       // - the loop resolves the path for the agent from exactly that pair.
-      state.paths.scaRoot = sca ? "/tmp/src/" : null;
+      state.paths.scaBuild = sca ? "/tmp/src/" : null;
       state.report.findings = [
         {
           ruleId: "untrusted-library",
@@ -2933,30 +2931,5 @@ test("settle words a per-mode response from the state's review mode", () => {
     const live = { ruleId: "untrusted-library", item: null, message: null };
     renderFindings([live], reg, REVIEW_MODE.SCA);
     assert.equal(worded(true), live.message);
-  }
-});
-
-// A review in flight does not survive an upgrade, and the state file is where that is
-// caught. Bumping STATE_VERSION is only half a change: without this, a state written by
-// an older build would be read as if it carried what the new loop needs - and what it
-// needs now (an `artifact` on every finding, `paths.xpiRoot`) is absent rather than
-// wrong, so the loop would hand out unlabelled loci and relative paths instead of failing.
-test("a state file from another version of the tool is refused, not read", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "state-"));
-  const file = path.join(dir, "r.state.json");
-  try {
-    for (const version of [STATE_VERSION - 1, STATE_VERSION + 1, undefined]) {
-      fs.writeFileSync(file, JSON.stringify({ version, review: {} }));
-      assert.throws(
-        () => readState(file),
-        /written by another version of this tool/,
-        `version ${version}`
-      );
-    }
-    // The current one reads back.
-    fs.writeFileSync(file, JSON.stringify({ version: STATE_VERSION, ok: 1 }));
-    assert.equal(readState(file).ok, 1);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

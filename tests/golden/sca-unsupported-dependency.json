@@ -4,7 +4,7 @@
     "xpi": "<root>/tests/addons/sca-unsupported-dependency/xpi",
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
-    "scaRoot": "<root>/tests/addons/sca-unsupported-dependency/src",
+    "scaBuild": "<root>/tests/addons/sca-unsupported-dependency/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

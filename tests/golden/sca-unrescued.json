@@ -4,7 +4,7 @@
     "xpi": "<root>/tests/addons/sca-unrescued/xpi",
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
-    "scaRoot": "<work>/sca",
+    "scaBuild": "<work>/sca",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

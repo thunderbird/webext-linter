@@ -363,7 +363,7 @@ async function compute(ctx) {
   // empty and every WebExtension code check would review nothing. There we instead
   // review EVERY file the source view holds. That view is already the add-on's own
   // code and nothing else: the archive partition put the Experiment implementation
-  // (--sca-exp-source) in its own view, wherever the developer placed it, so privileged
+  // (--sca-experiments) in its own view, wherever the developer placed it, so privileged
   // Services/ChromeUtils code never reaches these checks and there is no subtree left to
   // subtract here. The built XPI's entry points DO resolve, so it uses the closure branch.
   // (That closure already excludes experiment implementation code.)

@@ -187,7 +187,7 @@ flowchart TB
 
     MODEQ{{"--sca-extracted given?<br/>(the review is NEVER re-routed by what the XPI looks like)"}}
     MODEQ -- "no" --> MX2["an XPI review · target = the XPI<br/>(mode derives to xpi)"]
-    MODEQ -- "yes" --> LSQ{{"--sca-exp-source given for an Experiment,<br/>and resolves within the source root?"}}
+    MODEQ -- "yes" --> LSQ{{"--sca-experiments given for an Experiment,<br/>and resolves within the source root?"}}
     LSQ -- no --> P1F
     LSQ -- yes --> LSRC["loadSourceArchive() → scaViews()<br/>a source code review · target = the archive<br/>(mode derives to sca)"]
   end

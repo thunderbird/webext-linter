@@ -106,13 +106,13 @@ export function assertLocus(at, who) {
  * the review's `meta`, and the loop state's `paths`. `null` for a tree this review has
  * not got, which is every source archive in an XPI review - the absence IS the answer,
  * and a caller asks it rather than asking the review mode a second time.
- * @param {{xpiRoot?: ?string, scaRoot?: ?string}} where
+ * @param {{xpiRoot?: ?string, scaBuild?: ?string}} where
  * @returns {Record<string, ?string>}
  */
 export function artifactRoots(where) {
   return {
     [ARTIFACT_XPI]: where?.xpiRoot ?? null,
-    [ARTIFACT_SCA]: where?.scaRoot ?? null,
+    [ARTIFACT_SCA]: where?.scaBuild ?? null,
   };
 }
 

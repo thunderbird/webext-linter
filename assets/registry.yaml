@@ -6,7 +6,7 @@
 # mode - `response-for-xpi` and `response-for-sca`, both of them, and no `response`. The
 # two forms are exclusive (assertResponse refuses a mix), and the per-mode pair is for a
 # check whose ADVICE differs by submission: what an XPI submission can be asked to fix is
-# not what a source code submission can. The mode is the review's (--sca-root or not), and it
+# not what a source code submission can. The mode is the review's (--sca-build or not), and it
 # changes nothing but this text.
 #
 # The check-bearing sections below ARE the phases: a check's phase IS the section it
@@ -182,7 +182,7 @@ deterministic-phase:
 # that installs nothing. Only the ROOT package.json is read - the build's entry point, and
 # the directory the install runs in. Nothing here goes looking
 # for a package.json or a lock deeper in the archive: they sit at the root, which is what the
-# root IS. WHICH folder that is was settled before any check ran (src/addon/sca-root.js),
+# root IS. WHICH folder that is was settled before any check ran (src/addon/sca-build.js),
 # because the root is named by someone who has not looked inside the archive yet.
 - title: Missing lock file
   severity: error
@@ -239,7 +239,7 @@ deterministic-phase:
 # point the install at another source, pulling the SAME declared package names from an
 # UNDECLARED source and leaving package.json/lock a clean decoy. The value is not parsed;
 # the raw value is surfaced as {{item}}. The ARCHIVE'S OWN .npmrc is the one read - npm takes
-# its config from the directory the install runs in, and the review runs it at --sca-root -
+# its config from the directory the install runs in, and the review runs it at --sca-build -
 # so a config deeper in the tree is never asked for.
 # Ends the review for the same reason as the other build rejects, reached from the other
 # direction: the install would RUN, but what it fetches is not what the submission declares,
@@ -983,7 +983,7 @@ deterministic-phase:
   response: |-
     Your source code was reviewed with changed dependencies, because the ones you submitted have known security vulnerabilities. Dependencies your release build does not use were removed, and where that was not enough, the lock file was updated to fixed releases. Your own package.json and lock file still have these vulnerabilities. Run `npm audit` (or `pnpm audit`) in your project and resolve them before your next submission.
 
-# Deterministic (SCA only): a node_modules folder anywhere in --sca-root is a hard
+# Deterministic (SCA only): a node_modules folder anywhere in --sca-build is a hard
 # reject. Installed dependencies are build output - the reviewer installs them from the
 # declared package.json/lock - so a committed node_modules is useless bloat and a decoy
 # (its bytes can differ from the declared deps). node_modules is never read: the loader
@@ -996,7 +996,7 @@ deterministic-phase:
     The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them.
 
 # Deterministic (SCA only): a committed binary archive (.zip/.xpi/.crx/...) anywhere in
-# --sca-root is a hard reject. A built archive is build output the reviewer reproduces from
+# --sca-build is a hard reject. A built archive is build output the reviewer reproduces from
 # source, so a committed one is useless bloat and a decoy (its bytes can differ from what the
 # build produces). Recorded at load, spanning the whole submission, and surfaced as {{item}}.
 - title: Committed build artifact
@@ -1006,7 +1006,7 @@ deterministic-phase:
   response: |-
     The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them.
 
-# Deterministic (SCA only): a symbolic link in --sca-root that leads out of the submission,
+# Deterministic (SCA only): a symbolic link in --sca-build that leads out of the submission,
 # or nowhere at all. We never unpack the source archive ourselves - the reviewer extracts it,
 # with a tool that does create links - so these are real links on the reviewer's disk. A link
 # is never followed and never read (src/addon/load.js), so whatever it names is outside
@@ -2188,7 +2188,7 @@ review-early-exit:
 # the source archive's own extraction goes (EXTRACT_TO, the work folder's sca/ - path math, not
 # archive reading), and the reader does what only opening the archive can settle: extracting it
 # there (`unpack`, --llm-sca-review only). The linter then derives the build folder inside it
-# (SCA_ROOT, src/addon/sca-root.js), as it does inside a --sca-extracted it copied into sca/, and from
+# (SCA_BUILD, src/addon/sca-build.js), as it does inside a --sca-extracted it copied into sca/, and from
 # `analyze` on both runs read the same prompts. The reader writes the build report
 # (SCA_BUILD_PROCESS), lists what the build reaches for outside the declared dependencies
 # (SCA_BUILD_SAFETY_ISSUES), and, where the add-on declares Experiments and the folder was not
@@ -2215,9 +2215,9 @@ review-early-exit:
 #
 # The step lists are prompts. `unpack` is printed by --llm-sca-review with the intro and the
 # Submission values, `analyze` by the run that derived the root (or first, with the intro, by
-# --llm-review given --sca-extracted), with SCA_EXTRACTED, SCA_ROOT, SCA_BUILD_PROCESS and ANSWERS, `permission` by
+# --llm-review given --sca-extracted), with SCA_EXTRACTED, SCA_BUILD, SCA_BUILD_PROCESS and ANSWERS, `permission` by
 # the run that read the verdict, with ANSWERS and the Build Review Details
-# ({{buildDetails}}), `build` by the run that audited a clean lock, with SCA_ROOT, LLM_BUILD_ROOT
+# ({{buildDetails}}), `build` by the run that audited a clean lock, with SCA_BUILD, LLM_BUILD_ROOT
 # (the root's place in build/) and SCA_BUILD_PROCESS, and `rescue` by the run that made the
 # rescued copy, with the copy's root as RESCUE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_PROCESS, and
 # the two commands that make build/ a copy of rescued/ ({{copy}}). Each of them ends in the one
@@ -2250,9 +2250,9 @@ llm-sca-review-prompt:
   analyze:
     - when: find-experiment
       text: |-
-        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under SCA_ROOT, given above. Its path relative to SCA_ROOT is <SCA_EXP_SOURCE>.
+        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under SCA_BUILD, given above. Its path relative to SCA_BUILD is <SCA_EXPERIMENTS>.
     - text: |-
-        Work out what building this add-on takes. Read the documentation and the build files of the whole extracted archive, SCA_EXTRACTED, given above: the build may be driven from anywhere in it, and the node project, with package.json and its lock file, is SCA_ROOT inside it. Follow the release build from where it starts, and work out which files it actually runs or reads: only those are part of it, wherever they lie. Report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
+        Work out what building this add-on takes. Read the documentation and the build files of the whole extracted archive, SCA_EXTRACTED, given above: the build may be driven from anywhere in it, and the node project, with package.json and its lock file, is SCA_BUILD inside it. Follow the release build from where it starts, and work out which files it actually runs or reads: only those are part of it, wherever they lie. Report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
 
         Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
 
@@ -2271,7 +2271,7 @@ llm-sca-review-prompt:
         Change nothing else in the file.
     - when: find-experiment
       text: |-
-        In ANSWERS, write <SCA_EXP_SOURCE> as the "answer" of the entry whose "index" is SCA_EXP_SOURCE, and change nothing else in the file.
+        In ANSWERS, write <SCA_EXPERIMENTS> as the "answer" of the entry whose "index" is SCA_EXPERIMENTS, and change nothing else in the file.
     - text: |-
         Run the linter with exactly these flags, and nothing else:
 
@@ -2330,7 +2330,7 @@ llm-sca-review-prompt:
   # LLM_BUILD_XPI_MATCH (build-match).
   build:
     - text: |-
-        The linter audited the lock file of SCA_ROOT, given above, and found no known high or critical vulnerability in it, so the add-on is built now. The linter copied the whole source archive for this step, and LLM_BUILD_ROOT, given above, is SCA_ROOT in that copy. Build in LLM_BUILD_ROOT, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in SCA_BUILD_PROCESS.
+        The linter audited the lock file of SCA_BUILD, given above, and found no known high or critical vulnerability in it, so the add-on is built now. The linter copied the whole source archive for this step, and LLM_BUILD_ROOT, given above, is SCA_BUILD in that copy. Build in LLM_BUILD_ROOT, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in SCA_BUILD_PROCESS.
 
         Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci`, or `pnpm install --frozen-lockfile` where the copy has a pnpm-lock.yaml, and with no flag that leaves dependencies out. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
     - text: |-
@@ -2459,7 +2459,7 @@ llm-sca-review-prompt:
 # {{description}} and {{build}} the files an agent writes, {{xpiRoot}} the extracted XPI, {{sweepXpi}} and
 # {{sweepSca}} the sweep request for each tree - one sub-agent's whole brief, so the step
 # that starts it relays nothing else - {{sweepXpiAnswers}} and {{sweepScaAnswers}} the
-# file each sweep's reply is written to, {{scaRoot}} the source root, {{details}} the Review
+# file each sweep's reply is written to, {{scaBuild}} the source root, {{details}} the Review
 # Details block, {{buildDetails}} the Build Review Details block, {{tally}} the closing
 # summary, {{maxNote}} the longest answer in a reviewer's own words, and {{schema}} - what
 # a verdict is judged against, printed by the phases

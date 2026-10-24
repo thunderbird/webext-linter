@@ -1638,8 +1638,8 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
   assert.deepEqual(
     headerLines({
       ...base,
-      scaRoot: "/x/src",
-      scaExpSource: "/x/src/addon/experiment-api",
+      scaBuild: "/x/src",
+      scaExperiments: "/x/src/addon/experiment-api",
     }),
     [
       ...head,
@@ -1647,11 +1647,11 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
       "    a.xpi",
       "  XPI_ROOT",
       "    /x/work/xpi/",
-      "  SCA_ROOT",
+      "  SCA_BUILD",
       "    /x/src",
       // The optional one of the two: what it names was excluded from the WebExtension
       // checks, and nothing else in the report says so.
-      "  SCA_EXP_SOURCE",
+      "  SCA_EXPERIMENTS",
       "    /x/src/addon/experiment-api",
       ...schema,
     ]
@@ -1688,7 +1688,7 @@ test("detailLinkLines links every location, XPI_FILE among them", () => {
   };
   const lines = detailLinkLines({
     ...base,
-    scaRoot: "/x/src",
+    scaBuild: "/x/src",
     summaryFile: "/x/work/summary.md",
     buildFile: "/x/a.build.md",
   });
@@ -1696,7 +1696,7 @@ test("detailLinkLines links every location, XPI_FILE among them", () => {
     "* XPI_FILE: [a.xpi](/x/in/a.xpi)",
     "* XPI_ROOT: [extracted addon](/x/work/xpi/)",
     "* SCA_BUILD_PROCESS: [build.md](/x/a.build.md)",
-    "* SCA_ROOT: [source archive](/x/src)",
+    "* SCA_BUILD: [source archive](/x/src)",
     "* ADDON_DESCRIPTION: [summary.md](/x/work/summary.md)",
     "",
     "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
@@ -1726,9 +1726,9 @@ test("detailRows lists every row in its order", () => {
     buildResult: "build succeeded",
     buildOutput: "/w/build/src/dist",
     buildVulnerabilities: { moderate: 1, high: 2, critical: 0 },
-    scaRootOrig: "/w/sca/src",
-    scaRoot: "/w/rescued/src",
-    scaExpSource: "/w/rescued/src/api",
+    scaBuildOrig: "/w/sca/src",
+    scaBuild: "/w/rescued/src",
+    scaExperiments: "/w/rescued/src/api",
     buildSafety: "safe",
     buildFile: "/w/build.md",
     xpiRoot: "/w/xpi/",
@@ -1740,9 +1740,9 @@ test("detailRows lists every row in its order", () => {
     "XPI_ROOT",
     "SCA_BUILD_PROCESS",
     "SCA_BUILD_SAFETY_ASSESSMENT",
-    "SCA_EXP_SOURCE",
-    "SCA_ROOT",
-    "SCA_ROOT_ORIG",
+    "SCA_EXPERIMENTS",
+    "SCA_BUILD",
+    "SCA_BUILD_ORIG",
     "SCA_VULNERABILITIES",
     "LLM_BUILD_OUTPUT",
     "LLM_BUILD_RESULT",

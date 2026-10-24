@@ -4,7 +4,7 @@
 // Two runs start a preparation, and from `analyze` on they run the same steps. One given a
 // submission folder (--llm-sca-review) has the source archive extracted into the work
 // folder's `sca/` first (`unpack`), and its hand-back derives the root inside it as the review
-// derives one (src/addon/sca-root.js). One given the extracted source (--llm-review
+// derives one (src/addon/sca-build.js). One given the extracted source (--llm-review
 // --sca-extracted) has it copied into `sca/` by the linter, and starts at `analyze`. There the
 // reader reports the build in build.md and hands back the verdict whether it is safe (and the
 // Experiment folder, where it is not known yet). Where a check the build relies on is switched
@@ -65,7 +65,7 @@ import {
   isRescuable,
   vulnerabilityCounts,
 } from "./audit.js";
-import { settleScaRoot } from "../addon/sca-root.js";
+import { settleScaBuild } from "../addon/sca-build.js";
 import { checkSelected, loadRegistry } from "../checks/registry.js";
 import { splitList } from "../lib/util.js";
 import { relativeInside } from "../addon/load.js";
@@ -91,7 +91,7 @@ import { checkedResult } from "../report/sweep.js";
 import { RESULT_SHAPE } from "../config.js";
 
 /** The review file's entry for the Experiment folder, keyed by the name the prompt gives it. */
-const EXP_SOURCE = "SCA_EXP_SOURCE";
+const EXPERIMENTS = "SCA_EXPERIMENTS";
 /** The review file's entry for the reviewer's answer whether the agent may build the add-on,
  *  its package-manager commands included, as `llm-sca-review-prompt` names it. */
 const SCA_BUILD_PERMISSION = "SCA_BUILD_PERMISSION";
@@ -176,27 +176,27 @@ export function startPreparation(work, record) {
 
 /**
  * Whether `analyze` asks for the Experiment folder: the built add-on declares Experiments, and
- * the folder is not known yet. A review given --sca-extracted was given it (--sca-exp-source).
+ * the folder is not known yet. A review given --sca-extracted was given it (--sca-experiments).
  * @param {import("./state.js").PrepareRecord} record
  * @returns {boolean}
  */
-export function asksExpSource(record) {
+export function asksExperiments(record) {
   return (
     record.submission.experiments &&
-    typeof record.roots?.scaExpSource !== "string"
+    typeof record.roots?.scaExperiments !== "string"
   );
 }
 
 /**
  * The entries `analyze` asks for: the build's safety issues, and the Experiment folder where
- * it is asked (asksExpSource).
+ * it is asked (asksExperiments).
  * @param {import("./state.js").PrepareRecord} record
  * @returns {object[]}
  */
 function analyzeEntries(record) {
   return [
     { index: SCA_BUILD_SAFETY_ISSUES, [SLOT]: null },
-    ...(asksExpSource(record) ? [{ index: EXP_SOURCE, [SLOT]: null }] : []),
+    ...(asksExperiments(record) ? [{ index: EXPERIMENTS, [SLOT]: null }] : []),
   ];
 }
 
@@ -359,7 +359,7 @@ export async function handBack(work, registry = loadRegistry()) {
 
 /**
  * The source archive extracted into `sca/`: the root derived inside it, as the review derives
- * one (src/addon/sca-root.js settleScaRoot) - `sca/` itself where it holds the package file or
+ * one (src/addon/sca-build.js settleScaBuild) - `sca/` itself where it holds the package file or
  * the walk cannot decide - and the build handed out to be analyzed.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `unpack`.
@@ -367,11 +367,11 @@ export async function handBack(work, registry = loadRegistry()) {
  * @throws {HandbackRefused}
  */
 function unpacked(work, record) {
-  const { scaRoot } = settleScaRoot({ scaRoot: realSca(workPaths(work)) });
+  const { scaBuild } = settleScaBuild({ scaBuild: realSca(workPaths(work)) });
   const analyzing = {
     ...record,
     step: PREPARE_STEP.analyze,
-    roots: { scaRoot, scaExpSource: null },
+    roots: { scaBuild, scaExperiments: null },
   };
   return ask(work, analyzing, analyzeEntries(analyzing));
 }
@@ -570,56 +570,56 @@ function builtOriginal(work, record, asked, match) {
  * What `analyze` handed back: the build's safety issues, a list of results each held to the
  * shape a sweep's are (buildIssuesOf), and the Experiment folder where it was asked, taken as
  * the folder it really is and held inside the root, resolved against it as the review resolves
- * it, and not the root itself (settleScaRoot). Every way they can be wrong is refused, with
+ * it, and not the root itself (settleScaBuild). Every way they can be wrong is refused, with
  * nothing changed, so the reader can correct the file and hand it back again.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `analyze`, its root known.
- * @returns {{roots: {scaRoot: string, scaExpSource: ?string},
+ * @returns {{roots: {scaBuild: string, scaExperiments: ?string},
  *   buildIssues: {file: string, line: ?number, hint: string}[]}}
  * @throws {HandbackRefused}
  */
 function analyzedAnswers(work, record) {
   const keyOf = (e) => String(e?.index);
   const all = readHandback(workPaths(work).review).entries;
-  const root = record.roots.scaRoot;
+  const root = record.roots.scaBuild;
   const buildIssues = buildIssuesOf(
     all.find((e) => keyOf(e) === SCA_BUILD_SAFETY_ISSUES),
     realSca(workPaths(work))
   );
-  if (!asksExpSource(record)) {
+  if (!asksExperiments(record)) {
     return { roots: record.roots, buildIssues };
   }
-  const handed = all.filter((e) => keyOf(e) === EXP_SOURCE);
+  const handed = all.filter((e) => keyOf(e) === EXPERIMENTS);
   // A blank answer names no folder, and would otherwise resolve to the root itself.
   const blank = handed.find(
     (e) => typeof e?.[SLOT] === "string" && !e[SLOT].trim()
   );
   if (blank) {
-    throw new HandbackRefused(`${EXP_SOURCE} names no folder`);
+    throw new HandbackRefused(`${EXPERIMENTS} names no folder`);
   }
   const answer = answersOf(
     handed,
-    [{ index: EXP_SOURCE, [SLOT]: null }],
+    [{ index: EXPERIMENTS, [SLOT]: null }],
     { name: "analyze", answer: "words" },
     keyOf
-  ).get(EXP_SOURCE);
+  ).get(EXPERIMENTS);
   const exp = realFolder(path.resolve(root, answer.trim()));
   if (!exp || relativeInside(exp, root) === null) {
     throw new HandbackRefused(
-      `${EXP_SOURCE} "${displayLine(answer)}" is not a folder inside "${root}"`
+      `${EXPERIMENTS} "${displayLine(answer)}" is not a folder inside "${root}"`
     );
   }
   let settled;
   try {
-    settled = settleScaRoot({ scaRoot: root, scaExpSource: exp });
+    settled = settleScaBuild({ scaBuild: root, scaExperiments: exp });
   } catch (err) {
     rethrowIfFatal(err);
     throw new HandbackRefused(err.message);
   }
   return {
     roots: {
-      scaRoot: settled.scaRoot,
-      scaExpSource: settled.scaExpSource ?? null,
+      scaBuild: settled.scaBuild,
+      scaExperiments: settled.scaExperiments ?? null,
     },
     buildIssues,
   };
@@ -710,31 +710,31 @@ function buildGuarded(record, registry) {
  * preparation put it - the root inside `sca/`, or inside `rescued/` for a rescued copy, and
  * the Experiment folder inside the root.
  * @param {string} work  The work folder the review starts in.
- * @param {{scaRoot: string, scaExpSource: ?string}} roots  As the record holds them.
- * @returns {{scaRoot: string, scaExpSource: ?string}}  The real folders, which the review
+ * @param {{scaBuild: string, scaExperiments: ?string}} roots  As the record holds them.
+ * @returns {{scaBuild: string, scaExperiments: ?string}}  The real folders, which the review
  *   reads.
  * @throws {HandbackRefused}
  */
 export function recordedRoots(work, roots) {
   const sca = realSca(workPaths(work));
-  const root = realFolder(roots.scaRoot);
+  const root = realFolder(roots.scaBuild);
   if (!root || !(relativeInside(root, sca) !== null || inCopy(work, root))) {
     throw new HandbackRefused(
-      `the preparation's record names a source root "${displayLine(roots.scaRoot)}" ` +
+      `the preparation's record names a source root "${displayLine(roots.scaBuild)}" ` +
         `that is not a folder inside "${sca}" or its rescued copy`
     );
   }
-  if (typeof roots.scaExpSource !== "string") {
-    return { scaRoot: root, scaExpSource: null };
+  if (typeof roots.scaExperiments !== "string") {
+    return { scaBuild: root, scaExperiments: null };
   }
-  const exp = realFolder(roots.scaExpSource);
+  const exp = realFolder(roots.scaExperiments);
   if (!exp || relativeInside(exp, root) === null) {
     throw new HandbackRefused(
       "the preparation's record names an Experiment folder " +
-        `"${displayLine(roots.scaExpSource)}" that is not a folder inside "${root}"`
+        `"${displayLine(roots.scaExperiments)}" that is not a folder inside "${root}"`
     );
   }
-  return { scaRoot: root, scaExpSource: exp };
+  return { scaBuild: root, scaExperiments: exp };
 }
 
 /**
@@ -826,9 +826,9 @@ function rescue(work, record, asked, match) {
       ...record,
       step: PREPARE_STEP.rescue,
       roots: {
-        scaRoot: fs.realpathSync(into(record.roots.scaRoot)),
-        scaExpSource: record.roots.scaExpSource
-          ? fs.realpathSync(into(record.roots.scaExpSource))
+        scaBuild: fs.realpathSync(into(record.roots.scaBuild)),
+        scaExperiments: record.roots.scaExperiments
+          ? fs.realpathSync(into(record.roots.scaExperiments))
           : null,
       },
     },
@@ -842,9 +842,9 @@ function rescue(work, record, asked, match) {
  * there, and the roots given inside it mapped to their place in the copy. From here on the
  * preparation reads only the copy.
  * @param {string} work  The work folder, just created.
- * @param {{extracted: string, scaRoot: string, scaExpSource: ?string}} given  Absolute and real:
+ * @param {{extracted: string, scaBuild: string, scaExperiments: ?string}} given  Absolute and real:
  *   the extracted source, and the root and Experiment folder inside it.
- * @returns {{scaRoot: string, scaExpSource: ?string}}
+ * @returns {{scaBuild: string, scaExperiments: ?string}}
  * @throws {Error}  The copy could not be made.
  */
 export function copySource(work, given) {
@@ -853,8 +853,8 @@ export function copySource(work, given) {
   const real = fs.realpathSync(sca);
   const inCopy = (p) => path.join(real, path.relative(given.extracted, p));
   return {
-    scaRoot: inCopy(given.scaRoot),
-    scaExpSource: given.scaExpSource ? inCopy(given.scaExpSource) : null,
+    scaBuild: inCopy(given.scaBuild),
+    scaExperiments: given.scaExperiments ? inCopy(given.scaExperiments) : null,
   };
 }
 
@@ -927,8 +927,8 @@ async function rescueStep(work, record, context, asked, match) {
     rescuedVulnerabilities,
     step: PREPARE_STEP.done,
     roots: {
-      scaRoot: back(record.roots.scaRoot),
-      scaExpSource: back(record.roots.scaExpSource),
+      scaBuild: back(record.roots.scaBuild),
+      scaExperiments: back(record.roots.scaExperiments),
     },
     buildResult: BUILD_RESULT.rescueFailed,
     buildOutput: null,
@@ -983,7 +983,7 @@ function producedIn(answer, phase, copy) {
 function doneAgain(work, record) {
   if (record.buildResult === BUILD_RESULT.rescueFailed) {
     removeRescue(work);
-  } else if (!inCopy(work, record.roots?.scaRoot)) {
+  } else if (!inCopy(work, record.roots?.scaBuild)) {
     fs.rmSync(workPaths(work).rescued, { recursive: true, force: true });
   }
   return { next: "review", work, record: markPrepare(work, record) };

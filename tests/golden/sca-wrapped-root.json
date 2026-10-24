@@ -5,7 +5,7 @@
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
     "scaExtracted": "<root>/tests/addons/sca-wrapped-root/src",
-    "scaRoot": "<root>/tests/addons/sca-wrapped-root/src/addon-1.0-source",
+    "scaBuild": "<root>/tests/addons/sca-wrapped-root/src/addon-1.0-source",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

@@ -2,7 +2,7 @@
 //
 // A source archive's root is the folder the build runs in: the one holding package.json and
 // the lock the reviewer installs from. Everything downstream reads those from the TOP LEVEL
-// of --sca-root and nowhere else (src/vendor/locks.js, the package.json readers), which is what
+// of --sca-build and nowhere else (src/vendor/locks.js, the package.json readers), which is what
 // makes "the root" mean something. This decides which folder that is. It does not soften
 // that rule - it runs before it.
 //
@@ -14,14 +14,14 @@
 // the dependency tree sitting just below it - a submission with critical advisories reviewed
 // as though it declared none.
 //
-// DOWN ONLY. The folder ABOVE --sca-root is the reviewer's submission folder, holding the .xpi
+// DOWN ONLY. The folder ABOVE --sca-build is the reviewer's submission folder, holding the .xpi
 // and the archive itself, and nothing there was submitted as source: a root found by stepping
 // out of the one named is a root nobody pointed at. How FAR down is not fixed, because the
 // number of directories an archive wraps its contents in is an accident of how it was packed -
 // the walk follows a chain of single folders as far as it goes and stops at the first fork.
 //
-// Belongs here: which folder the review treats as --sca-root, and keeping
-// --sca-exp-source inside it. Does NOT belong here: what is read once it is settled (the build
+// Belongs here: which folder the review treats as --sca-build, and keeping
+// --sca-experiments inside it. Does NOT belong here: what is read once it is settled (the build
 // files, the lock), the keyspace the source view is built in (scaViews in ./load.js), or
 // how the root is reported (src/report/format.js).
 
@@ -119,10 +119,10 @@ function buildRootBelow(root) {
 }
 
 /**
- * Settle which folder this review treats as --sca-root, and --sca-exp-source with it.
+ * Settle which folder this review treats as --sca-build, and --sca-experiments with it.
  *
  * Returns the pair to use, corrected or not. The caller applies it wholesale rather than
- * reading the flags again, so `scaRoot` and `scaExpSource` can never be read from two
+ * reading the flags again, so `scaBuild` and `scaExperiments` can never be read from two
  * different answers.
  *
  * The root moves only when it holds no package file itself AND exactly one folder below it can be
@@ -130,43 +130,43 @@ function buildRootBelow(root) {
  * used to choose between several: a submission that forgot one is still re-rooted, so the
  * review reports the missing lock it has rather than the missing build it does not.
  *
- * CONTAINMENT IS NOT NEGOTIABLE, so it decides too. --sca-exp-source names a folder inside
+ * CONTAINMENT IS NOT NEGOTIABLE, so it decides too. --sca-experiments names a folder inside
  * the source root - enforced at the CLI (src/cli.js folderProblem) and again when the views
- * are built (scaRootRelative in ./load.js, which throws) - and a correction that put it
+ * are built (scaBuildRelative in ./load.js, which throws) - and a correction that put it
  * outside would swap a wrong root for a failed run. Where that is what the move would do,
  * there is no move. It is not re-derived: it is already absolute, and one inside the
  * candidate stays where it is.
- * @param {{scaRoot?: string, scaExpSource?: string}} opts  Absolute paths, as the CLI
+ * @param {{scaBuild?: string, scaExperiments?: string}} opts  Absolute paths, as the CLI
  *   resolved them.
- * @returns {{scaRoot?: string, scaExpSource?: string, movedFrom: ?string}}
+ * @returns {{scaBuild?: string, scaExperiments?: string, movedFrom: ?string}}
  *   The pair to review with. `movedFrom` is the root that was given when it was corrected,
  *   and null when it stands - the run narrates the difference rather than changing it silently.
  */
-export function settleScaRoot(opts) {
+export function settleScaBuild(opts) {
   const given = {
-    scaRoot: opts.scaRoot,
-    scaExpSource: opts.scaExpSource,
+    scaBuild: opts.scaBuild,
+    scaExperiments: opts.scaExperiments,
     movedFrom: null,
   };
-  if (!opts.scaRoot || hasPackageFile(opts.scaRoot)) {
+  if (!opts.scaBuild || hasPackageFile(opts.scaBuild)) {
     return settled(given);
   }
-  const scaRoot = buildRootBelow(opts.scaRoot);
-  if (!scaRoot) {
+  const scaBuild = buildRootBelow(opts.scaBuild);
+  if (!scaBuild) {
     return settled(given);
   }
   if (
-    opts.scaExpSource &&
-    relativeInside(opts.scaExpSource, scaRoot) === null
+    opts.scaExperiments &&
+    relativeInside(opts.scaExperiments, scaBuild) === null
   ) {
     return settled(given);
   }
-  return settled({ ...given, scaRoot, movedFrom: opts.scaRoot });
+  return settled({ ...given, scaBuild, movedFrom: opts.scaBuild });
 }
 
 /**
- * The pair, once nothing else can change it: --sca-exp-source must name a folder INSIDE
- * --sca-root, and so may not BE it.
+ * The pair, once nothing else can change it: --sca-experiments must name a folder INSIDE
+ * --sca-build, and so may not BE it.
  *
  * Naming the root excludes nothing - `scaViews` partitions on a prefix, and the prefix for
  * a root equal to the root is the empty string, which is under nothing - so the Experiment's
@@ -178,13 +178,13 @@ export function settleScaRoot(opts) {
  * that escapes the root, points at no folder, or spells its way out with "..", and it cannot
  * ask this one: the root it validated against may not be the root that is used, since the
  * move below it can land the root on the very folder the reviewer named.
- * @param {{scaRoot?: string, scaExpSource?: string, movedFrom: ?string}} pair
- * @returns {{scaRoot?: string, scaExpSource?: string, movedFrom: ?string}} The same pair.
+ * @param {{scaBuild?: string, scaExperiments?: string, movedFrom: ?string}} pair
+ * @returns {{scaBuild?: string, scaExperiments?: string, movedFrom: ?string}} The same pair.
  */
 function settled(pair) {
   if (
-    !pair.scaExpSource ||
-    relativeInside(pair.scaExpSource, pair.scaRoot) !== ""
+    !pair.scaExperiments ||
+    relativeInside(pair.scaExperiments, pair.scaBuild) !== ""
   ) {
     return pair;
   }
@@ -192,9 +192,9 @@ function settled(pair) {
   // collides with - saying only "they are the same folder" would describe a command they
   // did not write.
   const because = pair.movedFrom
-    ? `--sca-root "${pair.movedFrom}" holds no package file, so the source root settles on ` +
-      `"${pair.scaRoot}" - which is the folder --sca-exp-source names`
-    : `--sca-exp-source "${pair.scaExpSource}" is --sca-root itself`;
+    ? `--sca-build "${pair.movedFrom}" holds no package file, so the source root settles on ` +
+      `"${pair.scaBuild}" - which is the folder --sca-experiments names`
+    : `--sca-experiments "${pair.scaExperiments}" is --sca-build itself`;
   throw new Error(
     `${because}. It names the Experiment implementation INSIDE the source root, so it ` +
       "cannot be the root: nothing would be excluded, and the Experiment's privileged " +

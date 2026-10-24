@@ -64,7 +64,7 @@ export const COLLAPSE_MODES = new Set(["subject"]);
 // The `input` a check entry declares - which add-on artifact is ctx.artifact when the
 // check runs, and, where the answer can only exist in one review mode, WHICH MODE it runs
 // in. "source" = the REVIEW TARGET, the readable submitted code (the readable
-// --sca-root in an SCA review, the built XPI in an XPI review - the only artifact
+// --sca-build in an SCA review, the built XPI in an XPI review - the only artifact
 // there); "xpi" = ALWAYS the built XPI (the shipped artifact), analysed in both modes;
 // "sca" = the submitted source archive, which the build and dependency checks read
 // (and which `source` points at in a source review, being the target there); "all" =
@@ -305,7 +305,7 @@ export const PHASE_PRODUCTS = ["build"];
 
 /** The one fact the preparation prompts' `when:` conditions can name: whether `analyze`
  *  asks its reader for the Experiment folder - the built add-on declares Experiments, and the
- *  folder is not known yet (src/prepare/steps.js asksExpSource). */
+ *  folder is not known yet (src/prepare/steps.js asksExperiments). */
 export const SCA_PROMPT_FACTS = ["find-experiment"];
 
 /** The preparation's prompts, one step list each, named for the step that prints it

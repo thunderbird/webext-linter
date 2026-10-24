@@ -20,8 +20,6 @@ import { rethrowIfFatal } from "../lib/errors.js";
 
 /**
  * @typedef {object} LoopState
- * @property {number} version  Refuses a file this build cannot read, rather than reading
- *   it wrongly.
  * @property {object} report  Everything formatText needs that the registry cannot
  *   recompute: findings, meta, and whether it is a source code review (`sca`). NOT issueHeadings /
  *   verdictIntros - those are the registry's, and a stale copy here would outlive an edit
@@ -45,7 +43,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   the review's work folder, src/util/dest.js workPaths, which also holds this file and
  *   the review file and is not recorded: the state is read from it), schemaCache, schema,
  *   the two artifact roots
- *   (scaRoot, xpiRoot) an entry's paths are resolved against, and `sweeps` - each tree's sweep
+ *   (scaBuild, xpiRoot) an entry's paths are resolved against, and `sweeps` - each tree's sweep
  *   request (the text its step hands over) and answers file, by artifact, which is also
  *   what says WHICH trees this review asked about. Held here
  *   because a later pass prints them and cannot re-derive a moment - and `report` is also
@@ -117,39 +115,5 @@ export function readState(file) {
   if (state === null) {
     throw new Error(`The review's state is not JSON: ${file}`);
   }
-  if (state?.version !== STATE_VERSION) {
-    throw new Error(
-      `The review's state was written by another version of this tool: ${file}`
-    );
-  }
   return state;
 }
-
-/** Bumped when the shape, or what the loop DOES with it, changes in a way an older file
- *  cannot satisfy. A review in flight does not survive the upgrade, and saying so beats
- *  reading it wrongly. Version 9 needs an `artifact` and a `label` on every pre-swept
- *  sweep, an `artifact` on every finding and case, `paths.xpiRoot`, and `paths.sweeps`
- *  naming each tree's request and answers. A v8 file has no `paths.sweeps` and no labels,
- *  because its sweeps were asked for as rows in the review file and answered by the agent
- *  transcribing them - so there are no answer files to read and nothing to read them
- *  against. Saying the version is wrong sends the reviewer to start the review again,
- *  where reading it would find every sweep unanswered. Version 10 adds the build phase,
- *  which reads `paths.buildCopy` and `paths.buildDiff`. Version 11 names each skip in
- *  `run.skip` by its full flag (`llm-skip-manual`), the name the registry's step
- *  conditions read - a v10 file's short names would match no step. Version 12 carries where a
- *  to-do item is asked on the item itself (`askedIn`), set by its check or by the agent's
- *  `ask` verdict, instead of in a `route` map keyed by index - a v11 file's routes would be
- *  read by nothing. Version 13 records no path to the state or the review file: both are in
- *  the work folder the state is read from, by their fixed names - a v12 file's recorded
- *  review path is read by nothing. Version 14 keys `answers` by each item's fixed `ref`,
- *  stored on the item, instead of by its position - a v13 file's numbers name no item.
- *  Version 15 adds `values`, the process values a `when:` reads - a v14 review in flight
- *  would never be asked for them. Version 16 carries each tree's sweep request in
- *  `paths.sweeps` as the text its step hands over, where a v15 file names a request file
- *  that no step hands over and no review writes any more. Version 17 has the build phase
- *  answer where its build put what it produced, kept as `paths.buildOutput`, where a v16 file
- *  names a `paths.buildDiff` no step writes and its build phase asks nothing. Version 18 builds
- *  nothing in the review: it holds the preparation's build in `build`, which the Build Review
- *  Details and the `built` step read, where a v17 file has no `build` and may be waiting on
- *  a `build` phase this review does not have. */
-export const STATE_VERSION = 20;

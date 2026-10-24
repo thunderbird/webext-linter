@@ -55,7 +55,7 @@ import {
   relativeInside,
   scaViews,
 } from "./addon/load.js";
-import { settleScaRoot } from "./addon/sca-root.js";
+import { settleScaBuild } from "./addon/sca-build.js";
 import {
   checkSelected,
   ctxForRule,
@@ -80,7 +80,6 @@ import {
 import { finding, resolveHolds } from "./report/finding.js";
 import { assignRefs, orderReview } from "./report/order.js";
 import { earlyExitOf, withoutQuestions } from "./report/early-exit.js";
-import { STATE_VERSION } from "./report/state.js";
 import { issue, loopSlots } from "./report/loop.js";
 import { productWritten } from "./report/handback.js";
 import { headerLines, loopPromptLines, schemaLines } from "./report/format.js";
@@ -157,7 +156,7 @@ export const SETUP_STEPS = Object.freeze([
 /**
  * Every path opt is ABSOLUTE. The arg-array reader resolves them (pipelineOptsFromValues,
  * src/cli.js), which is the one layer that knows what each flag was written relative to -
- * the working directory for --sca-extracted and --sca-root, and the root for --sca-exp-source. Nothing here re-resolves one, and a caller handing in a relative path gets
+ * the working directory for --sca-extracted and --sca-build, and the root for --sca-experiments. Nothing here re-resolves one, and a caller handing in a relative path gets
  * whatever the working directory makes of it.
  * @typedef {object} PipelineOpts
  * @property {string} addonPath  The shipped add-on, absolute.
@@ -183,15 +182,15 @@ export const SETUP_STEPS = Object.freeze([
  * @property {string} [scaExtracted]  SCA mode: the extracted source archive, absolute, the root
  *   lying inside it (--sca-extracted). Setting it switches the review to SCA mode. Named in the
  *   report, and the review reads the root.
- * @property {string} [scaRoot]  SCA mode: the source archive root, absolute, inside scaExtracted -
+ * @property {string} [scaBuild]  SCA mode: the source archive root, absolute, inside scaExtracted -
  *   the folder holding package.json/lock, found inside scaExtracted where it is left out. The
  *   whole root is reviewed as the readable source and its
  *   declared dependencies are audited; the positional XPI is the shipped artifact against which
  *   the manifest.json, experiments and file-completeness (`input: xpi`) checks all run (a
  *   separate shipped context the orchestrator routes them to - see buildXpiCtx in
  *   src/checks/context.js).
- * @property {string} [scaExpSource]  SCA mode: the Experiment implementation folder,
- *   absolute and inside scaRoot, never scaRoot itself. It reaches the review as an archive
+ * @property {string} [scaExperiments]  SCA mode: the Experiment implementation folder,
+ *   absolute and inside scaBuild, never scaBuild itself. It reaches the review as an archive
  *   partition (scaViews), which gives it its own view; where it sits WITHIN the review
  *   source is derived at the one read that wants it (src/lib/reachability.js), in the
  *   keyspace the review target's keys live in. Its privileged, non-WebExtension files are
@@ -308,7 +307,7 @@ async function reviewSubmission(opts, work, prepared) {
   //
   // So downstream: read `reviewTarget` for the code under review, `xpiAddon` for the
   // shipped artifact - no further mode checks. The only other mode forks are the
-  // dependency resolution (--sca-root vs the XPI's VENDOR/package.json) and the
+  // dependency resolution (--sca-build vs the XPI's VENDOR/package.json) and the
   // check gates (ctx.mode -> modeEligible, and a check's `when: sca`). Minified code is
   // non-authored (and rejected) in both modes: a source-code submission's promise is
   // readable source, so a minified file in the archive is rejected like one in an XPI, not
@@ -327,18 +326,18 @@ async function reviewSubmission(opts, work, prepared) {
   });
 
   // Which folder is the source root, settled before anything reads it
-  // (src/addon/sca-root.js): found inside --sca-extracted where no --sca-root was named, and below
+  // (src/addon/sca-build.js): found inside --sca-extracted where no --sca-build was named, and below
   // a named one that holds no package file. Whoever named the folder had not looked inside it
   // yet - an archive is extracted by whoever prepares the review, into a destination worked
   // out by path math - so an archive carrying its contents in one directory of its own leaves
   // the build files a level below it.
   //
-  // Rebound onto `opts`, once, rather than threaded: every reader below asks opts.scaRoot,
+  // Rebound onto `opts`, once, rather than threaded: every reader below asks opts.scaBuild,
   // and a settled value beside the one it was given is two answers to one question. The
   // narration comes later, with the rest of Setup.
-  const scaMove = settleScaRoot({
+  const scaMove = settleScaBuild({
     ...opts,
-    scaRoot: opts.scaRoot ?? opts.scaExtracted,
+    scaBuild: opts.scaBuild ?? opts.scaExtracted,
   });
   opts = { ...opts, ...scaMove };
 
@@ -374,7 +373,7 @@ async function reviewSubmission(opts, work, prepared) {
   // The facts each step's `when` is asked of, from what the fast .xpi read already gives
   // us: the mode, and whether this is an Experiment.
   const setupFacts = {
-    sca: Boolean(opts.scaRoot),
+    sca: Boolean(opts.scaBuild),
     isExp,
     // What the review IS, derived here and nowhere else: the steps that depend on it, the
     // ctx builders and the report all read it, so none of them re-spells the rule.
@@ -512,7 +511,7 @@ async function reviewSubmission(opts, work, prepared) {
         // reviewer has to be able to see which folder their verdicts are about.
         if (scaMove.movedFrom) {
           progress(
-            `Source root: ${opts.scaRoot} (${scaMove.movedFrom} holds no package.json)`,
+            `Source root: ${opts.scaBuild} (${scaMove.movedFrom} holds no package.json)`,
             FEED.DETAIL
           );
         }
@@ -526,17 +525,17 @@ async function reviewSubmission(opts, work, prepared) {
         // The archive cannot say which of its folders holds the Experiment - only the
         // flag does - and without it the privileged code is reviewed as WebExtension code
         // and rejected for being what an Experiment is. So the review does not start.
-        if (isExp && !opts.scaExpSource) {
+        if (isExp && !opts.scaExperiments) {
           throw new Error(
             "This add-on ships an Experiment (its manifest.json declares experiment_apis): " +
               "name the folder of the source archive that holds the Experiment " +
-              "implementation with --sca-exp-source."
+              "implementation with --sca-experiments."
           );
         }
-        scaArchive = loadSourceArchive(opts.scaRoot);
+        scaArchive = loadSourceArchive(opts.scaBuild);
         scaViews(scaArchive, {
-          scaRoot: opts.scaRoot,
-          scaExpSource: opts.scaExpSource,
+          scaBuild: opts.scaBuild,
+          scaExperiments: opts.scaExperiments,
         });
         // Where the source is a rescued copy, the package files of the root it was copied
         // from - what the developer submitted - for the check that tells them the review
@@ -552,7 +551,7 @@ async function reviewSubmission(opts, work, prepared) {
         scaArchive.buildIssues = reviewedIssues(
           prepared?.buildIssues ?? [],
           opts.workFolder,
-          opts.scaRoot
+          opts.scaBuild
         );
       }
     },
@@ -562,11 +561,11 @@ async function reviewSubmission(opts, work, prepared) {
       for (const notice of scaArchive.skipped ?? []) {
         warn(notice);
       }
-      // Warn when --sca-exp-source matches nothing: a mis-typed path would exclude nothing
+      // Warn when --sca-experiments matches nothing: a mis-typed path would exclude nothing
       // and flood the report with false positives on the privileged Experiment code.
-      if (opts.scaExpSource && scaArchive.experiment.size === 0) {
+      if (opts.scaExperiments && scaArchive.experiment.size === 0) {
         warn(
-          `--sca-exp-source "${opts.scaExpSource}" matched no files under --sca-root; ` +
+          `--sca-experiments "${opts.scaExperiments}" matched no files under --sca-build; ` +
             "nothing will be excluded from the WebExtension code checks."
         );
       }
@@ -608,16 +607,18 @@ async function reviewSubmission(opts, work, prepared) {
         ...(scaArchive
           ? {
               // The extracted source archive, named where the root lies below it.
-              ...(opts.scaExtracted && opts.scaExtracted !== opts.scaRoot
+              ...(opts.scaExtracted && opts.scaExtracted !== opts.scaBuild
                 ? { scaExtracted: opts.scaExtracted }
                 : {}),
-              scaRoot: opts.scaRoot,
+              scaBuild: opts.scaBuild,
               // The one input that NARROWS the review: that subtree is privileged code and is
               // excluded from the WebExtension checks. Named only when it was given, because a
               // name printed for a value nobody supplied says something false - and unnamed, a
               // reader of the report or of the JSON could not see that anything was excluded,
               // or from where.
-              ...(opts.scaExpSource ? { scaExpSource: opts.scaExpSource } : {}),
+              ...(opts.scaExperiments
+                ? { scaExperiments: opts.scaExperiments }
+                : {}),
             }
           : {}),
         reviewed: true,
@@ -860,7 +861,9 @@ async function reviewSubmission(opts, work, prepared) {
   // Where the reviewed root lies in the prepared work folder's trees (src/prepare/state.js
   // treeRoots), for a review the preparation started.
   const preparedRoots =
-    prepared && opts.scaRoot ? treeRoots(opts.workFolder, opts.scaRoot) : null;
+    prepared && opts.scaBuild
+      ? treeRoots(opts.workFolder, opts.scaBuild)
+      : null;
   // A run that PROMPTS is the loop's first pass, and the only one that reads the add-on:
   // everything after it works from the state this run writes.
   const prompting = opts.llmReview;
@@ -932,7 +935,6 @@ async function reviewSubmission(opts, work, prepared) {
     // the order the checks raised them (src/report/order.js assignRefs).
     assignRefs([...findings, ...meta.manualReview], registry);
     loopState = {
-      version: STATE_VERSION,
       report: { findings, meta, sca: mode.sca },
       manual: meta.manualReview,
       preSweep: meta.preSweep,
@@ -981,12 +983,12 @@ async function reviewSubmission(opts, work, prepared) {
         schemaCache: opts.schemaCache,
         // The two roots every reported path is relative to, so a later pass can resolve
         // one without the review it came from. The shipped add-on was copied in setup,
-        // and `--sca-root` is extracted before the run, so both are readable directories
+        // and `--sca-build` is extracted before the run, so both are readable directories
         // by the time anything is handed out.
-        scaRoot: opts.scaRoot ?? null,
+        scaBuild: opts.scaBuild ?? null,
         // The same root in the source archive, where the review reads a rescued copy: the
         // Review Details name both.
-        scaRootOrig: preparedRoots?.scaRootOrig ?? null,
+        scaBuildOrig: preparedRoots?.scaBuildOrig ?? null,
         xpiRoot: meta.xpiRoot,
         // Each tree's sweep request, as the text its step hands over, and the file its
         // answers are written to. Carried so the step prints the request this run made and
@@ -1159,16 +1161,16 @@ const SCA_NOT_NEEDED_CHECK = "sca-not-needed";
  * in its hint and names no file, and its finding stands at the build's anchor.
  * @param {{file: string, line: ?number, hint: string}[]} issues
  * @param {string} workFolder
- * @param {string} scaRoot  The reviewed root, absolute.
+ * @param {string} scaBuild  The reviewed root, absolute.
  * @returns {{file: ?string, line: ?number, hint: string}[]}
  */
-function reviewedIssues(issues, workFolder, scaRoot) {
+function reviewedIssues(issues, workFolder, scaBuild) {
   if (!issues.length) {
     return [];
   }
   const sca = fs.realpathSync(workPaths(workFolder).sca);
   return issues.map(({ file, line, hint }) => {
-    const inRoot = relativeInside(path.join(sca, file), scaRoot);
+    const inRoot = relativeInside(path.join(sca, file), scaBuild);
     return inRoot === null || inRoot === ""
       ? {
           file: null,

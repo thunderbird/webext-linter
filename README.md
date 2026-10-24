@@ -125,8 +125,8 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | Option | Description |
 | --- | --- |
 | `--sca-extracted <folder>` | The **extracted** source archive, all of it - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode. Every other `--sca-*` folder lies inside it, and it must not include the add-on. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
-| `--sca-root <folder>` | The source root inside `--sca-extracted`: the folder holding `package.json` and its lock file (`package-lock.json` or `pnpm-lock.yaml`), where the build runs, and what the review reads as the source. Left out, the linter finds it. Needs `--sca-extracted`. |
-| `--sca-exp-source <path>` | The Experiment implementation folder, **inside** the source root, anywhere under it. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission checks. Needs `--sca-extracted`, and is required for an Experiment. |
+| `--sca-build <folder>` | The source root inside `--sca-extracted`: the folder holding `package.json` and its lock file (`package-lock.json` or `pnpm-lock.yaml`), where the build runs, and what the review reads as the source. Left out, the linter finds it. Needs `--sca-extracted`. |
+| `--sca-experiments <path>` | The Experiment implementation folder, **inside** the source root, anywhere under it. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission checks. Needs `--sca-extracted`, and is required for an Experiment. |
 
 **Other:**
 
@@ -173,7 +173,7 @@ may hold the real source beside the copy.
   format then works, because `tar` handles what this tool does not.
 - The **source root** is the folder inside it the build runs in, the one holding
   `package.json` and the lock file. Where the archive wraps its contents in folders of its
-  own, the linter finds it below them, and `--sca-root` names it where the linter cannot.
+  own, the linter finds it below them, and `--sca-build` names it where the linter cannot.
   **The whole source root is the review source.** There is no flag naming a subtree of
   it, because no subtree can be called the add-on's: a build may move, rename or generate
   anything, so a path in a source archive cannot be trusted and nothing can say which files
@@ -250,7 +250,7 @@ may hold the real source beside the copy.
   web-accessible / unused / locales). It gets the same library and parse passes in either
   mode (the vendor pass reads the review target only), so those checks see the
   shipped add-on the same way whether or not a source archive came with it.
-- `--sca-exp-source` names an Experiment implementation folder - anywhere under
+- `--sca-experiments` names an Experiment implementation folder - anywhere under
   the source root, relative to it or absolute inside it (e.g. `addon/experiment-api`),
   but never the root itself, which would exclude nothing - so its privileged,
   non-WebExtension code is excluded from the WebExtension checks (required for an

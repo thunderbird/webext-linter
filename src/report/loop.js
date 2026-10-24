@@ -318,7 +318,7 @@ export function loopSlots(state, issued, work, registry) {
     proseStyle: registry.proseStyle(),
     description: paths.description ?? "",
     build: paths.build ?? "",
-    scaRoot: paths.scaRoot ?? "",
+    scaBuild: paths.scaBuild ?? "",
     xpiRoot: paths.xpiRoot,
     schema: paths.schema,
     // Named because `ask` can be the FIRST phase issued - a review with nothing to start,
@@ -766,8 +766,8 @@ function detailsMeta(state, registry) {
     ...(spawnIssued(state) ? { summaryFile } : {}),
     ...(state.products?.includes("build") ? { buildFile } : {}),
     ...(state.products?.includes("buildIssues") ? { buildIssuesFile } : {}),
-    ...(state.paths?.scaRootOrig
-      ? { scaRootOrig: state.paths.scaRootOrig }
+    ...(state.paths?.scaBuildOrig
+      ? { scaBuildOrig: state.paths.scaBuildOrig }
       : {}),
     ...(state.build?.safety ? { buildSafety: state.build.safety } : {}),
     ...(build.vulnerabilities

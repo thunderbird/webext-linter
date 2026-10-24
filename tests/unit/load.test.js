@@ -16,7 +16,7 @@ import {
   readWebExtManifest,
   manifestRecord,
   scaViews,
-  scaRootRelative,
+  scaBuildRelative,
   relativeInside,
   hasParentSegment,
 } from "../../src/addon/load.js";
@@ -348,8 +348,8 @@ test("files is a view over the store, for an add-on as much as an archive", () =
 
   // The archive narrows the same field, which is the only difference between the two kinds.
   const archive = scaViews(loadSourceArchive(dir), {
-    scaRoot: dir,
-    scaExpSource: path.join(dir, "lib"),
+    scaBuild: dir,
+    scaExperiments: path.join(dir, "lib"),
   });
   assert.notEqual(archive.files, archive.store);
   assert.ok(!archive.files.has("lib/dep.js"), "the Experiment is its own view");
@@ -373,7 +373,7 @@ test("loading holds the file; the record is asked for, not derived", () => {
 
   for (const artifact of [
     loadAddon(dir, undefined, XPI),
-    scaViews(loadSourceArchive(dir), { scaRoot: dir }),
+    scaViews(loadSourceArchive(dir), { scaBuild: dir }),
   ]) {
     assert.ok(artifact.files.has("manifest.json"), "its files hold it");
     assert.equal(artifact.manifest, undefined, "and answers nothing itself");
@@ -416,8 +416,8 @@ test("scaViews leaves the archive owning one store and two views", () => {
   // manifest.json is read off it.
   const loaded = loadSourceArchive(root);
   const archive = scaViews(loaded, {
-    scaRoot: root,
-    scaExpSource: path.join(root, "exp"),
+    scaBuild: root,
+    scaExperiments: path.join(root, "exp"),
   });
 
   // Returned, not spawned: the caller's archive IS the review target.
@@ -475,9 +475,9 @@ test("scaViews keys every view to the submission and reviews the whole archive",
     "browser.runtime.id;\n"
   );
 
-  // The pipeline reads the --sca-root archive ONCE and splits it, so the tree is never
+  // The pipeline reads the --sca-build archive ONCE and splits it, so the tree is never
   // walked twice and no part holds a second copy of any file.
-  const source = scaViews(loadSourceArchive(root), { scaRoot: root });
+  const source = scaViews(loadSourceArchive(root), { scaBuild: root });
 
   assert.ok(
     source.files.has("src/background.js"),
@@ -525,8 +525,8 @@ test("the source and experiment views merge into the add-on's whole tree", () =>
   );
 
   const source = scaViews(loadSourceArchive(root), {
-    scaRoot: root,
-    scaExpSource: path.join(root, "addon", "experiment"),
+    scaBuild: root,
+    scaExperiments: path.join(root, "addon", "experiment"),
   });
   const { experiment } = source;
 
@@ -593,8 +593,8 @@ test("a sibling Experiment is keyed like any other part of the submission", () =
   fs.writeFileSync(path.join(root, "experiment", "exp.js"), "1;\n");
 
   const source = scaViews(loadSourceArchive(root), {
-    scaRoot: root,
-    scaExpSource: path.join(root, "experiment"),
+    scaBuild: root,
+    scaExperiments: path.join(root, "experiment"),
   });
   const { experiment } = source;
 
@@ -629,8 +629,8 @@ test("scaViews puts every file in the right part, and the Experiment in only one
   fs.writeFileSync(path.join(root, "src", "exp", "api.js"), "1;\n");
 
   const source = scaViews(loadSourceArchive(root), {
-    scaRoot: root,
-    scaExpSource: path.join(root, "src", "exp"),
+    scaBuild: root,
+    scaExperiments: path.join(root, "src", "exp"),
   });
   const { experiment } = source;
 
@@ -647,7 +647,7 @@ test("scaViews puts every file in the right part, and the Experiment in only one
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// The source view is the archive minus the Experiment source (scaExpSource) and minus a
+// The source view is the archive minus the Experiment source (scaExperiments) and minus a
 // recorded node_modules. Nothing else is withheld: a build may read anything the archive
 // carries, and where a file sits says nothing about whether a build step reaches it.
 test("the source view holds the archive minus the Experiment and node_modules", () => {
@@ -684,8 +684,8 @@ test("the source view holds the archive minus the Experiment and node_modules", 
   fs.writeFileSync(path.join(root, "src", "node_modules", "pkg.js"), "1;\n");
 
   const { files, nodeModules } = scaViews(loadSourceArchive(root), {
-    scaRoot: root,
-    scaExpSource: path.join(root, "src", "experiment"),
+    scaBuild: root,
+    scaExperiments: path.join(root, "src", "experiment"),
   });
   assert.deepEqual([...files.keys()].sort(), [
     ".github/.npmrc",
@@ -731,7 +731,7 @@ test("the whole root stays a set of build candidates", () => {
   );
   fs.writeFileSync(path.join(root, "background.js"), "1;\n");
   const { files } = scaViews(loadSourceArchive(root), {
-    scaRoot: root,
+    scaBuild: root,
   });
   assert.ok(
     files.has("package.json"),
@@ -741,13 +741,13 @@ test("the whole root stays a set of build candidates", () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// Both SCA source flags name a folder WITHIN --sca-root, and relativeInside is the ONE
+// Both SCA source flags name a folder WITHIN --sca-build, and relativeInside is the ONE
 // function that says WHERE inside - src/cli.js asks it before the filesystem, the loader
-// asks it through scaRootRelative for the archive key, so the folder the guard finds is
+// asks it through scaBuildRelative for the archive key, so the folder the guard finds is
 // the folder the review reads. Both paths are absolute by now (the arg-array reader
 // resolved them), so this asks about the filesystem rather than about spelling: a dot in a
 // NAME survives because nothing here strips prefixes.
-test("scaRootRelative keys a path inside the root, and refuses one outside", () => {
+test("scaBuildRelative keys a path inside the root, and refuses one outside", () => {
   const root = "/tmp/wrr-root";
   for (const [given, key] of [
     [`${root}/addon`, "addon"],
@@ -763,7 +763,7 @@ test("scaRootRelative keys a path inside the root, and refuses one outside", () 
     // name, so which it is here is the platform's answer, never ours to rewrite.
     [`${root}${path.sep}sub${path.sep}dir`, "sub/dir"],
   ]) {
-    assert.equal(scaRootRelative(given, root), key, given);
+    assert.equal(scaBuildRelative(given, root), key, given);
   }
   // Outside the root is refused, however it got there: another tree, the root's own parent,
   // or a way back out of it. What it names is not part of the submission.
@@ -774,8 +774,8 @@ test("scaRootRelative keys a path inside the root, and refuses one outside", () 
     `${root}/a/../..`,
   ]) {
     assert.throws(
-      () => scaRootRelative(outside, root, "--sca-exp-source"),
-      /is not inside --sca-root/,
+      () => scaBuildRelative(outside, root, "--sca-experiments"),
+      /is not inside --sca-build/,
       outside
     );
     // The same question without the throw, which is what the CLI guard asks.
@@ -783,7 +783,7 @@ test("scaRootRelative keys a path inside the root, and refuses one outside", () 
   }
 });
 
-// The question --sca-exp-source turns into, asked where it is used: where does the
+// The question --sca-experiments turns into, asked where it is used: where does the
 // Experiment folder sit INSIDE the review source? relativeInside answers it, and null - the
 // caller's "nothing to exclude" - is the answer for every folder outside that source, where
 // there is no in-source prefix to carve out and the Experiment's own code is reviewed from
@@ -801,7 +801,7 @@ test("relativeInside places an in-source exp folder, else answers null", () => {
   );
   // The folder IS the whole source: nothing under it to strip.
   assert.equal(relativeInside(src, src), "");
-  // Outside the review source, however it is arranged under --sca-root.
+  // Outside the review source, however it is arranged under --sca-build.
   assert.equal(relativeInside(path.join(root, "experiment-api"), src), null);
   assert.equal(relativeInside(path.join(root, "other/exp"), src), null);
   assert.equal(
@@ -1285,7 +1285,7 @@ test("each loader names the artifact it built, and the Addon mints loci in it", 
   assert.equal(loadSourceArchive(dir).kind, ARTIFACT_SCA);
   // And the narrowed views are the same object, so they answer the same.
   assert.equal(
-    scaViews(loadSourceArchive(dir), { scaRoot: dir }).kind,
+    scaViews(loadSourceArchive(dir), { scaBuild: dir }).kind,
     ARTIFACT_SCA
   );
 

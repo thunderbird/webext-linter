@@ -10,7 +10,7 @@
 // like any already-unpacked submission (readDir). Where the copy goes is the caller's to
 // choose (loadAddon's `copyTo`): the review names it once, in meta.xpiRoot, and hands the
 // SAME folder to the reviewer and to this loader. The submitted source archive is read
-// where it is: --sca-root names a folder the source archive was already extracted into.
+// where it is: --sca-build names a folder the source archive was already extracted into.
 //
 // It also PARTITIONS a submitted SCA archive into the two views a source review reads - the
 // add-on code and the Experiment implementation - as views over that one store (scaViews). One
@@ -183,7 +183,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   keyed relative to the root the reviewer was given: everything it holds, exactly as it
  *   arrived, and the FileStore every view resolves its bytes through (./store.js). For a
  *   built XPI that is the whole package, which `files` reviews entire. For a source archive it
- *   is the whole --sca-root, the frame the package file and the lock are read in and the frame
+ *   is the whole --sca-build, the frame the package file and the lock are read in and the frame
  *   a reviewer resolves a reported path against, while `files` there gives up the Experiment
  *   subtree. Reach for it deliberately: a reader asking `store` is saying it wants the
  *   submission entire.
@@ -196,7 +196,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
  * @property {string[]} archives  Posix paths of committed binary archives
  *   (.zip/.xpi/... anywhere in the submission); empty when none. In SCA mode the
  *   committed-build-artifact check rejects each. Recorded at load, spanning the whole
- *   --sca-root (before the source/build split), so one is caught wherever it sits. Set by
+ *   --sca-build (before the source/build split), so one is caught wherever it sits. Set by
  *   loadAddon only.
  * @property {string[]} skipped  Ready-to-narrate notices for entries skipped at
  *   load (a non-node_modules symlink); empty when none, and always empty for an XPI, since
@@ -320,15 +320,15 @@ export function extractXpiToTemp(xpiPath) {
 }
 
 /**
- * Load the SUBMITTED SOURCE ARCHIVE - the artifact --sca-root names.
+ * Load the SUBMITTED SOURCE ARCHIVE - the artifact --sca-build names.
  *
  * The one way it is not an add-on, stated here so no caller restates it: an installed
  * dependency tree is not part of a submission (the reviewer installs it from the declared
  * package file and lock), so it is recorded rather than read as content. A caller asking for
  * a submission asks for it by name.
  *
- * No `copyTo`: --sca-root is a directory by the time anything loads it, extracted by the
- * reviewer and settled before the review starts (src/addon/sca-root.js), so it is read
+ * No `copyTo`: --sca-build is a directory by the time anything loads it, extracted by the
+ * reviewer and settled before the review starts (src/addon/sca-build.js), so it is read
  * where it is.
  * @param {string} source  Absolute path to the extracted source root.
  * @returns {Addon}
@@ -482,7 +482,7 @@ export function locusMinter(kind) {
 }
 
 /**
- * The archive key for a path INSIDE scaRoot: where it sits relative to the root, keyed the
+ * The archive key for a path INSIDE scaBuild: where it sits relative to the root, keyed the
  * way an archive keys its entries.
  *
  * Both are absolute by the time they reach here - the arg-array reader resolved them
@@ -496,15 +496,15 @@ export function locusMinter(kind) {
  * character in a POSIX file name, and only the platform knows which this is. The answer is
  * keyed posix, like every other add-on-internal path.
  * @param {string} value  The absolute path to locate.
- * @param {string} scaRoot  The absolute --sca-root path.
- * @param {string} [flag]  The flag name to name in the error (e.g. "--sca-exp-source").
- * @returns {string} A posix path relative to scaRoot ("" for the root itself).
+ * @param {string} scaBuild  The absolute --sca-build path.
+ * @param {string} [flag]  The flag name to name in the error (e.g. "--sca-experiments").
+ * @returns {string} A posix path relative to scaBuild ("" for the root itself).
  */
-export function scaRootRelative(value, scaRoot, flag = "SCA path") {
-  const rel = relativeInside(value, scaRoot);
+export function scaBuildRelative(value, scaBuild, flag = "SCA path") {
+  const rel = relativeInside(value, scaBuild);
   if (rel === null) {
     throw new Error(
-      `${flag} "${value}" is not inside --sca-root (${scaRoot}) - it names a folder ` +
+      `${flag} "${value}" is not inside --sca-build (${scaBuild}) - it names a folder ` +
         "within the source root, never a way out of one"
     );
   }
@@ -512,21 +512,21 @@ export function scaRootRelative(value, scaRoot, flag = "SCA path") {
 }
 
 /**
- * The same question without the throw: where `value` sits inside `scaRoot`, or null when it
+ * The same question without the throw: where `value` sits inside `scaBuild`, or null when it
  * sits outside it.
  *
  * Every layer that asks it - the CLI guard, which turns the answer into a usage line naming
  * the flag, the loader, which turns it into an archive key, and the preparation
- * (src/prepare/steps.js, ./sca-root.js) - must not be able to disagree, so all ask HERE.
+ * (src/prepare/steps.js, ./sca-build.js) - must not be able to disagree, so all ask HERE.
  * Either path may be written absolute or relative. Both are resolved first, so "inside" is
  * a fact about the filesystem rather than about spelling.
  * @param {string} value
- * @param {string} scaRoot
- * @returns {?string} A posix path relative to scaRoot ("" for the root itself), or null.
+ * @param {string} scaBuild
+ * @returns {?string} A posix path relative to scaBuild ("" for the root itself), or null.
  */
-export function relativeInside(value, scaRoot) {
+export function relativeInside(value, scaBuild) {
   const rel = path.relative(
-    path.resolve(scaRoot),
+    path.resolve(scaBuild),
     path.resolve(String(value ?? ""))
   );
   if (path.isAbsolute(rel) || hasParentSegment(rel)) {
@@ -565,7 +565,7 @@ export function hasParentSegment(value) {
  *               there is no narrower add-on subtree to carve out of it. An installed
  *               dependency tree is in neither: loadAddon records
  *               the directory paths for committed-node-modules and reads none of it.
- *   experiment  the Experiment implementation at `scaExpSource`, wherever it sits - inside
+ *   experiment  the Experiment implementation at `scaExperiments`, wherever it sits - inside
  *               the source or beside it. Privileged, non-WebExtension code: it is recorded
  *               here ONCE so nothing downstream has to re-derive where it went.
  *
@@ -583,19 +583,19 @@ export function hasParentSegment(value) {
  * The source and the experiment are keyed alike whenever the Experiment sits inside the
  * add-on, so a check that must review the privileged code too reads the two as one set of files
  * (`source.experiment` carries it onto the review addon for exactly that).
- * @param {Addon} archive  The scaRoot archive, loaded ONCE (loadSourceArchive).
- * @param {{scaRoot: string, scaExpSource?: string}} where  Absolute paths, resolved by the
- *   arg-array reader (src/cli.js). scaExpSource may sit anywhere under the root.
+ * @param {Addon} archive  The scaBuild archive, loaded ONCE (loadSourceArchive).
+ * @param {{scaBuild: string, scaExperiments?: string}} where  Absolute paths, resolved by the
+ *   arg-array reader (src/cli.js). scaExperiments may sit anywhere under the root.
  * @returns {Addon}  The SAME archive, now carrying its two views. Not a new object:
  *   the store and the recorded path lists already describe this submission, and copying
  *   them onto parts is how they came to disagree.
  */
-export function scaViews(archive, { scaRoot, scaExpSource }) {
+export function scaViews(archive, { scaBuild, scaExperiments }) {
   const store = archive.store;
-  const exp = scaExpSource
-    ? scaRootRelative(scaExpSource, scaRoot, "--sca-exp-source")
+  const exp = scaExperiments
+    ? scaBuildRelative(scaExperiments, scaBuild, "--sca-experiments")
     : null;
-  // A prefix that was never given (no --sca-exp-source) is under nothing.
+  // A prefix that was never given (no --sca-experiments) is under nothing.
   const under = (key, prefix) =>
     Boolean(prefix) && (key === prefix || key.startsWith(`${prefix}/`));
 

@@ -55,7 +55,7 @@ test("--llm-sca-review prints the prompt, names both files, and reviews nothing"
   // No review ran: no report sections, and no item file was claimed.
   assert.doesNotMatch(r.stdout, /── Found Issues ──|REVIEW_ITEMS/);
   // The unpack prompt only extracts: the build is the next prompt's.
-  assert.doesNotMatch(r.stdout, /SCA_ROOT|SCA_BUILD_PROCESS|ANSWERS/);
+  assert.doesNotMatch(r.stdout, /SCA_BUILD|SCA_BUILD_PROCESS|ANSWERS/);
   // Only an install hook reaching outside the declared dependencies is a safety concern.
   const analyze = unpackSource(r.stdout);
   assert.equal(analyze.code, 0, analyze.stderr);
@@ -96,7 +96,7 @@ test("--llm-sca-review creates the work folder and hands it back", () => {
   assert.equal(analyze.code, 0, analyze.stderr);
   assert.equal(readJson(work, "prepare").step, "analyze");
   assert.equal(headerValue(analyze.stdout, "ANSWERS"), workPaths(work).review);
-  assert.equal(headerValue(analyze.stdout, "SCA_ROOT"), workPaths(work).sca);
+  assert.equal(headerValue(analyze.stdout, "SCA_BUILD"), workPaths(work).sca);
   assert.equal(
     headerValue(analyze.stdout, "SCA_BUILD_PROCESS"),
     workPaths(work).build
@@ -131,7 +131,7 @@ test("the hand-back that finishes the preparation starts the review", () => {
   assert.equal(readJson(work, "prepare").step, "done");
   const { meta } = readJson(work, "state").report;
   assert.equal(meta.xpi, path.join(dir, "addon.xpi"));
-  assert.equal(meta.scaRoot, path.join(work, "sca"));
+  assert.equal(meta.scaBuild, path.join(work, "sca"));
   assert.deepEqual(meta.checksRun, ["unused-files"]);
   // From here on the folder holds a review, and its hand-back is a pass of the loop.
   const next = run(["--llm-handback", work]);
@@ -213,7 +213,7 @@ test("the preparation records the flags its review is started with", () => {
   // With no Experiment shipped, the prompt neither asks for the Experiment folder nor
   // records one - and the steps renumber over what survives.
   const plain = unpackSource(prepared().stdout);
-  assert.doesNotMatch(plain.stdout, /SCA_EXP_SOURCE|Experiment/);
+  assert.doesNotMatch(plain.stdout, /SCA_EXPERIMENTS|Experiment/);
   assert.match(plain.stdout, /\n4\. That run checks the source/);
 
   // An add-on that ships an Experiment needs the folder, so the .xpi's own manifest.json
@@ -221,11 +221,11 @@ test("the preparation records the flags its review is started with", () => {
   // started review reads it as the Experiment folder.
   packAddon(xpi, { experiment_apis: { x: {} } });
   const exp = prepared("--allow-experiments");
-  assert.doesNotMatch(exp.stdout, /SCA_EXP_SOURCE/, "unpack asks for nothing");
-  handBackRoots(exp.stdout, { expSource: "experiment" });
+  assert.doesNotMatch(exp.stdout, /SCA_EXPERIMENTS/, "unpack asks for nothing");
+  handBackRoots(exp.stdout, { experimentsFolder: "experiment" });
   const work = workOf(exp.stdout);
   assert.equal(
-    readJson(work, "state").report.meta.scaExpSource,
+    readJson(work, "state").report.meta.scaExperiments,
     path.join(work, "sca", "experiment")
   );
   fs.rmSync(dir, { recursive: true, force: true });
@@ -388,7 +388,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
   refusedFor(
     "a root that is gone",
     (work) => ({
-      roots: { scaRoot: path.join(work, "sca", "gone"), scaExpSource: null },
+      roots: { scaBuild: path.join(work, "sca", "gone"), scaExperiments: null },
     }),
     /The hand-back was refused: the preparation's record names a source root ".*gone" that is not a folder inside /
   );
@@ -396,7 +396,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
   // so each root is followed to where it really is, and must still be where it was put.
   refusedFor(
     "a root that is the work folder itself",
-    (work) => ({ roots: { scaRoot: work, scaExpSource: null } }),
+    (work) => ({ roots: { scaBuild: work, scaExperiments: null } }),
     /The hand-back was refused: the preparation's record names a source root ".*" that is not a folder inside ".*[/]sca"/
   );
   refusedFor(
@@ -404,7 +404,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
     (work) => {
       const link = path.join(work, "sca", "out");
       fs.symlinkSync(fs.mkdtempSync(path.join(os.tmpdir(), "wl-out-")), link);
-      return { roots: { scaRoot: link, scaExpSource: null } };
+      return { roots: { scaBuild: link, scaExperiments: null } };
     },
     /The hand-back was refused: the preparation's record names a source root ".*out" that is not a folder inside /
   );
@@ -414,7 +414,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
       const link = path.join(work, "sca", "exp");
       fs.symlinkSync(fs.mkdtempSync(path.join(os.tmpdir(), "wl-out-")), link);
       return {
-        roots: { scaRoot: path.join(work, "sca"), scaExpSource: link },
+        roots: { scaBuild: path.join(work, "sca"), scaExperiments: link },
       };
     },
     /The hand-back was refused: the preparation's record names an Experiment folder ".*exp" that is not a folder inside /
@@ -427,7 +427,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
       fs.cpSync(sca, moved, { recursive: true });
       fs.rmSync(sca, { recursive: true });
       fs.symlinkSync(moved, sca);
-      return { roots: { scaRoot: sca, scaExpSource: null } };
+      return { roots: { scaBuild: sca, scaExperiments: null } };
     },
     /The hand-back was refused: ".*[/]sca" is not the folder the source was extracted into/
   );
@@ -503,7 +503,7 @@ test("the hand-back starts the review of an unrescued source, which is aborted l
       ],
     }),
   });
-  assert.equal(record.roots.scaRoot, workPaths(work).sca, "the rescue failed");
+  assert.equal(record.roots.scaBuild, workPaths(work).sca, "the rescue failed");
   const started = run(["--llm-handback", work]);
   assert.notEqual(started.code, 2, started.stdout + started.stderr);
   assert.match(started.stdout, /── LLM Prompt ──/);
@@ -524,7 +524,11 @@ test("the hand-back starts the review of an unrescued source, which is aborted l
     assert.ok(r.stdout.includes(row), `${row}\n${r.stdout}`);
   }
   const state = readJson(work, "state");
-  assert.equal(state.paths.scaRootOrig, null, "the source archive is reviewed");
+  assert.equal(
+    state.paths.scaBuildOrig,
+    null,
+    "the source archive is reviewed"
+  );
   assert.equal(state.build.root, null, "nothing of the rescue was built");
   const { findings } = state.report;
   assert.ok(findings.some((f) => f.ruleId === "vendor-vulnerable-indirect"));
@@ -588,11 +592,11 @@ test("a review of a source the agent built opens on its Build Review Details", a
     safety: "safe",
     safe: true,
   });
-  assert.equal(state.paths.scaRootOrig, null);
+  assert.equal(state.paths.scaBuildOrig, null);
   const rows = [
     `* XPI_FILE: [xpi](${path.join(fixture, "xpi")})`,
     "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
-    `* SCA_ROOT: [source archive](${workPaths(work).sca})`,
+    `* SCA_BUILD: [source archive](${workPaths(work).sca})`,
     "* SCA_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
     `* LLM_BUILD_OUTPUT: [dist](${record.buildOutput})`,
     "* LLM_BUILD_RESULT: build succeeded",

@@ -37,7 +37,7 @@ test("reviewing a fixture renders to stdout with a severity-based exit", () => {
 
 // A source code review's own steps send a sub-agent to paths, and those paths are what the
 // review RESOLVED to be, never what the flags asked for: the root a review settles on can
-// sit below the one --sca-root named, so a step reading the flag would send an agent to a
+// sit below the one --sca-build named, so a step reading the flag would send an agent to a
 // root nothing had read. Driven through the CLI because that is the seam: rendering from a
 // hand-built meta cannot catch a pipeline that feeds its two halves different values.
 //
@@ -56,7 +56,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
   ]);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
-  const root = headerValue(r.stdout, "SCA_ROOT");
+  const root = headerValue(r.stdout, "SCA_BUILD");
   assert.equal(root, fs.realpathSync(workPaths(work).sca));
   assert.equal(
     headerValue(r.stdout, "SCA_BUILD_PROCESS"),
@@ -73,7 +73,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
     review.stdout.includes(workPaths(work).build),
     "and the build report"
   );
-  assert.equal(readJson(work, "state").report.meta.scaRoot, root);
+  assert.equal(readJson(work, "state").report.meta.scaBuild, root);
   fs.rmSync(work, { recursive: true, force: true });
 
   // A rejected Experiment submitted WITH --sca-extracted is not prepared: the review rejects it
@@ -85,7 +85,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
     ...OFFLINE_FLAGS,
     "--sca-extracted",
     path.join(exp, "src"),
-    "--sca-exp-source",
+    "--sca-experiments",
     path.join(exp, "src", "experiment"),
     "--llm-review",
   ]);
@@ -240,11 +240,11 @@ test("a warning reaches stderr, held back to the end of a prompt run", () => {
     path.join(dir, "xpi"),
     "--sca-extracted",
     path.join(dir, "src"),
-    "--sca-exp-source",
+    "--sca-experiments",
     "emptyexp",
     ...OFFLINE_FLAGS,
   ];
-  const WARNING = /matched no files under --sca-root/;
+  const WARNING = /matched no files under --sca-build/;
 
   // The review an agent runs starts once its preparation is done: the build judged.
   const analyze = run([...args, "--llm-review", "--llm-skip-summary"]);
@@ -306,7 +306,7 @@ test("a failure outside main still dumps the held messages", () => {
     path.join(dir, "xpi"),
     "--sca-extracted",
     path.join(dir, "src"),
-    "--sca-exp-source",
+    "--sca-experiments",
     "emptyexp",
     "--llm-review",
     ...OFFLINE_FLAGS,

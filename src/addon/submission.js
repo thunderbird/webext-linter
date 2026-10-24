@@ -2,7 +2,7 @@
 // the built add-on and an archive of the source it was built from.
 //
 // An SCA review needs the source archive's own paths, and nobody can write
-// --sca-exp-source without opening it. This module
+// --sca-experiments without opening it. This module
 // does the half a program can do: which file is the add-on and which is the source. The
 // prompt hands the rest to whoever can open the archive.
 //

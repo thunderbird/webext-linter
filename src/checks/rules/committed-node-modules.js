@@ -1,6 +1,6 @@
 // Rejects a source-code submission that ships a committed node_modules folder. Installed
 // dependencies are build output - the reviewer installs them from the declared
-// package.json/lock at build time - so a node_modules folder anywhere in --sca-root is
+// package.json/lock at build time - so a node_modules folder anywhere in --sca-build is
 // useless bloat AND a decoy vector (the committed bytes can differ from the declared
 // dependencies, smuggling in code from an undeclared source). It is a hard fail.
 //

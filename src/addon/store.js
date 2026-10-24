@@ -47,7 +47,7 @@ import { ioError } from "../lib/errors.js";
  * node_modules it refused to walk, a committed archive, every directory it entered) or what
  * an analysis COLLECTED (the files a build reaches). The submission's frame, like every
  * key set here - a list of absolute paths is something else and says so
- * (src/addon/sca-root.js).
+ * (src/addon/sca-build.js).
  * @typedef {string[]} PathList
  */
 

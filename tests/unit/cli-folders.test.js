@@ -79,7 +79,7 @@ test("a folder add-on is copied into the work folder and its parent left alone",
 });
 
 // A start that fails after the add-on was copied - here a plain source review of an
-// Experiment without --sca-exp-source, which fails once its XPI is read - gives back the
+// Experiment without --sca-experiments, which fails once its XPI is read - gives back the
 // folder it created, so the same command can simply run again.
 test("a failed start leaves the work folder as it found it", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-failed-start-"));
@@ -107,7 +107,7 @@ test("a failed start leaves the work folder as it found it", () => {
   for (let i = 0; i < 2; i++) {
     const r = run(argv);
     assert.equal(r.code, 2, `run ${i + 1}`);
-    assert.match(r.stderr, /--sca-exp-source/, `run ${i + 1}`);
+    assert.match(r.stderr, /--sca-experiments/, `run ${i + 1}`);
     assert.doesNotMatch(r.stderr, /must not exist/, `run ${i + 1}`);
     assert.deepEqual(
       fs.readdirSync(dir).sort(),
@@ -306,8 +306,8 @@ test("a flag given no value is refused (exit 2)", () => {
     [["some.xpi", "--checks-only="], "--checks-only"],
     [["some.xpi", "--cache-schema-dir="], "--cache-schema-dir"],
     [["some.xpi", "--llm-handback="], "--llm-handback"],
-    [["some.xpi", "--sca-root="], "--sca-root"],
-    [["some.xpi", "--sca-root", " "], "--sca-root"],
+    [["some.xpi", "--sca-build="], "--sca-build"],
+    [["some.xpi", "--sca-build", " "], "--sca-build"],
     [["some.xpi", "--sca-extracted="], "--sca-extracted"],
   ]) {
     const r = run(argv);
@@ -331,13 +331,13 @@ test("a folder flag is checked against the folder the review will read", () => {
     "some.xpi",
     "--sca-extracted",
     dir,
-    "--sca-exp-source",
+    "--sca-experiments",
     ".src",
   ]);
   assert.equal(missing.code, 2);
   assert.match(
     missing.stderr,
-    /--sca-exp-source must point at a folder: "[^"]*\/\.src"/
+    /--sca-experiments must point at a folder: "[^"]*\/\.src"/
   );
   assert.match(missing.stderr, new RegExp(`${dir}/\\.src`), "looked in .src");
 
@@ -347,7 +347,7 @@ test("a folder flag is checked against the folder the review will read", () => {
     "some.xpi",
     "--sca-extracted",
     dir,
-    "--sca-exp-source",
+    "--sca-experiments",
     ".src",
   ]);
   // The run goes on to fail on the missing add-on instead, which is the point: this guard
@@ -359,7 +359,7 @@ test("a folder flag is checked against the folder the review will read", () => {
 // Where a folder flag LANDS is the question, asked with the loader's own relativeInside so
 // the guard and the review cannot answer it differently: a path resolving outside
 // the root names a folder on the reviewing machine. How it was spelled - a ".." segment
-// included - makes no difference. For --sca-exp-source "nothing to exclude" is also the
+// included - makes no difference. For --sca-experiments "nothing to exclude" is also the
 // legitimate answer for an Experiment outside the source, so the mistake would not
 // announce itself.
 test("a folder flag is judged by where it lands, however it was spelled (exit 2 outside the root)", () => {
@@ -374,17 +374,17 @@ test("a folder flag is judged by where it lands, however it was spelled (exit 2 
     "some.xpi",
     "--sca-extracted",
     dir,
-    "--sca-exp-source",
+    "--sca-experiments",
     path.join(dir, "src"),
   ]);
   assert.doesNotMatch(
     inside.stderr,
-    /--sca-exp-source/,
+    /--sca-experiments/,
     "an absolute path inside is taken"
   );
   for (const argv of [
-    ["some.xpi", "--sca-extracted", dir, "--sca-exp-source", "/tmp"],
-    ["some.xpi", "--sca-extracted", dir, "--sca-exp-source", "../outside"],
+    ["some.xpi", "--sca-extracted", dir, "--sca-experiments", "/tmp"],
+    ["some.xpi", "--sca-extracted", dir, "--sca-experiments", "../outside"],
   ]) {
     const r = run(argv);
     assert.equal(r.code, 2, argv.join(" "));
@@ -398,7 +398,7 @@ test("a folder flag is judged by where it lands, however it was spelled (exit 2 
       "some.xpi",
       "--sca-extracted",
       dir,
-      "--sca-exp-source",
+      "--sca-experiments",
       `../${path.basename(dir)}/src`,
     ],
   ]) {
@@ -435,7 +435,7 @@ test("--help is answered before every guard that judges a run", () => {
     [],
     ["--report-format", "xml"],
     ["--llm-skip-manual"],
-    ["--sca-root="],
+    ["--sca-build="],
     ["--checks-only", "no-such-check"],
     ["some.xpi", "another.xpi"],
   ]) {

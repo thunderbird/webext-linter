@@ -85,8 +85,8 @@ export const FIXTURES = path.join(ROOT, "tests", "addons");
  *  passed as it stands. */
 const READ_FOLDER_FLAGS = new Set([
   "--sca-extracted",
-  "--sca-root",
-  "--sca-exp-source",
+  "--sca-build",
+  "--sca-experiments",
 ]);
 
 /** Run the review entry (verify.js), with an add-on from the fixtures' folder replaced by a
@@ -252,17 +252,17 @@ export const readJson = (work, name) =>
 
 /**
  * Do what the `unpack` prompt asks, the way its reader would: extract the source into
- * EXTRACT_TO (with an Experiment folder `expSource` in it, where given), and run the
+ * EXTRACT_TO (with an Experiment folder `experimentsFolder` in it, where given), and run the
  * hand-back it prints, which derives the root and prints the `analyze` prompt.
  * @param {string} stdout  The --llm-sca-review run's output.
- * @param {{expSource?: string, typed?: (work: string) => string}} [opts]  As handBackRoots.
+ * @param {{experimentsFolder?: string, typed?: (work: string) => string}} [opts]  As handBackRoots.
  * @returns {{code: number, stdout: string, stderr: string}}  The hand-back's run.
  */
-export function unpackSource(stdout, { expSource, typed } = {}) {
+export function unpackSource(stdout, { experimentsFolder, typed } = {}) {
   const root = headerValue(stdout, "EXTRACT_TO");
   fs.cpSync(NO_LOCK_SOURCE, root, { recursive: true });
-  if (expSource) {
-    fs.mkdirSync(path.join(root, expSource), { recursive: true });
+  if (experimentsFolder) {
+    fs.mkdirSync(path.join(root, experimentsFolder), { recursive: true });
   }
   const work = workOf(stdout);
   return typed
@@ -287,17 +287,20 @@ const issuesFor = (safety) => (safety === "unsafe" ? [UNSAFE_ISSUE] : []);
  * (UNSAFE_ISSUE) for a build to be judged unsafe. Its hand-back prints the permission prompt
  * (answerPermission). The hand-back itself is the caller's, so it can run it as it likes.
  * @param {string} stdout  The `analyze` prompt's run.
- * @param {{safety?: string, expSource?: string}} [opts]  The judgement, and the Experiment
+ * @param {{safety?: string, experimentsFolder?: string}} [opts]  The judgement, and the Experiment
  *   folder where the prompt asks for it.
  * @returns {string[]}  The hand-back's argv, as the prompt prints it.
  */
-export function answerAnalyze(stdout, { safety = "safe", expSource } = {}) {
+export function answerAnalyze(
+  stdout,
+  { safety = "safe", experimentsFolder } = {}
+) {
   fs.writeFileSync(headerValue(stdout, "SCA_BUILD_PROCESS"), "1. `npm ci`\n");
   const answers = headerValue(stdout, "ANSWERS");
   const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
   const given = {
     SCA_BUILD_SAFETY_ISSUES: issuesFor(safety),
-    SCA_EXP_SOURCE: expSource,
+    SCA_EXPERIMENTS: experimentsFolder,
   };
   doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));
   fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
@@ -328,7 +331,7 @@ export function answerPermission(stdout, decision = "Build it myself") {
  * permission prompt, answer it too (the agent let build) and run its hand-back - which, with
  * nothing to rescue, starts the review.
  * @param {string} stdout  The --llm-sca-review run's output.
- * @param {{expSource?: string, typed?: (work: string) => string, safety?: string,
+ * @param {{experimentsFolder?: string, typed?: (work: string) => string, safety?: string,
  *   managers?: string}} [opts]  The Experiment folder to answer, relative to the root, for
  *   an add-on that declares Experiments, how the work folder is typed, where not as the
  *   prompt prints it, the agent's build judgement, and the reviewer's answer to the
@@ -337,12 +340,17 @@ export function answerPermission(stdout, decision = "Build it myself") {
  */
 export function handBackRoots(
   stdout,
-  { expSource, typed, safety = "safe", managers = "Let the agent build" } = {}
+  {
+    experimentsFolder,
+    typed,
+    safety = "safe",
+    managers = "Let the agent build",
+  } = {}
 ) {
   const work = workOf(stdout);
   const handBack = (out) =>
     typed ? run(["--llm-handback", typed(work)]) : run(argvOf(commandOf(out)));
-  const unpacked = unpackSource(stdout, { expSource, typed });
+  const unpacked = unpackSource(stdout, { experimentsFolder, typed });
   if (unpacked.code !== 0) {
     return unpacked;
   }
@@ -355,7 +363,7 @@ export function handBackRoots(
     const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
     doc.entries = doc.entries.map((e) => ({
       ...e,
-      answer: e.index in given ? given[e.index] : expSource,
+      answer: e.index in given ? given[e.index] : experimentsFolder,
     }));
     fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
   };

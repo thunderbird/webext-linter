@@ -130,16 +130,16 @@ test("a rescued review names both roots and the build root", async () => {
     },
   });
   const { sca, rescued, buildCopy } = workPaths(work);
-  assert.equal(record.roots.scaRoot, rescued);
+  assert.equal(record.roots.scaBuild, rescued);
   const r = run(["--llm-handback", work]);
   assert.notEqual(r.code, 2, r.stdout + r.stderr);
   const state = readJson(work, "state");
-  assert.equal(state.paths.scaRoot, rescued);
-  assert.equal(state.paths.scaRootOrig, sca);
+  assert.equal(state.paths.scaBuild, rescued);
+  assert.equal(state.paths.scaBuildOrig, sca);
   assert.equal(state.build.root, buildCopy);
   const rows = [
-    `* SCA_ROOT: [rescued source (reduced/fixed dependencies)](${rescued})`,
-    `* SCA_ROOT_ORIG: [source archive](${sca})`,
+    `* SCA_BUILD: [rescued source (reduced/fixed dependencies)](${rescued})`,
+    `* SCA_BUILD_ORIG: [source archive](${sca})`,
     `* LLM_BUILD_ROOT: [build copy](${buildCopy})`,
   ];
   const details = loopSlots(state, {}, work, loadRegistry()).buildDetails;
@@ -152,9 +152,9 @@ test("a rescued review names both roots and the build root", async () => {
 const DETAIL_ROWS = [
   "XPI_FILE",
   "XPI_ROOT",
-  "SCA_ROOT",
-  "SCA_ROOT_ORIG",
-  "SCA_EXP_SOURCE",
+  "SCA_BUILD",
+  "SCA_BUILD_ORIG",
+  "SCA_EXPERIMENTS",
   "ADDON_DESCRIPTION",
   "SCA_BUILD_PROCESS",
   "SCA_BUILD_SAFETY_ASSESSMENT",
@@ -298,7 +298,7 @@ test("each details block holds every row of the block before it", () => {
 test("the hand-back prints a clean source's build", () => {
   const { work, stdout, dir } = permittedPrompt(FIXTURE_CLEAN);
   assert.equal(readJson(work, "prepare").step, "build");
-  assert.equal(headerValue(stdout, "SCA_ROOT"), path.join(work, "sca"));
+  assert.equal(headerValue(stdout, "SCA_BUILD"), path.join(work, "sca"));
   assert.equal(
     headerValue(stdout, "LLM_BUILD_ROOT"),
     workPaths(work).buildCopy
@@ -312,7 +312,7 @@ test("the hand-back prints a clean source's build", () => {
     headerValue(stdout, "SUBMITTED_XPI"),
     readJson(work, "prepare").submission.xpi
   );
-  assert.ok(!unwrapped(stdout).includes("Copy SCA_ROOT"));
+  assert.ok(!unwrapped(stdout).includes("Copy SCA_BUILD"));
   for (const said of [
     "Build in LLM_BUILD_ROOT, and only there",
     OUTPUT_PATH,
@@ -398,7 +398,7 @@ test("a safe build prints the Build Review Details and the permission question",
     `* SCA_BUILD_PROCESS: [build.md](${workPaths(work).build})`,
     "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
     `* SCA_BUILD_SAFETY_ISSUES: [build-issues.md](${workPaths(work).buildIssues})`,
-    `* SCA_ROOT: [source archive](${path.join(work, "sca")})`,
+    `* SCA_BUILD: [source archive](${path.join(work, "sca")})`,
     "",
     'Reply "next" to continue the review with the question whether the agent may ' +
       "build the add-on.",

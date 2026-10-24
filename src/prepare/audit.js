@@ -71,7 +71,7 @@ export const LOCK_AUDIT_LISTS = Object.freeze([
 
 /**
  * Audit one root's lock.
- * @param {{scaRoot: string, scaExpSource: ?string}} roots  Settled, absolute.
+ * @param {{scaBuild: string, scaExperiments: ?string}} roots  Settled, absolute.
  * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} [context]
  *   The network the audit asks, the run's, behind its cache (./steps.js handBack), and where
  *   the npm registry's answers about the lock's tarball URLs are cached.
@@ -83,14 +83,14 @@ export async function auditRoot(roots, { net, cacheDir } = {}) {
   // the review refuses too. Not read in full, so neither clean nor rescuable.
   let archive;
   try {
-    archive = loadSourceArchive(roots.scaRoot);
+    archive = loadSourceArchive(roots.scaBuild);
   } catch (err) {
     rethrowIfFatal(err);
     return { complete: false, lists: none, moderate: [] };
   }
   scaViews(archive, {
-    scaRoot: roots.scaRoot,
-    scaExpSource: roots.scaExpSource ?? undefined,
+    scaBuild: roots.scaBuild,
+    scaExperiments: roots.scaExperiments ?? undefined,
   });
   // Asked before the audit, which would otherwise vouch for releases the install does not
   // fetch: the review aborts on each of these, and nothing is asked of OSV for such a lock.

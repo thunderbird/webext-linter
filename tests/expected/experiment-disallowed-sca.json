@@ -1,7 +1,7 @@
 {
-  "_comment": "An SCA submission whose SHIPPED XPI bundles an unsupported Experiment, with experiments off. It is reviewed as the source review it was asked to be: --sca-root and --sca-exp-source given, the archive loaded, and the Experiment's APIs registered as for any Experiment. The rejection decides nothing about the mode: experiment-not-allowed, the first check, reports the rejected group on the XPI's manifest.json and aborts the review, so no other check runs and nothing of the archive is analysed. The eval() and debugger in src/bg.js are the canary: they would fire if any check ran after the abort.",
+  "_comment": "An SCA submission whose SHIPPED XPI bundles an unsupported Experiment, with experiments off. It is reviewed as the source review it was asked to be: --sca-build and --sca-experiments given, the archive loaded, and the Experiment's APIs registered as for any Experiment. The rejection decides nothing about the mode: experiment-not-allowed, the first check, reports the rejected group on the XPI's manifest.json and aborts the review, so no other check runs and nothing of the archive is analysed. The eval() and debugger in src/bg.js are the canary: they would fire if any check ran after the abort.",
   "sca": {
-    "expSource": "experiment"
+    "experimentsFolder": "experiment"
   },
   "expect": {
     "experiment-not-allowed": ["manifest.json:5"]

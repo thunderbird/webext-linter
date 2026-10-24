@@ -4,7 +4,7 @@
     "xpi": "<root>/tests/addons/permission-escalation-sca/xpi",
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
-    "scaRoot": "<root>/tests/addons/permission-escalation-sca/src",
+    "scaBuild": "<root>/tests/addons/permission-escalation-sca/src",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",

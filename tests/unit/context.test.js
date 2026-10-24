@@ -30,7 +30,7 @@ const envWith = (over = {}) => ({
   schema: { s: 1 },
   options: {},
   mode: REVIEW_MODE.XPI,
-  scaExpSource: undefined,
+  scaExperiments: undefined,
   manifest: noManifest(),
   experiments: null,
   previous: null,
@@ -122,10 +122,10 @@ test("buildXpiCtx carries the XPI's own sources", async () => {
     dataFor(xpi, xpiParsed),
     envWith({
       mode: REVIEW_MODE.SCA,
-      scaExpSource: "/r/src/experiments",
+      scaExperiments: "/r/src/experiments",
     })
   );
-  assert.equal(withPaths.scaExpSource, undefined);
+  assert.equal(withPaths.scaExperiments, undefined);
 });
 
 // The Experiment implementation reaches a check. ctx.artifact.files deliberately EXCLUDES it,
