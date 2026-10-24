@@ -51,7 +51,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["--sca-extracted submitted"] --> S["a source code review — the source IS reviewed,<br/>whatever the answer below"]
+  A["--sca-extracted submitted"] --> S["a source code review - the source IS reviewed,<br/>whatever the answer below"]
   S --> V{"Does the built XPI carry a VENDOR file,<br/>a package.json, or a lock file?"}
   V -- no --> OK([no finding])
   V -- yes --> WARN([WARNING: one locus per file found])

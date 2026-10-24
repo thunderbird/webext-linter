@@ -219,7 +219,7 @@ function helpText(checkIds) {
     ],
     [
       "--llm-sca-review",
-      "Read the add-on argument as a submission FOLDER - one built .xpi and one archive of the source it was built from - and print the prompt for preparing a source code review of it. It creates the review's work folder at its default place, beside the .xpi, and the prompt has the source extracted into it and the roots its reader worked out handed back with --llm-handback and that work folder, beside the build report it wrote and its judgement whether the build is safe. An unsafe build is reviewed at once, and after a safe one the reviewer is asked whether the agent may build. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the source (rescued/ in the work folder) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags: of the copy, or of the source as submitted, whose review the vulnerabilities then abort. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any --sca-* flag, which is what it exists to produce.",
+      "Read the add-on argument as a submission FOLDER - one built .xpi and one archive of the source it was built from - and print the prompt for preparing a source code review of it. It creates the review's work folder at its default place, beside the .xpi, and the prompt has the source extracted into it and handed back with --llm-handback and that work folder. The linter finds the build folder, the next prompt has the build analyzed, and the reviewer then decides whether the build is safe and who builds it. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the source (rescued/ in the work folder) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags: of the copy, or of the source as submitted, whose review the vulnerabilities then abort. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any --sca-* flag, which is what it exists to produce.",
     ],
     [
       "--llm-handback <dir>",
@@ -411,8 +411,8 @@ const FOLDER_FLAGS = [
   "cache-work-dir",
 ];
 
-/** The flags never handed on to a later review: the --sca-* ones name the source and its
- *  roots, which the preparation or the review names itself, three run or carry on a review
+/** The flags never handed on to a later review: the --sca-* ones name the source and the
+ *  folders inside it, which the preparation or the review names itself, three run or carry on a review
  *  rather than describing one, and two are this run's alone - its caches are cleared now
  *  (--cache-clear), and its feed is its own (--verbose). A record naming a folder for a
  *  later run to delete is the one thing it must not be able to say. */
@@ -541,8 +541,8 @@ function realFolder(p) {
  * it lands does. Two questions (that a value was given at all is main()'s, asked of every
  * flag that takes one):
  *
- * Does a flag that names a folder INSIDE another one (`within`: --sca-build inside --sca-extracted,
- * --sca-experiments inside the root) LAND inside it? A value resolving outside names a folder
+ * Does a flag that names a folder INSIDE another one (`within`: --sca-build or
+ * --sca-experiments inside --sca-extracted) LAND inside it? A value resolving outside names a folder
  * on the reviewing machine, which can be anywhere, so what it names is not part of the
  * submission and cannot be shown to be.
  *
@@ -980,8 +980,8 @@ export async function main(argv) {
 
   // Every --sca-* flag names a FOLDER that is there. --sca-extracted is the extracted source -
   // extracting it is the reviewer's, whatever format it came in, unlike the submitted
-  // .xpi which this tool extracts itself - the root lies inside it, and --sca-experiments
-  // inside the root. Asked outermost first, so each folder's own validity is settled before
+  // .xpi which this tool extracts itself - and --sca-build and --sca-experiments lie inside
+  // it. Asked outermost first, so each folder's own validity is settled before
   // anything is looked up inside it.
   //
   // Asked here rather than left to the loader because neither fails loudly
@@ -1067,7 +1067,7 @@ export async function main(argv) {
  * printed - the step --llm-sca-review reaches once its reader has extracted the archive. An
  * Experiment the review would reject is not prepared (experimentGate): its review starts at
  * once, as an XPI review, as --llm-sca-review's does.
- * @param {Record<string, string|boolean>} values  Parsed and checked, the root settled.
+ * @param {Record<string, string|boolean>} values  Parsed and checked, the build folder settled.
  * @param {string} addonPath  The built add-on, absolute.
  * @param {string} work  The work folder to create, absolute.
  * @param {import("./checks/registry.js").Registry} registry
@@ -1492,11 +1492,11 @@ async function runPreparePass(work, registry) {
  * The prompt a preparation's record is waiting on, its step's own (`llm-sca-review-prompt`):
  * printed by the run that starts the preparation (`first`, with the intro) and by every
  * hand-back that moves it on. What each prompt names beside its steps follows its step: the
- * submission and where to extract it (`unpack`), the root and the build report (`analyze`),
- * the Build Review Details (`permission`), and the folders a build runs in. Every build runs at
- * the root's place in `build/`, its output is compared with the submitted XPI, and the rescue's
- * agent makes `build/` a copy of the whole `rescued/` before each build, with the two commands
- * named here.
+ * submission and where to extract it (`unpack`), the source, its build folder and the build
+ * report (`analyze`), the Build Review Details (`permission`), and the folders a build runs in.
+ * Every build runs at the build folder's place in `build/`, its output is compared with the
+ * submitted XPI, and the rescue's agent makes `build/` a copy of the whole `rescued/` before
+ * each build, with the two commands named here.
  * @param {string} work
  * @param {import("./prepare/state.js").PrepareRecord} record  At the step its prompt is for.
  * @param {import("./checks/registry.js").Registry} registry
@@ -1552,10 +1552,10 @@ function preparationPrompt(work, record, registry, start = {}) {
 }
 
 /**
- * The Build Review Details the permission prompt shows: the submitted XPI, the source root,
- * the build report, the verdict and the issues it was read off, as the review loop's blocks name them (detailRows), so
- * the review's Build Review Details hold every row of it. It ends with the line telling the
- * reviewer the review waits for their reply, as a turn-ending block does.
+ * The Build Review Details the permission prompt shows: the submitted XPI, the build folder,
+ * the build report, the verdict and the issues it was read off, as the review loop's blocks
+ * name them (detailRows), so the review's Build Review Details hold every row of it. It ends
+ * with the line saying the review waits for the reviewer's reply, as a turn-ending block does.
  * @param {string} work
  * @param {import("./prepare/state.js").PrepareRecord} record  At `permission`.
  * @param {ReturnType<import("./checks/registry.js").Registry["llmScaReviewPrompt"]>} prompt
@@ -1591,7 +1591,7 @@ const RECORD_FIELDS = [
   },
   {
     holds: (r) => typeof r.roots?.scaBuild === "string",
-    missing: "no settled source root",
+    missing: "no settled build folder",
   },
 ];
 
@@ -1604,7 +1604,7 @@ const RECORD_FIELDS = [
  * given - and then checked as a command line is. The add-on and the roots are set
  * last, from the record's own fields, so no flag can name another; and the roots are asked
  * again as the extract step asked them (recordedRoots): followed to the folders they really
- * are, the root inside the work folder's `sca/` and the Experiment folder inside the root,
+ * are, the build folder inside `sca/` or its rescued copy and the Experiment folder inside it,
  * because the agent works in the folder between the step that settled them and this one.
  * The review reads the real folders that answered.
  * @param {import("./prepare/state.js").PrepareRecord} record  At `done`.
@@ -1646,8 +1646,8 @@ function preparedReview(record, checkIds, work) {
     values[name] = value;
   }
   values["llm-review"] = true;
-  // The extracted source is the copy the root sits in: the rescued one where a rescue came out clean,
-  // else `sca/`.
+  // The extracted source is the copy the build folder sits in: the rescued one where a rescue
+  // came out clean, else `sca/`.
   const paths = workPaths(work);
   const rescued = fs.existsSync(paths.rescued)
     ? fs.realpathSync(paths.rescued)

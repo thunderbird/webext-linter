@@ -6,7 +6,7 @@
 // submission would stop again - unless they are told.
 //
 // One finding, anchored at package.json, when the copy's lock differs from the lock of the
-// root it was made from: a release it no longer installs or newly installs, or a package it
+// source it was made from: a release it no longer installs or newly installs, or a package it
 // no longer records as declared or newly does. Read from the locks alone, like every other
 // dependency question of a source review. What changed is not listed - the developer's own
 // audit (`npm audit`, `pnpm audit`) names what to fix in their project, against their own

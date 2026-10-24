@@ -122,8 +122,9 @@ const SEVERITY_RANK = Object.fromEntries(
  * @property {string|null} note  The REVIEWER's own words about this one case, attached
  *   when they answered its question in their own words instead of picking an answer
  *   (src/report/verdicts.js), or the reasons they gave in the preparation for holding the
- *   build unsafe (build-unsafe, which reports that answer). No other check sets it. Printed as the last part of the location line, after any `hint`: it is
- *   what a person added about THIS location, so it travels with the location rather
+ *   build unsafe (build-unsafe, which reports that answer). No other check sets it. Printed
+ *   as the last part of the location line, after any `hint`: it is what a person added about
+ *   THIS location, so it travels with the location rather
  *   than with the response paragraph, which stays wholly the registry's.
  */
 

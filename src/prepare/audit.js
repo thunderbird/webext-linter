@@ -1,4 +1,4 @@
-// The LINTER'S OWN AUDIT of a source root, for the preparation of a source code review: does
+// The LINTER'S OWN AUDIT of a build folder, for the preparation of a source code review: does
 // the lock install a package with a known high or critical advisory, and could the audit read
 // the whole tree to say so.
 //
@@ -19,8 +19,8 @@
 // the archive, src/review/products.js audits its dependencies), with the same functions,
 // so the lists it answers with are the ones the review's vulnerability checks read.
 //
-// Belongs here: reading a root's lock into those lists, the two answers the preparation
-// takes from them (is the root clean, and is it rescuable), and their count by severity.
+// Belongs here: reading a build folder's lock into those lists, the two answers the
+// preparation takes from them (is it clean, and is it rescuable), and their count by severity.
 // Does NOT belong here: what the preparation does with any of it (-> ./steps.js), the lock
 // reading and the network audit themselves (-> src/vendor/locks.js, src/vendor/verify.js).
 
@@ -50,9 +50,9 @@ export const LOCK_AUDIT_LISTS = Object.freeze([
 ]);
 
 /**
- * What the audit of one root found.
+ * What the audit of one build folder found.
  * @typedef {object} RootAudit
- * @property {boolean} complete  The audit read the whole tree: the root loaded, its lock is
+ * @property {boolean} complete  The audit read the whole tree: the folder loaded, its lock is
  *   there and parses, and no entry is installed from a source the audit cannot read or
  *   installs another release than it names. Without each of these, an empty tree would read
  *   as a clean one. An audit OSV does not answer is not incomplete: it ends the run.
@@ -70,7 +70,7 @@ export const LOCK_AUDIT_LISTS = Object.freeze([
  */
 
 /**
- * Audit one root's lock.
+ * Audit one build folder's lock.
  * @param {{scaBuild: string, scaExperiments: ?string}} roots  Settled, absolute.
  * @param {{net?: import("../vendor/verify.js").VendorNet, cacheDir?: string}} [context]
  *   The network the audit asks, the run's, behind its cache (./steps.js handBack), and where
@@ -79,7 +79,7 @@ export const LOCK_AUDIT_LISTS = Object.freeze([
  */
 export async function auditRoot(roots, { net, cacheDir } = {}) {
   const none = Object.fromEntries(LOCK_AUDIT_LISTS.map((l) => [l, []]));
-  // A root the loader refuses - a file it cannot read, more than it reads at all - is one
+  // A build folder the loader refuses - a file it cannot read, more than it reads at all - is one
   // the review refuses too. Not read in full, so neither clean nor rescuable.
   let archive;
   try {
@@ -144,7 +144,7 @@ function vulnerable(audit) {
 }
 
 /**
- * A root whose lock the audit read in full and found nothing in.
+ * A build folder whose lock the audit read in full and found nothing in.
  * @param {RootAudit} audit
  * @returns {boolean}
  */
@@ -153,7 +153,7 @@ export function isClean(audit) {
 }
 
 /**
- * A root a rescued copy is made for: its lock read in full, and vulnerable.
+ * A build folder a rescued copy is made for: its lock read in full, and vulnerable.
  * @param {RootAudit} audit
  * @returns {boolean}
  */

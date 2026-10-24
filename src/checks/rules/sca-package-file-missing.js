@@ -1,7 +1,7 @@
 // Rejects a source-code submission that carries no package.json. The archive exists so a
 // reviewer can reproduce the build that produced the shipped XPI, and the build's entry
-// point is the root package.json, where the install runs, so its absence is the absence of
-// a build: there is nothing to reproduce.
+// point is the build folder's package.json, where the install runs, so its absence is the
+// absence of a build: there is nothing to reproduce.
 //
 // Reported as the bare fact. Whether the developer forgot it, packed the wrong folder, or
 // never had a build is not decidable from an archive that does not contain one, so nothing

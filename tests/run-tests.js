@@ -187,7 +187,7 @@ function preparationEntries(preparation) {
 
 /**
  * The work folder a fixture's "preparation" block leaves, prepared for real: the folder whose
- * review starts, and the source root in it. Its run cache is `cache`, the fixture's seeded
+ * review starts, and the build folder in it. Its run cache is `cache`, the fixture's seeded
  * folder, which its review reads too.
  * @param {string} dir  The fixture.
  * @param {{from?: string, rescued?: boolean}} preparation

@@ -33,9 +33,9 @@
         In a source-code submission, package.json is not read for dependencies:
         the committed lock file is, because it is what the install follows.
         What this check reports there is an install from a local path the
-        archive does not hold as a folder - a path outside the source root, one
+        archive does not hold as a folder - a path outside the extracted archive, one
         the archive does not contain, or a local tarball. A local folder inside
-        the source root is the submission's own code, reviewed like any other
+        the extracted archive is the submission's own code, reviewed like any other
         file, so nothing is said about it. A remote tarball or a git source that
         is not GitHub is reported by
         <a href="lock-foreign-source.html">lock-foreign-source</a>. Build
@@ -56,7 +56,7 @@ flowchart TD
   R -- yes --> L["An install the lock file records"]
   L --> LP{"From a local path?"}
   LP -- no --> OK
-  LP -- yes --> LF{"An existing folder<br/>inside the source root?"}
+  LP -- yes --> LF{"An existing folder<br/>inside the extracted archive?"}
   LF -- yes --> OK
   LF -- "no (outside the root, absent,<br/>or a local tarball)" --> ERR
   A["A package.json dependency"] --> Z{"A build dependency?"}

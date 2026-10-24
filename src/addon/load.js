@@ -10,7 +10,7 @@
 // like any already-unpacked submission (readDir). Where the copy goes is the caller's to
 // choose (loadAddon's `copyTo`): the review names it once, in meta.xpiRoot, and hands the
 // SAME folder to the reviewer and to this loader. The submitted source archive is read
-// where it is: --sca-build names a folder the source archive was already extracted into.
+// where it is: --sca-extracted names the folder it was already extracted into.
 //
 // It also PARTITIONS a submitted SCA archive into the two views a source review reads - the
 // add-on code and the Experiment implementation - as views over that one store (scaViews). One
@@ -177,16 +177,16 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   It is not an ANSWER: what the add-on's manifest.json says is ctx.manifest, the shipped
  *   record every ctx carries (src/checks/context.js), read off the built XPI in either
  *   review - a source archive is loaded without reading one (loadSourceArchive), because
- *   its root manifest.json is a pre-build template. So a check asks ctx.manifest and never
+ *   its manifest.json is a pre-build template. So a check asks ctx.manifest and never
  *   the files, in either mode.
  * @property {FileStore} [store]  Everything the artifact holds - what the submission CONTAINS -
- *   keyed relative to the root the reviewer was given: everything it holds, exactly as it
+ *   keyed relative to the folder the reviewer was given: everything it holds, exactly as it
  *   arrived, and the FileStore every view resolves its bytes through (./store.js). For a
  *   built XPI that is the whole package, which `files` reviews entire. For a source archive it
  *   is the whole --sca-extracted, the frame a reviewer resolves a reported path against, while
  *   `files` there gives up the Experiment subtree. The package file and the lock are read in
- *   the build folder's view of it (`buildFiles`, scaViews). Reach for it deliberately: a reader asking `store` is saying it wants the
- *   submission entire.
+ *   the build folder's view of it (`buildFiles`, scaViews). Reach for it deliberately: a
+ *   reader asking `store` is saying it wants the submission entire.
  * @property {string[]} nodeModules  Posix paths of node_modules directories
  *   skipped at load (their contents are never read); empty when none, and always empty
  *   unless the load asked for it, which only loadSourceArchive does. committed-node-modules rejects each, and is the only
@@ -196,7 +196,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
  * @property {string[]} archives  Posix paths of committed binary archives
  *   (.zip/.xpi/... anywhere in the submission); empty when none. In SCA mode the
  *   committed-build-artifact check rejects each. Recorded at load, spanning the whole
- *   --sca-build (before the source/build split), so one is caught wherever it sits. Set by
+ *   --sca-extracted (before the source/experiment split), so one is caught wherever it sits. Set by
  *   loadAddon only.
  * @property {string[]} skipped  Ready-to-narrate notices for entries skipped at
  *   load (a non-node_modules symlink); empty when none, and always empty for an XPI, since
@@ -568,9 +568,9 @@ export function hasParentSegment(value) {
  *               the source or beside it. Privileged, non-WebExtension code: it is recorded
  *               here ONCE so nothing downstream has to re-derive where it went.
  *
- * The two are disjoint, and together they serve both the code review and the build
- * trace (./store.js withExperiment): the tooling is intermingled with the code, so there is no line to draw between
- * them. One pass, one set of prefixes, so no two readers can disagree about where a file
+ * The two are disjoint, and together they serve the code review (./store.js
+ * withExperiment): the tooling is intermingled with the code, so there is no line to draw
+ * between them. One pass, one set of prefixes, so no two readers can disagree about where a file
  * went.
  *
  * A manifest.json here is a file like any other. The archive is loaded without reading one

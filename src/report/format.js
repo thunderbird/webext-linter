@@ -479,13 +479,14 @@ function valueLines(entries) {
  * a path by looking up a name rather than by parsing a sentence: the Submission block on the
  * `unpack` prompt - EXTRACT_TO among them: this tool cannot open a source archive itself, but
  * it can still name where one should land - ANSWERS on every later prompt, and the
- * Build block: SCA_BUILD and SCA_BUILD_PROCESS on the `analyze` prompt, SCA_BUILD, LLM_BUILD_ROOT
- * and SCA_BUILD_PROCESS on the build's, RESCUE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_PROCESS on the
- * rescue's, and SUBMITTED_XPI on both, which the build's output is compared with. The STEPS
- * are prose, and they name those given values - and the one the reader may still have to
- * work out, <SCA_EXPERIMENTS> - instead of carrying paths themselves. The FLAGS are the
- * finished command, one flag per line, filled into the step that says to run it, and the COPY
- * is the rescue's two commands that make the build copy, filled into its step the same way.
+ * Build block: SCA_EXTRACTED, SCA_BUILD and SCA_BUILD_PROCESS on the `analyze` prompt,
+ * SCA_BUILD, LLM_BUILD_ROOT and SCA_BUILD_PROCESS on the build's, RESCUE_ROOT, LLM_BUILD_ROOT
+ * and SCA_BUILD_PROCESS on the rescue's, and SUBMITTED_XPI on both, which the build's output
+ * is compared with. The STEPS are prose, and they name those given values - and the one the
+ * reader may still have to work out, <SCA_EXPERIMENTS> - instead of carrying paths
+ * themselves. The FLAGS are the finished command, one flag per line, filled into the step
+ * that says to run it, and the COPY is the rescue's two commands that make the build copy,
+ * filled into its step the same way.
  * The intro opens a run's first prompt only (`first`): it says what the preparation is, once.
  *
  * A step whose `when:` does not hold is dropped, and the surviving steps are numbered 1..N
@@ -509,7 +510,7 @@ function valueLines(entries) {
  *   archive, `sca/`, all of which the build analysis reads.
  * @param {string} [values.scaBuild]  On the analyze and build prompts: the build folder, in
  *   `sca/`.
- * @param {string} [values.buildRoot]  On the build and rescue prompts: the root in
+ * @param {string} [values.buildRoot]  On the build and rescue prompts: the build folder in
  *   `build/`, where the agent builds.
  * @param {string[]} [values.buildDetails]  On the permission prompt: the Build Review
  *   Details block, its waiting line included, filled into the step that shows it.
@@ -723,18 +724,18 @@ export function detailLinkLines(meta) {
  * beside which SCA_BUILD_ORIG names the build folder in the source archive. It is
  * SCA_EXTRACTED where the build folder lies below it, and SCA_BUILD, the build folder, then
  * names only where the package file and the lock are read. Where the two are one folder,
- * SCA_BUILD names it alone, as the reviewed source. SCA_VULNERABILITIES
- * counts the submitted lock, and LLM_RESCUED_VULNERABILITIES the rescued copy's lock where
- * the agent attempted a rescue. LLM_BUILD_ROOT is the root in the copy the agent built in,
- * named where it built or tried to.
+ * SCA_BUILD names it alone, as the reviewed source. SCA_VULNERABILITIES counts the submitted
+ * lock, and LLM_RESCUED_VULNERABILITIES the rescued copy's lock where the agent attempted a
+ * rescue. LLM_BUILD_ROOT is the build folder in the copy the agent built in, named where it
+ * built or tried to.
  * @param {ReviewMeta & {scaBuildOrig?: string, buildSafety?: string,
  *   buildVulnerabilities?: import("../prepare/audit.js").VulnerabilityCounts,
  *   rescuedVulnerabilities?: import("../prepare/audit.js").VulnerabilityCounts,
  *   buildResult?: string, buildRoot?: string, buildMatch?: string}} meta  The review's meta and what it holds
- *   beside it: the original root after a rescue, the build judgement, the submitted lock's
- *   vulnerable packages by severity and the rescued copy's, the wording of what came of the
- *   build, the root the agent built in, and the agent's comparison of its output with the
- *   submitted XPI, shown only beside that output.
+ *   beside it: the original build folder after a rescue, the build judgement, the submitted
+ *   lock's vulnerable packages by severity and the rescued copy's, the wording of what came of
+ *   the build, the build folder the agent built in, and the agent's comparison of its output
+ *   with the submitted XPI, shown only beside that output.
  * @returns {string[]}
  */
 export function detailRows(meta) {

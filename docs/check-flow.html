@@ -187,7 +187,7 @@ flowchart TB
 
     MODEQ{{"--sca-extracted given?<br/>(the review is NEVER re-routed by what the XPI looks like)"}}
     MODEQ -- "no" --> MX2["an XPI review · target = the XPI<br/>(mode derives to xpi)"]
-    MODEQ -- "yes" --> LSQ{{"--sca-experiments given for an Experiment,<br/>and resolves within the source root?"}}
+    MODEQ -- "yes" --> LSQ{{"--sca-experiments given for an Experiment,<br/>and resolves within --sca-extracted?"}}
     LSQ -- no --> P1F
     LSQ -- yes --> LSRC["loadSourceArchive() → scaViews()<br/>a source code review · target = the archive<br/>(mode derives to sca)"]
   end
@@ -648,7 +648,7 @@ flowchart LR
 title: runChecks()
 ---
 flowchart TB
-  IN(["called by runPipeline() with<br/>registry · opts (only · skip · eslint · sca) · siblings"]) --> LC["loadChecks()<br/>one list per phase section · a check whose when: fails is dropped before import (conditionEligible)"]
+  IN(["called by runPipeline() with<br/>registry · opts (only · skip · the when: facts) · siblings"]) --> LC["loadChecks()<br/>one list per phase section · a check whose when: fails is dropped before import (conditionEligible)"]
   LC --> GATE["select the phase's eligible checks<br/>the route's mode gate reads ctx.mode; the when: gate ran in loadChecks"]
   GATE --> RDET[["run the deterministic-phase"]]
 

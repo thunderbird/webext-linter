@@ -68,7 +68,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
   const review = run(answerPermission(permission.stdout));
   assert.notEqual(review.code, 2, review.stdout + review.stderr);
   assert.match(review.stdout, /── LLM Prompt ──/);
-  assert.ok(review.stdout.includes(root), "the step names the source root");
+  assert.ok(review.stdout.includes(root), "the step names the build folder");
   assert.ok(
     review.stdout.includes(workPaths(work).build),
     "and the build report"

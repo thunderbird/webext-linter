@@ -99,10 +99,10 @@ function parsePackageFile(buf) {
  * The SUBMISSION's own files - the frame a package file and a lock are written in.
  *
  * For a built XPI it is the artifact itself. For a source archive it is the build folder
- * (--sca-build): the whole store where the build folder is the extracted archive, and its
- * folder of it, keyed relative to it, where the archive wraps it (`buildFiles`,
- * ./../addon/load.js scaViews). `addon.files` is a VIEW that gives up every manifest.json, so
- * only the store answers what the submission contains. An addon with no separate store (a
+ * (--sca-build), keyed relative to it: the whole store where it is the extracted archive,
+ * its `buildFiles` view (src/addon/load.js scaViews) where the archive wraps it.
+ * `addon.files` is a VIEW that gives up every manifest.json, so only the store answers what
+ * the submission contains. An addon with no separate store (a
  * hand-built file map) answers with its files, which is the same thing for a single-artifact
  * submission. What is read here is located in the archive by buildKey.
  * @param {?object} addon

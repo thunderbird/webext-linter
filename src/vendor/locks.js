@@ -65,10 +65,10 @@ import { cutAtFirst } from "../util/text.js";
  * @property {string} name  npm package name (an npm alias resolves to the real one).
  * @property {string} version  The exact installed version.
  * @property {boolean} dev  Installed for the build only, never for production.
- * @property {boolean} direct  Declared by a package file in this submission - the root
- *   package.json, a workspace member, or a pnpm importer - rather than reached only
+ * @property {boolean} direct  Declared by a package file in this submission - the build
+ *   folder's package.json, a workspace member, or a pnpm importer - rather than reached only
  *   through another package. Read from the lock's OWN record of what was asked for,
- *   so it covers the declaration forms the root package.json parse does not
+ *   so it covers the declaration forms the package.json parse does not
  *   (optionalDependencies, a workspace member's own package file) and stays true when
  *   package.json and the lock disagree about a version. An npm lockfile v1 keeps no such
  *   record, so every package in one is marked declared (-> npmV1Packages).
@@ -1189,7 +1189,7 @@ function ownerRepo(owner, repo) {
  * unsupported-dependency check in a source review.
  *
  * Where each format records the path: npm lockfile v2/v3 in a `link: true` entry's
- * `resolved` (relative to the root) and in a `resolved: "file:..."` for a tarball; npm
+ * `resolved` (relative to the build folder) and in a `resolved: "file:..."` for a tarball; npm
  * lockfile v1 in `version: "file:..."`; pnpm in an importer's `link:...` version (relative
  * to that importer's folder) and in a package's `resolution.directory` or
  * `resolution.tarball: "file:..."`.
@@ -1287,9 +1287,9 @@ export function localInstalls(addon) {
 
 /**
  * Resolve `target` (a local path the lock records) against `baseDir` (the store-relative
- * folder it is relative to, "" for the root) into a store-relative posix path, or null when
- * it steps outside the store (a leading "/", or a ".." with nothing left to pop). Pure path
- * arithmetic: it does not say whether anything is THERE.
+ * folder it is relative to, "" for the extracted archive) into a store-relative posix path,
+ * or null when it steps outside the store (a leading "/", or a ".." with nothing left to
+ * pop). Pure path arithmetic: it does not say whether anything is THERE.
  * @param {string} baseDir @param {string} target
  * @returns {?string}
  */
@@ -1348,7 +1348,7 @@ function pnpmSource(entry) {
  * `unreadable`: the file does not parse. `unrecognised`: it parses but is not a lock the
  * readers here know - which matters only when the package file declares something to
  * install from it (`npm ci` accepts a `{}` lock for a package file that declares nothing).
- * @param {Addon} addon  The SCA archive (the root package.json and its locks).
+ * @param {Addon} addon  The SCA archive (the build folder's package.json and its locks).
  * @returns {?{file: string, reason: string}}
  */
 export function unreadableLock(addon) {

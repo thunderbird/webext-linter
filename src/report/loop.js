@@ -736,12 +736,12 @@ export function settle(state, registry) {
  * was ever asked to write is not among them. Beside them the source archive's root where a
  * rescued copy was reviewed, and what the review holds of the build.
  *
- * SCA_BUILD_SAFETY_ASSESSMENT is the judgement the review holds, the preparation's or its
- * own, SCA_VULNERABILITIES the submitted lock's count, and LLM_RESCUED_VULNERABILITIES the
+ * SCA_BUILD_SAFETY_ASSESSMENT is the preparation's judgement of the build,
+ * SCA_VULNERABILITIES the submitted lock's count, and LLM_RESCUED_VULNERABILITIES the
  * rescued copy's where a rescue was attempted. LLM_BUILD_RESULT is the wording of what came
  * of the agent's build (buildResultFact), held where the review shows the Build Review
  * Details, a source code review whose build every guard vouches for, and only for a result
- * with a wording: not where the reviewer builds it. LLM_BUILD_ROOT is the root the agent
+ * with a wording: not where the reviewer builds it. LLM_BUILD_ROOT is the build folder the agent
  * built in where it built or tried to, and LLM_BUILD_OUTPUT what it built, beside which
  * LLM_BUILD_XPI_MATCH is its comparison with the submitted XPI.
  * @param {import("./state.js").LoopState} state

@@ -1,4 +1,4 @@
-// Tests for settling WHICH folder is the source root (src/addon/sca-build.js).
+// Tests for settling WHICH folder is the build folder (src/addon/sca-build.js).
 //
 // The root is named by someone who has not looked inside the archive yet, so a root holding
 // no package.json is a near miss to be corrected rather than a submission to reject. These
@@ -154,7 +154,8 @@ test("a lone symlinked subfolder is not followed out of the root", () => {
 
 // The Experiment folder may lie anywhere in the extracted archive, so it does not hold the
 // build folder in place: the build folder moves wherever its package file is, beside the
-// Experiment folder or above it. Only a move into the folder it names ends the run.
+// Experiment folder or above it. A folder found inside the Experiment folder is no build
+// folder, so the folder given stands, as where none is found.
 test("the Experiment folder does not hold the move", () => {
   const root = tree({
     "wrap/package.json": PKG,
@@ -175,12 +176,10 @@ test("the Experiment folder does not hold the move", () => {
     scaExperiments: path.join(root, "other"),
   });
   assert.equal(beside.scaBuild, wrap);
-  // Holding it: the build folder lands inside the folder the flag names, which would take
-  // the WebExtension source out of the review, so the run ends.
-  assert.throws(
-    () => settleScaBuild({ scaBuild: root, scaExperiments: wrap }),
-    /lies inside the folder --sca-experiments names/
-  );
+  // Holding it: the folder found is the Experiment's, so the folder given stands.
+  const held = settleScaBuild({ scaBuild: root, scaExperiments: wrap });
+  assert.equal(held.scaBuild, root);
+  assert.equal(held.movedFrom, null);
   // Nothing to place: the move stands on the build folder alone.
   assert.equal(settleScaBuild({ scaBuild: root }).scaBuild, wrap);
 });
@@ -222,7 +221,7 @@ test("an --sca-experiments that IS the extracted archive, or holds the build fol
         scaBuild: path.join(wrapped, "pkg"),
         scaExperiments: path.join(wrapped, "pkg"),
       }),
-    /holds --sca-build/
+    /holds the build folder/
   );
   // A real subfolder is what the flag is for, and still settles.
   const ok = settleScaBuild({
@@ -233,33 +232,21 @@ test("an --sca-experiments that IS the extracted archive, or holds the build fol
   assert.equal(ok.movedFrom, null);
 });
 
-// The case no CLI guard can see, and the reason the rule lives here: the reviewer names a
-// build folder that holds no package file and an Experiment folder strictly inside it, so the
-// CLI accepts the pair - and then the build folder MOVES into the very folder they named.
-test("an --sca-experiments the build folder MOVES into ends the run, naming both", () => {
+// A build folder the walk would find inside the Experiment folder the reviewer named is not
+// taken: the folder given stands, as where the walk finds none, and the review reports what
+// that folder lacks.
+test("a build folder found inside the Experiment folder is not taken", () => {
   const root = tree({ "inner/package.json": PKG, "inner/lock.json": LOCK });
   const inner = path.join(root, "inner");
-  assert.throws(
-    () => settleScaBuild({ scaBuild: root, scaExperiments: inner }),
-    // Both folders, because the reviewer never typed the one it collides with.
-    (err) => {
-      assert.match(err.message, /holds no package file/);
-      assert.match(
-        err.message,
-        /lies inside the folder --sca-experiments names/
-      );
-      assert.ok(err.message.includes(root), "names the build folder as given");
-      assert.ok(err.message.includes(inner), "names the folder it settled on");
-      return true;
-    }
-  );
-  // The move itself is untouched: an Experiment folder inside the new build folder still
-  // moves with it.
+  const out = settleScaBuild({ scaBuild: root, scaExperiments: inner });
+  assert.equal(out.scaBuild, root);
+  assert.equal(out.movedFrom, null);
+  // An Experiment folder inside the found build folder still lets it move.
   const fits = tree({ "inner/package.json": PKG, "inner/exp/api.js": "1;" });
-  const out = settleScaBuild({
+  const moved = settleScaBuild({
     scaBuild: fits,
     scaExperiments: path.join(fits, "inner/exp"),
   });
-  assert.equal(out.scaBuild, path.join(fits, "inner"));
-  assert.equal(out.movedFrom, fits);
+  assert.equal(moved.scaBuild, path.join(fits, "inner"));
+  assert.equal(moved.movedFrom, fits);
 });

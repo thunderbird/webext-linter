@@ -373,7 +373,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
   refusedFor(
     "no roots",
     { roots: null },
-    /The hand-back was refused: the preparation's record names no settled source root\. /
+    /The hand-back was refused: the preparation's record names no settled build folder\. /
   );
   refusedFor(
     "no submission",
@@ -383,21 +383,21 @@ test("a prepared review refuses a record it cannot start from", (t) => {
   refusedFor(
     "neither",
     { roots: null, submission: { xpi: "", experiments: false } },
-    /The hand-back was refused: the preparation's record names no submission to review and no settled source root\. /
+    /The hand-back was refused: the preparation's record names no submission to review and no settled build folder\. /
   );
   refusedFor(
     "a root that is gone",
     (work) => ({
       roots: { scaBuild: path.join(work, "sca", "gone"), scaExperiments: null },
     }),
-    /The hand-back was refused: the preparation's record names a source root ".*gone" that is not a folder inside /
+    /The hand-back was refused: the preparation's record names a build folder ".*gone" that is not a folder inside /
   );
   // The agent works in the folder between the step that settled the roots and the start,
   // so each root is followed to where it really is, and must still be where it was put.
   refusedFor(
     "a root that is the work folder itself",
     (work) => ({ roots: { scaBuild: work, scaExperiments: null } }),
-    /The hand-back was refused: the preparation's record names a source root ".*" that is not a folder inside ".*[/]sca"/
+    /The hand-back was refused: the preparation's record names a build folder ".*" that is not a folder inside ".*[/]sca"/
   );
   refusedFor(
     "a root that links out of sca/",
@@ -406,7 +406,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
       fs.symlinkSync(fs.mkdtempSync(path.join(os.tmpdir(), "wl-out-")), link);
       return { roots: { scaBuild: link, scaExperiments: null } };
     },
-    /The hand-back was refused: the preparation's record names a source root ".*out" that is not a folder inside /
+    /The hand-back was refused: the preparation's record names a build folder ".*out" that is not a folder inside /
   );
   refusedFor(
     "an Experiment folder that links out of the root",

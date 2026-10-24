@@ -16,7 +16,7 @@
       <h2>What it asks</h2>
       <p class="lead">
         In a source-code submission the reviewer builds the add-on from the readable source,
-        but the dependency audit only reads the root package file and lock file. A build
+        but the dependency audit reads only the build folder's package and lock file. A build
         script or config could ignore the package file and pull code or resources from an
         undeclared source, leaving the declared dependencies a clean decoy. And the source
         has to build into exactly the shipped XPI, or the review read the wrong code.
@@ -27,7 +27,7 @@
         decided about the build in a preparation (<code>when: NOT build-judged</code>): a plain
         report, and an agent review run with a check the build relies on switched off. It is
         the whole build question then, in the order a reviewer has to take it. First, does any
-        step reach outside the declared dependencies? Then do not build it. Otherwise, does it
+        step reach outside the declared dependencies? If so, do not build it. Otherwise, does it
         build from a clean copy and reproduce the submitted XPI?
       </p>
       <p>
@@ -37,7 +37,7 @@
         those words attached. Where the reviewer decided about the build in the preparation,
         <a href="build-reproduces-xpi.html">Reproducing the XPI from the source</a> or
         <a href="build-unsafe.html">Unsafe build process</a> asks in its place. The entry anchors
-        at the submission's own <code>package.json</code> where there is one.
+        at the build folder's <code>package.json</code> where there is one.
       </p>
 
       <h2>Decision flow</h2>

@@ -64,7 +64,7 @@ export const COLLAPSE_MODES = new Set(["subject"]);
 // The `input` a check entry declares - which add-on artifact is ctx.artifact when the
 // check runs, and, where the answer can only exist in one review mode, WHICH MODE it runs
 // in. "source" = the REVIEW TARGET, the readable submitted code (the readable
-// --sca-build in an SCA review, the built XPI in an XPI review - the only artifact
+// --sca-extracted in an SCA review, the built XPI in an XPI review - the only artifact
 // there); "xpi" = ALWAYS the built XPI (the shipped artifact), analysed in both modes;
 // "sca" = the submitted source archive, which the build and dependency checks read
 // (and which `source` points at in a source review, being the target there); "all" =
@@ -310,7 +310,7 @@ export const SCA_PROMPT_FACTS = ["find-experiment"];
 
 /** The preparation's prompts, one step list each, named for the step that prints it
  *  (src/prepare/state.js PREPARE_STEP): `unpack` first where the agent extracts the source
- *  archive, `analyze` where the build is worked out, `permission` after a safe build
+ *  archive, `analyze` where the build is worked out, `permission` after the build
  *  judgement, then `build` for a lock audited clean or `rescue` for a vulnerable one. Once
  *  the preparation is done, the hand-back starts the review instead. */
 export const SCA_PROMPT_STEPS = [

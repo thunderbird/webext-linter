@@ -1619,7 +1619,7 @@ test("an authored text is re-wrapped, and its source line breaks do not survive"
 // block: the prompt's steps point at these by name, so a name is what the section has to
 // print. An SCA review spans TWO artifacts and labels every locus [XPI]/[SCA], so the
 // block says what those are - and names the source as the values the run was GIVEN, since
-// an agent sent to the source root cannot be handed a path it must split first. A
+// an agent sent to the source cannot be handed a path it must split first. A
 // one-artifact review names one: there is nothing to disambiguate.
 test("the header names both artifacts in an SCA review, one otherwise", () => {
   const base = {

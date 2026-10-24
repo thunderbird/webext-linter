@@ -18,8 +18,9 @@ import {
 /**
  * @typedef {object} BuildReview
  * @property {?string} anchor  The file the findings/notes anchor at: the build folder's
- *   package.json, keyed in the archive, when the submission ships one, else null, so an escalation carries no locus rather than pointing
- *   the reviewer at a file the submission does not have.
+ *   package.json, keyed in the archive, when the submission ships one, else null, so an
+ *   escalation carries no locus rather than pointing the reviewer at a file the submission
+ *   does not have.
  */
 
 /**

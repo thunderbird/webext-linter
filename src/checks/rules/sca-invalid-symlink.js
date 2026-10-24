@@ -1,5 +1,5 @@
 // Rejects a source-code submission whose tree holds a symbolic link the review cannot
-// follow: one resolving OUTSIDE --sca-build, or one resolving to nothing at all. Either way
+// follow: one resolving OUTSIDE --sca-extracted, or one resolving to nothing at all. Either way
 // the build installs or compiles something the submission does not hold, so the readable source the
 // reviewer was promised is not the whole of what the add-on is built from.
 //

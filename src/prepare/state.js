@@ -4,7 +4,7 @@
 //
 // The preparation runs in steps, and the agent following it hands back only the answers it
 // worked out (src/prepare/steps.js). So everything a later step needs - which submission
-// this is, how its review is to be run, which roots were settled, where the preparation
+// this is, how its review is to be run, which folders were settled, where the preparation
 // stands - is recorded here by the linter and read back by the next run, never taken from
 // the agent. No prompt names this file.
 //
@@ -19,13 +19,12 @@
 // a rescue copies that whole folder into `rescued/` beside it, and every build runs in a whole
 // copy of one of the two in `build/`. The hand-back that finds the folder
 // done starts its review from this record (src/cli.js), and that review reads it too
-// (src/pipeline.js): a rescued review reads the package files of the root it was copied
-// from, in `sca/`, to tell the developer the rescue changed them (originalPackages).
+// (src/pipeline.js): a rescued review reads the package files of the build folder it was
+// copied from, in `sca/`, to tell the developer the rescue changed them (originalPackages).
 //
-// Belongs here: the record's shape and version, reading and writing it, marking a folder at
-// a step, where a root lies in each of the folders, and reading the package files of the root
-// a rescue copied. Does NOT belong
-// here: what each step does and when the record moves on (-> ./steps.js), the audit that
+// Belongs here: the record's shape, reading and writing it, marking a folder at a step, where
+// a build folder lies in each of the folders, and reading the package files of the build
+// folder a rescue copied. Does NOT belong here: what each step does and when the record moves on (-> ./steps.js), the audit that
 // decides it (-> ./audit.js), the folder's names (-> src/util/dest.js workPaths), or how a
 // prompt is printed (-> src/report/format.js).
 
@@ -53,23 +52,24 @@ const READ_ONLY = 0o444;
  * Where a preparation stands, which is what the next hand-back of the folder does:
  *
  * - `unpack`: the source archive is to be extracted into `sca/` (--llm-sca-review only). The
- *   next hand-back derives the root inside it (src/addon/sca-build.js) and moves on to
- *   `analyze`;
- * - `analyze`: the root is known, in `sca/`, and its build is to be reported in build.md, with
- *   the build judgement (and the Experiment folder, where the add-on declares Experiments and
- *   it is not known yet) handed back in the review file. A review given --sca-extracted starts
- *   here, its source copied into `sca/`. The next hand-back moves a safe build on to
- *   `permission` (or, where the record holds agentBuilds, audits the root) and an unsafe one
- *   to `done`;
- * - `permission`: the reviewer is shown the Build Review Details and asked whether the
- *   agent may build, and the next hand-back reads the answer and audits the root where it
- *   may;
- * - `build`: the root's lock is clean, the linter copies `sca/` into `build/`, and the agent
- *   builds it there and names what the build produced and whether it matches the submitted
- *   XPI, or that it failed;
- * - `rescue`: the root's lock is vulnerable, and the agent makes the lock of the rescued copy
- *   in `rescued/` clean, builds a copy of it in `build/`, and names what the build produced
- *   and whether it matches the submitted XPI, or that the rescue failed. The next hand-back audits the copy and checks what it named;
+ *   next hand-back derives the build folder inside it (src/addon/sca-build.js) and moves on
+ *   to `analyze`;
+ * - `analyze`: the build folder is known, in `sca/`, and its build is to be reported in
+ *   build.md, with the build's issues (and the Experiment folder, where the add-on declares
+ *   Experiments and it is not known yet) handed back in the review file. A review given
+ *   --sca-extracted starts here, its source copied into `sca/`. The next hand-back moves
+ *   either verdict on to `permission` (or, where the record holds agentBuilds, decides for
+ *   the reviewer), and to `done` where a build-guard check is switched off;
+ * - `permission`: the reviewer is shown the Build Review Details and asked for the build
+ *   decision, and the next hand-back reads it and audits the build folder's lock where the
+ *   agent may build;
+ * - `build`: the build folder's lock is clean, the linter copies `sca/` into `build/`, and
+ *   the agent builds it there and names what the build produced and whether it matches the
+ *   submitted XPI, or that it failed;
+ * - `rescue`: the build folder's lock is vulnerable, and the agent makes the lock of the
+ *   rescued copy in `rescued/` clean, builds a copy of it in `build/`, and names what the
+ *   build produced and whether it matches the submitted XPI, or that the rescue failed. The
+ *   next hand-back audits the copy and checks what it named;
  * - `done`: the review may start here, and the record holds the flags it starts with.
  *   A folder whose rescue failed is `done` too, its roots back in `sca/`.
  */
@@ -111,8 +111,8 @@ const COUNTED = ["moderate", "high", "critical"];
  *   folder read it. Not a flag, so the review never sees it.
  * @property {?{file: string, line: ?number, hint: string}[]} buildIssues  What the build
  *   reaches for outside the declared dependencies, as the `analyze` hand-back read it, each
- *   at its file relative to the extracted archive (`sca/`), and null before it. Also in the work folder's
- *   build-issues.md, which the review links, and reported by build-unsafe where the reviewer
+ *   at its file relative to the extracted archive (`sca/`), and null before it. Also in the
+ *   work folder's build-issues.md, which the review links, and reported by build-unsafe where the reviewer
  *   trusts the verdict.
  * @property {?string} buildSafety  The verdict read off `buildIssues`, a BUILD_SAFETY_VALUES
  *   id, unsafe where it holds an entry, and null before it.
@@ -512,13 +512,13 @@ export function markPrepare(work, record) {
 }
 
 /**
- * Where a root the record holds lies in the work folder's trees: inside `rescued/` while a
- * rescue runs and once it came out clean, else inside `sca/`. `scaBuildOrig` is the same place
- * in `sca/` for a root in `rescued/`, and null for one in `sca/`, where it is that root itself.
- * `buildRoot` is the same place in `build/`, where every build runs, and null for a root in
+ * Where a build folder the record holds lies in the work folder's trees: inside `rescued/`
+ * while a rescue runs and once it came out clean, else inside `sca/`. `scaBuildOrig` is the
+ * same place in `sca/` for one in `rescued/`, and null for one in `sca/`, where it is itself.
+ * `buildRoot` is the same place in `build/`, where every build runs, and null for one in
  * neither tree.
  * @param {string} work  The work folder.
- * @param {string} root  The root, absolute and real.
+ * @param {string} root  The build folder, absolute and real.
  * @returns {{scaBuildOrig: ?string, buildRoot: ?string}}
  */
 export function treeRoots(work, root) {
@@ -538,17 +538,17 @@ export function treeRoots(work, root) {
   };
 }
 
-/** The root files that say what a source archive installs: package.json and the locks. */
+/** The build folder's files that say what a source archive installs: package.json and the locks. */
 const PACKAGE_FILES = [PACKAGE_FILE, ...TREE_LOCKS];
 
 /**
- * The package files of the root a rescued copy was made from, as the lock reader takes an
+ * The package files of the build folder a rescued copy was made from, as the lock reader takes an
  * artifact (`files`, src/vendor/locks.js lockedPackages): what the developer submitted,
  * beside which the rescued copy's own are compared (sca-dependencies-changed).
  *
- * A review whose root lies in the work folder's `rescued/` reviews the copy, and the root it
- * was copied from is the same place in `sca/`. Null for every other review. A root that is
- * gone ends the review: the report of a rescued review says what the rescue changed, and
+ * A review whose build folder lies in the work folder's `rescued/` reviews the copy, and the
+ * folder it was copied from is the same place in `sca/`. Null for every other review. One that
+ * is gone ends the review: the report of a rescued review says what the rescue changed, and
  * without the original there is nothing to say it against.
  * @param {string} work  The review's work folder.
  * @param {?PrepareRecord} record  Its record.
@@ -562,7 +562,7 @@ export function originalPackages(work, record) {
   }
   if (!fs.statSync(root, { throwIfNoEntry: false })?.isDirectory()) {
     throw new Error(
-      `The source root this rescued copy was made from is gone: ${root}. The review ` +
+      `The build folder this rescued copy was made from is gone: ${root}. The review ` +
         "reports what the rescue changed against it, so it cannot start without it."
     );
   }

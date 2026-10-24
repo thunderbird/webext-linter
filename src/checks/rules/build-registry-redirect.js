@@ -8,11 +8,11 @@
 // ignores, does not. The value is NOT judged: the mere presence of the key is the reject.
 // Deterministic, no network.
 //
-// input: sca - reads the submitted source archive off ctx.artifact. The ARCHIVE'S OWN .npmrc is the
-// one read: npm takes its config from the directory the install runs in, and the review
-// runs it at --sca-build, so that is the file whose settings reach the install. A config
-// deeper in the tree belongs to a directory this review never installs from, so it is never
-// asked for: this reads the one root key and never scans for others.
+// input: sca - reads the submitted source archive off ctx.artifact. The build folder's
+// .npmrc is the one read: npm takes its config from the directory the install runs in, and
+// the review runs it at --sca-build, so that is the file whose settings reach the install. A
+// config deeper in the tree belongs to a directory this review never installs from, so it is
+// never asked for: this reads that one key and never scans for others.
 //
 // Belongs here: flagging .npmrc registry settings. Does NOT belong here: which files are
 // in the source view (-> src/addon/load.js scaViews) or the wording (-> the registry).

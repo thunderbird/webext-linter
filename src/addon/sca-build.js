@@ -88,11 +88,11 @@ function subfolders(dir) {
  * Walks DOWN while there is exactly one way down, because a folder that holds nothing but
  * another folder is not a place a build could run - it is packaging, and how many layers of it
  * an archive carries is an accident of how it was made rather than anything about the
- * submission. A package file reached on the way ends the walk: that folder is the root.
+ * submission. A package file reached on the way ends the walk: that is the build folder.
  *
  * At the first fork the walk stops and sweeps THOSE siblings, and no deeper. A fork is the
  * archive's own shape - src beside docs beside tests - so a package file below one of them is a
- * package within the build rather than the build, and rooting there would review a dependency
+ * package within the build rather than the build, and building there would review a dependency
  * as the submission.
  *
  * Finite by construction: every pass moves strictly deeper into a finite tree, and symlinks are
@@ -105,7 +105,7 @@ function buildRootBelow(root) {
   for (;;) {
     const subs = subfolders(dir);
     if (subs.length !== 1) {
-      // A fork, or nowhere left to go. One package file among them is the root, several are
+      // A fork, or nowhere left to go. One package file among them is the build, several are
       // decided by the lock beside it - that is the pair an install reads, and what tells a
       // wrapper from a `tools/` or `examples/` folder carrying a package file of its own. Anything
       // still ambiguous is not guessed at.
@@ -127,20 +127,20 @@ function buildRootBelow(root) {
  * reading the flags again, so `scaBuild` and `scaExperiments` can never be read from two
  * different answers.
  *
- * The root moves only when it holds no package file itself AND exactly one folder below it can be
+ * The build folder moves only when it holds no package file AND exactly one folder below can be
  * meant (buildRootBelow walks that down). A lock is never required for the move, only ever
- * used to choose between several: a submission that forgot one is still re-rooted, so the
+ * used to choose between several: a submission that forgot one is still moved, so the
  * review reports the missing lock it has rather than the missing build it does not.
  *
  * The Experiment folder (--sca-experiments) does not move with it: it may lie anywhere in the
- * extracted source archive, so wherever the build folder settles, the folder named stays
- * where it is. Once the build folder stands, the pair is held to what the Experiment folder
- * may be (settled).
+ * extracted source archive. A folder found inside it is no build folder, so the folder given
+ * stands, as where none is found. Once the build folder stands, the pair is held to what the
+ * Experiment folder may be (settled).
  * @param {{scaExtracted?: string, scaBuild?: string, scaExperiments?: string}} opts  Absolute
  *   paths, as the CLI resolved them. The extracted folder is the build folder where none is
  *   named.
  * @returns {{scaBuild?: string, scaExperiments?: string, movedFrom: ?string}}
- *   The pair to review with. `movedFrom` is the root that was given when it was corrected,
+ *   The pair to review with. `movedFrom` is the build folder given when it was corrected,
  *   and null when it stands - the run narrates the difference rather than changing it silently.
  */
 export function settleScaBuild(opts) {
@@ -154,7 +154,11 @@ export function settleScaBuild(opts) {
     return settled(given, base);
   }
   const scaBuild = buildRootBelow(opts.scaBuild);
-  if (!scaBuild) {
+  if (
+    !scaBuild ||
+    (opts.scaExperiments &&
+      relativeInside(scaBuild, opts.scaExperiments) !== null)
+  ) {
     return settled(given, base);
   }
   return settled({ ...given, scaBuild, movedFrom: opts.scaBuild }, base);
@@ -172,9 +176,7 @@ export function settleScaBuild(opts) {
  * WebExtension review instead. Preventing exactly that is what the flag is for, so it ends the
  * run rather than warning.
  *
- * Asked HERE because this is where the pair stops moving: the build folder the CLI validated
- * against may not be the one that is used, since the move can land it inside the folder the
- * reviewer named.
+ * Asked HERE because this is where the pair stops moving.
  * @param {{scaBuild?: string, scaExperiments?: string, movedFrom: ?string}} pair
  * @param {?string} base  The extracted source archive, absolute.
  * @returns {{scaBuild?: string, scaExperiments?: string, movedFrom: ?string}} The same pair.
@@ -190,15 +192,9 @@ function settled(pair, base) {
   if (!isBase && !holdsBuild) {
     return pair;
   }
-  // Named separately when the build folder MOVED, because the reviewer never typed the one
-  // it collides with - saying only "the one holds the other" would describe a command they
-  // did not write.
   const because = isBase
     ? `--sca-experiments "${pair.scaExperiments}" is the extracted source archive itself`
-    : pair.movedFrom
-      ? `--sca-build "${pair.movedFrom}" holds no package file, so the build folder settles on ` +
-        `"${pair.scaBuild}" - which lies inside the folder --sca-experiments names`
-      : `--sca-experiments "${pair.scaExperiments}" holds --sca-build "${pair.scaBuild}"`;
+    : `--sca-experiments "${pair.scaExperiments}" holds the build folder "${pair.scaBuild}"`;
   throw new Error(
     `${because}. It names the Experiment implementation, a folder of its own inside the ` +
       "extracted source archive beside or below the WebExtension code, so it cannot be the " +

@@ -3,11 +3,11 @@
 //
 // Two runs start a preparation, and from `analyze` on they run the same steps. One given a
 // submission folder (--llm-sca-review) has the source archive extracted into the work
-// folder's `sca/` first (`unpack`), and its hand-back derives the root inside it as the review
+// folder's `sca/` first (`unpack`), and its hand-back derives the build folder inside it as the review
 // derives one (src/addon/sca-build.js). One given the extracted source (--llm-review
 // --sca-extracted) has it copied into `sca/` by the linter, and starts at `analyze`. There the
-// reader reports the build in build.md and hands back the verdict whether it is safe (and the
-// Experiment folder, where it is not known yet). Where a check the build relies on is switched
+// reader reports the build in build.md and hands back the issues the verdict is read off (and
+// the Experiment folder, where it is not known yet). Where a check the build relies on is switched
 // off (`build-guard`), the folder is done at once: nobody is asked, and the agent builds
 // nothing and runs no package-manager command. Otherwise, after either verdict, it moves on to
 // `permission`, which shows the reviewer the Build Review Details and asks them alone for the
@@ -16,8 +16,8 @@
 // or, after either, hold it unsafe for reasons of their own (pre-answered where the record
 // holds agentBuilds, which skips that step). Unless they let the agent build, the folder is
 // done at once: a rescue runs package-manager commands, so none is tried. Otherwise it audits
-// the root's lock (./audit.js). A root the audit cannot read in
-// full is done: nothing is built, and the review it starts aborts on that lock. A clean lock
+// the build folder's lock (./audit.js). A lock the audit cannot read in full is done:
+// nothing is built, and the review it starts aborts on that lock. A clean lock
 // moves on to `build`: the linter copies the whole `sca/` into `build/`, and the agent builds
 // the original there, as the lock pins it, and names what the build produced, or that it
 // failed. A vulnerable lock gets a RESCUED COPY of the whole `sca/` in the same work folder
@@ -92,8 +92,8 @@ import { RESULT_SHAPE } from "../config.js";
 
 /** The review file's entry for the Experiment folder, keyed by the name the prompt gives it. */
 const EXPERIMENTS = "SCA_EXPERIMENTS";
-/** The review file's entry for the reviewer's answer whether the agent may build the add-on,
- *  its package-manager commands included, as `llm-sca-review-prompt` names it. */
+/** The review file's entry for the reviewer's build decision, as `llm-sca-review-prompt`
+ *  names it. */
 const SCA_BUILD_PERMISSION = "SCA_BUILD_PERMISSION";
 /** The review file's entry for what the build reaches for outside the declared dependencies,
  *  as `llm-sca-review-prompt` names it: the list the verdict is read off. */
@@ -358,7 +358,7 @@ export async function handBack(work, registry = loadRegistry()) {
 }
 
 /**
- * The source archive extracted into `sca/`: the root derived inside it, as the review derives
+ * The source archive extracted into `sca/`: the build folder derived inside it, as the review derives
  * one (src/addon/sca-build.js settleScaBuild) - `sca/` itself where it holds the package file or
  * the walk cannot decide - and the build handed out to be analyzed.
  * @param {string} work
@@ -505,7 +505,7 @@ function decided(work, record, id, reasons, context, prompt) {
 
 /**
  * What follows the permission: where the agent may not build, the folder done at once,
- * since a rescue would run package-manager commands. Otherwise the root's lock audited, and
+ * since a rescue would run package-manager commands. Otherwise the build folder's lock audited, and
  * its counts recorded. A lock the audit cannot read in full is done with nothing built, a
  * clean one is copied whole into `build/` and handed to the agent to build there, and a
  * vulnerable one is rescued.
@@ -571,10 +571,10 @@ function builtOriginal(work, record, asked, match) {
  * shape a sweep's are (buildIssuesOf), and the Experiment folder where it was asked, taken as
  * the folder it really is and held inside the extracted archive, resolved against it as the
  * review resolves it, and neither that folder itself nor one holding the build folder
- * (settleScaBuild). Every way they can be wrong is refused, with
- * nothing changed, so the reader can correct the file and hand it back again.
+ * (settleScaBuild). Every way they can be wrong is refused, with nothing changed, so the
+ * reader can correct the file and hand it back again.
  * @param {string} work
- * @param {import("./state.js").PrepareRecord} record  At `analyze`, its root known.
+ * @param {import("./state.js").PrepareRecord} record  At `analyze`, its build folder known.
  * @returns {{roots: {scaBuild: string, scaExperiments: ?string},
  *   buildIssues: {file: string, line: ?number, hint: string}[]}}
  * @throws {HandbackRefused}
@@ -711,11 +711,11 @@ function buildGuarded(record, registry) {
 }
 
 /**
- * The roots a review is started with, asked again of the folder it starts in: the agent
+ * The folders a review is started with, asked again of the folder it starts in: the agent
  * works there between the step that settled them and the start, and can swap a folder for
  * a link. So each is followed to the folder it really is, and must still be one where the
- * preparation put it - the root inside `sca/`, or inside `rescued/` for a rescued copy, and
- * the Experiment folder inside the root.
+ * preparation put it - the build folder inside `sca/`, or inside `rescued/` for a rescued
+ * copy, and the Experiment folder inside that same copy.
  * @param {string} work  The work folder the review starts in.
  * @param {{scaBuild: string, scaExperiments: ?string}} roots  As the record holds them.
  * @returns {{scaBuild: string, scaExperiments: ?string}}  The real folders, which the review
@@ -727,18 +727,20 @@ export function recordedRoots(work, roots) {
   const root = realFolder(roots.scaBuild);
   if (!root || !(relativeInside(root, sca) !== null || inCopy(work, root))) {
     throw new HandbackRefused(
-      `the preparation's record names a source root "${displayLine(roots.scaBuild)}" ` +
+      `the preparation's record names a build folder "${displayLine(roots.scaBuild)}" ` +
         `that is not a folder inside "${sca}" or its rescued copy`
     );
   }
   if (typeof roots.scaExperiments !== "string") {
     return { scaBuild: root, scaExperiments: null };
   }
+  // The copy the build folder lies in, which the review reads whole.
+  const copy = inCopy(work, root) ? realFolder(workPaths(work).rescued) : sca;
   const exp = realFolder(roots.scaExperiments);
-  if (!exp || relativeInside(exp, root) === null) {
+  if (!exp || relativeInside(exp, copy) === null) {
     throw new HandbackRefused(
       "the preparation's record names an Experiment folder " +
-        `"${displayLine(roots.scaExperiments)}" that is not a folder inside "${root}"`
+        `"${displayLine(roots.scaExperiments)}" that is not a folder inside "${copy}"`
     );
   }
   return { scaBuild: root, scaExperiments: exp };
@@ -846,11 +848,11 @@ function rescue(work, record, asked, match) {
 /**
  * The source a review given --sca-extracted starts its preparation with: the whole of that folder
  * copied into the work folder's `sca/`, as --llm-sca-review's reader extracts the archive
- * there, and the roots given inside it mapped to their place in the copy. From here on the
+ * there, and the folders given inside it mapped to their place in the copy. From here on the
  * preparation reads only the copy.
  * @param {string} work  The work folder, just created.
- * @param {{extracted: string, scaBuild: string, scaExperiments: ?string}} given  Absolute and real:
- *   the extracted source, and the root and Experiment folder inside it.
+ * @param {{extracted: string, scaBuild: string, scaExperiments: ?string}} given  Absolute and
+ *   real: the extracted source, and the build and Experiment folders inside it.
  * @returns {{scaBuild: string, scaExperiments: ?string}}
  * @throws {Error}  The copy could not be made.
  */

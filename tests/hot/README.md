@@ -56,7 +56,7 @@ built from. Whatever the
 stop, a `rescued/` in the work folder must hold no `node_modules/`, since nothing is installed
 or built in it. At an
 abort it compares `LLM_BUILD_RESULT` and the counts of `LLM_RESCUED_VULNERABILITIES` the case
-names, settles the review as the closing prompt does, and compares the early-exit reasons
+names, settles the review as the closing prompt does, and compares the abort reasons
 (as a set) and the error findings the case names. At the downgrade question it reads the
 settled review the same way. A run that stopped anywhere else, in the
 preparation (`.review/prepare.json`) or at another phase, is a mismatch naming where it
@@ -88,7 +88,7 @@ Locks were generated with `npm install --package-lock-only --ignore-scripts` or
   and zips the files. Its package.json declares no dependency here.
 
 Packages are real and pinned, never faked. Each was confirmed against OSV
-(`api.osv.dev/v1/query`) on 2026-10-13, and each case's root was audited with the
+(`api.osv.dev/v1/query`) on 2026-10-13, and each case's lock was audited with the
 preparation's own audit (`src/prepare/audit.js` `auditRoot`). Every case's tree was also
 reviewed once without an agent (`--sca-extracted`, the rescued trees as the rescue would leave
 them), to confirm no deterministic check aborts a case that should reach row 14.

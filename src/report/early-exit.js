@@ -10,9 +10,10 @@
 // would take at its word. It stops the deterministic run at once.
 //
 // Two decisions, and they are deliberately separate. WHETHER to abort is the registry's:
-// a check names the reason it aborts a review, and the report lists those reasons. WHAT is withheld is not per-check at all: it is every to-do item a
-// REVIEWER would have been asked. Tying the second to the first would mean a table of
-// items to strip, maintained beside the table of checks that strip them, drifting apart.
+// a check names the reason it aborts a review, and the report lists those reasons. WHAT is
+// withheld is not per-check at all: it is every to-do item a REVIEWER would have been asked.
+// Tying the second to the first would mean a table of items to strip, maintained beside the
+// table of checks that strip them, drifting apart.
 //
 // Asked of the ITEM, and not only of the section it was filed under: a check can ask its
 // question in a phase of its own, which the item carries (`askedIn`, src/report/phases.js

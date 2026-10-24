@@ -14,7 +14,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { handBack, startPreparation } from "../../src/prepare/steps.js";
+import {
+  handBack,
+  recordedRoots,
+  startPreparation,
+} from "../../src/prepare/steps.js";
 import {
   PREPARE_STEP,
   readPrepare,
@@ -925,6 +929,29 @@ test("a wrapper folder that is a link out of the source is not the root", async 
   fs.symlinkSync(elsewhere, path.join(workPaths(work).sca, "out"));
   const at = await unpackStep(work);
   assert.equal(at.record.roots.scaBuild, workPaths(work).sca);
+  cleanup(work);
+});
+
+// A review reads the whole copy its build folder lies in, so the Experiment folder it starts
+// with may sit anywhere in that copy, beside the build folder too. Only a folder outside it is
+// refused.
+test("a review starts with an Experiment folder anywhere in the copy", () => {
+  const work = workFolder({
+    "pkg/package.json": packageFile(),
+    "exp/api.js": "",
+  });
+  const sca = workPaths(work).sca;
+  const roots = {
+    scaBuild: path.join(sca, "pkg"),
+    scaExperiments: path.join(sca, "exp"),
+  };
+  assert.deepEqual(recordedRoots(work, roots), roots);
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "wl-exp-"));
+  assert.throws(
+    () => recordedRoots(work, { ...roots, scaExperiments: outside }),
+    refused(/names an Experiment folder ".*" that is not a folder inside/)
+  );
+  fs.rmSync(outside, { recursive: true, force: true });
   cleanup(work);
 });
 

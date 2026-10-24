@@ -291,7 +291,7 @@ test("each details block holds every row of the block before it", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A clean lock is built: the prompt after the permission names the source root, its place in
+// A clean lock is built: the prompt after the permission names the build folder, its place in
 // the build copy the linter made to build it in, the build report and the submitted XPI, and
 // asks for the build's final artifact and its comparison with that XPI. The agent copies
 // nothing.
@@ -376,7 +376,7 @@ test("the hand-back prints a vulnerable source's rescue", () => {
 
 // A safe build is shown to the reviewer before they are asked: the permission prompt names
 // the review file and shows the Build Review Details - the build report, the judgement and
-// the source root, in the rows' order - as a block that ends the turn with the waiting line,
+// the build folder, in the rows' order - as a block that ends the turn with the waiting line,
 // and then puts the question. Its hand-back carries the preparation on.
 test("a safe build prints the Build Review Details and the permission question", () => {
   const dir = submissionFolder();
@@ -400,8 +400,7 @@ test("a safe build prints the Build Review Details and the permission question",
     `* SCA_BUILD_SAFETY_ISSUES: [build-issues.md](${workPaths(work).buildIssues})`,
     `* SCA_BUILD: [source archive](${path.join(work, "sca")})`,
     "",
-    'Reply "next" to continue the review with the question whether the agent may ' +
-      "build the add-on.",
+    'Reply "next" to continue the review with the question how to build the add-on.',
   ]
     .map((line) => (line ? `   ${line}` : ""))
     .join("\n");

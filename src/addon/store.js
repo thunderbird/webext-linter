@@ -44,8 +44,8 @@ import { ioError } from "../lib/errors.js";
 
 /**
  * Posix paths into the SUBMISSION, and no bytes: what a load RECORDED without reading (a
- * node_modules it refused to walk, a committed archive, every directory it entered) or what
- * an analysis COLLECTED (the files a build reaches). The submission's frame, like every
+ * node_modules it refused to walk, a committed archive, every directory it entered). The
+ * submission's frame, like every
  * key set here - a list of absolute paths is something else and says so
  * (src/addon/sca-build.js).
  * @typedef {string[]} PathList

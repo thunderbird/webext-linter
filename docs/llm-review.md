@@ -68,7 +68,7 @@ tool rows, while the message that ends a turn stays in view. So the step tells t
 to end its turn on the block and to go on with the question only once the reviewer has
 replied, and nothing is handed back in between. The linter ends the block with the line
 `Reply "next" to continue the review with` and what the reply leads to (for `built`, `the
-question whether the source is safe to build, builds, and reproduces the submitted XPI.`), so the reviewer
+question whether the source builds and reproduces the submitted XPI.`), so the reviewer
 sees the review waits for them and what comes next. The registry refuses a turn-ending
 phase whose first step, past a wait for spawned agents, shows no block, and one with no
 `next` entry in `waiting`. With no question open, `ask` is not issued, and the Review Details come
@@ -119,7 +119,7 @@ A source code review **opens with its build**, before the sweeps and the verify 
 passes. A source that does not build into the XPI, or that the reviewer declines to build,
 aborts the review late: the passes still run, so the developer is told everything in one
 round, and nobody is asked to install the add-on. The review builds nothing itself: the agent built the add-on in the
-preparation, where it judged the build safe and the reviewer let it (see [Preparing a source
+preparation, where the reviewer let it (see [Preparing a source
 code review](#preparing-a-source-code-review)), and otherwise the reviewer builds it. The
 review's build part is these steps:
 
@@ -179,8 +179,8 @@ review.
 The build question is in a phase of its own so it is put to the reviewer ALONE - `ask`
 batches, and nobody may be asked to install an XPI in the same breath as being asked whether
 the source builds into it. The check names its phase (`asked-in:` in the registry), the case
-carries it, and the phase relays it with its own four answers (`values`) in place of the
-manual review's. Every answer clears the case, and each of the three that stop the review
+carries it, and the phase relays it with its own three answers (`values`) in place of the
+manual review's. Every answer clears the case, and each of the two that stop the review
 reports its own check (`reports`), so the developer is told why: the passes still run, every
 `ask` question is dropped, and the report ends on "Build process issues". The question is asked under
 `--llm-skip-manual` too: it decides whether the review goes on, which is not what that flag
@@ -485,8 +485,8 @@ account and the block, each under a heading of its own: **LLM decisions** (every
 withdrew and every verdict it reached, with its reasons - the only part that is the agent's
 to write),
 **Summary** (the tally), and **Final Review Details** (every path this review named,
-`REVIEW_REPORT` among them, and nothing of what is in any of them). Where the review was aborted
-early, the reasons close that block, because only the block can list what aborted this
+`REVIEW_REPORT` among them, and nothing of what is in any of them). Where the review was aborted,
+the reasons close that block, because only the block can list what aborted this
 review. Nothing is handed back after `close`: it carries no hand-back step, and a hand-back
 is refused.
 
@@ -515,7 +515,7 @@ and `sca/` itself where it holds the package file or the walk cannot decide. The
 
 `--llm-review` given `--sca-extracted` (the source archive, already extracted) copies all of it into
 the work folder's `sca/`, takes `--sca-build` and `--sca-experiments` where they were given and
-finds the root where not, and prints the `analyze` prompt itself. Nothing either run hands
+finds the build folder where not, and prints the `analyze` prompt itself. Nothing either run hands
 out names a folder outside `sca/`.
 
 Nothing asks which directory holds the add-on's own code: the whole extracted archive is reviewed,
@@ -549,15 +549,15 @@ The reader hands the list back in the work folder's review file (`ANSWERS`, the 
 `.review/review.json` a review pass uses) and runs `--llm-handback` on the folder. The preparation's
 own record, `.review/prepare.json`, says where it stands, so every step is that one command. The
 reader never chooses what comes next. An `sca/` that is not the folder the source was
-extracted into, an Experiment folder outside the root, an issue the sweep's checker refuses (a
-file outside the root or not there, a line past its end, a missing or too long hint, a field it
+extracted into, an Experiment folder outside `sca/` or holding the build folder, an issue the sweep's checker refuses (a
+file outside `sca/` or not there, a line past its end, a missing or too long hint, a field it
 does not take), or a missing `build.md` is refused, and the reader corrects it and hands it back
 again.
 
 That hand-back records the verdict, and after either verdict the next prompt (`permission`)
-has the reader show the reviewer the **Build Review Details** (the submitted XPI, the source
-root, `build.md`, the verdict and `build-issues.md`) as the last thing of its turn, ending with `Reply "next" to
-continue the review with the question whether the agent may build the add-on.` Once the
+has the reader show the reviewer the **Build Review Details** (the submitted XPI, the build
+folder, `build.md`, the verdict and `build-issues.md`) as the last thing of its turn, ending with `Reply "next" to
+continue the review with the question how to build the add-on.` Once the
 reviewer has replied, it puts them the **one decision about the build** alone, through its
 question tool: the `SCA_BUILD_PERMISSION` entry, worded by the verdict.
 
@@ -584,7 +584,7 @@ Where the reviewer builds it themselves, the review's Build Review Details show 
 review starts with the recorded verdict and `build.md` as its report, so it does not ask for
 them again.
 
-Where the reviewer let the agent build, the hand-back **audits the root's lock**
+Where the reviewer let the agent build, the hand-back **audits the build folder's lock**
 (`src/prepare/audit.js`): every package it installs, against OSV and the policy blocklist,
 exactly as the review's own dependency audit reads it. Before that it asks whether every
 registry entry installs the release it names (`lockfile-injection`'s question): a lock that
@@ -601,7 +601,7 @@ the review. The record keeps the submitted lock's vulnerable packages counted by
 - **The lock is clean**: the linter copies the whole `sca/` into the work folder's `build/`,
   and the next prompt (`build`) has the reader build in `LLM_BUILD_ROOT`, `SCA_BUILD`'s place in
   that copy, as `SCA_BUILD_PROCESS` describes, installing exactly what the lock pins (`npm ci` or
-  `pnpm install --frozen-lockfile`). A build that writes next to its root still writes inside `build/`. It answers the `LLM_BUILD_OUTPUT` entry with the
+  `pnpm install --frozen-lockfile`). A build that writes beside `LLM_BUILD_ROOT` still writes inside `build/`. It answers the `LLM_BUILD_OUTPUT` entry with the
   final artifact the build produced inside `build/` (an XPI or zip file, or a folder), as an
   absolute path, or with `The build failed`, after adding a "Build attempt" section (the
   failing step and its error output) to `build.md`. An output that is not inside `build/` is
@@ -619,7 +619,7 @@ the review. The record keeps the submitted lock's vulnerable packages counted by
   `package.json` and the lock change in `rescued/`. It runs `npm audit` or `pnpm audit`, and
   builds nothing while a high or critical advisory remains. Once none does, it replaces
   `build/` with a copy of the whole `rescued/` (the two commands the prompt prints), installs
-  as the lock pins and builds in `LLM_BUILD_ROOT`, the root's place in that copy. Nothing is ever
+  as the lock pins and builds in `LLM_BUILD_ROOT`, `SCA_BUILD`'s place in that copy. Nothing is ever
   installed or built in `rescued/`. Where the build fails it adjusts the dependencies in
   `rescued/` and audits and copies again before the next build: a `prepare` script that runs
   `husky`, for one, needs the husky the trimming removed, or the script removed. It answers
@@ -651,7 +651,7 @@ own flags, the add-on it was given and the settled `--sca-*` folders, all read f
 a hash over it, so a record changed after the linter wrote it is refused. The reader works in
 the same folder as the same user, so neither makes the file tamper-proof, and nothing in it is
 taken as it stands either: only the flags a review takes, each of its own type and checked as a command line is,
-with the roots checked again as folders, and a record that does not hold up is refused to the
+with the `--sca-*` folders checked again, and a record that does not hold up is refused to the
 reader. `--cache-clear` and `--verbose` belong to the run that started the preparation and
 are not passed on. The hand-back prints the review's first prompt,
 and from then on the same command carries the round trip above.

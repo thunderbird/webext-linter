@@ -43,7 +43,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   the review's work folder, src/util/dest.js workPaths, which also holds this file and
  *   the review file and is not recorded: the state is read from it), schemaCache, schema,
  *   the two artifact roots
- *   (scaBuild, xpiRoot) an entry's paths are resolved against, and `sweeps` - each tree's sweep
+ *   (scaExtracted, xpiRoot) an entry's paths are resolved against, and `sweeps` - each tree's sweep
  *   request (the text its step hands over) and answers file, by artifact, which is also
  *   what says WHICH trees this review asked about. Held here
  *   because a later pass prints them and cannot re-derive a moment - and `report` is also
