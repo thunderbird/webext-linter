@@ -140,7 +140,7 @@
     {
       "ruleId": "sca-lock-file-missing",
       "severity": "error",
-      "file": "package.json",
+      "file": "addon-1.0-source/package.json",
       "loc": null,
       "item": null,
       "hint": null,

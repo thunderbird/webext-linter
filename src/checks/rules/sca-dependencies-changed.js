@@ -20,7 +20,7 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { PACKAGE_FILE } from "../../vendor/package-file.js";
+import { buildKey, PACKAGE_FILE } from "../../vendor/package-file.js";
 import { lockedPackages } from "../../vendor/locks.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -45,7 +45,7 @@ export default {
     ) {
       return { findings: [] };
     }
-    const at = ctx.artifact.at(PACKAGE_FILE);
+    const at = ctx.artifact.at(buildKey(ctx.artifact, PACKAGE_FILE));
     ctx.note?.(at, null, VERDICT.INFO);
     return { findings: [finding({ ...at })] };
   },

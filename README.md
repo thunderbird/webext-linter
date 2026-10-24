@@ -124,9 +124,9 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 
 | Option | Description |
 | --- | --- |
-| `--sca-extracted <folder>` | The **extracted** source archive, all of it - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode. Every other `--sca-*` folder lies inside it, and it must not include the add-on. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
-| `--sca-build <folder>` | The source root inside `--sca-extracted`: the folder holding `package.json` and its lock file (`package-lock.json` or `pnpm-lock.yaml`), where the build runs, and what the review reads as the source. Left out, the linter finds it. Needs `--sca-extracted`. |
-| `--sca-experiments <path>` | The Experiment implementation folder, **inside** the source root, anywhere under it. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission checks. Needs `--sca-extracted`, and is required for an Experiment. |
+| `--sca-extracted <folder>` | The **extracted** source archive, all of it - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode, and is what the review reads as the source: every path the report names is relative to it. Every other `--sca-*` folder lies inside it, and it must not include the add-on. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
+| `--sca-build <folder>` | The build folder inside `--sca-extracted`: the folder holding `package.json` and its lock file (`package-lock.json` or `pnpm-lock.yaml`), where the build runs and the package file and the lock are read. Left out, the linter finds it. Needs `--sca-extracted`. |
+| `--sca-experiments <path>` | The Experiment implementation folder, **inside** `--sca-extracted`, anywhere in it, relative to it or absolute. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission checks. Needs `--sca-extracted`, and is required for an Experiment. |
 
 **Other:**
 
@@ -171,13 +171,17 @@ may hold the real source beside the copy.
   must be a folder: unlike the submitted `.xpi`, which this tool extracts itself, a source
   archive comes in too many formats for this tool to open - extract it first, and every
   format then works, because `tar` handles what this tool does not.
-- The **source root** is the folder inside it the build runs in, the one holding
-  `package.json` and the lock file. Where the archive wraps its contents in folders of its
-  own, the linter finds it below them, and `--sca-build` names it where the linter cannot.
-  **The whole source root is the review source.** There is no flag naming a subtree of
+- **The whole extracted archive is the review source,** and every path the report names is
+  relative to it. A build may take code from anywhere in the archive (a Makefile beside the
+  node project, a shared folder, a workspace sibling), and that code ships in the XPI, so it is
+  reviewed like the rest. There is no flag naming a subtree of
   it, because no subtree can be called the add-on's: a build may move, rename or generate
   anything, so a path in a source archive cannot be trusted and nothing can say which files
   are used. Every file in the archive is assumed used and is reviewed.
+- The **build folder** is the folder inside it the build runs in, the one holding
+  `package.json` and the lock file, where both are read and the install runs. Where the
+  archive wraps its contents in folders of its own, the linter finds it below them, and
+  `--sca-build` names it where the linter cannot.
 - The **readable source** is reviewed for code defects (the API/permission/
   exfiltration checks run over every source file).
 - The **dependencies** are read from the committed lock file alone, never from
@@ -186,7 +190,7 @@ may hold the real source beside the copy.
   packages the lock marks as declared, build dependencies included, are gated on
   popularity (npm downloads, or GitHub stars for one installed from GitHub). An npm
   lockfile v1 records no declared set, so every package in one counts as declared. A
-  local install the archive does not hold as a folder (outside the source root, absent,
+  local install the archive does not hold as a folder (outside the extracted archive, absent,
   or a local tarball) is rejected, as is any other source the review cannot verify. Build
   dependencies are held to that same bar because the reviewer installs and RUNS them to
   reproduce the build, so refusing only the risks we can name would leave the ones we
@@ -203,12 +207,12 @@ may hold the real source beside the copy.
 - The **build tooling** (build scripts, configs, `.npmrc`) is reviewed as part of the
   submission like everything else, and additionally feeds the build checks below. Two requirements decide whether the build
   can be reproduced at all: the archive must **carry a build** (no `package.json` at
-  the source root means there is nothing to reproduce), and it must commit a **lock file**
+  the build folder means there is nothing to reproduce), and it must commit a **lock file**
   that installs exactly what `package.json` declares. npm and pnpm are the only package
   managers the review installs from, so those are the only locks that count and a build
   using anything else is rejected for having none. Each aborts the review, and nobody is
   asked to build a source that breaks either. A third requirement aborts the review from
-  the other side: an `.npmrc` **at the source root** that points the package
+  the other side: an `.npmrc` **in the build folder** that points the package
   **registry** elsewhere is rejected (npm reads its config from the directory the install
   runs in), because the install would run but fetch something other than what is declared,
   so reproducing it attests nothing and it pulls code from a developer-chosen host onto the
@@ -250,9 +254,10 @@ may hold the real source beside the copy.
   web-accessible / unused / locales). It gets the same library and parse passes in either
   mode (the vendor pass reads the review target only), so those checks see the
   shipped add-on the same way whether or not a source archive came with it.
-- `--sca-experiments` names an Experiment implementation folder - anywhere under
-  the source root, relative to it or absolute inside it (e.g. `addon/experiment-api`),
-  but never the root itself, which would exclude nothing - so its privileged,
+- `--sca-experiments` names an Experiment implementation folder - anywhere in the
+  extracted archive, relative to it or absolute inside it (e.g. `addon/experiment-api`),
+  but never the archive itself, which would exclude nothing, nor a folder holding the build
+  folder - so its privileged,
   non-WebExtension code is excluded from the WebExtension checks (required for an
   Experiment).
 - Because a review spans two artifacts, each finding's `file:line` is prefixed with the

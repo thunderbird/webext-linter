@@ -12,8 +12,8 @@
 // another name, so it is classified by what it installs and the spelling decides nothing
 // (src/vendor/resolve.js -> the vendor reading's `unsupportedDeps`). A source archive's committed
 // lock file: an install from a local path the archive does not hold as a folder - outside
-// the source root, absent, or a local tarball (src/vendor/locks.js localInstalls ->
-// the vendor reading's `lockLocalInstalls`). A local folder inside the source root is the
+// the extracted archive, absent, or a local tarball (src/vendor/locks.js localInstalls ->
+// the vendor reading's `lockLocalInstalls`). A local folder inside the extracted archive is the
 // submission's own code, reviewed like any other file, so it never reaches this check; a
 // remote tarball or a non-GitHub git source in the lock is lock-foreign-source's.
 // This check only reads those two lists and emits a finding per entry. Deterministic, no

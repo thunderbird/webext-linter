@@ -50,6 +50,7 @@ import {
   DECLARATION_MAPS,
   aliasTarget,
   declaredDependencies,
+  buildKey,
   readPackageFile,
   submissionFiles,
   ownValue,
@@ -306,9 +307,11 @@ export function lockedPackages(addon) {
   if (!data) {
     return [];
   }
+  // Named in the archive's keyspace, where every reported path is given.
+  const at = buildKey(addon, file);
   const found = file.endsWith(".json")
-    ? npmPackages(data, file)
-    : pnpmPackages(data, file);
+    ? npmPackages(data, at)
+    : pnpmPackages(data, at);
   return dedupe(found);
 }
 
@@ -623,6 +626,8 @@ function declaredName(name, spec) {
  */
 export function lockSourceGaps(addon) {
   const file = governingLock(addon);
+  // Named in the archive's keyspace, where every reported path is given.
+  const at = buildKey(addon, file);
   const data = file ? parsedLock(addon, file) : null;
   if (!data) {
     return [];
@@ -630,7 +635,7 @@ export function lockSourceGaps(addon) {
   const gaps = [];
   const judge = (token, name, version, source, kind) => {
     if (kind === "foreign") {
-      gaps.push({ file, token, name, version, source });
+      gaps.push({ file: at, token, name, version, source });
     }
   };
   if (!file.endsWith(".json")) {
@@ -713,6 +718,8 @@ export function lockSourceGaps(addon) {
  */
 export function lockInstallTargets(addon) {
   const file = governingLock(addon);
+  // Named in the archive's keyspace, where every reported path is given.
+  const at = buildKey(addon, file);
   const data = file ? parsedLock(addon, file) : null;
   if (!plainObject(data)) {
     return [];
@@ -720,7 +727,7 @@ export function lockInstallTargets(addon) {
   const out = [];
   const add = (token, name, version, url) => {
     out.push({
-      file,
+      file: at,
       token,
       name,
       version,
@@ -1004,6 +1011,8 @@ function objectOr(value) {
  */
 export function githubInstalls(addon) {
   const file = governingLock(addon);
+  // Named in the archive's keyspace, where every reported path is given.
+  const at = buildKey(addon, file);
   const data = file ? parsedLock(addon, file) : null;
   if (!data) {
     return [];
@@ -1021,7 +1030,7 @@ export function githubInstalls(addon) {
         version: version || source,
         repo,
         direct: name ? direct : true,
-        file,
+        file: at,
         token,
       });
     }
@@ -1173,9 +1182,9 @@ function ownerRepo(owner, repo) {
 
 /**
  * Every install the lock takes from a local path, other than a folder the submission
- * holds. A folder inside the source root is the submission's own code, reviewed like any
- * other file, so nothing is said about it. Anything else local cannot be reviewed: a path
- * outside the root, one the submission does not hold, or a local tarball - which
+ * holds. A folder inside the extracted archive is the submission's own code, reviewed like
+ * any other file, so nothing is said about it. Anything else local cannot be reviewed: a path
+ * outside the archive, one the submission does not hold, or a local tarball - which
  * installSource counts as local, so lock-foreign-source never sees it. Read by the
  * unsupported-dependency check in a source review.
  *
@@ -1194,6 +1203,8 @@ function ownerRepo(owner, repo) {
  */
 export function localInstalls(addon) {
   const file = governingLock(addon);
+  // Named in the archive's keyspace, where every reported path is given.
+  const at = buildKey(addon, file);
   const data = file ? parsedLock(addon, file) : null;
   if (!data) {
     return [];
@@ -1201,10 +1212,17 @@ export function localInstalls(addon) {
   const directories = new Set(addon?.directories ?? []);
   const out = [];
   const judge = (token, name, spec, baseDir, target) => {
-    const dir = resolveLocalDir(baseDir, target);
-    // The source root itself ("") is always a folder the submission holds.
+    // A path in the lock is relative to the build folder's own importer, and the folders the
+    // loader saw are keyed from the extracted archive, so it is resolved from where the build
+    // folder sits in it: a workspace sibling beside the build folder is a folder the
+    // submission holds.
+    const from = baseDir
+      ? buildKey(addon, baseDir)
+      : (addon?.buildPrefix ?? "");
+    const dir = resolveLocalDir(from, target);
+    // The extracted archive itself ("") is always a folder the submission holds.
     if (dir === null || (dir !== "" && !directories.has(dir))) {
-      out.push({ name, spec, file, token });
+      out.push({ name, spec, file: at, token });
     }
   };
   if (!file.endsWith(".json")) {
@@ -1335,18 +1353,20 @@ function pnpmSource(entry) {
  */
 export function unreadableLock(addon) {
   const file = governingLock(addon);
+  // Named in the archive's keyspace, where every reported path is given.
+  const at = buildKey(addon, file);
   if (!file) {
     return null; // no lock at all is sca-lock-file-missing's question, not this one
   }
   const data = parsedLock(addon, file);
   if (!data) {
-    return { file, reason: "unreadable" };
+    return { file: at, reason: "unreadable" };
   }
   const declares = declaredDependencies(
     readPackageFile(submissionFiles(addon))
   ).length;
   if (declares && !READERS.get(file)?.(data)) {
-    return { file, reason: "unrecognised" };
+    return { file: at, reason: "unrecognised" };
   }
   return null;
 }

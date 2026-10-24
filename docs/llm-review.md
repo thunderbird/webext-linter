@@ -445,8 +445,9 @@ carry, come last.
 | `SCA_BUILD_SAFETY_ASSESSMENT` | The verdict the preparation read off the build's safety issues: `safe` where there are none, `unsafe` otherwise |
 | `SCA_BUILD_SAFETY_ISSUES` | What the build reaches for outside the declared dependencies, one line per issue, as the agent handed it back and the linter wrote it |
 | `SCA_EXPERIMENTS` | The Experiment implementation folder, when one was named |
-| `SCA_BUILD` | A source code review's source root - the whole of which is reviewed - labelled "source archive" in `sca/`, or "rescued source (reduced/fixed dependencies)" where a rescue came out clean and the root lies in `rescued/` |
-| `SCA_BUILD_ORIG` | The same root in `sca/`, the source as submitted - only after a rescue, since it is `SCA_BUILD` otherwise |
+| `SCA_EXTRACTED` | A source code review's extracted source archive, the whole of which is reviewed and every path is relative to - named where the build folder lies below it, labelled "source archive" in `sca/`, or "rescued source (reduced/fixed dependencies)" where a rescue came out clean |
+| `SCA_BUILD` | The build folder, where the package file and the lock are read and the install runs - labelled "build folder" beside `SCA_EXTRACTED`, and named alone, with `SCA_EXTRACTED`'s label, where the two are one folder |
+| `SCA_BUILD_ORIG` | The same build folder in `sca/`, the source as submitted - only after a rescue, since it is `SCA_BUILD` otherwise |
 | `SCA_VULNERABILITIES` | The submitted lock's vulnerable packages, as `n moderate, n high, n critical`: the preparation's first audit, or where nothing was audited there the review's own, held once any dependency-vulnerability check read the lock |
 | `LLM_BUILD_OUTPUT` | What the agent's build produced in the preparation, a file or a folder inside `build/`, named by its own name - only where the agent built it, since the reviewer may build it themselves and a build may fail |
 | `LLM_BUILD_RESULT` | What came of the agent's attempt: `build succeeded`, `build failed: see build.md`, `not built: rescue failed` or `not built: unsafe` - absent where the reviewer builds the add-on |
@@ -460,8 +461,8 @@ The linter names these files and reads none of them. The description is a sub-ag
 given the extracted XPI (`XPI_ROOT`) to describe and nothing outside it, returned as its
 reply, and the agent conducting the review is told only to write that reply
 unchanged to `ADDON_DESCRIPTION` - not to read, summarise or print it. The build report and the build output are the agent's own, and
-the Build Review Details block names them beside the submitted XPI and the source root the
-review read, right before the build question.
+the Build Review Details block names them beside the submitted XPI and the source the review
+read, right before the build question.
 
 `REVIEW_REPORT` it writes itself: as the `ask` phase goes out, where one does, so the
 reviewer can read the report while answering the questions that follow, and again from the settled review
@@ -507,7 +508,7 @@ add-on, and does the half a program can do. It reviews nothing. It names which f
 add-on and which is the source, creates the review's work folder at its default place beside
 the `.xpi`, names its `sca/` as where the source archive is to be extracted (`EXTRACT_TO`),
 and asks its reader to extract it there and hand the folder back (`unpack`). That hand-back
-finds the source root, the folder holding `package.json`, inside `sca/` by the rule the review
+finds the build folder, the folder holding `package.json`, inside `sca/` by the rule the review
 finds one by (`src/addon/sca-build.js`): below any folders the archive wraps its contents in,
 and `sca/` itself where it holds the package file or the walk cannot decide. Then it prints the
 `analyze` prompt.
@@ -517,7 +518,7 @@ the work folder's `sca/`, takes `--sca-build` and `--sca-experiments` where they
 finds the root where not, and prints the `analyze` prompt itself. Nothing either run hands
 out names a folder outside `sca/`.
 
-Nothing asks which directory holds the add-on's own code: the whole of `SCA_BUILD` is reviewed,
+Nothing asks which directory holds the add-on's own code: the whole extracted archive is reviewed,
 because a build may move or generate anything and no subtree can be shown to be the add-on's.
 
 An add-on whose Experiment the review would reject is not prepared at all: the review
@@ -542,7 +543,7 @@ line where it sits on one, and a hint of at most 500 characters saying what it d
 list is a safe build. The linter reads the verdict off the list, `unsafe` where it holds an
 entry, and writes the list to the work folder's `build-issues.md`. For an Experiment whose folder was not given, it also works
 out which directory holds the Experiment implementation (`<SCA_EXPERIMENTS>`, a name in
-`<angle brackets>` being one it works out), relative to `SCA_BUILD`.
+`<angle brackets>` being one it works out), relative to `SCA_EXTRACTED`.
 
 The reader hands the list back in the work folder's review file (`ANSWERS`, the same
 `.review/review.json` a review pass uses) and runs `--llm-handback` on the folder. The preparation's
@@ -572,8 +573,7 @@ whether the agent may build. Only `Let the agent build` and `Build anyhow` let i
 go on to the audit below. Every other answer ends the preparation at once: the reviewer builds
 it themselves after `Build it myself`, and nobody builds it where it is held unsafe, which the
 review reports as `build-unsafe`: one finding per issue the agent listed, at its file and line
-with its hint, where the reviewer trusted the verdict (an issue above `SCA_BUILD`, which the
-review does not read, is reported at the build's anchor, its hint naming where it is), and one finding carrying their own words
+with its hint, where the reviewer trusted the verdict, and one finding carrying their own words
 where they gave reasons of their own. With a check the build relies on switched off (`build-guard`
 in the registry, by `--checks-only` or `--checks-skip`), the folder is done at once too, and
 nobody is asked: nothing vouches for what an install pulls in, so the agent builds nothing,

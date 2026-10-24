@@ -66,12 +66,9 @@ const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
 // under review: a file kept inside it is a file the review sees the add-on shipping, and
 // hiding one would mean the harness loading the add-on itself and deleting the key before
 // handing it over - a test-only input on runPipeline.
-// A spec may also carry an "sca" block naming where the add-on code and the Experiment
-// implementation sit INSIDE the fixture's src/ tree (the --sca-build), as paths relative to
-// it: { "source": "addon", "experimentsFolder": "experiment" }. Omitting it is the flat layout,
-// where the source IS the root. The block is the only way a fixture can express a NESTED
-// submission, and the keyspaces only differ there - flat means the prefix is empty, so the
-// review source and the archive key a file identically.
+// A spec may also carry an "sca" block naming where the Experiment implementation sits
+// INSIDE the fixture's src/ tree (the extracted archive), as a path relative to it:
+// { "experimentsFolder": "experiment" }.
 // An SCA spec may also carry a "preparation" block: the review is then started the way a
 // prepared source code review is, in the work folder a REAL preparation (src/prepare/steps.js)
 // leaves - run here, step by step, its audits answered from `advisories` seeded into the
@@ -376,12 +373,12 @@ async function main() {
       let { workFolder } = base;
       let review;
       if (isScaFixture(dir)) {
-        // SCA mode: the shipped XPI is the authoritative artifact (addonPath), the
-        // src/ tree is the submitted archive (scaExtracted), and the review finds the root inside
-        // it, as it does for a command line naming no --sca-build. Where the add-on code and
-        // the Experiment sit inside the root comes from the spec's "sca" block; with none, the
-        // source IS the root - the flat layout. Named absolutely, like every other path
-        // opt, since that is what the arg reader hands the pipeline.
+        // SCA mode: the shipped XPI is the authoritative artifact (addonPath), the src/ tree
+        // is the submitted archive (scaExtracted), which the review reads whole, and the review
+        // finds the build folder inside it, as it does for a command line naming no
+        // --sca-build. Where the Experiment sits inside the archive comes from the spec's "sca"
+        // block. Named absolutely, like every other path opt, since that is what the arg reader
+        // hands the pipeline.
         let scaExtracted = path.join(dir, "src");
         let scaBuild = settleScaBuild({ scaBuild: scaExtracted }).scaBuild;
         if (preparation) {
@@ -392,7 +389,7 @@ async function main() {
           ));
         }
         const inRoot = (value) =>
-          value ? path.join(scaBuild, value) : undefined;
+          value ? path.join(scaExtracted, value) : undefined;
         review = await runPipeline({
           ...base,
           workFolder,

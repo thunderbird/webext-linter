@@ -260,7 +260,7 @@ export function reviewData({ opts, schema, manifest, xpi, archive, target }) {
     extractReview(archive, { schema, manifest })
   );
   const scaBuild = stage("Analyzing the build", [], () =>
-    analyzeBuild({ build: { files: archive.files } })
+    analyzeBuild({ build: archive })
   );
   const scaLockInstalls = stage("Checking the lock file's sources", [], () =>
     findLockInjections(archive, { net, cacheDir: opts.npmRegistryCache })

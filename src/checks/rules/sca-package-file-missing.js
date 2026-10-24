@@ -23,7 +23,11 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { PACKAGE_FILE } from "../../vendor/package-file.js";
+import {
+  buildKey,
+  PACKAGE_FILE,
+  submissionFiles,
+} from "../../vendor/package-file.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -33,14 +37,18 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    if (ctx.artifact.files.has(PACKAGE_FILE)) {
+    if (submissionFiles(ctx.artifact)?.has(PACKAGE_FILE)) {
       return { findings: [] };
     }
     // The FINDING names no file: its subject is something the archive does not contain, so
     // there is nothing to anchor it at. The feed note still names package.json, the file
     // whose absence is the whole point, so the reviewer reads what was looked for rather
     // than a bare verdict.
-    ctx.note?.(ctx.artifact.at(PACKAGE_FILE), "no package.json", VERDICT.FAIL);
+    ctx.note?.(
+      ctx.artifact.at(buildKey(ctx.artifact, PACKAGE_FILE)),
+      "no package.json",
+      VERDICT.FAIL
+    );
     return { findings: [finding({ ...ctx.artifact.at() })] };
   },
 };

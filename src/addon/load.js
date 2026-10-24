@@ -51,7 +51,7 @@ import { ARCHIVE_EXTENSIONS, extname } from "../util/files.js";
 import { displayLine, trimEndOf } from "../util/text.js";
 import { hidesItsSize } from "../util/zip.js";
 import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
-import { FileStore, fileView } from "./store.js";
+import { FileStore, fileView, folderView } from "./store.js";
 import { SYMLINK_CAUSE } from "../lib/enum.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 
@@ -183,9 +183,9 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   keyed relative to the root the reviewer was given: everything it holds, exactly as it
  *   arrived, and the FileStore every view resolves its bytes through (./store.js). For a
  *   built XPI that is the whole package, which `files` reviews entire. For a source archive it
- *   is the whole --sca-build, the frame the package file and the lock are read in and the frame
- *   a reviewer resolves a reported path against, while `files` there gives up the Experiment
- *   subtree. Reach for it deliberately: a reader asking `store` is saying it wants the
+ *   is the whole --sca-extracted, the frame a reviewer resolves a reported path against, while
+ *   `files` there gives up the Experiment subtree. The package file and the lock are read in
+ *   the build folder's view of it (`buildFiles`, scaViews). Reach for it deliberately: a reader asking `store` is saying it wants the
  *   submission entire.
  * @property {string[]} nodeModules  Posix paths of node_modules directories
  *   skipped at load (their contents are never read); empty when none, and always empty
@@ -327,10 +327,9 @@ export function extractXpiToTemp(xpiPath) {
  * package file and lock), so it is recorded rather than read as content. A caller asking for
  * a submission asks for it by name.
  *
- * No `copyTo`: --sca-build is a directory by the time anything loads it, extracted by the
- * reviewer and settled before the review starts (src/addon/sca-build.js), so it is read
- * where it is.
- * @param {string} source  Absolute path to the extracted source root.
+ * No `copyTo`: --sca-extracted is a directory by the time anything loads it, extracted by
+ * the reviewer before the review starts, so it is read where it is.
+ * @param {string} source  Absolute path to the extracted source archive.
  * @returns {Addon}
  */
 export function loadSourceArchive(source) {
@@ -482,30 +481,30 @@ export function locusMinter(kind) {
 }
 
 /**
- * The archive key for a path INSIDE scaBuild: where it sits relative to the root, keyed the
- * way an archive keys its entries.
+ * The archive key for a path INSIDE the extracted source archive: where it sits relative to
+ * it, keyed the way an archive keys its entries.
  *
  * Both are absolute by the time they reach here - the arg-array reader resolved them
  * (src/cli.js), which is the one layer that knows what each flag was written relative to -
  * so this asks one question of two real paths rather than deciding again what a relative
- * string meant. A path that is not inside the root is refused: the files map has no key for
- * it, and a review cannot be shown to cover what sits outside the tree it was given.
+ * string meant. A path that is not inside the extracted folder is refused: the files map has
+ * no key for it, and a review cannot be shown to cover what sits outside the tree it was given.
  *
  * Judged as the PLATFORM spells paths (node's `path` is posix here and win32 there), never
  * by rewriting a separator first: a backslash is a separator on Windows and an ordinary
  * character in a POSIX file name, and only the platform knows which this is. The answer is
  * keyed posix, like every other add-on-internal path.
  * @param {string} value  The absolute path to locate.
- * @param {string} scaBuild  The absolute --sca-build path.
+ * @param {string} scaExtracted  The absolute --sca-extracted path.
  * @param {string} [flag]  The flag name to name in the error (e.g. "--sca-experiments").
- * @returns {string} A posix path relative to scaBuild ("" for the root itself).
+ * @returns {string} A posix path relative to scaExtracted ("" for that folder itself).
  */
-export function scaBuildRelative(value, scaBuild, flag = "SCA path") {
-  const rel = relativeInside(value, scaBuild);
+export function extractedRelative(value, scaExtracted, flag = "SCA path") {
+  const rel = relativeInside(value, scaExtracted);
   if (rel === null) {
     throw new Error(
-      `${flag} "${value}" is not inside --sca-build (${scaBuild}) - it names a folder ` +
-        "within the source root, never a way out of one"
+      `${flag} "${value}" is not inside --sca-extracted (${scaExtracted}) - it names a ` +
+        "folder within the extracted source archive, never a way out of one"
     );
   }
   return rel;
@@ -522,7 +521,7 @@ export function scaBuildRelative(value, scaBuild, flag = "SCA path") {
  * a fact about the filesystem rather than about spelling.
  * @param {string} value
  * @param {string} scaBuild
- * @returns {?string} A posix path relative to scaBuild ("" for the root itself), or null.
+ * @returns {?string} A posix path relative to scaBuild ("" for that folder itself), or null.
  */
 export function relativeInside(value, scaBuild) {
   const rel = path.relative(
@@ -583,18 +582,29 @@ export function hasParentSegment(value) {
  * The source and the experiment are keyed alike whenever the Experiment sits inside the
  * add-on, so a check that must review the privileged code too reads the two as one set of files
  * (`source.experiment` carries it onto the review addon for exactly that).
- * @param {Addon} archive  The scaBuild archive, loaded ONCE (loadSourceArchive).
- * @param {{scaBuild: string, scaExperiments?: string}} where  Absolute paths, resolved by the
- *   arg-array reader (src/cli.js). scaExperiments may sit anywhere under the root.
+ * The build folder is recorded as a place in the same keyspace (`buildPrefix`, "" where it is
+ * the extracted folder itself), with its own files keyed relative to it (`buildFiles`), the
+ * one frame the package file and the lock are read in (src/vendor/package-file.js
+ * submissionFiles, buildKey).
+ * @param {Addon} archive  The extracted archive, loaded ONCE (loadSourceArchive).
+ * @param {{scaExtracted?: string, scaBuild: string, scaExperiments?: string}} where  Absolute
+ *   paths, resolved by the arg-array reader (src/cli.js). The build folder and scaExperiments
+ *   may sit anywhere in the extracted folder, which is the build folder where none is named.
  * @returns {Addon}  The SAME archive, now carrying its two views. Not a new object:
  *   the store and the recorded path lists already describe this submission, and copying
  *   them onto parts is how they came to disagree.
  */
-export function scaViews(archive, { scaBuild, scaExperiments }) {
+export function scaViews(archive, { scaExtracted, scaBuild, scaExperiments }) {
   const store = archive.store;
+  // The archive is walked from the extracted folder, so every key is relative to it. The
+  // build folder and the Experiment folder are two places in that keyspace.
+  const base = scaExtracted ?? scaBuild;
   const exp = scaExperiments
-    ? scaBuildRelative(scaExperiments, scaBuild, "--sca-experiments")
+    ? extractedRelative(scaExperiments, base, "--sca-experiments")
     : null;
+  const build = extractedRelative(scaBuild, base, "--sca-build");
+  archive.buildPrefix = build;
+  archive.buildFiles = build ? folderView(store, build) : undefined;
   // A prefix that was never given (no --sca-experiments) is under nothing.
   const under = (key, prefix) =>
     Boolean(prefix) && (key === prefix || key.startsWith(`${prefix}/`));

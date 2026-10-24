@@ -954,8 +954,8 @@ deterministic-phase:
 # submission type (xpi-lock-file-missing / xpi-lock-file-invalid, sca-lock-file-missing /
 # sca-lock-file-invalid). A built XPI's package.json declarations are judged; in a source
 # review the committed lock file is read instead, and what it reports is an install from a
-# local path the archive does not hold as a folder (outside the source root, absent, or a
-# local tarball). A remote tarball or a non-GitHub git source in the lock is
+# local path the archive does not hold as a folder (outside the extracted archive, absent, or
+# a local tarball). A remote tarball or a non-GitHub git source in the lock is
 # lock-foreign-source's.
 - title: Unsupported dependency source
   severity: error
@@ -2250,7 +2250,7 @@ llm-sca-review-prompt:
   analyze:
     - when: find-experiment
       text: |-
-        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under SCA_BUILD, given above. Its path relative to SCA_BUILD is <SCA_EXPERIMENTS>.
+        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under SCA_EXTRACTED, given above. Its path relative to SCA_EXTRACTED is <SCA_EXPERIMENTS>.
     - text: |-
         Work out what building this add-on takes. Read the documentation and the build files of the whole extracted archive, SCA_EXTRACTED, given above: the build may be driven from anywhere in it, and the node project, with package.json and its lock file, is SCA_BUILD inside it. Follow the release build from where it starts, and work out which files it actually runs or reads: only those are part of it, wherever they lie. Report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
 
@@ -2459,7 +2459,7 @@ llm-sca-review-prompt:
 # {{description}} and {{build}} the files an agent writes, {{xpiRoot}} the extracted XPI, {{sweepXpi}} and
 # {{sweepSca}} the sweep request for each tree - one sub-agent's whole brief, so the step
 # that starts it relays nothing else - {{sweepXpiAnswers}} and {{sweepScaAnswers}} the
-# file each sweep's reply is written to, {{scaBuild}} the source root, {{details}} the Review
+# file each sweep's reply is written to, {{scaBuild}} the build folder, {{details}} the Review
 # Details block, {{buildDetails}} the Build Review Details block, {{tally}} the closing
 # summary, {{maxNote}} the longest answer in a reviewer's own words, and {{schema}} - what
 # a verdict is judged against, printed by the phases

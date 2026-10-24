@@ -244,7 +244,7 @@ test("a warning reaches stderr, held back to the end of a prompt run", () => {
     "emptyexp",
     ...OFFLINE_FLAGS,
   ];
-  const WARNING = /matched no files under --sca-build/;
+  const WARNING = /matched no files under --sca-extracted/;
 
   // The review an agent runs starts once its preparation is done: the build judged.
   const analyze = run([...args, "--llm-review", "--llm-skip-summary"]);

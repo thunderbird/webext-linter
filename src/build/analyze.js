@@ -9,21 +9,30 @@
 // Belongs here: shaping the stored record. Does NOT belong here: the finding/manual wording
 // (-> the input:sca checks + registry).
 
+import {
+  buildKey,
+  PACKAGE_FILE,
+  submissionFiles,
+} from "../vendor/package-file.js";
+
 /**
  * @typedef {object} BuildReview
- * @property {?string} anchor  The file the findings/notes anchor at: package.json when the
- *   submission ships one, else null, so an escalation carries no locus rather than pointing
+ * @property {?string} anchor  The file the findings/notes anchor at: the build folder's
+ *   package.json, keyed in the archive, when the submission ships one, else null, so an escalation carries no locus rather than pointing
  *   the reviewer at a file the submission does not have.
  */
 
 /**
  * Look at the SCA build once, when a check first asks for it (src/review/products.js).
  * @param {object} params
- * @param {{files: Map<string, Buffer>}} [params.build]  The submission's files
- *   (the archive's source view); absent is no files at all.
+ * @param {?object} [params.build]  The source archive, whose build folder holds the package
+ *   file (src/vendor/package-file.js submissionFiles); absent is no files at all.
  * @returns {BuildReview}
  */
 export function analyzeBuild({ build }) {
-  const files = build?.files ?? new Map();
-  return { anchor: files.has("package.json") ? "package.json" : null };
+  return {
+    anchor: submissionFiles(build)?.has(PACKAGE_FILE)
+      ? buildKey(build, PACKAGE_FILE)
+      : null,
+  };
 }

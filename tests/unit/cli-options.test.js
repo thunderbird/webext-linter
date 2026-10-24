@@ -294,12 +294,12 @@ test("--sca-build outside --sca-extracted is a usage error (exit 2)", () => {
 // In SCA mode, Experiment code is told apart from WebExtension code only by
 // --sca-experiments, so --allow-experiments without it is a usage error (else the
 // privileged Experiment code would be reviewed as WebExtension code).
-// And it names a folder INSIDE the root, so it may not BE the root: naming the root
-// excludes nothing, which leaves the Experiment's privileged code reviewed as WebExtension
-// code - the one thing the flag exists to prevent. Refused where the pair settles
+// And it names a folder INSIDE the extracted archive, so it may not BE the archive: naming the
+// archive excludes nothing, which leaves the Experiment's privileged code reviewed as
+// WebExtension code - the one thing the flag exists to prevent. Refused where the pair settles
 // (src/addon/sca-build.js), so this asserts the throw reaches the EXIT rather than only the
 // unit: "." is what a reviewer types for an add-on that is entirely an Experiment.
-test("--sca-experiments naming the root itself is a usage error (exit 2)", () => {
+test("--sca-experiments naming the extracted archive itself is a usage error (exit 2)", () => {
   const r = run([
     "tests/addons/sca-nested-layout/xpi",
     "--sca-extracted",
@@ -308,7 +308,7 @@ test("--sca-experiments naming the root itself is a usage error (exit 2)", () =>
     ".",
   ]);
   assert.equal(r.code, 2);
-  assert.match(r.stderr, /cannot be the root/);
+  assert.match(r.stderr, /is the extracted source archive itself/);
   assert.match(r.stderr, /Name the subfolder holding it/);
 });
 

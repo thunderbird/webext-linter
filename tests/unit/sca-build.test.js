@@ -152,48 +152,36 @@ test("a lone symlinked subfolder is not followed out of the root", () => {
   assert.equal(out.movedFrom, null);
 });
 
-// Containment is an invariant of every source code review, so it decides here too: a move
-// that put --sca-experiments outside the root would trade a wrong root for a failed run.
-test("the move is abandoned where the Experiment folder would fall outside", () => {
+// The Experiment folder may lie anywhere in the extracted archive, so it does not hold the
+// build folder in place: the build folder moves wherever its package file is, beside the
+// Experiment folder or above it. Only a move into the folder it names ends the run.
+test("the Experiment folder does not hold the move", () => {
   const root = tree({
     "wrap/package.json": PKG,
     "wrap/addon/x.js": "",
     "other/y.js": "",
   });
   const wrap = path.join(root, "wrap");
-
-  // Inside the candidate: it moves, and the flag is untouched.
+  // Inside the new build folder: it moves, and the flag is untouched.
   const inside = settleScaBuild({
     scaBuild: root,
     scaExperiments: path.join(wrap, "addon"),
   });
   assert.equal(inside.scaBuild, wrap);
   assert.equal(inside.scaExperiments, path.join(wrap, "addon"));
-
-  // The candidate ITSELF is not contained by it: containment here means strictly UNDER,
-  // because that is what the view partition can act on. Moving onto the folder the flag
-  // names would exclude nothing, so it ends the run instead.
+  // Beside it: it moves all the same.
+  const beside = settleScaBuild({
+    scaBuild: root,
+    scaExperiments: path.join(root, "other"),
+  });
+  assert.equal(beside.scaBuild, wrap);
+  // Holding it: the build folder lands inside the folder the flag names, which would take
+  // the WebExtension source out of the review, so the run ends.
   assert.throws(
     () => settleScaBuild({ scaBuild: root, scaExperiments: wrap }),
-    /cannot be the root/
+    /lies inside the folder --sca-experiments names/
   );
-
-  // A sibling of the candidate is genuinely outside it, so the move is abandoned and the
-  // root given stands.
-  assert.equal(
-    settleScaBuild({ scaBuild: root, scaExperiments: path.join(root, "other") })
-      .movedFrom,
-    null
-  );
-
-  // The old root itself is the same refusal from the other side: abandoning the move
-  // leaves --sca-experiments naming the root that is used.
-  assert.throws(
-    () => settleScaBuild({ scaBuild: root, scaExperiments: root }),
-    /cannot be the root/
-  );
-
-  // Nothing to contain: the move stands on the root alone.
+  // Nothing to place: the move stands on the build folder alone.
   assert.equal(settleScaBuild({ scaBuild: root }).scaBuild, wrap);
 });
 
@@ -206,24 +194,35 @@ test("no --sca-build is nothing to settle", () => {
   });
 });
 
-// --sca-experiments names the Experiment implementation INSIDE the source root, so it cannot
-// BE the root: scaViews partitions on a prefix, the prefix for a root equal to the root is
-// the empty string, and nothing is under nothing - so the privileged code would be reviewed
-// as WebExtension code, which is the one thing the flag exists to prevent. Asked here
-// because this is where the pair stops moving.
-test("an --sca-experiments that IS the source root ends the run", () => {
+// --sca-experiments names the Experiment implementation, a folder of its own, so it can neither
+// BE the extracted archive nor hold the build folder: scaViews partitions on a prefix, the
+// prefix for the archive itself is the empty string, and nothing is under nothing - so the
+// privileged code would be reviewed as WebExtension code, which is the one thing the flag
+// exists to prevent. Asked here because this is where the pair stops moving.
+test("an --sca-experiments that IS the extracted archive, or holds the build folder, ends the run", () => {
   const root = tree({ "package.json": PKG, "exp/api.js": "1;" });
   // As typed. The CLI cannot catch this one: the value escapes nothing, spells no "..",
   // and does point at a folder.
   assert.throws(
     () => settleScaBuild({ scaBuild: root, scaExperiments: root }),
-    /is --sca-build itself.*cannot be the root/s
+    /is the extracted source archive itself.*Name the subfolder holding it/s
   );
   // Written with a trailing separator, which resolves to the same folder - the test is on
   // the resolved path, so a second spelling cannot answer differently.
   assert.throws(
     () => settleScaBuild({ scaBuild: root, scaExperiments: root + path.sep }),
-    /cannot be the root/
+    /is the extracted source archive itself/
+  );
+  // A folder holding the build folder takes the WebExtension source out with it.
+  const wrapped = tree({ "pkg/package.json": PKG });
+  assert.throws(
+    () =>
+      settleScaBuild({
+        scaExtracted: wrapped,
+        scaBuild: path.join(wrapped, "pkg"),
+        scaExperiments: path.join(wrapped, "pkg"),
+      }),
+    /holds --sca-build/
   );
   // A real subfolder is what the flag is for, and still settles.
   const ok = settleScaBuild({
@@ -235,23 +234,27 @@ test("an --sca-experiments that IS the source root ends the run", () => {
 });
 
 // The case no CLI guard can see, and the reason the rule lives here: the reviewer names a
-// root that holds no package file and an Experiment folder strictly inside it, so the CLI
-// accepts the pair - and then the root MOVES onto the very folder they named.
-test("an --sca-experiments the root MOVES onto ends the run, naming both", () => {
+// build folder that holds no package file and an Experiment folder strictly inside it, so the
+// CLI accepts the pair - and then the build folder MOVES into the very folder they named.
+test("an --sca-experiments the build folder MOVES into ends the run, naming both", () => {
   const root = tree({ "inner/package.json": PKG, "inner/lock.json": LOCK });
   const inner = path.join(root, "inner");
   assert.throws(
     () => settleScaBuild({ scaBuild: root, scaExperiments: inner }),
-    // Both roots, because the reviewer never typed the one it collides with.
+    // Both folders, because the reviewer never typed the one it collides with.
     (err) => {
       assert.match(err.message, /holds no package file/);
-      assert.match(err.message, /which is the folder --sca-experiments names/);
-      assert.ok(err.message.includes(root), "names the root as given");
-      assert.ok(err.message.includes(inner), "names the root it settled on");
+      assert.match(
+        err.message,
+        /lies inside the folder --sca-experiments names/
+      );
+      assert.ok(err.message.includes(root), "names the build folder as given");
+      assert.ok(err.message.includes(inner), "names the folder it settled on");
       return true;
     }
   );
-  // The move itself is untouched: an exp source that FITS the new root still moves with it.
+  // The move itself is untouched: an Experiment folder inside the new build folder still
+  // moves with it.
   const fits = tree({ "inner/package.json": PKG, "inner/exp/api.js": "1;" });
   const out = settleScaBuild({
     scaBuild: fits,

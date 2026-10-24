@@ -569,8 +569,9 @@ function builtOriginal(work, record, asked, match) {
 /**
  * What `analyze` handed back: the build's safety issues, a list of results each held to the
  * shape a sweep's are (buildIssuesOf), and the Experiment folder where it was asked, taken as
- * the folder it really is and held inside the root, resolved against it as the review resolves
- * it, and not the root itself (settleScaBuild). Every way they can be wrong is refused, with
+ * the folder it really is and held inside the extracted archive, resolved against it as the
+ * review resolves it, and neither that folder itself nor one holding the build folder
+ * (settleScaBuild). Every way they can be wrong is refused, with
  * nothing changed, so the reader can correct the file and hand it back again.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `analyze`, its root known.
@@ -590,7 +591,7 @@ function analyzedAnswers(work, record) {
     return { roots: record.roots, buildIssues };
   }
   const handed = all.filter((e) => keyOf(e) === EXPERIMENTS);
-  // A blank answer names no folder, and would otherwise resolve to the root itself.
+  // A blank answer names no folder, and would otherwise resolve to the extracted archive itself.
   const blank = handed.find(
     (e) => typeof e?.[SLOT] === "string" && !e[SLOT].trim()
   );
@@ -603,15 +604,21 @@ function analyzedAnswers(work, record) {
     { name: "analyze", answer: "words" },
     keyOf
   ).get(EXPERIMENTS);
-  const exp = realFolder(path.resolve(root, answer.trim()));
-  if (!exp || relativeInside(exp, root) === null) {
+  // Named relative to the extracted archive, which the build analysis reads whole.
+  const extracted = realSca(workPaths(work));
+  const exp = realFolder(path.resolve(extracted, answer.trim()));
+  if (!exp || relativeInside(exp, extracted) === null) {
     throw new HandbackRefused(
-      `${EXPERIMENTS} "${displayLine(answer)}" is not a folder inside "${root}"`
+      `${EXPERIMENTS} "${displayLine(answer)}" is not a folder inside "${extracted}"`
     );
   }
   let settled;
   try {
-    settled = settleScaBuild({ scaBuild: root, scaExperiments: exp });
+    settled = settleScaBuild({
+      scaExtracted: extracted,
+      scaBuild: root,
+      scaExperiments: exp,
+    });
   } catch (err) {
     rethrowIfFatal(err);
     throw new HandbackRefused(err.message);

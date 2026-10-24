@@ -52,7 +52,6 @@ import {
   loadAddon,
   loadSourceArchive,
   readWebExtManifest,
-  relativeInside,
   scaViews,
 } from "./addon/load.js";
 import { settleScaBuild } from "./addon/sca-build.js";
@@ -190,10 +189,10 @@ export const SETUP_STEPS = Object.freeze([
  *   separate shipped context the orchestrator routes them to - see buildXpiCtx in
  *   src/checks/context.js).
  * @property {string} [scaExperiments]  SCA mode: the Experiment implementation folder,
- *   absolute and inside scaBuild, never scaBuild itself. It reaches the review as an archive
- *   partition (scaViews), which gives it its own view; where it sits WITHIN the review
- *   source is derived at the one read that wants it (src/lib/reachability.js), in the
- *   keyspace the review target's keys live in. Its privileged, non-WebExtension files are
+ *   absolute and inside the extracted archive, never that folder itself nor one holding
+ *   scaBuild. It reaches the review as an archive partition (scaViews), which gives it its
+ *   own view, keyed in the extracted archive like every source file. Its privileged,
+ *   non-WebExtension files are
  *   excluded from the WebExtension code checks (which review all of the readable source,
  *   having no reachability tree there). REQUIRED in SCA mode when the add-on is an
  *   Experiment (runPipeline refuses to start): without it, Experiment code cannot be told
@@ -292,8 +291,8 @@ async function reviewSubmission(opts, work, prepared) {
   // `addonPath` IS the shipped add-on's path, absolute, and the single value the run has
   // for "which add-on": what the report names, and where the work folder and its files go. An Addon carries no path of its own
   // (src/addon/load.js), and nothing here resolves one - the arg-array reader did.
-  // SCA (source code archive) mode is on when --sca-extracted is set, and the whole of the root
-  // inside it is the review source. It splits the review across TWO add-on artifacts with a fixed
+  // SCA (source code archive) mode is on when --sca-extracted is set, and the whole extracted
+  // archive is the review source. It splits the review across TWO add-on artifacts with a fixed
   // ROLE each, resolved here ONCE so nothing downstream re-branches on the mode:
   //
   //   xpiAddon - the built XPI (the positional addonPath). The SHIPPED artifact,
@@ -315,7 +314,7 @@ async function reviewSubmission(opts, work, prepared) {
   // and the tooling are one set of files, which is what the build checks want.
   //
   // The review mode is DERIVED from one fact below and assigned nowhere, so it cannot drift
-  // from the steps that ran: a source root (--sca-extracted) makes it a source code review. Every reader - the
+  // from the steps that ran: a source archive (--sca-extracted) makes it a source code review. Every reader - the
   // steps, the ctx builders, the report - reads that one derivation.
   // The parsed registry, threaded from main() (or loaded once here when a caller
   // such as the test harness invokes the pipeline directly), read under THIS run's band
@@ -532,8 +531,12 @@ async function reviewSubmission(opts, work, prepared) {
               "implementation with --sca-experiments."
           );
         }
-        scaArchive = loadSourceArchive(opts.scaBuild);
+        // The whole extracted archive is the source, so code a build takes from beside or
+        // above the build folder is reviewed like the rest. The build folder is the place in
+        // it the package file and the lock are read at.
+        scaArchive = loadSourceArchive(opts.scaExtracted ?? opts.scaBuild);
         scaViews(scaArchive, {
+          scaExtracted: opts.scaExtracted,
           scaBuild: opts.scaBuild,
           scaExperiments: opts.scaExperiments,
         });
@@ -548,11 +551,7 @@ async function reviewSubmission(opts, work, prepared) {
         // the issues the build analysis listed, which build-unsafe reports. Null and none for
         // every other source.
         scaArchive.buildReasons = prepared?.buildReasons ?? null;
-        scaArchive.buildIssues = reviewedIssues(
-          prepared?.buildIssues ?? [],
-          opts.workFolder,
-          opts.scaBuild
-        );
+        scaArchive.buildIssues = prepared?.buildIssues ?? [];
       }
     },
 
@@ -565,7 +564,7 @@ async function reviewSubmission(opts, work, prepared) {
       // and flood the report with false positives on the privileged Experiment code.
       if (opts.scaExperiments && scaArchive.experiment.size === 0) {
         warn(
-          `--sca-experiments "${opts.scaExperiments}" matched no files under --sca-build; ` +
+          `--sca-experiments "${opts.scaExperiments}" matched no files under --sca-extracted; ` +
             "nothing will be excluded from the WebExtension code checks."
         );
       }
@@ -982,9 +981,11 @@ async function reviewSubmission(opts, work, prepared) {
         report: reportPath,
         schemaCache: opts.schemaCache,
         // The two roots every reported path is relative to, so a later pass can resolve
-        // one without the review it came from. The shipped add-on was copied in setup,
-        // and `--sca-build` is extracted before the run, so both are readable directories
-        // by the time anything is handed out.
+        // one without the review it came from: the shipped add-on, copied in setup, and the
+        // extracted source archive, extracted before the run, so both are readable
+        // directories by the time anything is handed out. The build folder is a place in
+        // the extracted archive, where the agent is told the build runs.
+        scaExtracted: opts.scaExtracted ?? opts.scaBuild ?? null,
         scaBuild: opts.scaBuild ?? null,
         // The same root in the source archive, where the review reads a rescued copy: the
         // Review Details name both.
@@ -1153,33 +1154,6 @@ const WORK_INPUTS = new Set(["sca", "rescued", "buildCopy", "prepare"]);
 
 /** The check an XPI review restarted from a source review reports (opts.downgradedFrom). */
 const SCA_NOT_NEEDED_CHECK = "sca-not-needed";
-
-/**
- * The build analysis's issues as build-unsafe reports them: each file, recorded relative to the
- * extracted archive the analysis read (`sca/`), taken into the reviewed root's keyspace, the
- * one a finding is keyed in. An issue above the root has no key there, so it keeps its place
- * in its hint and names no file, and its finding stands at the build's anchor.
- * @param {{file: string, line: ?number, hint: string}[]} issues
- * @param {string} workFolder
- * @param {string} scaBuild  The reviewed root, absolute.
- * @returns {{file: ?string, line: ?number, hint: string}[]}
- */
-function reviewedIssues(issues, workFolder, scaBuild) {
-  if (!issues.length) {
-    return [];
-  }
-  const sca = fs.realpathSync(workPaths(workFolder).sca);
-  return issues.map(({ file, line, hint }) => {
-    const inRoot = relativeInside(path.join(sca, file), scaBuild);
-    return inRoot === null || inRoot === ""
-      ? {
-          file: null,
-          line: null,
-          hint: `${line === null ? file : `${file}:${line}`} - ${hint}`,
-        }
-      : { file: inRoot, line, hint };
-  });
-}
 
 /**
  * Whether the built XPI could be reviewed on its own: no file or inline script in it is

@@ -1,29 +1,31 @@
-// WHICH FOLDER IS THE SOURCE ROOT - settled once, before the archive is read.
+// WHICH FOLDER IS THE BUILD FOLDER - settled once, before the archive is read.
 //
-// A source archive's root is the folder the build runs in: the one holding package.json and
-// the lock the reviewer installs from. Everything downstream reads those from the TOP LEVEL
-// of --sca-build and nowhere else (src/vendor/locks.js, the package.json readers), which is what
-// makes "the root" mean something. This decides which folder that is. It does not soften
-// that rule - it runs before it.
+// The build folder is the folder of the extracted source archive the build runs in: the one
+// holding package.json and the lock the reviewer installs from. Everything downstream reads
+// those from the TOP LEVEL of --sca-build and nowhere else (src/vendor/locks.js, the
+// package.json readers, through the build folder's view of the archive), which is what makes
+// "the build folder" mean something. This decides which folder that is. It does not soften
+// that rule - it runs before it. The review itself reads the whole extracted archive.
 //
-// It exists because the root is NAMED by someone who has not looked inside yet. A source
-// archive is extracted by whoever prepares the review, into a destination this
-// tool worked out by path math alone, and an archive that carries its contents in one
-// directory of its own leaves the build files one level below that destination. The review
-// then reads a root holding nothing, reports a build it cannot reproduce, and never audits
-// the dependency tree sitting just below it - a submission with critical advisories reviewed
-// as though it declared none.
+// It exists because the build folder is NAMED by someone who has not looked inside yet. A
+// source archive is extracted by whoever prepares the review, into a destination this tool
+// worked out by path math alone, and an archive that carries its contents in one directory of
+// its own leaves the build files one level below that destination. The review then reads a
+// build folder holding nothing, reports a build it cannot reproduce, and never audits the
+// dependency tree sitting just below it - a submission with critical advisories reviewed as
+// though it declared none.
 //
-// DOWN ONLY. The folder ABOVE --sca-build is the reviewer's submission folder, holding the .xpi
-// and the archive itself, and nothing there was submitted as source: a root found by stepping
-// out of the one named is a root nobody pointed at. How FAR down is not fixed, because the
-// number of directories an archive wraps its contents in is an accident of how it was packed -
-// the walk follows a chain of single folders as far as it goes and stops at the first fork.
+// DOWN ONLY. The folder ABOVE --sca-extracted is the reviewer's submission folder, holding the
+// .xpi and the archive itself, and nothing there was submitted as source: a build folder found
+// by stepping out of the one named is one nobody pointed at. How FAR down is not fixed,
+// because the number of directories an archive wraps its contents in is an accident of how it
+// was packed - the walk follows a chain of single folders as far as it goes and stops at the
+// first fork.
 //
-// Belongs here: which folder the review treats as --sca-build, and keeping
-// --sca-experiments inside it. Does NOT belong here: what is read once it is settled (the build
-// files, the lock), the keyspace the source view is built in (scaViews in ./load.js), or
-// how the root is reported (src/report/format.js).
+// Belongs here: which folder the review treats as --sca-build, and holding --sca-experiments
+// to what it may name. Does NOT belong here: what is read once it is settled (the build files,
+// the lock), the keyspace the source view is built in (scaViews in ./load.js), or how the
+// folders are reported (src/report/format.js).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -130,14 +132,13 @@ function buildRootBelow(root) {
  * used to choose between several: a submission that forgot one is still re-rooted, so the
  * review reports the missing lock it has rather than the missing build it does not.
  *
- * CONTAINMENT IS NOT NEGOTIABLE, so it decides too. --sca-experiments names a folder inside
- * the source root - enforced at the CLI (src/cli.js folderProblem) and again when the views
- * are built (scaBuildRelative in ./load.js, which throws) - and a correction that put it
- * outside would swap a wrong root for a failed run. Where that is what the move would do,
- * there is no move. It is not re-derived: it is already absolute, and one inside the
- * candidate stays where it is.
- * @param {{scaBuild?: string, scaExperiments?: string}} opts  Absolute paths, as the CLI
- *   resolved them.
+ * The Experiment folder (--sca-experiments) does not move with it: it may lie anywhere in the
+ * extracted source archive, so wherever the build folder settles, the folder named stays
+ * where it is. Once the build folder stands, the pair is held to what the Experiment folder
+ * may be (settled).
+ * @param {{scaExtracted?: string, scaBuild?: string, scaExperiments?: string}} opts  Absolute
+ *   paths, as the CLI resolved them. The extracted folder is the build folder where none is
+ *   named.
  * @returns {{scaBuild?: string, scaExperiments?: string, movedFrom: ?string}}
  *   The pair to review with. `movedFrom` is the root that was given when it was corrected,
  *   and null when it stands - the run narrates the difference rather than changing it silently.
@@ -148,56 +149,61 @@ export function settleScaBuild(opts) {
     scaExperiments: opts.scaExperiments,
     movedFrom: null,
   };
+  const base = opts.scaExtracted ?? opts.scaBuild;
   if (!opts.scaBuild || hasPackageFile(opts.scaBuild)) {
-    return settled(given);
+    return settled(given, base);
   }
   const scaBuild = buildRootBelow(opts.scaBuild);
   if (!scaBuild) {
-    return settled(given);
+    return settled(given, base);
   }
-  if (
-    opts.scaExperiments &&
-    relativeInside(opts.scaExperiments, scaBuild) === null
-  ) {
-    return settled(given);
-  }
-  return settled({ ...given, scaBuild, movedFrom: opts.scaBuild });
+  return settled({ ...given, scaBuild, movedFrom: opts.scaBuild }, base);
 }
 
 /**
- * The pair, once nothing else can change it: --sca-experiments must name a folder INSIDE
- * --sca-build, and so may not BE it.
+ * The pair, once nothing else can change it: --sca-experiments names the Experiment
+ * implementation, so it may neither BE the extracted folder nor HOLD the build folder.
  *
- * Naming the root excludes nothing - `scaViews` partitions on a prefix, and the prefix for
- * a root equal to the root is the empty string, which is under nothing - so the Experiment's
- * privileged code is reviewed as WebExtension code and the report fills with
- * Services/ChromeUtils errors against a submission that did nothing wrong. That is the one
- * thing the flag exists to prevent, so it ends the run rather than warning.
+ * Either excludes the wrong code. `scaViews` partitions on a prefix: the prefix of the
+ * extracted folder itself is the empty string, which is under nothing, so the Experiment's
+ * privileged code would be reviewed as WebExtension code and the report would fill with
+ * Services/ChromeUtils errors against a submission that did nothing wrong. A folder holding
+ * the build folder would take the WebExtension source and its package file out of the
+ * WebExtension review instead. Preventing exactly that is what the flag is for, so it ends the
+ * run rather than warning.
  *
- * Asked HERE because this is where the pair stops moving. The CLI already refuses a value
- * that escapes the root, points at no folder, or spells its way out with "..", and it cannot
- * ask this one: the root it validated against may not be the root that is used, since the
- * move below it can land the root on the very folder the reviewer named.
+ * Asked HERE because this is where the pair stops moving: the build folder the CLI validated
+ * against may not be the one that is used, since the move can land it inside the folder the
+ * reviewer named.
  * @param {{scaBuild?: string, scaExperiments?: string, movedFrom: ?string}} pair
+ * @param {?string} base  The extracted source archive, absolute.
  * @returns {{scaBuild?: string, scaExperiments?: string, movedFrom: ?string}} The same pair.
  */
-function settled(pair) {
-  if (
-    !pair.scaExperiments ||
-    relativeInside(pair.scaExperiments, pair.scaBuild) !== ""
-  ) {
+function settled(pair, base) {
+  if (!pair.scaExperiments) {
     return pair;
   }
-  // Named separately when the root MOVED, because the reviewer never typed the one it
-  // collides with - saying only "they are the same folder" would describe a command they
+  const isBase = base && relativeInside(pair.scaExperiments, base) === "";
+  const holdsBuild =
+    pair.scaBuild &&
+    relativeInside(pair.scaBuild, pair.scaExperiments) !== null;
+  if (!isBase && !holdsBuild) {
+    return pair;
+  }
+  // Named separately when the build folder MOVED, because the reviewer never typed the one
+  // it collides with - saying only "the one holds the other" would describe a command they
   // did not write.
-  const because = pair.movedFrom
-    ? `--sca-build "${pair.movedFrom}" holds no package file, so the source root settles on ` +
-      `"${pair.scaBuild}" - which is the folder --sca-experiments names`
-    : `--sca-experiments "${pair.scaExperiments}" is --sca-build itself`;
+  const because = isBase
+    ? `--sca-experiments "${pair.scaExperiments}" is the extracted source archive itself`
+    : pair.movedFrom
+      ? `--sca-build "${pair.movedFrom}" holds no package file, so the build folder settles on ` +
+        `"${pair.scaBuild}" - which lies inside the folder --sca-experiments names`
+      : `--sca-experiments "${pair.scaExperiments}" holds --sca-build "${pair.scaBuild}"`;
   throw new Error(
-    `${because}. It names the Experiment implementation INSIDE the source root, so it ` +
-      "cannot be the root: nothing would be excluded, and the Experiment's privileged " +
-      "code would be reviewed as WebExtension code. Name the subfolder holding it."
+    `${because}. It names the Experiment implementation, a folder of its own inside the ` +
+      "extracted source archive beside or below the WebExtension code, so it cannot be the " +
+      "whole archive or hold the build folder: the wrong code would be excluded, and the " +
+      "Experiment's privileged code would be reviewed as WebExtension code. Name the " +
+      "subfolder holding it."
   );
 }

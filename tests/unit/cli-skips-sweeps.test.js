@@ -29,8 +29,8 @@ function reportOf(stdout) {
 // --sca-extracted / --sca-build / --sca-experiments flow through to the source-code submission
 // pipeline opts (--sca-extracted switches the review to SCA mode).
 // The reader is where a path stops being a spelling and becomes a place: --sca-extracted and
-// --sca-build against the working directory, and the one that names a folder inside the root
-// against the RESOLVED root. Everything downstream is handed absolutes and re-resolves nothing.
+// --sca-build against the working directory, and --sca-experiments, which names a folder inside
+// the extracted archive, against the RESOLVED archive. Everything downstream is handed absolutes and re-resolves nothing.
 test("--sca-extracted / --sca-build / --sca-experiments map to the sca pipeline opts", () => {
   const o = pipelineOptsFromArgv([
     "--sca-extracted",
@@ -42,13 +42,13 @@ test("--sca-extracted / --sca-build / --sca-experiments map to the sca pipeline 
   ]);
   assert.equal(o.scaExtracted, path.resolve("extracted"));
   assert.equal(o.scaBuild, path.resolve("extracted", "pkg"));
-  assert.equal(o.scaExperiments, path.resolve("extracted", "pkg", "exp"));
+  assert.equal(o.scaExperiments, path.resolve("extracted", "exp"));
   // Every spelling of the same folder arrives as one value.
   for (const written of [
     "exp",
     "./exp",
     "./exp/",
-    path.resolve("extracted", "pkg", "exp"),
+    path.resolve("extracted", "exp"),
   ]) {
     const each = pipelineOptsFromArgv([
       "--sca-extracted",
@@ -60,7 +60,7 @@ test("--sca-extracted / --sca-build / --sca-experiments map to the sca pipeline 
     ]);
     assert.equal(
       each.scaExperiments,
-      path.resolve("extracted", "pkg", "exp"),
+      path.resolve("extracted", "exp"),
       written
     );
   }

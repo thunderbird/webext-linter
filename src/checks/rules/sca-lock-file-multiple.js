@@ -13,6 +13,7 @@
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import { committedLocks } from "../../vendor/locks.js";
+import { buildKey } from "../../vendor/package-file.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -28,7 +29,7 @@ export default {
     }
     const findings = [];
     for (const file of locks) {
-      const at = ctx.artifact.at(file);
+      const at = ctx.artifact.at(buildKey(ctx.artifact, file));
       ctx.note?.(at, "one of several lock files", VERDICT.FAIL);
       findings.push(finding({ ...at }));
     }

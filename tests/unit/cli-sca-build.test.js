@@ -458,11 +458,10 @@ test("--llm-agent-builds is an unknown option", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The build analysis reads the whole extracted archive, so an issue may sit above the root, in
-// a folder the review does not read: the archive wraps the node project, and a Makefile beside
-// it drives the build. Trusted, an issue inside the root is a finding at its own file and line,
-// and one above it a finding at the build's anchor, its hint naming where it is.
-test("an issue above the root is reported at the build's anchor, naming where it is", () => {
+// The build analysis and the review both read the whole extracted archive, so an issue above
+// the build folder - a Makefile beside the node project that drives the build - is reported at
+// its own file and line, in the archive's keyspace, like one inside it.
+test("an issue above the build folder is reported at its own place in the archive", () => {
   const dir = submissionFolder();
   const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
@@ -497,8 +496,8 @@ test("an issue above the root is reported at the build's anchor, naming where it
   assert.deepEqual(
     unsafe.map((f) => [f.file, f.loc?.line ?? null, f.hint]),
     [
-      ["package.json", null, "Makefile:2 - pipes a download into sh"],
-      ["package.json", 1, "names the build"],
+      ["Makefile", 2, "pipes a download into sh"],
+      ["addon/package.json", 1, "names the build"],
     ]
   );
   fs.rmSync(dir, { recursive: true, force: true });

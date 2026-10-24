@@ -21,6 +21,7 @@ import ini from "ini";
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
+import { buildKey, submissionFiles } from "../../vendor/package-file.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -30,13 +31,13 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const buf = ctx.artifact.files.get(".npmrc");
+    const buf = submissionFiles(ctx.artifact)?.get(".npmrc");
     if (!buf) {
       return { findings: [] };
     }
     const findings = [];
     for (const { line, value } of registrySettings(buf.toString("utf8"))) {
-      const at = ctx.artifact.at(".npmrc", { line });
+      const at = ctx.artifact.at(buildKey(ctx.artifact, ".npmrc"), { line });
       ctx.note?.(at, "sets a package registry", VERDICT.FAIL);
       findings.push(finding({ ...at, item: value }));
     }

@@ -33,6 +33,7 @@ import {
 import { SCHEME_RE } from "../lib/util.js";
 import { withExperiment } from "../addon/store.js";
 import {
+  buildKey,
   declaredDependencies,
   readPackageFile,
   submissionFiles,
@@ -587,7 +588,8 @@ function resolvePackages(addon) {
       unsupported: [],
     };
   }
-  return classifyPackageFile(pkg, addon, PACKAGE_FILE);
+  // Named in the archive's keyspace, where every reported path is given.
+  return classifyPackageFile(pkg, addon, buildKey(addon, PACKAGE_FILE));
 }
 
 /**

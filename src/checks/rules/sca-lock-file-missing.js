@@ -23,7 +23,12 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { readPackageFile } from "../../vendor/package-file.js";
+import {
+  buildKey,
+  PACKAGE_FILE,
+  readPackageFile,
+  submissionFiles,
+} from "../../vendor/package-file.js";
 import { TREE_LOCKS } from "../../vendor/locks.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
@@ -34,7 +39,7 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const files = ctx.artifact.files;
+    const files = submissionFiles(ctx.artifact);
     const pkg = readPackageFile(files);
     if (!pkg) {
       return { findings: [] }; // no readable package file: no declared install to lock
@@ -52,11 +57,8 @@ export default {
     if (TREE_LOCKS.some((lock) => files.has(lock))) {
       return { findings: [] };
     }
-    ctx.note?.(
-      ctx.artifact.at("package.json"),
-      "no npm or pnpm lock file committed",
-      VERDICT.FAIL
-    );
-    return { findings: [finding({ ...ctx.artifact.at("package.json") })] };
+    const at = ctx.artifact.at(buildKey(ctx.artifact, PACKAGE_FILE));
+    ctx.note?.(at, "no npm or pnpm lock file committed", VERDICT.FAIL);
+    return { findings: [finding({ ...at })] };
   },
 };

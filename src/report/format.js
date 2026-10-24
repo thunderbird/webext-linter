@@ -73,10 +73,10 @@ const SEV_COLOR = {
  * @property {string} xpiFile  What was submitted, by name and not by path - the .xpi as
  *   ATN named it, or the folder's name where the submission arrived unpacked. It is what
  *   a reviewer recognises the submission by. Always set, alongside xpiRoot.
- * @property {string} [scaExtracted]  SCA review: the extracted source archive, named where the
- *   root lies below it.
- * @property {string} [scaBuild]  SCA review: the source root the run was given
- *   (--sca-build, or found inside --sca-extracted), resolved.
+ * @property {string} [scaExtracted]  SCA review: the extracted source archive, the reviewed
+ *   source, named where the build folder lies below it.
+ * @property {string} [scaBuild]  SCA review: the build folder, where the package file and the
+ *   lock are read (--sca-build, or found inside --sca-extracted), resolved.
  * @property {string} [scaExperiments]  SCA review: the Experiment implementation folder
  *   (--sca-experiments), resolved, when one was named. Its files are privileged code and are
  *   excluded from the WebExtension checks, so naming it is how a reader sees that anything
@@ -507,7 +507,7 @@ function valueLines(entries) {
  *   prompt after `unpack`.
  * @param {string} [values.scaExtracted]  On the analyze prompt: the extracted source
  *   archive, `sca/`, all of which the build analysis reads.
- * @param {string} [values.scaBuild]  On the analyze and build prompts: the source root, in
+ * @param {string} [values.scaBuild]  On the analyze and build prompts: the build folder, in
  *   `sca/`.
  * @param {string} [values.buildRoot]  On the build and rescue prompts: the root in
  *   `build/`, where the agent builds.
@@ -719,9 +719,11 @@ export function detailLinkLines(meta) {
  * how the source builds. LLM_ is what the agent's own build attempt produced.
  * ADDON_DESCRIPTION and REVIEW_REPORT, which only the later blocks carry, come last.
  *
- * SCA_BUILD is the reviewed source: the source archive, or after a rescue the rescued copy,
- * beside which SCA_BUILD_ORIG names the same root in the source archive. SCA_EXTRACTED is the whole
- * extracted archive the root lies in, named where the root lies below it. SCA_VULNERABILITIES
+ * The reviewed source is the whole extracted archive, or after a rescue the rescued copy,
+ * beside which SCA_BUILD_ORIG names the build folder in the source archive. It is
+ * SCA_EXTRACTED where the build folder lies below it, and SCA_BUILD, the build folder, then
+ * names only where the package file and the lock are read. Where the two are one folder,
+ * SCA_BUILD names it alone, as the reviewed source. SCA_VULNERABILITIES
  * counts the submitted lock, and LLM_RESCUED_VULNERABILITIES the rescued copy's lock where
  * the agent attempted a rescue. LLM_BUILD_ROOT is the root in the copy the agent built in,
  * named where it built or tried to.
@@ -745,8 +747,12 @@ export function detailRows(meta) {
   if (meta.xpiRoot) {
     rows.push(["XPI_ROOT", "extracted addon", meta.xpiRoot]);
   }
+  // The reviewed source, the rescued copy after a rescue.
+  const reviewed = meta.scaBuildOrig
+    ? "rescued source (reduced/fixed dependencies)"
+    : "source archive";
   if (meta.scaExtracted) {
-    rows.push(["SCA_EXTRACTED", "extracted source archive", meta.scaExtracted]);
+    rows.push(["SCA_EXTRACTED", reviewed, meta.scaExtracted]);
   }
   if (meta.buildFile) {
     rows.push(["SCA_BUILD_PROCESS", "build.md", meta.buildFile]);
@@ -767,9 +773,7 @@ export function detailRows(meta) {
   if (meta.scaBuild) {
     rows.push([
       "SCA_BUILD",
-      meta.scaBuildOrig
-        ? "rescued source (reduced/fixed dependencies)"
-        : "source archive",
+      meta.scaExtracted ? "build folder" : reviewed,
       meta.scaBuild,
     ]);
   }

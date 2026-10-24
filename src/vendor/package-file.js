@@ -98,15 +98,30 @@ function parsePackageFile(buf) {
 /**
  * The SUBMISSION's own files - the frame a package file and a lock are written in.
  *
- * For a built XPI it is the artifact itself. For a source archive it is the whole
- * --sca-build: `addon.files` there is a VIEW that gives up every manifest.json, so only
- * the store answers what the submission contains. An addon with no separate store (a hand-built file map) answers with its
- * files, which is the same thing for a single-artifact submission.
+ * For a built XPI it is the artifact itself. For a source archive it is the build folder
+ * (--sca-build): the whole store where the build folder is the extracted archive, and its
+ * folder of it, keyed relative to it, where the archive wraps it (`buildFiles`,
+ * ./../addon/load.js scaViews). `addon.files` is a VIEW that gives up every manifest.json, so
+ * only the store answers what the submission contains. An addon with no separate store (a
+ * hand-built file map) answers with its files, which is the same thing for a single-artifact
+ * submission. What is read here is located in the archive by buildKey.
  * @param {?object} addon
  * @returns {?object}  The Map surface, or undefined.
  */
 export function submissionFiles(addon) {
-  return addon?.store ?? addon?.files;
+  return addon?.buildFiles ?? addon?.store ?? addon?.files;
+}
+
+/**
+ * Where a file of the build folder sits in the archive's own keyspace, the one every reported
+ * path is given in: its name under the build folder's key where the archive wraps the build
+ * folder, and the name itself where the build folder is the archive.
+ * @param {?object} addon
+ * @param {string} name  Relative to the build folder, as submissionFiles keys it.
+ * @returns {string}
+ */
+export function buildKey(addon, name) {
+  return addon?.buildPrefix ? `${addon.buildPrefix}/${name}` : name;
 }
 
 /**

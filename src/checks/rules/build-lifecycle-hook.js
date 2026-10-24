@@ -15,6 +15,11 @@ import { VERDICT } from "../../lib/enum.js";
 import { jsonLine } from "../../lib/util.js";
 import { parseJson } from "../../util/json.js";
 import { rethrowIfFatal } from "../../lib/errors.js";
+import {
+  buildKey,
+  PACKAGE_FILE,
+  submissionFiles,
+} from "../../vendor/package-file.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -38,7 +43,10 @@ export default {
    */
   run(ctx) {
     const none = { findings: [], escalations: [] };
-    const text = ctx.artifact.files.get("package.json")?.toString("utf8");
+    const text = submissionFiles(ctx.artifact)
+      ?.get(PACKAGE_FILE)
+      ?.toString("utf8");
+    const file = buildKey(ctx.artifact, PACKAGE_FILE);
     if (!text) {
       return none;
     }
@@ -62,11 +70,11 @@ export default {
       const loc = line ? { line } : undefined;
       const item = `${hook}: ${cmd}`;
       ctx.note?.(
-        ctx.artifact.at("package.json", loc),
+        ctx.artifact.at(file, loc),
         `runs a ${hook} hook`,
         VERDICT.UNSURE
       );
-      escalations.push({ ...ctx.artifact.at("package.json", loc), item });
+      escalations.push({ ...ctx.artifact.at(file, loc), item });
     }
     return { findings: [], escalations };
   },

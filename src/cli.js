@@ -234,11 +234,11 @@ function helpText(checkIds) {
     ],
     [
       "--sca-build <folder>",
-      "The folder inside --sca-extracted holding package.json and its lock file (package-lock.json or pnpm-lock.yaml), where the build runs: what the review reads as the source. Left out, the linter finds it (the folder holding package.json, below any folders the archive wraps its content in). Needs --sca-extracted.",
+      "The folder inside --sca-extracted holding package.json and its lock file (package-lock.json or pnpm-lock.yaml), where the build runs: where the package file and the lock are read, and the install runs. The review reads the whole of --sca-extracted. Left out, the linter finds it (the folder holding package.json, below any folders the archive wraps its content in). Needs --sca-extracted.",
     ],
     [
       "--sca-experiments <path>",
-      "The Experiment implementation folder, inside --sca-build - relative to it or absolute within it, anywhere under it (e.g. addon/experiment-api, or a sibling of the source like experiment), but never the root itself: naming the root would exclude nothing. Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-extracted; REQUIRED in SCA mode for an Experiment add-on.",
+      "The Experiment implementation folder, inside --sca-extracted - relative to it or absolute within it, anywhere under it (e.g. addon/experiment-api, or a sibling of the source like experiment), but never --sca-extracted itself, which would exclude nothing, nor a folder holding --sca-build. Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-extracted; REQUIRED in SCA mode for an Experiment add-on.",
     ],
   ];
 
@@ -402,7 +402,7 @@ const CACHE_DIR_DEFAULTS = Object.freeze(
 
 /** The flags that name a folder on this machine, each taken to be its real target before
  *  anything reads it (main). --sca-experiments is not one of them: it names a folder INSIDE
- *  --sca-build, and is followed from there. */
+ *  --sca-extracted, and is followed from there. */
 const FOLDER_FLAGS = [
   "sca-extracted",
   "sca-build",
@@ -714,10 +714,11 @@ export async function main(argv) {
     }
     positionals[0] = realFolder(positionals[0]);
   }
-  // Named inside the root, so followed from there - the folder the review resolves it to.
+  // Named inside the extracted archive, so followed from there - the folder the review
+  // resolves it to.
   if (values["sca-experiments"] !== undefined) {
     values["sca-experiments"] = realFolder(
-      path.resolve(rootOf(values) ?? ".", values["sca-experiments"])
+      path.resolve(values["sca-extracted"] ?? ".", values["sca-experiments"])
     );
   }
 
@@ -992,17 +993,14 @@ export async function main(argv) {
     if (value === undefined) {
       continue;
     }
-    // --sca-extracted stands on its own. Each other one names a folder INSIDE the one before it,
-    // so it is asked about after being resolved against it - the same resolution the reader
-    // applies a moment later.
+    // --sca-extracted stands on its own. Each other one names a folder INSIDE it, so it is
+    // asked about after being resolved against it - the same resolution the reader applies a
+    // moment later.
     const within = {
       "sca-build": "sca-extracted",
-      "sca-experiments": "sca-build",
+      "sca-experiments": "sca-extracted",
     }[flag];
-    const base = {
-      "sca-build": values["sca-extracted"],
-      "sca-experiments": rootOf(values),
-    }[flag];
+    const base = within ? values["sca-extracted"] : undefined;
     const problem = folderProblem(flag, value, base ?? ".", within ?? null);
     if (problem) {
       const what =
@@ -1329,7 +1327,7 @@ function clearCaches(dirs) {
 }
 
 /**
- * The build folder the review reads as the source: --sca-build where it was named, else the
+ * The build folder, where the package file and the lock are read: --sca-build where it was named, else the
  * one found inside --sca-extracted by the rule the review finds one by (settleScaBuild), that
  * folder itself where it holds the package file or the walk cannot decide. Undefined outside
  * SCA mode, and where --sca-extracted names no folder, which its own check refuses.
@@ -1354,8 +1352,9 @@ function rootOf(values) {
  * Does not include `addonPath` (that comes from the positional path).
  *
  * Every path opt leaves here ABSOLUTE. This is the one layer that knows what each flag is
- * written relative to - the working directory for --sca-extracted and --sca-build, and the root for
- * --sca-experiments, which names a folder inside it - so it is the layer that resolves them. Downstream then
+ * written relative to - the working directory for --sca-extracted and --sca-build, and the
+ * extracted folder for --sca-experiments, which names a folder inside it - so it is the layer
+ * that resolves them. Downstream then
  * derives what it needs (an archive key, a containment test) from real paths rather than
  * re-deciding what a relative string meant: one spelling reaching several functions is one
  * spelling answered several ways.
@@ -1363,15 +1362,19 @@ function rootOf(values) {
  * @returns {Partial<PipelineOpts>}
  */
 function pipelineOptsFromValues(values) {
-  // Resolved FIRST, because --sca-experiments is resolved against it. A root left out is
-  // passed on left out, and the review finds it inside --sca-extracted (src/pipeline.js).
+  // A build folder left out is passed on left out, and the review finds it inside
+  // --sca-extracted (src/pipeline.js).
   const scaBuild = values["sca-build"]
     ? path.resolve(values["sca-build"])
     : undefined;
+  const scaExtracted = values["sca-extracted"]
+    ? path.resolve(values["sca-extracted"])
+    : undefined;
+  // --sca-experiments names a folder inside the extracted archive, so it is resolved there.
   const inRoot = (value) =>
     value === undefined
       ? undefined
-      : path.resolve(scaBuild ?? rootOf(values) ?? ".", value);
+      : path.resolve(scaExtracted ?? scaBuild ?? ".", value);
   return {
     ...Object.fromEntries(
       CACHES.map((c) => [c.opt, values[c.flag] || c.folder])
@@ -1659,7 +1662,7 @@ function preparedReview(record, checkIds, work) {
   }
   const within = {
     "sca-build": "sca-extracted",
-    "sca-experiments": "sca-build",
+    "sca-experiments": "sca-extracted",
   };
   const problem =
     cdnLookupProblem(values) ??

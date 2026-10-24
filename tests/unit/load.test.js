@@ -16,11 +16,16 @@ import {
   readWebExtManifest,
   manifestRecord,
   scaViews,
-  scaBuildRelative,
+  extractedRelative,
   relativeInside,
   hasParentSegment,
 } from "../../src/addon/load.js";
 import { withExperiment } from "../../src/addon/store.js";
+import {
+  buildKey,
+  readPackageFile,
+  submissionFiles,
+} from "../../src/vendor/package-file.js";
 import { ERROR_CLASS, SYMLINK_CAUSE } from "../../src/lib/enum.js";
 import { ARTIFACT_SCA, ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 
@@ -741,13 +746,57 @@ test("the whole root stays a set of build candidates", () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-// Both SCA source flags name a folder WITHIN --sca-build, and relativeInside is the ONE
+// The archive is walked from the extracted folder, so every key is relative to it, and the build
+// folder is one place in that keyspace. Its package file and lock are read in a view of their
+// own, keyed relative to the build folder, and named back in the archive's keyspace by
+// buildKey. The Experiment folder may sit beside the build folder.
+test("a wrapped archive keeps one keyspace, with the build folder a place in it", () => {
+  const root = fs.realpathSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "wrr-wrap-"))
+  );
+  for (const [name, body] of Object.entries({
+    "pkg/package.json": '{"name": "p"}',
+    "pkg/bg.js": "1;",
+    "shared/x.js": "2;",
+    "exp/api.js": "3;",
+  })) {
+    fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true });
+    fs.writeFileSync(path.join(root, name), body);
+  }
+  const archive = scaViews(loadSourceArchive(root), {
+    scaExtracted: root,
+    scaBuild: path.join(root, "pkg"),
+    scaExperiments: path.join(root, "exp"),
+  });
+  assert.deepEqual([...archive.files.keys()].sort(), [
+    "pkg/bg.js",
+    "pkg/package.json",
+    "shared/x.js",
+  ]);
+  assert.deepEqual([...archive.experiment.keys()], ["exp/api.js"]);
+  assert.equal(archive.buildPrefix, "pkg");
+  assert.deepEqual([...submissionFiles(archive).keys()].sort(), [
+    "bg.js",
+    "package.json",
+  ]);
+  assert.deepEqual(readPackageFile(submissionFiles(archive)), { name: "p" });
+  assert.equal(buildKey(archive, "package.json"), "pkg/package.json");
+  // A flat archive is its own build folder: nothing is prefixed.
+  const flat = scaViews(loadSourceArchive(path.join(root, "pkg")), {
+    scaBuild: path.join(root, "pkg"),
+  });
+  assert.equal(flat.buildPrefix, "");
+  assert.equal(buildKey(flat, "package.json"), "package.json");
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+// Both SCA source flags name a folder WITHIN --sca-extracted, and relativeInside is the ONE
 // function that says WHERE inside - src/cli.js asks it before the filesystem, the loader
-// asks it through scaBuildRelative for the archive key, so the folder the guard finds is
+// asks it through extractedRelative for the archive key, so the folder the guard finds is
 // the folder the review reads. Both paths are absolute by now (the arg-array reader
 // resolved them), so this asks about the filesystem rather than about spelling: a dot in a
 // NAME survives because nothing here strips prefixes.
-test("scaBuildRelative keys a path inside the root, and refuses one outside", () => {
+test("extractedRelative keys a path inside the extracted archive, and refuses one outside", () => {
   const root = "/tmp/wrr-root";
   for (const [given, key] of [
     [`${root}/addon`, "addon"],
@@ -763,7 +812,7 @@ test("scaBuildRelative keys a path inside the root, and refuses one outside", ()
     // name, so which it is here is the platform's answer, never ours to rewrite.
     [`${root}${path.sep}sub${path.sep}dir`, "sub/dir"],
   ]) {
-    assert.equal(scaBuildRelative(given, root), key, given);
+    assert.equal(extractedRelative(given, root), key, given);
   }
   // Outside the root is refused, however it got there: another tree, the root's own parent,
   // or a way back out of it. What it names is not part of the submission.
@@ -774,8 +823,8 @@ test("scaBuildRelative keys a path inside the root, and refuses one outside", ()
     `${root}/a/../..`,
   ]) {
     assert.throws(
-      () => scaBuildRelative(outside, root, "--sca-experiments"),
-      /is not inside --sca-build/,
+      () => extractedRelative(outside, root, "--sca-experiments"),
+      /is not inside --sca-extracted/,
       outside
     );
     // The same question without the throw, which is what the CLI guard asks.

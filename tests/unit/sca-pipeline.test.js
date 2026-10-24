@@ -122,6 +122,61 @@ const FLAT_SRC = {
   }),
 };
 
+// A WRAPPED layout: the node project sits in a folder of the extracted archive, and code the
+// build takes from beside it lies outside that folder. The review reads the whole extracted
+// archive, so that code is reviewed too, and every path is given from the archive's top: the
+// package checks still read the build folder's package.json and lock, and point at them there.
+test("SCA e2e: a wrapped archive is reviewed whole, its package files read in the build folder", async () => {
+  const xpi = tmpDir(XPI_FILES);
+  const src = tmpDir({
+    // No lock, so the one finding that names the build folder's package file shows where.
+    ...Object.fromEntries(
+      Object.entries(FLAT_SRC)
+        .filter(([name]) => name !== "package-lock.json")
+        .map(([name, body]) => [`pkg/${name}`, body])
+    ),
+    "shared/helper.js": `browser.anotherFakeNamespace.call();\n`,
+  });
+  try {
+    const { findings, meta } = await runReview({
+      addonPath: xpi,
+      scaExtracted: src,
+      ...OFFLINE,
+      cdnLookupCache: cdnMissCache(xpi, src),
+    });
+    assert.equal(
+      meta.scaBuild,
+      path.join(src, "pkg"),
+      "the build folder is found"
+    );
+    assert.ok(
+      hasItem(
+        meta,
+        "unknown-api",
+        (m) =>
+          m.file === "shared/helper.js" && /anotherFakeNamespace/.test(m.item)
+      ),
+      "code beside the build folder is reviewed, at its place in the archive"
+    );
+    assert.ok(
+      hasItem(meta, "unknown-api", (m) => m.file === "pkg/app.js"),
+      "the build folder's own code is reviewed at its place in the archive"
+    );
+    // The lock is owed by the build folder's package.json, and named there.
+    assert.ok(
+      has(
+        findings,
+        "sca-lock-file-missing",
+        (f) => f.file === "pkg/package.json"
+      ),
+      findings.map((f) => `${f.ruleId} ${f.file}`).join(", ")
+    );
+  } finally {
+    fs.rmSync(xpi, { recursive: true, force: true });
+    fs.rmSync(src, { recursive: true, force: true });
+  }
+});
+
 test("SCA e2e: a flat layout is accepted and fully reviewed", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(FLAT_SRC);
@@ -805,7 +860,7 @@ test("SCA e2e: --sca-experiments excludes the Experiment subtree from the code c
     // about where it lands.
     await assert.rejects(
       runReview({ ...base, scaExperiments: path.join(xpi, "experiments") }),
-      /is not inside --sca-build/
+      /is not inside --sca-extracted/
     );
   } finally {
     fs.rmSync(xpi, { recursive: true, force: true });

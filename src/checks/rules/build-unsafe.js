@@ -3,9 +3,8 @@
 // build-safe`), so it always reports. Where the reviewer gave reasons of their own, one
 // finding, anchored where the build checks anchor, carries them as its note. Where they
 // trusted the agent's verdict, each issue the build analysis listed is a finding of its own,
-// at its file and line, with the agent's hint, or at the build's anchor for one above the
-// reviewed root, whose hint then names where it is. With neither, the one finding stands
-// alone.
+// at its file and line in the extracted archive, with the agent's hint. With neither, the one
+// finding stands alone.
 // The review then goes on, and is aborted late with this check's reason and response.
 //
 // Belongs here: reporting it. Does NOT belong here: the decision and the issues
@@ -29,10 +28,7 @@ export default {
     if (reasons === null && issues.length) {
       return {
         findings: issues.map(({ file, line, hint }) => {
-          const at = ctx.artifact.at(
-            file ?? anchor,
-            line === null ? null : { line }
-          );
+          const at = ctx.artifact.at(file, line === null ? null : { line });
           ctx.note?.(at, hint, VERDICT.FAIL);
           return finding({ ...at, hint });
         }),

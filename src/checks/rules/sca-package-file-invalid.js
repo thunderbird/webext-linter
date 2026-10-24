@@ -22,7 +22,12 @@
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { PACKAGE_FILE, packageFileFault } from "../../vendor/package-file.js";
+import {
+  buildKey,
+  PACKAGE_FILE,
+  packageFileFault,
+  submissionFiles,
+} from "../../vendor/package-file.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -32,8 +37,8 @@ export default {
    * @returns {{findings: import("../../report/finding.js").Finding[]}}
    */
   run(ctx) {
-    const files = ctx.artifact.files;
-    if (!files.has(PACKAGE_FILE)) {
+    const files = submissionFiles(ctx.artifact);
+    if (!files?.has(PACKAGE_FILE)) {
       return { findings: [] };
     }
     const fault = packageFileFault(files.get(PACKAGE_FILE));
@@ -43,7 +48,8 @@ export default {
     // Which way it failed rides the location line, so the response states the rule once.
     const item =
       fault === "unreadable" ? "could not be read" : "is not a JSON object";
-    ctx.note?.(ctx.artifact.at(PACKAGE_FILE), item, VERDICT.FAIL);
-    return { findings: [finding({ ...ctx.artifact.at(PACKAGE_FILE), item })] };
+    const at = ctx.artifact.at(buildKey(ctx.artifact, PACKAGE_FILE));
+    ctx.note?.(at, item, VERDICT.FAIL);
+    return { findings: [finding({ ...at, item })] };
   },
 };

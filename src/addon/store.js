@@ -166,6 +166,41 @@ export function fileView(store, { keys }) {
 }
 
 /**
+ * The files under one folder of a store, keyed relative to that folder: the build folder's
+ * own frame, which the package file and the lock are read in (src/vendor/package-file.js
+ * submissionFiles). Every file is still the store's, under its full key.
+ * @param {Map<string, Buffer>} store
+ * @param {string} prefix  The folder's key, with no trailing separator.
+ * @returns {object}  The Map surface fileView answers.
+ */
+export function folderView(store, prefix) {
+  const lead = `${prefix}/`;
+  const keys = [...store.keys()]
+    .filter((key) => key.startsWith(lead))
+    .map((key) => key.slice(lead.length));
+  const held = new Set(keys);
+  const view = {
+    get size() {
+      return held.size;
+    },
+    /** @param {string} key */
+    has: (key) => held.has(key),
+    /** @param {string} key */
+    get: (key) => (held.has(key) ? store.get(`${lead}${key}`) : undefined),
+    *keys() {
+      yield* held;
+    },
+    *entries() {
+      for (const key of held) {
+        yield [key, store.get(`${lead}${key}`)];
+      }
+    },
+  };
+  view[Symbol.iterator] = view.entries;
+  return view;
+}
+
+/**
  * The add-on's files INCLUDING its privileged Experiment implementation.
  *
  * `addon.files` is the add-on's WebExtension code: the Experiment is kept out of it so the
