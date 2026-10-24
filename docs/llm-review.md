@@ -55,7 +55,7 @@ entry never offered are all refusals.
 | --- | --- | --- |
 | `built` | Source code review only: show the Build Review Details block (see below) as the last thing of the turn, then, once the reviewer has replied, relay the build to-do (`build-reproduces-xpi`) to them alone as the question. Where the reviewer builds themselves, the pause after the block is the one in which they build. A step says who built the add-on, by the build result, and the agent builds and compares nothing. Issued only while that to-do is open, which is where the reviewer held the build safe in the preparation. | A process value: `Builds and reproduces` / `Does not reproduce` / `Does not build` |
 | `spawn` | Start the sub-agents the review needs - the add-on description and one sweep per tree - and read back what the sweeps found. | Nothing: each sweep's reply is written to a file of its own (see below) |
-| `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
+| `verify` | Audit what the deterministic checks claimed, but never a finding of a check with `llm-verification: false`: a person's decision or a fact from outside the add-on. | `reported` / `withdrawn` |
 | `settle` | Decide the cases a check could not settle from the package. | `reported` / `cleared` / `ask` |
 | `ask` | Show the Review Details block as the last thing of the turn, then, once the reviewer has replied, put to them what only a person can answer. Not under `--llm-skip-manual`. | The reviewer's own answer |
 | `downgrade` | Source code review only, aborted only by checks a review of the XPI alone cures, with a readable XPI (`downgradable`): show the aborted review's Summary and Final Review Details as the last thing of the turn, then, once the reviewer has replied, ask them alone whether to restart as an XPI review (see [Restarting as an XPI review](#restarting-as-an-xpi-review)). | A process value: `Restart as an XPI review` / `Keep this result` |
@@ -108,8 +108,8 @@ answer that was not offered is refused when it comes back. The registry checks i
 checks a step's, and refuses a phase that offers every value under a condition. A value may
 `report` a check:
 picking it adds that check's finding, which aborts the review like any finding of an
-aborting check. The finding is the person's answer, so it is recorded as reported at once and
-never put to verify. A value phase a check asks its question in (`asked-in`) relays that open
+aborting check. The finding is the person's answer, so its check says
+`llm-verification: false` and it is never put to verify. A value phase a check asks its question in (`asked-in`) relays that open
 to-do's message as its question, worded as `ask` words it, and is issued only while the
 to-do is open. Any answer clears the to-do, so a value that reports a check leaves that
 check's finding as the one finding. A value phase no check routes a to-do to asks the

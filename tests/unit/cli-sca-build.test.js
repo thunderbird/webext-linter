@@ -533,6 +533,9 @@ test("an unsafe build is reported where the reviewer holds it unsafe", () => {
     );
     assert.equal(unsafe.length, 1, managers);
     assert.equal(unsafe[0].note, reasons);
+    // The reviewer's decision, which verify never audits.
+    assert.equal(unsafe[0].llmVerification, false, managers);
+    assert.ok(!(unsafe[0].ref in state.answers), managers);
     // Trusted, the finding is the agent's issue, at its locus with its hint. The reviewer's
     // own words override it, at the build's anchor.
     assert.deepEqual(

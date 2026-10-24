@@ -333,7 +333,8 @@ built from - `sca-package-file-missing`, `sca-package-file-invalid`,
 `build-review`, `build-reproduces-xpi`, `build-not-reproduced`, `build-fails` and
 `build-unsafe` - name *build process issues*. Their error stops nothing while the review
 runs: every check still runs, and under `--llm-review` the build question, the sweeps,
-verify and settle run as usual, so verify can withdraw a wrong finding first and the
+verify and settle run as usual, so verify can withdraw a wrong finding first (never a person's
+decision or an outside fact, `llm-verification: false`) and the
 developer is told everything in one round. A finding that still stands ends the review
 before anyone is asked a question or to install the add-on, and a review without
 `--llm-review` is aborted the same way at its end. The package.json and lock checks also

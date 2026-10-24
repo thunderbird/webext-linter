@@ -17,6 +17,7 @@
 #   text      a string; `allow-empty` where an empty one is an authored answer
 #   one-of    a member of a closed set, named in `values` (resolved in registry-schema.js)
 #   gate      true only - absence already says false, so writing it says nothing twice
+#   boolean   true or false, for a key every entry answers explicitly (`required`)
 #   list      a list of non-empty strings; `of: mapping` for a list of mappings whose own
 #             keys another rule closes; `allow-empty` as above
 #   version   a Thunderbird version bound, string or bare number
@@ -179,6 +180,14 @@ shapes:
         it says this aborting check's finding makes a build impossible by the review's own
         rules, so a source review holding one asks nobody to build it and skips the build
         phases
+    llm-verification:
+      kind: boolean
+      required: true
+      why: >-
+        it says whether the agent audits this check's findings in `verify`. Every check
+        answers it, because a finding that records a person's decision or a fact from
+        outside the add-on (an advisory, a banned version, a download count) is reported as
+        it stands, and a check that forgot to say so would put it up for withdrawal
     escalation:
       kind: refused
       why: >-
@@ -213,6 +222,7 @@ shapes:
     asked-in: *only-a-check-that-runs
     review-downgrade: *only-a-check-that-runs
     review-unbuildable: *only-a-check-that-runs
+    llm-verification: *only-a-check-that-runs
 
   # The token vocabulary that can justify a permission. The two version bounds are
   # snake_case where every other field is kebab - deliberately, because they echo the

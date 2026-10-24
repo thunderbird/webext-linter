@@ -136,6 +136,9 @@ const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
  * @property {string} title
  * @property {Severity|"auto"|"none"|"hold-or-error"} severity  The entry's declared
  *   severity, stamped onto the check's findings unless it delegates (see runOneCheck).
+ * @property {boolean} [llmVerification]  Whether the agent verifies the check's findings
+ *   (Registry verifiedByLlm), stamped onto each one that is not. Carried here for the same
+ *   reason as `warningsAsErrors`.
  * @property {boolean} [warningsAsErrors]  The run's band policy (--warnings-as-errors),
  *   applied to each finding's FINAL severity in runOneCheck - which is the only value a
  *   check that delegates has. Carried here because runOneCheck takes no registry.
@@ -770,6 +773,18 @@ export class Registry {
    */
   downgrades(ruleId) {
     return this.checkEntry(ruleId)?.["review-downgrade"] === true;
+  }
+
+  /**
+   * Whether the agent audits this check's findings in `verify` (`llm-verification`). A check
+   * that says no reports a person's decision or a fact from outside the add-on, which is
+   * reported as it stands (src/report/phases.js phaseOf). True for an id with no entry, such
+   * as a crashed check's.
+   * @param {string} ruleId
+   * @returns {boolean}
+   */
+  verifiedByLlm(ruleId) {
+    return this.checkEntry(ruleId)?.["llm-verification"] !== false;
   }
 
   /**
@@ -2043,6 +2058,25 @@ function assertRegistry(registry, at, { partial = false } = {}) {
   assertChoices(registry, at);
   assertEarlyExit(registry, at);
   assertAskedIn(registry, at);
+  assertLlmVerification(registry, at);
+}
+
+/**
+ * Assert that a check the agent does not verify (`llm-verification: false`) authors no
+ * sweep: a sweep's hints are merged into its findings as claims, and verify is what audits
+ * them, so they would be reported unchecked.
+ * @param {Registry} registry @param {string} at
+ * @returns {void}
+ */
+export function assertLlmVerification(registry, at) {
+  for (const entry of registry.allEntries()) {
+    if (entry["llm-verification"] === false && sweepTargetsOf(entry).length) {
+      throw new Error(
+        `\`${entry.check}\` authors a sweep instruction but \`llm-verification: false\` - ` +
+          `its swept hints are claims only verify audits (${at})`
+      );
+    }
+  }
 }
 
 /**
@@ -2339,6 +2373,8 @@ export async function loadChecks(
       id,
       title: entry.title,
       severity: entry.severity,
+      // Stamped on each finding, which carries it to verify's routing (phases.js phaseOf).
+      llmVerification: registry.verifiedByLlm(id),
       // What this run was told about the bands it publishes (Registry bandOf). Carried on
       // the check because runOneCheck stamps the band and takes no registry - it is
       // exported to run a check on its own - and because a `severity: auto` check's band is
@@ -2778,6 +2814,9 @@ export async function runOneCheck(ctx, check, label) {
     check.severity === HOLD_OR_ERROR ? SEVERITY.HOLD : check.severity;
   for (const f of produced) {
     f.ruleId = check.id;
+    if (check.llmVerification === false) {
+      f.llmVerification = false;
+    }
     if (!auto) {
       // Fixed severity: the entry is the sole authority. Whatever the check
       // may have set on f.severity is ignored (overwritten) here.

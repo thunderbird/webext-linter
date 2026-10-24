@@ -38,6 +38,10 @@ deterministic-phase:
 # restart as an XPI review (the `downgrade` phase in llm-phases). vendor-vulnerable-indirect
 # carries no marker, as it reports code the XPI ships.
 #
+# `llm-verification` says whether `verify` audits a check's findings. It is false where a
+# finding is a person's decision or a fact from outside the add-on (an OSV advisory, the
+# banned versions, npm download counts), which the agent cannot check against the package.
+#
 # `review-unbuildable: true` on an aborting check of the source archive says no build can be
 # made from the source by the review's own rules: no usable package.json, or no single
 # readable lock for `npm ci` or `pnpm install --frozen-lockfile` to install from. A source
@@ -53,6 +57,7 @@ deterministic-phase:
 - title: Experiment APIs not accepted
   severity: error
   check: experiment-not-allowed
+  llm-verification: true
   input: xpi
   review-early-exit: experiment-not-allowed
   response: |-
@@ -72,6 +77,7 @@ deterministic-phase:
 - title: Lock file entries that install another release
   severity: error
   check: lockfile-injection
+  llm-verification: true
   review-downgrade: true
   build-guard: true
   input: sca
@@ -107,6 +113,7 @@ deterministic-phase:
 - title: The built XPI declares its own vendoring
   severity: warning
   check: sca-xpi-declares-vendoring
+  llm-verification: true
   input: all
   response: |-
     This add-on was submitted as a source-code archive, but the built XPI carries vendoring information of its own. In a source-code submission a VENDOR file, a package.json and a lock file belong in the archive - the copy the reviewer reads and the build installs from - not in the package you ship. Remove the file(s) below from the XPI and declare the dependencies in the archive instead. A source-code archive is only needed when the XPI is transpiled or otherwise transformed (for example minified). If it is not, submit just the XPI.
@@ -119,6 +126,7 @@ deterministic-phase:
 - title: The built XPI is fully included in the source archive
   severity: error
   check: sca-xpi-fully-included-in-archive
+  llm-verification: true
   review-downgrade: true
   input: all
   review-late-exit: archive-is-xpi
@@ -140,6 +148,7 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-package-file-missing
+  llm-verification: true
   review-downgrade: true
   review-unbuildable: true
   input: sca
@@ -162,6 +171,7 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-package-file-invalid
+  llm-verification: true
   review-downgrade: true
   review-unbuildable: true
   input: sca
@@ -187,6 +197,7 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-lock-file-missing
+  llm-verification: true
   review-downgrade: true
   review-unbuildable: true
   input: sca
@@ -205,6 +216,7 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-lock-file-invalid
+  llm-verification: true
   review-downgrade: true
   review-unbuildable: true
   input: sca
@@ -225,6 +237,7 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-lock-file-multiple
+  llm-verification: true
   review-downgrade: true
   review-unbuildable: true
   input: sca
@@ -248,6 +261,7 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: build-registry-redirect
+  llm-verification: true
   review-downgrade: true
   build-guard: true
   input: sca
@@ -264,6 +278,7 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: lock-foreign-source
+  llm-verification: true
   review-downgrade: true
   build-guard: true
   input: sca
@@ -283,6 +298,7 @@ deterministic-phase:
   severity: auto
   review-late-exit: known-vulnerabilities
   check: vendor-vulnerable
+  llm-verification: false
   build-guard: true
   input: source
   response: |-
@@ -300,6 +316,7 @@ deterministic-phase:
   severity: error
   review-late-exit: known-vulnerabilities
   check: vendor-vulnerable-dev
+  llm-verification: false
   review-downgrade: true
   build-guard: true
   input: sca
@@ -320,6 +337,7 @@ deterministic-phase:
   severity: error
   review-late-exit: known-vulnerabilities
   check: vendor-vulnerable-indirect
+  llm-verification: false
   build-guard: true
   input: sca
   response: |-
@@ -337,6 +355,7 @@ deterministic-phase:
   severity: error
   review-late-exit: known-vulnerabilities
   check: vendor-vulnerable-indirect-dev
+  llm-verification: false
   review-downgrade: true
   build-guard: true
   input: sca
@@ -354,6 +373,7 @@ deterministic-phase:
   severity: auto
   review-late-exit: disallowed-library-versions
   check: banned-library
+  llm-verification: false
   input: source
   response: |-
     A library version this add-on uses is {{status}} by Mozilla's add-on policy: {{item}} ({{version}}) - {{reason}} Update to a permitted version.
@@ -364,6 +384,7 @@ deterministic-phase:
 - title: Privileged core symbol in WebExtension code
   severity: error
   check: core-symbol-in-webext
+  llm-verification: true
   input: all
   response: |-
     This add-on is using privileged Thunderbird internals in a WebExtension context, where they are not available: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage.
@@ -376,6 +397,7 @@ deterministic-phase:
 - title: Trademark violation
   severity: error
   check: trademark-violation
+  llm-verification: true
   input: xpi
   response: |-
     This extension uses a registered trademark of Mozilla in its name and is unallowable under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). The usage of “Mozilla”, “Firefox” and “MZLA” is not allowed in the add-on name. Please choose a name that does not use them.
@@ -389,6 +411,7 @@ deterministic-phase:
 - title: Thunderbird in a localized add-on name
   severity: error
   check: trademark-thunderbird-locale
+  llm-verification: true
   input: xpi
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -416,6 +439,7 @@ deterministic-phase:
 - title: Thunderbird in an unlocalized add-on name
   severity: error
   check: trademark-thunderbird-name
+  llm-verification: true
   input: xpi
   instructions-for-human: |-
     The add-on name below carries “Thunderbird” in a form this scan cannot verify,
@@ -431,6 +455,7 @@ deterministic-phase:
 - title: Unknown or unsupported WebExtension API
   severity: error
   check: unknown-api
+  llm-verification: true
   input: source
   response: |-
     The following WebExtension APIs are not supported in the targeted Thunderbird version.
@@ -454,6 +479,7 @@ deterministic-phase:
 - title: Deprecated WebExtension API
   severity: info
   check: deprecated-api
+  llm-verification: true
   input: source
   response: |-
     The following APIs are deprecated in the targeted Thunderbird version. Please migrate to supported APIs.
@@ -464,6 +490,7 @@ deterministic-phase:
 - title: API newer than strict_max_version
   severity: error
   check: strict-max-version-api
+  llm-verification: true
   input: source
   response: |-
     The add-on is setting strict_max_version to {{max}} but uses functions or events added in a later Thunderbird. Raise strict_max_version, or stop using these APIs.
@@ -472,6 +499,7 @@ deterministic-phase:
 - title: Missing permission
   severity: error
   check: missing-permission
+  llm-verification: true
   input: source
   response: |-
     The following permissions are required at the locations listed, but are not declared in manifest.json. Add them to the requested permissions.
@@ -480,6 +508,7 @@ deterministic-phase:
 - title: Missing manifest.json key
   severity: error
   check: missing-manifest-key
+  llm-verification: true
   input: source
   response: |-
     The following APIs each need a manifest.json key that is not declared. Add one of the keys named for each API to manifest.json.
@@ -490,6 +519,7 @@ deterministic-phase:
 - title: Invalid manifest.json
   severity: error
   check: manifest-invalid-json
+  llm-verification: true
   input: xpi
   response: |-
     The included manifest.json is not a valid WebExtension manifest file.
@@ -499,6 +529,7 @@ deterministic-phase:
 - title: Missing manifest.json
   severity: error
   check: manifest-missing
+  llm-verification: true
   input: xpi
   response: |-
     The submission has no WebExtension manifest file (manifest.json) at its root.
@@ -508,6 +539,7 @@ deterministic-phase:
 - title: Missing required manifest.json key
   severity: error
   check: manifest-missing-key
+  llm-verification: true
   input: xpi
   response: |-
     The included WebExtension manifest file (manifest.json) has one or more required properties missing.
@@ -517,6 +549,7 @@ deterministic-phase:
 - title: manifest_version mismatch in manifest.json
   severity: error
   check: manifest-version-mismatch
+  llm-verification: true
   input: xpi
   response: |-
     The included WebExtension manifest file (manifest.json) declares manifest_version {{item}}, which does not match the schema set (Manifest V{{schema}}).
@@ -527,6 +560,7 @@ deterministic-phase:
 - title: Unknown permission
   severity: error
   check: manifest-unknown-permission
+  llm-verification: true
   input: xpi
   response: |-
     The included WebExtension manifest file (manifest.json) requests one or more unknown permissions.
@@ -538,6 +572,7 @@ deterministic-phase:
 - title: Self-hosted update URL
   severity: error
   check: update-url
+  llm-verification: true
   input: xpi
   response: |-
     This add-on sets an update_url, which directs Thunderbird to install updates from a self-hosted location instead of ATN (addons.thunderbird.net). Because those updates bypass review, an add-on using update_url cannot be listed on ATN. Remove update_url from browser_specific_settings.gecko (or applications.gecko).
@@ -546,6 +581,7 @@ deterministic-phase:
 - title: Unrecognized manifest.json key
   severity: info
   check: unrecognized-manifest-key
+  llm-verification: true
   input: xpi
   response: |-
     The included WebExtension manifest file (manifest.json) declares the following unknown top-level keys, which Thunderbird will ignore.
@@ -555,6 +591,7 @@ deterministic-phase:
 - title: Mistyped manifest.json value
   severity: warning
   check: mistyped-manifest-value
+  llm-verification: true
   input: xpi
   response: |-
     The following manifest.json entries have a value Thunderbird ignores or misreads.
@@ -565,6 +602,7 @@ deterministic-phase:
 - title: Missing referenced file
   severity: error
   check: bundled-files
+  llm-verification: true
   input: xpi
   response: |-
     The following referenced file(s) are not bundled with the add-on, or the path may be wrongly specified. Please include every referenced file in the package, and check that the used paths are correct.
@@ -574,6 +612,7 @@ deterministic-phase:
 - title: Unrecognized referenced file type
   severity: error
   check: unrecognized-file-type
+  llm-verification: true
   input: xpi
   response: |-
     The following packaged file(s) are referenced by the add-on ({{referrer}}) but have a file type the review tools do not recognize, so they could not be classified or reviewed. The browser still loads them. Please give each a standard extension for its content (for example a .js script), or confirm what the file is and why it is shipped. If this is a build artifact your packaging step emitted, review what your build produces.
@@ -582,6 +621,7 @@ deterministic-phase:
 - title: Synchronous XMLHttpRequests
   severity: error
   check: sync-xhr
+  llm-verification: true
   input: all
   response: |-
     The add-on makes a synchronous XMLHttpRequest, which can lock up the user interface. Please use an asynchronous request instead.
@@ -591,6 +631,7 @@ deterministic-phase:
 - title: Modifying innerHTML; use Element.setHTML()
   severity: info
   check: unsafe-html
+  llm-verification: true
   input: source
   response: |-
     Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a template element, or CSS to show and hide existing elements).
@@ -600,6 +641,7 @@ deterministic-phase:
 - title: Debugger statement
   severity: error
   check: debugger-statement
+  llm-verification: true
   input: all
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -621,6 +663,7 @@ deterministic-phase:
 - title: Async listener on a runtime message event
   severity: warning
   check: async-onmessage
+  llm-verification: true
   input: source
   response: |-
     An asynchronous listener is attached to the following runtime message event(s). An async listener always returns a Promise, which claims the response for every message it sees - including the ones it declines - so the other listeners never get to answer. This is error-prone and must be avoided.
@@ -632,6 +675,7 @@ deterministic-phase:
 - title: JavaScript code errors
   severity: info
   check: code-sanity
+  llm-verification: true
   input: source
   when: eslint
   response: |-
@@ -641,6 +685,7 @@ deterministic-phase:
 - title: Minimize host permissions
   severity: info
   check: minimize-host-permissions
+  llm-verification: true
   input: xpi
   response: |-
     manifest.json requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
@@ -658,6 +703,7 @@ deterministic-phase:
 - title: Possibly unused permissions
   severity: warning
   check: unused-permission
+  llm-verification: true
   input: xpi
   response: |-
     One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
@@ -680,6 +726,7 @@ deterministic-phase:
 - title: Missing third-party library reference
   severity: info
   check: missing-library
+  llm-verification: true
   input: source
   response-for-xpi: |-
     The following bundled files were recognized as third-party libraries (via the Mozilla library hash database) but are not declared as such. Declare each so the (unmodified) copy can be verified against the release it came from - a VENDOR.md file at the add-on root is common practice.
@@ -693,6 +740,7 @@ deterministic-phase:
 - title: Library identified on a CDN
   severity: info
   check: find-lib-on-cdn
+  llm-verification: true
   input: source
   response-for-xpi: |-
     The following bundled files were recognized as third-party libraries (via a jsDelivr CDN hash lookup) but are not declared as such. Declare each so the (unmodified) copy can be verified against the release it came from - a VENDOR.md file at the add-on root is common practice.
@@ -710,6 +758,7 @@ deterministic-phase:
 - title: Minified code cannot be reviewed
   severity: error
   check: minified-code
+  llm-verification: true
   input: source
   # Aborts the review late: code nobody can read is unsafe to install, so the reviewer is
   # asked nothing. The review still runs to the end of `settle`.
@@ -730,6 +779,7 @@ deterministic-phase:
 - title: Source Archive (unverified library) required
   severity: error
   check: untrusted-minified-library
+  llm-verification: true
   input: source
   # Aborts the review late: code nobody can read is unsafe to install, so the reviewer is
   # asked nothing. The review still runs to the end of `settle`.
@@ -747,6 +797,7 @@ deterministic-phase:
 - title: Library reviewed as authored code
   severity: info
   check: untrusted-library
+  llm-verification: true
   input: source
   response: |-
     The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies and are reviewed as authored code, so a finding may be reported against library code.
@@ -767,6 +818,7 @@ deterministic-phase:
 - title: Unreviewable dependency
   severity: error
   check: unpopular-source-dependency
+  llm-verification: false
   input: sca
   response: |-
     The following dependencies could not be confirmed as widely used, so they can be neither shipped nor used in the build without being reviewed. Replace each with a widely-used equivalent, remove it if the add-on does not need it, or include its non-minified source in the archive and declare it as a local package ("file:./path/to/it") so it is reviewed as part of the submission. Its own dependencies are checked the same way.
@@ -775,6 +827,7 @@ deterministic-phase:
 - title: Unparsable file
   severity: info
   check: unparsable-file
+  llm-verification: true
   input: source
   response: |-
     Limited static-analysis coverage: could not be parsed, so API checks were skipped ({{detail}})
@@ -788,6 +841,7 @@ deterministic-phase:
 - title: File could not be analysed
   severity: error
   check: unanalysable-file
+  llm-verification: true
   input: all
   response: |-
     The following file(s) contain code that is not valid JavaScript, so it cannot run and could not be reviewed. Correct the code at each line named.
@@ -799,6 +853,7 @@ deterministic-phase:
 - title: Unreadable Experiment schema
   severity: error
   check: experiment-schema-invalid
+  llm-verification: true
   input: xpi
   response: |-
     The following Experiment schema file(s) cannot be read by Thunderbird (not UTF-8 or UTF-16 text, or not valid JSON). Thunderbird refuses to install an add-on whose Experiment schema it cannot read. Correct each file.
@@ -808,6 +863,7 @@ deterministic-phase:
 - title: Modified or outdated Experiment draft
   severity: error
   check: experiment-modified
+  llm-verification: true
   input: xpi
   response: |-
     The following Experiment API(s) are published Thunderbird API drafts, but this add-on bundles a modified or outdated copy of each. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments.
@@ -817,6 +873,7 @@ deterministic-phase:
 - title: Experiment missing strict_max_version
   severity: error
   check: experiment-missing-strict-max-version
+  llm-verification: true
   input: xpi
   response: |-
     This add-on uses Experiment APIs but declares no strict_max_version. Experiments rely on internal APIs that change between major Thunderbird versions, so they must set browser_specific_settings.gecko.strict_max_version.
@@ -826,6 +883,7 @@ deterministic-phase:
 - title: Experiment overrides a built-in API
   severity: error
   check: experiment-overrides-api
+  llm-verification: true
   input: xpi
   response: |-
     The following Experiment API(s) override or extend a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under new, distinct API namespaces.
@@ -840,6 +898,7 @@ deterministic-phase:
 - title: Experiment manual review
   severity: error
   check: experiment-manual-review
+  llm-verification: true
   input: xpi
   instructions-for-human: |-
     This submission ships an Experiment, which runs with full access to
@@ -866,6 +925,7 @@ deterministic-phase:
 - title: Experiment with unrecognized API usage
   severity: error
   check: experiment-unknown-api
+  llm-verification: true
   input: source
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -892,6 +952,7 @@ deterministic-phase:
 - title: Unnecessary strict_max_version
   severity: warning
   check: non-experiment-strict-max-version
+  llm-verification: true
   input: xpi
   response: |-
     This add-on pins strict_max_version "{{item}}". The WebExtension APIs are stable and designed to keep add-ons forward-compatible across Thunderbird versions, so a maximum version is usually unnecessary and only blocks installs on newer Thunderbird.
@@ -931,6 +992,7 @@ deterministic-phase:
   severity: error
   when: NOT sca
   check: xpi-lock-file-missing
+  llm-verification: true
   input: xpi
   response: |-
     The following dependencies are declared as a version range, and the add-on ships no lock file to resolve them. A range names no single release, so there is nothing to verify the bundled copy against. Commit the lock file your package manager wrote alongside package.json - package-lock.json, npm-shrinkwrap.json or pnpm-lock.yaml - which records the exact version that was bundled. Pinning each dependency in package.json to a bare version like "4.17.21" instead also works.
@@ -943,6 +1005,7 @@ deterministic-phase:
   severity: error
   when: NOT sca
   check: xpi-lock-file-invalid
+  llm-verification: true
   input: xpi
   response: |-
     The following dependencies are declared as a version range, and the lock file the add-on ships records no version for them. A range names no single release, so there is nothing to verify the bundled copy against. Regenerate the lock file so it records what was bundled, or pin each dependency in package.json to a bare version like "4.17.21".
@@ -959,6 +1022,7 @@ deterministic-phase:
 - title: Unsupported dependency source
   severity: error
   check: unsupported-dependency
+  llm-verification: true
   input: source
   response-for-xpi: |-
     The following dependencies are declared from a source the review cannot identify or verify. Only npm packages pinned to an exact version and GitHub URLs are supported. Re-declare each as a pinned npm package or a GitHub source, or bundle the non-minified library with the add-on so it can be reviewed directly.
@@ -978,6 +1042,7 @@ deterministic-phase:
 - title: Dependencies changed for the review
   severity: info
   check: sca-dependencies-changed
+  llm-verification: true
   input: sca
   response: |-
     Your source code was reviewed with changed dependencies, because the ones you submitted have known security vulnerabilities. Dependencies your release build does not use were removed, and where that was not enough, the lock file was updated to fixed releases. Your own package.json and lock file still have these vulnerabilities. Run `npm audit` (or `pnpm audit`) in your project and resolve them before your next submission.
@@ -990,6 +1055,7 @@ deterministic-phase:
 - title: Committed node_modules folder
   severity: error
   check: committed-node-modules
+  llm-verification: true
   input: sca
   response: |-
     The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them.
@@ -1001,6 +1067,7 @@ deterministic-phase:
 - title: Committed build artifact
   severity: error
   check: committed-build-artifact
+  llm-verification: true
   input: sca
   response: |-
     The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them.
@@ -1016,6 +1083,7 @@ deterministic-phase:
 - title: Symbolic link out of the submission
   severity: error
   check: sca-invalid-symlink
+  llm-verification: true
   input: sca
   response: |-
     The following symbolic link(s) lead outside the submitted source, or to a target that does not exist. The review covers only what the submission contains, so code reached through such a link is never seen, and a build that needs it cannot be reproduced. Replace each link with the actual files, or remove it where the build does not need it. A link pointing to another location inside the submission is fine.
@@ -1038,6 +1106,7 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: build-lifecycle-hook
+  llm-verification: true
   review-downgrade: true
   input: sca
   settle-verbs: [reported, cleared]
@@ -1067,6 +1136,7 @@ deterministic-phase:
 - title: Build process review
   severity: error
   check: build-review
+  llm-verification: true
   review-downgrade: true
   input: sca
   when: NOT build-judged
@@ -1103,6 +1173,7 @@ deterministic-phase:
 - title: Reproducing the XPI from the source
   severity: error
   check: build-reproduces-xpi
+  llm-verification: true
   review-downgrade: true
   input: sca
   when: build-judged AND build-safe
@@ -1118,12 +1189,14 @@ deterministic-phase:
     The submitted source could not be built into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
 
 # SCA only: the three reasons a source does not build into the shipped XPI, one check each so
-# the developer is told which. Nothing in the files decides any of them. The first two are
+# the developer is told which. A person decides each, not the files, so the agent never
+# verifies them (`llm-verification: false`). The first two are
 # the findings of two answers of the `built` phase (its value `reports` it, src/report/loop.js
 # recordValue), and their rules raise nothing. Each aborts the review for build issues.
 - title: Source does not build into the submitted XPI
   severity: error
   check: build-not-reproduced
+  llm-verification: false
   review-downgrade: true
   input: sca
   review-late-exit: unreproducible-build
@@ -1134,6 +1207,7 @@ deterministic-phase:
 - title: Source cannot be built
   severity: error
   check: build-fails
+  llm-verification: false
   review-downgrade: true
   input: sca
   review-late-exit: unreproducible-build
@@ -1148,6 +1222,7 @@ deterministic-phase:
 - title: Unsafe build process
   severity: error
   check: build-unsafe
+  llm-verification: false
   review-downgrade: true
   input: sca
   when: build-judged AND NOT build-safe
@@ -1158,11 +1233,13 @@ deterministic-phase:
 
 # An XPI review restarted from a source review the `downgrade` phase offered to restart
 # (src/cli.js runLoopPass): the archive was not needed, and the developer is told so.
-# Nothing in the files decides it, so its rule raises nothing. The pipeline adds its one
+# The reviewer decided it, not the files, so its rule raises nothing and the agent never
+# verifies it. The pipeline adds its one
 # finding to a review started with `downgradedFrom` (src/pipeline.js), which no flag sets.
 - title: Source archive not needed
   severity: info
   check: sca-not-needed
+  llm-verification: false
   input: xpi
   response: |-
     This add-on was submitted with a source-code archive, but its XPI could be reviewed on its own, so it was reviewed without the archive. Please submit just the XPI next time: it is reviewed considerably faster.
@@ -1174,6 +1251,7 @@ deterministic-phase:
 - title: Vendored library not vulnerability-checked
   severity: info
   check: vendor-vuln-unknown
+  llm-verification: true
   input: source
   response-for-xpi: |-
     The add-on sourced a third-party file from a CDN, where its known-vulnerability status could not be determined automatically. To benefit from automated auditing against the OSV database, consider switching to an npm-hosted source and update your vendor mechanism to point to an unpkg or jsDelivr package (pinned to an exact version).
@@ -1184,6 +1262,7 @@ deterministic-phase:
 - title: Unpinned vendored source
   severity: error
   check: unpinned-vendor-source
+  llm-verification: true
   input: source
   response: |-
     The following vendored file(s) cite a source that is not pinned to an immutable version. Each is linked to a branch or unversioned URL rather than a specific release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from.
@@ -1191,6 +1270,7 @@ deterministic-phase:
 - title: Modified vendored library
   severity: error
   check: vendor-modified
+  llm-verification: true
   input: source
   response: |-
     A bundled third-party file does not match its declared source: {{item}} does not match the bytes its declared source ({{url}}) serves, so it appears to have been modified from the upstream release. Ship the file exactly as the source publishes it, or correct the declared source to the release the file actually came from.
@@ -1198,6 +1278,7 @@ deterministic-phase:
 - title: Missing vendored file
   severity: warning
   check: missing-vendor-file
+  llm-verification: true
   input: source
   response: |-
     One or more files listed in "{{item}}" are not present in the submission. Add each file to the submission, or remove its entry from "{{item}}".
@@ -1208,6 +1289,7 @@ deterministic-phase:
 - title: More than one VENDOR file
   severity: error
   check: multiple-vendor-files
+  llm-verification: true
   input: source
   response-for-xpi: |-
     This add-on ships more than one file that names itself the VENDOR file. Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different file after a rebuild. Keep the one that lists your bundled third-party libraries and remove the others.
@@ -1223,6 +1305,7 @@ deterministic-phase:
 - title: Unparseable VENDOR file
   severity: error
   check: vendor-unparseable
+  llm-verification: true
   input: source
   response-for-xpi: |-
     A VENDOR file is present but no third-party library could be parsed from it. Declare each bundled library in its own block, separated from the next by a blank line. A block names the packaged file path and a source URL pointing at the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so the file can be verified automatically. A bare repository link is not a source, and a path mentioned in a sentence is not a declaration. For example:
@@ -1260,6 +1343,7 @@ deterministic-phase:
 - title: Ambiguous vendored source
   severity: error
   check: vendor-ambiguous-source
+  llm-verification: true
   input: source
   response: |-
     Each of the following source URLs cannot verify the file(s) declared against it. A file source verifies exactly one file, so pairing it with several is ambiguous. A directory needs a source that can be fetched as an archive of the whole release, which the URL of a single file - or a CDN's directory listing page - is not. Give each file its own source URL, or declare the containing directory against a source that names the release: a pinned npm package (https://cdn.jsdelivr.net/npm/[name]@[version]/, or its registry tarball), or a GitHub tree URL (https://github.com/[owner]/[repo]/tree/[ref]/[path]).
@@ -1270,6 +1354,7 @@ deterministic-phase:
 - title: Data smuggled through a resource URL
   severity: error
   check: disguised-resource
+  llm-verification: true
   # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
   # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
@@ -1282,6 +1367,7 @@ deterministic-phase:
 - title: Data smuggled through a stylesheet
   severity: error
   check: disguised-stylesheet
+  llm-verification: true
   # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
   # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
@@ -1294,6 +1380,7 @@ deterministic-phase:
 - title: Data smuggled through an opened window
   severity: error
   check: disguised-window
+  llm-verification: true
   # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
   # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
@@ -1306,6 +1393,7 @@ deterministic-phase:
 - title: Data smuggled through a navigation
   severity: error
   check: disguised-navigation
+  llm-verification: true
   # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
   # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
@@ -1331,6 +1419,7 @@ deterministic-phase:
 - title: Unencrypted data transmission
   severity: error
   check: cleartext-transmission
+  llm-verification: true
   input: all
   sweep-instruction-for-xpi: &cleartext-sweep |-
     A remote endpoint reached over http://, ws:// or ftp://. Whatever the payload:
@@ -1347,6 +1436,7 @@ deterministic-phase:
 - title: Remote data transmission needs a privacy policy
   severity: hold-or-error
   check: privacy-policy
+  llm-verification: true
   # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
   # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
@@ -1386,6 +1476,7 @@ deterministic-phase:
 - title: Native messaging needs disclosure
   severity: hold-or-error
   check: native-messaging
+  llm-verification: true
   input: xpi
   response: |-
     This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged.
@@ -1402,6 +1493,7 @@ deterministic-phase:
 - title: Unreadable _locales messages.json
   severity: error
   check: locale-messages-invalid
+  llm-verification: true
   input: xpi
   response: |-
     The following _locales folder(s) have a messages.json that Thunderbird cannot read (it is missing, not UTF-8 or UTF-16 text, not valid JSON, or not in the messages format, where every entry is an object with a "message" string). Thunderbird refuses to install an add-on with such a folder. Fix each file, or remove a folder that is not used.
@@ -1411,6 +1503,7 @@ deterministic-phase:
 - title: Missing default_locale
   severity: error
   check: default-locale-missing
+  llm-verification: true
   input: xpi
   response: |-
     A _locales directory is present but manifest.json declares no default_locale, so Thunderbird will refuse to load the add-on. Add a default_locale naming the fallback locale (e.g. "en").
@@ -1420,6 +1513,7 @@ deterministic-phase:
 - title: Unused default_locale
   severity: error
   check: default-locale-unused
+  llm-verification: true
   input: xpi
   response: |-
     manifest.json declares a default_locale that names no _locales/[lang] folder the add-on ships, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files for it, or correct or remove default_locale.
@@ -1430,6 +1524,7 @@ deterministic-phase:
 - title: Add-on icon missing
   severity: info
   check: addon-icon-missing
+  llm-verification: true
   input: xpi
   response: |-
     Adding an add-on icon in manifest.json improves user acceptance.
@@ -1440,6 +1535,7 @@ deterministic-phase:
 - title: Background script needs type module
   severity: error
   check: background-module
+  llm-verification: true
   input: xpi
   response: |-
     The following background code location(s) use ES module syntax (import/export), but the background key in manifest.json is not declared "type": "module", so Thunderbird will fail to load the background script(s). Add "type": "module" to the background entry.
@@ -1449,6 +1545,7 @@ deterministic-phase:
 - title: Background page script needs type module
   severity: error
   check: background-page-module
+  llm-verification: true
   input: xpi
   response: |-
     The following background page code location(s) load a script that uses ES module syntax (import/export), but the script tag is not declared type="module", so Thunderbird will fail to load the background page. Add type="module" to the script tag.
@@ -1463,6 +1560,7 @@ deterministic-phase:
 - title: eval() usage
   severity: error
   check: eval-call
+  llm-verification: true
   input: all
   response: |-
     Dynamic code execution via "eval()" is not allowed.
@@ -1470,6 +1568,7 @@ deterministic-phase:
 - title: Function constructor usage
   severity: error
   check: function-constructor
+  llm-verification: true
   input: source
   response: |-
     Dynamic code execution via "the Function constructor" is not allowed.
@@ -1477,6 +1576,7 @@ deterministic-phase:
 - title: Code-string timer
   severity: error
   check: string-timer
+  llm-verification: true
   input: all
   response: |-
     Dynamic code execution via "a code string passed to setTimeout/setInterval" is not allowed.
@@ -1484,6 +1584,7 @@ deterministic-phase:
 - title: CSP allows 'unsafe-eval'
   severity: error
   check: csp-unsafe-eval
+  llm-verification: true
   input: xpi
   response: |-
     Dynamic code execution via "content_security_policy 'unsafe-eval'" is not allowed.
@@ -1491,6 +1592,7 @@ deterministic-phase:
 - title: CSP allows 'unsafe-inline'
   severity: error
   check: csp-unsafe-inline
+  llm-verification: true
   input: xpi
   response: |-
     Dynamic code execution via "content_security_policy 'unsafe-inline'" is not allowed.
@@ -1504,6 +1606,7 @@ deterministic-phase:
 - title: Missing English localization
   severity: warning
   check: missing-english-localization
+  llm-verification: true
   input: xpi
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1530,6 +1633,7 @@ deterministic-phase:
 - title: Obfuscated code is not permitted
   severity: error
   check: obfuscated-code
+  llm-verification: true
   input: all
   response-for-xpi: |-
     The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
@@ -1548,6 +1652,7 @@ deterministic-phase:
 - title: API newer than strict_min_version
   severity: error
   check: strict-min-version-api
+  llm-verification: true
   input: source
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1572,6 +1677,7 @@ deterministic-phase:
 - title: Unused, hidden or duplicate files or folders
   severity: warning
   check: unused-files
+  llm-verification: true
   input: xpi
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1595,6 +1701,7 @@ deterministic-phase:
 - title: Minimize web_accessible_resources
   severity: warning
   check: minimize-web-accessible-resources
+  llm-verification: true
   input: xpi
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1624,6 +1731,7 @@ deterministic-phase:
 - title: Remote resources
   severity: error
   check: remote-resources
+  llm-verification: true
   input: source
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1653,6 +1761,7 @@ deterministic-phase:
 - title: Remote load inside an upstream release
   severity: error
   check: vendored-remote-resources
+  llm-verification: true
   input: source
   instructions-for-human: |-
     Each of these remote loads is inside a file whose content matches a published
@@ -1670,6 +1779,7 @@ deterministic-phase:
 - title: Remote eval
   severity: error
   check: remote-eval
+  llm-verification: true
   input: all
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1693,6 +1803,7 @@ deterministic-phase:
 - title: User-data exfiltration
   severity: error
   check: data-exfiltration
+  llm-verification: true
   # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
   # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
@@ -1737,6 +1848,7 @@ deterministic-phase:
 - title: Data smuggled through a channel not meant for it
   severity: error
   check: disguised-transmission
+  llm-verification: true
   # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
   # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
@@ -1775,6 +1887,7 @@ deterministic-phase:
 - title: Check the package for unacceptable content
   severity: error
   check: unacceptable-package-content
+  llm-verification: true
   input: xpi
   settle-verbs: [cleared, ask]
   instructions-for-llm: |-
@@ -1808,6 +1921,7 @@ deterministic-phase:
 - title: Check the shipped icons for trademark or logo imitation
   severity: error
   check: shipped-icon-trademark-imitation
+  llm-verification: true
   input: xpi
   settle-verbs: [cleared, ask]
   instructions-for-llm: |-

@@ -102,6 +102,7 @@ import {
   loadChecks,
   loadRegistry,
   assertEarlyExit,
+  assertLlmVerification,
   runOneCheck,
   abortsReview,
   assertRequiredSections,
@@ -1192,7 +1193,14 @@ test("every check's severity is pinned to its band", async () => {
 // name - whatever this run was told to check.
 test("a check entry with no severity is refused", async () => {
   const reg = new Registry({
-    "deterministic-phase": [{ title: "X", check: "sync-xhr", input: "source" }],
+    "deterministic-phase": [
+      {
+        title: "X",
+        check: "sync-xhr",
+        input: "source",
+        "llm-verification": true,
+      },
+    ],
   });
   assert.throws(() => assertEntries(reg, "t.yaml"), /authors no `severity`/);
 });
@@ -1275,6 +1283,7 @@ test("a default-note must be prose, in either list", async () => {
   const rule = (extra) => ({
     title: "X",
     check: "sync-xhr",
+    "llm-verification": true,
     severity: "error",
     input: "source",
     ...extra,
@@ -1320,6 +1329,7 @@ test("a default-note must be prose, in either list", async () => {
         rule({ "instructions-for-human": "i", "default-note": "- ..." }),
         rule({
           check: "eval-call",
+          "llm-verification": true,
           instructions: "i",
           "settle-verbs": ["reported", "cleared"],
           "default-note": "- ...",
@@ -1421,6 +1431,7 @@ test("the shape pass refuses a key no section declares, and names the near miss"
   const rule = (extra) => ({
     title: "X",
     check: "sync-xhr",
+    "llm-verification": true,
     severity: "error",
     input: "source",
     response: "r",
@@ -1523,6 +1534,7 @@ test("a screened check says which answers its cases accept", async () => {
   const rule = (extra) => ({
     title: "X",
     check: "sync-xhr",
+    "llm-verification": true,
     severity: "error",
     input: "source",
     ...extra,
@@ -1592,6 +1604,7 @@ test("a sweep-instruction no finding could be filed for is refused", async () =>
   const entry = (extra) => ({
     title: "X",
     check: "sync-xhr",
+    "llm-verification": true,
     severity: "error",
     input: "source",
     ...extra,
@@ -1637,6 +1650,7 @@ test("a sweep-instruction no finding could be filed for is refused", async () =>
       "deterministic-phase": [
         entry({
           check: "sca-xpi-declares-vendoring",
+          "llm-verification": true,
           input: "all",
           "sweep-instruction": "look for X",
         }),
@@ -1652,6 +1666,7 @@ test("a sweep-instruction no finding could be filed for is refused", async () =>
         "deterministic-phase": [
           entry({
             check: input === "sca" ? "sca-lockfile-missing" : "sync-xhr",
+            "llm-verification": true,
             input,
             "sweep-instruction-for-xpi": "look for X",
           }),
@@ -1669,6 +1684,7 @@ test("an `input: all` check sweeps one tree per instruction it authors", async (
   const entry = (extra) => ({
     title: "X",
     check: "sca-xpi-declares-vendoring",
+    "llm-verification": true,
     severity: "error",
     input: "all",
     ...extra,
@@ -1703,6 +1719,7 @@ test("an `input: all` check sweeps one tree per instruction it authors", async (
       {
         title: "X",
         check: "sync-xhr",
+        "llm-verification": true,
         severity: "error",
         input: "source",
         "sweep-instruction": "look for X",
@@ -1723,6 +1740,7 @@ test("a check's condition is checked at load", () => {
   const rule = (extra) => ({
     title: "X",
     check: "sync-xhr",
+    "llm-verification": true,
     severity: "error",
     input: "source",
     response: "r",
@@ -1759,6 +1777,7 @@ test("a response worded per review mode is all-or-nothing, and never beside a ba
   const rule = (extra) => ({
     title: "X",
     check: "sync-xhr",
+    "llm-verification": true,
     severity: "error",
     input: "source",
     ...extra,
@@ -1881,6 +1900,7 @@ test("a response worded per review mode is all-or-nothing, and never beside a ba
         rule({ check: "eval-call", response: "r" }),
         rule({
           check: "inline-script-code",
+          "llm-verification": true,
           "response-for-xpi": "x",
           "response-for-sca": "s",
         }),
@@ -5146,7 +5166,7 @@ test("loadChecks throws hard when a check: names a missing module", async () => 
   const tmp = path.join(os.tmpdir(), `bad-registry-${process.pid}.yaml`);
   fs.writeFileSync(
     tmp,
-    "deterministic-phase:\n- title: Bogus\n  severity: error\n  input: source\n  check: __does_not_exist__.js\n"
+    "deterministic-phase:\n- title: Bogus\n  severity: error\n  input: source\n  check: __does_not_exist__.js\n  llm-verification: true\n"
   );
   try {
     await assert.rejects(() => loadChecks(loadRegistry(tmp)), /not found/);
@@ -5175,8 +5195,8 @@ test("loadRegistry rejects a check declared twice", async () => {
   fs.writeFileSync(
     tmp,
     "deterministic-phase:\n" +
-      "- title: Sync XHR\n  severity: warning\n  check: sync-xhr\n  input: source\n" +
-      "- title: Sync XHR again\n  severity: info\n  check: sync-xhr\n  input: source\n"
+      "- title: Sync XHR\n  severity: warning\n  check: sync-xhr\n  input: source\n  llm-verification: true\n" +
+      "- title: Sync XHR again\n  severity: info\n  check: sync-xhr\n  input: source\n  llm-verification: true\n"
   );
   try {
     assert.throws(
@@ -5229,7 +5249,7 @@ test("loadChecks accepts severity: auto", async () => {
   const tmp = path.join(os.tmpdir(), `auto-registry-${process.pid}.yaml`);
   fs.writeFileSync(
     tmp,
-    "deterministic-phase:\n- title: Ok\n  severity: auto\n  check: sync-xhr.js\n  input: source\n"
+    "deterministic-phase:\n- title: Ok\n  severity: auto\n  check: sync-xhr.js\n  input: source\n  llm-verification: true\n"
   );
   try {
     const checks = allChecks(await loadChecks(loadRegistry(tmp)));
@@ -5273,7 +5293,7 @@ test("an input:sca check needs no mode gate: its route is the gate", async () =>
   );
   fs.writeFileSync(
     tmp,
-    "deterministic-phase:\n- title: Build\n  severity: error\n  check: sync-xhr.js\n  input: sca\n"
+    "deterministic-phase:\n- title: Build\n  severity: error\n  check: sync-xhr.js\n  input: sca\n  llm-verification: true\n"
   );
   try {
     const checks = allChecks(await loadChecks(loadRegistry(tmp)));
@@ -5411,6 +5431,7 @@ test("--warnings-as-errors moves the suggested verdict with it", async () => {
       {
         title: "X",
         check: "sync-xhr",
+        "llm-verification": true,
         input: "source",
         severity: "warning",
         instructions: "i",
@@ -5419,6 +5440,7 @@ test("--warnings-as-errors moves the suggested verdict with it", async () => {
       {
         title: "Y",
         check: "debugger-statement",
+        "llm-verification": true,
         input: "source",
         severity: "info",
       },
@@ -6551,6 +6573,76 @@ test("review-downgrade is refused without an abort, and on input source or xpi",
     delete entry["review-early-exit"];
     entry["review-late-exit"] = "known-vulnerabilities";
   })();
+});
+
+// The checks verify never audits: a person's decision, or a fact from outside the add-on.
+test("llm-verification is false for decisions and outside facts alone", () => {
+  const registry = loadRegistry();
+  assert.deepEqual(
+    registry
+      .checkIds()
+      .filter((id) => !registry.verifiedByLlm(id))
+      .sort(),
+    [
+      "banned-library",
+      "build-fails",
+      "build-not-reproduced",
+      "build-unsafe",
+      "sca-not-needed",
+      "unpopular-source-dependency",
+      "vendor-vulnerable",
+      "vendor-vulnerable-dev",
+      "vendor-vulnerable-indirect",
+      "vendor-vulnerable-indirect-dev",
+    ]
+  );
+  assert.equal(registry.verifiedByLlm("check-failed"), true);
+});
+
+// Every check that runs answers llm-verification, as a boolean, and a by-hand entry, which
+// raises no finding, answers nothing. A check verify does not audit sweeps nothing either:
+// its swept hints would be reported unchecked.
+test("llm-verification is required, boolean, and refused beside a sweep", () => {
+  const saying = (text) => (err) => err.message.includes(text);
+  const edited = (id, edit) => {
+    const registry = loadRegistry();
+    edit(docEntry(registry, id));
+    return registry;
+  };
+  assert.throws(
+    () =>
+      assertEntries(
+        edited("sync-xhr", (e) => delete e["llm-verification"]),
+        "t.yaml"
+      ),
+    saying("authors no `llm-verification`")
+  );
+  assert.throws(
+    () =>
+      assertEntries(
+        edited("sync-xhr", (e) => (e["llm-verification"] = "no")),
+        "t.yaml"
+      ),
+    saying('a non-boolean `llm-verification` "no"')
+  );
+  assert.throws(
+    () =>
+      assertEntries(
+        edited("testing-information", (e) => (e["llm-verification"] = true)),
+        "t.yaml"
+      ),
+    saying("authors `llm-verification`")
+  );
+  const swept = edited("sync-xhr", (e) => (e["llm-verification"] = false));
+  assertEntries(swept, "t.yaml");
+  assertLlmVerification(swept, "t.yaml");
+  docEntry(swept, "sync-xhr")["sweep-instruction"] = "Find more.";
+  assert.throws(
+    () => assertLlmVerification(swept, "t.yaml"),
+    saying(
+      "`sync-xhr` authors a sweep instruction but `llm-verification: false`"
+    )
+  );
 });
 
 // The unbuildable marker describes an abort of the source archive as the downgrade marker

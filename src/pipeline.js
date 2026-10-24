@@ -774,13 +774,16 @@ async function reviewSubmission(opts, work, prepared) {
       skip: opts.checksSkip,
     })
   ) {
-    findings.push(
-      finding({
-        ruleId: SCA_NOT_NEEDED_CHECK,
-        severity: registry.checkEntry(SCA_NOT_NEEDED_CHECK).severity,
-        artifact: ARTIFACT_XPI,
-      })
-    );
+    const notNeeded = finding({
+      ruleId: SCA_NOT_NEEDED_CHECK,
+      severity: registry.checkEntry(SCA_NOT_NEEDED_CHECK).severity,
+      artifact: ARTIFACT_XPI,
+    });
+    // Raised here rather than by runOneCheck, so stamped here: the reviewer chose the restart.
+    if (!registry.verifiedByLlm(SCA_NOT_NEEDED_CHECK)) {
+      notNeeded.llmVerification = false;
+    }
+    findings.push(notNeeded);
   }
   // Whether the built XPI of a source review could be reviewed on its own, which the loop
   // reads to offer an aborted review a restart as an XPI review (src/report/loop.js runOf).

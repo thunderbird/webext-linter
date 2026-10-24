@@ -1356,11 +1356,19 @@ export function formatJson(review) {
   );
   const issues = review.findings;
   // `data` (template-resolution input, baked into `message`), `listItem` and `collapse`
-  // (text-layout flags) are internal, so they are dropped from the machine output.
+  // (text-layout flags) and `llmVerification` (the loop's routing) are internal, so they are
+  // dropped from the machine output.
   // Consumed by tooling rather than a terminal, but a consumer may print it, so the
   // submission-derived fields carry no more than the text report shows.
   const publicFindings = sortFindings(issues).map(
-    ({ data: _d, listItem: _li, collapse: _c, note, ...f }) => ({
+    ({
+      data: _d,
+      listItem: _li,
+      collapse: _c,
+      llmVerification: _v,
+      note,
+      ...f
+    }) => ({
       ...f,
       ...(f.file == null ? {} : { file: displayLine(f.file) }),
       ...(f.item == null ? {} : { item: displayLine(f.item) }),

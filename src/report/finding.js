@@ -126,6 +126,9 @@ const SEVERITY_RANK = Object.fromEntries(
  *   as the last part of the location line, after any `hint`: it is what a person added about
  *   THIS location, so it travels with the location rather
  *   than with the response paragraph, which stays wholly the registry's.
+ * @property {false} [llmVerification]  Set, to false, only on a finding of a check the agent
+ *   does not verify (`llm-verification: false`), which no phase opens (src/report/phases.js
+ *   phaseOf). Never set by a check.
  */
 
 /**

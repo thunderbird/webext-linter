@@ -72,6 +72,7 @@ const KIND = {
   text: "text",
   "one-of": "oneOf",
   gate: "gate",
+  boolean: "boolean",
   list: "list",
   version: "version",
   refused: "refused",
@@ -296,6 +297,10 @@ export function assertFields(entry, shape, where) {
             : `${where} has a non-boolean \`${key}\` ${JSON.stringify(value)} - it is a ` +
                 `gate, and anything else silently reads as false. ${field.why}`
         );
+      }
+    } else if (field.kind === "boolean") {
+      if (typeof value !== "boolean") {
+        throw bad("a non-boolean");
       }
     } else if (field.kind === "list") {
       const items = field.of === "mapping" ? "mapping" : "string";

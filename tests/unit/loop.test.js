@@ -115,6 +115,7 @@ function review(
               {
                 label: 1,
                 check: "privacy-policy",
+                "llm-verification": true,
                 title: "t1",
                 instruction: "i1",
                 artifact: ARTIFACT_XPI,
@@ -122,6 +123,7 @@ function review(
               {
                 label: 2,
                 check: "data-exfiltration",
+                "llm-verification": true,
                 title: "t2",
                 instruction: "i2",
                 artifact: ARTIFACT_XPI,
@@ -404,7 +406,7 @@ function valueLoop() {
           value: "unsafe",
           label: "Unsafe",
           description: "something remote",
-          reports: "build-reproduces-xpi",
+          reports: "build-not-reproduced",
         },
       ],
     },
@@ -460,9 +462,10 @@ test("a process value is asked once and read by value(phase, id)", () => {
 });
 
 // A value that reports a check aborts the review through that check: its finding is in
-// the review, recorded as reported, and the report names its reason. The check aborts late,
-// so the review still runs to the end of settle, and the finding is the person's answer:
-// verify is never asked about it, and withdrawing everything withdraws nothing of it.
+// the review, and the report names its reason. The check aborts late, so the review still
+// runs to the end of settle, and the finding is the person's answer: its check is one the
+// agent does not verify, so it is answered by nobody, and withdrawing everything withdraws
+// nothing of it.
 test("a process value that reports a check aborts the review", () => {
   const { reg, phases } = valueLoop();
   const { state, work } = review(tmp(), { sweep: false });
@@ -471,12 +474,16 @@ test("a process value that reports a check aborts the review", () => {
   accept(state, work, phases, reg);
   assert.deepEqual(state.values, { safety: "unsafe" });
   const reported = state.report.findings.find(
-    (f) => f.ruleId === "build-reproduces-xpi"
+    (f) => f.ruleId === "build-not-reproduced"
   );
   assert.ok(reported, "the reported check's finding is in the review");
-  assert.equal(reported.ref, `${reg.refBase("build-reproduces-xpi")}.1`);
+  assert.equal(reported.ref, `${reg.refBase("build-not-reproduced")}.1`);
   assert.equal(reported.artifact, ARTIFACT_SCA, "the artifact its check reads");
-  assert.equal(state.answers[reported.ref], "reported");
+  assert.equal(reported.llmVerification, false);
+  assert.ok(
+    !(reported.ref in state.answers),
+    "nobody answers the person's answer"
+  );
   const seen = [];
   let closing = null;
   for (let pass = 0; pass < 8; pass++) {
@@ -511,13 +518,13 @@ test("a process value's finding is about the artifact its check reads", () => {
   Object.values(reg.doc)
     .filter(Array.isArray)
     .flat()
-    .find((e) => e?.check === "build-reproduces-xpi").input = "xpi";
+    .find((e) => e?.check === "build-not-reproduced").input = "xpi";
   const { state, work } = review(tmp(), { sweep: false });
   issue(state, work, phases, reg);
   handBack(work, () => "Unsafe");
   accept(state, work, phases, reg);
   const reported = state.report.findings.find(
-    (f) => f.ruleId === "build-reproduces-xpi"
+    (f) => f.ruleId === "build-not-reproduced"
   );
   assert.equal(reported.artifact, ARTIFACT_XPI);
 });
@@ -1131,6 +1138,7 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
     items: [ARTIFACT_XPI, ARTIFACT_SCA].map((artifact, i) => ({
       label: i + 1,
       check: "data-exfiltration",
+      "llm-verification": true,
       title: "Data exfiltration",
       severity: "error",
       instruction: `look in the ${artifact}`,

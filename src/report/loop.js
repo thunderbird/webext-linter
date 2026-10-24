@@ -498,8 +498,8 @@ function phaseQuestion(state, registry, phase, ordered) {
  * `reports` a check then adds that check's finding, which aborts the review the way any
  * finding of an aborting check does - with its reason and its response, and nothing for the
  * loop to decide on its own. So a reported value leaves exactly one finding, the one it
- * names. That finding is the reviewer's answer, so it is recorded as reported at once: verify
- * is never asked to withdraw what a person said.
+ * names. That finding is the reviewer's answer, so its check is one the agent does not verify
+ * (`llm-verification: false`), and it opens in no phase.
  * @param {import("./state.js").LoopState} state  Mutated.
  * @param {import("../checks/registry.js").Registry} registry
  * @param {{name: string, values: {value: string, label: string, reports: ?string}[]}} phase
@@ -524,9 +524,11 @@ function recordValue(state, registry, phase, answers) {
     severity: registry.checkEntry(picked.reports).severity,
     artifact: artifactRead(registry.inputFor(picked.reports), state.report.sca),
   });
+  if (!registry.verifiedByLlm(picked.reports)) {
+    reported.llmVerification = false;
+  }
   state.report.findings.push(reported);
   assignRefs([...state.report.findings, ...state.manual], registry);
-  state.answers[reported.ref] = String(VERB.reported);
   renderFindings(state.report.findings, registry, { sca: state.report.sca });
 }
 

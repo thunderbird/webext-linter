@@ -16,8 +16,11 @@ import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
 /**
  * The phase an item is answered in, from what the item IS.
  *
- * A finding is a claim the linter proved, so it is audited. A code-review case is one a
- * check could not settle, so it is settled. A question is one only a person can answer.
+ * A finding is a claim the linter proved, so it is audited, unless its check says the agent
+ * does not verify it (`llm-verification: false`, stamped on the finding as it is raised): a
+ * person's decision or a fact from outside the add-on stands as reported, and opens in no
+ * phase. A code-review case is one a check could not settle, so it is settled. A question
+ * is one only a person can answer.
  *
  * A to-do item can name the phase a person is asked it in (`askedIn`), and then it opens
  * there. Two things write that, both onto the item itself: its check, which asks its
@@ -26,11 +29,11 @@ import { ITEMLESS_ANSWERS } from "../checks/registry-vocabulary.js";
  * when the hand-back is accepted). Carried BY the item, so the route travels with the case
  * wherever the review sorts it.
  * @param {import("./order.js").OrderedItem} item
- * @returns {string}
+ * @returns {?string}
  */
 export function phaseOf(item) {
   if (item.kind === "finding") {
-    return "verify";
+    return item.target?.llmVerification === false ? null : "verify";
   }
   return item.target?.askedIn ?? (isQuestion(item) ? "ask" : "settle");
 }

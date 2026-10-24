@@ -66,7 +66,8 @@ that no longer exist.
    after it runs; only `experiment-not-allowed` and `lockfile-injection` do this. Two
    markers describe an abort of the source archive: `review-downgrade` (a review of the
    XPI alone cures it) and `review-unbuildable` (no build can be made from the source,
-   so nobody is asked to build it). The check-bearing section IS
+   so nobody is asked to build it). `llm-verification: false` says the agent never
+   audits the check's finding: a person's decision or an outside fact. The check-bearing section IS
    the phase - a check's phase IS the section it lives in, never a field on the
    entry: `deterministic-phase`, whose first check, `experiment-not-allowed`, stops a
    rejected Experiment before any other runs. `manual-checks` is NOT a phase: it is
