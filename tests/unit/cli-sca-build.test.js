@@ -32,6 +32,7 @@ import {
   handBackRoots,
   argvOf,
   unwrapped,
+  UNSAFE_ISSUE,
 } from "../cli-run.js";
 
 /**
@@ -396,6 +397,7 @@ test("a safe build prints the Build Review Details and the permission question",
   const block = [
     `* SCA_BUILD_PROCESS: [build.md](${workPaths(work).build})`,
     "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
+    `* SCA_BUILD_SAFETY_ISSUES: [build-issues.md](${workPaths(work).buildIssues})`,
     `* SCA_ROOT: [source archive](${path.join(work, "sca")})`,
     "",
     'Reply "next" to continue the review with the question whether the agent may ' +
@@ -438,7 +440,7 @@ test("WEBEXT_LINTER_AGENT_BUILDS=1 skips the permission question", () => {
   // The review starts with the recorded judgement, and build.md as its product.
   const state = readJson(work, "state");
   assert.equal(state.build.safety, "safe");
-  assert.deepEqual(state.products, ["build"]);
+  assert.deepEqual(state.products, ["build", "buildIssues"]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -480,13 +482,26 @@ test("an unsafe build is reported where the reviewer holds it unsafe", () => {
     const state = readJson(work, "state");
     assert.equal(state.build.safety, "unsafe");
     assert.equal(state.build.safe, false);
-    assert.deepEqual(state.products, ["build"]);
+    assert.deepEqual(state.products, ["build", "buildIssues"]);
     assert.equal(state.build.result, null);
     const unsafe = state.report.findings.filter(
       (f) => f.ruleId === "build-unsafe"
     );
     assert.equal(unsafe.length, 1, managers);
     assert.equal(unsafe[0].note, reasons);
+    // Trusted, the finding is the agent's issue, at its locus with its hint. The reviewer's
+    // own words override it, at the build's anchor.
+    assert.deepEqual(
+      [unsafe[0].file, unsafe[0].loc?.line ?? null, unsafe[0].hint],
+      reasons === null
+        ? [UNSAFE_ISSUE.file, UNSAFE_ISSUE.line, UNSAFE_ISSUE.hint]
+        : ["package.json", null, null],
+      managers
+    );
+    assert.match(
+      fs.readFileSync(workPaths(work).buildIssues, "utf8"),
+      /- package\.json:1 - runs a script it downloads with curl/
+    );
     assert.ok(
       !state.manual.some((m) => m.ruleId === "build-reproduces-xpi"),
       "no build question is asked"

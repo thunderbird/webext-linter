@@ -136,6 +136,25 @@ export const MAX_ENTRIES_PER_CATEGORY = 25;
 export const MAX_NOTE = 2000;
 
 /**
+ * What an agent writes for one thing it found, in a sweep or in the build analysis. THE one
+ * spelling of the shape - the message a malformed result is refused with (src/report/sweep.js
+ * checkedResult), and the worked example the agent is shown (src/report/sweep-files.js, and
+ * the build analysis's prompt), so what is asked for and what is accepted cannot drift. Its
+ * hint is a placeholder, because a plausible finding in an example is a suggestion about what
+ * to go and find.
+ */
+export const RESULT_SHAPE =
+  '{"file": "background.js", "line": 40, "hint": "<what is there>"}';
+
+/**
+ * How long a result's hint may be. A hint names what sits at one location and is printed on
+ * that location's line. Past roughly this it stops being an annotation and starts being a
+ * paragraph someone wrote for the developer, which is the registry's job. Read wherever the
+ * limit is stated, so it is stated as it is refused.
+ */
+export const MAX_HINT = 500;
+
+/**
  * What a --llm-review run can be told to leave out, named by the flag that says so:
  * --llm-skip-summary and --llm-skip-manual. Each is a fact a prompt step's `when:` condition
  * can read (REVIEW_PROMPT_FACTS, src/checks/registry-vocabulary.js).

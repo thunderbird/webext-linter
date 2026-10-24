@@ -87,13 +87,13 @@ test("a malformed sweep result is rejected with a reason", () => {
 
 // A hint up to the limit is a phrase, and the limit leaves room for one naming a call and
 // what it carries.
-test("a hint of 350 characters is accepted, and one past the limit refused", () => {
-  assert.equal(MAX_HINT, 350);
+test("a hint of 500 characters is accepted, and one past the limit refused", () => {
+  assert.equal(MAX_HINT, 500);
   const hint = "x".repeat(MAX_HINT);
   assert.equal(checkedResult("row", { file: "a.js", hint }, ROOT).hint, hint);
   assert.throws(
     () => checkedResult("row", { file: "a.js", hint: `${hint}x` }, ROOT),
-    (err) => err.message.includes("351-character hint")
+    (err) => err.message.includes("501-character hint")
   );
 });
 

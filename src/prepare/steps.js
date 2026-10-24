@@ -87,15 +87,17 @@ import {
 } from "../report/handback.js";
 import { displayLine } from "../util/text.js";
 import { checkedNote, pickedChoice } from "../report/verdicts.js";
+import { checkedResult } from "../report/sweep.js";
+import { RESULT_SHAPE } from "../config.js";
 
 /** The review file's entry for the Experiment folder, keyed by the name the prompt gives it. */
 const EXP_SOURCE = "SCA_EXP_SOURCE";
 /** The review file's entry for the reviewer's answer whether the agent may build the add-on,
  *  its package-manager commands included, as `llm-sca-review-prompt` names it. */
 const SCA_BUILD_PERMISSION = "SCA_BUILD_PERMISSION";
-/** The review file's entry for the reader's judgement of the build, as
- *  `llm-sca-review-prompt` names it. */
-const SCA_BUILD_SAFETY_ASSESSMENT = "SCA_BUILD_SAFETY_ASSESSMENT";
+/** The review file's entry for what the build reaches for outside the declared dependencies,
+ *  as `llm-sca-review-prompt` names it: the list the verdict is read off. */
+const SCA_BUILD_SAFETY_ISSUES = "SCA_BUILD_SAFETY_ISSUES";
 /** The review file's entry for what the agent's build produced, as `llm-sca-review-prompt`
  *  names it: in `build/` after a build and after a rescue. */
 const LLM_BUILD_OUTPUT = "LLM_BUILD_OUTPUT";
@@ -160,18 +162,14 @@ export function agentBuildsSwitchedOn() {
  * `unpack`, whose hand-back answers nothing.
  * @param {string} work  The work folder, absolute and real.
  * @param {import("./state.js").PrepareRecord} record  From startRecord.
- * @param {import("../checks/registry.js").Registry} [registry]  The authored registry,
- *   loaded here when the caller has none.
  * @returns {void}
  */
-export function startPreparation(work, record, registry = loadRegistry()) {
+export function startPreparation(work, record) {
   writePrepare(work, record);
   writeReviewFile(
     workPaths(work).review,
     reviewFile(
-      record.step === PREPARE_STEP.analyze
-        ? analyzeEntries(record, registry.llmScaReviewPrompt())
-        : []
+      record.step === PREPARE_STEP.analyze ? analyzeEntries(record) : []
     )
   );
 }
@@ -190,29 +188,16 @@ export function asksExpSource(record) {
 }
 
 /**
- * The entries `analyze` asks for: the build judgement, and the Experiment folder where it is
- * asked (asksExpSource).
+ * The entries `analyze` asks for: the build's safety issues, and the Experiment folder where
+ * it is asked (asksExpSource).
  * @param {import("./state.js").PrepareRecord} record
- * @param {ScaPrompt} prompt
  * @returns {object[]}
  */
-function analyzeEntries(record, prompt) {
+function analyzeEntries(record) {
   return [
-    safetyEntry(prompt.buildSafety),
+    { index: SCA_BUILD_SAFETY_ISSUES, [SLOT]: null },
     ...(asksExpSource(record) ? [{ index: EXP_SOURCE, [SLOT]: null }] : []),
   ];
-}
-
-/**
- * The entry the reader judges the build in, built as a process value's entry is.
- * @param {ScaPrompt["buildSafety"]} judgement
- * @returns {object}
- */
-function safetyEntry(judgement) {
-  return valueEntry(
-    { name: SCA_BUILD_SAFETY_ASSESSMENT, values: judgement.values },
-    null
-  );
 }
 
 /**
@@ -352,7 +337,7 @@ export async function handBack(work, registry = loadRegistry()) {
   const prompt = registry.llmScaReviewPrompt();
   switch (record.step) {
     case PREPARE_STEP.unpack:
-      return unpacked(work, record, prompt);
+      return unpacked(work, record);
     case PREPARE_STEP.analyze:
       return analyze(work, record, context, prompt, registry);
     case PREPARE_STEP.permission:
@@ -378,18 +363,17 @@ export async function handBack(work, registry = loadRegistry()) {
  * the walk cannot decide - and the build handed out to be analyzed.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `unpack`.
- * @param {ScaPrompt} prompt
  * @returns {Handout}
  * @throws {HandbackRefused}
  */
-function unpacked(work, record, prompt) {
+function unpacked(work, record) {
   const { scaRoot } = settleScaRoot({ scaRoot: realSca(workPaths(work)) });
   const analyzing = {
     ...record,
     step: PREPARE_STEP.analyze,
     roots: { scaRoot, scaExpSource: null },
   };
-  return ask(work, analyzing, analyzeEntries(analyzing, prompt));
+  return ask(work, analyzing, analyzeEntries(analyzing));
 }
 
 /**
@@ -407,14 +391,16 @@ function unpacked(work, record, prompt) {
  * @returns {Promise<Handout>}
  */
 async function analyze(work, record, context, prompt, registry) {
-  const { roots, buildSafety } = analyzedAnswers(work, record, prompt);
+  const { roots, buildIssues } = analyzedAnswers(work, record);
   const build = workPaths(work).build;
   if (!productWritten(build)) {
     throw new HandbackRefused(
       `"${build}" holds no build report: write it there, as the prompt says`
     );
   }
-  const settled = { ...record, buildSafety, roots };
+  writeBuildIssues(workPaths(work).buildIssues, buildIssues);
+  const buildSafety = buildIssues.length ? "unsafe" : "safe";
+  const settled = { ...record, buildSafety, buildIssues, roots };
   if (!buildGuarded(record, registry)) {
     return done(work, { ...settled, packageManagers: false });
   }
@@ -581,32 +567,27 @@ function builtOriginal(work, record, asked, match) {
 }
 
 /**
- * What `analyze` handed back: the build judgement, which must be one of the labels its entry
- * offered, and the Experiment folder where it was asked, taken as the folder it really is and
- * held inside the root, resolved against it as the review resolves it, and not the root itself
- * (settleScaRoot). Every way they can be wrong is refused, with nothing changed, so the reader
- * can correct the file and hand it back again.
+ * What `analyze` handed back: the build's safety issues, a list of results each held to the
+ * shape a sweep's are (buildIssuesOf), and the Experiment folder where it was asked, taken as
+ * the folder it really is and held inside the root, resolved against it as the review resolves
+ * it, and not the root itself (settleScaRoot). Every way they can be wrong is refused, with
+ * nothing changed, so the reader can correct the file and hand it back again.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `analyze`, its root known.
- * @param {ScaPrompt} prompt
- * @returns {{roots: {scaRoot: string, scaExpSource: ?string}, buildSafety: string}}
+ * @returns {{roots: {scaRoot: string, scaExpSource: ?string},
+ *   buildIssues: {file: string, line: ?number, hint: string}[]}}
  * @throws {HandbackRefused}
  */
-function analyzedAnswers(work, record, prompt) {
-  const judgement = prompt.buildSafety;
+function analyzedAnswers(work, record) {
   const keyOf = (e) => String(e?.index);
   const all = readHandback(workPaths(work).review).entries;
-  // The judgement is a process value, checked against the labels its entry offered.
-  const picked = answersOf(
-    all.filter((e) => keyOf(e) === SCA_BUILD_SAFETY_ASSESSMENT),
-    [safetyEntry(judgement)],
-    { name: "analyze", answer: "value" },
-    keyOf
-  ).get(SCA_BUILD_SAFETY_ASSESSMENT);
-  const buildSafety = judgement.values.find((v) => v.label === picked).value;
   const root = record.roots.scaRoot;
+  const buildIssues = buildIssuesOf(
+    all.find((e) => keyOf(e) === SCA_BUILD_SAFETY_ISSUES),
+    root
+  );
   if (!asksExpSource(record)) {
-    return { roots: record.roots, buildSafety };
+    return { roots: record.roots, buildIssues };
   }
   const handed = all.filter((e) => keyOf(e) === EXP_SOURCE);
   // A blank answer names no folder, and would otherwise resolve to the root itself.
@@ -640,8 +621,68 @@ function analyzedAnswers(work, record, prompt) {
       scaRoot: settled.scaRoot,
       scaExpSource: settled.scaExpSource ?? null,
     },
-    buildSafety,
+    buildIssues,
   };
+}
+
+/**
+ * The build's safety issues as the reader handed them back: a list, each entry a result held by
+ * the checker a sweep's results are held by (checkedResult), against the root, and each with a
+ * hint, which is what its finding says. An empty list is a safe build.
+ * @param {?object} entry  The SCA_BUILD_SAFETY_ISSUES entry of the review file.
+ * @param {string} root  The source root, absolute.
+ * @returns {{file: string, line: ?number, hint: string}[]}
+ * @throws {HandbackRefused}
+ */
+function buildIssuesOf(entry, root) {
+  const list = entry?.[SLOT];
+  if (list === undefined || list === null) {
+    throw new HandbackRefused(
+      `${SCA_BUILD_SAFETY_ISSUES} still has no "${SLOT}" - answer it with a list, [] where the build reaches for nothing`
+    );
+  }
+  if (!Array.isArray(list)) {
+    throw new HandbackRefused(
+      `${SCA_BUILD_SAFETY_ISSUES} answers with no list - answer it with one entry per issue, [] where there are none`
+    );
+  }
+  const lineCounts = new Map();
+  return list.map((raw, i) => {
+    const at = `${SCA_BUILD_SAFETY_ISSUES} entry ${i + 1}`;
+    let issue;
+    try {
+      issue = checkedResult(at, raw, root, lineCounts);
+    } catch (err) {
+      rethrowIfFatal(err);
+      throw new HandbackRefused(err.message);
+    }
+    if (issue.hint === null) {
+      throw new HandbackRefused(
+        `${at} has no "hint" - say what the build does there, e.g. ${RESULT_SHAPE}`
+      );
+    }
+    return issue;
+  });
+}
+
+/**
+ * Write the build's safety issues to the file the Build Review Details link: one line per
+ * issue, its location and its hint, or one line saying the analysis found none. The linter's,
+ * never the reader's, so it says exactly what was handed back and what build-unsafe reports.
+ * @param {string} file  The work folder's build-issues.md.
+ * @param {{file: string, line: ?number, hint: string}[]} issues
+ * @returns {void}
+ */
+function writeBuildIssues(file, issues) {
+  const lines = issues.length
+    ? issues.map(
+        ({ file: at, line, hint }) =>
+          `- ${line === null ? at : `${at}:${line}`} - ${displayLine(hint)}`
+      )
+    : [
+        "The build analysis found nothing the build reaches for outside the declared dependencies.",
+      ];
+  fs.writeFileSync(file, `# Build safety issues\n\n${lines.join("\n")}\n`);
 }
 
 /**

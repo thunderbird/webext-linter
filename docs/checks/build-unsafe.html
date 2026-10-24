@@ -25,8 +25,10 @@
         its verdict. After an unsafe verdict they may trust it and build nothing, or clear the
         issues and let the agent build anyhow. After either verdict they may override it with
         reasons of their own why building is unsafe. Where that decision holds the build unsafe
-        (<code>when: build-judged AND NOT build-safe</code>), this check reports it, with their
-        reasons attached where they gave some, and nobody is asked to build. A plain report asks
+        (<code>when: build-judged AND NOT build-safe</code>), this check reports it, and nobody
+        is asked to build. Trusting the verdict reports each issue the build analysis listed in
+        <code>build-issues.md</code>, at its file and line, with what the agent said it does.
+        Reasons of their own report one finding carrying those reasons instead. A plain report asks
         <a href="build-review.html"><code>build-review</code></a> instead.
       </p>
 

@@ -2126,6 +2126,34 @@ test("build-unsafe reports the reviewer's decision, with their reasons", async (
   }
 });
 
+// Where the reviewer trusted the agent's verdict, each issue the build analysis listed is a
+// finding of its own, at its file and line, with the agent's hint. Their own reasons override
+// the agent's issues: then the one finding carries them.
+test("build-unsafe reports each issue the build analysis listed", async () => {
+  const issues = [
+    { file: "package.json", line: 7, hint: "postinstall fetches a binary" },
+    { file: "scripts/build.sh", line: null, hint: "pipes a download into sh" },
+  ];
+  const trusted = scaCtx(review());
+  trusted.artifact.buildIssues = issues;
+  const { findings } = await buildUnsafe.run(withManifest(trusted));
+  assert.deepEqual(
+    findings.map((f) => [f.file, f.loc?.line ?? null, f.hint, f.artifact]),
+    [
+      ["package.json", 7, "postinstall fetches a binary", ARTIFACT_SCA],
+      ["scripts/build.sh", null, "pipes a download into sh", ARTIFACT_SCA],
+    ]
+  );
+  const overridden = scaCtx(review());
+  overridden.artifact.buildIssues = issues;
+  overridden.artifact.buildReasons = "I will not run this.";
+  const own = await buildUnsafe.run(withManifest(overridden));
+  assert.deepEqual(
+    own.findings.map((f) => [f.file, f.note]),
+    [["package.json", "I will not run this."]]
+  );
+});
+
 // ---- build-registry-redirect (SCA deterministic: .npmrc registry) ----
 
 // ANY registry= / @scope:registry= in .npmrc is a hard reject (a legit build never sets

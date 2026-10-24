@@ -94,6 +94,9 @@ const SEV_COLOR = {
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
  *   in a source code review, and in the Review Details only once the phase that writes it
  *   recorded it (src/report/loop.js detailsMeta).
+ * @property {string} [buildIssuesFile]  Where the preparation wrote what the build reaches for
+ *   outside the declared dependencies, as the build analysis listed it: in the Review Details
+ *   only where it was written (src/report/loop.js detailsMeta).
  * @property {string} [buildOutput]  The file or folder the agent's build produced in the
  *   preparation, as its record holds it: set by the loop (src/report/loop.js detailsMeta)
  *   only where the agent built the add-on, since the reviewer may decline the build and a
@@ -747,6 +750,13 @@ export function detailRows(meta) {
   }
   if (meta.buildSafety) {
     rows.push(["SCA_BUILD_SAFETY_ASSESSMENT", null, meta.buildSafety]);
+  }
+  if (meta.buildIssuesFile) {
+    rows.push([
+      "SCA_BUILD_SAFETY_ISSUES",
+      "build-issues.md",
+      meta.buildIssuesFile,
+    ]);
   }
   if (meta.scaExpSource) {
     rows.push(["SCA_EXP_SOURCE", "experiment source", meta.scaExpSource]);

@@ -900,7 +900,7 @@ export async function main(argv) {
       flags: forwardedFlags(values),
       agentBuilds: agentBuildsSwitchedOn(),
     });
-    startPreparation(work, record, registry);
+    startPreparation(work, record);
     // The prompt IS the output: no review has run, and none can until its reader answers
     // it. Printed as the report is, and to the screen only.
     for (const line of preparationPrompt(work, record, registry, {
@@ -1129,7 +1129,7 @@ async function startSourcePreparation(values, addonPath, work, registry) {
     agentBuilds: agentBuildsSwitchedOn(),
     roots,
   });
-  startPreparation(work, record, registry);
+  startPreparation(work, record);
   for (const line of preparationPrompt(work, record, registry, {
     first: true,
   })) {
@@ -1543,7 +1543,7 @@ function preparationPrompt(work, record, registry, start = {}) {
 
 /**
  * The Build Review Details the permission prompt shows: the submitted XPI, the source root,
- * the build report and the judgement, as the review loop's blocks name them (detailRows), so
+ * the build report, the verdict and the issues it was read off, as the review loop's blocks name them (detailRows), so
  * the review's Build Review Details hold every row of it. It ends with the line telling the
  * reviewer the review waits for their reply, as a turn-ending block does.
  * @param {string} work
@@ -1553,16 +1553,14 @@ function preparationPrompt(work, record, registry, start = {}) {
  * @returns {string[]}
  */
 function buildDetailLines(work, record, prompt, registry) {
-  const judged = prompt.buildSafety.values.find(
-    (v) => v.value === record.buildSafety
-  );
   return [
     ...detailRows({
       xpiFile: path.basename(record.submission.xpi),
       xpi: record.submission.xpi,
       scaRoot: record.roots.scaRoot,
       buildFile: workPaths(work).build,
-      buildSafety: judged.label,
+      buildSafety: record.buildSafety,
+      buildIssuesFile: workPaths(work).buildIssues,
     }),
     "",
     registry.llmPhases().waiting("permission"),

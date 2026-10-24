@@ -235,8 +235,11 @@ may hold the real source beside the copy.
     with its build, before the sweeps, and asks alone how it came out, `Builds and
     reproduces`, `Does not reproduce` or `Does not build`. The last two report
     `build-not-reproduced` or `build-fails`, so the developer is told why the review stopped.
-  - **`build-unsafe`**, where it held the build unsafe: it is reported at once, with the
-    reviewer's reasons where they gave some, and nobody is asked to build.
+  - **`build-unsafe`**, where it held the build unsafe: it is reported at once, and nobody is
+    asked to build. Trusting the verdict reports each issue the agent's build analysis listed,
+    at its file and line, and the reviewer's own reasons report those reasons instead. The
+    agent hands its issues back as a list, which the linter writes to `build-issues.md` and
+    links in the Build Review Details, and reads the verdict off: none is a safe build.
 
   Any of them reported aborts the review late. A source whose preparation gave its rescue up
   ends the review through its vulnerability findings, and is not built. A source with no

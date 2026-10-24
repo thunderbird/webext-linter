@@ -7,8 +7,8 @@ add-on. An agent (Claude, in this repo) receives
 WEBEXT_LINTER_AGENT_BUILDS=1 node verify.js <submission folder> --llm-sca-review
 ```
 
-and follows every prompt with real tools: it extracts the archive, writes build.md, judges
-the build, and hands back. The linter audits the lock against OSV, and the agent rescues the
+and follows every prompt with real tools: it extracts the archive, writes build.md, lists what
+the build reaches for outside the declared dependencies, and hands back. The linter audits the lock against OSV, and the agent rescues the
 copy with the real npm or pnpm and builds the add-on, as the prompts say. The agent hands
 back until it reaches one of three stops, and goes no further:
 

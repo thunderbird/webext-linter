@@ -270,11 +270,22 @@ export function unpackSource(stdout, { expSource, typed } = {}) {
     : run(argvOf(commandOf(stdout)));
 }
 
+/** The build safety issue a test hands back for a build it wants judged unsafe: one step of
+ *  the root's package.json, which every source a test hands back holds. */
+export const UNSAFE_ISSUE = {
+  file: "package.json",
+  line: 1,
+  hint: "runs a script it downloads with curl",
+};
+
+/** The SCA_BUILD_SAFETY_ISSUES answer for a build a test wants judged `safety`. */
+const issuesFor = (safety) => (safety === "unsafe" ? [UNSAFE_ISSUE] : []);
+
 /**
  * Do what the `analyze` prompt asks, the way its reader would: write the build report to
- * SCA_BUILD_PROCESS and answer ANSWERS with the build judged `safety`, safe by default. Its
- * hand-back prints the permission prompt (answerPermission). The hand-back itself is the
- * caller's, so it can run it as it likes.
+ * SCA_BUILD_PROCESS and answer ANSWERS with the build's safety issues, none by default, one
+ * (UNSAFE_ISSUE) for a build to be judged unsafe. Its hand-back prints the permission prompt
+ * (answerPermission). The hand-back itself is the caller's, so it can run it as it likes.
  * @param {string} stdout  The `analyze` prompt's run.
  * @param {{safety?: string, expSource?: string}} [opts]  The judgement, and the Experiment
  *   folder where the prompt asks for it.
@@ -285,7 +296,7 @@ export function answerAnalyze(stdout, { safety = "safe", expSource } = {}) {
   const answers = headerValue(stdout, "ANSWERS");
   const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
   const given = {
-    SCA_BUILD_SAFETY_ASSESSMENT: safety,
+    SCA_BUILD_SAFETY_ISSUES: issuesFor(safety),
     SCA_EXP_SOURCE: expSource,
   };
   doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));
@@ -348,7 +359,7 @@ export function handBackRoots(
     }));
     fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
   };
-  fill({ SCA_BUILD_SAFETY_ASSESSMENT: safety });
+  fill({ SCA_BUILD_SAFETY_ISSUES: issuesFor(safety) });
   const handed = handBack(unpacked.stdout);
   if (handed.code !== 0 || readJson(work, "prepare").step !== "permission") {
     return handed;

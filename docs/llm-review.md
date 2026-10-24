@@ -419,7 +419,7 @@ what this review is and where to read it. Every details block is built from the 
 so each holds every row of the block before it, plus what is new:
 
 - the preparation's **Build Review Details** (the `permission` prompt): `XPI_FILE`,
-  `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT` and `SCA_ROOT`;
+  `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT`, `SCA_BUILD_SAFETY_ISSUES` and `SCA_ROOT`;
 - the review's **Build Review Details** (`built`): every row below the review holds, but
   `ADDON_DESCRIPTION` and `REVIEW_REPORT`, since `built` goes out before the description
   agent is started and before the report is handed over;
@@ -441,8 +441,9 @@ carry, come last.
 | --- | --- |
 | `XPI_FILE` | What was submitted, a link named by what it was submitted as - the .xpi as ATN named it, or the folder's own name where the submission arrived unpacked |
 | `XPI_ROOT` | The shipped package, unpacked, ready to read |
-| `SCA_BUILD_PROCESS` | What building the add-on takes and whether it is safe, written by the agent in the preparation, in a source code review |
-| `SCA_BUILD_SAFETY_ASSESSMENT` | The build judgement the review holds, the preparation's or its own: `safe` or `unsafe` |
+| `SCA_BUILD_PROCESS` | What building the add-on takes, written by the agent in the preparation, in a source code review |
+| `SCA_BUILD_SAFETY_ASSESSMENT` | The verdict the preparation read off the build's safety issues: `safe` where there are none, `unsafe` otherwise |
+| `SCA_BUILD_SAFETY_ISSUES` | What the build reaches for outside the declared dependencies, one line per issue, as the agent handed it back and the linter wrote it |
 | `SCA_EXP_SOURCE` | The Experiment implementation folder, when one was named |
 | `SCA_ROOT` | A source code review's source root - the whole of which is reviewed - labelled "source archive" in `sca/`, or "rescued source (reduced/fixed dependencies)" where a rescue came out clean and the root lies in `rescued/` |
 | `SCA_ROOT_ORIG` | The same root in `sca/`, the source as submitted - only after a rescue, since it is `SCA_ROOT` otherwise |
@@ -526,25 +527,31 @@ rule the review itself asks it by, and where the verdict rejects, it starts that
 once instead of printing the preparation's prompt. That review is the one `--llm-review` of the `.xpi`
 starts: `experiment-not-allowed` aborts it, so its first prompt is the `close` phase.
 
-The `analyze` prompt has its reader **judge the build**. It writes the build report to
+The `analyze` prompt has its reader **work out the build**. It writes the build report to
 `SCA_BUILD_PROCESS` (the work folder's `build.md`): the release build for Thunderbird as a short
-numbered list, its install step as `npm ci` or `pnpm install --frozen-lockfile`, and a
-"Safety" section listing anything the build fetches or runs from outside the declared
-dependencies. It runs nothing. Then it answers the `SCA_BUILD_SAFETY_ASSESSMENT` entry of
-`ANSWERS` with `safe` or `unsafe`. For an Experiment whose folder was not given, it also works
+numbered list, and its install step as `npm ci` or `pnpm install --frozen-lockfile`. It runs
+nothing. Then it answers the `SCA_BUILD_SAFETY_ISSUES` entry of `ANSWERS` with a list of
+everything the build reaches for outside the declared dependencies (a download, an unpinned
+git clone, a CDN, an install hook that fetches or runs code, a step whose source is not in the
+tree), one entry each, in the shape a sweep's result has: its file relative to `SCA_ROOT`, its
+line where it sits on one, and a hint of at most 500 characters saying what it does. An empty
+list is a safe build. The linter reads the verdict off the list, `unsafe` where it holds an
+entry, and writes the list to the work folder's `build-issues.md`. For an Experiment whose folder was not given, it also works
 out which directory holds the Experiment implementation (`<SCA_EXP_SOURCE>`, a name in
 `<angle brackets>` being one it works out), relative to `SCA_ROOT`.
 
-The reader hands the judgement back in the work folder's review file (`ANSWERS`, the same
+The reader hands the list back in the work folder's review file (`ANSWERS`, the same
 `.review/review.json` a review pass uses) and runs `--llm-handback` on the folder. The preparation's
 own record, `.review/prepare.json`, says where it stands, so every step is that one command. The
 reader never chooses what comes next. An `sca/` that is not the folder the source was
-extracted into, an Experiment folder outside the root, a judgement that is not one of the two
-labels, or a missing `build.md` is refused, and the reader corrects it and hands it back again.
+extracted into, an Experiment folder outside the root, an issue the sweep's checker refuses (a
+file outside the root or not there, a line past its end, a missing or too long hint, a field it
+does not take), or a missing `build.md` is refused, and the reader corrects it and hands it back
+again.
 
 That hand-back records the verdict, and after either verdict the next prompt (`permission`)
 has the reader show the reviewer the **Build Review Details** (the submitted XPI, the source
-root, `build.md` and the verdict) as the last thing of its turn, ending with `Reply "next" to
+root, `build.md`, the verdict and `build-issues.md`) as the last thing of its turn, ending with `Reply "next" to
 continue the review with the question whether the agent may build the add-on.` Once the
 reviewer has replied, it puts them the **one decision about the build** alone, through its
 question tool: the `SCA_BUILD_PERMISSION` entry, worded by the verdict.
@@ -560,7 +567,9 @@ The record keeps whether the build is held safe (`buildSafe`), the reviewer's re
 whether the agent may build. Only `Let the agent build` and `Build anyhow` let it build, and
 go on to the audit below. Every other answer ends the preparation at once: the reviewer builds
 it themselves after `Build it myself`, and nobody builds it where it is held unsafe, which the
-review reports as `build-unsafe`. With a check the build relies on switched off (`build-guard`
+review reports as `build-unsafe`: one finding per issue the agent listed, at its file and line
+with its hint, where the reviewer trusted the verdict, and one finding carrying their own words
+where they gave reasons of their own. With a check the build relies on switched off (`build-guard`
 in the registry, by `--checks-only` or `--checks-skip`), the folder is done at once too, and
 nobody is asked: nothing vouches for what an install pulls in, so the agent builds nothing,
 and the review asks `build-review` in its place.
@@ -690,6 +699,7 @@ the review sit in its hidden `.review/` folder, out of the reviewer's sight:
 | `report.md` | `REVIEW_REPORT` | the linter |
 | `summary.md` | `ADDON_DESCRIPTION` | the agent, from a sub-agent's reply |
 | `build.md` | `SCA_BUILD_PROCESS` | the agent, in the preparation's `analyze` step, in a source code review |
+| `build-issues.md` | `SCA_BUILD_SAFETY_ISSUES` | the linter, from the issues the agent handed back in the same step |
 | `build/` | Where every build of the preparation runs (`LLM_BUILD_ROOT` lies inside it), holding `LLM_BUILD_OUTPUT`: a copy of the whole `sca/` for a clean source, or of the whole `rescued/` before each build of a rescue, and removed when the rescue fails | the linter for a clean source, the reader of the `rescue` prompt for a rescue |
 | `.review/sweep-<artifact>.answers.json` | One tree's sweep answers | the agent, from a sweeping agent's reply |
 | `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again | the linter, whenever it audits |

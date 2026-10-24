@@ -337,9 +337,10 @@ export const BUILD_PERMISSION_BY_VERDICT = Object.freeze({
   unsafe: ["skip", "override"],
 });
 
-/** The values the preparation's SCA_BUILD_SAFETY_ASSESSMENT judgement accepts back, by id: the agent's
- *  judgement of the build it reported. Each id is offered exactly once (assertScaPrompt),
- *  and the review starts with the recorded one (src/pipeline.js). */
+/** The verdicts the preparation records of the build the agent reported, by id: read off the
+ *  SCA_BUILD_SAFETY_ISSUES list the agent hands back, `unsafe` where it holds an entry
+ *  (src/prepare/steps.js analyzedAnswers). The review starts with the recorded one
+ *  (src/pipeline.js). */
 export const BUILD_SAFETY_VALUES = ["safe", "unsafe"];
 
 /** The values the preparation's LLM_BUILD_XPI_MATCH entry accepts back, by id: the agent's

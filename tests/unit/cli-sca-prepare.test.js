@@ -102,12 +102,7 @@ test("--llm-sca-review creates the work folder and hands it back", () => {
     workPaths(work).build
   );
   const [safety, ...rest] = readJson(work, "review").entries;
-  assert.equal(safety.index, "SCA_BUILD_SAFETY_ASSESSMENT");
-  assert.equal(safety.answer, null);
-  assert.deepEqual(
-    safety.answers.map((a) => a.label),
-    ["safe", "unsafe"]
-  );
+  assert.deepEqual(safety, { index: "SCA_BUILD_SAFETY_ISSUES", answer: null });
   assert.deepEqual(rest, [], "the root is the linter's, and asked of nobody");
   assert.deepEqual(commandOf(analyze.stdout), [`--llm-handback ${work}`]);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -309,7 +304,7 @@ test("a preparation refuses an unanswered hand-back", () => {
   assert.equal(unanswered.code, 2);
   assert.match(
     unanswered.stdout,
-    /The hand-back was refused: SCA_BUILD_SAFETY_ASSESSMENT still has no "answer"/
+    /The hand-back was refused: SCA_BUILD_SAFETY_ISSUES still has no "answer"/
   );
   assert.equal(readJson(work, "prepare").step, "analyze");
   fs.rmSync(dir, { recursive: true, force: true });
@@ -362,6 +357,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
       // What the preparation left: its record, the build report and the source.
       assert.deepEqual(fs.readdirSync(work).sort(), [
         ".review",
+        "build-issues.md",
         "build.md",
         "sca",
       ]);

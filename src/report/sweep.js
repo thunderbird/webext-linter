@@ -37,6 +37,7 @@ import { manualEscalations } from "../checks/escalation.js";
 import { renderManualItems } from "./responses.js";
 import { finding } from "./finding.js";
 import { trimEndOf } from "../util/text.js";
+import { MAX_HINT, RESULT_SHAPE } from "../config.js";
 
 /** @typedef {import("../checks/registry.js").Registry} Registry */
 
@@ -47,20 +48,10 @@ import { trimEndOf } from "../util/text.js";
  *  rather than quietly ignored. */
 const RESULT_FIELDS = ["file", "line", "hint"];
 
-/** What the agent writes for one thing it found. THE one spelling of the shape - the
- *  message a malformed result is refused with, and the worked example a sweeping agent is
- *  shown (src/report/sweep-files.js), so what is asked for and what is accepted cannot
- *  drift. Its hint is a placeholder, because a plausible finding in an example is a
- *  suggestion about what to go and find. */
-export const RESULT_SHAPE =
-  '{"file": "background.js", "line": 40, "hint": "<what is there>"}';
-
-// A hint names what sits at one location and is printed on that location's line. Past
-// roughly this it stops being an annotation and starts being a paragraph someone wrote
-// for the developer, which is the registry's job. Exported, like RESULT_SHAPE, so the
-// sweep request states the limit this refuses past (src/report/sweep-files.js), and the
-// two are kept in step.
-export const MAX_HINT = 350;
+// The shape of one result and the length of its hint live in src/config.js, so every text
+// that states them - the sweep request (src/report/sweep-files.js) and the build analysis's
+// prompt (assets/registry.yaml) - reads the same two values this checker refuses against.
+export { MAX_HINT, RESULT_SHAPE };
 
 /**
  * One thing a sweep found, checked.

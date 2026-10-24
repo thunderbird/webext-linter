@@ -49,7 +49,7 @@ import {
 /** Bumped when the record's shape, or what a step does with it, changes in a way an older
  *  file cannot satisfy. A preparation in flight does not survive the upgrade, and saying so
  *  beats reading it wrongly. */
-export const PREPARE_VERSION = 12;
+export const PREPARE_VERSION = 13;
 
 /** The mode every write leaves the record at: readable, and writable by nobody. */
 const READ_ONLY = 0o444;
@@ -115,8 +115,13 @@ const COUNTED = ["moderate", "high", "critical"];
  * @property {boolean} agentBuilds  Whether the hot runs answered the permission question up
  *   front (src/prepare/steps.js agentBuildsSwitchedOn), as the run that created the work
  *   folder read it. Not a flag, so the review never sees it.
- * @property {?string} buildSafety  The agent's judgement of the build it reported in
- *   build.md, a BUILD_SAFETY_VALUES id, as the `analyze` hand-back read it, and null before it.
+ * @property {?{file: string, line: ?number, hint: string}[]} buildIssues  What the build
+ *   reaches for outside the declared dependencies, as the `analyze` hand-back read it, each
+ *   at its file relative to the root, and null before it. Also in the work folder's
+ *   build-issues.md, which the review links, and reported by build-unsafe where the reviewer
+ *   trusts the verdict.
+ * @property {?string} buildSafety  The verdict read off `buildIssues`, a BUILD_SAFETY_VALUES
+ *   id, unsafe where it holds an entry, and null before it.
  *   The review starts with it as its build's judgement (state.build.safety).
  * @property {?boolean} buildSafe  The reviewer's one decision about the build, at the
  *   permission question: whether it is safe, the agent's verdict as they kept or overrode
@@ -210,11 +215,17 @@ export function readPrepare(work) {
   // the reviewer answered it or an unsafe judgement settled it.
   const before =
     record.step === PREPARE_STEP.unpack || record.step === PREPARE_STEP.analyze;
-  if (before ? record.buildSafety !== null : !isJudgement(record.buildSafety)) {
+  if (
+    before
+      ? record.buildSafety !== null || record.buildIssues !== null
+      : !isJudgement(record.buildSafety) ||
+        !isIssueList(record.buildIssues) ||
+        record.buildSafety !== (record.buildIssues.length ? "unsafe" : "safe")
+  ) {
     throw new HandbackRefused(
       before
         ? "the preparation's record holds buildSafety before the agent judged the build"
-        : "the preparation's record holds buildSafety as no judgement the agent can give"
+        : "the preparation's record holds buildSafety as no verdict its buildIssues give"
     );
   }
   if (before || record.step === PREPARE_STEP.permission) {
@@ -361,6 +372,29 @@ function isJudgement(value) {
 }
 
 /**
+ * Whether a value is a list of build issues as the `analyze` hand-back records them: each a
+ * file, a whole line from 1 or none, and a hint.
+ * @param {*} value
+ * @returns {boolean}
+ */
+function isIssueList(value) {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (issue) =>
+        issue !== null &&
+        typeof issue === "object" &&
+        typeof issue.file === "string" &&
+        issue.file !== "" &&
+        (issue.line === null ||
+          (Number.isInteger(issue.line) && issue.line >= 1)) &&
+        typeof issue.hint === "string" &&
+        issue.hint !== ""
+    )
+  );
+}
+
+/**
  * A boolean read from a preparation's record: `true` or `false`, which is all the linter
  * writes. Anything else - a string, a number, null, nothing - was put there by an edit, and
  * guessing what it meant would let the edit decide; so it is refused to the agent as a
@@ -395,6 +429,7 @@ export function startRecord({ submission, flags, agentBuilds, roots = null }) {
     submission,
     flags,
     agentBuilds,
+    buildIssues: null,
     buildSafety: null,
     buildSafe: null,
     buildReasons: null,

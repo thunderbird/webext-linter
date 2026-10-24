@@ -49,6 +49,16 @@ const TOOL_HIGH = {
 /** The build tool every source below declares, as OSV answers it with no advisory. */
 const TOOL_CLEAN = { "lint-pebble@0.4.0": [] };
 
+/** The build safety issues an agent hands back for a build it judges unsafe: one step of the
+ *  package.json every source below holds. */
+const UNSAFE = [
+  {
+    file: "package.json",
+    line: 1,
+    hint: "runs a script it downloads with curl",
+  },
+];
+
 /** The counts of a lock with no vulnerable package, and of one with the tool's advisory. */
 const NONE = { moderate: 0, high: 0, critical: 0 };
 const ONE_HIGH = { moderate: 0, high: 1, critical: 0 };
@@ -469,9 +479,9 @@ test("a build step without its question hands the question out again", async () 
 });
 
 // The unpack prompt asks nothing. Its hand-back derives the root, and the analyze prompt asks
-// the agent to judge the build: the record holds no judgement and no permission until that
-// hand-back reads them.
-test("the analyze step asks for the build judgement", async () => {
+// the agent for the build's safety issues: the record holds no verdict and no permission until
+// that hand-back reads them.
+test("the analyze step asks for the build's safety issues", async () => {
   const work = workFolder({ "package.json": packageFile() });
   assert.deepEqual(reviewEntries(work), []);
   const at = await unpackStep(work);
@@ -479,14 +489,10 @@ test("the analyze step asks for the build judgement", async () => {
   assert.equal(at.record.roots.scaRoot, workPaths(work).sca);
   const [safety, ...rest] = reviewEntries(work);
   assert.deepEqual(rest, [], "the root is the linter's, and asked of nobody");
-  assert.equal(safety.index, "SCA_BUILD_SAFETY_ASSESSMENT");
-  assert.equal(safety.answer, null);
+  assert.deepEqual(safety, { index: "SCA_BUILD_SAFETY_ISSUES", answer: null });
   assert.equal(recordOf(work).vulnerabilities, null);
   assert.equal(recordOf(work).buildResult, null);
-  assert.deepEqual(
-    safety.answers.map((a) => a.label),
-    ["safe", "unsafe"]
-  );
+  assert.equal(recordOf(work).buildIssues, null);
   assert.equal(recordOf(work).buildSafety, null);
   assert.equal(recordOf(work).packageManagers, null);
   cleanup(work);
@@ -533,7 +539,7 @@ test("an unsafe build asks the reviewer, with nothing audited", async () => {
     { "package.json": packageFile(), "package-lock.json": npmLock() },
     { cache: auditCache() }
   );
-  const at = await analyzeStep(work, { SCA_BUILD_SAFETY_ASSESSMENT: "unsafe" });
+  const at = await analyzeStep(work, { SCA_BUILD_SAFETY_ISSUES: UNSAFE });
   assert.equal(at.next, "step");
   assert.equal(at.record.step, PREPARE_STEP.permission);
   assert.equal(at.record.buildSafety, "unsafe");
@@ -568,7 +574,9 @@ test("the build decision records what the reviewer answered", async () => {
       { "package.json": packageFile(), "package-lock.json": npmLock() },
       { vulns: TOOL_CLEAN }
     );
-    await analyzeStep(work, { SCA_BUILD_SAFETY_ASSESSMENT: verdict });
+    await analyzeStep(work, {
+      SCA_BUILD_SAFETY_ISSUES: verdict === "unsafe" ? UNSAFE : [],
+    });
     answer(work, { SCA_BUILD_PERMISSION: given });
     const at = await handBack(work);
     const { packageManagers, buildSafe, buildReasons, step } = at.record;
@@ -601,7 +609,7 @@ test("agentBuilds skips the permission question", async () => {
     { cache: auditCache(), agentBuilds: true }
   );
   const skipped = await analyzeStep(unsafe, {
-    SCA_BUILD_SAFETY_ASSESSMENT: "unsafe",
+    SCA_BUILD_SAFETY_ISSUES: UNSAFE,
   });
   assert.equal(skipped.next, "review");
   assert.equal(skipped.record.packageManagers, false);
@@ -632,20 +640,63 @@ test("a build guard switched off lets nobody build", async () => {
   }
 });
 
-// The judgement is one of the labels its entry offered, and comes with the build report it
-// rests on. Anything else is refused with the folder unchanged.
-test("a build judgement that is no label, or has no build report, is refused", async () => {
+// The verdict is read off the issues: none is a safe build, any is an unsafe one. The issues
+// are recorded as handed back, and written to build-issues.md, which says the same.
+test("the verdict is read off the build's safety issues", async () => {
+  for (const [issues, verdict, written] of [
+    [[], "safe", "found nothing the build reaches for"],
+    [
+      UNSAFE,
+      "unsafe",
+      "- package.json:1 - runs a script it downloads with curl",
+    ],
+    [
+      [{ file: "package.json", hint: "its install hook fetches a binary" }],
+      "unsafe",
+      "- package.json - its install hook fetches a binary",
+    ],
+  ]) {
+    const work = workFolder({ "package.json": packageFile() });
+    const at = await analyzeStep(work, { SCA_BUILD_SAFETY_ISSUES: issues });
+    assert.equal(at.record.buildSafety, verdict);
+    assert.deepEqual(
+      at.record.buildIssues,
+      issues.map((i) => ({ line: null, ...i }))
+    );
+    const file = fs.readFileSync(workPaths(work).buildIssues, "utf8");
+    assert.ok(file.includes(written), file);
+    cleanup(work);
+  }
+});
+
+// The issues are a list of results, each held as a sweep's are and each with a hint, and come
+// with the build report they rest on. Anything else is refused with the folder unchanged.
+test("build safety issues a reader could not mean, or no build report, are refused", async () => {
   const work = workFolder({ "package.json": packageFile() });
-  await assert.rejects(
-    analyzeStep(work, { SCA_BUILD_SAFETY_ASSESSMENT: "fine" }),
-    refused(
-      /SCA_BUILD_SAFETY_ASSESSMENT answers "fine", which this entry does not accept/
-    )
-  );
-  await assert.rejects(
-    analyzeStep(work, { SCA_BUILD_SAFETY_ASSESSMENT: null }),
-    refused(/SCA_BUILD_SAFETY_ASSESSMENT still has no "answer"/)
-  );
+  const issue = (over) => [{ ...UNSAFE[0], ...over }];
+  for (const [given, problem] of [
+    [null, /SCA_BUILD_SAFETY_ISSUES still has no "answer"/],
+    ["fine", /SCA_BUILD_SAFETY_ISSUES answers with no list/],
+    [
+      issue({ file: "../elsewhere.js" }),
+      /SCA_BUILD_SAFETY_ISSUES entry 1 has file/,
+    ],
+    [
+      issue({ file: "gone.js" }),
+      /entry 1 names file "gone.js", which is not a file/,
+    ],
+    [issue({ line: 999 }), /entry 1 names line 999 of "package.json"/],
+    [issue({ hint: undefined }), /entry 1 has no "hint"/],
+    [issue({ severity: "error" }), /entry 1 carries "severity"/],
+    [issue({ hint: "x".repeat(501) }), /entry 1 has a 501-character hint/],
+  ]) {
+    await assert.rejects(
+      analyzeStep(work, { SCA_BUILD_SAFETY_ISSUES: given }),
+      refused(problem),
+      JSON.stringify(given)
+    );
+  }
+  assert.equal(recordOf(work).buildIssues, null);
   answer(work, {});
   fs.rmSync(workPaths(work).build, { force: true });
   await assert.rejects(handBack(work), refused(/holds no build report/));
@@ -718,7 +769,7 @@ test("a permission step without its question hands the question out again", asyn
   const file = workPaths(work).review;
   fs.writeFileSync(
     file,
-    JSON.stringify({ entries: [{ index: "SCA_BUILD_SAFETY_ASSESSMENT" }] })
+    JSON.stringify({ entries: [{ index: "SCA_BUILD_SAFETY_ISSUES" }] })
   );
   const at = await handBack(work);
   assert.equal(at.next, "step");
@@ -1514,18 +1565,22 @@ test("a packageManagers that is neither true nor false is refused", async () => 
 
 // The judgement is one the agent can give, and the record of a step it is known at holds
 // one: anything else was put there by an edit.
-test("a buildSafety that is no judgement is refused", async () => {
+test("a buildSafety its buildIssues do not give is refused", async () => {
   const { work } = await rescued();
-  for (const buildSafety of ["maybe", null]) {
-    writePrepare(work, { ...recordOf(work), buildSafety });
+  const before = recordOf(work);
+  for (const edit of [
+    { buildSafety: "maybe" },
+    { buildSafety: null },
+    { buildSafety: "unsafe" },
+    { buildIssues: null },
+    { buildIssues: [{ file: "package.json", line: 0, hint: "x" }] },
+  ]) {
+    writePrepare(work, { ...before, ...edit });
     await assert.rejects(
       later(work),
-      refused(/holds buildSafety as no judgement the agent can give/)
+      refused(/holds buildSafety as no verdict its buildIssues give/),
+      JSON.stringify(edit)
     );
-    writePrepare(work, {
-      ...JSON.parse(fs.readFileSync(workPaths(work).prepare, "utf8")),
-      buildSafety: "safe",
-    });
   }
   cleanup(work);
 });

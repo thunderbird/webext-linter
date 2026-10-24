@@ -75,7 +75,7 @@ export function answer(work, answers) {
   const file = workPaths(work).review;
   const doc = JSON.parse(fs.readFileSync(file, "utf8"));
   const given = {
-    SCA_BUILD_SAFETY_ASSESSMENT: "safe",
+    SCA_BUILD_SAFETY_ISSUES: [],
     SCA_BUILD_PERMISSION: "Let the agent build",
     ...answers,
   };

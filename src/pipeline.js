@@ -544,9 +544,11 @@ async function reviewSubmission(opts, work, prepared) {
           opts.workFolder,
           prepared
         );
-        // The reviewer's own reasons for holding the build unsafe, where they gave some, which
-        // build-unsafe reports. Null for every other source.
+        // The reviewer's own reasons for holding the build unsafe, where they gave some, and
+        // the issues the build analysis listed, which build-unsafe reports. Null and none for
+        // every other source.
         scaArchive.buildReasons = prepared?.buildReasons ?? null;
+        scaArchive.buildIssues = prepared?.buildIssues ?? [];
       }
     },
 
@@ -882,6 +884,7 @@ async function reviewSubmission(opts, work, prepared) {
     // them would only have failed once the review was already finished.
     meta.summaryFile = summaryPath ?? undefined;
     meta.buildFile = buildPath ?? undefined;
+    meta.buildIssuesFile = buildPath ? work.buildIssues : undefined;
     meta.reportFile = reportPath;
     // One sweeping agent per tree, each handed a request of its own and answering into a
     // file of its own. Made HERE, with the review, because the request carries the tree's
@@ -1026,9 +1029,16 @@ async function reviewSubmission(opts, work, prepared) {
         // overrode it, or null where nobody was asked.
         safe: prepared?.buildSafe ?? null,
       },
-      // build.md, which the preparation wrote, as a product the Review Details link.
+      // build.md, which the preparation's agent wrote, and build-issues.md, which the
+      // preparation wrote from the issues the agent handed back, as products the Review
+      // Details link.
       ...(prepared?.buildSafety && buildPath && productWritten(buildPath)
-        ? { products: ["build"] }
+        ? {
+            products: [
+              "build",
+              ...(productWritten(work.buildIssues) ? ["buildIssues"] : []),
+            ],
+          }
         : {}),
       issued: [],
     };
@@ -1237,7 +1247,7 @@ function claimedNames(work, llmReview, prepared = null) {
       ([key, value]) =>
         typeof value === "string" &&
         !WORK_INPUTS.has(key) &&
-        !(judged && key === "build")
+        !(judged && (key === "build" || key === "buildIssues"))
     )
     .map(([, value]) => value);
   const sweeps = [ARTIFACT_XPI, ARTIFACT_SCA].map(work.sweep);

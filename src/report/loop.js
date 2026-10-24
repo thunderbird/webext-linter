@@ -751,6 +751,7 @@ function detailsMeta(state, registry) {
     prompting: _prompting,
     summaryFile,
     buildFile,
+    buildIssuesFile,
     ...rest
   } = state.report.meta;
   const build = state.build ?? {};
@@ -762,6 +763,7 @@ function detailsMeta(state, registry) {
     ...rest,
     ...(spawnIssued(state) ? { summaryFile } : {}),
     ...(state.products?.includes("build") ? { buildFile } : {}),
+    ...(state.products?.includes("buildIssues") ? { buildIssuesFile } : {}),
     ...(state.paths?.scaRootOrig
       ? { scaRootOrig: state.paths.scaRootOrig }
       : {}),

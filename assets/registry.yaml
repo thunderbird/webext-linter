@@ -1143,8 +1143,9 @@ deterministic-phase:
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # The third is the reviewer's build decision in the preparation: where they judged the build
-# unsafe (`when: build-judged AND NOT build-safe`), trusting the agent's verdict or giving
-# reasons of their own, its rule reports it, with those reasons where they gave some.
+# unsafe (`when: build-judged AND NOT build-safe`), its rule reports it. Trusting the agent's
+# verdict reports each issue the agent listed, at its file and line, and reasons of their own
+# report those reasons instead.
 - title: Unsafe build process
   severity: error
   check: build-unsafe
@@ -2189,9 +2190,11 @@ review-early-exit:
 # there (`unpack`, --llm-sca-review only). The linter then derives the build folder inside it
 # (SCA_ROOT, src/addon/sca-root.js), as it does inside a --sca-base it copied into sca/, and from
 # `analyze` on both runs read the same prompts. The reader writes the build report
-# (SCA_BUILD_PROCESS), judges whether building is safe, and, where the add-on declares
-# Experiments and the folder was not given, names the Experiment folder. They hand that back in
-# ANSWERS. The reviewer then reads the Build Review Details and makes the one decision about the
+# (SCA_BUILD_PROCESS), lists what the build reaches for outside the declared dependencies
+# (SCA_BUILD_SAFETY_ISSUES), and, where the add-on declares Experiments and the folder was not
+# given, names the Experiment folder. They hand that back in ANSWERS. The linter reads the
+# verdict off the list, unsafe where it holds an entry, and writes the list to the work folder's
+# build-issues.md. The reviewer then reads the Build Review Details and makes the one decision about the
 # build, alone (`permission`), unless the agent-builds test switch answered it up front: after a
 # safe verdict, let the agent build or build it themselves, after an unsafe one, build nothing
 # or let the agent build anyhow, and after either, override the verdict with reasons of their
@@ -2255,11 +2258,15 @@ llm-sca-review-prompt:
 
         Report that step with NO flag that leaves dependencies out - never `--omit=dev`, `--production` or `--prod` - even where the documentation uses one. The reviewer has to run the build AND audit everything it pulls in, and a dependency that was never installed is one nobody can audit.
 
-        Under a "Safety" heading, list anything the build reaches for outside the declared dependencies - a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, an install hook that downloads or runs code from outside the declared dependencies, or a step whose source is not in the tree. Name the file and the line for each, and say what it does. Where you find none, say so.
-
         Write it to SCA_BUILD_PROCESS, given above, and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision.
     - text: |-
-        Open ANSWERS, given above. Answer its entry whose "index" is SCA_BUILD_SAFETY_ASSESSMENT with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. It is your judgement of what the safety section lists. Change nothing else in the file.
+        Find everything the build reaches for outside the declared dependencies: a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, an install hook that downloads or runs code from outside the declared dependencies, or a step whose source is not in the tree.
+
+        Open ANSWERS, given above. Answer its entry whose "index" is SCA_BUILD_SAFETY_ISSUES with a list holding one entry for each thing you found, and an empty list, [], where you found nothing. An entry names the "file" it is in, relative to SCA_ROOT, the "line" it sits on, left out where it sits on none, and a "hint" of at most {{maxHint}} characters saying what it does. Nothing else: no verdict, which the linter reads off the list. An entry reads:
+
+        {{issueShape}}
+
+        Change nothing else in the file.
     - when: find-experiment
       text: |-
         In ANSWERS, write <SCA_EXP_SOURCE> as the "answer" of the entry whose "index" is SCA_EXP_SOURCE, and change nothing else in the file.
@@ -2269,8 +2276,8 @@ llm-sca-review-prompt:
         {{flags}}
     - text: |-
         That run checks the source and prints the next prompt. Follow it from there - this one is done.
-  # Printed after a SAFE judgement, unless the agent-builds test switch answered its
-  # question up front. The Build Review Details end the agent's turn, as a turn-ending pass of the
+  # Printed after the build analysis, after either verdict, unless the agent-builds test switch
+  # answered its question up front or a build-guard check is switched off. The Build Review Details end the agent's turn, as a turn-ending pass of the
   # review loop does, and the question is put once the reviewer has replied.
   permission:
     - text: |-
@@ -2287,17 +2294,6 @@ llm-sca-review-prompt:
         {{flags}}
     - text: |-
         That run reads the answer and prints the next prompt. Follow it from there - this one is done.
-  # The agent's judgement of the build it reported, as the SCA_BUILD_SAFETY_ASSESSMENT entry of ANSWERS.
-  # The review starts with the recorded judgement (src/pipeline.js), and shows it in the Build
-  # Review Details. It words the reviewer's build decision (`build-permission`).
-  build-safety:
-    values:
-      - value: safe
-        label: safe
-        description: Nothing in the build is fetched or run from outside the dependencies declared in package.json and its lock file.
-      - value: unsafe
-        label: unsafe
-        description: At least one build step fetches or runs code or resources from outside the declared dependencies, as the report's safety section lists.
   # The reviewer's one decision about the build, as the SCA_BUILD_PERMISSION entry of ANSWERS,
   # worded by the agent's verdict (src/prepare/steps.js permission). An answer is the label of
   # one of the verdict's two values, or the reviewer's own words, which override the verdict:
@@ -2317,11 +2313,11 @@ llm-sca-review-prompt:
           description: The build is safe, but the agent runs none of its commands. Nothing is rescued, so known vulnerabilities in the dependencies end the review. You answer the build question from your own build.
     unsafe:
       question: |-
-        The agent judged the build unsafe, for the reasons the safety section of SCA_BUILD_PROCESS lists. Trust the verdict and build nothing, or clear those issues and let the agent build anyhow? To give reasons of your own why building it is unsafe, answer in your own words.
+        The agent judged the build unsafe, for the issues SCA_BUILD_SAFETY_ISSUES lists. Trust the verdict and build nothing, or clear those issues and let the agent build anyhow? To give reasons of your own why building it is unsafe, answer in your own words.
       values:
         - value: skip
           label: Trust the verdict, do not build
-          description: The build is unsafe. Nobody builds it, and the review reports it to the developer as an unsafe build.
+          description: The build is unsafe. Nobody builds it, and the review reports each issue SCA_BUILD_SAFETY_ISSUES lists to the developer as an unsafe build.
         - value: override
           label: Build anyhow
           description: The build issues the agent found are cleared, and the build is safe. The agent runs the package-manager commands and the add-on's own build commands, as for a safe build.

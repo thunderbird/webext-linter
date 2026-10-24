@@ -28,7 +28,7 @@ import {
   assertScaPrompt,
   loadRegistry,
 } from "../../src/checks/registry.js";
-import { PROMPT_SKIPS } from "../../src/config.js";
+import { MAX_HINT, PROMPT_SKIPS, RESULT_SHAPE } from "../../src/config.js";
 import {
   resolveHolds,
   hasErrors,
@@ -1545,29 +1545,14 @@ test("the preparation prompts come from the registry and every part is required"
     () => checkScaPrompt(compared((m) => (m.values[1].value = "close"))),
     /invalid `value` "close"/
   );
-  // The build judgement offers safe and unsafe once each, under labels of their own.
-  assert.deepEqual(
-    prompt.buildSafety.values.map((v) => v.value),
-    ["safe", "unsafe"]
-  );
-  const judgement = (mutate) => {
-    const r = loadRegistry();
-    mutate(r.doc["llm-sca-review-prompt"]["build-safety"]);
-    return r;
-  };
-  assert.throws(
-    () => checkScaPrompt(judgement((j) => (j.values[1].value = "maybe"))),
-    /invalid `value` "maybe"/
-  );
-  assert.throws(
-    () => checkScaPrompt(judgement((j) => (j.values[1].value = "safe"))),
-    /`build-safety` offers `safe` other than once/
-  );
-  assert.throws(
-    () =>
-      checkScaPrompt(judgement((j) => (j.values[1].label = j.values[0].label))),
-    /`build-safety` offers one label twice/
-  );
+  // The build analysis is asked for its issues in the shape and length the hand-back holds
+  // them to, filled in from the one place both are kept.
+  const analyze = prompt.steps.analyze.map((s) => s.text).join("\n");
+  assert.ok(analyze.includes(RESULT_SHAPE));
+  assert.ok(analyze.includes(`at most ${MAX_HINT} characters`));
+  for (const slot of ["{{maxHint}}", "{{issueShape}}"]) {
+    assert.ok(!analyze.includes(slot), `${slot} is filled`);
+  }
 });
 
 // A step may carry a literal example, whose authored line breaks ARE the layout: a step is

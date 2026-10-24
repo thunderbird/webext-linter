@@ -38,7 +38,7 @@ import YAML from "yaml";
 import { displayLine } from "../util/text.js";
 
 import { finding, SECTION, SEVERITY } from "../report/finding.js";
-import { MAX_NOTE } from "../config.js";
+import { MAX_HINT, MAX_NOTE, RESULT_SHAPE } from "../config.js";
 import { callsOf, holds, namesOf, parseCondition } from "./condition.js";
 import { artifactLabel } from "../report/artifact.js";
 import { ARTIFACT_NONE, assertLocus } from "../lib/artifacts.js";
@@ -64,7 +64,6 @@ import {
   SCA_PROMPT_STEPS,
   SCA_PROMPT_COMMAND,
   BUILD_PERMISSION_BY_VERDICT,
-  BUILD_SAFETY_VALUES,
   BUILD_MATCH_VALUES,
   REVIEW_PROMPT_FACTS,
   CHECK_FACTS,
@@ -813,18 +812,18 @@ export class Registry {
    * `when: find-experiment` marks a step about the Experiment folder, printed only where the
    * add-on declares Experiments and the folder is not known yet.
    *
-   * `buildSafety` is the judgement the `analyze` prompt asks of the agent: the two answers it
-   * offers, each by its id (BUILD_SAFETY_VALUES). `buildPermission` is the reviewer's one
-   * decision about the build, which the permission prompt puts: per verdict, its text and the
-   * two answers it offers, each by its id (BUILD_PERMISSION_BY_VERDICT). Each step's
-   * {{maxNote}} is filled with the length a reviewer's own words are held to. `buildOutput` and `rescueOutput` are the entries the
+   * `buildPermission` is the reviewer's one decision about the build, which the permission
+   * prompt puts: per verdict, its text and the two answers it offers, each by its id
+   * (BUILD_PERMISSION_BY_VERDICT). Each step's {{maxNote}} is filled with the length a
+   * reviewer's own words are held to, {{maxHint}} with the length of an issue's hint, and
+   * {{issueShape}} with the shape of one issue, the one the hand-back holds them to
+   * (src/report/sweep.js). `buildOutput` and `rescueOutput` are the entries the
    * build and rescue prompts name what the build produced in: the question, and the one
    * answer each offers besides a path. `buildMatch` is the entry both compare that output
    * with the submitted XPI in: its question, and the two answers it offers, each by its id
    * (BUILD_MATCH_VALUES).
    * @returns {{intro: string,
    *   steps: Record<string, {when: ?object, text: string}[]>,
-   *   buildSafety: {values: {value: string, label: string, description: string}[]},
    *   buildPermission: Record<"safe"|"unsafe", {question: string,
    *     values: {value: string, label: string, description: string}[]}>,
    *   buildOutput: PrepareOutputAsk, rescueOutput: PrepareOutputAsk,
@@ -853,12 +852,14 @@ export class Registry {
             const loaded = loadedStep(step);
             return {
               ...loaded,
-              text: loaded.text.replaceAll("{{maxNote}}", String(MAX_NOTE)),
+              text: loaded.text
+                .replaceAll("{{maxNote}}", String(MAX_NOTE))
+                .replaceAll("{{maxHint}}", String(MAX_HINT))
+                .replaceAll("{{issueShape}}", RESULT_SHAPE),
             };
           }),
         ])
       ),
-      buildSafety: { values: values(p["build-safety"].values) },
       buildPermission: Object.fromEntries(
         Object.keys(BUILD_PERMISSION_BY_VERDICT).map((verdict) => [
           verdict,
@@ -1909,7 +1910,6 @@ export function assertScaPrompt(registry, at) {
       prompt["build-permission"][verdict].values,
       ids,
     ]),
-    ["build-safety", prompt["build-safety"].values, BUILD_SAFETY_VALUES],
     ["build-match", prompt["build-match"].values, BUILD_MATCH_VALUES],
   ]) {
     const stray = values.find((v) => !ids.includes(v.value));

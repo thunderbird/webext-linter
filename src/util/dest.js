@@ -107,7 +107,9 @@ export function runCache(work, dir) {
  * - `report`, the text the reviewer sends to the developer. The one document the linter
  *   writes itself (src/report/report-file.js).
  * - `summary`, where a sub-agent writes the add-on description, and `build`, where the
- *   agent writes what building it takes, in the preparation.
+ *   agent writes what building it takes, in the preparation. `buildIssues` is where the
+ *   linter writes what the build reaches for outside the declared dependencies, as the agent
+ *   handed it back in the same step.
  *   `buildCopy` is where every build of the preparation runs (src/prepare/steps.js): a
  *   copy of the whole `sca` for a clean source, or of the whole `rescued` for a rescue,
  *   never the archive itself, which the reviewer and the other agents read as submitted.
@@ -128,7 +130,7 @@ export function runCache(work, dir) {
  * @param {string} work  The work folder, absolute.
  * @returns {{xpi: string, sca: string, rescued: string, prepare: string, state: string,
  *   review: string,
- *   report: string, summary: string, build: string, buildCopy: string,
+ *   report: string, summary: string, build: string, buildIssues: string, buildCopy: string,
  *   sweep: (artifact: string) => string}}
  */
 export function workPaths(work) {
@@ -144,6 +146,7 @@ export function workPaths(work) {
     report: at("report.md"),
     summary: at("summary.md"),
     build: at("build.md"),
+    buildIssues: at("build-issues.md"),
     buildCopy: at("build"),
     sweep: (artifact) =>
       hidden(`sweep-${String(artifact).toLowerCase()}.answers.json`),
