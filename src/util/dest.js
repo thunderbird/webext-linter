@@ -99,7 +99,7 @@ export function runCache(work, dir) {
  * At the top:
  * - `xpi`, the shipped add-on, extracted or copied there by the linter (src/addon/load.js),
  *   so every reader - the checks, a reviewer, an agent - reads one unpacked tree.
- * - `sca`, where the source archive is extracted when the review is prepared. An INPUT to
+ * - `sca`, the source archive, extracted or copied there before the review. An INPUT to
  *   the review, never written by it.
  * - `rescued`, the preparation's copy of that whole source, made where its lock needs a
  *   rescue (src/prepare/steps.js), whose package.json and lock alone the rescue changes. An

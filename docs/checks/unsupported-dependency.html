@@ -58,7 +58,7 @@ flowchart TD
   LP -- no --> OK
   LP -- yes --> LF{"An existing folder<br/>inside the extracted archive?"}
   LF -- yes --> OK
-  LF -- "no (outside the root, absent,<br/>or a local tarball)" --> ERR
+  LF -- "no (outside the archive, absent,<br/>or a local tarball)" --> ERR
   A["A package.json dependency"] --> Z{"A build dependency?"}
   Z -- yes --> S([skip: nothing installs it])
   Z -- no --> B{"Source is an npm package<br/>or a GitHub URL?"}

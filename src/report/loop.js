@@ -725,8 +725,8 @@ export function settle(state, registry) {
  * Every row the review holds, the one meta each details block renders, so each block holds
  * every row of the block before it. Which add-on this is and where it can be read (the
  * unpacked package), the source the review read, and what is left for the reviewer: the
- * description once the phase that starts its agent went out, the build report once the
- * phase that leaves it recorded it, and the report, which the linter writes. A file no agent
+ * description once the phase that starts its agent went out, the build report where the
+ * preparation wrote it, and the report, which the linter writes. A file no agent
  * was ever asked to write is not among them. Beside them the source archive's root where a
  * rescued copy was reviewed, and what the review holds of the build.
  *

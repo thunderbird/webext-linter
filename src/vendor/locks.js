@@ -65,8 +65,8 @@ import { cutAtFirst } from "../util/text.js";
  * @property {string} name  npm package name (an npm alias resolves to the real one).
  * @property {string} version  The exact installed version.
  * @property {boolean} dev  Installed for the build only, never for production.
- * @property {boolean} direct  Declared by a package file in this submission - the build
- *   folder's package.json, a workspace member, or a pnpm importer - rather than reached only
+ * @property {boolean} direct  Declared by a package file in this submission - the package
+ *   root's package.json, a workspace member, or a pnpm importer - rather than reached only
  *   through another package. Read from the lock's OWN record of what was asked for,
  *   so it covers the declaration forms the package.json parse does not
  *   (optionalDependencies, a workspace member's own package file) and stays true when
@@ -1213,8 +1213,8 @@ export function localInstalls(addon) {
   const out = [];
   const judge = (token, name, spec, baseDir, target) => {
     // A path in the lock is relative to the package root's own importer, and the folders the
-    // loader saw are keyed from the extracted archive, so it is resolved from where the build
-    // folder sits in it: a workspace sibling beside the package root is a folder the
+    // loader saw are keyed from the extracted archive, so it is resolved from where the package
+    // root sits in it: a workspace sibling beside the package root is a folder the
     // submission holds.
     const from = baseDir
       ? packageRootKey(addon, baseDir)

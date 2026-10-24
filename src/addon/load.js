@@ -9,8 +9,8 @@
 // to disk (extractZip), an unpacked folder is copied (copyFolder), and the copy is walked
 // like any already-unpacked submission (readDir). Where the copy goes is the caller's to
 // choose (loadAddon's `copyTo`): the review names it once, in meta.xpiRoot, and hands the
-// SAME folder to the reviewer and to this loader. The submitted source archive is read
-// where it is: --sca-extracted names the folder it was already extracted into.
+// SAME folder to the reviewer and to this loader. The submitted source archive is copied
+// the same way, into the work folder (loadSourceArchive).
 //
 // It also PARTITIONS a submitted SCA archive into the two views a source review reads - the
 // add-on code and the Experiment implementation - as views over that one store (scaViews). One
@@ -228,9 +228,9 @@ import { assertScaFolders } from "./package-root.js";
  * @param {string} [copyTo]  Where the review's own copy of `source` goes, a path nothing is
  *   at yet: a packed file is extracted there and an unpacked folder copied there, and the
  *   copy is what is read. The review passes the folder it names XPI_ROOT, so the reviewer,
- *   an agent and this loader read one tree. Absent, a folder is read where it is - the
- *   source archive, which its reader already extracted - and a packed file is refused as a
- *   wiring error, because extracting it needs a place the review has named.
+ *   an agent and this loader read one tree. Absent, a folder is read where it is, and a
+ *   packed file is refused as a wiring error, because extracting it needs a place the review
+ *   has named.
  * @param {{kind: string, recordInstalledTrees?: boolean}} options
  *   `kind` says WHICH artifact is being loaded (src/lib/artifacts.js). REQUIRED, and not
  *   defaulted: the loader is the one place that knows without being told, and an Addon that
@@ -321,7 +321,7 @@ export function extractXpiToTemp(xpiPath) {
 }
 
 /**
- * Load the SUBMITTED SOURCE ARCHIVE - the artifact --sca-package-root names.
+ * Load the SUBMITTED SOURCE ARCHIVE - the folder --sca-extracted names.
  *
  * The one way it is not an add-on, stated here so no caller restates it: an installed
  * dependency tree is not part of a submission (the reviewer installs it from the declared
@@ -488,27 +488,25 @@ export function locusMinter(kind) {
  * The archive key for a path INSIDE the extracted source archive: where it sits relative to
  * it, keyed the way an archive keys its entries.
  *
- * Both are absolute by the time they reach here - the arg-array reader resolved them
- * (src/cli.js), which is the one layer that knows what each flag was written relative to -
- * so this asks one question of two real paths rather than deciding again what a relative
- * string meant. A path that is not inside the extracted folder is refused: the files map has
- * no key for it, and a review cannot be shown to cover what sits outside the tree it was given.
+ * Both are absolute by the time they reach here (ScaFolders), so this asks one question of
+ * two real paths rather than deciding again what a relative string meant. A path that is not
+ * inside the extracted folder is refused: the files map has no key for it, and a review cannot be shown to cover what sits outside the tree it was given.
  *
  * Judged as the PLATFORM spells paths (node's `path` is posix here and win32 there), never
  * by rewriting a separator first: a backslash is a separator on Windows and an ordinary
  * character in a POSIX file name, and only the platform knows which this is. The answer is
  * keyed posix, like every other add-on-internal path.
  * @param {string} value  The absolute path to locate.
- * @param {string} scaExtracted  The absolute --sca-extracted path.
+ * @param {string} scaUsed  The absolute tree the review reads (ScaFolders `used`).
  * @param {string} [flag]  The flag name to name in the error (e.g. "--sca-experiments").
- * @returns {string} A posix path relative to scaExtracted ("" for that folder itself).
+ * @returns {string} A posix path relative to scaUsed ("" for that folder itself).
  */
-export function extractedRelative(value, scaExtracted, flag = "SCA path") {
-  const rel = relativeInside(value, scaExtracted);
+export function extractedRelative(value, scaUsed, flag = "SCA path") {
+  const rel = relativeInside(value, scaUsed);
   if (rel === null) {
     throw new Error(
-      `${flag} "${value}" is not inside --sca-extracted (${scaExtracted}) - it names a ` +
-        "folder within the extracted source archive, never a way out of one"
+      `${flag} "${value}" is not in the reviewed source (${scaUsed}) - it names a folder ` +
+        "within it, never a way out of it"
     );
   }
   return rel;

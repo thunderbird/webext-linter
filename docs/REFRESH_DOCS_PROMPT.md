@@ -53,7 +53,7 @@ that no longer exist.
    `severity`, the `manual-checks` ones included - the loader refuses one that does not.
    EVERY entry declares an `input` too - a route for a check that runs, `none` for a
    by-hand one. Entries may also carry `when` (the condition a check runs under, over `sca`,
-   `eslint`, `llm-review`, `build-judged` and `build-safe` - a page must say where its check runs), `sweep-instruction`
+   `eslint`, `build-judged` and `build-safe` - a page must say where its check runs), `sweep-instruction`
    (the class of code the check cannot see, listed in the report's Standard Code Review
    section - or `sweep-instruction-for-xpi`/`sweep-instruction-for-sca` on `input: all`,
    which names no tree of its own and so says which per sweep), `default-note` (the marker a reported case carries when the reviewer wrote
@@ -63,7 +63,7 @@ that no longer exist.
    reviewer - such a check's page must say so, and so must the page of any check whose
    escalation is thereby withheld. Late is the default: every check and pass still runs,
    and the review is aborted at its end. Early stops the review at once, so no check
-   after it runs; only `experiment-not-allowed` and `lockfile-injection` do this. Two
+   after it runs. Only `experiment-not-allowed` and `lockfile-injection` do this. Two
    markers describe an abort of the source archive: `review-downgrade` (a review of the
    XPI alone cures it) and `review-unbuildable` (no build can be made from the source,
    so nobody is asked to build it). `llm-verification: false` says the agent never

@@ -2476,8 +2476,7 @@ export function conditionEligible(entry, facts) {
 
 /**
  * The facts a check's condition reads in a run: each of CHECK_FACTS that holds.
- * @param {{sca?: boolean, eslint?: boolean, llmReview?: boolean, buildJudged?: boolean,
- *   buildSafe?: boolean}} run
+ * @param {{sca?: boolean, eslint?: boolean, buildJudged?: boolean, buildSafe?: boolean}} run
  * @returns {Set<string>}
  */
 export function checkFacts({ sca, eslint, buildJudged, buildSafe } = {}) {

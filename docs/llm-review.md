@@ -71,8 +71,7 @@ replied, and nothing is handed back in between. The linter ends the block with t
 question whether the source builds and reproduces the submitted XPI.`), so the reviewer
 sees the review waits for them and what comes next. The registry refuses a turn-ending
 phase whose first step, past a wait for spawned agents, shows no block, and one with no
-`next` entry in `waiting`. With no question open, `ask` is not issued, and the Review Details come
-only with `close`.
+`next` entry in `waiting`.
 
 A phase is issued only when it has **work** - steps that survive their markers, or
 entries to settle - and that is also what ends the loop. So a review with no sweep never
@@ -417,10 +416,11 @@ what this review is and where to read it. Every details block is built from the 
 so each holds every row of the block before it, plus what is new:
 
 - the preparation's **Build Review Details** (the `permission` prompt): `XPI_FILE`,
-  `SCA_SOURCE`, `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT` and `SCA_BUILD_SAFETY_ISSUES`;
+  `SCA_SOURCE`, `SCA_EXPERIMENTS` where one is named, `SCA_BUILD_PROCESS`,
+  `SCA_BUILD_SAFETY_ASSESSMENT` and `SCA_BUILD_SAFETY_ISSUES`;
 - the review's **Build Review Details** (`built`): every row below the review holds, but
   `ADDON_DESCRIPTION` and `REVIEW_REPORT`, since `built` goes out before the description
-  agent is started and before the report is handed over;
+  agent and the report;
 - the **Review Details** (`ask`): every row the review holds;
 - the **Final Review Details** (`close`): every row the review holds, and the reasons where
   the review was aborted.
@@ -445,7 +445,7 @@ carry, come last.
 | `SCA_BUILD_SAFETY_ASSESSMENT` | The verdict the preparation read off the build's safety issues: `safe` where there are none, `unsafe` otherwise |
 | `SCA_BUILD_SAFETY_ISSUES` | What the build reaches for outside the declared dependencies, one line per issue, as the agent handed it back and the linter wrote it |
 | `SCA_EXPERIMENTS` | The Experiment implementation folder, when one was named |
-| `SCA_BUILD` | The copy in `build/` the agent's build ran in - only where the agent built or tried to. Where the package root lies in it, `build.md` says |
+| `SCA_BUILD` | The copy of the source in `build/` the agent's build ran in - only where the agent built or tried to |
 | `SCA_VULNERABILITIES` | The submitted lock's vulnerable packages, as `n moderate, n high, n critical`: the preparation's first audit, or where nothing was audited there the review's own, held once any dependency-vulnerability check read the lock |
 | `LLM_BUILD_OUTPUT` | What the agent's build produced in the preparation, a file or a folder inside `build/`, named by its own name - only where the agent built it, since the reviewer may build it themselves and a build may fail |
 | `LLM_BUILD_RESULT` | What came of the agent's attempt: `build succeeded`, `build failed: see build.md`, `not built: rescue failed` or `not built: unsafe` - absent where the reviewer builds the add-on |
@@ -463,9 +463,8 @@ read, right before the build question.
 
 `REVIEW_REPORT` it writes itself: as the `ask` phase goes out, where one does, so the
 reviewer can read the report while answering the questions that follow, and again from the settled review
-once those answers are in. It is a file rather than something the agent prints because
-printing it failed - the hand-over used to carry the report and ask for it back "in a code
-block and unchanged", and that is the one text where a model rewording its input reaches the
+once those answers are in. It is a file rather than something the agent prints: a model asked
+to print a text unchanged rewords it, and this is the one text where that rewording reaches the
 developer.
 
 The block is handed over twice, for two different readings. The `ask` phase hands it
@@ -554,8 +553,8 @@ does not take), or a missing `build.md` is refused, and the reader corrects it a
 again.
 
 That hand-back records the verdict, and after either verdict the next prompt (`permission`)
-has the reader show the reviewer the **Build Review Details** (the submitted XPI, the build
-folder, `build.md`, the verdict and `build-issues.md`) as the last thing of its turn, ending with `Reply "next" to
+has the reader show the reviewer the **Build Review Details** (the submitted XPI, the source
+copy, `build.md`, the verdict and `build-issues.md`) as the last thing of its turn, ending with `Reply "next" to
 continue the review with the question how to build the add-on.` Once the
 reviewer has replied, it puts them the **one decision about the build** alone, through its
 question tool: the `SCA_BUILD_PERMISSION` entry, worded by the verdict.
@@ -715,7 +714,7 @@ the review: no flag names another. It must not exist: the run that starts a
 review creates it, and an existing work folder is carried on by `--llm-handback` alone. The one review that starts in a folder already there is the one a preparation's
 hand-back starts, in the folder that holds `.review/prepare.json` and `sca/`. There every name the
 review will create is checked to be free - `--llm-review` claims every name above except
-`sca/`, `rescued/`, `build/` and `.review/prepare.json`, the preparation's, since the agents it
+`sca/`, `rescued/`, `build/`, `build.md`, `build-issues.md` and `.review/prepare.json`, the preparation's, since the agents it
 instructs write the rest later - and a name
 already there ends the run with exit 2, naming it. A start that fails before the review exists
 (a schema fetch that gets no answer, an audit that ends the review, an Experiment the command

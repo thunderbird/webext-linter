@@ -21,7 +21,7 @@
         A source-code submission that ships a committed node_modules folder.
         Installed dependencies are build output — the reviewer installs them from
         the declared package.json and lock file at build time — so a node_modules
-        folder anywhere in the source root is useless bloat and, worse, a decoy: the
+        folder anywhere in the source archive is useless bloat and, worse, a decoy: the
         committed bytes can differ from the declared dependencies, smuggling in code
         from an undeclared source.
       </p>
@@ -29,7 +29,7 @@
         node_modules is never read. When the source archive is loaded, a node_modules
         directory is skipped and never opened; only its path is recorded, so a huge
         committed tree costs nothing and its contents can never influence the review.
-        This holds anywhere in the source root, at any depth, including inside the
+        This holds anywhere in the source archive, at any depth, including inside the
         Experiment implementation. Each recorded node_modules directory becomes one
         error finding.
       </p>
@@ -46,7 +46,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The submitted source archive"] --> B{"A node_modules directory<br/>anywhere in the source root?"}
+  A["The submitted source archive"] --> B{"A node_modules directory<br/>anywhere in the source archive?"}
   B -- no --> OK([no finding])
   B -- yes --> ERR([ERROR: committed node_modules folder])
 

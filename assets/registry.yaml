@@ -189,7 +189,7 @@ deterministic-phase:
 # xpi-lock-file-invalid). The lock is owed by the package.json, never by what it happens to
 # declare: both installers refuse without one whatever it holds, and a root declaring nothing
 # itself is a workspace root or a package.json whose declarations moved, not a submission
-# that installs nothing. Only the BUILD FOLDER's package.json is read - the build's entry
+# that installs nothing. Only the PACKAGE ROOT's package.json is read - the build's entry
 # point, and the directory the install runs in. Nothing here looks for a package.json or a
 # lock elsewhere in the archive: they sit in the package root, which is what the package root
 # IS. WHICH folder that is was settled before any check ran (src/addon/package-root.js).

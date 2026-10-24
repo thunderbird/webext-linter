@@ -582,8 +582,8 @@ async function reviewSubmission(opts, work, prepared) {
     },
 
     // What was reviewed, named by ARTIFACT rather than by role: `xpi` is the shipped add-on
-    // in EVERY review, and a source code review adds the values it was given - the extracted
-    // archive, the package root, and the Experiment folder when one was named. One field meaning "the review
+    // in EVERY review, and a source code review adds its folders - the source copy, the
+    // package root, and the Experiment folder when one was named. One field meaning "the review
     // target" would name a different artifact in each mode, which no reader of the JSON
     // could tell apart, and would leave the subtree nowhere to go but fused into it.
     //
@@ -871,8 +871,8 @@ async function reviewSubmission(opts, work, prepared) {
     // nobody is asked to write would be an instruction with no step behind it - which is
     // why the first two are null above where the step that writes them can never print: the
     // description under --llm-skip-summary, the build report in a review that is not a
-    // source code one. The Review Details name the build report only once its phase
-    // recorded it (src/report/loop.js detailsMeta).
+    // source code one. The Review Details name the build report only where the preparation
+    // wrote it (src/report/loop.js detailsMeta).
     //
     // Nothing is checked here: the work folder was found writable, and every one of these
     // names free, before the review began (runPipeline). The agents this prompt hands out
@@ -971,9 +971,9 @@ async function reviewSubmission(opts, work, prepared) {
         schemaCache: opts.schemaCache,
         // The roots every reported path is relative to, so a later pass can resolve one
         // without the review it came from: the shipped add-on, copied in setup, and in a
-        // source review its folders, extracted before the run, so all are readable
-        // directories by the time anything is handed out. The package root is a place in
-        // the extracted archive, where the agent is told the build runs.
+        // source review its folders in the work folder, so all are readable directories by
+        // the time anything is handed out. Every [SCA] path is relative to the copy the
+        // review read.
         ...(mode.sca ? { scaFolders: opts.scaFolders } : {}),
         xpiRoot: meta.xpiRoot,
         // Each tree's sweep request, as the text its step hands over, and the file its

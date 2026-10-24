@@ -76,10 +76,9 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   (src/report/sweep-files.js). Null where no tree was asked, which is not the same as
  *   every tree answering with nothing. Written and read inside the one `accept` that
  *   starts them; what stops a second pass starting them again is `issued`.
- * @property {string[]} [products]  The `paths` keys of the phase products that came back
- *   (a phase's `product`: a file its agent wrote, src/report/handback.js productWritten,
- *   or the path an output phase's answer named), recorded once as that phase is handed
- *   back.
+ * @property {string[]} [products]  The preparation's files the Review Details link
+ *   (`build`, `buildIssues`) that its agent wrote (src/report/handback.js productWritten),
+ *   recorded once as the review starts (src/pipeline.js).
  */
 
 /**

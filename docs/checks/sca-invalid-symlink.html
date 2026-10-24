@@ -43,7 +43,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A symbolic link in the source root"] --> B{"Does it resolve at all?"}
+  A["A symbolic link in the source archive"] --> B{"Does it resolve at all?"}
   B -- no --> ERR2([ERROR: target does not exist])
   B -- yes --> C{"Does the target sit<br/>inside the submission?"}
   C -- yes --> OK([no finding: reviewed at its real path])

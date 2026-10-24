@@ -15,7 +15,7 @@
 // is caught on the next read; an integrity check, not proof of who wrote it. And what a
 // changed record could still decide is checked as the linter would write it (recordBoolean).
 //
-// One record per work folder, which is the whole run: the source is extracted into its `sca/`,
+// One record per work folder, which is the whole run: the source is in its `sca/`,
 // a rescue copies that whole folder into `rescued/` beside it, and every build runs in a whole
 // copy of one of the two in `build/`. The hand-back that finds the folder
 // done starts its review from this record (src/cli.js), and that review reads it too
@@ -23,10 +23,10 @@
 // copied from, in `sca/`, to tell the developer the rescue changed them (originalPackages).
 //
 // Belongs here: the record's shape, reading and writing it, marking a folder at a step, where
-// a package root lies in each of the folders, and reading the package files of the build
-// folder a rescue copied. Does NOT belong here: what each step does and when the record moves on (-> ./steps.js), the audit that
-// decides it (-> ./audit.js), the folder's names (-> src/util/dest.js workPaths), or how a
-// prompt is printed (-> src/report/format.js).
+// a package root lies in each of the folders, and reading the package files of the package
+// root a rescue copied. Does NOT belong here: what each step does and when the record moves
+// on (-> ./steps.js), the audit that decides it (-> ./audit.js), the folder's names
+// (-> src/util/dest.js workPaths), or how a prompt is printed (-> src/report/format.js).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -236,8 +236,8 @@ export function readPrepare(work) {
 
 /**
  * The record's folders, of the shape the linter writes: none before `analyze`, then the
- * extracted copy and the package root, and the Experiment folder exactly where the add-on
- * declares Experiments.
+ * source copy, the tree the review reads and the package root, and the Experiment folder
+ * exactly where the add-on declares Experiments.
  * @param {PrepareRecord} record
  * @throws {HandbackRefused}
  */

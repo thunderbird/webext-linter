@@ -141,9 +141,10 @@
         start that fails before the review exists gives those names back.
         Loading is then where the submission becomes the review's own copy. A
         <code>.xpi</code> is extracted to <code>xpi/</code> in the work folder,
-        and a submission handed over as a folder is walked first (so every
-        refusal fires before anything is written) and copied there; either way
-        the copy is read back through the same directory walk. That folder is
+        and a folder (an unpacked add-on, or the source archive as
+        <code>sca/</code>) is walked first, so every refusal fires before
+        anything is written, then copied. Each copy is read back through the
+        same walk. That folder is
         <code>XPI_ROOT</code>, the one place the package is read from: by the
         checks below, by a reviewer, and by an agent under
         <code>--llm-review</code>.

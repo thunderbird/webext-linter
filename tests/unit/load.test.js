@@ -849,7 +849,7 @@ test("extractedRelative keys a path inside the extracted archive, and refuses on
   ]) {
     assert.throws(
       () => extractedRelative(outside, root, "--sca-experiments"),
-      /is not inside --sca-extracted/,
+      /is not in the reviewed source/,
       outside
     );
     // The same question without the throw, which is what the CLI guard asks.

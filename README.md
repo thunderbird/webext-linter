@@ -279,7 +279,7 @@ A section it never asks for is inert.
   from the one-time vendor source fetch, and becomes either a finding or an escalation
   of a case the code cannot settle. A check's `input` mostly settles where it runs, and a
   check may carry a `when:` condition for what a route cannot say, over the facts known
-  before any check runs (`sca`, `eslint`, `llm-review`, `build-judged`, `build-safe`), in the
+  before any check runs (`sca`, `eslint`, `build-judged`, `build-safe`), in the
   syntax the loop's steps use: `when: NOT sca` keeps the two that judge the shipped XPI's own
   lock out of a source review, `when: eslint` runs `code-sanity` only under `--eslint`, and
   the reviewer's build decision picks which of `build-review`, `build-reproduces-xpi` and
@@ -309,7 +309,7 @@ question for each), or an `instructions-for-human` alone. A check with wording a
 agent can be handed is screened, and its cases land under **Extended Code Review**.
 A check whose cases the code cannot answer authors only the human half, and its cases
 land under **Extended Manual Review**: `native-messaging` (what the listing discloses
-about the native app), `build-reproduces-xpi` (reproducing the build is
+about the native app), `build-review` (reproducing the build is
 the reviewer's own attestation that the source produces the shipped XPI),
 `trademark-thunderbird-name` (an
 add-on name written directly in the manifest.json carries no locale tag, so the language has

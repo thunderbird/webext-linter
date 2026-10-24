@@ -114,8 +114,8 @@ export function submissionFiles(addon) {
 
 /**
  * Where a file of the package root sits in the archive's own keyspace, the one every reported
- * path is given in: its name under the package root's key where the archive wraps the build
- * folder, and the name itself where the package root is the archive.
+ * path is given in: its name under the package root's key where the archive wraps the package
+ * root, and the name itself where the package root is the archive.
  * @param {?object} addon
  * @param {string} name  Relative to the package root, as submissionFiles keys it.
  * @returns {string}

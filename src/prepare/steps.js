@@ -2,34 +2,32 @@
 // does to it, and which prompt comes next.
 //
 // Two runs start a preparation, and from `analyze` on they run the same steps. One given a
-// submission folder (--llm-sca-review) has the source archive extracted into the work
-// folder's `sca/` first (`unpack`), and its hand-back derives the package root inside it as the review
-// derives one (src/addon/package-root.js). One given the extracted source (--llm-review
-// --sca-extracted) has it copied into `sca/` by the linter, and starts at `analyze`. There the
-// reader reports the build in build.md and hands back the issues the verdict is read off (and
-// the Experiment folder, where it is not known yet). Where a check the build relies on is switched
-// off (`build-guard`), the folder is done at once: nobody is asked, and the agent builds
-// nothing and runs no package-manager command. Otherwise, after either verdict, it moves on to
-// `permission`, which shows the reviewer the Build Review Details and asks them alone for the
-// one decision about the build, worded by the verdict: let the agent build or build it
-// themselves after a safe one, build nothing or let the agent build anyhow after an unsafe one,
-// or, after either, hold it unsafe for reasons of their own (pre-answered where the record
-// holds agentBuilds, which skips that step). Unless they let the agent build, the folder is
-// done at once: a rescue runs package-manager commands, so none is tried. Otherwise it audits
-// the package root's lock (./audit.js). A lock the audit cannot read in full is done:
-// nothing is built, and the review it starts aborts on that lock. A clean lock
-// moves on to `build`: the linter copies the whole `sca/` into `build/`, and the agent builds
-// the original there, as the lock pins it, and names what the build produced, or that it
+// submission folder (--llm-sca-review) has the source archive extracted into the work folder's
+// `sca/` and its Experiment folder named first (`unpack`), and its hand-back derives the package
+// root inside it, that folder known (src/addon/package-root.js). One given the extracted source
+// (--llm-review --sca-extracted) has it copied into `sca/` by the linter, and starts at
+// `analyze`. There the reader reports the build in build.md and hands back the issues the verdict
+// is read off. Where a check the build relies on is switched off (`build-guard`), the folder is
+// done at once: nobody is asked, and the agent builds nothing and runs no package-manager
+// command. Otherwise, after either verdict, it moves on to `permission`, which shows the reviewer
+// the Build Review Details and asks them alone for the one decision about the build, worded by
+// the verdict: let the agent build or build it themselves after a safe one, build nothing or let
+// the agent build anyhow after an unsafe one, or, after either, hold it unsafe for reasons of
+// their own (pre-answered where the record holds agentBuilds, which skips that step). Unless they
+// let the agent build, the folder is done at once: a rescue runs package-manager commands, so
+// none is tried. Otherwise it audits the package root's lock (./audit.js). A lock the audit
+// cannot read in full is done: nothing is built, and the review it starts aborts on that lock. A
+// clean lock moves on to `build`: the linter copies the whole `sca/` into `build/`, and the agent
+// builds the original there, as the lock pins it, and names what the build produced, or that it
 // failed. A vulnerable lock gets a RESCUED COPY of the whole `sca/` in the same work folder
-// (`rescued/`), and moves on to `rescue`: the agent reduces or fixes the copy's dependencies
-// with lock-only commands and audits them until no high or critical advisory remains. Only
-// then it builds, in a fresh copy of the whole `rescued/` in `build/`, so nothing is ever
-// installed or built in the rescued copy. It names what the build produced, or that the rescue
-// failed. The linter audits the copy again, whatever the agent answered, records its counts
-// beside the submitted lock's, and checks the output it names. Where both hold, the copy is
-// reviewed instead of the original. Otherwise the copy and `build/` are deleted, and
-// the original is done: it is reviewed like any other source, and its vulnerability checks
-// abort it.
+// (`rescued/`), and moves on to `rescue`: the agent reduces or fixes the copy's dependencies with
+// lock-only commands and audits them until no high or critical advisory remains. Only then it
+// builds, in a fresh copy of the whole `rescued/` in `build/`, so nothing is ever installed or
+// built in the rescued copy. It names what the build produced, or that the rescue failed. The
+// linter audits the copy again, whatever the agent answered, records its counts beside the
+// submitted lock's, and checks the output it names. Where both hold, the copy is reviewed instead
+// of the original. Otherwise the copy and `build/` are deleted, and the original is done: it is
+// reviewed like any other source, and its vulnerability checks abort it.
 //
 // Nothing the agent did is verified except by that audit and that output check. A dependency
 // edit that changed shipped code fails the question whether the build reproduces the XPI,
@@ -442,12 +440,11 @@ function unpackedExperiments(work, record, extracted) {
 }
 
 /**
- * The build analyzed: the verdict and the build report it rests on, and the Experiment folder
- * where it was asked. Where a check the build relies on is switched off (buildGuarded), the
- * folder is done at once, asking nobody and allowing no package-manager command: nothing then
- * vouches for what an install pulls in. Otherwise, after either verdict, it moves on to the
- * permission question, or, where the record holds agentBuilds, to the decision that answers
- * for the reviewer.
+ * The build analyzed: the verdict and the build report it rests on. Where a check the build
+ * relies on is switched off (buildGuarded), the folder is done at once, asking nobody and
+ * allowing no package-manager command: nothing then vouches for what an install pulls in.
+ * Otherwise, after either verdict, it moves on to the permission question, or, where the
+ * record holds agentBuilds, to the decision that answers for the reviewer.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `analyze`.
  * @param {AuditContext} context

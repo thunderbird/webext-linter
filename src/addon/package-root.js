@@ -1,4 +1,4 @@
-// WHICH FOLDER IS THE BUILD FOLDER - settled once, before the archive is read.
+// WHICH FOLDER IS THE PACKAGE ROOT - settled once, before the archive is read.
 //
 // The package root is the folder of the extracted source archive the build runs in: the one
 // holding package.json and the lock the reviewer installs from. Everything downstream reads

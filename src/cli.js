@@ -1068,7 +1068,7 @@ export async function main(argv) {
  * printed - the step --llm-sca-review reaches once its reader has extracted the archive. An
  * Experiment the review would reject is not prepared (experimentGate): its review starts at
  * once, as an XPI review, as --llm-sca-review's does.
- * @param {Record<string, string|boolean>} values  Parsed and checked, the package root settled.
+ * @param {Record<string, string|boolean>} values  Parsed and checked.
  * @param {string} addonPath  The built add-on, absolute.
  * @param {string} work  The work folder to create, absolute.
  * @param {import("./checks/registry.js").Registry} registry
@@ -1444,9 +1444,8 @@ function runHandback(work, registry) {
 
 /**
  * One step of preparing a source code review (src/prepare/steps.js), then what it hands out
- * next: the permission question, the build or the rescue, or - once the preparation is
- * done - the review itself, which this hand-back starts, so the agent runs no command but
- * this one. The review's first
+ * next: the next step's prompt, or - once the preparation is done - the review itself, which
+ * this hand-back starts, so the agent runs no command but this one. The review's first
  * prompt is then printed by the pipeline, and the run exits as a started review does.
  *
  * A refusal is answered as the review loop answers one: the prompt is not re-printed, and
@@ -1557,7 +1556,7 @@ function preparationPrompt(work, record, registry, start = {}) {
 }
 
 /**
- * The Build Review Details the permission prompt shows: the submitted XPI, the package root,
+ * The Build Review Details the permission prompt shows: the submitted XPI, the source folders,
  * the build report, the verdict and the issues it was read off, as the review loop's blocks
  * name them (detailRows), so the review's Build Review Details hold every row of it. It ends
  * with the line saying the review waits for the reviewer's reply, as a turn-ending block does.
@@ -1604,10 +1603,10 @@ const RECORD_FIELDS = [
  * declared type - a boolean `true` or `false` (recordBoolean), `false` being a flag not
  * given - and then checked as a command line is. The source folders are no flags: they are
  * the record's own, handed to the review as they lie in the work folder (`scaFolders`), so no
- * flag can name another, and they are asked again as the extract step asked them
- * (recordedRoots): followed to the folders they really are, the tree the review reads `sca/`
- * or its rescued copy, and the package root and the Experiment folder inside it, because the
- * agent works in the folder between the step that settled them and this one. The review
+ * flag can name another, and they are asked again (recordedRoots): followed to the folders
+ * they really are, the tree the review reads `sca/` or its rescued copy, and the package root
+ * and the Experiment folder inside it, because the agent works in the folder between the step
+ * that settled them and this one. The review
  * reads the real folders that answered.
  * @param {import("./prepare/state.js").PrepareRecord} record  At `done`.
  * @param {string[]} checkIds

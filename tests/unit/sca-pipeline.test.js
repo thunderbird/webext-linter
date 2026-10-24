@@ -897,7 +897,7 @@ test("SCA e2e: --sca-experiments excludes the Experiment subtree from the code c
           experiments: path.join(xpi, "experiments"),
         },
       }),
-      /is not inside --sca-extracted/
+      /is not in the reviewed source/
     );
   } finally {
     fs.rmSync(xpi, { recursive: true, force: true });

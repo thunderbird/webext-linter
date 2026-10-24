@@ -74,8 +74,8 @@ const SEV_COLOR = {
  *   ATN named it, or the folder's name where the submission arrived unpacked. It is what
  *   a reviewer recognises the submission by. Always set, alongside xpiRoot.
  * @property {import("../addon/package-root.js").ScaFolders} [scaFolders]  SCA review, and only
- *   there: the extracted source archive, the reviewed source; the package root, where the
- *   package file and the lock are read; and the Experiment implementation folder where the
+ *   there: the source archive's copy, the copy the review read, the package root, where the
+ *   package file and the lock are read, and the Experiment implementation folder where the
  *   add-on declares Experiments. Its files are privileged code and are excluded from the
  *   WebExtension checks, so naming it is how a reader sees that anything was.
  * @property {boolean} reviewed
@@ -89,8 +89,8 @@ const SEV_COLOR = {
  *   add-on description for the reviewer - in the review's work folder, beside the review
  *   file (src/util/dest.js workPaths). Named by this tool, written and read by neither.
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
- *   in a source code review, and in the Review Details only once the phase that writes it
- *   recorded it (src/report/loop.js detailsMeta).
+ *   in a source code review, and in the Review Details only where the preparation wrote it
+ *   (src/report/loop.js detailsMeta).
  * @property {string} [buildIssuesFile]  Where the preparation wrote what the build reaches for
  *   outside the declared dependencies, as the build analysis listed it: in the Review Details
  *   only where it was written (src/report/loop.js detailsMeta).
@@ -299,7 +299,7 @@ const BLOCK_VALUES = new Set([
  * @param {{name: string, intro: string}} phase
  * @param {{text: string}[]} steps  Already filtered by src/report/phases.js stepsOf.
  * @param {Object<string, string>} values  What the texts and steps name: review, command,
- *   schemaCache, description, build, schema, details, tally. The review file, the
+ *   schemaCache, description, schema, details, tally. The review file, the
  *   command and the last three are laid out as blocks rather than substituted into prose
  *   (BLOCK_VALUES).
  * @param {{text: string}[]} [preamble]  The preamble parts this prompt prints, already
@@ -561,7 +561,7 @@ export function scaPromptLines(prompt, list, values) {
   // reader RUNS it. Collapsing a run of spaces inside a quoted path hands them a command
   // for a file that does not exist - or, worse, for a different one that does.
   const command = values.flags.map(displayPath);
-  // The facts these prompts' conditions can name (SCA_PROMPT_FACTS): only whether `analyze`
+  // The facts these prompts' conditions can name (SCA_PROMPT_FACTS): only whether `unpack`
   // asks for the Experiment folder.
   const facts = new Set(values.findExperiment ? ["find-experiment"] : []);
   const steps = prompt.steps[list].filter(
@@ -698,8 +698,7 @@ function schemaLine(meta) {
  * renderer trying to be both would be a chain of conditionals around every line.
  *
  * Each row carries its own link text rather than deriving one from its path. Some of
- * these the reviewer supplied (the --sca-* roots, and XPI_ROOT where the submission
- * arrived already unpacked) and some this tool named - and a name this tool chose ends in
+ * these the reviewer supplied (XPI_FILE) and some this tool named - and a name this tool chose ends in
  * a timestamp, which is not what a reader wants to click. Naming each row for what it IS
  * reads the same either way, so the block does not depend on which kind a path is.
  *
@@ -739,7 +738,7 @@ function sourceRows(folders) {
  * schema line. XPI_FILE is named by what was submitted and LLM_BUILD_OUTPUT by its own basename,
  * which is what the submission and the build called them.
  *
- * The rows are grouped by prefix and sorted by name within each group. XPI_ and SCA_ describe
+ * The rows are grouped by prefix. XPI_ and SCA_ describe
  * the submission, the build report and its safety assessment among them, since both are about
  * how the source builds. LLM_ is what the agent's own build attempt produced.
  * ADDON_DESCRIPTION and REVIEW_REPORT, which only the later blocks carry, come last.
