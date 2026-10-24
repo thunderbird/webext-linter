@@ -125,8 +125,9 @@ function runOf(state, ordered, phases, registry) {
 /**
  * What came of the build, as the one BUILD_RESULT_FACTS name that holds: the agent's build
  * as the preparation recorded it (`agent-built`, `agent-build-failed`, `rescue-failed`), else
- * a build the preparation judged unsafe (`build-unsafe`), which nothing builds, else a build
- * the reviewer makes (`self-build`): the agent was not let build, or nothing was prepared.
+ * a build the reviewer held unsafe in the preparation (`build-unsafe`), which nothing builds,
+ * else a build the reviewer makes (`self-build`): the agent was not let build, or nothing was
+ * prepared.
  * @param {import("./state.js").LoopState} state
  * @returns {string}
  */
@@ -141,7 +142,7 @@ export function buildResultFact(state) {
   if (result === BUILD_RESULT.rescueFailed) {
     return "rescue-failed";
   }
-  return state.build?.safety === "unsafe" ? "build-unsafe" : "self-build";
+  return state.build?.safe === false ? "build-unsafe" : "self-build";
 }
 
 /**
@@ -180,8 +181,10 @@ function verdictsOf(state, ordered, registry) {
   for (const x of ordered) {
     if (x.ref in answers && asking(x)) {
       out[x.ref] =
-        pickedChoice(answers[x.ref], registry.manualReviewChoices())?.verdict ??
-        String(VERB.reported);
+        pickedChoice(
+          answers[x.ref],
+          registry.manualReviewChoices(x.target?.ruleId)
+        )?.verdict ?? String(VERB.reported);
     }
   }
   return out;
@@ -384,9 +387,9 @@ export function accept(state, work, phases, registry) {
   // the note's rule here, where the agent can still ask the question again. Taken anyway,
   // they would be refused only once the review settles, which no hand-back can redo.
   if (phase.answer === "words") {
-    const choices = registry.manualReviewChoices();
+    const ruleOf = new Map(ordered.map((x) => [x.ref, x.target?.ruleId]));
     for (const [ref, value] of answers) {
-      if (pickedChoice(value, choices)) {
+      if (pickedChoice(value, registry.manualReviewChoices(ruleOf.get(ref)))) {
         continue;
       }
       const { problem } = checkedNote(value);
@@ -583,7 +586,7 @@ function renderedOpen(state, registry, phaseName, ordered) {
     reviewItems({
       findings: state.report.findings,
       manual: state.manual,
-      choices: registry.manualReviewChoices(),
+      choicesOf: (ruleId) => registry.manualReviewChoices(ruleId),
       labelOf: locusLabeler(mode),
     }).map((item) => [item.ref, item])
   );

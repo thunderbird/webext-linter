@@ -67,7 +67,8 @@ import unanalysableFile from "../../src/checks/rules/unanalysable-file.js";
 import localeMessagesInvalid from "../../src/checks/rules/locale-messages-invalid.js";
 import experimentSchemaInvalid from "../../src/checks/rules/experiment-schema-invalid.js";
 import dataExfiltration from "../../src/checks/rules/data-exfiltration.js";
-import undeclaredBuildSource from "../../src/checks/rules/undeclared-build-source.js";
+import buildReviewRule from "../../src/checks/rules/build-review.js";
+import buildUnsafe from "../../src/checks/rules/build-unsafe.js";
 import buildRegistryRedirect from "../../src/checks/rules/build-registry-redirect.js";
 import committedNodeModules from "../../src/checks/rules/committed-node-modules.js";
 import scaInvalidSymlink from "../../src/checks/rules/sca-invalid-symlink.js";
@@ -116,6 +117,28 @@ import { entriesFor } from "../../src/report/handback.js";
 // loadChecks groups its result by phase (a check's phase IS the list it lands in).
 // Flatten it when a test cares about the checks themselves, not which phase they run in.
 const allChecks = (byPhase) => [...byPhase.values()].flat();
+
+/** Every check `opts` loads in some review: the build checks split the source reviews by the
+ *  reviewer's build decision (`build-judged`, `build-safe`), so no one review loads all of
+ *  them. In registry order, each once. */
+async function everyCheck(registry, opts = {}) {
+  const loaded = new Map();
+  for (const decision of [
+    {},
+    { buildJudged: true, buildSafe: true },
+    { buildJudged: true, buildSafe: false },
+  ]) {
+    for (const c of allChecks(
+      await loadChecks(registry, { ...opts, ...decision })
+    )) {
+      loaded.set(c.id, c);
+    }
+  }
+  const order = registry.checkIds();
+  return [...loaded.values()].sort(
+    (a, b) => order.indexOf(a.id) - order.indexOf(b.id)
+  );
+}
 import unknownApi from "../../src/checks/rules/unknown-api.js";
 import { resolveApiUsages, unknownApis } from "../../src/lib/api-resolution.js";
 import { sinkLabel } from "../../src/lib/outbound-sinks.js";
@@ -851,7 +874,7 @@ test("code-sanity is gated by the --eslint flag", async () => {
 // source archive's declared files from review, which a declaration nothing verified cannot
 // buy.
 test("where a check runs: the route says it, or the condition says what a route cannot", async () => {
-  const checks = allChecks(await loadChecks(loadRegistry()));
+  const checks = await everyCheck(loadRegistry());
   const by = (id) => checks.find((x) => x.id === id);
   // Read the ANSWER, not one field: an input whose artifact exists only in a source
   // review already says "SCA only", and nothing is declared beside it to disagree with.
@@ -868,11 +891,9 @@ test("where a check runs: the route says it, or the condition says what a route 
 
   // Said by the ROUTE: the archive is the artifact these read, and an XPI review has none.
   for (const id of [
-    "undeclared-build-source",
-    "build-reproduces-xpi",
+    "build-review",
     "build-not-reproduced",
     "build-fails",
-    "build-unsafe",
     "build-registry-redirect",
     "lock-foreign-source",
     "build-lifecycle-hook",
@@ -908,19 +929,40 @@ test("where a check runs: the route says it, or the condition says what a route 
     [
       "xpi-lock-file-missing",
       "xpi-lock-file-invalid",
-      "undeclared-build-source",
+      "build-review",
+      "build-reproduces-xpi",
+      "build-unsafe",
     ]
   );
   assert.deepEqual(runsIn("xpi-lock-file-missing"), XPI_ONLY);
   assert.deepEqual(runsIn("xpi-lock-file-invalid"), XPI_ONLY);
-  // The build review asks the reviewer of a review with no agent. In an agent review the
-  // build judgement and the reviewer's answer at `built` ask it, so it does not run there.
-  const build = by("undeclared-build-source");
-  assert.equal(conditionEligible(build, checkFacts({ sca: true })), true);
-  assert.equal(
-    conditionEligible(build, checkFacts({ sca: true, llmReview: true })),
-    false
-  );
+  // The three build questions split every source review by the reviewer's build decision in
+  // the preparation: build-review where nobody decided (a plain report, or an agent review
+  // with a build-guard check off), build-reproduces-xpi where they held the build safe, and
+  // build-unsafe where they held it unsafe. Exactly one runs in each.
+  const decided = {
+    "nobody decided": {},
+    "held safe": { buildJudged: true, buildSafe: true },
+    "held unsafe": { buildJudged: true, buildSafe: false },
+  };
+  for (const [name, decision] of Object.entries(decided)) {
+    for (const llmReview of [true, false]) {
+      const facts = checkFacts({ sca: true, llmReview, ...decision });
+      assert.deepEqual(
+        ["build-review", "build-reproduces-xpi", "build-unsafe"].filter((id) =>
+          conditionEligible(by(id), facts)
+        ),
+        [
+          {
+            "nobody decided": "build-review",
+            "held safe": "build-reproduces-xpi",
+            "held unsafe": "build-unsafe",
+          }[name],
+        ],
+        `${name}, llm-review ${llmReview}`
+      );
+    }
+  }
 
   // Neither: these run in both modes. minified-code because a minified file is
   // non-authored and rejected whether it ships in a built XPI or sits in a source
@@ -950,7 +992,7 @@ test("where a check runs: the route says it, or the condition says what a route 
 // onto a case - reading the yaml back would only restate the derivation.
 test("every escalating check lands in the section its reader implies", async () => {
   const registry = loadRegistry();
-  const checks = allChecks(await loadChecks(registry, { eslint: true }));
+  const checks = await everyCheck(registry, { eslint: true });
   const bySection = {};
   const authored = (id, key) => {
     const text = registry.checkEntry(id)?.[key];
@@ -996,10 +1038,10 @@ test("every escalating check lands in the section its reader implies", async () 
     ],
     "manual-review": [
       "build-reproduces-xpi",
+      "build-review",
       "experiment-manual-review",
       "native-messaging",
       "trademark-thunderbird-name",
-      "undeclared-build-source",
       "vendored-remote-resources",
     ],
   });
@@ -1020,7 +1062,7 @@ test("every escalating check lands in the section its reader implies", async () 
 // declaration - the reader it authored wording for - pinned by its own test.
 test("every check's severity is pinned to its band", async () => {
   // eslint: true so the opt-in code-sanity check is loaded and pinned like the rest.
-  const checks = allChecks(await loadChecks(loadRegistry(), { eslint: true }));
+  const checks = await everyCheck(loadRegistry(), { eslint: true });
   const actual = {};
   for (const c of checks) (actual[c.severity] ??= []).push(c.id);
   for (const k of Object.keys(actual)) actual[k].sort();
@@ -1036,6 +1078,7 @@ test("every check's severity is pinned to its band", async () => {
       "build-not-reproduced",
       "build-registry-redirect",
       "build-reproduces-xpi",
+      "build-review",
       "build-unsafe",
       "bundled-files",
       "cleartext-transmission",
@@ -1094,7 +1137,6 @@ test("every check's severity is pinned to its band", async () => {
       "trademark-violation",
       "unacceptable-package-content",
       "unanalysable-file",
-      "undeclared-build-source",
       "unknown-api",
       "unpinned-vendor-source",
       "unpopular-source-dependency",
@@ -1862,8 +1904,7 @@ test("a response worded per review mode is all-or-nothing, and never beside a ba
 // pinned to exactly the structure checks. A new or flipped check trips this test
 // rather than silently reading the wrong artifact.
 test("every check declares a valid input; the input:xpi set is exactly the pinned structure checks", async () => {
-  const byPhase = await loadChecks(loadRegistry());
-  const checks = allChecks(byPhase);
+  const checks = await everyCheck(loadRegistry());
   for (const c of checks) {
     assert.ok(
       c.input === "source" ||
@@ -1955,7 +1996,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "xpi-lock-file-missing",
   ]);
   // input: sca reads the submitted source archive (minus the Experiment and a recorded
-  // node_modules). The one build-review check (undeclared-build-source, which reads
+  // node_modules). The one build-review check (build-review, which reads
   // ctx.buildReview()) plus the deterministic build-policy checks; extending
   // this set is deliberate too.
   const sca = checks
@@ -1971,6 +2012,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "build-not-reproduced",
     "build-registry-redirect",
     "build-reproduces-xpi",
+    "build-review",
     "build-unsafe",
     "committed-build-artifact",
     "committed-node-modules",
@@ -1983,7 +2025,6 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     "sca-lock-file-multiple",
     "sca-package-file-invalid",
     "sca-package-file-missing",
-    "undeclared-build-source",
     "unpopular-source-dependency",
     "vendor-vulnerable-dev",
     "vendor-vulnerable-indirect",
@@ -2031,7 +2072,7 @@ test("an input:xpi check escalates over its routed (XPI) addon", async () => {
   );
 });
 
-// ---- build review: undeclared-build-source (SCA; reads ctx.buildReview(), produced by
+// ---- build review: build-review (SCA; reads ctx.buildReview(), produced by
 // analyzeBuild) ----
 
 const scaCtx = (review) =>
@@ -2046,8 +2087,8 @@ const review = (over) => ({
 // EVERY source-code submission raises this: the reviewer's attestation that the shipped
 // XPI comes from the source they read is what the SCA review rests on, so a submission
 // documenting no build at all is still checked against the XPI.
-test("undeclared-build-source escalates every SCA, build documented or not", async () => {
-  const out = await undeclaredBuildSource.run(withManifest(scaCtx(review())));
+test("build-review escalates every SCA, build documented or not", async () => {
+  const out = await buildReviewRule.run(withManifest(scaCtx(review())));
   assert.equal(out.findings.length, 0);
   assert.equal(out.escalations.length, 1);
   assert.equal(out.escalations[0].file, "package.json");
@@ -2058,7 +2099,7 @@ test("undeclared-build-source escalates every SCA, build documented or not", asy
 
   // No build entry point at all still escalates - but with NO locus, rather than
   // pointing the reviewer at a package.json the submission does not have.
-  const none = await undeclaredBuildSource.run(
+  const none = await buildReviewRule.run(
     withManifest(scaCtx(review({ anchor: null })))
   );
   assert.equal(none.findings.length, 0);
@@ -2067,6 +2108,22 @@ test("undeclared-build-source escalates every SCA, build documented or not", asy
   // the reviewer still needs to be told which artifact that is.
   assert.equal(none.escalations[0].file, null);
   assert.equal(none.escalations[0].artifact, ARTIFACT_SCA);
+});
+
+// build-unsafe runs only where the reviewer held the build unsafe in the preparation, so it
+// always reports, once, anchored as the build review is, with the reasons they gave as its
+// note, or none where they trusted the agent's verdict.
+test("build-unsafe reports the reviewer's decision, with their reasons", async () => {
+  const words = "It downloads a binary from a host nobody pinned.";
+  for (const reasons of [null, words]) {
+    const ctx = scaCtx(review());
+    ctx.artifact.buildReasons = reasons;
+    const { findings } = await buildUnsafe.run(withManifest(ctx));
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].file, "package.json");
+    assert.equal(findings[0].artifact, ARTIFACT_SCA);
+    assert.equal(findings[0].note, reasons);
+  }
 });
 
 // ---- build-registry-redirect (SCA deterministic: .npmrc registry) ----
@@ -5042,7 +5099,7 @@ test("missing-english-localization: franc over hardcoded text", async () => {
 test("every check entry (both sections) resolves to a runnable module", async () => {
   const registry = loadRegistry();
   // { eslint: true } so the eslint-gated code-sanity loads too - every entry must resolve.
-  const checks = allChecks(await loadChecks(registry, { eslint: true }));
+  const checks = await everyCheck(registry, { eslint: true });
   const ids = registry.checkIds();
   assert.equal(checks.length, ids.length);
   assert.ok(checks.length >= 10);
@@ -6417,6 +6474,7 @@ test("review-downgrade marks the aborting checks of the archive and its build", 
       "build-not-reproduced",
       "build-registry-redirect",
       "build-reproduces-xpi",
+      "build-review",
       "build-unsafe",
       "lock-foreign-source",
       "lockfile-injection",
@@ -6426,7 +6484,6 @@ test("review-downgrade marks the aborting checks of the archive and its build", 
       "sca-package-file-invalid",
       "sca-package-file-missing",
       "sca-xpi-fully-included-in-archive",
-      "undeclared-build-source",
       "vendor-vulnerable-dev",
       "vendor-vulnerable-indirect-dev",
     ]

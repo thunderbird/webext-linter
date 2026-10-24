@@ -105,7 +105,8 @@ shapes:
       kind: text
       why: >-
         the condition the check runs under, over the facts known before any check runs
-        (`sca`, `eslint`, `llm-review`), in the syntax a prompt step's `when:` uses - for what a route
+        (`sca`, `eslint`, `llm-review`, `build-judged`, `build-safe`), in the syntax a prompt
+        step's `when:` uses - for what a route
         cannot say, such as a check that judges the shipped XPI and must stay out of a
         source review (`NOT sca`), or one that runs only under --eslint (`eslint`).
         Leaving it out runs the check wherever its route does
@@ -113,8 +114,8 @@ shapes:
       kind: gate
       why: >-
         it marks a check an agent's build relies on: with any of these switched off
-        (--checks-only / --checks-skip), the review neither judges the build nor shows the
-        Build Review Details
+        (--checks-only / --checks-skip), the preparation asks nobody about the build, the
+        agent builds nothing, and the review asks build-review in its place
     collapse:
       kind: one-of
       values: COLLAPSE_MODES
@@ -158,6 +159,14 @@ shapes:
       why: >-
         it names the loop phase a person is asked this check's question in, alone, where it
         cannot wait in the batch beside the others
+    manual-choices:
+      kind: entries
+      shape: choice-entry
+      name-key: label
+      noun: "`manual-choices`"
+      why: >-
+        the answers this check's question offers in place of the ones every manual review
+        question offers, worded for it, one cleared and one reported
     review-downgrade:
       kind: gate
       why: >-
@@ -281,15 +290,16 @@ shapes:
         the condition the value is offered under, read like a step's `when:`, so an answer
         that means nothing in this review is not offered in it
 
-  # One answer the preparation's PACKAGE_MANAGERS question offers.
-  package-manager-value-entry:
+  # One answer the preparation's SCA_BUILD_PERMISSION question offers.
+  build-permission-value-entry:
     value:
       kind: one-of
-      values: PACKAGE_MANAGER_VALUES
+      values: BUILD_PERMISSION_VALUES
       required: true
       why: >-
-        the id the preparation records the answer as, which decides whether the agent builds
-        the add-on and runs its package-manager commands
+        the id the preparation records the reviewer's decision as, which decides whether the
+        build is safe and whether the agent builds the add-on and runs its package-manager
+        commands
     label:
       kind: text
       required: true
@@ -570,25 +580,48 @@ sections:
             required: true
             noun: "`values`"
             why: the two answers the judgement offers, safe and unsafe
-      package-managers:
+      build-permission:
         kind: object
         required: true
-        noun: "`package-managers` question"
+        noun: "`build-permission` question"
         why: >-
-          the question the permission prompt puts to the reviewer, whether the agent may
-          build the add-on, its package-manager commands included
+          the reviewer's one decision about the build, put in the permission prompt, worded
+          by the agent's verdict
         fields:
-          question:
-            kind: text
+          safe:
+            kind: object
             required: true
-            why: what the reviewer is asked, relayed as it is written
-          values:
-            kind: entries
-            shape: package-manager-value-entry
-            name-key: value
+            noun: "`safe` question"
+            why: the decision as it is put after a safe verdict
+            fields:
+              question:
+                kind: text
+                required: true
+                why: what the reviewer is asked, relayed as it is written
+              values:
+                kind: entries
+                shape: build-permission-value-entry
+                name-key: value
+                required: true
+                noun: "`values`"
+                why: the two answers the question offers, allow and manual
+          unsafe:
+            kind: object
             required: true
-            noun: "`values`"
-            why: the two answers the question offers, allow and decline
+            noun: "`unsafe` question"
+            why: the decision as it is put after an unsafe verdict
+            fields:
+              question:
+                kind: text
+                required: true
+                why: what the reviewer is asked, relayed as it is written
+              values:
+                kind: entries
+                shape: build-permission-value-entry
+                name-key: value
+                required: true
+                noun: "`values`"
+                why: the two answers the question offers, skip and override
 
   llm-phases:
     kind: object

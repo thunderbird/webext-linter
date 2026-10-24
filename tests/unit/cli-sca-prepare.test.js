@@ -144,37 +144,27 @@ test("the hand-back that finishes the preparation starts the review", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A reviewer who declines package-manager commands has the review started at once, with no
-// build of the agent's: the reviewer builds the add-on themselves.
-test("declined package-manager commands start a review the reviewer builds for", () => {
+// A reviewer who builds the add-on themselves has the review started at once, with no build
+// of the agent's: the build is held safe, and the reviewer answers the build question.
+test("a reviewer who builds it themselves starts a review they build for", () => {
   const dir = submissionFolder();
-  const prepared = run([
-    dir,
-    "--llm-sca-review",
-    ...OFFLINE_FLAGS,
-    "--checks-only",
-    "unused-files",
-  ]);
+  const prepared = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
   assert.equal(prepared.code, 0, prepared.stderr);
   const work = workOf(prepared.stdout);
   const handed = handBackRoots(prepared.stdout, {
-    managers: "Do not let it build",
+    managers: "Build it myself",
   });
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
   assert.equal(readJson(work, "prepare").packageManagers, false);
-  assert.equal(
-    readJson(work, "state").run["build-allowed"],
-    undefined,
-    "a reviewer who refused is not recorded as having let the agent build"
-  );
   assert.deepEqual(readJson(work, "state").build, {
     result: null,
     root: null,
     output: null,
     match: null,
-    vulnerabilities: null,
+    vulnerabilities: { moderate: 0, high: 0, critical: 0 },
     rescuedVulnerabilities: null,
     safety: "safe",
+    safe: true,
   });
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -588,7 +578,6 @@ test("a review of a source the agent built opens on its Build Review Details", a
   assert.equal(state.phase, "built");
   // The reviewer let the agent build, so the build question does not offer to call the
   // build unsafe.
-  assert.equal(state.run["build-allowed"], true);
   assert.deepEqual(
     readJson(work, "review").entries[0].answers.map((a) => a.label),
     ["Builds and reproduces", "Does not reproduce", "Does not build"]
@@ -601,6 +590,7 @@ test("a review of a source the agent built opens on its Build Review Details", a
     vulnerabilities: { moderate: 1, high: 0, critical: 0 },
     rescuedVulnerabilities: null,
     safety: "safe",
+    safe: true,
   });
   assert.equal(state.paths.scaRootOrig, null);
   const rows = [

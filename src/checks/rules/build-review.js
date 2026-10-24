@@ -1,14 +1,16 @@
-// SCA only: the build review - the build must use only the submitted source and the
-// dependencies declared in package.json/lock. Everything must ship in the source; the only
-// allowed copy-in is installed libraries via `npm ci` (from node_modules).
+// SCA only: the build review where nobody decided about the build in a preparation - a plain
+// report, or an agent review run with a build-guard check switched off. One question covers
+// the whole build, in the order a reviewer takes it: whether it uses only the submitted source
+// and the dependencies declared in package.json/lock, and only then whether it builds and
+// reproduces the shipped XPI.
 //
-// Nothing decides that from the files, so EVERY source-code submission raises this, for
-// the agent to settle in `settle`, after the build (or, with no agent, for the reviewer),
-// anchored at the submission's package.json. Whether the source then builds into the
-// shipped XPI is a question of its own (build-reproduces-xpi).
+// Nothing decides that from the files, so every such source-code submission raises this, for
+// the reviewer, anchored at the submission's package.json. Where the reviewer decided in the
+// preparation, build-reproduces-xpi asks the outcome and build-unsafe reports an unsafe build
+// instead.
 //
 // Belongs here: raising the escalation. Does NOT belong here: where it anchors
-// (-> src/build/analyze.js), or the wording (-> assets/registry.yaml).
+// (-> src/build/analyze.js), when it runs or the wording (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";
 

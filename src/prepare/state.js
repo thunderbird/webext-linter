@@ -40,6 +40,7 @@ import { rethrowIfFatal, wiringError } from "../lib/errors.js";
 import { PACKAGE_FILE } from "../vendor/package-file.js";
 import { TREE_LOCKS } from "../vendor/locks.js";
 import { HandbackRefused } from "../report/handback.js";
+import { checkedNote } from "../report/verdicts.js";
 import {
   BUILD_MATCH_VALUES,
   BUILD_SAFETY_VALUES,
@@ -48,7 +49,7 @@ import {
 /** Bumped when the record's shape, or what a step does with it, changes in a way an older
  *  file cannot satisfy. A preparation in flight does not survive the upgrade, and saying so
  *  beats reading it wrongly. */
-export const PREPARE_VERSION = 11;
+export const PREPARE_VERSION = 12;
 
 /** The mode every write leaves the record at: readable, and writable by nobody. */
 const READ_ONLY = 0o444;
@@ -117,11 +118,18 @@ const COUNTED = ["moderate", "high", "critical"];
  * @property {?string} buildSafety  The agent's judgement of the build it reported in
  *   build.md, a BUILD_SAFETY_VALUES id, as the `analyze` hand-back read it, and null before it.
  *   The review starts with it as its build's judgement (state.build.safety).
+ * @property {?boolean} buildSafe  The reviewer's one decision about the build, at the
+ *   permission question: whether it is safe, the agent's verdict as they kept or overrode
+ *   it (`agentBuilds` answering for them). Null before it, and where a build-guard check
+ *   is switched off, which asks nothing. The review reads it as its `build-judged` and
+ *   `build-safe` facts.
+ * @property {?string} buildReasons  The reviewer's own words for holding the build unsafe,
+ *   where they answered the question with them, which build-unsafe reports. Held only
+ *   where `buildSafe` is false.
  * @property {?boolean} packageManagers  Whether the agent may build the add-on and run its
- *   package-manager commands: the reviewer's answer to the permission question (true where
- *   `agentBuilds` answered it up front), false after an unsafe judgement, which asks
- *   nothing, and null before either. False, the preparation audits and rescues nothing,
- *   and the agent builds nothing.
+ *   package-manager commands: true where the reviewer let it (`allow` or `override`), false
+ *   for any other answer and where nothing was asked, and null before either. False, the
+ *   preparation audits and rescues nothing, and the agent builds nothing.
  * @property {?import("./audit.js").VulnerabilityCounts} vulnerabilities  The submitted
  *   lock's vulnerable packages, counted by severity as the linter's first audit found them.
  *   Held from `build` and `rescue` on, never replaced, and null where the lock was never
@@ -209,25 +217,50 @@ export function readPrepare(work) {
         : "the preparation's record holds buildSafety as no judgement the agent can give"
     );
   }
-  if (
-    record.step === PREPARE_STEP.permission &&
-    record.buildSafety !== "safe"
-  ) {
-    throw new HandbackRefused(
-      "the preparation's record asks the reviewer about a build judged unsafe"
-    );
-  }
   if (before || record.step === PREPARE_STEP.permission) {
-    if (record.packageManagers !== null) {
-      throw new HandbackRefused(
-        "the preparation's record holds packageManagers before the reviewer answered it"
-      );
+    for (const key of ["packageManagers", "buildSafe", "buildReasons"]) {
+      if (record[key] !== null) {
+        throw new HandbackRefused(
+          `the preparation's record holds ${key} before the reviewer answered it`
+        );
+      }
     }
   } else {
     recordBoolean(record.packageManagers, "packageManagers");
+    checkDecision(record);
   }
   checkBuild(record, before || record.step === PREPARE_STEP.permission);
   return record;
+}
+
+/**
+ * The reviewer's build decision, as the permission step writes it: a boolean, or null where
+ * nothing was asked, which lets nobody build. The agent builds only a build held safe, and
+ * reasons come only with one held unsafe, as words a reviewer could have typed.
+ * @param {PrepareRecord} record  Past the permission step.
+ * @throws {HandbackRefused}
+ */
+function checkDecision(record) {
+  const safe = record.buildSafe;
+  if (safe !== null && typeof safe !== "boolean") {
+    throw new HandbackRefused(
+      "the preparation's record holds buildSafe as neither true, false nor null"
+    );
+  }
+  if (record.packageManagers && safe !== true) {
+    throw new HandbackRefused(
+      "the preparation's record lets the agent build a build not held safe"
+    );
+  }
+  const reasons = record.buildReasons;
+  if (reasons === null) {
+    return;
+  }
+  if (safe !== false || checkedNote(reasons).problem) {
+    throw new HandbackRefused(
+      "the preparation's record holds buildReasons the reviewer could not have given"
+    );
+  }
 }
 
 /**
@@ -240,7 +273,7 @@ export function readPrepare(work) {
 function checkBuild(record, unaudited) {
   const building =
     record.step === PREPARE_STEP.build || record.step === PREPARE_STEP.rescue;
-  if (building && (record.buildSafety !== "safe" || !record.packageManagers)) {
+  if (building && (record.buildSafe !== true || !record.packageManagers)) {
     throw new HandbackRefused(
       "the preparation's record builds where the agent may not build"
     );
@@ -363,6 +396,8 @@ export function startRecord({ submission, flags, agentBuilds, roots = null }) {
     flags,
     agentBuilds,
     buildSafety: null,
+    buildSafe: null,
+    buildReasons: null,
     packageManagers: null,
     roots,
     vulnerabilities: null,

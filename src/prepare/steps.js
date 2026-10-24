@@ -6,15 +6,17 @@
 // folder's `sca/` first (`unpack`), and its hand-back derives the root inside it as the review
 // derives one (src/addon/sca-root.js). One given the extracted source (--llm-review
 // --sca-base) has it copied into `sca/` by the linter, and starts at `analyze`. There the
-// reader reports the build in build.md and hands back the judgement whether it is safe (and
-// the Experiment folder, where it is not known yet). An unsafe build is done at once: the agent
-// builds nothing, and runs no package-manager command, and neither does one where a check the
-// build relies on is switched off (`build-guard`). A safe one
-// moves on to `permission`, which shows the reviewer the Build Review Details and asks them
-// alone whether the agent may build the add-on, its package-manager commands included
-// (pre-answered "yes" where the record holds agentBuilds, which skips that step). Where the reviewer
-// declined, the folder is done at once: a rescue runs package-manager commands, so none is
-// tried. Otherwise it audits the root's lock (./audit.js). A root the audit cannot read in
+// reader reports the build in build.md and hands back the verdict whether it is safe (and the
+// Experiment folder, where it is not known yet). Where a check the build relies on is switched
+// off (`build-guard`), the folder is done at once: nobody is asked, and the agent builds
+// nothing and runs no package-manager command. Otherwise, after either verdict, it moves on to
+// `permission`, which shows the reviewer the Build Review Details and asks them alone for the
+// one decision about the build, worded by the verdict: let the agent build or build it
+// themselves after a safe one, build nothing or let the agent build anyhow after an unsafe one,
+// or, after either, hold it unsafe for reasons of their own (pre-answered where the record
+// holds agentBuilds, which skips that step). Unless they let the agent build, the folder is
+// done at once: a rescue runs package-manager commands, so none is tried. Otherwise it audits
+// the root's lock (./audit.js). A root the audit cannot read in
 // full is done: nothing is built, and the review it starts aborts on that lock. A clean lock
 // moves on to `build`: the linter copies the whole `sca/` into `build/`, and the agent builds
 // the original there, as the lock pins it, and names what the build produced, or that it
@@ -84,12 +86,13 @@ import {
   writeReviewFile,
 } from "../report/handback.js";
 import { displayLine } from "../util/text.js";
+import { checkedNote, pickedChoice } from "../report/verdicts.js";
 
 /** The review file's entry for the Experiment folder, keyed by the name the prompt gives it. */
 const EXP_SOURCE = "SCA_EXP_SOURCE";
 /** The review file's entry for the reviewer's answer whether the agent may build the add-on,
  *  its package-manager commands included, as `llm-sca-review-prompt` names it. */
-const PACKAGE_MANAGERS = "PACKAGE_MANAGERS";
+const SCA_BUILD_PERMISSION = "SCA_BUILD_PERMISSION";
 /** The review file's entry for the reader's judgement of the build, as
  *  `llm-sca-review-prompt` names it. */
 const SCA_BUILD_SAFETY_ASSESSMENT = "SCA_BUILD_SAFETY_ASSESSMENT";
@@ -100,8 +103,9 @@ const LLM_BUILD_OUTPUT = "LLM_BUILD_OUTPUT";
  *  as `llm-sca-review-prompt` names it: answered only where the build produced an output. */
 const LLM_BUILD_XPI_MATCH = "LLM_BUILD_XPI_MATCH";
 /** Whether the hot runs switched the agent's builds on (WEBEXT_LINTER_AGENT_BUILDS=1): their
- *  stand-in for the reviewer's "Let it build", which nothing documents. Read once: no setter,
- *  nothing to undo. */
+ *  stand-in for the reviewer's build decision, which nothing documents. It lets the agent
+ *  build a build judged safe, and builds nothing judged unsafe. Read once: no setter, nothing
+ *  to undo. */
 const AGENT_BUILDS = process.env.WEBEXT_LINTER_AGENT_BUILDS === "1";
 
 /**
@@ -129,8 +133,8 @@ export function agentBuildsSwitchedOn() {
  */
 
 /**
- * The registry's permission question, as llmScaReviewPrompt gives it.
- * @typedef {ScaPrompt["packageManagers"]} PackageManagersAsk
+ * The registry's build decision, as llmScaReviewPrompt gives it: one question per verdict.
+ * @typedef {ScaPrompt["buildPermission"]} BuildPermissionAsk
  */
 
 /**
@@ -212,15 +216,17 @@ function safetyEntry(judgement) {
 }
 
 /**
- * The entry the reviewer answers whether the agent may build the add-on in, built as a
- * process value's entry is.
- * @param {PackageManagersAsk} question
+ * The entry the reviewer makes their build decision in, worded by the agent's verdict and
+ * built as a process value's entry is. It is answered with one of its labels or the
+ * reviewer's own words (permission).
+ * @param {BuildPermissionAsk} question
+ * @param {string} verdict  The agent's verdict, a BUILD_SAFETY_VALUES id.
  * @returns {object}
  */
-function managersEntry(question) {
+function permissionEntry(question, verdict) {
   return valueEntry(
-    { name: PACKAGE_MANAGERS, values: question.values },
-    question.question
+    { name: SCA_BUILD_PERMISSION, values: question[verdict].values },
+    question[verdict].question
   );
 }
 
@@ -387,11 +393,12 @@ function unpacked(work, record, prompt) {
 }
 
 /**
- * The build analyzed: the judgement and the build report it rests on, and the Experiment
- * folder where it was asked. An unsafe build is done at once, with no package-manager command
- * allowed, and so is a safe one where a check the build relies on is switched off
- * (buildGuarded): nothing then vouches for what an install pulls in. A safe one moves on to the
- * permission question, or, where the record holds agentBuilds, straight to the audit.
+ * The build analyzed: the verdict and the build report it rests on, and the Experiment folder
+ * where it was asked. Where a check the build relies on is switched off (buildGuarded), the
+ * folder is done at once, asking nobody and allowing no package-manager command: nothing then
+ * vouches for what an install pulls in. Otherwise, after either verdict, it moves on to the
+ * permission question, or, where the record holds agentBuilds, to the decision that answers
+ * for the reviewer.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `analyze`.
  * @param {AuditContext} context
@@ -408,19 +415,15 @@ async function analyze(work, record, context, prompt, registry) {
     );
   }
   const settled = { ...record, buildSafety, roots };
-  if (buildSafety !== "safe" || !buildGuarded(record, registry)) {
+  if (!buildGuarded(record, registry)) {
     return done(work, { ...settled, packageManagers: false });
   }
   if (record.agentBuilds) {
-    return permitted(
-      work,
-      { ...settled, packageManagers: true },
-      context,
-      prompt
-    );
+    const id = buildSafety === "safe" ? "allow" : "skip";
+    return decided(work, settled, id, null, context, prompt);
   }
   return ask(work, { ...settled, step: PREPARE_STEP.permission }, [
-    managersEntry(prompt.packageManagers),
+    permissionEntry(prompt.buildPermission, buildSafety),
   ]);
 }
 
@@ -460,26 +463,55 @@ function answerOf(work, entry, phase) {
 }
 
 /**
- * The permission step, handed back: the reviewer's answer read, and the folder done where
- * they did not let the agent build, or its lock audited where they did.
+ * The permission step, handed back: the reviewer's build decision read, one of the labels its
+ * verdict's question offers, or their own words, which hold the build unsafe for the reasons
+ * they give, held to the rule a reviewer's note is (checkedNote).
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record
  * @param {AuditContext} context
  * @param {ScaPrompt} prompt
  * @returns {Promise<Handout>}
+ * @throws {HandbackRefused}
  */
 async function permission(work, record, context, prompt) {
-  const entry = managersEntry(prompt.packageManagers);
-  const picked = answerOf(work, entry, { name: "permission", answer: "value" });
-  if (picked === undefined) {
+  const entry = permissionEntry(prompt.buildPermission, record.buildSafety);
+  const answer = answerOf(work, entry, { name: "permission", answer: "words" });
+  if (answer === undefined) {
     return ask(work, record, [entry]);
   }
-  const allowed =
-    prompt.packageManagers.values.find((v) => v.label === picked).value ===
-    "allow";
+  const offered = prompt.buildPermission[record.buildSafety].values;
+  const picked = pickedChoice(answer, offered);
+  if (picked) {
+    return decided(work, record, picked.value, null, context, prompt);
+  }
+  const { note, problem } = checkedNote(answer);
+  if (problem) {
+    throw new HandbackRefused(`${SCA_BUILD_PERMISSION} ${problem}`);
+  }
+  return decided(work, record, null, note, context, prompt);
+}
+
+/**
+ * The reviewer's build decision, recorded: whether the build is safe, and whether the agent
+ * builds it (`allow` and `override`), which `permitted` goes on from. Their own words are no
+ * id, and hold the build unsafe for those reasons.
+ * @param {string} work
+ * @param {import("./state.js").PrepareRecord} record
+ * @param {?string} id  A BUILD_PERMISSION_VALUES id, or null for the reviewer's own words.
+ * @param {?string} reasons  Those words, where they gave them.
+ * @param {AuditContext} context
+ * @param {ScaPrompt} prompt
+ * @returns {Promise<Handout>}
+ */
+function decided(work, record, id, reasons, context, prompt) {
   return permitted(
     work,
-    { ...record, packageManagers: allowed },
+    {
+      ...record,
+      packageManagers: id === "allow" || id === "override",
+      buildSafe: id === "allow" || id === "manual" || id === "override",
+      buildReasons: reasons,
+    },
     context,
     prompt
   );

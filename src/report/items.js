@@ -50,9 +50,9 @@ import { SECTION_TITLES, manualQuestion } from "./format.js";
  * @param {object} args
  * @param {import("./finding.js").Finding[]} args.findings
  * @param {import("./finding.js").ManualItem[]} args.manual
- * @param {{label: string, description: string}[]} args.choices  The answers a question
- *   offers, from registry.manualReviewChoices(), in the order the
- *   reviewer sees them.
+ * @param {(ruleId: string) => {label: string, description: string}[]} args.choicesOf  The
+ *   answers a question of that check offers, from registry.manualReviewChoices(ruleId), in
+ *   the order the reviewer sees them.
  *   REQUIRED, and not defaulted: a question with no answers is one a reviewer cannot
  *   answer, which the registry itself refuses to author.
  * @param {(x: object) => string} [args.labelOf]  Artifact label ([XPI]/[SCA]) for a
@@ -61,7 +61,7 @@ import { SECTION_TITLES, manualQuestion } from "./format.js";
  *   which.
  * @returns {object[]}
  */
-export function reviewItems({ findings, manual, choices, labelOf }) {
+export function reviewItems({ findings, manual, choicesOf, labelOf }) {
   const entryNumbers = new Map();
   const counters = new Map();
   // The WHOLE review, never a filtered `manual`: the entry numbers count what they are
@@ -127,7 +127,7 @@ export function reviewItems({ findings, manual, choices, labelOf }) {
           message: manualQuestion(t, labelOf),
           // Label and description only: the verdict each answer settles the item
           // with never leaves this process.
-          answers: choices.map(({ label, description }) => ({
+          answers: choicesOf(t.ruleId).map(({ label, description }) => ({
             label,
             description,
           })),

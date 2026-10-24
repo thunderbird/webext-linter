@@ -1304,6 +1304,32 @@ test("the manual review answers come from the registry and are whole", () => {
       bad
     );
   }
+
+  // A check may word its own answers (`manual-choices`), which its cases offer in place of
+  // these: they settle the same two ways, once each, under labels of their own.
+  const own = (mutate) => {
+    const registry = loadRegistry();
+    mutate(
+      registry.allEntries().find((e) => e.check === "build-review")[
+        "manual-choices"
+      ]
+    );
+    return registry;
+  };
+  assert.deepEqual(
+    loadRegistry()
+      .manualReviewChoices("build-review")
+      .map((c) => c.verdict),
+    ["cleared", "reported"]
+  );
+  for (const [mutate, refused] of [
+    [(c) => (c[1].verdict = "cleared"), /settles with cleared, cleared/],
+    [(c) => c.pop(), /settles with cleared - a check's own answers/],
+    [(c) => (c[1].label = c[0].label), /offers one label twice/],
+    [(c) => (c[0].verdict = "ask"), /is not a verdict a reviewer's answer/],
+  ]) {
+    assert.throws(() => assertChoices(own(mutate), "t.yaml"), refused);
+  }
 });
 
 // The report's own authored prose is the one registry text nothing downstream refuses: each
@@ -1446,32 +1472,43 @@ test("the preparation prompts come from the registry and every part is required"
   const typo = loadRegistry();
   typo.doc["llm-sca-review-prompt"].analyze[2].experiments = true;
   assert.throws(() => checkScaPrompt(typo), /step 3 authors `experiments`/);
-  // The package-manager question offers allow and decline once each, under labels of their
-  // own: every answer is read as one of the two.
+  // The build decision offers each verdict's two answers once each, under labels of their
+  // own: every answer that is no reviewer's own words is read as one of them.
   assert.deepEqual(
-    prompt.packageManagers.values.map((v) => v.value),
-    ["allow", "decline"]
+    Object.fromEntries(
+      Object.entries(prompt.buildPermission).map(([verdict, q]) => [
+        verdict,
+        q.values.map((v) => v.value),
+      ])
+    ),
+    { safe: ["allow", "manual"], unsafe: ["skip", "override"] }
   );
-  const managers = (mutate) => {
+  const decision = (mutate) => {
     const r = loadRegistry();
-    mutate(r.doc["llm-sca-review-prompt"]["package-managers"]);
+    mutate(r.doc["llm-sca-review-prompt"]["build-permission"]);
     return r;
   };
   assert.throws(
-    () => checkScaPrompt(managers((m) => delete m.question)),
+    () => checkScaPrompt(decision((d) => delete d.unsafe.question)),
     /authors no `question`/
   );
   assert.throws(
-    () => checkScaPrompt(managers((m) => (m.values[1].value = "maybe"))),
+    () => checkScaPrompt(decision((d) => (d.safe.values[1].value = "maybe"))),
     /invalid `value` "maybe"/
   );
   assert.throws(
-    () => checkScaPrompt(managers((m) => (m.values[1].value = "allow"))),
+    () => checkScaPrompt(decision((d) => (d.safe.values[1].value = "allow"))),
     /offers `allow` other than once/
   );
   assert.throws(
+    () => checkScaPrompt(decision((d) => (d.unsafe.values[1].value = "allow"))),
+    /`build-permission` `unsafe` offers `allow`, which is not one of its answers/
+  );
+  assert.throws(
     () =>
-      checkScaPrompt(managers((m) => (m.values[1].label = m.values[0].label))),
+      checkScaPrompt(
+        decision((d) => (d.safe.values[1].label = d.safe.values[0].label))
+      ),
     /offers one label twice/
   );
   // The build and the rescue each name what the build produced, or their one label.

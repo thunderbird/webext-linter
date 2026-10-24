@@ -456,7 +456,7 @@ test("a build step without its question hands the question out again", async () 
   const file = workPaths(work).review;
   fs.writeFileSync(
     file,
-    JSON.stringify({ entries: [{ index: "PACKAGE_MANAGERS" }] })
+    JSON.stringify({ entries: [{ index: "SCA_BUILD_PERMISSION" }] })
   );
   const at = await handBack(work);
   assert.equal(at.next, "step");
@@ -492,8 +492,8 @@ test("the analyze step asks for the build judgement", async () => {
   cleanup(work);
 });
 
-// A safe build is recorded, and the reviewer is asked alone whether the agent may build:
-// the review file holds that one question, and nothing is audited yet. The lock is
+// A safe build is recorded, and the reviewer is asked alone for their build decision, worded
+// by the safe verdict: the review file holds that one question, and nothing is audited yet. The lock is
 // vulnerable and OSV is given no answer, so an audit would ask the switched-off network.
 test("a safe build moves on to the permission question, with nothing audited", async () => {
   const work = workFolder(
@@ -505,6 +505,7 @@ test("a safe build moves on to the permission question, with nothing audited", a
   assert.equal(at.record.step, PREPARE_STEP.permission);
   assert.equal(at.record.buildSafety, "safe");
   assert.equal(at.record.packageManagers, null);
+  assert.equal(at.record.buildSafe, null);
   assert.equal(at.record.vulnerabilities, null, "nothing is audited");
   assert.deepEqual(at.record.roots, {
     scaRoot: workPaths(work).sca,
@@ -515,42 +516,74 @@ test("a safe build moves on to the permission question, with nothing audited", a
     fs.readFileSync(workPaths(work).review, "utf8")
   ).entries;
   assert.deepEqual(rest, []);
-  assert.equal(managers.index, "PACKAGE_MANAGERS");
+  assert.equal(managers.index, "SCA_BUILD_PERMISSION");
   assert.equal(managers.answer, null);
-  assert.equal(
-    managers.message,
-    "Let the agent build the add-on (including its package-manager commands), or not?"
-  );
+  assert.ok(managers.message.startsWith("The agent judged the build safe."));
   assert.deepEqual(
     managers.answers.map((a) => a.label),
-    ["Let it build", "Do not let it build"]
+    ["Let the agent build", "Build it myself"]
   );
   cleanup(work);
 });
 
-// An unsafe build ends the preparation: the folder is done with nothing audited and nothing
-// rescued, and no question is put to the reviewer. The agent may run no package-manager
-// command, which the review reads as it reads a declined permission.
-test("an unsafe build is done at once, with nothing audited", async () => {
+// An unsafe verdict is put to the reviewer too, worded by it, and nothing is audited until
+// they answer.
+test("an unsafe build asks the reviewer, with nothing audited", async () => {
   const work = workFolder(
     { "package.json": packageFile(), "package-lock.json": npmLock() },
     { cache: auditCache() }
   );
   const at = await analyzeStep(work, { SCA_BUILD_SAFETY_ASSESSMENT: "unsafe" });
-  assert.equal(at.next, "review");
-  assert.equal(at.record.step, PREPARE_STEP.done);
+  assert.equal(at.next, "step");
+  assert.equal(at.record.step, PREPARE_STEP.permission);
   assert.equal(at.record.buildSafety, "unsafe");
-  assert.equal(at.record.packageManagers, false);
-  assert.equal(at.record.vulnerabilities, null);
-  assert.equal(at.record.buildResult, null, "nothing is built");
-  assert.deepEqual(recordOf(work), at.record);
-  assert.ok(!fs.existsSync(workPaths(work).review), "the review file is gone");
-  assert.ok(!fs.existsSync(workPaths(work).rescued), "no copy is made");
+  assert.equal(at.record.vulnerabilities, null, "nothing is audited");
+  const [decision] = reviewEntries(work);
+  assert.ok(decision.message.startsWith("The agent judged the build unsafe"));
+  assert.deepEqual(
+    decision.answers.map((a) => a.label),
+    ["Trust the verdict, do not build", "Build anyhow"]
+  );
   cleanup(work);
 });
 
+// Each answer of the decision, after its verdict: whether the build is held safe, whether the
+// agent builds it, and the reviewer's own words as the reasons for holding it unsafe. Only an
+// answer that lets the agent build goes on to the audit, whose clean lock is built.
+test("the build decision records what the reviewer answered", async () => {
+  const words = "It downloads a binary from a host nobody pinned.";
+  for (const [verdict, given, expected] of [
+    ["safe", "Let the agent build", [true, true, null, PREPARE_STEP.build]],
+    ["safe", "build it myself", [false, true, null, PREPARE_STEP.done]],
+    ["safe", words, [false, false, words, PREPARE_STEP.done]],
+    [
+      "unsafe",
+      "Trust the verdict, do not build",
+      [false, false, null, PREPARE_STEP.done],
+    ],
+    ["unsafe", "Build anyhow", [true, true, null, PREPARE_STEP.build]],
+    ["unsafe", words, [false, false, words, PREPARE_STEP.done]],
+  ]) {
+    const work = workFolder(
+      { "package.json": packageFile(), "package-lock.json": npmLock() },
+      { vulns: TOOL_CLEAN }
+    );
+    await analyzeStep(work, { SCA_BUILD_SAFETY_ASSESSMENT: verdict });
+    answer(work, { SCA_BUILD_PERMISSION: given });
+    const at = await handBack(work);
+    const { packageManagers, buildSafe, buildReasons, step } = at.record;
+    assert.deepEqual(
+      [packageManagers, buildSafe, buildReasons, step],
+      expected,
+      `${verdict}: ${given}`
+    );
+    cleanup(work);
+  }
+});
+
 // A record holding agentBuilds answered the permission question up front: a safe build goes
-// straight to the audit, recorded as let it build, and a clean lock to the build.
+// straight to the audit, recorded as let it build, and a clean lock to the build. An unsafe
+// one is built by nobody.
 test("agentBuilds skips the permission question", async () => {
   const work = workFolder(
     { "package.json": packageFile(), "package-lock.json": npmLock() },
@@ -561,7 +594,19 @@ test("agentBuilds skips the permission question", async () => {
   assert.equal(at.record.step, PREPARE_STEP.build);
   assert.equal(at.record.buildSafety, "safe");
   assert.equal(at.record.packageManagers, true);
+  assert.equal(at.record.buildSafe, true);
   cleanup(work);
+  const unsafe = workFolder(
+    { "package.json": packageFile(), "package-lock.json": npmLock() },
+    { cache: auditCache(), agentBuilds: true }
+  );
+  const skipped = await analyzeStep(unsafe, {
+    SCA_BUILD_SAFETY_ASSESSMENT: "unsafe",
+  });
+  assert.equal(skipped.next, "review");
+  assert.equal(skipped.record.packageManagers, false);
+  assert.equal(skipped.record.buildSafe, false);
+  cleanup(unsafe);
 });
 
 // With a check the build relies on switched off (`build-guard`), nothing vouches for what an
@@ -581,6 +626,7 @@ test("a build guard switched off lets nobody build", async () => {
     assert.equal(at.next, "review", flag);
     assert.equal(at.record.buildSafety, "safe");
     assert.equal(at.record.packageManagers, false);
+    assert.equal(at.record.buildSafe, null, "nobody is asked");
     assert.equal(at.record.vulnerabilities, null, "nothing is audited");
     cleanup(work);
   }
@@ -614,7 +660,7 @@ test("letting the agent build audits the lock", async () => {
     { vulns: TOOL_CLEAN }
   );
   await analyzeStep(work);
-  answer(work, { PACKAGE_MANAGERS: "Let it build" });
+  answer(work, { SCA_BUILD_PERMISSION: "Let the agent build" });
   const at = await handBack(work);
   assert.equal(at.next, "step");
   assert.equal(at.record.step, PREPARE_STEP.build);
@@ -630,7 +676,7 @@ test("not letting the agent build is done at once, with nothing audited", async 
     { "package.json": packageFile(), "package-lock.json": npmLock() },
     { cache: auditCache() }
   );
-  const at = await first(work, { PACKAGE_MANAGERS: "Do not let it build" });
+  const at = await first(work, { SCA_BUILD_PERMISSION: "Build it myself" });
   assert.equal(at.next, "review");
   assert.equal(at.record.step, PREPARE_STEP.done);
   assert.equal(at.record.packageManagers, false);
@@ -645,19 +691,18 @@ test("not letting the agent build is done at once, with nothing audited", async 
   cleanup(work);
 });
 
-// The answer is one of the labels its entry offered, and anything else is refused with the
-// folder unchanged.
-test("an answer to the permission question that is no label is refused", async () => {
+// The answer is one of the labels its entry offered, or the reviewer's own words, held to the
+// rule a reviewer's note is: none at all, nothing in it, or too long is refused with the folder
+// unchanged.
+test("an answer to the permission question a reviewer could not give is refused", async () => {
   const work = workFolder({ "package.json": packageFile() });
   await analyzeStep(work);
   for (const [given, problem] of [
-    [
-      "Maybe",
-      /PACKAGE_MANAGERS answers "Maybe", which this entry does not accept/,
-    ],
-    [null, /PACKAGE_MANAGERS still has no "answer"/],
+    [null, /SCA_BUILD_PERMISSION still has no "answer"/],
+    ["   ", /SCA_BUILD_PERMISSION carries an answer with nothing in it/],
+    ["x".repeat(5000), /SCA_BUILD_PERMISSION carries a 5000-character answer/],
   ]) {
-    answer(work, { PACKAGE_MANAGERS: given });
+    answer(work, { SCA_BUILD_PERMISSION: given });
     await assert.rejects(handBack(work), refused(problem));
   }
   assert.equal(recordOf(work).step, PREPARE_STEP.permission);
@@ -680,7 +725,7 @@ test("a permission step without its question hands the question out again", asyn
   assert.equal(at.record.step, PREPARE_STEP.permission);
   assert.deepEqual(
     JSON.parse(fs.readFileSync(file, "utf8")).entries.map((e) => e.index),
-    ["PACKAGE_MANAGERS"]
+    ["SCA_BUILD_PERMISSION"]
   );
   cleanup(work);
 });
@@ -1293,7 +1338,7 @@ test("a rescue without its question hands the question out again", async () => {
   const { work } = await rescued();
   fs.writeFileSync(
     workPaths(work).review,
-    JSON.stringify({ entries: [{ index: "PACKAGE_MANAGERS" }] })
+    JSON.stringify({ entries: [{ index: "SCA_BUILD_PERMISSION" }] })
   );
   const again = await later(work);
   assert.equal(again.next, "step");
@@ -1492,7 +1537,12 @@ test("a build record the linter would not write is refused", async (t) => {
   const cases = [
     [
       "counts before the audit",
-      (r) => ({ ...r, step: PREPARE_STEP.permission, packageManagers: null }),
+      (r) => ({
+        ...r,
+        step: PREPARE_STEP.permission,
+        packageManagers: null,
+        buildSafe: null,
+      }),
       "holds vulnerabilities as no count the linter writes",
     ],
     [

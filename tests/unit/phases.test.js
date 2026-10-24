@@ -449,14 +449,14 @@ function withValuePhase(extra = {}) {
 // a step's is, and a phase always keeps one value it offers in every run.
 test("a process value may be offered under a condition, checked as a step's is", () => {
   const conditioned = withValuePhase();
-  phaseNamed(conditioned, "safety").values[1].when = "NOT build-allowed";
+  phaseNamed(conditioned, "safety").values[1].when = "NOT build-guarded";
   check(conditioned);
   const loaded = conditioned
     .llmPhases()
     .phases.find((p) => p.name === "safety");
   const offered = (run) => valuesOf(loaded, run).map((v) => v.value);
   assert.deepEqual(offered({}), ["safe", "unsafe"]);
-  assert.deepEqual(offered({ "build-allowed": true }), ["safe"]);
+  assert.deepEqual(offered({ "build-guarded": true }), ["safe"]);
 
   for (const [when, refused] of [
     ["NOT", /value `unsafe` has a `when` that does not parse/],
@@ -476,7 +476,7 @@ test("a process value may be offered under a condition, checked as a step's is",
 
   const hidden = withValuePhase();
   for (const v of phaseNamed(hidden, "safety").values) {
-    v.when = "NOT build-allowed";
+    v.when = "NOT build-guarded";
   }
   assert.throws(
     () => check(hidden),
@@ -484,24 +484,16 @@ test("a process value may be offered under a condition, checked as a step's is",
   );
 });
 
-// The build question offers "Is unsafe to build" only where nobody let the agent build: a
-// reviewer who let it build in the preparation has already judged the build safe to run.
-test("the build question offers 'Is unsafe to build' only where nobody let the agent build", () => {
+// The build question asks the outcome only, in every run: whether the build is safe was the
+// reviewer's decision in the preparation.
+test("the build question offers the three outcomes", () => {
   const built = fresh()
     .llmPhases()
     .phases.find((p) => p.name === "built");
-  const labels = (run) => valuesOf(built, run).map((v) => v.label);
-  assert.deepEqual(labels({}), [
-    "Builds and reproduces",
-    "Does not reproduce",
-    "Does not build",
-    "Is unsafe to build",
-  ]);
-  assert.deepEqual(labels({ "build-allowed": true }), [
-    "Builds and reproduces",
-    "Does not reproduce",
-    "Does not build",
-  ]);
+  assert.deepEqual(
+    valuesOf(built, {}).map((v) => v.label),
+    ["Builds and reproduces", "Does not reproduce", "Does not build"]
+  );
 });
 
 // A phase offers no answers of its own: a person is offered the manual review's answers.
@@ -775,7 +767,6 @@ test("the shipped steps carry the conditions they are printed under", () => {
     ["aborted", "build-guarded", "sca", "unbuildable"],
     ["aborted", "agent-built", "unbuildable"],
     ["aborted", "agent-build-failed", "unbuildable"],
-    ["aborted", "build-unsafe", "unbuildable"],
     ["aborted", "self-build", "unbuildable"],
     ["aborted", "unbuildable"],
   ]);

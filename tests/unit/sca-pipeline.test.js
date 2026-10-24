@@ -150,7 +150,7 @@ test("SCA e2e: a flat layout is accepted and fully reviewed", async () => {
       // The build review works flat: it anchors at the root package.json, and the check
       // that reads it ran.
       assert.ok(
-        meta.checksRun.includes("undeclared-build-source"),
+        meta.checksRun.includes("build-review"),
         "the build review runs in a flat layout"
       );
       assert.ok(!has(findings, "sca-lock-file-missing"), "its lock is there");
@@ -1108,11 +1108,11 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
   }
 });
 
-// The build files (the archive's tooling) are reviewed through undeclared-build-source. This
+// The build files (the archive's tooling) are reviewed through build-review. This
 // proves the pipeline wires analyzeBuild -> scaCtx (ctx.buildReview()) -> the check:
 // analyzeBuild stores the anchor, and the check escalates the build to Extended Code
 // Review, which every source-code submission reaches.
-test("SCA e2e: a build script outside the source is reviewed by undeclared-build-source", async () => {
+test("SCA e2e: a build script outside the source is reviewed by build-review", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir({
     ...SRC_FILES,
@@ -1127,8 +1127,8 @@ test("SCA e2e: a build script outside the source is reviewed by undeclared-build
     });
     // The check ran (SCA-eligible)...
     assert.ok(
-      meta.checksRun.includes("undeclared-build-source"),
-      "undeclared-build-source runs in SCA mode"
+      meta.checksRun.includes("build-review"),
+      "build-review runs in SCA mode"
     );
     // ...and the whole-build review escalated to Extended Code Review (anchored at
     // package.json; the review source's files under src/ are never traced as build files).
@@ -1143,10 +1143,12 @@ test("SCA e2e: a build script outside the source is reviewed by undeclared-build
   }
 });
 
-// The build review asks the reviewer of a review with no agent, as a question only a person
-// answers. In an agent review the build judgement and the reviewer's answer at `built` ask
-// it, so the check does not run there and no case of it reaches `settle`.
-test("SCA: the build review runs only where no agent reviews", async () => {
+// The build review asks where nobody decided about the build in a preparation, as a question
+// only a person answers: a plain report lists it, and an agent review puts it to the reviewer
+// in `ask` with the other manual questions, offering its own answers. Where the reviewer
+// decided, the build checks of that decision ask instead (the partition by build-judged and
+// build-safe, tests/unit/rules.test.js).
+test("SCA: the build review runs where nobody decided about the build", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(SRC_FILES);
   const work = freshWorkFolder();
@@ -1157,13 +1159,14 @@ test("SCA: the build review runs only where no agent reviews", async () => {
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
-    assert.ok(plain.meta.checksRun.includes("undeclared-build-source"));
+    assert.ok(plain.meta.checksRun.includes("build-review"));
+    assert.ok(!plain.meta.checksRun.includes("build-reproduces-xpi"));
     const asked = plain.meta.manualReview.find(
-      (m) => m.ruleId === "undeclared-build-source"
+      (m) => m.ruleId === "build-review"
     );
     assert.equal(asked?.section, "manual-review");
 
-    const agent = await runReview({
+    await runReview({
       addonPath: xpi,
       scaRoot: src,
       workFolder: work,
@@ -1171,11 +1174,13 @@ test("SCA: the build review runs only where no agent reviews", async () => {
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
-    assert.ok(!agent.meta.checksRun.includes("undeclared-build-source"));
     const state = readState(workPaths(work).state);
-    assert.ok(
-      !state.manual.some((m) => m.ruleId === "undeclared-build-source"),
-      "no case of it is put to the agent"
+    const item = state.manual.find((m) => m.ruleId === "build-review");
+    assert.ok(item, "its case is put to the reviewer");
+    assert.equal(
+      item.askedIn ?? null,
+      null,
+      "in `ask`, not a phase of its own"
     );
   } finally {
     [xpi, src].forEach((d) => fs.rmSync(d, { recursive: true, force: true }));

@@ -405,7 +405,7 @@ test("a safe build prints the Build Review Details and the permission question",
     .join("\n");
   assert.ok(asked.stdout.includes(block), asked.stdout);
   assert.ok(
-    asked.stdout.indexOf(block) < asked.stdout.indexOf("PACKAGE_MANAGERS"),
+    asked.stdout.indexOf(block) < asked.stdout.indexOf("SCA_BUILD_PERMISSION"),
     "the block comes before the question"
   );
   assert.deepEqual(commandOf(asked.stdout), [`--llm-handback ${work}`]);
@@ -456,22 +456,41 @@ test("--llm-agent-builds is an unknown option", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// An unsafe build ends the preparation: the review starts at once, with the judgement the
-// preparation recorded and its build report, and the agent builds nothing.
-test("an unsafe build starts the review with its judgement", () => {
-  const dir = submissionFolder();
-  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
-  assert.equal(r.code, 0, r.stderr);
-  const work = workOf(r.stdout);
-  const handed = handBackRoots(r.stdout, { safety: "unsafe" });
-  assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
-  assert.match(handed.stdout, /── LLM Prompt ──/);
-  const record = readJson(work, "prepare");
-  assert.equal(record.buildSafety, "unsafe");
-  assert.equal(record.packageManagers, false);
-  const state = readJson(work, "state");
-  assert.equal(state.build.safety, "unsafe");
-  assert.deepEqual(state.products, ["build"]);
-  assert.equal(state.build.result, null);
-  fs.rmSync(dir, { recursive: true, force: true });
+// An unsafe verdict is put to the reviewer. Trusted, or overridden by reasons of their own,
+// the review starts at once with nothing built: it holds build-unsafe, with those reasons as
+// its note, and asks no build question. Overridden with "Build anyhow", the agent may build.
+test("an unsafe build is reported where the reviewer holds it unsafe", () => {
+  const words = "It downloads a binary from a host nobody pinned.";
+  for (const [managers, reasons] of [
+    ["Trust the verdict, do not build", null],
+    [words, words],
+  ]) {
+    const dir = submissionFolder();
+    const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+    assert.equal(r.code, 0, r.stderr);
+    const work = workOf(r.stdout);
+    const handed = handBackRoots(r.stdout, { safety: "unsafe", managers });
+    assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
+    assert.match(handed.stdout, /── LLM Prompt ──/);
+    const record = readJson(work, "prepare");
+    assert.equal(record.buildSafety, "unsafe");
+    assert.equal(record.packageManagers, false);
+    assert.equal(record.buildSafe, false);
+    assert.equal(record.buildReasons, reasons);
+    const state = readJson(work, "state");
+    assert.equal(state.build.safety, "unsafe");
+    assert.equal(state.build.safe, false);
+    assert.deepEqual(state.products, ["build"]);
+    assert.equal(state.build.result, null);
+    const unsafe = state.report.findings.filter(
+      (f) => f.ruleId === "build-unsafe"
+    );
+    assert.equal(unsafe.length, 1, managers);
+    assert.equal(unsafe[0].note, reasons);
+    assert.ok(
+      !state.manual.some((m) => m.ruleId === "build-reproduces-xpi"),
+      "no build question is asked"
+    );
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

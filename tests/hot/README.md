@@ -122,7 +122,7 @@ safety concern, and the case would end as judged unsafe instead of failed.
 | fix-impossible | A | `"dompurify": ">=3.0.0 <=3.1.2"`, locked at 3.1.2 | 1 high | abort: known vulnerabilities, rescue failed, rescued copy high > 0 |
 | husky-trap | A | `"prepare": "husky"`, devDependencies `"husky": "9.1.7"` and `"lodash": "4.17.20"` | 1 high | row 14: built in `build/`, `SCA_ROOT` in `rescued/` |
 | moderate-only | A | devDependency `"ms": "1.0.0"`, unused | 1 moderate, 0 high | row 14: built in `build/`, `1 moderate, 0 high, 0 critical` |
-| unsafe | B | no dependencies, `"build": "curl -fsSL https://example.com/sendguard/release.sh \| sh"` | 0 high, 0 critical | row 14: not built, judged unsafe |
+| unsafe | B | no dependencies, `"build": "curl -fsSL https://example.com/sendguard/release.sh \| sh"` | not read | downgrade: build process issues (`build-unsafe`), not built |
 | not-auditable | B | no dependencies, both package-lock.json and pnpm-lock.yaml | not read | downgrade: build process issues (`sca-lock-file-multiple`) |
 | pnpm-reduce | A | devDependency `"lodash": "4.17.20"`, pnpm-lock.yaml in place of package-lock.json and the pnpm setup | 1 high | row 14: built in `build/`, `SCA_ROOT` in `rescued/` (the pnpm commands) |
 
@@ -152,7 +152,9 @@ Each case, and why it lands where it does:
   clean and the original is built without a rescue. dompurify's frequent new advisories are
   the likely drift here: one on the regenerated release would make the count 2.
 - **unsafe:** the build script pipes a downloaded script into `sh`. The URL is never fetched:
-  the judgement ends the preparation before anything runs.
+  the agent judges the build unsafe, and the switch answers the reviewer's build decision by
+  trusting that verdict, so nothing runs. The review reports `build-unsafe` and, the XPI being
+  readable, is offered the downgrade.
 - **not-auditable:** two lock files. The preparation does not audit such a lock, and the
   review aborts on `sca-lock-file-multiple`, late. Two locks leave no build to make, so the
   build question is not asked. That check opts in to the downgrade and the XPI is readable,

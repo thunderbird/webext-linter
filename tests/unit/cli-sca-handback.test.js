@@ -28,6 +28,7 @@ import {
   handBackRoots,
   handBackUntil,
   answerAnalyze,
+  answerPermission,
 } from "../cli-run.js";
 
 // The prompt's one command is typed by its reader, and a submission folder is as likely to
@@ -542,7 +543,9 @@ test("restarting an aborted source review starts an XPI review of its own", () =
       ...flags,
     ]);
     assert.equal(started.code, 0, started.stderr);
-    const prepared = run(answerAnalyze(started.stdout));
+    const permission = run(answerAnalyze(started.stdout));
+    assert.equal(permission.code, 0, permission.stdout + permission.stderr);
+    const prepared = run(answerPermission(permission.stdout));
     assert.notEqual(prepared.code, 2, prepared.stdout + prepared.stderr);
     const scaWork = defaultFolderOf(xpi, "sca");
     // The missing package.json aborts the review late: its passes run first, and the

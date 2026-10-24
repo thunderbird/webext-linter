@@ -1,20 +1,30 @@
-// SCA only: a build the reviewer judged unsafe to run. Nothing in the files decides it, so
-// this rule raises nothing. Its one finding is added by the review loop, when the reviewer
-// answers the build question with "Is unsafe to build" (the `built` value that `reports`
-// this check, assets/registry.yaml). The review then goes on, and is aborted late with this
+// SCA only: a build the reviewer judged unsafe to run, in the preparation's build decision
+// (src/prepare/steps.js permission): trusting the agent's unsafe verdict, or giving reasons
+// of their own. It runs only then (`when: build-judged AND NOT build-safe`), so it always
+// reports, once, anchored where the build checks anchor, and carries the reviewer's reasons
+// as its note where they gave some. The review then goes on, and is aborted late with this
 // check's reason and response.
 //
-// Belongs here: being the check that answer reports. Does NOT belong here: the question
-// and its values (-> the `built` phase, assets/registry.yaml), adding the finding
-// (-> src/report/loop.js recordValue), or the wording (-> assets/registry.yaml).
+// Belongs here: reporting it. Does NOT belong here: the decision (-> src/prepare/steps.js),
+// handing the reasons to the source (-> src/pipeline.js), when it runs or the wording
+// (-> assets/registry.yaml).
+
+import { VERDICT } from "../../lib/enum.js";
+import { finding } from "../../report/finding.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
 export default {
   /**
-   * @returns {{findings: []}}
+   * @param {RunContext} ctx
+   * @returns {Promise<{findings: import("../../report/finding.js").Finding[]}>}
    */
-  run() {
-    return { findings: [] };
+  async run(ctx) {
+    const { anchor } = await ctx.buildReview();
+    const at = ctx.artifact.at(anchor);
+    ctx.note?.(at, "the build process", VERDICT.FAIL);
+    const reported = finding({ ...at });
+    reported.note = ctx.artifact.buildReasons ?? null;
+    return { findings: [reported] };
   },
 };

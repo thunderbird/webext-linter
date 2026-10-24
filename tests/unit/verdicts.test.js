@@ -275,7 +275,7 @@ test("an item the page withheld is in the file and can be settled", () => {
     mkItem("unused-permission", "Perms", "m.json", i + 1, `perm${i}`)
   );
   assignRefs(manual, registry);
-  const items = reviewItems({ findings: [], manual, choices });
+  const items = reviewItems({ findings: [], manual, choicesOf: () => choices });
   assert.equal(items.length, 30, "every site reaches the item file");
   assert.equal(
     new Set(items.map((x) => x.ref)).size,
@@ -307,7 +307,7 @@ test("a verdict written from the item file applies", () => {
     mkItem("unused-permission", "Perms", "manifest.json", 3, "compose"),
   ];
   assignRefs([...findings, ...manual], registry);
-  const items = reviewItems({ findings, manual, choices });
+  const items = reviewItems({ findings, manual, choicesOf: () => choices });
   assert.deepEqual(
     items.map((x) => [x.kind, x.file]),
     [
@@ -381,7 +381,7 @@ test("every to-do carries both wordings, and the phase picks between them", () =
     mkManual("privacy-policy", "Policy", "api.example.com"),
     mkStandard("testing-information", "Test it"),
   ];
-  const items = reviewItems({ findings, manual, choices });
+  const items = reviewItems({ findings, manual, choicesOf: () => choices });
 
   // Every to-do is worded BOTH ways, whatever section it sits in: an item cannot know
   // who will be asked about it, so it carries what either reader would need and the
@@ -423,7 +423,7 @@ test("two cases of one check are two questions, told apart by their locus", () =
     mkManual("privacy-policy", "Policy", "api.example.com"),
     mkManual("privacy-policy", "Policy", "metrics.example.com"),
   ];
-  const items = reviewItems({ findings: [], manual, choices });
+  const items = reviewItems({ findings: [], manual, choicesOf: () => choices });
   assert.deepEqual(
     items.map((x) => x.entry),
     [1, 1],
@@ -444,7 +444,7 @@ test("two cases of one check are two questions, told apart by their locus", () =
 test("a question's locus carries the artifact label the report gives it", () => {
   const manual = [
     {
-      ...mkItem("undeclared-build-source", "Build", "package.json", 0),
+      ...mkItem("build-review", "Build", "package.json", 0),
       extended: true,
       section: "manual-review",
       loc: null,
@@ -453,7 +453,7 @@ test("a question's locus carries the artifact label the report gives it", () => 
   const items = reviewItems({
     findings: [],
     manual,
-    choices,
+    choicesOf: () => choices,
     labelOf: () => "SCA",
   });
   assert.equal(items[0].message, "[Build] inspect Build ([SCA] package.json)");
@@ -470,7 +470,7 @@ test("a question flattens the instructions the registry wrapped", () => {
     },
   ];
   assert.equal(
-    reviewItems({ findings: [], manual, choices })[0].message,
+    reviewItems({ findings: [], manual, choicesOf: () => choices })[0].message,
     "[Test it] Open the add-on in a test profile, then exercise it."
   );
 });
@@ -484,7 +484,7 @@ test("a question's locus is the locus line the report prints", () => {
     mkManual("privacy-policy", "Policy", "api.example.com"),
     mkManual("privacy-policy", "Policy", "metrics.example.com"),
   ];
-  const items = reviewItems({ findings: [], manual, choices });
+  const items = reviewItems({ findings: [], manual, choicesOf: () => choices });
   const printed = formatText({
     findings: [],
     meta: {
@@ -526,7 +526,7 @@ test("each phase hands over what settling it needs, and no more", () => {
     code,
     mkManual("privacy-policy", "Policy", "api.example.com"),
   ];
-  const items = reviewItems({ findings, manual, choices });
+  const items = reviewItems({ findings, manual, choicesOf: () => choices });
   const pick = (kind) => items.filter(kind);
   const keys = (entries) => Object.keys(entries[0]).sort().join(",");
 
@@ -725,7 +725,11 @@ test("the authored answer order is the order a question offers", () => {
 
   for (const choices of [asAuthored, other]) {
     const manual = [mkManual("privacy-policy", "Policy", "api.example.com")];
-    const items = reviewItems({ findings: [], manual, choices });
+    const items = reviewItems({
+      findings: [],
+      manual,
+      choicesOf: () => choices,
+    });
     assert.deepEqual(
       items.find((x) => x.answers).answers.map((a) => a.label),
       choices.map((c) => c.label),

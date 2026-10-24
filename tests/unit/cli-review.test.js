@@ -17,6 +17,7 @@ import {
   workOfReviewFile,
   sweepBack,
   answerAnalyze,
+  answerPermission,
   headerValue,
   readJson,
   workOf,
@@ -62,7 +63,9 @@ test("a source code review's steps carry the paths the review resolved to", () =
     workPaths(work).build
   );
   // The review the hand-back starts reads the copy: its steps name it, and the report.
-  const review = run(answerAnalyze(r.stdout));
+  const permission = run(answerAnalyze(r.stdout));
+  assert.equal(permission.code, 0, permission.stdout + permission.stderr);
+  const review = run(answerPermission(permission.stdout));
   assert.notEqual(review.code, 2, review.stdout + review.stderr);
   assert.match(review.stdout, /── LLM Prompt ──/);
   assert.ok(review.stdout.includes(root), "the step names the source root");
@@ -246,7 +249,9 @@ test("a warning reaches stderr, held back to the end of a prompt run", () => {
   // The review an agent runs starts once its preparation is done: the build judged.
   const analyze = run([...args, "--llm-review", "--llm-skip-summary"]);
   assert.equal(analyze.code, 0, analyze.stderr);
-  const prompt = run(answerAnalyze(analyze.stdout));
+  const permission = run(answerAnalyze(analyze.stdout));
+  assert.equal(permission.code, 0, permission.stdout + permission.stderr);
+  const prompt = run(answerPermission(permission.stdout));
   assert.notEqual(prompt.code, 2, prompt.stderr);
   assert.doesNotMatch(prompt.stdout, WARNING, "not in the prompt");
   assert.match(prompt.stderr, /── Tool messages ──[\s\S]*matched no files/);
@@ -309,7 +314,12 @@ test("a failure outside main still dumps the held messages", () => {
   assert.equal(analyze.code, 0, analyze.stderr);
   const r = spawnSync(
     process.execPath,
-    ["--import", stray, REVIEW, ...answerAnalyze(analyze.stdout)],
+    [
+      "--import",
+      stray,
+      REVIEW,
+      ...answerPermission(run(answerAnalyze(analyze.stdout)).stdout),
+    ],
     { encoding: "utf8" }
   );
   assert.equal(r.status, 2, r.stderr);

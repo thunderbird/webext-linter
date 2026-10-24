@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Build process review</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>Build process review <span class="badge error">error</span></h1>
+        <div class="check-id">build-review</div>
+      </header>
+
+      <h2>What it asks</h2>
+      <p class="lead">
+        In a source-code submission the reviewer builds the add-on from the readable source,
+        but the dependency audit only reads the root package file and lock file. A build
+        script or config could ignore the package file and pull code or resources from an
+        undeclared source, leaving the declared dependencies a clean decoy. And the source
+        has to build into exactly the shipped XPI, or the review read the wrong code.
+      </p>
+      <p>
+        Nothing in the files says for certain what a build <em>does</em>, so this check emits
+        no finding of its own and escalates every source-code submission in which nobody
+        decided about the build in a preparation (<code>when: NOT build-judged</code>): a plain
+        report, and an agent review run with a check the build relies on switched off. It is
+        the whole build question then, in the order a reviewer has to take it. First, does any
+        step reach outside the declared dependencies? Then do not build it. Otherwise, does it
+        build from a clean copy and reproduce the submitted XPI?
+      </p>
+      <p>
+        A plain report lists it under Extended Manual Review. An agent review puts it to the
+        reviewer in <code>ask</code>, with its own answers: <em>Builds fine and reproduces</em>
+        clears it, <em>Build issues</em> reports it, and the reviewer's own words report it with
+        those words attached. Where the reviewer decided about the build in the preparation,
+        <a href="build-reproduces-xpi.html">Reproducing the XPI from the source</a> or
+        <a href="build-unsafe.html">Unsafe build process</a> asks in its place. The entry anchors
+        at the submission's own <code>package.json</code> where there is one.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["The build instructions<br/>and the files they run"] --> B{"a source-code submission<br/>nobody decided about?"}
+  B -- no --> OK([not asked<br/>another build check asks])
+  B -- yes --> S{"does any build step reach outside<br/>the declared dependencies?"}
+  S -- yes --> ERR([ERROR: build issues<br/>the review is aborted])
+  S -- no --> R{"does it build from a clean copy<br/>and reproduce the submitted XPI?"}
+  R -- no --> ERR
+  R -- yes --> CL([cleared])
+
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  class OK ok;
+  class CL ok;
+  class S manual;
+  class R manual;
+  class ERR err;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The add-on is told that every part of the build must come from the submitted source or
+        the dependencies declared in the package file and lock file, and from nowhere else, and
+        that the source must build into exactly the submitted XPI.
+      </div>
+
+      <div class="outcome">
+        <strong>It aborts the review</strong>
+        A build that is unsafe, fails or does not reproduce settles the submission on its own:
+        the developer&rsquo;s text ends on the reason it is incomplete (&ldquo;Build process
+        issues&rdquo;).
+      </div>
+
+      <p class="source-note">
+        Source of truth: <code>src/checks/rules/build-review.js</code>
+        (fed by the build analysis, <code>src/build/analyze.js</code>) and its
+        entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

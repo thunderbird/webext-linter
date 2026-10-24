@@ -659,8 +659,8 @@ test("the details name the reviewed root, the original root and the build root",
 });
 
 // LLM_BUILD_RESULT reports the agent's attempt, one wording per build result: the agent built
-// it, its build failed, its rescue failed, or the build was judged unsafe so nothing was
-// built. Where the reviewer builds it (the agent was not let build, or nothing was prepared)
+// it, its build failed, its rescue failed, or the reviewer held the build unsafe so nothing
+// was built. Where the reviewer builds it (the agent was not let build, or nothing was prepared)
 // the row is absent.
 test("the build result is worded by what came of the agent's attempt", () => {
   const { state, work } = scaReview(tmp());
@@ -669,15 +669,15 @@ test("the build result is worded by what came of the agent's attempt", () => {
       .buildDetails.split("\n")
       .find((row) => row.startsWith("* LLM_BUILD_RESULT: "));
   const cases = [
-    [{ result: "built", output: "/w/build/dist" }, "safe", "build succeeded"],
-    [{ result: "failed" }, "safe", "build failed: see build.md"],
-    [{ result: null }, "unsafe", "not built: unsafe"],
-    [{ result: null }, "safe", null],
-    [{ result: "rescue-failed" }, "safe", "not built: rescue failed"],
+    [{ result: "built", output: "/w/build/dist" }, true, "build succeeded"],
+    [{ result: "failed" }, true, "build failed: see build.md"],
+    [{ result: null }, false, "not built: unsafe"],
+    [{ result: null }, true, null],
+    [{ result: "rescue-failed" }, true, "not built: rescue failed"],
     [undefined, undefined, null],
   ];
-  for (const [build, safety, said] of cases) {
-    state.build = build && { ...build, safety };
+  for (const [build, safe, said] of cases) {
+    state.build = build && { ...build, safe };
     assert.equal(
       result(),
       said === null ? undefined : `* LLM_BUILD_RESULT: ${said}`,
@@ -2113,7 +2113,6 @@ test("each build answer that stops the review reports its own check", () => {
   for (const [said, rule] of [
     ["Does not reproduce", "build-not-reproduced"],
     ["Does not build", "build-fails"],
-    ["Is unsafe to build", "build-unsafe"],
   ]) {
     const made = buildQuestionsReview(tmp());
     const { seen, closing, settled } = driveBuild(
@@ -2164,45 +2163,27 @@ test("each build answer that stops the review reports its own check", () => {
   throw new Error("the build question was never issued");
 });
 
-// A reviewer who let the agent build has already judged the build safe to run, so the build
-// question offers no "Is unsafe to build", and that answer handed back anyway is refused,
-// with nothing recorded. Where nobody let the agent build, all four answers are offered.
-test("a review whose reviewer let the agent build is not offered 'Is unsafe to build'", () => {
-  const toBuilt = (made) => {
-    for (let pass = 0; pass < 4; pass++) {
-      const out = issue(made.state, made.work, PHASES, REGISTRY);
-      if (out.phase.name === "built") {
-        return out;
-      }
-      handBack(made.work, () => BUILDS[out.phase.name]);
-      accept(made.state, made.work, PHASES, REGISTRY);
+// Whether the build is safe was the reviewer's decision in the preparation, so the build
+// question asks the outcome only: "Is unsafe to build" is no answer of it, and handed back
+// anyway is refused, with nothing recorded.
+test("the build question offers no 'Is unsafe to build'", () => {
+  const made = buildQuestionsReview(tmp());
+  for (let pass = 0; pass < 4; pass++) {
+    const out = issue(made.state, made.work, PHASES, REGISTRY);
+    if (out.phase.name === "built") {
+      const before = JSON.stringify(made.state);
+      handBack(made.work, () => "Is unsafe to build");
+      assert.throws(
+        () => accept(made.state, made.work, PHASES, REGISTRY),
+        /answers "Is unsafe to build", which this entry does not accept/
+      );
+      assert.equal(JSON.stringify(made.state), before, "nothing is recorded");
+      return;
     }
-    throw new Error("the build question was never issued");
-  };
-  const labelsOf = (made) =>
-    JSON.parse(
-      fs.readFileSync(reviewFileOf(made.work), "utf8")
-    ).entries[0].answers.map((a) => a.label);
-
-  const allowed = buildQuestionsReview(tmp());
-  allowed.state.run["build-allowed"] = true;
-  toBuilt(allowed);
-  assert.deepEqual(labelsOf(allowed), [
-    "Builds and reproduces",
-    "Does not reproduce",
-    "Does not build",
-  ]);
-  const before = JSON.stringify(allowed.state);
-  handBack(allowed.work, () => "Is unsafe to build");
-  assert.throws(
-    () => accept(allowed.state, allowed.work, PHASES, REGISTRY),
-    /answers "Is unsafe to build", which this entry does not accept/
-  );
-  assert.equal(JSON.stringify(allowed.state), before, "nothing is recorded");
-
-  const asked = buildQuestionsReview(tmp());
-  toBuilt(asked);
-  assert.ok(labelsOf(asked).includes("Is unsafe to build"));
+    handBack(made.work, () => BUILDS[out.phase.name]);
+    accept(made.state, made.work, PHASES, REGISTRY);
+  }
+  throw new Error("the build question was never issued");
 });
 
 // The build question is a process value put while the build to-do is open. A review whose
@@ -2485,8 +2466,8 @@ test("a review asks only the build question, and builds nothing", () => {
 });
 
 // The build question's step after the Build Review Details says who built the add-on, by
-// what came of the build: the agent built it, its build failed, it was judged unsafe, or the
-// reviewer builds it. Exactly one of the four prints.
+// what came of the build: the agent built it, its build failed, or the reviewer builds it.
+// Exactly one of the three prints. A build the reviewer held unsafe is never asked about.
 test("the build question's step text is worded by what came of the build", () => {
   const wordedStep = (build, safety) => {
     const made = buildQuestionsReview(tmp());
@@ -2515,11 +2496,6 @@ test("the build question's step text is worded by what came of the build", () =>
     [{ result: "failed", output: null }, "safe", "The agent's build failed"],
     [
       { result: null, output: null },
-      "unsafe",
-      "The agent judged the build unsafe and built nothing",
-    ],
-    [
-      { result: null, output: null },
       "safe",
       "The agent did not build the add-on",
     ],
@@ -2531,19 +2507,14 @@ test("the build question's step text is worded by what came of the build", () =>
 
 // The build question offers its own four answers, and not the manual review's: whether the
 // source builds and reproduces the XPI, and if not, why.
-test("the build question offers its own four answers", () => {
+test("the build question offers its own three answers", () => {
   const made = buildQuestionsReview(tmp());
   for (let pass = 0; pass < 4; pass++) {
     const out = issue(made.state, made.work, PHASES, REGISTRY);
     if (out.phase.name === "built") {
       assert.deepEqual(
         out.entries[0].answers.map((a) => a.label),
-        [
-          "Builds and reproduces",
-          "Does not reproduce",
-          "Does not build",
-          "Is unsafe to build",
-        ]
+        ["Builds and reproduces", "Does not reproduce", "Does not build"]
       );
       return;
     }
@@ -2551,6 +2522,57 @@ test("the build question offers its own four answers", () => {
     accept(made.state, made.work, PHASES, REGISTRY);
   }
   throw new Error("the build question was never issued");
+});
+
+// Where nobody decided about the build in the preparation (a build-guard check switched
+// off), build-review asks the whole build question in `ask`, with its own answers: builds fine
+// and reproduces clears it, build issues reports it, and the reviewer's own words report it
+// with those words as its note. Nothing asks `built` then.
+test("build-review is asked in ask, with its own answers", () => {
+  const words = "npm ci fails on a missing peer dependency.";
+  for (const [said, reported, note] of [
+    ["Builds fine and reproduces", false, null],
+    ["Build issues", true, null],
+    [words, true, words],
+  ]) {
+    const made = buildReview(tmp());
+    made.state.manual.push({
+      ruleId: "build-review",
+      title: "Build process review",
+      extended: true,
+      section: "manual-review",
+      verdict: "error",
+      instructions: "build-review?",
+      file: "package.json",
+      loc: null,
+      artifact: "SCA",
+    });
+    refed(made.state);
+    const offered = [];
+    const { seen, settled } = driveBuild(
+      made,
+      goesOn({
+        ask: (e) => {
+          const labels = e.answers.map((a) => a.label);
+          if (!labels.includes("Build issues")) {
+            return "Clear";
+          }
+          offered.push(labels);
+          return said;
+        },
+      })
+    );
+    assert.ok(!seen.includes("built"), seen.join(", "));
+    assert.ok(seen.includes("ask"), seen.join(", "));
+    assert.deepEqual(offered, [["Builds fine and reproduces", "Build issues"]]);
+    const found = settled.review.findings.find(
+      (f) => f.ruleId === "build-review"
+    );
+    assert.equal(Boolean(found), reported, said);
+    if (found) {
+      assert.equal(found.note, note, said);
+    }
+  }
 });
 
 // The removed build phases are gone: the review has no phase that chooses who builds or

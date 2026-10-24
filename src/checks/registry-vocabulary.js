@@ -190,11 +190,22 @@ export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
  *  - `sca`: a source code review;
  *  - `eslint`: the run was given --eslint;
  *  - `llm-review`: an agent reviews (--llm-review, which a review a preparation starts and
- *    one a downgrade restarts run as too).
+ *    one a downgrade restarts run as too);
+ *  - `build-judged`: the reviewer decided about the build in the preparation
+ *    (src/prepare/steps.js permission), which every agent source review does but one run
+ *    with a build-guard check switched off;
+ *  - `build-safe`: that decision held the build safe, the agent's verdict as the reviewer
+ *    kept or overrode it.
  *
  *  Never a loop fact or a --llm-skip-* flag: those shape what the loop hands out, and a
  *  check's findings do not depend on them. */
-export const CHECK_FACTS = ["sca", "eslint", "llm-review"];
+export const CHECK_FACTS = [
+  "sca",
+  "eslint",
+  "llm-review",
+  "build-judged",
+  "build-safe",
+];
 
 /** The facts the review loop's `when:` conditions can name (src/checks/condition.js), and
  *  so what a step of it is printed under (stepsOf, src/report/phases.js):
@@ -213,8 +224,6 @@ export const CHECK_FACTS = ["sca", "eslint", "llm-review"];
  *  - `spawned`: `spawn` went out, so agents may still be running;
  *  - `decided`: the agent has judged something - `verify` or `settle` went out;
  *  - `closing`: the prompt being printed is the closing one (its phase answers `end`);
- *  - `build-allowed`: the reviewer let the agent build the add-on in the preparation, so its
- *    build has been judged safe to run;
  *  - `unbuildable`: no build can be made from this source by the review's own rules - a
  *    finding of a check marked `review-unbuildable` stands, or the rescue failed - so the
  *    build phases ask nothing;
@@ -230,7 +239,6 @@ export const REVIEW_PROMPT_FACTS = [
   "aborted",
   "sca",
   "build-guarded",
-  "build-allowed",
   ...Object.keys(SWEEP_INSTRUCTIONS).map(sweepRun),
   "first",
   "spawned",
@@ -315,10 +323,19 @@ export const SCA_PROMPT_STEPS = [
  *  nowhere to go. */
 export const SCA_PROMPT_COMMAND = "{{flags}}";
 
-/** The values the preparation's PACKAGE_MANAGERS question accepts back, by id: whether the
- *  reviewer lets the agent build the add-on, its package-manager commands included. Each id
- *  is offered exactly once (assertScaPrompt), so every answer reads as one of the two. */
-export const PACKAGE_MANAGER_VALUES = ["allow", "decline"];
+/** The values the preparation's SCA_BUILD_PERMISSION question accepts back, by id: the
+ *  reviewer's one decision about the build. After a safe verdict the agent builds (`allow`)
+ *  or the reviewer does (`manual`), after an unsafe one nobody does (`skip`) or the agent
+ *  builds anyhow (`override`). Each verdict's question offers its two once each
+ *  (assertScaPrompt). An answer in the reviewer's own words is none of them: it holds the
+ *  build unsafe, for the reasons it gives. */
+export const BUILD_PERMISSION_VALUES = ["allow", "manual", "skip", "override"];
+
+/** The BUILD_PERMISSION_VALUES each verdict's question offers. */
+export const BUILD_PERMISSION_BY_VERDICT = Object.freeze({
+  safe: ["allow", "manual"],
+  unsafe: ["skip", "override"],
+});
 
 /** The values the preparation's SCA_BUILD_SAFETY_ASSESSMENT judgement accepts back, by id: the agent's
  *  judgement of the build it reported. Each id is offered exactly once (assertScaPrompt),

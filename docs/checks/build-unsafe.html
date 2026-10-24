@@ -15,27 +15,30 @@
 
       <h2>What it reports</h2>
       <p class="lead">
-        A source-code submission whose build would fetch or run code from outside the
-        dependencies declared in <code>package.json</code> and the lock file, or do something
-        the reviewer will not run on their machine. Nothing was built.
+        A source-code submission whose build the reviewer held unsafe to run: it would fetch
+        or run code from outside the dependencies declared in <code>package.json</code> and
+        the lock file, or do something they will not run on their machine. Nothing was built.
       </p>
       <p>
-        Nothing in the files decides it, so the check raises nothing itself. A plain review
-        asks <a href="build-reproduces-xpi.html"><code>build-reproduces-xpi</code></a>
-        instead, whose one response covers every reason. Under <code>--llm-review</code> that question is put
-        to the reviewer alone in the <code>built</code> phase, with four answers, and
-        answering <em>Is unsafe to build</em> reports this check in its place. Where the
-        agent judged the build unsafe and built nothing, the step before the question says
-        the reviewer may answer so.
+        It runs only under <code>--llm-review</code>, where the reviewer makes one decision
+        about the build in the preparation, right after reading the agent's build report and
+        its verdict. After an unsafe verdict they may trust it and build nothing, or clear the
+        issues and let the agent build anyhow. After either verdict they may override it with
+        reasons of their own why building is unsafe. Where that decision holds the build unsafe
+        (<code>when: build-judged AND NOT build-safe</code>), this check reports it, with their
+        reasons attached where they gave some, and nobody is asked to build. A plain report asks
+        <a href="build-review.html"><code>build-review</code></a> instead.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A source-code submission<br/>under --llm-review"] --> Q{"Reproducing the XPI<br/>from the source"}
-  Q -- "Builds and reproduces" --> OK([the review goes on])
-  Q -- "Is unsafe to build" --> ERR([ERROR: unsafe build process<br/>the review is aborted])
+  A["The agent's build report<br/>and its verdict"] --> Q{"The reviewer's<br/>build decision"}
+  Q -- "safe: let the agent build, or build it myself" --> OK([the build question follows])
+  Q -- "unsafe: build anyhow" --> OK
+  Q -- "unsafe: trust the verdict" --> ERR([ERROR: unsafe build process<br/>the review is aborted])
+  Q -- "their own reasons" --> ERR
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
@@ -50,19 +53,20 @@ flowchart TD
         <strong>When it fires</strong>
         The add-on is told that its build process is not safe to run, since it fetches or
         runs code from outside the dependencies declared in <code>package.json</code> and the
-        lock file, and that the build must use only those dependencies.
+        lock file, and that the build must use only those dependencies. The reviewer's own
+        reasons follow it, where they gave some.
       </div>
 
       <div class="outcome">
         <strong>It aborts the review</strong>
-        It settles the submission on its own: nothing further is put to a reviewer, and the
-        developer&rsquo;s text ends on the reason it is incomplete (&ldquo;Build process
-        issues&rdquo;). The build question is cleared, so this is the one build finding.
+        It settles the submission on its own: the developer&rsquo;s text ends on the reason it
+        is incomplete (&ldquo;Build process issues&rdquo;), and no build question is asked.
       </div>
 
       <p class="source-note">
-        Source of truth: <code>src/checks/rules/build-unsafe.js</code>, the <code>built</code>
-        phase and the entry in <code>assets/registry.yaml</code>.
+        Source of truth: <code>src/checks/rules/build-unsafe.js</code>, the preparation's
+        build decision (<code>src/prepare/steps.js</code>) and the entry in
+        <code>assets/registry.yaml</code>.
       </p>
     </main>
 

@@ -115,7 +115,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | --- | --- |
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. Given `--sca-base`, prepare the source code review first, as `--llm-sca-review` does from the build analysis on: the source is copied into the work folder's `sca/` and the first prompt is the build analysis. Refused with `--report-format json`. |
 | `--llm-handback <dir>` | Take a phase back from the review's work folder and hand out the next - the last being `close`, which hands over the settled review. On a work folder a source code review is being prepared in, take the next step of the preparation instead, and once it is done, start its review (see [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review)). The only run that carries on an existing work folder. Takes no add-on path. Normally run by the agent, not by a person. |
-| `--llm-sca-review` | Read the add-on argument as a submission folder - one built `.xpi` and one archive of its source - and print the first prompt for preparing a source code review of it. It creates the review's work folder at its default place beside the `.xpi`, records there how the review is to be run (this run's flags), has the source extracted into its `sca/` and handed back with `--llm-handback`, finds the build folder in it, and has the build reported and judged. An unsafe build is reviewed at once, and after a safe one the reviewer is asked whether the agent may build. Where it may and the lock installs a package with a known high or critical advisory, the preparation has a copy's dependencies reduced, then audit-fixed (`rescued/` in the work folder), and reviews the copy if that resolves them. If it does not, the source as submitted is reviewed, and its vulnerability checks abort it. The hand-back that finishes the preparation starts that review itself, with this run's flags. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any `--sca-*` flag, which is what the preparation works out. See [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review). |
+| `--llm-sca-review` | Read the add-on argument as a submission folder - one built `.xpi` and one archive of its source - and print the first prompt for preparing a source code review of it. It creates the review's work folder at its default place beside the `.xpi`, records there how the review is to be run (this run's flags), has the source extracted into its `sca/` and handed back with `--llm-handback`, finds the build folder in it, and has the build reported and judged. The reviewer then makes one decision about the build, worded by that verdict: let the agent build, build it themselves, build nothing, or hold it unsafe for reasons of their own. Where the agent may build and the lock installs a package with a known high or critical advisory, the preparation has a copy's dependencies reduced, then audit-fixed (`rescued/` in the work folder), and reviews the copy if that resolves them. If it does not, the source as submitted is reviewed, and its vulnerability checks abort it. The hand-back that finishes the preparation starts that review itself, with this run's flags. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any `--sca-*` flag, which is what the preparation works out. See [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review). |
 | `--llm-skip-summary` | Leave out the add-on description: the prompt does not ask for one and names no file for it. |
 | `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later, unless the review was aborted. The build question is still asked. |
 | `--llm-skip-sweep` | Leave out the sweep: no sweeping agent is spawned, and the sweep is not handed to the reviewer either. |
@@ -216,27 +216,32 @@ may hold the real source beside the copy.
   built archive (`.xpi` / `.zip` - both are build output, never shipped in a source
   submission), and any `package.json` install hook (`postinstall`, …) escalates and aborts
   the review once reported.
-  Nothing in those files says for certain what the build **does**, so every source
-  submission raises two build items, both under Extended Manual Review.
-  `undeclared-build-source` asks whether the build pulls from the declared dependencies
-  alone - no raw URL, `curl|sh`, unpinned `git clone`, CDN or postinstall hook - for the
-  reviewer to judge from the build instructions and the files they run. It is asked only in
-  a review with no agent: under `--llm-review` the agent's build judgement and the
-  reviewer's answer to the build question ask the same.
-  `build-reproduces-xpi` asks the reviewer to build the add-on
-  from the source and compare the result with the shipped XPI. Either of the two
-  reported aborts the review. Under `--llm-review` a source review opens with its build,
-  before the sweeps: the agent judged the build safe or unsafe in the preparation, the
-  reviewer reads the Build Review Details (with what the agent built in the
-  preparation, where it did), and the build question is asked alone right after, answered
-  `Builds and reproduces`, `Does not reproduce`, `Does not build` or `Is unsafe to
-  build`. The last three report `build-not-reproduced`, `build-fails` or `build-unsafe`,
-  so the developer is told why the review stopped. `Is unsafe to build` is not offered
-  where the reviewer let the agent build in the preparation, as they judged it safe then. A source whose preparation gave its
-  rescue up ends the review through its vulnerability findings, and is not built. A
-  source with no usable package.json or no single readable lock skips the build question.
-  The review itself builds nothing. With any check the build relies on switched off (`build-guard` in the
-  registry), the Build Review Details are not shown, and the question is still asked.
+  Nothing in those files says for certain what the build **does**, so a person decides it,
+  and one of three build checks asks, depending on who decided:
+  - **`build-review`**, where nobody decided about the build in a preparation: a plain
+    report, under Extended Manual Review, or an agent review run with a check the build
+    relies on switched off, in `ask`. It is the whole build question, in the order it has to
+    be taken: whether the build pulls from the declared dependencies alone - no raw URL,
+    `curl|sh`, unpinned `git clone`, CDN or postinstall hook - and if it does not, not to
+    build it, else to build it and compare the result with the shipped XPI. In `ask` its
+    answers are `Builds fine and reproduces`, `Build issues`, or the reviewer's own words.
+  - Under `--llm-review` the reviewer makes **one decision about the build** in the
+    preparation, right after reading the Build Review Details with the agent's build report
+    and its verdict. After a safe verdict they let the agent build or build it themselves,
+    after an unsafe one they trust it and build nothing, or clear the issues and let the
+    agent build anyhow, and after either they may override it with reasons of their own why
+    building is unsafe.
+  - **`build-reproduces-xpi`**, where that decision held the build safe: the review opens
+    with its build, before the sweeps, and asks alone how it came out, `Builds and
+    reproduces`, `Does not reproduce` or `Does not build`. The last two report
+    `build-not-reproduced` or `build-fails`, so the developer is told why the review stopped.
+  - **`build-unsafe`**, where it held the build unsafe: it is reported at once, with the
+    reviewer's reasons where they gave some, and nobody is asked to build.
+
+  Any of them reported aborts the review late. A source whose preparation gave its rescue up
+  ends the review through its vulnerability findings, and is not built. A source with no
+  usable package.json or no single readable lock skips the build question. The review
+  itself builds nothing.
 - The **built XPI** (the positional path) is the shipped artifact: it supplies the
   manifest.json, the experiments and the file-completeness checks (bundled /
   web-accessible / unused / locales). It gets the same library and parse passes in either
@@ -266,10 +271,11 @@ A section it never asks for is inert.
   from the one-time vendor source fetch, and becomes either a finding or an escalation
   of a case the code cannot settle. A check's `input` mostly settles where it runs, and a
   check may carry a `when:` condition for what a route cannot say, over the facts known
-  before any check runs (`sca`, `eslint`, `llm-review`), in the syntax the loop's steps use:
-  `when: NOT sca` keeps the two that judge the shipped XPI's own lock out of a source
-  review, `when: eslint` runs `code-sanity` only under `--eslint`, and
-  `when: NOT llm-review` asks `undeclared-build-source` only where no agent reviews.
+  before any check runs (`sca`, `eslint`, `llm-review`, `build-judged`, `build-safe`), in the
+  syntax the loop's steps use: `when: NOT sca` keeps the two that judge the shipped XPI's own
+  lock out of a source review, `when: eslint` runs `code-sanity` only under `--eslint`, and
+  the reviewer's build decision picks which of `build-review`, `build-reproduces-xpi` and
+  `build-unsafe` asks about the build.
 - **`manual-checks`** - checks the tool can't make itself, surfaced as a todo list. Not
   a phase: the orchestrator never asks for this section.
 
@@ -316,7 +322,7 @@ names *disallowed library versions*, `minified-code` and `untrusted-minified-lib
 built from - `sca-package-file-missing`, `sca-package-file-invalid`,
 `sca-lock-file-missing`, `sca-lock-file-invalid`, `sca-lock-file-multiple`,
 `lock-foreign-source`, `build-registry-redirect`, `build-lifecycle-hook`,
-`undeclared-build-source`, `build-reproduces-xpi`, `build-not-reproduced`, `build-fails` and
+`build-review`, `build-reproduces-xpi`, `build-not-reproduced`, `build-fails` and
 `build-unsafe` - name *build process issues*. Their error stops nothing while the review
 runs: every check still runs, and under `--llm-review` the build question, the sweeps,
 verify and settle run as usual, so verify can withdraw a wrong finding first and the

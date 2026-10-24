@@ -272,15 +272,15 @@ export function unpackSource(stdout, { expSource, typed } = {}) {
 
 /**
  * Do what the `analyze` prompt asks, the way its reader would: write the build report to
- * SCA_BUILD_PROCESS and answer ANSWERS with the build judged `safety` - unsafe by default, so
- * the hand-back starts the review at once, with nothing to permit or build. The hand-back
- * itself is the caller's, so it can run it as it likes.
+ * SCA_BUILD_PROCESS and answer ANSWERS with the build judged `safety`, safe by default. Its
+ * hand-back prints the permission prompt (answerPermission). The hand-back itself is the
+ * caller's, so it can run it as it likes.
  * @param {string} stdout  The `analyze` prompt's run.
  * @param {{safety?: string, expSource?: string}} [opts]  The judgement, and the Experiment
  *   folder where the prompt asks for it.
  * @returns {string[]}  The hand-back's argv, as the prompt prints it.
  */
-export function answerAnalyze(stdout, { safety = "unsafe", expSource } = {}) {
+export function answerAnalyze(stdout, { safety = "safe", expSource } = {}) {
   fs.writeFileSync(headerValue(stdout, "SCA_BUILD_PROCESS"), "1. `npm ci`\n");
   const answers = headerValue(stdout, "ANSWERS");
   const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
@@ -289,6 +289,22 @@ export function answerAnalyze(stdout, { safety = "unsafe", expSource } = {}) {
     SCA_EXP_SOURCE: expSource,
   };
   doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));
+  fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
+  return argvOf(commandOf(stdout));
+}
+
+/**
+ * Do what the permission prompt asks, the way its reader would: answer the reviewer's build
+ * decision with `decision`, by default building it themselves, so the hand-back starts the
+ * review at once with nothing for the agent to build. The hand-back is the caller's.
+ * @param {string} stdout  The permission prompt's run.
+ * @param {string} [decision]  A label the question offers, or the reviewer's own words.
+ * @returns {string[]}  The hand-back's argv, as the prompt prints it.
+ */
+export function answerPermission(stdout, decision = "Build it myself") {
+  const answers = headerValue(stdout, "ANSWERS");
+  const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
+  doc.entries = doc.entries.map((e) => ({ ...e, answer: decision }));
   fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
   return argvOf(commandOf(stdout));
 }
@@ -310,7 +326,7 @@ export function answerAnalyze(stdout, { safety = "unsafe", expSource } = {}) {
  */
 export function handBackRoots(
   stdout,
-  { expSource, typed, safety = "safe", managers = "Let it build" } = {}
+  { expSource, typed, safety = "safe", managers = "Let the agent build" } = {}
 ) {
   const work = workOf(stdout);
   const handBack = (out) =>
@@ -337,7 +353,7 @@ export function handBackRoots(
   if (handed.code !== 0 || readJson(work, "prepare").step !== "permission") {
     return handed;
   }
-  fill({ PACKAGE_MANAGERS: managers });
+  fill({ SCA_BUILD_PERMISSION: managers });
   return handBack(handed.stdout);
 }
 

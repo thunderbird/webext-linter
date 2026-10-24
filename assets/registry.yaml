@@ -1026,15 +1026,15 @@ deterministic-phase:
 # BEFORE the build - a known supply-chain vector (a postinstall that fetches and runs
 # remote code). Legitimate uses exist (a husky `prepare`), and only the command itself
 # says which this is, so every hook escalates for a reviewer to read rather than being
-# asserted as a finding. undeclared-build-source asks about hooks too, among every other
-# build step, while this check names each hook. The hook and its command ride the locus.
+# asserted as a finding. build-review asks about hooks too, among every other build step,
+# while this check names each hook. The hook and its command ride the locus.
 # An ESCALATING check that ends a review late - which works because only a FINDING
 # ends a review, and an escalated case becomes one only when it is reported at
 # this check's severity (src/report/verdicts.js). So a benign `husky prepare` that is
 # cleared aborts nothing, and a plain review with nobody to judge the hook aborts nothing
 # either. It is settled in the `settle` phase. Under --llm-review a hook is screened before
-# any install by the preparation's build judgement and the reviewer's permission to build, and this
-# check is what reports a remote-fetching hook.
+# any install by the reviewer's build decision in the preparation, and this check is what
+# reports a remote-fetching hook.
 - title: Build install hook
   severity: error
   review-late-exit: unreproducible-build
@@ -1059,42 +1059,54 @@ deterministic-phase:
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # SCA only: the build review, anchored at the submission's package.json (src/build/analyze.js,
-# ctx.buildReview()). A build must not fetch or execute code/resources from an UNDECLARED
-# external source (a raw URL, curl|sh, a git clone of an unpinned repo, a CDN, a postinstall
-# hook) - only installing the declared dependencies (npm ci from node_modules, importing a
-# declared package) is allowed. It asks the reviewer of a review with no agent, so a plain
-# report lists it under Extended Manual Review, beside the build question below. In an agent
-# review the build judgement and the reviewer's answer at `built` ask it, so it does not run
-# there (`when: NOT llm-review`).
+# ctx.buildReview()). Asked where nobody decided about the build in a preparation
+# (`when: NOT build-judged`): a plain report lists it under Extended Manual Review, and an agent
+# review run with a build-guard check switched off asks it in `ask`, since there the
+# preparation built nothing and asked nothing. It is the whole build question then, in the
+# order a reviewer has to take it: whether the build is safe to run, and only then whether it
+# builds and reproduces the submitted XPI. Its own answers (`manual-choices`) say both.
 - title: Build process review
   severity: error
-  check: undeclared-build-source
+  check: build-review
   review-downgrade: true
   input: sca
-  when: NOT llm-review
+  when: NOT build-judged
   review-late-exit: unreproducible-build
+  manual-choices:
+    - label: Builds fine and reproduces
+      verdict: cleared
+      description: The build uses only the declared dependencies, completes from a clean copy of the source, and its result matches the submitted XPI.
+    - label: Build issues
+      verdict: reported
+      description: The build is unsafe to run, fails, or does not reproduce the submitted XPI. To say which, and why, use "Other" below (max {{maxNote}} characters).
   instructions-for-human: |-
     Read the build instructions the source gives, and the scripts and files they
-    run, and confirm the build pulls ONLY from the dependencies declared in
-    package.json/lock - no remote code or resources from a raw URL, curl/wget, a
-    git clone of an unpinned repo, a CDN, or a postinstall hook.
+    run. Where the build fetches or runs anything from outside the dependencies
+    declared in package.json/lock - remote code or resources from a raw URL,
+    curl/wget, a git clone of an unpinned repo, a CDN, or a postinstall hook -
+    do not build it: report it. Otherwise build it from a clean copy of the
+    source archive, installing the dependencies exactly as the lock file pins
+    them (npm ci, or pnpm install --frozen-lockfile), and clear it only where
+    the build completes and reproduces the submitted XPI.
   response: |-
-    Every part of the build must come from the submitted source or from the dependencies declared in package.json/lock (resolved from npm or the committed lock file), and from nowhere else.
+    Every part of the build must come from the submitted source or from the dependencies declared in package.json/lock (resolved from npm or the committed lock file), and from nowhere else. The submitted source must build, by the build instructions you provided, into exactly the submitted XPI.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# SCA only: the build question, asked of every source review. Reproducing the build is the
-# reviewer's attestation that the shipped XPI comes from the source they read, which is what
-# an SCA review rests on. So a source that does not build into the shipped XPI ends the
-# review before anyone is asked to install that XPI. Asked ALONE, in a phase of its own
+# SCA only: the build question of an agent review whose reviewer judged the build safe in the
+# preparation (`when: build-judged AND build-safe`). Reproducing the build is the reviewer's
+# attestation that the shipped XPI comes from the source they read, which is what an SCA
+# review rests on. So a source that does not build into the shipped XPI ends the review
+# before anyone is asked to install that XPI. Asked ALONE, in a phase of its own
 # (`asked-in: built`), right after the Build Review Details and before the sweeps, except of
 # a source a build is impossible from (`unbuildable`), which is never asked. That phase
-# relays this text as its question and offers its own four answers (`values`): three of them
-# report the check below that names the reason, so the developer is told why. A plain report
-# prints this to-do with its one generic response.
+# relays this text as its question and offers its own three answers (`values`): two of them
+# report the check below that names the reason, so the developer is told why.
 - title: Reproducing the XPI from the source
   severity: error
   check: build-reproduces-xpi
   review-downgrade: true
   input: sca
+  when: build-judged AND build-safe
   asked-in: built
   review-late-exit: unreproducible-build
   instructions-for-human: |-
@@ -1102,17 +1114,14 @@ deterministic-phase:
     build process from a clean copy of the source archive, installing the
     dependencies exactly as the lock file pins them (npm ci, or pnpm install
     --frozen-lockfile). An install refused because package.json and the lock
-    file disagree is a failed build. A build that fetches or runs code from
-    outside the declared dependencies is unsafe to build: do not run it.
-    Otherwise report whether it does not reproduce, does not build, or is
-    unsafe to build.
+    file disagree is a failed build.
   response: |-
     The submitted source could not be built into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
 
 # SCA only: the three reasons a source does not build into the shipped XPI, one check each so
-# the developer is told which. Nothing in the files decides any of them, so their rules raise
-# nothing. Each is the finding of one answer of the `built` phase (its value `reports` it,
-# src/report/loop.js recordValue). Each aborts the review for build issues.
+# the developer is told which. Nothing in the files decides any of them. The first two are
+# the findings of two answers of the `built` phase (its value `reports` it, src/report/loop.js
+# recordValue), and their rules raise nothing. Each aborts the review for build issues.
 - title: Source does not build into the submitted XPI
   severity: error
   check: build-not-reproduced
@@ -1133,11 +1142,15 @@ deterministic-phase:
     The submitted source could not be built by following its build instructions. Please make sure the instructions are complete and that the build succeeds from a clean copy of the submitted archive, with the dependencies installed exactly as the lock file pins them.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
+# The third is the reviewer's build decision in the preparation: where they judged the build
+# unsafe (`when: build-judged AND NOT build-safe`), trusting the agent's verdict or giving
+# reasons of their own, its rule reports it, with those reasons where they gave some.
 - title: Unsafe build process
   severity: error
   check: build-unsafe
   review-downgrade: true
   input: sca
+  when: build-judged AND NOT build-safe
   review-late-exit: unreproducible-build
   response: |-
     The build process of the submitted source is not safe to run: it fetches or runs code from outside the dependencies declared in package.json and the lock file. Please make the build use only those dependencies.
@@ -2178,10 +2191,13 @@ review-early-exit:
 # `analyze` on both runs read the same prompts. The reader writes the build report
 # (SCA_BUILD_PROCESS), judges whether building is safe, and, where the add-on declares
 # Experiments and the folder was not given, names the Experiment folder. They hand that back in
-# ANSWERS. An unsafe build ends the preparation. After a safe one the reviewer reads the Build
-# Review Details and is asked alone whether the agent may build the add-on (`permission`), unless
-# the agent-builds test switch answered that up front. Declined, the preparation ends. Allowed,
-# the linter audits that root's lock (src/prepare/audit.js). A lock it cannot read in full ends
+# ANSWERS. The reviewer then reads the Build Review Details and makes the one decision about the
+# build, alone (`permission`), unless the agent-builds test switch answered it up front: after a
+# safe verdict, let the agent build or build it themselves, after an unsafe one, build nothing
+# or let the agent build anyhow, and after either, override the verdict with reasons of their
+# own why building is unsafe. Only with a build-guard check switched off is nothing asked, and
+# the review's build-review question takes its place. Unless the agent may build, the
+# preparation ends. Allowed, the linter audits that root's lock (src/prepare/audit.js). A lock it cannot read in full ends
 # the preparation with nothing built. A clean lock is BUILT by the reader in the work folder's
 # build/, which the linter fills with a copy of the whole sca/ (`build`). Where the lock installs
 # a package with a known high or critical advisory, the linter copies the whole sca/ into the
@@ -2197,7 +2213,7 @@ review-early-exit:
 # The step lists are prompts. `unpack` is printed by --llm-sca-review with the intro and the
 # Submission values, `analyze` by the run that derived the root (or first, with the intro, by
 # --llm-review given --sca-base), with SCA_ROOT, SCA_BUILD_PROCESS and ANSWERS, `permission` by
-# the run that settled a safe build, with ANSWERS and the Build Review Details
+# the run that read the verdict, with ANSWERS and the Build Review Details
 # ({{buildDetails}}), `build` by the run that audited a clean lock, with SCA_ROOT, LLM_BUILD_ROOT
 # (the root's place in build/) and SCA_BUILD_PROCESS, and `rescue` by the run that made the
 # rescued copy, with the copy's root as RESCUE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_PROCESS, and
@@ -2262,9 +2278,9 @@ llm-sca-review-prompt:
 
         {{buildDetails}}
     - text: |-
-        Open ANSWERS, given above. Put its entry whose "index" is PACKAGE_MANAGERS to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+        Open ANSWERS, given above. Put its entry whose "index" is SCA_BUILD_PERMISSION to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
 
-        Record the label they picked as that entry's "answer", and change nothing else in the file. Only those labels are accepted: if they answer anything else, ask the question again.
+        Record what they answered in that entry's "answer", exactly as they gave it: the label they picked, or the words they typed instead. Their words are at most {{maxNote}} characters long, and never empty. Copy those words verbatim, never shortened, summarised, reworded or translated. Change nothing else in the file.
     - text: |-
         Run the linter with exactly these flags, and nothing else:
 
@@ -2272,9 +2288,8 @@ llm-sca-review-prompt:
     - text: |-
         That run reads the answer and prints the next prompt. Follow it from there - this one is done.
   # The agent's judgement of the build it reported, as the SCA_BUILD_SAFETY_ASSESSMENT entry of ANSWERS.
-  # The review starts with the recorded judgement (src/pipeline.js), and reads it in the Build
-  # Review Details and in who built the add-on. Unsafe ends the preparation: nothing is audited
-  # or rescued, and the agent builds nothing.
+  # The review starts with the recorded judgement (src/pipeline.js), and shows it in the Build
+  # Review Details. It words the reviewer's build decision (`build-permission`).
   build-safety:
     values:
       - value: safe
@@ -2283,20 +2298,33 @@ llm-sca-review-prompt:
       - value: unsafe
         label: unsafe
         description: At least one build step fetches or runs code or resources from outside the declared dependencies, as the report's safety section lists.
-  # The question the permission prompt puts to the reviewer, as the PACKAGE_MANAGERS entry
-  # of ANSWERS. Declined, the preparation audits and rescues nothing, and the agent builds
-  # nothing: the review's Build Review Details say the reviewer builds it (`self-build`),
-  # and the `built` question is answered from their own build.
-  package-managers:
-    question: |-
-      Let the agent build the add-on (including its package-manager commands), or not?
-    values:
-      - value: allow
-        label: Let it build
-        description: The agent may run the package-manager commands and the add-on's own build commands, which run the submission's code. It builds only a lock the linter audited clean, and rescues dependencies with known vulnerabilities in a copy first, where it can.
-      - value: decline
-        label: Do not let it build
-        description: The agent runs none of them. Nothing is rescued, so known vulnerabilities in the dependencies end the review, and the agent builds nothing. You answer the build question from your own build.
+  # The reviewer's one decision about the build, as the SCA_BUILD_PERMISSION entry of ANSWERS,
+  # worded by the agent's verdict (src/prepare/steps.js permission). An answer is the label of
+  # one of the verdict's two values, or the reviewer's own words, which override the verdict:
+  # the build is unsafe, for the reasons they give. Only `allow` and `override` let the agent
+  # build. `manual` leaves the build to the reviewer, whom the `built` question asks of their
+  # own build. `skip` and the reviewer's own words build nothing, and build-unsafe reports it.
+  build-permission:
+    safe:
+      question: |-
+        The agent judged the build safe. Let the agent build the add-on, including its package-manager commands, or build it yourself? To override the verdict, answer in your own words why building it is unsafe.
+      values:
+        - value: allow
+          label: Let the agent build
+          description: The build is safe. The agent runs the package-manager commands and the add-on's own build commands, which run the submission's code. It builds only a lock the linter audited clean, and rescues dependencies with known vulnerabilities in a copy first, where it can.
+        - value: manual
+          label: Build it myself
+          description: The build is safe, but the agent runs none of its commands. Nothing is rescued, so known vulnerabilities in the dependencies end the review. You answer the build question from your own build.
+    unsafe:
+      question: |-
+        The agent judged the build unsafe, for the reasons the safety section of SCA_BUILD_PROCESS lists. Trust the verdict and build nothing, or clear those issues and let the agent build anyhow? To give reasons of your own why building it is unsafe, answer in your own words.
+      values:
+        - value: skip
+          label: Trust the verdict, do not build
+          description: The build is unsafe. Nobody builds it, and the review reports it to the developer as an unsafe build.
+        - value: override
+          label: Build anyhow
+          description: The build issues the agent found are cleared, and the build is safe. The agent runs the package-manager commands and the add-on's own build commands, as for a safe build.
   # Printed where the linter audited the root's lock clean and copied the whole source archive
   # into build/: the agent builds the original in LLM_BUILD_ROOT, as the lock pins it, and answers
   # LLM_BUILD_OUTPUT with what the build produced in build/ (build-output), or that it failed.
@@ -2504,9 +2532,11 @@ llm-phases:
     # does not build into the shipped XPI ends the review late, once it has run to the end of
     # settle, and a reviewer who declines to build ends it the same way. The review neither
     # builds nor works out the build: its preparation did (src/prepare/steps.js), and the review
-    # starts with the judgement recorded there (src/pipeline.js). The agent built the add-on in
-    # the preparation where it judged the build safe and the reviewer let it, and otherwise the
-    # reviewer builds it. A source no build can be made from (`unbuildable`) skips `built`.
+    # starts with the reviewer's build decision recorded there (src/pipeline.js). The agent built
+    # the add-on in the preparation where the reviewer let it, and otherwise the reviewer builds
+    # it. A build the reviewer judged unsafe is never asked about: `built` relays
+    # build-reproduces-xpi, which runs only where they judged it safe. A source no build can be
+    # made from (`unbuildable`) skips `built` too.
     #
     # A BLOCK THE REVIEWER MUST READ ENDS THE AGENT'S TURN. Text written before a tool call in
     # the same turn - a question, a hand-back - is folded away by a client that collapses
@@ -2520,12 +2550,11 @@ llm-phases:
     # batches, and a reviewer must not be asked to install an XPI in the same breath as being
     # asked whether the source builds into it. A PROCESS VALUE (`answer: value`) whose entry
     # relays the open to-do a check routes here (`asked-in`), so it is issued only while that
-    # to-do is open and never in an XPI review. Any answer clears that to-do. One of the four
-    # lets the review go on, and each of the other three reports the check naming the reason
-    # the review stops (`reports`). "Is unsafe to build" is offered only where nobody let the
-    # agent build (`build-allowed`): a reviewer who let it build has already judged the build
-    # safe to run. Asked under --llm-skip-manual too: it decides whether the review goes on,
-    # which is not what that flag withholds.
+    # to-do is open and never in an XPI review. Any answer clears that to-do. It asks the
+    # outcome only, since the reviewer decided whether the build is safe in the preparation. One
+    # of the three lets the review go on, and each of the other two reports the check naming
+    # the reason the review stops (`reports`). Asked under --llm-skip-manual too: it decides
+    # whether the review goes on, which is not what that flag withholds.
     #
     # Its first step is the Build Review Details: the submitted XPI, the source the review
     # read, the build report and its judgement, the vulnerabilities counted in the submitted
@@ -2550,11 +2579,6 @@ llm-phases:
           label: Does not build
           description: The build fails, including an install refused because package.json and the lock file disagree.
           reports: build-fails
-        - value: unsafe
-          label: Is unsafe to build
-          description: The build would fetch or run code from outside the declared dependencies, or do something you will not run on your machine. Nothing was built.
-          reports: build-unsafe
-          when: NOT build-allowed
       steps:
         - when: sca AND build-guarded AND NOT aborted AND NOT unbuildable
           text: |-
@@ -2567,9 +2591,6 @@ llm-phases:
         - when: NOT aborted AND NOT unbuildable AND agent-build-failed
           text: |-
             The agent's build failed, and the "Build attempt" section of SCA_BUILD_PROCESS says where. The reviewer may build the add-on themselves before they answer.
-        - when: NOT aborted AND NOT unbuildable AND build-unsafe
-          text: |-
-            The agent judged the build unsafe and built nothing. The reviewer builds the add-on themselves, where they judge it safe to, before they answer, and may answer "Is unsafe to build".
         - when: NOT aborted AND NOT unbuildable AND self-build
           text: |-
             The agent did not build the add-on. The reviewer builds it themselves, following SCA_BUILD_PROCESS, before they answer.

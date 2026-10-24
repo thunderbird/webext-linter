@@ -76,7 +76,7 @@ export function answer(work, answers) {
   const doc = JSON.parse(fs.readFileSync(file, "utf8"));
   const given = {
     SCA_BUILD_SAFETY_ASSESSMENT: "safe",
-    PACKAGE_MANAGERS: "Let it build",
+    SCA_BUILD_PERMISSION: "Let the agent build",
     ...answers,
   };
   doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));

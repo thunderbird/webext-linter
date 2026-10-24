@@ -110,12 +110,10 @@
       "id": "unsafe",
       "submission": "/home/john/Downloads/reviews/hot/unsafe",
       "expect": {
-        "stop": "row-14",
-        "SCA_BUILD_SAFETY_ASSESSMENT": "unsafe",
-        "SCA_VULNERABILITIES": { "high": 0, "critical": 0 },
+        "stop": "downgrade",
         "LLM_BUILD_RESULT": "not built: unsafe",
-        "LLM_BUILD_OUTPUT": false,
-        "SCA_ROOT": "sca"
+        "reasons": ["unreproducible-build"],
+        "findings": ["build-unsafe"]
       }
     },
     {

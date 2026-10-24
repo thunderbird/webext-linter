@@ -63,7 +63,7 @@ import {
   SCA_PROMPT_FACTS,
   SCA_PROMPT_STEPS,
   SCA_PROMPT_COMMAND,
-  PACKAGE_MANAGER_VALUES,
+  BUILD_PERMISSION_BY_VERDICT,
   BUILD_SAFETY_VALUES,
   BUILD_MATCH_VALUES,
   REVIEW_PROMPT_FACTS,
@@ -692,11 +692,16 @@ export class Registry {
    * settles the item with - the last of which never leaves this process: the entry the
    * agent relays carries the first two, the answer comes back as the reviewer gave it,
    * and mapping it to a verdict happens here. Read once per review, and required: a question with no
-   * answers to offer cannot be asked.
+   * answers to offer cannot be asked. A check may word its own (`manual-choices`), which its
+   * cases offer in their place, so given a check id this answers that check's answers.
+   * @param {string} [ruleId]  The check whose case is asked.
    * @returns {{label: string, verdict: string, description: string}[]}
    */
-  manualReviewChoices() {
-    return this.doc["llm-manual-review-choices"].map((c) => ({
+  manualReviewChoices(ruleId) {
+    const own = ruleId
+      ? this.checkEntry(ruleId)?.["manual-choices"]
+      : undefined;
+    return (own ?? this.doc["llm-manual-review-choices"]).map((c) => ({
       label: c.label,
       verdict: c.verdict,
       // `{{maxNote}}` is the one number in this text the linter owns: the limit it refuses
@@ -809,9 +814,10 @@ export class Registry {
    * add-on declares Experiments and the folder is not known yet.
    *
    * `buildSafety` is the judgement the `analyze` prompt asks of the agent: the two answers it
-   * offers, each by its id (BUILD_SAFETY_VALUES). `packageManagers` is the question the
-   * permission prompt puts to the reviewer: its text, and the two answers it offers, each by
-   * its id (PACKAGE_MANAGER_VALUES). `buildOutput` and `rescueOutput` are the entries the
+   * offers, each by its id (BUILD_SAFETY_VALUES). `buildPermission` is the reviewer's one
+   * decision about the build, which the permission prompt puts: per verdict, its text and the
+   * two answers it offers, each by its id (BUILD_PERMISSION_BY_VERDICT). Each step's
+   * {{maxNote}} is filled with the length a reviewer's own words are held to. `buildOutput` and `rescueOutput` are the entries the
    * build and rescue prompts name what the build produced in: the question, and the one
    * answer each offers besides a path. `buildMatch` is the entry both compare that output
    * with the submitted XPI in: its question, and the two answers it offers, each by its id
@@ -819,15 +825,15 @@ export class Registry {
    * @returns {{intro: string,
    *   steps: Record<string, {when: ?object, text: string}[]>,
    *   buildSafety: {values: {value: string, label: string, description: string}[]},
-   *   packageManagers: {question: string,
-   *     values: {value: string, label: string, description: string}[]},
+   *   buildPermission: Record<"safe"|"unsafe", {question: string,
+   *     values: {value: string, label: string, description: string}[]}>,
    *   buildOutput: PrepareOutputAsk, rescueOutput: PrepareOutputAsk,
    *   buildMatch: {question: string,
    *     values: {value: string, label: string, description: string}[]}}}
    */
   llmScaReviewPrompt() {
     const p = this.doc["llm-sca-review-prompt"];
-    const ask = p["package-managers"];
+    const permission = p["build-permission"];
     const values = (list) =>
       list.map(({ value, label, description }) => ({
         value,
@@ -841,13 +847,27 @@ export class Registry {
     return {
       intro: p.intro,
       steps: Object.fromEntries(
-        SCA_PROMPT_STEPS.map((name) => [name, p[name].map(loadedStep)])
+        SCA_PROMPT_STEPS.map((name) => [
+          name,
+          p[name].map((step) => {
+            const loaded = loadedStep(step);
+            return {
+              ...loaded,
+              text: loaded.text.replaceAll("{{maxNote}}", String(MAX_NOTE)),
+            };
+          }),
+        ])
       ),
       buildSafety: { values: values(p["build-safety"].values) },
-      packageManagers: {
-        question: ask.question,
-        values: values(ask.values),
-      },
+      buildPermission: Object.fromEntries(
+        Object.keys(BUILD_PERMISSION_BY_VERDICT).map((verdict) => [
+          verdict,
+          {
+            question: permission[verdict].question,
+            values: values(permission[verdict].values),
+          },
+        ])
+      ),
       buildOutput: output(p["build-output"]),
       rescueOutput: output(p["rescue-output"]),
       buildMatch: {
@@ -1883,12 +1903,22 @@ export function assertScaPrompt(registry, at) {
   }
   // Every answer is read as one of its ids, so each is offered once, under a label of its
   // own: a missing one could not be chosen, and two equal labels would read as either.
-  for (const [key, ids] of [
-    ["package-managers", PACKAGE_MANAGER_VALUES],
-    ["build-safety", BUILD_SAFETY_VALUES],
-    ["build-match", BUILD_MATCH_VALUES],
+  for (const [key, values, ids] of [
+    ...Object.entries(BUILD_PERMISSION_BY_VERDICT).map(([verdict, ids]) => [
+      `build-permission\` \`${verdict}`,
+      prompt["build-permission"][verdict].values,
+      ids,
+    ]),
+    ["build-safety", prompt["build-safety"].values, BUILD_SAFETY_VALUES],
+    ["build-match", prompt["build-match"].values, BUILD_MATCH_VALUES],
   ]) {
-    const values = prompt[key].values;
+    const stray = values.find((v) => !ids.includes(v.value));
+    if (stray) {
+      throw new Error(
+        `${where} \`${key}\` offers \`${stray.value}\`, which is not one of its answers ` +
+          `(expected: ${ids.join(", ")})`
+      );
+    }
     for (const id of ids) {
       if (values.filter((v) => v.value === id).length !== 1) {
         throw new Error(
@@ -1917,6 +1947,35 @@ export function assertChoices(registry, at) {
     registry.doc["llm-manual-review-choices"],
     `llm-manual-review-choices (${at})`
   );
+  // A check's own answers stand in for these, so they settle the same two ways, once each:
+  // an answer list that could not clear, or could not report, would take a verdict away from
+  // the reviewer.
+  const global = registry.doc["llm-manual-review-choices"].map(
+    (c) => c.verdict
+  );
+  for (const entry of registry.allEntries()) {
+    const own = entry["manual-choices"];
+    if (own === undefined) {
+      continue;
+    }
+    const where = `"${stem(entry.check)}" manual-choices (${at})`;
+    assertChoiceVerdicts(own, where);
+    const verdicts = own.map((c) => c.verdict);
+    if (
+      verdicts.length !== global.length ||
+      global.some((v) => verdicts.filter((w) => w === v).length !== 1)
+    ) {
+      throw new Error(
+        `${where} settles with ${verdicts.join(", ")} - a check's own answers settle the ` +
+          `way every manual review question's do, ${global.join(" and ")}, once each`
+      );
+    }
+    if (new Set(own.map((c) => c.label)).size !== own.length) {
+      throw new Error(
+        `${where} offers one label twice - an answer would read as either`
+      );
+    }
+  }
 }
 
 /**
@@ -2218,15 +2277,24 @@ export function checkSelected(id, { only, skip } = {}) {
  * @param {boolean} [opts.eslint]  The `--eslint` flag, the `eslint` fact of a check's `when:`.
  * @param {boolean} [opts.sca]  A source code review, the `sca` fact of a check's `when:`.
  * @param {boolean} [opts.llmReview]  An agent reviews, the `llm-review` fact.
+ * @param {boolean} [opts.buildJudged]  The reviewer decided about the build in the
+ *   preparation, the `build-judged` fact.
+ * @param {boolean} [opts.buildSafe]  That decision held it safe, the `build-safe` fact.
  *   A check whose condition fails is not loaded (conditionEligible): gated here, before the
  *   import, so code-sanity's eslint dependency is not pulled in when it will not run.
  * @returns {Promise<Map<string, LoadedCheck[]>>}  Phase -> its checks, in registry order.
  */
 export async function loadChecks(
   registry,
-  { only, skip, eslint, sca, llmReview } = {}
+  { only, skip, eslint, sca, llmReview, buildJudged, buildSafe } = {}
 ) {
-  const facts = checkFacts({ sca, eslint, llmReview });
+  const facts = checkFacts({
+    sca,
+    eslint,
+    llmReview,
+    buildJudged,
+    buildSafe,
+  });
   const byPhase = new Map(Object.keys(PHASE_SECTIONS).map((p) => [p, []]));
   for (const entry of registry.checkEntries()) {
     const id = stem(entry.check);
@@ -2364,15 +2432,24 @@ export function conditionEligible(entry, facts) {
 
 /**
  * The facts a check's condition reads in a run: each of CHECK_FACTS that holds.
- * @param {{sca?: boolean, eslint?: boolean}} run
+ * @param {{sca?: boolean, eslint?: boolean, llmReview?: boolean, buildJudged?: boolean,
+ *   buildSafe?: boolean}} run
  * @returns {Set<string>}
  */
-export function checkFacts({ sca, eslint, llmReview } = {}) {
+export function checkFacts({
+  sca,
+  eslint,
+  llmReview,
+  buildJudged,
+  buildSafe,
+} = {}) {
   return new Set(
     [
       sca ? "sca" : null,
       eslint ? "eslint" : null,
       llmReview ? "llm-review" : null,
+      buildJudged ? "build-judged" : null,
+      buildSafe ? "build-safe" : null,
     ].filter(Boolean)
   );
 }
@@ -2385,11 +2462,16 @@ export function checkFacts({ sca, eslint, llmReview } = {}) {
  * @returns {boolean}
  */
 function mayRunInMode(entry, sca) {
-  return [true, false].some((eslint) =>
-    [true, false].some((llmReview) =>
-      conditionEligible(entry, checkFacts({ sca, eslint, llmReview }))
-    )
+  const others = CHECK_FACTS.filter((fact) => fact !== "sca");
+  const runs = Array.from(
+    { length: 2 ** others.length },
+    (_, held) =>
+      new Set([
+        ...(sca ? ["sca"] : []),
+        ...others.filter((_, i) => (held >> i) & 1),
+      ])
   );
+  return runs.some((facts) => conditionEligible(entry, facts));
 }
 
 /**

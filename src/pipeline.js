@@ -544,6 +544,9 @@ async function reviewSubmission(opts, work, prepared) {
           opts.workFolder,
           prepared
         );
+        // The reviewer's own reasons for holding the build unsafe, where they gave some, which
+        // build-unsafe reports. Null for every other source.
+        scaArchive.buildReasons = prepared?.buildReasons ?? null;
       }
     },
 
@@ -748,6 +751,10 @@ async function reviewSubmission(opts, work, prepared) {
       eslint: opts.eslint,
       sca: mode.sca,
       llmReview: Boolean(opts.llmReview),
+      // The reviewer's build decision in the preparation, which decides which of the build
+      // checks asks about the build (build-review, build-reproduces-xpi, build-unsafe).
+      buildJudged: typeof prepared?.buildSafe === "boolean",
+      buildSafe: prepared?.buildSafe === true,
     },
     siblings
   );
@@ -932,12 +939,6 @@ async function reviewSubmission(opts, work, prepared) {
           )
           ? { "build-guarded": true }
           : {}),
-        // Whether the reviewer let the agent build the add-on in the preparation: they read
-        // the Build Review Details and judged the build safe to run, so the build question
-        // does not offer to call it unsafe.
-        ...(prepared?.packageManagers === true
-          ? { "build-allowed": true }
-          : {}),
         // One condition per tree that has a sweep to run, keyed the way the step names
         // it. Read off the REQUESTS rather than off `sweeping` and `preSweep` separately:
         // a step exists to hand an agent a request, so the request existing is the whole
@@ -1021,6 +1022,9 @@ async function reviewSubmission(opts, work, prepared) {
         // The judgement the preparation recorded of the build it reported in build.md, a
         // BUILD_SAFETY_VALUES id, or null where nothing was prepared.
         safety: prepared?.buildSafety ?? null,
+        // The reviewer's decision whether the build is safe, the verdict as they kept or
+        // overrode it, or null where nobody was asked.
+        safe: prepared?.buildSafe ?? null,
       },
       // build.md, which the preparation wrote, as a product the Review Details link.
       ...(prepared?.buildSafety && buildPath && productWritten(buildPath)

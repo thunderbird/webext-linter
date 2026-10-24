@@ -228,7 +228,7 @@ export function applyVerdicts({
       answer,
       asking(item),
       ref,
-      registry.manualReviewChoices()
+      registry.manualReviewChoices(item.target?.ruleId)
     );
     // Named in the audit line, so a misaimed verdict is legible there rather than only
     // in the re-rendered report.

@@ -54,7 +54,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
  * @property {{result: ?string, output: ?string, match: ?string,
  *   vulnerabilities: ?{moderate: number, high: number, critical: number},
  *   rescuedVulnerabilities: ?{moderate: number, high: number, critical: number},
- *   safety: ?string}} build
+ *   safety: ?string, safe: ?boolean}} build
  *   What came of the agent's build in the preparation (a BUILD_RESULT value,
  *   src/prepare/state.js, or null where it built nothing), what it produced where it built
  *   and the agent's comparison of that with the submitted XPI, the submitted lock's
@@ -152,4 +152,4 @@ export function readState(file) {
  *  nothing in the review: it holds the preparation's build in `build`, which the Build Review
  *  Details and the `built` step read, where a v17 file has no `build` and may be waiting on
  *  a `build` phase this review does not have. */
-export const STATE_VERSION = 19;
+export const STATE_VERSION = 20;

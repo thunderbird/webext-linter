@@ -17,24 +17,16 @@ https://github.com/thunderbird/webext-linter
 Continue manual review for the following checks:
 
 1) Build process review: Read the build instructions the source gives, and the
-   scripts and files they run, and confirm the build pulls ONLY from the
-   dependencies declared in package.json/lock - no remote code or resources from
-   a raw URL, curl/wget, a git clone of an unpinned repo, a CDN, or a
-   postinstall hook.
+   scripts and files they run. Where the build fetches or runs anything from
+   outside the dependencies declared in package.json/lock - remote code or
+   resources from a raw URL, curl/wget, a git clone of an unpinned repo, a CDN,
+   or a postinstall hook - do not build it: report it. Otherwise build it from a
+   clean copy of the source archive, installing the dependencies exactly as the
+   lock file pins them (npm ci, or pnpm install --frozen-lockfile), and clear it
+   only where the build completes and reproduces the submitted XPI.
 Suggested verdict: error
-Suggested response: Every part of the build must come from the submitted source or from the dependencies declared in package.json/lock (resolved from npm or the committed lock file), and from nowhere else.
- - [SCA] package.json
-
-2) Reproducing the XPI from the source: Does the build process complete and
-   reproduce the submitted XPI? Follow the build process from a clean copy of
-   the source archive, installing the dependencies exactly as the lock file pins
-   them (npm ci, or pnpm install --frozen-lockfile). An install refused because
-   package.json and the lock file disagree is a failed build. A build that
-   fetches or runs code from outside the declared dependencies is unsafe to
-   build: do not run it. Otherwise report whether it does not reproduce, does
-   not build, or is unsafe to build.
-Suggested verdict: error
-Suggested response: The submitted source could not be built into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
+Suggested response: Every part of the build must come from the submitted source or from the dependencies declared in package.json/lock (resolved from npm or the committed lock file), and from nowhere else. The submitted source must build, by the build instructions you provided, into exactly the submitted XPI.
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
  - [SCA] package.json
 
 ── Standard Code Review ──
@@ -218,5 +210,5 @@ Because the original project is still active, your submission does not meet thes
 ── Summary ──
 
 2 error(s), 0 hold, 0 warning(s), 0 info,
-0 extended code review item(s), 2 extended manual review item(s),
+0 extended code review item(s), 1 extended manual review item(s),
 11 standard code review item(s), 10 standard manual review item(s)
