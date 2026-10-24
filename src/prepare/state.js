@@ -51,12 +51,11 @@ const READ_ONLY = 0o444;
 /**
  * Where a preparation stands, which is what the next hand-back of the folder does:
  *
- * - `unpack`: the source archive is to be extracted into `sca/` (--llm-sca-review only). The
- *   next hand-back derives the package root inside it (src/addon/package-root.js) and moves on
- *   to `analyze`;
- * - `analyze`: the package root is known, in `sca/`, and its build is to be reported in
- *   build.md, with the build's issues (and the Experiment folder, where the add-on declares
- *   Experiments and it is not known yet) handed back in the review file. A review given
+ * - `unpack`: the source archive is to be extracted into `sca/` (--llm-sca-review only), and the
+ *   Experiment folder in it named where the add-on declares Experiments. The next hand-back
+ *   derives the package root inside it (src/addon/package-root.js) and moves on to `analyze`;
+ * - `analyze`: the folders are known, in `sca/`, and the build is to be reported in build.md,
+ *   with the build's issues handed back in the review file. A review given
  *   --sca-extracted starts here, its source copied into `sca/`. The next hand-back moves
  *   either verdict on to `permission` (or, where the record holds agentBuilds, decides for
  *   the reviewer), and to `done` where a build-guard check is switched off;
@@ -148,8 +147,7 @@ const COUNTED = ["moderate", "high", "critical"];
  *   absolute and real, there from `analyze` on: the source copy `sca/`, the tree the next step
  *   or the review reads (`used`: `sca/`, or `rescued/` while a rescue runs and once it came out
  *   clean), and the package root and the Experiment folder inside that tree. The Experiment
- *   folder is there exactly when the add-on declares Experiments, from `permission` on; at
- *   `analyze` it may still be asked for (checkRoots).
+ *   folder is there exactly when the add-on declares Experiments (checkRoots).
  * @property {string} digest  The hash over every other field, as writePrepare stored it
  *   (recordDigest). A record whose digest does not match was changed after it was written.
  *
@@ -239,7 +237,7 @@ export function readPrepare(work) {
 /**
  * The record's folders, of the shape the linter writes: none before `analyze`, then the
  * extracted copy and the package root, and the Experiment folder exactly where the add-on
- * declares Experiments - where it may still be missing at `analyze`, which asks for it.
+ * declares Experiments.
  * @param {PrepareRecord} record
  * @throws {HandbackRefused}
  */
@@ -271,9 +269,7 @@ function checkRoots(record) {
     );
   }
   const named = keys.includes("experiments");
-  const owed =
-    record.submission.experiments && record.step !== PREPARE_STEP.analyze;
-  if (named ? !record.submission.experiments : owed) {
+  if (named !== record.submission.experiments) {
     throw new HandbackRefused(
       named
         ? "the preparation's record names an Experiment folder for an add-on without Experiments"

@@ -147,10 +147,12 @@ function workFolder(
 /** The unpack step alone: the extracted source handed back, its root derived in sca/. */
 const unpackStep = (work) => handBack(work);
 
-/** The unpack step where the folder is still at it, then the analyze step: the build report
- *  written and `answers` filled in (the build judged safe unless they say otherwise). */
+/** The unpack step where the folder is still at it, the Experiment folder named from
+ *  `answers` where it asks, then the analyze step: the build report written and `answers`
+ *  filled in (the build judged safe unless they say otherwise). */
 const analyzeStep = async (work, answers = {}) => {
   if (recordOf(work).step === PREPARE_STEP.unpack) {
+    answer(work, answers);
     await unpackStep(work);
   }
   answer(work, answers);
@@ -984,7 +986,7 @@ test("a source folder that is a link is refused", async () => {
   cleanup(work);
 });
 
-test("an Experiment folder is read against the root, and must lie inside it", async () => {
+test("an Experiment folder is named at unpack, and must lie inside the archive", async () => {
   const work = workFolder(
     { "package.json": packageFile(), "exp/api.js": "" },
     { experiments: true }
@@ -992,21 +994,43 @@ test("an Experiment folder is read against the root, and must lie inside it", as
   const sca = workPaths(work).sca;
   // Asked for, so an answer missing is refused like any other.
   await assert.rejects(
-    first(work, {}),
+    unpackStep(work),
     refused(/SCA_EXPERIMENTS still has no "answer"/)
   );
+  answer(work, { SCA_EXPERIMENTS: "../.." });
   await assert.rejects(
-    first(work, { SCA_EXPERIMENTS: "../.." }),
+    unpackStep(work),
     refused(/SCA_EXPERIMENTS "\.\.\/\.\." is not a folder inside/)
   );
-  // The root itself excludes nothing, and the review refuses it - so the hand-back does.
-  await assert.rejects(
-    first(work, { SCA_EXPERIMENTS: "." }),
-    refused(/sca-experiments/)
-  );
-  assert.equal(recordOf(work).step, PREPARE_STEP.analyze, "nothing moved");
-  const at = await first(work, { SCA_EXPERIMENTS: "exp" });
+  // The archive itself excludes nothing, and the review refuses it - so the hand-back does.
+  answer(work, { SCA_EXPERIMENTS: "." });
+  await assert.rejects(unpackStep(work), refused(/sca-experiments/));
+  assert.equal(recordOf(work).step, PREPARE_STEP.unpack, "nothing moved");
+  answer(work, { SCA_EXPERIMENTS: "exp" });
+  const at = await unpackStep(work);
+  assert.equal(at.record.step, PREPARE_STEP.analyze);
   assert.equal(at.record.roots.experiments, path.join(sca, "exp"));
+  cleanup(work);
+});
+
+// The package root is settled with the Experiment folder known, so a package file inside the
+// Experiment folder is never taken for the build's: the folder given stands, as in a review
+// given --sca-experiments, and the preparation goes on.
+test("a package root inside the Experiment folder is not taken at unpack", async () => {
+  const work = workFolder(
+    { "wrap/exp/package.json": packageFile(), "wrap/web/x.js": "1;\n" },
+    { experiments: true }
+  );
+  const sca = workPaths(work).sca;
+  answer(work, { SCA_EXPERIMENTS: "wrap/exp" });
+  const at = await unpackStep(work);
+  assert.equal(at.record.step, PREPARE_STEP.analyze);
+  assert.deepEqual(at.record.roots, {
+    source: sca,
+    used: sca,
+    packageRoot: sca,
+    experiments: path.join(sca, "wrap", "exp"),
+  });
   cleanup(work);
 });
 

@@ -1534,10 +1534,10 @@ test("the preparation prompts come from the registry and every part is required"
       assert.ok(step.when === null || typeof step.when === "object");
     }
   }
-  // The Experiment folder is asked for in the analyze prompt alone, and only where it is not
-  // known yet: its own step, and the review file step.
-  assert.equal(prompt.steps.unpack.filter((s) => s.when !== null).length, 0);
-  assert.equal(prompt.steps.analyze.filter((s) => s.when !== null).length, 2);
+  // The Experiment folder is asked for in the unpack prompt alone, where the add-on declares
+  // Experiments, before the package root is settled: its own step, and the review file step.
+  assert.equal(prompt.steps.unpack.filter((s) => s.when !== null).length, 2);
+  assert.equal(prompt.steps.analyze.filter((s) => s.when !== null).length, 0);
   const noIntro = loadRegistry();
   delete noIntro.doc["llm-sca-review-prompt"].intro;
   assert.throws(() => checkScaPrompt(noIntro), /authors no `intro`/);

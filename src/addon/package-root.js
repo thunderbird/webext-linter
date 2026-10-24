@@ -141,16 +141,6 @@ export function foldersInCopy(given, copy) {
 }
 
 /**
- * The folders of the tree the review reads, as settlePackageRoot takes them: `used` as the
- * extracted folder they are settled inside.
- * @param {ScaFolders} folders
- * @returns {ScaGiven}
- */
-export function usedTree({ source: _source, used, ...rest }) {
-  return { extracted: used, ...rest };
-}
-
-/**
  * Whether `dir` holds a package file at its top level.
  * @param {string} dir
  * @returns {boolean}

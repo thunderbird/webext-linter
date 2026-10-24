@@ -69,7 +69,6 @@ import {
   foldersInCopy,
   readInPlace,
   settlePackageRoot,
-  usedTree,
 } from "../addon/package-root.js";
 import { checkSelected, loadRegistry } from "../checks/registry.js";
 import { splitList } from "../lib/util.js";
@@ -174,36 +173,40 @@ export function startPreparation(work, record) {
   writeReviewFile(
     workPaths(work).review,
     reviewFile(
-      record.step === PREPARE_STEP.analyze ? analyzeEntries(record) : []
+      record.step === PREPARE_STEP.analyze
+        ? analyzeEntries()
+        : unpackEntries(record)
     )
   );
 }
 
 /**
- * Whether `analyze` asks for the Experiment folder: the built add-on declares Experiments, and
- * the folder is not known yet. A review given --sca-extracted was given it (--sca-experiments).
+ * Whether `unpack` asks for the Experiment folder: the built add-on declares Experiments. It is
+ * asked there, beside the extracted archive, so the package root is settled with it known. A
+ * review given --sca-extracted was given it (--sca-experiments) and starts at `analyze`.
  * @param {import("./state.js").PrepareRecord} record
  * @returns {boolean}
  */
 export function asksExperiments(record) {
-  return (
-    record.step === PREPARE_STEP.analyze &&
-    record.submission.experiments &&
-    !Object.hasOwn(record.roots, "experiments")
-  );
+  return record.step === PREPARE_STEP.unpack && record.submission.experiments;
 }
 
 /**
- * The entries `analyze` asks for: the build's safety issues, and the Experiment folder where
- * it is asked (asksExperiments).
+ * The entries `unpack` asks for: the Experiment folder where it is asked (asksExperiments),
+ * else none.
  * @param {import("./state.js").PrepareRecord} record
  * @returns {object[]}
  */
-function analyzeEntries(record) {
-  return [
-    { index: SCA_BUILD_SAFETY_ISSUES, [SLOT]: null },
-    ...(asksExperiments(record) ? [{ index: EXPERIMENTS, [SLOT]: null }] : []),
-  ];
+function unpackEntries(record) {
+  return asksExperiments(record) ? [{ index: EXPERIMENTS, [SLOT]: null }] : [];
+}
+
+/**
+ * The entries `analyze` asks for: the build's safety issues.
+ * @returns {object[]}
+ */
+function analyzeEntries() {
+  return [{ index: SCA_BUILD_SAFETY_ISSUES, [SLOT]: null }];
 }
 
 /**
@@ -364,9 +367,12 @@ export async function handBack(work, registry = loadRegistry()) {
 }
 
 /**
- * The source archive extracted into `sca/`: the package root derived inside it, as the review derives
- * one (src/addon/package-root.js settlePackageRoot) - `sca/` itself where it holds the package file or
- * the walk cannot decide - and the build handed out to be analyzed.
+ * The source archive extracted into `sca/`, and the Experiment folder in it where it was asked
+ * (unpackedExperiments): the package root derived inside it, as the review derives one
+ * (src/addon/package-root.js settlePackageRoot) with the Experiment folder known - `sca/`
+ * itself where it holds the package file or the walk cannot decide - and the build handed out
+ * to be analyzed. A refusal leaves the record at `unpack`, so the reader corrects the file and
+ * hands it back again.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `unpack`.
  * @returns {Handout}
@@ -374,13 +380,65 @@ export async function handBack(work, registry = loadRegistry()) {
  */
 function unpacked(work, record) {
   const extracted = realSca(workPaths(work));
-  const { folders } = settlePackageRoot({ extracted, packageRoot: extracted });
+  let folders;
+  try {
+    ({ folders } = settlePackageRoot({
+      extracted,
+      packageRoot: extracted,
+      ...unpackedExperiments(work, record, extracted),
+    }));
+  } catch (err) {
+    rethrowIfFatal(err);
+    throw err instanceof HandbackRefused
+      ? err
+      : new HandbackRefused(err.message);
+  }
   const analyzing = {
     ...record,
     step: PREPARE_STEP.analyze,
     roots: readInPlace(folders),
   };
-  return ask(work, analyzing, analyzeEntries(analyzing));
+  return ask(work, analyzing, analyzeEntries());
+}
+
+/**
+ * The Experiment folder `unpack` handed back where it asked for one, as `{experiments}`, else
+ * nothing: taken as the folder it really is and held inside the extracted archive, resolved
+ * against it as the review resolves it. Every way it can be wrong is refused.
+ * @param {string} work
+ * @param {import("./state.js").PrepareRecord} record  At `unpack`.
+ * @param {string} extracted  The real `sca/`.
+ * @returns {{experiments?: string}}
+ * @throws {HandbackRefused}
+ */
+function unpackedExperiments(work, record, extracted) {
+  if (!asksExperiments(record)) {
+    return {};
+  }
+  const keyOf = (e) => String(e?.index);
+  const handed = readHandback(workPaths(work).review).entries.filter(
+    (e) => keyOf(e) === EXPERIMENTS
+  );
+  // A blank answer names no folder, and would otherwise resolve to the extracted archive itself.
+  const blank = handed.find(
+    (e) => typeof e?.[SLOT] === "string" && !e[SLOT].trim()
+  );
+  if (blank) {
+    throw new HandbackRefused(`${EXPERIMENTS} names no folder`);
+  }
+  const answer = answersOf(
+    handed,
+    [{ index: EXPERIMENTS, [SLOT]: null }],
+    { name: "unpack", answer: "words" },
+    keyOf
+  ).get(EXPERIMENTS);
+  const exp = realFolder(path.resolve(extracted, answer.trim()));
+  if (!exp || relativeInside(exp, extracted) === null) {
+    throw new HandbackRefused(
+      `${EXPERIMENTS} "${displayLine(answer)}" is not a folder inside "${extracted}"`
+    );
+  }
+  return { experiments: exp };
 }
 
 /**
@@ -575,13 +633,10 @@ function builtOriginal(work, record, asked, match) {
 
 /**
  * What `analyze` handed back: the build's safety issues, a list of results each held to the
- * shape a sweep's are (buildIssuesOf), and the Experiment folder where it was asked, taken as
- * the folder it really is and held inside the extracted archive, resolved against it as the
- * review resolves it, and neither that folder itself nor one holding the package root
- * (settlePackageRoot). Every way they can be wrong is refused, with nothing changed, so the
- * reader can correct the file and hand it back again.
+ * shape a sweep's are (buildIssuesOf). Every way they can be wrong is refused, with nothing
+ * changed, so the reader can correct the file and hand it back again.
  * @param {string} work
- * @param {import("./state.js").PrepareRecord} record  At `analyze`, its package root known.
+ * @param {import("./state.js").PrepareRecord} record  At `analyze`, its folders known.
  * @returns {{roots: import("../addon/package-root.js").ScaFolders,
  *   buildIssues: {file: string, line: ?number, hint: string}[]}}
  * @throws {HandbackRefused}
@@ -593,46 +648,7 @@ function analyzedAnswers(work, record) {
     all.find((e) => keyOf(e) === SCA_BUILD_SAFETY_ISSUES),
     realSca(workPaths(work))
   );
-  if (!asksExperiments(record)) {
-    return { roots: record.roots, buildIssues };
-  }
-  const handed = all.filter((e) => keyOf(e) === EXPERIMENTS);
-  // A blank answer names no folder, and would otherwise resolve to the extracted archive itself.
-  const blank = handed.find(
-    (e) => typeof e?.[SLOT] === "string" && !e[SLOT].trim()
-  );
-  if (blank) {
-    throw new HandbackRefused(`${EXPERIMENTS} names no folder`);
-  }
-  const answer = answersOf(
-    handed,
-    [{ index: EXPERIMENTS, [SLOT]: null }],
-    { name: "analyze", answer: "words" },
-    keyOf
-  ).get(EXPERIMENTS);
-  // Named relative to the extracted archive, which the build analysis reads whole: the
-  // record's copy, which must still be `sca/` itself, not a link put in its place.
-  const extracted = record.roots.source;
-  if (realSca(workPaths(work)) !== extracted) {
-    throw new HandbackRefused(
-      `"${workPaths(work).sca}" is no longer the folder the source was extracted into`
-    );
-  }
-  const exp = realFolder(path.resolve(extracted, answer.trim()));
-  if (!exp || relativeInside(exp, extracted) === null) {
-    throw new HandbackRefused(
-      `${EXPERIMENTS} "${displayLine(answer)}" is not a folder inside "${extracted}"`
-    );
-  }
-  try {
-    const { folders } = settlePackageRoot(
-      usedTree({ ...record.roots, experiments: exp })
-    );
-    return { roots: readInPlace(folders), buildIssues };
-  } catch (err) {
-    rethrowIfFatal(err);
-    throw new HandbackRefused(err.message);
-  }
+  return { roots: record.roots, buildIssues };
 }
 
 /**

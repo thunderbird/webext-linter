@@ -630,3 +630,29 @@ test("--sca-experiments for an add-on without Experiments is refused before prep
   );
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// The other way round: an Experiment add-on needs its folder named, as a review given these
+// flags does. A person gives the values here, so nothing asks for it later.
+test("an Experiment add-on without --sca-experiments is refused before preparing", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-needexp-"));
+  const xpi = path.join(dir, "a.xpi");
+  packAddon(xpi, { experiment_apis: { foo: {} } });
+  const src = path.join(dir, "src");
+  fs.cpSync(NO_LOCK_SOURCE, src, { recursive: true });
+  const r = run([
+    ...OFFLINE_FLAGS,
+    "--allow-experiments",
+    xpi,
+    "--llm-review",
+    "--sca-extracted",
+    src,
+  ]);
+  assert.equal(r.code, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /name the folder .* with --sca-experiments/);
+  assert.deepEqual(
+    fs.readdirSync(dir).sort(),
+    ["a.xpi", "src"],
+    "no work folder is created"
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+});

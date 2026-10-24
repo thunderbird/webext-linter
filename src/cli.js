@@ -1089,10 +1089,12 @@ async function startSourcePreparation(values, addonPath, work, registry) {
     writeToStderr(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
-  // An Experiment folder named for an add-on without Experiments is refused before anything is
-  // created. One left out for an add-on with them is asked for at `analyze`.
-  if (!experiments && Object.hasOwn(folders, "experiments")) {
-    writeToStderr(`${scaFoldersMisfit(folders, false)}\n`);
+  // The Experiment folder is named exactly for an add-on with Experiments, as a review given
+  // these flags needs it: refused before anything is created. An Experiment the review rejects
+  // is reviewed as an XPI, which reads no source folder.
+  const misfit = rejected ? null : scaFoldersMisfit(folders, experiments);
+  if (misfit) {
+    writeToStderr(`${misfit}\n`);
     return 2;
   }
   try {
@@ -1513,13 +1515,16 @@ function preparationPrompt(work, record, registry, start = {}) {
     [PREPARE_STEP.unpack]: () => ({
       submission: start.submission,
       extractTo: `${paths.sca}${path.sep}`,
+      // The Experiment folder is handed back in the review file, where it is asked.
+      ...(asksExperiments(record)
+        ? { answers: paths.review, findExperiment: true }
+        : {}),
     }),
     [PREPARE_STEP.analyze]: () => ({
       answers: paths.review,
       scaSource: record.roots.source,
       scaPackageRoot: record.roots.packageRoot,
       buildProcess: paths.build,
-      findExperiment: asksExperiments(record),
     }),
     [PREPARE_STEP.permission]: () => ({
       answers: paths.review,

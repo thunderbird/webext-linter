@@ -289,9 +289,9 @@ export const ITEMLESS_ANSWERS = ["hints", "value", "end"];
 export const DOWNGRADE_PHASE = "downgrade";
 export const DOWNGRADE_RESTART = "xpi";
 
-/** The one fact the preparation prompts' `when:` conditions can name: whether `analyze`
- *  asks its reader for the Experiment folder - the built add-on declares Experiments, and the
- *  folder is not known yet (src/prepare/steps.js asksExperiments). */
+/** The one fact the preparation prompts' `when:` conditions can name: whether `unpack` asks
+ *  its reader for the Experiment folder - the built add-on declares Experiments
+ *  (src/prepare/steps.js asksExperiments). */
 export const SCA_PROMPT_FACTS = ["find-experiment"];
 
 /** The preparation's prompts, one step list each, named for the step that prints it

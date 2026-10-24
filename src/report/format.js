@@ -475,12 +475,13 @@ function valueLines(entries) {
  * purpose. The VALUES are `NAME` with its value beneath it, never wrapped, so a reader takes
  * a path by looking up a name rather than by parsing a sentence: the Submission block on the
  * `unpack` prompt - EXTRACT_TO among them: this tool cannot open a source archive itself, but
- * it can still name where one should land - ANSWERS on every later prompt, and the
+ * it can still name where one should land - ANSWERS on every later prompt, and on `unpack`
+ * where it asks for the Experiment folder, and the
  * Build block: SCA_SOURCE, SCA_PACKAGE_ROOT and SCA_BUILD_PROCESS on the `analyze` prompt,
  * SCA_PACKAGE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_PROCESS on the build's, RESCUE_ROOT, LLM_BUILD_ROOT
  * and SCA_BUILD_PROCESS on the rescue's, and SUBMITTED_XPI on both, which the build's output
  * is compared with. The STEPS are prose, and they name those given values - and the one the
- * reader may still have to work out, <SCA_EXPERIMENTS> - instead of carrying paths
+ * reader of `unpack` may still have to work out, <SCA_EXPERIMENTS> - instead of carrying paths
  * themselves. The FLAGS are the finished command, one flag per line, filled into the step
  * that says to run it, and the COPY is the rescue's two commands that make the build copy,
  * filled into its step the same way.
@@ -502,7 +503,7 @@ function valueLines(entries) {
  * @param {string} [values.buildProcess]  Where the build report is written, the work
  *   folder's build.md: on the analyze, build and rescue prompts.
  * @param {string} [values.answers]  The review file the answers are handed back in: on every
- *   prompt after `unpack`.
+ *   prompt after `unpack`, and on `unpack` where it asks for the Experiment folder.
  * @param {string} [values.scaSource]  On the analyze prompt: the copy of the extracted source
  *   archive, `sca/`, all of which the build analysis reads.
  * @param {string} [values.scaPackageRoot]  On the analyze and build prompts: the package root, in
@@ -519,7 +520,7 @@ function valueLines(entries) {
  * @param {string[]} values.flags  The command the prompt's run prints, composed by the
  *   front-end (src/cli.js), which owns the flag names: the finished flag lines. Laid out
  *   here, never added to, trimmed or second-guessed.
- * @param {boolean} [values.findExperiment]  Whether `analyze` asks for the Experiment folder
+ * @param {boolean} [values.findExperiment]  Whether `unpack` asks for the Experiment folder
  *   (src/prepare/steps.js asksExperiments).
  * @returns {string[]}
  */

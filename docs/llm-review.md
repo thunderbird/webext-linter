@@ -504,15 +504,18 @@ node verify.js ./built.xpi --sca-extracted ./extracted-source --llm-review
 add-on, and does the half a program can do. It reviews nothing. It names which file is the
 add-on and which is the source, creates the review's work folder at its default place beside
 the `.xpi`, names its `sca/` as where the source archive is to be extracted (`EXTRACT_TO`),
-and asks its reader to extract it there and hand the folder back (`unpack`). That hand-back
-finds the package root, the folder holding `package.json`, inside `sca/` by the rule the review
-finds one by (`src/addon/package-root.js`): below any folders the archive wraps its contents in,
-and `sca/` itself where it holds the package file or the walk cannot decide. Then it prints the
-`analyze` prompt.
+and asks its reader to extract it there and hand the folder back (`unpack`), with the
+directory holding the Experiment implementation (`<SCA_EXPERIMENTS>`, a name in
+`<angle brackets>` being one it works out, relative to `EXTRACT_TO`) where the add-on declares
+Experiments. That hand-back finds the package root, the folder holding `package.json`, inside
+`sca/` by the rule the review finds one by (`src/addon/package-root.js`), the Experiment folder
+known: below any folders the archive wraps its contents in, and `sca/` itself where it holds the
+package file or the walk cannot decide. Then it prints the `analyze` prompt.
 
 `--llm-review` given `--sca-extracted` (the source archive, already extracted) copies all of it into
 the work folder's `sca/`, takes `--sca-package-root` and `--sca-experiments` where they were given and
-finds the package root where not, and prints the `analyze` prompt itself. Nothing either run hands
+finds the package root where not, and prints the `analyze` prompt itself. An Experiment add-on
+needs `--sca-experiments` there, as a review given these flags does. Nothing either run hands
 out names a folder outside `sca/`.
 
 Nothing asks which directory holds the add-on's own code: the whole extracted archive is reviewed,
@@ -538,15 +541,14 @@ uses and no other, one entry each, in the shape a sweep's result has: its file r
 `SCA_SOURCE`, its
 line where it sits on one, and a hint of at most 500 characters saying what it does. An empty
 list is a safe build. The linter reads the verdict off the list, `unsafe` where it holds an
-entry, and writes the list to the work folder's `build-issues.md`. For an Experiment whose folder was not given, it also works
-out which directory holds the Experiment implementation (`<SCA_EXPERIMENTS>`, a name in
-`<angle brackets>` being one it works out), relative to `SCA_SOURCE`.
+entry, and writes the list to the work folder's `build-issues.md`.
 
 The reader hands the list back in the work folder's review file (`ANSWERS`, the same
 `.review/review.json` a review pass uses) and runs `--llm-handback` on the folder. The preparation's
 own record, `.review/prepare.json`, says where it stands, so every step is that one command. The
 reader never chooses what comes next. An `sca/` that is not the folder the source was
-extracted into, an Experiment folder outside `sca/` or holding the package root, an issue the sweep's checker refuses (a
+extracted into, an Experiment folder outside `sca/`, the archive itself or one holding the package
+root (at `unpack`), an issue the sweep's checker refuses (a
 file outside `sca/` or not there, a line past its end, a missing or too long hint, a field it
 does not take), or a missing `build.md` is refused, and the reader corrects it and hands it back
 again.

@@ -264,6 +264,15 @@ export function unpackSource(stdout, { experimentsFolder, typed } = {}) {
   if (experimentsFolder) {
     fs.mkdirSync(path.join(root, experimentsFolder), { recursive: true });
   }
+  // The Experiment folder is named in the unpack review file, where the prompt asks for it.
+  const answers = headerValue(stdout, "ANSWERS");
+  if (answers) {
+    const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
+    doc.entries = doc.entries.map((e) =>
+      e.index === "SCA_EXPERIMENTS" ? { ...e, answer: experimentsFolder } : e
+    );
+    fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
+  }
   const work = workOf(stdout);
   return typed
     ? run(["--llm-handback", typed(work)])
@@ -287,21 +296,14 @@ const issuesFor = (safety) => (safety === "unsafe" ? [UNSAFE_ISSUE] : []);
  * (UNSAFE_ISSUE) for a build to be judged unsafe. Its hand-back prints the permission prompt
  * (answerPermission). The hand-back itself is the caller's, so it can run it as it likes.
  * @param {string} stdout  The `analyze` prompt's run.
- * @param {{safety?: string, experimentsFolder?: string}} [opts]  The judgement, and the Experiment
- *   folder where the prompt asks for it.
+ * @param {{safety?: string}} [opts]  The judgement.
  * @returns {string[]}  The hand-back's argv, as the prompt prints it.
  */
-export function answerAnalyze(
-  stdout,
-  { safety = "safe", experimentsFolder } = {}
-) {
+export function answerAnalyze(stdout, { safety = "safe" } = {}) {
   fs.writeFileSync(headerValue(stdout, "SCA_BUILD_PROCESS"), "1. `npm ci`\n");
   const answers = headerValue(stdout, "ANSWERS");
   const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
-  const given = {
-    SCA_BUILD_SAFETY_ISSUES: issuesFor(safety),
-    SCA_EXPERIMENTS: experimentsFolder,
-  };
+  const given = { SCA_BUILD_SAFETY_ISSUES: issuesFor(safety) };
   doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));
   fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
   return argvOf(commandOf(stdout));
@@ -325,9 +327,9 @@ export function answerPermission(stdout, decision = "Build it myself") {
 
 /**
  * Do what the first prompts ask, the way their reader would: extract the source into
- * EXTRACT_TO and run the hand-back the `unpack` prompt prints, then write the build report to
- * SCA_BUILD_PROCESS, answer ANSWERS (the build judged safe, and the Experiment folder where it
- * is asked), and run the hand-back the `analyze` prompt prints. Where that prints the
+ * EXTRACT_TO, name the Experiment folder where `unpack` asks for it, and run the hand-back the
+ * `unpack` prompt prints, then write the build report to SCA_BUILD_PROCESS, answer ANSWERS (the
+ * build judged safe), and run the hand-back the `analyze` prompt prints. Where that prints the
  * permission prompt, answer it too (the agent let build) and run its hand-back - which, with
  * nothing to rescue, starts the review.
  * @param {string} stdout  The --llm-sca-review run's output.
@@ -361,10 +363,7 @@ export function handBackRoots(
   const answers = headerValue(unpacked.stdout, "ANSWERS");
   const fill = (given) => {
     const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
-    doc.entries = doc.entries.map((e) => ({
-      ...e,
-      answer: e.index in given ? given[e.index] : experimentsFolder,
-    }));
+    doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));
     fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
   };
   fill({ SCA_BUILD_SAFETY_ISSUES: issuesFor(safety) });

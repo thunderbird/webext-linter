@@ -223,13 +223,16 @@ test("the preparation records the flags its review is started with", () => {
   assert.match(plain.stdout, /\n4\. That run checks the source/);
 
   // An add-on that ships an Experiment needs the folder, so the .xpi's own manifest.json
-  // decides: the analyze prompt asks for it, the review file has a slot for it, and the
-  // started review reads it as the Experiment folder.
+  // decides: the unpack prompt asks for it, beside the extraction, the unpack review file has
+  // a slot for it, and the started review reads it as the Experiment folder.
   packAddon(xpi, { experiment_apis: { x: {} } });
   const exp = prepared("--allow-experiments");
-  assert.doesNotMatch(exp.stdout, /SCA_EXPERIMENTS/, "unpack asks for nothing");
-  handBackRoots(exp.stdout, { experimentsFolder: "experiment" });
+  assert.match(exp.stdout, /SCA_EXPERIMENTS/, "unpack asks for it");
   const work = workOf(exp.stdout);
+  assert.deepEqual(readJson(work, "review").entries, [
+    { index: "SCA_EXPERIMENTS", answer: null },
+  ]);
+  handBackRoots(exp.stdout, { experimentsFolder: "experiment" });
   assert.equal(
     readJson(work, "state").report.meta.scaFolders.experiments,
     path.join(work, "sca", "experiment")

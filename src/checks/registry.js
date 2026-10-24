@@ -834,8 +834,8 @@ export class Registry {
    *
    * A step comes back with its `when` condition parsed, never filtered here: which steps a
    * run prints is layout, decided in src/report/format.js beside the flags themselves.
-   * `when: find-experiment` marks a step about the Experiment folder, printed only where the
-   * add-on declares Experiments and the folder is not known yet.
+   * `when: find-experiment` marks a step of `unpack` about the Experiment folder, printed only
+   * where the add-on declares Experiments.
    *
    * `buildPermission` is the reviewer's one decision about the build, which the permission
    * prompt puts: per verdict, its text and the two answers it offers, each by its id
