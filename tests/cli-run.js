@@ -85,7 +85,7 @@ export const FIXTURES = path.join(ROOT, "tests", "addons");
  *  passed as it stands. */
 const READ_FOLDER_FLAGS = new Set([
   "--sca-extracted",
-  "--sca-build",
+  "--sca-package-root",
   "--sca-experiments",
 ]);
 

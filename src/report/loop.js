@@ -742,7 +742,7 @@ export function settle(state, registry) {
  * rescued copy's where a rescue was attempted. LLM_BUILD_RESULT is the wording of what came
  * of the agent's build (buildResultFact), held where the review shows the Build Review
  * Details, a source code review whose build every guard vouches for, and only for a result
- * with a wording: not where the reviewer builds it. LLM_BUILD_ROOT is the build folder the agent
+ * with a wording: not where the reviewer builds it. LLM_BUILD_ROOT is the package root the agent
  * built in where it built or tried to, and LLM_BUILD_OUTPUT what it built, beside which
  * LLM_BUILD_XPI_MATCH is its comparison with the submitted XPI.
  * @param {import("./state.js").LoopState} state

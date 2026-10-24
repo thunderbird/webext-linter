@@ -275,7 +275,7 @@ test("a clean source moves on to the build", async () => {
   assert.equal(at.record.step, PREPARE_STEP.build);
   assert.deepEqual(at.record.roots, {
     extracted: workPaths(work).sca,
-    build: workPaths(work).sca,
+    packageRoot: workPaths(work).sca,
   });
   assert.equal(at.record.packageManagers, true, "the reviewer allowed them");
   assert.deepEqual(at.record.vulnerabilities, NONE);
@@ -315,7 +315,7 @@ test("the build pass copies the whole source archive into build/", async () => {
   writeTree(buildCopy, { "left-over.txt": "stale" });
   const at = await first(work);
   assert.equal(at.record.step, PREPARE_STEP.build);
-  assert.equal(at.record.roots.build, path.join(sca, "proj"));
+  assert.equal(at.record.roots.packageRoot, path.join(sca, "proj"));
   for (const file of [
     "beside.txt",
     "manifest.json",
@@ -490,7 +490,7 @@ test("the analyze step asks for the build's safety issues", async () => {
   assert.deepEqual(reviewEntries(work), []);
   const at = await unpackStep(work);
   assert.equal(at.record.step, PREPARE_STEP.analyze);
-  assert.equal(at.record.roots.build, workPaths(work).sca);
+  assert.equal(at.record.roots.packageRoot, workPaths(work).sca);
   const [safety, ...rest] = reviewEntries(work);
   assert.deepEqual(rest, [], "the root is the linter's, and asked of nobody");
   assert.deepEqual(safety, { index: "SCA_BUILD_SAFETY_ISSUES", answer: null });
@@ -519,7 +519,7 @@ test("a safe build moves on to the permission question, with nothing audited", a
   assert.equal(at.record.vulnerabilities, null, "nothing is audited");
   assert.deepEqual(at.record.roots, {
     extracted: workPaths(work).sca,
-    build: workPaths(work).sca,
+    packageRoot: workPaths(work).sca,
   });
   assert.deepEqual(recordOf(work), at.record);
   const [managers, ...rest] = JSON.parse(
@@ -739,7 +739,7 @@ test("not letting the agent build is done at once, with nothing audited", async 
   assert.equal(at.record.buildResult, null, "nothing is built");
   assert.deepEqual(at.record.roots, {
     extracted: workPaths(work).sca,
-    build: workPaths(work).sca,
+    packageRoot: workPaths(work).sca,
   });
   assert.deepEqual(recordOf(work), at.record);
   assert.ok(!fs.existsSync(workPaths(work).rescued), "no copy is made");
@@ -801,7 +801,7 @@ test("a source in a wrapper folder is rooted in the folder below", async () => {
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.rescue);
   assert.equal(
-    at.record.roots.build,
+    at.record.roots.packageRoot,
     path.join(workPaths(work).rescued, "proj")
   );
   cleanup(work);
@@ -826,7 +826,7 @@ test("a source stopped only by a locked vulnerability gets a rescued copy", asyn
   assert.equal(at.next, "step");
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.rescue);
-  assert.equal(at.record.roots.build, copy);
+  assert.equal(at.record.roots.packageRoot, copy);
   assert.deepEqual(at.record.vulnerabilities, ONE_HIGH);
   assert.equal(at.record.buildResult, null);
   assert.deepEqual(recordOf(work), at.record);
@@ -916,7 +916,7 @@ test("a root the walk cannot decide is sca/ itself", async () => {
     "two/package.json": packageFile(),
   });
   const at = await unpackStep(work);
-  assert.equal(at.record.roots.build, workPaths(work).sca);
+  assert.equal(at.record.roots.packageRoot, workPaths(work).sca);
   cleanup(work);
 });
 
@@ -928,12 +928,12 @@ test("a wrapper folder that is a link out of the source is not the root", async 
   writeTree(elsewhere, { "package.json": packageFile() });
   fs.symlinkSync(elsewhere, path.join(workPaths(work).sca, "out"));
   const at = await unpackStep(work);
-  assert.equal(at.record.roots.build, workPaths(work).sca);
+  assert.equal(at.record.roots.packageRoot, workPaths(work).sca);
   cleanup(work);
 });
 
-// A review reads the whole copy its build folder lies in, so the Experiment folder it starts
-// with may sit anywhere in that copy, beside the build folder too. Only a folder outside it is
+// A review reads the whole copy its package root lies in, so the Experiment folder it starts
+// with may sit anywhere in that copy, beside the package root too. Only a folder outside it is
 // refused.
 test("a review starts with an Experiment folder anywhere in the copy", () => {
   const work = workFolder({
@@ -943,7 +943,7 @@ test("a review starts with an Experiment folder anywhere in the copy", () => {
   const sca = workPaths(work).sca;
   const roots = {
     extracted: sca,
-    build: path.join(sca, "pkg"),
+    packageRoot: path.join(sca, "pkg"),
     experiments: path.join(sca, "exp"),
   };
   assert.deepEqual(recordedRoots(work, roots), roots);
@@ -1131,7 +1131,7 @@ async function rescued(vulns = TOOL_HIGH) {
   return {
     work,
     copy: workPaths(work).rescued,
-    root: at.record.roots.build,
+    root: at.record.roots.packageRoot,
   };
 }
 
@@ -1145,7 +1145,7 @@ function rescueFailed(work, at, copyCounts) {
   assert.equal(at.record.buildResult, "rescue-failed");
   assert.equal(at.record.buildOutput, null);
   assert.equal(at.record.buildMatch, null);
-  assert.equal(at.record.roots.build, workPaths(work).sca);
+  assert.equal(at.record.roots.packageRoot, workPaths(work).sca);
   assert.deepEqual(at.record.vulnerabilities, ONE_HIGH);
   assert.deepEqual(at.record.rescuedVulnerabilities, copyCounts);
   assert.deepEqual(recordOf(work), at.record);
@@ -1172,7 +1172,11 @@ test("a clean copy with its build output is done with the copy's roots", async (
   assert.equal(at.next, "review");
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.done);
-  assert.equal(at.record.roots.build, root, "the copy is what is reviewed");
+  assert.equal(
+    at.record.roots.packageRoot,
+    root,
+    "the copy is what is reviewed"
+  );
   assert.equal(at.record.buildResult, "built");
   assert.equal(at.record.buildOutput, output);
   assert.deepEqual(at.record.vulnerabilities, ONE_HIGH);
@@ -1310,7 +1314,7 @@ test("the audit reads the run's OSV cache", async () => {
   // The copy's audit reads the same lock from the same cache, and finds it vulnerable.
   rescueFailed(
     work,
-    await handOutput(work, buildRescued(work, at.record.roots.build)),
+    await handOutput(work, buildRescued(work, at.record.roots.packageRoot)),
     ONE_HIGH
   );
   cleanup(work);
@@ -1466,7 +1470,7 @@ test("a clean rescue handed back again keeps its copy", async () => {
   await handOutput(work, buildRescued(work, root));
   const again = await later(work);
   assert.equal(again.next, "review");
-  assert.equal(again.record.roots.build, root);
+  assert.equal(again.record.roots.packageRoot, root);
   assert.ok(fs.existsSync(copy));
   assert.ok(fs.existsSync(workPaths(work).buildCopy), "its build stays");
   cleanup(work);
@@ -1480,7 +1484,7 @@ test("a copy left behind by a failed rescue cut short is removed", async () => {
   writePrepare(work, {
     ...recordOf(work),
     step: PREPARE_STEP.done,
-    roots: { extracted: workPaths(work).sca, build: workPaths(work).sca },
+    roots: { extracted: workPaths(work).sca, packageRoot: workPaths(work).sca },
     buildResult: "rescue-failed",
   });
   assert.ok(fs.existsSync(copy));
@@ -1504,7 +1508,7 @@ test("a forged record never removes a folder outside the work folder", async () 
   writePrepare(work, {
     ...recordOf(work),
     step: PREPARE_STEP.done,
-    roots: { extracted: workPaths(work).sca, build: stray },
+    roots: { extracted: workPaths(work).sca, packageRoot: stray },
   });
   await later(work);
   assert.ok(fs.existsSync(stray));
@@ -1542,7 +1546,7 @@ test("a record changed after the linter wrote it is refused", async () => {
   const { work } = await rescued();
   const file = workPaths(work).prepare;
   const record = JSON.parse(fs.readFileSync(file, "utf8"));
-  record.roots.experiments = record.roots.build;
+  record.roots.experiments = record.roots.packageRoot;
   fs.chmodSync(file, 0o644);
   fs.writeFileSync(file, JSON.stringify(record, null, 1));
   await assert.rejects(
@@ -1588,21 +1592,24 @@ test("a packageManagers that is neither true nor false is refused", async () => 
   cleanup(work);
 });
 
-// The record's folders are the extracted copy and the build folder, and the Experiment
+// The record's folders are the extracted copy and the package root, and the Experiment
 // folder exactly where the add-on declares Experiments, as the linter writes them. Anything
 // else was put there by an edit.
 test("a record's folders of another shape are refused", async () => {
   const { work } = await rescued();
   const before = recordOf(work);
   const shape =
-    /holds no extracted copy and build folder of the shape the linter writes/;
+    /holds no extracted copy and package root of the shape the linter writes/;
   for (const [edit, problem] of [
     [{ roots: null }, shape],
     [{ roots: { extracted: before.roots.extracted } }, shape],
-    [{ roots: { ...before.roots, scaBuild: before.roots.build } }, shape],
+    [
+      { roots: { ...before.roots, scaPackageRoot: before.roots.packageRoot } },
+      shape,
+    ],
     [{ roots: { ...before.roots, experiments: "" } }, shape],
     [
-      { roots: { ...before.roots, experiments: before.roots.build } },
+      { roots: { ...before.roots, experiments: before.roots.packageRoot } },
       /names an Experiment folder for an add-on without Experiments/,
     ],
     [
@@ -1685,7 +1692,7 @@ test("a build record the linter would not write is refused", async (t) => {
     ],
     [
       "a result before the build is handed back",
-      (r) => ({ ...r, buildResult: "built", buildOutput: r.roots.build }),
+      (r) => ({ ...r, buildResult: "built", buildOutput: r.roots.packageRoot }),
       "holds buildResult as no result the linter writes",
     ],
     [
@@ -1704,7 +1711,7 @@ test("a build record the linter would not write is refused", async (t) => {
         ...r,
         step: PREPARE_STEP.done,
         buildResult: "failed",
-        buildOutput: r.roots.build,
+        buildOutput: r.roots.packageRoot,
       }),
       "holds buildOutput without a build that produced it",
     ],
@@ -1724,7 +1731,7 @@ test("a build record the linter would not write is refused", async (t) => {
         ...r,
         step: PREPARE_STEP.done,
         buildResult: "built",
-        buildOutput: r.roots.build,
+        buildOutput: r.roots.packageRoot,
       }),
       "holds a built result without buildMatch",
     ],
@@ -1734,7 +1741,7 @@ test("a build record the linter would not write is refused", async (t) => {
         ...r,
         step: PREPARE_STEP.done,
         buildResult: "built",
-        buildOutput: r.roots.build,
+        buildOutput: r.roots.packageRoot,
         buildMatch: "close enough",
       }),
       "holds buildMatch as no answer the agent can give",
@@ -1817,7 +1824,7 @@ test("a record holding a relative path is never written", async () => {
     "submission.xpi": {
       submission: { ...record.submission, xpi: "addon.xpi" },
     },
-    "roots.build": { roots: { ...record.roots, build: "sca" } },
+    "roots.packageRoot": { roots: { ...record.roots, packageRoot: "sca" } },
     "roots.experiments": {
       roots: { ...record.roots, experiments: "exp" },
     },

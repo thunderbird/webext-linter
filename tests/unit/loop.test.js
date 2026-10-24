@@ -539,7 +539,7 @@ test("the build details name the XPI, the source, the report, the judgement, the
   state.report.meta.xpi = path.join(dir, "addon-1.0.xpi");
   state.report.meta.xpiFile = "addon-1.0.xpi";
   const rescuedSrc = path.join(dir, "rescued", "src");
-  state.paths.scaFolders = { extracted: rescuedSrc, build: rescuedSrc };
+  state.paths.scaFolders = { extracted: rescuedSrc, packageRoot: rescuedSrc };
   state.report.meta.scaFolders = state.paths.scaFolders;
   state.paths.build = path.join(dir, "build.md");
   state.report.meta.buildFile = state.paths.build;
@@ -548,7 +548,7 @@ test("the build details name the XPI, the source, the report, the judgement, the
   const xpi = `* XPI_FILE: [addon-1.0.xpi](${state.report.meta.xpi})`;
   const unpacked = `* XPI_ROOT: [extracted addon](${state.report.meta.xpiRoot})`;
   const extracted = `* SCA_EXTRACTED: [source archive](${rescuedSrc})`;
-  const root = `* SCA_BUILD: [build folder](${rescuedSrc})`;
+  const root = `* SCA_PACKAGE_ROOT: [package root](${rescuedSrc})`;
   const report = `* SCA_BUILD_PROCESS: [build.md](${state.paths.build})`;
   assert.deepEqual(rows(), [xpi, unpacked, extracted, root]);
   state.products = ["build"];
@@ -598,7 +598,7 @@ test("the build details show the agent's comparison only beside its output", () 
   }
 });
 
-// SCA_BUILD is labelled by where the reviewed source lies: the source archive, or the rescued
+// SCA_PACKAGE_ROOT is labelled by where the reviewed source lies: the source archive, or the rescued
 // copy, beside which SCA_BUILD_ORIG names the same root in the source archive. LLM_BUILD_ROOT names
 // the root in the build copy where the agent built or tried to, and nowhere else. The Review
 // Details name the same rows.
@@ -616,45 +616,45 @@ test("the details name the reviewed root, the original root and the build root",
       .filter((row) =>
         [
           "* SCA_EXTRACTED",
-          "* SCA_BUILD:",
+          "* SCA_PACKAGE_ROOT:",
           "* SCA_BUILD_ORIG",
           "* LLM_BUILD_ROOT",
         ].some((n) => row.startsWith(n))
       );
   const inArchive = [
     `* SCA_EXTRACTED: [source archive](${scaTree})`,
-    `* SCA_BUILD: [build folder](${sca})`,
+    `* SCA_PACKAGE_ROOT: [package root](${sca})`,
   ];
   const cases = [
     [
       "the source archive, not built",
-      { extracted: scaTree, build: sca },
+      { extracted: scaTree, packageRoot: sca },
       null,
       { result: null, output: null },
       inArchive,
     ],
     [
       "the source archive, built",
-      { extracted: scaTree, build: sca },
+      { extracted: scaTree, packageRoot: sca },
       null,
       { result: "built", root: built, output: path.join(built, "dist") },
       [...inArchive, `* LLM_BUILD_ROOT: [build copy](${built})`],
     ],
     [
       "the source archive, its build failed",
-      { extracted: scaTree, build: sca },
+      { extracted: scaTree, packageRoot: sca },
       null,
       { result: "failed", root: built, output: null },
       [...inArchive, `* LLM_BUILD_ROOT: [build copy](${built})`],
     ],
     [
       "the rescued copy, built",
-      { extracted: rescuedTree, build: rescued },
+      { extracted: rescuedTree, packageRoot: rescued },
       sca,
       { result: "built", root: built, output: path.join(built, "dist") },
       [
         `* SCA_EXTRACTED: [rescued source (reduced/fixed dependencies)](${rescuedTree})`,
-        `* SCA_BUILD: [build folder](${rescued})`,
+        `* SCA_PACKAGE_ROOT: [package root](${rescued})`,
         `* SCA_BUILD_ORIG: [source archive](${sca})`,
         `* LLM_BUILD_ROOT: [build copy](${built})`,
       ],
@@ -1141,7 +1141,7 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
   // Both trees exist for this one, so the review is a source-code review.
   state.paths.scaFolders = {
     extracted: path.join(dir, "src"),
-    build: path.join(dir, "src"),
+    packageRoot: path.join(dir, "src"),
   };
   state.paths.sweeps[ARTIFACT_SCA] = {
     request: "Sweep the source.",
@@ -1926,7 +1926,7 @@ test("an archive holding the XPI and no lock is offered the restart, unreadable 
   const archiveOnly = abortedScaReview(dir, [...shape, "minified-code"]);
   archiveOnly.state.paths.scaFolders = {
     extracted: path.join(dir, "sca"),
-    build: path.join(dir, "sca"),
+    packageRoot: path.join(dir, "sca"),
   };
   const minified = archiveOnly.state.report.findings.at(-1);
   minified.file = "tests/fixture.min.js";
@@ -1977,7 +1977,7 @@ function buildReview(dir) {
   made.state.report.meta.buildFile = made.state.paths.build;
   made.state.paths.scaFolders = {
     extracted: path.join(dir, "sca"),
-    build: path.join(dir, "sca"),
+    packageRoot: path.join(dir, "sca"),
   };
   return made;
 }
@@ -2003,7 +2003,7 @@ function buildQuestionsReview(dir) {
   });
   made.state.paths.scaFolders = {
     extracted: path.join(dir, "src"),
-    build: path.join(dir, "src"),
+    packageRoot: path.join(dir, "src"),
   };
   made.state.manual.push(
     todo("build-lifecycle-hook", {
@@ -2941,7 +2941,10 @@ test("settle words a per-mode response from the state's review mode", () => {
       // A source review has both roots, and every finding says which one its path is in
       // - the loop resolves the path for the agent from exactly that pair.
       if (sca) {
-        state.paths.scaFolders = { extracted: "/tmp/src/", build: "/tmp/src/" };
+        state.paths.scaFolders = {
+          extracted: "/tmp/src/",
+          packageRoot: "/tmp/src/",
+        };
       }
       state.report.findings = [
         {

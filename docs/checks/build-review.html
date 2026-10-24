@@ -16,7 +16,7 @@
       <h2>What it asks</h2>
       <p class="lead">
         In a source-code submission the reviewer builds the add-on from the readable source,
-        but the dependency audit reads only the build folder's package and lock file. A build
+        but the dependency audit reads only the package root's package and lock file. A build
         script or config could ignore the package file and pull code or resources from an
         undeclared source, leaving the declared dependencies a clean decoy. And the source
         has to build into exactly the shipped XPI, or the review read the wrong code.
@@ -37,7 +37,7 @@
         those words attached. Where the reviewer decided about the build in the preparation,
         <a href="build-reproduces-xpi.html">Reproducing the XPI from the source</a> or
         <a href="build-unsafe.html">Unsafe build process</a> asks in its place. The entry anchors
-        at the build folder's <code>package.json</code> where there is one.
+        at the package root's <code>package.json</code> where there is one.
       </p>
 
       <h2>Decision flow</h2>

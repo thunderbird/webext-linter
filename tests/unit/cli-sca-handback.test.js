@@ -222,7 +222,7 @@ test("an unknown check id is refused before a prompt is printed", () => {
 test("--llm-sca-review refuses what it cannot be combined with", () => {
   const dir = submissionFolder();
   const cases = [
-    [["--sca-build", "src"], /works out --sca-build for you/],
+    [["--sca-package-root", "src"], /works out --sca-package-root for you/],
     [["--llm-review"], /starts its own review/],
     [["--llm-handback", "work"], /starts its own review/],
     [["--report-format", "json"], /--llm-sca-review is text only/],

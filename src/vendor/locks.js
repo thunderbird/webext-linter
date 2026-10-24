@@ -50,7 +50,7 @@ import {
   DECLARATION_MAPS,
   aliasTarget,
   declaredDependencies,
-  buildKey,
+  packageRootKey,
   readPackageFile,
   submissionFiles,
   ownValue,
@@ -308,7 +308,7 @@ export function lockedPackages(addon) {
     return [];
   }
   // Named in the archive's keyspace, where every reported path is given.
-  const at = buildKey(addon, file);
+  const at = packageRootKey(addon, file);
   const found = file.endsWith(".json")
     ? npmPackages(data, at)
     : pnpmPackages(data, at);
@@ -627,7 +627,7 @@ function declaredName(name, spec) {
 export function lockSourceGaps(addon) {
   const file = governingLock(addon);
   // Named in the archive's keyspace, where every reported path is given.
-  const at = buildKey(addon, file);
+  const at = packageRootKey(addon, file);
   const data = file ? parsedLock(addon, file) : null;
   if (!data) {
     return [];
@@ -719,7 +719,7 @@ export function lockSourceGaps(addon) {
 export function lockInstallTargets(addon) {
   const file = governingLock(addon);
   // Named in the archive's keyspace, where every reported path is given.
-  const at = buildKey(addon, file);
+  const at = packageRootKey(addon, file);
   const data = file ? parsedLock(addon, file) : null;
   if (!plainObject(data)) {
     return [];
@@ -1012,7 +1012,7 @@ function objectOr(value) {
 export function githubInstalls(addon) {
   const file = governingLock(addon);
   // Named in the archive's keyspace, where every reported path is given.
-  const at = buildKey(addon, file);
+  const at = packageRootKey(addon, file);
   const data = file ? parsedLock(addon, file) : null;
   if (!data) {
     return [];
@@ -1189,7 +1189,7 @@ function ownerRepo(owner, repo) {
  * unsupported-dependency check in a source review.
  *
  * Where each format records the path: npm lockfile v2/v3 in a `link: true` entry's
- * `resolved` (relative to the build folder) and in a `resolved: "file:..."` for a tarball; npm
+ * `resolved` (relative to the package root) and in a `resolved: "file:..."` for a tarball; npm
  * lockfile v1 in `version: "file:..."`; pnpm in an importer's `link:...` version (relative
  * to that importer's folder) and in a package's `resolution.directory` or
  * `resolution.tarball: "file:..."`.
@@ -1204,7 +1204,7 @@ function ownerRepo(owner, repo) {
 export function localInstalls(addon) {
   const file = governingLock(addon);
   // Named in the archive's keyspace, where every reported path is given.
-  const at = buildKey(addon, file);
+  const at = packageRootKey(addon, file);
   const data = file ? parsedLock(addon, file) : null;
   if (!data) {
     return [];
@@ -1212,13 +1212,13 @@ export function localInstalls(addon) {
   const directories = new Set(addon?.directories ?? []);
   const out = [];
   const judge = (token, name, spec, baseDir, target) => {
-    // A path in the lock is relative to the build folder's own importer, and the folders the
+    // A path in the lock is relative to the package root's own importer, and the folders the
     // loader saw are keyed from the extracted archive, so it is resolved from where the build
-    // folder sits in it: a workspace sibling beside the build folder is a folder the
+    // folder sits in it: a workspace sibling beside the package root is a folder the
     // submission holds.
     const from = baseDir
-      ? buildKey(addon, baseDir)
-      : (addon?.buildPrefix ?? "");
+      ? packageRootKey(addon, baseDir)
+      : (addon?.packageRootPrefix ?? "");
     const dir = resolveLocalDir(from, target);
     // The extracted archive itself ("") is always a folder the submission holds.
     if (dir === null || (dir !== "" && !directories.has(dir))) {
@@ -1348,13 +1348,13 @@ function pnpmSource(entry) {
  * `unreadable`: the file does not parse. `unrecognised`: it parses but is not a lock the
  * readers here know - which matters only when the package file declares something to
  * install from it (`npm ci` accepts a `{}` lock for a package file that declares nothing).
- * @param {Addon} addon  The SCA archive (the build folder's package.json and its locks).
+ * @param {Addon} addon  The SCA archive (the package root's package.json and its locks).
  * @returns {?{file: string, reason: string}}
  */
 export function unreadableLock(addon) {
   const file = governingLock(addon);
   // Named in the archive's keyspace, where every reported path is given.
-  const at = buildKey(addon, file);
+  const at = packageRootKey(addon, file);
   if (!file) {
     return null; // no lock at all is sca-lock-file-missing's question, not this one
   }

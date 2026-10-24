@@ -37,7 +37,7 @@ test("reviewing a fixture renders to stdout with a severity-based exit", () => {
 
 // A source code review's own steps send a sub-agent to paths, and those paths are what the
 // review RESOLVED to be, never what the flags asked for: the root a review settles on can
-// sit below the one --sca-build named, so a step reading the flag would send an agent to a
+// sit below the one --sca-package-root named, so a step reading the flag would send an agent to a
 // root nothing had read. Driven through the CLI because that is the seam: rendering from a
 // hand-built meta cannot catch a pipeline that feeds its two halves different values.
 //
@@ -56,7 +56,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
   ]);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
-  const root = headerValue(r.stdout, "SCA_BUILD");
+  const root = headerValue(r.stdout, "SCA_PACKAGE_ROOT");
   assert.equal(root, fs.realpathSync(workPaths(work).sca));
   assert.equal(
     headerValue(r.stdout, "SCA_BUILD_PROCESS"),
@@ -68,12 +68,15 @@ test("a source code review's steps carry the paths the review resolved to", () =
   const review = run(answerPermission(permission.stdout));
   assert.notEqual(review.code, 2, review.stdout + review.stderr);
   assert.match(review.stdout, /── LLM Prompt ──/);
-  assert.ok(review.stdout.includes(root), "the step names the build folder");
+  assert.ok(review.stdout.includes(root), "the step names the package root");
   assert.ok(
     review.stdout.includes(workPaths(work).build),
     "and the build report"
   );
-  assert.equal(readJson(work, "state").report.meta.scaFolders.build, root);
+  assert.equal(
+    readJson(work, "state").report.meta.scaFolders.packageRoot,
+    root
+  );
   fs.rmSync(work, { recursive: true, force: true });
 
   // A rejected Experiment submitted WITH --sca-extracted is not prepared: the review rejects it

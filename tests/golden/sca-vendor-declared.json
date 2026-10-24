@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/sca-vendor-declared/src",
-      "build": "<root>/tests/addons/sca-vendor-declared/src"
+      "packageRoot": "<root>/tests/addons/sca-vendor-declared/src"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

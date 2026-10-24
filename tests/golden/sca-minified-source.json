@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/sca-minified-source/src",
-      "build": "<root>/tests/addons/sca-minified-source/src"
+      "packageRoot": "<root>/tests/addons/sca-minified-source/src"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

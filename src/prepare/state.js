@@ -19,11 +19,11 @@
 // a rescue copies that whole folder into `rescued/` beside it, and every build runs in a whole
 // copy of one of the two in `build/`. The hand-back that finds the folder
 // done starts its review from this record (src/cli.js), and that review reads it too
-// (src/pipeline.js): a rescued review reads the package files of the build folder it was
+// (src/pipeline.js): a rescued review reads the package files of the package root it was
 // copied from, in `sca/`, to tell the developer the rescue changed them (originalPackages).
 //
 // Belongs here: the record's shape, reading and writing it, marking a folder at a step, where
-// a build folder lies in each of the folders, and reading the package files of the build
+// a package root lies in each of the folders, and reading the package files of the build
 // folder a rescue copied. Does NOT belong here: what each step does and when the record moves on (-> ./steps.js), the audit that
 // decides it (-> ./audit.js), the folder's names (-> src/util/dest.js workPaths), or how a
 // prompt is printed (-> src/report/format.js).
@@ -52,21 +52,21 @@ const READ_ONLY = 0o444;
  * Where a preparation stands, which is what the next hand-back of the folder does:
  *
  * - `unpack`: the source archive is to be extracted into `sca/` (--llm-sca-review only). The
- *   next hand-back derives the build folder inside it (src/addon/sca-build.js) and moves on
+ *   next hand-back derives the package root inside it (src/addon/package-root.js) and moves on
  *   to `analyze`;
- * - `analyze`: the build folder is known, in `sca/`, and its build is to be reported in
+ * - `analyze`: the package root is known, in `sca/`, and its build is to be reported in
  *   build.md, with the build's issues (and the Experiment folder, where the add-on declares
  *   Experiments and it is not known yet) handed back in the review file. A review given
  *   --sca-extracted starts here, its source copied into `sca/`. The next hand-back moves
  *   either verdict on to `permission` (or, where the record holds agentBuilds, decides for
  *   the reviewer), and to `done` where a build-guard check is switched off;
  * - `permission`: the reviewer is shown the Build Review Details and asked for the build
- *   decision, and the next hand-back reads it and audits the build folder's lock where the
+ *   decision, and the next hand-back reads it and audits the package root's lock where the
  *   agent may build;
- * - `build`: the build folder's lock is clean, the linter copies `sca/` into `build/`, and
+ * - `build`: the package root's lock is clean, the linter copies `sca/` into `build/`, and
  *   the agent builds it there and names what the build produced and whether it matches the
  *   submitted XPI, or that it failed;
- * - `rescue`: the build folder's lock is vulnerable, and the agent makes the lock of the
+ * - `rescue`: the package root's lock is vulnerable, and the agent makes the lock of the
  *   rescued copy in `rescued/` clean, builds a copy of it in `build/`, and names what the
  *   build produced and whether it matches the submitted XPI, or that the rescue failed. The
  *   next hand-back audits the copy and checks what it named;
@@ -144,10 +144,10 @@ const COUNTED = ["moderate", "high", "critical"];
  *   `buildResult` is `built`.
  * @property {?string} buildMatch  The agent's comparison of that output with the submitted
  *   XPI, a BUILD_MATCH_VALUES id. Held only where `buildResult` is `built`.
- * @property {import("../addon/sca-build.js").ScaFolders} [roots]  The settled folders,
+ * @property {import("../addon/package-root.js").ScaFolders} [roots]  The settled folders,
  *   absolute and real, there from `analyze` on: the extracted copy is `sca/`, or `rescued/`
  *   while a rescue runs and once it came out clean - the tree the next step, or the review,
- *   reads - and the build folder and the Experiment folder lie inside it. The Experiment
+ *   reads - and the package root and the Experiment folder lie inside it. The Experiment
  *   folder is there exactly when the add-on declares Experiments, from `permission` on; at
  *   `analyze` it may still be asked for (checkRoots).
  * @property {string} digest  The hash over every other field, as writePrepare stored it
@@ -238,7 +238,7 @@ export function readPrepare(work) {
 
 /**
  * The record's folders, of the shape the linter writes: none before `analyze`, then the
- * extracted copy and the build folder, and the Experiment folder exactly where the add-on
+ * extracted copy and the package root, and the Experiment folder exactly where the add-on
  * declares Experiments - where it may still be missing at `analyze`, which asks for it.
  * @param {PrepareRecord} record
  * @throws {HandbackRefused}
@@ -259,12 +259,14 @@ function checkRoots(record) {
   const folder = (key) => typeof roots?.[key] === "string" && roots[key] !== "";
   const shaped =
     folder("extracted") &&
-    folder("build") &&
-    keys.every((k) => ["extracted", "build", "experiments"].includes(k)) &&
+    folder("packageRoot") &&
+    keys.every((k) =>
+      ["extracted", "packageRoot", "experiments"].includes(k)
+    ) &&
     (!keys.includes("experiments") || folder("experiments"));
   if (!shaped) {
     throw new HandbackRefused(
-      "the preparation's record holds no extracted copy and build folder of the shape the linter writes"
+      "the preparation's record holds no extracted copy and package root of the shape the linter writes"
     );
   }
   const named = keys.includes("experiments");
@@ -559,13 +561,13 @@ export function markPrepare(work, record) {
 }
 
 /**
- * Where a build folder the record holds lies in the work folder's trees: inside `rescued/`
+ * Where a package root the record holds lies in the work folder's trees: inside `rescued/`
  * while a rescue runs and once it came out clean, else inside `sca/`. `scaBuildOrig` is the
  * same place in `sca/` for one in `rescued/`, and there only then: in `sca/` it is itself.
  * `buildRoot` is the same place in `build/`, where every build runs, and there only for one
  * in either tree.
  * @param {string} work  The work folder.
- * @param {string} root  The build folder, absolute and real.
+ * @param {string} root  The package root, absolute and real.
  * @returns {{scaBuildOrig?: string, buildRoot?: string}}
  */
 export function treeRoots(work, root) {
@@ -587,15 +589,15 @@ export function treeRoots(work, root) {
   };
 }
 
-/** The build folder's files that say what a source archive installs: package.json and the locks. */
+/** The package root's files that say what a source archive installs: package.json and the locks. */
 const PACKAGE_FILES = [PACKAGE_FILE, ...TREE_LOCKS];
 
 /**
- * The package files of the build folder a rescued copy was made from, as the lock reader takes an
+ * The package files of the package root a rescued copy was made from, as the lock reader takes an
  * artifact (`files`, src/vendor/locks.js lockedPackages): what the developer submitted,
  * beside which the rescued copy's own are compared (sca-dependencies-changed).
  *
- * A review whose build folder lies in the work folder's `rescued/` reviews the copy, and the
+ * A review whose package root lies in the work folder's `rescued/` reviews the copy, and the
  * folder it was copied from is the same place in `sca/`. Null for every other review. One that
  * is gone ends the review: the report of a rescued review says what the rescue changed, and
  * without the original there is nothing to say it against.
@@ -607,13 +609,13 @@ export function originalPackages(work, record) {
   if (!record?.roots) {
     return null;
   }
-  const { scaBuildOrig: root } = treeRoots(work, record.roots.build);
+  const { scaBuildOrig: root } = treeRoots(work, record.roots.packageRoot);
   if (root === undefined) {
     return null;
   }
   if (!fs.statSync(root, { throwIfNoEntry: false })?.isDirectory()) {
     throw new Error(
-      `The build folder this rescued copy was made from is gone: ${root}. The review ` +
+      `The package root this rescued copy was made from is gone: ${root}. The review ` +
         "reports what the rescue changed against it, so it cannot start without it."
     );
   }

@@ -16,7 +16,7 @@ import { jsonLine } from "../../lib/util.js";
 import { parseJson } from "../../util/json.js";
 import { rethrowIfFatal } from "../../lib/errors.js";
 import {
-  buildKey,
+  packageRootKey,
   PACKAGE_FILE,
   submissionFiles,
 } from "../../vendor/package-file.js";
@@ -46,7 +46,7 @@ export default {
     const text = submissionFiles(ctx.artifact)
       ?.get(PACKAGE_FILE)
       ?.toString("utf8");
-    const file = buildKey(ctx.artifact, PACKAGE_FILE);
+    const file = packageRootKey(ctx.artifact, PACKAGE_FILE);
     if (!text) {
       return none;
     }

@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/sca-invalid-package-file/src",
-      "build": "<root>/tests/addons/sca-invalid-package-file/src"
+      "packageRoot": "<root>/tests/addons/sca-invalid-package-file/src"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

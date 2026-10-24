@@ -1730,7 +1730,7 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
       ...base,
       scaFolders: {
         extracted: "/x",
-        build: "/x/src",
+        packageRoot: "/x/src",
         experiments: "/x/src/addon/experiment-api",
       },
     }),
@@ -1743,7 +1743,7 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
       // Every [SCA] path is relative to the extracted archive, so it is named.
       "  SCA_EXTRACTED",
       "    /x",
-      "  SCA_BUILD",
+      "  SCA_PACKAGE_ROOT",
       "    /x/src",
       // There for an Experiment: what it names was excluded from the WebExtension checks,
       // and nothing else in the report says so.
@@ -1784,7 +1784,7 @@ test("detailLinkLines links every location, XPI_FILE among them", () => {
   };
   const lines = detailLinkLines({
     ...base,
-    scaFolders: { extracted: "/x/src", build: "/x/src" },
+    scaFolders: { extracted: "/x/src", packageRoot: "/x/src" },
     summaryFile: "/x/work/summary.md",
     buildFile: "/x/a.build.md",
   });
@@ -1793,7 +1793,7 @@ test("detailLinkLines links every location, XPI_FILE among them", () => {
     "* XPI_ROOT: [extracted addon](/x/work/xpi/)",
     "* SCA_EXTRACTED: [source archive](/x/src)",
     "* SCA_BUILD_PROCESS: [build.md](/x/a.build.md)",
-    "* SCA_BUILD: [build folder](/x/src)",
+    "* SCA_PACKAGE_ROOT: [package root](/x/src)",
     "* ADDON_DESCRIPTION: [summary.md](/x/work/summary.md)",
     "",
     "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
@@ -1826,7 +1826,7 @@ test("detailRows lists every row in its order", () => {
     scaBuildOrig: "/w/sca/src",
     scaFolders: {
       extracted: "/w/rescued",
-      build: "/w/rescued/src",
+      packageRoot: "/w/rescued/src",
       experiments: "/w/rescued/api",
     },
     buildSafety: "safe",
@@ -1842,7 +1842,7 @@ test("detailRows lists every row in its order", () => {
     "SCA_BUILD_PROCESS",
     "SCA_BUILD_SAFETY_ASSESSMENT",
     "SCA_EXPERIMENTS",
-    "SCA_BUILD",
+    "SCA_PACKAGE_ROOT",
     "SCA_BUILD_ORIG",
     "SCA_VULNERABILITIES",
     "LLM_BUILD_OUTPUT",

@@ -11,11 +11,11 @@
 // mirror holds in a built XPI, where the same file declares VENDORED libraries whatever it
 // carries (-> xpi-lock-file-missing / xpi-lock-file-invalid).
 //
-// Only the build folder's package.json is read - that is the build's entry point, while a
+// Only the package root's package.json is read - that is the build's entry point, while a
 // nested one is a workspace member or a vendored library's own copy. Every build file this
 // review reads is read there, for the same reason: it is the directory the install runs in.
-// Which folder that is was settled before any check ran (src/addon/sca-build.js), so this
-// reads a confirmed build folder rather than the folder a command line happened to name.
+// Which folder that is was settled before any check ran (src/addon/package-root.js), so this
+// reads a confirmed package root rather than the folder a command line happened to name.
 //
 // Belongs here: deciding whether a lock was owed and is absent. Does NOT belong here:
 // whether a present lock can be read (-> sca-lock-file-invalid) or the wording (-> the
@@ -24,7 +24,7 @@
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import {
-  buildKey,
+  packageRootKey,
   PACKAGE_FILE,
   readPackageFile,
   submissionFiles,
@@ -57,7 +57,7 @@ export default {
     if (TREE_LOCKS.some((lock) => files.has(lock))) {
       return { findings: [] };
     }
-    const at = ctx.artifact.at(buildKey(ctx.artifact, PACKAGE_FILE));
+    const at = ctx.artifact.at(packageRootKey(ctx.artifact, PACKAGE_FILE));
     ctx.note?.(at, "no npm or pnpm lock file committed", VERDICT.FAIL);
     return { findings: [finding({ ...at })] };
   },

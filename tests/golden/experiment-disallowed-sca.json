@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/experiment-disallowed-sca/src",
-      "build": "<root>/tests/addons/experiment-disallowed-sca/src",
+      "packageRoot": "<root>/tests/addons/experiment-disallowed-sca/src",
       "experiments": "<root>/tests/addons/experiment-disallowed-sca/src/experiment"
     },
     "reviewed": true,

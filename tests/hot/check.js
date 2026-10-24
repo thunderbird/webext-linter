@@ -101,7 +101,7 @@ function stopOf(work) {
         ? areaOf(work, state.build.output)
         : false,
       LLM_BUILD_XPI_MATCH: state.build?.match ?? null,
-      SCA_BUILD: areaOf(work, state.paths?.scaFolders?.build),
+      SCA_PACKAGE_ROOT: areaOf(work, state.paths?.scaFolders?.build),
     };
   }
   // The closing prompt and the downgrade question both hand over the settled review, and

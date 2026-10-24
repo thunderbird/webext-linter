@@ -39,7 +39,7 @@ import {
   recordedRoots,
   startPreparation,
 } from "./prepare/steps.js";
-import { scaFoldersMisfit, settleScaBuild } from "./addon/sca-build.js";
+import { scaFoldersMisfit, settlePackageRoot } from "./addon/package-root.js";
 import {
   extractXpiToTemp,
   readPackedManifest,
@@ -219,7 +219,7 @@ function helpText(checkIds) {
     ],
     [
       "--llm-sca-review",
-      "Read the add-on argument as a submission FOLDER - one built .xpi and one archive of the source it was built from - and print the prompt for preparing a source code review of it. It creates the review's work folder at its default place, beside the .xpi, and the prompt has the source extracted into it and handed back with --llm-handback and that work folder. The linter finds the build folder, the next prompt has the build analyzed, and the reviewer then decides whether the build is safe and who builds it. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the source (rescued/ in the work folder) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags: of the copy, or of the source as submitted, whose review the vulnerabilities then abort. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any --sca-* flag, which is what it exists to produce.",
+      "Read the add-on argument as a submission FOLDER - one built .xpi and one archive of the source it was built from - and print the prompt for preparing a source code review of it. It creates the review's work folder at its default place, beside the .xpi, and the prompt has the source extracted into it and handed back with --llm-handback and that work folder. The linter finds the package root, the next prompt has the build analyzed, and the reviewer then decides whether the build is safe and who builds it. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the source (rescued/ in the work folder) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags: of the copy, or of the source as submitted, whose review the vulnerabilities then abort. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any --sca-* flag, which is what it exists to produce.",
     ],
     [
       "--llm-handback <dir>",
@@ -233,12 +233,12 @@ function helpText(checkIds) {
       "The extracted source archive, all of it. A folder, not a packed archive: a source archive comes in too many formats for this tool to open, so extract it yourself - unlike the submitted .xpi, which this tool extracts. Setting it switches the review to SCA mode, and every other --sca-* folder must lie inside it. It must not include the add-on. With --llm-review, it is copied into the work folder and the build is worked out from the copy before the review starts.",
     ],
     [
-      "--sca-build <folder>",
+      "--sca-package-root <folder>",
       "The folder inside --sca-extracted holding package.json and its lock file (package-lock.json or pnpm-lock.yaml), where the build runs: where the package file and the lock are read, and the install runs. The review reads the whole of --sca-extracted. Left out, the linter finds it (the folder holding package.json, below any folders the archive wraps its content in). Needs --sca-extracted.",
     ],
     [
       "--sca-experiments <path>",
-      "The Experiment implementation folder, inside --sca-extracted - relative to it or absolute within it, anywhere under it (e.g. addon/experiment-api, or a sibling of the source like experiment), but never --sca-extracted itself, which would exclude nothing, nor a folder holding --sca-build. Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-extracted. Required for an Experiment add-on, and refused for any other.",
+      "The Experiment implementation folder, inside --sca-extracted - relative to it or absolute within it, anywhere under it (e.g. addon/experiment-api, or a sibling of the source like experiment), but never --sca-extracted itself, which would exclude nothing, nor a folder holding --sca-package-root. Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-extracted. Required for an Experiment add-on, and refused for any other.",
     ],
   ];
 
@@ -361,7 +361,7 @@ const OPTIONS = {
   eslint: { type: "boolean" },
   "allow-experiments": { type: "boolean" },
   "sca-extracted": { type: "string" },
-  "sca-build": { type: "string" },
+  "sca-package-root": { type: "string" },
   "sca-experiments": { type: "string" },
   "report-format": { type: "string" },
   "llm-sca-review": { type: "boolean" },
@@ -393,7 +393,7 @@ function reviewSkips(values) {
 }
 
 /** The --sca-* flags, which --llm-sca-review exists to work out and so refuses to be given. */
-const SCA_FLAGS = ["sca-extracted", "sca-build", "sca-experiments"];
+const SCA_FLAGS = ["sca-extracted", "sca-package-root", "sca-experiments"];
 
 /** Where each cache lives when the run names none. */
 const CACHE_DIR_DEFAULTS = Object.freeze(
@@ -405,7 +405,7 @@ const CACHE_DIR_DEFAULTS = Object.freeze(
  *  --sca-extracted, and is followed from there. */
 const FOLDER_FLAGS = [
   "sca-extracted",
-  "sca-build",
+  "sca-package-root",
   "llm-handback",
   ...CACHES.map((c) => c.flag),
   "cache-work-dir",
@@ -541,7 +541,7 @@ function realFolder(p) {
  * it lands does. Two questions (that a value was given at all is main()'s, asked of every
  * flag that takes one):
  *
- * Does a flag that names a folder INSIDE another one (`within`: --sca-build or
+ * Does a flag that names a folder INSIDE another one (`within`: --sca-package-root or
  * --sca-experiments inside --sca-extracted) LAND inside it? A value resolving outside names a folder
  * on the reviewing machine, which can be anywhere, so what it names is not part of the
  * submission and cannot be shown to be.
@@ -967,23 +967,25 @@ export async function main(argv) {
     return 2;
   }
 
-  // --sca-extracted is the SCA-mode switch: the extracted source archive, all of it. --sca-build
+  // --sca-extracted is the SCA-mode switch: the extracted source archive, all of it. --sca-package-root
   // and --sca-experiments name folders INSIDE it, so either is meaningless on its own.
-  const named = ["sca-build", "sca-experiments"].filter((f) => values[f]);
+  const named = ["sca-package-root", "sca-experiments"].filter(
+    (f) => values[f]
+  );
   if (named.length && !values["sca-extracted"]) {
     const [names, need] =
       named.length > 1 ? ["name folders", "need"] : ["names a folder", "needs"];
     writeToStderr(
       `${listOf(named.map((f) => `--${f}`))} ${names} inside --sca-extracted, the extracted ` +
-        `source archive, and ${need} it (SCA mode). Pass --sca-extracted, and --sca-build only ` +
-        "where the linter cannot find the build folder itself.\n"
+        `source archive, and ${need} it (SCA mode). Pass --sca-extracted, and --sca-package-root only ` +
+        "where the linter cannot find the package root itself.\n"
     );
     return 2;
   }
 
   // Every --sca-* flag names a FOLDER that is there. --sca-extracted is the extracted source -
   // extracting it is the reviewer's, whatever format it came in, unlike the submitted
-  // .xpi which this tool extracts itself - and --sca-build and --sca-experiments lie inside
+  // .xpi which this tool extracts itself - and --sca-package-root and --sca-experiments lie inside
   // it. Asked outermost first, so each folder's own validity is settled before
   // anything is looked up inside it.
   //
@@ -1000,7 +1002,7 @@ export async function main(argv) {
     // asked about after being resolved against it - the same resolution the reader applies a
     // moment later.
     const within = {
-      "sca-build": "sca-extracted",
+      "sca-package-root": "sca-extracted",
       "sca-experiments": "sca-extracted",
     }[flag];
     const problem = within
@@ -1071,7 +1073,7 @@ export async function main(argv) {
  * printed - the step --llm-sca-review reaches once its reader has extracted the archive. An
  * Experiment the review would reject is not prepared (experimentGate): its review starts at
  * once, as an XPI review, as --llm-sca-review's does.
- * @param {Record<string, string|boolean>} values  Parsed and checked, the build folder settled.
+ * @param {Record<string, string|boolean>} values  Parsed and checked, the package root settled.
  * @param {string} addonPath  The built add-on, absolute.
  * @param {string} work  The work folder to create, absolute.
  * @param {import("./checks/registry.js").Registry} registry
@@ -1336,19 +1338,19 @@ function clearCaches(dirs) {
 
 /**
  * The source folders a review given --sca-extracted works with, each resolved the one way its
- * flag is written: --sca-extracted and --sca-build against the working directory, and
- * --sca-experiments against --sca-extracted, which it names a folder inside. The build folder
- * is --sca-build where it was named, else --sca-extracted, and either is settled by the rule
- * the review settles one by (settleScaBuild), with the Experiment folder held to it. The
+ * flag is written: --sca-extracted and --sca-package-root against the working directory, and
+ * --sca-experiments against --sca-extracted, which it names a folder inside. The package root
+ * is --sca-package-root where it was named, else --sca-extracted, and either is settled by the rule
+ * the review settles one by (settlePackageRoot), with the Experiment folder held to it. The
  * Experiment folder is there only where it was named.
  * @param {Record<string, string|boolean|string[]>} values  With --sca-extracted.
- * @returns {{folders: import("./addon/sca-build.js").ScaFolders, movedFrom?: string}}
+ * @returns {{folders: import("./addon/package-root.js").ScaFolders, movedFrom?: string}}
  */
 function scaFoldersOf(values) {
   const extracted = path.resolve(values["sca-extracted"]);
-  return settleScaBuild({
+  return settlePackageRoot({
     extracted,
-    build: path.resolve(values["sca-build"] ?? extracted),
+    packageRoot: path.resolve(values["sca-package-root"] ?? extracted),
     ...(values["sca-experiments"] === undefined
       ? {}
       : { experiments: path.resolve(extracted, values["sca-experiments"]) }),
@@ -1361,7 +1363,7 @@ function scaFoldersOf(values) {
  * Does not include `addonPath` (that comes from the positional path).
  *
  * Every path opt leaves here ABSOLUTE. This is the one layer that knows what each flag is
- * written relative to - the working directory for --sca-extracted and --sca-build, and the
+ * written relative to - the working directory for --sca-extracted and --sca-package-root, and the
  * extracted folder for --sca-experiments, which names a folder inside it - so it is the layer
  * that resolves them. Downstream then
  * derives what it needs (an archive key, a containment test) from real paths rather than
@@ -1371,7 +1373,7 @@ function scaFoldersOf(values) {
  * @returns {Partial<PipelineOpts>}
  */
 function pipelineOptsFromValues(values) {
-  // SCA mode, and only there: the source folders, settled, and the build folder named before
+  // SCA mode, and only there: the source folders, settled, and the package root named before
   // a move, so the review can say so.
   const sca = values["sca-extracted"] ? scaFoldersOf(values) : null;
   return {
@@ -1488,9 +1490,9 @@ async function runPreparePass(work, registry) {
  * The prompt a preparation's record is waiting on, its step's own (`llm-sca-review-prompt`):
  * printed by the run that starts the preparation (`first`, with the intro) and by every
  * hand-back that moves it on. What each prompt names beside its steps follows its step: the
- * submission and where to extract it (`unpack`), the source, its build folder and the build
+ * submission and where to extract it (`unpack`), the source, its package root and the build
  * report (`analyze`), the Build Review Details (`permission`), and the folders a build runs in.
- * Every build runs at the build folder's place in `build/`, its output is compared with the
+ * Every build runs at the package root's place in `build/`, its output is compared with the
  * submitted XPI, and the rescue's agent makes `build/` a copy of the whole `rescued/` before
  * each build, with the two commands named here.
  * @param {string} work
@@ -1504,7 +1506,7 @@ async function runPreparePass(work, registry) {
 function preparationPrompt(work, record, registry, start = {}) {
   const prompt = registry.llmScaReviewPrompt();
   const paths = workPaths(work);
-  const buildRoot = () => treeRoots(work, record.roots.build).buildRoot;
+  const buildRoot = () => treeRoots(work, record.roots.packageRoot).buildRoot;
   const named = {
     [PREPARE_STEP.unpack]: () => ({
       submission: start.submission,
@@ -1513,7 +1515,7 @@ function preparationPrompt(work, record, registry, start = {}) {
     [PREPARE_STEP.analyze]: () => ({
       answers: paths.review,
       scaExtracted: record.roots.extracted,
-      scaBuild: record.roots.build,
+      scaPackageRoot: record.roots.packageRoot,
       buildProcess: paths.build,
       findExperiment: asksExperiments(record),
     }),
@@ -1523,14 +1525,14 @@ function preparationPrompt(work, record, registry, start = {}) {
     }),
     [PREPARE_STEP.build]: () => ({
       answers: paths.review,
-      scaBuild: record.roots.build,
+      scaPackageRoot: record.roots.packageRoot,
       buildRoot: buildRoot(),
       buildProcess: paths.build,
       submittedXpi: record.submission.xpi,
     }),
     [PREPARE_STEP.rescue]: () => ({
       answers: paths.review,
-      rescueRoot: record.roots.build,
+      rescueRoot: record.roots.packageRoot,
       buildRoot: buildRoot(),
       buildProcess: paths.build,
       submittedXpi: record.submission.xpi,
@@ -1548,7 +1550,7 @@ function preparationPrompt(work, record, registry, start = {}) {
 }
 
 /**
- * The Build Review Details the permission prompt shows: the submitted XPI, the build folder,
+ * The Build Review Details the permission prompt shows: the submitted XPI, the package root,
  * the build report, the verdict and the issues it was read off, as the review loop's blocks
  * name them (detailRows), so the review's Build Review Details hold every row of it. It ends
  * with the line saying the review waits for the reviewer's reply, as a turn-ending block does.
@@ -1596,7 +1598,7 @@ const RECORD_FIELDS = [
  * given - and then checked as a command line is. The add-on and the roots are set
  * last, from the record's own fields, so no flag can name another; and the roots are asked
  * again as the extract step asked them (recordedRoots): followed to the folders they really
- * are, the build folder inside `sca/` or its rescued copy and the Experiment folder inside it,
+ * are, the package root inside `sca/` or its rescued copy and the Experiment folder inside it,
  * because the agent works in the folder between the step that settled them and this one.
  * The review reads the real folders that answered.
  * @param {import("./prepare/state.js").PrepareRecord} record  At `done`.
@@ -1641,12 +1643,12 @@ function preparedReview(record, checkIds, work) {
   // The folders as the preparation recorded them: the extracted copy is `rescued/` where a
   // rescue came out clean, else `sca/`.
   values["sca-extracted"] = roots.extracted;
-  values["sca-build"] = roots.build;
+  values["sca-package-root"] = roots.packageRoot;
   if (Object.hasOwn(roots, "experiments")) {
     values["sca-experiments"] = roots.experiments;
   }
   const within = {
-    "sca-build": "sca-extracted",
+    "sca-package-root": "sca-extracted",
     "sca-experiments": "sca-extracted",
   };
   const problem =

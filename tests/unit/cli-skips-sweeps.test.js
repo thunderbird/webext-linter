@@ -26,23 +26,23 @@ function reportOf(stdout) {
   return fs.readFileSync(at[1], "utf8");
 }
 
-// --sca-extracted / --sca-build / --sca-experiments flow through to the source-code submission
+// --sca-extracted / --sca-package-root / --sca-experiments flow through to the source-code submission
 // pipeline opts (--sca-extracted switches the review to SCA mode).
 // The reader is where a path stops being a spelling and becomes a place: --sca-extracted and
-// --sca-build against the working directory, and --sca-experiments, which names a folder inside
+// --sca-package-root against the working directory, and --sca-experiments, which names a folder inside
 // the extracted archive, against the RESOLVED archive. Everything downstream is handed absolutes and re-resolves nothing.
-test("--sca-extracted / --sca-build / --sca-experiments map to the sca pipeline opts", () => {
+test("--sca-extracted / --sca-package-root / --sca-experiments map to the sca pipeline opts", () => {
   const o = pipelineOptsFromArgv([
     "--sca-extracted",
     "extracted",
-    "--sca-build",
+    "--sca-package-root",
     "extracted/pkg",
     "--sca-experiments",
     "exp",
   ]);
   assert.deepEqual(o.scaFolders, {
     extracted: path.resolve("extracted"),
-    build: path.resolve("extracted", "pkg"),
+    packageRoot: path.resolve("extracted", "pkg"),
     experiments: path.resolve("extracted", "exp"),
   });
   // Every spelling of the same folder arrives as one value.
@@ -55,7 +55,7 @@ test("--sca-extracted / --sca-build / --sca-experiments map to the sca pipeline 
     const each = pipelineOptsFromArgv([
       "--sca-extracted",
       "extracted",
-      "--sca-build",
+      "--sca-package-root",
       "extracted/pkg",
       "--sca-experiments",
       written,
@@ -66,13 +66,13 @@ test("--sca-extracted / --sca-build / --sca-experiments map to the sca pipeline 
       written
     );
   }
-  // Left out, the build folder is worked out from --sca-extracted, and the Experiment folder
+  // Left out, the package root is worked out from --sca-extracted, and the Experiment folder
   // is not there at all.
   assert.deepEqual(
     pipelineOptsFromArgv(["--sca-extracted", "extracted"]).scaFolders,
     {
       extracted: path.resolve("extracted"),
-      build: path.resolve("extracted"),
+      packageRoot: path.resolve("extracted"),
     }
   );
   // An XPI review carries no source folders.

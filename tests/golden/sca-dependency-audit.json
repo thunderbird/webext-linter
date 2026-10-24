@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/sca-dependency-audit/src",
-      "build": "<root>/tests/addons/sca-dependency-audit/src"
+      "packageRoot": "<root>/tests/addons/sca-dependency-audit/src"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

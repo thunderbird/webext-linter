@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/sca-experiment-vendored/src",
-      "build": "<root>/tests/addons/sca-experiment-vendored/src",
+      "packageRoot": "<root>/tests/addons/sca-experiment-vendored/src",
       "experiments": "<root>/tests/addons/sca-experiment-vendored/src/experiment"
     },
     "reviewed": true,

@@ -54,7 +54,7 @@ import { ADDON_MAX_UNPACKED_BYTES } from "../config.js";
 import { FileStore, fileView, folderView } from "./store.js";
 import { SYMLINK_CAUSE } from "../lib/enum.js";
 import { rethrowIfFatal } from "../lib/errors.js";
-import { assertScaFolders } from "./sca-build.js";
+import { assertScaFolders } from "./package-root.js";
 
 /**
  * @typedef {object} GeckoSettings
@@ -186,7 +186,7 @@ import { assertScaFolders } from "./sca-build.js";
  *   built XPI that is the whole package, which `files` reviews entire. For a source archive it
  *   is the whole --sca-extracted, the frame a reviewer resolves a reported path against, while
  *   `files` there gives up the Experiment subtree. The package file and the lock are read in
- *   the build folder's view of it (`buildFiles`, scaViews). Reach for it deliberately: a
+ *   the package root's view of it (`packageRootFiles`, scaViews). Reach for it deliberately: a
  *   reader asking `store` is saying it wants the submission entire.
  * @property {string[]} nodeModules  Posix paths of node_modules directories
  *   skipped at load (their contents are never read); empty when none, and always empty
@@ -321,7 +321,7 @@ export function extractXpiToTemp(xpiPath) {
 }
 
 /**
- * Load the SUBMITTED SOURCE ARCHIVE - the artifact --sca-build names.
+ * Load the SUBMITTED SOURCE ARCHIVE - the artifact --sca-package-root names.
  *
  * The one way it is not an add-on, stated here so no caller restates it: an installed
  * dependency tree is not part of a submission (the reviewer installs it from the declared
@@ -517,7 +517,7 @@ export function extractedRelative(value, scaExtracted, flag = "SCA path") {
  *
  * Every layer that asks it - the CLI guard, which turns the answer into a usage line naming
  * the flag, the loader, which turns it into an archive key, and the preparation
- * (src/prepare/steps.js, ./sca-build.js) - must not be able to disagree, so all ask HERE.
+ * (src/prepare/steps.js, ./package-root.js) - must not be able to disagree, so all ask HERE.
  * Either path may be written absolute or relative. Both are resolved first, so "inside" is
  * a fact about the filesystem rather than about spelling.
  * @param {string} value
@@ -583,14 +583,14 @@ export function hasParentSegment(value) {
  * The source and the experiment are keyed alike whenever the Experiment sits inside the
  * add-on, so a check that must review the privileged code too reads the two as one set of files
  * (`source.experiment` carries it onto the review addon for exactly that).
- * The build folder is recorded as a place in the same keyspace (`buildPrefix`, "" where it is
- * the extracted folder itself), with its own files keyed relative to it (`buildFiles`), the
+ * The package root is recorded as a place in the same keyspace (`packageRootPrefix`, "" where it is
+ * the extracted folder itself), with its own files keyed relative to it (`packageRootFiles`), the
  * one frame the package file and the lock are read in (src/vendor/package-file.js
- * submissionFiles, buildKey).
+ * submissionFiles, packageRootKey).
  * @param {Addon} archive  The extracted archive, loaded ONCE (loadSourceArchive), from
  *   `folders.extracted`.
- * @param {import("./sca-build.js").ScaFolders} folders  The review's source folders. The
- *   build folder and the Experiment folder may sit anywhere in the extracted folder.
+ * @param {import("./package-root.js").ScaFolders} folders  The review's source folders. The
+ *   package root and the Experiment folder may sit anywhere in the extracted folder.
  * @returns {Addon}  The SAME archive, now carrying its two views. Not a new object:
  *   the store and the recorded path lists already describe this submission, and copying
  *   them onto parts is how they came to disagree.
@@ -599,7 +599,7 @@ export function scaViews(archive, folders) {
   assertScaFolders(folders, "scaViews");
   const store = archive.store;
   // The archive is walked from the extracted folder, so every key is relative to it. The
-  // build folder and the Experiment folder are two places in that keyspace.
+  // package root and the Experiment folder are two places in that keyspace.
   const exp = Object.hasOwn(folders, "experiments")
     ? extractedRelative(
         folders.experiments,
@@ -607,13 +607,15 @@ export function scaViews(archive, folders) {
         "--sca-experiments"
       )
     : null;
-  const build = extractedRelative(
-    folders.build,
+  const packageRoot = extractedRelative(
+    folders.packageRoot,
     folders.extracted,
-    "--sca-build"
+    "--sca-package-root"
   );
-  archive.buildPrefix = build;
-  archive.buildFiles = build ? folderView(store, build) : undefined;
+  archive.packageRootPrefix = packageRoot;
+  archive.packageRootFiles = packageRoot
+    ? folderView(store, packageRoot)
+    : undefined;
   // A prefix that was never given (no --sca-experiments) is under nothing.
   const under = (key, prefix) =>
     Boolean(prefix) && (key === prefix || key.startsWith(`${prefix}/`));

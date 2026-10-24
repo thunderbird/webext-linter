@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/sca-build-leaves-debugger/src",
-      "build": "<root>/tests/addons/sca-build-leaves-debugger/src"
+      "packageRoot": "<root>/tests/addons/sca-build-leaves-debugger/src"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

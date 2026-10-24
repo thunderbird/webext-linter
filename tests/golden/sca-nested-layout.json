@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/sca-nested-layout/src",
-      "build": "<root>/tests/addons/sca-nested-layout/src",
+      "packageRoot": "<root>/tests/addons/sca-nested-layout/src",
       "experiments": "<root>/tests/addons/sca-nested-layout/src/addon/experiment"
     },
     "reviewed": true,

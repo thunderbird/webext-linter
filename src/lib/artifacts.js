@@ -107,7 +107,7 @@ export function assertLocus(at, who) {
  * `scaFolders`, and the source archive's root is the extracted folder, the one its paths are
  * keyed from. An XPI review carries none, and has no source tree: the key is absent, which IS
  * the answer, and a caller asks it rather than asking the review mode a second time.
- * @param {{xpiRoot: string, scaFolders?: import("../addon/sca-build.js").ScaFolders}} where
+ * @param {{xpiRoot: string, scaFolders?: import("../addon/package-root.js").ScaFolders}} where
  * @returns {Record<string, string>}
  */
 export function artifactRoots(where) {

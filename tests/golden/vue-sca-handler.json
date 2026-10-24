@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/vue-sca-handler/src",
-      "build": "<root>/tests/addons/vue-sca-handler/src"
+      "packageRoot": "<root>/tests/addons/vue-sca-handler/src"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

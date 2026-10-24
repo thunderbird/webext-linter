@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/sca-vendor-vuln-unknown/src",
-      "build": "<root>/tests/addons/sca-vendor-vuln-unknown/src"
+      "packageRoot": "<root>/tests/addons/sca-vendor-vuln-unknown/src"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

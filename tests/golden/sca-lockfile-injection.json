@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/sca-lockfile-injection/src",
-      "build": "<root>/tests/addons/sca-lockfile-injection/src"
+      "packageRoot": "<root>/tests/addons/sca-lockfile-injection/src"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

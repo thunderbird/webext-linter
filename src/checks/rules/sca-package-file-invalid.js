@@ -23,7 +23,7 @@
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import {
-  buildKey,
+  packageRootKey,
   PACKAGE_FILE,
   packageFileFault,
   submissionFiles,
@@ -48,7 +48,7 @@ export default {
     // Which way it failed rides the location line, so the response states the rule once.
     const item =
       fault === "unreadable" ? "could not be read" : "is not a JSON object";
-    const at = ctx.artifact.at(buildKey(ctx.artifact, PACKAGE_FILE));
+    const at = ctx.artifact.at(packageRootKey(ctx.artifact, PACKAGE_FILE));
     ctx.note?.(at, item, VERDICT.FAIL);
     return { findings: [finding({ ...at, item })] };
   },

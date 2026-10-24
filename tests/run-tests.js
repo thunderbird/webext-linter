@@ -184,13 +184,13 @@ function preparationEntries(preparation) {
 
 /**
  * The work folder a fixture's "preparation" block leaves, prepared for real: the folder whose
- * review starts, and the build folder in it. Its run cache is `cache`, the fixture's seeded
+ * review starts, and the package root in it. Its run cache is `cache`, the fixture's seeded
  * folder, which its review reads too.
  * @param {string} dir  The fixture.
  * @param {{from?: string, rescued?: boolean}} preparation
  * @param {string} cache
  * @returns {Promise<{workFolder: string,
- *   scaFolders: import("../src/addon/sca-build.js").ScaFolders}>}
+ *   scaFolders: import("../src/addon/package-root.js").ScaFolders}>}
  */
 async function preparedFixture(dir, preparation, cache) {
   const at = await realPreparation({
@@ -364,7 +364,7 @@ async function main() {
       if (isScaFixture(dir)) {
         // SCA mode: the shipped XPI is the authoritative artifact (addonPath), and the src/
         // tree is the submitted archive (--sca-extracted), which the review reads whole. The
-        // folders are worked out the way a command line naming no --sca-build has them worked
+        // folders are worked out the way a command line naming no --sca-package-root has them worked
         // out (src/cli.js scaFoldersOf), the Experiment folder from the spec's "sca" block.
         let scaFolders;
         let scaMoved = {};

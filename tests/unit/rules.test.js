@@ -2235,7 +2235,7 @@ test("build-registry-redirect rejects any registry setting in .npmrc", async () 
 });
 
 // Only the ARCHIVE'S OWN .npmrc is read: npm takes its config from the directory the
-// install runs in, and the review runs it at --sca-build. A config deeper in the tree
+// install runs in, and the review runs it at --sca-package-root. A config deeper in the tree
 // belongs to a directory this review never installs from, so it is not read.
 test("build-registry-redirect reads the root .npmrc and ignores a nested one", async () => {
   const at = async (path, npmrc) =>

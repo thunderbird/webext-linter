@@ -1,28 +1,28 @@
 // WHICH FOLDER IS THE BUILD FOLDER - settled once, before the archive is read.
 //
-// The build folder is the folder of the extracted source archive the build runs in: the one
+// The package root is the folder of the extracted source archive the build runs in: the one
 // holding package.json and the lock the reviewer installs from. Everything downstream reads
-// those from the TOP LEVEL of --sca-build and nowhere else (src/vendor/locks.js, the
-// package.json readers, through the build folder's view of the archive), which is what makes
-// "the build folder" mean something. This decides which folder that is. It does not soften
+// those from the TOP LEVEL of --sca-package-root and nowhere else (src/vendor/locks.js, the
+// package.json readers, through the package root's view of the archive), which is what makes
+// "the package root" mean something. This decides which folder that is. It does not soften
 // that rule - it runs before it. The review itself reads the whole extracted archive.
 //
-// It exists because the build folder is NAMED by someone who has not looked inside yet. A
+// It exists because the package root is NAMED by someone who has not looked inside yet. A
 // source archive is extracted by whoever prepares the review, into a destination this tool
 // worked out by path math alone, and an archive that carries its contents in one directory of
 // its own leaves the build files one level below that destination. The review then reads a
-// build folder holding nothing, reports a build it cannot reproduce, and never audits the
+// package root holding nothing, reports a build it cannot reproduce, and never audits the
 // dependency tree sitting just below it - a submission with critical advisories reviewed as
 // though it declared none.
 //
 // DOWN ONLY. The folder ABOVE --sca-extracted is the reviewer's submission folder, holding the
-// .xpi and the archive itself, and nothing there was submitted as source: a build folder found
+// .xpi and the archive itself, and nothing there was submitted as source: a package root found
 // by stepping out of the one named is one nobody pointed at. How FAR down is not fixed,
 // because the number of directories an archive wraps its contents in is an accident of how it
 // was packed - the walk follows a chain of single folders as far as it goes and stops at the
 // first fork.
 //
-// Belongs here: which folder the review treats as --sca-build, and holding --sca-experiments
+// Belongs here: which folder the review treats as --sca-package-root, and holding --sca-experiments
 // to what it may name. Does NOT belong here: what is read once it is settled (the build files,
 // the lock), the keyspace the source view is built in (scaViews in ./load.js), or how the
 // folders are reported (src/report/format.js).
@@ -37,13 +37,13 @@ import { rethrowIfFatal, wiringError } from "../lib/errors.js";
 
 /**
  * The folders of a source review, every one given and none standing in for another: the
- * extracted source archive, the build folder inside it, and the Experiment folder inside it
+ * extracted source archive, the package root inside it, and the Experiment folder inside it
  * exactly when the add-on declares Experiments. Absolute.
- * @typedef {{extracted: string, build: string, experiments?: string}} ScaFolders
+ * @typedef {{extracted: string, packageRoot: string, experiments?: string}} ScaFolders
  */
 
 /** The keys a ScaFolders may carry. */
-const SCA_FOLDER_KEYS = ["extracted", "build", "experiments"];
+const SCA_FOLDER_KEYS = ["extracted", "packageRoot", "experiments"];
 
 /**
  * Assert that `folders` is a ScaFolders: `extracted` and `build` absolute, `experiments`
@@ -130,7 +130,7 @@ function subfolders(dir) {
  * Walks DOWN while there is exactly one way down, because a folder that holds nothing but
  * another folder is not a place a build could run - it is packaging, and how many layers of it
  * an archive carries is an accident of how it was made rather than anything about the
- * submission. A package file reached on the way ends the walk: that is the build folder.
+ * submission. A package file reached on the way ends the walk: that is the package root.
  *
  * At the first fork the walk stops and sweeps THOSE siblings, and no deeper. A fork is the
  * archive's own shape - src beside docs beside tests - so a package file below one of them is a
@@ -142,7 +142,7 @@ function subfolders(dir) {
  * @param {string} root  Absolute, and known not to hold a package file itself.
  * @returns {?string}
  */
-function buildRootBelow(root) {
+function packageRootBelow(root) {
   let dir = root;
   for (;;) {
     const subs = subfolders(dir);
@@ -192,54 +192,54 @@ export function scaFoldersMisfit(folders, isExp) {
 }
 
 /**
- * Settle which folder this review treats as --sca-build, and hold --sca-experiments to it.
+ * Settle which folder this review treats as --sca-package-root, and hold --sca-experiments to it.
  *
  * Returns the folders to use, corrected or not. The caller applies them wholesale rather than
  * reading the flags again, so the build and the Experiment folder can never be read from two
  * different answers.
  *
- * The build folder moves only when it holds no package file AND exactly one folder below can be
- * meant (buildRootBelow walks that down). A lock is never required for the move, only ever
+ * The package root moves only when it holds no package file AND exactly one folder below can be
+ * meant (packageRootBelow walks that down). A lock is never required for the move, only ever
  * used to choose between several: a submission that forgot one is still moved, so the
  * review reports the missing lock it has rather than the missing build it does not.
  *
  * The Experiment folder (--sca-experiments) does not move with it: it may lie anywhere in the
- * extracted source archive. A folder found inside it is no build folder, so the folder given
- * stands, as where none is found. Once the build folder stands, the folders are held to what
+ * extracted source archive. A folder found inside it is no package root, so the folder given
+ * stands, as where none is found. Once the package root stands, the folders are held to what
  * the Experiment folder may be (settled).
  * @param {ScaFolders} folders  As the caller resolved them.
  * @returns {{folders: ScaFolders, movedFrom?: string}}  The folders to review with.
- *   `movedFrom` is the build folder given, there only when it was corrected - the run
+ *   `movedFrom` is the package root given, there only when it was corrected - the run
  *   narrates the difference rather than changing it silently.
  */
-export function settleScaBuild(folders) {
-  assertScaFolders(folders, "settleScaBuild");
-  if (hasPackageFile(folders.build)) {
+export function settlePackageRoot(folders) {
+  assertScaFolders(folders, "settlePackageRoot");
+  if (hasPackageFile(folders.packageRoot)) {
     return { folders: settled(folders) };
   }
-  const build = buildRootBelow(folders.build);
+  const packageRoot = packageRootBelow(folders.packageRoot);
   if (
-    !build ||
+    !packageRoot ||
     (Object.hasOwn(folders, "experiments") &&
-      relativeInside(build, folders.experiments) !== null)
+      relativeInside(packageRoot, folders.experiments) !== null)
   ) {
     return { folders: settled(folders) };
   }
   return {
-    folders: settled({ ...folders, build }),
-    movedFrom: folders.build,
+    folders: settled({ ...folders, packageRoot }),
+    movedFrom: folders.packageRoot,
   };
 }
 
 /**
  * The folders, once nothing else can change them: --sca-experiments names the Experiment
- * implementation, so it may neither BE the extracted folder nor HOLD the build folder.
+ * implementation, so it may neither BE the extracted folder nor HOLD the package root.
  *
  * Either excludes the wrong code. `scaViews` partitions on a prefix: the prefix of the
  * extracted folder itself is the empty string, which is under nothing, so the Experiment's
  * privileged code would be reviewed as WebExtension code and the report would fill with
  * Services/ChromeUtils errors against a submission that did nothing wrong. A folder holding
- * the build folder would take the WebExtension source and its package file out of the
+ * the package root would take the WebExtension source and its package file out of the
  * WebExtension review instead. Preventing exactly that is what the flag is for, so it ends the
  * run rather than warning.
  *
@@ -251,19 +251,19 @@ function settled(folders) {
   if (!Object.hasOwn(folders, "experiments")) {
     return folders;
   }
-  const { extracted, build, experiments } = folders;
+  const { extracted, packageRoot, experiments } = folders;
   const isBase = relativeInside(experiments, extracted) === "";
-  const holdsBuild = relativeInside(build, experiments) !== null;
+  const holdsBuild = relativeInside(packageRoot, experiments) !== null;
   if (!isBase && !holdsBuild) {
     return folders;
   }
   const because = isBase
     ? `--sca-experiments "${experiments}" is the extracted source archive itself`
-    : `--sca-experiments "${experiments}" holds the build folder "${build}"`;
+    : `--sca-experiments "${experiments}" holds the package root "${packageRoot}"`;
   throw new Error(
     `${because}. It names the Experiment implementation, a folder of its own inside the ` +
       "extracted source archive beside or below the WebExtension code, so it cannot be the " +
-      "whole archive or hold the build folder: the wrong code would be excluded, and the " +
+      "whole archive or hold the package root: the wrong code would be excluded, and the " +
       "Experiment's privileged code would be reviewed as WebExtension code. Name the " +
       "subfolder holding it."
   );

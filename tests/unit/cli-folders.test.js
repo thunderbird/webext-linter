@@ -222,7 +222,7 @@ test("the work folder is named by the kind of review", () => {
 });
 
 // A folder named through a link is the folder it names: an add-on is copied from its
-// target, and a build folder is reviewed where it really is.
+// target, and a package root is reviewed where it really is.
 test("folders named through a link are reviewed as their targets", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-work-link-"));
   const addonLink = path.join(dir, "addon");
@@ -298,7 +298,7 @@ test("an .xpi or a source archive given through a link is refused", () => {
 // takes one, before any branch reads one: parseArgs hands "--flag=" down as "", which every
 // reader tests for truth and so reads as "not given" - a named cache would silently be the
 // default one, a named verdict file would print an unsettled report, a named format would
-// fall back to text, and a named build folder would review the XPI alone. Whitespace counts
+// fall back to text, and a named package root would review the XPI alone. Whitespace counts
 // as none.
 test("a flag given no value is refused (exit 2)", () => {
   for (const [argv, flag] of [
@@ -306,8 +306,8 @@ test("a flag given no value is refused (exit 2)", () => {
     [["some.xpi", "--checks-only="], "--checks-only"],
     [["some.xpi", "--cache-schema-dir="], "--cache-schema-dir"],
     [["some.xpi", "--llm-handback="], "--llm-handback"],
-    [["some.xpi", "--sca-build="], "--sca-build"],
-    [["some.xpi", "--sca-build", " "], "--sca-build"],
+    [["some.xpi", "--sca-package-root="], "--sca-package-root"],
+    [["some.xpi", "--sca-package-root", " "], "--sca-package-root"],
     [["some.xpi", "--sca-extracted="], "--sca-extracted"],
   ]) {
     const r = run(argv);
@@ -435,7 +435,7 @@ test("--help is answered before every guard that judges a run", () => {
     [],
     ["--report-format", "xml"],
     ["--llm-skip-manual"],
-    ["--sca-build="],
+    ["--sca-package-root="],
     ["--checks-only", "no-such-check"],
     ["some.xpi", "another.xpi"],
   ]) {

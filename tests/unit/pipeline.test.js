@@ -169,12 +169,12 @@ test("a rejected Experiment without its reject check reviews as an allowed one",
     addonPath: path.join(fixture, "xpi"),
     scaFolders: {
       extracted: path.join(fixture, "src"),
-      build: path.join(fixture, "src"),
+      packageRoot: path.join(fixture, "src"),
       experiments: path.join(fixture, "src", "experiment"),
     },
     ...OFFLINE,
   });
-  assert.equal(meta.scaFolders.build, path.join(fixture, "src"));
+  assert.equal(meta.scaFolders.packageRoot, path.join(fixture, "src"));
   assert.deepEqual(meta.checksRun, ["experiment-not-allowed"]);
 });
 

@@ -33,7 +33,7 @@ import {
 import { SCHEME_RE } from "../lib/util.js";
 import { withExperiment } from "../addon/store.js";
 import {
-  buildKey,
+  packageRootKey,
   declaredDependencies,
   readPackageFile,
   submissionFiles,
@@ -589,7 +589,7 @@ function resolvePackages(addon) {
     };
   }
   // Named in the archive's keyspace, where every reported path is given.
-  return classifyPackageFile(pkg, addon, buildKey(addon, PACKAGE_FILE));
+  return classifyPackageFile(pkg, addon, packageRootKey(addon, PACKAGE_FILE));
 }
 
 /**

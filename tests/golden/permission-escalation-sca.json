@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/permission-escalation-sca/src",
-      "build": "<root>/tests/addons/permission-escalation-sca/src"
+      "packageRoot": "<root>/tests/addons/permission-escalation-sca/src"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

@@ -132,7 +132,7 @@ review's build part is these steps:
    readable lock) stands, or the preparation gave its rescue up. Such a review goes straight
    on to `spawn`, and its findings abort it late.
 3. **`built`** first shows the Build Review Details block as the last thing of the turn:
-   `XPI_FILE`, `XPI_ROOT`, `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT`, `SCA_BUILD`,
+   `XPI_FILE`, `XPI_ROOT`, `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT`, `SCA_PACKAGE_ROOT`,
    `SCA_VULNERABILITIES` (`n moderate, n high, n critical`, the submitted lock's vulnerable
    packages as the preparation counted them, or the review's own audit where it counted
    none), and, where the agent built it, `LLM_BUILD_OUTPUT`, `LLM_BUILD_RESULT`,
@@ -419,7 +419,7 @@ what this review is and where to read it. Every details block is built from the 
 so each holds every row of the block before it, plus what is new:
 
 - the preparation's **Build Review Details** (the `permission` prompt): `XPI_FILE`,
-  `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT`, `SCA_BUILD_SAFETY_ISSUES` and `SCA_BUILD`;
+  `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT`, `SCA_BUILD_SAFETY_ISSUES` and `SCA_PACKAGE_ROOT`;
 - the review's **Build Review Details** (`built`): every row below the review holds, but
   `ADDON_DESCRIPTION` and `REVIEW_REPORT`, since `built` goes out before the description
   agent is started and before the report is handed over;
@@ -445,9 +445,9 @@ carry, come last.
 | `SCA_BUILD_SAFETY_ASSESSMENT` | The verdict the preparation read off the build's safety issues: `safe` where there are none, `unsafe` otherwise |
 | `SCA_BUILD_SAFETY_ISSUES` | What the build reaches for outside the declared dependencies, one line per issue, as the agent handed it back and the linter wrote it |
 | `SCA_EXPERIMENTS` | The Experiment implementation folder, when one was named |
-| `SCA_EXTRACTED` | A source code review's extracted source archive, the whole of which is reviewed and every path is relative to - named where the build folder lies below it, labelled "source archive" in `sca/`, or "rescued source (reduced/fixed dependencies)" where a rescue came out clean |
-| `SCA_BUILD` | The build folder, where the package file and the lock are read and the install runs - labelled "build folder" beside `SCA_EXTRACTED`, and named alone, with `SCA_EXTRACTED`'s label, where the two are one folder |
-| `SCA_BUILD_ORIG` | The same build folder in `sca/`, the source as submitted - only after a rescue, since it is `SCA_BUILD` otherwise |
+| `SCA_EXTRACTED` | A source code review's extracted source archive, the whole of which is reviewed and every path is relative to - named where the package root lies below it, labelled "source archive" in `sca/`, or "rescued source (reduced/fixed dependencies)" where a rescue came out clean |
+| `SCA_PACKAGE_ROOT` | The package root, where the package file and the lock are read and the install runs - labelled "package root" beside `SCA_EXTRACTED`, and named alone, with `SCA_EXTRACTED`'s label, where the two are one folder |
+| `SCA_BUILD_ORIG` | The same package root in `sca/`, the source as submitted - only after a rescue, since it is `SCA_PACKAGE_ROOT` otherwise |
 | `SCA_VULNERABILITIES` | The submitted lock's vulnerable packages, as `n moderate, n high, n critical`: the preparation's first audit, or where nothing was audited there the review's own, held once any dependency-vulnerability check read the lock |
 | `LLM_BUILD_OUTPUT` | What the agent's build produced in the preparation, a file or a folder inside `build/`, named by its own name - only where the agent built it, since the reviewer may build it themselves and a build may fail |
 | `LLM_BUILD_RESULT` | What came of the agent's attempt: `build succeeded`, `build failed: see build.md`, `not built: rescue failed` or `not built: unsafe` - absent where the reviewer builds the add-on |
@@ -508,14 +508,14 @@ add-on, and does the half a program can do. It reviews nothing. It names which f
 add-on and which is the source, creates the review's work folder at its default place beside
 the `.xpi`, names its `sca/` as where the source archive is to be extracted (`EXTRACT_TO`),
 and asks its reader to extract it there and hand the folder back (`unpack`). That hand-back
-finds the build folder, the folder holding `package.json`, inside `sca/` by the rule the review
-finds one by (`src/addon/sca-build.js`): below any folders the archive wraps its contents in,
+finds the package root, the folder holding `package.json`, inside `sca/` by the rule the review
+finds one by (`src/addon/package-root.js`): below any folders the archive wraps its contents in,
 and `sca/` itself where it holds the package file or the walk cannot decide. Then it prints the
 `analyze` prompt.
 
 `--llm-review` given `--sca-extracted` (the source archive, already extracted) copies all of it into
-the work folder's `sca/`, takes `--sca-build` and `--sca-experiments` where they were given and
-finds the build folder where not, and prints the `analyze` prompt itself. Nothing either run hands
+the work folder's `sca/`, takes `--sca-package-root` and `--sca-experiments` where they were given and
+finds the package root where not, and prints the `analyze` prompt itself. Nothing either run hands
 out names a folder outside `sca/`.
 
 Nothing asks which directory holds the add-on's own code: the whole extracted archive is reviewed,
@@ -530,7 +530,7 @@ starts: `experiment-not-allowed` aborts it, so its first prompt is the `close` p
 
 The `analyze` prompt has its reader **work out the build**. It reads the whole extracted
 archive (`SCA_EXTRACTED`, the work folder's `sca/`), since a build may be driven from anywhere
-in it, with the node project at `SCA_BUILD` inside it, and follows the release build to the
+in it, with the node project at `SCA_PACKAGE_ROOT` inside it, and follows the release build to the
 files it actually runs or reads. It writes the build report to `SCA_BUILD_PROCESS` (the work
 folder's `build.md`): the release build for Thunderbird as a short numbered list, and its
 install step as `npm ci` or `pnpm install --frozen-lockfile`. It runs nothing. Then it answers
@@ -549,7 +549,7 @@ The reader hands the list back in the work folder's review file (`ANSWERS`, the 
 `.review/review.json` a review pass uses) and runs `--llm-handback` on the folder. The preparation's
 own record, `.review/prepare.json`, says where it stands, so every step is that one command. The
 reader never chooses what comes next. An `sca/` that is not the folder the source was
-extracted into, an Experiment folder outside `sca/` or holding the build folder, an issue the sweep's checker refuses (a
+extracted into, an Experiment folder outside `sca/` or holding the package root, an issue the sweep's checker refuses (a
 file outside `sca/` or not there, a line past its end, a missing or too long hint, a field it
 does not take), or a missing `build.md` is refused, and the reader corrects it and hands it back
 again.
@@ -584,7 +584,7 @@ Where the reviewer builds it themselves, the review's Build Review Details show 
 review starts with the recorded verdict and `build.md` as its report, so it does not ask for
 them again.
 
-Where the reviewer let the agent build, the hand-back **audits the build folder's lock**
+Where the reviewer let the agent build, the hand-back **audits the package root's lock**
 (`src/prepare/audit.js`): every package it installs, against OSV and the policy blocklist,
 exactly as the review's own dependency audit reads it. Before that it asks whether every
 registry entry installs the release it names (`lockfile-injection`'s question): a lock that
@@ -599,7 +599,7 @@ the review. The record keeps the submitted lock's vulnerable packages counted by
   than it names): the folder is done, nothing is built, and the same hand-back starts its
   review, which stops on that lock.
 - **The lock is clean**: the linter copies the whole `sca/` into the work folder's `build/`,
-  and the next prompt (`build`) has the reader build in `LLM_BUILD_ROOT`, `SCA_BUILD`'s place in
+  and the next prompt (`build`) has the reader build in `LLM_BUILD_ROOT`, `SCA_PACKAGE_ROOT`'s place in
   that copy, as `SCA_BUILD_PROCESS` describes, installing exactly what the lock pins (`npm ci` or
   `pnpm install --frozen-lockfile`). A build that writes beside `LLM_BUILD_ROOT` still writes inside `build/`. It answers the `LLM_BUILD_OUTPUT` entry with the
   final artifact the build produced inside `build/` (an XPI or zip file, or a folder), as an
@@ -619,7 +619,7 @@ the review. The record keeps the submitted lock's vulnerable packages counted by
   `package.json` and the lock change in `rescued/`. It runs `npm audit` or `pnpm audit`, and
   builds nothing while a high or critical advisory remains. Once none does, it replaces
   `build/` with a copy of the whole `rescued/` (the two commands the prompt prints), installs
-  as the lock pins and builds in `LLM_BUILD_ROOT`, `SCA_BUILD`'s place in that copy. Nothing is ever
+  as the lock pins and builds in `LLM_BUILD_ROOT`, `SCA_PACKAGE_ROOT`'s place in that copy. Nothing is ever
   installed or built in `rescued/`. Where the build fails it adjusts the dependencies in
   `rescued/` and audits and copies again before the next build: a `prepare` script that runs
   `husky`, for one, needs the husky the trimming removed, or the script removed. It answers
@@ -696,7 +696,7 @@ the review sit in its hidden `.review/` folder, out of the reviewer's sight:
 | Name | What it is | Written by |
 | --- | --- | --- |
 | `xpi/` | The shipped add-on, extracted (or, for an unpacked one, copied): `XPI_ROOT` | the linter, as the review starts |
-| `sca/` | The source archive, extracted: `EXTRACT_TO`, holding `SCA_BUILD` | the reader of the `--llm-sca-review` prompt, or the linter, copying `--sca-extracted` |
+| `sca/` | The source archive, extracted: `EXTRACT_TO`, holding `SCA_PACKAGE_ROOT` | the reader of the `--llm-sca-review` prompt, or the linter, copying `--sca-extracted` |
 | `rescued/` | The copy of the whole `sca/` a rescue changes the dependencies of (`RESCUE_ROOT` lies inside it), only its `package.json` and lock, never installed or built in: reviewed instead when the rescue comes out clean, and removed when it fails | the linter, and the reader of the `rescue` prompt |
 | `.review/prepare.json` | Where the preparation of a source code review stands, and how its review is to be run - read-only, and hashed | the linter, at each step of the preparation |
 | `.review/state.json` | The review itself, which every pass reads | the linter |

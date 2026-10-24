@@ -134,19 +134,19 @@ test("a rescued review names both roots and the build root", async () => {
     },
   });
   const { sca, rescued, buildCopy } = workPaths(work);
-  assert.deepEqual(record.roots, { extracted: rescued, build: rescued });
+  assert.deepEqual(record.roots, { extracted: rescued, packageRoot: rescued });
   const r = run(["--llm-handback", work]);
   assert.notEqual(r.code, 2, r.stdout + r.stderr);
   const state = readJson(work, "state");
   assert.deepEqual(state.paths.scaFolders, {
     extracted: rescued,
-    build: rescued,
+    packageRoot: rescued,
   });
   assert.equal(state.paths.scaBuildOrig, sca);
   assert.equal(state.build.root, buildCopy);
   const rows = [
     `* SCA_EXTRACTED: [rescued source (reduced/fixed dependencies)](${rescued})`,
-    `* SCA_BUILD: [build folder](${rescued})`,
+    `* SCA_PACKAGE_ROOT: [package root](${rescued})`,
     `* SCA_BUILD_ORIG: [source archive](${sca})`,
     `* LLM_BUILD_ROOT: [build copy](${buildCopy})`,
   ];
@@ -160,7 +160,7 @@ test("a rescued review names both roots and the build root", async () => {
 const DETAIL_ROWS = [
   "XPI_FILE",
   "XPI_ROOT",
-  "SCA_BUILD",
+  "SCA_PACKAGE_ROOT",
   "SCA_BUILD_ORIG",
   "SCA_EXPERIMENTS",
   "ADDON_DESCRIPTION",
@@ -299,14 +299,14 @@ test("each details block holds every row of the block before it", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A clean lock is built: the prompt after the permission names the build folder, its place in
+// A clean lock is built: the prompt after the permission names the package root, its place in
 // the build copy the linter made to build it in, the build report and the submitted XPI, and
 // asks for the build's final artifact and its comparison with that XPI. The agent copies
 // nothing.
 test("the hand-back prints a clean source's build", () => {
   const { work, stdout, dir } = permittedPrompt(FIXTURE_CLEAN);
   assert.equal(readJson(work, "prepare").step, "build");
-  assert.equal(headerValue(stdout, "SCA_BUILD"), path.join(work, "sca"));
+  assert.equal(headerValue(stdout, "SCA_PACKAGE_ROOT"), path.join(work, "sca"));
   assert.equal(
     headerValue(stdout, "LLM_BUILD_ROOT"),
     workPaths(work).buildCopy
@@ -320,7 +320,7 @@ test("the hand-back prints a clean source's build", () => {
     headerValue(stdout, "SUBMITTED_XPI"),
     readJson(work, "prepare").submission.xpi
   );
-  assert.ok(!unwrapped(stdout).includes("Copy SCA_BUILD"));
+  assert.ok(!unwrapped(stdout).includes("Copy SCA_PACKAGE_ROOT"));
   for (const said of [
     "Build in LLM_BUILD_ROOT, and only there",
     OUTPUT_PATH,
@@ -384,7 +384,7 @@ test("the hand-back prints a vulnerable source's rescue", () => {
 
 // A safe build is shown to the reviewer before they are asked: the permission prompt names
 // the review file and shows the Build Review Details - the build report, the judgement and
-// the build folder, in the rows' order - as a block that ends the turn with the waiting line,
+// the package root, in the rows' order - as a block that ends the turn with the waiting line,
 // and then puts the question. Its hand-back carries the preparation on.
 test("a safe build prints the Build Review Details and the permission question", () => {
   const dir = submissionFolder();
@@ -407,7 +407,7 @@ test("a safe build prints the Build Review Details and the permission question",
     `* SCA_BUILD_PROCESS: [build.md](${workPaths(work).build})`,
     "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
     `* SCA_BUILD_SAFETY_ISSUES: [build-issues.md](${workPaths(work).buildIssues})`,
-    `* SCA_BUILD: [build folder](${path.join(work, "sca")})`,
+    `* SCA_PACKAGE_ROOT: [package root](${path.join(work, "sca")})`,
     "",
     'Reply "next" to continue the review with the question how to build the add-on.',
   ]
@@ -467,9 +467,9 @@ test("--llm-agent-builds is an unknown option", () => {
 });
 
 // The build analysis and the review both read the whole extracted archive, so an issue above
-// the build folder - a Makefile beside the node project that drives the build - is reported at
+// the package root - a Makefile beside the node project that drives the build - is reported at
 // its own file and line, in the archive's keyspace, like one inside it.
-test("an issue above the build folder is reported at its own place in the archive", () => {
+test("an issue above the package root is reported at its own place in the archive", () => {
   const dir = submissionFolder();
   const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
@@ -566,11 +566,11 @@ test("an unsafe build is reported where the reviewer holds it unsafe", () => {
   }
 });
 
-// The Experiment folder may lie anywhere in the extracted archive, beside the build folder
+// The Experiment folder may lie anywhere in the extracted archive, beside the package root
 // too. The lock audit after the permission reads the archive the review reads, the whole
 // extracted copy, so such a layout gets past the permission instead of being refused as an
-// Experiment folder outside the build folder.
-test("an Experiment folder beside the build folder gets past the permission", () => {
+// Experiment folder outside the package root.
+test("an Experiment folder beside the package root gets past the permission", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-sibling-"));
   const xpi = path.join(dir, "a.xpi");
   packAddon(xpi, { experiment_apis: { foo: {} } });
@@ -591,7 +591,7 @@ test("an Experiment folder beside the build folder gets past the permission", ()
   assert.equal(started.code, 0, started.stdout + started.stderr);
   const work = workOf(started.stdout);
   assert.equal(
-    headerValue(started.stdout, "SCA_BUILD"),
+    headerValue(started.stdout, "SCA_PACKAGE_ROOT"),
     path.join(workPaths(work).sca, "addon")
   );
   const asked = run(answerAnalyze(started.stdout));
@@ -601,7 +601,7 @@ test("an Experiment folder beside the build folder gets past the permission", ()
   assert.notEqual(readJson(work, "prepare").step, "permission");
   assert.deepEqual(readJson(work, "prepare").roots, {
     extracted: workPaths(work).sca,
-    build: path.join(workPaths(work).sca, "addon"),
+    packageRoot: path.join(workPaths(work).sca, "addon"),
     experiments: path.join(workPaths(work).sca, "experiment"),
   });
   fs.rmSync(dir, { recursive: true, force: true });

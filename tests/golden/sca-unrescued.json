@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<work>/sca",
-      "build": "<work>/sca"
+      "packageRoot": "<work>/sca"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

@@ -119,7 +119,7 @@ test("every declared step is narratable and named once", () => {
 test("the narrated count per run is the total the feed shows", () => {
   const narrated = (facts) =>
     SETUP_STEPS.filter((s) => "label" in s && s.when(facts)).length;
-  // The mode derived as the pipeline derives it (setupFacts.mode): --sca-build or not.
+  // The mode derived as the pipeline derives it (setupFacts.mode): --sca-package-root or not.
   const facts = (over) => ({
     sca: false,
     isExp: false,

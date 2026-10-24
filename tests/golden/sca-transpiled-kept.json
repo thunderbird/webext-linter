@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/sca-transpiled-kept/src",
-      "build": "<root>/tests/addons/sca-transpiled-kept/src"
+      "packageRoot": "<root>/tests/addons/sca-transpiled-kept/src"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

@@ -47,7 +47,7 @@ import { ioError } from "../lib/errors.js";
  * node_modules it refused to walk, a committed archive, every directory it entered). The
  * submission's frame, like every
  * key set here - a list of absolute paths is something else and says so
- * (src/addon/sca-build.js).
+ * (src/addon/package-root.js).
  * @typedef {string[]} PathList
  */
 
@@ -166,7 +166,7 @@ export function fileView(store, { keys }) {
 }
 
 /**
- * The files under one folder of a store, keyed relative to that folder: the build folder's
+ * The files under one folder of a store, keyed relative to that folder: the package root's
  * own frame, which the package file and the lock are read in (src/vendor/package-file.js
  * submissionFiles). Every file is still the store's, under its full key.
  * @param {Map<string, Buffer>} store

@@ -10,14 +10,14 @@
 // (-> the input:sca checks + registry).
 
 import {
-  buildKey,
+  packageRootKey,
   PACKAGE_FILE,
   submissionFiles,
 } from "../vendor/package-file.js";
 
 /**
  * @typedef {object} BuildReview
- * @property {?string} anchor  The file the findings/notes anchor at: the build folder's
+ * @property {?string} anchor  The file the findings/notes anchor at: the package root's
  *   package.json, keyed in the archive, when the submission ships one, else null, so an
  *   escalation carries no locus rather than pointing the reviewer at a file the submission
  *   does not have.
@@ -26,14 +26,14 @@ import {
 /**
  * Look at the SCA build once, when a check first asks for it (src/review/products.js).
  * @param {object} params
- * @param {?object} [params.build]  The source archive, whose build folder holds the package
+ * @param {?object} [params.build]  The source archive, whose package root holds the package
  *   file (src/vendor/package-file.js submissionFiles); absent is no files at all.
  * @returns {BuildReview}
  */
 export function analyzeBuild({ build }) {
   return {
     anchor: submissionFiles(build)?.has(PACKAGE_FILE)
-      ? buildKey(build, PACKAGE_FILE)
+      ? packageRootKey(build, PACKAGE_FILE)
       : null,
   };
 }

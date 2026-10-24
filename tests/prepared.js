@@ -194,9 +194,9 @@ export async function realPreparation({
   );
   const copy = workPaths(work).rescued;
   if (rescue) {
-    rescue(at.record.roots.build);
+    rescue(at.record.roots.packageRoot);
     answer(work, {
-      LLM_BUILD_OUTPUT: buildRescued(work, at.record.roots.build),
+      LLM_BUILD_OUTPUT: buildRescued(work, at.record.roots.packageRoot),
       LLM_BUILD_XPI_MATCH: match,
     });
     at = await step(work);
@@ -214,7 +214,7 @@ export async function realPreparation({
   assert.equal(at.work, work);
   assert.equal(at.record.buildResult, "rescue-failed");
   assert.equal(
-    at.record.roots.build,
+    at.record.roots.packageRoot,
     sca,
     "the source as submitted is reviewed"
   );

@@ -135,7 +135,7 @@ deterministic-phase:
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Deterministic (SCA only): the source archive has no package.json, so there is no build to
-# reproduce the shipped XPI from. The build's entry point is the build folder's package.json, where
+# reproduce the shipped XPI from. The build's entry point is the package root's package.json, where
 # `npm ci` and `pnpm install` run, so its absence is the absence of a build. Reported as
 # the bare fact: nothing here says WHY it is missing, and nothing in the archive could.
 # Presence is tested by NAME, not by parse - one that exists but cannot be used is not
@@ -191,8 +191,8 @@ deterministic-phase:
 # itself is a workspace root or a package.json whose declarations moved, not a submission
 # that installs nothing. Only the BUILD FOLDER's package.json is read - the build's entry
 # point, and the directory the install runs in. Nothing here looks for a package.json or a
-# lock elsewhere in the archive: they sit in the build folder, which is what the build folder
-# IS. WHICH folder that is was settled before any check ran (src/addon/sca-build.js).
+# lock elsewhere in the archive: they sit in the package root, which is what the package root
+# IS. WHICH folder that is was settled before any check ran (src/addon/package-root.js).
 - title: Missing lock file
   severity: error
   review-late-exit: unreproducible-build
@@ -224,7 +224,7 @@ deterministic-phase:
     The committed lock file cannot be read, so the dependencies it installs cannot be checked. Please run the install again and commit the lock file it writes. The supported package managers are npm and pnpm.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# Deterministic (SCA only): more than one lock file in the build folder. Every check reads the
+# Deterministic (SCA only): more than one lock file in the package root. Every check reads the
 # governing lock - the first in TREE_LOCKS order (src/vendor/locks.js committedLocks) - while
 # the build picks its package manager by the lock it finds (a pnpm-lock.yaml means pnpm). With
 # two, the tree the review audits need not be the tree the reviewer installs: a harmless npm
@@ -251,7 +251,7 @@ deterministic-phase:
 # point the install at another source, pulling the SAME declared package names from an
 # UNDECLARED source and leaving package.json/lock a clean decoy. The value is not parsed;
 # the raw value is surfaced as {{item}}. The ARCHIVE'S OWN .npmrc is the one read - npm takes
-# its config from the directory the install runs in, and the review runs it at --sca-build -
+# its config from the directory the install runs in, and the review runs it at --sca-package-root -
 # so a config deeper in the tree is never asked for.
 # Ends the review for the same reason as the other build rejects, reached from the other
 # direction: the install would RUN, but what it fetches is not what the submission declares,
@@ -1037,7 +1037,7 @@ deterministic-phase:
 # vulnerabilities. The developer's own package.json and lock still carry them, so the next
 # submission would stop where this one would have. Says so once, without a list: the
 # developer's own audit names what to fix, against their own lock. Compared against the lock
-# of the build folder the copy was made from (src/prepare/state.js originalPackages), and silent
+# of the package root the copy was made from (src/prepare/state.js originalPackages), and silent
 # where the source is no rescued copy, or the copy's lock installs what the original's did.
 - title: Dependencies changed for the review
   severity: info
@@ -1126,7 +1126,7 @@ deterministic-phase:
     The package.json declares an npm install lifecycle hook that fetches or executes remote code when the dependencies are installed. Every part of the build must come only from the dependencies declared in package.json/lock. Please remove the remote fetch or execution from the hook.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# SCA only: the build review, anchored at the build folder's package.json (src/build/analyze.js,
+# SCA only: the build review, anchored at the package root's package.json (src/build/analyze.js,
 # ctx.buildReview()). Asked where nobody decided about the build in a preparation
 # (`when: NOT build-judged`): a plain report lists it under Extended Manual Review, and an agent
 # review run with a build-guard check switched off asks it in `ask`, since there the
@@ -2300,8 +2300,8 @@ review-early-exit:
 # The division of labour they encode: the linter states what is true about the folder AND where
 # the source archive's own extraction goes (EXTRACT_TO, the work folder's sca/ - path math, not
 # archive reading), and the reader does what only opening the archive can settle: extracting it
-# there (`unpack`, --llm-sca-review only). The linter then derives the build folder inside it
-# (SCA_BUILD, src/addon/sca-build.js), as it does inside a --sca-extracted it copied into sca/, and from
+# there (`unpack`, --llm-sca-review only). The linter then derives the package root inside it
+# (SCA_PACKAGE_ROOT, src/addon/package-root.js), as it does inside a --sca-extracted it copied into sca/, and from
 # `analyze` on both runs read the same prompts. The reader writes the build report
 # (SCA_BUILD_PROCESS), lists what the build reaches for outside the declared dependencies
 # (SCA_BUILD_SAFETY_ISSUES), and, where the add-on declares Experiments and the folder was not
@@ -2313,7 +2313,7 @@ review-early-exit:
 # or let the agent build anyhow, and after either, override the verdict with reasons of their
 # own why building is unsafe. Only with a build-guard check switched off is nothing asked, and
 # the review's build-review question takes its place. Unless the agent may build, the
-# preparation ends. Allowed, the linter audits the build folder's lock (src/prepare/audit.js). A lock it cannot read in full ends
+# preparation ends. Allowed, the linter audits the package root's lock (src/prepare/audit.js). A lock it cannot read in full ends
 # the preparation with nothing built. A clean lock is BUILT by the reader in the work folder's
 # build/, which the linter fills with a copy of the whole sca/ (`build`). Where the lock installs
 # a package with a known high or critical advisory, the linter copies the whole sca/ into the
@@ -2327,12 +2327,12 @@ review-early-exit:
 # run's cache, so that review asks nothing the preparation already did (src/vendor/osv-cache.js).
 #
 # The step lists are prompts. `unpack` is printed by --llm-sca-review with the intro and the
-# Submission values, `analyze` by the run that derived SCA_BUILD (or first, with the intro, by
-# --llm-review given --sca-extracted), with SCA_EXTRACTED, SCA_BUILD, SCA_BUILD_PROCESS and ANSWERS, `permission` by
+# Submission values, `analyze` by the run that derived SCA_PACKAGE_ROOT (or first, with the intro, by
+# --llm-review given --sca-extracted), with SCA_EXTRACTED, SCA_PACKAGE_ROOT, SCA_BUILD_PROCESS and ANSWERS, `permission` by
 # the run that read the verdict, with ANSWERS and the Build Review Details
-# ({{buildDetails}}), `build` by the run that audited a clean lock, with SCA_BUILD, LLM_BUILD_ROOT
-# (SCA_BUILD's place in build/) and SCA_BUILD_PROCESS, and `rescue` by the run that made the
-# rescued copy, with the copy's build folder as RESCUE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_PROCESS, and
+# ({{buildDetails}}), `build` by the run that audited a clean lock, with SCA_PACKAGE_ROOT, LLM_BUILD_ROOT
+# (SCA_PACKAGE_ROOT's place in build/) and SCA_BUILD_PROCESS, and `rescue` by the run that made the
+# rescued copy, with the copy's package root as RESCUE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_PROCESS, and
 # the two commands that make build/ a copy of rescued/ ({{copy}}). Each of them ends in the one
 # command its reader ever runs, {{flags}}: the hand-back of a work folder.
 llm-sca-review-prompt:
@@ -2365,7 +2365,7 @@ llm-sca-review-prompt:
       text: |-
         Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under SCA_EXTRACTED, given above. Its path relative to SCA_EXTRACTED is <SCA_EXPERIMENTS>.
     - text: |-
-        Work out what building this add-on takes. Read the documentation and the build files of the whole extracted archive, SCA_EXTRACTED, given above: the build may be driven from anywhere in it, and the node project, with package.json and its lock file, is SCA_BUILD inside it. Follow the release build from where it starts, and work out which files it actually runs or reads: only those are part of it, wherever they lie. Report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
+        Work out what building this add-on takes. Read the documentation and the build files of the whole extracted archive, SCA_EXTRACTED, given above: the build may be driven from anywhere in it, and the node project, with package.json and its lock file, is SCA_PACKAGE_ROOT inside it. Follow the release build from where it starts, and work out which files it actually runs or reads: only those are part of it, wherever they lie. Report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
 
         Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
 
@@ -2436,14 +2436,14 @@ llm-sca-review-prompt:
         - value: override
           label: Build anyhow
           description: The build issues the agent found are cleared, and the build is safe. The agent runs the package-manager commands and the add-on's own build commands, as for a safe build.
-  # Printed where the linter audited the build folder's lock clean and copied the whole source archive
+  # Printed where the linter audited the package root's lock clean and copied the whole source archive
   # into build/: the agent builds the original in LLM_BUILD_ROOT, as the lock pins it, and answers
   # LLM_BUILD_OUTPUT with what the build produced in build/ (build-output), or that it failed.
   # Where it produced something, the agent compares it with SUBMITTED_XPI and answers
   # LLM_BUILD_XPI_MATCH (build-match).
   build:
     - text: |-
-        The linter audited the lock file of SCA_BUILD, given above, and found no known high or critical vulnerability in it, so the add-on is built now. The linter copied the whole source archive for this step, and LLM_BUILD_ROOT, given above, is SCA_BUILD in that copy. Build in LLM_BUILD_ROOT, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in SCA_BUILD_PROCESS.
+        The linter audited the lock file of SCA_PACKAGE_ROOT, given above, and found no known high or critical vulnerability in it, so the add-on is built now. The linter copied the whole source archive for this step, and LLM_BUILD_ROOT, given above, is SCA_PACKAGE_ROOT in that copy. Build in LLM_BUILD_ROOT, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in SCA_BUILD_PROCESS.
 
         Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci`, or `pnpm install --frozen-lockfile` where the copy has a pnpm-lock.yaml, and with no flag that leaves dependencies out. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
     - text: |-
@@ -2460,7 +2460,7 @@ llm-sca-review-prompt:
         {{flags}}
     - text: |-
         That run reads the answer and prints the next prompt. Follow it from there - this one is done.
-  # Printed where the linter audited the build folder's lock vulnerable, after it made the rescued
+  # Printed where the linter audited the package root's lock vulnerable, after it made the rescued
   # copy: the agent's whole rescue in one loop, which changes only the copy's package.json and
   # lock, and builds only a lock with no high or critical advisory left, in a fresh copy of the
   # whole rescued copy in build/. The answer is what the build produced inside build/

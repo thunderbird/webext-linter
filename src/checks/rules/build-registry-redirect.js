@@ -8,9 +8,9 @@
 // ignores, does not. The value is NOT judged: the mere presence of the key is the reject.
 // Deterministic, no network.
 //
-// input: sca - reads the submitted source archive off ctx.artifact. The build folder's
+// input: sca - reads the submitted source archive off ctx.artifact. The package root's
 // .npmrc is the one read: npm takes its config from the directory the install runs in, and
-// the review runs it at --sca-build, so that is the file whose settings reach the install. A
+// the review runs it at --sca-package-root, so that is the file whose settings reach the install. A
 // config deeper in the tree belongs to a directory this review never installs from, so it is
 // never asked for: this reads that one key and never scans for others.
 //
@@ -21,7 +21,7 @@ import ini from "ini";
 
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
-import { buildKey, submissionFiles } from "../../vendor/package-file.js";
+import { packageRootKey, submissionFiles } from "../../vendor/package-file.js";
 
 /** @typedef {import("../registry.js").RunContext} RunContext */
 
@@ -37,7 +37,9 @@ export default {
     }
     const findings = [];
     for (const { line, value } of registrySettings(buf.toString("utf8"))) {
-      const at = ctx.artifact.at(buildKey(ctx.artifact, ".npmrc"), { line });
+      const at = ctx.artifact.at(packageRootKey(ctx.artifact, ".npmrc"), {
+        line,
+      });
       ctx.note?.(at, "sets a package registry", VERDICT.FAIL);
       findings.push(finding({ ...at, item: value }));
     }

@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/sca-lock-file-multiple/src",
-      "build": "<root>/tests/addons/sca-lock-file-multiple/src"
+      "packageRoot": "<root>/tests/addons/sca-lock-file-multiple/src"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

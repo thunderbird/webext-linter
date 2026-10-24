@@ -54,7 +54,7 @@ import {
   readWebExtManifest,
   scaViews,
 } from "./addon/load.js";
-import { scaFoldersMisfit, settleScaBuild } from "./addon/sca-build.js";
+import { scaFoldersMisfit, settlePackageRoot } from "./addon/package-root.js";
 import {
   checkSelected,
   ctxForRule,
@@ -155,7 +155,7 @@ export const SETUP_STEPS = Object.freeze([
 /**
  * Every path opt is ABSOLUTE. The arg-array reader resolves them (pipelineOptsFromValues,
  * src/cli.js), which is the one layer that knows what each flag was written relative to -
- * the working directory for --sca-extracted and --sca-build, and --sca-extracted for
+ * the working directory for --sca-extracted and --sca-package-root, and --sca-extracted for
  * --sca-experiments. Nothing here re-resolves one, and a caller handing in a relative path gets
  * whatever the working directory makes of it.
  * @typedef {object} PipelineOpts
@@ -179,16 +179,16 @@ export const SETUP_STEPS = Object.freeze([
  *   (--warnings-as-errors): the band the registry hands out IS an error, so the report,
  *   the tally, the early exit and the exit code all follow (src/checks/registry.js
  *   bandUnder). Off by default.
- * @property {import("./addon/sca-build.js").ScaFolders} [scaFolders]  SCA mode, and only
+ * @property {import("./addon/package-root.js").ScaFolders} [scaFolders]  SCA mode, and only
  *   there: the extracted source archive (--sca-extracted), which the review reads whole as the
- *   readable source; the build folder inside it (--sca-build), where package.json and the lock
+ *   readable source; the package root inside it (--sca-package-root), where package.json and the lock
  *   are read and the declared dependencies audited; and the Experiment implementation folder
  *   (--sca-experiments), there exactly when the add-on declares Experiments (runPipeline
  *   refuses either mismatch). The Experiment folder's privileged files are excluded from the
  *   WebExtension code checks. The positional XPI is the shipped artifact the manifest.json,
  *   experiments and file-completeness (`input: xpi`) checks run against (buildXpiCtx,
  *   src/checks/context.js).
- * @property {string} [scaMovedFrom]  The build folder named before the CLI settled it one
+ * @property {string} [scaMovedFrom]  The package root named before the CLI settled it one
  *   level down, there only when it moved, so the run can say so.
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
  * @property {boolean} [cdnLookup]  Identify an unrecognized bundled library (minified,
@@ -299,7 +299,7 @@ async function reviewSubmission(opts, work, prepared) {
   //
   // So downstream: read `reviewTarget` for the code under review, `xpiAddon` for the
   // shipped artifact - no further mode checks. The only other mode forks are the
-  // dependency resolution (--sca-build vs the XPI's VENDOR/package.json) and the
+  // dependency resolution (--sca-package-root vs the XPI's VENDOR/package.json) and the
   // check gates (ctx.mode -> modeEligible, and a check's `when: sca`). Minified code is
   // non-authored (and rejected) in both modes: a source-code submission's promise is
   // readable source, so a minified file in the archive is rejected like one in an XPI, not
@@ -317,8 +317,8 @@ async function reviewSubmission(opts, work, prepared) {
     warningsAsErrors: Boolean(opts.warningsAsErrors),
   });
 
-  // Which folder is the build folder, settled before anything reads it
-  // (src/addon/sca-build.js): below a named one that holds no package file. Whoever named the
+  // Which folder is the package root, settled before anything reads it
+  // (src/addon/package-root.js): below a named one that holds no package file. Whoever named the
   // folder had not looked inside it yet - an archive is extracted by whoever prepares the
   // review, into a destination worked out by path math - so an archive carrying its contents
   // in one directory of its own leaves the build files a level below it.
@@ -328,7 +328,7 @@ async function reviewSubmission(opts, work, prepared) {
   // narration comes later, with the rest of Setup, of this move or of the one the CLI made.
   let scaMovedFrom = opts.scaMovedFrom;
   if (opts.scaFolders) {
-    const settledFolders = settleScaBuild(opts.scaFolders);
+    const settledFolders = settlePackageRoot(opts.scaFolders);
     opts = { ...opts, scaFolders: settledFolders.folders };
     scaMovedFrom = settledFolders.movedFrom ?? scaMovedFrom;
   }
@@ -505,11 +505,11 @@ async function reviewSubmission(opts, work, prepared) {
     "source-archive": () => {
       if (setupFacts.sca) {
         // Said where the source archive is read, because that is what it is about, and said
-        // at all because the build folder is then not the folder the command named - the
+        // at all because the package root is then not the folder the command named - the
         // reviewer has to be able to see which folder their verdicts are about.
         if (scaMovedFrom) {
           progress(
-            `Build folder: ${opts.scaFolders.build} (${scaMovedFrom} holds no package.json)`,
+            `Package root: ${opts.scaFolders.packageRoot} (${scaMovedFrom} holds no package.json)`,
             FEED.DETAIL
           );
         }
@@ -521,11 +521,11 @@ async function reviewSubmission(opts, work, prepared) {
         // answer. The built add-on above is loaded the ordinary way, where a node_modules
         // folder is shipped content like any other and the manifest.json IS the artifact's.
         // The whole extracted archive is the source, so code a build takes from beside or
-        // above the build folder is reviewed like the rest. The build folder is the place in
+        // above the package root is reviewed like the rest. The package root is the place in
         // it the package file and the lock are read at.
         scaArchive = loadSourceArchive(opts.scaFolders.extracted);
         scaViews(scaArchive, opts.scaFolders);
-        // Where the source is a rescued copy, the package files of the build folder it was copied
+        // Where the source is a rescued copy, the package files of the package root it was copied
         // from - what the developer submitted - for the check that tells them the review
         // ran on changed dependencies. Null for every other source.
         scaArchive.originalPackages = originalPackages(
@@ -565,7 +565,7 @@ async function reviewSubmission(opts, work, prepared) {
 
     // What was reviewed, named by ARTIFACT rather than by role: `xpi` is the shipped add-on
     // in EVERY review, and a source code review adds the values it was given - the extracted
-    // archive, the build folder, and the Experiment folder when one was named. One field meaning "the review
+    // archive, the package root, and the Experiment folder when one was named. One field meaning "the review
     // target" would name a different artifact in each mode, which no reader of the JSON
     // could tell apart, and would leave the subtree nowhere to go but fused into it.
     //
@@ -836,10 +836,10 @@ async function reviewSubmission(opts, work, prepared) {
     opts.llmReview &&
     !opts.llmSkipSweep &&
     Boolean(meta.preSweep?.items?.length);
-  // Where the build folder lies in the prepared work folder's trees (src/prepare/state.js
+  // Where the package root lies in the prepared work folder's trees (src/prepare/state.js
   // treeRoots), for a review the preparation started.
   const preparedRoots = prepared
-    ? treeRoots(opts.workFolder, opts.scaFolders.build)
+    ? treeRoots(opts.workFolder, opts.scaFolders.packageRoot)
     : null;
   // A run that PROMPTS is the loop's first pass, and the only one that reads the add-on:
   // everything after it works from the state this run writes.
@@ -961,10 +961,10 @@ async function reviewSubmission(opts, work, prepared) {
         // The roots every reported path is relative to, so a later pass can resolve one
         // without the review it came from: the shipped add-on, copied in setup, and in a
         // source review its folders, extracted before the run, so all are readable
-        // directories by the time anything is handed out. The build folder is a place in
+        // directories by the time anything is handed out. The package root is a place in
         // the extracted archive, where the agent is told the build runs.
         ...(mode.sca ? { scaFolders: opts.scaFolders } : {}),
-        // The same build folder in `sca/`, where the review reads a rescued copy: the
+        // The same package root in `sca/`, where the review reads a rescued copy: the
         // Review Details name both.
         ...(preparedRoots && Object.hasOwn(preparedRoots, "scaBuildOrig")
           ? { scaBuildOrig: preparedRoots.scaBuildOrig }
@@ -989,7 +989,7 @@ async function reviewSubmission(opts, work, prepared) {
       // buildResultFact).
       build: {
         result: prepared?.buildResult ?? null,
-        // The build folder in the copy the agent built in, there only where it built or tried
+        // The package root in the copy the agent built in, there only where it built or tried
         // to.
         ...((prepared?.buildResult === BUILD_RESULT.built ||
           prepared?.buildResult === BUILD_RESULT.failed) &&

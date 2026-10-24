@@ -55,7 +55,7 @@ test("--llm-sca-review prints the prompt, names both files, and reviews nothing"
   // No review ran: no report sections, and no item file was claimed.
   assert.doesNotMatch(r.stdout, /── Found Issues ──|REVIEW_ITEMS/);
   // The unpack prompt only extracts: the build is the next prompt's.
-  assert.doesNotMatch(r.stdout, /SCA_BUILD|SCA_BUILD_PROCESS|ANSWERS/);
+  assert.doesNotMatch(r.stdout, /SCA_PACKAGE_ROOT|SCA_BUILD_PROCESS|ANSWERS/);
   // Only an install hook reaching outside the declared dependencies is a safety concern.
   const analyze = unpackSource(r.stdout);
   assert.equal(analyze.code, 0, analyze.stderr);
@@ -96,7 +96,10 @@ test("--llm-sca-review creates the work folder and hands it back", () => {
   assert.equal(analyze.code, 0, analyze.stderr);
   assert.equal(readJson(work, "prepare").step, "analyze");
   assert.equal(headerValue(analyze.stdout, "ANSWERS"), workPaths(work).review);
-  assert.equal(headerValue(analyze.stdout, "SCA_BUILD"), workPaths(work).sca);
+  assert.equal(
+    headerValue(analyze.stdout, "SCA_PACKAGE_ROOT"),
+    workPaths(work).sca
+  );
   assert.equal(
     headerValue(analyze.stdout, "SCA_BUILD_PROCESS"),
     workPaths(work).build
@@ -133,7 +136,7 @@ test("the hand-back that finishes the preparation starts the review", () => {
   assert.equal(meta.xpi, path.join(dir, "addon.xpi"));
   assert.deepEqual(meta.scaFolders, {
     extracted: path.join(work, "sca"),
-    build: path.join(work, "sca"),
+    packageRoot: path.join(work, "sca"),
   });
   assert.deepEqual(meta.checksRun, ["unused-files"]);
   // From here on the folder holds a review, and its hand-back is a pass of the loop.
@@ -375,7 +378,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
   refusedFor(
     "no roots",
     { roots: null },
-    /The hand-back was refused: the preparation's record holds no extracted copy and build folder of the shape the linter writes\. /
+    /The hand-back was refused: the preparation's record holds no extracted copy and package root of the shape the linter writes\. /
   );
   refusedFor(
     "no submission",
@@ -387,26 +390,30 @@ test("a prepared review refuses a record it cannot start from", (t) => {
     (work) => ({
       roots: {
         extracted: path.join(work, "sca"),
-        build: path.join(work, "sca", "gone"),
+        packageRoot: path.join(work, "sca", "gone"),
       },
     }),
-    /The hand-back was refused: the preparation's record names a build folder ".*gone" that is not a folder inside /
+    /The hand-back was refused: the preparation's record names a package root ".*gone" that is not a folder inside /
   );
   // The agent works in the folder between the step that settled the roots and the start,
   // so each root is followed to where it really is, and must still be where it was put.
   refusedFor(
     "a root that is the work folder itself",
-    (work) => ({ roots: { extracted: path.join(work, "sca"), build: work } }),
-    /The hand-back was refused: the preparation's record names a build folder ".*" that is not a folder inside ".*[/]sca"/
+    (work) => ({
+      roots: { extracted: path.join(work, "sca"), packageRoot: work },
+    }),
+    /The hand-back was refused: the preparation's record names a package root ".*" that is not a folder inside ".*[/]sca"/
   );
   refusedFor(
     "a root that links out of sca/",
     (work) => {
       const link = path.join(work, "sca", "out");
       fs.symlinkSync(fs.mkdtempSync(path.join(os.tmpdir(), "wl-out-")), link);
-      return { roots: { extracted: path.join(work, "sca"), build: link } };
+      return {
+        roots: { extracted: path.join(work, "sca"), packageRoot: link },
+      };
     },
-    /The hand-back was refused: the preparation's record names a build folder ".*out" that is not a folder inside /
+    /The hand-back was refused: the preparation's record names a package root ".*out" that is not a folder inside /
   );
   refusedFor(
     "an Experiment folder that links out of the root",
@@ -416,7 +423,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
       const sca = path.join(work, "sca");
       return {
         submission: { ...readPrepare(work).submission, experiments: true },
-        roots: { extracted: sca, build: sca, experiments: link },
+        roots: { extracted: sca, packageRoot: sca, experiments: link },
       };
     },
     /The hand-back was refused: the preparation's record names an Experiment folder ".*exp" that is not a folder inside /
@@ -429,7 +436,7 @@ test("a prepared review refuses a record it cannot start from", (t) => {
       fs.cpSync(sca, moved, { recursive: true });
       fs.rmSync(sca, { recursive: true });
       fs.symlinkSync(moved, sca);
-      return { roots: { extracted: sca, build: sca } };
+      return { roots: { extracted: sca, packageRoot: sca } };
     },
     /The hand-back was refused: ".*[/]sca" is not the folder the source was extracted into/
   );
@@ -505,7 +512,11 @@ test("the hand-back starts the review of an unrescued source, which is aborted l
       ],
     }),
   });
-  assert.equal(record.roots.build, workPaths(work).sca, "the rescue failed");
+  assert.equal(
+    record.roots.packageRoot,
+    workPaths(work).sca,
+    "the rescue failed"
+  );
   const started = run(["--llm-handback", work]);
   assert.notEqual(started.code, 2, started.stdout + started.stderr);
   assert.match(started.stdout, /── LLM Prompt ──/);
@@ -601,7 +612,7 @@ test("a review of a source the agent built opens on its Build Review Details", a
     `* XPI_FILE: [xpi](${path.join(fixture, "xpi")})`,
     `* SCA_EXTRACTED: [source archive](${workPaths(work).sca})`,
     "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
-    `* SCA_BUILD: [build folder](${workPaths(work).sca})`,
+    `* SCA_PACKAGE_ROOT: [package root](${workPaths(work).sca})`,
     "* SCA_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
     `* LLM_BUILD_OUTPUT: [dist](${record.buildOutput})`,
     "* LLM_BUILD_RESULT: build succeeded",

@@ -6,7 +6,7 @@
     "xpiFile": "xpi",
     "scaFolders": {
       "extracted": "<root>/tests/addons/sca-registry-redirect/src",
-      "build": "<root>/tests/addons/sca-registry-redirect/src"
+      "packageRoot": "<root>/tests/addons/sca-registry-redirect/src"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

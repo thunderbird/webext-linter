@@ -237,23 +237,23 @@ test("a pipeline hard-fail aborts: exit 2 and 'verify failed' on stderr", () => 
   assert.match(r.stderr, /verify failed/);
 });
 
-// --sca-extracted is the SCA-mode switch, the extracted source archive. --sca-build and
+// --sca-extracted is the SCA-mode switch, the extracted source archive. --sca-package-root and
 // --sca-experiments name folders inside it, so each is a usage error on its own, and the
 // refusal names the flag that was left out. (--sca-extracted alone is fine - the root is found
 // inside it.)
-test("--sca-build or --sca-experiments without --sca-extracted is a usage error (exit 2)", () => {
+test("--sca-package-root or --sca-experiments without --sca-extracted is a usage error (exit 2)", () => {
   for (const [argv, said] of [
     [
       ["--sca-experiments", "src"],
       /^--sca-experiments names a folder inside --sca-extracted/,
     ],
     [
-      ["--sca-build", "src"],
-      /^--sca-build names a folder inside --sca-extracted/,
+      ["--sca-package-root", "src"],
+      /^--sca-package-root names a folder inside --sca-extracted/,
     ],
     [
-      ["--sca-build", "src", "--sca-experiments", "exp"],
-      /^--sca-build and --sca-experiments name folders inside --sca-extracted/,
+      ["--sca-package-root", "src", "--sca-experiments", "exp"],
+      /^--sca-package-root and --sca-experiments name folders inside --sca-extracted/,
     ],
   ]) {
     const r = run(["some.xpi", ...argv]);
@@ -264,7 +264,7 @@ test("--sca-build or --sca-experiments without --sca-extracted is a usage error 
 
 // The root is a folder of the source archive, so it lies inside --sca-extracted however it was
 // written.
-test("--sca-build outside --sca-extracted is a usage error (exit 2)", () => {
+test("--sca-package-root outside --sca-extracted is a usage error (exit 2)", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-sca-extracted-"));
   fs.mkdirSync(path.join(dir, "extracted", "pkg"), { recursive: true });
   fs.mkdirSync(path.join(dir, "beside"));
@@ -272,22 +272,22 @@ test("--sca-build outside --sca-extracted is a usage error (exit 2)", () => {
     "some.xpi",
     "--sca-extracted",
     path.join(dir, "extracted"),
-    "--sca-build",
+    "--sca-package-root",
     path.join(dir, "beside"),
   ]);
   assert.equal(outside.code, 2);
   assert.match(
     outside.stderr,
-    /--sca-build names a folder inside --sca-extracted: .+ which is outside/
+    /--sca-package-root names a folder inside --sca-extracted: .+ which is outside/
   );
   const inside = run([
     "some.xpi",
     "--sca-extracted",
     path.join(dir, "extracted"),
-    "--sca-build",
+    "--sca-package-root",
     path.join(dir, "extracted", "pkg"),
   ]);
-  assert.doesNotMatch(inside.stderr, /--sca-build/);
+  assert.doesNotMatch(inside.stderr, /--sca-package-root/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -297,7 +297,7 @@ test("--sca-build outside --sca-extracted is a usage error (exit 2)", () => {
 // And it names a folder INSIDE the extracted archive, so it may not BE the archive: naming the
 // archive excludes nothing, which leaves the Experiment's privileged code reviewed as
 // WebExtension code - the one thing the flag exists to prevent. Refused where the pair settles
-// (src/addon/sca-build.js), so this asserts the throw reaches the EXIT rather than only the
+// (src/addon/package-root.js), so this asserts the throw reaches the EXIT rather than only the
 // unit: "." is what a reviewer types for an add-on that is entirely an Experiment.
 test("--sca-experiments naming the extracted archive itself is a usage error (exit 2)", () => {
   const r = run([
@@ -395,9 +395,11 @@ test("--sca-extracted must point at a folder (exit 2)", () => {
   // The others name a folder INSIDE --sca-extracted, and are asked the same question. It is why
   // this is a refusal and not a warning: warn and carry on, and the review reads the
   // Experiment's privileged code as WebExtension code.
-  for (const flag of ["--sca-build", "--sca-experiments"]) {
+  for (const flag of ["--sca-package-root", "--sca-experiments"]) {
     const value =
-      flag === "--sca-build" ? path.join(dir, "no-such-dir") : "no-such-dir";
+      flag === "--sca-package-root"
+        ? path.join(dir, "no-such-dir")
+        : "no-such-dir";
     const r = run(["some.xpi", "--sca-extracted", dir, flag, value]);
     assert.equal(r.code, 2, flag);
     assert.match(

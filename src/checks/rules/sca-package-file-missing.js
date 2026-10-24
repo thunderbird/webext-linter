@@ -1,6 +1,6 @@
 // Rejects a source-code submission that carries no package.json. The archive exists so a
 // reviewer can reproduce the build that produced the shipped XPI, and the build's entry
-// point is the build folder's package.json, where the install runs, so its absence is the
+// point is the package root's package.json, where the install runs, so its absence is the
 // absence of a build: there is nothing to reproduce.
 //
 // Reported as the bare fact. Whether the developer forgot it, packed the wrong folder, or
@@ -24,7 +24,7 @@
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import {
-  buildKey,
+  packageRootKey,
   PACKAGE_FILE,
   submissionFiles,
 } from "../../vendor/package-file.js";
@@ -45,7 +45,7 @@ export default {
     // whose absence is the whole point, so the reviewer reads what was looked for rather
     // than a bare verdict.
     ctx.note?.(
-      ctx.artifact.at(buildKey(ctx.artifact, PACKAGE_FILE)),
+      ctx.artifact.at(packageRootKey(ctx.artifact, PACKAGE_FILE)),
       "no package.json",
       VERDICT.FAIL
     );

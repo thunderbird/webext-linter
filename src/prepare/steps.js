@@ -3,8 +3,8 @@
 //
 // Two runs start a preparation, and from `analyze` on they run the same steps. One given a
 // submission folder (--llm-sca-review) has the source archive extracted into the work
-// folder's `sca/` first (`unpack`), and its hand-back derives the build folder inside it as the review
-// derives one (src/addon/sca-build.js). One given the extracted source (--llm-review
+// folder's `sca/` first (`unpack`), and its hand-back derives the package root inside it as the review
+// derives one (src/addon/package-root.js). One given the extracted source (--llm-review
 // --sca-extracted) has it copied into `sca/` by the linter, and starts at `analyze`. There the
 // reader reports the build in build.md and hands back the issues the verdict is read off (and
 // the Experiment folder, where it is not known yet). Where a check the build relies on is switched
@@ -16,7 +16,7 @@
 // or, after either, hold it unsafe for reasons of their own (pre-answered where the record
 // holds agentBuilds, which skips that step). Unless they let the agent build, the folder is
 // done at once: a rescue runs package-manager commands, so none is tried. Otherwise it audits
-// the build folder's lock (./audit.js). A lock the audit cannot read in full is done:
+// the package root's lock (./audit.js). A lock the audit cannot read in full is done:
 // nothing is built, and the review it starts aborts on that lock. A clean lock
 // moves on to `build`: the linter copies the whole `sca/` into `build/`, and the agent builds
 // the original there, as the lock pins it, and names what the build produced, or that it
@@ -65,7 +65,7 @@ import {
   isRescuable,
   vulnerabilityCounts,
 } from "./audit.js";
-import { settleScaBuild } from "../addon/sca-build.js";
+import { settlePackageRoot } from "../addon/package-root.js";
 import { checkSelected, loadRegistry } from "../checks/registry.js";
 import { splitList } from "../lib/util.js";
 import { relativeInside } from "../addon/load.js";
@@ -359,8 +359,8 @@ export async function handBack(work, registry = loadRegistry()) {
 }
 
 /**
- * The source archive extracted into `sca/`: the build folder derived inside it, as the review derives
- * one (src/addon/sca-build.js settleScaBuild) - `sca/` itself where it holds the package file or
+ * The source archive extracted into `sca/`: the package root derived inside it, as the review derives
+ * one (src/addon/package-root.js settlePackageRoot) - `sca/` itself where it holds the package file or
  * the walk cannot decide - and the build handed out to be analyzed.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `unpack`.
@@ -369,7 +369,7 @@ export async function handBack(work, registry = loadRegistry()) {
  */
 function unpacked(work, record) {
   const extracted = realSca(workPaths(work));
-  const { folders } = settleScaBuild({ extracted, build: extracted });
+  const { folders } = settlePackageRoot({ extracted, packageRoot: extracted });
   const analyzing = { ...record, step: PREPARE_STEP.analyze, roots: folders };
   return ask(work, analyzing, analyzeEntries(analyzing));
 }
@@ -503,7 +503,7 @@ function decided(work, record, id, reasons, context, prompt) {
 
 /**
  * What follows the permission: where the agent may not build, the folder done at once,
- * since a rescue would run package-manager commands. Otherwise the build folder's lock audited, and
+ * since a rescue would run package-manager commands. Otherwise the package root's lock audited, and
  * its counts recorded. A lock the audit cannot read in full is done with nothing built, a
  * clean one is copied whole into `build/` and handed to the agent to build there, and a
  * vulnerable one is rescued.
@@ -568,12 +568,12 @@ function builtOriginal(work, record, asked, match) {
  * What `analyze` handed back: the build's safety issues, a list of results each held to the
  * shape a sweep's are (buildIssuesOf), and the Experiment folder where it was asked, taken as
  * the folder it really is and held inside the extracted archive, resolved against it as the
- * review resolves it, and neither that folder itself nor one holding the build folder
- * (settleScaBuild). Every way they can be wrong is refused, with nothing changed, so the
+ * review resolves it, and neither that folder itself nor one holding the package root
+ * (settlePackageRoot). Every way they can be wrong is refused, with nothing changed, so the
  * reader can correct the file and hand it back again.
  * @param {string} work
- * @param {import("./state.js").PrepareRecord} record  At `analyze`, its build folder known.
- * @returns {{roots: import("../addon/sca-build.js").ScaFolders,
+ * @param {import("./state.js").PrepareRecord} record  At `analyze`, its package root known.
+ * @returns {{roots: import("../addon/package-root.js").ScaFolders,
  *   buildIssues: {file: string, line: ?number, hint: string}[]}}
  * @throws {HandbackRefused}
  */
@@ -616,7 +616,10 @@ function analyzedAnswers(work, record) {
     );
   }
   try {
-    const { folders } = settleScaBuild({ ...record.roots, experiments: exp });
+    const { folders } = settlePackageRoot({
+      ...record.roots,
+      experiments: exp,
+    });
     return { roots: folders, buildIssues };
   } catch (err) {
     rethrowIfFatal(err);
@@ -709,8 +712,8 @@ function buildGuarded(record, registry) {
  * preparation put it - the extracted copy `sca/`, or `rescued/` for a rescued copy, and the
  * build and Experiment folders inside that copy.
  * @param {string} work  The work folder the review starts in.
- * @param {import("../addon/sca-build.js").ScaFolders} roots  As the record holds them.
- * @returns {import("../addon/sca-build.js").ScaFolders}  The real folders, which the review
+ * @param {import("../addon/package-root.js").ScaFolders} roots  As the record holds them.
+ * @returns {import("../addon/package-root.js").ScaFolders}  The real folders, which the review
  *   reads.
  * @throws {HandbackRefused}
  */
@@ -736,7 +739,7 @@ export function recordedRoots(work, roots) {
   };
   return {
     extracted,
-    build: inside("build", "a build folder"),
+    packageRoot: inside("packageRoot", "a package root"),
     ...(Object.hasOwn(roots, "experiments")
       ? { experiments: inside("experiments", "an Experiment folder") }
       : {}),
@@ -745,9 +748,9 @@ export function recordedRoots(work, roots) {
 
 /**
  * Every folder of `roots` mapped by `to`, the Experiment folder only where it is there.
- * @param {import("../addon/sca-build.js").ScaFolders} roots
+ * @param {import("../addon/package-root.js").ScaFolders} roots
  * @param {(folder: string) => string} to
- * @returns {import("../addon/sca-build.js").ScaFolders}
+ * @returns {import("../addon/package-root.js").ScaFolders}
  */
 function mapFolders(roots, to) {
   return Object.fromEntries(
@@ -841,9 +844,9 @@ function rescue(work, record, asked, match) {
  * there, and the folders given inside it mapped to their place in the copy. From here on the
  * preparation reads only the copy.
  * @param {string} work  The work folder, just created.
- * @param {import("../addon/sca-build.js").ScaFolders} given  Absolute and real: the
+ * @param {import("../addon/package-root.js").ScaFolders} given  Absolute and real: the
  *   extracted source, and the build and Experiment folders inside it.
- * @returns {import("../addon/sca-build.js").ScaFolders}  The same folders in the copy.
+ * @returns {import("../addon/package-root.js").ScaFolders}  The same folders in the copy.
  * @throws {Error}  The copy could not be made.
  */
 export function copySource(work, given) {
