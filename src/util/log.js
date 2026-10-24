@@ -230,13 +230,32 @@ export function warn(...args) {
  * and after everything else. With nothing recorded it prints nothing: outside the
  * recording runs this is just the exit.
  *
+ * The exit waits for both streams to hand over what they still hold. A write to a pipe its
+ * reader has not emptied is queued, and process.exit drops the queue: the end of a prompt -
+ * its hand-back command - would be lost exactly when the reader is slow.
+ *
  * @param {number} code
  */
 export function exitWith(code) {
   if (recorded?.length) {
     write(process.stderr, `\n── Tool messages ──\n\n${recorded.join("")}`);
   }
-  process.exit(code);
+  // An empty write's callback runs once everything queued before it is written, and a
+  // stream with nothing queued is done already.
+  let left = 2;
+  const flushed = () => {
+    left -= 1;
+    if (left === 0) {
+      process.exit(code);
+    }
+  };
+  for (const stream of [process.stdout, process.stderr]) {
+    if (stream.writableLength > 0) {
+      stream.write("", flushed);
+    } else {
+      flushed();
+    }
+  }
 }
 
 /**
