@@ -26,45 +26,45 @@ function reportOf(stdout) {
   return fs.readFileSync(at[1], "utf8");
 }
 
-// --sca-base / --sca-root / --sca-exp-source flow through to the source-code submission
-// pipeline opts (--sca-base switches the review to SCA mode).
-// The reader is where a path stops being a spelling and becomes a place: --sca-base and
+// --sca-extracted / --sca-root / --sca-exp-source flow through to the source-code submission
+// pipeline opts (--sca-extracted switches the review to SCA mode).
+// The reader is where a path stops being a spelling and becomes a place: --sca-extracted and
 // --sca-root against the working directory, and the one that names a folder inside the root
 // against the RESOLVED root. Everything downstream is handed absolutes and re-resolves nothing.
-test("--sca-base / --sca-root / --sca-exp-source map to the sca pipeline opts", () => {
+test("--sca-extracted / --sca-root / --sca-exp-source map to the sca pipeline opts", () => {
   const o = pipelineOptsFromArgv([
-    "--sca-base",
-    "base",
+    "--sca-extracted",
+    "extracted",
     "--sca-root",
-    "base/pkg",
+    "extracted/pkg",
     "--sca-exp-source",
     "exp",
   ]);
-  assert.equal(o.scaBase, path.resolve("base"));
-  assert.equal(o.scaRoot, path.resolve("base", "pkg"));
-  assert.equal(o.scaExpSource, path.resolve("base", "pkg", "exp"));
+  assert.equal(o.scaExtracted, path.resolve("extracted"));
+  assert.equal(o.scaRoot, path.resolve("extracted", "pkg"));
+  assert.equal(o.scaExpSource, path.resolve("extracted", "pkg", "exp"));
   // Every spelling of the same folder arrives as one value.
   for (const written of [
     "exp",
     "./exp",
     "./exp/",
-    path.resolve("base", "pkg", "exp"),
+    path.resolve("extracted", "pkg", "exp"),
   ]) {
     const each = pipelineOptsFromArgv([
-      "--sca-base",
-      "base",
+      "--sca-extracted",
+      "extracted",
       "--sca-root",
-      "base/pkg",
+      "extracted/pkg",
       "--sca-exp-source",
       written,
     ]);
     assert.equal(
       each.scaExpSource,
-      path.resolve("base", "pkg", "exp"),
+      path.resolve("extracted", "pkg", "exp"),
       written
     );
   }
-  assert.ok(!pipelineOptsFromArgv([]).scaBase);
+  assert.ok(!pipelineOptsFromArgv([]).scaExtracted);
   assert.ok(!pipelineOptsFromArgv([]).scaRoot);
   assert.ok(!pipelineOptsFromArgv([]).scaExpSource);
 });

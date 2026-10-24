@@ -68,7 +68,7 @@ function projectCtx(env, { artifact, data }) {
     apiUsages: data.apiUsages,
     buildReview: data.buildReview,
     lockInstalls: data.lockInstalls,
-    // "xpi" (a built add-on) or "sca" (a source-code archive review, --sca-base). Gates checks
+    // "xpi" (a built add-on) or "sca" (a source-code archive review, --sca-extracted). Gates checks
     // via modeEligible (the route) and a check's `when:` (the `sca` fact).
     mode: env.mode,
     // The authoritative manifest.json and experiments are the SHIPPED artifact's (the built

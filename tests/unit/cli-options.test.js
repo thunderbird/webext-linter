@@ -133,7 +133,7 @@ test("--cache-work-dir: a review reads its answers from the folder named", async
 
   const r = run([
     path.join(fixture, "xpi"),
-    "--sca-base",
+    "--sca-extracted",
     path.join(fixture, "src"),
     ...OFFLINE_FLAGS,
     "--cache-work-dir",
@@ -169,7 +169,7 @@ test("--cache-work-dir: a source review is answered by its seeded caches alone",
   const review = (answers) =>
     run([
       path.join(fixture, "xpi"),
-      "--sca-base",
+      "--sca-extracted",
       path.join(fixture, "src"),
       ...OFFLINE_FLAGS,
       "--cache-work-dir",
@@ -237,20 +237,23 @@ test("a pipeline hard-fail aborts: exit 2 and 'verify failed' on stderr", () => 
   assert.match(r.stderr, /verify failed/);
 });
 
-// --sca-base is the SCA-mode switch, the extracted source archive. --sca-root and
+// --sca-extracted is the SCA-mode switch, the extracted source archive. --sca-root and
 // --sca-exp-source name folders inside it, so each is a usage error on its own, and the
-// refusal names the flag that was left out. (--sca-base alone is fine - the root is found
+// refusal names the flag that was left out. (--sca-extracted alone is fine - the root is found
 // inside it.)
-test("--sca-root or --sca-exp-source without --sca-base is a usage error (exit 2)", () => {
+test("--sca-root or --sca-exp-source without --sca-extracted is a usage error (exit 2)", () => {
   for (const [argv, said] of [
     [
       ["--sca-exp-source", "src"],
-      /^--sca-exp-source names a folder inside --sca-base/,
+      /^--sca-exp-source names a folder inside --sca-extracted/,
     ],
-    [["--sca-root", "src"], /^--sca-root names a folder inside --sca-base/],
+    [
+      ["--sca-root", "src"],
+      /^--sca-root names a folder inside --sca-extracted/,
+    ],
     [
       ["--sca-root", "src", "--sca-exp-source", "exp"],
-      /^--sca-root and --sca-exp-source name folders inside --sca-base/,
+      /^--sca-root and --sca-exp-source name folders inside --sca-extracted/,
     ],
   ]) {
     const r = run(["some.xpi", ...argv]);
@@ -259,30 +262,30 @@ test("--sca-root or --sca-exp-source without --sca-base is a usage error (exit 2
   }
 });
 
-// The root is a folder of the source archive, so it lies inside --sca-base however it was
+// The root is a folder of the source archive, so it lies inside --sca-extracted however it was
 // written.
-test("--sca-root outside --sca-base is a usage error (exit 2)", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-sca-base-"));
-  fs.mkdirSync(path.join(dir, "base", "pkg"), { recursive: true });
+test("--sca-root outside --sca-extracted is a usage error (exit 2)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-sca-extracted-"));
+  fs.mkdirSync(path.join(dir, "extracted", "pkg"), { recursive: true });
   fs.mkdirSync(path.join(dir, "beside"));
   const outside = run([
     "some.xpi",
-    "--sca-base",
-    path.join(dir, "base"),
+    "--sca-extracted",
+    path.join(dir, "extracted"),
     "--sca-root",
     path.join(dir, "beside"),
   ]);
   assert.equal(outside.code, 2);
   assert.match(
     outside.stderr,
-    /--sca-root names a folder inside --sca-base: .+ which is outside/
+    /--sca-root names a folder inside --sca-extracted: .+ which is outside/
   );
   const inside = run([
     "some.xpi",
-    "--sca-base",
-    path.join(dir, "base"),
+    "--sca-extracted",
+    path.join(dir, "extracted"),
     "--sca-root",
-    path.join(dir, "base", "pkg"),
+    path.join(dir, "extracted", "pkg"),
   ]);
   assert.doesNotMatch(inside.stderr, /--sca-root/);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -299,7 +302,7 @@ test("--sca-root outside --sca-base is a usage error (exit 2)", () => {
 test("--sca-exp-source naming the root itself is a usage error (exit 2)", () => {
   const r = run([
     "tests/addons/sca-nested-layout/xpi",
-    "--sca-base",
+    "--sca-extracted",
     "tests/addons/sca-nested-layout/src",
     "--sca-exp-source",
     ".",
@@ -358,13 +361,13 @@ test("an unknown --cdn-lib-lookup is refused (exit 2)", () => {
   }
 });
 
-// --sca-base is the EXTRACTED source, and the guard asks one question: does the path
+// --sca-extracted is the EXTRACTED source, and the guard asks one question: does the path
 // point at a folder? A packed root is the case that motivates it: the loader reads .xpi
 // archives and nothing else, so a .tar.gz reaches it as a file it cannot open - and the
 // answer a reviewer needs is about the FLAG they got wrong, not about the bytes. A missing
 // path and a trailing slash are the same answer. The loader's own refusal is asserted
 // against below: this guard has to come first, or the usage error never gets printed.
-test("--sca-base must point at a folder (exit 2)", () => {
+test("--sca-extracted must point at a folder (exit 2)", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-sca-root-"));
   const zip = path.join(dir, "source.zip");
   fs.writeFileSync(zip, "not a folder");
@@ -378,9 +381,9 @@ test("--sca-base must point at a folder (exit 2)", () => {
     path.join(dir, "no-such-folder"),
   ];
   for (const root of refused) {
-    const r = run(["some.xpi", "--sca-base", root]);
+    const r = run(["some.xpi", "--sca-extracted", root]);
     assert.equal(r.code, 2, root);
-    assert.match(r.stderr, /--sca-base must point at a folder/, root);
+    assert.match(r.stderr, /--sca-extracted must point at a folder/, root);
     // Neither the loader's refusal nor AdmZip's: this never reached the read.
     assert.doesNotMatch(
       r.stderr,
@@ -389,13 +392,13 @@ test("--sca-base must point at a folder (exit 2)", () => {
     );
   }
 
-  // The others name a folder INSIDE the base, and are asked the same question. It is why
+  // The others name a folder INSIDE --sca-extracted, and are asked the same question. It is why
   // this is a refusal and not a warning: warn and carry on, and the review reads the
   // Experiment's privileged code as WebExtension code.
   for (const flag of ["--sca-root", "--sca-exp-source"]) {
     const value =
       flag === "--sca-root" ? path.join(dir, "no-such-dir") : "no-such-dir";
-    const r = run(["some.xpi", "--sca-base", dir, flag, value]);
+    const r = run(["some.xpi", "--sca-extracted", dir, flag, value]);
     assert.equal(r.code, 2, flag);
     assert.match(
       r.stderr,
@@ -406,7 +409,7 @@ test("--sca-base must point at a folder (exit 2)", () => {
   }
 
   // A folder passes this guard, whatever ends the run after it.
-  const ok = run(["some.xpi", "--sca-base", dir]);
+  const ok = run(["some.xpi", "--sca-extracted", dir]);
   assert.doesNotMatch(ok.stderr, /must point at a folder/);
   fs.rmSync(dir, { recursive: true, force: true });
 });

@@ -49,7 +49,7 @@ test("a request a spawned review makes is refused, and ends the run", () => {
     [
       path.join(ROOT, "verify.js"),
       path.join(fixture, "xpi"),
-      "--sca-base",
+      "--sca-extracted",
       path.join(fixture, "src"),
       "--cache-schema-dir",
       cache,

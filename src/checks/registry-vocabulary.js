@@ -122,7 +122,7 @@ export const SCA_ONLY_INPUTS = new Set(["sca"]);
 // check runs differently, no verdict or routing moves, so the mode reaches the text
 // producers (findings, manual items, sweep entries) and stops there.
 //
-// The mode is the review's: a source code review when --sca-base is given, an XPI review
+// The mode is the review's: a source code review when --sca-extracted is given, an XPI review
 // otherwise (src/pipeline.js setupFacts.mode).
 export const MODE_RESPONSES = Object.freeze({
   sca: "response-for-sca",

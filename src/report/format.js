@@ -73,10 +73,10 @@ const SEV_COLOR = {
  * @property {string} xpiFile  What was submitted, by name and not by path - the .xpi as
  *   ATN named it, or the folder's name where the submission arrived unpacked. It is what
  *   a reviewer recognises the submission by. Always set, alongside xpiRoot.
- * @property {string} [scaBase]  SCA review: the extracted source archive, named where the
+ * @property {string} [scaExtracted]  SCA review: the extracted source archive, named where the
  *   root lies below it.
  * @property {string} [scaRoot]  SCA review: the source root the run was given
- *   (--sca-root, or found inside --sca-base), resolved.
+ *   (--sca-root, or found inside --sca-extracted), resolved.
  * @property {string} [scaExpSource]  SCA review: the Experiment implementation folder
  *   (--sca-exp-source), resolved, when one was named. Its files are privileged code and are
  *   excluded from the WebExtension checks, so naming it is how a reader sees that anything
@@ -495,7 +495,7 @@ function valueLines(entries) {
  * @param {string} list  Which prompt: one of SCA_PROMPT_STEPS.
  * @param {object} values
  * @param {boolean} [values.first]  The run's first prompt, which opens with the intro: the
- *   `unpack` prompt of --llm-sca-review, or the `analyze` prompt of a review given --sca-base.
+ *   `unpack` prompt of --llm-sca-review, or the `analyze` prompt of a review given --sca-extracted.
  * @param {{folder: string, xpi: string, source: string}} [values.submission]  From
  *   scaSubmission(), on the `unpack` prompt alone.
  * @param {string} [values.extractTo]  Beside `submission`: where the reader extracts the
@@ -717,7 +717,7 @@ export function detailLinkLines(meta) {
  * ADDON_DESCRIPTION and REVIEW_REPORT, which only the later blocks carry, come last.
  *
  * SCA_ROOT is the reviewed source: the source archive, or after a rescue the rescued copy,
- * beside which SCA_ROOT_ORIG names the same root in the source archive. SCA_BASE is the whole
+ * beside which SCA_ROOT_ORIG names the same root in the source archive. SCA_EXTRACTED is the whole
  * extracted archive the root lies in, named where the root lies below it. SCA_VULNERABILITIES
  * counts the submitted lock, and LLM_RESCUED_VULNERABILITIES the rescued copy's lock where
  * the agent attempted a rescue. LLM_BUILD_ROOT is the root in the copy the agent built in,
@@ -742,8 +742,8 @@ export function detailRows(meta) {
   if (meta.xpiRoot) {
     rows.push(["XPI_ROOT", "extracted addon", meta.xpiRoot]);
   }
-  if (meta.scaBase) {
-    rows.push(["SCA_BASE", "extracted source archive", meta.scaBase]);
+  if (meta.scaExtracted) {
+    rows.push(["SCA_EXTRACTED", "extracted source archive", meta.scaExtracted]);
   }
   if (meta.buildFile) {
     rows.push(["SCA_BUILD_PROCESS", "build.md", meta.buildFile]);

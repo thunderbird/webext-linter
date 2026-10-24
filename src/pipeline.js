@@ -156,7 +156,7 @@ export const SETUP_STEPS = Object.freeze([
 /**
  * Every path opt is ABSOLUTE. The arg-array reader resolves them (pipelineOptsFromValues,
  * src/cli.js), which is the one layer that knows what each flag was written relative to -
- * the working directory for --sca-base and --sca-root, and the root for --sca-exp-source. Nothing here re-resolves one, and a caller handing in a relative path gets
+ * the working directory for --sca-extracted and --sca-root, and the root for --sca-exp-source. Nothing here re-resolves one, and a caller handing in a relative path gets
  * whatever the working directory makes of it.
  * @typedef {object} PipelineOpts
  * @property {string} addonPath  The shipped add-on, absolute.
@@ -179,11 +179,11 @@ export const SETUP_STEPS = Object.freeze([
  *   (--warnings-as-errors): the band the registry hands out IS an error, so the report,
  *   the tally, the early exit and the exit code all follow (src/checks/registry.js
  *   bandUnder). Off by default.
- * @property {string} [scaBase]  SCA mode: the extracted source archive, absolute, the root
- *   lying inside it (--sca-base). Setting it switches the review to SCA mode. Named in the
+ * @property {string} [scaExtracted]  SCA mode: the extracted source archive, absolute, the root
+ *   lying inside it (--sca-extracted). Setting it switches the review to SCA mode. Named in the
  *   report, and the review reads the root.
- * @property {string} [scaRoot]  SCA mode: the source archive root, absolute, inside scaBase -
- *   the folder holding package.json/lock, found inside scaBase where it is left out. The
+ * @property {string} [scaRoot]  SCA mode: the source archive root, absolute, inside scaExtracted -
+ *   the folder holding package.json/lock, found inside scaExtracted where it is left out. The
  *   whole root is reviewed as the readable source and its
  *   declared dependencies are audited; the positional XPI is the shipped artifact against which
  *   the manifest.json, experiments and file-completeness (`input: xpi`) checks all run (a
@@ -292,7 +292,7 @@ async function reviewSubmission(opts, work, prepared) {
   // `addonPath` IS the shipped add-on's path, absolute, and the single value the run has
   // for "which add-on": what the report names, and where the work folder and its files go. An Addon carries no path of its own
   // (src/addon/load.js), and nothing here resolves one - the arg-array reader did.
-  // SCA (source code archive) mode is on when --sca-base is set, and the whole of the root
+  // SCA (source code archive) mode is on when --sca-extracted is set, and the whole of the root
   // inside it is the review source. It splits the review across TWO add-on artifacts with a fixed
   // ROLE each, resolved here ONCE so nothing downstream re-branches on the mode:
   //
@@ -315,7 +315,7 @@ async function reviewSubmission(opts, work, prepared) {
   // and the tooling are one set of files, which is what the build checks want.
   //
   // The review mode is DERIVED from one fact below and assigned nowhere, so it cannot drift
-  // from the steps that ran: a source root (--sca-base) makes it a source code review. Every reader - the
+  // from the steps that ran: a source root (--sca-extracted) makes it a source code review. Every reader - the
   // steps, the ctx builders, the report - reads that one derivation.
   // The parsed registry, threaded from main() (or loaded once here when a caller
   // such as the test harness invokes the pipeline directly), read under THIS run's band
@@ -326,7 +326,7 @@ async function reviewSubmission(opts, work, prepared) {
   });
 
   // Which folder is the source root, settled before anything reads it
-  // (src/addon/sca-root.js): found inside --sca-base where no --sca-root was named, and below
+  // (src/addon/sca-root.js): found inside --sca-extracted where no --sca-root was named, and below
   // a named one that holds no package file. Whoever named the folder had not looked inside it
   // yet - an archive is extracted by whoever prepares the review, into a destination worked
   // out by path math - so an archive carrying its contents in one directory of its own leaves
@@ -337,7 +337,7 @@ async function reviewSubmission(opts, work, prepared) {
   // narration comes later, with the rest of Setup.
   const scaMove = settleScaRoot({
     ...opts,
-    scaRoot: opts.scaRoot ?? opts.scaBase,
+    scaRoot: opts.scaRoot ?? opts.scaExtracted,
   });
   opts = { ...opts, ...scaMove };
 
@@ -603,8 +603,8 @@ async function reviewSubmission(opts, work, prepared) {
         ...(scaArchive
           ? {
               // The extracted source archive, named where the root lies below it.
-              ...(opts.scaBase && opts.scaBase !== opts.scaRoot
-                ? { scaBase: opts.scaBase }
+              ...(opts.scaExtracted && opts.scaExtracted !== opts.scaRoot
+                ? { scaExtracted: opts.scaExtracted }
                 : {}),
               scaRoot: opts.scaRoot,
               // The one input that NARROWS the review: that subtree is privileged code and is

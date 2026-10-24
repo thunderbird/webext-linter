@@ -2178,7 +2178,7 @@ review-early-exit:
     archive-is-xpi: Source archive contains the built XPI
 
 # The prompts that PREPARE a source code review: what --llm-sca-review, or --llm-review given
-# --sca-base, prints, and what each --llm-handback run on the work folder it created prints after
+# --sca-extracted, prints, and what each --llm-handback run on the work folder it created prints after
 # it, until the preparation is done and that run starts the review itself (src/prepare/steps.js,
 # src/cli.js), whose first prompt it prints in place of one of these. No review is possible until
 # someone has worked out the build, so these texts and the values beside them are all their
@@ -2188,7 +2188,7 @@ review-early-exit:
 # the source archive's own extraction goes (EXTRACT_TO, the work folder's sca/ - path math, not
 # archive reading), and the reader does what only opening the archive can settle: extracting it
 # there (`unpack`, --llm-sca-review only). The linter then derives the build folder inside it
-# (SCA_ROOT, src/addon/sca-root.js), as it does inside a --sca-base it copied into sca/, and from
+# (SCA_ROOT, src/addon/sca-root.js), as it does inside a --sca-extracted it copied into sca/, and from
 # `analyze` on both runs read the same prompts. The reader writes the build report
 # (SCA_BUILD_PROCESS), lists what the build reaches for outside the declared dependencies
 # (SCA_BUILD_SAFETY_ISSUES), and, where the add-on declares Experiments and the folder was not
@@ -2215,7 +2215,7 @@ review-early-exit:
 #
 # The step lists are prompts. `unpack` is printed by --llm-sca-review with the intro and the
 # Submission values, `analyze` by the run that derived the root (or first, with the intro, by
-# --llm-review given --sca-base), with SCA_ROOT, SCA_BUILD_PROCESS and ANSWERS, `permission` by
+# --llm-review given --sca-extracted), with SCA_ROOT, SCA_BUILD_PROCESS and ANSWERS, `permission` by
 # the run that read the verdict, with ANSWERS and the Build Review Details
 # ({{buildDetails}}), `build` by the run that audited a clean lock, with SCA_ROOT, LLM_BUILD_ROOT
 # (the root's place in build/) and SCA_BUILD_PROCESS, and `rescue` by the run that made the

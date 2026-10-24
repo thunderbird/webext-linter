@@ -50,7 +50,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
   const r = run([
     path.join(sca, "xpi"),
     ...OFFLINE_FLAGS,
-    "--sca-base",
+    "--sca-extracted",
     path.join(sca, "src"),
     "--llm-review",
   ]);
@@ -76,14 +76,14 @@ test("a source code review's steps carry the paths the review resolved to", () =
   assert.equal(readJson(work, "state").report.meta.scaRoot, root);
   fs.rmSync(work, { recursive: true, force: true });
 
-  // A rejected Experiment submitted WITH --sca-base is not prepared: the review rejects it
+  // A rejected Experiment submitted WITH --sca-extracted is not prepared: the review rejects it
   // from the add-on alone, so it starts at once, as --llm-sca-review's does, and its first
   // prompt is the close. No build report is asked for.
   const exp = path.join(ROOT, "tests", "addons", "experiment-disallowed-sca");
   const rejected = run([
     path.join(exp, "xpi"),
     ...OFFLINE_FLAGS,
-    "--sca-base",
+    "--sca-extracted",
     path.join(exp, "src"),
     "--sca-exp-source",
     path.join(exp, "src", "experiment"),
@@ -238,7 +238,7 @@ test("a warning reaches stderr, held back to the end of a prompt run", () => {
   fs.rmSync(path.join(dir, "src", "VENDORS.md"));
   const args = [
     path.join(dir, "xpi"),
-    "--sca-base",
+    "--sca-extracted",
     path.join(dir, "src"),
     "--sca-exp-source",
     "emptyexp",
@@ -304,7 +304,7 @@ test("a failure outside main still dumps the held messages", () => {
   // The review an agent runs starts once its preparation is done: the build judged.
   const analyze = run([
     path.join(dir, "xpi"),
-    "--sca-base",
+    "--sca-extracted",
     path.join(dir, "src"),
     "--sca-exp-source",
     "emptyexp",

@@ -107,7 +107,7 @@
         state</strong> - the Experiment verdict, the submitted source archive and
         the <strong>review target</strong> - and every check keys off those. The
         <code>mode</code> is not one of them: it is DERIVED from
-        <code>--sca-base</code> alone, so it cannot disagree with the steps that
+        <code>--sca-extracted</code> alone, so it cannot disagree with the steps that
         ran. The verdict decides nothing about it: a rejected Experiment is the
         review it was asked to be, and its first check stops it. These eager steps are declared in
         <code>SETUP_STEPS</code> and walked by one loop, which is also where the
@@ -162,7 +162,7 @@ config:
       bottom: 8
 ---
 flowchart TB
-  SUB(["called from src/cli.js -<br/>a built XPI / folder (+ a source archive, --sca-base)"]) --> LOAD
+  SUB(["called from src/cli.js -<br/>a built XPI / folder (+ a source archive, --sca-extracted)"]) --> LOAD
 
   subgraph P1 ["runPipeline() · setup - the eager steps (SETUP_STEPS)"]
     LOAD["Reading add-on<br/>loadAddon(XPI): extract a packed one,<br/>or copy a folder, to XPI_ROOT, then read it"] --> LDQ{{"the archive opens, names each file once by a plain path,<br/>holds no symbolic link, every file reads, and it fits the size cap?"}}
@@ -185,7 +185,7 @@ flowchart TB
     SETINV --> XNS
     XNS --> MODEQ
 
-    MODEQ{{"--sca-base given?<br/>(the review is NEVER re-routed by what the XPI looks like)"}}
+    MODEQ{{"--sca-extracted given?<br/>(the review is NEVER re-routed by what the XPI looks like)"}}
     MODEQ -- "no" --> MX2["an XPI review · target = the XPI<br/>(mode derives to xpi)"]
     MODEQ -- "yes" --> LSQ{{"--sca-exp-source given for an Experiment,<br/>and resolves within the source root?"}}
     LSQ -- no --> P1F
@@ -255,7 +255,7 @@ flowchart TB
         Its getters run the full XPI analysis - vendor (in an XPI review),
         classify, identify, parse - whenever a check routed to it asks, so an
         <code>input: xpi</code> check sees the identical artifact whether the run
-        is SCA or XPI. <code>--sca-base</code> alone decides the mode, and a
+        is SCA or XPI. <code>--sca-extracted</code> alone decides the mode, and a
         source submission is <strong>always</strong> reviewed as one. Whether it is
         SHAPED like one is a separate question, asked by two checks rather than by
         setup, both on <code>input: all</code> - the one route that can carry more

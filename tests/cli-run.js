@@ -84,7 +84,7 @@ export const FIXTURES = path.join(ROOT, "tests", "addons");
 /** The flags whose value names a folder the review READS, never the add-on, and so is
  *  passed as it stands. */
 const READ_FOLDER_FLAGS = new Set([
-  "--sca-base",
+  "--sca-extracted",
   "--sca-root",
   "--sca-exp-source",
 ]);

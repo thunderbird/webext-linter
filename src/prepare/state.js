@@ -62,7 +62,7 @@ const READ_ONLY = 0o444;
  *   `analyze`;
  * - `analyze`: the root is known, in `sca/`, and its build is to be reported in build.md, with
  *   the build judgement (and the Experiment folder, where the add-on declares Experiments and
- *   it is not known yet) handed back in the review file. A review given --sca-base starts
+ *   it is not known yet) handed back in the review file. A review given --sca-extracted starts
  *   here, its source copied into `sca/`. The next hand-back moves a safe build on to
  *   `permission` (or, where the record holds agentBuilds, audits the root) and an unsafe one
  *   to `done`;
@@ -416,7 +416,7 @@ export function recordBoolean(value, what) {
 /**
  * The record of a preparation that has not started, with what the run that created the work
  * folder alone knows. Without roots it starts at `unpack` (--llm-sca-review, whose agent
- * extracts the source); with them at `analyze` (a review given --sca-base, whose source the
+ * extracts the source); with them at `analyze` (a review given --sca-extracted, whose source the
  * linter copied into `sca/`).
  * @param {Pick<PrepareRecord, "submission" | "flags" | "agentBuilds"> &
  *   {roots?: PrepareRecord["roots"]}} known

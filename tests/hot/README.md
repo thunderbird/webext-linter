@@ -90,7 +90,7 @@ Locks were generated with `npm install --package-lock-only --ignore-scripts` or
 Packages are real and pinned, never faked. Each was confirmed against OSV
 (`api.osv.dev/v1/query`) on 2026-10-13, and each case's root was audited with the
 preparation's own audit (`src/prepare/audit.js` `auditRoot`). Every case's tree was also
-reviewed once without an agent (`--sca-base`, the rescued trees as the rescue would leave
+reviewed once without an agent (`--sca-extracted`, the rescued trees as the rescue would leave
 them), to confirm no deterministic check aborts a case that should reach row 14.
 
 | Package | Advisory | Severity | Fixed in |

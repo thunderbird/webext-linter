@@ -499,7 +499,7 @@ they run the same steps:
 
 ```sh
 node verify.js ./submission-folder --llm-sca-review
-node verify.js ./built.xpi --sca-base ./extracted-source --llm-review
+node verify.js ./built.xpi --sca-extracted ./extracted-source --llm-review
 ```
 
 `--llm-sca-review` reads the add-on argument as the submission folder instead of as an
@@ -512,7 +512,7 @@ finds one by (`src/addon/sca-root.js`): below any folders the archive wraps its 
 and `sca/` itself where it holds the package file or the walk cannot decide. Then it prints the
 `analyze` prompt.
 
-`--llm-review` given `--sca-base` (the source archive, already extracted) copies all of it into
+`--llm-review` given `--sca-extracted` (the source archive, already extracted) copies all of it into
 the work folder's `sca/`, takes `--sca-root` and `--sca-exp-source` where they were given and
 finds the root where not, and prints the `analyze` prompt itself. Nothing either run hands
 out names a folder outside `sca/`.
@@ -691,7 +691,7 @@ the review sit in its hidden `.review/` folder, out of the reviewer's sight:
 | Name | What it is | Written by |
 | --- | --- | --- |
 | `xpi/` | The shipped add-on, extracted (or, for an unpacked one, copied): `XPI_ROOT` | the linter, as the review starts |
-| `sca/` | The source archive, extracted: `EXTRACT_TO`, holding `SCA_ROOT` | the reader of the `--llm-sca-review` prompt, or the linter, copying `--sca-base` |
+| `sca/` | The source archive, extracted: `EXTRACT_TO`, holding `SCA_ROOT` | the reader of the `--llm-sca-review` prompt, or the linter, copying `--sca-extracted` |
 | `rescued/` | The copy of the whole `sca/` a rescue changes the dependencies of (`RESCUE_ROOT` lies inside it), only its `package.json` and lock, never installed or built in: reviewed instead when the rescue comes out clean, and removed when it fails | the linter, and the reader of the `rescue` prompt |
 | `.review/prepare.json` | Where the preparation of a source code review stands, and how its review is to be run - read-only, and hashed | the linter, at each step of the preparation |
 | `.review/state.json` | The review itself, which every pass reads | the linter |
@@ -721,7 +721,7 @@ A source review the reviewer restarts as an XPI review (see [Restarting as an XP
 review](#restarting-as-an-xpi-review)) is left in its folder, and the XPI review starts in a new
 `xpi-review-<add-on name>-<timestamp>` folder beside the add-on.
 
-`--sca-base` must not include the add-on: the shipped XPI, and the work folder created beside
+`--sca-extracted` must not include the add-on: the shipped XPI, and the work folder created beside
 it, would be read as files of the source. Extract the source archive into a folder of its own.
 
 The caches are not part of it: they stay in `WEBEXT-LINTER-CACHE/`.
@@ -731,7 +731,7 @@ The caches are not part of it: they stay in `WEBEXT-LINTER-CACHE/`.
 
 | Option | Description |
 | --- | --- |
-| `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Given `--sca-base`, prepare the source code review first, from its `analyze` step on (see [Preparing a source code review](#preparing-a-source-code-review)). Refused with `--report-format json`. |
+| `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Given `--sca-extracted`, prepare the source code review first, from its `analyze` step on (see [Preparing a source code review](#preparing-a-source-code-review)). Refused with `--report-format json`. |
 | `--llm-handback <dir>` | Take a phase back and hand out the next, from the review file in the work folder the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file in that folder. On a folder a source code review is being prepared in (`.review/prepare.json`, and no review started), take the next step of the preparation instead, and once it is done, start its review. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - and print the first prompt for preparing a source code review of it. It creates the review's work folder beside the `.xpi`, records there how the review is to be run, and its prompt ends in `--llm-handback` on that folder (see [Preparing a source code review](#preparing-a-source-code-review)). Refused beside any `--sca-*` flag, which is what the preparation works out. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |

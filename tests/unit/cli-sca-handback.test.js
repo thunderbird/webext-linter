@@ -309,7 +309,7 @@ test("the activity feed labels a locus the same way the report does", () => {
   const fx = "tests/addons/sca-multiple-vendor-files";
   const r = run([
     `${fx}/xpi`,
-    "--sca-base",
+    "--sca-extracted",
     `${fx}/src`,
     "--verbose",
     ...OFFLINE_FLAGS,
@@ -356,7 +356,7 @@ test("a submission's escape sequences never reach the terminal raw", () => {
     path.join(evil, "package.json"),
     '{"name":"x","version":"1.0.0"}'
   );
-  const r = run([xpi, "--sca-base", root, ...OFFLINE_FLAGS]);
+  const r = run([xpi, "--sca-extracted", root, ...OFFLINE_FLAGS]);
   assert.match(r.stdout, /evil \[2K \[1Aname/, "the folder was named");
   assert.ok(!r.stdout.includes("\u001b"), "raw ESC on stdout");
   assert.ok(!r.stderr.includes("\u001b"), "raw ESC on stderr");
@@ -398,7 +398,7 @@ test("an unreadable submission file makes it invalid, exit 2", (t) => {
     // The same in a source archive: the archive is the invalid input.
     fs.chmodSync(bg, 0o644);
     fs.chmodSync(build, 0o000);
-    const sca = run([xpi, "--sca-base", src, ...OFFLINE_FLAGS]);
+    const sca = run([xpi, "--sca-extracted", src, ...OFFLINE_FLAGS]);
     assert.equal(sca.code, 2, sca.stderr);
     assert.match(
       sca.stderr,
@@ -444,7 +444,7 @@ test("code Babel cannot walk is reported at its line, not exit 2", () => {
     );
     assert.doesNotMatch(r.stderr, /verify failed/);
     fs.writeFileSync(path.join(xpi, "bg.js"), "browser.runtime.id;\n");
-    const sca = run([xpi, "--sca-base", src, ...OFFLINE_FLAGS]);
+    const sca = run([xpi, "--sca-extracted", src, ...OFFLINE_FLAGS]);
     assert.equal(sca.code, 1, sca.stderr);
     assert.match(
       sca.stdout,
@@ -478,7 +478,7 @@ test("an XPI holding a symlink is invalid, exit 2", () => {
   try {
     for (const args of [
       [xpi, ...OFFLINE_FLAGS],
-      [xpi, "--sca-base", src, ...OFFLINE_FLAGS],
+      [xpi, "--sca-extracted", src, ...OFFLINE_FLAGS],
     ]) {
       const r = run(args);
       assert.equal(r.code, 2, r.stderr);
@@ -536,7 +536,7 @@ test("restarting an aborted source review starts an XPI review of its own", () =
   try {
     const started = run([
       xpi,
-      "--sca-base",
+      "--sca-extracted",
       src,
       "--llm-review",
       "--warnings-as-errors",

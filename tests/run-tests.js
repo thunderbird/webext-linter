@@ -195,7 +195,7 @@ function preparationEntries(preparation) {
  * @param {string} dir  The fixture.
  * @param {{from?: string, rescued?: boolean}} preparation
  * @param {string} cache
- * @returns {Promise<{workFolder: string, scaBase: string, scaRoot: string}>}
+ * @returns {Promise<{workFolder: string, scaExtracted: string, scaRoot: string}>}
  */
 async function preparedFixture(dir, preparation, cache) {
   const at = await realPreparation({
@@ -207,7 +207,7 @@ async function preparedFixture(dir, preparation, cache) {
           fs.cpSync(path.join(dir, "src"), copyRoot, { recursive: true })
       : null,
   });
-  // The base is the copy the root sits in, as the hand-back names it (src/cli.js
+  // The extracted source is the copy the root sits in, as the hand-back names it (src/cli.js
   // preparedReview): the rescued one where a rescue came out clean, else `sca/`.
   const { sca, rescued } = workPaths(at.work);
   const scaRoot = at.record.roots.scaRoot;
@@ -216,7 +216,7 @@ async function preparedFixture(dir, preparation, cache) {
     relativeInside(scaRoot, fs.realpathSync(rescued)) !== null;
   return {
     workFolder: at.work,
-    scaBase: fs.realpathSync(inRescued ? rescued : sca),
+    scaExtracted: fs.realpathSync(inRescued ? rescued : sca),
     scaRoot,
   };
 }
@@ -377,15 +377,15 @@ async function main() {
       let review;
       if (isScaFixture(dir)) {
         // SCA mode: the shipped XPI is the authoritative artifact (addonPath), the
-        // src/ tree is the submitted archive (scaBase), and the review finds the root inside
+        // src/ tree is the submitted archive (scaExtracted), and the review finds the root inside
         // it, as it does for a command line naming no --sca-root. Where the add-on code and
         // the Experiment sit inside the root comes from the spec's "sca" block; with none, the
         // source IS the root - the flat layout. Named absolutely, like every other path
         // opt, since that is what the arg reader hands the pipeline.
-        let scaBase = path.join(dir, "src");
-        let scaRoot = settleScaRoot({ scaRoot: scaBase }).scaRoot;
+        let scaExtracted = path.join(dir, "src");
+        let scaRoot = settleScaRoot({ scaRoot: scaExtracted }).scaRoot;
         if (preparation) {
-          ({ workFolder, scaBase, scaRoot } = await preparedFixture(
+          ({ workFolder, scaExtracted, scaRoot } = await preparedFixture(
             dir,
             preparation,
             workCache
@@ -397,7 +397,7 @@ async function main() {
           ...base,
           workFolder,
           addonPath: path.join(dir, "xpi"),
-          scaBase,
+          scaExtracted,
           ...(preparation ? { scaRoot } : {}),
           scaExpSource: inRoot(sca.expSource),
         });

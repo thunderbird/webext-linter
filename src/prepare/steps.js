@@ -5,7 +5,7 @@
 // submission folder (--llm-sca-review) has the source archive extracted into the work
 // folder's `sca/` first (`unpack`), and its hand-back derives the root inside it as the review
 // derives one (src/addon/sca-root.js). One given the extracted source (--llm-review
-// --sca-base) has it copied into `sca/` by the linter, and starts at `analyze`. There the
+// --sca-extracted) has it copied into `sca/` by the linter, and starts at `analyze`. There the
 // reader reports the build in build.md and hands back the verdict whether it is safe (and the
 // Experiment folder, where it is not known yet). Where a check the build relies on is switched
 // off (`build-guard`), the folder is done at once: nobody is asked, and the agent builds
@@ -176,7 +176,7 @@ export function startPreparation(work, record) {
 
 /**
  * Whether `analyze` asks for the Experiment folder: the built add-on declares Experiments, and
- * the folder is not known yet. A review given --sca-base was given it (--sca-exp-source).
+ * the folder is not known yet. A review given --sca-extracted was given it (--sca-exp-source).
  * @param {import("./state.js").PrepareRecord} record
  * @returns {boolean}
  */
@@ -836,21 +836,21 @@ function rescue(work, record, asked, match) {
 }
 
 /**
- * The source a review given --sca-base starts its preparation with: the whole of that folder
+ * The source a review given --sca-extracted starts its preparation with: the whole of that folder
  * copied into the work folder's `sca/`, as --llm-sca-review's reader extracts the archive
  * there, and the roots given inside it mapped to their place in the copy. From here on the
  * preparation reads only the copy.
  * @param {string} work  The work folder, just created.
- * @param {{base: string, scaRoot: string, scaExpSource: ?string}} given  Absolute and real:
+ * @param {{extracted: string, scaRoot: string, scaExpSource: ?string}} given  Absolute and real:
  *   the extracted source, and the root and Experiment folder inside it.
  * @returns {{scaRoot: string, scaExpSource: ?string}}
  * @throws {Error}  The copy could not be made.
  */
 export function copySource(work, given) {
   const { sca } = workPaths(work);
-  wholeCopy(given.base, sca, "source copy");
+  wholeCopy(given.extracted, sca, "source copy");
   const real = fs.realpathSync(sca);
-  const inCopy = (p) => path.join(real, path.relative(given.base, p));
+  const inCopy = (p) => path.join(real, path.relative(given.extracted, p));
   return {
     scaRoot: inCopy(given.scaRoot),
     scaExpSource: given.scaExpSource ? inCopy(given.scaExpSource) : null,

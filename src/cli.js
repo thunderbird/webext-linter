@@ -229,16 +229,16 @@ function helpText(checkIds) {
 
   const sca = [
     [
-      "--sca-base <folder>",
+      "--sca-extracted <folder>",
       "The extracted source archive, all of it. A folder, not a packed archive: a source archive comes in too many formats for this tool to open, so extract it yourself - unlike the submitted .xpi, which this tool extracts. Setting it switches the review to SCA mode, and every other --sca-* folder must lie inside it. It must not include the add-on. With --llm-review, it is copied into the work folder and the build is worked out from the copy before the review starts.",
     ],
     [
       "--sca-root <folder>",
-      "The folder inside --sca-base the build runs in, holding package.json and the lock file: what the review reads as the source. Left out, the linter finds it (the folder holding package.json, below any folders the archive wraps its content in). Needs --sca-base.",
+      "The folder inside --sca-extracted holding package.json and its lock file (package-lock.json or pnpm-lock.yaml), where the build runs: what the review reads as the source. Left out, the linter finds it (the folder holding package.json, below any folders the archive wraps its content in). Needs --sca-extracted.",
     ],
     [
       "--sca-exp-source <path>",
-      "The Experiment implementation folder, inside --sca-root - relative to it or absolute within it, anywhere under it (e.g. addon/experiment-api, or a sibling of the source like experiment), but never the root itself: naming the root would exclude nothing. Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-base; REQUIRED in SCA mode for an Experiment add-on.",
+      "The Experiment implementation folder, inside --sca-root - relative to it or absolute within it, anywhere under it (e.g. addon/experiment-api, or a sibling of the source like experiment), but never the root itself: naming the root would exclude nothing. Its files are privileged, non-WebExtension code, so they are excluded from the WebExtension API/permission checks (which would otherwise false-positive on Services/ChromeUtils). Needs --sca-extracted; REQUIRED in SCA mode for an Experiment add-on.",
     ],
   ];
 
@@ -360,7 +360,7 @@ const OPTIONS = {
   "checks-skip": { type: "string" },
   eslint: { type: "boolean" },
   "allow-experiments": { type: "boolean" },
-  "sca-base": { type: "string" },
+  "sca-extracted": { type: "string" },
   "sca-root": { type: "string" },
   "sca-exp-source": { type: "string" },
   "report-format": { type: "string" },
@@ -393,7 +393,7 @@ function reviewSkips(values) {
 }
 
 /** The --sca-* flags, which --llm-sca-review exists to work out and so refuses to be given. */
-const SCA_FLAGS = ["sca-base", "sca-root", "sca-exp-source"];
+const SCA_FLAGS = ["sca-extracted", "sca-root", "sca-exp-source"];
 
 /** Where each cache lives when the run names none. */
 const CACHE_DIR_DEFAULTS = Object.freeze(
@@ -404,7 +404,7 @@ const CACHE_DIR_DEFAULTS = Object.freeze(
  *  anything reads it (main). --sca-exp-source is not one of them: it names a folder INSIDE
  *  --sca-root, and is followed from there. */
 const FOLDER_FLAGS = [
-  "sca-base",
+  "sca-extracted",
   "sca-root",
   "llm-handback",
   ...CACHES.map((c) => c.flag),
@@ -541,7 +541,7 @@ function realFolder(p) {
  * it lands does. Two questions (that a value was given at all is main()'s, asked of every
  * flag that takes one):
  *
- * Does a flag that names a folder INSIDE another one (`within`: --sca-root inside --sca-base,
+ * Does a flag that names a folder INSIDE another one (`within`: --sca-root inside --sca-extracted,
  * --sca-exp-source inside the root) LAND inside it? A value resolving outside names a folder
  * on the reviewing machine, which can be anywhere, so what it names is not part of the
  * submission and cannot be shown to be.
@@ -963,21 +963,21 @@ export async function main(argv) {
     return 2;
   }
 
-  // --sca-base is the SCA-mode switch: the extracted source archive, all of it. --sca-root
+  // --sca-extracted is the SCA-mode switch: the extracted source archive, all of it. --sca-root
   // and --sca-exp-source name folders INSIDE it, so either is meaningless on its own.
   const named = ["sca-root", "sca-exp-source"].filter((f) => values[f]);
-  if (named.length && !values["sca-base"]) {
+  if (named.length && !values["sca-extracted"]) {
     const [names, need] =
       named.length > 1 ? ["name folders", "need"] : ["names a folder", "needs"];
     writeToStderr(
-      `${listOf(named.map((f) => `--${f}`))} ${names} inside --sca-base, the extracted ` +
-        `source archive, and ${need} it (SCA mode). Pass --sca-base, and --sca-root only ` +
+      `${listOf(named.map((f) => `--${f}`))} ${names} inside --sca-extracted, the extracted ` +
+        `source archive, and ${need} it (SCA mode). Pass --sca-extracted, and --sca-root only ` +
         "where the linter cannot find the build folder itself.\n"
     );
     return 2;
   }
 
-  // Every --sca-* flag names a FOLDER that is there. The base is the extracted source -
+  // Every --sca-* flag names a FOLDER that is there. --sca-extracted is the extracted source -
   // extracting it is the reviewer's, whatever format it came in, unlike the submitted
   // .xpi which this tool extracts itself - the root lies inside it, and --sca-exp-source
   // inside the root. Asked outermost first, so each folder's own validity is settled before
@@ -992,49 +992,50 @@ export async function main(argv) {
     if (value === undefined) {
       continue;
     }
-    // --sca-base stands on its own. Each other one names a folder INSIDE the one before it,
+    // --sca-extracted stands on its own. Each other one names a folder INSIDE the one before it,
     // so it is asked about after being resolved against it - the same resolution the reader
     // applies a moment later.
-    const within = { "sca-root": "sca-base", "sca-exp-source": "sca-root" }[
-      flag
-    ];
+    const within = {
+      "sca-root": "sca-extracted",
+      "sca-exp-source": "sca-root",
+    }[flag];
     const base = {
-      "sca-root": values["sca-base"],
+      "sca-root": values["sca-extracted"],
       "sca-exp-source": rootOf(values),
     }[flag];
     const problem = folderProblem(flag, value, base ?? ".", within ?? null);
     if (problem) {
       const what =
-        flag === "sca-base" && !problem.escape
+        flag === "sca-extracted" && !problem.escape
           ? " This tool cannot open a source archive itself - extract it and point " +
-            "--sca-base at the folder it produced."
+            "--sca-extracted at the folder it produced."
           : "";
       writeToStderr(`${problem.text}${what}\n`);
       return 2;
     }
   }
 
-  // Everything under --sca-base is the submitted source, copied and built from, so the
+  // Everything under --sca-extracted is the submitted source, copied and built from, so the
   // add-on cannot lie inside it: the review would read the shipped XPI, and the work folder
   // created beside it, as files of the source. Asked of both paths already followed to what
   // they really are.
   const addonPath = path.resolve(positionals[0]);
   if (
-    values["sca-base"] &&
-    relativeInside(addonPath, values["sca-base"]) !== null
+    values["sca-extracted"] &&
+    relativeInside(addonPath, values["sca-extracted"]) !== null
   ) {
     writeToStderr(
-      `--sca-base "${values["sca-base"]}" must not include the add-on "${addonPath}".\n`
+      `--sca-extracted "${values["sca-extracted"]}" must not include the add-on "${addonPath}".\n`
     );
     return 2;
   }
   // The work folder is always the default, beside the add-on, and must not exist: it is
   // stamped with the moment the run starts, so only two runs started in the same moment
   // reach this, and the second is refused before it reads anything. A review given
-  // --sca-base reviews source code, and its folder is named for that.
+  // --sca-extracted reviews source code, and its folder is named for that.
   const workFolder = defaultWorkFolder(
     addonPath,
-    values["sca-base"] ? "sca" : "xpi"
+    values["sca-extracted"] ? "sca" : "xpi"
   );
   if (fs.lstatSync(workFolder, { throwIfNoEntry: false })) {
     writeToStderr(`The work folder "${workFolder}" must not exist.\n`);
@@ -1043,7 +1044,7 @@ export async function main(argv) {
   // A source review an agent runs is prepared as --llm-sca-review's is, from the build
   // analysis on: the extracted source is copied into the work folder, and the build is worked
   // out before the review starts.
-  if (values["llm-review"] && values["sca-base"]) {
+  if (values["llm-review"] && values["sca-extracted"]) {
     return startSourcePreparation(values, addonPath, workFolder, registry);
   }
 
@@ -1063,7 +1064,7 @@ export async function main(argv) {
 }
 
 /**
- * Start the preparation of a source review given --sca-base, at `analyze`: the work folder
+ * Start the preparation of a source review given --sca-extracted, at `analyze`: the work folder
  * created, the source copied into its `sca/` (copySource), and the build analysis's prompt
  * printed - the step --llm-sca-review reaches once its reader has extracted the archive. An
  * Experiment the review would reject is not prepared (experimentGate): its review starts at
@@ -1114,7 +1115,7 @@ async function startSourcePreparation(values, addonPath, work, registry) {
   let roots;
   try {
     roots = copySource(work, {
-      base: values["sca-base"],
+      extracted: values["sca-extracted"],
       scaRoot: rootOf(values),
       scaExpSource: values["sca-exp-source"] ?? null,
     });
@@ -1329,18 +1330,21 @@ function clearCaches(dirs) {
 
 /**
  * The build folder the review reads as the source: --sca-root where it was named, else the
- * one found inside --sca-base by the rule the review finds one by (settleScaRoot), the base
- * itself where it holds the package file or the walk cannot decide. Undefined outside SCA
- * mode, and where the base names no folder, which its own check refuses.
+ * one found inside --sca-extracted by the rule the review finds one by (settleScaRoot), that
+ * folder itself where it holds the package file or the walk cannot decide. Undefined outside
+ * SCA mode, and where --sca-extracted names no folder, which its own check refuses.
  * @param {Record<string, string|boolean|string[]>} values
  * @returns {string|undefined}
  */
 function rootOf(values) {
-  if (values["sca-root"] !== undefined || values["sca-base"] === undefined) {
+  if (
+    values["sca-root"] !== undefined ||
+    values["sca-extracted"] === undefined
+  ) {
     return values["sca-root"];
   }
-  return pointsAtFolder(values["sca-base"])
-    ? settleScaRoot({ scaRoot: values["sca-base"] }).scaRoot
+  return pointsAtFolder(values["sca-extracted"])
+    ? settleScaRoot({ scaRoot: values["sca-extracted"] }).scaRoot
     : undefined;
 }
 
@@ -1350,7 +1354,7 @@ function rootOf(values) {
  * Does not include `addonPath` (that comes from the positional path).
  *
  * Every path opt leaves here ABSOLUTE. This is the one layer that knows what each flag is
- * written relative to - the working directory for --sca-base and --sca-root, and the root for
+ * written relative to - the working directory for --sca-extracted and --sca-root, and the root for
  * --sca-exp-source, which names a folder inside it - so it is the layer that resolves them. Downstream then
  * derives what it needs (an archive key, a containment test) from real paths rather than
  * re-deciding what a relative string meant: one spelling reaching several functions is one
@@ -1360,7 +1364,7 @@ function rootOf(values) {
  */
 function pipelineOptsFromValues(values) {
   // Resolved FIRST, because --sca-exp-source is resolved against it. A root left out is
-  // passed on left out, and the review finds it inside the base (src/pipeline.js).
+  // passed on left out, and the review finds it inside --sca-extracted (src/pipeline.js).
   const scaRoot = values["sca-root"]
     ? path.resolve(values["sca-root"])
     : undefined;
@@ -1380,7 +1384,9 @@ function pipelineOptsFromValues(values) {
     eslint: values.eslint,
     allowExperiments: values["allow-experiments"],
     warningsAsErrors: values["warnings-as-errors"],
-    scaBase: values["sca-base"] ? path.resolve(values["sca-base"]) : undefined,
+    scaExtracted: values["sca-extracted"]
+      ? path.resolve(values["sca-extracted"])
+      : undefined,
     scaRoot,
     scaExpSource: inRoot(values["sca-exp-source"]),
     llmReview: Boolean(values["llm-review"]),
@@ -1636,13 +1642,13 @@ function preparedReview(record, checkIds, work) {
     values[name] = value;
   }
   values["llm-review"] = true;
-  // The base is the copy the root sits in: the rescued one where a rescue came out clean,
+  // The extracted source is the copy the root sits in: the rescued one where a rescue came out clean,
   // else `sca/`.
   const paths = workPaths(work);
   const rescued = fs.existsSync(paths.rescued)
     ? fs.realpathSync(paths.rescued)
     : null;
-  values["sca-base"] =
+  values["sca-extracted"] =
     rescued && relativeInside(roots.scaRoot, rescued) !== null
       ? rescued
       : fs.realpathSync(paths.sca);
@@ -1650,7 +1656,7 @@ function preparedReview(record, checkIds, work) {
   if (roots.scaExpSource !== null) {
     values["sca-exp-source"] = roots.scaExpSource;
   }
-  const within = { "sca-root": "sca-base", "sca-exp-source": "sca-root" };
+  const within = { "sca-root": "sca-extracted", "sca-exp-source": "sca-root" };
   const problem =
     cdnLookupProblem(values) ??
     emptyFlagProblem(values) ??
