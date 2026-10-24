@@ -53,14 +53,16 @@ import { rethrowIfFatal } from "../lib/errors.js";
  *   file nothing refreshes.
  * @property {{result: ?string, output: ?string, match: ?string,
  *   vulnerabilities: ?{moderate: number, high: number, critical: number},
- *   rescuedVulnerabilities: ?{moderate: number, high: number, critical: number}}} build
+ *   rescuedVulnerabilities: ?{moderate: number, high: number, critical: number},
+ *   safety: ?string}} build
  *   What came of the agent's build in the preparation (a BUILD_RESULT value,
  *   src/prepare/state.js, or null where it built nothing), what it produced where it built
  *   and the agent's comparison of that with the submitted XPI, the submitted lock's
  *   vulnerable packages as the preparation counted them, or this review's own audit where it
  *   counted none, null where neither audit happened, and the rescued copy's, null where no
- *   rescue was attempted. The details blocks show them, and the `built` step is worded by
- *   them.
+ *   rescue was attempted, and the preparation's judgement of the build (a BUILD_SAFETY_VALUES
+ *   id, null where nothing was prepared). The details blocks show them, and the `built` step
+ *   is worded by them.
  * @property {?string} phase  The phase in flight - what went out last, and so what the
  *   next hand-back is read as. Unset until the first prompt goes out, which is how a prompt
  *   knows it is the first (`first`, src/report/loop.js runOf).
@@ -150,4 +152,4 @@ export function readState(file) {
  *  nothing in the review: it holds the preparation's build in `build`, which the Build Review
  *  Details and the `built` step read, where a v17 file has no `build` and may be waiting on
  *  a `build` phase this review does not have. */
-export const STATE_VERSION = 18;
+export const STATE_VERSION = 19;

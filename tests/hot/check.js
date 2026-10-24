@@ -95,7 +95,7 @@ function stopOf(work) {
   if (state.phase === "built") {
     return {
       stop: "row-14",
-      SCA_BUILD_SAFETY_ASSESSMENT: state.values?.["build-safety"] ?? null,
+      SCA_BUILD_SAFETY_ASSESSMENT: state.build?.safety ?? null,
       ...shown,
       LLM_BUILD_OUTPUT: state.build?.output
         ? areaOf(work, state.build.output)

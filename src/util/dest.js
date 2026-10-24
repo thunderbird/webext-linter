@@ -107,7 +107,7 @@ export function runCache(work, dir) {
  * - `report`, the text the reviewer sends to the developer. The one document the linter
  *   writes itself (src/report/report-file.js).
  * - `summary`, where a sub-agent writes the add-on description, and `build`, where the
- *   agent writes what building it takes (the preparation, or the build-safety phase).
+ *   agent writes what building it takes, in the preparation.
  *   `buildCopy` is where every build of the preparation runs (src/prepare/steps.js): a
  *   copy of the whole `sca` for a clean source, or of the whole `rescued` for a rescue,
  *   never the archive itself, which the reviewer and the other agents read as submitted.

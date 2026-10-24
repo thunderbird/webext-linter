@@ -737,3 +737,19 @@ export function trunc(url, max = DISPLAY_TRUNCATE_LENGTH) {
   const s = String(url);
   return s.length > max ? s.slice(0, max) + "…" : s;
 }
+
+/**
+ * Split a comma-separated string into a trimmed array, or return undefined: how a list flag
+ * (--checks-only, --checks-skip) is read, by the review and by the preparation alike.
+ * @param {string|undefined} value
+ * @returns {string[]|undefined}
+ */
+export function splitList(value) {
+  if (!value) {
+    return undefined;
+  }
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}

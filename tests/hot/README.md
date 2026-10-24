@@ -90,7 +90,7 @@ Locks were generated with `npm install --package-lock-only --ignore-scripts` or
 Packages are real and pinned, never faked. Each was confirmed against OSV
 (`api.osv.dev/v1/query`) on 2026-10-13, and each case's root was audited with the
 preparation's own audit (`src/prepare/audit.js` `auditRoot`). Every case's tree was also
-reviewed once without an agent (`--sca-root`, the rescued trees as the rescue would leave
+reviewed once without an agent (`--sca-base`, the rescued trees as the rescue would leave
 them), to confirm no deterministic check aborts a case that should reach row 14.
 
 | Package | Advisory | Severity | Fixed in |
@@ -108,7 +108,7 @@ Where a build must fail, it fails for a reason the rescue's rules forbid the age
 repair: the source imports `turndown`, and package.json no longer declares it. The rescue
 may only remove dependencies, refresh the lock and apply the audit fix, so it cannot add it
 back, and the build (`npm ci` then `vite build`) fails on the unresolved import. A missing
-build file was not used: the extract step lists a step whose source is not in the tree as a
+build file was not used: the analyze step lists a step whose source is not in the tree as a
 safety concern, and the case would end as judged unsafe instead of failed.
 
 | id | base | package.json change | lock audit | expected stop |

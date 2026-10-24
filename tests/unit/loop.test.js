@@ -546,12 +546,12 @@ test("the build details name the XPI, the source, the report, the judgement, the
   const report = `* SCA_BUILD_PROCESS: [build.md](${state.paths.build})`;
   assert.deepEqual(rows(), [xpi, unpacked, root]);
   state.products = ["build"];
-  state.values = { "build-safety": "safe" };
   state.build = {
     result: "built",
     output: path.join(dir, "build", "addon-1.0.xpi"),
     match: "no match",
     vulnerabilities: { moderate: 1, high: 0, critical: 0 },
+    safety: "safe",
   };
   assert.deepEqual(rows(), [
     xpi,
@@ -677,8 +677,7 @@ test("the build result is worded by what came of the agent's attempt", () => {
     [undefined, undefined, null],
   ];
   for (const [build, safety, said] of cases) {
-    state.build = build;
-    state.values = safety ? { "build-safety": safety } : {};
+    state.build = build && { ...build, safety };
     assert.equal(
       result(),
       said === null ? undefined : `* LLM_BUILD_RESULT: ${said}`,
@@ -1542,10 +1541,9 @@ test("a reviewer who writes `ask` has answered, not asked for a move", () => {
  * @param {(phase: string) => string} answer
  * @returns {{seen: string[], settled: object}}
  */
-/** How a source review's build opening is answered where a test does not say otherwise:
- *  the agent judges the build safe, and the source builds and reproduces the XPI. */
+/** How a source review's build question is answered where a test does not say otherwise:
+ *  the source builds and reproduces the XPI. */
 const BUILDS = {
-  "build-safety": "safe",
   built: "Builds and reproduces",
 };
 
@@ -2045,28 +2043,17 @@ function ruleAt(made, ref) {
   )?.target?.ruleId;
 }
 
-// A source review opens with its build: the agent judges it where nothing was judged yet,
-// the reviewer reads the Build Review Details, and the build question follows in a phase of
-// its own so it is put to the reviewer ALONE - all before the sweeps and the verify and
-// settle passes. "Builds and reproduces" clears the build to-do and lets the review go on.
+// A source review opens with its build: the reviewer reads the Build Review Details, and the
+// build question follows in a phase of its own so it is put to the reviewer ALONE - all
+// before the sweeps and the verify and settle passes. "Builds and reproduces" clears the build to-do and lets the review go on.
 test("a source review opens with the build, and its questions come before the sweeps", () => {
   const made = buildQuestionsReview(tmp());
   const todo = buildTodoRef(made);
   const { seen, handed, settled } = driveBuild(made, goesOn());
-  assert.deepEqual(seen, [
-    "build-safety",
-    "built",
-    "spawn",
-    "verify",
-    "settle",
-    "ask",
-  ]);
-  assert.deepEqual(made.state.values, {
-    "build-safety": "safe",
-    built: "reproduces",
-  });
+  assert.deepEqual(seen, ["built", "spawn", "verify", "settle", "ask"]);
+  assert.deepEqual(made.state.values, { built: "reproduces" });
   assert.ok(
-    !Object.values(made.state.answers).includes("safe"),
+    !Object.values(made.state.answers).includes("reproduces"),
     "a process value is not an answer"
   );
   assert.deepEqual(handed.built, ["built"]);
@@ -2234,15 +2221,15 @@ test("the build question is issued only while its to-do is open", () => {
   const { seen } = driveBuild(made, goesOn());
   assert.ok(!seen.includes("built"), seen.join(", "));
   assert.ok(seen.includes("spawn"), seen.join(", "));
-  assert.equal(made.state.values.built, undefined);
+  assert.equal(made.state.values?.built, undefined);
 });
 
 // A source no build can be made from asks nobody to build it: a finding of a check marked
-// `review-unbuildable` (here the missing lock), or a failed rescue, skips both build phases,
+// `review-unbuildable` (here the missing lock), or a failed rescue, skips the build question,
 // and the review goes straight on to its passes and is aborted late. A source the review
 // rejects but that can be built - a vulnerable tree with its lock - is still asked, with
 // the vulnerabilities in the details its reviewer reads first.
-test("an unbuildable source skips the build phases, a buildable rejected one does not", () => {
+test("an unbuildable source skips the build question, a buildable rejected one does not", () => {
   const withFinding = (ruleId) => {
     const made = buildQuestionsReview(tmp());
     made.state.report.findings.push({
@@ -2265,7 +2252,6 @@ test("an unbuildable source skips the build phases, a buildable rejected one doe
       made,
       goesOn({ verify: () => "reported" })
     );
-    assert.ok(!seen.includes("build-safety"), seen.join(", "));
     assert.ok(!seen.includes("built"), seen.join(", "));
     assert.equal(seen[0], "spawn", seen.join(", "));
     assert.ok(!seen.includes("ask"), seen.join(", "));
@@ -2277,11 +2263,7 @@ test("an unbuildable source skips the build phases, a buildable rejected one doe
     buildable,
     goesOn({ verify: () => "reported" })
   );
-  assert.deepEqual(
-    seen.slice(0, 2),
-    ["build-safety", "built"],
-    seen.join(", ")
-  );
+  assert.equal(seen[0], "built", seen.join(", "));
   assert.ok(!seen.includes("ask"), seen.join(", "));
   assert.equal(settled.earlyExit, true);
 });
@@ -2490,26 +2472,15 @@ test("a review whose build checks did not all run opens at the build question", 
   assert.ok(!seen.includes("build"), seen.join(", "));
 });
 
-// The review builds nothing itself, whatever the judgement: the Build Review Details and the
-// build question follow it at once, and no other phase asks about the build.
-test("a review asks only the build question after its judgement, and builds nothing", () => {
+// The review builds nothing itself, and works out nothing about the build: it starts with the
+// judgement its preparation recorded, and opens on the build question, whose first step is
+// the Build Review Details. No other phase asks about the build.
+test("a review asks only the build question, and builds nothing", () => {
   for (const safety of ["safe", "unsafe"]) {
     const made = buildQuestionsReview(tmp());
-    const { seen } = driveBuild(made, goesOn({ "build-safety": () => safety }));
-    assert.deepEqual(seen.slice(0, 3), ["build-safety", "built", "spawn"]);
-  }
-});
-
-// A prepared review starts with the judgement its preparation recorded, so the review asks
-// for none of its own: `build-safety` is not issued, and the review opens on the build
-// question, whose first step is the Build Review Details.
-test("a review holding a recorded judgement does not ask for one", () => {
-  for (const safety of ["safe", "unsafe"]) {
-    const made = buildQuestionsReview(tmp());
-    made.state.values = { "build-safety": safety };
+    made.state.build = { ...made.state.build, safety };
     const { seen } = driveBuild(made, goesOn());
     assert.deepEqual(seen.slice(0, 2), ["built", "spawn"]);
-    assert.ok(!seen.includes("build-safety"), seen.join(", "));
   }
 });
 
@@ -2519,8 +2490,7 @@ test("a review holding a recorded judgement does not ask for one", () => {
 test("the build question's step text is worded by what came of the build", () => {
   const wordedStep = (build, safety) => {
     const made = buildQuestionsReview(tmp());
-    made.state.build = build;
-    made.state.values = { "build-safety": safety };
+    made.state.build = { ...build, safety };
     for (let pass = 0; pass < 4; pass++) {
       const out = issue(made.state, made.work, PHASES, REGISTRY);
       if (out.phase.name === "built") {
@@ -2604,9 +2574,7 @@ test("an XPI review never asks about a build", () => {
   const { seen } = driveLoop(state, work, (phase) =>
     phase === "verify" ? "withdrawn" : "cleared"
   );
-  for (const phase of ["build-safety", "built"]) {
-    assert.ok(!seen.includes(phase), seen.join(", "));
-  }
+  assert.ok(!seen.includes("built"), seen.join(", "));
 });
 
 test("an aborted review never asks about a build", () => {
@@ -2614,9 +2582,7 @@ test("an aborted review never asks about a build", () => {
   const { seen } = driveLoop(state, work, (phase) =>
     phase === "verify" ? "reported" : "cleared"
   );
-  for (const phase of ["build-safety", "built"]) {
-    assert.ok(!seen.includes(phase), seen.join(", "));
-  }
+  assert.ok(!seen.includes("built"), seen.join(", "));
 });
 
 // The Review Details link the build output where the agent built the add-on, and only
@@ -2640,21 +2606,13 @@ test("the details link the build output only where the agent built the add-on", 
   }
 });
 
-// A process-value phase can have a product too: the build report is written by the phase
-// that judges the build. Recorded as that phase comes back, so the blocks the reviewer
-// reads before the build question link the report it rests on, and only once it exists.
-test("the build report is linked once the judging phase wrote it", () => {
+// The build report is the preparation's, and the review holds it as a product where it was
+// written (src/pipeline.js): the blocks the reviewer reads before the build question link
+// the report it rests on, and only where it exists.
+test("the build report is linked where the review holds it", () => {
   for (const wrote of [true, false]) {
     const { state, work } = buildQuestionsReview(tmp());
-    assert.equal(
-      issue(state, work, PHASES, REGISTRY).phase.name,
-      "build-safety"
-    );
-    if (wrote) {
-      fs.writeFileSync(state.paths.build, "1. npm ci\n");
-    }
-    handBack(work, () => "safe");
-    accept(state, work, PHASES, REGISTRY);
+    state.products = wrote ? ["build"] : [];
     const next = issue(state, work, PHASES, REGISTRY);
     assert.equal(next.phase.name, "built");
     const linked = /^\* SCA_BUILD_PROCESS: \[build\.md\]/m;

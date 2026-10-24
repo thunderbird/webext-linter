@@ -80,7 +80,7 @@ flowchart TD
       <p>
         It runs in <strong>both</strong> review modes: in an ordinary review it flags
         packed code in the built add-on, and in a source code archive review
-        (<code>--sca-root</code>) a packed file in the readable source, which defeats
+        (<code>--sca-base</code>) a packed file in the readable source, which defeats
         that submission's whole purpose. A stylesheet packed the same way, and an
         inline &lt;script&gt; in a packaged page, are flagged alike; a .js file with a long line that
         will not parse or walk counts as packed, since nothing there can be reviewed

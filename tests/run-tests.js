@@ -15,6 +15,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runPipeline } from "../src/pipeline.js";
+import { relativeInside } from "../src/addon/load.js";
+import { settleScaRoot } from "../src/addon/sca-root.js";
+import { workPaths } from "../src/util/dest.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
 import { formatReview } from "../src/report/format.js";
 import {
@@ -192,7 +195,7 @@ function preparationEntries(preparation) {
  * @param {string} dir  The fixture.
  * @param {{from?: string, rescued?: boolean}} preparation
  * @param {string} cache
- * @returns {Promise<{workFolder: string, scaRoot: string}>}
+ * @returns {Promise<{workFolder: string, scaBase: string, scaRoot: string}>}
  */
 async function preparedFixture(dir, preparation, cache) {
   const at = await realPreparation({
@@ -204,7 +207,18 @@ async function preparedFixture(dir, preparation, cache) {
           fs.cpSync(path.join(dir, "src"), copyRoot, { recursive: true })
       : null,
   });
-  return { workFolder: at.work, scaRoot: at.record.roots.scaRoot };
+  // The base is the copy the root sits in, as the hand-back names it (src/cli.js
+  // preparedReview): the rescued one where a rescue came out clean, else `sca/`.
+  const { sca, rescued } = workPaths(at.work);
+  const scaRoot = at.record.roots.scaRoot;
+  const inRescued =
+    fs.existsSync(rescued) &&
+    relativeInside(scaRoot, fs.realpathSync(rescued)) !== null;
+  return {
+    workFolder: at.work,
+    scaBase: fs.realpathSync(inRescued ? rescued : sca),
+    scaRoot,
+  };
 }
 
 // A fixture is an SCA (source-code archive) review when it holds two artifacts as
@@ -363,13 +377,15 @@ async function main() {
       let review;
       if (isScaFixture(dir)) {
         // SCA mode: the shipped XPI is the authoritative artifact (addonPath), the
-        // src/ tree is the submitted archive (scaRoot). Where the add-on code and the
-        // Experiment sit inside it comes from the spec's "sca" block; with none, the
+        // src/ tree is the submitted archive (scaBase), and the review finds the root inside
+        // it, as it does for a command line naming no --sca-root. Where the add-on code and
+        // the Experiment sit inside the root comes from the spec's "sca" block; with none, the
         // source IS the root - the flat layout. Named absolutely, like every other path
         // opt, since that is what the arg reader hands the pipeline.
-        let scaRoot = path.join(dir, "src");
+        let scaBase = path.join(dir, "src");
+        let scaRoot = settleScaRoot({ scaRoot: scaBase }).scaRoot;
         if (preparation) {
-          ({ workFolder, scaRoot } = await preparedFixture(
+          ({ workFolder, scaBase, scaRoot } = await preparedFixture(
             dir,
             preparation,
             workCache
@@ -381,7 +397,8 @@ async function main() {
           ...base,
           workFolder,
           addonPath: path.join(dir, "xpi"),
-          scaRoot,
+          scaBase,
+          ...(preparation ? { scaRoot } : {}),
           scaExpSource: inRoot(sca.expSource),
         });
       } else {

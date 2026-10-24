@@ -805,10 +805,10 @@ export class Registry {
    *
    * A step comes back with its `when` condition parsed, never filtered here: which steps a
    * run prints is layout, decided in src/report/format.js beside the flags themselves.
-   * `when: experiments` marks a step about the Experiment folder, which only the review of
-   * an add-on declaring Experiments reads - so it is printed only for one.
+   * `when: find-experiment` marks a step about the Experiment folder, printed only where the
+   * add-on declares Experiments and the folder is not known yet.
    *
-   * `buildSafety` is the judgement the first prompt asks of the agent: the two answers it
+   * `buildSafety` is the judgement the `analyze` prompt asks of the agent: the two answers it
    * offers, each by its id (BUILD_SAFETY_VALUES). `packageManagers` is the question the
    * permission prompt puts to the reviewer: its text, and the two answers it offers, each by
    * its id (PACKAGE_MANAGER_VALUES). `buildOutput` and `rescueOutput` are the entries the
@@ -1487,7 +1487,7 @@ export function assertEntries(registry, at) {
  * @param {unknown} step
  * @param {number} i  Its position, for the message.
  * @param {string} where  Which prompt it is in, with the registry path, for the message.
- * @param {string} noun  What its list calls one item, for the message: "`extract` step"
+ * @param {string} noun  What its list calls one item, for the message: "`analyze` step"
  *   in the SCA prompt, "step" in a phase, "part" in the preamble.
  * @param {string[]} facts  The facts this prompt's conditions may name.
  * @param {Map<string, string[]>} [values]  The process values this prompt's conditions may
@@ -1902,20 +1902,6 @@ export function assertScaPrompt(registry, at) {
         `${where} \`${key}\` offers one label twice - an answer would read as either`
       );
     }
-  }
-  // The review reads a recorded judgement as its `build-safety` phase's value, so that
-  // phase accepts every id the preparation records.
-  const phase = (registry.doc["llm-phases"]?.phases ?? []).find(
-    (p) => p.name === "build-safety"
-  );
-  const accepted = (phase?.values ?? []).map((v) => v.value);
-  const missing = BUILD_SAFETY_VALUES.find((id) => !accepted.includes(id));
-  if (missing !== undefined) {
-    throw new Error(
-      `${where} \`build-safety\` records \`${missing}\`, which the review's ` +
-        "`build-safety` phase does not accept - the review reads the recorded judgement " +
-        "as that phase's value"
-    );
   }
 }
 

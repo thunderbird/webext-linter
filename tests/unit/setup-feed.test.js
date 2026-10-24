@@ -183,7 +183,7 @@ test("the feed of a source code review", () => {
   assert.deepEqual(
     feed([
       path.join(addon("build-hygiene-sca"), "xpi"),
-      "--sca-root",
+      "--sca-base",
       path.join(addon("build-hygiene-sca"), "src"),
     ]),
     {
@@ -213,7 +213,7 @@ test("the feed of a source code review", () => {
 test("a forged lock computes nothing but the lock's install sources", () => {
   const dir = addon("sca-lockfile-injection");
   assert.deepEqual(
-    feed([path.join(dir, "xpi"), "--sca-root", path.join(dir, "src")]),
+    feed([path.join(dir, "xpi"), "--sca-base", path.join(dir, "src")]),
     {
       setup: [
         "[1/2] Reading add-on",
@@ -267,7 +267,7 @@ test("a rejected Experiment submitted as source computes nothing either", () => 
   assert.deepEqual(
     feed([
       path.join(dir, "xpi"),
-      "--sca-root",
+      "--sca-base",
       path.join(dir, "src"),
       "--sca-exp-source",
       path.join(dir, "src", "experiment"),

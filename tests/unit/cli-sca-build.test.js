@@ -55,9 +55,11 @@ function permittedPrompt(vulns) {
   const work = workOf(r.stdout);
   const sca = headerValue(r.stdout, "EXTRACT_TO");
   fs.cpSync(path.join(fixture, "src"), sca, { recursive: true });
-  answer(work, { SCA_ROOT: sca });
+  const analyze = run(argvOf(commandOf(r.stdout)));
+  assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
+  answer(work, {});
   writeBuildReport(work);
-  const permission = run(argvOf(commandOf(r.stdout)));
+  const permission = run(argvOf(commandOf(analyze.stdout)));
   assert.equal(permission.code, 0, permission.stdout + permission.stderr);
   assert.equal(readJson(work, "prepare").step, "permission");
   answer(work, {});
@@ -205,9 +207,11 @@ test("each details block holds every row of the block before it", () => {
       packages: { "": own, "node_modules/lint-pebble": { version: "0.4.0" } },
     })
   );
-  answer(work, { SCA_ROOT: sca });
+  const analyze = run(argvOf(commandOf(first.stdout)));
+  assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
+  answer(work, {});
   writeBuildReport(work);
-  const permission = run(argvOf(commandOf(first.stdout)));
+  const permission = run(argvOf(commandOf(analyze.stdout)));
   assert.equal(permission.code, 0, permission.stdout + permission.stderr);
   answer(work, {});
   const build = run(argvOf(commandOf(permission.stdout)));
@@ -380,9 +384,11 @@ test("a safe build prints the Build Review Details and the permission question",
   const work = workOf(r.stdout);
   const sca = headerValue(r.stdout, "EXTRACT_TO");
   fs.cpSync(NO_LOCK_SOURCE, sca, { recursive: true });
-  answer(work, { SCA_ROOT: sca });
+  const analyze = run(argvOf(commandOf(r.stdout)));
+  assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
+  answer(work, {});
   writeBuildReport(work);
-  const asked = run(argvOf(commandOf(r.stdout)));
+  const asked = run(argvOf(commandOf(analyze.stdout)));
   assert.equal(asked.code, 0, asked.stdout + asked.stderr);
   assert.equal(readJson(work, "prepare").step, "permission");
   assert.match(asked.stdout, /── SCA Review Prompt ──/);
@@ -431,7 +437,7 @@ test("WEBEXT_LINTER_AGENT_BUILDS=1 skips the permission question", () => {
   assert.equal(record.packageManagers, true);
   // The review starts with the recorded judgement, and build.md as its product.
   const state = readJson(work, "state");
-  assert.deepEqual(state.values, { "build-safety": "safe" });
+  assert.equal(state.build.safety, "safe");
   assert.deepEqual(state.products, ["build"]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -464,7 +470,7 @@ test("an unsafe build starts the review with its judgement", () => {
   assert.equal(record.buildSafety, "unsafe");
   assert.equal(record.packageManagers, false);
   const state = readJson(work, "state");
-  assert.deepEqual(state.values, { "build-safety": "unsafe" });
+  assert.equal(state.build.safety, "unsafe");
   assert.deepEqual(state.products, ["build"]);
   assert.equal(state.build.result, null);
   fs.rmSync(dir, { recursive: true, force: true });

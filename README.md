@@ -113,9 +113,9 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 
 | Option | Description |
 | --- | --- |
-| `--llm-review` | Run the review and print the first phase's prompt, instead of the report. Refused with `--report-format json`. |
+| `--llm-review` | Run the review and print the first phase's prompt, instead of the report. Given `--sca-base`, prepare the source code review first, as `--llm-sca-review` does from the build analysis on: the source is copied into the work folder's `sca/` and the first prompt is the build analysis. Refused with `--report-format json`. |
 | `--llm-handback <dir>` | Take a phase back from the review's work folder and hand out the next - the last being `close`, which hands over the settled review. On a work folder a source code review is being prepared in, take the next step of the preparation instead, and once it is done, start its review (see [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review)). The only run that carries on an existing work folder. Takes no add-on path. Normally run by the agent, not by a person. |
-| `--llm-sca-review` | Read the add-on argument as a submission folder - one built `.xpi` and one archive of its source - and print the first prompt for preparing a source code review of it. It creates the review's work folder at its default place beside the `.xpi`, records there how the review is to be run (this run's flags), has the source extracted into its `sca/`, the build reported and judged, and the roots handed back with `--llm-handback`. An unsafe build is reviewed at once, and after a safe one the reviewer is asked whether the agent may build. Where it may and the lock installs a package with a known high or critical advisory, the preparation has a copy's dependencies reduced, then audit-fixed (`rescued/` in the work folder), and reviews the copy if that resolves them. If it does not, the source as submitted is reviewed, and its vulnerability checks abort it. The hand-back that finishes the preparation starts that review itself, with this run's flags. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any `--sca-*` flag, which is what the preparation works out. See [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review). |
+| `--llm-sca-review` | Read the add-on argument as a submission folder - one built `.xpi` and one archive of its source - and print the first prompt for preparing a source code review of it. It creates the review's work folder at its default place beside the `.xpi`, records there how the review is to be run (this run's flags), has the source extracted into its `sca/` and handed back with `--llm-handback`, finds the build folder in it, and has the build reported and judged. An unsafe build is reviewed at once, and after a safe one the reviewer is asked whether the agent may build. Where it may and the lock installs a package with a known high or critical advisory, the preparation has a copy's dependencies reduced, then audit-fixed (`rescued/` in the work folder), and reviews the copy if that resolves them. If it does not, the source as submitted is reviewed, and its vulnerability checks abort it. The hand-back that finishes the preparation starts that review itself, with this run's flags. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any `--sca-*` flag, which is what the preparation works out. See [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review). |
 | `--llm-skip-summary` | Leave out the add-on description: the prompt does not ask for one and names no file for it. |
 | `--llm-skip-manual` | Leave out the manual review items: no phase puts them to a reviewer, and they stay in the report for later, unless the review was aborted. The build question is still asked. |
 | `--llm-skip-sweep` | Leave out the sweep: no sweeping agent is spawned, and the sweep is not handed to the reviewer either. |
@@ -124,8 +124,9 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 
 | Option | Description |
 | --- | --- |
-| `--sca-root <folder>` | The **extracted** source root (holds `package.json`/lock) - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode. It must not include the add-on. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
-| `--sca-exp-source <path>` | The Experiment implementation folder, **inside** `--sca-root`, anywhere under it. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission checks. Needs `--sca-root`, and is required for an Experiment. |
+| `--sca-base <folder>` | The **extracted** source archive, all of it - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode. Every other `--sca-*` folder lies inside it, and it must not include the add-on. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
+| `--sca-root <folder>` | The source root inside `--sca-base`: the folder the build runs in, holding `package.json`/lock, and what the review reads as the source. Left out, the linter finds it. Needs `--sca-base`. |
+| `--sca-exp-source <path>` | The Experiment implementation folder, **inside** the source root, anywhere under it. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission checks. Needs `--sca-base`, and is required for an Experiment. |
 
 **Other:**
 
@@ -149,7 +150,7 @@ SCA mode reviews the readable source instead while still treating the XPI as the
 authoritative shipped artifact:
 
 ```
-node verify.js built.xpi --sca-root ./source-archive
+node verify.js built.xpi --sca-base ./source-archive
 ```
 
 A source archive is always reviewed as one - the review is never re-routed to the XPI on
@@ -166,12 +167,14 @@ was committed beside the source. Such an archive could trick the build into hand
 that copy, so the submission is rejected. The rest of the review still runs, as the archive
 may hold the real source beside the copy.
 
-- `--sca-root` is the **extracted** source archive that holds `package.json` /
-  the lock file. Setting it switches on SCA mode. It must be a folder: unlike the
-  submitted `.xpi`, which this tool extracts itself, a source archive comes in too
-  many formats for this tool to open - extract it first, and every format then
-  works, because `tar` handles what this tool does not.
-  **The whole `--sca-root` is the review source.** There is no flag naming a subtree of
+- `--sca-base` is the **extracted** source archive. Setting it switches on SCA mode. It
+  must be a folder: unlike the submitted `.xpi`, which this tool extracts itself, a source
+  archive comes in too many formats for this tool to open - extract it first, and every
+  format then works, because `tar` handles what this tool does not.
+- The **source root** is the folder inside it the build runs in, the one holding
+  `package.json` and the lock file. Where the archive wraps its contents in folders of its
+  own, the linter finds it below them, and `--sca-root` names it where the linter cannot.
+  **The whole source root is the review source.** There is no flag naming a subtree of
   it, because no subtree can be called the add-on's: a build may move, rename or generate
   anything, so a path in a source archive cannot be trusted and nothing can say which files
   are used. Every file in the archive is assumed used and is reviewed.
@@ -200,12 +203,12 @@ may hold the real source beside the copy.
 - The **build tooling** (build scripts, configs, `.npmrc`) is reviewed as part of the
   submission like everything else, and additionally feeds the build checks below. Two requirements decide whether the build
   can be reproduced at all: the archive must **carry a build** (no `package.json` at
-  `--sca-root` means there is nothing to reproduce), and it must commit a **lock file**
+  the source root means there is nothing to reproduce), and it must commit a **lock file**
   that installs exactly what `package.json` declares. npm and pnpm are the only package
   managers the review installs from, so those are the only locks that count and a build
   using anything else is rejected for having none. Each aborts the review, and nobody is
   asked to build a source that breaks either. A third requirement aborts the review from
-  the other side: an `.npmrc` **at `--sca-root`** that points the package
+  the other side: an `.npmrc` **at the source root** that points the package
   **registry** elsewhere is rejected (npm reads its config from the directory the install
   runs in), because the install would run but fetch something other than what is declared,
   so reproducing it attests nothing and it pulls code from a developer-chosen host onto the
@@ -223,8 +226,8 @@ may hold the real source beside the copy.
   `build-reproduces-xpi` asks the reviewer to build the add-on
   from the source and compare the result with the shipped XPI. Either of the two
   reported aborts the review. Under `--llm-review` a source review opens with its build,
-  before the sweeps: the agent judges the build safe or unsafe where nothing was prepared,
-  the reviewer reads the Build Review Details (with what the agent built in the
+  before the sweeps: the agent judged the build safe or unsafe in the preparation, the
+  reviewer reads the Build Review Details (with what the agent built in the
   preparation, where it did), and the build question is asked alone right after, answered
   `Builds and reproduces`, `Does not reproduce`, `Does not build` or `Is unsafe to
   build`. The last three report `build-not-reproduced`, `build-fails` or `build-unsafe`,
@@ -240,7 +243,7 @@ may hold the real source beside the copy.
   mode (the vendor pass reads the review target only), so those checks see the
   shipped add-on the same way whether or not a source archive came with it.
 - `--sca-exp-source` names an Experiment implementation folder - anywhere under
-  `--sca-root`, relative to it or absolute inside it (e.g. `addon/experiment-api`),
+  the source root, relative to it or absolute inside it (e.g. `addon/experiment-api`),
   but never the root itself, which would exclude nothing - so its privileged,
   non-WebExtension code is excluded from the WebExtension checks (required for an
   Experiment).
@@ -543,7 +546,7 @@ node verify.js ./submission.xpi --report-format json
 
 # Review a source-code submission (the built XPI plus its readable source, in
 # ./sca-review-built-<timestamp>/)
-node verify.js ./built.xpi --sca-root ./source
+node verify.js ./built.xpi --sca-base ./source
 ```
 
 ## Contributing

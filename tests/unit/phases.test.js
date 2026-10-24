@@ -323,8 +323,8 @@ test("the steps that start an agent each say whether it is waited for", () => {
   const UNATTENDED =
     "Do not wait for it. When it comes back, write its reply unchanged to";
 
-  // The description is not waited for. The build report is written before any agent
-  // starts (build-safety), so no spawn step asks for one.
+  // The description is not waited for. The build report is written before the review
+  // starts (the preparation), so no spawn step asks for one.
   assert.ok(
     by("llm-skip-summary").text.includes(UNATTENDED),
     "the description step says it is not waited for"
@@ -374,7 +374,6 @@ test("a phase declares the kind of answer its entries take", () => {
       .llmPhases()
       .phases.map((p) => [p.name, p.answer, p.verbs.length]),
     [
-      ["build-safety", "value", 0],
       ["built", "value", 0],
       ["spawn", "hints", 0],
       ["verify", "verdict", 2],
@@ -765,28 +764,13 @@ test("the shipped steps carry the conditions they are printed under", () => {
   ]);
   assert.deepEqual(when("verify"), [["aborted"]]);
   assert.deepEqual(when("settle"), [["aborted"]]);
-  // The build opening: only a source review whose install is vouched for and that a build
-  // can be made from (`unbuildable`), and the judgement only where none is held yet. The
-  // Build Review Details show wherever the build was vouched for, and the build question's
-  // first step is worded by the build result.
+  // The build opening: only a source review that a build can be made from (`unbuildable`).
+  // The Build Review Details show wherever the build was vouched for, and the build
+  // question's first step is worded by the build result.
   const calls = (name) =>
     loaded
       .find((p) => p.name === name)
       .steps.map((x) => (x.when ? callsOf(x.when).map((c) => c.args) : null));
-  assert.deepEqual(when("build-safety"), [
-    ["aborted", "build-guarded", "sca", "unbuildable"],
-    ["aborted", "build-guarded", "sca", "unbuildable"],
-  ]);
-  assert.deepEqual(calls("build-safety"), [
-    [
-      ["build-safety", "safe"],
-      ["build-safety", "unsafe"],
-    ],
-    [
-      ["build-safety", "safe"],
-      ["build-safety", "unsafe"],
-    ],
-  ]);
   assert.deepEqual(when("built"), [
     ["aborted", "build-guarded", "sca", "unbuildable"],
     ["aborted", "agent-built", "unbuildable"],

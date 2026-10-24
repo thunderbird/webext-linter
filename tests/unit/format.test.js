@@ -1382,7 +1382,7 @@ test("the report's authored prose is required, by the names that index it", () =
 test("the preparation prompts come from the registry and every part is required", () => {
   const prompt = loadRegistry().llmScaReviewPrompt();
   assert.ok(prompt.intro.length > 0);
-  for (const name of ["extract", "permission", "build", "rescue"]) {
+  for (const name of ["unpack", "analyze", "permission", "build", "rescue"]) {
     assert.ok(prompt.steps[name].length > 0, name);
     for (const step of prompt.steps[name]) {
       assert.equal(typeof step.text, "string");
@@ -1390,9 +1390,10 @@ test("the preparation prompts come from the registry and every part is required"
       assert.ok(step.when === null || typeof step.when === "object");
     }
   }
-  // The Experiment folder is asked for in the first prompt alone, and only for an add-on
-  // that declares Experiments: its own step, and the review file step in two wordings.
-  assert.equal(prompt.steps.extract.filter((s) => s.when !== null).length, 3);
+  // The Experiment folder is asked for in the analyze prompt alone, and only where it is not
+  // known yet: its own step, and the review file step.
+  assert.equal(prompt.steps.unpack.filter((s) => s.when !== null).length, 0);
+  assert.equal(prompt.steps.analyze.filter((s) => s.when !== null).length, 2);
   const noIntro = loadRegistry();
   delete noIntro.doc["llm-sca-review-prompt"].intro;
   assert.throws(() => checkScaPrompt(noIntro), /authors no `intro`/);
@@ -1402,7 +1403,7 @@ test("the preparation prompts come from the registry and every part is required"
   assert.throws(() => checkScaPrompt(noSteps), /authors no `rescue` steps/);
 
   const blankStep = loadRegistry();
-  blankStep.doc["llm-sca-review-prompt"].extract = [
+  blankStep.doc["llm-sca-review-prompt"].analyze = [
     { text: "fine {{flags}}" },
     { text: "" },
   ];
@@ -1419,10 +1420,10 @@ test("the preparation prompts come from the registry and every part is required"
   // prompt cannot evaluate - a plausible near-miss included - is refused by name rather
   // than leaving the step printed in no run.
   const badMarker = loadRegistry();
-  badMarker.doc["llm-sca-review-prompt"].extract[0].when = "experiment";
+  badMarker.doc["llm-sca-review-prompt"].analyze[0].when = "experiment";
   assert.throws(
     () => checkScaPrompt(badMarker),
-    /step 1 is conditioned on `experiment`, which this prompt does not know \(expected one of: experiments\)/
+    /step 1 is conditioned on `experiment`, which this prompt does not know \(expected one of: find-experiment\)/
   );
 
   // And the shared step rule: every prompt is numbered by the renderer.
@@ -1437,13 +1438,13 @@ test("the preparation prompts come from the registry and every part is required"
   // A step acts on `when` and nothing else, so a retired marker - which reads as plausible
   // and would do nothing - is refused by name, as is a bare fact written as a key.
   const wrongMarker = loadRegistry();
-  wrongMarker.doc["llm-sca-review-prompt"].extract[1].run = "experiments";
+  wrongMarker.doc["llm-sca-review-prompt"].analyze[1].run = "experiments";
   assert.throws(
     () => checkScaPrompt(wrongMarker),
     /step 2 authors `run`, which this prompt cannot act on \(expected `when`\)/
   );
   const typo = loadRegistry();
-  typo.doc["llm-sca-review-prompt"].extract[2].experiments = true;
+  typo.doc["llm-sca-review-prompt"].analyze[2].experiments = true;
   assert.throws(() => checkScaPrompt(typo), /step 3 authors `experiments`/);
   // The package-manager question offers allow and decline once each, under labels of their
   // own: every answer is read as one of the two.
@@ -1507,8 +1508,7 @@ test("the preparation prompts come from the registry and every part is required"
     () => checkScaPrompt(compared((m) => (m.values[1].value = "close"))),
     /invalid `value` "close"/
   );
-  // The build judgement offers safe and unsafe once each, under labels of their own, and
-  // the review's `build-safety` phase accepts each, since it reads the recorded judgement.
+  // The build judgement offers safe and unsafe once each, under labels of their own.
   assert.deepEqual(
     prompt.buildSafety.values.map((v) => v.value),
     ["safe", "unsafe"]
@@ -1530,15 +1530,6 @@ test("the preparation prompts come from the registry and every part is required"
     () =>
       checkScaPrompt(judgement((j) => (j.values[1].label = j.values[0].label))),
     /`build-safety` offers one label twice/
-  );
-  const unread = loadRegistry();
-  const phase = unread.doc["llm-phases"].phases.find(
-    (p) => p.name === "build-safety"
-  );
-  phase.values = phase.values.filter((v) => v.value !== "unsafe");
-  assert.throws(
-    () => checkScaPrompt(unread),
-    /`build-safety` records `unsafe`, which the review's `build-safety` phase does not accept/
   );
 });
 

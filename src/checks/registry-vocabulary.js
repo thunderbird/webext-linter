@@ -122,7 +122,7 @@ export const SCA_ONLY_INPUTS = new Set(["sca"]);
 // check runs differently, no verdict or routing moves, so the mode reaches the text
 // producers (findings, manual items, sweep entries) and stops there.
 //
-// The mode is the review's: a source code review when --sca-root is given, an XPI review
+// The mode is the review's: a source code review when --sca-base is given, an XPI review
 // otherwise (src/pipeline.js setupFacts.mode).
 export const MODE_RESPONSES = Object.freeze({
   sca: "response-for-sca",
@@ -292,16 +292,23 @@ export const DOWNGRADE_RESTART = "xpi";
  *  then. */
 export const PHASE_PRODUCTS = ["build"];
 
-/** The one fact the preparation prompts' `when:` conditions can name: whether the built
- *  add-on declares Experiments, which decides whether the first asks its reader for the
- *  Experiment folder. */
-export const SCA_PROMPT_FACTS = ["experiments"];
+/** The one fact the preparation prompts' `when:` conditions can name: whether `analyze`
+ *  asks its reader for the Experiment folder - the built add-on declares Experiments, and the
+ *  folder is not known yet (src/prepare/steps.js asksExpSource). */
+export const SCA_PROMPT_FACTS = ["find-experiment"];
 
 /** The preparation's prompts, one step list each, named for the step that prints it
- *  (src/prepare/state.js PREPARE_STEP): `extract` first, `permission` after a safe build
+ *  (src/prepare/state.js PREPARE_STEP): `unpack` first where the agent extracts the source
+ *  archive, `analyze` where the build is worked out, `permission` after a safe build
  *  judgement, then `build` for a lock audited clean or `rescue` for a vulnerable one. Once
  *  the preparation is done, the hand-back starts the review instead. */
-export const SCA_PROMPT_STEPS = ["extract", "permission", "build", "rescue"];
+export const SCA_PROMPT_STEPS = [
+  "unpack",
+  "analyze",
+  "permission",
+  "build",
+  "rescue",
+];
 
 /** The placeholder every one of those prompts carries: the command its run prints, which is
  *  how the reader reaches the next run. A list without it would leave its reader with
@@ -315,8 +322,7 @@ export const PACKAGE_MANAGER_VALUES = ["allow", "decline"];
 
 /** The values the preparation's SCA_BUILD_SAFETY_ASSESSMENT judgement accepts back, by id: the agent's
  *  judgement of the build it reported. Each id is offered exactly once (assertScaPrompt),
- *  and the review's `build-safety` phase accepts each, since the review reads the recorded
- *  judgement as that phase's value. */
+ *  and the review starts with the recorded one (src/pipeline.js). */
 export const BUILD_SAFETY_VALUES = ["safe", "unsafe"];
 
 /** The values the preparation's LLM_BUILD_XPI_MATCH entry accepts back, by id: the agent's

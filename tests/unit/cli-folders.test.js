@@ -78,9 +78,9 @@ test("a folder add-on is copied into the work folder and its parent left alone",
   ]);
 });
 
-// A start that fails after the add-on was copied - here a source review of an Experiment
-// without --sca-exp-source, which fails once its XPI is read - gives back the folder it
-// created, so the same command can simply run again.
+// A start that fails after the add-on was copied - here a plain source review of an
+// Experiment without --sca-exp-source, which fails once its XPI is read - gives back the
+// folder it created, so the same command can simply run again.
 test("a failed start leaves the work folder as it found it", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-failed-start-"));
   const xpi = path.join(dir, "xpi");
@@ -99,10 +99,9 @@ test("a failed start leaves the work folder as it found it", () => {
   fs.writeFileSync(path.join(src, "package.json"), "{}");
   const argv = [
     xpi,
-    "--sca-root",
+    "--sca-base",
     src,
     "--allow-experiments",
-    "--llm-review",
     ...OFFLINE_FLAGS,
   ];
   for (let i = 0; i < 2; i++) {
@@ -136,10 +135,10 @@ test("--work-folder is an unknown option", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// Everything under --sca-root is reviewed as the source, so the add-on may never lie inside
+// Everything under --sca-base is the submitted source, so the add-on may never lie inside
 // it - nor be it. Every folder argument is the folder it really is, so a link in a path
 // changes none of this, and nothing is created.
-test("--sca-root must not include the add-on", () => {
+test("--sca-base must not include the add-on", () => {
   const dir = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "wl-work-sca-"))
   );
@@ -158,17 +157,17 @@ test("--sca-root must not include the add-on", () => {
     [addon, link],
     [addon, addon],
   ]) {
-    const r = run([named, "--sca-root", root]);
+    const r = run([named, "--sca-base", root]);
     assert.equal(r.code, 2, named);
     const realRoot = root === link ? proj : root;
     assert.equal(
       r.stderr,
-      `--sca-root "${realRoot}" must not include the add-on "${addon}".\n`,
+      `--sca-base "${realRoot}" must not include the add-on "${addon}".\n`,
       `${named} in ${root}`
     );
   }
   assert.deepEqual(fs.readdirSync(path.join(proj, "dist")), before);
-  // Without --sca-root nothing is reviewed in place, and the default beside it is fine.
+  // Without --sca-base nothing is reviewed in place, and the default beside it is fine.
   const xpiOnly = run([addon, ...OFFLINE_FLAGS]);
   assert.notEqual(xpiOnly.code, 2, xpiOnly.stderr);
   const work = defaultFolderOf(addon, "xpi");
@@ -178,7 +177,7 @@ test("--sca-root must not include the add-on", () => {
 
 // The work folder says what kind of review it holds: `xpi-review-` for a review of the XPI
 // alone, plain or with --llm-review, and `sca-review-` for a source code review, whether it
-// is prepared with --llm-sca-review or started with --sca-root.
+// is prepared with --llm-sca-review or started with --sca-base.
 test("the work folder is named by the kind of review", () => {
   const madeBeside = (target, args) => {
     const parent = path.dirname(target);
@@ -198,7 +197,7 @@ test("the work folder is named by the kind of review", () => {
   for (const extra of [[], ["--llm-review"]]) {
     const src = addonOutsideRepo(path.join(fixture, "src"));
     const name = madeBeside(addonOutsideRepo(path.join(fixture, "xpi")), [
-      "--sca-root",
+      "--sca-base",
       src,
       ...extra,
       ...OFFLINE_FLAGS,
@@ -239,7 +238,7 @@ test("folders named through a link are reviewed as their targets", () => {
   fs.symlinkSync(path.join(fixture, "src"), srcLink);
   const sca = run([
     path.join(fixture, "xpi"),
-    "--sca-root",
+    "--sca-base",
     srcLink,
     ...OFFLINE_FLAGS,
   ]);
@@ -309,6 +308,7 @@ test("a flag given no value is refused (exit 2)", () => {
     [["some.xpi", "--llm-handback="], "--llm-handback"],
     [["some.xpi", "--sca-root="], "--sca-root"],
     [["some.xpi", "--sca-root", " "], "--sca-root"],
+    [["some.xpi", "--sca-base="], "--sca-base"],
   ]) {
     const r = run(argv);
     assert.equal(r.code, 2, argv.join(" "));
@@ -329,7 +329,7 @@ test("a folder flag is checked against the folder the review will read", () => {
   // Only src/ exists: naming .src refuses, rather than reviewing src/ without a word.
   const missing = run([
     "some.xpi",
-    "--sca-root",
+    "--sca-base",
     dir,
     "--sca-exp-source",
     ".src",
@@ -343,7 +343,7 @@ test("a folder flag is checked against the folder the review will read", () => {
 
   // With the folder there, it passes this guard and the run reaches the next refusal.
   fs.mkdirSync(path.join(dir, ".src"));
-  const ok = run(["some.xpi", "--sca-root", dir, "--sca-exp-source", ".src"]);
+  const ok = run(["some.xpi", "--sca-base", dir, "--sca-exp-source", ".src"]);
   // The run goes on to fail on the missing add-on instead, which is the point: this guard
   // no longer has anything to say about it.
   assert.doesNotMatch(ok.stderr, /must point at a folder/);
@@ -352,7 +352,7 @@ test("a folder flag is checked against the folder the review will read", () => {
 
 // Where a folder flag LANDS is the question, asked with the loader's own relativeInside so
 // the guard and the review cannot answer it differently: a path resolving outside
-// --sca-root names a folder on the reviewing machine. How it was spelled - a ".." segment
+// the root names a folder on the reviewing machine. How it was spelled - a ".." segment
 // included - makes no difference. For --sca-exp-source "nothing to exclude" is also the
 // legitimate answer for an Experiment outside the source, so the mistake would not
 // announce itself.
@@ -360,13 +360,13 @@ test("a folder flag is judged by where it lands, however it was spelled (exit 2 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-folder-"));
   fs.mkdirSync(path.join(dir, "src"));
 
-  // A folder INSIDE --sca-root may be named either way - relative to the root, or absolute,
+  // A folder INSIDE the root may be named either way - relative to the root, or absolute,
   // which is the spelling the report prints and a reader hands straight back. What is
   // refused is where it LANDS: outside the root it names a folder on the reviewing machine,
   // so what it names is not the submission's and cannot be shown to be.
   const inside = run([
     "some.xpi",
-    "--sca-root",
+    "--sca-base",
     dir,
     "--sca-exp-source",
     path.join(dir, "src"),
@@ -377,8 +377,8 @@ test("a folder flag is judged by where it lands, however it was spelled (exit 2 
     "an absolute path inside is taken"
   );
   for (const argv of [
-    ["some.xpi", "--sca-root", dir, "--sca-exp-source", "/tmp"],
-    ["some.xpi", "--sca-root", dir, "--sca-exp-source", "../outside"],
+    ["some.xpi", "--sca-base", dir, "--sca-exp-source", "/tmp"],
+    ["some.xpi", "--sca-base", dir, "--sca-exp-source", "../outside"],
   ]) {
     const r = run(argv);
     assert.equal(r.code, 2, argv.join(" "));
@@ -387,17 +387,21 @@ test("a folder flag is judged by where it lands, however it was spelled (exit 2 
 
   // A ".." segment is no reason to refuse: where it lands, the folder is the one named.
   for (const argv of [
-    ["some.xpi", "--sca-root", `${dir}/../${path.basename(dir)}`],
+    ["some.xpi", "--sca-base", `${dir}/../${path.basename(dir)}`],
     [
       "some.xpi",
-      "--sca-root",
+      "--sca-base",
       dir,
       "--sca-exp-source",
       `../${path.basename(dir)}/src`,
     ],
   ]) {
     const r = run(argv);
-    assert.doesNotMatch(r.stderr, /--sca-(root|exp-source)/, argv.join(" "));
+    assert.doesNotMatch(
+      r.stderr,
+      /--sca-(base|root|exp-source)/,
+      argv.join(" ")
+    );
   }
   fs.rmSync(dir, { recursive: true, force: true });
 });

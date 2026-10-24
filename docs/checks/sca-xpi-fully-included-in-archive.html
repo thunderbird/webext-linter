@@ -58,7 +58,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["--sca-root submitted"] --> S["a source code review, never re-routed to the XPI"]
+  A["--sca-base submitted"] --> S["a source code review, never re-routed to the XPI"]
   S --> X{"Is every file the XPI ships byte-identical<br/>to some file in the archive?"}
   X -- "no (something was built)" --> OK([no finding — the archive was needed])
   X -- yes --> ERR([ERROR: nothing built, or the build output was committed.<br/>The review is aborted])

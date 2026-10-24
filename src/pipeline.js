@@ -156,7 +156,7 @@ export const SETUP_STEPS = Object.freeze([
 /**
  * Every path opt is ABSOLUTE. The arg-array reader resolves them (pipelineOptsFromValues,
  * src/cli.js), which is the one layer that knows what each flag was written relative to -
- * the working directory for --sca-root, and --sca-root itself for --sca-exp-source. Nothing here re-resolves one, and a caller handing in a relative path gets
+ * the working directory for --sca-base and --sca-root, and the root for --sca-exp-source. Nothing here re-resolves one, and a caller handing in a relative path gets
  * whatever the working directory makes of it.
  * @typedef {object} PipelineOpts
  * @property {string} addonPath  The shipped add-on, absolute.
@@ -179,9 +179,12 @@ export const SETUP_STEPS = Object.freeze([
  *   (--warnings-as-errors): the band the registry hands out IS an error, so the report,
  *   the tally, the early exit and the exit code all follow (src/checks/registry.js
  *   bandUnder). Off by default.
- * @property {string} [scaRoot]  SCA mode: the source archive root, absolute - an extracted
- *   folder holding package.json/lock. Setting it switches the
- *   review to SCA mode - the whole archive is reviewed as the readable source and its
+ * @property {string} [scaBase]  SCA mode: the extracted source archive, absolute, the root
+ *   lying inside it (--sca-base). Setting it switches the review to SCA mode. Named in the
+ *   report, and the review reads the root.
+ * @property {string} [scaRoot]  SCA mode: the source archive root, absolute, inside scaBase -
+ *   the folder holding package.json/lock, found inside scaBase where it is left out. The
+ *   whole root is reviewed as the readable source and its
  *   declared dependencies are audited; the positional XPI is the shipped artifact against which
  *   the manifest.json, experiments and file-completeness (`input: xpi`) checks all run (a
  *   separate shipped context the orchestrator routes them to - see buildXpiCtx in
@@ -289,8 +292,8 @@ async function reviewSubmission(opts, work, prepared) {
   // `addonPath` IS the shipped add-on's path, absolute, and the single value the run has
   // for "which add-on": what the report names, and where the work folder and its files go. An Addon carries no path of its own
   // (src/addon/load.js), and nothing here resolves one - the arg-array reader did.
-  // SCA (source code archive) mode is on when --sca-root is set, and the whole of that
-  // root is the review source. It splits the review across TWO add-on artifacts with a fixed
+  // SCA (source code archive) mode is on when --sca-base is set, and the whole of the root
+  // inside it is the review source. It splits the review across TWO add-on artifacts with a fixed
   // ROLE each, resolved here ONCE so nothing downstream re-branches on the mode:
   //
   //   xpiAddon - the built XPI (the positional addonPath). The SHIPPED artifact,
@@ -312,7 +315,7 @@ async function reviewSubmission(opts, work, prepared) {
   // and the tooling are one set of files, which is what the build checks want.
   //
   // The review mode is DERIVED from one fact below and assigned nowhere, so it cannot drift
-  // from the steps that ran: --sca-root makes it a source code review. Every reader - the
+  // from the steps that ran: a source root (--sca-base) makes it a source code review. Every reader - the
   // steps, the ctx builders, the report - reads that one derivation.
   // The parsed registry, threaded from main() (or loaded once here when a caller
   // such as the test harness invokes the pipeline directly), read under THIS run's band
@@ -323,15 +326,19 @@ async function reviewSubmission(opts, work, prepared) {
   });
 
   // Which folder is the source root, settled before anything reads it
-  // (src/addon/sca-root.js). Whoever named --sca-root had not looked inside it yet - an
-  // archive is extracted by whoever prepares the review, into a destination
-  // worked out by path math - so an archive carrying its contents in one directory of its own
-  // leaves the build files a level below the root it was given.
+  // (src/addon/sca-root.js): found inside --sca-base where no --sca-root was named, and below
+  // a named one that holds no package file. Whoever named the folder had not looked inside it
+  // yet - an archive is extracted by whoever prepares the review, into a destination worked
+  // out by path math - so an archive carrying its contents in one directory of its own leaves
+  // the build files a level below it.
   //
   // Rebound onto `opts`, once, rather than threaded: every reader below asks opts.scaRoot,
   // and a settled value beside the one it was given is two answers to one question. The
   // narration comes later, with the rest of Setup.
-  const scaMove = settleScaRoot(opts);
+  const scaMove = settleScaRoot({
+    ...opts,
+    scaRoot: opts.scaRoot ?? opts.scaBase,
+  });
   opts = { ...opts, ...scaMove };
 
   // Load the .xpi. Read before the "Setup" banner because it sizes the feed - it gives
@@ -590,6 +597,10 @@ async function reviewSubmission(opts, work, prepared) {
         // READ, so the step that loaded one is what decides whether it appears here.
         ...(scaArchive
           ? {
+              // The extracted source archive, named where the root lies below it.
+              ...(opts.scaBase && opts.scaBase !== opts.scaRoot
+                ? { scaBase: opts.scaBase }
+                : {}),
               scaRoot: opts.scaRoot,
               // The one input that NARROWS the review: that subtree is privileged code and is
               // excluded from the WebExtension checks. Named only when it was given, because a
@@ -1007,17 +1018,13 @@ async function reviewSubmission(opts, work, prepared) {
               )
           ),
         rescuedVulnerabilities: prepared?.rescuedVulnerabilities ?? null,
+        // The judgement the preparation recorded of the build it reported in build.md, a
+        // BUILD_SAFETY_VALUES id, or null where nothing was prepared.
+        safety: prepared?.buildSafety ?? null,
       },
-      // The judgement a preparation recorded, as the `build-safety` value its phase would
-      // return, so that phase is not issued (its steps' `when:`), and build.md, which the
-      // preparation wrote, as that phase's product.
-      ...(prepared?.buildSafety
-        ? {
-            values: { "build-safety": prepared.buildSafety },
-            ...(buildPath && productWritten(buildPath)
-              ? { products: ["build"] }
-              : {}),
-          }
+      // build.md, which the preparation wrote, as a product the Review Details link.
+      ...(prepared?.buildSafety && buildPath && productWritten(buildPath)
+        ? { products: ["build"] }
         : {}),
       issued: [],
     };

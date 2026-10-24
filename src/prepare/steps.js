@@ -1,11 +1,15 @@
 // The STEPS of the preparation of a source code review: what one hand-back of a work folder
 // does to it, and which prompt comes next.
 //
-// The run that creates the work folder has the source extracted into its `sca/`, its build
-// reported in build.md, and the roots its reader works out handed back in the review file
-// (`extract`), beside the reader's judgement whether the build is safe. That hand-back
-// settles the roots as the review settles them (src/addon/sca-root.js). An unsafe build is
-// done at once: the agent builds nothing, and runs no package-manager command. A safe one
+// Two runs start a preparation, and from `analyze` on they run the same steps. One given a
+// submission folder (--llm-sca-review) has the source archive extracted into the work
+// folder's `sca/` first (`unpack`), and its hand-back derives the root inside it as the review
+// derives one (src/addon/sca-root.js). One given the extracted source (--llm-review
+// --sca-base) has it copied into `sca/` by the linter, and starts at `analyze`. There the
+// reader reports the build in build.md and hands back the judgement whether it is safe (and
+// the Experiment folder, where it is not known yet). An unsafe build is done at once: the agent
+// builds nothing, and runs no package-manager command, and neither does one where a check the
+// build relies on is switched off (`build-guard`). A safe one
 // moves on to `permission`, which shows the reviewer the Build Review Details and asks them
 // alone whether the agent may build the add-on, its package-manager commands included
 // (pre-answered "yes" where the record holds agentBuilds, which skips that step). Where the reviewer
@@ -60,7 +64,8 @@ import {
   vulnerabilityCounts,
 } from "./audit.js";
 import { settleScaRoot } from "../addon/sca-root.js";
-import { loadRegistry } from "../checks/registry.js";
+import { checkSelected, loadRegistry } from "../checks/registry.js";
+import { splitList } from "../lib/util.js";
 import { relativeInside } from "../addon/load.js";
 import { runCache, workPaths } from "../util/dest.js";
 import { defaultNet } from "../vendor/verify.js";
@@ -80,8 +85,7 @@ import {
 } from "../report/handback.js";
 import { displayLine } from "../util/text.js";
 
-/** The review file's entries for the roots, keyed by the names the prompt gives them. */
-const ROOT = "SCA_ROOT";
+/** The review file's entry for the Experiment folder, keyed by the name the prompt gives it. */
 const EXP_SOURCE = "SCA_EXP_SOURCE";
 /** The review file's entry for the reviewer's answer whether the agent may build the add-on,
  *  its package-manager commands included, as `llm-sca-review-prompt` names it. */
@@ -147,8 +151,9 @@ export function agentBuildsSwitchedOn() {
  */
 
 /**
- * Start the preparation in a work folder just created for it: its record, at `extract`, and
- * the review file its reader hands the build judgement and the roots back in.
+ * Start the preparation in a work folder just created for it: its record, at `unpack` or at
+ * `analyze` (startRecord), and the review file its first step's answers come back in - none at
+ * `unpack`, whose hand-back answers nothing.
  * @param {string} work  The work folder, absolute and real.
  * @param {import("./state.js").PrepareRecord} record  From startRecord.
  * @param {import("../checks/registry.js").Registry} [registry]  The authored registry,
@@ -159,23 +164,39 @@ export function startPreparation(work, record, registry = loadRegistry()) {
   writePrepare(work, record);
   writeReviewFile(
     workPaths(work).review,
-    reviewFile([
-      safetyEntry(registry.llmScaReviewPrompt().buildSafety),
-      ...rootEntries(record),
-    ])
+    reviewFile(
+      record.step === PREPARE_STEP.analyze
+        ? analyzeEntries(record, registry.llmScaReviewPrompt())
+        : []
+    )
   );
 }
 
 /**
- * The entries the first step asks for: the root, and the Experiment folder where the built
- * add-on declares Experiments.
+ * Whether `analyze` asks for the Experiment folder: the built add-on declares Experiments, and
+ * the folder is not known yet. A review given --sca-base was given it (--sca-exp-source).
  * @param {import("./state.js").PrepareRecord} record
+ * @returns {boolean}
+ */
+export function asksExpSource(record) {
+  return (
+    record.submission.experiments &&
+    typeof record.roots?.scaExpSource !== "string"
+  );
+}
+
+/**
+ * The entries `analyze` asks for: the build judgement, and the Experiment folder where it is
+ * asked (asksExpSource).
+ * @param {import("./state.js").PrepareRecord} record
+ * @param {ScaPrompt} prompt
  * @returns {object[]}
  */
-function rootEntries(record) {
-  return [ROOT, ...(record.submission.experiments ? [EXP_SOURCE] : [])].map(
-    (index) => ({ index, [SLOT]: null })
-  );
+function analyzeEntries(record, prompt) {
+  return [
+    safetyEntry(prompt.buildSafety),
+    ...(asksExpSource(record) ? [{ index: EXP_SOURCE, [SLOT]: null }] : []),
+  ];
 }
 
 /**
@@ -324,8 +345,10 @@ export async function handBack(work, registry = loadRegistry()) {
   };
   const prompt = registry.llmScaReviewPrompt();
   switch (record.step) {
-    case PREPARE_STEP.extract:
-      return extract(work, record, context, prompt);
+    case PREPARE_STEP.unpack:
+      return unpacked(work, record, prompt);
+    case PREPARE_STEP.analyze:
+      return analyze(work, record, context, prompt, registry);
     case PREPARE_STEP.permission:
       return permission(work, record, context, prompt);
     case PREPARE_STEP.build:
@@ -344,22 +367,40 @@ export async function handBack(work, registry = loadRegistry()) {
 }
 
 /**
- * The first step: the roots the reader handed back, settled, with the build judgement and
- * the build report it rests on. An unsafe build is done at once, with no package-manager
- * command allowed. A safe one moves on to the permission question, or, where
- * the record holds agentBuilds, straight to the audit.
+ * The source archive extracted into `sca/`: the root derived inside it, as the review derives
+ * one (src/addon/sca-root.js settleScaRoot) - `sca/` itself where it holds the package file or
+ * the walk cannot decide - and the build handed out to be analyzed.
  * @param {string} work
- * @param {import("./state.js").PrepareRecord} record
+ * @param {import("./state.js").PrepareRecord} record  At `unpack`.
+ * @param {ScaPrompt} prompt
+ * @returns {Handout}
+ * @throws {HandbackRefused}
+ */
+function unpacked(work, record, prompt) {
+  const { scaRoot } = settleScaRoot({ scaRoot: realSca(workPaths(work)) });
+  const analyzing = {
+    ...record,
+    step: PREPARE_STEP.analyze,
+    roots: { scaRoot, scaExpSource: null },
+  };
+  return ask(work, analyzing, analyzeEntries(analyzing, prompt));
+}
+
+/**
+ * The build analyzed: the judgement and the build report it rests on, and the Experiment
+ * folder where it was asked. An unsafe build is done at once, with no package-manager command
+ * allowed, and so is a safe one where a check the build relies on is switched off
+ * (buildGuarded): nothing then vouches for what an install pulls in. A safe one moves on to the
+ * permission question, or, where the record holds agentBuilds, straight to the audit.
+ * @param {string} work
+ * @param {import("./state.js").PrepareRecord} record  At `analyze`.
  * @param {AuditContext} context
  * @param {ScaPrompt} prompt
+ * @param {import("../checks/registry.js").Registry} registry
  * @returns {Promise<Handout>}
  */
-async function extract(work, record, context, prompt) {
-  const { roots, buildSafety } = answeredRoots(
-    work,
-    record,
-    prompt.buildSafety
-  );
+async function analyze(work, record, context, prompt, registry) {
+  const { roots, buildSafety } = analyzedAnswers(work, record, prompt);
   const build = workPaths(work).build;
   if (!productWritten(build)) {
     throw new HandbackRefused(
@@ -367,7 +408,7 @@ async function extract(work, record, context, prompt) {
     );
   }
   const settled = { ...record, buildSafety, roots };
-  if (buildSafety !== "safe") {
+  if (buildSafety !== "safe" || !buildGuarded(record, registry)) {
     return done(work, { ...settled, packageManagers: false });
   }
   if (record.agentBuilds) {
@@ -508,70 +549,56 @@ function builtOriginal(work, record, asked, match) {
 }
 
 /**
- * The roots the reader handed back in the review file, held to the folder the source was
- * extracted into and settled as the review settles them, and the reader's judgement of the
- * build, which must be one of the labels its entry offered. Every way they can be wrong is refused, with nothing changed, so the reader can
- * correct the file and hand it back again.
- *
- * Both are taken as the folders they really are, links followed, and asked of that target:
- * the root must lie inside `sca/`, which is what this preparation audits and copies, and
- * the Experiment folder inside the root, resolved against it as the review resolves it.
+ * What `analyze` handed back: the build judgement, which must be one of the labels its entry
+ * offered, and the Experiment folder where it was asked, taken as the folder it really is and
+ * held inside the root, resolved against it as the review resolves it, and not the root itself
+ * (settleScaRoot). Every way they can be wrong is refused, with nothing changed, so the reader
+ * can correct the file and hand it back again.
  * @param {string} work
- * @param {import("./state.js").PrepareRecord} record
- * @param {ScaPrompt["buildSafety"]} judgement
+ * @param {import("./state.js").PrepareRecord} record  At `analyze`, its root known.
+ * @param {ScaPrompt} prompt
  * @returns {{roots: {scaRoot: string, scaExpSource: ?string}, buildSafety: string}}
  * @throws {HandbackRefused}
  */
-function answeredRoots(work, record, judgement) {
-  const paths = workPaths(work);
-  const asked = rootEntries(record);
+function analyzedAnswers(work, record, prompt) {
+  const judgement = prompt.buildSafety;
   const keyOf = (e) => String(e?.index);
-  const all = readHandback(paths.review).entries;
-  // Every entry but the judgement names a folder.
-  const handed = all.filter((e) => keyOf(e) !== SCA_BUILD_SAFETY_ASSESSMENT);
-  // A blank answer names no folder, and would otherwise resolve to the folder it is
-  // resolved against.
-  for (const entry of handed) {
-    const answer = entry?.[SLOT];
-    if (typeof answer === "string" && !answer.trim()) {
-      throw new HandbackRefused(
-        `${displayLine(String(entry.index))} names no folder`
-      );
-    }
-  }
-  const answers = answersOf(
-    handed,
-    asked,
-    { name: "extract", answer: "words" },
-    keyOf
-  );
+  const all = readHandback(workPaths(work).review).entries;
   // The judgement is a process value, checked against the labels its entry offered.
   const picked = answersOf(
     all.filter((e) => keyOf(e) === SCA_BUILD_SAFETY_ASSESSMENT),
     [safetyEntry(judgement)],
-    { name: "extract", answer: "value" },
+    { name: "analyze", answer: "value" },
     keyOf
   ).get(SCA_BUILD_SAFETY_ASSESSMENT);
-  const sca = realSca(paths);
-  const root = realFolder(path.resolve(sca, answers.get(ROOT).trim()));
-  if (!root || relativeInside(root, sca) === null) {
-    throw new HandbackRefused(
-      `${ROOT} "${displayLine(answers.get(ROOT))}" is not a folder inside "${sca}"`
-    );
+  const buildSafety = judgement.values.find((v) => v.label === picked).value;
+  const root = record.roots.scaRoot;
+  if (!asksExpSource(record)) {
+    return { roots: record.roots, buildSafety };
   }
-  let exp = null;
-  if (record.submission.experiments) {
-    exp = realFolder(path.resolve(root, answers.get(EXP_SOURCE).trim()));
-    if (!exp || relativeInside(exp, root) === null) {
-      throw new HandbackRefused(
-        `${EXP_SOURCE} "${displayLine(answers.get(EXP_SOURCE))}" is not a folder inside ` +
-          `"${root}"`
-      );
-    }
+  const handed = all.filter((e) => keyOf(e) === EXP_SOURCE);
+  // A blank answer names no folder, and would otherwise resolve to the root itself.
+  const blank = handed.find(
+    (e) => typeof e?.[SLOT] === "string" && !e[SLOT].trim()
+  );
+  if (blank) {
+    throw new HandbackRefused(`${EXP_SOURCE} names no folder`);
+  }
+  const answer = answersOf(
+    handed,
+    [{ index: EXP_SOURCE, [SLOT]: null }],
+    { name: "analyze", answer: "words" },
+    keyOf
+  ).get(EXP_SOURCE);
+  const exp = realFolder(path.resolve(root, answer.trim()));
+  if (!exp || relativeInside(exp, root) === null) {
+    throw new HandbackRefused(
+      `${EXP_SOURCE} "${displayLine(answer)}" is not a folder inside "${root}"`
+    );
   }
   let settled;
   try {
-    settled = settleScaRoot({ scaRoot: root, scaExpSource: exp ?? undefined });
+    settled = settleScaRoot({ scaRoot: root, scaExpSource: exp });
   } catch (err) {
     rethrowIfFatal(err);
     throw new HandbackRefused(err.message);
@@ -581,8 +608,25 @@ function answeredRoots(work, record, judgement) {
       scaRoot: settled.scaRoot,
       scaExpSource: settled.scaExpSource ?? null,
     },
-    buildSafety: judgement.values.find((v) => v.label === picked).value,
+    buildSafety,
   };
+}
+
+/**
+ * Whether every check the agent's build relies on runs (`build-guard`), by the flags the
+ * review is run with: with one switched off by --checks-only or --checks-skip, nothing
+ * vouches for what an install pulls in, so the agent is not let build. The review reads the
+ * same answer (`build-guarded`, src/pipeline.js).
+ * @param {import("./state.js").PrepareRecord} record
+ * @param {import("../checks/registry.js").Registry} registry
+ * @returns {boolean}
+ */
+function buildGuarded(record, registry) {
+  const only = splitList(record.flags?.["checks-only"]);
+  const skip = splitList(record.flags?.["checks-skip"]);
+  return registry
+    .buildGuardIds()
+    .every((id) => checkSelected(id, { only, skip }));
 }
 
 /**
@@ -716,6 +760,28 @@ function rescue(work, record, asked, match) {
     },
     buildEntries(asked, match)
   );
+}
+
+/**
+ * The source a review given --sca-base starts its preparation with: the whole of that folder
+ * copied into the work folder's `sca/`, as --llm-sca-review's reader extracts the archive
+ * there, and the roots given inside it mapped to their place in the copy. From here on the
+ * preparation reads only the copy.
+ * @param {string} work  The work folder, just created.
+ * @param {{base: string, scaRoot: string, scaExpSource: ?string}} given  Absolute and real:
+ *   the extracted source, and the root and Experiment folder inside it.
+ * @returns {{scaRoot: string, scaExpSource: ?string}}
+ * @throws {Error}  The copy could not be made.
+ */
+export function copySource(work, given) {
+  const { sca } = workPaths(work);
+  wholeCopy(given.base, sca, "source copy");
+  const real = fs.realpathSync(sca);
+  const inCopy = (p) => path.join(real, path.relative(given.base, p));
+  return {
+    scaRoot: inCopy(given.scaRoot),
+    scaExpSource: given.scaExpSource ? inCopy(given.scaExpSource) : null,
+  };
 }
 
 /**

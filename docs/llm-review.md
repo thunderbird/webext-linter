@@ -53,7 +53,6 @@ entry never offered are all refusals.
 
 | Phase | What it is for | What fills its answers |
 | --- | --- | --- |
-| `build-safety` | Source code review only: write the build report (`SCA_BUILD_PROCESS`), with a safety section listing anything the build fetches or runs from outside the declared dependencies, and judge whether building is safe. Not where the review was prepared: it starts with the judgement and the build report its preparation recorded. | A process value: `safe` / `unsafe` |
 | `built` | Source code review only: show the Build Review Details block (see below) as the last thing of the turn, then, once the reviewer has replied, relay the build to-do (`build-reproduces-xpi`) to them alone as the question. Where the reviewer builds themselves, the pause after the block is the one in which they build. A step says who built the add-on, by the build result, and the agent builds and compares nothing. Issued only while that to-do is open. | A process value: `Builds and reproduces` / `Does not reproduce` / `Does not build` / `Is unsafe to build` |
 | `spawn` | Start the sub-agents the review needs - the add-on description and one sweep per tree - and read back what the sweeps found. | Nothing: each sweep's reply is written to a file of its own (see below) |
 | `verify` | Audit what the deterministic checks claimed. | `reported` / `withdrawn` |
@@ -101,9 +100,9 @@ condition that does not parse or names a fact nothing answers.
 A condition can also read a **process value** with `value(phase, id)`. A phase answering
 `value` asks for one: an answer that steers the review and settles no item. It hands out
 one entry offering the values the registry declares for it, each with a label and a
-description, accepts only one of those labels, and records the value's id. So
-`build-safety` prints under `NOT value(build-safety, safe) AND NOT value(build-safety,
-unsafe)`, only where no judgement is held yet. The registry refuses a call naming a phase
+description, accepts only one of those labels, and records the value's id. So a step
+reading `value(built, reproduces)` prints only once the reviewer has said the source
+builds and reproduces the XPI. The registry refuses a call naming a phase
 that asks for no value, or an id that phase never returns. A value may itself carry a
 `when:`, read with the same facts: it is offered only where its condition holds, and an
 answer that was not offered is refused when it comes back. The registry checks it as it
@@ -133,9 +132,7 @@ review's build part is these steps:
    finding of a check marked `review-unbuildable` (no usable package.json, or no single
    readable lock) stands, or the preparation gave its rescue up. Such a review goes straight
    on to `spawn`, and its findings abort it late.
-3. **`build-safety`**, only where nothing was prepared: the agent writes the build report
-   and records its judgement, and builds nothing.
-4. **`built`** first shows the Build Review Details block as the last thing of the turn:
+3. **`built`** first shows the Build Review Details block as the last thing of the turn:
    `XPI_FILE`, `XPI_ROOT`, `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT`, `SCA_ROOT`,
    `SCA_VULNERABILITIES` (`n moderate, n high, n critical`, the submitted lock's vulnerable
    packages as the preparation counted them, or the review's own audit where it counted
@@ -144,10 +141,10 @@ review's build part is these steps:
    of that output with the submitted XPI in the preparation). `LLM_BUILD_RESULT` reports the
    agent's attempt only: `build succeeded`, `build failed: see build.md`, `not built: rescue
    failed` or `not built: unsafe`. It is absent where the reviewer builds the add-on
-   (`self-build`: the reviewer did not let the agent build, or nothing was prepared). A
+   (`self-build`: the reviewer did not let the agent build). A
    failed rescue leaves nothing to build and skips this phase, so only the Final Review
    Details show `not built: rescue failed`.
-5. Once the reviewer has replied, **`built`** asks them alone to build the add-on from the
+4. Once the reviewer has replied, **`built`** asks them alone to build the add-on from the
    source and compare the result with the submitted XPI, relaying the `build-reproduces-xpi`
    to-do as the question. The step before the question is worded by the build result
    (`agent-built`, `agent-build-failed`, `build-unsafe`, `self-build`), and tells the agent
@@ -156,7 +153,7 @@ review's build part is these steps:
    unsafe, it says the reviewer may answer `Is unsafe to build`. That answer is offered only
    where nobody let the agent build (`NOT build-allowed`): a reviewer who let it build in the
    preparation has already judged the build safe to run.
-6. **`Does not reproduce`**, **`Does not build`** and **`Is unsafe to build`** report
+5. **`Does not reproduce`**, **`Does not build`** and **`Is unsafe to build`** report
    `build-not-reproduced`, `build-fails` and `build-unsafe`, which abort the review late for
    build issues, with that check's response telling the developer why: the review goes on to
    `spawn`, `verify` and `settle`, and then closes aborted. **`Builds and reproduces`** goes
@@ -216,7 +213,7 @@ When each kind decides:
 
 | | |
 | --- | --- |
-| Late (`review-late-exit`), the default | Once only `ask` and `close` are left. Every check runs, and `build-safety`, `built`, `spawn`, `verify` and `settle` run as usual. Then `ask` is skipped, and `close` closes the aborted review with the reasons. The developer is told everything in one round. |
+| Late (`review-late-exit`), the default | Once only `ask` and `close` are left. Every check runs, and `built`, `spawn`, `verify` and `settle` run as usual. Then `ask` is skipped, and `close` closes the aborted review with the reasons. The developer is told everything in one round. |
 | Early (`review-early-exit`) | The moment the error stands. Only `experiment-not-allowed` and `lockfile-injection` do this: a submission refused whatever its code says, and a forged lock every later reading would take at its word. A deterministic check that reports it stops the checks there, and the loop closes on its first prompt: nothing is built, no agent is started, and nothing is verified or settled - every step before `downgrade` carries `NOT aborted`. |
 
 Since verify runs first, a late-exit finding verify **withdrew** does not stand and aborts
@@ -440,7 +437,7 @@ carry, come last.
 | --- | --- |
 | `XPI_FILE` | What was submitted, a link named by what it was submitted as - the .xpi as ATN named it, or the folder's own name where the submission arrived unpacked |
 | `XPI_ROOT` | The shipped package, unpacked, ready to read |
-| `SCA_BUILD_PROCESS` | What building the add-on takes and whether it is safe, written by the agent in `build-safety`, in a source code review |
+| `SCA_BUILD_PROCESS` | What building the add-on takes and whether it is safe, written by the agent in the preparation, in a source code review |
 | `SCA_BUILD_SAFETY_ASSESSMENT` | The build judgement the review holds, the preparation's or its own: `safe` or `unsafe` |
 | `SCA_EXP_SOURCE` | The Experiment implementation folder, when one was named |
 | `SCA_ROOT` | A source code review's source root - the whole of which is reviewed - labelled "source archive" in `sca/`, or "rescued source (reduced/fixed dependencies)" where a rescue came out clean and the root lies in `rescued/` |
@@ -491,53 +488,57 @@ is refused.
 ## Preparing a source code review
 
 A source code submission arrives as two files - the built `.xpi` and an archive of the
-source it was built from - and reviewing it needs two `--sca-*` arguments that nobody can
-write without opening that archive. `--llm-sca-review` reads the add-on
-argument as that submission folder instead of as an add-on: it does the half a program
-can do, and hands those two to a reader who can open the archive.
+source it was built from - and no review of the source is possible until someone has read
+it and worked out its build. Two runs start that preparation, and from its `analyze` step on
+they run the same steps:
 
 ```sh
 node verify.js ./submission-folder --llm-sca-review
+node verify.js ./built.xpi --sca-base ./extracted-source --llm-review
 ```
 
-It reviews nothing. It names which file is the add-on and which is the source, creates the
-review's work folder at its default place beside the `.xpi`, names its `sca/` as where the
-source archive is to be extracted (`EXTRACT_TO`), and asks its reader to extract it there and work out two things that only
-reading the tree can settle: which directory is the source root, being the one holding
-`package.json` (`<SCA_ROOT>`), and - for an Experiment - which holds the Experiment implementation (`<SCA_EXP_SOURCE>`). A name in `<angle brackets>` is one of
-those, and every other name is given. Nothing asks which directory holds the add-on's own
-code: the whole of `<SCA_ROOT>` is reviewed, because a build may move or generate anything
-and no subtree can be shown to be the add-on's.
+`--llm-sca-review` reads the add-on argument as the submission folder instead of as an
+add-on, and does the half a program can do. It reviews nothing. It names which file is the
+add-on and which is the source, creates the review's work folder at its default place beside
+the `.xpi`, names its `sca/` as where the source archive is to be extracted (`EXTRACT_TO`),
+and asks its reader to extract it there and hand the folder back (`unpack`). That hand-back
+finds the source root, the folder holding `package.json`, inside `sca/` by the rule the review
+finds one by (`src/addon/sca-root.js`): below any folders the archive wraps its contents in,
+and `sca/` itself where it holds the package file or the walk cannot decide. Then it prints the
+`analyze` prompt.
+
+`--llm-review` given `--sca-base` (the source archive, already extracted) copies all of it into
+the work folder's `sca/`, takes `--sca-root` and `--sca-exp-source` where they were given and
+finds the root where not, and prints the `analyze` prompt itself. Nothing either run hands
+out names a folder outside `sca/`.
+
+Nothing asks which directory holds the add-on's own code: the whole of `SCA_ROOT` is reviewed,
+because a build may move or generate anything and no subtree can be shown to be the add-on's.
 
 An add-on whose Experiment the review would reject is not prepared at all: the review
 rejects it from the `.xpi` alone, before it reads any source. Without `--allow-experiments`,
-`--llm-sca-review` first asks the Experiment verdict of the `.xpi`, by the rule the review
-itself asks it by, and where the verdict rejects, it starts that review at once instead of
-printing the preparation's prompt. That review is the one `--llm-review` of the `.xpi`
+the run that starts the preparation first asks the Experiment verdict of the `.xpi`, by the
+rule the review itself asks it by, and where the verdict rejects, it starts that review at
+once instead of printing the preparation's prompt. That review is the one `--llm-review` of the `.xpi`
 starts: `experiment-not-allowed` aborts it, so its first prompt is the `close` phase.
 
-Where the archive is extracted and where its build runs are two different places, which is
-why `EXTRACT_TO` is not `<SCA_ROOT>`: an archive that carries its contents in a directory
-of its own puts the build files a level below the destination. The review does not depend
-on that being answered correctly - handed a root with no `package.json` and one subfolder
-that has one, it settles the root itself before reading anything (`src/addon/sca-root.js`)
-and says so in its Setup feed.
-
-The same prompt has its reader **judge the build**. It writes the build report to
+The `analyze` prompt has its reader **judge the build**. It writes the build report to
 `SCA_BUILD_PROCESS` (the work folder's `build.md`): the release build for Thunderbird as a short
 numbered list, its install step as `npm ci` or `pnpm install --frozen-lockfile`, and a
 "Safety" section listing anything the build fetches or runs from outside the declared
-dependencies. It runs nothing. Then it answers the `SCA_BUILD_SAFETY_ASSESSMENT` entry of `ANSWERS` with
-`safe` or `unsafe`, the same two values the review's `build-safety` phase accepts.
+dependencies. It runs nothing. Then it answers the `SCA_BUILD_SAFETY_ASSESSMENT` entry of
+`ANSWERS` with `safe` or `unsafe`. For an Experiment whose folder was not given, it also works
+out which directory holds the Experiment implementation (`<SCA_EXP_SOURCE>`, a name in
+`<angle brackets>` being one it works out), relative to `SCA_ROOT`.
 
-The reader hands the roots and the judgement back in the work folder's review file (`ANSWERS`, the same
+The reader hands the judgement back in the work folder's review file (`ANSWERS`, the same
 `.review/review.json` a review pass uses) and runs `--llm-handback` on the folder. The preparation's
 own record, `.review/prepare.json`, says where it stands, so every step is that one command. The
-reader never chooses what comes next. A root outside `sca/`, an Experiment folder outside
-the root, a judgement that is not one of the two labels, or a missing `build.md` is refused,
-and the reader corrects it and hands it back again.
+reader never chooses what comes next. An `sca/` that is not the folder the source was
+extracted into, an Experiment folder outside the root, a judgement that is not one of the two
+labels, or a missing `build.md` is refused, and the reader corrects it and hands it back again.
 
-That hand-back settles the roots as the review would, and records the judgement:
+That hand-back records the judgement:
 
 - **Unsafe:** the folder is done at once. Nothing is audited or rescued, and the agent builds
   nothing, so a vulnerable lock aborts the review it starts.
@@ -549,11 +550,14 @@ That hand-back settles the roots as the review would, and records the judgement:
   reader records the label the reviewer picked, `Let it build` or `Do not let it build`, and
   any other answer is refused. Not letting it build, the folder is done at once, as after an
   unsafe judgement.
+- **Safe, with a check the build relies on switched off** (`build-guard` in the registry, by
+  `--checks-only` or `--checks-skip`): the folder is done at once too, and nobody is asked.
+  Nothing vouches for what an install pulls in, so the agent builds nothing.
 
 Where the agent may not build, the review's Build Review Details show no `LLM_BUILD_RESULT`
 (`self-build`), or `not built: unsafe` after an unsafe judgement, and the `built`
-question is asked of the reviewer's own build. Every prepared review starts with the recorded judgement as its `build-safety`
-value and `build.md` as that phase's report, so it does not ask for them again.
+question is asked of the reviewer's own build. Every review starts with the recorded judgement
+and `build.md` as its report, so it does not ask for them again.
 
 Where the reviewer let the agent build, the hand-back **audits the root's lock**
 (`src/prepare/audit.js`): every package it installs, against OSV and the policy blocklist,
@@ -617,14 +621,14 @@ carry the vulnerabilities.
 
 The reader never runs anything but `--llm-handback`. The hand-back that finds the preparation
 done starts the review itself, in that folder: under `--llm-review`, with the preparation's
-own flags, the add-on it was given and the settled `--sca-*` roots, all read from
+own flags, the add-on it was given and the settled `--sca-*` folders, all read from
 `prepare.json`. That record is the linter's alone: every write leaves it read-only, and stores
 a hash over it, so a record changed after the linter wrote it is refused. The reader works in
 the same folder as the same user, so neither makes the file tamper-proof, and nothing in it is
 taken as it stands either: only the flags a review takes, each of its own type and checked as a command line is,
 with the roots checked again as folders, and a record that does not hold up is refused to the
-reader. `--cache-clear` and `--verbose` belong to the `--llm-sca-review` run and are not
-passed on. The hand-back prints the review's first prompt,
+reader. `--cache-clear` and `--verbose` belong to the run that started the preparation and
+are not passed on. The hand-back prints the review's first prompt,
 and from then on the same command carries the round trip above.
 
 The tool extracts the submitted `.xpi` itself, but not a source archive: those arrive in
@@ -667,14 +671,14 @@ the review sit in its hidden `.review/` folder, out of the reviewer's sight:
 | Name | What it is | Written by |
 | --- | --- | --- |
 | `xpi/` | The shipped add-on, extracted (or, for an unpacked one, copied): `XPI_ROOT` | the linter, as the review starts |
-| `sca/` | The source archive, extracted: `EXTRACT_TO`, holding `SCA_ROOT` | the reader of the `--llm-sca-review` prompt |
+| `sca/` | The source archive, extracted: `EXTRACT_TO`, holding `SCA_ROOT` | the reader of the `--llm-sca-review` prompt, or the linter, copying `--sca-base` |
 | `rescued/` | The copy of the whole `sca/` a rescue changes the dependencies of (`RESCUE_ROOT` lies inside it), only its `package.json` and lock, never installed or built in: reviewed instead when the rescue comes out clean, and removed when it fails | the linter, and the reader of the `rescue` prompt |
 | `.review/prepare.json` | Where the preparation of a source code review stands, and how its review is to be run - read-only, and hashed | the linter, at each step of the preparation |
 | `.review/state.json` | The review itself, which every pass reads | the linter |
 | `.review/review.json` | The file the agent fills in and hands back (`ANSWERS` while a source code review is prepared) | the linter, each pass |
 | `report.md` | `REVIEW_REPORT` | the linter |
 | `summary.md` | `ADDON_DESCRIPTION` | the agent, from a sub-agent's reply |
-| `build.md` | `SCA_BUILD_PROCESS` | the agent, in `build-safety`, in a source code review |
+| `build.md` | `SCA_BUILD_PROCESS` | the agent, in the preparation's `analyze` step, in a source code review |
 | `build/` | Where every build of the preparation runs (`LLM_BUILD_ROOT` lies inside it), holding `LLM_BUILD_OUTPUT`: a copy of the whole `sca/` for a clean source, or of the whole `rescued/` before each build of a rescue, and removed when the rescue fails | the linter for a clean source, the reader of the `rescue` prompt for a rescue |
 | `.review/sweep-<artifact>.answers.json` | One tree's sweep answers | the agent, from a sweeping agent's reply |
 | `.cache/osv.json` | What OSV answered during this run, so no later invocation of the run asks again | the linter, whenever it audits |
@@ -696,9 +700,8 @@ A source review the reviewer restarts as an XPI review (see [Restarting as an XP
 review](#restarting-as-an-xpi-review)) is left in its folder, and the XPI review starts in a new
 `xpi-review-<add-on name>-<timestamp>` folder beside the add-on.
 
-`--sca-root` must not include the add-on: the source is reviewed where it is, so the shipped
-XPI, and the work folder created beside it, would be read as files of the source. Extract the
-source archive into a folder of its own.
+`--sca-base` must not include the add-on: the shipped XPI, and the work folder created beside
+it, would be read as files of the source. Extract the source archive into a folder of its own.
 
 The caches are not part of it: they stay in `WEBEXT-LINTER-CACHE/`.
 
@@ -707,7 +710,7 @@ The caches are not part of it: they stay in `WEBEXT-LINTER-CACHE/`.
 
 | Option | Description |
 | --- | --- |
-| `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Refused with `--report-format json`. |
+| `--llm-review` | Run the review and print the first phase's prompt, instead of the report. The prompt names the file to fill in and the command that hands it back. Given `--sca-base`, prepare the source code review first, from its `analyze` step on (see [Preparing a source code review](#preparing-a-source-code-review)). Refused with `--report-format json`. |
 | `--llm-handback <dir>` | Take a phase back and hand out the next, from the review file in the work folder the prompt named - the last being `close`, which hands over the settled review. Takes no add-on path: the review ran once, under `--llm-review`, and its result is in the state file in that folder. On a folder a source code review is being prepared in (`.review/prepare.json`, and no review started), take the next step of the preparation instead, and once it is done, start its review. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person. |
 | `--llm-sca-review` | Read the add-on argument as a submission FOLDER - one built `.xpi` and one archive of the source it was built from - and print the first prompt for preparing a source code review of it. It creates the review's work folder beside the `.xpi`, records there how the review is to be run, and its prompt ends in `--llm-handback` on that folder (see [Preparing a source code review](#preparing-a-source-code-review)). Refused beside any `--sca-*` flag, which is what the preparation works out. |
 | `--llm-skip-summary` | With `--llm-review` or `--llm-sca-review`: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes. |

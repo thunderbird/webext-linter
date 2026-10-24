@@ -26,6 +26,7 @@ import {
   readJson,
   handBackRoots,
   handBackUntil,
+  unpackSource,
   unwrapped,
 } from "../cli-run.js";
 
@@ -53,19 +54,24 @@ test("--llm-sca-review prints the prompt, names both files, and reviews nothing"
   assert.match(r.stdout, new RegExp(`\\n  FOLDER\\n    ${dir}\\n`));
   // No review ran: no report sections, and no item file was claimed.
   assert.doesNotMatch(r.stdout, /── Found Issues ──|REVIEW_ITEMS/);
+  // The unpack prompt only extracts: the build is the next prompt's.
+  assert.doesNotMatch(r.stdout, /SCA_ROOT|SCA_BUILD_PROCESS|ANSWERS/);
   // Only an install hook reaching outside the declared dependencies is a safety concern.
+  const analyze = unpackSource(r.stdout);
+  assert.equal(analyze.code, 0, analyze.stderr);
   for (const said of [
     "an install hook that downloads or runs code from outside the declared dependencies",
   ]) {
-    assert.ok(unwrapped(r.stdout).includes(said), said);
+    assert.ok(unwrapped(analyze.stdout).includes(said), said);
   }
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // The source is extracted into the review's work folder before the review starts, so the
 // preparation creates that folder - at its default place, beside the .xpi - names its sca/
-// as EXTRACT_TO, writes its record and the review file the roots come back in, and hands
-// the folder back with --llm-handback.
+// as EXTRACT_TO, writes its record and an empty review file, and hands the folder back with
+// --llm-handback. That hand-back derives the root in sca/ and asks for the build judgement
+// alone.
 test("--llm-sca-review creates the work folder and hands it back", () => {
   const dir = submissionFolder();
   const r = run([dir, "--llm-sca-review"]);
@@ -84,20 +90,26 @@ test("--llm-sca-review creates the work folder and hands it back", () => {
     headerValue(r.stdout, "EXTRACT_TO"),
     `${path.join(work, "sca")}${path.sep}`
   );
-  assert.equal(headerValue(r.stdout, "ANSWERS"), workPaths(work).review);
+  assert.deepEqual(readJson(work, "review").entries, []);
+  assert.deepEqual(commandOf(r.stdout), [`--llm-handback ${work}`]);
+  const analyze = unpackSource(r.stdout);
+  assert.equal(analyze.code, 0, analyze.stderr);
+  assert.equal(readJson(work, "prepare").step, "analyze");
+  assert.equal(headerValue(analyze.stdout, "ANSWERS"), workPaths(work).review);
+  assert.equal(headerValue(analyze.stdout, "SCA_ROOT"), workPaths(work).sca);
   assert.equal(
-    headerValue(r.stdout, "SCA_BUILD_PROCESS"),
+    headerValue(analyze.stdout, "SCA_BUILD_PROCESS"),
     workPaths(work).build
   );
-  const [safety, ...roots] = readJson(work, "review").entries;
+  const [safety, ...rest] = readJson(work, "review").entries;
   assert.equal(safety.index, "SCA_BUILD_SAFETY_ASSESSMENT");
   assert.equal(safety.answer, null);
   assert.deepEqual(
     safety.answers.map((a) => a.label),
     ["safe", "unsafe"]
   );
-  assert.deepEqual(roots, [{ index: "SCA_ROOT", answer: null }]);
-  assert.deepEqual(commandOf(r.stdout), [`--llm-handback ${work}`]);
+  assert.deepEqual(rest, [], "the root is the linter's, and asked of nobody");
+  assert.deepEqual(commandOf(analyze.stdout), [`--llm-handback ${work}`]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -162,6 +174,7 @@ test("declined package-manager commands start a review the reviewer builds for",
     match: null,
     vulnerabilities: null,
     rescuedVulnerabilities: null,
+    safety: "safe",
   });
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -214,16 +227,16 @@ test("the preparation records the flags its review is started with", () => {
 
   // With no Experiment shipped, the prompt neither asks for the Experiment folder nor
   // records one - and the steps renumber over what survives.
-  const plain = prepared();
+  const plain = unpackSource(prepared().stdout);
   assert.doesNotMatch(plain.stdout, /SCA_EXP_SOURCE|Experiment/);
-  assert.match(plain.stdout, /\n7\. That run checks the source/);
+  assert.match(plain.stdout, /\n4\. That run checks the source/);
 
   // An add-on that ships an Experiment needs the folder, so the .xpi's own manifest.json
-  // decides: the prompt asks for it, the review file has a slot for it, and the started
-  // review reads it as the Experiment folder.
+  // decides: the analyze prompt asks for it, the review file has a slot for it, and the
+  // started review reads it as the Experiment folder.
   packAddon(xpi, { experiment_apis: { x: {} } });
   const exp = prepared("--allow-experiments");
-  assert.match(exp.stdout, /SCA_EXP_SOURCE/);
+  assert.doesNotMatch(exp.stdout, /SCA_EXP_SOURCE/, "unpack asks for nothing");
   handBackRoots(exp.stdout, { expSource: "experiment" });
   const work = workOf(exp.stdout);
   assert.equal(
@@ -294,13 +307,21 @@ test("a preparation refuses an unanswered hand-back", () => {
   const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
+  const unextracted = run(["--llm-handback", work]);
+  assert.equal(unextracted.code, 2);
+  assert.match(
+    unextracted.stdout,
+    /The hand-back was refused: ".+\/sca" is not the folder the source was extracted into/
+  );
+  assert.equal(readJson(work, "prepare").step, "unpack");
+  assert.equal(unpackSource(r.stdout).code, 0);
   const unanswered = run(["--llm-handback", work]);
   assert.equal(unanswered.code, 2);
   assert.match(
     unanswered.stdout,
-    /The hand-back was refused: SCA_ROOT still has no "answer"/
+    /The hand-back was refused: SCA_BUILD_SAFETY_ASSESSMENT still has no "answer"/
   );
-  assert.equal(readJson(work, "prepare").step, "extract");
+  assert.equal(readJson(work, "prepare").step, "analyze");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -579,6 +600,7 @@ test("a review of a source the agent built opens on its Build Review Details", a
     match: "no match",
     vulnerabilities: { moderate: 1, high: 0, critical: 0 },
     rescuedVulnerabilities: null,
+    safety: "safe",
   });
   assert.equal(state.paths.scaRootOrig, null);
   const rows = [

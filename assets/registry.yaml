@@ -41,9 +41,9 @@ deterministic-phase:
 # `review-unbuildable: true` on an aborting check of the source archive says no build can be
 # made from the source by the review's own rules: no usable package.json, or no single
 # readable lock for `npm ci` or `pnpm install --frozen-lockfile` to install from. A source
-# review holding such a finding asks nobody to build it: the `build-safety` and `built`
-# phases are skipped (the `unbuildable` fact, src/report/loop.js runOf), and the review goes
-# on to the sweeps and ends late.
+# review holding such a finding asks nobody to build it: the `built` phase is skipped (the
+# `unbuildable` fact, src/report/loop.js runOf), and the review goes on to the sweeps and ends
+# late.
 
 # Aborts the review of an Experiment that uses an UNSUPPORTED experiment (an
 # unknown API draft, or one shadowing a built-in). A recognised but modified draft
@@ -1033,7 +1033,7 @@ deterministic-phase:
 # this check's severity (src/report/verdicts.js). So a benign `husky prepare` that is
 # cleared aborts nothing, and a plain review with nobody to judge the hook aborts nothing
 # either. It is settled in the `settle` phase. Under --llm-review a hook is screened before
-# any install by the build-safety judgement and the reviewer's permission to build, and this
+# any install by the preparation's build judgement and the reviewer's permission to build, and this
 # check is what reports a remote-fetching hook.
 - title: Build install hook
   severity: error
@@ -2163,68 +2163,75 @@ review-early-exit:
     unreproducible-build: Build process issues
     archive-is-xpi: Source archive contains the built XPI
 
-# The prompts that PREPARE a source code review: what --llm-sca-review prints, and what each
-# --llm-handback run on the work folder it created prints after it, until the preparation is
-# done and that run starts the review itself (src/prepare/steps.js, src/cli.js), whose first
-# prompt it prints in place of one of these. No review is possible until someone has opened the
-# source archive, so these texts and the values beside them are all their reader gets.
+# The prompts that PREPARE a source code review: what --llm-sca-review, or --llm-review given
+# --sca-base, prints, and what each --llm-handback run on the work folder it created prints after
+# it, until the preparation is done and that run starts the review itself (src/prepare/steps.js,
+# src/cli.js), whose first prompt it prints in place of one of these. No review is possible until
+# someone has worked out the build, so these texts and the values beside them are all their
+# reader gets.
 #
-# The division of labour they encode: the linter states what is true about the folder AND
-# where the source archive's own extraction goes (EXTRACT_TO, the work folder's sca/ -
-# path math, not archive reading), and the reader does what only opening the archive can
-# settle: extracting it there, and deciding where the code root is and which folder holds the
-# Experiment implementation. They also write the build report (SCA_BUILD_PROCESS) and judge
-# whether building is safe. They hand the two paths and the judgement back in ANSWERS. An
-# unsafe build ends the preparation. After a safe one the reviewer reads the Build Review
-# Details and is asked alone whether the agent may build the add-on (`permission`), unless
-# the agent-builds test switch answered that up front. Declined, the preparation ends. Allowed, the
-# linter audits that root's lock (src/prepare/audit.js). A lock it cannot read in full ends
+# The division of labour they encode: the linter states what is true about the folder AND where
+# the source archive's own extraction goes (EXTRACT_TO, the work folder's sca/ - path math, not
+# archive reading), and the reader does what only opening the archive can settle: extracting it
+# there (`unpack`, --llm-sca-review only). The linter then derives the build folder inside it
+# (SCA_ROOT, src/addon/sca-root.js), as it does inside a --sca-base it copied into sca/, and from
+# `analyze` on both runs read the same prompts. The reader writes the build report
+# (SCA_BUILD_PROCESS), judges whether building is safe, and, where the add-on declares
+# Experiments and the folder was not given, names the Experiment folder. They hand that back in
+# ANSWERS. An unsafe build ends the preparation. After a safe one the reviewer reads the Build
+# Review Details and is asked alone whether the agent may build the add-on (`permission`), unless
+# the agent-builds test switch answered that up front. Declined, the preparation ends. Allowed,
+# the linter audits that root's lock (src/prepare/audit.js). A lock it cannot read in full ends
 # the preparation with nothing built. A clean lock is BUILT by the reader in the work folder's
-# build/, which the linter fills with a copy of the whole sca/ (`build`). Where the lock
-# installs a package with a known high or critical advisory, the linter copies the whole sca/
-# into the work folder's rescued/, and the reader RESCUES the copy in one loop (`rescue`): it
-# reduces or audit-fixes the dependencies with lock-only commands, audits them until no high
-# or critical advisory remains, and only then builds, in a fresh copy of the whole rescued/ in
-# build/, so nothing is installed or built in rescued/. The linter audits the copy again and
-# checks the output the reader named, which lies in build/. A clean, built copy is reviewed.
-# A failed rescue is deleted with build/, and the source as submitted is reviewed: its
-# vulnerability checks report the lock and end the review late. Every audit of the run asks OSV
-# through the run's cache, so that review
-# asks nothing the preparation already did (src/vendor/osv-cache.js).
+# build/, which the linter fills with a copy of the whole sca/ (`build`). Where the lock installs
+# a package with a known high or critical advisory, the linter copies the whole sca/ into the
+# work folder's rescued/, and the reader RESCUES the copy in one loop (`rescue`): it reduces or
+# audit-fixes the dependencies with lock-only commands, audits them until no high or critical
+# advisory remains, and only then builds, in a fresh copy of the whole rescued/ in build/, so
+# nothing is installed or built in rescued/. The linter audits the copy again and checks the
+# output the reader named, which lies in build/. A clean, built copy is reviewed. A failed
+# rescue is deleted with build/, and the source as submitted is reviewed: its vulnerability
+# checks report the lock and end the review late. Every audit of the run asks OSV through the
+# run's cache, so that review asks nothing the preparation already did (src/vendor/osv-cache.js).
 #
-# The step lists are prompts. `extract` is printed by --llm-sca-review with the intro and
-# the Submission values, `permission` by the run that settled a safe build, with ANSWERS
-# and the Build Review Details ({{buildDetails}}), `build` by the run that audited a clean
-# lock, with SCA_ROOT, LLM_BUILD_ROOT (the root's place in build/) and SCA_BUILD_PROCESS, and `rescue`
-# by the run that made the rescued copy, with the copy's root as RESCUE_ROOT, LLM_BUILD_ROOT and
-# SCA_BUILD_PROCESS, and the two commands that make build/ a copy of rescued/ ({{copy}}). Each of
-# them ends in the one command its reader ever runs, {{flags}}: the hand-back of a work folder.
+# The step lists are prompts. `unpack` is printed by --llm-sca-review with the intro and the
+# Submission values, `analyze` by the run that derived the root (or first, with the intro, by
+# --llm-review given --sca-base), with SCA_ROOT, SCA_BUILD_PROCESS and ANSWERS, `permission` by
+# the run that settled a safe build, with ANSWERS and the Build Review Details
+# ({{buildDetails}}), `build` by the run that audited a clean lock, with SCA_ROOT, LLM_BUILD_ROOT
+# (the root's place in build/) and SCA_BUILD_PROCESS, and `rescue` by the run that made the
+# rescued copy, with the copy's root as RESCUE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_PROCESS, and
+# the two commands that make build/ a copy of rescued/ ({{copy}}). Each of them ends in the one
+# command its reader ever runs, {{flags}}: the hand-back of a work folder.
 llm-sca-review-prompt:
   intro: |-
-    This is the first half of a source code review. The add-on was submitted in two parts: the built XPI users install, and an archive of the source it was built from. A source archive has no fixed shape - the developer lays it out however they like - so where the add-on's own code sits inside it can only be found by looking. Work that out from the values below, then run the command the steps name. That run prints what to do next, until it starts the review itself and prints the review's first prompt.
+    This is the first half of a source code review. The add-on was submitted in two parts: the built XPI users install, and an archive of the source it was built from. Before anything else is reviewed, the source has to be read and its build worked out. Follow the steps below, then run the command they name. That run prints what to do next, until it starts the review itself and prints the review's first prompt.
 
-    A name in <angle brackets> is a value you work out. The rest are given under "Submission".
-  # A step with `when: experiments` is printed when the built XPI's manifest.json declares
-  # Experiments, and one with `when: NOT experiments` when it does not. Absent means every
-  # run prints it. `when:` is the same condition language the review loop's steps use
-  # (src/checks/condition.js), checked against the one fact these prompts can evaluate
+    A name in <angle brackets> is a value you work out. The rest are given above.
+  # A step with `when: find-experiment` is printed where the built XPI's manifest.json declares
+  # Experiments and the Experiment folder is not known yet, so its reader is asked for it.
+  # Absent means every run prints it. `when:` is the same condition language the review loop's
+  # steps use (src/checks/condition.js), checked against the one fact these prompts can evaluate
   # (SCA_PROMPT_FACTS).
-  extract:
+  unpack:
     - text: |-
         Extract SOURCE_ARCHIVE into EXTRACT_TO, given above.
 
         Unpack until the add-on's own files appear, which is TWICE for an archive packed twice - a .tar.gz is a tar inside a gzip. Then stop. Anything you find INSIDE the extracted tree is part of the source and stays packed: the review reports those as committed build artifacts, and unpacking one deletes a finding.
 
-        Move nothing and rename nothing. Where the files land is where they were submitted, and the steps below read them as they lie.
+        Move nothing and rename nothing. Where the files land is where they were submitted, and the linter reads them as they lie.
     - text: |-
-        In EXTRACT_TO, find the directory holding package.json. That directory is <SCA_ROOT>, absolute.
+        Run the linter with exactly these flags, and nothing else:
 
-        One rule, and nothing to weigh: the root of a source archive is where its build runs, and the build runs where package.json is. Usually that is EXTRACT_TO itself. Where the archive carries its contents in a directory of its own, it is that directory, however many of them it took to get there. Where several hold one, it is the one holding the lock file beside it - package-lock.json, pnpm-lock.yaml or npm-shrinkwrap.json - because that is the pair an install reads. Never look inside node_modules: those are installed dependencies, each with a package.json of its own, and none of them is this submission.
-    - when: experiments
-      text: |-
-        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under <SCA_ROOT>. Its path relative to <SCA_ROOT> is <SCA_EXP_SOURCE>.
+        {{flags}}
     - text: |-
-        Work out what building this add-on takes. Read the documentation and the build files in <SCA_ROOT>, and report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
+        That run finds the folder the build runs in, inside what you extracted, and prints the next prompt. Follow it from there - this one is done.
+  analyze:
+    - when: find-experiment
+      text: |-
+        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under SCA_ROOT, given above. Its path relative to SCA_ROOT is <SCA_EXP_SOURCE>.
+    - text: |-
+        Work out what building this add-on takes. Read the documentation and the build files in SCA_ROOT, given above, and report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
 
         Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
 
@@ -2237,12 +2244,9 @@ llm-sca-review-prompt:
         Write it to SCA_BUILD_PROCESS, given above, and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision.
     - text: |-
         Open ANSWERS, given above. Answer its entry whose "index" is SCA_BUILD_SAFETY_ASSESSMENT with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. It is your judgement of what the safety section lists. Change nothing else in the file.
-    - when: NOT experiments
+    - when: find-experiment
       text: |-
-        In ANSWERS, write <SCA_ROOT> as the "answer" of the entry whose "index" is SCA_ROOT, and change nothing else in the file.
-    - when: experiments
-      text: |-
-        In ANSWERS, write <SCA_ROOT> as the "answer" of the entry whose "index" is SCA_ROOT, and <SCA_EXP_SOURCE> as the "answer" of the entry whose "index" is SCA_EXP_SOURCE. Change nothing else in the file.
+        In ANSWERS, write <SCA_EXP_SOURCE> as the "answer" of the entry whose "index" is SCA_EXP_SOURCE, and change nothing else in the file.
     - text: |-
         Run the linter with exactly these flags, and nothing else:
 
@@ -2268,9 +2272,9 @@ llm-sca-review-prompt:
     - text: |-
         That run reads the answer and prints the next prompt. Follow it from there - this one is done.
   # The agent's judgement of the build it reported, as the SCA_BUILD_SAFETY_ASSESSMENT entry of ANSWERS.
-  # The same two values the review loop's `build-safety` phase accepts, which is how the
-  # review reads the recorded judgement. Unsafe ends the preparation: nothing is audited or
-  # rescued, and the agent builds nothing.
+  # The review starts with the recorded judgement (src/pipeline.js), and reads it in the Build
+  # Review Details and in who built the add-on. Unsafe ends the preparation: nothing is audited
+  # or rescued, and the agent builds nothing.
   build-safety:
     values:
       - value: safe
@@ -2498,54 +2502,12 @@ llm-phases:
   phases:
     # A source review opens with its BUILD, before anything else is spent on it: a source that
     # does not build into the shipped XPI ends the review late, once it has run to the end of
-    # settle, and a reviewer who declines to build ends it the same way. The review builds
-    # nothing itself. The agent built the add-on in the preparation where it judged the build
-    # safe and the reviewer let it (src/prepare/steps.js), and otherwise the reviewer builds it.
-    # A source no build can be made from (`unbuildable`) skips both phases.
+    # settle, and a reviewer who declines to build ends it the same way. The review neither
+    # builds nor works out the build: its preparation did (src/prepare/steps.js), and the review
+    # starts with the judgement recorded there (src/pipeline.js). The agent built the add-on in
+    # the preparation where it judged the build safe and the reviewer let it, and otherwise the
+    # reviewer builds it. A source no build can be made from (`unbuildable`) skips `built`.
     #
-    # `build-safety` asks for a PROCESS VALUE (`answer: value`): an answer that steers the
-    # review and settles no item. It runs only where the review holds no judgement yet, and
-    # only where every check a build relies on ran (`build-guarded`): a prepared review starts
-    # with the one its preparation recorded (src/pipeline.js), and build.md is the
-    # preparation's.
-    - name: build-safety
-      answer: value
-      verbs: []
-      product: build
-      intro: ""
-      values:
-        - value: safe
-          label: safe
-          description: Nothing in the build is fetched or run from outside the dependencies declared in package.json and its lock file.
-        - value: unsafe
-          label: unsafe
-          description: At least one build step fetches or runs code or resources from outside the declared dependencies, as the report's safety section lists.
-      steps:
-        - when: sca AND build-guarded AND NOT aborted AND NOT unbuildable AND NOT value(build-safety, safe) AND NOT value(build-safety, unsafe)
-          text: |-
-            Work out what building this add-on takes. This is a source code review, so the add-on is built from its source before anything else is reviewed. Read the documentation and the build files in
-
-            {{scaRoot}}
-
-            and report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
-
-            Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
-
-            The install step is the one command you do NOT restate as the documentation writes it. Report `npm ci`, even where the docs say `npm install`: the reviewer installs what the submitted lock file pins, not whatever the registry resolves to today. Where the submission ships a pnpm-lock.yaml, that same step is `pnpm install --frozen-lockfile`. npm and pnpm are the only package managers a submission may use, so those are the only two spellings.
-
-            Report that step with NO flag that leaves dependencies out - never `--omit=dev`, `--production` or `--prod` - even where the documentation uses one. The reviewer has to run the build AND audit everything it pulls in, and a dependency that was never installed is one nobody can audit.
-
-            Under a "Safety" heading, list anything the build reaches for outside the declared dependencies - a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, an install hook that downloads or runs code from outside the declared dependencies, or a step whose source is not in the tree. Name the file and the line for each, and say what it does. Where you find none, say so.
-
-            Write it to
-
-            {{build}}
-
-            and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision.
-        - when: sca AND build-guarded AND NOT aborted AND NOT unbuildable AND NOT value(build-safety, safe) AND NOT value(build-safety, unsafe)
-          text: |-
-            Then answer the one entry in the file with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. It is your judgement of what the safety section lists, and the reviewer decides what follows from it.
-
     # A BLOCK THE REVIEWER MUST READ ENDS THE AGENT'S TURN. Text written before a tool call in
     # the same turn - a question, a hand-back - is folded away by a client that collapses
     # tool rows, and only the message that ends a turn stays in view. So a question phase

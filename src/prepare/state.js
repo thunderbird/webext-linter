@@ -48,7 +48,7 @@ import {
 /** Bumped when the record's shape, or what a step does with it, changes in a way an older
  *  file cannot satisfy. A preparation in flight does not survive the upgrade, and saying so
  *  beats reading it wrongly. */
-export const PREPARE_VERSION = 10;
+export const PREPARE_VERSION = 11;
 
 /** The mode every write leaves the record at: readable, and writable by nobody. */
 const READ_ONLY = 0o444;
@@ -56,10 +56,15 @@ const READ_ONLY = 0o444;
 /**
  * Where a preparation stands, which is what the next hand-back of the folder does:
  *
- * - `extract`: the source is to be extracted into `sca/`, its build reported in build.md,
- *   and its roots and the build judgement handed back in the review file. The next
- *   hand-back settles them, and moves a safe build on to `permission` (or, where
- *   the record holds agentBuilds, audits the root) and an unsafe one to `done`;
+ * - `unpack`: the source archive is to be extracted into `sca/` (--llm-sca-review only). The
+ *   next hand-back derives the root inside it (src/addon/sca-root.js) and moves on to
+ *   `analyze`;
+ * - `analyze`: the root is known, in `sca/`, and its build is to be reported in build.md, with
+ *   the build judgement (and the Experiment folder, where the add-on declares Experiments and
+ *   it is not known yet) handed back in the review file. A review given --sca-base starts
+ *   here, its source copied into `sca/`. The next hand-back moves a safe build on to
+ *   `permission` (or, where the record holds agentBuilds, audits the root) and an unsafe one
+ *   to `done`;
  * - `permission`: the reviewer is shown the Build Review Details and asked whether the
  *   agent may build, and the next hand-back reads the answer and audits the root where it
  *   may;
@@ -73,7 +78,8 @@ const READ_ONLY = 0o444;
  *   A folder whose rescue failed is `done` too, its roots back in `sca/`.
  */
 export const PREPARE_STEP = Object.freeze({
-  extract: "extract",
+  unpack: "unpack",
+  analyze: "analyze",
   permission: "permission",
   build: "build",
   rescue: "rescue",
@@ -109,8 +115,8 @@ const COUNTED = ["moderate", "high", "critical"];
  *   front (src/prepare/steps.js agentBuildsSwitchedOn), as the run that created the work
  *   folder read it. Not a flag, so the review never sees it.
  * @property {?string} buildSafety  The agent's judgement of the build it reported in
- *   build.md, a BUILD_SAFETY_VALUES id, as the first hand-back read it, and null before it.
- *   The review starts with it as its `build-safety` value.
+ *   build.md, a BUILD_SAFETY_VALUES id, as the `analyze` hand-back read it, and null before it.
+ *   The review starts with it as its build's judgement (state.build.safety).
  * @property {?boolean} packageManagers  Whether the agent may build the add-on and run its
  *   package-manager commands: the reviewer's answer to the permission question (true where
  *   `agentBuilds` answered it up front), false after an unsafe judgement, which asks
@@ -132,8 +138,9 @@ const COUNTED = ["moderate", "high", "critical"];
  * @property {?string} buildMatch  The agent's comparison of that output with the submitted
  *   XPI, a BUILD_MATCH_VALUES id. Held only where `buildResult` is `built`.
  * @property {?{scaRoot: string, scaExpSource: ?string}} roots  The settled roots, absolute
- *   and real, once known: inside `sca/`, or inside `rescued/` while a rescue runs and once it
- *   came out clean - the tree the next step, or the review, reads.
+ *   and real, once known (from `analyze` on): inside `sca/`, or inside `rescued/` while a
+ *   rescue runs and once it came out clean - the tree the next step, or the review, reads.
+ *   The Experiment folder is null until it is known.
  * @property {string} digest  The hash over every other field, as writePrepare stored it
  *   (recordDigest). A record whose digest does not match was changed after it was written.
  *
@@ -191,9 +198,10 @@ export function readPrepare(work) {
   }
   recordBoolean(record.submission.experiments, "submission.experiments");
   recordBoolean(record.agentBuilds, "agentBuilds");
-  // The judgement is unknown until the first hand-back reads it, and the permission until
+  // The judgement is unknown until the `analyze` hand-back reads it, and the permission until
   // the reviewer answered it or an unsafe judgement settled it.
-  const before = record.step === PREPARE_STEP.extract;
+  const before =
+    record.step === PREPARE_STEP.unpack || record.step === PREPARE_STEP.analyze;
   if (before ? record.buildSafety !== null : !isJudgement(record.buildSafety)) {
     throw new HandbackRefused(
       before
@@ -339,21 +347,24 @@ export function recordBoolean(value, what) {
 }
 
 /**
- * The record of a preparation that has not started: at its first step, with what the run
- * that created the work folder alone knows, and nothing worked out yet.
- * @param {Pick<PrepareRecord, "submission" | "flags" | "agentBuilds">} known
+ * The record of a preparation that has not started, with what the run that created the work
+ * folder alone knows. Without roots it starts at `unpack` (--llm-sca-review, whose agent
+ * extracts the source); with them at `analyze` (a review given --sca-base, whose source the
+ * linter copied into `sca/`).
+ * @param {Pick<PrepareRecord, "submission" | "flags" | "agentBuilds"> &
+ *   {roots?: PrepareRecord["roots"]}} known
  * @returns {PrepareRecord}
  */
-export function startRecord({ submission, flags, agentBuilds }) {
+export function startRecord({ submission, flags, agentBuilds, roots = null }) {
   return {
     version: PREPARE_VERSION,
-    step: PREPARE_STEP.extract,
+    step: roots ? PREPARE_STEP.analyze : PREPARE_STEP.unpack,
     submission,
     flags,
     agentBuilds,
     buildSafety: null,
     packageManagers: null,
-    roots: null,
+    roots,
     vulnerabilities: null,
     rescuedVulnerabilities: null,
     buildResult: null,

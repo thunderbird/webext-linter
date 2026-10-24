@@ -83,7 +83,7 @@ export function answer(work, answers) {
   fs.writeFileSync(file, JSON.stringify(doc));
 }
 
-/** Write the build report the first prompt asks for, as the agent does. */
+/** Write the build report the `analyze` prompt asks for, as the agent does. */
 export function writeBuildReport(work) {
   fs.writeFileSync(
     workPaths(work).build,
@@ -156,10 +156,16 @@ export async function realPreparation({
   );
   const sca = workPaths(work).sca;
   fs.cpSync(source, sca, { recursive: true });
-  answer(work, { SCA_ROOT: sca });
-  writeBuildReport(work);
   const step = (folder) => handBack(folder);
   let at = await step(work);
+  assert.equal(
+    at.record.step,
+    PREPARE_STEP.analyze,
+    "the unpacked source is analyzed"
+  );
+  answer(work, {});
+  writeBuildReport(work);
+  at = await step(work);
   assert.equal(
     at.record.step,
     PREPARE_STEP.permission,

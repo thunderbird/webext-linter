@@ -16,7 +16,12 @@ import {
   run,
   workOfReviewFile,
   sweepBack,
+  answerAnalyze,
+  headerValue,
+  readJson,
+  workOf,
 } from "../cli-run.js";
+import { workPaths } from "../../src/util/dest.js";
 
 // A real review renders a report to stdout and sets the exit code by severity
 // (0 = clean, 1 = has error-severity findings).
@@ -38,51 +43,52 @@ test("reviewing a fixture renders to stdout with a severity-based exit", () => {
 // Keyed on the paths themselves, because a path is all a step gives out: a sub-agent is
 // handed the request and nothing else, so nothing in one stands for a path by name.
 test("a source code review's steps carry the paths the review resolved to", () => {
-  // A source review nothing aborts, so its first prompt is the build opening, which takes
-  // both paths.
+  // A source review is prepared first: the source is copied into the work folder's sca/, and
+  // the analyze prompt names that copy as the root, and where the build report goes.
   const sca = path.join(ROOT, "tests", "addons", "sca-transpiled-kept");
   const r = run([
     path.join(sca, "xpi"),
     ...OFFLINE_FLAGS,
-    "--sca-root",
+    "--sca-base",
     path.join(sca, "src"),
     "--llm-review",
   ]);
-  // Each sits on its own line inside the step that hands it over, unwrapped and unaltered,
-  // so the agent can copy it whole.
-  const lines = r.stdout.split("\n").map((l) => l.trim());
-  assert.ok(
-    lines.includes(path.join(sca, "src")),
-    "the step names the source root"
+  assert.equal(r.code, 0, r.stderr);
+  const work = workOf(r.stdout);
+  const root = headerValue(r.stdout, "SCA_ROOT");
+  assert.equal(root, fs.realpathSync(workPaths(work).sca));
+  assert.equal(
+    headerValue(r.stdout, "SCA_BUILD_PROCESS"),
+    workPaths(work).build
   );
+  // The review the hand-back starts reads the copy: its steps name it, and the report.
+  const review = run(answerAnalyze(r.stdout));
+  assert.notEqual(review.code, 2, review.stdout + review.stderr);
+  assert.match(review.stdout, /── LLM Prompt ──/);
+  assert.ok(review.stdout.includes(root), "the step names the source root");
   assert.ok(
-    lines.some((l) => /\/build\.md$/.test(l)),
-    "and where the build report goes"
+    review.stdout.includes(workPaths(work).build),
+    "and the build report"
   );
+  assert.equal(readJson(work, "state").report.meta.scaRoot, root);
+  fs.rmSync(work, { recursive: true, force: true });
 
-  // A rejected Experiment submitted WITH --sca-root is the source review it was asked to be:
-  // it needs --sca-exp-source like any Experiment reviewed with source, and with it the review
-  // starts and is aborted at its first check - so its first prompt is the close, and no build
-  // report is asked for.
+  // A rejected Experiment submitted WITH --sca-base is not prepared: the review rejects it
+  // from the add-on alone, so it starts at once, as --llm-sca-review's does, and its first
+  // prompt is the close. No build report is asked for.
   const exp = path.join(ROOT, "tests", "addons", "experiment-disallowed-sca");
-  const asked = [
+  const rejected = run([
     path.join(exp, "xpi"),
     ...OFFLINE_FLAGS,
-    "--sca-root",
+    "--sca-base",
     path.join(exp, "src"),
-    "--llm-review",
-  ];
-  const refused = run(asked);
-  assert.equal(refused.code, 2, refused.stdout + refused.stderr);
-  assert.match(refused.stderr, /--sca-exp-source/);
-  const rejected = run([
-    ...asked,
     "--sca-exp-source",
     path.join(exp, "src", "experiment"),
+    "--llm-review",
   ]);
   assert.equal(rejected.code, 1, rejected.stderr);
   assert.match(rejected.stdout, /── LLM Prompt ──/);
-  assert.doesNotMatch(rejected.stdout, /SCA_BUILD_PROCESS/);
+  assert.doesNotMatch(rejected.stdout, /SCA Review Prompt|SCA_BUILD_PROCESS/);
   assert.ok(
     !rejected.stdout.split("\n").some((l) => /\/build\.md$/.test(l.trim())),
     "no build report is asked for"
@@ -229,7 +235,7 @@ test("a warning reaches stderr, held back to the end of a prompt run", () => {
   fs.rmSync(path.join(dir, "src", "VENDORS.md"));
   const args = [
     path.join(dir, "xpi"),
-    "--sca-root",
+    "--sca-base",
     path.join(dir, "src"),
     "--sca-exp-source",
     "emptyexp",
@@ -237,7 +243,10 @@ test("a warning reaches stderr, held back to the end of a prompt run", () => {
   ];
   const WARNING = /matched no files under --sca-root/;
 
-  const prompt = run([...args, "--llm-review", "--llm-skip-summary"]);
+  // The review an agent runs starts once its preparation is done: the build judged.
+  const analyze = run([...args, "--llm-review", "--llm-skip-summary"]);
+  assert.equal(analyze.code, 0, analyze.stderr);
+  const prompt = run(answerAnalyze(analyze.stdout));
   assert.notEqual(prompt.code, 2, prompt.stderr);
   assert.doesNotMatch(prompt.stdout, WARNING, "not in the prompt");
   assert.match(prompt.stderr, /── Tool messages ──[\s\S]*matched no files/);
@@ -287,20 +296,20 @@ test("a failure outside main still dumps the held messages", () => {
       "",
     ].join("\n")
   );
+  // The review an agent runs starts once its preparation is done: the build judged.
+  const analyze = run([
+    path.join(dir, "xpi"),
+    "--sca-base",
+    path.join(dir, "src"),
+    "--sca-exp-source",
+    "emptyexp",
+    "--llm-review",
+    ...OFFLINE_FLAGS,
+  ]);
+  assert.equal(analyze.code, 0, analyze.stderr);
   const r = spawnSync(
     process.execPath,
-    [
-      "--import",
-      stray,
-      REVIEW,
-      path.join(dir, "xpi"),
-      "--sca-root",
-      path.join(dir, "src"),
-      "--sca-exp-source",
-      "emptyexp",
-      "--llm-review",
-      ...OFFLINE_FLAGS,
-    ],
+    ["--import", stray, REVIEW, ...answerAnalyze(analyze.stdout)],
     { encoding: "utf8" }
   );
   assert.equal(r.status, 2, r.stderr);

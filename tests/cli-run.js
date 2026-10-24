@@ -83,7 +83,11 @@ export const FIXTURES = path.join(ROOT, "tests", "addons");
 
 /** The flags whose value names a folder the review READS, never the add-on, and so is
  *  passed as it stands. */
-const READ_FOLDER_FLAGS = new Set(["--sca-root", "--sca-exp-source"]);
+const READ_FOLDER_FLAGS = new Set([
+  "--sca-base",
+  "--sca-root",
+  "--sca-exp-source",
+]);
 
 /** Run the review entry (verify.js), with an add-on from the fixtures' folder replaced by a
  *  copy outside the repository, so no review writes its work folder into tests/addons, and
@@ -232,20 +236,70 @@ export function commandOf(stdout) {
     .filter(Boolean);
 }
 
-/** The work folder a first prompt created: the one its ANSWERS file is in, in `.review/`. */
-export const workOf = (stdout) =>
-  path.dirname(path.dirname(headerValue(stdout, "ANSWERS")));
+/** The work folder a preparation prompt names: the one its ANSWERS file is in, in
+ *  `.review/`, or on the `unpack` prompt, which hands out no ANSWERS, the one EXTRACT_TO is
+ *  `sca/` of. */
+export const workOf = (stdout) => {
+  const answers = headerValue(stdout, "ANSWERS");
+  return answers
+    ? path.dirname(path.dirname(answers))
+    : path.dirname(headerValue(stdout, "EXTRACT_TO"));
+};
 
 /** A work folder's JSON file, by its workPaths name, read back. */
 export const readJson = (work, name) =>
   JSON.parse(fs.readFileSync(workPaths(work)[name], "utf8"));
 
 /**
- * Do what the first prompt asks, the way its reader would: extract the source into
- * EXTRACT_TO, write the build report to SCA_BUILD_PROCESS, answer ANSWERS (the build judged
- * safe, and the roots), and run the hand-back it prints. Where that prints the permission
- * prompt, answer it too (the agent let build) and run its hand-back - which, with nothing
- * to rescue, starts the review.
+ * Do what the `unpack` prompt asks, the way its reader would: extract the source into
+ * EXTRACT_TO (with an Experiment folder `expSource` in it, where given), and run the
+ * hand-back it prints, which derives the root and prints the `analyze` prompt.
+ * @param {string} stdout  The --llm-sca-review run's output.
+ * @param {{expSource?: string, typed?: (work: string) => string}} [opts]  As handBackRoots.
+ * @returns {{code: number, stdout: string, stderr: string}}  The hand-back's run.
+ */
+export function unpackSource(stdout, { expSource, typed } = {}) {
+  const root = headerValue(stdout, "EXTRACT_TO");
+  fs.cpSync(NO_LOCK_SOURCE, root, { recursive: true });
+  if (expSource) {
+    fs.mkdirSync(path.join(root, expSource), { recursive: true });
+  }
+  const work = workOf(stdout);
+  return typed
+    ? run(["--llm-handback", typed(work)])
+    : run(argvOf(commandOf(stdout)));
+}
+
+/**
+ * Do what the `analyze` prompt asks, the way its reader would: write the build report to
+ * SCA_BUILD_PROCESS and answer ANSWERS with the build judged `safety` - unsafe by default, so
+ * the hand-back starts the review at once, with nothing to permit or build. The hand-back
+ * itself is the caller's, so it can run it as it likes.
+ * @param {string} stdout  The `analyze` prompt's run.
+ * @param {{safety?: string, expSource?: string}} [opts]  The judgement, and the Experiment
+ *   folder where the prompt asks for it.
+ * @returns {string[]}  The hand-back's argv, as the prompt prints it.
+ */
+export function answerAnalyze(stdout, { safety = "unsafe", expSource } = {}) {
+  fs.writeFileSync(headerValue(stdout, "SCA_BUILD_PROCESS"), "1. `npm ci`\n");
+  const answers = headerValue(stdout, "ANSWERS");
+  const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
+  const given = {
+    SCA_BUILD_SAFETY_ASSESSMENT: safety,
+    SCA_EXP_SOURCE: expSource,
+  };
+  doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));
+  fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
+  return argvOf(commandOf(stdout));
+}
+
+/**
+ * Do what the first prompts ask, the way their reader would: extract the source into
+ * EXTRACT_TO and run the hand-back the `unpack` prompt prints, then write the build report to
+ * SCA_BUILD_PROCESS, answer ANSWERS (the build judged safe, and the Experiment folder where it
+ * is asked), and run the hand-back the `analyze` prompt prints. Where that prints the
+ * permission prompt, answer it too (the agent let build) and run its hand-back - which, with
+ * nothing to rescue, starts the review.
  * @param {string} stdout  The --llm-sca-review run's output.
  * @param {{expSource?: string, typed?: (work: string) => string, safety?: string,
  *   managers?: string}} [opts]  The Experiment folder to answer, relative to the root, for
@@ -258,13 +312,18 @@ export function handBackRoots(
   stdout,
   { expSource, typed, safety = "safe", managers = "Let it build" } = {}
 ) {
-  const root = headerValue(stdout, "EXTRACT_TO");
-  fs.cpSync(NO_LOCK_SOURCE, root, { recursive: true });
-  if (expSource) {
-    fs.mkdirSync(path.join(root, expSource), { recursive: true });
+  const work = workOf(stdout);
+  const handBack = (out) =>
+    typed ? run(["--llm-handback", typed(work)]) : run(argvOf(commandOf(out)));
+  const unpacked = unpackSource(stdout, { expSource, typed });
+  if (unpacked.code !== 0) {
+    return unpacked;
   }
-  fs.writeFileSync(headerValue(stdout, "SCA_BUILD_PROCESS"), "1. `npm ci`\n");
-  const answers = headerValue(stdout, "ANSWERS");
+  fs.writeFileSync(
+    headerValue(unpacked.stdout, "SCA_BUILD_PROCESS"),
+    "1. `npm ci`\n"
+  );
+  const answers = headerValue(unpacked.stdout, "ANSWERS");
   const fill = (given) => {
     const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
     doc.entries = doc.entries.map((e) => ({
@@ -273,11 +332,8 @@ export function handBackRoots(
     }));
     fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
   };
-  const work = workOf(stdout);
-  const handBack = (out) =>
-    typed ? run(["--llm-handback", typed(work)]) : run(argvOf(commandOf(out)));
-  fill({ SCA_BUILD_SAFETY_ASSESSMENT: safety, SCA_ROOT: root });
-  const handed = handBack(stdout);
+  fill({ SCA_BUILD_SAFETY_ASSESSMENT: safety });
+  const handed = handBack(unpacked.stdout);
   if (handed.code !== 0 || readJson(work, "prepare").step !== "permission") {
     return handed;
   }

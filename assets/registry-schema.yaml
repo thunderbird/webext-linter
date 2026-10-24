@@ -454,12 +454,20 @@ sections:
         kind: text
         required: true
         why: what the prompt tells its reader first
-      extract:
+      unpack:
         kind: list
         of: mapping
         required: true
-        noun: "`extract` steps"
-        why: the steps the first prompt asks for, in order
+        noun: "`unpack` steps"
+        why: >-
+          the steps the prompt that has the source archive extracted asks for, in order
+      analyze:
+        kind: list
+        of: mapping
+        required: true
+        noun: "`analyze` steps"
+        why: >-
+          the steps the prompt that has the build worked out and judged asks for, in order
       permission:
         kind: list
         of: mapping

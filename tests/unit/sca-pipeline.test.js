@@ -1792,7 +1792,6 @@ test("SCA --llm-review: an archive holding the XPI and no lock opens on its pass
   assert.ok(ids.includes("sca-xpi-fully-included-in-archive"), ids.join(", "));
   assert.ok(ids.includes("sca-lock-file-missing"), ids.join(", "));
   assert.equal(state.run["xpi-reviewable"], true);
-  assert.notEqual(state.phase, "build-safety");
   assert.notEqual(state.phase, "built");
   assert.equal(state.phase, "spawn");
 });
