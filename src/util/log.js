@@ -1,5 +1,6 @@
 import { displayTerminal, displayText } from "./text.js";
 import { applyColor } from "./color.js";
+import { releaseClaims } from "./claims.js";
 // Minimal logger for the tool's own output, on two streams - and the one door to them.
 // Every write to stdout or stderr passes write() below: the terminal guard removes every
 // control character from every source (src/util/text.js displayTerminal), and only then
@@ -230,6 +231,9 @@ export function warn(...args) {
  * and after everything else. With nothing recorded it prints nothing: outside the
  * recording runs this is just the exit.
  *
+ * A run that fails (exit 2) first gives back what it created for a review that never came to
+ * exist (src/util/claims.js), whatever made it fail: this is the one place every run ends.
+ *
  * The exit waits for both streams to hand over what they still hold. A write to a pipe its
  * reader has not emptied is queued, and process.exit drops the queue: the end of a prompt -
  * its hand-back command - would be lost exactly when the reader is slow.
@@ -237,6 +241,15 @@ export function warn(...args) {
  * @param {number} code
  */
 export function exitWith(code) {
+  if (code === 2) {
+    try {
+      releaseClaims();
+    } catch (err) {
+      writeToStderr(
+        `Could not remove what this run created (${err.code ?? err.message}).\n`
+      );
+    }
+  }
   if (recorded?.length) {
     write(process.stderr, `\n── Tool messages ──\n\n${recorded.join("")}`);
   }

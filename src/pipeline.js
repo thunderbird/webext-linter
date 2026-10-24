@@ -94,6 +94,7 @@ import { experimentVerdict } from "./experiments/verify.js";
 import { debug, progress, report, warn, FEED } from "./util/log.js";
 import { DEFAULT_CACHE, SOURCES_CACHE } from "./config.js";
 import { rethrowIfFatal, wiringError } from "./lib/errors.js";
+import { claimFolder, claimNames, keepClaims } from "./util/claims.js";
 import { reviewData } from "./review/products.js";
 import { LOCK_AUDIT_LISTS, vulnerabilityCounts } from "./prepare/audit.js";
 import { BUILD_RESULT } from "./prepare/state.js";
@@ -241,9 +242,9 @@ export const SETUP_STEPS = Object.freeze([
  * run names every file of the loop, and claims them all, because the agents it instructs
  * write the rest later and a name already taken would be overwritten then, out of sight.
  *
- * A run that fails before the review loop's state is written gives back what it claimed,
- * so the same command can run again. Once the state is there, the review exists and its
- * files are the passes' to work on.
+ * What it claims is this run's (src/util/claims.js) until the review exists: once a
+ * --llm-review's state is written, or a plain review is done, it is kept. A run that fails
+ * before then gives it all back as it exits, so the same command can run again.
  * @param {PipelineOpts} opts
  * @returns {Promise<PipelineResult>}
  */
@@ -265,17 +266,20 @@ export async function runPipeline(opts) {
   if (opts.scaGiven && opts.scaFolders) {
     throw wiringError("runPipeline was handed both scaGiven and scaFolders");
   }
-  const claim = claimWorkFolder(
+  claimWorkFolder(
     opts.workFolder,
     claimedNames(work, opts.llmReview, prepared, Boolean(opts.scaGiven))
   );
   try {
-    return await reviewSubmission(opts, work, prepared);
+    const result = await reviewSubmission(opts, work, prepared);
+    keepClaims();
+    return result;
   } catch (err) {
     // The state is one of the claimed names under --llm-review, so it being there means
-    // this run wrote it. A plain run writes none and gives back on any failure.
-    if (!(opts.llmReview && fs.existsSync(work.state))) {
-      releaseWorkFolder(claim);
+    // this run wrote it: the review exists, and a hand-back carries it on. A plain run
+    // writes none, and what it claimed is given back as it exits.
+    if (opts.llmReview && fs.existsSync(work.state)) {
+      keepClaims();
     }
     throw err;
   }
@@ -1265,20 +1269,19 @@ function claimedNames(work, llmReview, prepared, copiesSource) {
  *
  * A command line never hands a review an existing folder (src/cli.js refuses one). The one
  * that is there already is a PREPARED folder, whose review the hand-back starts once its
- * preparation is done: it holds the preparation's record and the extracted source, which
- * this run reads and never claims (WORK_INPUTS). Nothing in it is overwritten. A name
- * already taken is left over from a start that was cut short, and replacing it would destroy
- * work nobody asked to discard.
+ * preparation is done, or one the CLI claimed for this review a moment before. It holds the
+ * preparation's record and the extracted source, which this run reads and never claims
+ * (WORK_INPUTS). Nothing in it is overwritten. A name already taken is left over from a start
+ * that was cut short, and replacing it would destroy work nobody asked to discard. A folder
+ * this call creates, or the names it claims in one that was there, are this run's
+ * (src/util/claims.js).
  * @param {string} dir  The work folder, absolute.
  * @param {string[]} names  claimedNames' answer.
- * @returns {{dir: string, names: string[], inner: string[], created: ?string}}  What
- *   releaseWorkFolder needs to give it back: the names, the folders inside the work folder
- *   they live in that were not there yet, and the outermost folder this call created, if any.
  */
 function claimWorkFolder(dir, names) {
   let created;
   try {
-    created = fs.mkdirSync(dir, { recursive: true });
+    created = claimFolder(dir);
   } catch (err) {
     rethrowIfFatal(err);
     throw new Error(
@@ -1300,46 +1303,9 @@ function claimWorkFolder(dir, names) {
         "the folder back again."
     );
   }
-  // The folders inside it that the claimed names live in (`.review/`) and that are not
-  // there yet: the review creates them as it writes, so they are this run's to give back.
-  const inner = [...new Set(names.map((p) => path.dirname(p)))].filter(
-    (folder) => folder !== dir && !onDisk(folder)
-  );
-  return { dir, names, inner, created: created ?? null };
-}
-
-/**
- * Give back what claimWorkFolder took, for a run that failed before its review existed:
- * every claimed name - each was free when it was claimed, so whatever is there now this run
- * created - and the folders the claim created or found missing, while they are empty.
- * @param {{dir: string, names: string[], inner: string[], created: ?string}} claim
- */
-function releaseWorkFolder({ dir, names, inner, created }) {
-  for (const name of names) {
-    fs.rmSync(name, { recursive: true, force: true });
-  }
-  for (const folder of inner) {
-    try {
-      fs.rmdirSync(folder);
-    } catch (err) {
-      rethrowIfFatal(err);
-    }
-  }
+  // Inside a folder that was there, only what this run creates is its own.
   if (!created) {
-    return;
-  }
-  // Innermost first, and never past the outermost one this run made. rmdir refuses a
-  // folder that is not empty, which is what stops this removing anything it did not create.
-  for (let folder = dir; ; folder = path.dirname(folder)) {
-    try {
-      fs.rmdirSync(folder);
-    } catch (err) {
-      rethrowIfFatal(err);
-      return;
-    }
-    if (folder === created) {
-      return;
-    }
+    claimNames(names);
   }
 }
 

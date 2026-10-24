@@ -656,3 +656,49 @@ test("an Experiment add-on without --sca-experiments is refused before preparing
   );
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// A run that fails after it created its work folder leaves nothing behind (src/util/claims.js):
+// a source that cannot be copied, and a rejected Experiment whose review fails at its start.
+test("a failed start of a source review leaves no work folder behind", (t) => {
+  if (process.getuid?.() === 0) {
+    t.skip("root reads every file");
+    return;
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-leftover-"));
+  const xpi = path.join(dir, "a.xpi");
+  packAddon(xpi);
+  const src = path.join(dir, "src");
+  fs.cpSync(NO_LOCK_SOURCE, src, { recursive: true });
+  const secret = path.join(src, "secret.js");
+  fs.writeFileSync(secret, "1;\n");
+  fs.chmodSync(secret, 0o000);
+  const copy = run([
+    ...OFFLINE_FLAGS,
+    xpi,
+    "--llm-review",
+    "--sca-extracted",
+    src,
+  ]);
+  fs.chmodSync(secret, 0o644);
+  assert.equal(copy.code, 2, copy.stdout + copy.stderr);
+  assert.match(
+    copy.stderr,
+    /could not be copied into the work folder \(EACCES\)/
+  );
+  assert.doesNotMatch(copy.stderr, /Hand the work folder back/);
+  assert.deepEqual(fs.readdirSync(dir).sort(), ["a.xpi", "src"]);
+
+  // An add-on whose Experiment the review rejects is reviewed at once, as an XPI, in the work
+  // folder the CLI made for it. With no schema to read offline that review fails at its
+  // start, and the folder goes with it.
+  const exp = path.join(dir, "exp.xpi");
+  packAddon(exp, { experiment_apis: { foo: {} } });
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), "wl-no-schema-"));
+  const flags = [...OFFLINE_FLAGS];
+  flags[flags.indexOf("--cache-schema-dir") + 1] = empty;
+  const rejected = run([...flags, exp, "--llm-review", "--sca-extracted", src]);
+  assert.equal(rejected.code, 2, rejected.stdout + rejected.stderr);
+  assert.deepEqual(fs.readdirSync(dir).sort(), ["a.xpi", "exp.xpi", "src"]);
+  fs.rmSync(empty, { recursive: true, force: true });
+  fs.rmSync(dir, { recursive: true, force: true });
+});

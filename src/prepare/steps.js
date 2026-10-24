@@ -908,7 +908,8 @@ function wholeCopy(from, to, called) {
     rethrowIfFatal(err);
     throw new Error(
       `The ${called} "${to}" could not be made (${err.code ?? err.message}). ` +
-        "Hand the work folder back once that is fixed."
+        "Hand the work folder back once that is fixed.",
+      { cause: err }
     );
   }
 }

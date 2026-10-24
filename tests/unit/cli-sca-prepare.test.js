@@ -307,6 +307,8 @@ test("a preparation refuses an unanswered hand-back", () => {
     unextracted.stdout,
     /The hand-back was refused: ".+\/sca" is not the folder the source was extracted into/
   );
+  // A hand-back that fails takes nothing away: the folder was not this run's to remove.
+  assert.ok(fs.existsSync(workPaths(work).prepare), "the record stays");
   assert.equal(readJson(work, "prepare").step, "unpack");
   assert.equal(unpackSource(r.stdout).code, 0);
   const unanswered = run(["--llm-handback", work]);

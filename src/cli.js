@@ -25,6 +25,7 @@ import { runPipeline } from "./pipeline.js";
 import { loadRegistry } from "./checks/registry.js";
 import { isAddonFile, scaSubmission } from "./addon/submission.js";
 import { defaultWorkFolder, workPaths } from "./util/dest.js";
+import { claimFolder, keepClaims } from "./util/claims.js";
 import {
   PREPARE_STEP,
   recordBoolean,
@@ -871,15 +872,19 @@ export async function main(argv) {
     // recursive, and an existing one is refused: the folder is fresh by its moment, so one
     // already there belongs to another review.
     const work = defaultWorkFolder(submission.xpi, "sca");
+    if (fs.lstatSync(work, { throwIfNoEntry: false })) {
+      writeToStderr(
+        `--llm-auto-review creates a fresh work folder, and "${work}" is already there. ` +
+          "Run it again for a folder of its own.\n"
+      );
+      return 2;
+    }
     try {
-      fs.mkdirSync(work);
+      claimFolder(work);
     } catch (err) {
       rethrowIfFatal(err);
       writeToStderr(
-        err.code === "EEXIST"
-          ? `--llm-auto-review creates a fresh work folder, and "${work}" is already there. ` +
-              "Run it again for a folder of its own.\n"
-          : `--llm-auto-review could not create the work folder "${work}" (${err.code ?? err.message}).\n`
+        `--llm-auto-review could not create the work folder "${work}" (${err.code ?? err.message}).\n`
       );
       return 2;
     }
@@ -905,6 +910,8 @@ export async function main(argv) {
       agentBuilds: agentBuildsSwitchedOn(),
     });
     startPreparation(work, record);
+    // The folder holds a preparation now, which the hand-back carries on.
+    keepClaims();
     // The prompt IS the output: no review has run, and none can until its reader answers
     // it. Printed as the report is, and to the screen only.
     for (const line of preparationPrompt(work, record, registry, {
@@ -1103,7 +1110,7 @@ async function startSourcePreparation(values, addonPath, work, registry) {
     return 2;
   }
   try {
-    fs.mkdirSync(work);
+    claimFolder(work);
   } catch (err) {
     rethrowIfFatal(err);
     writeToStderr(
@@ -1131,7 +1138,12 @@ async function startSourcePreparation(values, addonPath, work, registry) {
     roots = copySource(work, folders);
   } catch (err) {
     rethrowIfFatal(err);
-    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
+    // Nothing is kept of a preparation that never started: the work folder goes as the run
+    // exits (src/util/claims.js).
+    writeToStderr(
+      `The source "${values["sca-extracted"]}" could not be copied into the work folder ` +
+        `(${err.cause?.code ?? err.message}).\n${red("verify failed")}\n`
+    );
     return 2;
   }
   const record = startRecord({
@@ -1141,6 +1153,8 @@ async function startSourcePreparation(values, addonPath, work, registry) {
     roots,
   });
   startPreparation(work, record);
+  // The folder holds a preparation now, which the hand-back carries on.
+  keepClaims();
   for (const line of preparationPrompt(work, record, registry, {
     first: true,
   })) {
