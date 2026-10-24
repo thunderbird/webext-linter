@@ -900,7 +900,12 @@ async function reviewSubmission(opts, work, prepared) {
     // asking though the instructions still stand, and then there is no request to hand
     // over and no file for a step to name.
     sweepFiles = sweeping
-      ? sweepRequests(work, meta.preSweep, artifactRoots(meta))
+      ? sweepRequests(
+          work,
+          meta.preSweep,
+          artifactRoots(meta),
+          registry.proseStyle()
+        )
       : {};
   }
 
@@ -947,6 +952,8 @@ async function reviewSubmission(opts, work, prepared) {
           )
           ? { "build-guarded": true }
           : {}),
+        // Whether a preparation started this review, whose intro its reader already read.
+        ...(prepared ? { prepared: true } : {}),
         // One condition per tree that has a sweep to run, keyed the way the step names
         // it. Read off the REQUESTS rather than off `sweeping` and `preSweep` separately:
         // a step exists to hand an agent a request, so the request existing is the whole

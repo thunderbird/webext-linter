@@ -1553,6 +1553,9 @@ test("the preparation prompts come from the registry and every part is required"
   for (const slot of ["{{maxHint}}", "{{issueShape}}"]) {
     assert.ok(!analyze.includes(slot), `${slot} is filled`);
   }
+  // The intro opens the first prompt of both source review runs, and says how to write.
+  assert.ok(prompt.intro.includes(loadRegistry().proseStyle()));
+  assert.ok(!prompt.intro.includes("{{proseStyle}}"));
 });
 
 // A step may carry a literal example, whose authored line breaks ARE the layout: a step is

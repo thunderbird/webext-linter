@@ -216,6 +216,8 @@ export const CHECK_FACTS = [
  *  - `sca`: a source code review;
  *  - `build-guarded`: every check an agent's build relies on (`build-guard`) runs, so the
  *    review may build the add-on itself;
+ *  - `prepared`: a preparation started this review, so its reader was given the preparation's
+ *    intro;
  *  - one `sweep-<artifact>` per tree with a sweep to run. Each sweepable artifact is its
  *    own fact, because each starts its OWN sub-agent against its own tree and a review may
  *    have one such tree or two. Taken from the artifacts that can be swept rather than
@@ -239,6 +241,7 @@ export const REVIEW_PROMPT_FACTS = [
   "aborted",
   "sca",
   "build-guarded",
+  "prepared",
   ...Object.keys(SWEEP_INSTRUCTIONS).map(sweepRun),
   "first",
   "spawned",

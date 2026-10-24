@@ -795,12 +795,16 @@ test("the shipped steps carry the conditions they are printed under", () => {
     [],
     [["downgrade", "keep"]],
   ]);
-  // The preamble: the first prompt only, and never above a first-pass close.
+  // The preamble: the first prompt only, and never above a first-pass close. Its writing rule
+  // only where no preparation's intro said it already.
   assert.deepEqual(
     fresh()
       .llmPhases()
       .preamble.map((x) => namesOf(x.when).sort()),
-    [["closing", "first"]]
+    [
+      ["closing", "first"],
+      ["closing", "first", "prepared"],
+    ]
   );
 });
 

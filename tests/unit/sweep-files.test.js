@@ -19,6 +19,7 @@ import {
 } from "../../src/report/sweep-files.js";
 import { MAX_HINT } from "../../src/report/sweep.js";
 import { workPaths } from "../../src/util/dest.js";
+import { loadRegistry } from "../../src/checks/registry.js";
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "wxl-sweepfiles-"));
 
@@ -35,12 +36,16 @@ for (const [rel, lines] of [
   fs.writeFileSync(path.join(TREE, rel), "x\n".repeat(lines));
 }
 
+/** The writing rule a sweep request carries, as the registry authors it. */
+const STYLE = loadRegistry().proseStyle();
+
 /** One tree's request, made the way the review makes it. */
 function requested(sweeps, sweepTarget = "/tmp/tree/") {
   const asked = sweepRequests(
     workPaths("/w"),
     { items: sweeps },
-    { [ARTIFACT_SCA]: sweepTarget, [ARTIFACT_XPI]: sweepTarget }
+    { [ARTIFACT_SCA]: sweepTarget, [ARTIFACT_XPI]: sweepTarget },
+    STYLE
   );
   return asked[sweeps[0].artifact];
 }
@@ -88,6 +93,8 @@ test("the request names its tree and every sweep, and asks for the reply", () =>
     /^Label 3: Unencrypted data transmission\nA remote endpoint/m
   );
   assert.match(request, /^Label 4: User-data exfiltration\nMessage content/m);
+  // How its hints are written, as every agent is told, since this reader sees no other prompt.
+  assert.ok(request.includes(STYLE), "the writing rule");
   // The answers come back as the reply, and nothing is written.
   assert.match(request, /Return your answers as your reply/);
   assert.match(request, /^ {2}\{"answers": \{"<label>": \[\.\.\.\]\}\}$/m);

@@ -2400,7 +2400,9 @@ test("the preamble opens the first prompt only, and close says what ran", () => 
   const made = review(tmp());
   const prompts = promptsOf(made);
   const order = Object.keys(prompts);
-  assert.equal(prompts[order[0]].preamble, 1, `${order[0]} opens the review`);
+  // Two parts: how the passes work, and how the agent writes its prose, which a review no
+  // preparation started has not been told yet.
+  assert.equal(prompts[order[0]].preamble, 2, `${order[0]} opens the review`);
   for (const name of order.slice(1)) {
     assert.equal(prompts[name].preamble, 0, `${name} carries no preamble`);
   }
@@ -2411,6 +2413,30 @@ test("the preamble opens the first prompt only, and close says what ran", () => 
   assert.ok(
     prompts.close.steps.some((x) => x.startsWith('Under "LLM decisions"')),
     "the agent accounts for what it decided"
+  );
+});
+
+// The writing rule is said once per reader: a review a preparation started was told it in the
+// preparation's intro, so its first prompt opens without it. The description request carries
+// it either way, since its sub-agent reads no other prompt.
+test("the writing rule is said once per reader", () => {
+  const style = REGISTRY.proseStyle();
+  const plain = review(tmp());
+  const first = issue(plain.state, plain.work, PHASES, REGISTRY);
+  assert.deepEqual(
+    first.preamble.filter((x) => x.text === "{{proseStyle}}").length,
+    1
+  );
+  const prepared = review(tmp());
+  prepared.state.run.prepared = true;
+  const opened = issue(prepared.state, prepared.work, PHASES, REGISTRY);
+  assert.equal(opened.preamble.length, 1, "only how the passes work");
+  const slots = loopSlots(plain.state, first, plain.work, REGISTRY);
+  assert.equal(slots.proseStyle, style);
+  const spawnText = first.steps.map((x) => x.text).join("\n");
+  assert.ok(
+    spawnText.includes("{{proseStyle}}"),
+    "the description request names it"
   );
 });
 
@@ -2766,8 +2792,8 @@ test("each turn-ending block ends with the line asking the reviewer to reply", (
     [
       "built",
       "buildDetails",
-      `${WAITING} with the question whether the source is safe to build, builds, ` +
-        "and reproduces the submitted XPI.",
+      `${WAITING} with the question whether the source builds and reproduces ` +
+        "the submitted XPI.",
     ],
     ["ask", "details", `${WAITING} with the ${asked} manual review questions.`],
   ]) {

@@ -314,6 +314,8 @@ export function loopSlots(state, issued, work, registry) {
     review: workPaths(work).review,
     command: `node verify.js --llm-handback ${shellArg(work)}`,
     schemaCache: paths.schemaCache ?? "",
+    // How the agent and the sub-agents it starts write their own prose.
+    proseStyle: registry.proseStyle(),
     description: paths.description ?? "",
     build: paths.build ?? "",
     scaRoot: paths.scaRoot ?? "",

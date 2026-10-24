@@ -641,6 +641,7 @@ export class Registry {
       preamble: p.preamble.map(loadedStep),
       frame: p.frame,
       handover: p.handover,
+      proseStyle: p["prose-style"],
       // The waiting line ending the block of `name`, naming what the reply leads to.
       waiting: (name, count) =>
         p.waiting.text
@@ -803,6 +804,16 @@ export class Registry {
   }
 
   /**
+   * How an agent writes the prose of its own the reviewer and the developer read
+   * (`llm-phases.prose-style`): said once in the first prompt of a run, and in each request a
+   * sub-agent is handed.
+   * @returns {string}
+   */
+  proseStyle() {
+    return this.doc["llm-phases"]["prose-style"];
+  }
+
+  /**
    * The texts of the preparation of a source code review: the intro the first prompt opens
    * with, and one list of steps per prompt (SCA_PROMPT_STEPS). Required, all of them: a run
    * whose whole output is one of these has nothing to print without it.
@@ -844,7 +855,7 @@ export class Registry {
       failed: { label: failed.label, description: failed.description },
     });
     return {
-      intro: p.intro,
+      intro: p.intro.replaceAll("{{proseStyle}}", this.proseStyle()),
       steps: Object.fromEntries(
         SCA_PROMPT_STEPS.map((name) => [
           name,

@@ -2227,6 +2227,8 @@ llm-sca-review-prompt:
     This is the first half of a source code review. The add-on was submitted in two parts: the built XPI users install, and an archive of the source it was built from. Before anything else is reviewed, the source has to be read and its build worked out. Follow the steps below, then run the command they name. That run prints what to do next, until it starts the review itself and prints the review's first prompt.
 
     A name in <angle brackets> is a value you work out. The rest are given above.
+
+    {{proseStyle}}
   # A step with `when: find-experiment` is printed where the built XPI's manifest.json declares
   # Experiments and the Experiment folder is not known yet, so its reader is asked for it.
   # Absent means every run prints it. `when:` is the same condition language the review loop's
@@ -2466,6 +2468,13 @@ llm-sca-review-prompt:
 # the thing that needs it, which is why the preamble names none of them: it is too early,
 # and a value with no step behind it reads as an assignment.
 llm-phases:
+  # How an agent writes prose of its own, said ONCE per reader: in the preparation's intro, the
+  # opening of the first prompt of a source review run, in the preamble of a review no
+  # preparation started, and in the description and sweep requests a sub-agent is handed,
+  # whose reader sees no other prompt ({{proseStyle}}). It keeps the agents' prose to the house
+  # style of every text here. What they quote and what a reviewer typed stay as they are.
+  prose-style: |-
+    Wherever you write prose of your own - a report, a hint, a description, an answer - end a sentence with a full stop instead of joining two with a semicolon, and use the plain hyphen-minus (-), never an en dash, an em dash or any other dash character. Two things stay exactly as they are: what you quote from the add-on, in a code span, and words a reviewer typed, which you copy verbatim.
   # Printed above the first prompt only, and not where that prompt is already the closing
   # one: a review with nothing but `close` to do runs no passes, so describing them would
   # only send the reader looking for a file and a command that do not exist.
@@ -2477,6 +2486,11 @@ llm-phases:
         Each pass you are given a prompt and a review file. Do what the prompt says, fill in the review file's empty slots, and then run the command the prompt names: it reads the file back and answers with the next prompt. Keep going until a prompt tells you the review is settled and names the file holding the finished report - that one is the last. You never decide what happens next, and you never decide that the review is over.
 
         Nothing in this preamble is a task. Do only what the numbered steps of the prompt you are reading tell you to do, and the step that has you read the add-on names what to read and what to judge it against.
+    # The writing rule, on the first prompt of a review no preparation started: a plain
+    # --llm-review of an XPI. A review the preparation started was told in its intro.
+    - when: first AND NOT closing AND NOT prepared
+      text: |-
+        {{proseStyle}}
   frame: |-
     The review you are working on is in this file:
 
@@ -2498,7 +2512,7 @@ llm-phases:
     # phase of that name.
     next:
       permission: the question whether the agent may build the add-on
-      built: the question whether the source is safe to build, builds, and reproduces the submitted XPI
+      built: the question whether the source builds and reproduces the submitted XPI
       ask: the {{count}} manual review questions
       downgrade: the question whether the review should be restarted as a pure XPI review
   # What LLM_BUILD_RESULT in the details blocks says of the agent's attempt: it built the
@@ -2636,7 +2650,7 @@ llm-phases:
 
             {{xpiRoot}}
 
-            Anything you quote from it - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup. Return the description as your reply, and write no file.
+            Anything you quote from it - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup. {{proseStyle}} Return the description as your reply, and write no file.
 
             Do not wait for it. When it comes back, write its reply unchanged to
 

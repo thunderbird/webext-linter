@@ -53,9 +53,10 @@ const ANSWERS = "answers";
  * @param {object} args
  * @param {string} args.sweepTarget  The tree to read, absolute.
  * @param {{label: number, title: string, instruction: string}[]} args.sweeps
+ * @param {string} [args.proseStyle]  How its hints are written (registry proseStyle).
  * @returns {string}
  */
-function sweepRequest({ sweepTarget, sweeps }) {
+function sweepRequest({ sweepTarget, sweeps, proseStyle }) {
   const n = sweeps.length;
   const example = exampleAnswers(sweeps);
   return [
@@ -71,6 +72,7 @@ function sweepRequest({ sweepTarget, sweeps }) {
     indent(`{"${ANSWERS}": {"<label>": [...]}}`, 2),
     "It lists every label above, each with a list of what you found for it, and an empty list where you found nothing. Put nothing else in the reply: no words before or after it, and no code fence around it.",
     `Each thing you found is one entry in that list, with a "file" (the path of a file in the folder above, relative to it), a "hint" - a short phrase of at most ${MAX_HINT} characters naming what is there - and a "line" - that file's own line number, counted from its first line, where it sits on one, left out where it does not. Nothing else: no verdict, and no wording for the developer, which is the linter's. Answered, your reply reads:\n\n${indent(example, 2)}`,
+    ...(proseStyle ? [proseStyle] : []),
     "Write no file.",
   ].join("\n\n");
 }
@@ -133,11 +135,12 @@ function indent(text, by) {
  *   instruction: string}[]}} preSweep
  * @param {Record<string, ?string>} trees  This review's trees by artifact
  *   (artifactRoots).
+ * @param {string} proseStyle  How the sweeping agent writes its hints (registry proseStyle).
  * @returns {Record<string, {request: string, answers: string}>}  By artifact: the request
  *   text and the answers file's path, for the steps that print them and the pass that
  *   reads the answers back.
  */
-export function sweepRequests(files, preSweep, trees) {
+export function sweepRequests(files, preSweep, trees, proseStyle) {
   const byArtifact = new Map();
   for (const item of preSweep?.items ?? []) {
     byArtifact.set(item.artifact, [
@@ -148,7 +151,11 @@ export function sweepRequests(files, preSweep, trees) {
   const asked = {};
   for (const [artifact, sweeps] of byArtifact) {
     asked[artifact] = {
-      request: sweepRequest({ sweepTarget: trees[artifact], sweeps }),
+      request: sweepRequest({
+        sweepTarget: trees[artifact],
+        sweeps,
+        proseStyle,
+      }),
       answers: files.sweep(artifact),
     };
   }
