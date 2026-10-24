@@ -14,7 +14,6 @@ import { abortingChecks, earlyExitOf } from "./early-exit.js";
 import {
   HandbackRefused,
   answersOf,
-  productWritten,
   entriesFor,
   readHandback,
   reviewFile,
@@ -317,7 +316,6 @@ export function loopSlots(state, issued, work, registry) {
     // How the agent and the sub-agents it starts write their own prose.
     proseStyle: registry.proseStyle(),
     description: paths.description ?? "",
-    build: paths.build ?? "",
     xpiRoot: paths.xpiRoot,
     schema: paths.schema,
     // Named because `ask` can be the FIRST phase issued - a review with nothing to start,
@@ -412,11 +410,6 @@ export function accept(state, work, phases, registry) {
   if (phase.answer === "hints") {
     state.sweep = swept;
     return { phase, answers, swept: routeSweep(state, registry) };
-  }
-  // A product exists only where the reviewer wanted the work that makes it, so whether it
-  // came back is recorded here, once, and every later pass says the same thing about it.
-  if (phase.product && productWritten(state.paths?.[phase.product])) {
-    state.products = [...(state.products ?? []), phase.product];
   }
   if (phase.answer === "value") {
     recordValue(state, registry, phase, answers);

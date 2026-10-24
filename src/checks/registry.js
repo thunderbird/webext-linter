@@ -625,11 +625,11 @@ export class Registry {
    * its question there (`asked-in`), which ties issuing it to that check's open to-do
    * (src/report/phases.js nextPhase).
    * @returns {{preamble: {when: ?object, text: string}[], frame: string, handover: string,
-   *   waiting: (name: string, count?: number) => string, refused: string, proseStyle: string,
+   *   waiting: (name: string, count?: number) => string, refused: string,
    *   buildResults: Record<string, string>,
    *   phases: {name: string, answer: string,
    *   endsTurn: boolean, verbs: string[],
-   *   product: ?string, verbProse: object, intro: string,
+   *   verbProse: object, intro: string,
    *   steps: {when: ?object, text: string}[], routed: boolean, question: ?string,
    *   values: {value: string, label: string, description: string,
    *   reports: ?string}[]}[]}}
@@ -645,7 +645,6 @@ export class Registry {
       preamble: p.preamble.map(loadedStep),
       frame: p.frame,
       handover: p.handover,
-      proseStyle: p["prose-style"],
       // The waiting line ending the block of `name`, naming what the reply leads to.
       waiting: (name, count) =>
         p.waiting.text
@@ -660,7 +659,6 @@ export class Registry {
         answer: phase.answer,
         endsTurn: phase["ends-turn"] === true,
         verbs: [...phase.verbs],
-        product: phase.product ?? null,
         // What each of those verbs MEANS, for the phase to render onto its entries. A
         // copy per phase rather than a shared reference, so nothing downstream can edit
         // the loaded registry by editing what it was handed.
@@ -2322,7 +2320,6 @@ export function checkSelected(id, { only, skip } = {}) {
  * @param {string[]} [opts.skip]  These ids are excluded.
  * @param {boolean} [opts.eslint]  The `--eslint` flag, the `eslint` fact of a check's `when:`.
  * @param {boolean} [opts.sca]  A source code review, the `sca` fact of a check's `when:`.
- * @param {boolean} [opts.llmReview]  An agent reviews, the `llm-review` fact.
  * @param {boolean} [opts.buildJudged]  The reviewer decided about the build in the
  *   preparation, the `build-judged` fact.
  * @param {boolean} [opts.buildSafe]  That decision held it safe, the `build-safe` fact.
@@ -2332,12 +2329,11 @@ export function checkSelected(id, { only, skip } = {}) {
  */
 export async function loadChecks(
   registry,
-  { only, skip, eslint, sca, llmReview, buildJudged, buildSafe } = {}
+  { only, skip, eslint, sca, buildJudged, buildSafe } = {}
 ) {
   const facts = checkFacts({
     sca,
     eslint,
-    llmReview,
     buildJudged,
     buildSafe,
   });
@@ -2484,18 +2480,11 @@ export function conditionEligible(entry, facts) {
  *   buildSafe?: boolean}} run
  * @returns {Set<string>}
  */
-export function checkFacts({
-  sca,
-  eslint,
-  llmReview,
-  buildJudged,
-  buildSafe,
-} = {}) {
+export function checkFacts({ sca, eslint, buildJudged, buildSafe } = {}) {
   return new Set(
     [
       sca ? "sca" : null,
       eslint ? "eslint" : null,
-      llmReview ? "llm-review" : null,
       buildJudged ? "build-judged" : null,
       buildSafe ? "build-safe" : null,
     ].filter(Boolean)

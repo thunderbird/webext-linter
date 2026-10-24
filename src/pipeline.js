@@ -754,7 +754,6 @@ async function reviewSubmission(opts, work, prepared) {
       skip: opts.checksSkip,
       eslint: opts.eslint,
       sca: mode.sca,
-      llmReview: Boolean(opts.llmReview),
       // The reviewer's build decision in the preparation, which decides which of the build
       // checks asks about the build (build-review, build-reproduces-xpi, build-unsafe).
       buildJudged: typeof prepared?.buildSafe === "boolean",

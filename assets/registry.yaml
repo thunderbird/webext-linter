@@ -2568,7 +2568,7 @@ llm-sca-review-prompt:
 # listed here, or lists one no step names, is a drafting error - assertPhases refuses both.
 #
 # Placeholders the linter fills: {{review}} the review file, {{command}} the hand-back,
-# {{description}} and {{build}} the files an agent writes, {{xpiRoot}} the extracted XPI, {{sweepXpi}} and
+# {{description}} the file an agent writes, {{xpiRoot}} the extracted XPI, {{sweepXpi}} and
 # {{sweepSca}} the sweep request for each tree - one sub-agent's whole brief, so the step
 # that starts it relays nothing else - {{sweepXpiAnswers}} and {{sweepScaAnswers}} the
 # file each sweep's reply is written to, {{details}} the Review

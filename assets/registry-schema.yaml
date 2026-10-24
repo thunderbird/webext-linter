@@ -106,7 +106,7 @@ shapes:
       kind: text
       why: >-
         the condition the check runs under, over the facts known before any check runs
-        (`sca`, `eslint`, `llm-review`, `build-judged`, `build-safe`), in the syntax a prompt
+        (`sca`, `eslint`, `build-judged`, `build-safe`), in the syntax a prompt
         step's `when:` uses - for what a route
         cannot say, such as a check that judges the shipped XPI and must stay out of a
         source review (`NOT sca`), or one that runs only under --eslint (`eslint`).
@@ -365,12 +365,6 @@ shapes:
       why: >-
         the pass shows a block the reviewer must read and ends the agent's turn with it,
         the linter appending the waiting line to that block
-    product:
-      kind: one-of
-      values: PHASE_PRODUCTS
-      why: >-
-        what this pass's agent may leave for the reviewer, linked in the Review Details
-        only once it did
     steps:
       kind: list
       of: mapping

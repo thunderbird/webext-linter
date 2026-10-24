@@ -189,8 +189,6 @@ export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
  *
  *  - `sca`: a source code review;
  *  - `eslint`: the run was given --eslint;
- *  - `llm-review`: an agent reviews (--llm-review, which a review a preparation starts and
- *    one a downgrade restarts run as too);
  *  - `build-judged`: the reviewer decided about the build in the preparation
  *    (src/prepare/steps.js permission), which every agent source review does but one run
  *    with a build-guard check switched off;
@@ -199,13 +197,7 @@ export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
  *
  *  Never a loop fact or a --llm-skip-* flag: those shape what the loop hands out, and a
  *  check's findings do not depend on them. */
-export const CHECK_FACTS = [
-  "sca",
-  "eslint",
-  "llm-review",
-  "build-judged",
-  "build-safe",
-];
+export const CHECK_FACTS = ["sca", "eslint", "build-judged", "build-safe"];
 
 /** The facts the review loop's `when:` conditions can name (src/checks/condition.js), and
  *  so what a step of it is printed under (stepsOf, src/report/phases.js):
@@ -296,12 +288,6 @@ export const ITEMLESS_ANSWERS = ["hints", "value", "end"];
  *  issue). */
 export const DOWNGRADE_PHASE = "downgrade";
 export const DOWNGRADE_RESTART = "xpi";
-
-/** What a phase's `product` can name: what its agent leaves for the reviewer, keyed as the
- *  state's `paths` key that holds it. `build` is a file the agent writes. Whether it came
- *  back is recorded when the phase comes back, and the Review Details block links it only
- *  then. */
-export const PHASE_PRODUCTS = ["build"];
 
 /** The one fact the preparation prompts' `when:` conditions can name: whether `analyze`
  *  asks its reader for the Experiment folder - the built add-on declares Experiments, and the

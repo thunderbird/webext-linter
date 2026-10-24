@@ -947,22 +947,20 @@ test("where a check runs: the route says it, or the condition says what a route 
     "held unsafe": { buildJudged: true, buildSafe: false },
   };
   for (const [name, decision] of Object.entries(decided)) {
-    for (const llmReview of [true, false]) {
-      const facts = checkFacts({ sca: true, llmReview, ...decision });
-      assert.deepEqual(
-        ["build-review", "build-reproduces-xpi", "build-unsafe"].filter((id) =>
-          conditionEligible(by(id), facts)
-        ),
-        [
-          {
-            "nobody decided": "build-review",
-            "held safe": "build-reproduces-xpi",
-            "held unsafe": "build-unsafe",
-          }[name],
-        ],
-        `${name}, llm-review ${llmReview}`
-      );
-    }
+    const facts = checkFacts({ sca: true, ...decision });
+    assert.deepEqual(
+      ["build-review", "build-reproduces-xpi", "build-unsafe"].filter((id) =>
+        conditionEligible(by(id), facts)
+      ),
+      [
+        {
+          "nobody decided": "build-review",
+          "held safe": "build-reproduces-xpi",
+          "held unsafe": "build-unsafe",
+        }[name],
+      ],
+      name
+    );
   }
 
   // Neither: these run in both modes. minified-code because a minified file is
@@ -1753,14 +1751,15 @@ test("a check's condition is checked at load", () => {
     );
   load({ when: "NOT sca" })();
   load({ when: "eslint AND NOT sca" })();
-  load({ when: "NOT llm-review" })();
+  load({ when: "NOT build-judged" })();
   for (const [when, refused] of [
     ["NOT", /has a `when` that does not parse/],
     ["aborted", /is conditioned on `aborted`, which this prompt does not know/],
     ["llm-skip-manual", /is conditioned on `llm-skip-manual`/],
     ["value(built, unsafe)", /reads `value\(built, unsafe\)`/],
     ["sca AND NOT sca", /has a `when` that holds in no run/],
-    ["llm-review AND NOT llm-review", /has a `when` that holds in no run/],
+    ["eslint AND NOT eslint", /has a `when` that holds in no run/],
+    ["llm-review", /is conditioned on `llm-review`/],
   ]) {
     assert.throws(load({ when }), refused, when);
   }
