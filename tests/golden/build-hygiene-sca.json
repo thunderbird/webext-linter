@@ -5,8 +5,8 @@
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
     "scaFolders": {
-      "extracted": "<root>/tests/addons/build-hygiene-sca/src",
-      "packageRoot": "<root>/tests/addons/build-hygiene-sca/src"
+      "source": "<work>/sca",
+      "packageRoot": "<work>/sca"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

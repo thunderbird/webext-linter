@@ -134,21 +134,24 @@ test("a rescued review names both roots and the build root", async () => {
     },
   });
   const { sca, rescued, buildCopy } = workPaths(work);
-  assert.deepEqual(record.roots, { extracted: rescued, packageRoot: rescued });
+  assert.deepEqual(record.roots, {
+    source: sca,
+    used: rescued,
+    packageRoot: rescued,
+  });
   const r = run(["--llm-handback", work]);
   assert.notEqual(r.code, 2, r.stdout + r.stderr);
   const state = readJson(work, "state");
   assert.deepEqual(state.paths.scaFolders, {
-    extracted: rescued,
+    source: sca,
+    used: rescued,
     packageRoot: rescued,
   });
-  assert.equal(state.paths.scaBuildOrig, sca);
-  assert.equal(state.build.root, buildCopy);
+  assert.equal(state.build.copy, buildCopy);
   const rows = [
-    `* SCA_EXTRACTED: [rescued source (reduced/fixed dependencies)](${rescued})`,
-    `* SCA_PACKAGE_ROOT: [package root](${rescued})`,
-    `* SCA_BUILD_ORIG: [source archive](${sca})`,
-    `* LLM_BUILD_ROOT: [build copy](${buildCopy})`,
+    `* SCA_SOURCE: [source archive](${sca})`,
+    `* SCA_RESCUED: [rescued source (reduced/fixed dependencies)](${rescued})`,
+    `* SCA_BUILD: [build copy](${buildCopy})`,
   ];
   const details = loopSlots(state, {}, work, loadRegistry()).buildDetails;
   for (const row of rows) {
@@ -160,15 +163,15 @@ test("a rescued review names both roots and the build root", async () => {
 const DETAIL_ROWS = [
   "XPI_FILE",
   "XPI_ROOT",
-  "SCA_PACKAGE_ROOT",
-  "SCA_BUILD_ORIG",
+  "SCA_SOURCE",
+  "SCA_RESCUED",
   "SCA_EXPERIMENTS",
   "ADDON_DESCRIPTION",
   "SCA_BUILD_PROCESS",
   "SCA_BUILD_SAFETY_ASSESSMENT",
   "SCA_VULNERABILITIES",
   "LLM_BUILD_RESULT",
-  "LLM_BUILD_ROOT",
+  "SCA_BUILD",
   "LLM_BUILD_OUTPUT",
   "LLM_BUILD_XPI_MATCH",
   "REVIEW_REPORT",
@@ -286,11 +289,7 @@ test("each details block holds every row of the block before it", () => {
   ]) {
     assert.ok(final.includes(row), `close misses ${row}\n${final.join("\n")}`);
   }
-  for (const name of [
-    "SCA_VULNERABILITIES",
-    "LLM_BUILD_ROOT",
-    "LLM_BUILD_OUTPUT",
-  ]) {
+  for (const name of ["SCA_VULNERABILITIES", "SCA_BUILD", "LLM_BUILD_OUTPUT"]) {
     assert.ok(
       final.some((row) => row.startsWith(`* ${name}: `)),
       `close misses ${name}`
@@ -403,11 +402,10 @@ test("a safe build prints the Build Review Details and the permission question",
   assert.match(asked.stdout, /── SCA Review Prompt ──/);
   assert.equal(headerValue(asked.stdout, "ANSWERS"), workPaths(work).review);
   const block = [
-    `* SCA_EXTRACTED: [source archive](${path.join(work, "sca")})`,
+    `* SCA_SOURCE: [source archive](${path.join(work, "sca")})`,
     `* SCA_BUILD_PROCESS: [build.md](${workPaths(work).build})`,
     "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
     `* SCA_BUILD_SAFETY_ISSUES: [build-issues.md](${workPaths(work).buildIssues})`,
-    `* SCA_PACKAGE_ROOT: [package root](${path.join(work, "sca")})`,
     "",
     'Reply "next" to continue the review with the question how to build the add-on.',
   ]
@@ -482,10 +480,7 @@ test("an issue above the package root is reported at its own place in the archiv
   );
   const analyze = run(argvOf(commandOf(r.stdout)));
   assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
-  assert.equal(
-    headerValue(analyze.stdout, "SCA_EXTRACTED"),
-    fs.realpathSync(sca)
-  );
+  assert.equal(headerValue(analyze.stdout, "SCA_SOURCE"), fs.realpathSync(sca));
   answer(work, {
     SCA_BUILD_SAFETY_ISSUES: [
       { file: "Makefile", line: 2, hint: "pipes a download into sh" },
@@ -600,7 +595,8 @@ test("an Experiment folder beside the package root gets past the permission", ()
   assert.notEqual(permitted.code, 2, permitted.stdout + permitted.stderr);
   assert.notEqual(readJson(work, "prepare").step, "permission");
   assert.deepEqual(readJson(work, "prepare").roots, {
-    extracted: workPaths(work).sca,
+    source: workPaths(work).sca,
+    used: workPaths(work).sca,
     packageRoot: path.join(workPaths(work).sca, "addon"),
     experiments: path.join(workPaths(work).sca, "experiment"),
   });

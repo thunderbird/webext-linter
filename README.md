@@ -124,7 +124,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 
 | Option | Description |
 | --- | --- |
-| `--sca-extracted <folder>` | The **extracted** source archive, all of it - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode, and is what the review reads as the source: every path the report names is relative to it. Every other `--sca-*` folder lies inside it, and it must not include the add-on. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
+| `--sca-extracted <folder>` | The **extracted** source archive, all of it - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode. The review copies it into its work folder's `sca/` and reads the copy, never the folder itself: every path the report names is relative to it. Every other `--sca-*` folder lies inside it, and it must not include the add-on. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
 | `--sca-package-root <folder>` | The package root inside `--sca-extracted`: the folder holding `package.json` and its lock file (`package-lock.json` or `pnpm-lock.yaml`), where the build runs and the package file and the lock are read. Left out, the linter finds it. Needs `--sca-extracted`. |
 | `--sca-experiments <path>` | The Experiment implementation folder, **inside** `--sca-extracted`, anywhere in it, relative to it or absolute. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission checks. Needs `--sca-extracted`, and is required for an Experiment and refused for any other add-on. |
 
@@ -170,7 +170,8 @@ may hold the real source beside the copy.
 - `--sca-extracted` is the **extracted** source archive. Setting it switches on SCA mode. It
   must be a folder: unlike the submitted `.xpi`, which this tool extracts itself, a source
   archive comes in too many formats for this tool to open - extract it first, and every
-  format then works, because `tar` handles what this tool does not.
+  format then works, because `tar` handles what this tool does not. The review copies it
+  into its work folder's `sca/` and reads only the copy, as it reads the `.xpi` in `xpi/`.
 - **The whole extracted archive is the review source,** and every path the report names is
   relative to it. A build may take code from anywhere in the archive (a Makefile beside the
   node project, a shared folder, a workspace sibling), and that code ships in the XPI, so it is

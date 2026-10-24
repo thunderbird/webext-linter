@@ -338,6 +338,34 @@ test("JSON output omits manual-review items (ATN auto-verification)", () => {
   assert.ok(!formatJson(review()).includes("Source Archive required"));
 });
 
+// The source folders as the machine output names them: the copy of the submitted source, the
+// rescued copy only where the review read one, and the folders inside it. Which tree the review
+// read shows as `rescued` being there, never as a key of its own.
+test("JSON output names the source copy, and the rescued copy only after a rescue", () => {
+  const folders = (scaFolders) =>
+    JSON.parse(
+      formatJson({ ...review(), meta: { ...review().meta, scaFolders } })
+    ).meta.scaFolders;
+  assert.deepEqual(
+    folders({ source: "/w/sca", used: "/w/sca", packageRoot: "/w/sca/pkg" }),
+    { source: "/w/sca", packageRoot: "/w/sca/pkg" }
+  );
+  assert.deepEqual(
+    folders({
+      source: "/w/sca",
+      used: "/w/rescued",
+      packageRoot: "/w/rescued/pkg",
+      experiments: "/w/rescued/exp",
+    }),
+    {
+      source: "/w/sca",
+      rescued: "/w/rescued",
+      packageRoot: "/w/rescued/pkg",
+      experiments: "/w/rescued/exp",
+    }
+  );
+});
+
 // A format character or line separator in a JSON value is escaped, losslessly: the document
 // carries no raw character a terminal acts on, and a consumer still reads the exact value.
 // Shown on a nested meta value, which the per-field guards leave as it is.
@@ -1729,7 +1757,8 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
     headerLines({
       ...base,
       scaFolders: {
-        extracted: "/x",
+        source: "/x",
+        used: "/x",
         packageRoot: "/x/src",
         experiments: "/x/src/addon/experiment-api",
       },
@@ -1740,11 +1769,9 @@ test("the header names both artifacts in an SCA review, one otherwise", () => {
       "    a.xpi",
       "  XPI_ROOT",
       "    /x/work/xpi/",
-      // Every [SCA] path is relative to the extracted archive, so it is named.
-      "  SCA_EXTRACTED",
+      // The copy of the submitted source, which every [SCA] path is relative to.
+      "  SCA_SOURCE",
       "    /x",
-      "  SCA_PACKAGE_ROOT",
-      "    /x/src",
       // There for an Experiment: what it names was excluded from the WebExtension checks,
       // and nothing else in the report says so.
       "  SCA_EXPERIMENTS",
@@ -1784,16 +1811,15 @@ test("detailLinkLines links every location, XPI_FILE among them", () => {
   };
   const lines = detailLinkLines({
     ...base,
-    scaFolders: { extracted: "/x/src", packageRoot: "/x/src" },
+    scaFolders: { source: "/x/src", used: "/x/src", packageRoot: "/x/src" },
     summaryFile: "/x/work/summary.md",
     buildFile: "/x/a.build.md",
   });
   assert.deepEqual(lines, [
     "* XPI_FILE: [a.xpi](/x/in/a.xpi)",
     "* XPI_ROOT: [extracted addon](/x/work/xpi/)",
-    "* SCA_EXTRACTED: [source archive](/x/src)",
+    "* SCA_SOURCE: [source archive](/x/src)",
     "* SCA_BUILD_PROCESS: [build.md](/x/a.build.md)",
-    "* SCA_PACKAGE_ROOT: [package root](/x/src)",
     "* ADDON_DESCRIPTION: [summary.md](/x/work/summary.md)",
     "",
     "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
@@ -1819,13 +1845,13 @@ test("detailRows lists every row in its order", () => {
     summaryFile: "/w/summary.md",
     rescuedVulnerabilities: { moderate: 0, high: 1, critical: 0 },
     buildMatch: "match",
-    buildRoot: "/w/build/src",
+    buildCopy: "/w/build",
     buildResult: "build succeeded",
     buildOutput: "/w/build/src/dist",
     buildVulnerabilities: { moderate: 1, high: 2, critical: 0 },
-    scaBuildOrig: "/w/sca/src",
     scaFolders: {
-      extracted: "/w/rescued",
+      source: "/w/sca",
+      used: "/w/rescued",
       packageRoot: "/w/rescued/src",
       experiments: "/w/rescued/api",
     },
@@ -1838,16 +1864,15 @@ test("detailRows lists every row in its order", () => {
   assert.deepEqual(names, [
     "XPI_FILE",
     "XPI_ROOT",
-    "SCA_EXTRACTED",
+    "SCA_SOURCE",
+    "SCA_RESCUED",
     "SCA_BUILD_PROCESS",
     "SCA_BUILD_SAFETY_ASSESSMENT",
     "SCA_EXPERIMENTS",
-    "SCA_PACKAGE_ROOT",
-    "SCA_BUILD_ORIG",
+    "SCA_BUILD",
     "SCA_VULNERABILITIES",
     "LLM_BUILD_OUTPUT",
     "LLM_BUILD_RESULT",
-    "LLM_BUILD_ROOT",
     "LLM_BUILD_XPI_MATCH",
     "LLM_RESCUED_VULNERABILITIES",
     "ADDON_DESCRIPTION",

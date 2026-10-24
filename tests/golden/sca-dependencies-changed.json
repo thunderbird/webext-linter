@@ -5,7 +5,8 @@
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
     "scaFolders": {
-      "extracted": "<work>/rescued",
+      "source": "<work>/sca",
+      "rescued": "<work>/rescued",
       "packageRoot": "<work>/rescued"
     },
     "reviewed": true,

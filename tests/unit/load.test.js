@@ -353,7 +353,8 @@ test("files is a view over the store, for an add-on as much as an archive", () =
 
   // The archive narrows the same field, which is the only difference between the two kinds.
   const archive = scaViews(loadSourceArchive(dir), {
-    extracted: dir,
+    source: dir,
+    used: dir,
     packageRoot: dir,
     experiments: path.join(dir, "lib"),
   });
@@ -379,7 +380,11 @@ test("loading holds the file; the record is asked for, not derived", () => {
 
   for (const artifact of [
     loadAddon(dir, undefined, XPI),
-    scaViews(loadSourceArchive(dir), { extracted: dir, packageRoot: dir }),
+    scaViews(loadSourceArchive(dir), {
+      source: dir,
+      used: dir,
+      packageRoot: dir,
+    }),
   ]) {
     assert.ok(artifact.files.has("manifest.json"), "its files hold it");
     assert.equal(artifact.manifest, undefined, "and answers nothing itself");
@@ -422,7 +427,8 @@ test("scaViews leaves the archive owning one store and two views", () => {
   // manifest.json is read off it.
   const loaded = loadSourceArchive(root);
   const archive = scaViews(loaded, {
-    extracted: root,
+    source: root,
+    used: root,
     packageRoot: root,
     experiments: path.join(root, "exp"),
   });
@@ -485,7 +491,8 @@ test("scaViews keys every view to the submission and reviews the whole archive",
   // The pipeline reads the --sca-package-root archive ONCE and splits it, so the tree is never
   // walked twice and no part holds a second copy of any file.
   const source = scaViews(loadSourceArchive(root), {
-    extracted: root,
+    source: root,
+    used: root,
     packageRoot: root,
   });
 
@@ -535,7 +542,8 @@ test("the source and experiment views merge into the add-on's whole tree", () =>
   );
 
   const source = scaViews(loadSourceArchive(root), {
-    extracted: root,
+    source: root,
+    used: root,
     packageRoot: root,
     experiments: path.join(root, "addon", "experiment"),
   });
@@ -604,7 +612,8 @@ test("a sibling Experiment is keyed like any other part of the submission", () =
   fs.writeFileSync(path.join(root, "experiment", "exp.js"), "1;\n");
 
   const source = scaViews(loadSourceArchive(root), {
-    extracted: root,
+    source: root,
+    used: root,
     packageRoot: root,
     experiments: path.join(root, "experiment"),
   });
@@ -641,7 +650,8 @@ test("scaViews puts every file in the right part, and the Experiment in only one
   fs.writeFileSync(path.join(root, "src", "exp", "api.js"), "1;\n");
 
   const source = scaViews(loadSourceArchive(root), {
-    extracted: root,
+    source: root,
+    used: root,
     packageRoot: root,
     experiments: path.join(root, "src", "exp"),
   });
@@ -697,7 +707,8 @@ test("the source view holds the archive minus the Experiment and node_modules", 
   fs.writeFileSync(path.join(root, "src", "node_modules", "pkg.js"), "1;\n");
 
   const { files, nodeModules } = scaViews(loadSourceArchive(root), {
-    extracted: root,
+    source: root,
+    used: root,
     packageRoot: root,
     experiments: path.join(root, "src", "experiment"),
   });
@@ -745,7 +756,8 @@ test("the whole root stays a set of build candidates", () => {
   );
   fs.writeFileSync(path.join(root, "background.js"), "1;\n");
   const { files } = scaViews(loadSourceArchive(root), {
-    extracted: root,
+    source: root,
+    used: root,
     packageRoot: root,
   });
   assert.ok(
@@ -774,7 +786,8 @@ test("a wrapped archive keeps one keyspace, with the package root a place in it"
     fs.writeFileSync(path.join(root, name), body);
   }
   const archive = scaViews(loadSourceArchive(root), {
-    extracted: root,
+    source: root,
+    used: root,
     packageRoot: path.join(root, "pkg"),
     experiments: path.join(root, "exp"),
   });
@@ -793,7 +806,8 @@ test("a wrapped archive keeps one keyspace, with the package root a place in it"
   assert.equal(packageRootKey(archive, "package.json"), "pkg/package.json");
   // A flat archive is its own package root: nothing is prefixed.
   const flat = scaViews(loadSourceArchive(path.join(root, "pkg")), {
-    extracted: path.join(root, "pkg"),
+    source: path.join(root, "pkg"),
+    used: path.join(root, "pkg"),
     packageRoot: path.join(root, "pkg"),
   });
   assert.equal(flat.packageRootPrefix, "");
@@ -1345,7 +1359,11 @@ test("each loader names the artifact it built, and the Addon mints loci in it", 
   assert.equal(loadSourceArchive(dir).kind, ARTIFACT_SCA);
   // And the narrowed views are the same object, so they answer the same.
   assert.equal(
-    scaViews(loadSourceArchive(dir), { extracted: dir, packageRoot: dir }).kind,
+    scaViews(loadSourceArchive(dir), {
+      source: dir,
+      used: dir,
+      packageRoot: dir,
+    }).kind,
     ARTIFACT_SCA
   );
 

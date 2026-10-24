@@ -30,7 +30,7 @@ import { workPaths, runCache } from "./util/dest.js";
 import { defaultNet } from "./vendor/verify.js";
 import { withRunCache } from "./vendor/run-cache.js";
 import { withSourceCache } from "./vendor/source-cache.js";
-import { originalPackages, readPrepare, treeRoots } from "./prepare/state.js";
+import { originalPackages, readPrepare } from "./prepare/state.js";
 import {
   resolveSchemaZip,
   refreshAllSchemas,
@@ -54,7 +54,11 @@ import {
   readWebExtManifest,
   scaViews,
 } from "./addon/load.js";
-import { scaFoldersMisfit, settlePackageRoot } from "./addon/package-root.js";
+import {
+  foldersInCopy,
+  scaFoldersMisfit,
+  settlePackageRoot,
+} from "./addon/package-root.js";
 import {
   checkSelected,
   ctxForRule,
@@ -179,15 +183,18 @@ export const SETUP_STEPS = Object.freeze([
  *   (--warnings-as-errors): the band the registry hands out IS an error, so the report,
  *   the tally, the early exit and the exit code all follow (src/checks/registry.js
  *   bandUnder). Off by default.
- * @property {import("./addon/package-root.js").ScaFolders} [scaFolders]  SCA mode, and only
- *   there: the extracted source archive (--sca-extracted), which the review reads whole as the
- *   readable source; the package root inside it (--sca-package-root), where package.json and the lock
- *   are read and the declared dependencies audited; and the Experiment implementation folder
- *   (--sca-experiments), there exactly when the add-on declares Experiments (runPipeline
- *   refuses either mismatch). The Experiment folder's privileged files are excluded from the
- *   WebExtension code checks. The positional XPI is the shipped artifact the manifest.json,
- *   experiments and file-completeness (`input: xpi`) checks run against (buildXpiCtx,
- *   src/checks/context.js).
+ * @property {import("./addon/package-root.js").ScaGiven} [scaGiven]  SCA mode, as the
+ *   reviewer named it: the extracted source archive (--sca-extracted), the package root inside
+ *   it (--sca-package-root), where package.json and the lock are read and the declared
+ *   dependencies audited, and the Experiment implementation folder (--sca-experiments), there
+ *   exactly when the add-on declares Experiments (runPipeline refuses either mismatch). The
+ *   run copies it into the work folder's `sca/` and reviews the copy. The Experiment folder's
+ *   privileged files are excluded from the WebExtension code checks. The positional XPI is the
+ *   shipped artifact the manifest.json, experiments and file-completeness (`input: xpi`)
+ *   checks run against (buildXpiCtx, src/checks/context.js).
+ * @property {import("./addon/package-root.js").ScaFolders} [scaFolders]  SCA mode, as a
+ *   preparation left it in the work folder: its source copy, the tree the review reads (that
+ *   copy or its rescued copy) and the folders inside it. Never beside `scaGiven`.
  * @property {string} [scaMovedFrom]  The package root named before the CLI settled it one
  *   level down, there only when it moved, so the run can say so.
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
@@ -255,9 +262,15 @@ export async function runPipeline(opts) {
   // review is started there by the hand-back that finds the preparation done (src/cli.js),
   // and reads the record for what the preparation found.
   const prepared = readPrepare(opts.workFolder);
+  // A source review is given its folders one of two ways: as the reviewer named them
+  // (`scaGiven`), which this run copies into the work folder, or as a preparation left them
+  // there (`scaFolders`). Never both, and a preparation's are never copied again.
+  if (opts.scaGiven && opts.scaFolders) {
+    throw wiringError("runPipeline was handed both scaGiven and scaFolders");
+  }
   const claim = claimWorkFolder(
     opts.workFolder,
-    claimedNames(work, opts.llmReview, prepared)
+    claimedNames(work, opts.llmReview, prepared, Boolean(opts.scaGiven))
   );
   try {
     return await reviewSubmission(opts, work, prepared);
@@ -317,20 +330,29 @@ async function reviewSubmission(opts, work, prepared) {
     warningsAsErrors: Boolean(opts.warningsAsErrors),
   });
 
-  // Which folder is the package root, settled before anything reads it
-  // (src/addon/package-root.js): below a named one that holds no package file. Whoever named the
-  // folder had not looked inside it yet - an archive is extracted by whoever prepares the
-  // review, into a destination worked out by path math - so an archive carrying its contents
-  // in one directory of its own leaves the build files a level below it.
+  // The folders the reviewer named: which one is the package root, settled before anything
+  // reads it (src/addon/package-root.js), below a named one that holds no package file.
+  // Whoever named the folder had not looked inside it yet - an archive is extracted by
+  // whoever prepares the review, into a destination worked out by path math - so an archive
+  // carrying its contents in one directory of its own leaves the build files a level below
+  // it. The review reads them in its copy of the extracted source, the work folder's `sca/`,
+  // made where the archive is loaded: the folder the reviewer named is never read in place.
   //
   // Rebound onto `opts`, once, rather than threaded: every reader below asks opts.scaFolders,
   // and a settled value beside the one it was given is two answers to one question. The
   // narration comes later, with the rest of Setup, of this move or of the one the CLI made.
-  let scaMovedFrom = opts.scaMovedFrom;
-  if (opts.scaFolders) {
-    const settledFolders = settlePackageRoot(opts.scaFolders);
-    opts = { ...opts, scaFolders: settledFolders.folders };
-    scaMovedFrom = settledFolders.movedFrom ?? scaMovedFrom;
+  let scaMoved = opts.scaMovedFrom
+    ? { from: opts.scaMovedFrom, to: opts.scaGiven.packageRoot }
+    : null;
+  let scaCopyFrom = null;
+  if (opts.scaGiven) {
+    const given = settlePackageRoot(opts.scaGiven);
+    if (given.movedFrom) {
+      scaMoved = { from: given.movedFrom, to: given.folders.packageRoot };
+    }
+    scaCopyFrom = given.folders.extracted;
+    const { scaGiven: _named, ...rest } = opts;
+    opts = { ...rest, scaFolders: foldersInCopy(given.folders, work.sca) };
   }
 
   // Load the .xpi. Read before the "Setup" banner because it sizes the feed - it gives
@@ -507,9 +529,9 @@ async function reviewSubmission(opts, work, prepared) {
         // Said where the source archive is read, because that is what it is about, and said
         // at all because the package root is then not the folder the command named - the
         // reviewer has to be able to see which folder their verdicts are about.
-        if (scaMovedFrom) {
+        if (scaMoved) {
           progress(
-            `Package root: ${opts.scaFolders.packageRoot} (${scaMovedFrom} holds no package.json)`,
+            `Package root: ${scaMoved.to} (${scaMoved.from} holds no package.json)`,
             FEED.DETAIL
           );
         }
@@ -523,15 +545,14 @@ async function reviewSubmission(opts, work, prepared) {
         // The whole extracted archive is the source, so code a build takes from beside or
         // above the package root is reviewed like the rest. The package root is the place in
         // it the package file and the lock are read at.
-        scaArchive = loadSourceArchive(opts.scaFolders.extracted);
+        scaArchive = scaCopyFrom
+          ? loadSourceArchive(scaCopyFrom, opts.scaFolders.used)
+          : loadSourceArchive(opts.scaFolders.used);
         scaViews(scaArchive, opts.scaFolders);
         // Where the source is a rescued copy, the package files of the package root it was copied
         // from - what the developer submitted - for the check that tells them the review
         // ran on changed dependencies. Null for every other source.
-        scaArchive.originalPackages = originalPackages(
-          opts.workFolder,
-          prepared
-        );
+        scaArchive.originalPackages = originalPackages(opts.scaFolders);
         // The reviewer's own reasons for holding the build unsafe, where they gave some, and
         // the issues the build analysis listed, which build-unsafe reports. Null and none for
         // every other source.
@@ -836,11 +857,6 @@ async function reviewSubmission(opts, work, prepared) {
     opts.llmReview &&
     !opts.llmSkipSweep &&
     Boolean(meta.preSweep?.items?.length);
-  // Where the package root lies in the prepared work folder's trees (src/prepare/state.js
-  // treeRoots), for a review the preparation started.
-  const preparedRoots = prepared
-    ? treeRoots(opts.workFolder, opts.scaFolders.packageRoot)
-    : null;
   // A run that PROMPTS is the loop's first pass, and the only one that reads the add-on:
   // everything after it works from the state this run writes.
   const prompting = opts.llmReview;
@@ -964,11 +980,6 @@ async function reviewSubmission(opts, work, prepared) {
         // directories by the time anything is handed out. The package root is a place in
         // the extracted archive, where the agent is told the build runs.
         ...(mode.sca ? { scaFolders: opts.scaFolders } : {}),
-        // The same package root in `sca/`, where the review reads a rescued copy: the
-        // Review Details name both.
-        ...(preparedRoots && Object.hasOwn(preparedRoots, "scaBuildOrig")
-          ? { scaBuildOrig: preparedRoots.scaBuildOrig }
-          : {}),
         xpiRoot: meta.xpiRoot,
         // Each tree's sweep request, as the text its step hands over, and the file its
         // answers are written to. Carried so the step prints the request this run made and
@@ -989,13 +1000,11 @@ async function reviewSubmission(opts, work, prepared) {
       // buildResultFact).
       build: {
         result: prepared?.buildResult ?? null,
-        // The package root in the copy the agent built in, there only where it built or tried
+        // The whole copy of the source the agent built in, there only where it built or tried
         // to.
-        ...((prepared?.buildResult === BUILD_RESULT.built ||
-          prepared?.buildResult === BUILD_RESULT.failed) &&
-        preparedRoots &&
-        Object.hasOwn(preparedRoots, "buildRoot")
-          ? { root: preparedRoots.buildRoot }
+        ...(prepared?.buildResult === BUILD_RESULT.built ||
+        prepared?.buildResult === BUILD_RESULT.failed
+          ? { copy: work.buildCopy }
           : {}),
         output:
           prepared?.buildResult === BUILD_RESULT.built
@@ -1221,21 +1230,25 @@ function lockVulnerabilities(archive, audited) {
 /**
  * The names a run will create in its work folder (src/util/dest.js workPaths).
  *
- * A plain review creates the shipped add-on's copy and nothing else. A --llm-review run
+ * A plain review creates the shipped add-on's copy, and in a source review the source's copy
+ * (`sca/`), and nothing else. A --llm-review run
  * names every other output too - the loop's pair, the report, what its agents write, and a
  * sweep answers file for each artifact - whether or not this review turns out to use each
  * one: an XPI review never builds and may sweep nothing, but which of them it will use is
  * only known once it has run, and a review refused at the end for a name it needed is a
  * review paid for and thrown away. A preparation that judged the build wrote build.md and
- * build-issues.md, which its review reads and never claims.
+ * build-issues.md, which its review reads and never claims, and its source copy, which
+ * this run then does not make.
  * @param {ReturnType<typeof workPaths>} work
- * @param {boolean} [llmReview]
- * @param {?import("./prepare/state.js").PrepareRecord} [prepared]
+ * @param {boolean} llmReview
+ * @param {?import("./prepare/state.js").PrepareRecord} prepared
+ * @param {boolean} copiesSource  Whether this run copies the named source into `sca/`.
  * @returns {string[]}  Absolute paths.
  */
-function claimedNames(work, llmReview, prepared = null) {
+function claimedNames(work, llmReview, prepared, copiesSource) {
+  const copies = copiesSource ? [work.sca] : [];
   if (!llmReview) {
-    return [work.xpi];
+    return [work.xpi, ...copies];
   }
   const judged = Boolean(prepared?.buildSafety);
   const outputs = Object.entries(work)
@@ -1247,7 +1260,7 @@ function claimedNames(work, llmReview, prepared = null) {
     )
     .map(([, value]) => value);
   const sweeps = [ARTIFACT_XPI, ARTIFACT_SCA].map(work.sweep);
-  return [...outputs, ...sweeps];
+  return [...outputs, ...sweeps, ...copies];
 }
 
 /**

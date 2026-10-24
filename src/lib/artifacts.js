@@ -104,8 +104,8 @@ export function assertLocus(at, who) {
  *
  * Takes whatever carries the roots, because they travel under those names everywhere: the
  * review's `meta`, and the loop state's `paths`. A source review carries its folders as
- * `scaFolders`, and the source archive's root is the extracted folder, the one its paths are
- * keyed from. An XPI review carries none, and has no source tree: the key is absent, which IS
+ * `scaFolders`, and the source archive's root is the tree the review reads (`used`), the one
+ * its paths are keyed from. An XPI review carries none, and has no source tree: the key is absent, which IS
  * the answer, and a caller asks it rather than asking the review mode a second time.
  * @param {{xpiRoot: string, scaFolders?: import("../addon/package-root.js").ScaFolders}} where
  * @returns {Record<string, string>}
@@ -116,7 +116,7 @@ export function artifactRoots(where) {
   }
   return {
     [ARTIFACT_XPI]: where.xpiRoot,
-    ...(where.scaFolders ? { [ARTIFACT_SCA]: where.scaFolders.extracted } : {}),
+    ...(where.scaFolders ? { [ARTIFACT_SCA]: where.scaFolders.used } : {}),
   };
 }
 

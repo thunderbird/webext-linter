@@ -5,8 +5,8 @@
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
     "scaFolders": {
-      "extracted": "<root>/tests/addons/sca-undeclared-library/src",
-      "packageRoot": "<root>/tests/addons/sca-undeclared-library/src"
+      "source": "<work>/sca",
+      "packageRoot": "<work>/sca"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

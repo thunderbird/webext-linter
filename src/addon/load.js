@@ -273,7 +273,7 @@ export function loadAddon(source, copyTo, { recordInstalledTrees, kind } = {}) {
       // the size cap - fires before anything is written. The walk's answer is then
       // discarded: the copy is what the review reads, and the copy is walked below.
       readDir(resolved, kind, recordInstalledTrees);
-      copyFolder(resolved, copyTo);
+      copyFolder(resolved, copyTo, kind === ARTIFACT_SCA);
     } else {
       // Everything extracted is real on disk afterwards and is read the same way an
       // already-unpacked submission's is.
@@ -328,13 +328,16 @@ export function extractXpiToTemp(xpiPath) {
  * package file and lock), so it is recorded rather than read as content. A caller asking for
  * a submission asks for it by name.
  *
- * No `copyTo`: --sca-extracted is a directory by the time anything loads it, extracted by
- * the reviewer before the review starts, so it is read where it is.
+ * --sca-extracted is a directory by the time anything loads it, extracted by the reviewer
+ * before the review starts. A review copies it into its work folder (`copyTo`) and reads the
+ * copy, so the folder the reviewer named is walked once, for the refusals, and never read as
+ * the review. A copy already made, a preparation's, is read where it is.
  * @param {string} source  Absolute path to the extracted source archive.
+ * @param {string} [copyTo]  Where to copy it first, a path nothing is at yet.
  * @returns {Addon}
  */
-export function loadSourceArchive(source) {
-  return loadAddon(source, undefined, {
+export function loadSourceArchive(source, copyTo) {
+  return loadAddon(source, copyTo, {
     recordInstalledTrees: true,
     kind: ARTIFACT_SCA,
   });
@@ -587,10 +590,10 @@ export function hasParentSegment(value) {
  * the extracted folder itself), with its own files keyed relative to it (`packageRootFiles`), the
  * one frame the package file and the lock are read in (src/vendor/package-file.js
  * submissionFiles, packageRootKey).
- * @param {Addon} archive  The extracted archive, loaded ONCE (loadSourceArchive), from
- *   `folders.extracted`.
+ * @param {Addon} archive  The tree the review reads, loaded ONCE (loadSourceArchive), from
+ *   `folders.used`.
  * @param {import("./package-root.js").ScaFolders} folders  The review's source folders. The
- *   package root and the Experiment folder may sit anywhere in the extracted folder.
+ *   package root and the Experiment folder may sit anywhere in the tree it reads.
  * @returns {Addon}  The SAME archive, now carrying its two views. Not a new object:
  *   the store and the recorded path lists already describe this submission, and copying
  *   them onto parts is how they came to disagree.
@@ -598,18 +601,14 @@ export function hasParentSegment(value) {
 export function scaViews(archive, folders) {
   assertScaFolders(folders, "scaViews");
   const store = archive.store;
-  // The archive is walked from the extracted folder, so every key is relative to it. The
-  // package root and the Experiment folder are two places in that keyspace.
+  // The archive is walked from the tree the review reads, so every key is relative to it.
+  // The package root and the Experiment folder are two places in that keyspace.
   const exp = Object.hasOwn(folders, "experiments")
-    ? extractedRelative(
-        folders.experiments,
-        folders.extracted,
-        "--sca-experiments"
-      )
+    ? extractedRelative(folders.experiments, folders.used, "--sca-experiments")
     : null;
   const packageRoot = extractedRelative(
     folders.packageRoot,
-    folders.extracted,
+    folders.used,
     "--sca-package-root"
   );
   archive.packageRootPrefix = packageRoot;
@@ -831,23 +830,29 @@ function insideTarget(destDir, key, zipPath) {
 /**
  * Copy an unpacked add-on folder to `destDir`, which is the review's own copy of it.
  *
- * Only regular files and directories are copied, asked with lstat so nothing is followed.
- * readDir has already refused a symbolic link in the source, and it passes over a FIFO, a
- * socket or a device file without reading it, so the copy holds exactly the entries the
- * walk accounts for - and a FIFO, which would block the copy reading it, is never opened.
+ * Only regular files and directories are copied, asked with lstat so nothing is followed, and
+ * a source archive's symbolic links as they are written. readDir has already refused a
+ * symbolic link in an XPI, and it passes over a FIFO, a socket or a device file without
+ * reading it, so the copy holds exactly the entries the walk accounts for - and a FIFO,
+ * which would block the copy reading it, is never opened.
  *
  * destDir is this call's own fresh destination, like extractZip's, so a failure part-way
  * removes it rather than leaving half a copy for a reviewer to mistake for the whole thing.
  * @param {string} sourceDir  The unpacked add-on, already walked by readDir.
  * @param {string} destDir  Where to copy it. Nothing may be there yet.
+ * @param {boolean} keepLinks  Copy symbolic links as they are written: a source archive's,
+ *   which the review reports where they point (sca-invalid-symlink). An XPI holds none.
  */
-function copyFolder(sourceDir, destDir) {
+function copyFolder(sourceDir, destDir, keepLinks) {
   try {
     fs.cpSync(sourceDir, destDir, {
       recursive: true,
+      verbatimSymlinks: keepLinks,
       filter: (src) => {
         const st = fs.lstatSync(src);
-        return st.isFile() || st.isDirectory();
+        return (
+          st.isFile() || st.isDirectory() || (keepLinks && st.isSymbolicLink())
+        );
       },
     });
   } catch (err) {

@@ -36,36 +36,42 @@ import { TREE_LOCKS } from "../vendor/locks.js";
 import { rethrowIfFatal, wiringError } from "../lib/errors.js";
 
 /**
- * The folders of a source review, every one given and none standing in for another: the
- * extracted source archive, the package root inside it, and the Experiment folder inside it
- * exactly when the add-on declares Experiments. Absolute.
- * @typedef {{extracted: string, packageRoot: string, experiments?: string}} ScaFolders
+ * The source folders as the reviewer gave them, every one given and none standing in for
+ * another: the extracted source archive, the package root inside it, and the Experiment folder
+ * inside it exactly when the add-on declares Experiments. Absolute. Read only to be copied
+ * into the work folder (ScaFolders), never reviewed in place.
+ * @typedef {{extracted: string, packageRoot: string, experiments?: string}} ScaGiven
  */
-
-/** The keys a ScaFolders may carry. */
-const SCA_FOLDER_KEYS = ["extracted", "packageRoot", "experiments"];
 
 /**
- * Assert that `folders` is a ScaFolders: `extracted` and `build` absolute, `experiments`
- * absolute where it is there, and nothing else. Checked, never filled in: a folder a caller
- * did not hand over is a caller that forgot it.
+ * The source folders a review reads, all in its work folder: the copy of the submitted
+ * source (`source`, its `sca/`), the tree the review reads (`used`: that copy, or its rescued
+ * copy `rescued/`), and the package root and the Experiment folder inside `used`, the
+ * Experiment folder exactly when the add-on declares Experiments. Absolute.
+ * @typedef {{source: string, used: string, packageRoot: string, experiments?: string}}
+ *   ScaFolders
+ */
+
+/**
+ * Assert that `folders` holds exactly `keys`, each an absolute folder, `experiments` only
+ * where it is there. Checked, never filled in: a folder a caller did not hand over is a
+ * caller that forgot it.
  * @param {*} folders
+ * @param {string[]} keys  The keys it takes, `experiments` among them.
  * @param {string} who  The reader asking, named in the error.
- * @returns {ScaFolders}
+ * @returns {*}  `folders`.
  * @throws {import("../lib/errors.js").LinterError}  A wiring error.
  */
-export function assertScaFolders(folders, who) {
+function assertFolders(folders, keys, who) {
   const bad = (what) => wiringError(`${who} was handed source folders ${what}`);
   if (!folders || typeof folders !== "object") {
     throw bad("that are not an object");
   }
-  const extra = Object.keys(folders).filter(
-    (k) => !SCA_FOLDER_KEYS.includes(k)
-  );
+  const extra = Object.keys(folders).filter((k) => !keys.includes(k));
   if (extra.length) {
     throw bad(`with a key it does not take (${extra.join(", ")})`);
   }
-  for (const key of SCA_FOLDER_KEYS) {
+  for (const key of keys) {
     const value = folders[key];
     if (key === "experiments" && !Object.hasOwn(folders, key)) {
       continue;
@@ -75,6 +81,73 @@ export function assertScaFolders(folders, who) {
     }
   }
   return folders;
+}
+
+/**
+ * Assert that `folders` is a ScaGiven.
+ * @param {*} folders
+ * @param {string} who
+ * @returns {ScaGiven}
+ */
+export function assertScaGiven(folders, who) {
+  return assertFolders(
+    folders,
+    ["extracted", "packageRoot", "experiments"],
+    who
+  );
+}
+
+/**
+ * Assert that `folders` is a ScaFolders.
+ * @param {*} folders
+ * @param {string} who
+ * @returns {ScaFolders}
+ */
+export function assertScaFolders(folders, who) {
+  return assertFolders(
+    folders,
+    ["source", "used", "packageRoot", "experiments"],
+    who
+  );
+}
+
+/**
+ * The work folders of a copy the review reads as it is: settled folders whose extracted
+ * folder already IS the work folder's `sca/`, as the linter's copy and an archive the agent
+ * unpacked there are. The review reads that copy, not a rescued one.
+ * @param {ScaGiven} given  Inside the work folder.
+ * @returns {ScaFolders}
+ */
+export function readInPlace({ extracted, ...rest }) {
+  return { source: extracted, used: extracted, ...rest };
+}
+
+/**
+ * The folders given, at their place in a copy of the extracted folder (`copy`), which the
+ * review reads as it is (readInPlace).
+ * @param {ScaGiven} given  Settled.
+ * @param {string} copy  Where the extracted folder is copied to, absolute.
+ * @returns {ScaFolders}
+ */
+export function foldersInCopy(given, copy) {
+  return readInPlace(
+    Object.fromEntries(
+      Object.entries(given).map(([key, folder]) => [
+        key,
+        path.join(copy, path.relative(given.extracted, folder)),
+      ])
+    )
+  );
+}
+
+/**
+ * The folders of the tree the review reads, as settlePackageRoot takes them: `used` as the
+ * extracted folder they are settled inside.
+ * @param {ScaFolders} folders
+ * @returns {ScaGiven}
+ */
+export function usedTree({ source: _source, used, ...rest }) {
+  return { extracted: used, ...rest };
 }
 
 /**
@@ -168,7 +241,7 @@ function packageRootBelow(root) {
  * of its folders holds the Experiment, only the flag does, and without it the privileged code
  * is reviewed as WebExtension code and rejected for being what an Experiment is. One named for
  * an add-on without Experiments would exclude WebExtension code from the review instead.
- * @param {ScaFolders} folders
+ * @param {ScaGiven|ScaFolders} folders
  * @param {boolean} isExp  Whether the shipped manifest declares experiment_apis.
  * @returns {?string}
  */
@@ -207,13 +280,13 @@ export function scaFoldersMisfit(folders, isExp) {
  * extracted source archive. A folder found inside it is no package root, so the folder given
  * stands, as where none is found. Once the package root stands, the folders are held to what
  * the Experiment folder may be (settled).
- * @param {ScaFolders} folders  As the caller resolved them.
- * @returns {{folders: ScaFolders, movedFrom?: string}}  The folders to review with.
+ * @param {ScaGiven} folders  As the caller resolved them.
+ * @returns {{folders: ScaGiven, movedFrom?: string}}  The folders to review with.
  *   `movedFrom` is the package root given, there only when it was corrected - the run
  *   narrates the difference rather than changing it silently.
  */
 export function settlePackageRoot(folders) {
-  assertScaFolders(folders, "settlePackageRoot");
+  assertScaGiven(folders, "settlePackageRoot");
   if (hasPackageFile(folders.packageRoot)) {
     return { folders: settled(folders) };
   }
@@ -244,8 +317,8 @@ export function settlePackageRoot(folders) {
  * run rather than warning.
  *
  * Asked HERE because this is where the folders stop moving.
- * @param {ScaFolders} folders
- * @returns {ScaFolders}  The same folders.
+ * @param {ScaGiven} folders
+ * @returns {ScaGiven}  The same folders.
  */
 function settled(folders) {
   if (!Object.hasOwn(folders, "experiments")) {

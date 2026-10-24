@@ -742,8 +742,8 @@ export function settle(state, registry) {
  * rescued copy's where a rescue was attempted. LLM_BUILD_RESULT is the wording of what came
  * of the agent's build (buildResultFact), held where the review shows the Build Review
  * Details, a source code review whose build every guard vouches for, and only for a result
- * with a wording: not where the reviewer builds it. LLM_BUILD_ROOT is the package root the agent
- * built in where it built or tried to, and LLM_BUILD_OUTPUT what it built, beside which
+ * with a wording: not where the reviewer builds it. SCA_BUILD is the copy the agent built in
+ * where it built or tried to, and LLM_BUILD_OUTPUT what it built, beside which
  * LLM_BUILD_XPI_MATCH is its comparison with the submitted XPI.
  * @param {import("./state.js").LoopState} state
  * @param {import("../checks/registry.js").Registry} registry
@@ -767,9 +767,6 @@ function detailsMeta(state, registry) {
     ...(spawnIssued(state) ? { summaryFile } : {}),
     ...(state.products?.includes("build") ? { buildFile } : {}),
     ...(state.products?.includes("buildIssues") ? { buildIssuesFile } : {}),
-    ...(state.paths?.scaBuildOrig
-      ? { scaBuildOrig: state.paths.scaBuildOrig }
-      : {}),
     ...(state.build?.safety ? { buildSafety: state.build.safety } : {}),
     ...(build.vulnerabilities
       ? { buildVulnerabilities: build.vulnerabilities }
@@ -778,7 +775,7 @@ function detailsMeta(state, registry) {
       ? { rescuedVulnerabilities: build.rescuedVulnerabilities }
       : {}),
     ...(worded ? { buildResult: worded } : {}),
-    ...(build.root ? { buildRoot: build.root } : {}),
+    ...(build.copy ? { buildCopy: build.copy } : {}),
     ...(build.output ? { buildOutput: build.output } : {}),
     ...(build.match ? { buildMatch: build.match } : {}),
     manualReview: state.manual,

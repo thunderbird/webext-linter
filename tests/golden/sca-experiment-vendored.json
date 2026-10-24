@@ -5,9 +5,9 @@
     "xpiRoot": "<work>/xpi/",
     "xpiFile": "xpi",
     "scaFolders": {
-      "extracted": "<root>/tests/addons/sca-experiment-vendored/src",
-      "packageRoot": "<root>/tests/addons/sca-experiment-vendored/src",
-      "experiments": "<root>/tests/addons/sca-experiment-vendored/src/experiment"
+      "source": "<work>/sca",
+      "packageRoot": "<work>/sca",
+      "experiments": "<work>/sca/experiment"
     },
     "reviewed": true,
     "schemaSource": "cache:release-mv3",

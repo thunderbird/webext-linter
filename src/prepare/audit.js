@@ -84,7 +84,7 @@ export async function auditRoot(roots, { net, cacheDir } = {}) {
   // the review refuses too. Not read in full, so neither clean nor rescuable.
   let archive;
   try {
-    archive = loadSourceArchive(roots.extracted);
+    archive = loadSourceArchive(roots.used);
   } catch (err) {
     rethrowIfFatal(err);
     return { complete: false, lists: none, moderate: [] };

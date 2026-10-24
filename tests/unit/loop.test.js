@@ -539,7 +539,11 @@ test("the build details name the XPI, the source, the report, the judgement, the
   state.report.meta.xpi = path.join(dir, "addon-1.0.xpi");
   state.report.meta.xpiFile = "addon-1.0.xpi";
   const rescuedSrc = path.join(dir, "rescued", "src");
-  state.paths.scaFolders = { extracted: rescuedSrc, packageRoot: rescuedSrc };
+  state.paths.scaFolders = {
+    source: rescuedSrc,
+    used: rescuedSrc,
+    packageRoot: rescuedSrc,
+  };
   state.report.meta.scaFolders = state.paths.scaFolders;
   state.paths.build = path.join(dir, "build.md");
   state.report.meta.buildFile = state.paths.build;
@@ -547,10 +551,9 @@ test("the build details name the XPI, the source, the report, the judgement, the
     loopSlots(state, {}, work, REGISTRY).buildDetails.split("\n");
   const xpi = `* XPI_FILE: [addon-1.0.xpi](${state.report.meta.xpi})`;
   const unpacked = `* XPI_ROOT: [extracted addon](${state.report.meta.xpiRoot})`;
-  const extracted = `* SCA_EXTRACTED: [source archive](${rescuedSrc})`;
-  const root = `* SCA_PACKAGE_ROOT: [package root](${rescuedSrc})`;
+  const source = `* SCA_SOURCE: [source archive](${rescuedSrc})`;
   const report = `* SCA_BUILD_PROCESS: [build.md](${state.paths.build})`;
-  assert.deepEqual(rows(), [xpi, unpacked, extracted, root]);
+  assert.deepEqual(rows(), [xpi, unpacked, source]);
   state.products = ["build"];
   state.build = {
     result: "built",
@@ -562,10 +565,9 @@ test("the build details name the XPI, the source, the report, the judgement, the
   assert.deepEqual(rows(), [
     xpi,
     unpacked,
-    extracted,
+    source,
     report,
     "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
-    root,
     "* SCA_VULNERABILITIES: 1 moderate, 0 high, 0 critical",
     `* LLM_BUILD_OUTPUT: [addon-1.0.xpi](${state.build.output})`,
     "* LLM_BUILD_RESULT: build succeeded",
@@ -598,74 +600,70 @@ test("the build details show the agent's comparison only beside its output", () 
   }
 });
 
-// SCA_PACKAGE_ROOT is labelled by where the reviewed source lies: the source archive, or the rescued
-// copy, beside which SCA_BUILD_ORIG names the same root in the source archive. LLM_BUILD_ROOT names
-// the root in the build copy where the agent built or tried to, and nowhere else. The Review
-// Details name the same rows.
-test("the details name the reviewed root, the original root and the build root", () => {
+// SCA_SOURCE names the copy of the submitted source, and SCA_RESCUED the rescued copy where the
+// review read one instead. SCA_BUILD names the copy the agent built in, where it built or tried
+// to, and nowhere else. The Review Details name the same rows.
+test("the details name the source copy, the rescued copy and the build copy", () => {
   const dir = tmp();
   const { state, work } = scaReview(dir);
-  const scaTree = path.join(dir, "sca");
-  const rescuedTree = path.join(dir, "rescued");
-  const sca = path.join(scaTree, "src");
-  const rescued = path.join(rescuedTree, "src");
-  const built = path.join(dir, "build", "src");
+  const sca = path.join(dir, "sca");
+  const rescued = path.join(dir, "rescued");
+  const buildCopy = path.join(dir, "build");
   const rootRows = (block) =>
     block
       .split("\n")
       .filter((row) =>
-        [
-          "* SCA_EXTRACTED",
-          "* SCA_PACKAGE_ROOT:",
-          "* SCA_BUILD_ORIG",
-          "* LLM_BUILD_ROOT",
-        ].some((n) => row.startsWith(n))
+        ["* SCA_SOURCE", "* SCA_RESCUED", "* SCA_BUILD:"].some((n) =>
+          row.startsWith(n)
+        )
       );
-  const inArchive = [
-    `* SCA_EXTRACTED: [source archive](${scaTree})`,
-    `* SCA_PACKAGE_ROOT: [package root](${sca})`,
-  ];
+  const source = `* SCA_SOURCE: [source archive](${sca})`;
+  const copy = `* SCA_BUILD: [build copy](${buildCopy})`;
+  const inSource = {
+    source: sca,
+    used: sca,
+    packageRoot: path.join(sca, "src"),
+  };
   const cases = [
     [
       "the source archive, not built",
-      { extracted: scaTree, packageRoot: sca },
-      null,
+      inSource,
       { result: null, output: null },
-      inArchive,
+      [source],
     ],
     [
       "the source archive, built",
-      { extracted: scaTree, packageRoot: sca },
-      null,
-      { result: "built", root: built, output: path.join(built, "dist") },
-      [...inArchive, `* LLM_BUILD_ROOT: [build copy](${built})`],
+      inSource,
+      {
+        result: "built",
+        copy: buildCopy,
+        output: path.join(buildCopy, "dist"),
+      },
+      [source, copy],
     ],
     [
       "the source archive, its build failed",
-      { extracted: scaTree, packageRoot: sca },
-      null,
-      { result: "failed", root: built, output: null },
-      [...inArchive, `* LLM_BUILD_ROOT: [build copy](${built})`],
+      inSource,
+      { result: "failed", copy: buildCopy, output: null },
+      [source, copy],
     ],
     [
       "the rescued copy, built",
-      { extracted: rescuedTree, packageRoot: rescued },
-      sca,
-      { result: "built", root: built, output: path.join(built, "dist") },
+      { source: sca, used: rescued, packageRoot: path.join(rescued, "src") },
+      {
+        result: "built",
+        copy: buildCopy,
+        output: path.join(buildCopy, "dist"),
+      },
       [
-        `* SCA_EXTRACTED: [rescued source (reduced/fixed dependencies)](${rescuedTree})`,
-        `* SCA_PACKAGE_ROOT: [package root](${rescued})`,
-        `* SCA_BUILD_ORIG: [source archive](${sca})`,
-        `* LLM_BUILD_ROOT: [build copy](${built})`,
+        source,
+        `* SCA_RESCUED: [rescued source (reduced/fixed dependencies)](${rescued})`,
+        copy,
       ],
     ],
   ];
-  for (const [name, scaFolders, scaBuildOrig, build, rows] of cases) {
+  for (const [name, scaFolders, build, rows] of cases) {
     state.paths.scaFolders = scaFolders;
-    delete state.paths.scaBuildOrig;
-    if (scaBuildOrig) {
-      state.paths.scaBuildOrig = scaBuildOrig;
-    }
     state.report.meta.scaFolders = scaFolders;
     state.build = build;
     const { buildDetails } = loopSlots(state, {}, work, REGISTRY);
@@ -1140,7 +1138,8 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
   });
   // Both trees exist for this one, so the review is a source-code review.
   state.paths.scaFolders = {
-    extracted: path.join(dir, "src"),
+    source: path.join(dir, "src"),
+    used: path.join(dir, "src"),
     packageRoot: path.join(dir, "src"),
   };
   state.paths.sweeps[ARTIFACT_SCA] = {
@@ -1171,7 +1170,7 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
     { file: "lib/net.js", line: 7, hint: `sends from the ${tree}` },
   ];
   planted(state.paths.xpiRoot, "lib/net.js", 7);
-  planted(state.paths.scaFolders.extracted, "lib/net.js", 7);
+  planted(state.paths.scaFolders.used, "lib/net.js", 7);
   swept(state, ARTIFACT_XPI, { 1: hit(ARTIFACT_XPI) });
   swept(state, ARTIFACT_SCA, { 2: hit(ARTIFACT_SCA) });
   handBack(work, () => null);
@@ -1925,7 +1924,8 @@ test("an archive holding the XPI and no lock is offered the restart, unreadable 
   const dir = tmp();
   const archiveOnly = abortedScaReview(dir, [...shape, "minified-code"]);
   archiveOnly.state.paths.scaFolders = {
-    extracted: path.join(dir, "sca"),
+    source: path.join(dir, "sca"),
+    used: path.join(dir, "sca"),
     packageRoot: path.join(dir, "sca"),
   };
   const minified = archiveOnly.state.report.findings.at(-1);
@@ -1976,7 +1976,8 @@ function buildReview(dir) {
   made.state.paths.build = path.join(dir, "build.md");
   made.state.report.meta.buildFile = made.state.paths.build;
   made.state.paths.scaFolders = {
-    extracted: path.join(dir, "sca"),
+    source: path.join(dir, "sca"),
+    used: path.join(dir, "sca"),
     packageRoot: path.join(dir, "sca"),
   };
   return made;
@@ -2002,7 +2003,8 @@ function buildQuestionsReview(dir) {
     ...extra,
   });
   made.state.paths.scaFolders = {
-    extracted: path.join(dir, "src"),
+    source: path.join(dir, "src"),
+    used: path.join(dir, "src"),
     packageRoot: path.join(dir, "src"),
   };
   made.state.manual.push(
@@ -2942,7 +2944,8 @@ test("settle words a per-mode response from the state's review mode", () => {
       // - the loop resolves the path for the agent from exactly that pair.
       if (sca) {
         state.paths.scaFolders = {
-          extracted: "/tmp/src/",
+          source: "/tmp/src/",
+          used: "/tmp/src/",
           packageRoot: "/tmp/src/",
         };
       }

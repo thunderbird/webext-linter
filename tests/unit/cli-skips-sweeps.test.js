@@ -40,7 +40,7 @@ test("--sca-extracted / --sca-package-root / --sca-experiments map to the sca pi
     "--sca-experiments",
     "exp",
   ]);
-  assert.deepEqual(o.scaFolders, {
+  assert.deepEqual(o.scaGiven, {
     extracted: path.resolve("extracted"),
     packageRoot: path.resolve("extracted", "pkg"),
     experiments: path.resolve("extracted", "exp"),
@@ -61,7 +61,7 @@ test("--sca-extracted / --sca-package-root / --sca-experiments map to the sca pi
       written,
     ]);
     assert.equal(
-      each.scaFolders.experiments,
+      each.scaGiven.experiments,
       path.resolve("extracted", "exp"),
       written
     );
@@ -69,14 +69,14 @@ test("--sca-extracted / --sca-package-root / --sca-experiments map to the sca pi
   // Left out, the package root is worked out from --sca-extracted, and the Experiment folder
   // is not there at all.
   assert.deepEqual(
-    pipelineOptsFromArgv(["--sca-extracted", "extracted"]).scaFolders,
+    pipelineOptsFromArgv(["--sca-extracted", "extracted"]).scaGiven,
     {
       extracted: path.resolve("extracted"),
       packageRoot: path.resolve("extracted"),
     }
   );
   // An XPI review carries no source folders.
-  assert.ok(!Object.hasOwn(pipelineOptsFromArgv([]), "scaFolders"));
+  assert.ok(!Object.hasOwn(pipelineOptsFromArgv([]), "scaGiven"));
 });
 
 // The two skips end to end: the same round trip, minus the two parts that need a person.

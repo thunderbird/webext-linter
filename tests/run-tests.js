@@ -363,19 +363,21 @@ async function main() {
       let review;
       if (isScaFixture(dir)) {
         // SCA mode: the shipped XPI is the authoritative artifact (addonPath), and the src/
-        // tree is the submitted archive (--sca-extracted), which the review reads whole. The
-        // folders are worked out the way a command line naming no --sca-package-root has them worked
-        // out (src/cli.js scaFoldersOf), the Experiment folder from the spec's "sca" block.
-        let scaFolders;
-        let scaMoved = {};
+        // tree is the submitted archive (--sca-extracted), which the review copies into its
+        // work folder and reads whole. The folders are worked out the way a command line naming
+        // no --sca-package-root has them worked out (src/cli.js scaGivenOf), the Experiment
+        // folder from the spec's "sca" block. A prepared fixture's are the record's.
+        let sources;
         if (preparation) {
+          let scaFolders;
           ({ workFolder, scaFolders } = await preparedFixture(
             dir,
             preparation,
             workCache
           ));
+          sources = { scaFolders };
         } else {
-          const opts = pipelineOptsFromArgv([
+          const { scaGiven, scaMovedFrom } = pipelineOptsFromArgv([
             ...argv,
             "--sca-extracted",
             path.join(dir, "src"),
@@ -383,17 +385,13 @@ async function main() {
               ? ["--sca-experiments", sca.experimentsFolder]
               : []),
           ]);
-          scaFolders = opts.scaFolders;
-          scaMoved = opts.scaMovedFrom
-            ? { scaMovedFrom: opts.scaMovedFrom }
-            : {};
+          sources = { scaGiven, ...(scaMovedFrom ? { scaMovedFrom } : {}) };
         }
         review = await runPipeline({
           ...base,
           workFolder,
           addonPath: path.join(dir, "xpi"),
-          scaFolders,
-          ...scaMoved,
+          ...sources,
         });
       } else {
         // XPI mode: the fixture folder IS the add-on, and the pipeline loads it - the

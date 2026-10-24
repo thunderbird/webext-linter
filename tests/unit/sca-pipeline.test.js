@@ -29,6 +29,7 @@ import {
 import { defaultWorkFolder, workPaths } from "../../src/util/dest.js";
 import { advisory, auditEntries, realPreparation } from "../prepared.js";
 import { readState } from "../../src/report/state.js";
+import { readPrepare } from "../../src/prepare/state.js";
 import { reviewDetails } from "../../src/report/loop.js";
 
 // A cache pre-seeded from the fixtures so the schema / experiments / library-hash
@@ -148,16 +149,18 @@ test("SCA e2e: a wrapped archive is reviewed whole, its package files read in th
     "shared/helper.js": `browser.anotherFakeNamespace.call();\n`,
   });
   try {
+    const workFolder = freshWorkFolder();
     const { findings, meta } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
+      workFolder,
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.equal(
       meta.scaFolders.packageRoot,
-      path.join(src, "pkg"),
-      "the package root is found"
+      path.join(workPaths(workFolder).sca, "pkg"),
+      "the package root is found, in the copy the review reads"
     );
     assert.ok(
       hasItem(
@@ -194,7 +197,7 @@ test("SCA e2e: a flat layout is accepted and fully reviewed", async () => {
     {
       const { findings, meta } = await runReview({
         addonPath: xpi,
-        scaFolders: { extracted: src, packageRoot: src },
+        scaGiven: { extracted: src, packageRoot: src },
         ...OFFLINE,
         cdnLookupCache: cdnMissCache(xpi, src),
       });
@@ -239,7 +242,7 @@ test("SCA e2e: the rendered report carries [XPI]/[SCA] labels + the footer", asy
   try {
     const result = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -297,7 +300,7 @@ test("SCA e2e: the built XPI's input:xpi findings match a standalone XPI review 
     const cdnLookupCache = cdnMissCache(xpi, src);
     const sca = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache,
     });
@@ -347,7 +350,7 @@ test("SCA e2e: --sca-package-root alone switches to SCA mode and is the review s
   try {
     const { findings, meta } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -444,7 +447,7 @@ test("SCA e2e: a flat layout audits the root lock file's dependencies", async ()
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       workCache,
       cdnLookupCache: cdnMissCache(xpi, src),
@@ -529,7 +532,7 @@ test("SCA e2e: an undeclared source-bundled library is OSV-audited", async () =>
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       workCache,
       cdnLookupCache: cdnCache,
@@ -580,7 +583,7 @@ test("SCA e2e: an undeclared source-bundled library the CDN identifies is not re
   try {
     const { findings, meta } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       workCache,
       cdnLookupCache: cdnCache,
@@ -604,27 +607,35 @@ test("SCA e2e: an undeclared source-bundled library the CDN identifies is not re
 // review (loadSourceArchive, then analyzeBuild over the same view), so it is not walked
 // (nor its symlinks warned) twice - a loadAddon(scaPackageRoot) per reader would read the root
 // twice.
-test("SCA: the --sca-package-root archive is read once, not twice", async () => {
+test("SCA: the source is copied, and the copy is read once, not twice", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(SRC_FILES);
   // Built before the count starts: making it walks the source too.
   const cdnLookupCache = cdnMissCache(xpi, src);
+  const workFolder = freshWorkFolder();
+  const copy = workPaths(workFolder).sca;
   const realReaddir = fs.readdirSync;
-  let rootReads = 0;
+  let given = 0;
+  let copied = 0;
   mock.method(fs, "readdirSync", (p, ...rest) => {
     if (path.resolve(p) === path.resolve(src)) {
-      rootReads += 1;
+      given += 1;
+    }
+    if (path.resolve(p) === copy) {
+      copied += 1;
     }
     return realReaddir(p, ...rest);
   });
   try {
     await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
+      workFolder,
       ...OFFLINE,
       cdnLookupCache,
     });
-    assert.equal(rootReads, 1, "--sca-package-root walked once, not twice");
+    assert.equal(given, 1, "the folder named is walked once, for the refusals");
+    assert.equal(copied, 1, "the copy is walked once, not twice");
   } finally {
     mock.restoreAll();
     fs.rmSync(xpi, { recursive: true, force: true });
@@ -657,14 +668,22 @@ test("SCA meta names the artifacts, each a real path", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(SRC_FILES);
   try {
+    const workFolder = freshWorkFolder();
     const { meta } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
+      workFolder,
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
     assert.equal(meta.xpi, xpi);
-    assert.deepEqual(meta.scaFolders, { extracted: src, packageRoot: src });
+    // The review reads its own copy of the source, in the work folder.
+    const copy = workPaths(workFolder).sca;
+    assert.deepEqual(meta.scaFolders, {
+      source: copy,
+      used: copy,
+      packageRoot: copy,
+    });
     // Absolute, like every other path here: the flag's spellings are resolved by the
     // arg-array reader (src/cli.js), and what reaches meta is the folder that was read.
     for (const value of [meta.xpi, meta.scaFolders.packageRoot]) {
@@ -673,9 +692,11 @@ test("SCA meta names the artifacts, each a real path", async () => {
     // The Experiment folder is there exactly for an Experiment. It is also the only place a
     // reader learns that a subtree was excluded from the WebExtension checks, and which one.
     const expXpi = tmpDir(EXPERIMENT_XPI_FILES);
+    const expWork = freshWorkFolder();
     const { meta: withExp } = await runReview({
+      workFolder: expWork,
       addonPath: expXpi,
-      scaFolders: {
+      scaGiven: {
         extracted: src,
         packageRoot: src,
         experiments: path.join(src, "src", "experiments"),
@@ -687,7 +708,7 @@ test("SCA meta names the artifacts, each a real path", async () => {
     fs.rmSync(expXpi, { recursive: true, force: true });
     assert.equal(
       withExp.scaFolders.experiments,
-      path.join(src, "src", "experiments")
+      path.join(workPaths(expWork).sca, "src", "experiments")
     );
 
     // The fields a role-named meta carried, and the fused value with them.
@@ -712,7 +733,7 @@ test("an SCA --llm-review names a build report in the work folder", async () => 
   try {
     const { meta } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       llmReview: true,
       workFolder: work,
       ...OFFLINE,
@@ -752,7 +773,7 @@ test("an SCA --llm-review records whether its build is guarded", async () => {
     const work = freshWorkFolder();
     await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       llmReview: true,
       workFolder: work,
       ...selection,
@@ -785,7 +806,7 @@ test("SCA e2e: code checks review the source; manifest/WAR resolve against the X
   try {
     const result = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -844,7 +865,7 @@ test("SCA e2e: --sca-experiments excludes the Experiment subtree from the code c
     // is still caught.
     const withExp = await runReview({
       ...base,
-      scaFolders: {
+      scaGiven: {
         extracted: src,
         packageRoot: src,
         experiments: path.join(src, "src", "experiments"),
@@ -870,7 +891,7 @@ test("SCA e2e: --sca-experiments excludes the Experiment subtree from the code c
     await assert.rejects(
       runReview({
         ...base,
-        scaFolders: {
+        scaGiven: {
           extracted: src,
           packageRoot: src,
           experiments: path.join(xpi, "experiments"),
@@ -903,7 +924,7 @@ test("SCA e2e: an Experiment add-on needs --sca-experiments", async () => {
   try {
     const base = {
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       allowExperiments: true,
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
@@ -911,7 +932,7 @@ test("SCA e2e: an Experiment add-on needs --sca-experiments", async () => {
     await assert.rejects(runReview(base), /--sca-experiments/);
     const review = await runReview({
       ...base,
-      scaFolders: {
+      scaGiven: {
         extracted: src,
         packageRoot: src,
         experiments: path.join(src, "src", "experiments"),
@@ -925,7 +946,7 @@ test("SCA e2e: an Experiment add-on needs --sca-experiments", async () => {
       runReview({
         ...base,
         addonPath: plain,
-        scaFolders: {
+        scaGiven: {
           extracted: src,
           packageRoot: src,
           experiments: path.join(src, "src", "experiments"),
@@ -959,7 +980,7 @@ test("SCA e2e: --sca-experiments may sit beside the add-on code under --sca-pack
     for (const experiments of [path.join(src, "experiment")]) {
       const res = await runReview({
         ...base,
-        scaFolders: { extracted: src, packageRoot: src, experiments },
+        scaGiven: { extracted: src, packageRoot: src, experiments },
       });
       // The review source is still reviewed...
       assert.ok(
@@ -993,7 +1014,7 @@ test("SCA e2e: unused-files flags the build's dead files, not source scaffolding
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1031,7 +1052,7 @@ test("SCA e2e: locale checks evaluate _locales against the XPI, not the source",
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1068,7 +1089,7 @@ test("SCA e2e: missing-english-localization checks the XPI's _locales, not sourc
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1111,7 +1132,7 @@ test("SCA e2e: background-module judges the XPI's background script, not the ESM
   try {
     const a = await runReview({
       addonPath: xpiClassic,
-      scaFolders: { extracted: srcEsm, packageRoot: srcEsm },
+      scaGiven: { extracted: srcEsm, packageRoot: srcEsm },
       ...OFFLINE,
     });
     assert.ok(
@@ -1120,7 +1141,7 @@ test("SCA e2e: background-module judges the XPI's background script, not the ESM
     );
     const b = await runReview({
       addonPath: xpiEsm,
-      scaFolders: { extracted: srcEsm, packageRoot: srcEsm },
+      scaGiven: { extracted: srcEsm, packageRoot: srcEsm },
       ...OFFLINE,
     });
     assert.ok(
@@ -1153,7 +1174,7 @@ test("SCA e2e: trademark-violation resolves a localized name via the XPI's _loca
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1186,7 +1207,7 @@ test("SCA e2e: a vulnerable devDependency is flagged by vendor-vulnerable-dev", 
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       workCache,
       cdnLookupCache: cdnMissCache(xpi, src),
@@ -1219,7 +1240,7 @@ test("SCA e2e: a build script outside the source is reviewed by build-review", a
   try {
     const { meta } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1253,7 +1274,7 @@ test("SCA: the build review runs where nobody decided about the build", async ()
   try {
     const plain = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1266,7 +1287,7 @@ test("SCA: the build review runs where nobody decided about the build", async ()
 
     await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       workFolder: work,
       llmReview: true,
       ...OFFLINE,
@@ -1296,7 +1317,7 @@ test("SCA e2e: a redirected registry is flagged offline", async () => {
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1324,7 +1345,7 @@ test("SCA e2e: a clean npm build fires no build-policy check", async () => {
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1355,7 +1376,7 @@ test("SCA e2e: TypeScript and Vue source is parsed and its defects are caught", 
   try {
     const { findings, meta } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1396,7 +1417,7 @@ test("SCA e2e: a minified file in the source is rejected by minified-code", asyn
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1428,7 +1449,7 @@ test("SCA e2e: a package.json install hook escalates to a reviewer", async () =>
   try {
     const { findings, meta } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1460,7 +1481,7 @@ test("SCA e2e: a committed build archive is rejected anywhere in --sca-package-r
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1500,7 +1521,7 @@ test("SCA e2e: a committed node_modules folder is rejected, and never inspected"
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1539,7 +1560,7 @@ test("SCA e2e: a symlinked node_modules is answered once, as a committed tree", 
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1572,7 +1593,7 @@ test("SCA e2e: a symlink leaving --sca-package-root is rejected, one staying ins
   try {
     const { findings } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1608,7 +1629,7 @@ test("SCA e2e: a link inside the add-on refuses the XPI", async () => {
     await assert.rejects(
       runReview({
         addonPath: xpi,
-        scaFolders: { extracted: src, packageRoot: src },
+        scaGiven: { extracted: src, packageRoot: src },
         ...OFFLINE,
       }),
       {
@@ -1669,7 +1690,7 @@ test("SCA e2e: the two submission-shape checks fire independently", async () => 
   try {
     const a = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: twinned, packageRoot: twinned },
+      scaGiven: { extracted: twinned, packageRoot: twinned },
       ...OFFLINE,
     });
     assert.equal(a.mode, REVIEW_MODE.SCA, "the review is never re-routed");
@@ -1684,7 +1705,7 @@ test("SCA e2e: the two submission-shape checks fire independently", async () => 
 
     const b = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: built, packageRoot: built },
+      scaGiven: { extracted: built, packageRoot: built },
       ...OFFLINE,
     });
     assert.equal(b.mode, REVIEW_MODE.SCA, "still a source review, as always");
@@ -1695,7 +1716,7 @@ test("SCA e2e: the two submission-shape checks fire independently", async () => 
 
     const c = await runReview({
       addonPath: xpiWithDeclaration,
-      scaFolders: { extracted: built, packageRoot: built },
+      scaGiven: { extracted: built, packageRoot: built },
       ...OFFLINE,
     });
     assert.ok(
@@ -1737,7 +1758,7 @@ test("SCA e2e: an archive holding the whole XPI is reported, and the rest of the
   try {
     const result = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1799,7 +1820,7 @@ test("SCA e2e: an archive that is the XPI is reported beside its missing package
   try {
     const { findings, meta } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -1859,7 +1880,7 @@ test("SCA --llm-review: the readability of the XPI is recorded, in an aborted re
     try {
       await runReview({
         addonPath: xpi,
-        scaFolders: { extracted: src, packageRoot: src },
+        scaGiven: { extracted: src, packageRoot: src },
         workFolder: work,
         llmReview: true,
         ...OFFLINE,
@@ -1892,7 +1913,7 @@ test("SCA --llm-review: an archive holding the XPI and no lock opens on its pass
   const work = freshWorkFolder();
   await runReview({
     addonPath: xpi,
-    scaFolders: { extracted: src, packageRoot: src },
+    scaGiven: { extracted: src, packageRoot: src },
     workFolder: work,
     llmReview: true,
     ...OFFLINE,
@@ -1913,7 +1934,7 @@ test("SCA e2e: a minified-XPI submission stays in SCA mode (a legitimate SCA)", 
   try {
     const { findings, mode } = await runReview({
       addonPath: xpi,
-      scaFolders: { extracted: src, packageRoot: src },
+      scaGiven: { extracted: src, packageRoot: src },
       ...OFFLINE,
       cdnLookupCache: cdnMissCache(xpi, src),
     });
@@ -2087,7 +2108,7 @@ test("a missing lock aborts the review, and every later check still runs", async
   const fixture = path.join(UNRESCUED_FIXTURE, "..", "missing-lock-sca");
   const { findings, meta } = await runReview({
     addonPath: path.join(fixture, "xpi"),
-    scaFolders: {
+    scaGiven: {
       extracted: path.join(fixture, "src"),
       packageRoot: path.join(fixture, "src"),
     },
@@ -2174,12 +2195,10 @@ test("an unrescued review ends on its known vulnerabilities, after every check r
     }),
   });
   const workFolder = await unrescuedFolder(workCache);
+  // The folders the preparation left in the work folder, which its review reads.
   const { findings, meta } = await runReview({
     addonPath: path.join(UNRESCUED_FIXTURE, "xpi"),
-    scaFolders: {
-      extracted: path.join(UNRESCUED_FIXTURE, "src"),
-      packageRoot: path.join(UNRESCUED_FIXTURE, "src"),
-    },
+    scaFolders: readPrepare(workFolder).roots,
     workFolder,
     workCache,
     ...OFFLINE,
@@ -2234,7 +2253,7 @@ test("an aborted review without a preparation counts the lock it audited", async
   const workFolder = freshWorkFolder();
   const { meta } = await runReview({
     addonPath: path.join(UNRESCUED_FIXTURE, "xpi"),
-    scaFolders: {
+    scaGiven: {
       extracted: path.join(UNRESCUED_FIXTURE, "src"),
       packageRoot: path.join(UNRESCUED_FIXTURE, "src"),
     },

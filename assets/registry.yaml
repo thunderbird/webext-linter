@@ -2328,7 +2328,7 @@ review-early-exit:
 #
 # The step lists are prompts. `unpack` is printed by --llm-sca-review with the intro and the
 # Submission values, `analyze` by the run that derived SCA_PACKAGE_ROOT (or first, with the intro, by
-# --llm-review given --sca-extracted), with SCA_EXTRACTED, SCA_PACKAGE_ROOT, SCA_BUILD_PROCESS and ANSWERS, `permission` by
+# --llm-review given --sca-extracted), with SCA_SOURCE, SCA_PACKAGE_ROOT, SCA_BUILD_PROCESS and ANSWERS, `permission` by
 # the run that read the verdict, with ANSWERS and the Build Review Details
 # ({{buildDetails}}), `build` by the run that audited a clean lock, with SCA_PACKAGE_ROOT, LLM_BUILD_ROOT
 # (SCA_PACKAGE_ROOT's place in build/) and SCA_BUILD_PROCESS, and `rescue` by the run that made the
@@ -2363,9 +2363,9 @@ llm-sca-review-prompt:
   analyze:
     - when: find-experiment
       text: |-
-        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under SCA_EXTRACTED, given above. Its path relative to SCA_EXTRACTED is <SCA_EXPERIMENTS>.
+        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under SCA_SOURCE, given above. Its path relative to SCA_SOURCE is <SCA_EXPERIMENTS>.
     - text: |-
-        Work out what building this add-on takes. Read the documentation and the build files of the whole extracted archive, SCA_EXTRACTED, given above: the build may be driven from anywhere in it, and the node project, with package.json and its lock file, is SCA_PACKAGE_ROOT inside it. Follow the release build from where it starts, and work out which files it actually runs or reads: only those are part of it, wherever they lie. Report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
+        Work out what building this add-on takes. Read the documentation and the build files of the whole extracted archive, SCA_SOURCE, given above: the build may be driven from anywhere in it, and the node project, with package.json and its lock file, is SCA_PACKAGE_ROOT inside it. Follow the release build from where it starts, and work out which files it actually runs or reads: only those are part of it, wherever they lie. Report how to produce the RELEASE build FOR THUNDERBIRD - never a development build, and never the Firefox one. Where the source builds several targets, say which one is the Thunderbird release and what said so.
 
         Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
 
@@ -2377,7 +2377,7 @@ llm-sca-review-prompt:
     - text: |-
         Find everything the release build reaches for outside the declared dependencies, in the files it actually runs or reads, and in no other: a script, target or hook the release build never reaches is not part of it, whatever it holds. What to look for: a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, an install hook that downloads or runs code from outside the declared dependencies, or a step whose source is not in the tree.
 
-        Open ANSWERS, given above. Answer its entry whose "index" is SCA_BUILD_SAFETY_ISSUES with a list holding one entry for each thing you found, and an empty list, [], where you found nothing. An entry names the "file" it is in, relative to SCA_EXTRACTED, the "line" it sits on, left out where it sits on none, and a "hint" of at most {{maxHint}} characters saying what it does. Nothing else: no verdict, which the linter reads off the list. An entry reads:
+        Open ANSWERS, given above. Answer its entry whose "index" is SCA_BUILD_SAFETY_ISSUES with a list holding one entry for each thing you found, and an empty list, [], where you found nothing. An entry names the "file" it is in, relative to SCA_SOURCE, the "line" it sits on, left out where it sits on none, and a "hint" of at most {{maxHint}} characters saying what it does. Nothing else: no verdict, which the linter reads off the list. An entry reads:
 
         {{issueShape}}
 

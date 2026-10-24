@@ -145,9 +145,9 @@ const COUNTED = ["moderate", "high", "critical"];
  * @property {?string} buildMatch  The agent's comparison of that output with the submitted
  *   XPI, a BUILD_MATCH_VALUES id. Held only where `buildResult` is `built`.
  * @property {import("../addon/package-root.js").ScaFolders} [roots]  The settled folders,
- *   absolute and real, there from `analyze` on: the extracted copy is `sca/`, or `rescued/`
- *   while a rescue runs and once it came out clean - the tree the next step, or the review,
- *   reads - and the package root and the Experiment folder lie inside it. The Experiment
+ *   absolute and real, there from `analyze` on: the source copy `sca/`, the tree the next step
+ *   or the review reads (`used`: `sca/`, or `rescued/` while a rescue runs and once it came out
+ *   clean), and the package root and the Experiment folder inside that tree. The Experiment
  *   folder is there exactly when the add-on declares Experiments, from `permission` on; at
  *   `analyze` it may still be asked for (checkRoots).
  * @property {string} digest  The hash over every other field, as writePrepare stored it
@@ -258,15 +258,16 @@ function checkRoots(record) {
     has && roots && typeof roots === "object" ? Object.keys(roots) : [];
   const folder = (key) => typeof roots?.[key] === "string" && roots[key] !== "";
   const shaped =
-    folder("extracted") &&
+    folder("source") &&
+    folder("used") &&
     folder("packageRoot") &&
     keys.every((k) =>
-      ["extracted", "packageRoot", "experiments"].includes(k)
+      ["source", "used", "packageRoot", "experiments"].includes(k)
     ) &&
     (!keys.includes("experiments") || folder("experiments"));
   if (!shaped) {
     throw new HandbackRefused(
-      "the preparation's record holds no extracted copy and package root of the shape the linter writes"
+      "the preparation's record holds no source copy, reviewed copy and package root of the shape the linter writes"
     );
   }
   const named = keys.includes("experiments");
@@ -561,32 +562,17 @@ export function markPrepare(work, record) {
 }
 
 /**
- * Where a package root the record holds lies in the work folder's trees: inside `rescued/`
- * while a rescue runs and once it came out clean, else inside `sca/`. `scaBuildOrig` is the
- * same place in `sca/` for one in `rescued/`, and there only then: in `sca/` it is itself.
- * `buildRoot` is the same place in `build/`, where every build runs, and there only for one
- * in either tree.
+ * The package root's place in the work folder's `build/`, where every build runs: the same
+ * place in that copy as in the tree the review reads.
  * @param {string} work  The work folder.
- * @param {string} root  The package root, absolute and real.
- * @returns {{scaBuildOrig?: string, buildRoot?: string}}
+ * @param {import("../addon/package-root.js").ScaFolders} roots
+ * @returns {string}
  */
-export function treeRoots(work, root) {
-  const paths = workPaths(work);
-  const inside = (tree) => {
-    if (!fs.existsSync(tree)) {
-      return null;
-    }
-    const rel = path.relative(fs.realpathSync(tree), root);
-    return rel.startsWith("..") || path.isAbsolute(rel) ? null : rel;
-  };
-  const rescued = inside(paths.rescued);
-  const rel = rescued ?? inside(paths.sca);
-  return {
-    ...(rescued === null
-      ? {}
-      : { scaBuildOrig: path.join(paths.sca, rescued) }),
-    ...(rel === null ? {} : { buildRoot: path.join(paths.buildCopy, rel) }),
-  };
+export function buildRootOf(work, roots) {
+  return path.join(
+    workPaths(work).buildCopy,
+    path.relative(roots.used, roots.packageRoot)
+  );
 }
 
 /** The package root's files that say what a source archive installs: package.json and the locks. */
@@ -597,22 +583,21 @@ const PACKAGE_FILES = [PACKAGE_FILE, ...TREE_LOCKS];
  * artifact (`files`, src/vendor/locks.js lockedPackages): what the developer submitted,
  * beside which the rescued copy's own are compared (sca-dependencies-changed).
  *
- * A review whose package root lies in the work folder's `rescued/` reviews the copy, and the
- * folder it was copied from is the same place in `sca/`. Null for every other review. One that
- * is gone ends the review: the report of a rescued review says what the rescue changed, and
- * without the original there is nothing to say it against.
- * @param {string} work  The review's work folder.
- * @param {?PrepareRecord} record  Its record.
+ * A review that reads a rescued copy (`used` is not `source`) has its package root in that
+ * copy, and the folder it was copied from is the same place in `source`. Null for every other
+ * review. One that is gone ends the review: the report of a rescued review says what the
+ * rescue changed, and without the original there is nothing to say it against.
+ * @param {import("../addon/package-root.js").ScaFolders} folders  The review's.
  * @returns {?{files: Map<string, Buffer>}}
  */
-export function originalPackages(work, record) {
-  if (!record?.roots) {
+export function originalPackages(folders) {
+  if (folders.used === folders.source) {
     return null;
   }
-  const { scaBuildOrig: root } = treeRoots(work, record.roots.packageRoot);
-  if (root === undefined) {
-    return null;
-  }
+  const root = path.join(
+    folders.source,
+    path.relative(folders.used, folders.packageRoot)
+  );
   if (!fs.statSync(root, { throwIfNoEntry: false })?.isDirectory()) {
     throw new Error(
       `The package root this rescued copy was made from is gone: ${root}. The review ` +

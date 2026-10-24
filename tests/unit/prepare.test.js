@@ -274,7 +274,8 @@ test("a clean source moves on to the build", async () => {
   assert.equal(at.work, work);
   assert.equal(at.record.step, PREPARE_STEP.build);
   assert.deepEqual(at.record.roots, {
-    extracted: workPaths(work).sca,
+    source: workPaths(work).sca,
+    used: workPaths(work).sca,
     packageRoot: workPaths(work).sca,
   });
   assert.equal(at.record.packageManagers, true, "the reviewer allowed them");
@@ -518,7 +519,8 @@ test("a safe build moves on to the permission question, with nothing audited", a
   assert.equal(at.record.buildSafe, null);
   assert.equal(at.record.vulnerabilities, null, "nothing is audited");
   assert.deepEqual(at.record.roots, {
-    extracted: workPaths(work).sca,
+    source: workPaths(work).sca,
+    used: workPaths(work).sca,
     packageRoot: workPaths(work).sca,
   });
   assert.deepEqual(recordOf(work), at.record);
@@ -738,7 +740,8 @@ test("not letting the agent build is done at once, with nothing audited", async 
   assert.equal(at.record.vulnerabilities, null);
   assert.equal(at.record.buildResult, null, "nothing is built");
   assert.deepEqual(at.record.roots, {
-    extracted: workPaths(work).sca,
+    source: workPaths(work).sca,
+    used: workPaths(work).sca,
     packageRoot: workPaths(work).sca,
   });
   assert.deepEqual(recordOf(work), at.record);
@@ -942,7 +945,8 @@ test("a review starts with an Experiment folder anywhere in the copy", () => {
   });
   const sca = workPaths(work).sca;
   const roots = {
-    extracted: sca,
+    source: sca,
+    used: sca,
     packageRoot: path.join(sca, "pkg"),
     experiments: path.join(sca, "exp"),
   };
@@ -952,11 +956,15 @@ test("a review starts with an Experiment folder anywhere in the copy", () => {
     () => recordedRoots(work, { ...roots, experiments: outside }),
     refused(/names an Experiment folder ".*" that is not a folder inside/)
   );
-  // The extracted copy is `sca/` or its rescued copy, and nothing else.
+  // The source copy is `sca/`, and the tree the review reads `sca/` or its rescued copy.
   assert.throws(
-    () => recordedRoots(work, { ...roots, extracted: outside }),
+    () => recordedRoots(work, { ...roots, source: outside }),
+    refused(/names a source copy ".*" that is not ".*"/)
+  );
+  assert.throws(
+    () => recordedRoots(work, { ...roots, used: outside }),
     refused(
-      /names an extracted copy ".*" that is neither ".*" nor its rescued copy/
+      /names a reviewed copy ".*" that is neither ".*" nor its rescued copy/
     )
   );
   fs.rmSync(outside, { recursive: true, force: true });
@@ -1484,7 +1492,11 @@ test("a copy left behind by a failed rescue cut short is removed", async () => {
   writePrepare(work, {
     ...recordOf(work),
     step: PREPARE_STEP.done,
-    roots: { extracted: workPaths(work).sca, packageRoot: workPaths(work).sca },
+    roots: {
+      source: workPaths(work).sca,
+      used: workPaths(work).sca,
+      packageRoot: workPaths(work).sca,
+    },
     buildResult: "rescue-failed",
   });
   assert.ok(fs.existsSync(copy));
@@ -1508,7 +1520,11 @@ test("a forged record never removes a folder outside the work folder", async () 
   writePrepare(work, {
     ...recordOf(work),
     step: PREPARE_STEP.done,
-    roots: { extracted: workPaths(work).sca, packageRoot: stray },
+    roots: {
+      source: workPaths(work).sca,
+      used: workPaths(work).sca,
+      packageRoot: stray,
+    },
   });
   await later(work);
   assert.ok(fs.existsSync(stray));
@@ -1599,10 +1615,13 @@ test("a record's folders of another shape are refused", async () => {
   const { work } = await rescued();
   const before = recordOf(work);
   const shape =
-    /holds no extracted copy and package root of the shape the linter writes/;
+    /holds no source copy, reviewed copy and package root of the shape the linter writes/;
   for (const [edit, problem] of [
     [{ roots: null }, shape],
-    [{ roots: { extracted: before.roots.extracted } }, shape],
+    [
+      { roots: { source: before.roots.source, used: before.roots.used } },
+      shape,
+    ],
     [
       { roots: { ...before.roots, scaPackageRoot: before.roots.packageRoot } },
       shape,

@@ -132,11 +132,11 @@ review's build part is these steps:
    readable lock) stands, or the preparation gave its rescue up. Such a review goes straight
    on to `spawn`, and its findings abort it late.
 3. **`built`** first shows the Build Review Details block as the last thing of the turn:
-   `XPI_FILE`, `XPI_ROOT`, `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT`, `SCA_PACKAGE_ROOT`,
+   `XPI_FILE`, `XPI_ROOT`, `SCA_SOURCE`, `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT`,
    `SCA_VULNERABILITIES` (`n moderate, n high, n critical`, the submitted lock's vulnerable
    packages as the preparation counted them, or the review's own audit where it counted
-   none), and, where the agent built it, `LLM_BUILD_OUTPUT`, `LLM_BUILD_RESULT`,
-   `LLM_BUILD_ROOT` and `LLM_BUILD_XPI_MATCH` (`match` or `no match`, the agent's comparison
+   none), and, where the agent built it, `SCA_BUILD`, `LLM_BUILD_OUTPUT`, `LLM_BUILD_RESULT`
+   and `LLM_BUILD_XPI_MATCH` (`match` or `no match`, the agent's comparison
    of that output with the submitted XPI in the preparation). `LLM_BUILD_RESULT` reports the
    agent's attempt only: `build succeeded`, `build failed: see build.md`, `not built: rescue
    failed` or `not built: unsafe`. It is absent where the reviewer builds the add-on
@@ -419,7 +419,7 @@ what this review is and where to read it. Every details block is built from the 
 so each holds every row of the block before it, plus what is new:
 
 - the preparation's **Build Review Details** (the `permission` prompt): `XPI_FILE`,
-  `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT`, `SCA_BUILD_SAFETY_ISSUES` and `SCA_PACKAGE_ROOT`;
+  `SCA_SOURCE`, `SCA_BUILD_PROCESS`, `SCA_BUILD_SAFETY_ASSESSMENT` and `SCA_BUILD_SAFETY_ISSUES`;
 - the review's **Build Review Details** (`built`): every row below the review holds, but
   `ADDON_DESCRIPTION` and `REVIEW_REPORT`, since `built` goes out before the description
   agent is started and before the report is handed over;
@@ -441,17 +441,16 @@ carry, come last.
 | --- | --- |
 | `XPI_FILE` | What was submitted, a link named by what it was submitted as - the .xpi as ATN named it, or the folder's own name where the submission arrived unpacked |
 | `XPI_ROOT` | The shipped package, unpacked, ready to read |
+| `SCA_SOURCE` | A source code review's copy of the submitted source, the work folder's `sca/`, which every review works on rather than the folder it was given - the folder every path is relative to, unless the review read a rescued copy |
+| `SCA_RESCUED` | The rescued copy the review read instead, `rescued/`, labelled "rescued source (reduced/fixed dependencies)" - only where a rescue came out clean |
 | `SCA_BUILD_PROCESS` | What building the add-on takes, written by the agent in the preparation, in a source code review |
 | `SCA_BUILD_SAFETY_ASSESSMENT` | The verdict the preparation read off the build's safety issues: `safe` where there are none, `unsafe` otherwise |
 | `SCA_BUILD_SAFETY_ISSUES` | What the build reaches for outside the declared dependencies, one line per issue, as the agent handed it back and the linter wrote it |
 | `SCA_EXPERIMENTS` | The Experiment implementation folder, when one was named |
-| `SCA_EXTRACTED` | A source code review's extracted source archive, the whole of which is reviewed and every path is relative to - named where the package root lies below it, labelled "source archive" in `sca/`, or "rescued source (reduced/fixed dependencies)" where a rescue came out clean |
-| `SCA_PACKAGE_ROOT` | The package root, where the package file and the lock are read and the install runs - labelled "package root" beside `SCA_EXTRACTED`, and named alone, with `SCA_EXTRACTED`'s label, where the two are one folder |
-| `SCA_BUILD_ORIG` | The same package root in `sca/`, the source as submitted - only after a rescue, since it is `SCA_PACKAGE_ROOT` otherwise |
+| `SCA_BUILD` | The copy in `build/` the agent's build ran in - only where the agent built or tried to. Where the package root lies in it, `build.md` says |
 | `SCA_VULNERABILITIES` | The submitted lock's vulnerable packages, as `n moderate, n high, n critical`: the preparation's first audit, or where nothing was audited there the review's own, held once any dependency-vulnerability check read the lock |
 | `LLM_BUILD_OUTPUT` | What the agent's build produced in the preparation, a file or a folder inside `build/`, named by its own name - only where the agent built it, since the reviewer may build it themselves and a build may fail |
 | `LLM_BUILD_RESULT` | What came of the agent's attempt: `build succeeded`, `build failed: see build.md`, `not built: rescue failed` or `not built: unsafe` - absent where the reviewer builds the add-on |
-| `LLM_BUILD_ROOT` | The root in `build/`, where the agent's build ran - only where the agent built or tried to |
 | `LLM_BUILD_XPI_MATCH` | The agent's comparison of `LLM_BUILD_OUTPUT` with the submitted XPI in the preparation: `match` (the same files at the same paths with the same contents, only line endings may differ) or `no match` - only beside `LLM_BUILD_OUTPUT` |
 | `LLM_RESCUED_VULNERABILITIES` | The rescued copy's vulnerable packages, as the linter's audit at the rescue's hand-back counted them, whether the rescue came out clean or failed - only where a rescue was attempted and its lock could be read in full |
 | `ADDON_DESCRIPTION` | Where a sub-agent wrote a description of the add-on, for reading while answering |
@@ -529,7 +528,7 @@ once instead of printing the preparation's prompt. That review is the one `--llm
 starts: `experiment-not-allowed` aborts it, so its first prompt is the `close` phase.
 
 The `analyze` prompt has its reader **work out the build**. It reads the whole extracted
-archive (`SCA_EXTRACTED`, the work folder's `sca/`), since a build may be driven from anywhere
+archive (`SCA_SOURCE`, the work folder's `sca/`), since a build may be driven from anywhere
 in it, with the node project at `SCA_PACKAGE_ROOT` inside it, and follows the release build to the
 files it actually runs or reads. It writes the build report to `SCA_BUILD_PROCESS` (the work
 folder's `build.md`): the release build for Thunderbird as a short numbered list, and its
@@ -538,12 +537,12 @@ the `SCA_BUILD_SAFETY_ISSUES` entry of `ANSWERS` with a list of everything the r
 reaches for outside the declared dependencies (a download, an unpinned git clone, a CDN, an
 install hook that fetches or runs code, a step whose source is not in the tree), in the files it
 uses and no other, one entry each, in the shape a sweep's result has: its file relative to
-`SCA_EXTRACTED`, its
+`SCA_SOURCE`, its
 line where it sits on one, and a hint of at most 500 characters saying what it does. An empty
 list is a safe build. The linter reads the verdict off the list, `unsafe` where it holds an
 entry, and writes the list to the work folder's `build-issues.md`. For an Experiment whose folder was not given, it also works
 out which directory holds the Experiment implementation (`<SCA_EXPERIMENTS>`, a name in
-`<angle brackets>` being one it works out), relative to `SCA_EXTRACTED`.
+`<angle brackets>` being one it works out), relative to `SCA_SOURCE`.
 
 The reader hands the list back in the work folder's review file (`ANSWERS`, the same
 `.review/review.json` a review pass uses) and runs `--llm-handback` on the folder. The preparation's

@@ -476,7 +476,7 @@ function valueLines(entries) {
  * a path by looking up a name rather than by parsing a sentence: the Submission block on the
  * `unpack` prompt - EXTRACT_TO among them: this tool cannot open a source archive itself, but
  * it can still name where one should land - ANSWERS on every later prompt, and the
- * Build block: SCA_EXTRACTED, SCA_PACKAGE_ROOT and SCA_BUILD_PROCESS on the `analyze` prompt,
+ * Build block: SCA_SOURCE, SCA_PACKAGE_ROOT and SCA_BUILD_PROCESS on the `analyze` prompt,
  * SCA_PACKAGE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_PROCESS on the build's, RESCUE_ROOT, LLM_BUILD_ROOT
  * and SCA_BUILD_PROCESS on the rescue's, and SUBMITTED_XPI on both, which the build's output
  * is compared with. The STEPS are prose, and they name those given values - and the one the
@@ -503,7 +503,7 @@ function valueLines(entries) {
  *   folder's build.md: on the analyze, build and rescue prompts.
  * @param {string} [values.answers]  The review file the answers are handed back in: on every
  *   prompt after `unpack`.
- * @param {string} [values.scaExtracted]  On the analyze prompt: the extracted source
+ * @param {string} [values.scaSource]  On the analyze prompt: the copy of the extracted source
  *   archive, `sca/`, all of which the build analysis reads.
  * @param {string} [values.scaPackageRoot]  On the analyze and build prompts: the package root, in
  *   `sca/`.
@@ -544,7 +544,7 @@ export function scaPromptLines(prompt, list, values) {
   }
   // The analyze, build and rescue prompts' folders, each where it is given.
   const build = [
-    ["SCA_EXTRACTED", values.scaExtracted],
+    ["SCA_SOURCE", values.scaSource],
     ["SCA_PACKAGE_ROOT", values.scaPackageRoot],
     ["RESCUE_ROOT", values.rescueRoot],
     ["LLM_BUILD_ROOT", values.buildRoot],
@@ -620,8 +620,9 @@ export function schemaLines(meta, schemaCache) {
  * An SCA review spans TWO artifacts and the reader has to know which is which: the report
  * labels every locus [XPI]/[SCA], and the block names the artifacts behind those labels -
  * the shipped add-on as XPI_FILE (what was submitted, by name) and XPI_ROOT (where its
- * files can be READ, packed or not), and the [SCA] side as the
- * values the run was GIVEN: SCA_PACKAGE_ROOT, and SCA_EXPERIMENTS when one was named.
+ * files can be READ, packed or not), and the [SCA] side as the copies the run read: the
+ * submitted source as SCA_SOURCE, and the rescued copy as SCA_RESCUED where the review read
+ * one, which every [SCA] path is relative to, and SCA_EXPERIMENTS when one was named.
  * Each stands on its own line rather than being composed into one path, because each is a
  * value its reader hands back - to this tool as a flag, or to an agent as a folder to read.
  *
@@ -640,14 +641,12 @@ export function headerLines(meta) {
     ["XPI_FILE", meta.xpiFile],
     ["XPI_ROOT", meta.xpiRoot],
   ];
-  // The source folders: the extracted archive, which every [SCA] path is relative to, the
-  // package root, and the Experiment folder where there is one, whose files were excluded from
-  // the WebExtension code checks - which nothing else in the report says.
+  // The source copies (sourceRows), and the Experiment folder where there is one, whose files
+  // were excluded from the WebExtension code checks - which nothing else in the report says.
   const folders = meta.scaFolders;
   if (folders) {
     values.push(
-      ["SCA_EXTRACTED", folders.extracted],
-      ["SCA_PACKAGE_ROOT", folders.packageRoot],
+      ...sourceRows(folders).map(([name, , folder]) => [name, folder]),
       ...(Object.hasOwn(folders, "experiments")
         ? [["SCA_EXPERIMENTS", folders.experiments]]
         : [])
@@ -712,6 +711,28 @@ export function detailLinkLines(meta) {
 }
 
 /**
+ * The rows naming the source copies a review read, as [name, link text, folder]: SCA_SOURCE,
+ * the copy of the submitted source, and SCA_RESCUED, the rescued copy the review read instead,
+ * where it read one. Every [SCA] path is relative to the copy the review read.
+ * @param {import("../addon/package-root.js").ScaFolders} folders
+ * @returns {[string, string, string][]}
+ */
+function sourceRows(folders) {
+  return [
+    ["SCA_SOURCE", "source archive", folders.source],
+    ...(folders.used === folders.source
+      ? []
+      : [
+          [
+            "SCA_RESCUED",
+            "rescued source (reduced/fixed dependencies)",
+            folders.used,
+          ],
+        ]),
+  ];
+}
+
+/**
  * The details rows alone, one per value the meta holds, in the blocks' order: every details
  * block is these rows (src/report/loop.js detailsMeta), and the Review Details add the
  * schema line. XPI_FILE is named by what was submitted and LLM_BUILD_OUTPUT by its own basename,
@@ -722,21 +743,18 @@ export function detailLinkLines(meta) {
  * how the source builds. LLM_ is what the agent's own build attempt produced.
  * ADDON_DESCRIPTION and REVIEW_REPORT, which only the later blocks carry, come last.
  *
- * The reviewed source is the whole extracted archive, or after a rescue the rescued copy,
- * beside which SCA_BUILD_ORIG names the package root in the source archive. It is
- * SCA_EXTRACTED is the reviewed source, and SCA_PACKAGE_ROOT the package root inside it, where the
- * package file and the lock are read. SCA_VULNERABILITIES counts the submitted
- * lock, and LLM_RESCUED_VULNERABILITIES the rescued copy's lock where the agent attempted a
- * rescue. LLM_BUILD_ROOT is the package root in the copy the agent built in, named where it
- * built or tried to.
- * @param {ReviewMeta & {scaBuildOrig?: string, buildSafety?: string,
+ * SCA_SOURCE is the copy of the submitted source, and SCA_RESCUED the rescued copy the review
+ * read instead, where there is one (sourceRows). SCA_BUILD is the copy the agent built in,
+ * named where it built or tried to. SCA_VULNERABILITIES counts the submitted lock, and
+ * LLM_RESCUED_VULNERABILITIES the rescued copy's lock where the agent attempted a rescue.
+ * @param {ReviewMeta & {buildSafety?: string,
  *   buildVulnerabilities?: import("../prepare/audit.js").VulnerabilityCounts,
  *   rescuedVulnerabilities?: import("../prepare/audit.js").VulnerabilityCounts,
- *   buildResult?: string, buildRoot?: string, buildMatch?: string}} meta  The review's meta and what it holds
- *   beside it: the original package root after a rescue, the build judgement, the submitted
- *   lock's vulnerable packages by severity and the rescued copy's, the wording of what came of
- *   the build, the package root the agent built in, and the agent's comparison of its output
- *   with the submitted XPI, shown only beside that output.
+ *   buildResult?: string, buildCopy?: string, buildMatch?: string}} meta  The review's meta and
+ *   what it holds beside it: the build judgement, the submitted lock's vulnerable packages by
+ *   severity and the rescued copy's, the wording of what came of the build, the copy the agent
+ *   built in, and the agent's comparison of its output with the submitted XPI, shown only
+ *   beside that output.
  * @returns {string[]}
  */
 export function detailRows(meta) {
@@ -749,13 +767,9 @@ export function detailRows(meta) {
   if (meta.xpiRoot) {
     rows.push(["XPI_ROOT", "extracted addon", meta.xpiRoot]);
   }
-  // The reviewed source, the rescued copy after a rescue.
-  const reviewed = meta.scaBuildOrig
-    ? "rescued source (reduced/fixed dependencies)"
-    : "source archive";
   const folders = meta.scaFolders;
   if (folders) {
-    rows.push(["SCA_EXTRACTED", reviewed, folders.extracted]);
+    rows.push(...sourceRows(folders));
   }
   if (meta.buildFile) {
     rows.push(["SCA_BUILD_PROCESS", "build.md", meta.buildFile]);
@@ -773,11 +787,8 @@ export function detailRows(meta) {
   if (folders && Object.hasOwn(folders, "experiments")) {
     rows.push(["SCA_EXPERIMENTS", "experiment source", folders.experiments]);
   }
-  if (folders) {
-    rows.push(["SCA_PACKAGE_ROOT", "package root", folders.packageRoot]);
-  }
-  if (meta.scaBuildOrig) {
-    rows.push(["SCA_BUILD_ORIG", "source archive", meta.scaBuildOrig]);
+  if (meta.buildCopy) {
+    rows.push(["SCA_BUILD", "build copy", meta.buildCopy]);
   }
   if (meta.buildVulnerabilities) {
     rows.push([
@@ -795,9 +806,6 @@ export function detailRows(meta) {
   }
   if (meta.buildResult) {
     rows.push(["LLM_BUILD_RESULT", null, meta.buildResult]);
-  }
-  if (meta.buildRoot) {
-    rows.push(["LLM_BUILD_ROOT", "build copy", meta.buildRoot]);
   }
   if (meta.buildOutput && meta.buildMatch) {
     rows.push(["LLM_BUILD_XPI_MATCH", null, meta.buildMatch]);
@@ -1328,6 +1336,24 @@ function bucketCounts(manual) {
 }
 
 /**
+ * The source folders as the machine output names them: the copy of the submitted source, the
+ * rescued copy where the review read one, and the package root and the Experiment folder inside
+ * the copy it read. Which copy that was shows as `rescued` being there, the way the details
+ * show it as SCA_RESCUED.
+ * @param {import("../addon/package-root.js").ScaFolders} folders
+ * @returns {Record<string, string>}
+ */
+function publicFolders({ source, used, ...inside }) {
+  return Object.fromEntries(
+    Object.entries({
+      source,
+      ...(used === source ? {} : { rescued: used }),
+      ...inside,
+    }).map(([key, folder]) => [key, displayPath(folder)])
+  );
+}
+
+/**
  * Render the review result as JSON.
  *
  * @param {ReviewResult} review
@@ -1352,9 +1378,7 @@ export function formatJson(review) {
       typeof value === "string"
         ? displayPath(value)
         : key === "scaFolders"
-          ? Object.fromEntries(
-              Object.entries(value).map(([k, v]) => [k, displayPath(v)])
-            )
+          ? publicFolders(value)
           : value,
     ])
   );
