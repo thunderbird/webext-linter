@@ -155,7 +155,7 @@ function walkDir(root) {
  * of every bundled Experiment, each group the review rejects (`rejected` - an Experiment
  * upstream does not publish, or one with no files, and the reviewer did not allow
  * Experiments), and whether it rejects the add-on (`invalid`). One rule for every reader:
- * the review's own step on its `xpi/`, --llm-sca-review, which asks before it prepares a
+ * the review's own step on its `xpi/`, --llm-auto-review, which asks before it prepares a
  * review the verdict would reject (src/cli.js), and experiment-not-allowed, which reports
  * the rejected groups.
  *

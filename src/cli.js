@@ -23,7 +23,7 @@ import { parseArgs } from "node:util";
 
 import { runPipeline } from "./pipeline.js";
 import { loadRegistry } from "./checks/registry.js";
-import { scaSubmission } from "./addon/submission.js";
+import { isAddonFile, scaSubmission } from "./addon/submission.js";
 import { defaultWorkFolder, workPaths } from "./util/dest.js";
 import {
   PREPARE_STEP,
@@ -195,7 +195,7 @@ function helpText(checkIds) {
     ["--checks-skip <ids>", "Skip these checks (comma-separated)."],
   ];
 
-  // What an LLM agent runs, in the order it runs: --llm-sca-review prepares a source code
+  // What an LLM agent runs, in the order it runs: --llm-auto-review prepares a source code
   // review, then --llm-review asks - leaving out whatever
   // its two --llm-skip-* flags name, given to either - and --llm-handback applies the
   // answers. They get a section of their own, because none is a report format: the first
@@ -207,15 +207,15 @@ function helpText(checkIds) {
     ],
     [
       "--llm-skip-summary",
-      "With --llm-review or --llm-sca-review: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes.",
+      "With --llm-review or --llm-auto-review: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes.",
     ],
     [
       "--llm-skip-sweep",
-      "With --llm-review or --llm-sca-review: leave out the sweep. The prompt neither spawns it nor stops for it, and the sweep is not handed to the reviewer either.",
+      "With --llm-review or --llm-auto-review: leave out the sweep. The prompt neither spawns it nor stops for it, and the sweep is not handed to the reviewer either.",
     ],
     [
-      "--llm-sca-review",
-      "Read the add-on argument as a submission FOLDER - one built .xpi and one archive of the source it was built from - and print the prompt for preparing a source code review of it. It creates the review's work folder at its default place, beside the .xpi, and the prompt has the source extracted into it and handed back with --llm-handback and that work folder. The linter finds the package root, the next prompt has the build analyzed, and the reviewer then decides whether the build is safe and who builds it. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the source (rescued/ in the work folder) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags: of the copy, or of the source as submitted, whose review the vulnerabilities then abort. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any --sca-* flag, which is what it exists to produce.",
+      "--llm-auto-review",
+      "Work out the review an agent runs from the add-on argument. An .xpi file is reviewed as --llm-review reviews it. A submission FOLDER - one built .xpi and one archive of the source it was built from - is prepared for a source code review: the work folder is created beside the .xpi, and the prompt has the source extracted into it, its Experiment folder named, and handed back with --llm-handback and that work folder. The linter finds the package root, the next prompt has the build analyzed, and the reviewer then decides whether the build is safe and who builds it. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the source (rescued/ in the work folder) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any --sca-* flag, which is what it works out.",
     ],
     [
       "--llm-handback <dir>",
@@ -360,7 +360,7 @@ const OPTIONS = {
   "sca-package-root": { type: "string" },
   "sca-experiments": { type: "string" },
   "report-format": { type: "string" },
-  "llm-sca-review": { type: "boolean" },
+  "llm-auto-review": { type: "boolean" },
   "llm-review": { type: "boolean" },
   "llm-skip-summary": { type: "boolean" },
   "llm-skip-sweep": { type: "boolean" },
@@ -387,7 +387,7 @@ function reviewSkips(values) {
   return PROMPT_SKIPS.filter((flag) => values[flag]);
 }
 
-/** The --sca-* flags, which --llm-sca-review exists to work out and so refuses to be given. */
+/** The --sca-* flags, which --llm-auto-review exists to work out and so refuses to be given. */
 const SCA_FLAGS = ["sca-extracted", "sca-package-root", "sca-experiments"];
 
 /** Where each cache lives when the run names none. */
@@ -412,7 +412,7 @@ const FOLDER_FLAGS = [
  *  (--cache-clear), and its feed is its own (--verbose). A record naming a folder for a
  *  later run to delete is the one thing it must not be able to say. */
 const NOT_FORWARDED = new Set([
-  "llm-sca-review",
+  "llm-auto-review",
   "llm-review",
   "llm-handback",
   "cache-clear",
@@ -621,11 +621,11 @@ export async function main(argv) {
   setQuiet(format === "json");
   setVerbose(values.verbose);
   setProgress(format === "text");
-  // The runs that print a prompt for an agent: --llm-sca-review prepares a review,
+  // The runs that print a prompt for an agent: --llm-auto-review prepares a review,
   // --llm-review starts one, and --llm-handback carries it on, down to the settled report
   // a reviewer sends on. Asked once, so every such mode is treated alike.
   const prompts = Boolean(
-    values["llm-review"] || values["llm-handback"] || values["llm-sca-review"]
+    values["llm-review"] || values["llm-handback"] || values["llm-auto-review"]
   );
   // Their output IS the document, so the record of how it was produced - the Setup and
   // Activity sections - is noise in it. The report's own header and prompt are not feed
@@ -722,7 +722,7 @@ export async function main(argv) {
 
   // A bad --checks-only/--checks-skip id is a bad command line whatever the run does with
   // it, so it is answered before any branch below - including the two that print a prompt.
-  // --llm-sca-review records these very flags for the review it prepares: an id nobody can
+  // --llm-auto-review records these very flags for the review it prepares: an id nobody can
   // run would travel into it, and the review the preparation starts would fail on it.
   const checkProblem = checkIdProblem(values, checkIds);
   if (checkProblem) {
@@ -731,7 +731,7 @@ export async function main(argv) {
   }
 
   // A skip names part of the --llm-review prompt to leave out, so it says nothing without a
-  // review to cut down. Two flags take them, not one: --llm-sca-review prepares a review
+  // review to cut down. Two flags take them, not one: --llm-auto-review prepares a review
   // and records them for the review its hand-back starts. The loop's later passes need none - the
   // run they belong to recorded them, and every pass after reads that. Refused FIRST, so
   // every guard below can assume a skip implies one of the two.
@@ -740,11 +740,11 @@ export async function main(argv) {
   if (
     values["llm-skip-sweep"] &&
     !values["llm-review"] &&
-    values["llm-sca-review"] === undefined
+    values["llm-auto-review"] === undefined
   ) {
     writeToStderr(
       "--llm-skip-sweep names part of the --llm-review prompt to leave out, so it needs " +
-        "--llm-review, or --llm-sca-review to hand to the review it prepares: a run that " +
+        "--llm-review, or --llm-auto-review to hand to the review it prepares: a run that " +
         "prints its report has no prompt to cut down.\n"
     );
     return 2;
@@ -753,14 +753,14 @@ export async function main(argv) {
   if (
     skips.length &&
     !values["llm-review"] &&
-    values["llm-sca-review"] === undefined
+    values["llm-auto-review"] === undefined
   ) {
     const many = skips.length > 1;
     writeToStderr(
       `${listOf(skips.map((flag) => `--${flag}`))} ${many ? "name parts" : "names part"} ` +
         `of the --llm-review prompt to leave out, so ${many ? "they need" : "it needs"} ` +
         "--llm-review, or " +
-        "--llm-sca-review to hand to the review it prepares: a run that prints its " +
+        "--llm-auto-review to hand to the review it prepares: a run that prints its " +
         "report has no prompt to cut down.\n"
     );
     return 2;
@@ -779,13 +779,14 @@ export async function main(argv) {
     return 2;
   }
 
-  // --llm-sca-review prepares a review and starts it itself, so it shares nothing with the
-  // flags below and is settled here, in full, before any of them are read.
-  if (values["llm-sca-review"]) {
+  // --llm-auto-review works out which review an agent runs from what it is given: an .xpi is
+  // reviewed as --llm-review reviews it, and a submission folder is prepared, which starts its
+  // review itself. Settled here, in full, before any of the flags below are read.
+  if (values["llm-auto-review"]) {
     const given = SCA_FLAGS.filter((f) => values[f]);
     if (given.length) {
       writeToStderr(
-        `--llm-sca-review works out ${listOf(given.map((f) => `--${f}`))} for you, ` +
+        `--llm-auto-review works out ${listOf(given.map((f) => `--${f}`))} for you, ` +
           "so it cannot be given them. Drop them, or run --llm-review with the ones you " +
           "already have.\n"
       );
@@ -793,53 +794,57 @@ export async function main(argv) {
     }
     if (values["llm-review"] || values["llm-handback"]) {
       writeToStderr(
-        "--llm-sca-review starts its own review, so it cannot be combined with the " +
+        "--llm-auto-review starts its own review, so it cannot be combined with the " +
           "flags that run or settle one.\n"
       );
       return 2;
     }
     if (format === "json") {
       writeToStderr(
-        "--llm-sca-review is text only: it prints a prompt and no report, which is not " +
+        "--llm-auto-review is text only: it prints a prompt and no report, which is not " +
           "what --report-format json produces.\n"
       );
       return 2;
     }
-    // This flag does not take the folder - it changes what the ADD-ON ARGUMENT means, from
-    // the add-on to review to the submission holding one. So the argument is required here
+    // The flag changes what the ADD-ON ARGUMENT means, so the argument is required here
     // exactly as it is for a review, and refused in the plural for the same reason.
+    const takes =
+      "--llm-auto-review reviews an .xpi file, or prepares a submission folder holding " +
+      "one .xpi and the archive of its source";
     if (positionals.length === 0) {
-      writeToStderr(
-        "--llm-sca-review reads the add-on argument as a submission folder, and none was " +
-          "given. Name the folder holding the built .xpi and the archive of its source.\n"
-      );
+      writeToStderr(`${takes}, and neither was given.\n`);
       return 2;
     }
     if (positionals.length > 1) {
       writeToStderr(
-        `Only one submission can be prepared at a time, and ${positionals.length} were ` +
+        `Only one submission can be reviewed at a time, and ${positionals.length} were ` +
           `given: ${positionals.map((p) => `"${p}"`).join(", ")}. If the path contains ` +
           "spaces, quote it.\n"
       );
       return 2;
     }
-    const folder = positionals[0];
-    // Asked before scaSubmission reads it, so a path that is not a folder at all is
-    // answered in this tool's words rather than through a readdir errno.
-    if (!pointsAtFolder(path.resolve(folder))) {
-      writeToStderr(
-        `--llm-sca-review reads the add-on argument as a folder, and "${folder}" is not ` +
-          "one. It is the submission folder - the one holding the built .xpi and the " +
-          "archive of its source.\n"
-      );
+    // Asked of the path itself, not of where a link leads: a submission is the file or the
+    // folder itself.
+    const target = fs.lstatSync(path.resolve(positionals[0]), {
+      throwIfNoEntry: false,
+    });
+    if (target?.isFile() && isAddonFile(positionals[0])) {
+      // Reviewed as --llm-review reviews it, by the same guards and the same start below.
+      values["llm-review"] = true;
+      delete values["llm-auto-review"];
+    } else if (!target?.isDirectory()) {
+      writeToStderr(`${takes}, and "${positionals[0]}" is neither.\n`);
       return 2;
     }
+  }
+  if (values["llm-auto-review"]) {
+    const folder = positionals[0];
     let submission;
     try {
       submission = scaSubmission(folder);
     } catch (err) {
       // The flag's name is this layer's: submission.js says what it found in the folder.
-      writeToStderr(`--llm-sca-review "${folder}": ${err.message}\n`);
+      writeToStderr(`--llm-auto-review "${folder}": ${err.message}\n`);
       return 2;
     }
     // The caches are cleared by the run that was given --cache-clear, never by a later one:
@@ -872,9 +877,9 @@ export async function main(argv) {
       rethrowIfFatal(err);
       writeToStderr(
         err.code === "EEXIST"
-          ? `--llm-sca-review creates a fresh work folder, and "${work}" is already there. ` +
+          ? `--llm-auto-review creates a fresh work folder, and "${work}" is already there. ` +
               "Run it again for a folder of its own.\n"
-          : `--llm-sca-review could not create the work folder "${work}" (${err.code ?? err.message}).\n`
+          : `--llm-auto-review could not create the work folder "${work}" (${err.code ?? err.message}).\n`
       );
       return 2;
     }
@@ -1040,7 +1045,7 @@ export async function main(argv) {
     writeToStderr(`The work folder "${workFolder}" must not exist.\n`);
     return 2;
   }
-  // A source review an agent runs is prepared as --llm-sca-review's is, from the build
+  // A source review an agent runs is prepared as --llm-auto-review's is, from the build
   // analysis on: the extracted source is copied into the work folder, and the build is worked
   // out before the review starts.
   if (values["llm-review"] && values["sca-extracted"]) {
@@ -1065,9 +1070,9 @@ export async function main(argv) {
 /**
  * Start the preparation of a source review given --sca-extracted, at `analyze`: the work folder
  * created, the source copied into its `sca/` (copySource), and the build analysis's prompt
- * printed - the step --llm-sca-review reaches once its reader has extracted the archive. An
+ * printed - the step --llm-auto-review reaches once its reader has extracted the archive. An
  * Experiment the review would reject is not prepared (experimentGate): its review starts at
- * once, as an XPI review, as --llm-sca-review's does.
+ * once, as an XPI review, as --llm-auto-review's does.
  * @param {Record<string, string|boolean>} values  Parsed and checked.
  * @param {string} addonPath  The built add-on, absolute.
  * @param {string} work  The work folder to create, absolute.
@@ -1188,7 +1193,7 @@ async function experimentGate(addon, values) {
 
 /**
  * Run a review from parsed values: the one start every caller shares. A command line naming
- * an add-on (main), --llm-sca-review for an Experiment the review rejects (main), the
+ * an add-on (main), --llm-auto-review for an Experiment the review rejects (main), the
  * hand-back that finds a source code review prepared (runPreparePass), which builds the
  * values from the preparation's record, and the hand-back that restarts an aborted source
  * review as an XPI review (runLoopPass), from the flags that review recorded.

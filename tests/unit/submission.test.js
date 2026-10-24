@@ -1,4 +1,4 @@
-// What --llm-sca-review accepts as a submission folder: one built add-on and one archive of
+// What --llm-auto-review accepts as a submission folder: one built add-on and one archive of
 // the source it was built from. The rest of that command is a prompt, so this is the only
 // part of it that can be wrong about the submission - and being wrong here sends its reader
 // to review a file nobody submitted.
@@ -79,6 +79,6 @@ test("a folder that is not there says that, naming no flag", () => {
     () => scaSubmission(path.join(os.tmpdir(), "webext-linter-no-such-folder")),
     (err) =>
       /^not a readable folder:/.test(err.message) &&
-      !err.message.includes("--llm-sca-review")
+      !err.message.includes("--llm-auto-review")
   );
 });

@@ -118,7 +118,7 @@ export function buildRescued(work, root) {
 }
 
 /**
- * Prepare a source code review for real: the work folder a --llm-sca-review run creates, the
+ * Prepare a source code review for real: the work folder a --llm-auto-review run creates, the
  * source extracted into its sca/ and handed back as the root, beside a build report judged
  * safe, the reviewer letting the agent build, and every hand-back after it.
  * Its run cache is `cache`, a seeded folder named as --cache-work-dir in its record, so every

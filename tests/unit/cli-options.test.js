@@ -313,7 +313,7 @@ test("--sca-experiments naming the extracted archive itself is a usage error (ex
 });
 
 // The format decides how everything below it is routed, so it is checked where it is
-// read - before the --llm-sca-review branch, which would otherwise print nothing at all
+// read - before the --llm-auto-review branch, which would otherwise print nothing at all
 // and exit 0 for an unknown value.
 test("an unknown --report-format is refused on every path (exit 2)", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-fmt-"));
@@ -321,7 +321,7 @@ test("an unknown --report-format is refused on every path (exit 2)", () => {
   fs.writeFileSync(path.join(dir, "source.tar.gz"), "");
   for (const args of [
     ["some.xpi", "--report-format", "xml"],
-    [dir, "--llm-sca-review", "--report-format", "xml"],
+    [dir, "--llm-auto-review", "--report-format", "xml"],
   ]) {
     const r = run(args);
     assert.equal(r.code, 2, args.join(" "));

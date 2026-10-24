@@ -1,4 +1,4 @@
-// CLI-contract tests of --llm-sca-review: the preparation, what it records, and the review
+// CLI-contract tests of --llm-auto-review: the preparation, what it records, and the review
 // its hand-back starts.
 
 import { test } from "node:test";
@@ -30,16 +30,16 @@ import {
   unwrapped,
 } from "../cli-run.js";
 
-// ---- --llm-sca-review ----
+// ---- --llm-auto-review ----
 // The half of an SCA review a program can do: which file is the add-on, which is the
 // source, and where it is extracted. It reviews nothing - it cannot, until its reader has
 // opened the source archive - so its whole output is that prompt, and every run after it is
 // a hand-back of the work folder, which starts the review itself once the preparation is
 // done.
 
-test("--llm-sca-review prints the prompt, names both files, and reviews nothing", () => {
+test("--llm-auto-review prints the prompt, names both files, and reviews nothing", () => {
   const dir = submissionFolder();
-  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /── SCA Review Prompt ──/);
   // A name on its own line and its value beneath it, whole: the steps name the values
@@ -72,9 +72,9 @@ test("--llm-sca-review prints the prompt, names both files, and reviews nothing"
 // as EXTRACT_TO, writes its record and an empty review file, and hands the folder back with
 // --llm-handback. That hand-back derives the root in sca/ and asks for the build judgement
 // alone.
-test("--llm-sca-review creates the work folder and hands it back", () => {
+test("--llm-auto-review creates the work folder and hands it back", () => {
   const dir = submissionFolder();
-  const r = run([dir, "--llm-sca-review"]);
+  const r = run([dir, "--llm-auto-review"]);
   assert.equal(r.code, 0, r.stderr);
   const made = fs
     .readdirSync(dir)
@@ -119,7 +119,7 @@ test("the hand-back that finishes the preparation starts the review", () => {
   const dir = submissionFolder();
   const prepared = run([
     dir,
-    "--llm-sca-review",
+    "--llm-auto-review",
     ...OFFLINE_FLAGS,
     "--checks-only",
     "unused-files",
@@ -150,7 +150,7 @@ test("the hand-back that finishes the preparation starts the review", () => {
 // of the agent's: the build is held safe, and the reviewer answers the build question.
 test("a reviewer who builds it themselves starts a review they build for", () => {
   const dir = submissionFolder();
-  const prepared = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+  const prepared = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(prepared.code, 0, prepared.stderr);
   const work = workOf(prepared.stdout);
   const handed = handBackRoots(prepared.stdout, {
@@ -187,7 +187,7 @@ test("the preparation records the flags its review is started with", () => {
       )
     );
   const prepared = (...flags) => {
-    const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS, ...flags]);
+    const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS, ...flags]);
     assert.equal(r.code, 0, r.stderr);
     return r;
   };
@@ -250,7 +250,7 @@ test("the preparation records --cache-work-dir for its review", () => {
   fs.writeFileSync(kept, "{}");
   const r = run([
     dir,
-    "--llm-sca-review",
+    "--llm-auto-review",
     "--cache-clear",
     ...cacheFlags(freshFixtureCache(), cdnMissCache(FIXTURES_DIR)),
     "--cache-work-dir",
@@ -268,11 +268,11 @@ test("the preparation records --cache-work-dir for its review", () => {
 
 // A skip names part of the prompt the PREPARED review will print, so it belongs to the
 // review the preparation starts rather than to this run - which prints no such prompt.
-test("--llm-sca-review hands a skip to the review it prepares", () => {
+test("--llm-auto-review hands a skip to the review it prepares", () => {
   const dir = submissionFolder();
   const r = run([
     dir,
-    "--llm-sca-review",
+    "--llm-auto-review",
     ...OFFLINE_FLAGS,
     "--llm-skip-summary",
   ]);
@@ -286,7 +286,7 @@ test("--llm-sca-review hands a skip to the review it prepares", () => {
       .replace(/sca-review-addon-\d{4}-\d{2}-\d{2}T[\d-]+Z/g, "<WORK>");
   assert.equal(
     prompt(r.stdout),
-    prompt(run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]).stdout)
+    prompt(run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]).stdout)
   );
   handBackRoots(r.stdout);
   assert.deepEqual(readJson(workOf(r.stdout), "state").run.skip, [
@@ -298,7 +298,7 @@ test("--llm-sca-review hands a skip to the review it prepares", () => {
 // A hand-back that cannot be read is refused to the agent, with the folder as it was.
 test("a preparation refuses an unanswered hand-back", () => {
   const dir = submissionFolder();
-  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
   const unextracted = run(["--llm-handback", work]);

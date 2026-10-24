@@ -2,7 +2,7 @@
 // does to it, and which prompt comes next.
 //
 // Two runs start a preparation, and from `analyze` on they run the same steps. One given a
-// submission folder (--llm-sca-review) has the source archive extracted into the work folder's
+// submission folder (--llm-auto-review) has the source archive extracted into the work folder's
 // `sca/` and its Experiment folder named first (`unpack`), and its hand-back derives the package
 // root inside it, that folder known (src/addon/package-root.js). One given the extracted source
 // (--llm-review --sca-extracted) has it copied into `sca/` by the linter, and starts at
@@ -873,7 +873,7 @@ function rescue(work, record, asked, match) {
 
 /**
  * The source every review given --sca-extracted works on: the whole of that folder copied
- * into the work folder's `sca/`, as --llm-sca-review's reader extracts the archive there, and
+ * into the work folder's `sca/`, as --llm-auto-review's reader extracts the archive there, and
  * the folders given inside it mapped to their place in the copy. The folder given is read
  * only by the copy: from here on the review, and the preparation before it, read the copy.
  * @param {string} work  The work folder.

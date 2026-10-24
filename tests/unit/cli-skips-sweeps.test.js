@@ -193,7 +193,7 @@ test("a skip without --llm-review is refused", () => {
   const one = run([addon, ...OFFLINE_FLAGS, "--llm-skip-summary"]);
   assert.equal(one.code, 2);
   assert.match(one.stderr, /--llm-skip-summary names part/);
-  assert.match(one.stderr, /it needs --llm-review, or --llm-sca-review/);
+  assert.match(one.stderr, /it needs --llm-review, or --llm-auto-review/);
 
   // --llm-skip-sweep is not one of them - it names no `skip:` step, so it feeds the
   // `run: sweep` condition instead - but the rule it lives under is the same one.

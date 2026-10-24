@@ -51,7 +51,7 @@ function permittedPrompt(vulns) {
   const dir = submissionFolder();
   const r = run([
     dir,
-    "--llm-sca-review",
+    "--llm-auto-review",
     ...OFFLINE_FLAGS,
     "--cache-work-dir",
     auditCache(vulns),
@@ -200,7 +200,7 @@ test("each details block holds every row of the block before it", () => {
   const dir = submissionFolder();
   const first = run([
     dir,
-    "--llm-sca-review",
+    "--llm-auto-review",
     ...OFFLINE_FLAGS,
     "--cache-work-dir",
     auditCache({ "lint-pebble@0.4.0": [] }),
@@ -387,7 +387,7 @@ test("the hand-back prints a vulnerable source's rescue", () => {
 // and then puts the question. Its hand-back carries the preparation on.
 test("a safe build prints the Build Review Details and the permission question", () => {
   const dir = submissionFolder();
-  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
   const sca = headerValue(r.stdout, "EXTRACT_TO");
@@ -429,7 +429,7 @@ test("a safe build prints the Build Review Details and the permission question",
 // question put. The hand-back runs without the switch, so the record decides.
 test("WEBEXT_LINTER_AGENT_BUILDS=1 skips the permission question", () => {
   const dir = submissionFolder();
-  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS], {
+  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS], {
     WEBEXT_LINTER_AGENT_BUILDS: "1",
   });
   assert.equal(r.code, 0, r.stderr);
@@ -455,7 +455,7 @@ test("--llm-agent-builds is an unknown option", () => {
   const dir = submissionFolder();
   const r = run([
     dir,
-    "--llm-sca-review",
+    "--llm-auto-review",
     "--llm-agent-builds",
     ...OFFLINE_FLAGS,
   ]);
@@ -469,7 +469,7 @@ test("--llm-agent-builds is an unknown option", () => {
 // its own file and line, in the archive's keyspace, like one inside it.
 test("an issue above the package root is reported at its own place in the archive", () => {
   const dir = submissionFolder();
-  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
   const sca = headerValue(r.stdout, "EXTRACT_TO");
@@ -516,7 +516,7 @@ test("an unsafe build is reported where the reviewer holds it unsafe", () => {
     [words, words],
   ]) {
     const dir = submissionFolder();
-    const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+    const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
     assert.equal(r.code, 0, r.stderr);
     const work = workOf(r.stdout);
     const handed = handBackRoots(r.stdout, { safety: "unsafe", managers });

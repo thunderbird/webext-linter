@@ -482,7 +482,7 @@ async function reviewSubmission(opts, work, prepared) {
     // --allow-experiments: a bundled experiment whose name matches a known draft
     // MUST be the unmodified upstream copy, which experiment-modified enforces.
     // The verdict (experimentVerdict) is read from the review's own xpi/, by the one rule
-    // --llm-sca-review asks before it prepares a review. It fetches the allow-list only
+    // --llm-auto-review asks before it prepares a review. It fetches the allow-list only
     // when a group actually bundles files (a bare experiment_apis declaration stays
     // offline -> unsupported, and the step's line is the only sign of it), and a fetch
     // failure throws so the run hard-exits (2) rather than letting a missing allow-list

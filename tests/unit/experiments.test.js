@@ -588,7 +588,7 @@ test("resolveExperimentsZip downloads a list older than a day again", async (t) 
   assert.equal(again.source, "cache:main");
 });
 
-// The verdict --llm-sca-review asks before it prepares a review, by the rule the review's own
+// The verdict --llm-auto-review asks before it prepares a review, by the rule the review's own
 // step asks it by, of the .xpi extracted to a temporary folder.
 test("experimentVerdict reads an extracted .xpi as the review would", async () => {
   const fixtures = path.join(here, "..", "addons");

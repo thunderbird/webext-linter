@@ -20,6 +20,7 @@ import {
   headerValue,
   run,
   workOfReviewFile,
+  reviewFile,
   defaultFolderOf,
   submissionFolder,
   packAddon,
@@ -38,7 +39,7 @@ test("the preparation quotes an argument that carries whitespace", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl sub mission-"));
   packAddon(path.join(dir, "addon  v2.xpi"));
   fs.writeFileSync(path.join(dir, "src.tar.gz"), "");
-  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   // The values above the command are read by eye, not typed, so they carry no quotes, and
   // keep the run of spaces the file name has.
@@ -63,7 +64,7 @@ test("the preparation quotes an argument that carries whitespace", () => {
 // name: the review starts in it, and the prompt names its files by that name.
 test("a hand-back takes its folder as one absolute name", () => {
   const dir = submissionFolder();
-  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
   const handed = handBackRoots(r.stdout, {
@@ -75,12 +76,12 @@ test("a hand-back takes its folder as one absolute name", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// An Experiment the review would reject is not worth preparing: --llm-sca-review asks the
+// An Experiment the review would reject is not worth preparing: --llm-auto-review asks the
 // review's own verdict of the .xpi first, and where it rejects, starts that review at once -
 // the same review --llm-review of the .xpi starts, which the reject aborts, so its first
 // prompt is the close. An Experiment
 // the review accepts is prepared as any submission is.
-test("--llm-sca-review starts the review of an Experiment it would reject", () => {
+test("--llm-auto-review starts the review of an Experiment it would reject", () => {
   const submission = (fixture) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-exp-gate-"));
     const zip = new AdmZip();
@@ -90,7 +91,7 @@ test("--llm-sca-review starts the review of an Experiment it would reject", () =
     return dir;
   };
   const dir = submission("experiment-disallowed");
-  const r = run([dir, "--llm-sca-review", ...OFFLINE_FLAGS]);
+  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 1, r.stderr);
   assert.doesNotMatch(r.stdout, /SCA Review Prompt/);
   assert.match(r.stdout, /── LLM Prompt ──/);
@@ -137,7 +138,7 @@ test("--llm-sca-review starts the review of an Experiment it would reject", () =
     const allowed = submission(fixture);
     const prepared = run([
       allowed,
-      "--llm-sca-review",
+      "--llm-auto-review",
       ...OFFLINE_FLAGS,
       ...extra,
     ]);
@@ -156,7 +157,7 @@ test("the preparation records every cache as an absolute path", () => {
   );
   const r = spawnSync(
     process.execPath,
-    [REVIEW, dir, "--llm-sca-review", "--cache-schema-dir", "mycache"],
+    [REVIEW, dir, "--llm-auto-review", "--cache-schema-dir", "mycache"],
     { encoding: "utf8", cwd }
   );
   assert.equal(r.status, 0, r.stderr);
@@ -195,11 +196,11 @@ test("the preparation records every cache as an absolute path", () => {
 });
 
 // A check id nobody can run is a bad command line whatever the run does with it - and
-// --llm-sca-review would record it for the review it starts, which would then fail on it.
+// --llm-auto-review would record it for the review it starts, which would then fail on it.
 // Answered before any branch, so no prompt is printed at all.
 test("an unknown check id is refused before a prompt is printed", () => {
   const dir = submissionFolder();
-  const sca = run([dir, "--llm-sca-review", "--checks-only", "no-such-check"]);
+  const sca = run([dir, "--llm-auto-review", "--checks-only", "no-such-check"]);
   assert.equal(sca.code, 2);
   assert.match(sca.stderr, /Unknown check "no-such-check"/);
   assert.doesNotMatch(sca.stdout, /SCA Review Prompt/);
@@ -219,43 +220,89 @@ test("an unknown check id is refused before a prompt is printed", () => {
 
 // Each way the flag cannot be used, refused before it prints anything - it starts its own
 // review, so it shares no run with the flags that do.
-test("--llm-sca-review refuses what it cannot be combined with", () => {
+test("--llm-auto-review refuses what it cannot be combined with", () => {
   const dir = submissionFolder();
   const cases = [
     [["--sca-package-root", "src"], /works out --sca-package-root for you/],
     [["--llm-review"], /starts its own review/],
     [["--llm-handback", "work"], /starts its own review/],
-    [["--report-format", "json"], /--llm-sca-review is text only/],
+    [["--report-format", "json"], /--llm-auto-review is text only/],
     // A SECOND add-on argument: the flag reads the first one as the submission.
     [
       ["x.xpi"],
-      /Only one submission can be prepared at a time, and 2 were given/,
+      /Only one submission can be reviewed at a time, and 2 were given/,
     ],
   ];
   for (const [extra, message] of cases) {
-    const r = run([dir, "--llm-sca-review", ...extra]);
+    const r = run([dir, "--llm-auto-review", ...extra]);
     assert.equal(r.code, 2, extra.join(" "));
     assert.match(r.stderr, message, extra.join(" "));
     assert.doesNotMatch(r.stdout, /SCA Review Prompt/, extra.join(" "));
   }
   // And the add-on argument it reads is REQUIRED: this flag changes what that argument
   // means, it does not carry the folder itself.
-  const none = run(["--llm-sca-review"]);
+  const none = run(["--llm-auto-review"]);
   assert.equal(none.code, 2);
-  assert.match(none.stderr, /as a submission folder, and none was given/);
+  assert.match(
+    none.stderr,
+    /reviews an \.xpi file, or prepares a submission folder/
+  );
+  assert.match(none.stderr, /and neither was given/);
   assert.doesNotMatch(none.stdout, /SCA Review Prompt/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// An .xpi file is reviewed as --llm-review reviews it: the same first prompt, in a work folder
+// of the same kind beside it. Anything that is neither an .xpi nor a folder is refused, and
+// an unpacked add-on folder is no submission. The flag it replaced is no option any more.
+test("--llm-auto-review reviews an .xpi as --llm-review does, and refuses the rest", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-auto-"));
+  const xpi = path.join(dir, "addon.xpi");
+  packAddon(xpi);
+  const auto = run([xpi, "--llm-auto-review", ...OFFLINE_FLAGS]);
+  assert.equal(auto.code, 0, auto.stderr);
+  const plain = run([xpi, "--llm-review", ...OFFLINE_FLAGS]);
+  assert.equal(plain.code, 0, plain.stderr);
+  const workIn = (out) => workOfReviewFile(reviewFile(out.stdout));
+  assert.match(path.basename(workIn(auto)), /^xpi-review-addon-/);
+  // The prompt, from its heading on: npm echoes the command line above it.
+  const prompt = (out) =>
+    out.stdout
+      .slice(out.stdout.indexOf("── LLM Prompt ──"))
+      .split(workIn(out))
+      .join("<WORK>");
+  assert.match(auto.stdout, /── LLM Prompt ──/);
+  assert.equal(prompt(auto), prompt(plain));
+
+  const notXpi = path.join(dir, "addon.zip");
+  fs.writeFileSync(notXpi, "x");
+  const unpacked = path.join(ROOT, "tests", "addons", "clean");
+  for (const given of [notXpi, path.join(dir, "missing.xpi"), unpacked]) {
+    const r = run([given, "--llm-auto-review", ...OFFLINE_FLAGS]);
+    assert.equal(r.code, 2, given);
+    assert.match(
+      r.stderr,
+      given === unpacked
+        ? /a submission folder holds exactly one \.xpi/
+        : /and ".*" is neither/,
+      given
+    );
+  }
+  const old = run([xpi, "--llm-sca-review"]);
+  assert.equal(old.code, 2);
+  assert.match(old.stderr, /Unknown option '--llm-sca-review'/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // A folder that is not a submission fails here, where the reviewer can see it, rather than
 // handing back a command aimed at a file nobody submitted.
-test("--llm-sca-review refuses a folder that is not a submission", () => {
+test("--llm-auto-review refuses a folder that is not a submission", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-empty-"));
-  const r = run([dir, "--llm-sca-review"]);
+  const r = run([dir, "--llm-auto-review"]);
   assert.equal(r.code, 2);
   // The flag's name and the value that was given are the front-end's half of the message;
   // what was found in the folder is the loader's.
-  assert.match(r.stderr, new RegExp(`--llm-sca-review "${dir}":`));
+  assert.match(r.stderr, new RegExp(`--llm-auto-review "${dir}":`));
   assert.match(
     r.stderr,
     /a submission folder holds exactly one \.xpi and exactly one other archive/

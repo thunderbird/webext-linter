@@ -254,7 +254,7 @@ export const readJson = (work, name) =>
  * Do what the `unpack` prompt asks, the way its reader would: extract the source into
  * EXTRACT_TO (with an Experiment folder `experimentsFolder` in it, where given), and run the
  * hand-back it prints, which derives the root and prints the `analyze` prompt.
- * @param {string} stdout  The --llm-sca-review run's output.
+ * @param {string} stdout  The --llm-auto-review run's output.
  * @param {{experimentsFolder?: string, typed?: (work: string) => string}} [opts]  As handBackRoots.
  * @returns {{code: number, stdout: string, stderr: string}}  The hand-back's run.
  */
@@ -332,7 +332,7 @@ export function answerPermission(stdout, decision = "Build it myself") {
  * build judged safe), and run the hand-back the `analyze` prompt prints. Where that prints the
  * permission prompt, answer it too (the agent let build) and run its hand-back - which, with
  * nothing to rescue, starts the review.
- * @param {string} stdout  The --llm-sca-review run's output.
+ * @param {string} stdout  The --llm-auto-review run's output.
  * @param {{experimentsFolder?: string, typed?: (work: string) => string, safety?: string,
  *   managers?: string}} [opts]  The Experiment folder to answer, relative to the root, for
  *   an add-on that declares Experiments, how the work folder is typed, where not as the

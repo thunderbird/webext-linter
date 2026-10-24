@@ -124,7 +124,7 @@ test("--work-folder is an unknown option", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-work-flag-"));
   for (const argv of [
     ["x.xpi", "--work-folder", dir],
-    [dir, "--llm-sca-review", "--work-folder", dir],
+    [dir, "--llm-auto-review", "--work-folder", dir],
     ["--llm-handback", dir, "--work-folder", dir],
   ]) {
     const r = run(argv);
@@ -177,7 +177,7 @@ test("--sca-extracted must not include the add-on", () => {
 
 // The work folder says what kind of review it holds: `xpi-review-` for a review of the XPI
 // alone, plain or with --llm-review, and `sca-review-` for a source code review, whether it
-// is prepared with --llm-sca-review or started with --sca-extracted.
+// is prepared with --llm-auto-review or started with --sca-extracted.
 test("the work folder is named by the kind of review", () => {
   const madeBeside = (target, args) => {
     const parent = path.dirname(target);
@@ -213,7 +213,7 @@ test("the work folder is named by the kind of review", () => {
   zip.writeZip(path.join(dir, "a.xpi"));
   fs.writeFileSync(path.join(dir, "src.zip"), "");
   const before = new Set(fs.readdirSync(dir));
-  const prepared = run(["--llm-sca-review", dir]);
+  const prepared = run(["--llm-auto-review", dir]);
   assert.equal(prepared.code, 0, prepared.stderr);
   const made = fs.readdirSync(dir).filter((n) => !before.has(n));
   assert.equal(made.length, 1);
@@ -269,7 +269,7 @@ test("an .xpi or a source archive given through a link is refused", () => {
   // A submission folder named through a link is accepted ...
   const folderLink = path.join(dir, "submission");
   fs.symlinkSync(real, folderLink);
-  const prepared = run(["--llm-sca-review", folderLink]);
+  const prepared = run(["--llm-auto-review", folderLink]);
   assert.equal(prepared.code, 0, prepared.stderr);
   // ... but not a submission whose files are links.
   for (const name of ["a.xpi", "src.zip"]) {
@@ -283,7 +283,7 @@ test("an .xpi or a source archive given through a link is refused", () => {
         fs.copyFileSync(target, path.join(sub, file));
       }
     }
-    const refused = run(["--llm-sca-review", sub]);
+    const refused = run(["--llm-auto-review", sub]);
     assert.equal(refused.code, 2, name);
     assert.match(
       refused.stderr,
@@ -414,7 +414,7 @@ test("a folder flag is judged by where it lands, however it was spelled (exit 2 
 
 // One add-on per run. A second positional silently ignored is how an unquoted path with a
 // space in it would review the half before the space and say nothing about the rest - the
-// shape --llm-sca-review's printed command could produce.
+// shape --llm-auto-review's printed command could produce.
 test("a second positional is refused (exit 2)", () => {
   const r = run(["some.xpi", "another.xpi"]);
   assert.equal(r.code, 2);

@@ -1,4 +1,4 @@
-// What a source code submission looks like on disk, for --llm-sca-review: a folder holding
+// What a source code submission looks like on disk, for --llm-auto-review: a folder holding
 // the built add-on and an archive of the source it was built from.
 //
 // An SCA review needs the source archive's own paths, and nobody can write
@@ -23,6 +23,15 @@ import { extname } from "../util/files.js";
 
 /** The built add-on's extension - the one archive in the folder that is not the source. */
 const ADDON_EXTENSION = ".xpi";
+
+/**
+ * Whether a file name is a built add-on's, by the extension ATN gives one.
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function isAddonFile(name) {
+  return extname(name) === ADDON_EXTENSION;
+}
 
 /**
  * What counts as the SOURCE archive beside it. This module's own list, not the loader's

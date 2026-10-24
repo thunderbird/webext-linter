@@ -1733,7 +1733,7 @@ test("an authored text is re-wrapped, and its source line breaks do not survive"
 });
 
 // ---- the Review Details section ----
-// A block of NAMED values, the shape the --llm-sca-review prompt uses for its Submission
+// A block of NAMED values, the shape the --llm-auto-review prompt uses for its Submission
 // block: the prompt's steps point at these by name, so a name is what the section has to
 // print. An SCA review spans TWO artifacts and labels every locus [XPI]/[SCA], so the
 // block says what those are - and names the source as the values the run was GIVEN, since

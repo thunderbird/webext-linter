@@ -2290,7 +2290,7 @@ review-early-exit:
     unreproducible-build: Build process issues
     archive-is-xpi: Source archive contains the built XPI
 
-# The prompts that PREPARE a source code review: what --llm-sca-review, or --llm-review given
+# The prompts that PREPARE a source code review: what --llm-auto-review, or --llm-review given
 # --sca-extracted, prints, and what each --llm-handback run on the work folder it created prints after
 # it, until the preparation is done and that run starts the review itself (src/prepare/steps.js,
 # src/cli.js), whose first prompt it prints in place of one of these. No review is possible until
@@ -2301,7 +2301,7 @@ review-early-exit:
 # the source archive's own extraction goes (EXTRACT_TO, the work folder's sca/ - path math, not
 # archive reading), and the reader does what only opening the archive can settle: extracting it
 # there and naming the Experiment folder in it where the add-on declares Experiments (`unpack`,
-# --llm-sca-review only). The linter then derives the package root inside it, with that folder known
+# --llm-auto-review only). The linter then derives the package root inside it, with that folder known
 # (SCA_PACKAGE_ROOT, src/addon/package-root.js), as it does inside a --sca-extracted it copied into sca/, and from
 # `analyze` on both runs read the same prompts. The reader writes the build report
 # (SCA_BUILD_PROCESS), lists what the build reaches for outside the declared dependencies
@@ -2326,7 +2326,7 @@ review-early-exit:
 # checks report the lock and end the review late. Every audit of the run asks OSV through the
 # run's cache, so that review asks nothing the preparation already did (src/vendor/osv-cache.js).
 #
-# The step lists are prompts. `unpack` is printed by --llm-sca-review with the intro and the
+# The step lists are prompts. `unpack` is printed by --llm-auto-review with the intro and the
 # Submission values, `analyze` by the run that derived SCA_PACKAGE_ROOT (or first, with the intro, by
 # --llm-review given --sca-extracted), with SCA_SOURCE, SCA_PACKAGE_ROOT, SCA_BUILD_PROCESS and ANSWERS, `permission` by
 # the run that read the verdict, with ANSWERS and the Build Review Details

@@ -81,7 +81,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
   fs.rmSync(work, { recursive: true, force: true });
 
   // A rejected Experiment submitted WITH --sca-extracted is not prepared: the review rejects it
-  // from the add-on alone, so it starts at once, as --llm-sca-review's does, and its first
+  // from the add-on alone, so it starts at once, as --llm-auto-review's does, and its first
   // prompt is the close. No build report is asked for.
   const exp = path.join(ROOT, "tests", "addons", "experiment-disallowed-sca");
   const rejected = run([

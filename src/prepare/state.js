@@ -51,7 +51,7 @@ const READ_ONLY = 0o444;
 /**
  * Where a preparation stands, which is what the next hand-back of the folder does:
  *
- * - `unpack`: the source archive is to be extracted into `sca/` (--llm-sca-review only), and the
+ * - `unpack`: the source archive is to be extracted into `sca/` (--llm-auto-review only), and the
  *   Experiment folder in it named where the add-on declares Experiments. The next hand-back
  *   derives the package root inside it (src/addon/package-root.js) and moves on to `analyze`;
  * - `analyze`: the folders are known, in `sca/`, and the build is to be reported in build.md,
@@ -449,7 +449,7 @@ export function recordBoolean(value, what) {
 
 /**
  * The record of a preparation that has not started, with what the run that created the work
- * folder alone knows. Without folders it starts at `unpack` (--llm-sca-review, whose agent
+ * folder alone knows. Without folders it starts at `unpack` (--llm-auto-review, whose agent
  * extracts the source); with them at `analyze` (a review given --sca-extracted, whose source the
  * linter copied into `sca/`).
  * @param {Pick<PrepareRecord, "submission" | "flags" | "agentBuilds" | "roots">} known

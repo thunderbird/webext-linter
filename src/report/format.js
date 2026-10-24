@@ -494,7 +494,7 @@ function valueLines(entries) {
  * @param {string} list  Which prompt: one of SCA_PROMPT_STEPS.
  * @param {object} values
  * @param {boolean} [values.first]  The run's first prompt, which opens with the intro: the
- *   `unpack` prompt of --llm-sca-review, or the `analyze` prompt of a review given --sca-extracted.
+ *   `unpack` prompt of --llm-auto-review, or the `analyze` prompt of a review given --sca-extracted.
  * @param {{folder: string, xpi: string, source: string}} [values.submission]  From
  *   scaSubmission(), on the `unpack` prompt alone.
  * @param {string} [values.extractTo]  Beside `submission`: where the reader extracts the
@@ -615,7 +615,7 @@ export function schemaLines(meta, schemaCache) {
  * entry it is about (src/report/handback.js entriesFor), and a name printed with no step
  * behind it is an instruction with nothing to do.
  *
- * The paths are a block of NAMED values (valueLines), the shape the --llm-sca-review
+ * The paths are a block of NAMED values (valueLines), the shape the --llm-auto-review
  * prompt uses for its own Submission block.
  *
  * An SCA review spans TWO artifacts and the reader has to know which is which: the report
