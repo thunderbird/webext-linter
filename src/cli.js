@@ -25,7 +25,7 @@ import { runPipeline } from "./pipeline.js";
 import { loadRegistry } from "./checks/registry.js";
 import { isAddonFile, scaSubmission } from "./addon/submission.js";
 import { defaultWorkFolder, workPaths } from "./util/dest.js";
-import { claimFolder, keepClaims } from "./util/claims.js";
+import { keepClaims } from "./util/claims.js";
 import {
   PREPARE_STEP,
   recordBoolean,
@@ -50,6 +50,7 @@ import {
   relativeInside,
 } from "./addon/load.js";
 import { ARTIFACT_XPI } from "./lib/artifacts.js";
+import { loadTheXpi } from "./review/start.js";
 import { experimentVerdict } from "./experiments/verify.js";
 import { hasErrors } from "./report/finding.js";
 import {
@@ -894,13 +895,16 @@ export async function main(argv) {
       );
       return 2;
     }
+    let loaded;
     try {
-      claimFolder(work);
+      loaded = await loadTheXpi(
+        submission.xpi,
+        work,
+        pipelineOptsFromValues(values)
+      );
     } catch (err) {
       rethrowIfFatal(err);
-      writeToStderr(
-        `--llm-auto-review could not create the work folder "${work}" (${err.code ?? err.message}).\n`
-      );
+      writeToStderr(`${err.message}\n${red("verify failed")}\n`);
       return 2;
     }
     if (rejected) {
@@ -910,7 +914,8 @@ export async function main(argv) {
           { ...forwardedFlags(values), "llm-review": true },
           submission.xpi,
           work,
-          registry
+          registry,
+          { verification: loaded.verification }
         );
       } catch (err) {
         writeToStderr(`${err.message}\n${red("verify failed")}\n`);
@@ -1124,13 +1129,12 @@ async function startSourcePreparation(values, addonPath, work, registry) {
     writeToStderr(`${misfit}\n`);
     return 2;
   }
+  let loaded;
   try {
-    claimFolder(work);
+    loaded = await loadTheXpi(addonPath, work, pipelineOptsFromValues(values));
   } catch (err) {
     rethrowIfFatal(err);
-    writeToStderr(
-      `--llm-review could not create the work folder "${work}" (${err.code ?? err.message}).\n`
-    );
+    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
   if (rejected) {
@@ -1140,7 +1144,8 @@ async function startSourcePreparation(values, addonPath, work, registry) {
         { ...forwardedFlags(values), "llm-review": true },
         addonPath,
         work,
-        registry
+        registry,
+        { verification: loaded.verification }
       );
     } catch (err) {
       writeToStderr(`${err.message}\n${red("verify failed")}\n`);
@@ -1239,9 +1244,11 @@ async function experimentGate(addon, values) {
  * @param {string} workFolder  The work folder, absolute.
  * @param {import("./checks/registry.js").Registry} registry
  * @param {{downgradedFrom?: string,
- *   scaFolders?: import("./addon/package-root.js").ScaFolders}} [internal]  Pipeline options no
- *   command-line flag sets: the work folder of the source review an XPI review is restarted
- *   from, and the source folders a preparation left in the work folder.
+ *   scaFolders?: import("./addon/package-root.js").ScaFolders,
+ *   verification?: ?import("./experiments/verify.js").ExperimentVerification}} [internal]
+ *   Pipeline options no command-line flag sets: the work folder of the source review an XPI
+ *   review is restarted from, the source folders a preparation left in the work folder, and
+ *   the Experiment verdict of a load this run made.
  * @returns {Promise<import("./pipeline.js").PipelineResult>}
  */
 async function startReview(
@@ -1259,6 +1266,14 @@ async function startReview(
   if (values["cache-clear"]) {
     clearCaches(cacheDirs(opts));
   }
+  // A folder that holds the add-on's copy was loaded by the run that created it. Any other
+  // review starts with the load, here.
+  const loaded = fs.existsSync(workPaths(workFolder).xpi)
+    ? {}
+    : {
+        verification: (await loadTheXpi(addonPath, workFolder, opts))
+          .verification,
+      };
   return runPipeline({
     // Absolute from here on, like every other path opt (pipelineOptsFromValues).
     addonPath,
@@ -1266,6 +1281,7 @@ async function startReview(
     workFolder,
     registry,
     flags: forwardedFlags(values),
+    ...loaded,
     ...internal,
   });
 }

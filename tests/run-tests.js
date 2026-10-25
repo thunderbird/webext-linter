@@ -14,7 +14,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { runPipeline } from "../src/pipeline.js";
 import { pipelineOptsFromArgv } from "../src/cli.js";
 import { formatReview } from "../src/report/format.js";
 import {
@@ -29,6 +28,7 @@ import {
   cdnMissCache,
   fixtureCacheOpts,
   freshWorkFolder,
+  loadAndReview,
   osvEntries,
   popularityEntries,
   fixtureSources,
@@ -387,16 +387,16 @@ async function main() {
           ]);
           sources = { scaGiven, ...(scaMovedFrom ? { scaMovedFrom } : {}) };
         }
-        review = await runPipeline({
+        review = await loadAndReview({
           ...base,
           workFolder,
           addonPath: path.join(dir, "xpi"),
           ...sources,
         });
       } else {
-        // XPI mode: the fixture folder IS the add-on, and the pipeline loads it - the
+        // XPI mode: the fixture folder IS the add-on, loaded as every review loads it - the
         // harness hands over a path, never a pre-loaded artifact.
-        review = await runPipeline({ ...base, addonPath: dir });
+        review = await loadAndReview({ ...base, addonPath: dir });
       }
       problems = diff(expected, locationsByRule(review.findings));
       for (const [ext, fmt] of [

@@ -11,6 +11,7 @@ import { runPipeline, resolveReviewSchema } from "../../src/pipeline.js";
 import {
   fixtureCacheOpts,
   freshWorkFolder,
+  loadAndReview,
   osvEntries,
   popularityEntries,
   seedDownload,
@@ -26,10 +27,10 @@ import { allSchemaBranches, cachedZipPath } from "../../src/schema/fetch.js";
 // library-hash fetches all hit disk - these runs stay offline.
 const OFFLINE = fixtureCacheOpts();
 
-/** runPipeline in a fresh work folder of its own, as every review gets one - unless the
+/** A review in a fresh work folder of its own, loaded first as every review is - unless the
  *  test names the folder itself. */
 function runReview(opts) {
-  return runPipeline({ workFolder: freshWorkFolder(), ...opts });
+  return loadAndReview(opts);
 }
 
 function tmpAddon(files) {

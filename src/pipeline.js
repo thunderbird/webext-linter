@@ -94,7 +94,7 @@ import { experimentVerdict } from "./experiments/verify.js";
 import { debug, progress, report, warn, FEED } from "./util/log.js";
 import { DEFAULT_CACHE, SOURCES_CACHE } from "./config.js";
 import { rethrowIfFatal, wiringError } from "./lib/errors.js";
-import { claimFolder, claimNames, keepClaims } from "./util/claims.js";
+import { claimNames, keepClaims } from "./util/claims.js";
 import { reviewData } from "./review/products.js";
 import { LOCK_AUDIT_LISTS, vulnerabilityCounts } from "./prepare/audit.js";
 import { BUILD_RESULT } from "./prepare/state.js";
@@ -169,7 +169,8 @@ export const SETUP_STEPS = Object.freeze([
  *   or an agent it instructs, creates lives there under a bare name (src/util/dest.js
  *   workPaths). REQUIRED, and not defaulted here: the front-end names it (beside the add-on,
  *   src/util/dest.js defaultWorkFolder), and a caller that forgot would otherwise put a review somewhere
- *   nobody chose. Created if missing; nothing already in it is overwritten.
+ *   nobody chose. The load created it and put the add-on's copy in its xpi/
+ *   (src/review/start.js loadTheXpi); nothing already in it is overwritten.
  * @property {string} [schemaCache]
  * @property {string} [workCache]  The folder the run keeps its cache in, absolute, when it
  *   names one (--cache-work-dir, tests only): otherwise the work folder's (runCache).
@@ -180,6 +181,9 @@ export const SETUP_STEPS = Object.freeze([
  * @property {boolean} [eslint]  Run the opt-in ESLint code-sanity check (off by
  *   default); when unset, the code-sanity check is skipped entirely.
  * @property {boolean} [allowExperiments]
+ * @property {?import("./experiments/verify.js").ExperimentVerification} [verification]  The
+ *   Experiment verdict the load reached in this run (loadTheXpi), null for an add-on that
+ *   declares none. Absent where an earlier run loaded the add-on, which is then asked again.
  * @property {boolean} [warningsAsErrors]  Read every warning as an error for this review
  *   (--warnings-as-errors): the band the registry hands out IS an error, so the report,
  *   the tally, the early exit and the exit code all follow (src/checks/registry.js
@@ -236,9 +240,9 @@ export const SETUP_STEPS = Object.freeze([
 /**
  * Run the review pipeline and return the structured result.
  *
- * The review's work folder is claimed first, before anything is read: created if missing,
- * checked to be writable, and every name this run will create there checked to be free
- * (claimWorkFolder). A plain review creates only the shipped add-on's copy. A --llm-review
+ * The review's work folder is claimed first, before anything is read: checked to be writable,
+ * and every name this run will create there checked to be free (claimWorkFolder). A plain
+ * review creates at most the source's copy. A --llm-review
  * run names every file of the loop, and claims them all, because the agents it instructs
  * write the rest later and a name already taken would be overwritten then, out of sight.
  *
@@ -265,6 +269,12 @@ export async function runPipeline(opts) {
   // there (`scaFolders`). Never both, and a preparation's are never copied again.
   if (opts.scaGiven && opts.scaFolders) {
     throw wiringError("runPipeline was handed both scaGiven and scaFolders");
+  }
+  if (!fs.existsSync(work.xpi)) {
+    throw wiringError(
+      "runPipeline: the work folder holds no xpi/ - every review reads the add-on the load " +
+        "put there (src/review/start.js loadTheXpi), and none was run."
+    );
   }
   claimWorkFolder(
     opts.workFolder,
@@ -362,17 +372,15 @@ async function reviewSubmission(opts, work, prepared) {
   // narrated where a check first asks for it (src/review/products.js). The add-on reads
   // are fast local ones (this .xpi, and in a source review the source archive) marked by
   // the "Reading add-on" step.
-  // Loading here is the ONLY way an add-on enters a review: its content and its identity
-  // then come from one value, and no caller can hand in files that disagree with the path
-  // the report goes on to name.
-  //
   // The add-on is read from its copy in the work folder, not in memory and not where it was
-  // submitted: XPI_ROOT is a single folder this run writes once and every reader - the
-  // checks below, a reviewer, an LLM agent - reads back from, never two representations of
-  // one submission. A packed .xpi is extracted there and an unpacked folder copied there,
-  // so the files a review names sit in one folder whichever was submitted, and nothing an
-  // agent does in XPI_ROOT can reach the submission itself.
-  const xpiAddon = loadAddon(addonPath, work.xpi, { kind: ARTIFACT_XPI });
+  // submitted: XPI_ROOT is a single folder the load wrote once (src/review/start.js
+  // loadTheXpi), and every reader - the checks below, a reviewer, an LLM agent - reads back
+  // from it, never two representations of one submission. A packed .xpi was extracted there
+  // and an unpacked folder copied there, so the files a review names sit in one folder
+  // whichever was submitted, and nothing an agent does in XPI_ROOT can reach the submission
+  // itself. Read where it is, never extracted again, so the review reads what the load
+  // decided its verdict from.
+  const xpiAddon = loadAddon(work.xpi, undefined, { kind: ARTIFACT_XPI });
   // What the SHIPPED add-on declares, read ONCE here and the review's only record: it is
   // asked of the built XPI by name rather than derived by whatever loads an artifact (a
   // source archive's root manifest.json is a pre-build template, and nothing asks it). One
@@ -503,11 +511,13 @@ async function reviewSubmission(opts, work, prepared) {
     // manifest.json's experiment paths resolve against the XPI's own files (no
     // source-layout mismatch).
     experiments: async () => {
-      ({ verification: experimentVerification } = await experimentVerdict(
-        xpiAddon,
-        webExtManifestRecord,
-        opts
-      ));
+      // The load's verdict where this run loaded the add-on (`verification`), so it is
+      // decided once. A review started in a folder an earlier run loaded asks it again.
+      experimentVerification =
+        opts.verification !== undefined
+          ? opts.verification
+          : (await experimentVerdict(xpiAddon, webExtManifestRecord, opts))
+              .verification;
     },
 
     // An Experiment's declared APIs are part of its platform - a rejected one's too, whose
@@ -1138,11 +1148,12 @@ async function reviewSubmission(opts, work, prepared) {
   };
 }
 
-/** The work folder's names a review never writes: the source archive's extraction, put
- *  there when a source code review is prepared, the copy of it a rescue makes, the copy
- *  every build of the preparation runs in, and that preparation's record. A review claiming them
- *  would refuse the very folder it was prepared in. */
-const WORK_INPUTS = new Set(["sca", "rescued", "buildCopy", "prepare"]);
+/** The work folder's names a review never writes: the shipped add-on's copy, which the load
+ *  put there, the source archive's extraction, put there when a source code review is
+ *  prepared, the copy of it a rescue makes, the copy every build of the preparation runs in,
+ *  and that preparation's record. A review claiming them would refuse the very folder it was
+ *  loaded or prepared in. */
+const WORK_INPUTS = new Set(["xpi", "sca", "rescued", "buildCopy", "prepare"]);
 
 /** The check an XPI review restarted from a source review reports (opts.downgradedFrom). */
 const SCA_NOT_NEEDED_CHECK = "sca-not-needed";
@@ -1232,8 +1243,8 @@ function lockVulnerabilities(archive, audited) {
 /**
  * The names a run will create in its work folder (src/util/dest.js workPaths).
  *
- * A plain review creates the shipped add-on's copy, and in a source review the source's copy
- * (`sca/`), and nothing else. A --llm-review run
+ * A plain review creates, in a source review, the source's copy (`sca/`), and nothing else:
+ * the shipped add-on's copy is the load's (WORK_INPUTS). A --llm-review run
  * names every other output too - the loop's pair, the report, what its agents write, and a
  * sweep answers file for each artifact - whether or not this review turns out to use each
  * one: an XPI review never builds and may sweep nothing, but which of them it will use is
@@ -1250,7 +1261,7 @@ function lockVulnerabilities(archive, audited) {
 function claimedNames(work, llmReview, prepared, copiesSource) {
   const copies = copiesSource ? [work.sca] : [];
   if (!llmReview) {
-    return [work.xpi, ...copies];
+    return copies;
   }
   const judged = Boolean(prepared?.buildSafety);
   const outputs = Object.entries(work)
@@ -1266,30 +1277,19 @@ function claimedNames(work, llmReview, prepared, copiesSource) {
 }
 
 /**
- * Claim the work folder for this run: create it if missing, refuse it when it cannot be
- * written to, and refuse it when any name this run will create is already there.
+ * Claim the work folder for this run: refuse it when it cannot be written to, and refuse it
+ * when any name this run will create is already there.
  *
- * A command line never hands a review an existing folder (src/cli.js refuses one). The one
- * that is there already is a PREPARED folder, whose review the hand-back starts once its
- * preparation is done, or one the CLI claimed for this review a moment before. It holds the
- * preparation's record and the extracted source, which this run reads and never claims
- * (WORK_INPUTS). Nothing in it is overwritten. A name already taken is left over from a start
- * that was cut short, and replacing it would destroy work nobody asked to discard. A folder
- * this call creates, or the names it claims in one that was there, are this run's
- * (src/util/claims.js).
+ * The folder is there already, with the add-on's copy the load put in it: this run's own
+ * load, or that of the run that prepared a source code review in it, whose review the
+ * hand-back starts once the preparation is done. It holds what the review reads and never
+ * claims (WORK_INPUTS). Nothing in it is overwritten. A name already taken is left over from a
+ * start that was cut short, and replacing it would destroy work nobody asked to discard. The
+ * names this call claims are this run's (src/util/claims.js).
  * @param {string} dir  The work folder, absolute.
  * @param {string[]} names  claimedNames' answer.
  */
 function claimWorkFolder(dir, names) {
-  let created;
-  try {
-    created = claimFolder(dir);
-  } catch (err) {
-    rethrowIfFatal(err);
-    throw new Error(
-      `The work folder "${dir}" cannot be created (${err.code ?? err.message}).`
-    );
-  }
   if (!canWriteDir(dir)) {
     throw new Error(
       `The work folder "${dir}" cannot be written to, and every file this review creates ` +
@@ -1305,10 +1305,7 @@ function claimWorkFolder(dir, names) {
         "the folder back again."
     );
   }
-  // Inside a folder that was there, only what this run creates is its own.
-  if (!created) {
-    claimNames(names);
-  }
+  claimNames(names);
 }
 
 /**

@@ -12,7 +12,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { runPipeline } from "../../src/pipeline.js";
 import { formatText } from "../../src/report/format.js";
 import { loadRegistry } from "../../src/checks/registry.js";
 import { isQuestion, orderReview } from "../../src/report/order.js";
@@ -21,6 +20,7 @@ import {
   cdnMissCache,
   fixtureCacheOpts,
   freshWorkFolder,
+  loadAndReview,
   osvEntries,
   popularityEntries,
   seedCdnHits,
@@ -28,6 +28,7 @@ import {
 } from "../seed-caches.js";
 import { defaultWorkFolder, workPaths } from "../../src/util/dest.js";
 import { advisory, auditEntries, realPreparation } from "../prepared.js";
+import { loadTheXpi } from "../../src/review/start.js";
 import { readState } from "../../src/report/state.js";
 import { readPrepare } from "../../src/prepare/state.js";
 import { reviewDetails } from "../../src/report/loop.js";
@@ -36,10 +37,10 @@ import { reviewDetails } from "../../src/report/loop.js";
 // fetches all hit disk - these runs stay offline.
 const OFFLINE = fixtureCacheOpts();
 
-/** runPipeline in a fresh work folder of its own, as every review gets one - unless the
+/** A review in a fresh work folder of its own, loaded first as every review is - unless the
  *  test names the folder itself. */
 function runReview(opts) {
-  return runPipeline({ workFolder: freshWorkFolder(), ...opts });
+  return loadAndReview(opts);
 }
 
 function tmpDir(files) {
@@ -1981,9 +1982,9 @@ test(
   },
   async () => {
     const xpi = tmpDir(XPI_FILES);
-    // The folder is there, as a prepared one is when its hand-back starts the review.
+    // The folder is there, loaded, as a prepared one is when its hand-back starts the review.
     const work = freshWorkFolder();
-    fs.mkdirSync(work);
+    await loadTheXpi(xpi, work, OFFLINE);
     try {
       fs.chmodSync(work, 0o500);
       for (const llmReview of [false, true]) {
@@ -2002,7 +2003,8 @@ test(
           }
         );
       }
-      assert.deepEqual(fs.readdirSync(work), []);
+      // Nothing written beside the add-on's copy the load left.
+      assert.deepEqual(fs.readdirSync(work), ["xpi"]);
     } finally {
       // Before the cleanup, or it cannot remove what it made.
       fs.chmodSync(work, 0o700);

@@ -81,7 +81,8 @@ test("--llm-auto-review creates the work folder and hands it back", () => {
     .filter((n) => /^sca-review-addon-\d{4}-\d{2}-\d{2}T[\d-]+Z$/.test(n));
   assert.equal(made.length, 1, "one work folder, beside the .xpi");
   const work = path.join(dir, made[0]);
-  assert.deepEqual(fs.readdirSync(work), [".review"]);
+  // The add-on's copy, which the load put there, and the record.
+  assert.deepEqual(fs.readdirSync(work).sort(), [".review", "xpi"]);
   assert.deepEqual(fs.readdirSync(path.join(work, ".review")).sort(), [
     "prepare.json",
     "review.json",
@@ -391,12 +392,14 @@ test("a prepared review refuses a record it cannot start from", (t) => {
       const r = run(["--llm-handback", work]);
       assert.equal(r.code, 2, r.stdout + r.stderr);
       assert.match(r.stdout, problem);
-      // What the preparation left: its record, the build report and the source.
+      // What the preparation left: its record, the build report, the source and the
+      // add-on's copy.
       assert.deepEqual(fs.readdirSync(work).sort(), [
         ".review",
         "build-issues.md",
         "build.md",
         "sca",
+        "xpi",
       ]);
       assert.deepEqual(fs.readdirSync(path.join(work, ".review")), [
         "prepare.json",

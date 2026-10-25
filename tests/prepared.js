@@ -15,7 +15,13 @@ import path from "node:path";
 import { handBack, startPreparation } from "../src/prepare/steps.js";
 import { PREPARE_STEP, startRecord } from "../src/prepare/state.js";
 import { workPaths } from "../src/util/dest.js";
-import { freshWorkFolder, osvEntries, seedWorkCache } from "./seed-caches.js";
+import {
+  fixtureCacheOpts,
+  freshWorkFolder,
+  osvEntries,
+  seedWorkCache,
+} from "./seed-caches.js";
+import { loadTheXpi } from "../src/review/start.js";
 
 /** An OSV advisory as the API serves it. */
 export const advisory = (id, severity, name, fixed) => ({
@@ -144,8 +150,9 @@ export async function realPreparation({
   rescue = null,
   match = "no match",
 }) {
+  // Started as a preparation is: the load creates the folder and puts the add-on's copy in it.
   const work = freshWorkFolder();
-  fs.mkdirSync(work);
+  await loadTheXpi(xpi, work, fixtureCacheOpts());
   startPreparation(
     work,
     startRecord({
