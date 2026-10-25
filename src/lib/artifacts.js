@@ -31,7 +31,7 @@
 // all carry a locus, and assertLocus below refuses one that cannot say which artifact it
 // is in - the same contract for all three, because a reader downstream cannot tell which
 // made it and a filename is not evidence of anything. It throws a WIRING error, so a
-// producer that forgot exits 2 rather than losing its other findings to a check-failed.
+// producer that forgot exits 2.
 //
 // Belongs here: the names, the predicate over them, their roots lookup, and the one guard
 // every producer of a locus is held to. Does NOT belong here: deciding which one a locus is in (the holders
@@ -80,10 +80,8 @@ export function assertLocus(at, who) {
     (at.file !== null && typeof at.file !== "string") ||
     !isArtifact(at.artifact);
   if (bad) {
-    // WIRING, not a check crashing on input nobody anticipated: a producer that cannot say
-    // where it is pointing is this codebase being wrong. A plain Error here would be caught
-    // by runOneCheck and laundered into a check-failed finding, losing every other finding
-    // that check had already produced while the review still shipped.
+    // WIRING: a producer that cannot say where it is pointing is this codebase being wrong,
+    // and the run ends with exit 2, whoever called it.
     throw wiringError(
       `${who} needs a locus minted by whatever holds the file - {file, loc, artifact} - ` +
         `got ${JSON.stringify({ file: at?.file, artifact: at?.artifact })}. Ask ` +

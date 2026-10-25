@@ -98,12 +98,11 @@ test("reading a per-mode response with no mode is refused, in every reader", () 
   });
   const re = /words its response per review mode, but it was read with no mode/;
   assert.throws(() => perMode.responseFor("sync-xhr"), re);
-  assert.throws(() => perMode.entryResponse("sync-xhr"), re);
   assert.throws(() => perMode.manualChecks(), re);
   assert.throws(() => perMode.sweepInstructions(), re);
   // And every reader answers once it is given one.
   assert.equal(perMode.responseFor("sync-xhr", REVIEW_MODE.SCA), "s");
-  assert.equal(perMode.entryResponse("sync-xhr", REVIEW_MODE.XPI), "x");
+  assert.equal(perMode.responseFor("sync-xhr", REVIEW_MODE.XPI), "x");
   assert.equal(perMode.manualChecks(REVIEW_MODE.SCA)[0].response, "s");
   assert.equal(perMode.sweepInstructions(REVIEW_MODE.XPI)[0].response, "x");
 });
@@ -204,15 +203,6 @@ test("a slot's value is never re-read as another slot", () => {
   };
   renderFindings([dollar], registry);
   assert.match(dollar.message, /cost is \$& and \$1 and \$\$/);
-});
-
-// An orchestrator system finding (ruleId "check-failed") renders from the
-// registry `messages` map, with the check id filled in.
-test("renderFindings renders a system message for check-failed", () => {
-  const f = { ruleId: "check-failed", item: "unknown-api", message: null };
-  renderFindings([f], registry);
-  assert.match(f.message, /could not be run/);
-  assert.match(f.message, /unknown-api/);
 });
 
 // listItem: when the response uses {{item}} the identifier is in the prose, so

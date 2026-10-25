@@ -95,8 +95,8 @@ const SEVERITY_RANK = Object.fromEntries(
  *   `{{slot}}` placeholders in the response - additional detail ABOUT this
  *   finding's single `item`/subject (e.g. a source URL, an ajv message), data
  *   not prose. Never a second independent subject: one finding has one item.
- * @property {string} [ruleId]  Set only by the orchestrator (e.g. its own
- *   "check-failed" system finding); checks leave it unset.
+ * @property {string} [ruleId]  Set only by the orchestrator, which stamps the check's id
+ *   (runOneCheck); checks leave it unset.
  * @property {Severity} [severity]  Set by the orchestrator/lint channel, or by a
  *   check ONLY under a `severity: auto` registry entry (the check then owns each
  *   finding's severity). Under a fixed registry severity a check's value is

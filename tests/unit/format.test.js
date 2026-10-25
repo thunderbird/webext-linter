@@ -1477,10 +1477,6 @@ test("the report's authored prose is required, by the names that index it", () =
       key
     );
   }
-  bad(
-    (doc) => delete doc.messages["check-failed"],
-    /authors no `check-failed`/
-  );
   // Authored but empty reads as absent, and is refused as absent: a heading of spaces
   // prints the same nothing a missing one does.
   bad((doc) => (doc["issue-headings"].error = "   "), /authors no `error`/);
@@ -1495,21 +1491,10 @@ test("the report's authored prose is required, by the names that index it", () =
     (doc) => (doc["issue-headings"].fatal = "Fatal"),
     /issue-headings authors `fatal`, which no report can reach/
   );
-  // `messages` is open - message() is a lookup by whatever key a caller names - so an extra
-  // template is fine, and only its prose is asked about.
-  assertEntries(
-    (() => {
-      const r = loadRegistry();
-      r.doc.messages["some-other-notice"] = "Text.";
-      return r;
-    })(),
-    "t.yaml"
-  );
-  bad((doc) => (doc.messages["some-other-notice"] = "  "), /is not prose/);
   // A map that is there but unusable is its shape's answer; a map that is GONE is asked
   // once, of a whole registry (assertRequiredSections) - a partial one is a fragment on
   // purpose, so the shape pass says nothing about a section nobody authored.
-  bad((doc) => (doc.messages = []), /messages authors no prose/);
+  bad((doc) => (doc["verdict-intros"] = []), /verdict-intros authors no prose/);
   const gone = loadRegistry();
   delete gone.doc["verdict-intros"];
   assert.throws(

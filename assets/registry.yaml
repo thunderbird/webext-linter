@@ -2236,12 +2236,6 @@ llm-manual-review-choices:
   verdict: reported
   description: This has to be reported to the developer. If additional information has to be attached, use "Other" below (max {{maxNote}} characters, one finding per line).
 
-# System notices the orchestrator emits (not tied to one check): "{{item}}" is
-# filled with the relevant check id / token. Keeps every printed string here.
-messages:
-  check-failed: |-
-    The "{{item}}" check could not be run. The other checks still ran.
-
 # The customer-facing preamble at the top of the report’s Found Issues section:
 # "none" when there are no findings, "rejected" when there is any error finding,
 # "hold" when there is none but the review cannot proceed (a hold finding), and

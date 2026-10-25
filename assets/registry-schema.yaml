@@ -416,14 +416,6 @@ sections:
     closed: true
     noun: prose
     why: how the report opens, per verdict
-  # Open: the linter names the notices it prints, and one it does not print yet is not a
-  # mistake to refuse.
-  messages:
-    kind: prose-map
-    required: [check-failed]
-    noun: prose
-    why: a system notice the report may print
-
   review-early-exit:
     kind: object
     noun: "`review-early-exit` section"

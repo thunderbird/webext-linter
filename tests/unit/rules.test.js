@@ -1417,8 +1417,6 @@ test("the shape pass accepts the emptiness the registry authors", async () => {
   assert.equal(phase(loadRegistry().doc, "spawn")["verb-prose"], undefined);
   // And a pass that words no verdict needs no verb-prose at all.
   ok((d) => delete phase(d, "ask")["verb-prose"], "a pass with no verb-prose");
-  // `messages` is open, so a notice the report does not print yet is not a mistake.
-  ok((d) => (d.messages["some-later-notice"] = "Text."), "an extra message");
 });
 
 // The SHAPE pass (src/checks/registry-schema.js): which keys each section accepts, what
@@ -5461,9 +5459,8 @@ test("--warnings-as-errors moves the suggested verdict with it", async () => {
 // that grew an escalation path and kept returning its findings array dropped every
 // escalation with nothing to catch it (`expect` cannot assert an escalation).
 test("a check that returns a bare array is refused, not read as findings", async () => {
-  // A broken return shape is the LINTER being wrong, not a check crashing on input
-  // nobody anticipated: it throws a WIRING LinterError past runOneCheck and out to
-  // exit 2, rather than becoming a check-failed finding that reads like a result.
+  // A broken return shape is the LINTER being wrong: it throws a WIRING LinterError past
+  // runOneCheck and out to exit 2.
   await assert.rejects(
     () =>
       runOneCheck(
@@ -5593,27 +5590,33 @@ test("no check reads a run option", () => {
   assert.deepEqual(offenders, []);
 });
 
-// The two lanes out of a check body, kept apart: a rule that crashes is contained so the
-// rest of the review still runs, and a fatal error is not containable at all.
-test("runOneCheck contains a crashing check but not a fatal error", async () => {
-  const crashed = await runOneCheck(
-    withManifest({}),
-    {
-      id: "boom",
-      severity: "warning",
-      run: () => {
-        throw new TypeError("x is not a function");
-      },
-    },
-    "[1/1]"
+// A check that throws ends the run: the review would be missing it, so nothing is published.
+// The error names the check and carries what it threw.
+test("runOneCheck ends the run for a crashing check and a fatal error alike", async () => {
+  const thrown = new TypeError("x is not a function");
+  await assert.rejects(
+    () =>
+      runOneCheck(
+        withManifest({}),
+        {
+          id: "boom",
+          severity: "warning",
+          run: () => {
+            throw thrown;
+          },
+        },
+        "[1/1]"
+      ),
+    (err) => {
+      assert.ok(err instanceof LinterError);
+      assert.equal(err.class, ERROR_CLASS.WIRING);
+      assert.equal(err.message, 'the "boom" check threw: x is not a function');
+      assert.equal(err.cause, thrown);
+      return true;
+    }
   );
-  assert.equal(crashed.findings.length, 1);
-  assert.equal(crashed.findings[0].ruleId, "check-failed");
-  assert.equal(crashed.findings[0].item, "boom");
 
-  // A classed error means the review itself cannot be trusted to continue - a dead
-  // network route, or a check reading data never generated for its artifact - so the
-  // swallow does not apply to it.
+  // An error already classed passes through as it was thrown, its own message intact.
   await assert.rejects(
     () =>
       runOneCheck(
@@ -5633,6 +5636,7 @@ test("runOneCheck contains a crashing check but not a fatal error", async () => 
     (err) => {
       assert.ok(err instanceof LinterError);
       assert.equal(err.class, ERROR_CLASS.WIRING);
+      assert.equal(err.message, "reached the wrong artifact");
       return true;
     }
   );
@@ -5641,7 +5645,7 @@ test("runOneCheck contains a crashing check but not a fatal error", async () => 
 // severity:none says the check emits no findings, so there is no band to stamp. A finding
 // from one would have to be published at an invented severity - and the JSON report is an
 // upload filter, so an invented `error` auto-rejects. runOneCheck refuses it instead: the
-// breach surfaces as a check-failed error naming the check, not as a silent rejection. The
+// breach is a WIRING error naming the check, which ends the run with exit 2. The
 // empty shapes a check may legitimately return all pass.
 // The other half of the pairing, at load time. A check names its READER by which wording
 // it authors, so the shapes that are not a reader fail at load rather than at the first
@@ -5752,56 +5756,6 @@ test("severity:auto fails safe to error when the check sets none/invalid", async
   assert.deepEqual(
     out.findings.map((f) => f.severity),
     ["error", "error"]
-  );
-});
-
-test("a throwing check is caught and turned into a check-failed error", async () => {
-  const check = {
-    id: "boom-check",
-    severity: "info", // ignored: the catch stamps ERROR regardless
-    run: () => {
-      throw new Error("boom");
-    },
-  };
-  const out = await runOneCheck(withManifest({}), check, "[1/1]");
-  assert.equal(out.findings.length, 1);
-  assert.equal(out.findings[0].ruleId, "check-failed");
-  assert.equal(out.findings[0].severity, SEVERITY.ERROR);
-  assert.equal(out.findings[0].item, "boom-check");
-});
-
-// The crash says nothing about which artifact the check was reading, but the ctx it was
-// handed does. This finding is built in the catch and returns before the stamping loop,
-// so it is the one that has to say so itself - and it has no registry entry to be looked
-// up in later, which is how it used to end up labelled as the source archive whatever it
-// had been reading.
-test("a check that crashes still says which artifact it was reading", async () => {
-  const boom = {
-    id: "boom-check",
-    severity: "error",
-    run: () => {
-      throw new Error("boom");
-    },
-  };
-  const artifactOfCrash = async (kind) =>
-    (await runOneCheck(withManifest({ artifact: { kind } }), boom, "[1/1]"))
-      .findings[0].artifact;
-
-  // The ctx it was handed says which artifact it was reading, whether or not the check
-  // got far enough to read anything.
-  assert.equal(await artifactOfCrash(ARTIFACT_XPI), ARTIFACT_XPI);
-  assert.equal(await artifactOfCrash(ARTIFACT_SCA), ARTIFACT_SCA);
-  // The `all` route hands it every artifact and the crash belongs to none, so it names the
-  // built XPI - the one artifact every review has. NOT null: an entry with no artifact
-  // is handed to the agent with no tree to look in (src/report/handback.js).
-  const both = {
-    xpi: { artifact: addonOf({}, ARTIFACT_XPI) },
-    sca: { artifact: addonOf({}, ARTIFACT_SCA) },
-    options: {},
-  };
-  assert.equal(
-    (await runOneCheck(both, boom, "[1/1]")).findings[0].artifact,
-    ARTIFACT_XPI
   );
 });
 
@@ -6595,7 +6549,6 @@ test("llm-verification is false for decisions and outside facts alone", () => {
       "vendor-vulnerable-indirect-dev",
     ]
   );
-  assert.equal(registry.verifiedByLlm("check-failed"), true);
 });
 
 // Every check that runs answers llm-verification, as a boolean, and a by-hand entry, which
@@ -6912,7 +6865,7 @@ test("a locus must be one a holder minted, whoever is building it", async () => 
       /needs a locus minted by whatever holds the file/,
       `expected ${JSON.stringify(bad)} to be refused`
     );
-    // WIRING, so it exits 2 rather than being caught and filed as a check-failed.
+    // WIRING, so it exits 2.
     assert.throws(() => assertLocus(bad, "probe"), {
       class: ERROR_CLASS.WIRING,
     });

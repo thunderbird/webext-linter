@@ -182,7 +182,7 @@ export function renderManualItems(refs, registry, mode) {
       // which sees this list and the by-hand manual checks together, so the two cannot
       // differ in what a reviewer is handed.
       response: fill(
-        registry.entryResponse(ref.ruleId, mode),
+        registry.responseFor(ref.ruleId, mode),
         ref.item,
         ref.data
       ),

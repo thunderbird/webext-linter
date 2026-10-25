@@ -369,7 +369,7 @@ test("assignRefs numbers each check's items under its registry position", () => 
   );
   const items = [
     { ruleId: "unknown-api" },
-    { ruleId: "check-failed" },
+    { ruleId: "no-such-check" },
     { ruleId: "unknown-api" },
   ];
   assignRefs(items, REGISTRY);

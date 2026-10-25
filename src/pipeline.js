@@ -737,8 +737,8 @@ async function reviewSubmission(opts, work, prepared) {
   };
 
   // Run the review, then finalize. runChecks runs the deterministic phase and returns the
-  // finished findings, manual items and the checks that ran. Each throwing check is
-  // isolated so one failure can't abort all. A rejected Experiment stops at its first
+  // finished findings, manual items and the checks that ran. A check that throws ends the
+  // run with exit 2. A rejected Experiment stops at its first
   // check, experiment-not-allowed, and a forged lock at lockfile-injection, the two checks
   // that end a review early. Every other check that aborts a review lets the rest run.
   // A check's `when:` (over CHECK_FACTS) is read inside loadChecks

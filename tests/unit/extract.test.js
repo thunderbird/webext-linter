@@ -50,7 +50,7 @@ test("populates src.extracted with results equal to a direct scanner call", () =
 // consumer's call - every content check skips it against the same nonAuthored Set - and
 // keeping that decision out of the pass is what makes it impossible for a consumer to read
 // a field the pass declined to produce. Such a read throws a bare TypeError inside the
-// scan, taking every check sharing it down as an anonymous check-failed.
+// scan, and ends the run with exit 2 in the first check that reads it.
 test("extracts content for a non-authored file too, except its atoms", () => {
   const sources = [src("vendor/lib.js", RICH)];
   runExtractionPass(sources, { nonAuthored: new Set(["vendor/lib.js"]) });

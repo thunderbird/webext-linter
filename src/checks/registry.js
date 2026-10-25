@@ -37,7 +37,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import YAML from "yaml";
 import { displayLine } from "../util/text.js";
 
-import { finding, SECTION, SEVERITY } from "../report/finding.js";
+import { SECTION, SEVERITY } from "../report/finding.js";
 import { MAX_HINT, MAX_NOTE, RESULT_SHAPE } from "../config.js";
 import { callsOf, holds, namesOf, parseCondition } from "./condition.js";
 import { artifactLabel } from "../report/artifact.js";
@@ -103,7 +103,7 @@ function bandUnder(severity, warningsAsErrors) {
 // This is a CLOSED SET - the orchestrator (runChecks) looks up the phases it wants, in
 // the order it runs them, so a section it never asks for is inert: adding an
 // unrecognized section to registry.yaml changes nothing. The yaml's other top-level
-// sections (permission-prompts, messages, manual-checks, ...) are exactly that - never
+// sections (permission-prompts, manual-checks, ...) are exactly that - never
 // asked for here, and so not phases.
 const PHASE_SECTIONS = Object.freeze({
   deterministic: "deterministic-phase",
@@ -356,8 +356,7 @@ export class Registry {
   /**
    * The first half of a review item's fixed reference (src/report/order.js assignRefs): the
    * entry's position among allEntries(), counted from 1, which is its order in the registry
-   * file. 0 for a ruleId no entry declares - `check-failed`, which the run mints for a check
-   * that threw.
+   * file. 0 for a ruleId no entry declares.
    * @param {string} ruleId
    * @returns {number}
    */
@@ -914,28 +913,13 @@ export class Registry {
 
   /**
    * The Found Issues response template for a finding's ruleId: the owning check's
-   * response AS WORDED FOR `mode` (responseOf), or a system `messages` entry for an
-   * orchestrator-emitted ruleId (e.g. "check-failed"). Null if neither exists.
+   * response AS WORDED FOR `mode` (responseOf), or null where its entry authors none.
    * @param {string} ruleId
    * @param {{sca?: boolean}} [mode]  The review mode - required for a check that words
    *   its response per mode, which is what responseOf refuses to guess at.
    * @returns {?string}
    */
   responseFor(ruleId, mode) {
-    const r = responseOf(this.checkEntry(ruleId), mode);
-    return typeof r === "string" ? r : (this.message(ruleId) ?? null);
-  }
-
-  /**
-   * The response a CHECK ENTRY words for `mode` - responseFor without the system-message
-   * fallback. A manual item is always a check's case, so a ruleId with no entry authors
-   * no response and gets none; falling back to `messages` here would word a to-do from
-   * text written for an orchestrator failure.
-   * @param {string} ruleId
-   * @param {{sca?: boolean}} [mode]  The review mode.
-   * @returns {?string}
-   */
-  entryResponse(ruleId, mode) {
     return responseOf(this.checkEntry(ruleId), mode);
   }
 
@@ -1037,17 +1021,6 @@ export class Registry {
     const entry = this.checkEntry(ruleId);
     const text = entry?.["instructions-for-llm"] ?? entry?.instructions;
     return typeof text === "string" && text !== "" ? text : null;
-  }
-
-  /**
-   * A system-notice template (the top-level `messages` map), or null.
-   * @param {string} key
-   * @returns {?string}
-   */
-  message(key) {
-    const m = this.doc.messages;
-    const t = m && typeof m === "object" ? m[key] : null;
-    return typeof t === "string" ? t : null;
   }
 
   /**
@@ -2736,47 +2709,34 @@ export function abortsReview(registry, checkId, findings) {
  * finding with the check's id and severity. This is the per-check body of
  * runChecks, extracted so a check can also be run on its own, outside the loop.
  * Identical behavior either way: a check's `escalations` route to
- * manual review through escalation.js, and a thrown check becomes a single
- * "check-failed" finding so the rest still run.
+ * manual review through escalation.js, and a check that throws ends the run.
  * @param {RunContext} ctx
  * @param {LoadedCheck} check
  * @param {string} label  The feed prefix before the id, e.g. "[3/12]".
  * @returns {Promise<{findings: object[], manualItems: object[]}>}
+ * @throws {import("../lib/errors.js").LinterError}  The check threw, or broke a contract.
  */
 export async function runOneCheck(ctx, check, label) {
   progress(`${label} ${check.id}`, FEED.STEP);
   const findings = [];
   const manualItems = [];
   let result;
-  // The try wraps the CHECK'S OWN BODY and nothing else. A rule can crash on input
-  // nobody anticipated, and the rest of the review should still run - that is what
-  // check-failed is for. Everything below the catch is the linter keeping its own
-  // contracts (the return shape, the declared severity), and a break there is not a
-  // check crashing: it is this file being wrong, so it throws past here to exit 2
-  // rather than being laundered into a finding that looks like a review result.
+  // A check that throws is the linter being wrong, as a broken contract below is (the return
+  // shape, the declared severity): the review it is part of would be missing that check, so
+  // the run ends with exit 2 and publishes nothing. The try wraps the check's own body only,
+  // so the message can name the check.
   try {
     result = await check.run(ctx, check);
   } catch (err) {
-    // Not ours to swallow: a dead network route or a check reading data that was
-    // never generated for its artifact invalidates the review, not just this check.
+    // Already classed (a dead network route, a check reading data never generated for its
+    // artifact): its own message says what happened.
     rethrowIfFatal(err);
-    // The message, at least once: without it a crashed check is an anonymous
-    // check-failed finding and cannot be diagnosed at all, even with --debug.
     debug(`[registry] ${check.id} threw: ${err?.stack ?? err?.message ?? err}`);
-    findings.push(
-      finding({
-        ruleId: "check-failed",
-        severity: SEVERITY.ERROR,
-        item: check.id,
-        // Minted here rather than by the check, which never got far enough to say
-        // anything: the ctx it was handed knows what it was reading, and that is known
-        // whether or not the check produced a thing. On the `all` route there is no
-        // single artifact and the crash belongs to none of them, so it names the built XPI -
-        // the one artifact every review has, in both modes.
-        ...(ctx.artifact ?? ctx.xpi.artifact).at(),
-      })
+    const fatal = wiringError(
+      `the "${check.id}" check threw: ${err?.message ?? err}`
     );
-    return { findings, manualItems };
+    fatal.cause = err;
+    throw fatal;
   }
   // ONE return shape: { findings, escalations? }. A bare array is refused rather
   // than read as findings, because that shorthand made the two lanes look optional:
