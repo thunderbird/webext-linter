@@ -139,7 +139,12 @@ test("the hand-back that finishes the preparation starts the review", () => {
     used: path.join(work, "sca"),
     packageRoot: path.join(work, "sca"),
   });
-  assert.deepEqual(meta.checksRun, ["unused-files"]);
+  // The checks that end a review early run whatever --checks-only says.
+  assert.deepEqual(meta.checksRun, [
+    "experiment-not-allowed",
+    "lockfile-injection",
+    "unused-files",
+  ]);
   // From here on the folder holds a review, and its hand-back is a pass of the loop.
   const next = run(["--llm-handback", work]);
   assert.doesNotMatch(next.stdout, /SCA Review Prompt/);
@@ -168,6 +173,27 @@ test("a reviewer who builds it themselves starts a review they build for", () =>
     safe: true,
   });
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A record is checked as a command line is when its review starts: one that names an
+// early-exit check in a check list, as no command line can, is refused at that hand-back.
+test("a preparation record naming an early-exit check is refused when its review starts", () => {
+  const dir = submissionFolder();
+  const prepared = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
+  assert.equal(prepared.code, 0, prepared.stderr);
+  const work = workOf(prepared.stdout);
+  // Written by the linter itself, as an older one that took the flag would have: a record
+  // edited by anything else is refused as changed, before its flags are read.
+  const record = readJson(work, "prepare");
+  record.flags["checks-skip"] = "experiment-not-allowed";
+  writePrepare(work, record);
+  const handed = handBackRoots(prepared.stdout);
+  assert.equal(handed.code, 2);
+  assert.match(
+    handed.stdout,
+    /"experiment-not-allowed" ends a review early and always runs/
+  );
+  assert.ok(!fs.existsSync(workPaths(work).state), "no review started");
 });
 
 // The flags the review is run with are this run's own, recorded as parsed: the same however
@@ -204,7 +230,7 @@ test("the preparation records the flags its review is started with", () => {
   handBackRoots(only.stdout);
   assert.deepEqual(
     readJson(workOf(only.stdout), "state").report.meta.checksRun,
-    ["unused-files"],
+    ["experiment-not-allowed", "lockfile-injection", "unused-files"],
     "the started review runs with them"
   );
   // --cache-clear really empties the caches it is given, so this run is given its own.

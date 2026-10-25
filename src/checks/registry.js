@@ -2279,13 +2279,19 @@ export function loadRegistry(registryPath = DEFAULT_REGISTRY) {
 
 /**
  * Whether --checks-only / --checks-skip leave a check in the run. The one reading of the two
- * lists, for loadChecks and for anything that has to know what the run left out.
+ * lists, for loadChecks and for anything that has to know what the run left out. A check that
+ * ends a review early (`review-early-exit`) always runs: the lists cannot reach it, so a review
+ * it would stop is never carried on as one it allows.
+ * @param {Registry} registry
  * @param {string} id
  * @param {{only?: string[], skip?: string[]}} selection
  * @returns {boolean}
  */
-export function checkSelected(id, { only, skip } = {}) {
-  return (!only?.length || only.includes(id)) && !skip?.includes(id);
+export function checkSelected(registry, id, { only, skip } = {}) {
+  return (
+    registry.earlyExitFor(id) !== null ||
+    ((!only?.length || only.includes(id)) && !skip?.includes(id))
+  );
 }
 
 /**
@@ -2322,7 +2328,7 @@ export async function loadChecks(
   const byPhase = new Map(Object.keys(PHASE_SECTIONS).map((p) => [p, []]));
   for (const entry of registry.checkEntries()) {
     const id = stem(entry.check);
-    if (!checkSelected(id, { only, skip })) {
+    if (!checkSelected(registry, id, { only, skip })) {
       continue;
     }
     // The check's condition, applied HERE, before the import (the route's mode gate gates

@@ -768,7 +768,7 @@ async function reviewSubmission(opts, work, prepared) {
   // runLoopPass): its one finding tells the developer to submit just the XPI next time.
   if (
     opts.downgradedFrom &&
-    checkSelected(SCA_NOT_NEEDED_CHECK, {
+    checkSelected(registry, SCA_NOT_NEEDED_CHECK, {
       only: opts.checksOnly,
       skip: opts.checksSkip,
     })
@@ -941,11 +941,12 @@ async function reviewSubmission(opts, work, prepared) {
         // Whether every check an agent's build relies on runs: with one switched off, nothing
         // vouches for what the build would install, so the review neither judges the build
         // nor shows the Build Review Details, and asks the build question alone.
-        ...(registry
-          .buildGuardIds()
-          .every((id) =>
-            checkSelected(id, { only: opts.checksOnly, skip: opts.checksSkip })
-          )
+        ...(registry.buildGuardIds().every((id) =>
+          checkSelected(registry, id, {
+            only: opts.checksOnly,
+            skip: opts.checksSkip,
+          })
+        )
           ? { "build-guarded": true }
           : {}),
         // Whether a preparation started this review, whose intro its reader already read.

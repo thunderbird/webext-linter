@@ -119,6 +119,13 @@ import { entriesFor } from "../../src/report/handback.js";
 // Flatten it when a test cares about the checks themselves, not which phase they run in.
 const allChecks = (byPhase) => [...byPhase.values()].flat();
 
+/** The one loaded check with this id. `only` names it, but the checks that end a review early
+ *  load beside it whatever `only` says (checkSelected). */
+const loadedCheck = async (id) =>
+  allChecks(await loadChecks(loadRegistry(), { only: [id] })).find(
+    (c) => c.id === id
+  );
+
 /** Every check `opts` loads in some review: the build checks split the source reviews by the
  *  reviewer's build decision (`build-judged`, `build-safe`), so no one review loads all of
  *  them. In registry order, each once. */
@@ -2070,9 +2077,7 @@ test("an input:xpi check escalates over its routed (XPI) addon", async () => {
     }),
     manifest: manifestOf(manifest, manifestText),
   };
-  const [check] = allChecks(
-    await loadChecks(loadRegistry(), { only: ["unused-files"] })
-  );
+  const check = await loadedCheck("unused-files");
   // The orchestrator routes an `input: xpi` check to a ctx whose addon is the XPI,
   // so the case it raises names a file from THAT addon.
   const ctx = {
@@ -6816,9 +6821,7 @@ test("a check reporting into two artifacts names each from its holder", async ()
     ),
     manifest: manifestOf(manifest, manifestText),
   };
-  const [check] = allChecks(
-    await loadChecks(loadRegistry(), { only: ["missing-permission"] })
-  );
+  const check = await loadedCheck("missing-permission");
   const out = await runOneCheck(
     withManifest({
       schema,
@@ -6889,11 +6892,7 @@ test("a locus must be one a holder minted, whoever is building it", async () => 
 // only the comparand. So it mints from ctx.sca - and the artifact is the reason the
 // settling reader is handed the archive's tree, which a null would have withheld.
 test("the cross-artifact check names the side it accuses, not neither", async () => {
-  const [check] = allChecks(
-    await loadChecks(loadRegistry(), {
-      only: ["sca-xpi-fully-included-in-archive"],
-    })
-  );
+  const check = await loadedCheck("sca-xpi-fully-included-in-archive");
   const shipped = { "manifest.json": "{}", "bg.js": "1;\n" };
   const out = await runOneCheck(
     {

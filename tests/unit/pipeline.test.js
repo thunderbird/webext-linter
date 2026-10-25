@@ -139,23 +139,33 @@ test("allowed Experiment: normal review runs, no reject", async () => {
   fs.rmSync(src, { recursive: true, force: true });
 });
 
-// The verdict decides nothing but what experiment-not-allowed reports: with that check left
-// out, a rejected Experiment's review runs exactly as an allowed one does - the same findings,
-// its own APIs registered (browser.myApi resolves, so unknown-api is silent), and the review
-// mode it was asked for.
-test("a rejected Experiment without its reject check reviews as an allowed one", async () => {
+// The reject check ends a review early, so the check lists cannot reach it: a rejected
+// Experiment is rejected whatever they say, and only --allow-experiments lets one through,
+// whose review registers its own APIs (browser.myApi resolves, so unknown-api is silent).
+test("a rejected Experiment is rejected whatever the check lists say", async () => {
   const src = tmpAddon({
     "manifest.json": EXPERIMENT_MANIFEST,
     "bg.js": "browser.myApi.doThing();\n",
     "impl.js": 'this.myApi = class { getAPI() { eval("y"); return {}; } };\n',
   });
-  const ids = async (extra) =>
-    (await runReview({ addonPath: src, ...OFFLINE, ...extra })).findings
-      .map((f) => f.ruleId)
-      .sort();
-  const skipped = await ids({ checksSkip: ["experiment-not-allowed"] });
-  assert.deepEqual(skipped, await ids({ allowExperiments: true }));
-  assert.ok(!skipped.includes("unknown-api"), "its APIs are registered");
+  const review = (extra) => runReview({ addonPath: src, ...OFFLINE, ...extra });
+  for (const lists of [
+    { checksSkip: ["experiment-not-allowed"] },
+    { checksOnly: ["unknown-api"] },
+  ]) {
+    const { findings, meta } = await review(lists);
+    assert.deepEqual(
+      findings.map((f) => f.ruleId),
+      ["experiment-not-allowed"],
+      JSON.stringify(lists)
+    );
+    assert.deepEqual(meta.checksRun, ["experiment-not-allowed"]);
+  }
+  const allowed = (await review({ allowExperiments: true })).findings.map(
+    (f) => f.ruleId
+  );
+  assert.ok(!allowed.includes("experiment-not-allowed"));
+  assert.ok(!allowed.includes("unknown-api"), "its APIs are registered");
   fs.rmSync(src, { recursive: true, force: true });
 
   // Submitted as source, it is a source review.

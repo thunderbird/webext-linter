@@ -98,7 +98,7 @@ is monitored and upstream changes are ported manually.
 | Option | Description |
 | --- | --- |
 | `--checks-only <ids>` | Only run these checks (comma-separated). See the check list below. |
-| `--checks-skip <ids>` | Skip these checks (comma-separated). See the check list below. |
+| `--checks-skip <ids>` | Skip these checks (comma-separated). See the check list below. A check that ends a review early (`experiment-not-allowed`, `lockfile-injection`) always runs, and neither flag may name it. |
 
 **LLM review:** what an LLM agent runs, instead of a person reading the report. `--llm-review`
 runs the review ONCE and hands out the first of its phases. Every `--llm-handback` run after

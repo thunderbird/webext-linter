@@ -629,7 +629,11 @@ test("agentBuilds skips the permission question", async () => {
 // install pulls in: a safe build is done at once, the reviewer is not asked, and the agent
 // builds nothing, whether or not agentBuilds let it.
 test("a build guard switched off lets nobody build", async () => {
-  const [guard] = loadRegistry().buildGuardIds();
+  // A guard the lists can reach: one that ends a review early always runs (checkSelected).
+  const registry = loadRegistry();
+  const guard = registry
+    .buildGuardIds()
+    .find((id) => registry.earlyExitFor(id) === null);
   for (const [flag, value] of [
     ["checks-skip", guard],
     ["checks-only", "manifest-missing"],

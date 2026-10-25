@@ -177,9 +177,11 @@ function optionLine(flag, desc) {
 /**
  * The central help screen: a one-line command summary and the shared options,
  * printed by `npm run help` and as the --help / usage screen (see main).
+ * @param {import("./checks/registry.js").Registry} registry
  * @returns {string}
  */
-function helpText(checkIds) {
+function helpText(registry) {
+  const { selectable, alwaysRun } = checkChoice(registry);
   const cache = [
     [
       "--cache-clear",
@@ -194,9 +196,12 @@ function helpText(checkIds) {
   const checks = [
     [
       "--checks-only <ids>",
-      `Only run these checks (comma-separated). Available: ${checkIds.join(", ")}.`,
+      `Only run these checks (comma-separated). Available: ${selectable.join(", ")}.`,
     ],
-    ["--checks-skip <ids>", "Skip these checks (comma-separated)."],
+    [
+      "--checks-skip <ids>",
+      `Skip these checks (comma-separated). A check that ends a review early always runs and cannot be named: ${alwaysRun.join(", ")}.`,
+    ],
   ];
 
   // What an LLM agent runs, in the order it runs: --llm-auto-review prepares a source code
@@ -601,7 +606,6 @@ export async function main(argv) {
     writeToStderr(`${err.message}\nverify failed\n`);
     return 2;
   }
-  const checkIds = registry.checkIds();
   let parsed;
   try {
     parsed = parseArgs({
@@ -611,7 +615,7 @@ export async function main(argv) {
     });
   } catch (err) {
     emitBanner(argv);
-    writeToStderr(`${cleanParseError(err)}\n\n${helpText(checkIds)}`);
+    writeToStderr(`${cleanParseError(err)}\n\n${helpText(registry)}`);
     return 2;
   }
   const { values, positionals } = parsed;
@@ -654,7 +658,7 @@ export async function main(argv) {
   // impossible come first - a registry this tool cannot read, and a command line it cannot
   // parse. Every guard below can therefore assume a run, and none of them repeats the test.
   if (values.help) {
-    writeToStdout(helpText(checkIds));
+    writeToStdout(helpText(registry));
     return 0;
   }
 
@@ -728,7 +732,7 @@ export async function main(argv) {
   // it, so it is answered before any branch below - including the two that print a prompt.
   // --llm-auto-review records these very flags for the review it prepares: an id nobody can
   // run would travel into it, and the review the preparation starts would fail on it.
-  const checkProblem = checkIdProblem(values, checkIds);
+  const checkProblem = checkIdProblem(values, registry);
   if (checkProblem) {
     writeToStderr(`${checkProblem}\n`);
     return 2;
@@ -970,7 +974,7 @@ export async function main(argv) {
   // No add-on to review: the usage text answers what was missing, and the exit code says
   // it was a mistake rather than a question (--help returns 0, far above).
   if (positionals.length === 0) {
-    writeToStdout(helpText(checkIds));
+    writeToStdout(helpText(registry));
     return 2;
   }
 
@@ -1337,21 +1341,38 @@ function emptyFlagProblem(values) {
 }
 
 /**
- * A --checks-only/--checks-skip id no check has.
+ * The check ids --checks-only/--checks-skip may name, and the ones they may not: a check that
+ * ends a review early always runs (checkSelected).
+ * @param {import("./checks/registry.js").Registry} registry
+ * @returns {{selectable: string[], alwaysRun: string[]}}
+ */
+function checkChoice(registry) {
+  const ids = registry.checkIds();
+  return {
+    selectable: ids.filter((id) => registry.earlyExitFor(id) === null),
+    alwaysRun: ids.filter((id) => registry.earlyExitFor(id) !== null),
+  };
+}
+
+/**
+ * A --checks-only/--checks-skip id no check has, or one of a check that always runs.
  * @param {Record<string, string|boolean>} values
- * @param {string[]} checkIds
+ * @param {import("./checks/registry.js").Registry} registry
  * @returns {?string}  The problem, or null.
  */
-function checkIdProblem(values, checkIds) {
-  const badCheck = unknownId(
-    [
-      ...(splitList(values["checks-only"]) ?? []),
-      ...(splitList(values["checks-skip"]) ?? []),
-    ],
-    checkIds
-  );
+function checkIdProblem(values, registry) {
+  const { selectable, alwaysRun } = checkChoice(registry);
+  const named = [
+    ...(splitList(values["checks-only"]) ?? []),
+    ...(splitList(values["checks-skip"]) ?? []),
+  ];
+  const fixed = named.find((id) => alwaysRun.includes(id));
+  if (fixed) {
+    return `"${fixed}" ends a review early and always runs, so --checks-only/--checks-skip cannot name it.`;
+  }
+  const badCheck = unknownId(named, selectable);
   return badCheck
-    ? `Unknown check "${badCheck}" (--checks-only/--checks-skip). Available: ${checkIds.join(", ")}.`
+    ? `Unknown check "${badCheck}" (--checks-only/--checks-skip). Available: ${selectable.join(", ")}.`
     : null;
 }
 
@@ -1503,11 +1524,7 @@ async function runPreparePass(work, registry) {
   }
   let result;
   try {
-    const { values, scaFolders } = preparedReview(
-      record,
-      registry.checkIds(),
-      out.work
-    );
+    const { values, scaFolders } = preparedReview(record, registry, out.work);
     result = await startReview(
       values,
       record.submission.xpi,
@@ -1641,13 +1658,13 @@ const RECORD_FIELDS = [
  * that settled them and this one. The review
  * reads the real folders that answered.
  * @param {import("./prepare/state.js").PrepareRecord} record  At `done`.
- * @param {string[]} checkIds
+ * @param {import("./checks/registry.js").Registry} registry
  * @param {string} work  The work folder the review starts in.
  * @returns {{values: Record<string, string|boolean>,
  *   scaFolders: import("./addon/package-root.js").ScaFolders}}
  * @throws {HandbackRefused}
  */
-function preparedReview(record, checkIds, work) {
+function preparedReview(record, registry, work) {
   const missing = RECORD_FIELDS.filter((field) => !field.holds(record)).map(
     (field) => field.missing
   );
@@ -1683,7 +1700,7 @@ function preparedReview(record, checkIds, work) {
   const problem =
     cdnLookupProblem(values) ??
     emptyFlagProblem(values) ??
-    checkIdProblem(values, checkIds);
+    checkIdProblem(values, registry);
   if (problem) {
     // Without its full stop: the refusal text goes on after it.
     throw new HandbackRefused(

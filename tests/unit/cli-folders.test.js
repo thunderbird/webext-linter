@@ -472,3 +472,31 @@ test("unknown --checks-only id errors to stderr and exits 2", () => {
   assert.equal(r.code, 2);
   assert.match(r.stderr, /Unknown check/);
 });
+
+// A check that ends a review early always runs, so neither list may name it: skipping one
+// would carry a review on that it stops, and naming one in --checks-only would say it runs
+// alone when it never does. Refused before anything is read, and the help says which they are.
+test("an early-exit check cannot be named in --checks-only or --checks-skip", () => {
+  for (const [flag, id] of [
+    ["--checks-skip", "experiment-not-allowed"],
+    ["--checks-only", "lockfile-injection"],
+  ]) {
+    const r = run(["some.xpi", flag, id]);
+    assert.equal(r.code, 2, `${flag} ${id}`);
+    assert.match(
+      r.stderr,
+      new RegExp(`"${id}" ends a review early and always runs`)
+    );
+  }
+  const help = run(["--help"]);
+  // Wrapped to the terminal: read as one line.
+  const helpText = help.stdout.split(/\s+/).join(" ");
+  assert.match(
+    helpText,
+    /cannot be named: experiment-not-allowed, lockfile-injection/
+  );
+  assert.doesNotMatch(
+    helpText.split("--checks-only")[1].split("--checks-skip")[0],
+    /experiment-not-allowed|lockfile-injection/
+  );
+});

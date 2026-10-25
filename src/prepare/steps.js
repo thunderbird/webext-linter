@@ -721,7 +721,7 @@ function buildGuarded(record, registry) {
   const skip = splitList(record.flags?.["checks-skip"]);
   return registry
     .buildGuardIds()
-    .every((id) => checkSelected(id, { only, skip }));
+    .every((id) => checkSelected(registry, id, { only, skip }));
 }
 
 /**
