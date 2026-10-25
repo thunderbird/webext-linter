@@ -712,6 +712,55 @@ test("build safety issues a reader could not mean, or no build report, are refus
   cleanup(work);
 });
 
+// The analyze answer is checked against what was asked, as every step's is: the entry twice,
+// or one nobody asked about, is refused rather than the first one deciding the verdict.
+test("an analyze hand-back with an entry twice or one never asked is refused", async () => {
+  const work = workFolder({ "package.json": packageFile() });
+  await unpackStep(work);
+  writeBuildReport(work);
+  const issues = { index: "SCA_BUILD_SAFETY_ISSUES", answer: [] };
+  for (const [entries, problem] of [
+    [[issues, { ...issues, answer: UNSAFE }], /appears twice/],
+    [
+      [issues, { index: "OTHER", answer: "x" }],
+      /OTHER is not one of the entries/,
+    ],
+  ]) {
+    fs.writeFileSync(workPaths(work).review, JSON.stringify({ entries }));
+    await assert.rejects(handBack(work), refused(problem));
+    assert.equal(recordOf(work).step, PREPARE_STEP.analyze);
+  }
+  cleanup(work);
+});
+
+// A run cut short after the record moved to analyze, but before the review file held its
+// question, leaves the file the unpack step handed out, or none. The next hand-back hands the
+// question out again, and answering it carries on as usual.
+test("an analyze question that was never written is handed out again", async () => {
+  for (const cut of ["unpack file", "no file"]) {
+    const work = workFolder({ "package.json": packageFile() });
+    const file = workPaths(work).review;
+    const before = fs.readFileSync(file, "utf8");
+    await unpackStep(work);
+    if (cut === "unpack file") {
+      fs.writeFileSync(file, before);
+    } else {
+      fs.rmSync(file);
+    }
+    const again = await handBack(work);
+    assert.equal(again.next, "step", cut);
+    assert.equal(again.record.step, PREPARE_STEP.analyze, cut);
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(file, "utf8")).entries,
+      [{ index: "SCA_BUILD_SAFETY_ISSUES", answer: null }],
+      cut
+    );
+    const at = await analyzeStep(work);
+    assert.equal(at.record.step, PREPARE_STEP.permission, cut);
+    cleanup(work);
+  }
+});
+
 // Let it build: the root's lock is audited, and a clean one is built.
 test("letting the agent build audits the lock", async () => {
   const work = workFolder(

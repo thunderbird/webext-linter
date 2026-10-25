@@ -161,6 +161,13 @@ export function answersOf(handed, asked, phase, keyOf) {
       }
       continue;
     }
+    // A `list` is the shape only: what each item may say is the caller's to check.
+    if (phase.answer === "list") {
+      if (!Array.isArray(value)) {
+        throw new HandbackRefused(`${key} answers with no list`);
+      }
+      continue;
+    }
     // `words` are a person's own answer, and those are not ours to judge - only to carry.
     if (phase.answer === "words") {
       if (typeof value !== "string" || value === "") {

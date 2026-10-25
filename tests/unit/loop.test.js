@@ -26,6 +26,7 @@ import {
   HandbackRefused,
 } from "../../src/report/loop.js";
 import { workPaths } from "../../src/util/dest.js";
+import { answersOf } from "../../src/report/handback.js";
 import { MAX_NOTE } from "../../src/config.js";
 import { loopPromptLines } from "../../src/report/format.js";
 import { sweepRequests } from "../../src/report/sweep-files.js";
@@ -2893,4 +2894,22 @@ test("settle words a per-mode response from the state's review mode", () => {
     renderFindings([live], reg, REVIEW_MODE.SCA);
     assert.equal(worded(true), live.message);
   }
+});
+
+// A `list` answer is checked for its shape only: what each item may say is the caller's.
+test("a list answer takes an array and refuses anything else", () => {
+  const asked = [{ index: "ISSUES", answer: null }];
+  const phase = { name: "analyze", answer: "list" };
+  const keyOf = (e) => String(e?.index);
+  const items = [{ file: "a.js" }];
+  assert.deepEqual(
+    answersOf([{ index: "ISSUES", answer: items }], asked, phase, keyOf).get(
+      "ISSUES"
+    ),
+    items
+  );
+  assert.throws(
+    () => answersOf([{ index: "ISSUES", answer: "fine" }], asked, phase, keyOf),
+    /ISSUES answers with no list/
+  );
 });

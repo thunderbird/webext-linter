@@ -453,7 +453,11 @@ function unpackedExperiments(work, record, extracted) {
  * @returns {Promise<Handout>}
  */
 async function analyze(work, record, context, prompt, registry) {
-  const { roots, buildIssues } = analyzedAnswers(work, record);
+  const answers = analyzedAnswers(work, record);
+  if (answers === undefined) {
+    return ask(work, record, analyzeEntries());
+  }
+  const { roots, buildIssues } = answers;
   const build = workPaths(work).build;
   if (!productWritten(build)) {
     throw new HandbackRefused(
@@ -478,7 +482,7 @@ async function analyze(work, record, context, prompt, registry) {
 /**
  * Hand out a step's question: the record at its step, and the review file holding the
  * question's entries. The record is written first, so a run cut short before the review
- * file leaves a folder whose next hand-back writes that file again (answerOf, builtAnswers).
+ * file leaves a folder whose next hand-back writes that file again (answerOf).
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At the step that asks.
  * @param {object[]} entries  The question's entries.
@@ -630,22 +634,27 @@ function builtOriginal(work, record, asked, match) {
 
 /**
  * What `analyze` handed back: the build's safety issues, a list of results each held to the
- * shape a sweep's are (buildIssuesOf). Every way they can be wrong is refused, with nothing
- * changed, so the reader can correct the file and hand it back again.
+ * shape a sweep's are (buildIssuesOf), or undefined where the file holds no entry for them
+ * (answerOf). Every way they can be wrong is refused, with nothing changed, so the reader can
+ * correct the file and hand it back again.
  * @param {string} work
  * @param {import("./state.js").PrepareRecord} record  At `analyze`, its folders known.
  * @returns {{roots: import("../addon/package-root.js").ScaFolders,
- *   buildIssues: {file: string, line: ?number, hint: string}[]}}
+ *   buildIssues: {file: string, line: ?number, hint: string}[]}|undefined}
  * @throws {HandbackRefused}
  */
 function analyzedAnswers(work, record) {
-  const keyOf = (e) => String(e?.index);
-  const all = readHandback(workPaths(work).review).entries;
-  const buildIssues = buildIssuesOf(
-    all.find((e) => keyOf(e) === SCA_BUILD_SAFETY_ISSUES),
-    realSca(workPaths(work))
-  );
-  return { roots: record.roots, buildIssues };
+  const list = answerOf(work, analyzeEntries()[0], {
+    name: "analyze",
+    answer: "list",
+  });
+  if (list === undefined) {
+    return undefined;
+  }
+  return {
+    roots: record.roots,
+    buildIssues: buildIssuesOf(list, realSca(workPaths(work))),
+  };
 }
 
 /**
@@ -653,23 +662,12 @@ function analyzedAnswers(work, record) {
  * the checker a sweep's results are held by (checkedResult), against the extracted archive
  * (`sca/`), which the build analysis reads whole, and each with a hint, which is what its
  * finding says. An empty list is a safe build.
- * @param {?object} entry  The SCA_BUILD_SAFETY_ISSUES entry of the review file.
+ * @param {object[]} list  The SCA_BUILD_SAFETY_ISSUES answer, a list (answersOf).
  * @param {string} root  The extracted archive, absolute and real.
  * @returns {{file: string, line: ?number, hint: string}[]}
  * @throws {HandbackRefused}
  */
-function buildIssuesOf(entry, root) {
-  const list = entry?.[SLOT];
-  if (list === undefined || list === null) {
-    throw new HandbackRefused(
-      `${SCA_BUILD_SAFETY_ISSUES} still has no "${SLOT}" - answer it with a list, [] where the build reaches for nothing`
-    );
-  }
-  if (!Array.isArray(list)) {
-    throw new HandbackRefused(
-      `${SCA_BUILD_SAFETY_ISSUES} answers with no list - answer it with one entry per issue, [] where there are none`
-    );
-  }
+function buildIssuesOf(list, root) {
   const lineCounts = new Map();
   return list.map((raw, i) => {
     const at = `${SCA_BUILD_SAFETY_ISSUES} entry ${i + 1}`;
