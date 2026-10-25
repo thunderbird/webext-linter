@@ -25,15 +25,6 @@ import { extname } from "../util/files.js";
 const ADDON_EXTENSION = ".xpi";
 
 /**
- * Whether a file name is a built add-on's, by the extension ATN gives one.
- * @param {string} name
- * @returns {boolean}
- */
-export function isAddonFile(name) {
-  return extname(name) === ADDON_EXTENSION;
-}
-
-/**
  * What counts as the SOURCE archive beside it. This module's own list, not the loader's
  * ARCHIVE_EXTENSIONS: that one answers "is this file, inside a submission, a committed
  * binary artifact" for committed-build-artifact and unused-files, and it is scoped to

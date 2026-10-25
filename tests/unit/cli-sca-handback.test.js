@@ -289,51 +289,34 @@ test("--llm-auto-review refuses what it cannot be combined with", () => {
   // means, it does not carry the folder itself.
   const none = run(["--llm-auto-review"]);
   assert.equal(none.code, 2);
-  assert.match(
-    none.stderr,
-    /reviews an \.xpi file, or a submission folder holding one \.xpi/
-  );
-  assert.match(none.stderr, /and neither was given/);
+  assert.match(none.stderr, /reviews a submission folder - one \.xpi/);
+  assert.match(none.stderr, /and none was given/);
   assert.doesNotMatch(none.stdout, /SCA Review Prompt/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// An .xpi file is reviewed as --llm-review reviews it: the same first prompt, in a work folder
-// of the same kind beside it. Anything that is neither an .xpi nor a folder is refused, and
-// an unpacked add-on folder is no submission. The flag it replaced is no option any more.
-test("--llm-auto-review reviews an .xpi as --llm-review does, and refuses the rest", () => {
+// --llm-auto-review reviews a submission folder only: an .xpi on its own is reviewed with
+// --llm-review, and anything that is no folder is refused before anything is made, as is a
+// folder with no .xpi in it. The flag it replaced is no option any more.
+test("--llm-auto-review takes a submission folder only, and refuses the rest", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-auto-"));
   const xpi = path.join(dir, "addon.xpi");
   packAddon(xpi);
-  const auto = run([xpi, "--llm-auto-review", ...OFFLINE_FLAGS]);
-  assert.equal(auto.code, 0, auto.stderr);
-  const plain = run([xpi, "--llm-review", ...OFFLINE_FLAGS]);
-  assert.equal(plain.code, 0, plain.stderr);
-  const workIn = (out) => workOfReviewFile(reviewFile(out.stdout));
-  assert.match(path.basename(workIn(auto)), /^xpi-review-addon-/);
-  // The prompt, from its heading on: npm echoes the command line above it.
-  const prompt = (out) =>
-    out.stdout
-      .slice(out.stdout.indexOf("── LLM Prompt ──"))
-      .split(workIn(out))
-      .join("<WORK>");
-  assert.match(auto.stdout, /── LLM Prompt ──/);
-  assert.equal(prompt(auto), prompt(plain));
-
   const notXpi = path.join(dir, "addon.zip");
   fs.writeFileSync(notXpi, "x");
   const unpacked = path.join(ROOT, "tests", "addons", "clean");
-  for (const given of [notXpi, path.join(dir, "missing.xpi"), unpacked]) {
+  for (const given of [xpi, notXpi, path.join(dir, "missing.xpi"), unpacked]) {
     const r = run([given, "--llm-auto-review", ...OFFLINE_FLAGS]);
     assert.equal(r.code, 2, given);
     assert.match(
       r.stderr,
       given === unpacked
         ? /a submission folder holds exactly one \.xpi/
-        : /and ".*" is neither/,
+        : /reviews a submission folder - .* - and ".*" is not one/,
       given
     );
   }
+  assert.deepEqual(fs.readdirSync(dir).sort(), ["addon.xpi", "addon.zip"]);
   const old = run([xpi, "--llm-sca-review"]);
   assert.equal(old.code, 2);
   assert.match(old.stderr, /Unknown option '--llm-sca-review'/);
