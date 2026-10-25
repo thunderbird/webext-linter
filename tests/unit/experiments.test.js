@@ -18,24 +18,23 @@ import {
   experimentGroups,
 } from "../../src/lib/experiments.js";
 import {
-  experimentVerdict,
   verifyExperiments,
   loadAllowList,
   normalizedSha256,
 } from "../../src/experiments/verify.js";
-import {
-  extractXpiToTemp,
-  loadAddon,
-  readWebExtManifest,
-} from "../../src/addon/load.js";
-import { ARTIFACT_XPI } from "../../src/lib/artifacts.js";
+import { loadTheXpi } from "../../src/review/start.js";
+import { workPaths } from "../../src/util/dest.js";
 import AdmZip from "adm-zip";
 import { buildSchemaIndex } from "../../src/schema/index.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
 import experimentOverridesApi from "../../src/checks/rules/experiment-overrides-api.js";
 import experimentNotAllowed from "../../src/checks/rules/experiment-not-allowed.js";
 import experimentModified from "../../src/checks/rules/experiment-modified.js";
-import { seedDownload, seedFixtureCache } from "../seed-caches.js";
+import {
+  freshWorkFolder,
+  seedDownload,
+  seedFixtureCache,
+} from "../seed-caches.js";
 import {
   resolveExperimentsZip,
   cachedExperimentsPath,
@@ -593,9 +592,9 @@ test("resolveExperimentsZip downloads a list older than a day again", async (t) 
   assert.equal(again.source, "cache:main");
 });
 
-// The verdict --llm-auto-review asks before it prepares a review, by the rule the review's own
-// step asks it by, of the .xpi extracted to a temporary folder.
-test("experimentVerdict reads an extracted .xpi as the review would", async () => {
+// The verdict the load reaches (src/review/start.js loadTheXpi), of the .xpi it extracted into
+// the work folder's xpi/, which every path into a review asks before it does anything else.
+test("the load reaches the Experiment verdict of the .xpi it extracted", async () => {
   const fixtures = path.join(here, "..", "addons");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-verdict-"));
   const verdictOf = async (name, extra = {}) => {
@@ -603,25 +602,19 @@ test("experimentVerdict reads an extracted .xpi as the review would", async () =
     zip.addLocalFolder(path.join(fixtures, name));
     const xpi = path.join(dir, `${name}.xpi`);
     zip.writeZip(xpi);
-    const folder = extractXpiToTemp(xpi);
-    try {
-      assert.deepEqual(
-        fs.readdirSync(folder).sort(),
-        fs.readdirSync(path.join(fixtures, name)).sort()
-      );
-      const addon = loadAddon(folder, undefined, { kind: ARTIFACT_XPI });
-      const { verification, invalid } = await experimentVerdict(
-        addon,
-        readWebExtManifest(addon.store),
-        { ...opts, ...extra }
-      );
-      return {
-        invalid,
-        groups: verification.groups.map((g) => [g.status, g.rejected]),
-      };
-    } finally {
-      fs.rmSync(folder, { recursive: true, force: true });
-    }
+    const work = freshWorkFolder();
+    const { verification, rejected } = await loadTheXpi(xpi, work, {
+      ...opts,
+      ...extra,
+    });
+    assert.deepEqual(
+      fs.readdirSync(workPaths(work).xpi).sort(),
+      fs.readdirSync(path.join(fixtures, name)).sort()
+    );
+    return {
+      invalid: rejected,
+      groups: verification.groups.map((g) => [g.status, g.rejected]),
+    };
   };
   // The verdict is the one reader of --allow-experiments: it marks each group it rejects,
   // and `invalid` is whether any is. Allowed, the unsupported group is still classified

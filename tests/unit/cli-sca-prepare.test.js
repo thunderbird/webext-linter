@@ -83,6 +83,8 @@ test("--llm-auto-review creates the work folder and hands it back", () => {
   const work = path.join(dir, made[0]);
   // The add-on's copy, which the load put there, and the record.
   assert.deepEqual(fs.readdirSync(work).sort(), [".review", "xpi"]);
+  // No Experiments, so no verdict, recorded as such.
+  assert.equal(readJson(work, "prepare").submission.verification, null);
   assert.deepEqual(fs.readdirSync(path.join(work, ".review")).sort(), [
     "prepare.json",
     "review.json",

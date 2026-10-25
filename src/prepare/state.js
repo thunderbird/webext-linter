@@ -99,9 +99,12 @@ const COUNTED = ["moderate", "high", "critical"];
 /**
  * @typedef {object} PrepareRecord
  * @property {string} step  A PREPARE_STEP value.
- * @property {{xpi: string, experiments: boolean}} submission  The built add-on, absolute,
- *   and whether its manifest.json declares Experiments - which decides whether the roots
- *   include the Experiment folder.
+ * @property {{xpi: string, experiments: boolean,
+ *   verification?: ?import("../experiments/verify.js").ExperimentVerification}} submission
+ *   The built add-on, absolute, whether its manifest.json declares Experiments - which
+ *   decides whether the roots include the Experiment folder - and the Experiment verdict the
+ *   load reached (src/review/start.js loadTheXpi), null for an add-on that declares none,
+ *   which the review the preparation starts takes as its own.
  * @property {Record<string, string|boolean>} flags  The flags the review is to be run with,
  *   as parsed (src/cli.js), named without their dashes. A folder among them is absolute, so
  *   it names the same folder wherever the review starts.

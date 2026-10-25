@@ -209,7 +209,7 @@ function freshParent() {
 /**
  * A fresh work folder for one review run through runPipeline (its `workFolder`), removed
  * when the process exits. The folder itself does not exist yet, as a work folder a review
- * starts in must not: the review creates it. Its parent is a fresh temporary folder of its
+ * starts in must not: the load creates it (loadAndReview). Its parent is a fresh temporary folder of its
  * own, so the path is free.
  * @returns {string} The folder's absolute path.
  */

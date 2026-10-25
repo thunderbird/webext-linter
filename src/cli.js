@@ -40,17 +40,8 @@ import {
   startPreparation,
 } from "./prepare/steps.js";
 import { scaFoldersMisfit, settlePackageRoot } from "./addon/package-root.js";
-import {
-  extractXpiToTemp,
-  loadAddon,
-  readPackedManifest,
-  readWebExtManifest,
-  manifestRecord,
-  relativeInside,
-} from "./addon/load.js";
-import { ARTIFACT_XPI } from "./lib/artifacts.js";
+import { relativeInside } from "./addon/load.js";
 import { copyTheSource, loadTheXpi } from "./review/start.js";
-import { experimentVerdict } from "./experiments/verify.js";
 import { hasErrors } from "./report/finding.js";
 import {
   detailRows,
@@ -88,7 +79,7 @@ import { setColor, red } from "./util/color.js";
 import { shellArg, wrapText } from "./util/text.js";
 import { parseJson } from "./util/json.js";
 import { rethrowIfFatal } from "./lib/errors.js";
-import { isExperiment, splitList } from "./lib/util.js";
+import { splitList } from "./lib/util.js";
 import { networkSwitchedOff } from "./util/net.js";
 
 /** @typedef {import("./pipeline.js").PipelineOpts} PipelineOpts */
@@ -863,84 +854,7 @@ export async function main(argv) {
     }
   }
   if (values["llm-auto-review"]) {
-    // The caches are cleared by the run that was given --cache-clear, never by a later one:
-    // the review this preparation starts reads its flags from a record the agent can write,
-    // and a record that could name a folder for the linter to delete is one too many.
-    // Cleared before anything below reads one.
-    if (values["cache-clear"]) {
-      clearCaches(cacheDirs(pipelineOptsFromValues(values)));
-    }
-    let experiments;
-    let rejected;
-    try {
-      ({ experiments, rejected } = await experimentGate(
-        submission.xpi,
-        values
-      ));
-    } catch (err) {
-      rethrowIfFatal(err);
-      writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-      return 2;
-    }
-    // The review's work folder, created here because the source is extracted into it before
-    // the review starts: at its default place, beside the .xpi, as every review's is. Not
-    // recursive, and an existing one is refused: the folder is fresh by its moment, so one
-    // already there belongs to another review.
-    const work = defaultWorkFolder(submission.xpi, "sca");
-    if (fs.lstatSync(work, { throwIfNoEntry: false })) {
-      writeToStderr(
-        `--llm-auto-review creates a fresh work folder, and "${work}" is already there. ` +
-          "Run it again for a folder of its own.\n"
-      );
-      return 2;
-    }
-    let loaded;
-    try {
-      loaded = await loadTheXpi(
-        submission.xpi,
-        work,
-        pipelineOptsFromValues(values)
-      );
-    } catch (err) {
-      rethrowIfFatal(err);
-      writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-      return 2;
-    }
-    if (rejected) {
-      let result;
-      try {
-        result = await startReview(
-          { ...forwardedFlags(values), "llm-review": true },
-          submission.xpi,
-          work,
-          registry,
-          { verification: loaded.verification }
-        );
-      } catch (err) {
-        writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-        return 2;
-      }
-      return printReview(result, "text");
-    }
-    // The preparation's record, at `unpack`, written before the prompt that names its folder.
-    const record = startRecord({
-      submission: { xpi: submission.xpi, experiments },
-      flags: forwardedFlags(values),
-      agentBuilds: agentBuildsSwitchedOn(),
-    });
-    startPreparation(work, record);
-    // The folder holds a preparation now, which the hand-back carries on.
-    keepClaims();
-    // The prompt IS the output: no review has run, and none can until its reader answers
-    // it. Printed as the report is, and to the screen only.
-    for (const line of preparationPrompt(work, record, registry, {
-      first: true,
-      submission,
-    })) {
-      report(line);
-    }
-    report("");
-    return 0;
+    return autoReview(values, submission, registry);
   }
 
   if (values["llm-review"] && values["llm-handback"]) {
@@ -1063,12 +977,7 @@ export async function main(argv) {
   // is prepared as --llm-auto-review's is, from the build analysis on.
   if (values["sca-extracted"]) {
     return values["llm-review"]
-      ? startSourcePreparation(
-          values,
-          addonPath,
-          defaultWorkFolder(addonPath, "sca"),
-          registry
-        )
+      ? prepareFromSource(values, addonPath, registry)
       : reviewWithSource(values, addonPath, registry, format);
   }
   return reviewXpi(values, addonPath, registry, format);
@@ -1222,63 +1131,39 @@ async function review(values, addonPath, work, registry, format, internal) {
 }
 
 /**
- * Start the preparation of a source review given --sca-extracted, at `analyze`: the work folder
- * created, the source copied into its `sca/` (copyTheSource), and the build analysis's prompt
- * printed - the step --llm-auto-review reaches once its reader has extracted the archive. An
- * Experiment the review would reject is not prepared (experimentGate): its review starts at
- * once, as an XPI review, as --llm-auto-review's does.
- * @param {Record<string, string|boolean>} values  Parsed and checked.
+ * The path of a source code review an agent runs from a named source (--llm-review
+ * --sca-extracted): the .xpi loaded, then rejected early, or the named source copied into the
+ * work folder's sca/ (copyTheSource), the preparation started at `analyze`, and the build
+ * analysis's prompt printed - the step --llm-auto-review reaches once its reader has extracted
+ * the archive.
+ * @param {Record<string, string|boolean>} values  Parsed and checked, with --sca-extracted.
  * @param {string} addonPath  The built add-on, absolute.
- * @param {string} work  The work folder to create, absolute.
  * @param {import("./checks/registry.js").Registry} registry
  * @returns {Promise<number>}
  */
-async function startSourcePreparation(values, addonPath, work, registry) {
+async function prepareFromSource(values, addonPath, registry) {
   let folders;
-  let experiments;
-  let rejected;
   try {
     ({ folders } = scaGivenOf(values));
-    if (values["cache-clear"]) {
-      clearCaches(cacheDirs(pipelineOptsFromValues(values)));
-    }
-    ({ experiments, rejected } = await experimentGate(addonPath, values));
   } catch (err) {
     rethrowIfFatal(err);
     writeToStderr(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
+  const work = defaultWorkFolder(addonPath, "sca");
+  const loaded = await loadForReview(values, addonPath, work);
+  if (!loaded) {
+    return 2;
+  }
+  if (loaded.rejected) {
+    return rejectEarly(values, addonPath, work, loaded, registry, "text", true);
+  }
   // The Experiment folder is named exactly for an add-on with Experiments, as a review given
-  // these flags needs it: refused before anything is created. An Experiment the review rejects
-  // is reviewed as an XPI, which reads no source folder.
-  const misfit = rejected ? null : scaFoldersMisfit(folders, experiments);
+  // these flags needs it. Refused before the source is copied.
+  const misfit = scaFoldersMisfit(folders, loaded.experiments);
   if (misfit) {
     writeToStderr(`${misfit}\n`);
     return 2;
-  }
-  let loaded;
-  try {
-    loaded = await loadTheXpi(addonPath, work, pipelineOptsFromValues(values));
-  } catch (err) {
-    rethrowIfFatal(err);
-    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-    return 2;
-  }
-  if (rejected) {
-    let result;
-    try {
-      result = await startReview(
-        { ...forwardedFlags(values), "llm-review": true },
-        addonPath,
-        work,
-        registry,
-        { verification: loaded.verification }
-      );
-    } catch (err) {
-      writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-      return 2;
-    }
-    return printReview(result, "text");
   }
   let roots;
   try {
@@ -1290,65 +1175,95 @@ async function startSourcePreparation(values, addonPath, work, registry) {
     writeToStderr(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
-  const record = startRecord({
-    submission: { xpi: addonPath, experiments },
+  return startPrepared(work, registry, {
+    submission: submissionOf(addonPath, loaded),
     flags: forwardedFlags(values),
     agentBuilds: agentBuildsSwitchedOn(),
     roots,
   });
+}
+
+/**
+ * The path of --llm-auto-review given a submission folder with a source archive: the .xpi
+ * loaded, then rejected early, or the preparation started at `unpack`, whose prompt has the
+ * agent extract the archive into the work folder's sca/.
+ * @param {Record<string, string|boolean>} values  Parsed and checked.
+ * @param {{folder: string, xpi: string, source: string}} submission  The folder, as read
+ *   (src/addon/submission.js).
+ * @param {import("./checks/registry.js").Registry} registry
+ * @returns {Promise<number>}
+ */
+async function autoReview(values, submission, registry) {
+  // The caches are cleared by the run that was given --cache-clear, never by a later one:
+  // the review this preparation starts reads its flags from a record the agent can write,
+  // and a record that could name a folder for the linter to delete is one too many.
+  const work = defaultWorkFolder(submission.xpi, "sca");
+  const loaded = await loadForReview(values, submission.xpi, work);
+  if (!loaded) {
+    return 2;
+  }
+  if (loaded.rejected) {
+    return rejectEarly(
+      values,
+      submission.xpi,
+      work,
+      loaded,
+      registry,
+      "text",
+      true
+    );
+  }
+  return startPrepared(
+    work,
+    registry,
+    {
+      submission: submissionOf(submission.xpi, loaded),
+      flags: forwardedFlags(values),
+      agentBuilds: agentBuildsSwitchedOn(),
+    },
+    submission
+  );
+}
+
+/**
+ * What a preparation's record says of its submission: the built add-on, whether it declares
+ * Experiments, and the load's Experiment verdict, which the review it starts takes as its own.
+ * @param {string} xpi  The built add-on, absolute.
+ * @param {import("./review/start.js").LoadedXpi} loaded
+ * @returns {import("./prepare/state.js").PrepareRecord["submission"]}
+ */
+function submissionOf(xpi, loaded) {
+  return {
+    xpi,
+    experiments: loaded.experiments,
+    verification: loaded.verification,
+  };
+}
+
+/**
+ * Start a preparation in the loaded work folder: its record written, the folder kept, and its
+ * first prompt printed. The prompt IS the output: no review has run, and none can until its
+ * reader answers it. Printed as the report is, and to the screen only.
+ * @param {string} work
+ * @param {import("./checks/registry.js").Registry} registry
+ * @param {Parameters<typeof startRecord>[0]} known  What the record starts from.
+ * @param {{folder: string, xpi: string, source: string}} [submission]  The folder
+ *   --llm-auto-review was given, which its first prompt names.
+ * @returns {number}
+ */
+function startPrepared(work, registry, known, submission) {
+  const record = startRecord(known);
   startPreparation(work, record);
   // The folder holds a preparation now, which the hand-back carries on.
   keepClaims();
   for (const line of preparationPrompt(work, record, registry, {
     first: true,
+    ...(submission ? { submission } : {}),
   })) {
     report(line);
   }
   report("");
   return 0;
-}
-
-/**
- * Whether the add-on declares Experiments, and whether the review rejects one, asked of the
- * built add-on before a source review is prepared: the Experiment decides whether the roots
- * include the Experiment folder, and one the review would reject is not worth preparing - the
- * review rejects it from the add-on alone, before it reads a line of the source. So the verdict
- * is asked here, by the rule the review asks it by (experimentVerdict), of the add-on's folder
- * or a temporary extraction of the .xpi, and where it rejects, the review starts at once,
- * decides the same, and ends where it always does. --allow-experiments is not asked here: the
- * verdict reads it, and with it rejects nothing.
- * @param {string} addon  The built add-on, a .xpi or its folder, absolute.
- * @param {Record<string, string|boolean>} values
- * @returns {Promise<{experiments: boolean, rejected: boolean}>}
- */
-async function experimentGate(addon, values) {
-  const isFolder = pointsAtFolder(addon);
-  const manifest = isFolder
-    ? manifestRecord(
-        fs.existsSync(path.join(addon, "manifest.json"))
-          ? fs.readFileSync(path.join(addon, "manifest.json"))
-          : null
-      )
-    : readPackedManifest(addon);
-  const experiments = isExperiment(manifest.json);
-  if (!experiments) {
-    return { experiments, rejected: false };
-  }
-  let temporary = null;
-  try {
-    const folder = isFolder ? addon : (temporary = extractXpiToTemp(addon));
-    const loaded = loadAddon(folder, undefined, { kind: ARTIFACT_XPI });
-    const { invalid } = await experimentVerdict(
-      loaded,
-      readWebExtManifest(loaded.store),
-      pipelineOptsFromValues(values)
-    );
-    return { experiments, rejected: invalid };
-  } finally {
-    if (temporary) {
-      fs.rmSync(temporary, { recursive: true, force: true });
-    }
-  }
 }
 
 /**
@@ -1662,7 +1577,14 @@ async function runPreparePass(work, registry) {
       record.submission.xpi,
       out.work,
       registry,
-      { scaFolders }
+      {
+        scaFolders,
+        // The load's verdict, recorded when the preparation started, so it is decided once.
+        // A record written before it was recorded holds none, and the review asks again.
+        ...(record.submission.verification === undefined
+          ? {}
+          : { verification: record.submission.verification }),
+      }
     );
   } catch (err) {
     return refusedOrFailed(err, registry);

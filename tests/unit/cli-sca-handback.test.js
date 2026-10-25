@@ -144,8 +144,54 @@ test("--llm-auto-review starts the review of an Experiment it would reject", () 
     ]);
     assert.equal(prepared.code, 0, prepared.stderr);
     assert.match(prepared.stdout, /── SCA Review Prompt ──/, fixture);
+    // The load's verdict is recorded, so the review the preparation starts takes it as its
+    // own rather than asking again.
+    const record = readJson(
+      defaultFolderOf(path.join(allowed, "addon.xpi"), "sca"),
+      "prepare"
+    );
+    assert.deepEqual(
+      record.submission.verification.groups.map((g) => [g.status, g.rejected]),
+      [[fixture === "experiment-pristine" ? "pristine" : "unsupported", false]],
+      fixture
+    );
     fs.rmSync(allowed, { recursive: true, force: true });
   }
+});
+
+// A broken add-on fails in the load, the first step of every path: before a source is
+// copied or a preparation started, and with nothing left behind. A link in a packed .xpi,
+// here, in a source review an agent runs and in --llm-auto-review alike.
+test("a broken .xpi fails before any preparation starts", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-broken-"));
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from('{"manifest_version":3,"name":"x","version":"1"}')
+  );
+  zip.addFile("lib/a.js", Buffer.from("../../etc/passwd"));
+  zip.getEntry("lib/a.js").attr = (0o120777 << 16) >>> 0;
+  const xpi = path.join(dir, "addon.xpi");
+  zip.writeZip(xpi);
+  const src = path.join(dir, "src");
+  fs.mkdirSync(src);
+  fs.writeFileSync(path.join(src, "package.json"), '{"name":"x"}');
+  fs.writeFileSync(path.join(dir, "src.tar.gz"), "");
+  for (const args of [
+    [xpi, "--llm-review", "--sca-extracted", src],
+    [dir, "--llm-auto-review"],
+  ]) {
+    const r = run([...args, ...OFFLINE_FLAGS]);
+    assert.equal(r.code, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /Invalid XPI: lib\/a\.js is a symbolic link/);
+    assert.doesNotMatch(r.stdout, /SCA Review Prompt/);
+    assert.deepEqual(fs.readdirSync(dir).sort(), [
+      "addon.xpi",
+      "src",
+      "src.tar.gz",
+    ]);
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // The preparation records every cache its review is to read, given or default, as one

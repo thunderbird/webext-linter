@@ -37,7 +37,6 @@
 import { ARTIFACT_SCA, ARTIFACT_XPI, isArtifact } from "../lib/artifacts.js";
 import { wiringError } from "../lib/errors.js";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import AdmZip from "adm-zip";
 
@@ -307,20 +306,6 @@ export function loadAddon(source, copyTo, { recordInstalledTrees, kind } = {}) {
 }
 
 /**
- * Extract a packed .xpi into a fresh temporary folder of its own, for a caller that has to
- * read it before any review exists to name a place for it. Extracted exactly as a review
- * extracts it, so every archive a review refuses is refused here too, and a refusal leaves
- * nothing behind. The caller removes the folder when it is done with it.
- * @param {string} xpiPath  The packed .xpi.
- * @returns {string}  The folder it was extracted into.
- */
-export function extractXpiToTemp(xpiPath) {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), "webext-linter-xpi-"));
-  extractZip(path.resolve(xpiPath), folder);
-  return folder;
-}
-
-/**
  * Load the SUBMITTED SOURCE ARCHIVE - the folder --sca-extracted names.
  *
  * The one way it is not an add-on, stated here so no caller restates it: an installed
@@ -366,31 +351,6 @@ const MANIFEST_NAME = "manifest.json";
  */
 export function readWebExtManifest(store) {
   return manifestRecord(store.get(MANIFEST_NAME) ?? null);
-}
-
-/**
- * The manifest.json record of a PACKED add-on, read without extracting it: for a caller that
- * prepares a review and writes nothing. An archive that cannot be read
- * answers as one with no manifest.json - the review being prepared reads it in full and
- * refuses it there, in its own words.
- * @param {string} zipPath
- * @returns {WebExtManifestRecord}
- */
-export function readPackedManifest(zipPath) {
-  try {
-    const entry = new AdmZip(zipPath).getEntry(MANIFEST_NAME);
-    if (
-      entry &&
-      !entry.isDirectory &&
-      !hidesItsSize(entry) &&
-      entry.header.size <= ADDON_MAX_UNPACKED_BYTES
-    ) {
-      return manifestRecord(entry.getData());
-    }
-  } catch (err) {
-    rethrowIfFatal(err);
-  }
-  return manifestRecord(null);
 }
 
 /**
