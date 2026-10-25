@@ -334,7 +334,7 @@ test("a preparation refuses an unanswered hand-back", () => {
   assert.equal(unextracted.code, 2);
   assert.match(
     unextracted.stdout,
-    /The hand-back was refused: ".+\/sca" is not the folder the source was extracted into/
+    /The hand-back was refused: ".+\/sca" is gone, so it is not the folder the source was extracted into/
   );
   // A hand-back that fails takes nothing away: the folder was not this run's to remove.
   assert.ok(fs.existsSync(workPaths(work).prepare), "the record stays");
@@ -474,18 +474,27 @@ test("a prepared review refuses a record it cannot start from", (t) => {
     },
     /The hand-back was refused: the preparation's record names an Experiment folder ".*exp" that is not a folder inside /
   );
-  refusedFor(
-    "an sca/ that is a link",
-    (work) => {
-      const sca = path.join(work, "sca");
+  // A folder the linter put there that is no longer that folder is not the agent's to
+  // correct: the tool's failure, on stderr, and nothing written.
+  t.test("an sca/ that is a link", async () => {
+    const work = await preparedFolder((w) => {
+      const sca = path.join(w, "sca");
       const moved = fs.mkdtempSync(path.join(os.tmpdir(), "wl-sca-"));
       fs.cpSync(sca, moved, { recursive: true });
       fs.rmSync(sca, { recursive: true });
       fs.symlinkSync(moved, sca);
       return { roots: { source: sca, used: sca, packageRoot: sca } };
-    },
-    /The hand-back was refused: ".*[/]sca" is not the folder the source was extracted into/
-  );
+    });
+    const r = run(["--llm-handback", work]);
+    assert.equal(r.code, 2, r.stdout + r.stderr);
+    assert.match(
+      r.stderr,
+      /no longer holds the folders the linter put there for this review: sca\/ is a link\. It cannot be carried on/
+    );
+    assert.match(r.stderr, /verify failed/);
+    assert.doesNotMatch(r.stdout, /refused/);
+    assert.ok(!fs.existsSync(workPaths(work).state), "no review started");
+  });
   refusedFor(
     "a flag of the wrong type",
     { flags: { eslint: "yes" } },

@@ -11,12 +11,14 @@
 // submissionLeaf.
 //
 // Belongs here: the default folder, the stamp that makes it unique, the submission's name
-// it is built from, the folder a rescued copy is made in, and the bare names inside it
-// (workPaths). Does NOT belong here: writing
+// it is built from, the folder a rescued copy is made in, the bare names inside it
+// (workPaths), and whether a folder the linter made there is still that folder
+// (misplacedFolders). Does NOT belong here: writing
 // anything there, or deciding which of those names a run may create (src/pipeline.js claims
 // them when a review starts, and src/cli.js creates the folder a source code review is
 // prepared in).
 
+import fs from "node:fs";
 import path from "node:path";
 
 /** A moment, spelled so it can sit in a filename: no colons, no dots. */
@@ -151,4 +153,44 @@ export function workPaths(work) {
     sweep: (artifact) =>
       hidden(`sweep-${String(artifact).toLowerCase()}.answers.json`),
   };
+}
+
+/**
+ * Which of these folders, each one the linter made in a work folder, is no longer that folder,
+ * and why: gone, replaced by a symbolic link, or replaced by something that is not a folder.
+ * Asked with lstat, so a link is the name it occupies and not what it may point at. The one
+ * check of a folder the linter made, so the three ways it can fail read the same everywhere.
+ * @param {string[]} folders  Absolute.
+ * @returns {{folder: string, problem: string}[]}  In the order given, empty when all are there.
+ */
+export function misplacedFolders(folders) {
+  return folders.flatMap((folder) => {
+    const st = fs.lstatSync(folder, { throwIfNoEntry: false });
+    const problem = !st
+      ? "is gone"
+      : st.isSymbolicLink()
+        ? "is a link"
+        : st.isDirectory()
+          ? null
+          : "is not a folder";
+    return problem ? [{ folder, problem }] : [];
+  });
+}
+
+/**
+ * The failure of a hand-back whose work folder no longer holds the folders the linter put there
+ * (misplacedFolders): not the agent's to correct, since the linter made them, so the review
+ * cannot be carried on. A plain Error, which the CLI reports as the tool's failure (exit 2).
+ * @param {string} work  The work folder, absolute.
+ * @param {{folder: string, problem: string}[]} misplaced  Not empty.
+ * @returns {Error}
+ */
+export function misplacedFoldersError(work, misplaced) {
+  const listed = misplaced
+    .map(({ folder, problem }) => `${path.relative(work, folder)}/ ${problem}`)
+    .join(", ");
+  return new Error(
+    `The work folder "${work}" no longer holds the folders the linter put there for this ` +
+      `review: ${listed}. It cannot be carried on. Start the review again from the submission.`
+  );
 }

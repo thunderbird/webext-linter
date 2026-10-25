@@ -71,7 +71,12 @@ import {
 import { checkSelected, loadRegistry } from "../checks/registry.js";
 import { splitList } from "../lib/util.js";
 import { relativeInside } from "../addon/load.js";
-import { runCache, workPaths } from "../util/dest.js";
+import {
+  misplacedFolders,
+  misplacedFoldersError,
+  runCache,
+  workPaths,
+} from "../util/dest.js";
 import { defaultNet } from "../vendor/verify.js";
 import { withRunCache } from "../vendor/run-cache.js";
 import { rethrowIfFatal } from "../lib/errors.js";
@@ -330,6 +335,13 @@ export async function handBack(work, registry = loadRegistry()) {
   const record = readPrepare(work);
   if (!record) {
     throw new HandbackRefused(`"${work}" holds no preparation`);
+  }
+  // The folders the linter put there for this step, found as it left them before anything
+  // is read or written: one that is gone, a link or no folder is not the agent's to correct,
+  // so the preparation cannot be carried on.
+  const misplaced = misplacedFolders(preparedFolders(work, record));
+  if (misplaced.length) {
+    throw misplacedFoldersError(work, misplaced);
   }
   // The audit reads the npm registry cache the review it starts will read, and asks OSV and
   // the popularity hosts through the run's cache, which every step of the preparation and
@@ -790,17 +802,45 @@ function moveTree({ source, ...inTree }, to) {
 }
 
 /**
+ * The folders the linter put in the work folder for the step a record is at, which its
+ * hand-back expects to find as it left them: the add-on's copy always, and from `analyze` on
+ * the source in `sca/`, at `build` the build copy, and the rescued copy at `rescue` and
+ * wherever the review reads it. At `unpack`, `sca/` is the agent's to make, and checked
+ * as its answer (realSca). At `rescue` the agent remakes the build copy itself. Checked by
+ * handBack before the step runs.
+ * @param {string} work
+ * @param {import("./state.js").PrepareRecord} record
+ * @returns {string[]}  Absolute.
+ */
+export function preparedFolders(work, record) {
+  const paths = workPaths(work);
+  const readsRescued =
+    record.step === PREPARE_STEP.rescue ||
+    (typeof record.roots?.used === "string" &&
+      relativeInside(record.roots.used, paths.rescued) !== null);
+  return [
+    paths.xpi,
+    ...(record.step === PREPARE_STEP.unpack ? [] : [paths.sca]),
+    ...(record.step === PREPARE_STEP.build ? [paths.buildCopy] : []),
+    ...(readsRescued ? [paths.rescued] : []),
+  ];
+}
+
+/**
  * The folder the source was extracted into, real: it must be a folder itself, not a link
- * to one, since everything inside it is taken as the submission's source.
+ * to one, since everything inside it is taken as the submission's source. Asked of the
+ * agent's answer at `unpack` (misplacedFolders words why it is not), and found as it was by
+ * every later step, whose hand-back checked it first (preparedFolders, handBack).
  * @param {ReturnType<typeof workPaths>} paths
  * @returns {string}
  * @throws {HandbackRefused}
  */
 function realSca(paths) {
-  const linked = fs.lstatSync(paths.sca, { throwIfNoEntry: false });
-  if (!linked?.isDirectory()) {
+  const [misplaced] = misplacedFolders([paths.sca]);
+  if (misplaced) {
     throw new HandbackRefused(
-      `"${paths.sca}" is not the folder the source was extracted into: extract it there`
+      `"${paths.sca}" ${misplaced.problem}, so it is not the folder the source was ` +
+        "extracted into: extract it there"
     );
   }
   return fs.realpathSync(paths.sca);

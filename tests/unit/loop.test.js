@@ -36,14 +36,23 @@ const PHASES = REGISTRY.llmPhases().phases;
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "wxl-loop-"));
 
+/** A source review's folders, all at `folder`, made there as a review finds them: every
+ *  hand-back expects the source it read to be the folder it was. */
+function sourceFolders(folder) {
+  fs.mkdirSync(folder, { recursive: true });
+  return { source: folder, used: folder, packageRoot: folder };
+}
+
 /** A review small enough to read, carrying one of each kind the loop routes:
  *  two findings (verify), one code-review case (settle), two questions (ask). */
 function review(
   dir,
   { sweep = true, findings = true, code = true, questions = true } = {}
 ) {
-  // The work folder's own names, as a review lays them out (src/util/dest.js).
+  // The work folder's own names, as a review lays them out (src/util/dest.js), with the
+  // add-on's copy the load put there, which every hand-back finds first.
   const files = workPaths(dir);
+  fs.mkdirSync(files.xpi, { recursive: true });
   const finding = (i, ruleId) => ({
     ruleId,
     severity: "error",
@@ -140,7 +149,7 @@ function review(
         report: files.report,
         // The roots an entry's paths are resolved against (handback.js entriesFor). The
         // state carries both; without xpiRoot the loop would hand out relative paths.
-        xpiRoot: "/tmp/work/xpi/",
+        xpiRoot: `${files.xpi}${path.sep}`,
         // Each tree's sweep request and answers file, which is also what says WHICH trees
         // were asked. The request is printed by the step, and the answers file is the one
         // this loop opens.
@@ -1090,7 +1099,10 @@ test("the spawn step hands the sweep request over inline and names the answers f
     loopSlots(state, out, work, REGISTRY)
   ).join("\n");
   const step = text.slice(text.indexOf("to sweep the built add-on"));
-  assert.match(step, /^\s+\/tmp\/work\/xpi\/$/m, "the folder to read");
+  assert.ok(
+    step.includes(`\n     ${state.paths.xpiRoot}\n`),
+    "the folder to read"
+  );
   assert.match(step, /Label 1: t1\n\s+i1\n/, "each label with its instruction");
   assert.match(step, /Label 2: t2\n\s+i2\n/);
   assert.match(
@@ -1138,11 +1150,7 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
     questions: false,
   });
   // Both trees exist for this one, so the review is a source-code review.
-  state.paths.scaFolders = {
-    source: path.join(dir, "src"),
-    used: path.join(dir, "src"),
-    packageRoot: path.join(dir, "src"),
-  };
+  state.paths.scaFolders = sourceFolders(path.join(dir, "src"));
   state.paths.sweeps[ARTIFACT_SCA] = {
     request: "Sweep the source.",
     answers: path.join(dir, "r.sweep-sca.answers.json"),
@@ -1884,11 +1892,7 @@ test("an archive holding the XPI and no lock is offered the restart, unreadable 
 
   const dir = tmp();
   const archiveOnly = abortedScaReview(dir, [...shape, "minified-code"]);
-  archiveOnly.state.paths.scaFolders = {
-    source: path.join(dir, "sca"),
-    used: path.join(dir, "sca"),
-    packageRoot: path.join(dir, "sca"),
-  };
+  archiveOnly.state.paths.scaFolders = sourceFolders(path.join(dir, "sca"));
   const minified = archiveOnly.state.report.findings.at(-1);
   minified.file = "tests/fixture.min.js";
   assert.equal(untilPhase(archiveOnly, "downgrade").out.phase.name, "close");
@@ -1936,11 +1940,7 @@ function buildReview(dir) {
   made.state.run = { skip: [], sca: true, "build-guarded": true };
   made.state.paths.build = path.join(dir, "build.md");
   made.state.report.meta.buildFile = made.state.paths.build;
-  made.state.paths.scaFolders = {
-    source: path.join(dir, "sca"),
-    used: path.join(dir, "sca"),
-    packageRoot: path.join(dir, "sca"),
-  };
+  made.state.paths.scaFolders = sourceFolders(path.join(dir, "sca"));
   return made;
 }
 
@@ -1963,11 +1963,7 @@ function buildQuestionsReview(dir) {
     askedIn: REGISTRY.askedIn(ruleId),
     ...extra,
   });
-  made.state.paths.scaFolders = {
-    source: path.join(dir, "src"),
-    used: path.join(dir, "src"),
-    packageRoot: path.join(dir, "src"),
-  };
+  made.state.paths.scaFolders = sourceFolders(path.join(dir, "src"));
   made.state.manual.push(
     todo("build-lifecycle-hook", {
       section: "code-review",
@@ -2866,11 +2862,7 @@ test("settle words a per-mode response from the state's review mode", () => {
       // A source review has both roots, and every finding says which one its path is in
       // - the loop resolves the path for the agent from exactly that pair.
       if (sca) {
-        state.paths.scaFolders = {
-          source: "/tmp/src/",
-          used: "/tmp/src/",
-          packageRoot: "/tmp/src/",
-        };
+        state.paths.scaFolders = sourceFolders(path.join(tmp(), "src"));
       }
       state.report.findings = [
         {

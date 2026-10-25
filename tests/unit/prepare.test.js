@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   handBack,
+  preparedFolders,
   recordedRoots,
   startPreparation,
 } from "../../src/prepare/steps.js";
@@ -128,6 +129,10 @@ function workFolder(
   );
   const work = path.join(parent, "work");
   fs.mkdirSync(work);
+  // The add-on's copy, as the load leaves it before a preparation starts.
+  writeTree(workPaths(work).xpi, {
+    "manifest.json": '{"manifest_version": 3, "name": "x", "version": "1"}',
+  });
   startPreparation(
     work,
     startRecord({
@@ -442,13 +447,15 @@ test("a comparison that does not go with the build's answer is refused", async (
 test("a build output outside build/, or missing, is refused", async () => {
   const { work } = await clean();
   const copy = workPaths(work).buildCopy;
+  // The build copy is the linter's, so one that is gone is not the agent's to correct: the
+  // hand-back cannot be carried on, and nothing is written.
   fs.rmSync(copy, { recursive: true });
-  await assert.rejects(
-    handOutput(work, "dist"),
-    refused(
-      `LLM_BUILD_OUTPUT names "dist", but the build copy "${copy}" does not exist`
-    )
-  );
+  await assert.rejects(handOutput(work, "dist"), (err) => {
+    assert.ok(!(err instanceof HandbackRefused), "not a refusal");
+    assert.match(err.message, /build\/ is gone\. It cannot be carried on/);
+    return true;
+  });
+  assert.equal(recordOf(work).step, PREPARE_STEP.build);
   buildInto(copy);
   fs.symlinkSync(workPaths(work).sca, path.join(copy, "linked"));
   for (const [named, problem] of [
@@ -1999,4 +2006,72 @@ test("sca-dependencies-changed says once, at package.json, that the copy changed
     }),
   };
   assert.deepEqual(changed(relocked, original), [["package.json", null]]);
+});
+
+// A folder the linter put there that is gone when the step is handed back is not the agent's
+// to correct: the hand-back fails as the tool's, before anything is read or written, with
+// the folder named. The rescued copy gone at `rescue` is no crash, and no retry is waited for.
+test("a step whose work folder lost a folder the linter made cannot be carried on", async () => {
+  const lost = async (work, name, handed) => {
+    const before = recordOf(work);
+    fs.rmSync(path.join(work, name), { recursive: true, force: true });
+    await assert.rejects(handed(), (err) => {
+      assert.ok(!(err instanceof HandbackRefused), `${name}: not a refusal`);
+      assert.match(
+        err.message,
+        new RegExp(
+          `for this review: ${name}/ is gone\\. It cannot be carried on`
+        ),
+        name
+      );
+      return true;
+    });
+    assert.deepEqual(recordOf(work), before, `${name}: nothing written`);
+  };
+  for (const name of ["xpi", "sca"]) {
+    const work = workFolder({ "package.json": packageFile() });
+    await unpackStep(work);
+    assert.equal(recordOf(work).step, PREPARE_STEP.analyze);
+    answer(work, {});
+    writeBuildReport(work);
+    await lost(work, name, () => handBack(work));
+    cleanup(work);
+  }
+  const vulnerable = workFolder(
+    { "package.json": packageFile(), "package-lock.json": npmLock() },
+    { vulns: TOOL_HIGH }
+  );
+  assert.equal((await first(vulnerable)).record.step, PREPARE_STEP.rescue);
+  await lost(vulnerable, "rescued", () =>
+    handOutput(vulnerable, "The rescue failed")
+  );
+  cleanup(vulnerable);
+});
+
+// What a hand-back expects the linter left in the work folder, step by step: the add-on's copy
+// always, the source from `analyze` on (at `unpack` it is the agent's to make), the build copy
+// at `build`, and the rescued copy at `rescue` and wherever the review reads it.
+test("each step expects the folders the linter put there for it", () => {
+  const work = "/w";
+  const { xpi, sca, rescued, buildCopy } = workPaths(work);
+  const at = (step, roots) => preparedFolders(work, { step, roots });
+  assert.deepEqual(at(PREPARE_STEP.unpack), [xpi]);
+  assert.deepEqual(at(PREPARE_STEP.analyze, { used: sca }), [xpi, sca]);
+  assert.deepEqual(at(PREPARE_STEP.permission, { used: sca }), [xpi, sca]);
+  assert.deepEqual(at(PREPARE_STEP.build, { used: sca }), [
+    xpi,
+    sca,
+    buildCopy,
+  ]);
+  assert.deepEqual(at(PREPARE_STEP.rescue, { used: rescued }), [
+    xpi,
+    sca,
+    rescued,
+  ]);
+  assert.deepEqual(at(PREPARE_STEP.done, { used: rescued }), [
+    xpi,
+    sca,
+    rescued,
+  ]);
+  assert.deepEqual(at(PREPARE_STEP.done, { used: sca }), [xpi, sca]);
 });

@@ -24,6 +24,7 @@ import {
   defaultFolderOf,
   submissionFolder,
   packAddon,
+  unpackSource,
   workOf,
   readJson,
   handBackRoots,
@@ -157,6 +158,47 @@ test("--llm-auto-review starts the review of an Experiment it would reject", () 
     );
     fs.rmSync(allowed, { recursive: true, force: true });
   }
+});
+
+// A folder the linter put in the work folder that is gone when the folder is handed back is
+// not the agent's to correct, in a preparation and in a started review alike: the tool's
+// failure, exit 2, on stderr, before anything is read or written.
+test("a hand-back whose work folder lost a folder the linter made is exit 2", () => {
+  const lost = (work, name) => {
+    fs.rmSync(path.join(work, name), { recursive: true, force: true });
+    const r = run(["--llm-handback", work]);
+    assert.equal(r.code, 2, `${name}: ${r.stdout}${r.stderr}`);
+    assert.match(
+      r.stderr,
+      new RegExp(
+        `for this review: ${name}/ is gone\\. It cannot be carried on`
+      ),
+      name
+    );
+    assert.match(r.stderr, /verify failed/, name);
+    assert.doesNotMatch(r.stdout, /refused|LLM Prompt/, name);
+    return r;
+  };
+
+  // A preparation past `unpack`, at `analyze`.
+  const dir = submissionFolder();
+  const prepared = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
+  assert.equal(prepared.code, 0, prepared.stderr);
+  assert.equal(unpackSource(prepared.stdout).code, 0);
+  const work = workOf(prepared.stdout);
+  assert.equal(readJson(work, "prepare").step, "analyze");
+  lost(work, "xpi");
+  assert.equal(readJson(work, "prepare").step, "analyze", "nothing written");
+
+  // A started XPI review.
+  const xpiDir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-lost-"));
+  const xpi = path.join(xpiDir, "addon.xpi");
+  packAddon(xpi);
+  const started = run([xpi, "--llm-review", ...OFFLINE_FLAGS]);
+  assert.equal(started.code, 0, started.stderr);
+  lost(workOfReviewFile(reviewFile(started.stdout)), "xpi");
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(xpiDir, { recursive: true, force: true });
 });
 
 // A broken add-on fails in the load, the first step of every path: before a source is

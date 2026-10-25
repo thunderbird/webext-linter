@@ -22,7 +22,11 @@ import {
 } from "./handback.js";
 import { writeState } from "./state.js";
 import { MAX_NOTE } from "../config.js";
-import { workPaths } from "../util/dest.js";
+import {
+  misplacedFolders,
+  misplacedFoldersError,
+  workPaths,
+} from "../util/dest.js";
 import { shellArg } from "../util/text.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 import { writeReportFile } from "./report-file.js";
@@ -337,6 +341,19 @@ export function loopSlots(state, issued, work, registry) {
 }
 
 /**
+ * The folders the linter put in a review's work folder that its hand-back expects: the
+ * add-on's copy, and in a source review the source folders the review read (`sca/`, or the
+ * rescued copy).
+ * @param {string} work
+ * @param {import("./state.js").LoopState} state
+ * @returns {string[]}  Absolute.
+ */
+function reviewedFolders(work, state) {
+  const sca = state.paths?.scaFolders;
+  return [workPaths(work).xpi, ...new Set(sca ? [sca.source, sca.used] : [])];
+}
+
+/**
  * Take a phase back: check what came back against what went out, and record it.
  *
  * Nothing in the state changes when this throws, so a corrected hand-back resumes exactly
@@ -355,6 +372,13 @@ export function loopSlots(state, issued, work, registry) {
  * @throws {HandbackRefused}
  */
 export function accept(state, work, phases, registry) {
+  // The folders the review read, found as the linter left them before anything is read or
+  // written: one that is gone, a link or no folder is not the agent's to correct, so the
+  // review cannot be carried on.
+  const misplaced = misplacedFolders(reviewedFolders(work, state));
+  if (misplaced.length) {
+    throw misplacedFoldersError(work, misplaced);
+  }
   const phase = phases.find((p) => p.name === state.phase);
   if (!phase) {
     throw new HandbackRefused(
