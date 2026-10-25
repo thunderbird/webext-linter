@@ -1,5 +1,5 @@
-// What --llm-auto-review accepts as a submission folder: one built add-on and one archive of
-// the source it was built from. The rest of that command is a prompt, so this is the only
+// What --llm-auto-review accepts as a submission folder: one built add-on and at most one
+// archive of the source it was built from. The rest of that command is a prompt, so this is the only
 // part of it that can be wrong about the submission - and being wrong here sends its reader
 // to review a file nobody submitted.
 
@@ -51,13 +51,21 @@ test("a mangled double-packed name is still the source archive", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// A submission without source is the add-on alone: its review is the .xpi's.
+test("a folder with no source archive is the add-on alone", () => {
+  const dir = folder(["addon.xpi", "README.txt"]);
+  const s = scaSubmission(dir);
+  assert.equal(path.basename(s.xpi), "addon.xpi");
+  assert.ok(!("source" in s));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // Each way a folder can fail to be a submission, named in the message: a reader who is told
 // "not a submission" has to open the folder themselves to find out why.
-test("anything that is not one add-on and one source archive is refused", () => {
+test("anything that is not one add-on and at most one source archive is refused", () => {
   const cases = [
     [["source.zip"], /0 add-on\(s\) \(none\)/],
     [["a.xpi", "b.xpi", "source.zip"], /2 add-on\(s\) \("a\.xpi", "b\.xpi"\)/],
-    [["addon.xpi", "README.txt"], /0 source archive\(s\) \(none\)/],
     // Listed in the order the folder gives them, so the test names them one at a time.
     [["addon.xpi", "source.zip", "other.tar.gz"], /2 source archive\(s\)/],
     [["addon.xpi", "source.zip", "other.tar.gz"], /"source\.zip"/],

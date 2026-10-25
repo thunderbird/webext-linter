@@ -245,7 +245,7 @@ test("--llm-auto-review refuses what it cannot be combined with", () => {
   assert.equal(none.code, 2);
   assert.match(
     none.stderr,
-    /reviews an \.xpi file, or prepares a submission folder/
+    /reviews an \.xpi file, or a submission folder holding one \.xpi/
   );
   assert.match(none.stderr, /and neither was given/);
   assert.doesNotMatch(none.stdout, /SCA Review Prompt/);
@@ -294,6 +294,32 @@ test("--llm-auto-review reviews an .xpi as --llm-review does, and refuses the re
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// A submission without source is reviewed as its .xpi: the same first prompt, in the .xpi's
+// own work folder inside the submission, and no preparation of a source review is made.
+test("--llm-auto-review reviews a folder holding only an .xpi as that .xpi", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-auto-xpi-"));
+  const xpi = path.join(dir, "addon.xpi");
+  packAddon(xpi);
+  const auto = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
+  assert.equal(auto.code, 0, auto.stderr);
+  const autoWork = workOfReviewFile(reviewFile(auto.stdout));
+  assert.equal(path.dirname(autoWork), path.resolve(dir));
+  assert.match(path.basename(autoWork), /^xpi-review-addon-/);
+  assert.ok(!fs.readdirSync(dir).some((n) => n.startsWith("sca-review-")));
+  assert.ok(!fs.existsSync(workPaths(autoWork).prepare));
+  fs.rmSync(autoWork, { recursive: true, force: true });
+
+  const plain = run([xpi, "--llm-review", ...OFFLINE_FLAGS]);
+  assert.equal(plain.code, 0, plain.stderr);
+  const prompt = (out) =>
+    out.stdout
+      .slice(out.stdout.indexOf("── LLM Prompt ──"))
+      .split(workOfReviewFile(reviewFile(out.stdout)))
+      .join("<WORK>");
+  assert.equal(prompt(auto), prompt(plain));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // A folder that is not a submission fails here, where the reviewer can see it, rather than
 // handing back a command aimed at a file nobody submitted.
 test("--llm-auto-review refuses a folder that is not a submission", () => {
@@ -305,7 +331,7 @@ test("--llm-auto-review refuses a folder that is not a submission", () => {
   assert.match(r.stderr, new RegExp(`--llm-auto-review "${dir}":`));
   assert.match(
     r.stderr,
-    /a submission folder holds exactly one \.xpi and exactly one other archive/
+    /a submission folder holds exactly one \.xpi and at most one other archive/
   );
   fs.rmSync(dir, { recursive: true, force: true });
 });

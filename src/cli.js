@@ -216,7 +216,7 @@ function helpText(checkIds) {
     ],
     [
       "--llm-auto-review",
-      "Work out the review an agent runs from the add-on argument. An .xpi file is reviewed as --llm-review reviews it. A submission FOLDER - one built .xpi and one archive of the source it was built from - is prepared for a source code review: the work folder is created beside the .xpi, and the prompt has the source extracted into it, its Experiment folder named, and handed back with --llm-handback and that work folder. The linter finds the package root, the next prompt has the build analyzed, and the reviewer then decides whether the build is safe and who builds it. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the source (rescued/ in the work folder) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any --sca-* flag, which is what it works out.",
+      "Work out the review an agent runs from the add-on argument. An .xpi file, or a folder holding only one, is reviewed as --llm-review reviews the .xpi. A submission FOLDER - one built .xpi and one archive of the source it was built from - is prepared for a source code review: the work folder is created beside the .xpi, and the prompt has the source extracted into it, its Experiment folder named, and handed back with --llm-handback and that work folder. The linter finds the package root, the next prompt has the build analyzed, and the reviewer then decides whether the build is safe and who builds it. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the source (rescued/ in the work folder) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any --sca-* flag, which is what it works out.",
     ],
     [
       "--llm-handback <dir>",
@@ -780,9 +780,11 @@ export async function main(argv) {
     return 2;
   }
 
+  // The submission folder --llm-auto-review is given, as read (src/addon/submission.js).
+  let submission;
   // --llm-auto-review works out which review an agent runs from what it is given: an .xpi is
-  // reviewed as --llm-review reviews it, and a submission folder is prepared, which starts its
-  // review itself. Settled here, in full, before any of the flags below are read.
+  // reviewed as --llm-review reviews it, and a submission with source is prepared, which starts
+  // its review itself. Settled here, in full, before any of the flags below are read.
   if (values["llm-auto-review"]) {
     const given = SCA_FLAGS.filter((f) => values[f]);
     if (given.length) {
@@ -810,8 +812,8 @@ export async function main(argv) {
     // The flag changes what the ADD-ON ARGUMENT means, so the argument is required here
     // exactly as it is for a review, and refused in the plural for the same reason.
     const takes =
-      "--llm-auto-review reviews an .xpi file, or prepares a submission folder holding " +
-      "one .xpi and the archive of its source";
+      "--llm-auto-review reviews an .xpi file, or a submission folder holding one .xpi " +
+      "and, for a source code review, the archive of its source";
     if (positionals.length === 0) {
       writeToStderr(`${takes}, and neither was given.\n`);
       return 2;
@@ -829,25 +831,31 @@ export async function main(argv) {
     const target = fs.lstatSync(path.resolve(positionals[0]), {
       throwIfNoEntry: false,
     });
-    if (target?.isFile() && isAddonFile(positionals[0])) {
-      // Reviewed as --llm-review reviews it, by the same guards and the same start below.
-      values["llm-review"] = true;
-      delete values["llm-auto-review"];
-    } else if (!target?.isDirectory()) {
+    if (target?.isDirectory()) {
+      try {
+        submission = scaSubmission(positionals[0]);
+      } catch (err) {
+        // The flag's name is this layer's: submission.js says what it found in the folder.
+        writeToStderr(
+          `--llm-auto-review "${positionals[0]}": ${err.message}\n`
+        );
+        return 2;
+      }
+    } else if (!(target?.isFile() && isAddonFile(positionals[0]))) {
       writeToStderr(`${takes}, and "${positionals[0]}" is neither.\n`);
       return 2;
     }
+    // An .xpi, or a submission folder holding no source, is reviewed as --llm-review reviews
+    // the .xpi, by the same guards and the same start below.
+    if (!submission?.source) {
+      if (submission) {
+        positionals[0] = submission.xpi;
+      }
+      values["llm-review"] = true;
+      delete values["llm-auto-review"];
+    }
   }
   if (values["llm-auto-review"]) {
-    const folder = positionals[0];
-    let submission;
-    try {
-      submission = scaSubmission(folder);
-    } catch (err) {
-      // The flag's name is this layer's: submission.js says what it found in the folder.
-      writeToStderr(`--llm-auto-review "${folder}": ${err.message}\n`);
-      return 2;
-    }
     // The caches are cleared by the run that was given --cache-clear, never by a later one:
     // the review this preparation starts reads its flags from a record the agent can write,
     // and a record that could name a folder for the linter to delete is one too many.
