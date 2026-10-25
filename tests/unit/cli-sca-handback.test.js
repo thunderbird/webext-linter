@@ -437,7 +437,8 @@ test("a submission's escape sequences never reach the terminal raw", () => {
 });
 
 // An unreadable submission file makes it invalid: exit 2 and one sentence naming the artifact,
-// the file and why, before any check runs - never a review that read it as empty.
+// the file and why, before any check runs - never a review that read it as empty. In a named
+// source it is the copy into the work folder that fails, as it does for a preparation.
 test("an unreadable submission file makes it invalid, exit 2", (t) => {
   if (process.getuid?.() === 0) {
     t.skip("root reads every file");
@@ -468,14 +469,14 @@ test("an unreadable submission file makes it invalid, exit 2", (t) => {
       r.stderr,
       /Invalid XPI: bg\.js cannot be read \(permission denied\)\./
     );
-    // The same in a source archive: the archive is the invalid input.
+    // The same in a source archive, which cannot be copied.
     fs.chmodSync(bg, 0o644);
     fs.chmodSync(build, 0o000);
     const sca = run([xpi, "--sca-extracted", src, ...OFFLINE_FLAGS]);
     assert.equal(sca.code, 2, sca.stderr);
     assert.match(
       sca.stderr,
-      /Invalid source archive: build\.js cannot be read \(permission denied\)\./
+      /The source ".*src" could not be copied into the work folder \(EACCES\)\./
     );
   } finally {
     fs.chmodSync(bg, 0o644);

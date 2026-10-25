@@ -35,7 +35,6 @@ import {
 import {
   agentBuildsSwitchedOn,
   asksExperiments,
-  copySource,
   handBack,
   recordedRoots,
   startPreparation,
@@ -50,7 +49,7 @@ import {
   relativeInside,
 } from "./addon/load.js";
 import { ARTIFACT_XPI } from "./lib/artifacts.js";
-import { loadTheXpi } from "./review/start.js";
+import { copyTheSource, loadTheXpi } from "./review/start.js";
 import { experimentVerdict } from "./experiments/verify.js";
 import { hasErrors } from "./report/finding.js";
 import {
@@ -1060,34 +1059,162 @@ export async function main(argv) {
     );
     return 2;
   }
-  // The work folder is always the default, beside the add-on, and must not exist: it is
-  // stamped with the moment the run starts, so only two runs started in the same moment
-  // reach this, and the second is refused before it reads anything. A review given
-  // --sca-extracted reviews source code, and its folder is named for that.
-  const workFolder = defaultWorkFolder(
-    addonPath,
-    values["sca-extracted"] ? "sca" : "xpi"
-  );
-  if (fs.lstatSync(workFolder, { throwIfNoEntry: false })) {
-    writeToStderr(`The work folder "${workFolder}" must not exist.\n`);
+  // One path per entry point (plans/review-flow-old-new.html). A source review an agent runs
+  // is prepared as --llm-auto-review's is, from the build analysis on.
+  if (values["sca-extracted"]) {
+    return values["llm-review"]
+      ? startSourcePreparation(
+          values,
+          addonPath,
+          defaultWorkFolder(addonPath, "sca"),
+          registry
+        )
+      : reviewWithSource(values, addonPath, registry, format);
+  }
+  return reviewXpi(values, addonPath, registry, format);
+}
+
+/**
+ * The path of an XPI review, plain or --llm-review, and of the one an aborted source review is
+ * restarted as: the .xpi loaded into a work folder of its own beside it, then rejected early,
+ * or reviewed.
+ * @param {Record<string, string|boolean>} values  Parsed and checked.
+ * @param {string} addonPath  The add-on, absolute.
+ * @param {import("./checks/registry.js").Registry} registry
+ * @param {string} format  The report's format.
+ * @param {{downgradedFrom?: string}} [internal]  The restart's source review (startReview).
+ * @returns {Promise<number>}
+ */
+async function reviewXpi(values, addonPath, registry, format, internal = {}) {
+  const work = defaultWorkFolder(addonPath, "xpi");
+  const loaded = await loadForReview(values, addonPath, work);
+  if (!loaded) {
     return 2;
   }
-  // A source review an agent runs is prepared as --llm-auto-review's is, from the build
-  // analysis on: the extracted source is copied into the work folder, and the build is worked
-  // out before the review starts.
-  if (values["llm-review"] && values["sca-extracted"]) {
-    return startSourcePreparation(values, addonPath, workFolder, registry);
+  if (loaded.rejected) {
+    return rejectEarly(values, addonPath, work, loaded, registry, format);
   }
+  return review(values, addonPath, work, registry, format, {
+    verification: loaded.verification,
+    ...internal,
+  });
+}
 
+/**
+ * The path of a plain source code review (--sca-extracted, no agent): the .xpi loaded, then
+ * rejected early, or the named source copied into the work folder's sca/ and the review run
+ * on that copy.
+ * @param {Record<string, string|boolean>} values  Parsed and checked, with --sca-extracted.
+ * @param {string} addonPath  The built add-on, absolute.
+ * @param {import("./checks/registry.js").Registry} registry
+ * @param {string} format  The report's format.
+ * @returns {Promise<number>}
+ */
+async function reviewWithSource(values, addonPath, registry, format) {
+  const work = defaultWorkFolder(addonPath, "sca");
+  const loaded = await loadForReview(values, addonPath, work);
+  if (!loaded) {
+    return 2;
+  }
+  if (loaded.rejected) {
+    return rejectEarly(values, addonPath, work, loaded, registry, format);
+  }
+  const opts = pipelineOptsFromValues(values);
+  let source;
+  try {
+    source = copyTheSource(work, opts.scaGiven, opts.scaMovedFrom);
+  } catch (err) {
+    rethrowIfFatal(err);
+    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
+    return 2;
+  }
+  return review(values, addonPath, work, registry, format, {
+    verification: loaded.verification,
+    scaFolders: source.scaFolders,
+    ...(source.scaMoved ? { scaMoved: source.scaMoved } : {}),
+  });
+}
+
+/**
+ * "load the .xpi" for a path: the caches cleared first where --cache-clear asks, since the
+ * load may fetch the Experiment allow-list, then the load (src/review/start.js loadTheXpi).
+ * A failure is the tool's, said on stderr.
+ * @param {Record<string, string|boolean>} values
+ * @param {string} addonPath
+ * @param {string} work  The work folder to create.
+ * @returns {Promise<?import("./review/start.js").LoadedXpi>}  Null where it failed.
+ */
+async function loadForReview(values, addonPath, work) {
+  const opts = pipelineOptsFromValues(values);
+  // --cache-clear: wipe every cache dir up front so the resolvers re-fetch each source from
+  // scratch during this review, exactly as on a first run. cacheDirs lists every cache dir
+  // opt - a new cache added to pipelineOptsFromValues must be added there too, or
+  // --cache-clear would silently skip it.
+  if (values["cache-clear"]) {
+    clearCaches(cacheDirs(opts));
+  }
+  try {
+    return await loadTheXpi(addonPath, work, opts);
+  } catch (err) {
+    rethrowIfFatal(err);
+    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
+    return null;
+  }
+}
+
+/**
+ * "reject early": the review of an add-on the load rejected, in the work folder it was loaded
+ * into, as an XPI review whatever was asked for. The check that rejects it ends the review
+ * early and always runs (checkSelected), so its report, or for an agent the closing prompt,
+ * carries the rejection.
+ * @param {Record<string, string|boolean>} values
+ * @param {string} addonPath
+ * @param {string} work  The loaded work folder.
+ * @param {import("./review/start.js").LoadedXpi} loaded
+ * @param {import("./checks/registry.js").Registry} registry
+ * @param {string} format  The report's format.
+ * @param {boolean} [llm]  Whether an agent runs the review.
+ * @returns {Promise<number>}
+ */
+function rejectEarly(
+  values,
+  addonPath,
+  work,
+  loaded,
+  registry,
+  format,
+  llm = Boolean(values["llm-review"])
+) {
+  return review(
+    { ...forwardedFlags(values), ...(llm ? { "llm-review": true } : {}) },
+    addonPath,
+    work,
+    registry,
+    format,
+    { verification: loaded.verification }
+  );
+}
+
+/**
+ * "review": the review run in the loaded work folder (startReview), and what it hands its
+ * reader printed. A failure is the tool's, said on stderr.
+ * @param {Record<string, string|boolean>} values
+ * @param {string} addonPath
+ * @param {string} work
+ * @param {import("./checks/registry.js").Registry} registry
+ * @param {string} format
+ * @param {object} [internal]  startReview's.
+ * @returns {Promise<number>}
+ */
+async function review(values, addonPath, work, registry, format, internal) {
   let result;
   try {
-    // Settled above, once: the default is stamped with the moment it is named.
-    result = await startReview(values, addonPath, workFolder, registry);
+    result = await startReview(values, addonPath, work, registry, internal);
   } catch (err) {
     // A pipeline throw is a tool failure the review could not run through (no network, a
     // host that gave no answer, an unusable schema, a bad review config, an unreadable
-    // add-on): state
-    // it plainly and exit 2, distinct from a completed review that found errors.
+    // add-on): state it plainly and exit 2, distinct from a completed review that found
+    // errors.
     writeToStderr(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
@@ -1096,7 +1223,7 @@ export async function main(argv) {
 
 /**
  * Start the preparation of a source review given --sca-extracted, at `analyze`: the work folder
- * created, the source copied into its `sca/` (copySource), and the build analysis's prompt
+ * created, the source copied into its `sca/` (copyTheSource), and the build analysis's prompt
  * printed - the step --llm-auto-review reaches once its reader has extracted the archive. An
  * Experiment the review would reject is not prepared (experimentGate): its review starts at
  * once, as an XPI review, as --llm-auto-review's does.
@@ -1155,15 +1282,12 @@ async function startSourcePreparation(values, addonPath, work, registry) {
   }
   let roots;
   try {
-    roots = copySource(work, folders);
+    ({ scaFolders: roots } = copyTheSource(work, folders));
   } catch (err) {
     rethrowIfFatal(err);
     // Nothing is kept of a preparation that never started: the work folder goes as the run
     // exits (src/util/claims.js).
-    writeToStderr(
-      `The source "${values["sca-extracted"]}" could not be copied into the work folder ` +
-        `(${err.cause?.code ?? err.message}).\n${red("verify failed")}\n`
-    );
+    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
     return 2;
   }
   const record = startRecord({
@@ -1245,10 +1369,12 @@ async function experimentGate(addon, values) {
  * @param {import("./checks/registry.js").Registry} registry
  * @param {{downgradedFrom?: string,
  *   scaFolders?: import("./addon/package-root.js").ScaFolders,
+ *   scaMoved?: {from: string, to: string},
  *   verification?: ?import("./experiments/verify.js").ExperimentVerification}} [internal]
  *   Pipeline options no command-line flag sets: the work folder of the source review an XPI
- *   review is restarted from, the source folders a preparation left in the work folder, and
- *   the Experiment verdict of a load this run made.
+ *   review is restarted from, the source folders in the work folder (copied there, or left
+ *   by a preparation) and the package root's move, and the Experiment verdict of a load this
+ *   run made.
  * @returns {Promise<import("./pipeline.js").PipelineResult>}
  */
 async function startReview(
@@ -1258,22 +1384,13 @@ async function startReview(
   registry,
   internal = {}
 ) {
-  const opts = pipelineOptsFromValues(values);
-  // --cache-clear: wipe every cache dir up front so the resolvers re-fetch each source from
-  // scratch during this review, exactly as on a first run. cacheDirs lists every cache dir
-  // opt - a new cache added to pipelineOptsFromValues must be added there too, or
-  // --cache-clear would silently skip it.
-  if (values["cache-clear"]) {
-    clearCaches(cacheDirs(opts));
-  }
-  // A folder that holds the add-on's copy was loaded by the run that created it. Any other
-  // review starts with the load, here.
-  const loaded = fs.existsSync(workPaths(workFolder).xpi)
-    ? {}
-    : {
-        verification: (await loadTheXpi(addonPath, workFolder, opts))
-          .verification,
-      };
+  // The source a review reads is in the work folder already (copyTheSource), so the folders
+  // the command line named go no further.
+  const {
+    scaGiven: _named,
+    scaMovedFrom: _moved,
+    ...opts
+  } = pipelineOptsFromValues(values);
   return runPipeline({
     // Absolute from here on, like every other path opt (pipelineOptsFromValues).
     addonPath,
@@ -1281,7 +1398,6 @@ async function startReview(
     workFolder,
     registry,
     flags: forwardedFlags(values),
-    ...loaded,
     ...internal,
   });
 }
@@ -1855,27 +1971,14 @@ async function runLoopPass(work, base) {
  * @param {import("./checks/registry.js").Registry} registry  The authored registry.
  * @returns {Promise<number>}
  */
-async function restartAsXpiReview(state, folder, registry) {
-  const addonPath = state.report.meta.xpi;
-  const workFolder = defaultWorkFolder(addonPath, "xpi");
-  if (fs.lstatSync(workFolder, { throwIfNoEntry: false })) {
-    writeToStderr(`The work folder "${workFolder}" must not exist.\n`);
-    return 2;
-  }
-  let result;
-  try {
-    result = await startReview(
-      { ...state.flags, "llm-review": true },
-      addonPath,
-      workFolder,
-      registry,
-      { downgradedFrom: folder }
-    );
-  } catch (err) {
-    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-    return 2;
-  }
-  return printReview(result, "text");
+function restartAsXpiReview(state, folder, registry) {
+  return reviewXpi(
+    { ...state.flags, "llm-review": true },
+    state.report.meta.xpi,
+    registry,
+    "text",
+    { downgradedFrom: folder }
+  );
 }
 
 /** Fill a linter-owned text's placeholders. The same substitution the prompt uses, so a

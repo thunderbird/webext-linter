@@ -54,11 +54,7 @@ import {
   readWebExtManifest,
   scaViews,
 } from "./addon/load.js";
-import {
-  foldersInCopy,
-  scaFoldersMisfit,
-  settlePackageRoot,
-} from "./addon/package-root.js";
+import { scaFoldersMisfit } from "./addon/package-root.js";
 import {
   checkSelected,
   ctxForRule,
@@ -188,20 +184,18 @@ export const SETUP_STEPS = Object.freeze([
  *   (--warnings-as-errors): the band the registry hands out IS an error, so the report,
  *   the tally, the early exit and the exit code all follow (src/checks/registry.js
  *   bandUnder). Off by default.
- * @property {import("./addon/package-root.js").ScaGiven} [scaGiven]  SCA mode, as the
- *   reviewer named it: the extracted source archive (--sca-extracted), the package root inside
- *   it (--sca-package-root), where package.json and the lock are read and the declared
- *   dependencies audited, and the Experiment implementation folder (--sca-experiments), there
- *   exactly when the add-on declares Experiments (runPipeline refuses either mismatch). The
- *   run copies it into the work folder's `sca/` and reviews the copy. The Experiment folder's
- *   privileged files are excluded from the WebExtension code checks. The positional XPI is the
- *   shipped artifact the manifest.json, experiments and file-completeness (`input: xpi`)
- *   checks run against (buildXpiCtx, src/checks/context.js).
- * @property {import("./addon/package-root.js").ScaFolders} [scaFolders]  SCA mode, as a
- *   preparation left it in the work folder: its source copy, the tree the review reads (that
- *   copy or its rescued copy) and the folders inside it. Never beside `scaGiven`.
- * @property {string} [scaMovedFrom]  The package root named before the CLI settled it one
- *   level down, there only when it moved, so the run can say so.
+ * @property {import("./addon/package-root.js").ScaFolders} [scaFolders]  SCA mode: the
+ *   source copy in the work folder, the tree the review reads (that copy or a preparation's
+ *   rescued copy) and the folders inside it, the package root, where package.json and the
+ *   lock are read and the declared dependencies audited, and the Experiment implementation
+ *   folder, there exactly when the add-on declares Experiments (runPipeline refuses either
+ *   mismatch). Copied there before the review (src/review/start.js copyTheSource) or left
+ *   there by a preparation, and read where it is. The Experiment folder's privileged files are
+ *   excluded from the WebExtension code checks. The positional XPI is the shipped artifact the
+ *   manifest.json, experiments and file-completeness (`input: xpi`) checks run against
+ *   (buildXpiCtx, src/checks/context.js).
+ * @property {?{from: string, to: string}} [scaMoved]  The package root named, and the one it
+ *   was settled to one level down, there only when it moved, so the run can say so.
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
  * @property {boolean} [cdnLookup]  Identify an unrecognized bundled library (minified,
  *   or a large readable file) by a jsDelivr content-hash lookup (on by default;
@@ -242,7 +236,7 @@ export const SETUP_STEPS = Object.freeze([
  *
  * The review's work folder is claimed first, before anything is read: checked to be writable,
  * and every name this run will create there checked to be free (claimWorkFolder). A plain
- * review creates at most the source's copy. A --llm-review
+ * review creates nothing there. A --llm-review
  * run names every file of the loop, and claims them all, because the agents it instructs
  * write the rest later and a name already taken would be overwritten then, out of sight.
  *
@@ -264,11 +258,13 @@ export async function runPipeline(opts) {
   // review is started there by the hand-back that finds the preparation done (src/cli.js),
   // and reads the record for what the preparation found.
   const prepared = readPrepare(opts.workFolder);
-  // A source review is given its folders one of two ways: as the reviewer named them
-  // (`scaGiven`), which this run copies into the work folder, or as a preparation left them
-  // there (`scaFolders`). Never both, and a preparation's are never copied again.
-  if (opts.scaGiven && opts.scaFolders) {
-    throw wiringError("runPipeline was handed both scaGiven and scaFolders");
+  // A source review reads its folders where they lie in the work folder (`scaFolders`), copied
+  // there by the step before it or left there by a preparation. It copies nothing itself.
+  if (opts.scaGiven) {
+    throw wiringError(
+      "runPipeline was handed scaGiven - the source is copied into sca/ before the review " +
+        "(src/review/start.js copyTheSource), which reads scaFolders."
+    );
   }
   if (!fs.existsSync(work.xpi)) {
     throw wiringError(
@@ -278,7 +274,7 @@ export async function runPipeline(opts) {
   }
   claimWorkFolder(
     opts.workFolder,
-    claimedNames(work, opts.llmReview, prepared, Boolean(opts.scaGiven))
+    claimedNames(work, opts.llmReview, prepared)
   );
   try {
     const result = await reviewSubmission(opts, work, prepared);
@@ -352,19 +348,7 @@ async function reviewSubmission(opts, work, prepared) {
   // Rebound onto `opts`, once, rather than threaded: every reader below asks opts.scaFolders,
   // and a settled value beside the one it was given is two answers to one question. The
   // narration comes later, with the rest of Setup, of this move or of the one the CLI made.
-  let scaMoved = opts.scaMovedFrom
-    ? { from: opts.scaMovedFrom, to: opts.scaGiven.packageRoot }
-    : null;
-  let scaCopyFrom = null;
-  if (opts.scaGiven) {
-    const given = settlePackageRoot(opts.scaGiven);
-    if (given.movedFrom) {
-      scaMoved = { from: given.movedFrom, to: given.folders.packageRoot };
-    }
-    scaCopyFrom = given.folders.extracted;
-    const { scaGiven: _named, ...rest } = opts;
-    opts = { ...rest, scaFolders: foldersInCopy(given.folders, work.sca) };
-  }
+  const scaMoved = opts.scaMoved ?? null;
 
   // Load the .xpi. Read before the "Setup" banner because it sizes the feed - it gives
   // the mode and whether the add-on is an Experiment. The eager steps below (the schema
@@ -557,9 +541,7 @@ async function reviewSubmission(opts, work, prepared) {
         // The whole extracted archive is the source, so code a build takes from beside or
         // above the package root is reviewed like the rest. The package root is the place in
         // it the package file and the lock are read at.
-        scaArchive = scaCopyFrom
-          ? loadSourceArchive(scaCopyFrom, opts.scaFolders.used)
-          : loadSourceArchive(opts.scaFolders.used);
+        scaArchive = loadSourceArchive(opts.scaFolders.used);
         scaViews(scaArchive, opts.scaFolders);
         // Where the source is a rescued copy, the package files of the package root it was copied
         // from - what the developer submitted - for the check that tells them the review
@@ -1243,8 +1225,8 @@ function lockVulnerabilities(archive, audited) {
 /**
  * The names a run will create in its work folder (src/util/dest.js workPaths).
  *
- * A plain review creates, in a source review, the source's copy (`sca/`), and nothing else:
- * the shipped add-on's copy is the load's (WORK_INPUTS). A --llm-review run
+ * A plain review creates nothing there: the shipped add-on's copy is the load's, and a
+ * source's copy the step before the review made (WORK_INPUTS). A --llm-review run
  * names every other output too - the loop's pair, the report, what its agents write, and a
  * sweep answers file for each artifact - whether or not this review turns out to use each
  * one: an XPI review never builds and may sweep nothing, but which of them it will use is
@@ -1255,13 +1237,11 @@ function lockVulnerabilities(archive, audited) {
  * @param {ReturnType<typeof workPaths>} work
  * @param {boolean} llmReview
  * @param {?import("./prepare/state.js").PrepareRecord} prepared
- * @param {boolean} copiesSource  Whether this run copies the named source into `sca/`.
  * @returns {string[]}  Absolute paths.
  */
-function claimedNames(work, llmReview, prepared, copiesSource) {
-  const copies = copiesSource ? [work.sca] : [];
+function claimedNames(work, llmReview, prepared) {
   if (!llmReview) {
-    return copies;
+    return [];
   }
   const judged = Boolean(prepared?.buildSafety);
   const outputs = Object.entries(work)
@@ -1273,7 +1253,7 @@ function claimedNames(work, llmReview, prepared, copiesSource) {
     )
     .map(([, value]) => value);
   const sweeps = [ARTIFACT_XPI, ARTIFACT_SCA].map(work.sweep);
-  return [...outputs, ...sweeps, ...copies];
+  return [...outputs, ...sweeps];
 }
 
 /**

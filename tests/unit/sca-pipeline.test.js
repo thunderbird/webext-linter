@@ -604,10 +604,10 @@ test("SCA e2e: an undeclared source-bundled library the CDN identifies is not re
   }
 });
 
-// The --sca-package-root tree is read ONCE and the archive is shared by the review and the build
-// review (loadSourceArchive, then analyzeBuild over the same view), so it is not walked
-// (nor its symlinks warned) twice - a loadAddon(scaPackageRoot) per reader would read the root
-// twice.
+// The folder named is copied into sca/ as it is (copyTheSource) and never walked, and the
+// copy is read ONCE and shared by the review and the build review (loadSourceArchive, then
+// analyzeBuild over the same view), so it is not walked (nor its symlinks warned) twice - a
+// loadAddon(scaPackageRoot) per reader would read the root twice.
 test("SCA: the source is copied, and the copy is read once, not twice", async () => {
   const xpi = tmpDir(XPI_FILES);
   const src = tmpDir(SRC_FILES);
@@ -635,7 +635,7 @@ test("SCA: the source is copied, and the copy is read once, not twice", async ()
       ...OFFLINE,
       cdnLookupCache,
     });
-    assert.equal(given, 1, "the folder named is walked once, for the refusals");
+    assert.equal(given, 0, "the folder named is copied, never walked");
     assert.equal(copied, 1, "the copy is walked once, not twice");
   } finally {
     mock.restoreAll();

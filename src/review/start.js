@@ -7,8 +7,12 @@
 // add-on declares and whether the review rejects it from the .xpi alone, which a path asks
 // before it does anything for the source.
 //
-// Belongs here: creating the work folder, loading the .xpi into it, and the facts read from
-// it before any review runs. Does NOT belong here: naming the work folder (src/util/dest.js
+// A source code review given --sca-extracted then has the source copied into the work
+// folder's sca/, whole and as it is, by its own step: the review reads that copy where it is,
+// as it reads xpi/, and copies nothing.
+//
+// Belongs here: creating the work folder, loading the .xpi into it, the facts read from it
+// before any review runs, and copying a named source into it. Does NOT belong here: naming the work folder (src/util/dest.js
 // defaultWorkFolder, asked by the caller), loading itself (src/addon/load.js), the Experiment
 // verdict's rule (src/experiments/verify.js), or the review (src/pipeline.js).
 import { ARTIFACT_XPI } from "../lib/artifacts.js";
@@ -18,6 +22,8 @@ import { isExperiment } from "../lib/util.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 import { claimFolder } from "../util/claims.js";
 import { workPaths } from "../util/dest.js";
+import { settlePackageRoot } from "../addon/package-root.js";
+import { copySource } from "../prepare/steps.js";
 
 /**
  * @typedef {object} LoadedXpi
@@ -80,4 +86,34 @@ export async function loadTheXpi(addonPath, work, opts) {
     opts
   );
   return { addon, manifest, experiments, verification, rejected: invalid };
+}
+
+/**
+ * Copy the source: the extracted source archive the reviewer named (--sca-extracted), whole
+ * and as it is, into the work folder's sca/, with the folders named inside it mapped to their
+ * place in the copy. The package root is settled first (settlePackageRoot), as the review
+ * reads it: a named folder that holds no package file gives way to the one folder below it.
+ * @param {string} work  The work folder, loaded (loadTheXpi).
+ * @param {import("../addon/package-root.js").ScaGiven} given  The folders as named, absolute.
+ * @param {string} [movedFrom]  The package root named, where the CLI already settled it one
+ *   level down, so the review can say so.
+ * @returns {{scaFolders: import("../addon/package-root.js").ScaFolders,
+ *   scaMoved: ?{from: string, to: string}}}  The folders in the copy, which the review reads,
+ *   and the package root's move, where it moved.
+ * @throws {Error}  The copy could not be made.
+ */
+export function copyTheSource(work, given, movedFrom) {
+  const settled = settlePackageRoot(given);
+  const from = settled.movedFrom ?? movedFrom;
+  const scaMoved = from ? { from, to: settled.folders.packageRoot } : null;
+  try {
+    return { scaFolders: copySource(work, settled.folders), scaMoved };
+  } catch (err) {
+    rethrowIfFatal(err);
+    throw new Error(
+      `The source "${settled.folders.extracted}" could not be copied into the work folder ` +
+        `(${err.cause?.code ?? err.message}).`,
+      { cause: err }
+    );
+  }
 }

@@ -15,7 +15,7 @@ import { allSchemaBranches, cachedZipPath } from "../src/schema/fetch.js";
 import { cachedExperimentsPath } from "../src/experiments/fetch.js";
 import { cachedHashesPath } from "../src/lib/library-hashes.js";
 import { runCache, workPaths } from "../src/util/dest.js";
-import { loadTheXpi } from "../src/review/start.js";
+import { copyTheSource, loadTheXpi } from "../src/review/start.js";
 import { runPipeline } from "../src/pipeline.js";
 import {
   bytesKey,
@@ -220,20 +220,31 @@ export function freshWorkFolder() {
 /**
  * runPipeline as every review is started: the load first (src/review/start.js loadTheXpi),
  * which creates the work folder, fresh unless the test names one, and puts the add-on's copy
- * in its xpi/. A folder that already holds that copy, one a preparation was started in, is
- * reviewed where it is.
- * @param {object} opts  runPipeline's options.
+ * in its xpi/, then, where the test names a source (`scaGiven`, as --sca-extracted does), the
+ * source copied into its sca/ (copyTheSource). A folder that already holds the add-on's copy,
+ * one a preparation was started in, is reviewed where it is.
+ * @param {object} opts  runPipeline's options, `scaGiven` and `scaMovedFrom` among them.
  * @returns {Promise<import("../src/pipeline.js").PipelineResult>}
  */
 export async function loadAndReview(opts) {
-  const workFolder = opts.workFolder ?? freshWorkFolder();
+  const { scaGiven, scaMovedFrom, ...rest } = opts;
+  const workFolder = rest.workFolder ?? freshWorkFolder();
   const loaded = fs.existsSync(workPaths(workFolder).xpi)
     ? {}
     : {
-        verification: (await loadTheXpi(opts.addonPath, workFolder, opts))
+        verification: (await loadTheXpi(rest.addonPath, workFolder, rest))
           .verification,
       };
-  return runPipeline({ ...opts, workFolder, ...loaded });
+  const copied = scaGiven
+    ? copyTheSource(workFolder, scaGiven, scaMovedFrom)
+    : null;
+  return runPipeline({
+    ...rest,
+    workFolder,
+    ...loaded,
+    ...(copied ? { scaFolders: copied.scaFolders } : {}),
+    ...(copied?.scaMoved ? { scaMoved: copied.scaMoved } : {}),
+  });
 }
 
 /**
