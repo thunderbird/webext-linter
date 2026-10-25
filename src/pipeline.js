@@ -504,7 +504,8 @@ async function reviewSubmission(opts, work, prepared) {
     // source-layout mismatch).
     experiments: async () => {
       ({ verification: experimentVerification } = await experimentVerdict(
-        work.xpi,
+        xpiAddon,
+        webExtManifestRecord,
         opts
       ));
     },

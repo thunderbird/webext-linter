@@ -23,7 +23,12 @@ import {
   loadAllowList,
   normalizedSha256,
 } from "../../src/experiments/verify.js";
-import { extractXpiToTemp } from "../../src/addon/load.js";
+import {
+  extractXpiToTemp,
+  loadAddon,
+  readWebExtManifest,
+} from "../../src/addon/load.js";
+import { ARTIFACT_XPI } from "../../src/lib/artifacts.js";
 import AdmZip from "adm-zip";
 import { buildSchemaIndex } from "../../src/schema/index.js";
 import { loadSchemaFiles } from "../../src/schema/load.js";
@@ -604,10 +609,12 @@ test("experimentVerdict reads an extracted .xpi as the review would", async () =
         fs.readdirSync(folder).sort(),
         fs.readdirSync(path.join(fixtures, name)).sort()
       );
-      const { verification, invalid } = await experimentVerdict(folder, {
-        ...opts,
-        ...extra,
-      });
+      const addon = loadAddon(folder, undefined, { kind: ARTIFACT_XPI });
+      const { verification, invalid } = await experimentVerdict(
+        addon,
+        readWebExtManifest(addon.store),
+        { ...opts, ...extra }
+      );
       return {
         invalid,
         groups: verification.groups.map((g) => [g.status, g.rejected]),

@@ -43,10 +43,13 @@ import {
 import { scaFoldersMisfit, settlePackageRoot } from "./addon/package-root.js";
 import {
   extractXpiToTemp,
+  loadAddon,
   readPackedManifest,
+  readWebExtManifest,
   manifestRecord,
   relativeInside,
 } from "./addon/load.js";
+import { ARTIFACT_XPI } from "./lib/artifacts.js";
 import { experimentVerdict } from "./experiments/verify.js";
 import { hasErrors } from "./report/finding.js";
 import {
@@ -1201,8 +1204,10 @@ async function experimentGate(addon, values) {
   let temporary = null;
   try {
     const folder = isFolder ? addon : (temporary = extractXpiToTemp(addon));
+    const loaded = loadAddon(folder, undefined, { kind: ARTIFACT_XPI });
     const { invalid } = await experimentVerdict(
-      folder,
+      loaded,
+      readWebExtManifest(loaded.store),
       pipelineOptsFromValues(values)
     );
     return { experiments, rejected: invalid };

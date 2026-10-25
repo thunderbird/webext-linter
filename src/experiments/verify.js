@@ -24,8 +24,6 @@ import { parseExtensionJson } from "../util/json.js";
 import { EXPERIMENTS_CACHE } from "../config.js";
 import { experimentGroups } from "../lib/experiments.js";
 import { resolveExperimentsZip } from "./fetch.js";
-import { loadAddon, readWebExtManifest } from "../addon/load.js";
-import { ARTIFACT_XPI } from "../lib/artifacts.js";
 import { normalizedSha256 } from "../normalize/hash.js";
 
 // The EOL-tolerant content hash lives in a shared module (the vendor tarball matcher
@@ -151,26 +149,29 @@ function walkDir(root) {
  */
 
 /**
- * The Experiment verdict on an extracted XPI folder, read where it is: the classification
- * of every bundled Experiment, each group the review rejects (`rejected` - an Experiment
- * upstream does not publish, or one with no files, and the reviewer did not allow
- * Experiments), and whether it rejects the add-on (`invalid`). One rule for every reader:
- * the review's own step on its `xpi/`, --llm-auto-review, which asks before it prepares a
- * review the verdict would reject (src/cli.js), and experiment-not-allowed, which reports
- * the rejected groups.
+ * The Experiment verdict on the loaded XPI: the classification of every bundled Experiment,
+ * each group the review rejects (`rejected` - an Experiment upstream does not publish, or one
+ * with no files, and the reviewer did not allow Experiments), and whether it rejects the add-on
+ * (`invalid`). One rule for every reader: the review's own step on its `xpi/`, the check a
+ * source review is prepared after (src/cli.js), and experiment-not-allowed, which reports the
+ * rejected groups.
  *
  * The ONLY place --allow-experiments is read. With it, nothing is rejected, and every group
  * is still classified: experiment-modified and experiment-manual-review read the
  * classification in an allowed review.
- * @param {string} xpiRoot  The extracted XPI folder.
+ * @param {import("../addon/load.js").Addon} addon  The loaded XPI.
+ * @param {?import("../addon/load.js").WebExtManifestRecord} webExtManifestRecord  Its manifest.
  * @param {VerifyExperimentsOpts & {allowExperiments?: boolean}} [opts]
  * @returns {Promise<{verification: ExperimentVerification, invalid: boolean}>}
  */
-export async function experimentVerdict(xpiRoot, opts = {}) {
-  const addon = loadAddon(xpiRoot, undefined, { kind: ARTIFACT_XPI });
+export async function experimentVerdict(
+  addon,
+  webExtManifestRecord,
+  opts = {}
+) {
   const verification = await verifyExperiments(
     addon,
-    readWebExtManifest(addon.store),
+    webExtManifestRecord,
     opts
   );
   for (const g of verification.groups) {
