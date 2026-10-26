@@ -232,6 +232,24 @@ export const SETUP_STEPS = Object.freeze([
  */
 
 /**
+ * What populateCtx makes and runReview reads: the registry under the run's band policy, what
+ * the shipped add-on declares, the source archive in a source review, the review schema and
+ * the stamps meta publishes for it, the meta built in Setup, the review's mode, and the
+ * contexts each check is routed to (routeCtx).
+ * @typedef {object} ReviewContext
+ * @property {import("./checks/registry.js").Registry} registry
+ * @property {import("./addon/load.js").WebExtManifestRecord} manifest
+ * @property {?import("./addon/load.js").Addon} scaArchive
+ * @property {object} schema
+ * @property {string} schemaSource
+ * @property {string} schemaBranch
+ * @property {string} schemaChannel
+ * @property {ReviewMeta} meta  Extended by runReview once the checks have run.
+ * @property {object} mode
+ * @property {Record<string, import("./checks/registry.js").RunContext>} siblings
+ */
+
+/**
  * Run the review pipeline and return the structured result.
  *
  * The review's work folder is claimed first, before anything is read: checked to be writable,
@@ -292,7 +310,9 @@ export async function runPipeline(opts) {
 }
 
 /**
- * The review itself, inside the work folder runPipeline claimed for it.
+ * The review itself, inside the work folder runPipeline claimed for it: the context every
+ * check reads (populateCtx), then the checks and what the review hands its reader
+ * (runReview).
  * @param {PipelineOpts} opts
  * @param {ReturnType<typeof workPaths>} work  The work folder's names.
  * @param {?import("./prepare/state.js").PrepareRecord} prepared  The preparation's record,
@@ -300,6 +320,32 @@ export async function runPipeline(opts) {
  * @returns {Promise<PipelineResult>}
  */
 async function reviewSubmission(opts, work, prepared) {
+  return runReview(
+    opts,
+    work,
+    prepared,
+    await populateCtx(opts, work, prepared)
+  );
+}
+
+/**
+ * What a review's checks read, made before any of them runs: the add-on in the work folder's
+ * xpi/ and, in a source review, the source in its sca/, both read where they are; what the
+ * add-on declares; the review schema; the Experiment verdict; and the contexts each check is
+ * routed to, with the review data they compute when a check first asks. Narrated as the
+ * "Setup" section of the feed.
+ *
+ * It claims nothing and writes nothing into the work folder, and it reads none of the
+ * options only the review needs (what an agent is asked, the check lists, --eslint): so a
+ * run can make the context in a folder it does not review in yet. What it fetches lands in
+ * the caches outside the work folder.
+ * @param {PipelineOpts} opts
+ * @param {ReturnType<typeof workPaths>} work  The work folder's names.
+ * @param {?import("./prepare/state.js").PrepareRecord} prepared  The preparation's record,
+ *   where the review starts in a folder a source code review was prepared in.
+ * @returns {Promise<ReviewContext>}
+ */
+export async function populateCtx(opts, work, prepared) {
   const { addonPath } = opts;
   // `addonPath` IS the shipped add-on's path, absolute, and the single value the run has
   // for "which add-on": what the report names, and where the work folder and its files go. An Addon carries no path of its own
@@ -345,9 +391,9 @@ async function reviewSubmission(opts, work, prepared) {
   // it. The review reads them in its copy of the extracted source, the work folder's `sca/`,
   // made where the archive is loaded: the folder the reviewer named is never read in place.
   //
-  // Rebound onto `opts`, once, rather than threaded: every reader below asks opts.scaFolders,
-  // and a settled value beside the one it was given is two answers to one question. The
-  // narration comes later, with the rest of Setup, of this move or of the one the CLI made.
+  // Settled before the review, by the step that copied the source (src/review/start.js
+  // copyTheSource), and handed in as `scaMoved` where the package root moved. The narration
+  // comes later, with the rest of Setup.
   const scaMoved = opts.scaMoved ?? null;
 
   // Load the .xpi. Read before the "Setup" banner because it sizes the feed - it gives
@@ -430,8 +476,6 @@ async function reviewSubmission(opts, work, prepared) {
   let schemaChannel;
   // What was reviewed, built by the `meta` step and extended once the review has run.
   let meta;
-
-  const findings = [];
 
   // One body per declared step, keyed by its entry. Each is a closure over the locals
   // above, so a step reads what the steps before it wrote and nothing is threaded through a
@@ -729,6 +773,47 @@ async function reviewSubmission(opts, work, prepared) {
     all: buildAllCtx(env, { xpi: xpiCtx, sca: scaCtx }),
   };
 
+  progress(""); // close the Setup section before runChecks prints "── Activity ──"
+  return {
+    registry,
+    manifest: webExtManifestRecord,
+    scaArchive,
+    schema,
+    schemaSource,
+    schemaBranch,
+    schemaChannel,
+    meta,
+    mode,
+    siblings,
+  };
+}
+
+/**
+ * The review on a context populateCtx made: the checks, the findings they report, and what
+ * the review hands its reader, the report for a plain review, or for an agent the loop's
+ * first prompt and the state its passes read.
+ * @param {PipelineOpts} opts
+ * @param {ReturnType<typeof workPaths>} work  The work folder's names.
+ * @param {?import("./prepare/state.js").PrepareRecord} prepared  The preparation's record,
+ *   where the review starts in a folder a source code review was prepared in.
+ * @param {ReviewContext} ctx
+ * @returns {Promise<PipelineResult>}
+ */
+export async function runReview(opts, work, prepared, ctx) {
+  const {
+    registry,
+    manifest: webExtManifestRecord,
+    scaArchive,
+    schema,
+    schemaSource,
+    schemaBranch,
+    schemaChannel,
+    meta,
+    mode,
+    siblings,
+  } = ctx;
+  const findings = [];
+
   // Run the review, then finalize. runChecks runs the deterministic phase and returns the
   // finished findings, manual items and the checks that ran. A check that throws ends the
   // run with exit 2. A rejected Experiment stops at its first
@@ -736,7 +821,6 @@ async function reviewSubmission(opts, work, prepared) {
   // that end a review early. Every other check that aborts a review lets the rest run.
   // A check's `when:` (over CHECK_FACTS) is read inside loadChecks
   // (conditionEligible), so code-sanity runs only under --eslint.
-  progress(""); // close the Setup section before runChecks prints "── Activity ──"
   const {
     findings: reviewFindings,
     manualItems,

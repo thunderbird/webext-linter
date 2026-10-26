@@ -7,7 +7,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { runPipeline, resolveReviewSchema } from "../../src/pipeline.js";
+import {
+  populateCtx,
+  runPipeline,
+  resolveReviewSchema,
+} from "../../src/pipeline.js";
+import { loadTheXpi } from "../../src/review/start.js";
+import { workPaths } from "../../src/util/dest.js";
 import {
   fixtureCacheOpts,
   freshWorkFolder,
@@ -361,4 +367,39 @@ test("a stale schema cache whose refresh gets no answer ends the review", async 
     }),
     NoAnswerError
   );
+});
+
+// The context a review's checks read is made before any of them runs, and made without a
+// trace in the work folder: no name is added, removed or claimed there, so a run can make it
+// in a folder it does not review in yet. The review that follows reads it as it is.
+test("populating the context writes nothing into the work folder", async () => {
+  const src = tmpAddon({
+    "manifest.json": '{"manifest_version":3,"name":"Ctx","version":"1.0"}',
+    "bg.js": "browser.runtime.id;\n",
+  });
+  const workFolder = freshWorkFolder();
+  const { verification } = await loadTheXpi(src, workFolder, OFFLINE);
+  const listing = () =>
+    fs.readdirSync(workFolder, { recursive: true }).map(String).sort();
+  const before = listing();
+  const ctx = await populateCtx(
+    { addonPath: src, workFolder, verification, ...OFFLINE },
+    workPaths(workFolder),
+    null
+  );
+  assert.deepEqual(listing(), before);
+  assert.deepEqual(Object.keys(ctx).sort(), [
+    "manifest",
+    "meta",
+    "mode",
+    "registry",
+    "scaArchive",
+    "schema",
+    "schemaBranch",
+    "schemaChannel",
+    "schemaSource",
+    "siblings",
+  ]);
+  assert.equal(ctx.manifest.json.name, "Ctx");
+  fs.rmSync(src, { recursive: true, force: true });
 });
