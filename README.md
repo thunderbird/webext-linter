@@ -104,21 +104,45 @@ is monitored and upstream changes are ported manually.
 runs the review ONCE and hands out the first of its phases. Every `--llm-handback` run after
 that takes a phase back and hands out the next, until the last one hands over the settled review.
 `--llm-auto-review` reviews a submission folder: its `.xpi` as `--llm-review` does, or, with a
-source archive, it starts preparing a source code review, which `--llm-handback` carries on
-until it starts the review itself.
+source archive, it starts a source code review: the agent extracts the archive (the `unpack`
+step), and `--llm-handback` carries the build check on until it starts the review itself.
 
 The agent audits each finding, settles what the scans could not, and puts the rest to a
 reviewer - the linter decides what is asked and what an answer may say. The whole round
-trip, the phases, the answer vocabulary and what the reviewer is handed are described in
-**[docs/llm-review.md](docs/llm-review.md)**.
+trip, the phases, the answer vocabulary and what the reviewer is handed are specified in
+**[docs/spec.html](docs/spec.html#agent-handed)**, section 5 "What the agent is handed".
 
 | Option | Description |
 | --- | --- |
-| `--llm-review` | Run the review and print the first phase's prompt, instead of the report. Given `--sca-extracted`, prepare the source code review first, as `--llm-auto-review` does from the build analysis on: the source is copied into the work folder's `sca/` and the first prompt is the build analysis. Refused with `--report-format json`. |
-| `--llm-handback <dir>` | Take a phase back from the review's work folder and hand out the next - the last being `close`, which hands over the settled review. On a work folder a source code review is being prepared in, take the next step of the preparation instead, and once it is done, start its review (see [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review)). The only run that carries on an existing work folder. Takes no add-on path. Normally run by the agent, not by a person. |
-| `--llm-auto-review` | Work out the review from a submission folder. One holding only the `.xpi` is reviewed as `--llm-review` reviews the `.xpi`, and an `.xpi` on its own is reviewed with `--llm-review`. A submission folder - one built `.xpi` and one archive of its source - gets the first prompt for preparing a source code review of it, which creates the review's work folder at its default place beside the `.xpi`, records there how the review is to be run (this run's flags), has the source extracted into its `sca/` and handed back with `--llm-handback`, finds the package root in it, and has the build reported and judged. The reviewer then makes one decision about the build, worded by that verdict: let the agent build, build it themselves, build nothing, or hold it unsafe for reasons of their own. Where the agent may build and the lock installs a package with a known high or critical advisory, the preparation has a copy's dependencies reduced, then audit-fixed (`rescued/` in the work folder), and reviews the copy if that resolves them. If it does not, the source as submitted is reviewed, and its vulnerability checks abort it. The hand-back that finishes the preparation starts that review itself, with this run's flags. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any `--sca-*` flag, which is what the preparation works out. See [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review). |
+| `--llm-review` | Run the review and print the first phase's prompt, instead of the report. Given `--sca-extracted`, the source is copied into the work folder's `sca/` and the review starts with the build check, as `--llm-auto-review` does after the `unpack` step: the first prompt is the build analysis. Refused with `--report-format json`. |
+| `--llm-handback <dir>` | Take a phase back from the review's work folder and hand out the next - the last being `close`, which hands over the settled review. On a work folder in the `unpack` or `build-check` mode, take that step instead, and once the build check is done, start the review (see [the build check](docs/spec.html#the-build-check-case)). The only run that carries on an existing work folder. Takes the work folder and nothing else: the review recorded every flag it runs with when it started, so anything typed beside it is refused (exit 2). Normally run by the agent, not by a person. |
+| `--llm-auto-review` | Work out the review from a submission folder. One holding only the `.xpi` is reviewed as `--llm-review` reviews the `.xpi`, and an `.xpi` on its own is reviewed with `--llm-review`. A submission folder - one built `.xpi` and one archive of its source - gets the first prompt of a source code review of it, which creates the review's work folder at its default place beside the `.xpi`, records there how the review is to be run (this run's flags), has the source extracted into its `sca/` and handed back with `--llm-handback`, finds the package root in it, and has the build reported and judged. The reviewer then makes one decision about the build, worded by that verdict: let the agent build, build it themselves, build nothing, or hold it unsafe for reasons of their own. Where the agent may build and the lock installs a package with a known high or critical advisory, the build check has a copy's dependencies reduced, then audit-fixed (`rescued/` in the work folder), and reviews the copy if that resolves them. If it does not, the source as submitted is reviewed, and its vulnerability checks abort it. The hand-back that finishes the build check starts that review itself, with this run's flags. A submission the early-exit checks reject (a disallowed Experiment, an injected lock) gets no build check: its review closes after the `unpack` step. Refused beside any `--sca-*` flag, which is what the `unpack` step works out. See [the build check](docs/spec.html#the-build-check-case). |
 | `--llm-skip-summary` | Leave out the add-on description: the prompt does not ask for one and names no file for it. |
 | `--llm-skip-sweep` | Leave out the sweep: no sweeping agent is spawned, and the sweep is not handed to the reviewer either. |
+
+**Claude Code permissions:** Claude Code's auto mode may stop a command it was not told to
+expect. These allow rules let the linter's own commands run without that:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(node */verify.js *)",
+      "Bash(npm install --package-lock-only --ignore-scripts*)",
+      "Bash(npm audit fix --package-lock-only --ignore-scripts*)",
+      "Bash(pnpm install --lockfile-only --ignore-scripts*)",
+      "Bash(pnpm audit --fix*)",
+      "Bash(npm ci*)",
+      "Bash(pnpm install --frozen-lockfile*)"
+    ]
+  }
+}
+```
+
+The first runs the linter's hand-backs, the next four are the rescue's lock-only commands,
+and the last two are the build's installs. The audits (`npm audit`, `pnpm audit`) and the
+add-on's own build commands have no rule: the build commands run the submission's code, and
+the reviewer's permission is what allows them.
 
 **Source code archive (SCA):**
 
@@ -136,7 +160,7 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are desc
 | `--cdn-lib-lookup <true\|false>` | Identify an unrecognized bundled library (minified or readable) by a jsDelivr content-hash lookup (default `true`). Results are cached. With `false`, no request goes to jsDelivr. |
 | `--eslint` | Run the ESLint `code-sanity` check on authored JS. Off by default. |
 | `--report-format <text\|json>` | Report output format (default `text`). |
-| `--verbose` | Verbose logging. |
+| `--verbose` | Verbose logging. Recorded with the review's other flags, so every `--llm-handback` of a review started with it runs verbose. In a run that prints a prompt, the debug lines go to the "Tool messages" block at the end, never into the prompt. |
 | `--warnings-as-errors` | Read every warning as an error for this review. Each one is listed among the issues that rejected the submission rather than as something to resolve with the next release, and the run exits `1`. Off by default. Set once, by the run that starts a review: a `--llm-handback` pass reads it back from the review and is refused if given it again. |
 
 **Exit codes:** `0` no errors · `1` one or more error-severity findings (with
@@ -223,7 +247,7 @@ may hold the real source beside the copy.
   the review once reported.
   Nothing in those files says for certain what the build **does**, so a person decides it,
   and one of three build checks asks, depending on who decided:
-  - **`build-review`**, where nobody decided about the build in a preparation: a plain
+  - **`build-review`**, where nobody decided about the build in a build check: a plain
     report, under Extended Manual Review, or an agent review run with a check the build
     relies on switched off, in `ask`. It is the whole build question, in the order it has to
     be taken: whether the build pulls from the declared dependencies alone - no raw URL,
@@ -231,7 +255,7 @@ may hold the real source beside the copy.
     build it, else to build it and compare the result with the shipped XPI. In `ask` its
     answers are `Builds fine and reproduces`, `Build issues`, or the reviewer's own words.
   - Under `--llm-review` the reviewer makes **one decision about the build** in the
-    preparation, right after reading the Build Review Details with the agent's build report
+    build check, right after reading the Build Review Details with the agent's build report
     and its verdict. After a safe verdict they let the agent build or build it themselves,
     after an unsafe one they trust it and build nothing, or clear the issues and let the
     agent build anyhow, and after either they may override it with reasons of their own why
@@ -246,7 +270,7 @@ may hold the real source beside the copy.
     agent hands its issues back as a list, which the linter writes to `build-issues.md` and
     links in the Build Review Details, and reads the verdict off: none is a safe build.
 
-  Any of them reported aborts the review late. A source whose preparation gave its rescue up
+  Any of them reported aborts the review late. A source whose build check gave its rescue up
   ends the review through its vulnerability findings, and is not built. A source with no
   usable package.json or no single readable lock skips the build question. The review
   itself builds nothing.
@@ -288,9 +312,9 @@ A section it never asks for is inert.
 - **`manual-checks`** - checks the tool can't make itself, surfaced as a todo list. Not
   a phase: the orchestrator never asks for this section.
 
-The full flow - setup, the stores it computes, the orchestrator, and how a case the
-code cannot settle is escalated - is described in
-[docs/check-flow.html](docs/check-flow.html) ("The review pipeline").
+The full flow - the entry points, the record and the hand-back, how the review data is
+made, how the checks are run, and how a case the code cannot settle is escalated - is
+specified in [docs/spec.html](docs/spec.html) ("The specification").
 
 The tables below are an illustrative selection, not the full catalogue. For the
 complete, registry-synced list of every check with its own page, see
@@ -340,7 +364,7 @@ developer is told everything in one round. A finding that still stands ends the 
 before anyone is asked a question or to install the add-on, and a review without
 `--llm-review` is aborted the same way at its end. The package.json and lock checks also
 say that no build can be made from the source (`review-unbuildable: true`), so a review
-holding one of their findings, or one whose preparation gave its rescue up, asks nobody to
+holding one of their findings, or one whose build check gave its rescue up, asks nobody to
 build it.
 
 **Early** (`review-early-exit:`) is for the two cases where the rest of the review is no
@@ -362,7 +386,7 @@ the build checks, `lockfile-injection` and the two build-dependency vulnerabilit
 `vendor-vulnerable-indirect` cannot, as it reports code the XPI ships. A source review under
 `--llm-review` aborted only by such checks, whose XPI holds no minified, obfuscated or
 untrusted minified code, shows its closing block and then asks the reviewer whether to
-restart as an XPI review (see [Restarting as an XPI review](docs/llm-review.md#restarting-as-an-xpi-review)).
+restart as an XPI review (see [When a restart as an XPI review is offered](docs/spec.html#close-the-review)).
 
 Which section a check's cases land in is the check's own property, declared in the
 registry beside its severity - never decided per case. A check that would need both
@@ -433,11 +457,11 @@ machine.
 | `privacy-policy` | Data transmitted by an overt API to a remote host the developer chose (fixed in the add-on, not entered by the user) - one case per transmission site, naming its host. A host the add-on assembles while it runs is reported too, marked rather than named, since dropping it would hide the site the tool can say least about. Routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
 | `sca-package-file-missing` | A source submission with no `package.json` in its package root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, aborts the review late). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. An archive holding the whole XPI is reported here and by `sca-xpi-fully-included-in-archive`. |
 | `sca-package-file-invalid` | A `package.json` that is present but unusable - it does not parse, or it parses to something other than a JSON object - so the build it defines cannot be run (error, aborts the review late). Presence is decided by name and usability by reading, so exactly one of this and the check above ever speaks. |
-| `sca-lock-file-multiple` | A source submission that commits more than one lock file in its package root (any two of `npm-shrinkwrap.json`, `package-lock.json`, `pnpm-lock.yaml`) (error, aborts the review late). Every check reads one lock, while the build picks its package manager by the lock it finds, so with two the tree audited need not be the tree installed. The preparation neither audits nor rescues such a source. |
+| `sca-lock-file-multiple` | A source submission that commits more than one lock file in its package root (any two of `npm-shrinkwrap.json`, `package-lock.json`, `pnpm-lock.yaml`) (error, aborts the review late). Every check reads one lock, while the build picks its package manager by the lock it finds, so with two the tree audited need not be the tree installed. The build check neither audits nor rescues such a source. |
 | `sca-lock-file-invalid` | A committed lock file that cannot be read: it does not parse, or it is not a recognisable npm or pnpm lock (error). The dependency audit reads the installed tree from it, so the review is aborted. Whether a readable lock matches `package.json` is left to `npm ci` / `pnpm install --frozen-lockfile` at the build. |
-| `sca-dependencies-changed` | The source reviewed is a rescued copy (see [Preparing a source code review](docs/llm-review.md#preparing-a-source-code-review)): its dependencies were reduced to what the release build uses, or audit-fixed, to get past known vulnerabilities. Says so once, at `package.json`, and tells the developer to run their package manager's audit, since their own files still have the vulnerabilities (info). Compared lock to lock: silent for a source that is no rescued copy, or a copy whose lock installs what the original's did. |
-| `sca-not-needed` | An XPI review restarted from a source review that did not need its archive (see [Restarting as an XPI review](docs/llm-review.md#restarting-as-an-xpi-review)): tells the developer to submit just the XPI next time (info). Raised by nothing in the files, only by that restart. |
-| `lockfile-injection` | A lock entry that names one release and installs another: its `version` says 1.2.2 while its `resolved` URL (or pnpm's `resolution.tarball`) fetches 1.2.1, or another package (error, aborts the review). The audit asks about the name and version, the install fetches the URL. A URL on the registry's tarball path is compared offline, any other registry URL is asked of the registry once and cached (`--cache-npm-registry-dir`). It runs before the vulnerability checks, so a forged lock stops the review before the lock is audited, and the preparation does not audit or rescue such a lock. |
+| `sca-dependencies-changed` | The source reviewed is a rescued copy (see [the build check](docs/spec.html#the-build-check-case)): its dependencies were reduced to what the release build uses, or audit-fixed, to get past known vulnerabilities. Says so once, at `package.json`, and tells the developer to run their package manager's audit, since their own files still have the vulnerabilities (info). Compared lock to lock: silent for a source that is no rescued copy, or a copy whose lock installs what the original's did. |
+| `sca-not-needed` | An XPI review restarted from a source review that did not need its archive (see [When a restart as an XPI review is offered](docs/spec.html#close-the-review)): tells the developer to submit just the XPI next time (info). Raised by nothing in the files, only by that restart. |
+| `lockfile-injection` | A lock entry that names one release and installs another: its `version` says 1.2.2 while its `resolved` URL (or pnpm's `resolution.tarball`) fetches 1.2.1, or another package (error, aborts the review). The audit asks about the name and version, the install fetches the URL. A URL on the registry's tarball path is compared offline, any other registry URL is asked of the registry once and cached (`--cache-npm-registry-dir`). It runs before the vulnerability checks, so a forged lock stops the review before the lock is audited, and the build check does not audit or rescue such a lock. |
 | `lock-foreign-source` | A lock entry the install takes from a source other than the npm registry or GitHub (error, aborts the review late). The audit identifies a package by name and version, while the installer fetches the URL the lock records, so such an entry installs bytes the audit never read. |
 | `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, aborts the review late). The lock is owed by the `package.json`, not by what it declares: both installers refuse without one whatever it holds. A build using a package manager the review does not install from commits no lock that counts, so it is rejected here. |
 | `string-timer` | A code string passed to `setTimeout`/`setInterval` (it is eval'd) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
@@ -511,7 +535,7 @@ Who does the looking is the one thing that varies. In a review with no agent in
 it, the reviewer works that list by hand. Under `--llm-review` a sub-agent reads
 for the same things and hands back what it found, and the linter routes each
 result into the owning check - described in
-[docs/llm-review.md](docs/llm-review.md#the-sweep).
+[docs/spec.html](docs/spec.html#sweep), section 5.4 "The sweep".
 
 | Check id (`check:`) | The blind spot its sweep covers |
 | --- | --- |

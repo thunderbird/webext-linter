@@ -1,17 +1,23 @@
-# Refresh the check documentation site
+# Refresh the check pages
 
 This is a prompt you can "run" by pasting it to Claude Code (or any capable
-coding agent) from the repository root. It regenerates / updates the static
-documentation site under `docs/` so it stays in sync with the checks the tool
-actually implements.
+coding agent) from the repository root. It regenerates / updates the check pages
+under `docs/checks/` so they stay in sync with the checks the tool actually
+implements.
 
 This refresh covers **every** check the tool runs - no subset.
+
+**What it may change:** the pages in `docs/checks/`, and the `CHECKS` array in
+`docs/index.html` that lists them in the sidebar. Nothing else. Every other file
+under `docs/` is hand written and is left alone: `docs/spec.html` (the
+specification), `docs/llm-review.md`, the rest of `docs/index.html` (its shell and
+`GUIDE_PAGES`), and `docs/assets/`.
 
 ---
 
 ## The task
 
-Update the static documentation site in `docs/` so that it documents **all
+Update the check pages in `docs/checks/` so that they document **all
 implemented checks**, each with a human-readable decision flowchart. Add pages
 for new checks, update pages whose logic changed, and remove pages for checks
 that no longer exist.
@@ -25,15 +31,14 @@ that no longer exist.
   `CHECKS` array in an inline `<script>`, combined with `GUIDE_PAGES` into `NAV`.
   Each nav entry may carry an explicit `file` (relative to `docs/`); checks
   default to `checks/<id>.html`. Selection uses `location.hash` for linkable
-  pages, and the default landing page is the review-pipeline flow
-  (`check-flow.html`).
+  pages, and the default landing page is the specification (`spec.html`).
 - `docs/assets/style.css` - shared styling for the shell and the check pages.
 - `docs/assets/mermaid.min.js` - Mermaid, **vendored locally** (offline). Do not
   switch to a CDN.
 - `docs/checks/<id>.html` - one standalone page per check.
-- `docs/check-flow.html` - the review-pipeline page (`GUIDE_PAGES`): documents
-  the whole review flow across both modes; its flowchart walks the pipeline
-  stages, not one check's branches.
+- `docs/spec.html` - the specification, a `GUIDE_PAGES` entry. It is hand written
+  and NOT regenerated from the code: the code follows it. This refresh never
+  touches it.
 
 ## Sources of truth (read these to (re)generate content)
 
@@ -80,25 +85,6 @@ that no longer exist.
 3. `README.md` - overall framing (findings vs escalations vs manual checks, and
    the three to-do sections an item is sorted into), and the **XPI** vs
    **source code archive (SCA)** review modes.
-4. `src/pipeline.js` - the review pipeline (`runPipeline`): with
-   `src/checks/registry.js`, the ground truth for the review-pipeline page
-   (`check-flow.html`). Read the stage order OFF THE CODE rather than from this
-   list. The eager steps are `SETUP_STEPS`, the declared list one loop walks; the
-   review's data (the vendor reading and audits, classification, CDN identification,
-   parse, build review) is computed when a check first asks, through the getters
-   `src/review/products.js` builds, each stage after the ones it depends on. The
-   shipped-XPI chain (resolveVendor → verifyVendor → classifyBundled → CDN
-   identification → extractReview) is the same in BOTH modes: the shipped artifact is
-   analysed the same way either way. The vulnerability audit of identified libraries
-   follows the review target. Getting this backwards inverts the diagram.
-   The review mode is DERIVED (`--sca-extracted` or not) and assigned
-   nowhere. The file also shows the `mode.sca` forks, and the four routes a check can
-   declare (`source` / `xpi` / `sca` / `all`) dispatched by `routeCtx` over the sibling
-   ctxs built by `buildXpiCtx` / `buildScaCtx` / `buildAllCtx`.
-5. `src/checks/registry.js` - the orchestrator (`runChecks`), which runs the whole
-   review inside that single call: the phase's checks in its main loop, then
-   the unused-folder collapse. The pipeline only calls `runChecks` and assembles the
-   `Review` from what it returns.
 
 ## Steps
 
