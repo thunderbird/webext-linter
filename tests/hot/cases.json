@@ -100,7 +100,7 @@
       "expect": {
         "stop": "row-14",
         "SCA_BUILD_SAFETY_ASSESSMENT": "safe",
-        "SCA_VULNERABILITIES": { "moderate": 1, "high": 0, "critical": 0 },
+        "SCA_VULNERABILITIES": { "moderate": { "atLeast": 1 }, "high": 0, "critical": 0 },
         "LLM_BUILD_RESULT": "build succeeded",
         "LLM_BUILD_OUTPUT": "build",
         "SCA_RESCUED": false
