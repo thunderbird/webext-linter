@@ -6542,6 +6542,7 @@ test("llm-verification is false for decisions and outside facts alone", () => {
       "build-fails",
       "build-not-reproduced",
       "build-unsafe",
+      "experiment-not-allowed",
       "sca-not-needed",
       "unpopular-source-dependency",
       "vendor-vulnerable",

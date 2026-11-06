@@ -57,7 +57,7 @@ deterministic-phase:
 - title: Experiment APIs not accepted
   severity: error
   check: experiment-not-allowed
-  llm-verification: true
+  llm-verification: false
   input: xpi
   review-early-exit: experiment-not-allowed
   response: |-
