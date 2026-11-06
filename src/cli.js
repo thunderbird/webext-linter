@@ -61,7 +61,7 @@ import {
   readRecord,
   startMode,
 } from "./review/record.js";
-import { issueHandbackPrompt } from "./review/issue.js";
+import { handbackIssued, issueHandbackPrompt } from "./review/issue.js";
 import { settleReview } from "./review/settle.js";
 import { hasErrors } from "./report/finding.js";
 import {
@@ -606,8 +606,12 @@ export async function main(argv) {
   } catch (err) {
     outcome = answerError(err, registry);
   }
+  // A run that did its job returns a bare exit code, and is told apart from an error answer
+  // (a refusal, a failure, a bad command line), which returns its own outcome.
   return exitHandling(
-    typeof outcome === "number" ? { code: outcome, keep: true } : outcome
+    typeof outcome === "number"
+      ? { code: outcome, keep: true, awaitsHandback: handbackIssued() }
+      : outcome
   );
 }
 
@@ -1005,17 +1009,20 @@ function failureText(message) {
 }
 
 /**
- * Exit handling, which every run ends in: given whether the files this run wrote stay and the
- * exit code, it acts on both and decides nothing. They stay when the run did its job, a refusal
- * included, and the files and folders this run created are removed after a failure
- * (src/util/claims.js). The process leaves through exitWith (src/util/log.js, verify.js).
- * @param {{code: number, keep: boolean}} outcome
+ * Exit handling, which every run ends in: given whether the files this run wrote stay, the
+ * exit code, and whether the run did its job and issued a hand-back prompt, it acts on them.
+ * The files stay when the run did its job, a refusal included, and the files and folders this
+ * run created are removed after a failure (src/util/claims.js). A run that did its job and
+ * issued a hand-back prompt leaves the review unfinished, so it exits 0, whatever the review's
+ * errors. A refusal or a failure is no run that did its job, so its code stands. The process
+ * leaves through exitWith (src/util/log.js, verify.js).
+ * @param {{code: number, keep: boolean, awaitsHandback?: boolean}} outcome
  * @returns {number}  The exit code.
  */
-function exitHandling({ code, keep }) {
+function exitHandling({ code, keep, awaitsHandback = false }) {
   if (keep) {
     keepClaims();
-    return code;
+    return awaitsHandback ? 0 : code;
   }
   try {
     releaseClaims();

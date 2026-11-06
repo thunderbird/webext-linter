@@ -703,8 +703,11 @@ test("restarting an aborted source review starts an XPI review of its own", () =
     const scaWork = defaultFolderOf(xpi, "sca");
     // The missing package.json aborts the review late: its passes run first, and the
     // question is put once they are done.
-    const { state: scaState } = handBackUntil(scaWork, "downgrade");
+    const { state: scaState, out: asked } = handBackUntil(scaWork, "downgrade");
     assert.equal(scaState.phase, "downgrade");
+    // The question is answered with a hand-back, so the review is unfinished and the run
+    // that put it exits 0, though the aborted review holds an error.
+    assert.equal(asked.code, 0, asked.stderr);
     const scaFlags = readJson(scaWork, "state").flags;
     assert.ok(
       !Object.keys(scaFlags).some((name) => name.startsWith("sca-")),

@@ -405,7 +405,7 @@ flowchart TB
       <ul>
         <li><strong>The six caches are one list, <code>CACHES</code></strong>: their flags, help, defaults, the review's options and <code>--cache-clear</code> are all made from it, so no cache is known to one of them and missing from another.</li>
         <li><strong>The positional</strong> is the add-on, <code>&lt;xpi|folder&gt;</code>: a packed <code>.xpi</code> or an unpacked add-on folder, one per run. With <code>--llm-auto-review</code> it is the submission folder, and with <code>--llm-handback</code> it is not read.</li>
-        <li><strong>The exit codes</strong>, as the help text ends: 0 no errors, 1 one or more error-severity findings (with <code>--warnings-as-errors</code> every warning is one), 2 a bad command line, a refusal or a failure.</li>
+        <li><strong>The exit codes</strong>, as the help text ends: 0 no errors, 1 one or more error-severity findings (with <code>--warnings-as-errors</code> every warning is one), 2 a bad command line, a refusal or a failure. A run that issues a prompt the agent answers with a hand-back exits 0 whatever the review's errors: the review is unfinished, and only the run that ends it, with the closing prompt or a plain report, exits 1 for them.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
 
@@ -477,7 +477,7 @@ flowchart TB
       <h3 id="main-ends">1.6 · How main ends a run</h3>
       <ul>
         <li><strong>The one catch</strong> is around the registry and the whole run, the hand-back included (section 6.3, <code>answerError</code>): a <code>HandbackRefused</code> is a refusal, anything else a failure.</li>
-        <li><strong>Exit handling</strong> (section 6.2, <code>exitHandling</code>) is given the run's outcome: a bare exit code keeps the files, a bad command line is exit 2 with the files not kept (it claimed nothing, so nothing is removed), and the catch gives its own. A release that cannot remove what the run created prints <code>Could not remove what this run created (&lt;code&gt;).</code> on stderr and keeps the exit code.</li>
+        <li><strong>Exit handling</strong> (section 6.2, <code>exitHandling</code>) is given the run's outcome: a bare exit code keeps the files, and with it whether the run issued a hand-back prompt, a bad command line is exit 2 with the files not kept (it claimed nothing, so nothing is removed), and the catch gives its own. A release that cannot remove what the run created prints <code>Could not remove what this run created (&lt;code&gt;).</code> on stderr and keeps the exit code.</li>
         <li><strong><code>verify.js</code> ends the process,</strong> always through <code>exitWith</code>: the held-back stderr block is written, both streams are flushed, and the process exits with the code. What escapes <code>main</code> altogether (a rejected <code>main</code>, an uncaught exception, an unhandled rejection) goes to <code>crash</code>: its stack on stderr, what the run claimed released, exit 2.</li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
@@ -513,7 +513,7 @@ flowchart TB
           <div>
             <pre class="mermaid">
 flowchart TB
-  E(["①a .xpi · ②a --llm-review .xpi"]) --> L[["load the .xpi<br/>kind: xpi"]] --> AG[["add to the record<br/>what was given: the submission,<br/>kind xpi, the flags, the folder xpi/"]] --> R[["review the loaded submission<br/>the flags as given, plain or LLM"]] --> Re(("exit<br/>handling<br/>exit 0 or 1")):::final
+  E(["①a .xpi · ②a --llm-review .xpi"]) --> L[["load the .xpi<br/>kind: xpi"]] --> AG[["add to the record<br/>what was given: the submission,<br/>kind xpi, the flags, the folder xpi/"]] --> R[["review the loaded submission<br/>the flags as given, plain or LLM"]] --> Re(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   Re -. "a hand-back prompt issued" .-> Rr(("continue after<br/>hand-back<br/>mode review<br/>at the phase issued")):::stop
   subgraph FA ["reviewXpi"]
     L
@@ -552,7 +552,7 @@ flowchart TB
   H -- "throws ScaFoldersRejected: caught<br/>what is wrong" --> Hp[["print the message<br/>(stderr: what is wrong with the flag)"]] --> Hg(("exit<br/>handling<br/>nothing created, exit 2")):::final
   H -- "the sca folders, relative" --> L[["load the .xpi<br/>kind: sca"]] --> AG[["add to the record<br/>what was given: the submission,<br/>kind sca, the flags, the folder xpi/"]] --> MF{{"an Experiment folder named<br/>exactly when the add-on declares one?"}}
   MF -- "no: a failure" --> MFp[["print the message<br/>(stderr: the message and verify failed)"]] --> MFg(("exit<br/>handling<br/>files removed, exit 2")):::final
-  MF -- yes --> CP[["copy the source"]] --> CPa[["add to the record<br/>the folder sca/"]] --> ST[["settle the package root<br/>the sca folders, relative"]] --> RS[["review the loaded submission<br/>the flags as given, plain or LLM"]] --> RSe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after the analyze prompt")):::final
+  MF -- yes --> CP[["copy the source"]] --> CPa[["add to the record<br/>the folder sca/"]] --> ST[["settle the package root<br/>the sca folders, relative"]] --> RS[["review the loaded submission<br/>the flags as given, plain or LLM"]] --> RSe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   RSe -. "a hand-back prompt issued" .-> RSr(("continue after<br/>hand-back<br/>mode build-check at analyze,<br/>mode review at the phase issued,<br/>or mode downgrade")):::stop
   subgraph FB ["the source path"]
     H
@@ -615,7 +615,7 @@ flowchart TB
 flowchart TB
   E3(["③ folder: one .xpi, maybe a source"]) --> A0{{"what is in the folder?<br/>scaSubmission, names only, in main"}}
   A0 -- "neither: a bad command line" --> A0p[["print the message<br/>(stderr: what the folder holds)"]] --> A0g(("exit<br/>handling<br/>nothing created, exit 2")):::final
-  A0 -- ".xpi, no source" --> L4X[["load the .xpi<br/>kind: xpi"]] --> AGX[["add to the record<br/>what was given: the submission,<br/>kind xpi, the flags, the folder xpi/"]] --> RX[["review the loaded submission<br/>LLM, the flags given"]] --> FNxe(("exit<br/>handling<br/>exit 0 or 1")):::final
+  A0 -- ".xpi, no source" --> L4X[["load the .xpi<br/>kind: xpi"]] --> AGX[["add to the record<br/>what was given: the submission,<br/>kind xpi, the flags, the folder xpi/"]] --> RX[["review the loaded submission<br/>LLM, the flags given"]] --> FNxe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   FNxe -. "a hand-back prompt issued" .-> FNxr(("continue after<br/>hand-back<br/>mode review<br/>at the phase issued")):::stop
   A0 -- ".xpi + source" --> L4[["load the .xpi<br/>kind: sca"]] --> AG4[["add to the record<br/>what was given: the submission,<br/>kind sca, the flags, the folder xpi/"]] --> U0[["start a mode<br/>unpack"]] --> Uiw[["issue a hand-back prompt<br/>unpack"]] --> Ure(("exit<br/>handling<br/>exit 0")):::final --> Ur(("continue after<br/>hand-back<br/>mode unpack")):::stop
   subgraph FM ["main"]
@@ -765,7 +765,7 @@ flowchart TB
   HX -- "blank, or not an absolute path" --> HXi[["print the message<br/>(stdout: the refused text, the problem filled in)"]] --> HXe(("exit<br/>handling<br/>files kept, exit 2")):::final --> HXr(("continue after<br/>hand-back<br/>the same mode and step<br/>the pass redone")):::stop
   HX -- "absolute, or not asked" --> HK[["approve the sca folders<br/>the agent's Experiment folder, against sca/"]]
   HK -- "throws ScaFoldersRejected: caught,<br/>thrown on as a refusal" --> HKi[["print the message<br/>(stdout: the refused text, the problem filled in)"]] --> HKe(("exit<br/>handling<br/>files kept, exit 2")):::final --> HKr(("continue after<br/>hand-back<br/>the same mode and step<br/>the pass redone")):::stop
-  HK -- "the sca folders, relative" --> HKa[["add to the record<br/>the folder sca/"]] --> HST[["settle the package root<br/>the sca folders, relative"]] --> HU[["review the loaded submission<br/>LLM"]] --> HUe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after the analyze prompt")):::final
+  HK -- "the sca folders, relative" --> HKa[["add to the record<br/>the folder sca/"]] --> HST[["settle the package root<br/>the sca folders, relative"]] --> HU[["review the loaded submission<br/>LLM"]] --> HUe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   HUe -. "a hand-back prompt issued" .-> HUr(("continue after<br/>hand-back<br/>mode build-check at analyze,<br/>mode review at the phase issued,<br/>or mode downgrade")):::stop
   subgraph DB2 ["A"]
     HU
@@ -863,7 +863,7 @@ flowchart TB
   SS -- "no: an answer it cannot take" --> SSi[["print the message<br/>(stdout: the refused text, the problem filled in)"]] --> SSe(("exit<br/>handling<br/>files kept, exit 2")):::final --> SSr(("continue after<br/>hand-back<br/>the same mode and step<br/>the pass redone")):::stop
   SS -- "yes: the answer applied<br/>a rescuable lock on the way into rescue:<br/>the folder rescued/ added to the record" --> SN{{"the build check done?"}}
   SN -- no --> SP["the record at the next step"] --> SPiw[["issue a hand-back prompt<br/>that step"]] --> SPre(("exit<br/>handling<br/>exit 0")):::final --> SPr(("continue after<br/>hand-back<br/>mode build-check<br/>at the next step")):::stop
-  SN -- yes --> SNa[["add to the record<br/>the build check's results<br/>what the review and the checks read of it"]] --> HC2[["populate ctx"]] --> HN2["runChecks (early-exit: false)<br/>every check but review-early-exit<br/>on the artifacts in ctx"] --> HNP[["start the review loop"]] --> HNe(("exit<br/>handling<br/>exit 0 or 1")):::final
+  SN -- yes --> SNa[["add to the record<br/>the build check's results<br/>what the review and the checks read of it"]] --> HC2[["populate ctx"]] --> HN2["runChecks (early-exit: false)<br/>every check but review-early-exit<br/>on the artifacts in ctx"] --> HNP[["start the review loop"]] --> HNe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   HNe -. "a hand-back prompt issued" .-> HNr(("continue after<br/>hand-back<br/>mode review<br/>at the phase issued")):::stop
   subgraph DC3 ["C"]
     HN2
@@ -1117,7 +1117,7 @@ flowchart TB
   T(["state.json: mode downgrade"]) --> SG{{"downgrade: the reviewer's answer<br/>to the restart prompt?"}}
   SG -- "neither: an answer it cannot take" --> SGi[["print the message<br/>(stdout: the refused text, the problem filled in)"]] --> SGe(("exit<br/>handling<br/>files kept, exit 2")):::final --> SGr(("continue after<br/>hand-back<br/>the same mode and step<br/>the pass redone")):::stop
   SG -- "keep: the rejection stands" --> SKs[["settle the review<br/>from the permanent part"]] --> SK[["issue the closing prompt<br/>the rejection report, the summary<br/>and details already shown left out"]] --> SKe(("exit<br/>handling<br/>exit 0 or 1")):::final
-  SG -- "xpi: restart as an XPI review" --> SR[["load the .xpi<br/>kind: xpi, a new work folder"]] --> SRg[["add to the record<br/>what was given: the submission,<br/>kind xpi, the recorded flags, the folder xpi/"]] --> SRv[["review the loaded submission<br/>LLM, the recorded flags, downgradedFrom"]] --> SRXe(("exit<br/>handling<br/>exit 0 or 1")):::final
+  SG -- "xpi: restart as an XPI review" --> SR[["load the .xpi<br/>kind: xpi, a new work folder"]] --> SRg[["add to the record<br/>what was given: the submission,<br/>kind xpi, the recorded flags, the folder xpi/"]] --> SRv[["review the loaded submission<br/>LLM, the recorded flags, downgradedFrom"]] --> SRXe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   SRXe -. "a hand-back prompt issued" .-> SRr(("continue after<br/>hand-back<br/>mode review<br/>at the phase issued<br/>in the new folder")):::stop
   subgraph DA3 ["A"]
     SRv
@@ -1920,7 +1920,7 @@ flowchart TB
         <li><strong>"advance the review" is every pass of the review loop</strong> (2026-10-28). It takes the record in mode review and the settled review, and settles nothing itself: every caller settles before it calls "advance the review", as a plain run settles before "report the review", so each review function is handed a settled review (2026-10-28). It works out the run facts (<code>runOf</code>), <code>aborted</code> among them: an early exit stands, or a late one does and the phase that would go out without it is <code>ask</code> or the close. Then <code>nextPhase</code> walks the phases in their order and returns the first with work (section 5.3). The review ends when that phase is the close, the one that answers <code>end</code>: an aborted review reaches it because the registry conditions every step before it <code>NOT aborted</code>, and a finished one because no other phase is left with work. A walk that finds no phase at all is a wiring fault and throws, since the close always keeps a step. At the end it adds the review as the checks produced it and the verdicts so far to the record's permanent part, then calls "close the review" with the record. The record is put at that phase (<code>state.phase</code>) before each prompt. Before every hand-back prompt it writes <code>report.md</code>, the settled review, so the report is current whenever a prompt links it (the <code>ask</code> phase's Review Details do), and no phase is named for it (2026-10-28). "close the review" then issues the closing prompt, or the restart prompt instead. Its callers: "start the review loop", and the hand-back's review case straight after the pass is accepted.
           <ul>
             <li><strong>The review case settles the pass before it accepts it</strong> (2026-10-28). Settling on every pass walks every answer on every pass, and a pass whose settle throws must not break the loop. So, its answers well formed, the review case settles the review with the verdicts so far and the new answers. The settle throws, so the case catches exactly that error and throws it on as a refusal: nothing is stored, the record stays as it was, and the agent redoes the pass. It settles, so the pass is accepted, its answers are stored, and the same settled review goes to "advance the review". A stored pass is therefore always one that settles, and no settle in a later pass can throw over an answer already taken. The settle works on a copy and writes nothing, so this is no extra "trial": it is the pass's one settle, the one "advance the review" is handed. Before it, the review case settles the verdicts so far once more, to rebuild what went out (3.3.1). That redoes the last pass's settle on the same inputs, so it cannot throw. It stays, because what went out is neither read back from the answers file nor stored in the record. Only "close the review" still settles itself, since the downgrade case's "keep" calls it with the record alone: at the loop's end that is a second settle with the same result, accepted for a simple close.</li>
-            <li><strong>The exit code stays with the caller:</strong> 0 or 1 by the review's errors after a run of checks, and in a loop pass 0, the close 0 or 1 by the settled review.</li>
+            <li><strong>The exit code stays with the caller:</strong> 0 or 1 by the review's errors after a run of checks, and in a loop pass 0, the close 0 or 1 by the settled review. Exit handling turns it into 0 where the run issued a hand-back prompt.</li>
           </ul></li>
       </ul>
       <p class="top"><a href="#top">back to top</a></p>
@@ -2407,7 +2407,7 @@ flowchart TB
       </p>
         <ul>
           <li><strong>whether the files this run wrote stay:</strong> they stay when the run did its job, a refusal included, so the agent can redo the pass in the same folder. After a failure the files and folders this run created are removed (<code>releaseClaims</code>, <code>src/util/claims.js</code>), and anything the run found there is left alone.</li>
-          <li><strong>the exit code,</strong> written on each green circle: 0 or 1 after a run of checks, by whether the review has errors, the first prompt and the downgrade question included. 0 after a step or phase is moved on without checks (the unpack and analyze prompts, a next step's or phase's prompt, the restart prompt in a loop pass). 0 or 1 at a close reached in a loop pass or after "keep", by the review's errors. 2 after a refusal or a failure.</li>
+          <li><strong>the exit code,</strong> written on each green circle: 0 after a hand-back prompt, whatever the review's errors: the unpack and analyze prompts, every step's and phase's prompt, the first prompt and the downgrade question. 0 or 1 after a run of checks that prints a plain report or issues the close, by whether the review has errors. 0 or 1 at a close reached in a loop pass or after "keep", by the review's errors. 2 after a refusal or a failure.</li>
         </ul>
       <p>
         A red "continue after hand-back" follows where the agent carries on. It is not an action
@@ -2439,7 +2439,9 @@ flowchart TB
   G0(("exit<br/>handling")):::final --> G1{{"the files this run wrote stay?<br/>as it is given"}}
   G1 -- "yes: the run did its job,<br/>or refused an answer" --> G2["the files stay<br/>keepClaims"]
   G1 -- "no: a failure" --> G3["the files and folders this run created<br/>are removed, releaseClaims"]
-  G2 --> G4(["exit with the code it is given<br/>0, 1 or 2"])
+  G2 --> G5{{"the run did its job and<br/>issued a hand-back prompt?<br/>awaitsHandback"}}
+  G5 -- "yes: the review unfinished" --> G6(["exit 0"])
+  G5 -- no --> G4(["exit with the code it is given<br/>0, 1 or 2"])
   G3 --> G4
   classDef xpi fill:#2b6cb0,stroke:#1a4a80,color:#ffffff;
   classDef stop fill:#c53030,stroke:#822727,color:#ffffff;
@@ -2453,7 +2455,7 @@ flowchart TB
       <ul>
         <li><strong>Every run ends in "exit handling"</strong> (2026-10-27), a visible step of every path and one place in the code (section 6):
           <ul>
-            <li><strong>"exit handling"</strong> (green) prints nothing. It is given whether the files this run wrote stay, and the exit code, and acts on both: the files stay (<code>keepClaims</code>) when the run did its job or refused an answer, the files and folders it created are removed (<code>releaseClaims</code>) after a failure, and it leaves through <code>exitWith</code>. The codes: 0 or 1 after a run of checks, by the review's errors, the first prompt and the downgrade question included, 0 after a step or phase moved on without checks, the restart prompt in a loop pass included, 0 or 1 at a close reached in a loop pass or after "keep", by the review's errors, 2 after a refusal or a failure.</li>
+            <li><strong>"exit handling"</strong> (green) prints nothing. It is given whether the files this run wrote stay, the exit code, and whether the run did its job and issued a hand-back prompt (<code>awaitsHandback</code>, read off <code>handbackIssued</code>, which "issue a hand-back prompt" sets), and acts on them: the files stay (<code>keepClaims</code>) when the run did its job or refused an answer, the files and folders it created are removed (<code>releaseClaims</code>) after a failure, and it leaves through <code>exitWith</code>. The codes: 0 where the run did its job and issued a hand-back prompt, since the review is unfinished, whatever its errors; else the code it is given, 0 or 1 after a plain report or the close by the review's errors, 2 after a refusal or a failure.</li>
             <li><strong>"continue after hand-back"</strong> (red) follows where the agent carries on. It is no step of this run, but names where the next one picks up: the mode, and the step or phase, that <code>state.json</code> holds and the hand-back's switch reads, such as mode build-check at analyze. After a refusal that is the same mode and step.</li>
           </ul>
           What a run produced is printed by the path before exit handling: the report to stdout (plain, text or JSON, nothing written), or the files a prompt names written and the prompt printed, or <code>report.md</code> and <code>state.json</code> written and the closing prompt printed (LLM). After a run of checks, the review function its caller picks decides what the run hands over, and in a loop pass "advance the review" does: no path decides it itself. Errors travel as exceptions, with one <code>catch</code> per run, around its main function (<code>main</code> and the hand-back entry): it prints a refusal (<code>HandbackRefused</code>) to stdout and a failure's message with "verify failed" to stderr, and hands each to exit handling. <code>verify.js</code>'s <code>crash</code> is only for what escapes a run altogether. The dotted frames end at the green circle.</li>
@@ -2556,7 +2558,7 @@ flowchart TB
           <div>
             <pre class="mermaid">
 flowchart TB
-  E(["①a .xpi · ②a --llm-review .xpi"]) --> L[["load the .xpi<br/>kind: xpi"]] --> AG[["add to the record<br/>what was given: the submission,<br/>kind xpi, the flags, the folder xpi/"]] --> R[["review the loaded submission<br/>the flags as given, plain or LLM"]] --> Re(("exit<br/>handling<br/>exit 0 or 1")):::final
+  E(["①a .xpi · ②a --llm-review .xpi"]) --> L[["load the .xpi<br/>kind: xpi"]] --> AG[["add to the record<br/>what was given: the submission,<br/>kind xpi, the flags, the folder xpi/"]] --> R[["review the loaded submission<br/>the flags as given, plain or LLM"]] --> Re(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   Re -. "a hand-back prompt issued" .-> Rr(("continue after<br/>hand-back<br/>mode review<br/>at the phase issued")):::stop
   subgraph FA ["reviewXpi"]
     L
@@ -2606,7 +2608,7 @@ flowchart TB
   H -- "throws ScaFoldersRejected: caught<br/>what is wrong" --> Hp[["print the message<br/>(stderr: what is wrong with the flag)"]] --> Hg(("exit<br/>handling<br/>nothing created, exit 2")):::final
   H -- "the sca folders, relative" --> L[["load the .xpi<br/>kind: sca"]] --> AG[["add to the record<br/>what was given: the submission,<br/>kind sca, the flags, the folder xpi/"]] --> MF{{"an Experiment folder named<br/>exactly when the add-on declares one?"}}
   MF -- "no: a failure" --> MFp[["print the message<br/>(stderr: the message and verify failed)"]] --> MFg(("exit<br/>handling<br/>files removed, exit 2")):::final
-  MF -- yes --> CP[["copy the source"]] --> CPa[["add to the record<br/>the folder sca/"]] --> ST[["settle the package root<br/>the sca folders, relative"]] --> RS[["review the loaded submission<br/>the flags as given, plain or LLM"]] --> RSe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after the analyze prompt")):::final
+  MF -- yes --> CP[["copy the source"]] --> CPa[["add to the record<br/>the folder sca/"]] --> ST[["settle the package root<br/>the sca folders, relative"]] --> RS[["review the loaded submission<br/>the flags as given, plain or LLM"]] --> RSe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   RSe -. "a hand-back prompt issued" .-> RSr(("continue after<br/>hand-back<br/>mode build-check at analyze,<br/>mode review at the phase issued,<br/>or mode downgrade")):::stop
   subgraph FB ["the source path"]
     H
@@ -2636,7 +2638,7 @@ flowchart TB
   style DD5 fill:#bbf7d0,stroke:#15803d,stroke-width:2.5px,color:#1d1d1b
   b1SN{{"the build check done?"}}
   b1SN -- no --> b1SP["the record at the next step"] --> b1SPiw[["issue a hand-back prompt<br/>that step"]] --> b1SPre(("exit<br/>handling<br/>exit 0")):::final --> b1SPr(("continue after<br/>hand-back<br/>mode build-check<br/>at the next step")):::stop
-  b1SN -- yes --> b1SNa[["add to the record<br/>the build check's results<br/>what the review and the checks read of it"]] --> b1HC2[["populate ctx"]] --> b1HN2["runChecks (early-exit: false)<br/>every check but review-early-exit<br/>on the artifacts in ctx"] --> b1HNP[["start the review loop"]] --> b1HNe(("exit<br/>handling<br/>exit 0 or 1")):::final
+  b1SN -- yes --> b1SNa[["add to the record<br/>the build check's results<br/>what the review and the checks read of it"]] --> b1HC2[["populate ctx"]] --> b1HN2["runChecks (early-exit: false)<br/>every check but review-early-exit<br/>on the artifacts in ctx"] --> b1HNP[["start the review loop"]] --> b1HNe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   b1HNe -. "a hand-back prompt issued" .-> b1HNr(("continue after<br/>hand-back<br/>mode review<br/>at the phase issued")):::stop
   subgraph b1DC3 ["C"]
   b1HN2
@@ -2654,7 +2656,7 @@ flowchart TB
   g1SG{{"downgrade: the reviewer's answer<br/>to the restart prompt?"}}
   g1SG
   g1SG -- "keep: the rejection stands" --> g1SKs[["settle the review<br/>from the permanent part"]] --> g1SK[["issue the closing prompt<br/>the rejection report, the summary<br/>and details already shown left out"]] --> g1SKe(("exit<br/>handling<br/>exit 0 or 1")):::final
-  g1SG -- "xpi: restart as an XPI review" --> g1SR[["load the .xpi<br/>kind: xpi, a new work folder"]] --> g1SRg[["add to the record<br/>what was given: the submission,<br/>kind xpi, the recorded flags, the folder xpi/"]] --> g1SRv[["review the loaded submission<br/>LLM, the recorded flags, downgradedFrom"]] --> g1SRXe(("exit<br/>handling<br/>exit 0 or 1")):::final
+  g1SG -- "xpi: restart as an XPI review" --> g1SR[["load the .xpi<br/>kind: xpi, a new work folder"]] --> g1SRg[["add to the record<br/>what was given: the submission,<br/>kind xpi, the recorded flags, the folder xpi/"]] --> g1SRv[["review the loaded submission<br/>LLM, the recorded flags, downgradedFrom"]] --> g1SRXe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   g1SRXe -. "a hand-back prompt issued" .-> g1SRr(("continue after<br/>hand-back<br/>mode review<br/>at the phase issued<br/>in the new folder")):::stop
   subgraph g1DA3 ["A"]
   g1SRv
@@ -2731,7 +2733,7 @@ flowchart TB
             <pre class="mermaid">
 flowchart TB
   E3(["③ folder: one .xpi, maybe a source"]) --> A0{{"what is in the folder?<br/>scaSubmission, names only, in main"}}
-  A0 -- ".xpi, no source" --> L4X[["load the .xpi<br/>kind: xpi"]] --> AGX[["add to the record<br/>what was given: the submission,<br/>kind xpi, the flags, the folder xpi/"]] --> RX[["review the loaded submission<br/>LLM, the flags given"]] --> FNxe(("exit<br/>handling<br/>exit 0 or 1")):::final
+  A0 -- ".xpi, no source" --> L4X[["load the .xpi<br/>kind: xpi"]] --> AGX[["add to the record<br/>what was given: the submission,<br/>kind xpi, the flags, the folder xpi/"]] --> RX[["review the loaded submission<br/>LLM, the flags given"]] --> FNxe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   FNxe -. "a hand-back prompt issued" .-> FNxr(("continue after<br/>hand-back<br/>mode review<br/>at the phase issued")):::stop
   A0 -- ".xpi + source" --> L4[["load the .xpi<br/>kind: sca"]] --> AG4[["add to the record<br/>what was given: the submission,<br/>kind sca, the flags, the folder xpi/"]] --> U0[["start a mode<br/>unpack"]] --> Uiw[["issue a hand-back prompt<br/>unpack"]] --> Ure(("exit<br/>handling<br/>exit 0")):::final --> Ur(("continue after<br/>hand-back<br/>mode unpack")):::stop
   subgraph FM ["main"]
@@ -2765,7 +2767,7 @@ flowchart TB
   class r1SLa,r1SLt,r1SQ back
   u1HX["read the Experiment answer, where asked<br/>trimmed, unpackedExperiments"]
   u1HX -- "absolute, or not asked" --> u1HK[["approve the sca folders<br/>the agent's Experiment folder, against sca/"]]
-  u1HK -- "the sca folders, relative" --> u1HKa[["add to the record<br/>the folder sca/"]] --> u1HST[["settle the package root<br/>the sca folders, relative"]] --> u1HU[["review the loaded submission<br/>LLM"]] --> u1HUe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after the analyze prompt")):::final
+  u1HK -- "the sca folders, relative" --> u1HKa[["add to the record<br/>the folder sca/"]] --> u1HST[["settle the package root<br/>the sca folders, relative"]] --> u1HU[["review the loaded submission<br/>LLM"]] --> u1HUe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   u1HUe -. "a hand-back prompt issued" .-> u1HUr(("continue after<br/>hand-back<br/>mode build-check at analyze,<br/>mode review at the phase issued,<br/>or mode downgrade")):::stop
   subgraph u1DB2 ["A"]
   u1HU
@@ -2776,7 +2778,7 @@ flowchart TB
   class u1HX,u1HK,u1HKa,u1HST,u1HU back
   b1SN{{"the build check done?"}}
   b1SN -- no --> b1SP["the record at the next step"] --> b1SPiw[["issue a hand-back prompt<br/>that step"]] --> b1SPre(("exit<br/>handling<br/>exit 0")):::final --> b1SPr(("continue after<br/>hand-back<br/>mode build-check<br/>at the next step")):::stop
-  b1SN -- yes --> b1SNa[["add to the record<br/>the build check's results<br/>what the review and the checks read of it"]] --> b1HC2[["populate ctx"]] --> b1HN2["runChecks (early-exit: false)<br/>every check but review-early-exit<br/>on the artifacts in ctx"] --> b1HNP[["start the review loop"]] --> b1HNe(("exit<br/>handling<br/>exit 0 or 1")):::final
+  b1SN -- yes --> b1SNa[["add to the record<br/>the build check's results<br/>what the review and the checks read of it"]] --> b1HC2[["populate ctx"]] --> b1HN2["runChecks (early-exit: false)<br/>every check but review-early-exit<br/>on the artifacts in ctx"] --> b1HNP[["start the review loop"]] --> b1HNe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   b1HNe -. "a hand-back prompt issued" .-> b1HNr(("continue after<br/>hand-back<br/>mode review<br/>at the phase issued")):::stop
   subgraph b1DC3 ["C"]
   b1HN2
@@ -2794,7 +2796,7 @@ flowchart TB
   g1SG{{"downgrade: the reviewer's answer<br/>to the restart prompt?"}}
   g1SG
   g1SG -- "keep: the rejection stands" --> g1SKs[["settle the review<br/>from the permanent part"]] --> g1SK[["issue the closing prompt<br/>the rejection report, the summary<br/>and details already shown left out"]] --> g1SKe(("exit<br/>handling<br/>exit 0 or 1")):::final
-  g1SG -- "xpi: restart as an XPI review" --> g1SR[["load the .xpi<br/>kind: xpi, a new work folder"]] --> g1SRg[["add to the record<br/>what was given: the submission,<br/>kind xpi, the recorded flags, the folder xpi/"]] --> g1SRv[["review the loaded submission<br/>LLM, the recorded flags, downgradedFrom"]] --> g1SRXe(("exit<br/>handling<br/>exit 0 or 1")):::final
+  g1SG -- "xpi: restart as an XPI review" --> g1SR[["load the .xpi<br/>kind: xpi, a new work folder"]] --> g1SRg[["add to the record<br/>what was given: the submission,<br/>kind xpi, the recorded flags, the folder xpi/"]] --> g1SRv[["review the loaded submission<br/>LLM, the recorded flags, downgradedFrom"]] --> g1SRXe(("exit<br/>handling<br/>exit 0 or 1<br/>0 after a hand-back prompt")):::final
   g1SRXe -. "a hand-back prompt issued" .-> g1SRr(("continue after<br/>hand-back<br/>mode review<br/>at the phase issued<br/>in the new folder")):::stop
   subgraph g1DA3 ["A"]
   g1SRv

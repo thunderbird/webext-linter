@@ -517,6 +517,30 @@ test("a hand-back pass reports a case in the band its review recorded", () => {
   assert.match(strict.stdout, /1 error\(s\), 0 hold, 0 warning\(s\)/);
 });
 
+// A run that issues a prompt the agent answers with a hand-back leaves the review unfinished,
+// so it exits 0 whatever the review's errors. Only the run that issues the close exits by
+// them.
+test("a hand-back prompt exits 0, the close by the review's errors", () => {
+  const addon = path.join(ROOT, "tests", "addons", "remote-code-channels");
+  const first = run([
+    addon,
+    ...OFFLINE_FLAGS,
+    "--llm-review",
+    "--llm-skip-summary",
+    "--llm-skip-sweep",
+  ]);
+  assert.equal(first.code, 0, first.stderr);
+  const work = workOfReviewFile(reviewFile(first.stdout));
+  const { state, out } = handBackUntil(work, "close");
+  assert.equal(state.phase, "close");
+  assert.ok(
+    state.report.findings.some((f) => f.severity === "error"),
+    "the review holds an error"
+  );
+  assert.equal(out.code, 1, out.stdout + out.stderr);
+  fs.rmSync(work, { recursive: true, force: true });
+});
+
 // JSON is a machine contract: stdout is the document, stderr is silent - even
 // with --verbose (no activity feed, no notices).
 test("JSON output is fully silent on stderr, even with --verbose", () => {

@@ -8,7 +8,8 @@
 //
 // Both print with writeToStdout: a prompt is a whole document. What differs stays with the
 // caller: it builds the record and the lines, writes report.md first where a hand-back prompt
-// needs it, and hands the exit code to exit handling after the call.
+// needs it, and hands the exit code to exit handling after the call. Exit handling also reads
+// whether this run issued a hand-back prompt (handbackIssued), since a run that did exits 0.
 //
 // Belongs here: the order of the writes and the print. Does NOT belong here: what the record
 // holds (src/review/record.js), what a prompt says (src/report/format.js and the registry), or
@@ -19,6 +20,19 @@ import { reviewFile, writeReviewFile } from "../report/handback.js";
 import { writeReportFile } from "../report/report-file.js";
 import { workPaths } from "../util/dest.js";
 import { writeToStdout } from "../util/log.js";
+
+// Whether this run issued a hand-back prompt. A run issues at most one review's prompts, and
+// the process ends with it.
+let issuedHandback = false;
+
+/**
+ * Whether this run issued a hand-back prompt, which leaves the review unfinished: the agent
+ * answers it with a hand-back.
+ * @returns {boolean}
+ */
+export function handbackIssued() {
+  return issuedHandback;
+}
 
 /**
  * Print a prompt's lines, and the blank line that ends it.
@@ -44,6 +58,7 @@ export function issueHandbackPrompt(work, record, entries, lines) {
   const written = writeRecord(work, record);
   writeReviewFile(workPaths(work).answers, reviewFile(entries));
   printPrompt(lines);
+  issuedHandback = true;
   return written;
 }
 
