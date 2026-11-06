@@ -884,7 +884,7 @@ test("an SCA --llm-review names a build report in the work folder", async () => 
     const { meta } = review.report;
     assert.equal(meta.buildFile, path.join(work, "build.md"));
     assert.equal(meta.summaryFile, path.join(work, "summary.md"));
-    assert.equal(meta.reportFile, path.join(work, "report.md"));
+    assert.equal(meta.reportFile, path.join(work, "review.md"));
     assert.equal(meta.xpiRoot, `${path.join(work, "xpi")}${path.sep}`);
     // Named, never written by this tool: the build check's agent wrote build.md, and the
     // description is the review's agent's to write.
@@ -900,7 +900,7 @@ test("an SCA --llm-review names a build report in the work folder", async () => 
     assert.equal(xpiOnly.review.report.meta.buildFile, undefined);
     assert.equal(
       path.basename(xpiOnly.review.report.meta.reportFile),
-      "report.md"
+      "review.md"
     );
   } finally {
     fs.rmSync(xpi, { recursive: true, force: true });

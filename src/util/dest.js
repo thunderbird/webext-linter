@@ -145,7 +145,7 @@ export function workPaths(work) {
     prepare: hidden("prepare.json"),
     state: hidden("state.json"),
     answers: hidden("answers.json"),
-    report: at("report.md"),
+    report: at("review.md"),
     summary: at("summary.md"),
     build: at("build.md"),
     buildIssues: at("build-issues.md"),

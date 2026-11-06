@@ -1826,7 +1826,7 @@ test("detailLinkLines links every location, XPI_FILE among them", () => {
 // blocks carry, last.
 test("detailRows lists every row in its order", () => {
   const names = detailRows({
-    reportFile: "/w/report.md",
+    reportFile: "/w/review.md",
     summaryFile: "/w/summary.md",
     rescuedVulnerabilities: { moderate: 0, high: 1, critical: 0 },
     buildMatch: "match",

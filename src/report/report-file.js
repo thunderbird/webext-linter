@@ -21,11 +21,11 @@ import { writeFileAtomic } from "../util/atomic.js";
 import { withoutColor } from "../util/color.js";
 
 /**
- * Write the developer-facing report to report.md, at the work folder's fixed path. Only an
+ * Write the developer-facing report to review.md, at the work folder's fixed path. Only an
  * LLM review writes one, and every other run prints the report to stdout instead. Atomic, so
  * a reviewer who opens the file while a pass is rewriting it reads one version or the other
  * and never half of each.
- * @param {string} file  The work folder's report.md (src/util/dest.js workPaths).
+ * @param {string} file  The work folder's review.md (src/util/dest.js workPaths).
  * @param {string} body  The report body, as settleReview builds it (src/review/settle.js).
  * @returns {void}
  */

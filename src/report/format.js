@@ -821,7 +821,7 @@ export function detailRows(meta) {
     rows.push(["ADDON_SUMMARY_REPORT", "summary.md", meta.summaryFile]);
   }
   if (meta.reportFile) {
-    rows.push(["REVIEW_REPORT", "report.md", meta.reportFile]);
+    rows.push(["REVIEW_REPORT", "review.md", meta.reportFile]);
   }
   return rows.map(([name, text, target]) =>
     text === null

@@ -576,7 +576,7 @@ test("the hand-back starts the review of an unrescued source, which is aborted l
   assert.equal(r.code, 1, r.stdout + r.stderr);
   // The close, its report already written, and its vulnerability checks are what aborted it.
   assert.match(r.stdout, /The review was aborted before it finished/);
-  assert.ok(r.stdout.includes(`[report.md](${work}/report.md)`), r.stdout);
+  assert.ok(r.stdout.includes(`[review.md](${work}/review.md)`), r.stdout);
   assert.ok(r.stdout.includes("- Known security vulnerabilities"), r.stdout);
   assert.ok(!r.stdout.includes("- Build process issues"), r.stdout);
   for (const row of [

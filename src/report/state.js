@@ -41,7 +41,7 @@
  *   the routing drops entries by it, the registry is read under it, and both legs of a
  *   hand-over ask it the same question.
  * @property {object} paths  The values a step names: description and build (both in the
- *   review's work folder, src/util/dest.js workPaths, which also holds report.md, the record
+ *   review's work folder, src/util/dest.js workPaths, which also holds review.md, the record
  *   and the answers file at fixed names that are not recorded), schemaCache, schema, the
  *   add-on's copy an entry's paths are resolved against (xpiRoot), and `sweeps` - each tree's
  *   sweep request (the text its step hands over) and answers file, by artifact, which is also

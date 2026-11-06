@@ -22,7 +22,7 @@ import {
  *  the file, the way the reviewer does. Read out of the link's target, because a path
  *  taken as "the next run of non-space" would take the `](` with it. */
 function reportOf(stdout) {
-  const at = stdout.match(/\]\((\S+\/report\.md)\)/);
+  const at = stdout.match(/\]\((\S+\/review\.md)\)/);
   assert.ok(at, "the prompt links the report file");
   return fs.readFileSync(at[1], "utf8");
 }

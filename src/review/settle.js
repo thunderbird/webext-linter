@@ -6,7 +6,7 @@
 // never twice from two copies that could drift.
 //
 // Belongs here: applying the verdicts to a copy, wording each finding from the registry,
-// deciding every provisional hold, the abort reasons (early and late apart), and report.md's
+// deciding every provisional hold, the abort reasons (early and late apart), and review.md's
 // text. Does NOT belong here: what a reader does with the abort reasons (a plain report counts
 // both, the loop counts a late exit only once the phase that would go out is `ask` or the
 // close, src/report/loop.js), what a verdict does to an item (./../report/verdicts.js), or
@@ -34,7 +34,7 @@ import { issuesBodyLines, locusLabeler } from "../report/format.js";
  * worded, and their holds decided, and the meta. It holds the abort reasons, early ones alone
  * (`early`) and early and late together (`late`), each null where nothing aborts the review,
  * and the checks they are counted from (`aborting`). It holds the audit line of each verdict
- * applied and report.md's text. A verdict changes an item and never makes a new one, so every
+ * applied and review.md's text. A verdict changes an item and never makes a new one, so every
  * item keeps its reference: the loop walks its phases over this review, the one view.
  * @typedef {object} SettledReview
  * @property {object[]} findings

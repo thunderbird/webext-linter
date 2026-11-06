@@ -398,7 +398,7 @@ export function startReviewLoop(review, record, start) {
  * Advance the review: one pass of the loop, handed the review settled with the verdicts so
  * far, and settling nothing itself. nextPhase picks what goes out from the settled review: a
  * phase with work, or the end of the review, where it is halted or no phase is left with
- * work. Before every hand-back prompt report.md is written, the settled review, so the report
+ * work. Before every hand-back prompt review.md is written, the settled review, so the report
  * is current whenever a prompt links it, and the record is put at the phase that goes out. At
  * the end the review as the checks produced it and the verdicts so far are added to the
  * record's permanent part, and the review closed with the record.
@@ -448,7 +448,7 @@ export function advanceReview(work, record, settled, registry) {
  * kind and whether the XPI could be reviewed on its own. A source review rejected for build
  * issues alone - every check that aborts it carries `review-downgrade` - whose XPI could be
  * reviewed on its own is offered the restart as an XPI review instead of the close: mode
- * downgrade is started with no body, report.md written at its fixed path, and the restart
+ * downgrade is started with no body, review.md written at its fixed path, and the restart
  * prompt issued. Any other review is put at the close, so every later hand-back is refused,
  * and its closing prompt issued. A finished review fails the rule, since nothing aborted it.
  * @param {string} work

@@ -104,7 +104,7 @@ test("--llm-auto-review has an Experiment it would reject unpacked first, then c
   assert.match(closed.stdout, /The review was aborted/);
   // Nothing was started: the closing prompt has no file to hand back, and the record holds
   // the review as the early-exit checks produced it, closed.
-  assert.ok(fs.existsSync(workPaths(work).report), "report.md is written");
+  assert.ok(fs.existsSync(workPaths(work).report), "review.md is written");
   const record = readJson(work, "state");
   assert.deepEqual(record.current, { mode: "review", phase: "close" });
   assert.deepEqual(record.review.report.meta.checksRun, [

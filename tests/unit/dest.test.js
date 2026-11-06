@@ -62,7 +62,7 @@ test("the work folder's names are bare and fixed", () => {
       prepare: "/w/.review/prepare.json",
       state: "/w/.review/state.json",
       answers: "/w/.review/answers.json",
-      report: "/w/report.md",
+      report: "/w/review.md",
       summary: "/w/summary.md",
       build: "/w/build.md",
       buildIssues: "/w/build-issues.md",
