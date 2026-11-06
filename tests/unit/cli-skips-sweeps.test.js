@@ -47,10 +47,10 @@ test("--sca-extracted / --sca-package-root / --sca-experiments are no pipeline o
 
 // The two skips end to end: the same round trip, minus the two parts that need a person.
 // The sweep, the findings and the Extended Code Review are asked for exactly as a plain
-// --llm-review asks for them; the add-on description and the manual questions are not, and
+// --llm-review asks for them; the summary report and the manual questions are not, and
 // the manual items are absent from the item file so the prompt and the file agree about
 // what the reader is being asked to settle. They stay in the REPORT, for the reviewer.
-test("the two skips withhold the description and the manual items", () => {
+test("the two skips withhold the summary report and the manual items", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const on = run([
     addon,
@@ -79,14 +79,15 @@ test("the two skips withhold the description and the manual items", () => {
   assert.doesNotMatch(
     on.stdout,
     /\/summary\.md/,
-    "no add-on description asked for, and no file named for one"
+    "no summary report asked for, and no file named for one"
   );
   // ...while the step that closes the round trip survives the renumbering.
   assert.match(on.stdout, /--llm-handback/);
 
-  // --llm-skip-summary leaves the sweep as the spawn phase's only agent, and the pass asks
-  // about nothing in the file.
-  assert.match(on.stdout, /Spawn an independent sub-agent NOW to sweep/);
+  // --llm-skip-summary leaves the sweep agent as the spawn phase's only agent, and the pass
+  // asks about nothing in the file.
+  assert.match(on.stdout, /Spawn a sweep agent NOW to sweep/);
+  assert.doesNotMatch(on.stdout, /Spawn a report agent/);
   assert.deepEqual(entriesOf(on.stdout), []);
   assert.equal(on.code, 0);
 });
@@ -113,8 +114,8 @@ test("each skip leaves out its own part and nothing else", () => {
 
   assert.doesNotMatch(
     noSummary.stdout,
-    /Spawn an independent sub-agent NOW to describe/,
-    "no description agent is spawned"
+    /Spawn a report agent/,
+    "no report agent is spawned"
   );
 });
 
@@ -122,7 +123,7 @@ test("each skip leaves out its own part and nothing else", () => {
 // withhold that step - --llm-skip-summary names it, and a review with nothing to settle
 // prints no steps at all - and a path printed for a file nobody is asked to write is an
 // instruction with no step behind it. The second route is the one a skip does not cover.
-test("a review with nothing to settle names no description file", () => {
+test("a review with nothing to settle still starts the report agent", () => {
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const r = run([
     addon,
@@ -133,19 +134,19 @@ test("a review with nothing to settle names no description file", () => {
   ]);
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /── LLM Prompt ──/);
-  // A review with nothing to SETTLE still has something to DO: the description is for the
+  // A review with nothing to SETTLE still has something to DO: the summary report is for the
   // reviewer, who still gets a report. So the spawn phase prints, and the phases that
   // settle entries do not - which is the rule, not an exception to it.
-  assert.match(r.stdout, /^1\. Spawn an independent sub-agent/m);
+  assert.match(r.stdout, /^1\. Spawn a report agent/m);
   assert.doesNotMatch(r.stdout, /Verify every entry/, "nothing to verify");
   assert.doesNotMatch(r.stdout, /Settle each entry/, "nothing to settle");
-  // The description agent returns its text as its reply, and the step names the PATH the
+  // The report agent returns its text as its reply, and the step names the PATH the
   // reply is written to, on a line of its own and in the sentence that says to write it.
   assert.match(
     r.stdout,
-    /write its reply unchanged to\n\n\s+\S+\/summary\.md\n\n\s+and to nothing else/
+    /write\s+its\s+reply\s+unchanged,\s+exactly\s+as\s+it\s+returned\s+it,\s+to\n\n\s+\S+\/summary\.md\n\n\s+and to nothing else/
   );
-  assert.doesNotMatch(r.stdout, /ADDON_DESCRIPTION/);
+  assert.doesNotMatch(r.stdout, /ADDON_SUMMARY_REPORT/);
   // The review file is handed over with nothing to answer: this phase has a step to do
   // and no entries, which is work either way.
   assert.deepEqual(entriesOf(r.stdout), []);
@@ -276,7 +277,7 @@ test("a swept case becomes an item of its check and settles like any other", () 
   assert.equal(first.code, 0, first.stderr);
   const file = reviewFile(first.stdout);
 
-  // The spawn pass asks nothing in this file - the sweeping agents answer in their own,
+  // The spawn pass asks nothing in this file - the sweep agents answer in their own,
   // where an empty list is "swept and clean" and a null is "never looked".
   assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).entries, []);
   planted(file, "background.js", 12);
@@ -300,7 +301,7 @@ test("a swept case becomes an item of its check and settles like any other", () 
   assert.match(second.stdout, /Settle each entry yourself/);
 
   // Settled like any other, and the developer reads the OWNING check's words - not the
-  // sweeping agent's, which never leave the hint.
+  // sweep agent's, which never leave the hint.
   next.entries = next.entries.map((e) => ({ ...e, answer: "reported" }));
   fs.writeFileSync(file, JSON.stringify(next, null, 1));
   let out = run(["--llm-handback", workOfReviewFile(file)]);

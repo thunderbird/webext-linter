@@ -108,8 +108,8 @@ export function runCache(work, dir) {
  *   input like `sca`: the review reads it when the rescue came out clean, and never writes it.
  * - `report`, the text the reviewer sends to the developer. The one document the linter
  *   writes itself (src/report/report-file.js).
- * - `summary`, where a sub-agent writes the add-on description, and `build`, where the
- *   agent writes what building it takes, in the build check. `buildIssues` is where the
+ * - `summary`, where the report agent's summary report is written, and `build`, where the
+ *   agent writes the build report, what building the add-on takes, in the build check. `buildIssues` is where the
  *   linter writes what the build reaches for outside the declared dependencies, as the agent
  *   handed it back in the same step.
  *   `buildCopy` is where every build of the build check runs (src/build-check/steps.js): a
@@ -124,8 +124,8 @@ export function runCache(work, dir) {
  * - `state`, the linter's own record of the review in every mode (src/review/record.js), and
  *   `answers`, the file it hands the agent one step or phase at a time. A pass is handed back
  *   with the work folder (--llm-handback, src/cli.js), and finds both in it by these names.
- * - `sweep`, where one sweeping agent's answers are written, per artifact it is asked
- *   about. The orchestrating agent writes it, from the sub-agent's reply. A FUNCTION,
+ * - `sweep`, where one sweep agent's answers are written, per artifact it is asked
+ *   about. The orchestrating agent writes it, from the sweep agent's reply. A FUNCTION,
  *   because how many there are is the review's answer and not this module's: an XPI
  *   review has one tree with sweeps and a source review may have two, and a fixed field
  *   here would invent a path for a tree that does not exist.

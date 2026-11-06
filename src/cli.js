@@ -226,7 +226,7 @@ function helpText(registry) {
     ],
     [
       "--llm-skip-summary",
-      "With --llm-review or --llm-auto-review: leave out the add-on description. The prompt does not ask for one and names no file for it; nothing else about the review changes.",
+      "With --llm-review or --llm-auto-review: leave out the summary report. The prompt does not ask for one and names no file for it; nothing else about the review changes.",
     ],
     [
       "--llm-skip-sweep",
@@ -1677,7 +1677,7 @@ function pipelineOptsFromValues(values) {
     llmSkip: reviewSkips(values),
     // Not a PROMPT_SKIPS member: no `when:` names it. What it withholds is every
     // sweep REQUEST, and with them the per-tree conditions derived from the requests - so
-    // no step that starts a sweeping agent prints (src/report/phases.js stepsOf).
+    // no step that starts a sweep agent prints (src/report/phases.js stepsOf).
     llmSkipSweep: Boolean(values["llm-skip-sweep"]),
     workCache: values["cache-work-dir"]
       ? path.resolve(values["cache-work-dir"])

@@ -23,7 +23,7 @@
 //
 // Belongs here: holding an authored result to a shape, refusing what cannot be routed, and
 // building the items. The results arrive already resolved to a check and a tree, from the
-// file each sweeping agent wrote (src/report/sweep-files.js), which is also where they are
+// file each sweep agent wrote (src/report/sweep-files.js), which is also where they are
 // checked for being present and for being a list.
 // Does NOT belong here: what a settled item becomes (-> src/report/verdicts.js), the
 // wording of either (-> assets/registry.yaml), or running the sweep, which the linter

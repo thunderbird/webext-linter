@@ -62,7 +62,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
   const root = headerValue(r.stdout, "SCA_PACKAGE_ROOT");
   assert.equal(root, fs.realpathSync(workPaths(work).sca));
   assert.equal(
-    headerValue(r.stdout, "SCA_BUILD_PROCESS"),
+    headerValue(r.stdout, "SCA_BUILD_REPORT"),
     workPaths(work).build
   );
   // The review the hand-back starts reads the copy: its steps name it, and the report.
@@ -97,7 +97,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
   ]);
   assert.equal(rejected.code, 1, rejected.stderr);
   assert.match(rejected.stdout, /── LLM Prompt ──/);
-  assert.doesNotMatch(rejected.stdout, /SCA Review Prompt|SCA_BUILD_PROCESS/);
+  assert.doesNotMatch(rejected.stdout, /SCA Review Prompt|SCA_BUILD_REPORT/);
   assert.ok(
     !rejected.stdout.split("\n").some((l) => /\/build\.md$/.test(l.trim())),
     "no build report is asked for"

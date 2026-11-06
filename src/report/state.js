@@ -12,7 +12,7 @@
 // for byte) is really a completeness check on this shape.
 //
 // WHY THE AGENT NEVER SEES IT: what the linter needs across passes would otherwise become
-// a contract. A value a step names (SCA_BUILD_PROCESS, say) is handed over in the prompt, and
+// a contract. A value a step names (SCA_BUILD_REPORT, say) is handed over in the prompt, and
 // the rest stays here.
 
 /**
@@ -64,7 +64,7 @@
  *   phase answering `value` -> the id it returned. Read by value(phase, id) in a `when:`.
  * @property {Object<string, *>} answers  An item's reference (`ref`, src/report/order.js
  *   assignRefs) -> what came back, once it is settled.
- * @property {?object[]} sweep  Everything the sweeping agents found, read back off their
+ * @property {?object[]} sweep  Everything the sweep agents found, read back off their
  *   answers files and already resolved to the check and the artifact each belongs to
  *   (src/report/sweep-files.js). Null where no tree was asked, which is not the same as
  *   every tree answering with nothing. Written and read inside the one `accept` that

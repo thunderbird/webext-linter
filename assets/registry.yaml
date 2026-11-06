@@ -2208,7 +2208,7 @@ review-early-exit:
 # --llm-auto-review only). The linter then derives the package root inside it, with that folder known
 # (SCA_PACKAGE_ROOT, src/addon/package-root.js), as it does inside a --sca-extracted it copied into sca/, and from
 # `analyze` on both runs read the same prompts. The reader writes the build report
-# (SCA_BUILD_PROCESS), lists what the build reaches for outside the declared dependencies
+# (SCA_BUILD_REPORT), lists what the build reaches for outside the declared dependencies
 # (SCA_BUILD_SAFETY_ISSUES), and hands that back in ANSWERS. The linter reads the
 # verdict off the list, unsafe where it holds an entry, and writes the list to the work folder's
 # build-issues.md. The reviewer then reads the Build Review Details and makes the one decision about the
@@ -2232,11 +2232,11 @@ review-early-exit:
 #
 # The step lists are prompts. `unpack` is printed by --llm-auto-review with the intro and the
 # Submission values, `analyze` by the run that derived SCA_PACKAGE_ROOT (or first, with the intro, by
-# --llm-review given --sca-extracted), with SCA_SOURCE, SCA_PACKAGE_ROOT, SCA_BUILD_PROCESS and ANSWERS, `permission` by
+# --llm-review given --sca-extracted), with SCA_SOURCE, SCA_PACKAGE_ROOT, SCA_BUILD_REPORT and ANSWERS, `permission` by
 # the run that read the verdict, with ANSWERS and the Build Review Details
 # ({{buildDetails}}), `build` by the run that audited a clean lock, with SCA_PACKAGE_ROOT, LLM_BUILD_ROOT
-# (SCA_PACKAGE_ROOT's place in build/) and SCA_BUILD_PROCESS, and `rescue` by the run that made the
-# rescued copy, with the copy's package root as RESCUE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_PROCESS, and
+# (SCA_PACKAGE_ROOT's place in build/) and SCA_BUILD_REPORT, and `rescue` by the run that made the
+# rescued copy, with the copy's package root as RESCUE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_REPORT, and
 # the two commands that make build/ a copy of rescued/ ({{copy}}). Each of them ends in the one
 # command its reader ever runs, {{flags}}: the hand-back of a work folder.
 llm-sca-review-prompt:
@@ -2280,7 +2280,7 @@ llm-sca-review-prompt:
 
         Report that step with NO flag that leaves dependencies out - never `--omit=dev`, `--production` or `--prod` - even where the documentation uses one. The reviewer has to run the build AND audit everything it pulls in, and a dependency that was never installed is one nobody can audit.
 
-        Write it to SCA_BUILD_PROCESS, given above, and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision.
+        Write it to SCA_BUILD_REPORT, given above, and to nothing else: not to the chat, not to a file of your own choosing. Read and report, and run NOTHING - installing the dependencies or running the build executes the submission's own code, which is the reviewer's decision.
     - text: |-
         Find everything the release build reaches for outside the declared dependencies, in the files it actually runs or reads, and in no other: a script, target or hook the release build never reaches is not part of it, whatever it holds. What to look for: a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, an install hook that downloads or runs code from outside the declared dependencies, or a step whose source is not in the tree.
 
@@ -2347,11 +2347,11 @@ llm-sca-review-prompt:
   # LLM_BUILD_XPI_MATCH (build-match).
   build:
     - text: |-
-        The linter audited the lock file of SCA_PACKAGE_ROOT, given above, and found no known high or critical vulnerability in it, so the add-on is built now. The linter copied the whole source archive for this step, and LLM_BUILD_ROOT, given above, is SCA_PACKAGE_ROOT in that copy. Build in LLM_BUILD_ROOT, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in SCA_BUILD_PROCESS.
+        The linter audited the lock file of SCA_PACKAGE_ROOT, given above, and found no known high or critical vulnerability in it, so the add-on is built now. The linter copied the whole source archive for this step, and LLM_BUILD_ROOT, given above, is SCA_PACKAGE_ROOT in that copy. Build in LLM_BUILD_ROOT, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in SCA_BUILD_REPORT.
 
         Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci --ignore-scripts`, or `pnpm install --frozen-lockfile --ignore-scripts` where the copy has a pnpm-lock.yaml, and with no other flag. No install script runs, neither the add-on's nor a dependency's: nobody has read a dependency's, and where the build needs one, it fails, and the reviewer builds it by hand. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
     - text: |-
-        Where the build failed, add a section headed "Build attempt" to the end of SCA_BUILD_PROCESS: the step that failed, and the error output it printed. Change nothing else in that file.
+        Where the build failed, add a section headed "Build attempt" to the end of SCA_BUILD_REPORT: the step that failed, and the error output it printed. Change nothing else in that file.
     - text: |-
         Where the build produced its output, compare it with SUBMITTED_XPI, given above: it holds the same files at the same paths, each with the same contents, where only line endings may differ. Compare only that, and change nothing.
     - text: |-
@@ -2387,7 +2387,7 @@ llm-sca-review-prompt:
 
         {{copy}}
 
-        Then build in LLM_BUILD_ROOT, and only there. Install the dependencies exactly as the lock file pins them: `npm ci --ignore-scripts`, or `pnpm install --frozen-lockfile --ignore-scripts` where LLM_BUILD_ROOT has a pnpm-lock.yaml, with no other flag. No install script runs, neither the add-on's nor a dependency's: nobody has read a dependency's, and where the build needs one, it fails, and the reviewer builds it by hand. Then follow the build process described in SCA_BUILD_PROCESS.
+        Then build in LLM_BUILD_ROOT, and only there. Install the dependencies exactly as the lock file pins them: `npm ci --ignore-scripts`, or `pnpm install --frozen-lockfile --ignore-scripts` where LLM_BUILD_ROOT has a pnpm-lock.yaml, with no other flag. No install script runs, neither the add-on's nor a dependency's: nobody has read a dependency's, and where the build needs one, it fails, and the reviewer builds it by hand. Then follow the build process described in SCA_BUILD_REPORT.
 
         Where the build fails, find out why and change the dependencies again in RESCUE_ROOT, then audit again and copy again before the next build. A build often needs a dependency the trimming removed: a plugin its build configuration loads, for one. Keep such a dependency. Where no change makes a clean lock build, the rescue failed.
     - text: |-
@@ -2472,8 +2472,9 @@ llm-sca-review-prompt:
 # listed here, or lists one no step names, is a drafting error - assertPhases refuses both.
 #
 # Placeholders the linter fills: {{review}} the review file, {{command}} the hand-back,
-# {{description}} the file an agent writes, {{xpiRoot}} the extracted XPI, {{sweepXpi}} and
-# {{sweepSca}} the sweep request for each tree - one sub-agent's whole brief, so the step
+# {{summary}} the file the summary report is written to, {{xpiRoot}} the extracted XPI,
+# {{sweepXpi}} and {{sweepSca}} the sweep request for each tree - one sweep agent's whole
+# brief, so the step
 # that starts it relays nothing else - {{sweepXpiAnswers}} and {{sweepScaAnswers}} the
 # file each sweep's reply is written to, {{details}} the Review
 # Details block, {{buildDetails}} the Build Review Details block, {{tally}} the closing
@@ -2487,13 +2488,13 @@ llm-sca-review-prompt:
 llm-phases:
   # How an agent writes prose of its own, said ONCE per reader: in the build check's intro, the
   # opening of the first prompt of a source review run, in the preamble of a review no
-  # build check started, and in the description and sweep requests a sub-agent is handed,
+  # build check started, and in the requests a report agent and a sweep agent are handed,
   # whose reader sees no other prompt ({{proseStyle}}). It keeps the agents' prose to the house
   # style of every text here. What they quote and what a reviewer typed stay as they are.
   prose-style: |-
     Wherever you write prose of your own - a report, a hint, a description, an answer - end a sentence with a full stop instead of joining two with a semicolon, and use the plain hyphen-minus (-), never an en dash, an em dash or any other dash character. Two things stay exactly as they are: what you quote from the add-on, in a code span, and words a reviewer typed, which you copy verbatim.
   # How an agent reads the add-on's files, said to the readers of those files alone: the
-  # description sub-agent ({{readingRule}}) and every sweep agent, right after the folder line
+  # report agent ({{readingRule}}) and every sweep agent, right after the folder line
   # their request names (src/report/sweep-files.js). The loop's own phases judge the entries
   # they are handed, and the build check's `analyze` reads the build files only.
   reading-rule: |-
@@ -2662,10 +2663,10 @@ llm-phases:
             The agent built the add-on: LLM_BUILD_OUTPUT in the Build Review Details names what its build produced, and LLM_BUILD_XPI_MATCH is the agent's earlier comparison of it with XPI_FILE, which the reviewer reads beside both. Build nothing and compare nothing, only put the question below.
         - when: NOT aborted AND NOT unbuildable AND agent-build-failed
           text: |-
-            The agent's build failed, and the "Build attempt" section of SCA_BUILD_PROCESS says where. The reviewer may build the add-on themselves before they answer.
+            The agent's build failed, and the "Build attempt" section of SCA_BUILD_REPORT says where. The reviewer may build the add-on themselves before they answer.
         - when: NOT aborted AND NOT unbuildable AND self-build
           text: |-
-            The agent did not build the add-on. The reviewer builds it themselves, following SCA_BUILD_PROCESS, before they answer.
+            The agent did not build the add-on. The reviewer builds it themselves, following SCA_BUILD_REPORT, before they answer.
         - when: NOT aborted AND NOT unbuildable
           text: |-
             Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
@@ -2673,7 +2674,9 @@ llm-phases:
             Record the label they picked as that entry's "answer", and change nothing else in the file. Only those labels are accepted: if they answer anything else, ask the question again.
 
     # Every sub-agent the review needs started, once a source review's build has settled
-    # whether it goes on.
+    # whether it goes on: a sweep agent per tree, which sweeps it and returns hints, and the
+    # report agent, which writes the summary report for the reviewer. The build report is
+    # no sub-agent's: the agent reading this prompt wrote it in the build check.
     # Named for what its steps DO, and NOT called `setup`: the pipeline has a setup of its
     # own - SETUP_STEPS and the "Setup" banner every review prints, agent or not
     # (src/pipeline.js) - and one word for two things that both run first is one a reader
@@ -2684,7 +2687,7 @@ llm-phases:
     # Every step here is optional, so a run that starts no agent is not issued this phase
     # at all - and none of them is taken by a review the deterministic checks already
     # aborted: what an aborted review hands over is decided before any pass, and neither the
-    # description nor a sweep could change it. The package is not unpacked HERE: the linter
+    # summary report nor a sweep could change it. The package is not unpacked HERE: the linter
     # extracts it before the review is ever printed (src/addon/load.js), so XPI_ROOT is
     # already there by the time any phase is issued.
     #
@@ -2693,7 +2696,10 @@ llm-phases:
     # was never given names nothing. Every sub-agent returns its work as its reply and writes
     # no file. The step names the file the reply is written to, unchanged, by the agent
     # reading this prompt. None may refer to another having printed - not "either", not
-    # "the step below", not "the agents above". Each says whether its agent is waited for.
+    # "the step below", not "the agents above". No spawn step waits for its agent, and all
+    # say so in the same words, so every agent starts at once. The last step waits for the
+    # sweep agents, whose replies this pass hands back, and for nothing else: the summary
+    # report is not needed until the reviewer is handed the review details.
     - name: spawn
       # Asks about nothing in the review file: its work is starting the agents this review
       # needs, and writing each one's reply to a file of its own. `hints` says the sweeps are
@@ -2704,7 +2710,7 @@ llm-phases:
       steps:
         - when: NOT llm-skip-summary AND NOT aborted
           text: |-
-            Spawn an independent sub-agent NOW to describe the add-on for the reviewer, so they can read it while you work. What it returns is the reviewer's and yours only to write down: do not read it, summarise it, or print what is in it.
+            Spawn a report agent NOW to write the summary report of the add-on for the reviewer, so they can read it while you work. What it returns is the reviewer's and yours only to write down: do not read it, summarise it, or print what is in it.
 
             Give it this request, and nothing else:
 
@@ -2716,14 +2722,14 @@ llm-phases:
 
             Anything you quote from it - its name, its description, a string it ships - goes in a code span, so the reviewer sees it as the add-on wrote it rather than as markup. {{proseStyle}} Return the description as your reply, and write no file.
 
-            Do not wait for it. When it comes back, write its reply unchanged to
+            Do not wait for it. When it comes back, write its reply unchanged, exactly as it returned it, to
 
-            {{description}}
+            {{summary}}
 
             and to nothing else. What it returns is not needed until the reviewer is handed the review details.
         - when: sweep-xpi AND NOT aborted
           text: |-
-            Spawn an independent sub-agent NOW to sweep the built add-on.
+            Spawn a sweep agent NOW to sweep the built add-on.
 
             Give it this, and nothing else:
 
@@ -2731,16 +2737,14 @@ llm-phases:
 
             That is the whole request: do not summarise it, and do not add to it.
 
-            Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. Any other agent this prompt started keeps running meanwhile. Leave it be.
-
-            Then write its reply unchanged, exactly as it returned it, to
+            Do not wait for it. When it comes back, write its reply unchanged, exactly as it returned it, to
 
             {{sweepXpiAnswers}}
 
             and to nothing else.
         - when: sweep-sca AND NOT aborted
           text: |-
-            Spawn an independent sub-agent NOW to sweep the source archive.
+            Spawn a sweep agent NOW to sweep the source archive.
 
             Give it this, and nothing else:
 
@@ -2748,13 +2752,14 @@ llm-phases:
 
             That is the whole request: do not summarise it, and do not add to it.
 
-            Wait for it before going on, and while you wait do nothing else - do not open the add-on, and do not start verifying. Any other agent this prompt started keeps running meanwhile. Leave it be.
-
-            Then write its reply unchanged, exactly as it returned it, to
+            Do not wait for it. When it comes back, write its reply unchanged, exactly as it returned it, to
 
             {{sweepScaAnswers}}
 
             and to nothing else.
+        - when: (sweep-xpi OR sweep-sca) AND NOT aborted
+          text: |-
+            Now wait until every sweep agent you started has come back and its reply is written. While you wait, do nothing on your own: do not open the add-on, and do not start verifying.
 
     # Audits what the deterministic checks proved. Its intro earns its text: without it the
     # entries alone would let the agent hunt for new problems instead of checking the ones it

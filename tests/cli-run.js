@@ -318,7 +318,7 @@ const issuesFor = (safety) => (safety === "unsafe" ? [UNSAFE_ISSUE] : []);
 
 /**
  * Do what the `analyze` prompt asks, the way its reader would: write the build report to
- * SCA_BUILD_PROCESS and answer ANSWERS with the build's safety issues, none by default, one
+ * SCA_BUILD_REPORT and answer ANSWERS with the build's safety issues, none by default, one
  * (UNSAFE_ISSUE) for a build to be judged unsafe. Its hand-back prints the permission prompt
  * (answerPermission). The hand-back itself is the caller's, so it can run it as it likes.
  * @param {string} stdout  The `analyze` prompt's run.
@@ -326,7 +326,7 @@ const issuesFor = (safety) => (safety === "unsafe" ? [UNSAFE_ISSUE] : []);
  * @returns {string[]}  The hand-back's argv, as the prompt prints it.
  */
 export function answerAnalyze(stdout, { safety = "safe" } = {}) {
-  fs.writeFileSync(headerValue(stdout, "SCA_BUILD_PROCESS"), "1. `npm ci`\n");
+  fs.writeFileSync(headerValue(stdout, "SCA_BUILD_REPORT"), "1. `npm ci`\n");
   const answers = headerValue(stdout, "ANSWERS");
   const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
   const given = { SCA_BUILD_SAFETY_ISSUES: issuesFor(safety) };
@@ -354,7 +354,7 @@ export function answerPermission(stdout, decision = "Build it myself") {
 /**
  * Do what the first prompts ask, the way their reader would: extract the source into
  * EXTRACT_TO, name the Experiment folder where `unpack` asks for it, and run the hand-back the
- * `unpack` prompt prints, then write the build report to SCA_BUILD_PROCESS, answer ANSWERS (the
+ * `unpack` prompt prints, then write the build report to SCA_BUILD_REPORT, answer ANSWERS (the
  * build judged safe), and run the hand-back the `analyze` prompt prints. Where that prints the
  * permission prompt, answer it too (the agent let build) and run its hand-back - which, with
  * nothing to rescue, starts the review.
@@ -383,7 +383,7 @@ export function handBackRoots(
     return unpacked;
   }
   fs.writeFileSync(
-    headerValue(unpacked.stdout, "SCA_BUILD_PROCESS"),
+    headerValue(unpacked.stdout, "SCA_BUILD_REPORT"),
     "1. `npm ci`\n"
   );
   const answers = headerValue(unpacked.stdout, "ANSWERS");

@@ -75,7 +75,7 @@ function permittedPrompt(vulns) {
   assert.ok(next.stdout.includes("── SCA Review Prompt ──"), next.stdout);
   assert.equal(headerValue(next.stdout, "ANSWERS"), workPaths(work).answers);
   assert.equal(
-    headerValue(next.stdout, "SCA_BUILD_PROCESS"),
+    headerValue(next.stdout, "SCA_BUILD_REPORT"),
     workPaths(work).build
   );
   assert.deepEqual(commandOf(next.stdout), [`--llm-handback ${work}`]);
@@ -181,8 +181,8 @@ const DETAIL_ROWS = [
   "SCA_SOURCE",
   "SCA_RESCUED",
   "SCA_EXPERIMENTS",
-  "ADDON_DESCRIPTION",
-  "SCA_BUILD_PROCESS",
+  "ADDON_SUMMARY_REPORT",
+  "SCA_BUILD_REPORT",
   "SCA_BUILD_SAFETY_ASSESSMENT",
   "SCA_VULNERABILITIES",
   "LLM_BUILD_RESULT",
@@ -290,7 +290,7 @@ test("each details block holds every row of the block before it", () => {
   // The build block goes out before the description agent and the report.
   assert.ok(
     !blocks[1][1].some((row) =>
-      ["* ADDON_DESCRIPTION: ", "* REVIEW_REPORT: "].some((n) =>
+      ["* ADDON_SUMMARY_REPORT: ", "* REVIEW_REPORT: "].some((n) =>
         row.startsWith(n)
       )
     ),
@@ -418,7 +418,7 @@ test("a safe build prints the Build Review Details and the permission question",
   assert.equal(headerValue(asked.stdout, "ANSWERS"), workPaths(work).answers);
   const block = [
     `* SCA_SOURCE: [source archive](${path.join(work, "sca")})`,
-    `* SCA_BUILD_PROCESS: [build.md](${workPaths(work).build})`,
+    `* SCA_BUILD_REPORT: [build.md](${workPaths(work).build})`,
     "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
     `* SCA_BUILD_SAFETY_ISSUES: [build-issues.md](${workPaths(work).buildIssues})`,
     "",
@@ -454,7 +454,7 @@ test("WEBEXT_LINTER_AGENT_BUILDS=1 skips the permission question", () => {
   const unpacked = unpackSource(r.stdout);
   assert.equal(unpacked.code, 0, unpacked.stdout + unpacked.stderr);
   fs.writeFileSync(
-    headerValue(unpacked.stdout, "SCA_BUILD_PROCESS"),
+    headerValue(unpacked.stdout, "SCA_BUILD_REPORT"),
     "1. `npm ci`\n"
   );
   answer(work, { SCA_BUILD_SAFETY_ISSUES: [] });

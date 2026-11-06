@@ -863,7 +863,7 @@ test("SCA meta names the artifacts, each a real path", async () => {
   }
 });
 
-// The two files a --llm-review run NAMES and this tool never writes: the add-on description,
+// The two files a --llm-review run NAMES and this tool never writes: the summary report,
 // and - only in a source code review - what building the add-on takes, which the build
 // check's agent wrote. Both sit in the review's work folder under their bare names, beside
 // the review's own files, and never inside the submitted add-on. The build one is gated on

@@ -794,7 +794,7 @@ export class Registry {
   /**
    * How an agent writes the prose of its own the reviewer and the developer read
    * (`llm-phases.prose-style`): said once in the first prompt of a run, and in each request a
-   * sub-agent is handed.
+   * report agent and sweep agent is handed.
    * @returns {string}
    */
   proseStyle() {

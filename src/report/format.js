@@ -86,7 +86,7 @@ const SEV_COLOR = {
  * @property {number} [manifestVersion]
  * @property {string[]} [checksRun]  Ids of the checks that ran.
  * @property {string} [summaryFile]  Where the --llm-review prompt's reader writes the
- *   add-on description for the reviewer - in the review's work folder, beside the review
+ *   summary report for the reviewer - in the review's work folder, beside the review
  *   file (src/util/dest.js workPaths). Named by this tool, written and read by neither.
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
  *   in a source code review, and in the Review Details only where the build check wrote it
@@ -477,9 +477,9 @@ function valueLines(entries) {
  * `unpack` prompt - EXTRACT_TO among them: this tool cannot open a source archive itself, but
  * it can still name where one should land - ANSWERS on every later prompt, and on `unpack`
  * where it asks for the Experiment folder, and the
- * Build block: SCA_SOURCE, SCA_PACKAGE_ROOT and SCA_BUILD_PROCESS on the `analyze` prompt,
- * SCA_PACKAGE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_PROCESS on the build's, RESCUE_ROOT, LLM_BUILD_ROOT
- * and SCA_BUILD_PROCESS on the rescue's, and SUBMITTED_XPI on both, which the build's output
+ * Build block: SCA_SOURCE, SCA_PACKAGE_ROOT and SCA_BUILD_REPORT on the `analyze` prompt,
+ * SCA_PACKAGE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_REPORT on the build's, RESCUE_ROOT, LLM_BUILD_ROOT
+ * and SCA_BUILD_REPORT on the rescue's, and SUBMITTED_XPI on both, which the build's output
  * is compared with. The STEPS are prose, and they name those given values - and the one the
  * reader of `unpack` may still have to work out, <SCA_EXPERIMENTS> - instead of carrying paths
  * themselves. The FLAGS are the finished command, one flag per line, filled into the step
@@ -549,7 +549,7 @@ export function scaPromptLines(prompt, list, values) {
     ["SCA_PACKAGE_ROOT", values.scaPackageRoot],
     ["RESCUE_ROOT", values.rescueRoot],
     ["LLM_BUILD_ROOT", values.buildRoot],
-    ["SCA_BUILD_PROCESS", values.buildProcess],
+    ["SCA_BUILD_REPORT", values.buildProcess],
     ["SUBMITTED_XPI", values.submittedXpi],
   ].filter(([, value]) => value);
   if (build.length) {
@@ -741,7 +741,7 @@ function sourceRows(folders) {
  * The rows are grouped by prefix. XPI_ and SCA_ describe
  * the submission, the build report and its safety assessment among them, since both are about
  * how the source builds. LLM_ is what the agent's own build attempt produced.
- * ADDON_DESCRIPTION and REVIEW_REPORT, which only the later blocks carry, come last.
+ * ADDON_SUMMARY_REPORT and REVIEW_REPORT, which only the later blocks carry, come last.
  *
  * SCA_SOURCE is the copy of the submitted source, and SCA_RESCUED the rescued copy the review
  * read instead, where there is one (sourceRows). SCA_BUILD is the copy the agent built in,
@@ -772,7 +772,7 @@ export function detailRows(meta) {
     rows.push(...sourceRows(folders));
   }
   if (meta.buildFile) {
-    rows.push(["SCA_BUILD_PROCESS", "build.md", meta.buildFile]);
+    rows.push(["SCA_BUILD_REPORT", "build.md", meta.buildFile]);
   }
   if (meta.buildSafety) {
     rows.push(["SCA_BUILD_SAFETY_ASSESSMENT", null, meta.buildSafety]);
@@ -818,7 +818,7 @@ export function detailRows(meta) {
     ]);
   }
   if (meta.summaryFile) {
-    rows.push(["ADDON_DESCRIPTION", "summary.md", meta.summaryFile]);
+    rows.push(["ADDON_SUMMARY_REPORT", "summary.md", meta.summaryFile]);
   }
   if (meta.reportFile) {
     rows.push(["REVIEW_REPORT", "report.md", meta.reportFile]);
@@ -1199,7 +1199,7 @@ function manualSection(items, title, accent = blue, labelOf) {
  * one whose blind spot is worth reading. It carries no locus and takes no verdict - what
  * a sweep finds is filed as a finding of the named check, not as an answer to this.
  *
- * The same text each sweeping agent's request carries, so the reviewer reading this page
+ * The same text each sweep agent's request carries, so the reviewer reading this page
  * and the agent doing the reading are told the same thing in the same words.
  *
  * Blue, like Standard Manual Review and unlike the vivid cyan of the extended sections:
@@ -1228,7 +1228,7 @@ function preSweepSection(sweep, trees) {
     // is in the words the rest of the report uses.
     const body = entry.instruction.replace(/\s+/g, " ").trim();
     // Numbered by the item's own LABEL, not by a counter of its own. That number is what
-    // the sweeping agent is asked about and answers by (src/report/sweep-files.js), so a
+    // the sweep agent is asked about and answers by (src/report/sweep-files.js), so a
     // reviewer reading this page and an agent reading its request are looking at the same
     // list under the same numbers - counted twice they would agree until the day one of
     // the two lists dropped an item.

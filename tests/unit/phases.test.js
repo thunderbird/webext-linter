@@ -319,47 +319,56 @@ test("the loop's phases are refused outright when absent", () => {
   assert.throws(() => check(noPhases), /authors no `phases`/);
 });
 
-// Every step that starts a sub-agent says whether to wait for it.
+// No step that starts an agent waits for it, and each says so in the SAME words: two
+// instructions a reader has to tell apart would be two things to interpret. The phase's
+// last step waits for the sweep agents, whose replies this pass hands back.
 //
 // Each step also has to stand alone: each carries a marker, so any of them can be the only
 // one printed, and a step referring to another that did not print is an instruction about
 // nothing.
-test("the steps that start an agent each say whether it is waited for", () => {
+test("no spawn step waits for its agent, and the last step waits for the sweep agents", () => {
   const spawn = phaseNamed(fresh(), "spawn");
-  // Found by the fact its condition reads, not by position.
-  const by = (fact) =>
+  // Found by the facts its condition reads, not by position.
+  const by = (...facts) =>
     spawn.steps.find(
-      (x) => x.when && namesOf(parseCondition(x.when)).includes(fact)
+      (x) =>
+        x.when &&
+        facts.every((f) => namesOf(parseCondition(x.when)).includes(f)) &&
+        x.text.startsWith("Spawn")
     );
   const UNATTENDED =
-    "Do not wait for it. When it comes back, write its reply unchanged to";
+    "Do not wait for it. When it comes back, write its reply unchanged, exactly as it returned it, to";
 
-  // The description is not waited for. The build report is written before the review
-  // starts (the build check), so no spawn step asks for one.
-  assert.ok(
-    by("llm-skip-summary").text.includes(UNATTENDED),
-    "the description step says it is not waited for"
-  );
+  // The report agent and both sweep agents start, and none is waited for. The build report
+  // is written before the review starts (the build check), so no spawn step asks for one.
+  const starts = [by("llm-skip-summary"), by("sweep-xpi"), by("sweep-sca")];
+  for (const step of starts) {
+    assert.ok(step.text.includes(UNATTENDED), step.text.slice(0, 60));
+    assert.doesNotMatch(step.text, /Wait for it/);
+  }
   assert.ok(
     !spawn.steps.some((x) => x.text.includes("{{build}}")),
     "no spawn step writes the build report"
   );
-  // A sweep is the opposite, and each says so in the SAME words: one agent per tree, and
-  // two instructions a reader has to tell apart would be two things to interpret.
-  const sweeps = ["sweep-xpi", "sweep-sca"].map(by);
-  for (const step of sweeps) {
-    assert.match(step.text, /Wait for it before going on/);
-  }
-  const waits = sweeps.map((x) =>
-    x.text.split("\n\n").find((p) => p.startsWith("Wait for it"))
-  );
-  assert.equal(new Set(waits).size, 1, "both sweep steps say it the same way");
-  // And each is handed its own tree's request, inline and nothing else, and names the file
-  // its reply is written to.
+  // Each sweep agent is handed its own tree's request, inline and nothing else, and the
+  // step names the file its reply is written to.
+  const sweeps = starts.slice(1);
   assert.match(sweeps[0].text, /\{\{sweepXpi\}\}/);
   assert.match(sweeps[0].text, /\{\{sweepXpiAnswers\}\}/);
   assert.match(sweeps[1].text, /\{\{sweepSca\}\}/);
   assert.match(sweeps[1].text, /\{\{sweepScaAnswers\}\}/);
+  // The wait is the last step, printed wherever a sweep agent was started.
+  const last = spawn.steps.at(-1);
+  assert.deepEqual(namesOf(parseCondition(last.when)).sort(), [
+    "aborted",
+    "sweep-sca",
+    "sweep-xpi",
+  ]);
+  assert.match(
+    last.text,
+    /wait until every sweep agent you started has come back/
+  );
+  assert.match(last.text, /do not start verifying/);
 
   // Nothing leans on a sibling having printed.
   for (const step of spawn.steps) {
@@ -763,6 +772,7 @@ test("the shipped steps carry the conditions they are printed under", () => {
     ["aborted", "llm-skip-summary"],
     ["aborted", "sweep-xpi"],
     ["aborted", "sweep-sca"],
+    ["aborted", "sweep-sca", "sweep-xpi"],
   ]);
   assert.deepEqual(when("verify"), [["aborted"]]);
   assert.deepEqual(when("settle"), [["aborted"]]);

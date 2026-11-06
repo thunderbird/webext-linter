@@ -211,7 +211,7 @@ export const CHECK_FACTS = ["sca", "eslint", "build-judged", "build-safe"];
  *  - `build-checked`: a build check came before this review, so its reader was given the
  *    build check's intro;
  *  - one `sweep-<artifact>` per tree with a sweep to run. Each sweepable artifact is its
- *    own fact, because each starts its OWN sub-agent against its own tree and a review may
+ *    own fact, because each starts its OWN sweep agent against its own tree and a review may
  *    have one such tree or two. Taken from the artifacts that can be swept rather than
  *    listed, so a third one is declared once (SWEEP_INSTRUCTIONS) and not again here;
  *  - `first`: this is the review's first prompt - no phase has gone out yet;

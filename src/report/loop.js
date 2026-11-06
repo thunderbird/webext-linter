@@ -154,8 +154,8 @@ export function buildResultFact(record) {
 }
 
 /**
- * Whether the phase that starts the review's own agents - the add-on description and the
- * sweeps - went out. A review that never issued it started none of them, and so
+ * Whether the phase that starts the review's own agents - the report agent and the sweep
+ * agents - went out. A review that never issued it started none of them, and so
  * has none of their files to wait for or to name.
  * @param {object} state
  * @returns {boolean}
@@ -267,10 +267,10 @@ function reviewBody(review, start, record) {
   const sca = review.report.sca;
   const skip = opts.llmSkip ?? [];
   const meta = { ...review.report.meta };
-  // Where the prompt's reader writes the add-on description, and where it writes what
-  // building the add-on takes: both sit in the review's work folder, and this tool writes
+  // Where the prompt's reader writes the summary report, and where it writes the build
+  // report: both sit in the review's work folder, and this tool writes
   // neither. A path printed for a file nobody is asked to write would be an instruction with
-  // no step behind it, so the description is not named under --llm-skip-summary, and the
+  // no step behind it, so the summary report is not named under --llm-skip-summary, and the
   // build report not in a review that is not a source code one.
   const summaryPath = skip.includes("llm-skip-summary") ? null : work.summary;
   const buildPath = sca ? work.build : null;
@@ -280,7 +280,7 @@ function reviewBody(review, start, record) {
   meta.buildIssuesFile = buildPath ? work.buildIssues : undefined;
   meta.reportFile = work.report;
   // Whether this run SWEEPS: it was not told to leave it out, and there is a blind spot to
-  // cover. One sweeping agent per tree, each handed a request of its own and answering into
+  // cover. One sweep agent per tree, each handed a request of its own and answering into
   // a file of its own, made here because the request carries the tree's path and the sweeps
   // that tree was asked about, which no later pass could reconstruct.
   const sweepFiles =
@@ -647,11 +647,11 @@ export function loopSlots(review, record, issued, work, registry) {
     review: workPaths(work).answers,
     command: `node verify.js --llm-handback ${shellArg(work)}`,
     schemaCache: paths.schemaCache ?? "",
-    // How the agent and the sub-agents it starts write their own prose.
+    // How the agent and the report and sweep agents it starts write their own prose.
     proseStyle: registry.proseStyle(),
-    // How the description agent reads the add-on's files.
+    // How the report agent reads the add-on's files.
     readingRule: registry.readingRule(),
-    description: paths.description ?? "",
+    summary: paths.description ?? "",
     xpiRoot: paths.xpiRoot,
     schema: paths.schema,
     // Named because `ask` can be the FIRST phase issued - a review with nothing to start,
@@ -944,7 +944,7 @@ export function reviewDetails(review, record, work, registry) {
  * Every row the review holds, the one meta each details block renders, so each block holds
  * every row of the block before it. Which add-on this is and where it can be read (the
  * unpacked package), the source the review read, and what is left for the reviewer: the
- * description once the phase that starts its agent went out, the build report where the
+ * summary report once the phase that starts its agent went out, the build report where the
  * build check wrote it, and the report, which the linter writes at its fixed path. A file no
  * agent was ever asked to write is not among them. Beside them the build results the
  * record's permanent part holds (`build`), and the submitted lock's counts as this review's
@@ -991,7 +991,7 @@ function detailsMeta(review, record, work, registry) {
 
 /**
  * The Build Review Details block: the review's details (detailsMeta) as the `built` pass
- * shows them, which goes out before the description agent is started and before the report
+ * shows them, which goes out before the report agent is started and before the report
  * is handed over, so it names neither.
  * @param {object} review
  * @param {object} record
@@ -1009,7 +1009,7 @@ function buildDetails(review, record, work, registry) {
 }
 
 /**
- * Everything the sweeping agents returned, read back off the answers files their replies
+ * Everything the sweep agents returned, read back off the answers files their replies
  * were written into.
  *
  * ONE READ for the whole review, because a sweep file that cannot be acted on must leave

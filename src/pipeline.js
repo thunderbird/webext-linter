@@ -213,7 +213,7 @@ export const SETUP_STEPS = Object.freeze([
  * @property {boolean} [llmReview]  Whether --llm-review was given. Whether an agent runs the
  *   review is its caller's to say (reviewLoadedSubmission's `llm`).
  * @property {string[]} [llmSkip]  What that prompt leaves out (PROMPT_SKIPS, src/config.js):
- *   --llm-skip-summary drops the add-on description and the file named for it.
+ *   --llm-skip-summary drops the summary report and the file named for it.
  * @property {string} [downgradedFrom]  The work folder of the source review this XPI review
  *   was restarted from (src/cli.js downgradeCase), which adds its sca-not-needed finding. No
  *   command-line flag sets it.
@@ -1202,7 +1202,7 @@ export async function resolveReviewSchema({
  * item - and eight near-identical paragraphs teach a reader to skim the part that matters.
  *
  * This is what BOTH readers get. The report prints it as the Standard Code Review list,
- * and the same items are what each sweeping agent's request is built from - so a
+ * and the same items are what each sweep agent's request is built from - so a
  * reviewer covering a blind spot by hand and an agent covering it are asked the same
  * thing, in the same words, under the same number.
  * @param {import("./checks/registry.js").Registry} registry
@@ -1243,7 +1243,7 @@ function preSweepOf(registry, ranIds, mode, siblings, trees) {
     // an answer can never be read against the wrong one; and the same number the report
     // prints beside it, because both walk this list in this order.
     //
-    // A NUMBER, and nothing a reader has to decode: a sweeping agent is told which
+    // A NUMBER, and nothing a reader has to decode: a sweep agent is told which
     // labels to answer and says which it is answering, and the check and the artifact
     // behind one are the review's own business (src/report/sweep-files.js).
     .map((s, i) => ({ ...s, label: i + 1 }));

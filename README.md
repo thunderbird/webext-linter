@@ -117,8 +117,8 @@ trip, the phases, the answer vocabulary and what the reviewer is handed are spec
 | `--llm-review` | Run the review and print the first phase's prompt, instead of the report. Given `--sca-extracted`, the source is copied into the work folder's `sca/` and the review starts with the build check, as `--llm-auto-review` does after the `unpack` step: the first prompt is the build analysis. Refused with `--report-format json`. |
 | `--llm-handback <dir>` | Take a phase back from the review's work folder and hand out the next - the last being `close`, which hands over the settled review. On a work folder in the `unpack` or `build-check` mode, take that step instead, and once the build check is done, start the review (see [the build check](docs/spec.html#the-build-check-case)). The only run that carries on an existing work folder. Takes the work folder and nothing else: the review recorded every flag it runs with when it started, so anything typed beside it is refused (exit 2). Normally run by the agent, not by a person. |
 | `--llm-auto-review` | Work out the review from a submission folder. One holding only the `.xpi` is reviewed as `--llm-review` reviews the `.xpi`, and an `.xpi` on its own is reviewed with `--llm-review`. A submission folder - one built `.xpi` and one archive of its source - gets the first prompt of a source code review of it, which creates the review's work folder at its default place beside the `.xpi`, records there how the review is to be run (this run's flags), has the source extracted into its `sca/` and handed back with `--llm-handback`, finds the package root in it, and has the build reported and judged. The reviewer then makes one decision about the build, worded by that verdict: let the agent build, build it themselves, build nothing, or hold it unsafe for reasons of their own. Where the agent may build and the lock installs a package with a known high or critical advisory, the build check has a copy's dependencies reduced, then audit-fixed (`rescued/` in the work folder), and reviews the copy if that resolves them. If it does not, the source as submitted is reviewed, and its vulnerability checks abort it. The hand-back that finishes the build check starts that review itself, with this run's flags. A submission the early-exit checks reject (a disallowed Experiment, an injected lock) gets no build check: its review closes after the `unpack` step. Refused beside any `--sca-*` flag, which is what the `unpack` step works out. See [the build check](docs/spec.html#the-build-check-case). |
-| `--llm-skip-summary` | Leave out the add-on description: the prompt does not ask for one and names no file for it. |
-| `--llm-skip-sweep` | Leave out the sweep: no sweeping agent is spawned, and the sweep is not handed to the reviewer either. |
+| `--llm-skip-summary` | Leave out the summary report: the prompt does not ask for one and names no file for it. |
+| `--llm-skip-sweep` | Leave out the sweep: no sweep agent is spawned, and the sweep is not handed to the reviewer either. |
 
 **Claude Code permissions:** Claude Code's auto mode may stop a command it was not told to
 expect. These allow rules let the linter's own commands run without that:
@@ -516,7 +516,7 @@ artifact and so names none: a check there declares
 **`sweep-instruction-for-xpi:`** and/or **`sweep-instruction-for-sca:`**, and
 each becomes an independent sweep of its own tree.
 
-Under `--llm-review` each tree gets its own sweeping sub-agent, handed the
+Under `--llm-review` each tree gets its own sweep agent, handed the
 request the prompt prints - the folder to read, and the sweeps to answer - and
 returning its answers as its reply, which the orchestrating agent writes
 unchanged to an answers file the linter reads. The instruction says what to look
@@ -527,7 +527,7 @@ means - that is the owning check's to say, in its own wording, so a swept case
 and a scanned one put the same question to the same reader.
 
 Who does the looking is the one thing that varies. In a review with no agent in
-it, the reviewer works that list by hand. Under `--llm-review` a sub-agent reads
+it, the reviewer works that list by hand. Under `--llm-review` a sweep agent reads
 for the same things and hands back what it found, and the linter routes each
 result into the owning check - described in
 [docs/spec.html](docs/spec.html#sweep), section 5.4 "The sweep".

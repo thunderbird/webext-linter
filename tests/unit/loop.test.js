@@ -375,7 +375,7 @@ function handBack(work, answerFor) {
 }
 
 /**
- * Play the sweeping sub-agent for one tree: fill in its answers file the way the request
+ * Play the sweep agent for one tree: fill in its answers file the way the request
  * tells it to. `found` is what it found, by label, and every other label it was asked about
  * answers with the empty list.
  */
@@ -731,7 +731,7 @@ test("the build details name the XPI, the source, the report, the judgement, the
   const xpi = `* XPI_FILE: [addon-1.0.xpi](${meta.xpi})`;
   const unpacked = `* XPI_ROOT: [extracted addon](${meta.xpiRoot})`;
   const source = `* SCA_SOURCE: [source archive](${rescuedSrc})`;
-  const report = `* SCA_BUILD_PROCESS: [build.md](${made.state.paths.build})`;
+  const report = `* SCA_BUILD_REPORT: [build.md](${made.state.paths.build})`;
   assert.deepEqual(rows(), [xpi, unpacked, source]);
   made.state.products = ["build"];
   made.record.build = {
@@ -1281,15 +1281,15 @@ test("the spawn step hands the sweep request over inline and names the answers f
   assert.match(step, /Label 2: t2\n\s+i2\n/);
   assert.match(
     step,
-    /write its reply unchanged, exactly as it returned it, to\n\n\s+\S+\/\.review\/sweep-xpi\.answers\.json\n/,
+    /write\s+its\s+reply\s+unchanged,\s+exactly\s+as\s+it\s+returned\s+it,\s+to\n\n\s+\S+\/\.review\/sweep-xpi\.answers\.json\n/,
     "the answers file the reply is written to"
   );
   assert.doesNotMatch(text, /\.yaml/, "no request file is named");
 });
 
-// The description request names the extracted XPI, as the sweep's does: a sub-agent
+// The report agent's request names the extracted XPI, as the sweep's does: a sub-agent
 // handed only "this add-on" has to guess which one, and a folder of reviews holds many.
-test("the spawn step tells the description agent which folder to describe", () => {
+test("the spawn step tells the report agent which folder to describe", () => {
   const made = review(tmp(), { findings: false, questions: false });
   const out = pass(made);
   assert.equal(out.phase.name, "spawn");
@@ -1341,7 +1341,7 @@ test("one check sweeping both trees answers per tree, and each is filed there", 
   assert.equal(out.phase.name, "spawn");
   // Two steps, one per tree, each starting an agent of its own.
   assert.equal(
-    out.steps.filter((x) => x.text.toLowerCase().includes("sweep")).length,
+    out.steps.filter((x) => x.text.includes("Spawn a sweep agent")).length,
     2
   );
 
@@ -1460,7 +1460,7 @@ function phasesOf(made) {
       return { seen, closing: out };
     }
     seen.push(out.phase.name);
-    // Whatever trees this run asked about, answered clean - the sweeping agents' part of
+    // Whatever trees this run asked about, answered clean - the sweep agents' part of
     // the pass, without which it cannot be accepted.
     for (const artifact of Object.keys(made.state.paths.sweeps ?? {})) {
       swept(made.state, artifact);
@@ -2831,7 +2831,7 @@ test("the build report is linked where the review holds it", () => {
     made.state.products = wrote ? ["build"] : [];
     const next = pass(made);
     assert.equal(next.phase.name, "built");
-    const linked = /^\* SCA_BUILD_PROCESS: \[build\.md\]/m;
+    const linked = /^\* SCA_BUILD_REPORT: \[build\.md\]/m;
     for (const block of [
       slotsOf(made).buildDetails,
       reviewDetails(made.state, made.record, made.work, REGISTRY),
@@ -2839,12 +2839,12 @@ test("the build report is linked where the review holds it", () => {
       if (wrote) {
         assert.match(block, linked);
       } else {
-        assert.ok(!block.includes("SCA_BUILD_PROCESS"), block);
+        assert.ok(!block.includes("SCA_BUILD_REPORT"), block);
       }
     }
     // The block the prompt printed is the same.
     assert.equal(
-      flat(next.text).includes("\n* SCA_BUILD_PROCESS: [build.md]("),
+      flat(next.text).includes("\n* SCA_BUILD_REPORT: [build.md]("),
       wrote
     );
   }
@@ -2996,11 +2996,11 @@ test("the details link the description only once spawn went out", () => {
   const details = () =>
     reviewDetails(made.state, made.record, made.work, REGISTRY);
   assert.equal(pass(made).phase.name, "spawn");
-  assert.ok(!details().includes("ADDON_DESCRIPTION"));
+  assert.ok(!details().includes("ADDON_SUMMARY_REPORT"));
   swept(made.state, ARTIFACT_XPI);
   handBack(made.work, () => null);
   take(made);
-  assert.match(details(), /^\* ADDON_DESCRIPTION: \[summary\.md\]/m);
+  assert.match(details(), /^\* ADDON_SUMMARY_REPORT: \[summary\.md\]/m);
 });
 
 // The closing prompt hands over the FINISHED review's tally and details, the reasons an

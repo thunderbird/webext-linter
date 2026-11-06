@@ -55,7 +55,7 @@ test("--llm-auto-review prints the prompt, names both files, and reviews nothing
   // No review ran: no report sections, and no item file was claimed.
   assert.doesNotMatch(r.stdout, /── Found Issues ──|REVIEW_ITEMS/);
   // The unpack prompt only extracts: the build is the next prompt's.
-  assert.doesNotMatch(r.stdout, /SCA_PACKAGE_ROOT|SCA_BUILD_PROCESS|ANSWERS/);
+  assert.doesNotMatch(r.stdout, /SCA_PACKAGE_ROOT|SCA_BUILD_REPORT|ANSWERS/);
   // Only an install hook reaching outside the declared dependencies is a safety concern.
   const analyze = unpackSource(r.stdout);
   assert.equal(analyze.code, 0, analyze.stderr);
@@ -105,7 +105,7 @@ test("--llm-auto-review creates the work folder and hands it back", () => {
     workPaths(work).sca
   );
   assert.equal(
-    headerValue(analyze.stdout, "SCA_BUILD_PROCESS"),
+    headerValue(analyze.stdout, "SCA_BUILD_REPORT"),
     workPaths(work).build
   );
   const [safety, ...rest] = readJson(work, "answers").entries;

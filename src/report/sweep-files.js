@@ -1,13 +1,13 @@
-// THE SWEEP'S REQUEST AND ANSWERS: what a sweeping sub-agent is handed, and what comes
-// back from it.
+// THE SWEEP'S REQUEST AND ANSWERS: what a sweep agent is handed, and what comes back
+// from it.
 //
-// A sweep is the one sub-agent whose findings the review CONSUMES - the description and
-// the build report are the reviewer's, and the linter never opens them. So it is the one
+// A sweep agent is the one sub-agent whose findings the review CONSUMES - the summary
+// report and the build report are the reviewer's, and the linter never opens them. So it is the one
 // that needs a shape, and the round trip gives it one:
 //
 //   the request   TEXT, printed inline in the step that spawns the agent. Prose is the
 //                 bulk of it, and the agent reads it as its whole brief.
-//   the answers   JSON, returned by the sub-agent as its reply and written UNCHANGED into
+//   the answers   JSON, returned by the sweep agent as its reply and written UNCHANGED into
 //                 the answers file by the orchestrating agent. One quoting rule a writer
 //                 applies by reflex, where YAML has several that bite only on certain
 //                 content - an unquoted hint holding `http://host: thing` stops the file
@@ -43,7 +43,7 @@ import { sweepAnswersSlot, sweepSlot } from "../checks/registry-vocabulary.js";
 const ANSWERS = "answers";
 
 /**
- * The request handed to one tree's sweeping agent, as the text its spawn step prints.
+ * The request handed to one tree's sweep agent, as the text its spawn step prints.
  *
  * Paragraphs apart by a blank line, each prose paragraph on one line for the prompt to
  * wrap, and the parts that must not be re-flowed - the folder, the reply's shape and the
@@ -137,7 +137,7 @@ function indent(text, by) {
  *   instruction: string}[]}} preSweep
  * @param {Record<string, ?string>} trees  This review's trees by artifact
  *   (artifactRoots).
- * @param {string} proseStyle  How the sweeping agent writes its hints (registry proseStyle).
+ * @param {string} proseStyle  How the sweep agent writes its hints (registry proseStyle).
  * @param {string} readingRule  How it reads the folder (registry readingRule).
  * @returns {Record<string, {request: string, answers: string}>}  By artifact: the request
  *   text and the answers file's path, for the steps that print them and the pass that
@@ -193,7 +193,7 @@ export function sweepSlots(state) {
 /**
  * Read one tree's answers back, as results.
  *
- * THE DOOR for everything a sweeping agent wrote, and the only one - so a file that cannot
+ * THE DOOR for everything a sweep agent wrote, and the only one - so a file that cannot
  * be acted on is refused here rather than half-applied downstream. Refused, never
  * repaired: every message names the one thing to fix, because the caller turns these into
  * a hand-back the agent can correct (src/report/loop.js).

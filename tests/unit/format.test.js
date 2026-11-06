@@ -1804,8 +1804,8 @@ test("detailLinkLines links every location, XPI_FILE among them", () => {
     "* XPI_FILE: [a.xpi](/x/in/a.xpi)",
     "* XPI_ROOT: [extracted addon](/x/work/xpi/)",
     "* SCA_SOURCE: [source archive](/x/src)",
-    "* SCA_BUILD_PROCESS: [build.md](/x/a.build.md)",
-    "* ADDON_DESCRIPTION: [summary.md](/x/work/summary.md)",
+    "* SCA_BUILD_REPORT: [build.md](/x/a.build.md)",
+    "* ADDON_SUMMARY_REPORT: [summary.md](/x/work/summary.md)",
     "",
     "schema release-mv3 · Thunderbird 155.0 · manifest_version 3",
   ]);
@@ -1822,7 +1822,7 @@ test("detailLinkLines links every location, XPI_FILE among them", () => {
 });
 
 // Every details block lists its rows grouped by prefix, XPI_ then SCA_ then LLM_, sorted by
-// name within each group, and ADDON_DESCRIPTION and REVIEW_REPORT, which only the later
+// name within each group, and ADDON_SUMMARY_REPORT and REVIEW_REPORT, which only the later
 // blocks carry, last.
 test("detailRows lists every row in its order", () => {
   const names = detailRows({
@@ -1851,7 +1851,7 @@ test("detailRows lists every row in its order", () => {
     "XPI_ROOT",
     "SCA_SOURCE",
     "SCA_RESCUED",
-    "SCA_BUILD_PROCESS",
+    "SCA_BUILD_REPORT",
     "SCA_BUILD_SAFETY_ASSESSMENT",
     "SCA_EXPERIMENTS",
     "SCA_BUILD",
@@ -1860,7 +1860,7 @@ test("detailRows lists every row in its order", () => {
     "LLM_BUILD_RESULT",
     "LLM_BUILD_XPI_MATCH",
     "LLM_RESCUED_VULNERABILITIES",
-    "ADDON_DESCRIPTION",
+    "ADDON_SUMMARY_REPORT",
     "REVIEW_REPORT",
   ]);
 });

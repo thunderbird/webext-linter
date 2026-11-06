@@ -1,7 +1,7 @@
 // The one review document this tool WRITES: the text the reviewer sends to the developer.
 //
-// The other two documents in the review's work folder, the description and the build
-// report, are written by sub-agents and only NAMED (src/util/dest.js workPaths). This one is asked of nobody: a model that rewords
+// The other two documents in the review's work folder, the summary report and the build
+// report, are written by agents and only NAMED (src/util/dest.js workPaths). This one is asked of nobody: a model that rewords
 // its input would corrupt the one text a developer actually receives, and a file the linter
 // writes itself cannot be reworded.
 //
