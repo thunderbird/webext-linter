@@ -2353,7 +2353,7 @@ llm-sca-review-prompt:
     - text: |-
         Where the build produced its output, compare it with SUBMITTED_XPI, given above: it holds the same files at the same paths, each with the same contents, where only line endings may differ. Compare only that, and change nothing.
     - text: |-
-        Open ANSWERS, given above. Answer its entry whose "index" is LLM_BUILD_OUTPUT with the final artifact the build process produced: the XPI or zip file where it makes one, wherever in the copy it lands (next to LLM_BUILD_ROOT, for one), or else the folder such as `dist/`. Write it as an existing file or folder inside LLM_BUILD_ROOT's copy, not the copy itself, as an absolute path. Where the build failed, answer with the "label" of its one answer instead.
+        Open ANSWERS, given above. Answer its entry whose "index" is LLM_BUILD_OUTPUT with the final artifact the build produced, as an absolute path: the XPI or zip file where it makes one, or else the folder it writes. Where the build failed, answer with the "label" of its one answer instead.
 
         Answer its entry whose "index" is LLM_BUILD_XPI_MATCH with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. `match` means exactly the comparison above holds, and nothing less. Write no notes and no list of differences, there or anywhere else. Where the build failed, leave its "answer" null. Change nothing else in the file.
     - text: |-
@@ -2391,7 +2391,7 @@ llm-sca-review-prompt:
     - text: |-
         Where the last build produced its output, compare it with SUBMITTED_XPI, given above: it holds the same files at the same paths, each with the same contents, where only line endings may differ. Compare only that, and change nothing.
     - text: |-
-        Open ANSWERS, given above. Answer its entry whose "index" is LLM_BUILD_OUTPUT with the final artifact the last build produced: the XPI or zip file where it makes one, wherever in the build copy it lands (next to LLM_BUILD_ROOT, for one), or else the folder such as `dist/`. Write it as an existing file or folder inside LLM_BUILD_ROOT's copy, not the copy itself, as an absolute path. Where the rescue failed, answer with the "label" of its one answer instead.
+        Open ANSWERS, given above. Answer its entry whose "index" is LLM_BUILD_OUTPUT with the final artifact the last build produced, as an absolute path: the XPI or zip file where it makes one, or else the folder it writes. Where the rescue failed, answer with the "label" of its one answer instead.
 
         Answer its entry whose "index" is LLM_BUILD_XPI_MATCH with the "label" of one of its "answers", and with nothing else - each answer's "description" says when it applies. `match` means exactly the comparison above holds, and nothing less. Write no notes and no list of differences, there or anywhere else. Where the rescue failed, leave its "answer" null. Change nothing else in the file.
     - text: |-

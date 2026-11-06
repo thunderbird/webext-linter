@@ -91,10 +91,11 @@ const COMPARED = [
   "Write no notes and no list of differences",
 ];
 
-/** What the build and rescue prompts say of the output path: every rule the hand-back
- *  holds it to (src/report/handback.js outputAt), stated before the agent writes it. */
+/** What the build and rescue prompts say of the output path: the artifact the build produced,
+ *  which the agent that ran it sees. Where it lies is the agent's to report, and the hand-back
+ *  holds it to the build copy (src/report/handback.js outputAt). */
 const OUTPUT_PATH =
-  "Write it as an existing file or folder inside LLM_BUILD_ROOT's copy, not the copy itself, as an absolute path.";
+  "as an absolute path: the XPI or zip file where it makes one, or else the folder it writes.";
 
 /** The fixture's lock releases, none with an advisory. */
 const FIXTURE_CLEAN = {
