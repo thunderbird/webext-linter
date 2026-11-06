@@ -26,10 +26,10 @@
       <p>
         The check looks only at the developer's own JavaScript and only at overt
         transmission APIs — fetch and its relatives such as XMLHttpRequest,
-        WebSocket, EventSource and sendBeacon — aimed at a remote host. Covert
-        loads that smuggle data through a URL are already reported by the
-        disguised-* checks, so they are deliberately not reported here to avoid
-        double-reporting the same line. An encrypted remote transmission over
+        WebSocket, EventSource and sendBeacon — aimed at a remote host. A URL
+        channel that carries data out (a resource load, a stylesheet, a window, a
+        navigation) is the data-exfiltration check's, so it is not reported here
+        too. An encrypted remote transmission over
         https://, wss:// or ftps:// is fine.
       </p>
 
@@ -40,7 +40,7 @@ flowchart TD
   A["An outbound sink in the<br/>add-on's authored JavaScript"] --> B{"Authored code?<br/>(not a bundled library)"}
   B -- no --> S([skip])
   B -- yes --> C{"Overt transmission API<br/>to a remote host?"}
-  C -- no --> OK([no finding — covert sinks<br/>handled by disguised-* checks])
+  C -- no --> OK([no finding — URL channels<br/>are data-exfiltration's])
   C -- yes --> D{"Destination scheme is non-TLS?<br/>http / ws / ftp"}
   D -- no --> OK2([no finding — encrypted<br/>transmission is fine])
   D -- yes --> ERR([ERROR: cleartext data<br/>sent to a remote host])

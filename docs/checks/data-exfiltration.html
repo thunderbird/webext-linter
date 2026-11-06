@@ -15,44 +15,47 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        Overt transmission of data to a remote host — through fetch,
-        XMLHttpRequest, WebSocket, EventSource, navigator.sendBeacon or an HTML
-        form submission. Sending
-        user data such as message content, attachments, contacts or credentials
-        off the machine is allowed only if the user actively enabled it, and
-        Thunderbird has no built-in data-collection consent prompt.
+        The user's sensitive data, such as messages, contacts and credentials, or
+        anything computed from it on the user's machine, leaving the machine where
+        the user would not expect it, by any route.
       </p>
       <p>
-        A deterministic scan collects the overt outbound sinks whose destination
-        is a remote or dynamically-built host. Whether a valid opt-in exists — a
-        documented options-page setting where the user enters the destination, or
-        an explicit off-by-default opt-in for a hard-coded URL — is a judgement
-        call, so each such sink is escalated for the reviewer to settle. The to-do
-        points the reviewer at the add-on's own options page as the place such an
-        opt-in would live. This check emits no finding of its own.
-        Disguising transmission as a resource load is a separate, always-error
-        concern handled by the disguised-* checks; this check covers only the
-        overt channels.
+        A deterministic scan of the developer's own JavaScript collects two kinds
+        of site. An overt transmission (fetch, XMLHttpRequest, WebSocket,
+        EventSource, navigator.sendBeacon or an HTML form submission) to a remote
+        or dynamically-built host. And a URL channel (a resource src or href, a
+        stylesheet url(), window.open() or a page navigation) to a host that is not
+        local, whose URL is built with a runtime value or carries a user-data API
+        call. A static URL there sends nothing of the user's. Each site is
+        escalated, labelled with its route. This check emits no finding of its
+        own.
       </p>
       <p>
-        Mail is a channel too: message content the add-on puts into a mail or
-        message it composes and sends itself (for example with
+        A site is reported unless no sensitive data leaves, the user set the
+        transmission up (picked the service, entered the destination or a key,
+        turned on an off-by-default setting), or sending this data to this
+        destination is the add-on's single purpose, as the add-on states it.
+        Thunderbird has no built-in data-collection consent prompt. Where that
+        purpose might cover it but the add-on does not say so, the reviewer
+        decides, with the add-on's listing in view.
+      </p>
+      <p>
+        Mail the add-on composes and sends itself (for example with
         <code>compose.beginForward</code>, <code>beginNew</code> or
-        <code>sendMessage</code>) leaves the machine like a network request. The
-        deterministic scan finds network sinks only, so this route is reached
-        through the sweep alone. Triggering the feature with a click or menu item
-        is not consent on its own: the user must have enabled that transmission
-        beforehand, on an options page or first-run page that says what is sent
-        and to whom, or by an off-by-default opt-in.
+        <code>sendMessage</code>), and every route the scan does not know, are
+        reached through the sweep, which checks at least the routes above and
+        then looks beyond them.
       </p>
 
       <h2>Decision flow</h2>
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["An outbound network sink"] --> B{"An overt channel<br/>to a remote or dynamic host?"}
-  B -- no --> S([skip — local or<br/>non-overt sink])
-  B -- yes --> M(["escalate — the reviewer decides whether<br/>an explicit opt-in covers this send"])
+  A["An outbound sink in the<br/>add-on's authored JavaScript"] --> B{"Overt transmission<br/>to a remote or dynamic host?"}
+  B -- yes --> M
+  B -- no --> C{"URL channel to a non-local host,<br/>built with a runtime value<br/>or carrying a user-data call?"}
+  C -- no --> S([skip — nothing of the<br/>user's can leave here])
+  C -- yes --> M(["escalate — does sensitive data leave,<br/>and did the user set it up or<br/>is it the add-on's single purpose?"])
 
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
@@ -63,10 +66,12 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told the listed code locations send user data to a remote
-        server without an explicit opt-in, and that user data may be transmitted
-        only when the user actively enables it on an options page that discloses
-        what is sent.
+        The add-on is told the listed code locations send the user's sensitive
+        data to a remote server where the user would not expect it. Sensitive
+        data may leave only where the add-on needs it for its functionality, and
+        only where the user set the transmission up or sending it is the add-on's
+        stated single purpose. It is asked to let the user set it up on an options
+        page that says what is sent and to whom, or to remove the transmission.
       </div>
 
       <p class="source-note">

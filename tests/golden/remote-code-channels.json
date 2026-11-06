@@ -66,10 +66,6 @@
       "multiple-vendor-files",
       "vendor-unparseable",
       "vendor-ambiguous-source",
-      "disguised-resource",
-      "disguised-stylesheet",
-      "disguised-window",
-      "disguised-navigation",
       "cleartext-transmission",
       "privacy-policy",
       "native-messaging",
@@ -93,18 +89,16 @@
       "vendored-remote-resources",
       "remote-eval",
       "data-exfiltration",
-      "disguised-transmission",
       "unacceptable-package-content",
       "shipped-icon-trademark-imitation"
     ]
   },
   "summary": {
-    "error": 3,
+    "error": 2,
     "hold": 0,
     "warning": 0,
     "info": 0,
     "byRule": {
-      "disguised-resource": 1,
       "remote-resources": 2
     }
   },
@@ -134,19 +128,6 @@
       "hint": null,
       "artifact": "XPI",
       "message": "A resource is loaded from a remote source. Every resource - script, style, frame, and media - must be bundled with the add-on so it can be reviewed. Remote sources are not allowed."
-    },
-    {
-      "ruleId": "disguised-resource",
-      "severity": "error",
-      "file": "bg.js",
-      "loc": {
-        "line": 8,
-        "column": 2
-      },
-      "item": null,
-      "hint": "disguised data send (element-src) endpoint + \"/p?d=\" + (await browser.messages.list(folderId))",
-      "artifact": "XPI",
-      "message": "This add-on appears to send data through a resource URL (image/iframe/media src) - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent."
     }
   ]
 }

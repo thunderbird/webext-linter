@@ -316,7 +316,7 @@ test("a swept case becomes an item of its check and settles like any other", () 
   // telemetry, ...) is wording the registry owns and may reword, and this test is about
   // the response reaching the output at all.
   const report = reportOf(out.stdout);
-  assert.match(report, /to a remote server without an explicit opt-in/);
+  assert.match(report, /to a remote server where the user would not expect it/);
   // Squared off on the way into the report, like every other angle bracket in it. The hint
   // is a THIRD source of them, after our own prose and the submission's own tokens: the
   // agent wrote this one, and it names an HTML element, so it would open a tag in the

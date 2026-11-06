@@ -106,10 +106,6 @@
         { id: "multiple-vendor-files", group: "Deterministic phase", title: "More than one VENDOR file", severity: "error" },
         { id: "vendor-unparseable", group: "Deterministic phase", title: "Unparseable VENDOR file", severity: "error" },
         { id: "vendor-ambiguous-source", group: "Deterministic phase", title: "Ambiguous vendored source", severity: "error" },
-        { id: "disguised-resource", group: "Deterministic phase", title: "Data smuggled through a resource URL", severity: "error" },
-        { id: "disguised-stylesheet", group: "Deterministic phase", title: "Data smuggled through a stylesheet", severity: "error" },
-        { id: "disguised-window", group: "Deterministic phase", title: "Data smuggled through an opened window", severity: "error" },
-        { id: "disguised-navigation", group: "Deterministic phase", title: "Data smuggled through a navigation", severity: "error" },
         { id: "cleartext-transmission", group: "Deterministic phase", title: "Unencrypted data transmission", severity: "error" },
         { id: "privacy-policy", group: "Deterministic phase", title: "Remote data transmission needs a privacy policy", severity: "hold-or-error" },
         { id: "native-messaging", group: "Deterministic phase", title: "Native messaging needs disclosure", severity: "hold-or-error" },
@@ -133,7 +129,6 @@
         { id: "vendored-remote-resources", group: "Deterministic phase", title: "Remote load inside an upstream release", severity: "error" },
         { id: "remote-eval", group: "Deterministic phase", title: "Remote eval", severity: "error" },
         { id: "data-exfiltration", group: "Deterministic phase", title: "User-data exfiltration", severity: "error" },
-        { id: "disguised-transmission", group: "Deterministic phase", title: "Data smuggled through a channel not meant for it", severity: "error" },
         { id: "unacceptable-package-content", group: "Deterministic phase", title: "Check the package for unacceptable content", severity: "error" },
         { id: "shipped-icon-trademark-imitation", group: "Deterministic phase", title: "Check the shipped icons for trademark or logo imitation", severity: "error" },
         // Manual review

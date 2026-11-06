@@ -3,8 +3,7 @@
 // "overt" transmission APIs (fetch, XMLHttpRequest, WebSocket, EventSource,
 // navigator.sendBeacon) that legitimately send data, and "covert" resource
 // loads (assigning a URL to an element .src/.href, a style url(), window.open,
-// location.assign/replace) that can smuggle data inside the URL - a channel
-// that does not look like data transmission.
+// location.assign/replace) that can carry data inside the URL.
 //
 // Belongs here: locating each sink, classifying its destination (remote/local/
 // dynamic/embedded), recording its scheme (cleartext vs encrypted), host and the
@@ -12,8 +11,8 @@
 // URL or a user-data API call sits in the argument.
 //
 // Does NOT belong here: the verdict and wording (-> src/checks/rules/
-// disguised-*.js, cleartext-transmission.js, privacy-policy.js,
-// data-exfiltration.js, assets/registry.yaml), the once-per-artifact aggregation
+// cleartext-transmission.js, privacy-policy.js, data-exfiltration.js,
+// assets/registry.yaml), the once-per-artifact aggregation
 // (-> src/lib/outbound-sinks.js), URL classification (-> src/scan/url.js)
 // and Babel access (-> src/parse/ast.js). Not yet covered: document.write, the
 // anchor ping attribute.
@@ -81,7 +80,7 @@ const HTTP_METHODS = new Set([
  *   (http/ws/ftp).
  * @property {?string} host  The destination host, or null when local/dynamic.
  * @property {boolean} dataAppended  A remote URL built with a dynamic part
- *   (data put into the URL, the disguised-send pattern).
+ *   (data put into the URL).
  * @property {boolean} carriesData  A user-data API call sits in the argument.
  * @property {?string} target  The destination expression AS WRITTEN, unresolved
  *   (`"https://x/a"`, `endpoint`, `base + "/c"`), or null where the sink names no
@@ -238,8 +237,7 @@ export function scanNetworkSinks(code, lineOffset = 0, parsed) {
       if (URL_PROPS.has(prop)) {
         // location.href = ... is a page navigation (like location.assign), not a
         // resource load into an element (img/script/link .src/.href) - route it to
-        // the navigation channel so disguised-navigation, not disguised-resource,
-        // is the consumer.
+        // the navigation channel, so it is labelled as one.
         const type =
           prop === "href" && isLocation(left.object)
             ? "navigation"

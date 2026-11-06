@@ -89,10 +89,6 @@
       "multiple-vendor-files",
       "vendor-unparseable",
       "vendor-ambiguous-source",
-      "disguised-resource",
-      "disguised-stylesheet",
-      "disguised-window",
-      "disguised-navigation",
       "cleartext-transmission",
       "privacy-policy",
       "native-messaging",
@@ -116,7 +112,6 @@
       "vendored-remote-resources",
       "remote-eval",
       "data-exfiltration",
-      "disguised-transmission",
       "unacceptable-package-content",
       "shipped-icon-trademark-imitation"
     ]

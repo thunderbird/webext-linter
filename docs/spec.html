@@ -2262,14 +2262,9 @@ flowchart TB
         <li><strong>The checks that declare one</strong>, in registry order, all in <code>deterministic-phase</code>:
           <table>
             <tr><th>check</th><th>input</th><th>severity</th><th>key</th></tr>
-            <tr><td><code>disguised-resource</code></td><td>source</td><td>error</td><td><code>sweep-instruction</code></td></tr>
-            <tr><td><code>disguised-stylesheet</code></td><td>source</td><td>error</td><td><code>sweep-instruction</code></td></tr>
-            <tr><td><code>disguised-window</code></td><td>source</td><td>error</td><td><code>sweep-instruction</code></td></tr>
-            <tr><td><code>disguised-navigation</code></td><td>source</td><td>error</td><td><code>sweep-instruction</code></td></tr>
             <tr><td><code>cleartext-transmission</code></td><td>all</td><td>error</td><td><code>sweep-instruction-for-xpi</code> and <code>sweep-instruction-for-sca</code> (one text, two sweeps)</td></tr>
             <tr><td><code>privacy-policy</code></td><td>source</td><td>hold-or-error</td><td><code>sweep-instruction</code></td></tr>
             <tr><td><code>data-exfiltration</code></td><td>source</td><td>error</td><td><code>sweep-instruction</code></td></tr>
-            <tr><td><code>disguised-transmission</code></td><td>source</td><td>error</td><td><code>sweep-instruction</code></td></tr>
             <tr><td><code>unacceptable-package-content</code></td><td>xpi</td><td>error</td><td><code>sweep-instruction</code></td></tr>
             <tr><td><code>shipped-icon-trademark-imitation</code></td><td>xpi</td><td>error</td><td><code>sweep-instruction</code></td></tr>
           </table>

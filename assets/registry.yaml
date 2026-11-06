@@ -1348,61 +1348,6 @@ deterministic-phase:
   response: |-
     Each of the following source URLs cannot verify the file(s) declared against it. A file source verifies exactly one file, so pairing it with several is ambiguous. A directory needs a source that can be fetched as an archive of the whole release, which the URL of a single file - or a CDN's directory listing page - is not. Give each file its own source URL, or declare the containing directory against a source that names the release: a pinned npm package (https://cdn.jsdelivr.net/npm/[name]@[version]/, or its registry tarball), or a GitHub tree URL (https://github.com/[owner]/[repo]/tree/[ref]/[path]).
 
-# Flags data smuggled out through a channel not meant for it - always an error,
-# regardless of consent. One check per channel (resource/stylesheet/window/
-# navigation); all read the shared outbound-sink scan.
-- title: Data smuggled through a resource URL
-  severity: error
-  check: disguised-resource
-  llm-verification: true
-  # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
-  # but there readable vendored code is scanned and a readable build doubles each line.
-  input: source
-  sweep-instruction: |-
-    A resource loaded to be rendered or embedded, carrying data outward in its URL.
-    Consent is no defence.
-  response: |-
-    This add-on appears to send data through a resource URL (image/iframe/media src) - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
-
-- title: Data smuggled through a stylesheet
-  severity: error
-  check: disguised-stylesheet
-  llm-verification: true
-  # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
-  # but there readable vendored code is scanned and a readable build doubles each line.
-  input: source
-  sweep-instruction: |-
-    A stylesheet, a CSS rule, or a property resolving to a remote reference, carrying
-    data outward in its URL. Consent is no defence.
-  response: |-
-    This add-on appears to send data through a stylesheet or CSS url() - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
-
-- title: Data smuggled through an opened window
-  severity: error
-  check: disguised-window
-  llm-verification: true
-  # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
-  # but there readable vendored code is scanned and a readable build doubles each line.
-  input: source
-  sweep-instruction: |-
-    A new window or tab the add-on opens, carrying data outward in its URL. Consent is
-    no defence.
-  response: |-
-    This add-on appears to send data through a window.open() to a remote URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
-
-- title: Data smuggled through a navigation
-  severity: error
-  check: disguised-navigation
-  llm-verification: true
-  # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
-  # but there readable vendored code is scanned and a readable build doubles each line.
-  input: source
-  sweep-instruction: |-
-    An already-open context sent elsewhere, carrying data outward in the URL. Consent
-    is no defence.
-  response: |-
-    This add-on appears to send data through a page navigation - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
-
 # Flags data transmitted to a remote host over an unencrypted (http/ws/ftp)
 # connection - any cleartext transmission, whatever the payload.
 #
@@ -1796,10 +1741,11 @@ deterministic-phase:
   response: |-
     Remotely fetched code is executed at the following location(s). Remote code execution is not allowed - bundle all code with the add-on so it can be reviewed.
 
-# normal transmission of user data - a network request (fetch and friends) or mail the
-# add-on composes and sends itself - allowed only with an options-page opt-in, judged from
-# the options page in evidence. The deterministic scan finds network sinks only, so the
-# mail route is reached through the sweep alone.
+# User data leaving the user's machine where the user would not expect it, by any route: a
+# network request, the URL of a resource, stylesheet, window or navigation, or mail the
+# add-on sends itself. The deterministic scan turns every network and URL sink to a remote
+# or dynamic host into an item, labelled with its route. Mail and routes the scan does not
+# know are reached through the sweep alone.
 - title: User-data exfiltration
   severity: error
   check: data-exfiltration
@@ -1807,76 +1753,38 @@ deterministic-phase:
   # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
   # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
-  settle-verbs: [reported, cleared]
+  settle-verbs: [reported, cleared, ask]
   instructions-for-llm: |-
-    The locations below send data to a remote server. User data - message
-    content, attachments, contacts, credentials - may be transmitted only
-    where the user actively enabled it: by entering the destination URL or
-    credentials on an options page that says what is sent, or through an
-    explicit off-by-default opt-in for a hardcoded URL. Thunderbird has no
-    built-in data-collection consent prompt, so there is no implicit consent
-    to rely on. Triggering the feature with a click or menu item is not
-    consent on its own. Clear a location where consent of that kind exists;
-    report one where it does not.
+    Each location below sends something to a remote server. Its label names
+    the route: a network request, or the URL of a resource, stylesheet,
+    window or navigation. You are looking for suspicious data exfiltration:
+    the user's sensitive data, such as messages, contacts and credentials, or
+    anything computed from it on the user's machine, leaving where the user
+    would not expect it. Thunderbird has no built-in data-collection consent
+    prompt. Report each location unless no sensitive data leaves, the user set the
+    transmission up (picked the service, entered the destination or a key,
+    turned on an off-by-default setting), or sending this data to this
+    destination is the add-on's single purpose, as its manifest name and
+    description or its options or first-run pages state. Where that purpose
+    might cover it but the add-on does not say so, ask instead.
   instructions-for-human: |-
-    Check, for each location below, whether the user actively enabled the
-    transmission. User data - message content, attachments, contacts,
-    credentials - may be sent only where they entered the destination or
-    credentials on an options page that says what is sent, or turned on an
-    explicit off-by-default opt-in. Thunderbird has no built-in consent
-    prompt, so there is no implicit consent to fall back on. Triggering the
-    feature with a click or menu item is not consent on its own. Report a
-    location where no such consent exists.
+    Report a location below where the user's sensitive data, or anything
+    computed from it on the user's machine, leaves the machine unexpectedly.
+    Each location's label names the route.
   sweep-instruction: |-
-    Message content and headers, attachments, contacts, credentials, or anything
-    derived from them, leaving the user's machine by any route: a network
-    request, or mail or a message the add-on composes and sends itself (for
-    example `compose.beginForward`, `beginNew` or `sendMessage`). Report it
-    unless the user enabled that specific transmission beforehand, on an
-    options page or first-run page that says what is sent and to whom, or by
-    an off-by-default opt-in. Triggering the feature with a click or menu item
-    is not enough on its own. Where the destination is fixed in the add-on,
-    list the location here as well as under any privacy-policy sweep.
+    Suspicious data exfiltration: the user's sensitive data, such as messages,
+    contacts and credentials, or anything computed from it on the user's
+    machine, leaving the machine where the user would not expect it. Check at
+    least these routes: network requests (fetch, XMLHttpRequest, WebSocket,
+    EventSource, sendBeacon, form submissions), the URL of a resource (src or
+    href, also in markup built as a string), a stylesheet url(), a window or
+    tab the add-on opens, a page navigation, and mail or messages the add-on
+    composes and sends itself (for example `compose.beginForward`, `beginNew`
+    or `sendMessage`). Then look beyond them: any other route counts. Report
+    it unless the user set the transmission up, or sending this data there is
+    the add-on's single purpose.
   response: |-
-    The following code location(s) send user data or telemetry to a remote server without an explicit opt-in. User data or telemetry may be transmitted only when the user actively enables it on an options page that discloses what is sent.
-
-# the WEAK disguised-transmission residue - a covert channel (resource
-# URL, stylesheet url(), window.open, or page navigation) built with a runtime
-# value but no user-data API call. The strong case (a user-data call in the URL) is
-# the deterministic disguised-* errors; this asks whether the dynamic URL is really
-# an undisclosed data send or just legitimate dynamic URL building.
-- title: Data smuggled through a channel not meant for it
-  severity: error
-  check: disguised-transmission
-  llm-verification: true
-  # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
-  # but there readable vendored code is scanned and a readable build doubles each line.
-  input: source
-  settle-verbs: [reported, cleared]
-  instructions-for-llm: |-
-    The locations below build a URL to a remote host from a runtime value,
-    on a channel not meant for carrying data - a resource src or href, a
-    stylesheet url(), a window.open(), or a page navigation. Smuggling user
-    data out this way is not allowed even with the user's consent. Building
-    a remote URL from a runtime value is also common in legitimate code,
-    such as navigating to a host path or loading a CDN asset by name. Clear
-    a location where the runtime value carries nothing about the user;
-    report one where user data leaves through it, or where you cannot tell
-    what the value holds.
-  instructions-for-human: |-
-    Decide, for each location below, whether user data leaves through it.
-    Each builds a URL to a remote host from a runtime value, on a channel
-    not meant for carrying data - a resource src or href, a stylesheet
-    url(), a window.open(), or a page navigation. Sending data this way is
-    not allowed even with the user's consent. Building such a URL is also
-    common in legitimate code, for instance navigating to a host path or
-    loading an asset by name, so the question is what the value holds.
-    Report a location where it carries something about the user.
-  sweep-instruction: |-
-    Any other mechanism that presents as loading, rendering, opening or navigating
-    while carrying data outward in its URL. Consent is no defence.
-  response: |-
-    The following code location(s) appear to send data through a channel not meant for data transmission - a URL used for loading, styling, opening or navigating, with data riding in it. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent.
+    The following code location(s) send the user's sensitive data to a remote server where the user would not expect it. Sensitive data may leave only where the add-on needs it for its functionality, and only where the user set the transmission up or sending it is the add-on's stated single purpose. Let the user set it up on an options page that says what is sent and to whom, or remove the transmission.
 
 # Nothing about spam or low-effort content is decidable from the bytes, so this check
 # scans nothing: it exists to carry the blind spot. Its `sweep-instruction` is what the

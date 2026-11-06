@@ -1,0 +1,4 @@
+{
+  "_comment": "Four URL channels carrying data out: a resource src and a window.open with a user-data API call, and two navigations, one with an appended runtime value and one with a user-data API call. None is a finding: each escalates as a data-exfiltration item for its route (see the golden).",
+  "expect": {}
+}

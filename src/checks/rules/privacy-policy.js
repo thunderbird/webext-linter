@@ -15,8 +15,8 @@
 //
 // A destination with nothing literal about it at all is classified DYNAMIC rather than
 // remote and never reaches this check: that one is the data-exfiltration escalating
-// check's (it asks about consent), and a covert disguised channel is already a hard error
-// (the disguised-* checks). This is the disclosure angle, and it needs no token. The
+// check's (it asks about consent), as is a URL channel that carries data out. This is the
+// disclosure angle, and it needs no token. The
 // checks run independently and may both fire on one fetch (disclosure vs consent).
 //
 // Belongs here: finding the overt remote transmissions and escalating one manual-review

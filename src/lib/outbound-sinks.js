@@ -1,6 +1,6 @@
 // Every outbound network sink in the add-on's authored JavaScript, scanned once
-// and shared. The disguised-* and cleartext-transmission (deterministic),
-// privacy-policy, and data-exfiltration (review) checks read this one list, gathered
+// and shared. The cleartext-transmission (deterministic), privacy-policy and
+// data-exfiltration (review) checks read this one list, gathered
 // once per artifact - the same "compute once, checks read it" pattern as ctx.bundled() /
 // ctx.vendor().
 //
@@ -11,8 +11,8 @@
 // reads.
 //
 // Does NOT belong here: the sink AST walk itself (-> src/parse/
-// network-sinks.js), the verdicts (-> src/checks/rules/disguised-*.js,
-// cleartext-transmission.js, privacy-policy.js, data-exfiltration.js), and the
+// network-sinks.js), the verdicts (-> src/checks/rules/cleartext-transmission.js,
+// privacy-policy.js, data-exfiltration.js), and the
 // non-authored skip set (-> bundled.js).
 
 import { networkSinksOf } from "../checks/extract.js";
@@ -46,33 +46,6 @@ export function getOutboundSinks(ctx) {
  */
 export function sinkLabel(sink, label) {
   return sink.target ? `${label} ${trunc(sink.target)}` : label;
-}
-
-// A covert channel (resource/stylesheet/window/navigation) to a non-local
-// destination - the precondition for both gates below.
-const isCovertRemote = (sink) => sink.channel.covert && !sink.destClass.local;
-
-/**
- * STRONG disguised exfiltration: a covert remote channel with a user-data API
- * call in its argument (messages/contacts/... - the payload is provably user
- * data). The deterministic gate for the hard-error disguised-* checks.
- * @param {FileSink} sink
- * @returns {boolean}
- */
-export function isStrongCovertExfil(sink) {
-  return isCovertRemote(sink) && sink.carriesData;
-}
-
-/**
- * WEAK disguised exfiltration: a covert remote channel that merely builds the URL
- * with a runtime value (dataAppended) and carries no user-data API call. Common
- * in legitimate code (e.g. navigating to `host/${id}`), so it is not a hard error
- * but an escalation - the gate for the disguised-transmission check.
- * @param {FileSink} sink
- * @returns {boolean}
- */
-export function isWeakCovertExfil(sink) {
-  return isCovertRemote(sink) && sink.dataAppended && !sink.carriesData;
 }
 
 /**

@@ -3,10 +3,9 @@
 // sent in cleartext can be read or tampered with in transit, so it is an error
 // regardless of what is sent (no payload gate).
 //
-// Scoped to overt transmission APIs (fetch and friends). Covert resource loads
-// that smuggle data through a URL are already handled by the disguised-* checks (a
-// hard error, or an escalation for the weak case); flagging them here too would
-// double-report the same line.
+// Scoped to overt transmission APIs (fetch and friends). A URL channel (a resource
+// load, a stylesheet, a window, a navigation) that carries data out is the
+// data-exfiltration check's, so it is not reported here too.
 //
 // Asked of EVERY artifact the review has (`input: all`, via perArtifact), because the
 // objection is the transport and what counts is what ships. Each artifact skips its own

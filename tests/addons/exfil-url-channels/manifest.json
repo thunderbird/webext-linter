@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Disguised Data Demo",
+  "name": "Exfil URL Channels Demo",
   "version": "1.0",
   "permissions": ["messagesRead", "accountsRead"],
   "background": { "scripts": ["background.js"] },
