@@ -94,9 +94,9 @@
     ]
   },
   "summary": {
-    "error": 3,
+    "error": 0,
     "hold": 0,
-    "warning": 0,
+    "warning": 3,
     "info": 0,
     "byRule": {
       "cleartext-transmission": 3
@@ -105,7 +105,7 @@
   "findings": [
     {
       "ruleId": "cleartext-transmission",
-      "severity": "error",
+      "severity": "warning",
       "file": "background.js",
       "loc": {
         "line": 5,
@@ -118,7 +118,7 @@
     },
     {
       "ruleId": "cleartext-transmission",
-      "severity": "error",
+      "severity": "warning",
       "file": "background.js",
       "loc": {
         "line": 7,
@@ -131,7 +131,7 @@
     },
     {
       "ruleId": "cleartext-transmission",
-      "severity": "error",
+      "severity": "warning",
       "file": "background.js",
       "loc": {
         "line": 8,

@@ -1083,7 +1083,6 @@ test("every check's severity is pinned to its band", async () => {
       "build-review",
       "build-unsafe",
       "bundled-files",
-      "cleartext-transmission",
       "committed-build-artifact",
       "committed-node-modules",
       "core-symbol-in-webext",
@@ -1153,6 +1152,7 @@ test("every check's severity is pinned to its band", async () => {
     ],
     warning: [
       "async-onmessage",
+      "cleartext-transmission",
       "minimize-web-accessible-resources",
       "missing-english-localization",
       "missing-vendor-file",
@@ -1216,8 +1216,8 @@ test("the checks that sweep their own blind spot are exactly these", async () =>
       // one of these per instruction it authors.
       // The one sweeping check on `input: all`, so the one that names its own trees -
       // contributing two sweeps, one per tree, adjacent and XPI first.
-      ["cleartext-transmission", "error", ARTIFACT_XPI],
-      ["cleartext-transmission", "error", ARTIFACT_SCA],
+      ["cleartext-transmission", "warning", ARTIFACT_XPI],
+      ["cleartext-transmission", "warning", ARTIFACT_SCA],
       ["privacy-policy", "hold", null],
       ["data-exfiltration", "error", null],
       ["unacceptable-package-content", "error", null],

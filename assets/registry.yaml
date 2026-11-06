@@ -1363,7 +1363,7 @@ deterministic-phase:
 # tree itself: which folder a sweep is about is the linter's to say, and it says it in
 # the request (src/report/sweep-files.js).
 - title: Unencrypted data transmission
-  severity: error
+  severity: warning
   check: cleartext-transmission
   llm-verification: true
   input: all

@@ -33,7 +33,7 @@ Continue manual review for the following checks:
    permission on its own sends nothing and is not a case. Whatever the payload:
    the objection is the transport.
 Sweep: <work>/xpi/
-Suggested verdict: error
+Suggested verdict: warning
 Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://, and refuse or upgrade such a URL where the user enters one.
 
 2) Remote data transmission needs a privacy policy: The add-on reaching a
