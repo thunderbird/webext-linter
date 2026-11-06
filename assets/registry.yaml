@@ -902,9 +902,10 @@ deterministic-phase:
   input: xpi
   instructions-for-human: |-
     This submission ships an Experiment, which runs with full access to
-    Thunderbird's internals. Verify that its Experiment surface is no larger than
-    the add-on needs, and that it does not affect Thunderbird's usability,
-    stability, performance or security. Reviewing only the differences from the
+    Thunderbird's internals. Read its code in the XPI (XPI_ROOT): the files
+    manifest.json's "experiment_apis" name, and what they load. Verify that its
+    Experiment surface is no larger than the add-on needs, and that it does not
+    affect Thunderbird's usability, stability, performance or security. Reviewing only the differences from the
     last approved submission can save time. Report this unless all of that holds.
   # A reported case of this check IS what the reviewer found, so its response ends on a
   # list and that list is their words. This stands in when they reported it without any: a

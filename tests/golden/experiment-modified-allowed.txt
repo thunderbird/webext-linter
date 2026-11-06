@@ -33,11 +33,12 @@ An example can be found here: https://github.com/thunderbird/webext-examples/tre
 Continue manual review for the following checks:
 
 1) Experiment manual review: This submission ships an Experiment, which runs
-   with full access to Thunderbird's internals. Verify that its Experiment
-   surface is no larger than the add-on needs, and that it does not affect
-   Thunderbird's usability, stability, performance or security. Reviewing only
-   the differences from the last approved submission can save time. Report this
-   unless all of that holds.
+   with full access to Thunderbird's internals. Read its code in the XPI
+   (XPI_ROOT): the files manifest.json's "experiment_apis" name, and what they
+   load. Verify that its Experiment surface is no larger than the add-on needs,
+   and that it does not affect Thunderbird's usability, stability, performance
+   or security. Reviewing only the differences from the last approved submission
+   can save time. Report this unless all of that holds.
 Suggested verdict: error
 Suggested response: This add-on ships an Experiment, which runs with full access to Thunderbird's internals. Its Experiment surface must be kept to what the add-on actually needs, and must not affect Thunderbird's usability, stability, performance or security. The following need to be addressed:
 
