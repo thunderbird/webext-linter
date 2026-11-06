@@ -535,7 +535,7 @@ result into the owning check - described in
 | Check id (`check:`) | The blind spot its sweep covers |
 | --- | --- |
 | `data-exfiltration` | The user's sensitive data leaving the machine where the user would not expect it: at least by a network request, a resource, stylesheet, window or navigation URL, or mail the add-on sends, then by any other route. |
-| `cleartext-transmission` | Anything reaching an `http://`/`ws://`/`ftp://` endpoint by an unlisted route, whatever the payload. |
+| `cleartext-transmission` | Anything reaching an `http://`/`ws://`/`ftp://` endpoint by an unlisted route, whatever the payload, a URL the user enters that the code does not refuse or upgrade included. A host permission on its own is not a case. |
 | `privacy-policy` | The add-on reaching a developer-chosen remote service by an unlisted route. |
 | `unacceptable-package-content` | Content the add-on ships - its name and description, an icon, or bundled text, images or media - that is spam, inappropriate, misleading or low-effort, or breaches Mozilla's Acceptable Use Policy. |
 | `shipped-icon-trademark-imitation` | An icon the add-on ships that imitates or incorporates the Thunderbird, Firefox or Mozilla logo. Acceptability is the row above, this row is the trademark. |

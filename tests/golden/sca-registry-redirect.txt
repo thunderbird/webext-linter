@@ -34,16 +34,22 @@ An example can be found here: https://github.com/thunderbird/webext-examples/tre
 Continue manual review for the following checks:
 
 1) Unencrypted data transmission: A remote endpoint reached over http://, ws://
-   or ftp://. Whatever the payload: the objection is the transport.
+   or ftp://, whether the add-on names it or the user enters it: code that sends
+   to a URL the user entered must refuse or upgrade those schemes. A host
+   permission on its own sends nothing and is not a case. Whatever the payload:
+   the objection is the transport.
 Sweep: <work>/xpi/
 Suggested verdict: error
-Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
+Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://, and refuse or upgrade such a URL where the user enters one.
 
 2) Unencrypted data transmission: A remote endpoint reached over http://, ws://
-   or ftp://. Whatever the payload: the objection is the transport.
+   or ftp://, whether the add-on names it or the user enters it: code that sends
+   to a URL the user entered must refuse or upgrade those schemes. A host
+   permission on its own sends nothing and is not a case. Whatever the payload:
+   the objection is the transport.
 Sweep: <work>/sca
 Suggested verdict: error
-Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
+Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://, and refuse or upgrade such a URL where the user enters one.
 
 3) Remote data transmission needs a privacy policy: The add-on reaching a
    service the DEVELOPER chose - fixed in the add-on, not entered by the user -

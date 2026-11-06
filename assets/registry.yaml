@@ -1367,11 +1367,13 @@ deterministic-phase:
   llm-verification: true
   input: all
   sweep-instruction-for-xpi: &cleartext-sweep |-
-    A remote endpoint reached over http://, ws:// or ftp://. Whatever the payload:
-    the objection is the transport.
+    A remote endpoint reached over http://, ws:// or ftp://, whether the add-on names
+    it or the user enters it: code that sends to a URL the user entered must refuse or
+    upgrade those schemes. A host permission on its own sends nothing and is not a
+    case. Whatever the payload: the objection is the transport.
   sweep-instruction-for-sca: *cleartext-sweep
   response: |-
-    Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
+    Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://, and refuse or upgrade such a URL where the user enters one.
 
 # Preflight -> screened, then manual review: data sent to a hardcoded remote host
 # means the listing must carry a privacy policy, which is not part of the package. The
@@ -2347,7 +2349,7 @@ llm-sca-review-prompt:
     - text: |-
         The linter audited the lock file of SCA_PACKAGE_ROOT, given above, and found no known high or critical vulnerability in it, so the add-on is built now. The linter copied the whole source archive for this step, and LLM_BUILD_ROOT, given above, is SCA_PACKAGE_ROOT in that copy. Build in LLM_BUILD_ROOT, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in SCA_BUILD_PROCESS.
 
-        Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci`, or `pnpm install --frozen-lockfile` where the copy has a pnpm-lock.yaml, and with no flag that leaves dependencies out. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
+        Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci --ignore-scripts`, or `pnpm install --frozen-lockfile --ignore-scripts` where the copy has a pnpm-lock.yaml, and with no other flag. No install script runs, neither the add-on's nor a dependency's: nobody has read a dependency's, and where the build needs one, it fails, and the reviewer builds it by hand. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
     - text: |-
         Where the build failed, add a section headed "Build attempt" to the end of SCA_BUILD_PROCESS: the step that failed, and the error output it printed. Change nothing else in that file.
     - text: |-
@@ -2385,9 +2387,9 @@ llm-sca-review-prompt:
 
         {{copy}}
 
-        Then build in LLM_BUILD_ROOT, and only there. Install the dependencies exactly as the lock file pins them: `npm ci`, or `pnpm install --frozen-lockfile` where LLM_BUILD_ROOT has a pnpm-lock.yaml, with no flag that leaves dependencies out. Then follow the build process described in SCA_BUILD_PROCESS.
+        Then build in LLM_BUILD_ROOT, and only there. Install the dependencies exactly as the lock file pins them: `npm ci --ignore-scripts`, or `pnpm install --frozen-lockfile --ignore-scripts` where LLM_BUILD_ROOT has a pnpm-lock.yaml, with no other flag. No install script runs, neither the add-on's nor a dependency's: nobody has read a dependency's, and where the build needs one, it fails, and the reviewer builds it by hand. Then follow the build process described in SCA_BUILD_PROCESS.
 
-        Where the build fails, find out why and change the dependencies again in RESCUE_ROOT, then audit again and copy again before the next build. A build often needs a dependency the trimming removed: a `prepare` script that runs `husky`, for one, fails without husky. Keep such a dependency, or remove the script from package.json where the release build does not need it. Where no change makes a clean lock build, the rescue failed.
+        Where the build fails, find out why and change the dependencies again in RESCUE_ROOT, then audit again and copy again before the next build. A build often needs a dependency the trimming removed: a plugin its build configuration loads, for one. Keep such a dependency. Where no change makes a clean lock build, the rescue failed.
     - text: |-
         Where the last build produced its output, compare it with SUBMITTED_XPI, given above: it holds the same files at the same paths, each with the same contents, where only line endings may differ. Compare only that, and change nothing.
     - text: |-

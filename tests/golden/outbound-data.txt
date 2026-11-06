@@ -2,7 +2,7 @@
 
 Thank you for your submission. We appreciate the effort you’ve put into creating this add-on. However, it cannot be accepted and hosted on addons.thunderbird.net in its current form. The following findings caused the submission to be rejected:
 
-1) Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
+1) Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://, and refuse or upgrade such a URL where the user enters one.
  - background.js:4 - cleartext send "http://api.example.com/collect"
 
 You can run an automated review yourself before submitting:
@@ -69,10 +69,13 @@ Suggested response: This add-on requests the "nativeMessaging" permission to exc
 Continue manual review for the following checks:
 
 1) Unencrypted data transmission: A remote endpoint reached over http://, ws://
-   or ftp://. Whatever the payload: the objection is the transport.
+   or ftp://, whether the add-on names it or the user enters it: code that sends
+   to a URL the user entered must refuse or upgrade those schemes. A host
+   permission on its own sends nothing and is not a case. Whatever the payload:
+   the objection is the transport.
 Sweep: <work>/xpi/
 Suggested verdict: error
-Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
+Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://, and refuse or upgrade such a URL where the user enters one.
 
 2) Remote data transmission needs a privacy policy: The add-on reaching a
    service the DEVELOPER chose - fixed in the add-on, not entered by the user -

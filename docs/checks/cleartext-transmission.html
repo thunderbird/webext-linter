@@ -59,7 +59,11 @@ flowchart TD
         <strong>When it fires</strong>
         The add-on is told that data is sent over an unencrypted connection,
         listing each line that sends it, and that all data must travel over an encrypted channel —
-        use https:// (or wss:// for sockets), never http://, ws:// or ftp://.
+        use https:// (or wss:// for sockets), never http://, ws:// or ftp://, and
+        to refuse or upgrade such a URL where the user enters one. The sweep also
+        reports code that sends to a URL the user entered without refusing or
+        upgrading those schemes. A host permission on its own sends nothing and is
+        not reported.
       </div>
 
       <p class="source-note">

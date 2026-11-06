@@ -91,6 +91,11 @@ const COMPARED = [
   "Write no notes and no list of differences",
 ];
 
+/** How the build and rescue prompts install: as the lock pins it, and with no install script,
+ *  since nobody has read a dependency's. */
+const INSTALL =
+  "`npm ci --ignore-scripts`, or `pnpm install --frozen-lockfile --ignore-scripts`";
+
 /** What the build and rescue prompts say of the output path: the artifact the build produced,
  *  which the agent that ran it sees. Where it lies is the agent's to report, and the hand-back
  *  holds it to the build copy (src/report/handback.js outputAt). */
@@ -332,6 +337,7 @@ test("the hand-back prints a clean source's build", () => {
   assert.ok(!unwrapped(stdout).includes("Copy SCA_PACKAGE_ROOT"));
   for (const said of [
     "Build in LLM_BUILD_ROOT, and only there",
+    INSTALL,
     OUTPUT_PATH,
     '"Build attempt"',
     ...COMPARED,
@@ -379,8 +385,7 @@ test("the hand-back prints a vulnerable source's rescue", () => {
     "npm install --package-lock-only --ignore-scripts",
     "npm audit fix --package-lock-only --ignore-scripts",
     "build NOTHING",
-    "`npm ci`",
-    "husky",
+    INSTALL,
     '"label" of its one answer',
     OUTPUT_PATH,
     ...COMPARED,

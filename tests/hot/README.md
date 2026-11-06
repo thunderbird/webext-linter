@@ -83,8 +83,8 @@ Locks were generated with `npm install --package-lock-only --ignore-scripts` or
 
 - **Base A, `issuebridge-1.2.1`:** a Vue add-on with no Experiment. Its documented release
   build is `npm ci` then `npm run build`, one `vite build` that also writes its own XPI. The
-  source imports dompurify, pinia, turndown and vue, and the build uses vite and
-  @vitejs/plugin-vue. Its lock was regenerated within the declared ranges on 2026-10-13: the
+  agent installs with `npm ci --ignore-scripts`, as the build prompt says. The source
+  imports dompurify, pinia, turndown and vue, and the build uses vite and @vitejs/plugin-vue. Its lock was regenerated within the declared ranges on 2026-10-13: the
   lock as submitted carried six packages with high advisories published in 2026, and the
   regenerated one audits 0 moderate, 0 high, 0 critical.
 - **Base B, `sendguard-4.2.5.3`:** a plain-files add-on with no Experiment, whose package.json
@@ -113,9 +113,9 @@ them), to confirm no deterministic check aborts a case that should reach row 14.
 Where a build must fail, it fails for a reason the rescue's rules forbid the agent to
 repair: the source imports `turndown`, and package.json no longer declares it. The rescue
 may only remove dependencies, refresh the lock and apply the audit fix, so it cannot add it
-back, and the build (`npm ci` then `vite build`) fails on the unresolved import. A missing
-build file was not used: the analyze step lists a step whose source is not in the tree as a
-safety concern, and the case would end as judged unsafe instead of failed.
+back, and the build (`npm ci --ignore-scripts` then `vite build`) fails on the unresolved
+import. A missing build file was not used: the analyze step lists a step whose source is not
+in the tree as a safety concern, and the case would end as judged unsafe instead of failed.
 
 | id | base | package.json change | lock audit | expected stop |
 |---|---|---|---|---|
@@ -155,10 +155,10 @@ Each case, and why it lands where it does:
   either way. An abandoned package with no fixed release could not be used: only
   package.json and the lock change, so the dependency the build uses has to be one the
   source already imports.
-- **husky-trap:** the rescue trims dev tooling, husky among it (git hooks), and `npm ci` then
-  fails on `prepare: husky` (exit 127). The agent has to keep husky or remove the script. With
-  husky present, `prepare` passes: husky 9.1.7 prints that `.git` cannot be found and exits 0
-  outside a git repository (read from its bin.js, not run).
+- **husky-trap:** the rescue trims dev tooling, husky among it (git hooks). The agent installs
+  with `--ignore-scripts`, so `prepare: husky` never runs and the trap cannot fire: the case
+  checks that the rescue trims dev tooling and still builds. Before the agent's install ran no
+  script (2026-11-06), `npm ci` failed on it without husky (exit 127).
 - **moderate-only:** ms@1.0.0 is unused and its only advisory is moderate, so the lock is
   clean and the original is built without a rescue. The case counts at least 1 moderate, since
   a new moderate advisory on another package of the lock is likely (vite 6.4.4 got one,
