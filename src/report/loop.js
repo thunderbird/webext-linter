@@ -1059,8 +1059,14 @@ function sweptResults(state) {
  * @returns {string[]}  What was routed, for the audit line.
  */
 function routeSweep(state, registry) {
-  const results = state.sweep ?? [];
+  // Null where no tree was asked (--llm-skip-sweep): the list stays for the reviewer to
+  // sweep by hand. Asked, the sweep is over however much it found.
+  const results = state.sweep;
+  if (!results) {
+    return [];
+  }
   if (results.length === 0) {
+    state.preSweep = null;
     return [];
   }
   const mode = { sca: state.report.sca };

@@ -139,7 +139,9 @@ export function sweepBack(reviewFile, found = {}) {
     fs.readFileSync(path.join(path.dirname(reviewFile), "state.json"), "utf8")
   ).current;
   for (const [artifact, paths] of Object.entries(state.paths.sweeps ?? {})) {
-    const mine = state.preSweep.items.filter((i) => i.artifact === artifact);
+    const mine = (state.preSweep?.items ?? []).filter(
+      (i) => i.artifact === artifact
+    );
     fs.writeFileSync(
       paths.answers,
       JSON.stringify({

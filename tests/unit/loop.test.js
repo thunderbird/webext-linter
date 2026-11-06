@@ -381,7 +381,7 @@ function handBack(work, answerFor) {
  */
 function swept(state, artifact, found = {}) {
   const paths = state.paths.sweeps[artifact];
-  const labels = state.preSweep.items
+  const labels = (state.preSweep?.items ?? [])
     .filter((i) => i.artifact === artifact)
     .map((i) => i.label);
   fs.writeFileSync(
@@ -1410,6 +1410,25 @@ test("no questions at all: the ask phase is not issued either", () => {
     take(made);
   }
   assert.ok(!seen.includes("ask"), `ask was issued: ${seen.join(", ")}`);
+});
+
+// A sweep that found nothing is over all the same: the list of what it was asked goes, as it
+// does after a sweep with hints, so nothing later reads it as work still to do.
+test("a sweep that finds nothing clears its list", () => {
+  const made = review(tmp(), { findings: false, questions: false });
+  made.state.paths.sweeps = sweepRequests(
+    workPaths(made.work),
+    made.state.preSweep,
+    { [ARTIFACT_XPI]: made.state.paths.xpiRoot },
+    REGISTRY.proseStyle(),
+    REGISTRY.readingRule()
+  );
+  assert.equal(pass(made).phase.name, "spawn");
+  swept(made.state, ARTIFACT_XPI);
+  handBack(made.work, () => null);
+  take(made);
+  assert.deepEqual(made.state.sweep, [], "asked, and nothing found");
+  assert.equal(made.state.preSweep, null, "the list is gone");
 });
 
 // --llm-skip-sweep leaves the instructions standing and withholds the ASKING, so the
