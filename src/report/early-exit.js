@@ -209,7 +209,7 @@ export function earlyExitOf(ordered, answers, registry, { late = false } = {}) {
  * A reviewer would have been asked an item that is a question by its section, or that
  * names the phase a person is asked it in (`askedIn`), as a check that asks its question in
  * a phase of its own does. Only the plain report calls this (src/pipeline.js): an aborted
- * --llm-review hands over no to-do item at all (src/report/loop.js settle).
+ * --llm-review hands over no to-do item at all (src/report/loop.js closingBlocks).
  * @param {import("./order.js").OrderedItem[]} ordered  The whole review, ordered.
  * @returns {ManualItem[]}
  */

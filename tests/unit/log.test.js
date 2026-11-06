@@ -223,6 +223,27 @@ test("while recording, stderr messages are held back and dumped by exitWith", ()
   }
 });
 
+// In a run that prints a prompt, a debug line goes with the held stderr, never onto stdout,
+// where it would land in the prompt the agent reads.
+test("while recording, debug lines are held back with stderr, not printed", () => {
+  const exit = mock.method(process, "exit", () => {});
+  setVerbose(true);
+  try {
+    setRecording(true);
+    let held;
+    const printed = emitted(() => {
+      held = toStderr(() => debug("[scan] detail"));
+    });
+    assert.deepEqual(printed, [], "nothing on stdout");
+    assert.deepEqual(held, [], "nothing printed in place");
+    const dumped = toStderr(() => exitWith(0)).join("");
+    assert.ok(dumped.includes("[scan] detail"), dumped);
+  } finally {
+    setVerbose(false);
+    exit.mock.restore();
+  }
+});
+
 // Outside the recording runs there is nothing held back, so the exit is just the exit.
 test("exitWith with nothing recorded writes nothing", () => {
   const exit = mock.method(process, "exit", () => {});

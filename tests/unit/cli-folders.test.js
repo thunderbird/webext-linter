@@ -16,6 +16,7 @@ import {
   runFile,
   run,
   defaultFolderOf,
+  readJson,
 } from "../cli-run.js";
 
 // The linter reads a submission from disk once, whether or not an agent is involved: a
@@ -49,8 +50,11 @@ test("a plain review of a packed .xpi extracts it into the work folder", () => {
   // .xpi path.
   assert.equal(headerValue(r.stdout, "XPI_FILE"), "addon.xpi");
   assert.equal(headerValue(r.stdout, "XPI_ROOT"), `${extracted}${path.sep}`);
-  // A plain review writes nothing else there: its report is printed.
-  assert.deepEqual(fs.readdirSync(work), ["xpi"]);
+  // A plain review writes nothing else there but its record, which has no mode: its report
+  // is printed.
+  assert.deepEqual(fs.readdirSync(work).sort(), [".review", "xpi"]);
+  assert.deepEqual(fs.readdirSync(path.join(work, ".review")), ["state.json"]);
+  assert.equal(readJson(work, "state").mode, undefined);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -177,7 +181,7 @@ test("--sca-extracted must not include the add-on", () => {
 
 // The work folder says what kind of review it holds: `xpi-review-` for a review of the XPI
 // alone, plain or with --llm-review, and `sca-review-` for a source code review, whether it
-// is prepared with --llm-auto-review or started with --sca-extracted.
+// is unpacked with --llm-auto-review or started with --sca-extracted.
 test("the work folder is named by the kind of review", () => {
   const madeBeside = (target, args) => {
     const parent = path.dirname(target);
@@ -213,8 +217,8 @@ test("the work folder is named by the kind of review", () => {
   zip.writeZip(path.join(dir, "a.xpi"));
   fs.writeFileSync(path.join(dir, "src.zip"), "");
   const before = new Set(fs.readdirSync(dir));
-  const prepared = run(["--llm-auto-review", dir]);
-  assert.equal(prepared.code, 0, prepared.stderr);
+  const begun = run(["--llm-auto-review", dir]);
+  assert.equal(begun.code, 0, begun.stderr);
   const made = fs.readdirSync(dir).filter((n) => !before.has(n));
   assert.equal(made.length, 1);
   assert.ok(made[0].startsWith("sca-review-a-"), made[0]);
@@ -269,8 +273,8 @@ test("an .xpi or a source archive given through a link is refused", () => {
   // A submission folder named through a link is accepted ...
   const folderLink = path.join(dir, "submission");
   fs.symlinkSync(real, folderLink);
-  const prepared = run(["--llm-auto-review", folderLink]);
-  assert.equal(prepared.code, 0, prepared.stderr);
+  const begun = run(["--llm-auto-review", folderLink]);
+  assert.equal(begun.code, 0, begun.stderr);
   // ... but not a submission whose files are links.
   for (const name of ["a.xpi", "src.zip"]) {
     const sub = path.join(dir, `sub-${name}`);
@@ -365,6 +369,7 @@ test("a folder flag is checked against the folder the review will read", () => {
 test("a folder flag is judged by where it lands, however it was spelled (exit 2 outside the root)", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-folder-"));
   fs.mkdirSync(path.join(dir, "src"));
+  fs.writeFileSync(path.join(dir, "src", "api.js"), "1;\n");
 
   // A folder INSIDE the root may be named either way - relative to the root, or absolute,
   // which is the spelling the report prints and a reader hands straight back. What is

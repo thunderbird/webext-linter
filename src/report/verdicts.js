@@ -326,13 +326,16 @@ function refOf(target, labelOf) {
 
 /**
  * The finding a REPORTED to-do item becomes: the same locus and subject, at the band
- * its own check declares. Refused when the check declares none a reported case could
- * carry - `severity: auto` leaves the band to each finding, so there is nothing to stamp,
- * and `severity: none` means the check emits no findings at all. The message is left for renderFindings to fill from the
- * registry, exactly as for a finding the check emitted itself - so a settled case and a
- * detected one are worded by the same text.
+ * its own check declares, under the to-do's own reference. A verdict changes an item and
+ * never makes a new one, so the answer that made it a finding is recorded under that
+ * reference, and the phases walked over the settled review see it answered. Refused when the
+ * check declares none a reported case could carry - `severity: auto` leaves the band to each
+ * finding, so there is nothing to stamp, and `severity: none` means the check emits no
+ * findings at all. The message is left for renderFindings to fill from the registry, exactly
+ * as for a finding the check emitted itself - so a settled case and a detected one are worded
+ * by the same text.
  * @param {import("./finding.js").ManualItem} item
- * @param {string} ref  The item's reference, for the refusal text.
+ * @param {string} ref  The item's reference, which the finding takes over.
  * @param {import("../checks/registry.js").Registry} registry
  * @param {?string} [note]  The reviewer's own words about this case, carried onto the
  *   finding's location line. The response paragraph stays the registry's.
@@ -358,5 +361,6 @@ function asFinding(item, ref, registry, note = null) {
   f.ruleId = item.ruleId;
   f.severity = severity;
   f.note = note;
+  f.ref = ref;
   return f;
 }

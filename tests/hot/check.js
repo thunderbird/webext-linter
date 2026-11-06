@@ -14,10 +14,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadRegistry } from "../../src/checks/registry.js";
-import { DOWNGRADE_PHASE } from "../../src/checks/registry-vocabulary.js";
-import { readPrepare } from "../../src/prepare/state.js";
-import { buildResultFact, settle } from "../../src/report/loop.js";
-import { readState } from "../../src/report/state.js";
+import { buildResultFact } from "../../src/report/loop.js";
+import { MODE, modeOf, readRecord } from "../../src/review/record.js";
+import { settleReview } from "../../src/review/settle.js";
 import { workPaths } from "../../src/util/dest.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -68,56 +67,79 @@ function installedIn(folder) {
 }
 
 /**
+ * The review a record holds, where it stands: mode review's own part while the loop runs, and
+ * once the review ended the review its permanent part holds, at the phase or step the
+ * current part stands at.
+ * @param {object} record
+ * @returns {object}
+ */
+function reviewOf(record) {
+  return record.current?.report
+    ? record.current
+    : {
+        ...record.review,
+        phase: record.current?.phase ?? record.current?.step,
+      };
+}
+
+/**
  * Where the run stopped, as the values a case names.
  * @param {string} work  The work folder, real.
  * @returns {object}
  */
 function stopOf(work) {
-  const paths = workPaths(work);
-  if (!fs.existsSync(paths.state)) {
-    const record = readPrepare(work);
-    return {
-      stop: record ? `preparation at ${record.step}` : "no review",
-    };
+  if (!fs.existsSync(workPaths(work).state)) {
+    return { stop: "no review" };
   }
-  const state = readState(paths.state);
+  const record = readRecord(work);
+  const mode = modeOf(record);
+  if (mode === MODE.unpack || mode === MODE.buildCheck) {
+    return { stop: `${mode} at ${record.current.step}` };
+  }
+  if (mode === undefined) {
+    return { stop: "no review in progress" };
+  }
+  // Once the review ended, at the close or at the downgrade question, the record's permanent
+  // part holds the review, and the current part where it stands.
+  const downgrade = mode === MODE.downgrade;
+  const state = reviewOf(record);
+  // The build results a build check done first added to the record's permanent part.
+  const build = record.build;
   // The band policy is the review's own, as every hand-back reads it.
   const registry = loadRegistry().withPolicy({
-    warningsAsErrors: state.run.warningsAsErrors,
+    warningsAsErrors: record.flags?.["warnings-as-errors"] === true,
   });
   // The rows both stops show: the counts, and the wording of what came of the agent's build.
   const shown = {
-    SCA_VULNERABILITIES: state.build?.vulnerabilities ?? null,
-    LLM_RESCUED_VULNERABILITIES: state.build?.rescuedVulnerabilities ?? null,
+    SCA_VULNERABILITIES:
+      build?.vulnerabilities ?? state.vulnerabilities ?? null,
+    LLM_RESCUED_VULNERABILITIES: build?.rescuedVulnerabilities ?? null,
     LLM_BUILD_RESULT:
-      registry.llmPhases().buildResults[buildResultFact(state)] ?? null,
+      registry.llmPhases().buildResults[buildResultFact(record)] ?? null,
   };
   if (state.phase === "built") {
     return {
       stop: "row-14",
-      SCA_BUILD_SAFETY_ASSESSMENT: state.build?.safety ?? null,
+      SCA_BUILD_SAFETY_ASSESSMENT: build?.safety ?? null,
       ...shown,
-      LLM_BUILD_OUTPUT: state.build?.output
-        ? areaOf(work, state.build.output)
-        : false,
-      LLM_BUILD_XPI_MATCH: state.build?.match ?? null,
-      SCA_RESCUED:
-        state.paths?.scaFolders?.used !== state.paths?.scaFolders?.source,
+      LLM_BUILD_OUTPUT: build?.output ? areaOf(work, build.output) : false,
+      LLM_BUILD_XPI_MATCH: build?.match ?? null,
+      SCA_RESCUED: state.roots?.used !== state.roots?.source,
     };
   }
   // The closing prompt and the downgrade question both hand over the settled review, and
   // its abort reasons are read the same way at either.
-  if (state.phase === "close" || state.phase === DOWNGRADE_PHASE) {
-    const settled = settle(structuredClone(state), registry);
-    const earlyExit = settled.review.meta.earlyExit;
+  if (state.phase === "close" || downgrade) {
+    const settled = settleReview(state, state.answers ?? {}, registry);
+    const earlyExit = settled.exits.late;
     if (!earlyExit) {
-      return { stop: `${state.phase}, not aborted` };
+      return { stop: `${downgrade ? "downgrade" : "close"}, not aborted` };
     }
     return {
-      stop: state.phase === "close" ? "abort" : "downgrade",
+      stop: downgrade ? "downgrade" : "abort",
       ...shown,
       reasons: earlyExit.reasons.map((r) => r.id),
-      findings: settled.review.findings
+      findings: settled.findings
         .filter((f) => f.severity === "error")
         .map((f) => f.ruleId),
     };

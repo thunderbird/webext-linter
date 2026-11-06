@@ -89,13 +89,13 @@ const SEV_COLOR = {
  *   add-on description for the reviewer - in the review's work folder, beside the review
  *   file (src/util/dest.js workPaths). Named by this tool, written and read by neither.
  * @property {string} [buildFile]  The same, for what building the add-on takes: named only
- *   in a source code review, and in the Review Details only where the preparation wrote it
+ *   in a source code review, and in the Review Details only where the build check wrote it
  *   (src/report/loop.js detailsMeta).
- * @property {string} [buildIssuesFile]  Where the preparation wrote what the build reaches for
+ * @property {string} [buildIssuesFile]  Where the build check wrote what the build reaches for
  *   outside the declared dependencies, as the build analysis listed it: in the Review Details
  *   only where it was written (src/report/loop.js detailsMeta).
  * @property {string} [buildOutput]  The file or folder the agent's build produced in the
- *   preparation, as its record holds it: set by the loop (src/report/loop.js detailsMeta)
+ *   build check, as its record holds it: set by the loop (src/report/loop.js detailsMeta)
  *   only where the agent built the add-on, since the reviewer may decline the build and a
  *   build may fail.
  * @property {string} [reportFile]  Where the text the reviewer sends to the developer is
@@ -303,7 +303,7 @@ const BLOCK_VALUES = new Set([
  *   command and the last three are laid out as blocks rather than substituted into prose
  *   (BLOCK_VALUES).
  * @param {{text: string}[]} [preamble]  The preamble parts this prompt prints, already
- *   filtered by their conditions (src/report/loop.js issue) - none on every pass but the
+ *   filtered by their conditions (src/report/loop.js promptLines) - none on every pass but the
  *   first.
  * @returns {string[]}
  */
@@ -467,7 +467,7 @@ function valueLines(entries) {
 }
 
 /**
- * One prompt of the preparation of a source code review: the whole output of the run that
+ * One prompt of the build check of a source code review: the whole output of the run that
  * prints it, since no review has run when it prints, and none can until its reader does what
  * it says.
  *
@@ -485,7 +485,7 @@ function valueLines(entries) {
  * themselves. The FLAGS are the finished command, one flag per line, filled into the step
  * that says to run it, and the COPY is the rescue's two commands that make the build copy,
  * filled into its step the same way.
- * The intro opens a run's first prompt only (`first`): it says what the preparation is, once.
+ * The intro opens a run's first prompt only (`first`): it says what the build check is, once.
  *
  * A step whose `when:` does not hold is dropped, and the surviving steps are numbered 1..N
  * here, so no step may number itself.
@@ -521,7 +521,7 @@ function valueLines(entries) {
  *   front-end (src/cli.js), which owns the flag names: the finished flag lines. Laid out
  *   here, never added to, trimmed or second-guessed.
  * @param {boolean} [values.findExperiment]  Whether `unpack` asks for the Experiment folder
- *   (src/prepare/steps.js asksExperiments).
+ *   (src/build-check/steps.js asksExperiments).
  * @returns {string[]}
  */
 export function scaPromptLines(prompt, list, values) {
@@ -748,8 +748,8 @@ function sourceRows(folders) {
  * named where it built or tried to. SCA_VULNERABILITIES counts the submitted lock, and
  * LLM_RESCUED_VULNERABILITIES the rescued copy's lock where the agent attempted a rescue.
  * @param {ReviewMeta & {buildSafety?: string,
- *   buildVulnerabilities?: import("../prepare/audit.js").VulnerabilityCounts,
- *   rescuedVulnerabilities?: import("../prepare/audit.js").VulnerabilityCounts,
+ *   buildVulnerabilities?: import("../build-check/audit.js").VulnerabilityCounts,
+ *   rescuedVulnerabilities?: import("../build-check/audit.js").VulnerabilityCounts,
  *   buildResult?: string, buildCopy?: string, buildMatch?: string}} meta  The review's meta and
  *   what it holds beside it: the build judgement, the submitted lock's vulnerable packages by
  *   severity and the rescued copy's, the wording of what came of the build, the copy the agent

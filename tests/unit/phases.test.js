@@ -132,9 +132,10 @@ test("only the ask waiting line counts its questions", () => {
   assert.throws(() => check(inText), saying("`waiting` carries {{count}}"));
 });
 
-// The waiting line is appended to the block a turn-ending phase shows, so the reviewer
-// reads it as the end of that block.
-test("the shipped turn-ending phases are the three questions that show a block", () => {
+// The waiting line is appended to the block a turn-ending prompt shows, so the reviewer
+// reads it as the end of that block. Two phases of the loop end the turn, and so does the
+// restart prompt, a prompt of its own outside the phases.
+test("the shipped turn-ending prompts are the three questions that show a block", () => {
   const p = fresh().llmPhases();
   assert.equal(
     p.waiting("ask", 12),
@@ -142,8 +143,10 @@ test("the shipped turn-ending phases are the three questions that show a block",
   );
   assert.deepEqual(
     p.phases.filter((phase) => phase.endsTurn).map((phase) => phase.name),
-    ["built", "ask", "downgrade"]
+    ["built", "ask"]
   );
+  assert.equal(p.restart.name, "downgrade");
+  assert.equal(p.restart.endsTurn, true);
 });
 
 test("a blank waiting line is refused", () => {
@@ -332,7 +335,7 @@ test("the steps that start an agent each say whether it is waited for", () => {
     "Do not wait for it. When it comes back, write its reply unchanged to";
 
   // The description is not waited for. The build report is written before the review
-  // starts (the preparation), so no spawn step asks for one.
+  // starts (the build check), so no spawn step asks for one.
   assert.ok(
     by("llm-skip-summary").text.includes(UNATTENDED),
     "the description step says it is not waited for"
@@ -387,7 +390,6 @@ test("a phase declares the kind of answer its entries take", () => {
       ["verify", "verdict", 2],
       ["settle", "verdict", 3],
       ["ask", "words", 0],
-      ["downgrade", "value", 0],
       ["close", "end", 0],
     ]
   );
@@ -493,7 +495,7 @@ test("a process value may be offered under a condition, checked as a step's is",
 });
 
 // The build question asks the outcome only, in every run: whether the build is safe was the
-// reviewer's decision in the preparation.
+// reviewer's decision in the build check.
 test("the build question offers the three outcomes", () => {
   const built = fresh()
     .llmPhases()
@@ -784,8 +786,14 @@ test("the shipped steps carry the conditions they are printed under", () => {
     ["aborted"],
     ["aborted"],
   ]);
-  // The downgrade question: only a review that can be restarted as an XPI review.
-  assert.deepEqual(when("downgrade"), [["downgradable"], ["downgradable"]]);
+  // The restart prompt is no phase: "close the review" offers it where the review can be
+  // restarted as an XPI review, so its steps carry no condition.
+  assert.deepEqual(
+    fresh()
+      .llmPhases()
+      .restart.steps.map((x) => x.when ?? null),
+    [null, null]
+  );
   // After `keep`, the close shows nothing `downgrade` already showed.
   assert.deepEqual(when("close"), [
     ["aborted"],
@@ -804,14 +812,14 @@ test("the shipped steps carry the conditions they are printed under", () => {
     [["downgrade", "keep"]],
   ]);
   // The preamble: the first prompt only, and never above a first-pass close. Its writing rule
-  // only where no preparation's intro said it already.
+  // only where no build check's intro said it already.
   assert.deepEqual(
     fresh()
       .llmPhases()
       .preamble.map((x) => namesOf(x.when).sort()),
     [
       ["closing", "first"],
-      ["closing", "first", "prepared"],
+      ["build-checked", "closing", "first"],
     ]
   );
 });

@@ -15,7 +15,10 @@ import { allSchemaBranches, cachedZipPath } from "../src/schema/fetch.js";
 import { cachedExperimentsPath } from "../src/experiments/fetch.js";
 import { cachedHashesPath } from "../src/lib/library-hashes.js";
 import { runCache, workPaths } from "../src/util/dest.js";
-import { copyTheSource, loadTheXpi } from "../src/review/start.js";
+import { copySource, loadTheXpi } from "../src/review/start.js";
+import { addToRecord, readRecord } from "../src/review/record.js";
+import { isExperiment } from "../src/lib/util.js";
+import { settlePackageRoot } from "../src/addon/package-root.js";
 import { runPipeline } from "../src/pipeline.js";
 import {
   bytesKey,
@@ -218,32 +221,43 @@ export function freshWorkFolder() {
 }
 
 /**
- * runPipeline as every review is started: the load first (src/review/start.js loadTheXpi),
+ * runPipeline as every review is set up: the load first (src/review/start.js loadTheXpi),
  * which creates the work folder, fresh unless the test names one, and puts the add-on's copy
- * in its xpi/, then, where the test names a source (`scaGiven`, as --sca-extracted does), the
- * source copied into its sca/ (copyTheSource). A folder that already holds the add-on's copy,
- * one a preparation was started in, is reviewed where it is.
- * @param {object} opts  runPipeline's options, `scaGiven` and `scaMovedFrom` among them.
+ * in its xpi/ beside the empty record, and what the run was given added to the record as
+ * every entry point adds it (src/cli.js addGiven). Then, where the test names a source
+ * (`scaExtracted`, as --sca-extracted does), the source copied into its sca/ (copySource),
+ * that folder added to the record, and its package root settled there from the hints
+ * (`scaHints`, relative to the source). A folder that already holds the add-on's copy,
+ * one a build check was done in, is reviewed where it is.
+ * @param {object} opts  runPipeline's options, `scaExtracted` and `scaHints` among them.
  * @returns {Promise<import("../src/pipeline.js").PipelineResult>}
  */
 export async function loadAndReview(opts) {
-  const { scaGiven, scaMovedFrom, ...rest } = opts;
+  const { scaExtracted, scaHints = {}, ...rest } = opts;
   const workFolder = rest.workFolder ?? freshWorkFolder();
-  const loaded = fs.existsSync(workPaths(workFolder).xpi)
-    ? {}
-    : {
-        verification: (await loadTheXpi(rest.addonPath, workFolder, rest))
-          .verification,
-      };
-  const copied = scaGiven
-    ? copyTheSource(workFolder, scaGiven, scaMovedFrom)
-    : null;
+  if (!fs.existsSync(workPaths(workFolder).xpi)) {
+    const loaded = loadTheXpi(rest.addonPath, workFolder);
+    addToRecord(workFolder, loaded.record, {
+      submission: {
+        xpi: rest.addonPath,
+        experiments: isExperiment(loaded.manifest.json),
+      },
+      kind: scaExtracted ? "sca" : "xpi",
+      flags: {},
+      folders: { xpi: workPaths(workFolder).xpi },
+    });
+  }
+  let settled = null;
+  if (scaExtracted) {
+    const sca = copySource(workFolder, scaExtracted);
+    addToRecord(workFolder, readRecord(workFolder), { folders: { sca } });
+    settled = settlePackageRoot(sca, scaHints);
+  }
   return runPipeline({
     ...rest,
     workFolder,
-    ...loaded,
-    ...(copied ? { scaFolders: copied.scaFolders } : {}),
-    ...(copied?.scaMoved ? { scaMoved: copied.scaMoved } : {}),
+    ...(settled ? { scaFolders: settled.folders } : {}),
+    ...(settled?.moved ? { scaMoved: settled.moved } : {}),
   });
 }
 

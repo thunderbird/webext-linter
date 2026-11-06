@@ -1,5 +1,5 @@
 // npm's and GitHub's popularity readings, kept for one RUN of a review. A source review is
-// one run spread over several linter invocations - the preparation's hand-backs and the
+// one run spread over several linter invocations - the build check's hand-backs and the
 // review - and each asks the same two hosts about the same packages, hosts that answer a
 // burst by refusing. The run keeps what they answered in its cache folder (src/util/dest.js
 // runCache), and each invocation reads it before it asks. No age limit: the cache lives as

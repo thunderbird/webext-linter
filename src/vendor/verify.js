@@ -345,8 +345,8 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
 /**
  * The half of the SCA dependency audit that decides whether the review can go on: every
  * package the lock installs, against the policy blocklist and OSV (auditLockedPackages).
- * verifyScaDependencies asks it after the popularity gate. The preparation of a source code
- * review asks it on its own (src/prepare/audit.js), because no check that aborts a review
+ * verifyScaDependencies asks it after the popularity gate. The build check of a source code
+ * review asks it on its own (src/build-check/audit.js), because no check that aborts a review
  * reads popularity.
  * @param {Addon} addon  Must already carry `addon.vendor` from resolveVendor.
  * @param {VendorNet} [net]
@@ -374,7 +374,7 @@ export async function auditScaDependencies(addon, net = defaultNet, blocks) {
  *
  * Only high and critical are recorded in those lists (VENDOR_TREE_BANDS): a package is worth
  * the developer's attention here when it fails the review, not when it merely appears in a
- * report. A moderate one goes to vendor.moderateVulnerabilities, which only the preparation
+ * report. A moderate one goes to vendor.moderateVulnerabilities, which only the build check
  * counts. A MALICIOUS-package advisory is recorded as critical (vulnRecord), so the band
  * rule keeps it.
  *
@@ -457,7 +457,7 @@ async function auditLockedPackages(vendor, net, blocks) {
         pkg.token
       );
       // A moderate advisory is below the source review's band: kept aside for the
-      // preparation to count, and read by no check.
+      // build check to count, and read by no check.
       if (record?.severity === "moderate") {
         found.moderate.push(record);
         continue;

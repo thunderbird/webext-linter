@@ -1,5 +1,5 @@
-// SCA only: a build the reviewer judged unsafe to run, in the preparation's build decision
-// (src/prepare/steps.js permission). It runs only then (`when: build-judged AND NOT
+// SCA only: a build the reviewer judged unsafe to run, in the build check's build decision
+// (src/build-check/steps.js permission). It runs only then (`when: build-judged AND NOT
 // build-safe`), so it always reports. Where the reviewer gave reasons of their own, one
 // finding, anchored where the build checks anchor, carries them as its note. Where they
 // trusted the agent's verdict, each issue the build analysis listed is a finding of its own,
@@ -8,7 +8,7 @@
 // The review then goes on, and is aborted late with this check's reason and response.
 //
 // Belongs here: reporting it. Does NOT belong here: the decision and the issues
-// (-> src/prepare/steps.js), handing them to the source (-> src/pipeline.js), when it runs or
+// (-> src/build-check/steps.js), handing them to the source (-> src/pipeline.js), when it runs or
 // the wording (-> assets/registry.yaml).
 
 import { VERDICT } from "../../lib/enum.js";

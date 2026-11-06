@@ -11,9 +11,9 @@ import {
   answer,
   auditCache,
   buildInto,
-  realPreparation,
+  realBuildCheck,
   writeBuildReport,
-} from "../prepared.js";
+} from "../build-checked.js";
 import { workPaths } from "../../src/util/dest.js";
 import { loopSlots } from "../../src/report/loop.js";
 import { loadRegistry } from "../../src/checks/registry.js";
@@ -33,6 +33,8 @@ import {
   handBackRoots,
   argvOf,
   unwrapped,
+  unpackSource,
+  reviewOf,
   UNSAFE_ISSUE,
   packAddon,
   answerAnalyze,
@@ -40,7 +42,7 @@ import {
 } from "../cli-run.js";
 
 /**
- * The sca-unrescued fixture's source, prepared through the CLI up to the prompt that follows
+ * The sca-unrescued fixture's source, taken through the CLI up to the prompt that follows
  * the reviewer's permission, its lock audited from a run cache folder seeded with `vulns`
  * (named as --cache-work-dir, which the record hands to every step).
  * @param {Record<string, object[]>} vulns
@@ -66,12 +68,12 @@ function permittedPrompt(vulns) {
   writeBuildReport(work);
   const permission = run(argvOf(commandOf(analyze.stdout)));
   assert.equal(permission.code, 0, permission.stdout + permission.stderr);
-  assert.equal(readJson(work, "prepare").step, "permission");
+  assert.equal(readJson(work, "state").current.step, "permission");
   answer(work, {});
   const next = run(argvOf(commandOf(permission.stdout)));
   assert.equal(next.code, 0, next.stdout + next.stderr);
   assert.ok(next.stdout.includes("── SCA Review Prompt ──"), next.stdout);
-  assert.equal(headerValue(next.stdout, "ANSWERS"), workPaths(work).review);
+  assert.equal(headerValue(next.stdout, "ANSWERS"), workPaths(work).answers);
   assert.equal(
     headerValue(next.stdout, "SCA_BUILD_PROCESS"),
     workPaths(work).build
@@ -107,7 +109,7 @@ const FIXTURE_CLEAN = {
 test("a rescued review names both roots and the build root", async () => {
   const fixture = path.join(ROOT, "tests", "addons", "sca-unrescued");
   const own = { name: "lantern-sorter", version: "1.0.0" };
-  const { work, record } = await realPreparation({
+  const { work, record } = await realBuildCheck({
     source: path.join(fixture, "src"),
     xpi: path.join(fixture, "xpi"),
     flags: {
@@ -134,7 +136,8 @@ test("a rescued review names both roots and the build root", async () => {
     },
   });
   const { sca, rescued, buildCopy } = workPaths(work);
-  assert.deepEqual(record.roots, {
+  // The tree the review reads is the build check's own decision, part of its results.
+  assert.deepEqual(record.build.roots, {
     source: sca,
     used: rescued,
     packageRoot: rescued,
@@ -142,7 +145,7 @@ test("a rescued review names both roots and the build root", async () => {
   const r = run(["--llm-handback", work]);
   assert.notEqual(r.code, 2, r.stdout + r.stderr);
   const state = readJson(work, "state");
-  assert.deepEqual(state.paths.scaFolders, {
+  assert.deepEqual(state.current.roots, {
     source: sca,
     used: rescued,
     packageRoot: rescued,
@@ -153,7 +156,13 @@ test("a rescued review names both roots and the build root", async () => {
     `* SCA_RESCUED: [rescued source (reduced/fixed dependencies)](${rescued})`,
     `* SCA_BUILD: [build copy](${buildCopy})`,
   ];
-  const details = loopSlots(state, {}, work, loadRegistry()).buildDetails;
+  const details = loopSlots(
+    state.current,
+    state,
+    {},
+    work,
+    loadRegistry()
+  ).buildDetails;
   for (const row of rows) {
     assert.ok(details.includes(row), `${row}\n${details}`);
   }
@@ -192,7 +201,7 @@ const WALK_ANSWERS = {
   ask: "Clear",
 };
 
-// One review walked from the preparation's permission prompt to its close: each details
+// One review walked from the build check's permission prompt to its close: each details
 // block holds every row of the block before it, the submitted XPI is XPI_FILE, a link, in
 // every one of them, and the Final Review Details still hold the build.
 test("each details block holds every row of the block before it", () => {
@@ -228,7 +237,7 @@ test("each details block holds every row of the block before it", () => {
   answer(work, {});
   const build = run(argvOf(commandOf(permission.stdout)));
   assert.equal(build.code, 0, build.stdout + build.stderr);
-  const xpi = readJson(work, "prepare").submission.xpi;
+  const xpi = readJson(work, "state").submission.xpi;
   answer(work, {
     LLM_BUILD_OUTPUT: buildInto(workPaths(work).buildCopy),
     LLM_BUILD_XPI_MATCH: "match",
@@ -238,7 +247,7 @@ test("each details block holds every row of the block before it", () => {
   // Every pass up to the closing one is answered and handed back.
   for (let pass = 0; pass < 10; pass++) {
     assert.ok(out.code === 0 || out.code === 1, out.stdout + out.stderr);
-    const { phase } = readJson(work, "state");
+    const { phase } = reviewOf(readJson(work, "state"));
     if (phase === "built" || phase === "ask") {
       blocks.push([phase, detailRowsOf(out.stdout)]);
     }
@@ -246,13 +255,13 @@ test("each details block holds every row of the block before it", () => {
       blocks.push([phase, detailRowsOf(out.stdout)]);
       break;
     }
-    sweepBack(workPaths(work).review);
-    const doc = JSON.parse(fs.readFileSync(workPaths(work).review, "utf8"));
+    sweepBack(workPaths(work).answers);
+    const doc = JSON.parse(fs.readFileSync(workPaths(work).answers, "utf8"));
     doc.entries = doc.entries.map((e) => ({
       ...e,
       answer: WALK_ANSWERS[phase],
     }));
-    fs.writeFileSync(workPaths(work).review, JSON.stringify(doc, null, 1));
+    fs.writeFileSync(workPaths(work).answers, JSON.stringify(doc, null, 1));
     out = run(["--llm-handback", work]);
   }
   assert.deepEqual(
@@ -304,7 +313,7 @@ test("each details block holds every row of the block before it", () => {
 // nothing.
 test("the hand-back prints a clean source's build", () => {
   const { work, stdout, dir } = permittedPrompt(FIXTURE_CLEAN);
-  assert.equal(readJson(work, "prepare").step, "build");
+  assert.equal(readJson(work, "state").current.step, "build");
   assert.equal(headerValue(stdout, "SCA_PACKAGE_ROOT"), path.join(work, "sca"));
   assert.equal(
     headerValue(stdout, "LLM_BUILD_ROOT"),
@@ -317,7 +326,7 @@ test("the hand-back prints a clean source's build", () => {
   );
   assert.equal(
     headerValue(stdout, "SUBMITTED_XPI"),
-    readJson(work, "prepare").submission.xpi
+    readJson(work, "state").submission.xpi
   );
   assert.ok(!unwrapped(stdout).includes("Copy SCA_PACKAGE_ROOT"));
   for (const said of [
@@ -342,7 +351,7 @@ test("the hand-back prints a vulnerable source's rescue", () => {
       advisory("GHSA-fixture-pebble", "CRITICAL", "lint-pebble", "0.4.1"),
     ],
   });
-  assert.equal(readJson(work, "prepare").step, "rescue");
+  assert.equal(readJson(work, "state").current.step, "rescue");
   assert.equal(headerValue(stdout, "RESCUE_ROOT"), path.join(work, "rescued"));
   assert.equal(
     headerValue(stdout, "LLM_BUILD_ROOT"),
@@ -351,7 +360,7 @@ test("the hand-back prints a vulnerable source's rescue", () => {
   assert.equal(headerValue(stdout, "BUILD_COPY"), undefined);
   assert.equal(
     headerValue(stdout, "SUBMITTED_XPI"),
-    readJson(work, "prepare").submission.xpi
+    readJson(work, "state").submission.xpi
   );
   // The agent replaces build/ with a copy of the whole rescued/ before each build, with
   // exactly these two commands, printed as they are run.
@@ -384,7 +393,7 @@ test("the hand-back prints a vulnerable source's rescue", () => {
 // A safe build is shown to the reviewer before they are asked: the permission prompt names
 // the review file and shows the Build Review Details - the build report, the judgement and
 // the package root, in the rows' order - as a block that ends the turn with the waiting line,
-// and then puts the question. Its hand-back carries the preparation on.
+// and then puts the question. Its hand-back carries the build check on.
 test("a safe build prints the Build Review Details and the permission question", () => {
   const dir = submissionFolder();
   const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
@@ -398,9 +407,9 @@ test("a safe build prints the Build Review Details and the permission question",
   writeBuildReport(work);
   const asked = run(argvOf(commandOf(analyze.stdout)));
   assert.equal(asked.code, 0, asked.stdout + asked.stderr);
-  assert.equal(readJson(work, "prepare").step, "permission");
+  assert.equal(readJson(work, "state").current.step, "permission");
   assert.match(asked.stdout, /── SCA Review Prompt ──/);
-  assert.equal(headerValue(asked.stdout, "ANSWERS"), workPaths(work).review);
+  assert.equal(headerValue(asked.stdout, "ANSWERS"), workPaths(work).answers);
   const block = [
     `* SCA_SOURCE: [source archive](${path.join(work, "sca")})`,
     `* SCA_BUILD_PROCESS: [build.md](${workPaths(work).build})`,
@@ -420,33 +429,38 @@ test("a safe build prints the Build Review Details and the permission question",
   answer(work, {});
   const started = run(argvOf(commandOf(asked.stdout)));
   assert.notEqual(started.code, 2, started.stdout + started.stderr);
-  assert.equal(readJson(work, "prepare").packageManagers, true);
+  assert.equal(readJson(work, "state").build.packageManagers, true);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The agent-builds test switch answers the permission question up front: the start run
-// records it, the safe build goes straight on to the audit, and the review starts with no
-// question put. The hand-back runs without the switch, so the record decides.
+// The agent-builds test switch answers the permission question up front where `analyze`
+// would ask it: the safe build goes straight on to the audit, and the review starts with no
+// question put. It is a test concern, read where it is used and never recorded, so the hot
+// runs export it for the whole session and every hand-back inherits it.
 test("WEBEXT_LINTER_AGENT_BUILDS=1 skips the permission question", () => {
+  const env = { WEBEXT_LINTER_AGENT_BUILDS: "1" };
   const dir = submissionFolder();
-  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS], {
-    WEBEXT_LINTER_AGENT_BUILDS: "1",
-  });
+  const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS], env);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
-  assert.equal(readJson(work, "prepare").agentBuilds, true);
-  assert.ok(!("llm-agent-builds" in readJson(work, "prepare").flags));
-  const handed = handBackRoots(r.stdout);
+  assert.ok(!("agentBuilds" in readJson(work, "state")), "never recorded");
+  assert.ok(!("llm-agent-builds" in readJson(work, "state").flags));
+  const unpacked = unpackSource(r.stdout);
+  assert.equal(unpacked.code, 0, unpacked.stdout + unpacked.stderr);
+  fs.writeFileSync(
+    headerValue(unpacked.stdout, "SCA_BUILD_PROCESS"),
+    "1. `npm ci`\n"
+  );
+  answer(work, { SCA_BUILD_SAFETY_ISSUES: [] });
+  const handed = run(["--llm-handback", work], env);
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
   assert.doesNotMatch(handed.stdout, /SCA Review Prompt/);
-  const record = readJson(work, "prepare");
-  assert.equal(record.step, "done");
-  assert.equal(record.buildSafety, "safe");
-  assert.equal(record.packageManagers, true);
-  // The review starts with the recorded judgement, and build.md as its product.
-  const state = readJson(work, "state");
-  assert.equal(state.build.safety, "safe");
-  assert.deepEqual(state.products, ["build", "buildIssues"]);
+  // The review starts with the build check's results, and build.md as its product.
+  const record = readJson(work, "state");
+  assert.equal(record.current.mode, "review");
+  assert.equal(record.build.safety, "safe");
+  assert.equal(record.build.packageManagers, true);
+  assert.deepEqual(record.current.products, ["build", "buildIssues"]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -493,7 +507,7 @@ test("an issue above the package root is reported at its own place in the archiv
   answer(work, { SCA_BUILD_PERMISSION: "Trust the verdict, do not build" });
   const started = run(argvOf(commandOf(asked.stdout)));
   assert.notEqual(started.code, 2, started.stdout + started.stderr);
-  const unsafe = readJson(work, "state").report.findings.filter(
+  const unsafe = readJson(work, "state").current.report.findings.filter(
     (f) => f.ruleId === "build-unsafe"
   );
   assert.deepEqual(
@@ -522,16 +536,14 @@ test("an unsafe build is reported where the reviewer holds it unsafe", () => {
     const handed = handBackRoots(r.stdout, { safety: "unsafe", managers });
     assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
     assert.match(handed.stdout, /── LLM Prompt ──/);
-    const record = readJson(work, "prepare");
-    assert.equal(record.buildSafety, "unsafe");
-    assert.equal(record.packageManagers, false);
-    assert.equal(record.buildSafe, false);
-    assert.equal(record.buildReasons, reasons);
-    const state = readJson(work, "state");
-    assert.equal(state.build.safety, "unsafe");
-    assert.equal(state.build.safe, false);
+    const record = readJson(work, "state");
+    assert.equal(record.build.safety, "unsafe");
+    assert.equal(record.build.packageManagers, false);
+    assert.equal(record.build.safe, false);
+    assert.equal(record.build.reasons, reasons);
+    assert.equal(record.build.result, null);
+    const state = record.current;
     assert.deepEqual(state.products, ["build", "buildIssues"]);
-    assert.equal(state.build.result, null);
     const unsafe = state.report.findings.filter(
       (f) => f.ruleId === "build-unsafe"
     );
@@ -593,8 +605,8 @@ test("an Experiment folder beside the package root gets past the permission", ()
   assert.equal(asked.code, 0, asked.stdout + asked.stderr);
   const permitted = run(answerPermission(asked.stdout, "Let the agent build"));
   assert.notEqual(permitted.code, 2, permitted.stdout + permitted.stderr);
-  assert.notEqual(readJson(work, "prepare").step, "permission");
-  assert.deepEqual(readJson(work, "prepare").roots, {
+  assert.notEqual(readJson(work, "state").current.step, "permission");
+  assert.deepEqual(readJson(work, "state").build.roots, {
     source: workPaths(work).sca,
     used: workPaths(work).sca,
     packageRoot: path.join(workPaths(work).sca, "addon"),
@@ -604,14 +616,15 @@ test("an Experiment folder beside the package root gets past the permission", ()
 });
 
 // An Experiment folder named for an add-on without Experiments would take WebExtension code
-// out of the review, so the preparation refuses it before it creates anything.
-test("--sca-experiments for an add-on without Experiments is refused before preparing", () => {
+// out of the review, so the build check refuses it before it creates anything.
+test("--sca-experiments for an add-on without Experiments is refused before the build check starts", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-noexp-"));
   const xpi = path.join(dir, "a.xpi");
   packAddon(xpi);
   const src = path.join(dir, "src");
   fs.cpSync(NO_LOCK_SOURCE, src, { recursive: true });
   fs.mkdirSync(path.join(src, "experiment"));
+  fs.writeFileSync(path.join(src, "experiment", "p.js"), "1;\n");
   const r = run([
     ...OFFLINE_FLAGS,
     xpi,
@@ -633,7 +646,7 @@ test("--sca-experiments for an add-on without Experiments is refused before prep
 
 // The other way round: an Experiment add-on needs its folder named, as a review given these
 // flags does. A person gives the values here, so nothing asks for it later.
-test("an Experiment add-on without --sca-experiments is refused before preparing", () => {
+test("an Experiment add-on without --sca-experiments is refused before the build check starts", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-needexp-"));
   const xpi = path.join(dir, "a.xpi");
   packAddon(xpi, { experiment_apis: { foo: {} } });
@@ -688,9 +701,9 @@ test("a failed start of a source review leaves no work folder behind", (t) => {
   assert.doesNotMatch(copy.stderr, /Hand the work folder back/);
   assert.deepEqual(fs.readdirSync(dir).sort(), ["a.xpi", "src"]);
 
-  // An add-on whose Experiment the review rejects is reviewed at once, as an XPI, in the work
-  // folder the CLI made for it. With no schema to read offline that review fails at its
-  // start, and the folder goes with it.
+  // An add-on that declares an Experiment, given --sca-extracted but no --sca-experiments,
+  // fails the source path's Experiment folder check right after the load, with exit 2, and
+  // the work folder the load made goes with it.
   const exp = path.join(dir, "exp.xpi");
   packAddon(exp, { experiment_apis: { foo: {} } });
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), "wl-no-schema-"));

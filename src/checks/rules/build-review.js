@@ -1,4 +1,4 @@
-// SCA only: the build review where nobody decided about the build in a preparation - a plain
+// SCA only: the build review where nobody decided about the build in a build check - a plain
 // report, or an agent review run with a build-guard check switched off. One question covers
 // the whole build, in the order a reviewer takes it: whether it uses only the submitted source
 // and the dependencies declared in package.json/lock, and only then whether it builds and
@@ -6,7 +6,7 @@
 //
 // Nothing decides that from the files, so every such source-code submission raises this, for
 // the reviewer, anchored at the submission's package.json. Where the reviewer decided in the
-// preparation, build-reproduces-xpi asks the outcome and build-unsafe reports an unsafe build
+// build check, build-reproduces-xpi asks the outcome and build-unsafe reports an unsafe build
 // instead.
 //
 // Belongs here: raising the escalation. Does NOT belong here: where it anchors

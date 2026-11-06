@@ -167,7 +167,7 @@ export const sweepSlot = (artifact) =>
 export const sweepAnswersSlot = (artifact) => `${sweepSlot(artifact)}Answers`;
 
 /** The build results that report the agent's attempt: it built the add-on in the
- *  preparation (`agent-built`), its build failed (`agent-build-failed`), its rescue failed so
+ *  build check (`agent-built`), its build failed (`agent-build-failed`), its rescue failed so
  *  nothing was built (`rescue-failed`), or the build was judged unsafe so nothing was built
  *  (`build-unsafe`). The details blocks word exactly these in their LLM_BUILD_RESULT row
  *  (`build-results`, assets/registry.yaml). */
@@ -179,7 +179,7 @@ export const WORDED_BUILD_FACTS = [
 ];
 
 /** What came of the build, as the review loop names it: one of WORDED_BUILD_FACTS, or the
- *  agent was not let build or nothing was prepared, and the reviewer builds it
+ *  agent was not let build or nothing was checked, and the reviewer builds it
  *  (`self-build`). Exactly one holds in every review (src/report/loop.js
  *  buildResultFact). */
 export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
@@ -189,8 +189,8 @@ export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
  *
  *  - `sca`: a source code review;
  *  - `eslint`: the run was given --eslint;
- *  - `build-judged`: the reviewer decided about the build in the preparation
- *    (src/prepare/steps.js permission), which every agent source review does but one run
+ *  - `build-judged`: the reviewer decided about the build in the build check
+ *    (src/build-check/steps.js permission), which every agent source review does but one run
  *    with a build-guard check switched off;
  *  - `build-safe`: that decision held the build safe, the agent's verdict as the reviewer
  *    kept or overrode it.
@@ -208,8 +208,8 @@ export const CHECK_FACTS = ["sca", "eslint", "build-judged", "build-safe"];
  *  - `sca`: a source code review;
  *  - `build-guarded`: every check an agent's build relies on (`build-guard`) runs, so the
  *    review may build the add-on itself;
- *  - `prepared`: a preparation started this review, so its reader was given the preparation's
- *    intro;
+ *  - `build-checked`: a build check came before this review, so its reader was given the
+ *    build check's intro;
  *  - one `sweep-<artifact>` per tree with a sweep to run. Each sweepable artifact is its
  *    own fact, because each starts its OWN sub-agent against its own tree and a review may
  *    have one such tree or two. Taken from the artifacts that can be swept rather than
@@ -221,26 +221,24 @@ export const CHECK_FACTS = ["sca", "eslint", "build-judged", "build-safe"];
  *  - `unbuildable`: no build can be made from this source by the review's own rules - a
  *    finding of a check marked `review-unbuildable` stands, or the rescue failed - so the
  *    build phases ask nothing;
- *  - `downgradable`: a source review aborted only by checks a review of the XPI alone
- *    cures (`review-downgrade`), whose XPI is readable, so it may restart as an XPI review;
  *  - the build result, exactly one of BUILD_RESULT_FACTS.
  *
- *  `first`, `spawned`, `decided`, `unbuildable`, `downgradable` and the build result are read off the
- *  review each pass (runOf); `closing` comes from the phase being printed (stepsOf). Every other name but
- *  `aborted`, `closing` and the flags is the key the run record answers under. */
+ *  `first`, `spawned`, `decided`, `unbuildable`, `build-checked` and the build result are
+ *  read off the review and the record each pass (runOf), and `closing` comes from the phase
+ *  being printed (stepsOf). Every other name but `aborted`, `closing` and the flags is the key
+ *  the run record answers under. */
 export const REVIEW_PROMPT_FACTS = [
   ...PROMPT_SKIPS,
   "aborted",
   "sca",
   "build-guarded",
-  "prepared",
+  "build-checked",
   ...Object.keys(SWEEP_INSTRUCTIONS).map(sweepRun),
   "first",
   "spawned",
   "decided",
   "closing",
   "unbuildable",
-  "downgradable",
   ...BUILD_RESULT_FACTS,
 ];
 
@@ -272,7 +270,7 @@ export const LOOP_VERBS = VERB_NAMES;
  *  `values`, which steers the review and settles no item. Named as data because the loop
  *  reads it rather than the phase's name - a phase carries its vocabulary AND the kind of
  *  answer that vocabulary belongs to, and neither is inferred from what it is called. The
- *  preparation reads its build's answer as `output` (src/report/handback.js outputAt), a
+ *  build check reads its build's answer as `output` (src/report/handback.js outputAt), a
  *  kind no loop phase answers with. */
 export const ANSWER_KINDS = ["hints", "verdict", "words", "value", "end"];
 
@@ -282,23 +280,23 @@ export const ANSWER_KINDS = ["hints", "verdict", "words", "value", "end"];
  *  has work, and never handed back, because the review ends with it. */
 export const ITEMLESS_ANSWERS = ["hints", "value", "end"];
 
-/** The loop phase that offers an aborted source review a restart as an XPI review, and the
- *  value of it that restarts it (src/cli.js runLoopPass). The phase settles the review as
- *  the close does, as it shows the aborted review's closing block (src/report/loop.js
- *  issue). */
+/** The name the restart prompt answers under (`restart` in llm-phases), which offers an
+ *  aborted source review a restart as an XPI review in place of the close
+ *  (src/report/loop.js closeReview), and the value of it that restarts it (src/cli.js
+ *  downgradeCase). A condition reads its answer as value(downgrade, id). */
 export const DOWNGRADE_PHASE = "downgrade";
 export const DOWNGRADE_RESTART = "xpi";
 
-/** The one fact the preparation prompts' `when:` conditions can name: whether `unpack` asks
+/** The one fact the build check prompts' `when:` conditions can name: whether `unpack` asks
  *  its reader for the Experiment folder - the built add-on declares Experiments
- *  (src/prepare/steps.js asksExperiments). */
+ *  (src/build-check/steps.js asksExperiments). */
 export const SCA_PROMPT_FACTS = ["find-experiment"];
 
-/** The preparation's prompts, one step list each, named for the step that prints it
- *  (src/prepare/state.js PREPARE_STEP): `unpack` first where the agent extracts the source
- *  archive, `analyze` where the build is worked out, `permission` after the build
- *  judgement, then `build` for a lock audited clean or `rescue` for a vulnerable one. Once
- *  the preparation is done, the hand-back starts the review instead. */
+/** The prompts of modes unpack and build-check, one step list each, named for the step
+ *  that prints it (src/build-check/state.js BUILD_CHECK_STEP): `unpack` where the agent
+ *  extracts the source archive, `analyze` where the build is worked out, `permission` after
+ *  the build judgement, then `build` for a lock audited clean or `rescue` for a vulnerable
+ *  one. Once the build check is done, the hand-back starts the review instead. */
 export const SCA_PROMPT_STEPS = [
   "unpack",
   "analyze",
@@ -312,7 +310,7 @@ export const SCA_PROMPT_STEPS = [
  *  nowhere to go. */
 export const SCA_PROMPT_COMMAND = "{{flags}}";
 
-/** The values the preparation's SCA_BUILD_PERMISSION question accepts back, by id: the
+/** The values the build check's SCA_BUILD_PERMISSION question accepts back, by id: the
  *  reviewer's one decision about the build. After a safe verdict the agent builds (`allow`)
  *  or the reviewer does (`manual`), after an unsafe one nobody does (`skip`) or the agent
  *  builds anyhow (`override`). Each verdict's question offers its two once each
@@ -326,13 +324,13 @@ export const BUILD_PERMISSION_BY_VERDICT = Object.freeze({
   unsafe: ["skip", "override"],
 });
 
-/** The verdicts the preparation records of the build the agent reported, by id: read off the
+/** The verdicts the build check records of the build the agent reported, by id: read off the
  *  SCA_BUILD_SAFETY_ISSUES list the agent hands back, `unsafe` where it holds an entry
- *  (src/prepare/steps.js analyzedAnswers). The review starts with the recorded one
+ *  (src/build-check/steps.js analyzedAnswers). The review starts with the recorded one
  *  (src/pipeline.js). */
 export const BUILD_SAFETY_VALUES = ["safe", "unsafe"];
 
-/** The values the preparation's LLM_BUILD_XPI_MATCH entry accepts back, by id: the agent's
+/** The values the build check's LLM_BUILD_XPI_MATCH entry accepts back, by id: the agent's
  *  comparison of what its build produced with the submitted XPI. Each id is offered exactly
  *  once (assertScaPrompt), and the record holds the id it was answered with. */
 export const BUILD_MATCH_VALUES = ["match", "no match"];

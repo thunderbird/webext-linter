@@ -1,7 +1,7 @@
 // Tells the developer the review ran on changed dependencies, when the source reviewed is a
 // rescued copy. A review the submitted dependencies would have stopped on known
 // vulnerabilities goes on from a copy whose dependencies were reduced to what the release
-// build uses, then audit-fixed where that was not enough (src/prepare/steps.js). The
+// build uses, then audit-fixed where that was not enough (src/build-check/steps.js). The
 // developer's own package.json and lock still carry what was changed, so the next
 // submission would stop again - unless they are told.
 //
@@ -14,7 +14,7 @@
 // the original's did.
 //
 // Belongs here: telling whether the two locks differ. Does NOT belong here: reading the
-// original's files (-> src/pipeline.js `source-archive`, through src/prepare/state.js
+// original's files (-> src/pipeline.js `source-archive`, through src/build-check/state.js
 // originalPackages), reading a lock (-> src/vendor/locks.js), or the wording (-> the
 // registry).
 

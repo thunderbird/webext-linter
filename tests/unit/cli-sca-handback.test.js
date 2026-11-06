@@ -1,4 +1,4 @@
-// CLI-contract tests of the preparation hand-back and its refusals, and of how a review treats
+// CLI-contract tests of the build check hand-back and its refusals, and of how a review treats
 // submission files it cannot read or must not echo.
 
 import { test } from "node:test";
@@ -36,7 +36,7 @@ import {
 // The prompt's one command is typed by its reader, and a submission folder is as likely to
 // hold a space as not. Quoted where it matters and nowhere else: an unquoted path with a
 // space in it is a second argument the hand-back refuses.
-test("the preparation quotes an argument that carries whitespace", () => {
+test("the build check quotes an argument that carries whitespace", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl sub mission-"));
   packAddon(path.join(dir, "addon  v2.xpi"));
   fs.writeFileSync(path.join(dir, "src.tar.gz"), "");
@@ -53,7 +53,7 @@ test("the preparation quotes an argument that carries whitespace", () => {
   const handed = handBackRoots(r.stdout);
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
   assert.equal(
-    readJson(workOf(r.stdout), "state").report.meta.xpi,
+    readJson(workOf(r.stdout), "state").submission.xpi,
     path.join(dir, "addon  v2.xpi"),
     "the review reads the file the block named"
   );
@@ -77,12 +77,13 @@ test("a hand-back takes its folder as one absolute name", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// An Experiment the review would reject is not worth preparing: --llm-auto-review asks the
-// review's own verdict of the .xpi first, and where it rejects, starts that review at once -
-// the same review --llm-review of the .xpi starts, which the reject aborts, so its first
-// prompt is the close. An Experiment
-// the review accepts is prepared as any submission is.
-test("--llm-auto-review starts the review of an Experiment it would reject", () => {
+// One run of the early-exit checks per path, once ctx holds every artifact they read: with a
+// source, the agent extracts the archive first, so a rejected Experiment costs that one
+// extraction. The early-exit checks then run in the unpack case and reject it, and the review
+// closes at once, the same close --llm-review of the .xpi gives. An Experiment the review
+// accepts goes on to its build check, and either way the verdict is recorded by the run that
+// decides it, for every later run.
+test("--llm-auto-review has an Experiment it would reject unpacked first, then closed", () => {
   const submission = (fixture) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-exp-gate-"));
     const zip = new AdmZip();
@@ -93,42 +94,25 @@ test("--llm-auto-review starts the review of an Experiment it would reject", () 
   };
   const dir = submission("experiment-disallowed");
   const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
-  assert.equal(r.code, 1, r.stderr);
-  assert.doesNotMatch(r.stdout, /SCA Review Prompt/);
-  assert.match(r.stdout, /── LLM Prompt ──/);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /── SCA Review Prompt ──/);
   const work = defaultFolderOf(path.join(dir, "addon.xpi"), "sca");
-  // The reject aborts the review, so its first prompt is the close, with the report.
-  assert.deepEqual(fs.readdirSync(work).sort(), [
-    ".review",
-    "report.md",
-    "xpi",
-  ]);
-  assert.deepEqual(fs.readdirSync(path.join(work, ".review")).sort(), [
-    "review.json",
-    "state.json",
-  ]);
-  assert.ok(r.stdout.includes(`[report.md](${work}/report.md)`), r.stdout);
-  assert.deepEqual(readJson(work, "state").report.meta.checksRun, [
+  assert.equal(readJson(work, "state").current.mode, "unpack");
+  const closed = unpackSource(r.stdout, { experimentsFolder: "experiment" });
+  assert.equal(closed.code, 1, closed.stdout + closed.stderr);
+  assert.match(closed.stdout, /── LLM Prompt ──/);
+  assert.match(closed.stdout, /The review was aborted/);
+  // Nothing was started: the closing prompt has no file to hand back, and the record holds
+  // the review as the early-exit checks produced it, closed.
+  assert.ok(fs.existsSync(workPaths(work).report), "report.md is written");
+  const record = readJson(work, "state");
+  assert.deepEqual(record.current, { mode: "review", phase: "close" });
+  assert.deepEqual(record.review.report.meta.checksRun, [
     "experiment-not-allowed",
   ]);
-  const plain = run([
-    path.join(dir, "addon.xpi"),
-    "--llm-review",
-    ...OFFLINE_FLAGS,
-  ]);
-  assert.equal(plain.code, 1, plain.stderr);
-  const promptOf = (out, w) =>
-    out.split("── LLM Prompt ──")[1].replaceAll(w, "<W>");
-  assert.equal(
-    promptOf(r.stdout, work),
-    promptOf(
-      plain.stdout,
-      fs
-        .readdirSync(dir)
-        .map((n) => path.join(dir, n))
-        .find((p) => /xpi-review-addon-[\d-]+T[\d-]+Z$/.test(p) && p !== work)
-    ),
-    "the review --llm-review of the .xpi starts"
+  assert.deepEqual(
+    record.verification.groups.map((g) => [g.status, g.rejected]),
+    [["unsupported", true]]
   );
   fs.rmSync(dir, { recursive: true, force: true });
 
@@ -137,22 +121,27 @@ test("--llm-auto-review starts the review of an Experiment it would reject", () 
     ["experiment-pristine", []],
   ]) {
     const allowed = submission(fixture);
-    const prepared = run([
+    const first = run([
       allowed,
       "--llm-auto-review",
       ...OFFLINE_FLAGS,
       ...extra,
     ]);
-    assert.equal(prepared.code, 0, prepared.stderr);
-    assert.match(prepared.stdout, /── SCA Review Prompt ──/, fixture);
-    // The load's verdict is recorded, so the review the preparation starts takes it as its
-    // own rather than asking again.
+    assert.equal(first.code, 0, first.stderr);
+    const analyze = unpackSource(first.stdout, {
+      experimentsFolder: "experiment",
+    });
+    assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
+    assert.match(analyze.stdout, /── SCA Review Prompt ──/, fixture);
+    // The verdict is recorded where it is decided, so the review the build check starts
+    // takes it as its own rather than asking again.
     const record = readJson(
       defaultFolderOf(path.join(allowed, "addon.xpi"), "sca"),
-      "prepare"
+      "state"
     );
+    assert.equal(record.current.step, "analyze", fixture);
     assert.deepEqual(
-      record.submission.verification.groups.map((g) => [g.status, g.rejected]),
+      record.verification.groups.map((g) => [g.status, g.rejected]),
       [[fixture === "experiment-pristine" ? "pristine" : "unsupported", false]],
       fixture
     );
@@ -161,7 +150,7 @@ test("--llm-auto-review starts the review of an Experiment it would reject", () 
 });
 
 // A folder the linter put in the work folder that is gone when the folder is handed back is
-// not the agent's to correct, in a preparation and in a started review alike: the tool's
+// not the agent's to correct, in a build check and in a started review alike: the tool's
 // failure, exit 2, on stderr, before anything is read or written.
 test("a hand-back whose work folder lost a folder the linter made is exit 2", () => {
   const lost = (work, name) => {
@@ -180,15 +169,19 @@ test("a hand-back whose work folder lost a folder the linter made is exit 2", ()
     return r;
   };
 
-  // A preparation past `unpack`, at `analyze`.
+  // A build check past `unpack`, at `analyze`.
   const dir = submissionFolder();
-  const prepared = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
-  assert.equal(prepared.code, 0, prepared.stderr);
-  assert.equal(unpackSource(prepared.stdout).code, 0);
-  const work = workOf(prepared.stdout);
-  assert.equal(readJson(work, "prepare").step, "analyze");
+  const begun = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
+  assert.equal(begun.code, 0, begun.stderr);
+  assert.equal(unpackSource(begun.stdout).code, 0);
+  const work = workOf(begun.stdout);
+  assert.equal(readJson(work, "state").current.step, "analyze");
   lost(work, "xpi");
-  assert.equal(readJson(work, "prepare").step, "analyze", "nothing written");
+  assert.equal(
+    readJson(work, "state").current.step,
+    "analyze",
+    "nothing written"
+  );
 
   // A started XPI review.
   const xpiDir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-lost-"));
@@ -202,9 +195,9 @@ test("a hand-back whose work folder lost a folder the linter made is exit 2", ()
 });
 
 // A broken add-on fails in the load, the first step of every path: before a source is
-// copied or a preparation started, and with nothing left behind. A link in a packed .xpi,
+// copied or a build check started, and with nothing left behind. A link in a packed .xpi,
 // here, in a source review an agent runs and in --llm-auto-review alike.
-test("a broken .xpi fails before any preparation starts", () => {
+test("a broken .xpi fails before any build check starts", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-broken-"));
   const zip = new AdmZip();
   zip.addFile(
@@ -236,9 +229,9 @@ test("a broken .xpi fails before any preparation starts", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The preparation records every cache its review is to read, given or default, as one
+// The build check records every cache its review is to read, given or default, as one
 // absolute name: a hand-back started from another directory reads the same caches.
-test("the preparation records every cache as an absolute path", () => {
+test("the build check records every cache as an absolute path", () => {
   const dir = submissionFolder();
   const cwd = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "wl-cwd-"))
@@ -306,6 +299,21 @@ test("an unknown check id is refused before a prompt is printed", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// --verbose is recorded with the review's other flags, so its hand-backs run verbose without
+// being told: the unpack hand-back populates ctx, and its debug lines are held with stderr,
+// never printed into the prompt on stdout.
+test("a review started with --verbose runs its hand-backs verbose", () => {
+  const dir = submissionFolder();
+  const begun = run([dir, "--llm-auto-review", "--verbose", ...OFFLINE_FLAGS]);
+  assert.equal(begun.code, 0, begun.stderr);
+  assert.equal(readJson(workOf(begun.stdout), "state").flags.verbose, true);
+  const unpacked = unpackSource(begun.stdout);
+  assert.equal(unpacked.code, 0, unpacked.stderr);
+  assert.ok(!unpacked.stdout.includes("schema files from"), unpacked.stdout);
+  assert.match(unpacked.stderr, /── Tool messages ──[\s\S]*schema files from/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // Each way the flag cannot be used, refused before it prints anything - it starts its own
 // review, so it shares no run with the flags that do.
 test("--llm-auto-review refuses what it cannot be combined with", () => {
@@ -313,7 +321,7 @@ test("--llm-auto-review refuses what it cannot be combined with", () => {
   const cases = [
     [["--sca-package-root", "src"], /works out --sca-package-root for you/],
     [["--llm-review"], /starts its own review/],
-    [["--llm-handback", "work"], /starts its own review/],
+    [["--llm-handback", "work"], /nothing goes beside the work folder/],
     [["--report-format", "json"], /--llm-auto-review is text only/],
     // A SECOND add-on argument: the flag reads the first one as the submission.
     [
@@ -366,7 +374,7 @@ test("--llm-auto-review takes a submission folder only, and refuses the rest", (
 });
 
 // A submission without source is reviewed as its .xpi: the same first prompt, in the .xpi's
-// own work folder inside the submission, and no preparation of a source review is made.
+// own work folder inside the submission, and no build check of a source review is made.
 test("--llm-auto-review reviews a folder holding only an .xpi as that .xpi", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-auto-xpi-"));
   const xpi = path.join(dir, "addon.xpi");
@@ -419,9 +427,9 @@ test("an answer too long to be a note is refused at the hand-back", () => {
     "--llm-skip-sweep",
   ]);
   assert.equal(first.code, 0, first.stderr);
-  const file = first.stdout.match(/(\S+\/review\.json)/)[1];
+  const file = reviewFile(first.stdout);
 
-  let out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
+  let out = run(["--llm-handback", workOfReviewFile(file)]);
   // Every prompt but the closing one ends on the command that hands it back.
   while (/^\s+node verify\.js --llm-handback /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -430,7 +438,7 @@ test("an answer too long to be a note is refused at the hand-back", () => {
       answer: "answers".repeat(400),
     }));
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
-    out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
+    out = run(["--llm-handback", workOfReviewFile(file)]);
   }
   assert.equal(out.code, 2, out.stdout);
   assert.ok(out.stdout.includes("The hand-back was refused: "), out.stdout);
@@ -509,7 +517,7 @@ test("a submission's escape sequences never reach the terminal raw", () => {
 
 // An unreadable submission file makes it invalid: exit 2 and one sentence naming the artifact,
 // the file and why, before any check runs - never a review that read it as empty. In a named
-// source it is the copy into the work folder that fails, as it does for a preparation.
+// source it is the copy into the work folder that fails, as it does for a build check.
 test("an unreadable submission file makes it invalid, exit 2", (t) => {
   if (process.getuid?.() === 0) {
     t.skip("root reads every file");
@@ -690,20 +698,21 @@ test("restarting an aborted source review starts an XPI review of its own", () =
     assert.equal(started.code, 0, started.stderr);
     const permission = run(answerAnalyze(started.stdout));
     assert.equal(permission.code, 0, permission.stdout + permission.stderr);
-    const prepared = run(answerPermission(permission.stdout));
-    assert.notEqual(prepared.code, 2, prepared.stdout + prepared.stderr);
+    const begun = run(answerPermission(permission.stdout));
+    assert.notEqual(begun.code, 2, begun.stdout + begun.stderr);
     const scaWork = defaultFolderOf(xpi, "sca");
     // The missing package.json aborts the review late: its passes run first, and the
     // question is put once they are done.
     const { state: scaState } = handBackUntil(scaWork, "downgrade");
     assert.equal(scaState.phase, "downgrade");
+    const scaFlags = readJson(scaWork, "state").flags;
     assert.ok(
-      !Object.keys(scaState.flags).some((name) => name.startsWith("sca-")),
-      JSON.stringify(scaState.flags)
+      !Object.keys(scaFlags).some((name) => name.startsWith("sca-")),
+      JSON.stringify(scaFlags)
     );
-    assert.equal(scaState.flags["warnings-as-errors"], true);
+    assert.equal(scaFlags["warnings-as-errors"], true);
 
-    const file = workPaths(scaWork).review;
+    const file = workPaths(scaWork).answers;
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries[0].answer = "Restart as an XPI review";
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
@@ -717,11 +726,12 @@ test("restarting an aborted source review starts an XPI review of its own", () =
     );
 
     const xpiWork = defaultFolderOf(xpi, "xpi");
-    assert.ok(handed.stdout.includes(workPaths(xpiWork).review), "its prompt");
-    const xpiState = readJson(xpiWork, "state");
+    assert.ok(handed.stdout.includes(workPaths(xpiWork).answers), "its prompt");
+    const xpiRecord = readJson(xpiWork, "state");
+    const xpiState = xpiRecord.current;
     assert.equal(xpiState.run.sca, false);
     assert.equal(xpiState.run.warningsAsErrors, true);
-    assert.deepEqual(xpiState.flags, scaState.flags);
+    assert.deepEqual(xpiRecord.flags, scaFlags);
     assert.deepEqual(
       xpiState.report.findings
         .filter((f) => f.ruleId === "sca-not-needed")
@@ -735,9 +745,10 @@ test("restarting an aborted source review starts an XPI review of its own", () =
     const plain = run([plainXpi, "--llm-review", ...flags]);
     assert.notEqual(plain.code, 2, plain.stderr);
     assert.ok(
-      !readJson(defaultFolderOf(plainXpi, "xpi"), "state").report.findings.some(
-        (f) => f.ruleId === "sca-not-needed"
-      )
+      !readJson(
+        defaultFolderOf(plainXpi, "xpi"),
+        "state"
+      ).current.report.findings.some((f) => f.ruleId === "sca-not-needed")
     );
     fs.rmSync(plainDir, { recursive: true, force: true });
   } finally {

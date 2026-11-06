@@ -4,10 +4,13 @@ A hot run is the source code review's build procedure run for real, end to end, 
 add-on. An agent (Claude, in this repo) receives
 
 ```sh
-WEBEXT_LINTER_AGENT_BUILDS=1 node verify.js <submission folder> --llm-auto-review
+export WEBEXT_LINTER_AGENT_BUILDS=1
+node verify.js <submission folder> --llm-auto-review
 ```
 
-and follows every prompt with real tools: it extracts the archive, writes build.md, lists what
+with the variable exported for the whole session, so every `--llm-handback` the agent runs
+inherits it: the build check reads it where it would ask the permission question, and never
+records it. The agent follows every prompt with real tools: it extracts the archive, writes build.md, lists what
 the build reaches for outside the declared dependencies, and hands back. The linter audits the lock against OSV, and the agent rescues the
 copy with the real npm or pnpm and builds the add-on, as the prompts say. The agent hands
 back until it reaches one of three stops, and goes no further:
@@ -46,7 +49,7 @@ of `npm test`: the add-on harness reads `tests/addons/` and the unit runner
    It prints `match` and exits 0, or prints each difference and exits 1. It exits 2 when it
    cannot read the case or the folder.
 
-`check.js` reads the review's state (`.review/state.json`) through the linter's own
+`check.js` reads the review's record (`.review/state.json`) through the linter's own
 readers. At row 14 it compares `SCA_BUILD_SAFETY_ASSESSMENT`, the counts of `SCA_VULNERABILITIES` (the
 submitted lock) and `LLM_RESCUED_VULNERABILITIES` (the rescued copy) the case names (each exact,
 or `{ "atLeast": n }`), `LLM_BUILD_RESULT` (`null` where the block shows none), the folder `LLM_BUILD_OUTPUT` lies in (always `build`, or `false` where
@@ -59,7 +62,7 @@ abort it compares `LLM_BUILD_RESULT` and the counts of `LLM_RESCUED_VULNERABILIT
 names, settles the review as the closing prompt does, and compares the abort reasons
 (as a set) and the error findings the case names. At the downgrade question it reads the
 settled review the same way. A run that stopped anywhere else, in the
-preparation (`.review/prepare.json`) or at another phase, is a mismatch naming where it
+build check (`.review/state.json` in mode unpack or build-check) or at another phase, is a mismatch naming where it
 stopped. Package versions are never compared.
 
 A mismatch is reported with the case, the stop reached and the diff. A new advisory that
@@ -89,7 +92,7 @@ Locks were generated with `npm install --package-lock-only --ignore-scripts` or
 
 Packages are real and pinned, never faked. Each was confirmed against OSV
 (`api.osv.dev/v1/query`) on 2026-10-13, and each case's lock was audited with the
-preparation's own audit (`src/prepare/audit.js` `auditRoot`). Every case's tree was also
+build check's own audit (`src/build-check/audit.js` `auditRoot`). Every case's tree was also
 reviewed once without an agent (`--sca-extracted`, the rescued trees as the rescue would leave
 them), to confirm no deterministic check aborts a case that should reach row 14.
 
@@ -155,7 +158,7 @@ Each case, and why it lands where it does:
   the agent judges the build unsafe, and the switch answers the reviewer's build decision by
   trusting that verdict, so nothing runs. The review reports `build-unsafe` and, the XPI being
   readable, is offered the downgrade.
-- **not-auditable:** two lock files. The preparation does not audit such a lock, and the
+- **not-auditable:** two lock files. The build check does not audit such a lock, and the
   review aborts on `sca-lock-file-multiple`, late. Two locks leave no build to make, so the
   build question is not asked. That check opts in to the downgrade and the XPI is readable,
   so after settle the review stops at the question whether to restart as an XPI review. Both locks are empty, so no vulnerability check

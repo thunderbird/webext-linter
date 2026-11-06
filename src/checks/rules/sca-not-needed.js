@@ -6,8 +6,8 @@
 // developer to submit just the XPI next time.
 //
 // Belongs here: being the check that restart reports. Does NOT belong here: the question
-// (-> the `downgrade` phase, assets/registry.yaml), starting the XPI review
-// (-> src/cli.js runLoopPass), adding the finding (-> src/pipeline.js), or the wording
+// (-> the `restart` prompt, assets/registry.yaml), starting the XPI review
+// (-> src/cli.js downgradeCase), adding the finding (-> src/pipeline.js), or the wording
 // (-> assets/registry.yaml).
 
 /** @typedef {import("../registry.js").RunContext} RunContext */

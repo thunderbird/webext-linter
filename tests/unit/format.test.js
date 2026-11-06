@@ -1508,7 +1508,7 @@ test("the report's authored prose is required, by the names that index it", () =
 // The SCA prompt is the whole output of its own flag - no review runs beside it - so a
 // missing key there is a run with nothing to print, and it refuses rather than printing
 // half an instruction.
-test("the preparation prompts come from the registry and every part is required", () => {
+test("the build check prompts come from the registry and every part is required", () => {
   const prompt = loadRegistry().llmScaReviewPrompt();
   assert.ok(prompt.intro.length > 0);
   for (const name of ["unpack", "analyze", "permission", "build", "rescue"]) {
@@ -1538,7 +1538,7 @@ test("the preparation prompts come from the registry and every part is required"
   ];
   assert.throws(() => checkScaPrompt(blankStep), /step 2 authors no `text`/);
 
-  // Every prompt prints the command that carries the preparation on.
+  // Every prompt prints the command that carries the build check on.
   const noCommand = loadRegistry();
   noCommand.doc["llm-sca-review-prompt"].build = [{ text: "Do it." }];
   assert.throws(

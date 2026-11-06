@@ -9,11 +9,17 @@
 // runPipeline.
 import { main } from "./src/cli.js";
 import { exitWith, writeToStderr } from "./src/util/log.js";
+import { releaseClaims } from "./src/util/claims.js";
 
-/** A failure nothing caught: its trace goes the way of every other tool message, and the
- *  run ends like any failed one. */
+/** A failure nothing caught, one that escaped the run altogether: its trace goes the way of
+ *  every other tool message, and the run ends like any failed one, what it created removed. */
 function crash(err) {
   writeToStderr(`${err?.stack || String(err)}\n`);
+  try {
+    releaseClaims();
+  } catch {
+    // The trace above is the run's last message, and nothing more can be said.
+  }
   exitWith(2);
 }
 

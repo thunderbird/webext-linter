@@ -1,8 +1,8 @@
-// The LINTER'S OWN AUDIT of a package root, for the preparation of a source code review: does
+// The LINTER'S OWN AUDIT of a package root, for the build check of a source code review: does
 // the lock install a package with a known high or critical advisory, and could the audit read
 // the whole tree to say so.
 //
-// The preparation asks it of the extracted source, to decide whether a rescued copy is made:
+// The build check asks it of the extracted source, to decide whether a rescued copy is made:
 // such a lock is often vulnerable through tooling the release build does not use, or through
 // a release the package manager's audit fix moves past. And it asks it of that copy, once the
 // agent's rescue in it is handed back, to decide whether the copy is clean. Nothing the agent says
@@ -20,8 +20,8 @@
 // so the lists it answers with are the ones the review's vulnerability checks read.
 //
 // Belongs here: reading a package root's lock into those lists, the two answers the
-// preparation takes from them (is it clean, and is it rescuable), and their count by severity.
-// Does NOT belong here: what the preparation does with any of it (-> ./steps.js), the lock
+// build check takes from them (is it clean, and is it rescuable), and their count by severity.
+// Does NOT belong here: what the build check does with any of it (-> ./steps.js), the lock
 // reading and the network audit themselves (-> src/vendor/locks.js, src/vendor/verify.js).
 
 import { loadSourceArchive, scaViews } from "../addon/load.js";
@@ -65,7 +65,7 @@ export const LOCK_AUDIT_LISTS = Object.freeze([
 
 /**
  * How many of a lock's packages carry an advisory, by the worst one's severity: what the
- * preparation records of the lock its review reads.
+ * build check records of the lock its review reads.
  * @typedef {{moderate: number, high: number, critical: number}} VulnerabilityCounts
  */
 

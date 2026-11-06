@@ -1,18 +1,18 @@
-// The review pipeline: opts in, a structured Review out. This is the tool's
-// core, independent of the CLI front-end (cli.js) - the test harness drives it
-// directly. It loads the add-on, resolves and verifies its vendored
-// declarations, classifies bundled code, runs the schema review, and fills each
-// finding's display text from the registry. It returns the Review. Formatting
-// and I/O are the front-end's job. The submission itself is never modified or
-// repacked: the one thing this writes of it is a copy, the .xpi extracted (or the
-// unpacked folder copied) to XPI_ROOT in the review's work folder, so every reader -
-// the checks, a reviewer, an agent - reads one unpacked tree rather than the tool
-// holding a second one of its own.
+// The review: "review the loaded submission" for an .xpi review and a source review alike,
+// plain or an agent's, on a work folder its caller set up. This is the tool's core,
+// independent of the CLI front-end (cli.js) - the test harness drives it directly
+// (runPipeline). It populates the context every check reads (populateCtx: the add-on read
+// where the load put it, the schema, the Experiment verdict, the source archive), runs the
+// checks that end a review early and then the others (runChecks), and hands the review as
+// the checks produced it to one of the review functions: "report the review" (plain), "start
+// the review loop" or "close the review" (src/report/loop.js). The submission itself is never
+// modified or repacked, and nothing here extracts it: the load put the one copy in the work
+// folder's xpi/ (src/review/start.js).
 //
-// Belongs here: the declared setup plan (SETUP_STEPS), the stage orchestration
-// (runPipeline), claiming the work folder's names when a review starts (and giving them
-// back when it fails to start), and the pipeline-level schema-selection helpers
-// (resolveReviewSchema, selectSchemaChannel, detectManifestVersion).
+// Belongs here: the declared setup plan (SETUP_STEPS), populating ctx, the two runs of the
+// checks and the review function after them, the review as the checks produced it, reporting
+// a plain review, and the pipeline-level schema-selection helpers (resolveReviewSchema,
+// selectSchemaChannel, detectManifestVersion).
 //
 // Does NOT belong here: the cache defaults and behavior toggles -
 // src/config.js. The schema channel set + branch names - src/schema/fetch.js.
@@ -23,14 +23,19 @@
 // (src/checks/registry.js and src/checks/context.js), and all user-facing text
 // (src/checks/registry.js plus src/report/responses.js).
 
-import { ARTIFACT_SCA, ARTIFACT_XPI, artifactRoots } from "./lib/artifacts.js";
+import { ARTIFACT_XPI, artifactRoots } from "./lib/artifacts.js";
 import fs from "node:fs";
 import path from "node:path";
 import { workPaths, runCache } from "./util/dest.js";
 import { defaultNet } from "./vendor/verify.js";
 import { withRunCache } from "./vendor/run-cache.js";
 import { withSourceCache } from "./vendor/source-cache.js";
-import { originalPackages, readPrepare } from "./prepare/state.js";
+import {
+  BUILD_CHECK_STEP,
+  buildCheckBody,
+  originalPackages,
+} from "./build-check/state.js";
+import { analyzeEntries, stepPromptLines } from "./build-check/steps.js";
 import {
   resolveSchemaZip,
   refreshAllSchemas,
@@ -54,11 +59,9 @@ import {
   readWebExtManifest,
   scaViews,
 } from "./addon/load.js";
-import { scaFoldersMisfit } from "./addon/package-root.js";
 import {
   checkSelected,
   ctxForRule,
-  formatNote,
   loadRegistry,
   runChecks,
 } from "./checks/registry.js";
@@ -67,33 +70,30 @@ import {
   classifyInlineScripts,
   isMinifiedFirstParty,
 } from "./lib/bundled.js";
-import { artifactLabel } from "./report/artifact.js";
-import { displayLine } from "./util/text.js";
-import { VERDICT } from "./lib/enum.js";
 import { buildXpiCtx, buildScaCtx, buildAllCtx } from "./checks/context.js";
+import { renderManualItems, withDefaultNotes } from "./report/responses.js";
+import { SEVERITY, finding, hasErrors } from "./report/finding.js";
+import { orderReview } from "./report/order.js";
+import { withoutQuestions } from "./report/early-exit.js";
+import { closeReview, startReviewLoop } from "./report/loop.js";
+import { formatReview, headerLines } from "./report/format.js";
+import { settleReview } from "./review/settle.js";
 import {
-  renderFindings,
-  renderManualItems,
-  withDefaultNotes,
-} from "./report/responses.js";
-import { finding, resolveHolds } from "./report/finding.js";
-import { assignRefs, orderReview } from "./report/order.js";
-import { earlyExitOf, withoutQuestions } from "./report/early-exit.js";
-import { issue, loopSlots } from "./report/loop.js";
-import { productWritten } from "./report/handback.js";
-import { headerLines, loopPromptLines, schemaLines } from "./report/format.js";
-import { sweepRequests } from "./report/sweep-files.js";
-import { sweepRun } from "./checks/registry-vocabulary.js";
+  MODE,
+  addToRecord,
+  modeOf,
+  readRecord,
+  startMode,
+} from "./review/record.js";
+import { issueHandbackPrompt } from "./review/issue.js";
 import { isExperiment, parseVersion, strictMaxVersion } from "./lib/util.js";
 import { experimentApiMembers } from "./lib/experiments.js";
 import { experimentVerdict } from "./experiments/verify.js";
-import { debug, progress, report, warn, FEED } from "./util/log.js";
+import { debug, progress, report, writeToStdout, FEED } from "./util/log.js";
 import { DEFAULT_CACHE, SOURCES_CACHE } from "./config.js";
 import { rethrowIfFatal, wiringError } from "./lib/errors.js";
-import { claimNames, keepClaims } from "./util/claims.js";
 import { reviewData } from "./review/products.js";
-import { LOCK_AUDIT_LISTS, vulnerabilityCounts } from "./prepare/audit.js";
-import { BUILD_RESULT } from "./prepare/state.js";
+import { LOCK_AUDIT_LISTS, vulnerabilityCounts } from "./build-check/audit.js";
 
 /** @typedef {import("./report/finding.js").Finding} Finding */
 /** @typedef {import("./report/format.js").ReviewMeta} ReviewMeta */
@@ -178,24 +178,26 @@ export const SETUP_STEPS = Object.freeze([
  *   default); when unset, the code-sanity check is skipped entirely.
  * @property {boolean} [allowExperiments]
  * @property {?import("./experiments/verify.js").ExperimentVerification} [verification]  The
- *   Experiment verdict the load reached in this run (loadTheXpi), null for an add-on that
- *   declares none. Absent where an earlier run loaded the add-on, which is then asked again.
+ *   Experiment verdict an earlier run recorded, null for an add-on that declares none.
+ *   Absent in the run that runs the early-exit checks, which decides it (populateCtx).
  * @property {boolean} [warningsAsErrors]  Read every warning as an error for this review
  *   (--warnings-as-errors): the band the registry hands out IS an error, so the report,
  *   the tally, the early exit and the exit code all follow (src/checks/registry.js
  *   bandUnder). Off by default.
  * @property {import("./addon/package-root.js").ScaFolders} [scaFolders]  SCA mode: the
- *   source copy in the work folder, the tree the review reads (that copy or a preparation's
+ *   source copy in the work folder, the tree the review reads (that copy or a build check's
  *   rescued copy) and the folders inside it, the package root, where package.json and the
  *   lock are read and the declared dependencies audited, and the Experiment implementation
- *   folder, there exactly when the add-on declares Experiments (runPipeline refuses either
- *   mismatch). Copied there before the review (src/review/start.js copyTheSource) or left
- *   there by a preparation, and read where it is. The Experiment folder's privileged files are
+ *   folder, there exactly when the add-on declares Experiments. Copied there and settled
+ *   before the review (src/review/start.js copySource, src/addon/package-root.js
+ *   settlePackageRoot) or left there by a build check, and read where it is. The Experiment
+ *   folder's privileged files are
  *   excluded from the WebExtension code checks. The positional XPI is the shipped artifact the
  *   manifest.json, experiments and file-completeness (`input: xpi`) checks run against
  *   (buildXpiCtx, src/checks/context.js).
  * @property {?{from: string, to: string}} [scaMoved]  The package root named, and the one it
- *   was settled to one level down, there only when it moved, so the run can say so.
+ *   was settled to below it, both relative to the work folder's `sca/`, there only when it
+ *   moved, so the run can say so.
  * @property {string} [libraryHashesCache]  Where to cache the fetched hashes.
  * @property {boolean} [cdnLookup]  Identify an unrecognized bundled library (minified,
  *   or a large readable file) by a jsDelivr content-hash lookup (on by default;
@@ -208,17 +210,12 @@ export const SETUP_STEPS = Object.freeze([
  *   downloads.
  * @property {import("./checks/registry.js").Registry} [registry]  Parsed
  *   registry threaded from the caller, parsed once here otherwise.
- * @property {boolean} [llmReview]  Run the review and hand out the first phase of it -
- *   printing that prompt and writing the state every later pass reads - instead of
- *   printing the report. Changes nothing about the review itself, only what is printed
- *   and what is written for the passes that follow.
+ * @property {boolean} [llmReview]  Whether --llm-review was given. Whether an agent runs the
+ *   review is its caller's to say (reviewLoadedSubmission's `llm`).
  * @property {string[]} [llmSkip]  What that prompt leaves out (PROMPT_SKIPS, src/config.js):
  *   --llm-skip-summary drops the add-on description and the file named for it.
- * @property {Record<string, string|boolean>} [flags]  The command-line values the review
- *   was started with, minus the --sca-* ones and those of one run alone (src/cli.js
- *   forwardedFlags), recorded in the loop's state for an XPI review restarted from it.
  * @property {string} [downgradedFrom]  The work folder of the source review this XPI review
- *   was restarted from (src/cli.js runLoopPass), which adds its sca-not-needed finding. No
+ *   was restarted from (src/cli.js downgradeCase), which adds its sca-not-needed finding. No
  *   command-line flag sets it.
  */
 
@@ -232,35 +229,34 @@ export const SETUP_STEPS = Object.freeze([
  */
 
 /**
- * What populateCtx makes and runReview reads: the registry under the run's band policy, what
- * the shipped add-on declares, the source archive in a source review, the review schema and
+ * What populateCtx makes and every run of the checks reads: the registry under the run's band
+ * policy, what the shipped add-on declares, its Experiment verdict, the source archive in a
+ * source review, the review schema and
  * the stamps meta publishes for it, the meta built in Setup, the review's mode, and the
  * contexts each check is routed to (routeCtx).
  * @typedef {object} ReviewContext
  * @property {import("./checks/registry.js").Registry} registry
  * @property {import("./addon/load.js").WebExtManifestRecord} manifest
+ * @property {?import("./experiments/verify.js").ExperimentVerification} verification
  * @property {?import("./addon/load.js").Addon} scaArchive
  * @property {object} schema
  * @property {string} schemaSource
  * @property {string} schemaBranch
  * @property {string} schemaChannel
- * @property {ReviewMeta} meta  Extended by runReview once the checks have run.
+ * @property {ReviewMeta} meta  Extended once the checks have run (reviewOf).
  * @property {object} mode
  * @property {Record<string, import("./checks/registry.js").RunContext>} siblings
  */
 
 /**
- * Run the review pipeline and return the structured result.
+ * Run a plain review of a loaded work folder and return the review a plain report prints,
+ * without printing it: the programmatic face of "review the loaded submission", which the
+ * test harness drives and formats itself.
  *
- * The review's work folder is claimed first, before anything is read: checked to be writable,
- * and every name this run will create there checked to be free (claimWorkFolder). A plain
- * review creates nothing there. A --llm-review
- * run names every file of the loop, and claims them all, because the agents it instructs
- * write the rest later and a name already taken would be overwritten then, out of sight.
- *
- * What it claims is this run's (src/util/claims.js) until the review exists: once a
- * --llm-review's state is written, or a plain review is done, it is kept. A run that fails
- * before then gives it all back as it exits, so the same command can run again.
+ * The work folder holds the add-on's copy and the record the load put there
+ * (src/review/start.js loadTheXpi), what the run was given added to it, and in a source
+ * review the source in its sca/, settled (`scaFolders`). A folder whose build check is done
+ * holds its build results (`build`), whose build decision the review reads.
  * @param {PipelineOpts} opts
  * @returns {Promise<PipelineResult>}
  */
@@ -271,61 +267,332 @@ export async function runPipeline(opts) {
         "the caller can name it."
     );
   }
-  const work = workPaths(opts.workFolder);
-  // A work folder a source code review was prepared in holds the preparation's record. Its
-  // review is started there by the hand-back that finds the preparation done (src/cli.js),
-  // and reads the record for what the preparation found.
-  const prepared = readPrepare(opts.workFolder);
-  // A source review reads its folders where they lie in the work folder (`scaFolders`), copied
-  // there by the step before it or left there by a preparation. It copies nothing itself.
-  if (opts.scaGiven) {
-    throw wiringError(
-      "runPipeline was handed scaGiven - the source is copied into sca/ before the review " +
-        "(src/review/start.js copyTheSource), which reads scaFolders."
-    );
-  }
-  if (!fs.existsSync(work.xpi)) {
+  if (!fs.existsSync(workPaths(opts.workFolder).xpi)) {
     throw wiringError(
       "runPipeline: the work folder holds no xpi/ - every review reads the add-on the load " +
         "put there (src/review/start.js loadTheXpi), and none was run."
     );
   }
-  claimWorkFolder(
-    opts.workFolder,
-    claimedNames(work, opts.llmReview, prepared)
-  );
-  try {
-    const result = await reviewSubmission(opts, work, prepared);
-    keepClaims();
-    return result;
-  } catch (err) {
-    // The state is one of the claimed names under --llm-review, so it being there means
-    // this run wrote it: the review exists, and a hand-back carries it on. A plain run
-    // writes none, and what it claimed is given back as it exits.
-    if (opts.llmReview && fs.existsSync(work.state)) {
-      keepClaims();
-    }
-    throw err;
-  }
+  const record = readRecord(opts.workFolder);
+  const { review } = await reviewLoadedSubmission({
+    opts,
+    llm: false,
+    format: null,
+    record,
+  });
+  return review;
 }
 
 /**
- * The review itself, inside the work folder runPipeline claimed for it: the context every
- * check reads (populateCtx), then the checks and what the review hands its reader
- * (runReview).
+ * What the checks are selected by: the check lists, --eslint, the review mode, and the
+ * reviewer's build decision in the build check, which decides which of the build checks asks
+ * about the build (build-review, build-reproduces-xpi, build-unsafe).
  * @param {PipelineOpts} opts
- * @param {ReturnType<typeof workPaths>} work  The work folder's names.
- * @param {?import("./prepare/state.js").PrepareRecord} prepared  The preparation's record,
- *   where the review starts in a folder a source code review was prepared in.
- * @returns {Promise<PipelineResult>}
+ * @param {ReviewContext} ctx
+ * @param {?object} build  The build results of a build check done in the folder, or null.
+ * @returns {object}
  */
-async function reviewSubmission(opts, work, prepared) {
-  return runReview(
-    opts,
-    work,
-    prepared,
-    await populateCtx(opts, work, prepared)
+function selectionOf(opts, ctx, build) {
+  return {
+    only: opts.checksOnly,
+    skip: opts.checksSkip,
+    eslint: opts.eslint,
+    sca: ctx.mode.sca,
+    buildJudged: typeof build?.safe === "boolean",
+    buildSafe: build?.safe === true,
+  };
+}
+
+/**
+ * Review the loaded submission: one subroutine for an .xpi review and a source review alike,
+ * plain or LLM. It populates ctx and runs the early-exit checks. Where one of them reports an
+ * error, a plain review is settled with no verdicts and reported. An LLM one starts nothing:
+ * the review as the early-exit checks produced it is added to the record, with no verdicts,
+ * and the review closed with the record (src/report/loop.js closeReview), which settles it
+ * itself. No mode review is started, so it gets no refs, no claimed files, no sweep requests
+ * and none of the LLM file names a review start adds to meta. Where they pass, a source
+ * review in LLM mode starts its build check at `analyze` and issues its prompt, since the
+ * normal checks read what the build check produces, and every other review runs the normal
+ * checks and the review function after them (runTheNormalChecks).
+ *
+ * The caller sets the review up: it creates its own work folder and loads the .xpi, which
+ * creates the record, adds what the run was given to the record, and a source review's caller
+ * also puts the source into sca/ and settles the package root. After the early-exit checks,
+ * before it reports or issues anything, the review adds to the record what the early-exit run
+ * worked out (the Experiment verdict, which checks ran, and in a source review an agent runs,
+ * whether its XPI could be reviewed on its own), and only that. Every later run finds it
+ * there.
+ * @param {{opts: PipelineOpts, llm: boolean, format: ?string, record: object}} args  The
+ *   options the review runs with (the flags as given, or as recorded), whether an agent runs
+ *   it, the report's format (none for a caller that prints nothing), and the record the folder
+ *   holds, whose build results (`build`) are those of a build check done in the folder.
+ * @returns {Promise<{code: number, review?: PipelineResult}>}  The exit code: 0 or 1 by the
+ *   review's errors, 0 after the analyze prompt. A plain review returns what it reported.
+ */
+export async function reviewLoadedSubmission({
+  opts,
+  llm,
+  format,
+  record: given,
+}) {
+  const build = given.build ?? null;
+  const ctx = await populateCtx(opts, workPaths(opts.workFolder), build);
+  const { registry } = ctx;
+  const early = await runChecks(
+    registry,
+    { ...selectionOf(opts, ctx, build), earlyExit: true },
+    ctx.siblings
   );
+  const earlyIds = early.checksRun.map((c) => c.id);
+  // What this run worked out, added to the record's permanent part, where every later run
+  // reads it: the Experiment verdict, the early-exit checks that ran and whether they passed,
+  // and in a source review an agent runs, whether its XPI could be reviewed on its own, which
+  // only the close asks.
+  const passed = !early.findings.some((f) => f.severity === SEVERITY.ERROR);
+  const record = addToRecord(opts.workFolder, given, {
+    verification: ctx.verification,
+    earlyExit: { checksRun: earlyIds, passed },
+    ...(llm && ctx.mode.sca
+      ? { xpiReviewable: await readableXpi(ctx.siblings.xpi) }
+      : {}),
+  });
+  if (!passed) {
+    const review = reviewOf(ctx, early, earlyIds, opts);
+    if (!llm) {
+      return reportReview(
+        settleReview(review, {}, registry),
+        review.preSweep,
+        format,
+        registry
+      );
+    }
+    const { settled } = closeReview(
+      opts.workFolder,
+      addToRecord(opts.workFolder, record, { review }),
+      registry
+    );
+    return { code: hasErrors(settled.findings) ? 1 : 0 };
+  }
+  if (llm && ctx.mode.sca) {
+    const buildCheck = startMode(
+      record,
+      MODE.buildCheck,
+      buildCheckBody(opts.scaFolders),
+      BUILD_CHECK_STEP.analyze
+    );
+    issueHandbackPrompt(
+      opts.workFolder,
+      buildCheck,
+      analyzeEntries(),
+      stepPromptLines(opts.workFolder, buildCheck, registry, {
+        first: modeOf(record) === undefined,
+      })
+    );
+    return { code: 0 };
+  }
+  return runTheNormalChecks(ctx, {
+    opts,
+    llm,
+    format,
+    record,
+    earlyIds,
+    activity: early.activity,
+  });
+}
+
+/**
+ * The normal checks and the review function that follows them: every check but the early-exit
+ * ones, then the review settled with no verdicts and reported (plain), or the review loop
+ * started (LLM). Run by "review the loaded submission" once the early-exit checks passed, and
+ * by the hand-back that finds a build check done, whose early-exit checks ran in an earlier
+ * run.
+ * @param {ReviewContext} ctx
+ * @param {{opts: PipelineOpts, llm: boolean, format: ?string, record: object,
+ *   earlyIds: string[], activity?: object}} args  As
+ *   reviewLoadedSubmission's, with the early-exit checks that ran and the feed's count so far.
+ * @returns {Promise<{code: number, review?: PipelineResult}>}  0 or 1 by the review's errors.
+ */
+export async function runTheNormalChecks(
+  ctx,
+  { opts, llm, format, record, earlyIds, activity }
+) {
+  const { registry } = ctx;
+  const normal = await runChecks(
+    registry,
+    {
+      ...selectionOf(opts, ctx, record.build ?? null),
+      earlyExit: false,
+      activity,
+    },
+    ctx.siblings
+  );
+  const ranIds = [...earlyIds, ...normal.checksRun.map((c) => c.id)];
+  const review = reviewOf(ctx, normal, ranIds, opts);
+  if (!llm) {
+    return reportReview(
+      settleReview(review, {}, registry),
+      review.preSweep,
+      format,
+      registry
+    );
+  }
+  const { settled } = startReviewLoop(
+    review,
+    record,
+    loopStart(ctx, opts, new Set(ranIds))
+  );
+  return { code: hasErrors(settled.findings) ? 1 : 0 };
+}
+
+/**
+ * What the review loop starts with beside the review (src/report/loop.js LoopStart).
+ * @param {ReviewContext} ctx
+ * @param {PipelineOpts} opts
+ * @param {Set<string>} ranIds  The checks that ran.
+ * @returns {import("./report/loop.js").LoopStart}
+ */
+function loopStart(ctx, opts, ranIds) {
+  const { registry } = ctx;
+  return {
+    work: opts.workFolder,
+    registry,
+    opts,
+    // The submitted lock's vulnerable packages as this review's own audit counted them, where
+    // the build check counted none.
+    vulnerabilities: lockVulnerabilities(
+      ctx.scaArchive,
+      registry
+        .checkIds()
+        .some(
+          (id) =>
+            (registry.earlyExitFor(id) ?? registry.lateExitFor(id)) ===
+              VULNERABILITY_EXIT && ranIds.has(id)
+        )
+    ),
+  };
+}
+
+/**
+ * The review as the checks produced it: their findings, unworded and their holds undecided,
+ * and the meta the review publishes - the schema stamps, the checks that ran, the to-do list
+ * and the blind-spot sweeps - which every reader settles a copy of (src/review/settle.js).
+ * @param {ReviewContext} ctx
+ * @param {{findings: object[], manualItems: object[]}} out  What the checks returned.
+ * @param {string[]} ranIds  The checks that ran, early-exit ones first.
+ * @param {PipelineOpts} opts
+ * @returns {import("./review/settle.js").StoredReview}
+ */
+function reviewOf(ctx, out, ranIds, opts) {
+  const { registry, meta, mode, siblings, schema } = ctx;
+  const findings = [...out.findings];
+  // An XPI review restarted from a source review that did not need its archive: its one
+  // finding tells the developer to submit just the XPI next time.
+  if (
+    opts.downgradedFrom &&
+    checkSelected(registry, SCA_NOT_NEEDED_CHECK, {
+      only: opts.checksOnly,
+      skip: opts.checksSkip,
+    })
+  ) {
+    const notNeeded = finding({
+      ruleId: SCA_NOT_NEEDED_CHECK,
+      severity: registry.checkEntry(SCA_NOT_NEEDED_CHECK).severity,
+      artifact: ARTIFACT_XPI,
+    });
+    // Raised here rather than by runOneCheck, so stamped here: the reviewer chose the restart.
+    if (!registry.verifiedByLlm(SCA_NOT_NEEDED_CHECK)) {
+      notNeeded.llmVerification = false;
+    }
+    findings.push(notNeeded);
+  }
+  // The review-derived half of meta (the base half - action/xpi/... - is the `meta` setup
+  // step's): the schema stamps and the checks that ran. Meta holds facts about the run only.
+  Object.assign(meta, {
+    schemaSource: ctx.schemaSource,
+    schemaBranch: ctx.schemaBranch,
+    schemaChannel: ctx.schemaChannel,
+    applicationVersion: schema.applicationVersion,
+    manifestVersion: ctx.manifest?.json?.manifest_version ?? null,
+    checksRun: ranIds,
+  });
+  // The to-do list, beside the findings. Its `extended` items are the orchestrator's
+  // escalations (resolved to their registry text), the rest the by-hand manual-checks
+  // entries, which every review carries unconditionally. The two origins are ONE list, each
+  // carrying its own `default-note` where the check authors one: a case a check escalated and
+  // a by-hand manual check are the same item to whoever answers it, so the note is appended
+  // to both in one place.
+  const manual = withDefaultNotes(
+    [
+      ...renderManualItems(out.manualItems, registry, mode).map((m) => ({
+        ...m,
+        extended: true,
+      })),
+      ...registry.manualChecks(mode).map((m) => ({ ...m, extended: false })),
+    ],
+    registry
+  );
+  // The blind-spot sweeps to run BEFORE settling this review: one bare item per sweep a check
+  // that ran authors. Gated on the checks that actually RAN: sweeping the blind spot of a scan
+  // that did not happen asks a reader to cover for nothing, and this is what makes
+  // --checks-only/--checks-skip carry through.
+  const preSweep = preSweepOf(
+    registry,
+    new Set(ranIds),
+    mode,
+    siblings,
+    artifactRoots(meta)
+  );
+  return { report: { findings, meta, sca: mode.sca }, manual, preSweep };
+}
+
+/**
+ * Report the review: the settled review, its to-dos dropped where an early or a late exit
+ * aborted it (withoutQuestions), and the report printed, text or JSON, its header first, the
+ * rejection report where it was aborted. A caller that prints nothing names no format.
+ * The to-dos and the sweeps are put into the meta the formatter reads (`manualReview`,
+ * `preSweep`) here, at print time: the stored review holds each once, beside the findings.
+ * @param {import("./review/settle.js").SettledReview} settled  With no verdicts.
+ * @param {?object} preSweep  The review's blind-spot sweeps, which the settled review does
+ *   not carry.
+ * @param {?string} format  "text" or "json", or null to print nothing.
+ * @param {import("./checks/registry.js").Registry} registry
+ * @returns {{code: number, review: PipelineResult}}  0 or 1 by the review's errors, and the
+ *   review as printed.
+ */
+export function reportReview(settled, preSweep, format, registry) {
+  // A plain report counts an early and a late exit alike: it has no pass left to run first.
+  // The key is left off a review that was not aborted, rather than written as null - the
+  // same way manualReview and preSweep are dropped from the JSON rather than emptied.
+  const aborted = settled.exits.late;
+  const meta = aborted
+    ? {
+        ...settled.meta,
+        earlyExit: aborted,
+        manualReview: withoutQuestions(
+          orderReview(settled.findings, settled.manual)
+        ),
+        preSweep,
+      }
+    : { ...settled.meta, manualReview: settled.manual, preSweep };
+  const review = {
+    findings: settled.findings,
+    meta,
+    // The review mode, so the text report can label each finding's file:line by artifact
+    // ([XPI]/[SCA]) in a source review (src/report/artifact.js).
+    mode: settled.mode.sca ? REVIEW_MODE.SCA : REVIEW_MODE.XPI,
+    // Severity-group headings and the verdict preamble for the text Issues section.
+    issueHeadings: registry.issueHeadings(),
+    verdictIntros: registry.verdictIntros(),
+  };
+  if (format) {
+    // report(), not the feed: the header belongs to the document, and is absent from JSON.
+    for (const line of headerLines(meta)) {
+      report(line);
+    }
+    report("");
+    writeToStdout(`${formatReview(review, format)}\n`);
+  }
+  return { code: hasErrors(review.findings) ? 1 : 0, review };
 }
 
 /**
@@ -335,17 +602,17 @@ async function reviewSubmission(opts, work, prepared) {
  * routed to, with the review data they compute when a check first asks. Narrated as the
  * "Setup" section of the feed.
  *
- * It claims nothing and writes nothing into the work folder, and it reads none of the
- * options only the review needs (what an agent is asked, the check lists, --eslint): so a
- * run can make the context in a folder it does not review in yet. What it fetches lands in
- * the caches outside the work folder.
+ * The one place that hard-codes how review data is made. It claims nothing and writes
+ * nothing into the work folder, and it reads none of the options only the review needs
+ * (what an agent is asked, the check lists, --eslint). What it fetches lands in the caches
+ * outside the work folder.
  * @param {PipelineOpts} opts
  * @param {ReturnType<typeof workPaths>} work  The work folder's names.
- * @param {?import("./prepare/state.js").PrepareRecord} prepared  The preparation's record,
- *   where the review starts in a folder a source code review was prepared in.
+ * @param {?object} build  The build results a done build check added to the record
+ *   (src/build-check/state.js buildResults), where the review starts in such a folder.
  * @returns {Promise<ReviewContext>}
  */
-export async function populateCtx(opts, work, prepared) {
+export async function populateCtx(opts, work, build) {
   const { addonPath } = opts;
   // `addonPath` IS the shipped add-on's path, absolute, and the single value the run has
   // for "which add-on": what the report names, and where the work folder and its files go. An Addon carries no path of its own
@@ -383,17 +650,9 @@ export async function populateCtx(opts, work, prepared) {
     warningsAsErrors: Boolean(opts.warningsAsErrors),
   });
 
-  // The folders the reviewer named: which one is the package root, settled before anything
-  // reads it (src/addon/package-root.js), below a named one that holds no package file.
-  // Whoever named the folder had not looked inside it yet - an archive is extracted by
-  // whoever prepares the review, into a destination worked out by path math - so an archive
-  // carrying its contents in one directory of its own leaves the build files a level below
-  // it. The review reads them in its copy of the extracted source, the work folder's `sca/`,
-  // made where the archive is loaded: the folder the reviewer named is never read in place.
-  //
-  // Settled before the review, by the step that copied the source (src/review/start.js
-  // copyTheSource), and handed in as `scaMoved` where the package root moved. The narration
-  // comes later, with the rest of Setup.
+  // The package root, settled in the work folder's `sca/` before the review by its caller
+  // (src/addon/package-root.js settlePackageRoot), and handed in as `scaMoved` where it moved
+  // below the folder named. The narration comes later, with the rest of Setup.
   const scaMoved = opts.scaMoved ?? null;
 
   // Load the .xpi. Read before the "Setup" banner because it sizes the feed - it gives
@@ -422,12 +681,6 @@ export async function populateCtx(opts, work, prepared) {
   let experimentVerification = null;
   const xpiRoot = `${work.xpi}${path.sep}`;
   const isExp = isExperiment(webExtManifestRecord?.json);
-  const misfit = opts.scaFolders
-    ? scaFoldersMisfit(opts.scaFolders, isExp)
-    : null;
-  if (misfit) {
-    throw new Error(misfit);
-  }
 
   // The facts each step's `when` is asked of, from what the fast .xpi read already gives
   // us: the mode, and whether this is an Experiment.
@@ -521,8 +774,8 @@ export async function populateCtx(opts, work, prepared) {
     // (github.com/thunderbird/webext-experiments), regardless of
     // --allow-experiments: a bundled experiment whose name matches a known draft
     // MUST be the unmodified upstream copy, which experiment-modified enforces.
-    // The verdict (experimentVerdict) is read from the review's own xpi/, by the one rule
-    // --llm-auto-review asks before it prepares a review. It fetches the allow-list only
+    // The verdict (experimentVerdict) is read from the review's own xpi/. It fetches the
+    // allow-list only
     // when a group actually bundles files (a bare experiment_apis declaration stays
     // offline -> unsupported, and the step's line is the only sign of it), and a fetch
     // failure throws so the run hard-exits (2) rather than letting a missing allow-list
@@ -539,8 +792,8 @@ export async function populateCtx(opts, work, prepared) {
     // manifest.json's experiment paths resolve against the XPI's own files (no
     // source-layout mismatch).
     experiments: async () => {
-      // The load's verdict where this run loaded the add-on (`verification`), so it is
-      // decided once. A review started in a folder an earlier run loaded asks it again.
+      // The verdict the record holds where an earlier run decided it (`verification`), so it
+      // is decided once, by the run that runs experiment-not-allowed.
       experimentVerification =
         opts.verification !== undefined
           ? opts.verification
@@ -570,8 +823,9 @@ export async function populateCtx(opts, work, prepared) {
         // at all because the package root is then not the folder the command named - the
         // reviewer has to be able to see which folder their verdicts are about.
         if (scaMoved) {
+          const inSca = (rel) => path.join("sca", rel);
           progress(
-            `Package root: ${scaMoved.to} (${scaMoved.from} holds no package.json)`,
+            `Package root: ${inSca(scaMoved.to)} (${inSca(scaMoved.from)} holds no package.json)`,
             FEED.DETAIL
           );
         }
@@ -594,27 +848,13 @@ export async function populateCtx(opts, work, prepared) {
         // The reviewer's own reasons for holding the build unsafe, where they gave some, and
         // the issues the build analysis listed, which build-unsafe reports. Null and none for
         // every other source.
-        scaArchive.buildReasons = prepared?.buildReasons ?? null;
-        scaArchive.buildIssues = prepared?.buildIssues ?? [];
+        scaArchive.buildReasons = build?.reasons ?? null;
+        scaArchive.buildIssues = build?.issues ?? [];
       }
     },
 
     "target-source": () => {
       reviewTarget = scaArchive;
-      for (const notice of scaArchive.skipped ?? []) {
-        warn(notice);
-      }
-      // Warn when --sca-experiments matches nothing: a mis-typed path would exclude nothing
-      // and flood the report with false positives on the privileged Experiment code.
-      if (
-        Object.hasOwn(opts.scaFolders, "experiments") &&
-        scaArchive.experiment.size === 0
-      ) {
-        warn(
-          `--sca-experiments "${opts.scaFolders.experiments}" matched no files under --sca-extracted; ` +
-            "nothing will be excluded from the WebExtension code checks."
-        );
-      }
     },
 
     // The review target of every other review: the .xpi itself.
@@ -730,8 +970,8 @@ export async function populateCtx(opts, work, prepared) {
   };
 
   // Each artifact's data, computed when a check first asks for it. OSV and the popularity
-  // hosts are asked through the run's cache: a prepared review's questions were mostly asked
-  // by its preparation already. A pinned library source is downloaded through the sources
+  // hosts are asked through the run's cache: a source review's questions were mostly asked
+  // by its build check already. A pinned library source is downloaded through the sources
   // cache, which every review shares.
   const dataOf = reviewData({
     opts: {
@@ -777,6 +1017,7 @@ export async function populateCtx(opts, work, prepared) {
   return {
     registry,
     manifest: webExtManifestRecord,
+    verification: experimentVerification,
     scaArchive,
     schema,
     schemaSource,
@@ -787,511 +1028,47 @@ export async function populateCtx(opts, work, prepared) {
     siblings,
   };
 }
-
-/**
- * The review on a context populateCtx made: the checks, the findings they report, and what
- * the review hands its reader, the report for a plain review, or for an agent the loop's
- * first prompt and the state its passes read.
- * @param {PipelineOpts} opts
- * @param {ReturnType<typeof workPaths>} work  The work folder's names.
- * @param {?import("./prepare/state.js").PrepareRecord} prepared  The preparation's record,
- *   where the review starts in a folder a source code review was prepared in.
- * @param {ReviewContext} ctx
- * @returns {Promise<PipelineResult>}
- */
-export async function runReview(opts, work, prepared, ctx) {
-  const {
-    registry,
-    manifest: webExtManifestRecord,
-    scaArchive,
-    schema,
-    schemaSource,
-    schemaBranch,
-    schemaChannel,
-    meta,
-    mode,
-    siblings,
-  } = ctx;
-  const findings = [];
-
-  // Run the review, then finalize. runChecks runs the deterministic phase and returns the
-  // finished findings, manual items and the checks that ran. A check that throws ends the
-  // run with exit 2. A rejected Experiment stops at its first
-  // check, experiment-not-allowed, and a forged lock at lockfile-injection, the two checks
-  // that end a review early. Every other check that aborts a review lets the rest run.
-  // A check's `when:` (over CHECK_FACTS) is read inside loadChecks
-  // (conditionEligible), so code-sanity runs only under --eslint.
-  const {
-    findings: reviewFindings,
-    manualItems,
-    checksRun,
-  } = await runChecks(
-    registry,
-    {
-      only: opts.checksOnly,
-      skip: opts.checksSkip,
-      eslint: opts.eslint,
-      sca: mode.sca,
-      // The reviewer's build decision in the preparation, which decides which of the build
-      // checks asks about the build (build-review, build-reproduces-xpi, build-unsafe).
-      buildJudged: typeof prepared?.buildSafe === "boolean",
-      buildSafe: prepared?.buildSafe === true,
-    },
-    siblings
-  );
-  findings.push(...reviewFindings);
-  // An XPI review restarted from a source review that did not need its archive (src/cli.js
-  // runLoopPass): its one finding tells the developer to submit just the XPI next time.
-  if (
-    opts.downgradedFrom &&
-    checkSelected(registry, SCA_NOT_NEEDED_CHECK, {
-      only: opts.checksOnly,
-      skip: opts.checksSkip,
-    })
-  ) {
-    const notNeeded = finding({
-      ruleId: SCA_NOT_NEEDED_CHECK,
-      severity: registry.checkEntry(SCA_NOT_NEEDED_CHECK).severity,
-      artifact: ARTIFACT_XPI,
-    });
-    // Raised here rather than by runOneCheck, so stamped here: the reviewer chose the restart.
-    if (!registry.verifiedByLlm(SCA_NOT_NEEDED_CHECK)) {
-      notNeeded.llmVerification = false;
-    }
-    findings.push(notNeeded);
-  }
-  // Whether the built XPI of a source review could be reviewed on its own, which the loop
-  // reads to offer an aborted review a restart as an XPI review (src/report/loop.js runOf).
-  // Asked of the classifiers directly, so a review aborted before any check read the XPI is
-  // answered too, and the work a check already did is reused.
-  const xpiReviewable =
-    opts.llmReview && mode.sca ? await readableXpi(siblings.xpi, mode) : false;
-
-  // The review-derived half of meta (the base half - action/xpi/... - is the `meta` setup
-  // step's): the schema stamps, the checks that ran, and the manual-review to-do list.
-  // Its `extended` items are the orchestrator's escalations (resolved to their registry
-  // text); the rest are the by-hand manual-checks entries, which every review carries
-  // unconditionally. An aborted review withholds the ones a reviewer would be asked
-  // (src/report/early-exit.js), here as in any other review.
-  const ranIds = new Set(checksRun.map((c) => c.id));
-  Object.assign(meta, {
-    schemaSource,
-    schemaBranch,
-    schemaChannel,
-    applicationVersion: schema.applicationVersion,
-    manifestVersion: webExtManifestRecord?.json?.manifest_version ?? null,
-    checksRun: checksRun.map((c) => c.id),
-    // The two to-do origins as ONE list, each carrying its own `default-note` where the
-    // check authors one: a case a check escalated and a by-hand manual check are the same
-    // item to whoever answers it, so the note is appended to both in one place.
-    manualReview: withDefaultNotes(
-      [
-        ...renderManualItems(manualItems, registry, mode).map((m) => ({
-          ...m,
-          extended: true,
-        })),
-        ...registry.manualChecks(mode).map((m) => ({ ...m, extended: false })),
-      ],
-      registry
-    ),
-    // The blind-spot sweeps to run BEFORE settling this review: one bare item per sweep a
-    // check that ran authors, asked as one request per tree rather than one per item - the
-    // sweeps of a tree read the same files, so what is learned on one is already in hand
-    // for the next. Registry-sourced and carried by every review, exactly like the by-hand
-    // manual-checks above, which is why it travels on meta: the text renderer never sees
-    // the registry.
-    //
-    // Gated on the checks that actually RAN: sweeping the blind spot of a scan that did
-    // not happen asks a reader to cover for nothing, and this is what makes
-    // --checks-only/--checks-skip carry through.
-    preSweep: preSweepOf(registry, ranIds, mode, siblings, artifactRoots(meta)),
-  });
-
-  // What this run was told to leave out (--llm-skip-summary). Read once: a phase drops
-  // steps by it, and the description file is named by it.
-  const skip = opts.llmSkip ?? [];
-  // Where the prompt's reader writes the add-on description, and where it writes what
-  // building the add-on takes. Both sit in the review's work folder, and this tool writes
-  // neither and reads neither. Held until the prompt is built, because whether either
-  // is NAMED depends on whether the step that writes it can print - the description is
-  // withheld by --llm-skip-summary, the build report by a review that is not a source code one.
-  let summaryPath = null;
-  let buildPath = null;
-  let reportPath = null;
-  // Each tree's sweep request and answers file, by artifact - empty when this run sweeps
-  // nothing. The keys are what says which trees were asked: a step prints for one, and
-  // accepting the pass reads back exactly these.
-  let sweepFiles = {};
-  // The REVIEW LOOP's state, built once the review is final and handed to `issue` below.
-  // A LOCAL, never hung off meta: it carries the report, and the report carries meta.
-  let loopState = null;
-  // Whether this run SWEEPS: it asked for one, it was not told to leave it out, and there
-  // is a blind spot to cover. The requests hang off this, and the per-tree conditions that
-  // print a step hang off the requests - so a review with nothing to sweep and one told
-  // not to read the same, and neither mentions a sweep that is not happening.
-  const sweeping =
-    opts.llmReview &&
-    !opts.llmSkipSweep &&
-    Boolean(meta.preSweep?.items?.length);
-  // A run that PROMPTS is the loop's first pass, and the only one that reads the add-on:
-  // everything after it works from the state this run writes.
-  const prompting = opts.llmReview;
-  if (prompting) {
-    // Said plainly, because two readers need it and neither should infer it from whether
-    // some file happens to have been named: this run HANDS OUT A PHASE, so its whole
-    // output is that prompt and the report is not printed beside it.
-    meta.prompting = true;
-    summaryPath = skip.includes("llm-skip-summary") ? null : work.summary;
-    buildPath = mode.sca ? work.build : null;
-    // Ungated, unlike the two above: every review has a report, and this one is written by
-    // the linter (src/report/report-file.js) rather than asked of an agent, so there is no
-    // step whose absence could leave the path naming nothing.
-    reportPath = work.report;
-    // Named on meta BEFORE the state is built: `issue` writes the state, and a field set
-    // after that never reaches the passes that read it back. A path printed for a file
-    // nobody is asked to write would be an instruction with no step behind it - which is
-    // why the first two are null above where the step that writes them can never print: the
-    // description under --llm-skip-summary, the build report in a review that is not a
-    // source code one. The Review Details name the build report only where the preparation
-    // wrote it (src/report/loop.js detailsMeta).
-    //
-    // Nothing is checked here: the work folder was found writable, and every one of these
-    // names free, before the review began (runPipeline). The agents this prompt hands out
-    // write the first two, and a later pass the report, so a folder that could not take
-    // them would only have failed once the review was already finished.
-    meta.summaryFile = summaryPath ?? undefined;
-    meta.buildFile = buildPath ?? undefined;
-    meta.buildIssuesFile = buildPath ? work.buildIssues : undefined;
-    meta.reportFile = reportPath;
-    // One sweeping agent per tree, each handed a request of its own and answering into a
-    // file of its own. Made HERE, with the review, because the request carries the tree's
-    // path and the sweeps that tree was asked about - both of which are this run's
-    // answers and neither of which a later pass could reconstruct.
-    //
-    // Nothing is asked of a review that is not sweeping: --llm-skip-sweep withholds the
-    // asking though the instructions still stand, and then there is no request to hand
-    // over and no file for a step to name.
-    sweepFiles = sweeping
-      ? sweepRequests(
-          work,
-          meta.preSweep,
-          artifactRoots(meta),
-          registry.proseStyle(),
-          registry.readingRule()
-        )
-      : {};
-  }
-
-  // Fill each finding's display message from its registry response (with the
-  // {{item}} placeholder), so the Found Issues section reports the ready-to-send
-  // wording. The registry is the only source of this text.
-  renderFindings(findings, registry, mode);
-
-  // Settle every provisional hold against the rest of the review - the one moment a
-  // hold-or-error check's band is decided. After any verdict has been applied and
-  // before anything reads a severity, so the report, the tally and the JSON all see
-  // the same value.
-  resolveHolds(findings);
-
-  // The REVIEW LOOP's state, written once the review is final: everything a later pass
-  // reads, since none of them runs the review again.
-  if (prompting) {
-    // The REVIEW LOOP's state: the review itself, so no later pass has to rebuild it.
-    // Everything formatText reads that the registry cannot recompute goes in here -
-    // issueHeadings and verdictIntros are the registry's, and a copy here would
-    // outlive an edit to it.
-    //
-    // Every item gets its fixed reference here, the one every answer is recorded under, in
-    // the order the checks raised them (src/report/order.js assignRefs).
-    assignRefs([...findings, ...meta.manualReview], registry);
-    loopState = {
-      report: { findings, meta, sca: mode.sca },
-      manual: meta.manualReview,
-      preSweep: meta.preSweep,
-      // What this run was told, recorded ONCE. Every pass reads it from here - a second
-      // copy handed in beside the state is a second answer, and the two deciding
-      // differently is a phase issued for entries it never shows.
-      run: {
-        skip,
-        sca: mode.sca,
-        // Whether every check an agent's build relies on runs: with one switched off, nothing
-        // vouches for what the build would install, so the review neither judges the build
-        // nor shows the Build Review Details, and asks the build question alone.
-        ...(registry.buildGuardIds().every((id) =>
-          checkSelected(registry, id, {
-            only: opts.checksOnly,
-            skip: opts.checksSkip,
-          })
-        )
-          ? { "build-guarded": true }
-          : {}),
-        // Whether a preparation started this review, whose intro its reader already read.
-        ...(prepared ? { prepared: true } : {}),
-        // One condition per tree that has a sweep to run, keyed the way the step names
-        // it. Read off the REQUESTS rather than off `sweeping` and `preSweep` separately:
-        // a step exists to hand an agent a request, so the request existing is the whole
-        // condition, and --llm-skip-sweep leaves none behind.
-        ...Object.fromEntries(
-          Object.keys(sweepFiles).map((a) => [sweepRun(a), true])
-        ),
-        // Whether the built XPI of this source review could be reviewed on its own.
-        ...(xpiReviewable ? { "xpi-reviewable": true } : {}),
-        // The band policy, so a later pass reads the review under the one it was started
-        // with. The findings below are already published at it, but a case REPORTED on a
-        // later pass becomes a finding there and then (src/report/verdicts.js asFinding),
-        // and that pass is never handed the flag again.
-        warningsAsErrors: registry.warningsAsErrors,
-      },
-      // The flags the review was started with, minus the --sca-* ones and those of one run
-      // alone (src/cli.js forwardedFlags): what an XPI review restarted from this one is
-      // started with.
-      flags: opts.flags ?? {},
-      sweep: null,
-      paths: {
-        description: summaryPath,
-        build: buildPath,
-        report: reportPath,
-        schemaCache: opts.schemaCache,
-        // The roots every reported path is relative to, so a later pass can resolve one
-        // without the review it came from: the shipped add-on, copied in setup, and in a
-        // source review its folders in the work folder, so all are readable directories by
-        // the time anything is handed out. Every [SCA] path is relative to the copy the
-        // review read.
-        ...(mode.sca ? { scaFolders: opts.scaFolders } : {}),
-        xpiRoot: meta.xpiRoot,
-        // Each tree's sweep request, as the text its step hands over, and the file its
-        // answers are written to. Carried so the step prints the request this run made and
-        // the pass that accepts the hand-back reads exactly the files this run named, with
-        // no later pass deriving either again.
-        sweeps: sweepFiles,
-        // The schema block a judging phase prints - the snapshot its verdicts mean
-        // anything against. Built once, from the same meta the report's header is.
-        schema: schemaLines(meta, opts.schemaCache).join("\n"),
-      },
-      answers: {},
-      // What came of the agent's build in the preparation, what it produced where it built
-      // and how that compares with the submitted XPI, as the record holds them. Beside them
-      // the submitted lock's vulnerable packages, as the preparation counted them, or where
-      // it counted none as this review's own audit did (lockVulnerabilities), and the
-      // rescued copy's, as the preparation counted them at the rescue's hand-back. The
-      // details blocks show them, and the `built` step is worded by them (src/report/loop.js
-      // buildResultFact).
-      build: {
-        result: prepared?.buildResult ?? null,
-        // The whole copy of the source the agent built in, there only where it built or tried
-        // to.
-        ...(prepared?.buildResult === BUILD_RESULT.built ||
-        prepared?.buildResult === BUILD_RESULT.failed
-          ? { copy: work.buildCopy }
-          : {}),
-        output:
-          prepared?.buildResult === BUILD_RESULT.built
-            ? prepared.buildOutput
-            : null,
-        match:
-          prepared?.buildResult === BUILD_RESULT.built
-            ? prepared.buildMatch
-            : null,
-        vulnerabilities:
-          prepared?.vulnerabilities ??
-          lockVulnerabilities(
-            scaArchive,
-            registry
-              .checkIds()
-              .some(
-                (id) =>
-                  (registry.earlyExitFor(id) ?? registry.lateExitFor(id)) ===
-                    VULNERABILITY_EXIT && ranIds.has(id)
-              )
-          ),
-        rescuedVulnerabilities: prepared?.rescuedVulnerabilities ?? null,
-        // The judgement the preparation recorded of the build it reported in build.md, a
-        // BUILD_SAFETY_VALUES id, or null where nothing was prepared.
-        safety: prepared?.buildSafety ?? null,
-        // The reviewer's decision whether the build is safe, the verdict as they kept or
-        // overrode it, or null where nobody was asked.
-        safe: prepared?.buildSafe ?? null,
-      },
-      // build.md, which the preparation's agent wrote, and build-issues.md, which the
-      // preparation wrote from the issues the agent handed back, as products the Review
-      // Details link.
-      ...(prepared?.buildSafety && buildPath && productWritten(buildPath)
-        ? {
-            products: [
-              "build",
-              ...(productWritten(work.buildIssues) ? ["buildIssues"] : []),
-            ],
-          }
-        : {}),
-      issued: [],
-    };
-  }
-
-  // A review the findings themselves settle is ABORTED here: nothing further is put to a
-  // reviewer, and the report says why rather than listing work nobody should do. The case
-  // it exists for is a build the reviewer would otherwise be asked to reproduce from a
-  // dependency tree this review has already rejected.
-  //
-  // Applied only for a review that PRINTS one. Under --llm-review the same decision is
-  // taken again at the end of the loop (src/report/loop.js settle), because a pass may
-  // still report a case that aborts the review - so the state above keeps the full list,
-  // and the loop decides what an aborted review hands over.
-  //
-  // AFTER resolveHolds, and that ordering is load-bearing: the threshold reads a
-  // finding's severity, and resolveHolds is the moment a provisional hold becomes one.
-  // Decided before it, a blocking check that reported a hold would abort nothing.
-  //
-  // The key is left off a review that was not aborted, rather than written as null - the
-  // same way manualReview and preSweep are dropped from the JSON rather than emptied.
-  if (!prompting) {
-    const ordered = orderReview(findings, meta.manualReview ?? []);
-    // A late-exit reason counts here too: a plain report has no pass left to run first.
-    const earlyExit = earlyExitOf(ordered, {}, registry, { late: true });
-    if (earlyExit) {
-      meta.earlyExit = earlyExit;
-      meta.manualReview = withoutQuestions(ordered);
-    }
-  }
-
-  // Narrate the document's own opening, now that the review is final. It has to come after
-  // resolveHolds, because the Review Details tally counts bands and a hold is not settled
-  // until then. Under --llm-review the prompt goes first, so a model handed the review
-  // reads what to do with it before anything else.
-  //
-  // report(), not feed: these belong to the document, so they survive --llm-review
-  // switching the Setup and Activity sections off. Absent from JSON (a machine contract)
-  // and from the golden harness for free, like the rest of the narration.
-  if (prompting) {
-    // THE REVIEW LOOP's first pass. The deterministic review just ran, and it runs ONCE:
-    // its result goes into the state, and every pass after this reads that instead of
-    // rebuilding it. So this is the only run that needs the add-on at all.
-    //
-    // Which phase goes out is `issue`'s to decide, from what has work - a source review
-    // opens with its build, and a run with no sweep and no description agent never
-    // mentions either.
-    const texts = registry.llmPhases();
-    const state = loopState;
-    const first = issue(state, opts.workFolder, texts.phases, registry);
-    for (const line of loopPromptLines(
-      texts,
-      first.phase,
-      first.steps,
-      loopSlots(state, first, opts.workFolder, registry),
-      // The preamble parts its conditions chose: this is the first prompt, so it prints
-      // unless the review closes right here.
-      first.preamble
-    )) {
-      report(line);
-    }
-  }
-  // The prompt IS the whole output of a run that hands out a phase. Neither the header
-  // nor the Summary is printed beside it:
-  //
-  // - the header is a block of VALUES the steps point at by name, and this prompt's steps
-  //   carry the two they use. A name printed with no step behind it is an instruction with
-  //   nothing to do.
-  // - the Summary is a tally of a review that is about to change. The agent is here to
-  //   withdraw findings and settle cases; a count printed before it starts is a number it
-  //   could work back from, and the finished report carries the real one.
-  if (!prompting) {
-    for (const line of headerLines(meta)) {
-      report(line);
-    }
-    report("");
-  }
-
-  return {
-    findings,
-    meta,
-    // The review mode + the per-ruleId input artifact, so the text report can label
-    // each finding's file:line by artifact ([XPI]/[SCA]) in an SCA review (a no-op in
-    // XPI mode). See src/report/artifact.js.
-    mode,
-    // Severity-group headings + the verdict preamble for the text Issues
-    // section.
-    issueHeadings: registry.issueHeadings(),
-    verdictIntros: registry.verdictIntros(),
-  };
-}
-
-/** The work folder's names a review never writes: the shipped add-on's copy, which the load
- *  put there, the source archive's extraction, put there when a source code review is
- *  prepared, the copy of it a rescue makes, the copy every build of the preparation runs in,
- *  and that preparation's record. A review claiming them would refuse the very folder it was
- *  loaded or prepared in. */
-const WORK_INPUTS = new Set(["xpi", "sca", "rescued", "buildCopy", "prepare"]);
 
 /** The check an XPI review restarted from a source review reports (opts.downgradedFrom). */
 const SCA_NOT_NEEDED_CHECK = "sca-not-needed";
 
 /**
  * Whether the built XPI could be reviewed on its own: no file or inline script in it is
- * minified first-party code, obfuscated, or an untrusted minified library. Each verdict goes
- * to the feed, so the reviewer sees why.
+ * minified first-party code, obfuscated, or an untrusted minified library.
  * @param {import("./checks/registry.js").RunContext} xpiCtx  The built XPI's ctx.
- * @param {{sca: boolean}} mode
  * @returns {Promise<boolean>}
  */
-async function readableXpi(xpiCtx, mode) {
-  progress("XPI readability", FEED.STEP);
-  const label = artifactLabel({ artifact: ARTIFACT_XPI, mode });
-  let readable = true;
-  // `unreadable` names why a file cannot be reviewed, or is null for one that can.
-  const verdict = (file, loc, unreadable, fine) => {
-    readable &&= !unreadable;
-    progress(
-      formatNote(
-        displayLine(file),
-        loc,
-        unreadable ?? fine,
-        unreadable ? VERDICT.FAIL : VERDICT.PASS,
-        label
-      ),
-      FEED.DETAIL
-    );
-  };
+async function readableXpi(xpiCtx) {
   for (const c of await classifyAddonJs(xpiCtx)) {
-    verdict(
-      c.file,
-      null,
-      c.obfuscation.fail
-        ? "obfuscated"
-        : isMinifiedFirstParty(c)
-          ? "minified"
-          : c.untrusted && c.minified
-            ? "untrusted minified library"
-            : null,
-      "readable"
-    );
+    if (
+      c.obfuscation.fail ||
+      isMinifiedFirstParty(c) ||
+      (c.untrusted && c.minified)
+    ) {
+      return false;
+    }
   }
   for (const site of await classifyInlineScripts(xpiCtx)) {
-    verdict(
-      site.file,
-      site.loc,
-      site.obfuscation.fail
-        ? "obfuscated inline script"
-        : site.minified
-          ? "minified inline script"
-          : null,
-      "readable inline script"
-    );
+    if (site.obfuscation.fail || site.minified) {
+      return false;
+    }
   }
-  return readable;
+  return true;
 }
 
 /** The abort reason the dependency-vulnerability checks share: the checks that read the
- *  lock audit's lists (src/prepare/audit.js LOCK_AUDIT_LISTS). */
+ *  lock audit's lists (src/build-check/audit.js LOCK_AUDIT_LISTS). */
 const VULNERABILITY_EXIT = "known-vulnerabilities";
 
 /**
  * The vulnerable packages of the lock this review read, counted by severity from its own
- * audit, as the preparation counts a lock it audited (vulnerabilityCounts). Null where the
+ * audit, as the build check counts a lock it audited (vulnerabilityCounts). Null where the
  * audit did not happen. It happened once any dependency-vulnerability check ran: each reads
  * the vendor reading, which audits the whole lock first and records every list at once, or
  * ends the run (src/vendor/verify.js auditLockedPackages).
  * @param {?import("./addon/load.js").Addon} archive  The source archive, or null.
  * @param {boolean} audited  A dependency-vulnerability check ran.
- * @returns {?import("./prepare/audit.js").VulnerabilityCounts}
+ * @returns {?import("./build-check/audit.js").VulnerabilityCounts}
  */
 function lockVulnerabilities(archive, audited) {
   const vendor = archive?.vendor;
@@ -1304,111 +1081,6 @@ function lockVulnerabilities(archive, audited) {
     ),
     moderate: vendor.moderateVulnerabilities ?? [],
   });
-}
-
-/**
- * The names a run will create in its work folder (src/util/dest.js workPaths).
- *
- * A plain review creates nothing there: the shipped add-on's copy is the load's, and a
- * source's copy the step before the review made (WORK_INPUTS). A --llm-review run
- * names every other output too - the loop's pair, the report, what its agents write, and a
- * sweep answers file for each artifact - whether or not this review turns out to use each
- * one: an XPI review never builds and may sweep nothing, but which of them it will use is
- * only known once it has run, and a review refused at the end for a name it needed is a
- * review paid for and thrown away. A preparation that judged the build wrote build.md and
- * build-issues.md, which its review reads and never claims, and its source copy, which
- * this run then does not make.
- * @param {ReturnType<typeof workPaths>} work
- * @param {boolean} llmReview
- * @param {?import("./prepare/state.js").PrepareRecord} prepared
- * @returns {string[]}  Absolute paths.
- */
-function claimedNames(work, llmReview, prepared) {
-  if (!llmReview) {
-    return [];
-  }
-  const judged = Boolean(prepared?.buildSafety);
-  const outputs = Object.entries(work)
-    .filter(
-      ([key, value]) =>
-        typeof value === "string" &&
-        !WORK_INPUTS.has(key) &&
-        !(judged && (key === "build" || key === "buildIssues"))
-    )
-    .map(([, value]) => value);
-  const sweeps = [ARTIFACT_XPI, ARTIFACT_SCA].map(work.sweep);
-  return [...outputs, ...sweeps];
-}
-
-/**
- * Claim the work folder for this run: refuse it when it cannot be written to, and refuse it
- * when any name this run will create is already there.
- *
- * The folder is there already, with the add-on's copy the load put in it: this run's own
- * load, or that of the run that prepared a source code review in it, whose review the
- * hand-back starts once the preparation is done. It holds what the review reads and never
- * claims (WORK_INPUTS). Nothing in it is overwritten. A name already taken is left over from a
- * start that was cut short, and replacing it would destroy work nobody asked to discard. The
- * names this call claims are this run's (src/util/claims.js).
- * @param {string} dir  The work folder, absolute.
- * @param {string[]} names  claimedNames' answer.
- */
-function claimWorkFolder(dir, names) {
-  if (!canWriteDir(dir)) {
-    throw new Error(
-      `The work folder "${dir}" cannot be written to, and every file this review creates ` +
-        "lives there."
-    );
-  }
-  const taken = names.filter(onDisk);
-  if (taken.length) {
-    const listed = taken.map((p) => `"${path.relative(dir, p)}"`).join(", ");
-    throw new Error(
-      `The work folder "${dir}" already holds ${listed}, which this review would ` +
-        "create. Nothing in a work folder is overwritten: remove what is there, and hand " +
-        "the folder back again."
-    );
-  }
-  claimNames(names);
-}
-
-/**
- * Whether anything is at a path, a dangling symbolic link included: lstat, so a link is
- * the name it occupies and not the file it may or may not point at.
- * @param {string} p
- * @returns {boolean}
- */
-function onDisk(p) {
-  try {
-    fs.lstatSync(p);
-    return true;
-  } catch (err) {
-    rethrowIfFatal(err);
-    return false;
-  }
-}
-
-/**
- * Whether a directory can be written to, without writing anything to it.
- *
- * The question the review's work folder has to answer before the review is built. Asked
- * of the DIRECTORY because that is what the later writes need: writeFileAtomic creates a
- * sibling .tmp and renames over the target, so both steps want permission on the folder
- * rather than on a file that does not exist yet.
- *
- * A probe that CREATED something would answer the same question and leave litter in a
- * reviewer's folder for a run that may then fail, which is not ours to put there.
- * @param {string} dir
- * @returns {boolean}
- */
-function canWriteDir(dir) {
-  try {
-    fs.accessSync(dir, fs.constants.W_OK);
-    return true;
-  } catch (err) {
-    rethrowIfFatal(err);
-    return false;
-  }
 }
 
 /**

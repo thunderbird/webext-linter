@@ -21,20 +21,15 @@ import { writeFileAtomic } from "../util/atomic.js";
 import { withoutColor } from "../util/color.js";
 
 /**
- * Write the developer-facing report to the path this review named, or do nothing when it
- * named none.
- *
- * Silent about a path it was not given: only a prompting run names one, and every other
- * run prints the report to stdout instead. Atomic, so a reviewer who opens the file while
- * a pass is rewriting it reads one version or the other and never half of each.
- * @param {?string} file  state.paths.report, or null.
- * @param {string} body  The report body, as settle() builds it.
+ * Write the developer-facing report to report.md, at the work folder's fixed path. Only an
+ * LLM review writes one, and every other run prints the report to stdout instead. Atomic, so
+ * a reviewer who opens the file while a pass is rewriting it reads one version or the other
+ * and never half of each.
+ * @param {string} file  The work folder's report.md (src/util/dest.js workPaths).
+ * @param {string} body  The report body, as settleReview builds it (src/review/settle.js).
  * @returns {void}
  */
 export function writeReportFile(file, body) {
-  if (!file) {
-    return;
-  }
   // Rendered by the same formatter as the terminal report, so colour markers are removed:
   // a file carries none. The empty lines that separate it from a section heading in the
   // terminal have nothing to separate here, so the file starts and ends on its text.

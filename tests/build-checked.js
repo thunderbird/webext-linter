@@ -1,26 +1,35 @@
-// A preparation of a source code review (src/prepare/steps.js) as the tests make one: for
+// A build check of a source code review (src/build-check/steps.js) as the tests make one: for
 // real, step by step through the linter's own hand-backs, its audit answered from a run cache
 // folder the test seeded outside the work folder and named as its --cache-work-dir - so a
-// test that needs a prepared work folder gets the record the linter writes, never one
-// written for it. A test that models a forged record edits that real record.
+// test that needs a work folder whose build check is done gets the record the linter writes,
+// never one written for it. A test that models a forged record edits that real record.
 //
 // Belongs here: the OSV answers the lock audit reads, the agent's side of a step (filling the
 // review file, writing files), and the run through the steps. Does NOT belong here: what a
-// step does (src/prepare/steps.js), or any record written by hand.
+// step does (src/build-check/steps.js), or any record written by hand.
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-import { handBack, startPreparation } from "../src/prepare/steps.js";
-import { PREPARE_STEP, startRecord } from "../src/prepare/state.js";
-import { workPaths } from "../src/util/dest.js";
+import { analyzeEntries, handBack } from "../src/build-check/steps.js";
 import {
-  fixtureCacheOpts,
-  freshWorkFolder,
-  osvEntries,
-  seedWorkCache,
-} from "./seed-caches.js";
+  BUILD_CHECK_STEP,
+  buildCheckBody,
+  buildResults,
+} from "../src/build-check/state.js";
+import {
+  MODE,
+  addToRecord,
+  readRecord,
+  startMode,
+  writeRecord,
+} from "../src/review/record.js";
+import { reviewFile, writeReviewFile } from "../src/report/handback.js";
+import { settlePackageRoot } from "../src/addon/package-root.js";
+import { loadRegistry } from "../src/checks/registry.js";
+import { workPaths } from "../src/util/dest.js";
+import { freshWorkFolder, osvEntries, seedWorkCache } from "./seed-caches.js";
 import { loadTheXpi } from "../src/review/start.js";
 
 /** An OSV advisory as the API serves it. */
@@ -59,7 +68,7 @@ export function auditEntries(vulns) {
 
 /**
  * A run cache folder outside any work folder, holding OSV's answers to the audit (`vulns`,
- * as auditEntries takes them), for a preparation to name as its --cache-work-dir.
+ * as auditEntries takes them), for a build check to name as its --cache-work-dir.
  * @param {Record<string, object[]>} [vulns]
  * @returns {string}
  */
@@ -78,7 +87,7 @@ export function writeTree(dir, files) {
  *  agent judges the build safe and the reviewer lets it build unless `answers` says
  *  otherwise. */
 export function answer(work, answers) {
-  const file = workPaths(work).review;
+  const file = workPaths(work).answers;
   const doc = JSON.parse(fs.readFileSync(file, "utf8"));
   const given = {
     SCA_BUILD_SAFETY_ISSUES: [],
@@ -124,8 +133,8 @@ export function buildRescued(work, root) {
 }
 
 /**
- * Prepare a source code review for real: the work folder a --llm-auto-review run creates, the
- * source extracted into its sca/ and handed back as the root, beside a build report judged
+ * Run the build check of a source code review for real: the work folder a --llm-auto-review
+ * run creates, the source extracted into its sca/ and handed back as the root, beside a build report judged
  * safe, the reviewer letting the agent build, and every hand-back after it.
  * Its run cache is `cache`, a seeded folder named as --cache-work-dir in its record, so every
  * step and its review read it: each audit is answered from it, a rescued copy's included.
@@ -134,15 +143,16 @@ export function buildRescued(work, root) {
  * A vulnerable one gets its rescued copy, and `rescue` is the agent's work in it: a function
  * of the copy's root, which changes what it must for the copy's audit to come out clean, and
  * after which a copy of it is built in build/ (buildRescued) - or null, for an agent that answers that the
- * rescue failed, so the copy is deleted and the original is done, its roots back in sca/.
- * Each step is asserted to move as the preparation moves it. A build's output is compared
+ * rescue failed, so build/ is deleted, the copy stays, and the original is done, its roots back
+ * in sca/.
+ * Each step is asserted to move as the build check moves it. A build's output is compared
  * with the submitted XPI as `match` says, `no match` unless it says otherwise.
  * @param {{source: string, xpi: string, flags?: object, cache?: string,
  *   rescue?: ?(copyRoot: string) => void, match?: string}} opts
  * @returns {Promise<{next: string, work: string, record: object}>}  The handout of the
  *   last step: the folder whose review starts, and its record.
  */
-export async function realPreparation({
+export async function realBuildCheck({
   source,
   xpi,
   flags = {},
@@ -150,81 +160,103 @@ export async function realPreparation({
   rescue = null,
   match = "no match",
 }) {
-  // Started as a preparation is: the load creates the folder and puts the add-on's copy in it.
+  // Started as a build check is: the load creates the folder and puts the add-on's copy in
+  // it with an empty record, what the run was given is added to it, the source lies in its
+  // sca/, and the record starts at `analyze`, the early-exit checks having passed on it. The
+  // review that starts in the folder adds what its early-exit run works out.
   const work = freshWorkFolder();
-  await loadTheXpi(xpi, work, fixtureCacheOpts());
-  startPreparation(
-    work,
-    startRecord({
-      submission: { xpi, experiments: false },
-      flags: { ...flags, "cache-work-dir": cache },
-      agentBuilds: false,
-    })
-  );
+  const loaded = loadTheXpi(xpi, work);
+  const given = addToRecord(work, loaded.record, {
+    submission: { xpi, experiments: false },
+    kind: "sca",
+    flags: { ...flags, "cache-work-dir": cache },
+    folders: { xpi: workPaths(work).xpi },
+  });
   const sca = workPaths(work).sca;
   fs.cpSync(source, sca, { recursive: true });
-  const step = (folder) => handBack(folder);
-  let at = await step(work);
-  assert.equal(
-    at.record.step,
-    PREPARE_STEP.analyze,
-    "the unpacked source is analyzed"
-  );
+  const copied = addToRecord(work, given, { folders: { sca } });
+  const registry = loadRegistry();
+  // What the hand-back issues, without the print: the record, then the answers file.
+  const issue = (out) => {
+    if (out.next === "step") {
+      writeRecord(work, out.record);
+      writeReviewFile(workPaths(work).answers, reviewFile(out.entries));
+    }
+    return out;
+  };
+  issue({
+    next: "step",
+    record: startMode(
+      copied,
+      MODE.buildCheck,
+      buildCheckBody(settlePackageRoot(sca, {}).folders),
+      BUILD_CHECK_STEP.analyze
+    ),
+    entries: analyzeEntries(),
+  });
+  const step = async () =>
+    issue(await handBack(work, readRecord(work), registry));
+  // Done, the build results added to the record as the hand-back adds them before the review
+  // starts (src/cli.js buildCheckCase).
+  const finished = (out) => ({
+    ...out,
+    work,
+    record: addToRecord(work, out.record, {
+      build: buildResults(work, out.record.current),
+    }),
+  });
+  let at;
   answer(work, {});
   writeBuildReport(work);
-  at = await step(work);
+  at = await step();
   assert.equal(
-    at.record.step,
-    PREPARE_STEP.permission,
+    at.record.current.step,
+    BUILD_CHECK_STEP.permission,
     "a safe build asks the reviewer"
   );
   answer(work, {});
-  at = await step(work);
+  at = await step();
   if (at.next === "review") {
-    assert.equal(at.work, work, "an unaudited source is reviewed where it is");
-    return at;
+    return finished(at);
   }
-  assert.equal(at.work, work, "every step is in the same work folder");
-  if (at.record.step === PREPARE_STEP.build) {
+  if (at.record.current.step === BUILD_CHECK_STEP.build) {
     const output = buildInto(workPaths(work).buildCopy);
     answer(work, { LLM_BUILD_OUTPUT: output, LLM_BUILD_XPI_MATCH: match });
-    at = await step(work);
+    at = await step();
     assert.equal(at.next, "review", "a clean source is built and reviewed");
-    assert.equal(at.record.buildOutput, output);
-    assert.equal(at.record.buildMatch, match);
-    return at;
+    assert.equal(at.record.current.buildOutput, output);
+    assert.equal(at.record.current.buildMatch, match);
+    return finished(at);
   }
   assert.equal(
-    at.record.step,
-    PREPARE_STEP.rescue,
+    at.record.current.step,
+    BUILD_CHECK_STEP.rescue,
     "a vulnerable source is rescued"
   );
   const copy = workPaths(work).rescued;
   if (rescue) {
-    rescue(at.record.roots.packageRoot);
+    rescue(at.record.current.roots.packageRoot);
     answer(work, {
-      LLM_BUILD_OUTPUT: buildRescued(work, at.record.roots.packageRoot),
+      LLM_BUILD_OUTPUT: buildRescued(work, at.record.current.roots.packageRoot),
       LLM_BUILD_XPI_MATCH: match,
     });
-    at = await step(work);
+    at = await step();
     assert.equal(at.next, "review", "the rescued copy came out clean");
-    assert.equal(at.record.buildResult, "built");
-    assert.equal(at.work, work);
-    return at;
+    assert.equal(at.record.current.buildResult, "built");
+    return finished(at);
   }
   answer(work, {
     LLM_BUILD_OUTPUT: "The rescue failed",
     LLM_BUILD_XPI_MATCH: null,
   });
-  at = await step(work);
+  at = await step();
   assert.equal(at.next, "review", "a failed rescue is reviewed unrescued");
-  assert.equal(at.work, work);
-  assert.equal(at.record.buildResult, "rescue-failed");
+  assert.equal(at.record.current.buildResult, "rescue-failed");
   assert.equal(
-    at.record.roots.packageRoot,
+    at.record.current.roots.packageRoot,
     sca,
     "the source as submitted is reviewed"
   );
-  assert.ok(!fs.existsSync(copy), "the failed rescue's copy is deleted");
-  return at;
+  assert.ok(fs.existsSync(copy), "the failed rescue's copy stays");
+  return finished(at);
 }

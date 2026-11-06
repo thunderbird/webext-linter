@@ -7,54 +7,74 @@
 //
 // Belongs here: the front-end only - the OPTIONS table, usage/help text, argv
 // parse and flag validation, the values -> PipelineOpts mapping, stream
-// routing, exit codes, and the COMMAND a prompt hands back (the hand-back of a work
-// folder). Also creating the work folder a source code review is prepared in, recording the
-// flags its review is to run with, and starting that review from them - checked again, as
-// a command line is - when the preparation's hand-back finds it done.
+// routing and exit codes. The entry points, one per kind of submission, each setting its
+// own review up (the work folder and its record, the load, the source copied and its package
+// root settled), and the hand-back of a work folder, one switch on the mode its record holds,
+// whose cases start a review from the flags the record holds - checked again, as a command
+// line is. The one catch around every run, the one writer of a run's last message
+// (printMessage) and exit handling.
 //
-// Does NOT belong here: running the stages (opts -> Review is pipeline.js
-// runPipeline); report layout and rendering (src/report/format.js formatReview
-// and src/report/responses.js); the check ids and registry text
-// (src/checks/registry.js).
+// Does NOT belong here: the review itself (src/pipeline.js reviewLoadedSubmission), the
+// review loop (src/report/loop.js), the build check's steps (src/build-check/steps.js),
+// report layout and rendering (src/report/format.js formatReview and
+// src/report/responses.js); the check ids and registry text (src/checks/registry.js).
 
 import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 
-import { runPipeline } from "./pipeline.js";
+import {
+  reviewLoadedSubmission,
+  runTheNormalChecks,
+  populateCtx,
+} from "./pipeline.js";
 import { loadRegistry } from "./checks/registry.js";
 import { scaSubmission } from "./addon/submission.js";
-import { defaultWorkFolder, workPaths } from "./util/dest.js";
-import { keepClaims } from "./util/claims.js";
 import {
-  PREPARE_STEP,
-  recordBoolean,
-  startRecord,
-  buildRootOf,
-} from "./prepare/state.js";
+  defaultWorkFolder,
+  misplacedFolders,
+  misplacedFoldersError,
+  workPaths,
+} from "./util/dest.js";
+import { keepClaims, releaseClaims } from "./util/claims.js";
+import { buildResults, recordBoolean } from "./build-check/state.js";
 import {
-  agentBuildsSwitchedOn,
-  asksExperiments,
   handBack,
-  recordedRoots,
-  startPreparation,
-} from "./prepare/steps.js";
-import { scaFoldersMisfit, settlePackageRoot } from "./addon/package-root.js";
-import { relativeInside } from "./addon/load.js";
-import { copyTheSource, loadTheXpi } from "./review/start.js";
-import { hasErrors } from "./report/finding.js";
+  realSca,
+  stepPromptLines,
+  unpackEntries,
+  unpackedExperiments,
+} from "./build-check/steps.js";
 import {
-  detailRows,
-  formatReview,
-  scaPromptLines,
-  loopPromptLines,
-} from "./report/format.js";
-import { readState } from "./report/state.js";
+  ScaFoldersRejected,
+  approveScaFolders,
+  scaFoldersMisfit,
+  settlePackageRoot,
+} from "./addon/package-root.js";
+import { relativeInside } from "./addon/load.js";
+import { copySource, loadTheXpi } from "./review/start.js";
+import {
+  MODE,
+  addToRecord,
+  modeOf,
+  namedFolders,
+  readRecord,
+  startMode,
+} from "./review/record.js";
+import { issueHandbackPrompt } from "./review/issue.js";
+import { settleReview } from "./review/settle.js";
+import { hasErrors } from "./report/finding.js";
 import {
   DOWNGRADE_PHASE,
   DOWNGRADE_RESTART,
 } from "./checks/registry-vocabulary.js";
-import { accept, issue, loopSlots, HandbackRefused } from "./report/loop.js";
+import {
+  HandbackRefused,
+  accept,
+  advanceReview,
+  closeAt,
+  restartAnswer,
+} from "./report/loop.js";
 import {
   DEFAULT_CACHE,
   EXPERIMENTS_CACHE,
@@ -66,7 +86,6 @@ import {
 } from "./config.js";
 import {
   info,
-  report,
   setVerbose,
   setProgress,
   setFeed,
@@ -76,10 +95,10 @@ import {
   writeToStdout,
 } from "./util/log.js";
 import { setColor, red } from "./util/color.js";
-import { shellArg, wrapText } from "./util/text.js";
+import { wrapText } from "./util/text.js";
 import { parseJson } from "./util/json.js";
-import { rethrowIfFatal } from "./lib/errors.js";
-import { splitList } from "./lib/util.js";
+import { recordError, rethrowIfFatal } from "./lib/errors.js";
+import { isExperiment, splitList } from "./lib/util.js";
 import { networkSwitchedOff } from "./util/net.js";
 
 /** @typedef {import("./pipeline.js").PipelineOpts} PipelineOpts */
@@ -215,11 +234,11 @@ function helpText(registry) {
     ],
     [
       "--llm-auto-review",
-      "Work out the review an agent runs from a submission FOLDER - one built .xpi and, for a source code review, one archive of the source it was built from. A folder holding only the .xpi is reviewed as --llm-review reviews the .xpi, and an .xpi on its own is reviewed with --llm-review. A folder with a source archive is prepared for a source code review: the work folder is created beside the .xpi, and the prompt has the source extracted into it, its Experiment folder named, and handed back with --llm-handback and that work folder. The linter finds the package root, the next prompt has the build analyzed, and the reviewer then decides whether the build is safe and who builds it. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the source (rescued/ in the work folder) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the preparation is done, the hand-back starts the review itself, with this run's flags. An add-on whose Experiment the review would reject is not prepared: its review starts at once. Refused beside any --sca-* flag, which is what it works out.",
+      "Work out the review an agent runs from a submission FOLDER - one built .xpi and, for a source code review, one archive of the source it was built from. A folder holding only the .xpi is reviewed as --llm-review reviews the .xpi, and an .xpi on its own is reviewed with --llm-review. A folder with a source archive starts a source code review: the work folder is created beside the .xpi, and the prompt has the source extracted into it, its Experiment folder named, and handed back with --llm-handback and that work folder. The linter finds the package root and runs the checks that end a review early: a review they reject is closed at once, and otherwise the next prompt has the build analyzed, and the reviewer then decides whether the build is safe and who builds it. Each hand-back prints the next prompt: where the source's dependencies have known vulnerabilities, a copy of the source (rescued/ in the work folder) is prepared with fewer or fixed dependencies, and reviewed if that resolves them. Once the build check is done, the hand-back starts the review itself, with this run's flags. Refused beside any --sca-* flag, which is what it works out.",
     ],
     [
       "--llm-handback <dir>",
-      "Take one pass of the review loop, or one step of preparing a source code review: apply what the review file in this work folder carries and print the next prompt - the last one, once nothing else is left, hands over the settled review. A preparation that is done starts its review here, and prints that review's first prompt. The folder is the work folder the review or its preparation started in, and no add-on is named again. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person.",
+      "Take one pass of the review loop, or one step of a source code review's build check: apply what the answers file in this work folder carries and print the next prompt - the last one, once nothing else is left, hands over the settled review. A build check that is done starts its review here, and prints that review's first prompt. The folder is the work folder the review started in, and nothing else is given: the review recorded every flag it runs with when it started. The only run that carries on an existing work folder. Normally run by the agent working through the review rather than by a person.",
     ],
   ];
 
@@ -253,7 +272,10 @@ function helpText(registry) {
     ],
     ["--help", "Show this help."],
     ["--report-format <text|json>", "Report output format (default: text)."],
-    ["--verbose", "Verbose logging."],
+    [
+      "--verbose",
+      "Verbose logging. Recorded with the review, so every --llm-handback of a review started with it runs verbose.",
+    ],
     [
       "--warnings-as-errors",
       "Read every warning as an error for this review (off by default): each one is reported in the rejection list rather than as something to resolve with the next release, and the run exits 1. Set once, by the run that starts a review - a --llm-handback pass reads it back from the review.",
@@ -407,25 +429,46 @@ const FOLDER_FLAGS = [
 ];
 
 /** The flags never handed on to a later review: the --sca-* ones name the source and the
- *  folders inside it, which the preparation or the review names itself, three run or carry on a review
+ *  folders inside it, which the record names itself, three run or carry on a review
  *  rather than describing one, and two are this run's alone - its caches are cleared now
- *  (--cache-clear), and its feed is its own (--verbose). A record naming a folder for a
- *  later run to delete is the one thing it must not be able to say. */
+ *  (--cache-clear), and its output is its own (--report-format, and every later run prints
+ *  text). A record naming a folder for a later run to delete is the one thing it must not
+ *  be able to say. --verbose is recorded: every hand-back of the review runs verbose. */
 const NOT_FORWARDED = new Set([
   "llm-auto-review",
   "llm-review",
   "llm-handback",
   "cache-clear",
-  "verbose",
+  "report-format",
   ...SCA_FLAGS,
 ]);
 
 /**
+ * What was typed beside --llm-handback, which takes its work folder and nothing else: every
+ * other flag and every positional, as a reader would write them. Empty where the run is no
+ * hand-back, or where nothing else was typed.
+ * @param {Record<string, string|boolean>} values
+ * @param {string[]} typedFlags  The flags typed, before any default is filled in.
+ * @param {string[]} positionals
+ * @returns {string[]}
+ */
+function handbackExtras(values, typedFlags, positionals) {
+  if (!values["llm-handback"]) {
+    return [];
+  }
+  return [
+    ...positionals.map((p) => `"${p}"`),
+    ...typedFlags.filter((f) => f !== "llm-handback").map((f) => `--${f}`),
+  ];
+}
+
+/**
  * The flags a review is to be run with, minus its --sca-* and one-run flags
- * (NOT_FORWARDED), as parsed and named without their dashes. The preparation records them
- * (src/prepare/state.js) for the review it starts (preparedReview), and every review
- * records them (`state.flags`) for an XPI review restarted from it. A folder among them is
- * already the real folder (main), so it means the same wherever the review is started.
+ * (NOT_FORWARDED), as parsed and named without their dashes. The run that starts a review
+ * adds them to the record's permanent part (addGiven), for the review a later
+ * hand-back starts (recordedValues) and for an XPI review restarted from it. A folder among
+ * them is already the real folder (main), so it means the same wherever the review is
+ * started.
  *
  * Read from the PARSED values against OPTIONS, which is what knows a flag from its value.
  * Reading argv again instead means guessing that pairing from the token shapes.
@@ -438,15 +481,6 @@ function forwardedFlags(values) {
       .filter((name) => !NOT_FORWARDED.has(name) && values[name])
       .map((name) => [name, values[name]])
   );
-}
-
-/**
- * The command that carries a preparation on: a hand-back of the work folder named.
- * @param {string} work
- * @returns {string[]}
- */
-function handbackCommand(work) {
-  return [`--llm-handback ${shellArg(work)}`];
 }
 
 /**
@@ -530,73 +564,62 @@ function realFolder(p) {
 }
 
 /**
- * What is wrong with a value that must name a folder, as the message saying so - or null
- * when nothing is. Asked of the folder the value names, already followed to its real target
- * (main), so how it was spelled - a link, a ".." segment - makes no difference; only where
- * it lands does. Two questions (that a value was given at all is main()'s, asked of every
- * flag that takes one):
- *
- * Does a flag that names a folder INSIDE another one (`within`: --sca-package-root or
- * --sca-experiments inside --sca-extracted) LAND inside it? A value resolving outside names a folder
- * on the reviewing machine, which can be anywhere, so what it names is not part of the
- * submission and cannot be shown to be.
- *
- * Does it point at a FOLDER? Asked of the resolved path, so a trailing slash cannot answer
- * it differently. A file, a missing path and an unreadable one are all "no".
+ * What is wrong with a value that must name a folder, as the message saying so, or null
+ * when nothing is: does it point at a FOLDER? Asked of the folder the value names, already
+ * followed to its real target (main), so how it was spelled (a link, a ".." segment) makes no
+ * difference, and of the resolved path, so a trailing slash cannot answer it differently. A
+ * file, a missing path and an unreadable one are all "no". That a value was given at all is
+ * main()'s, asked of every flag that takes one. The folders named inside --sca-extracted are
+ * approved against it (src/addon/package-root.js approveScaFolders).
  * @param {string} flag  The flag's name, for the message.
  * @param {string} value  The value as it was given.
- * @param {string} [base]  What the value is relative to: the folder it names a folder inside,
- *   and the value's own path otherwise.
- * @param {?string} [within]  The flag naming the folder the value must resolve into however
- *   it was written, or null for one that names a folder of its own.
- * @returns {?{text: string, escape: boolean}}  `escape` marks the outside-the-folder
- *   refusal, which says what to do on its own - the other is worth telling what the folder
- *   is FOR.
+ * @returns {?{text: string}}
  */
-function folderProblem(flag, value, base, within = null) {
-  // Resolved exactly as the arg-array reader resolves it (pipelineOptsFromValues): against
-  // the folder it names a folder inside, against the working directory otherwise. One
-  // expression in both places, so the folder asked about here is the folder the review goes
-  // on to read rather than a second spelling of it.
-  const full = within ? path.resolve(base, value) : path.resolve(value);
-  // Asked with the loader's own function, so the guard and the review cannot answer it
-  // differently.
-  if (within && relativeInside(full, base) === null) {
-    return {
-      text:
-        `--${flag} names a folder inside --${within}: "${value}" resolves to "${full}", ` +
-        `which is outside "${path.resolve(base)}".`,
-      escape: true,
-    };
-  }
+function folderProblem(flag, value) {
+  const full = path.resolve(value);
   if (!pointsAtFolder(full)) {
     return {
-      text:
-        `--${flag} must point at a folder: "${value}" does not (looked in ` +
-        `"${path.resolve(full)}").`,
-      escape: false,
+      text: `--${flag} must point at a folder: "${value}" does not (looked in "${full}").`,
     };
   }
   return null;
 }
 
 /**
+ * Every run, a first run or a hand-back, inside the one catch, which answers an error thrown
+ * in it: a refusal (HandbackRefused, thrown only in a hand-back) as the refused text, and
+ * anything else as a failure. Every run then ends in exit handling.
+ *
+ * The registry is read and asserted FIRST, before the command line is even parsed. It is
+ * this tool's own file, identical on every run, and nothing it could be asked to do means
+ * anything while it is broken - not a review, not --help, not a usage error, which prints
+ * the check ids the registry names.
  * @param {string[]} argv
  * @returns {Promise<number>} process exit code
  */
 export async function main(argv) {
-  // The registry is read and asserted FIRST, before the command line is even parsed. It is
-  // this tool's own file, identical on every run, and nothing it could be asked to do means
-  // anything while it is broken - not a review, not --help, not a usage error, which prints
-  // the check ids the registry names. One load, one answer, and no path that reaches for it
-  // before it has been judged.
-  let registry;
+  let registry = null;
+  let outcome;
   try {
     registry = loadRegistry();
+    outcome = await run(argv, registry);
   } catch (err) {
-    writeToStderr(`${err.message}\nverify failed\n`);
-    return 2;
+    outcome = answerError(err, registry);
   }
+  return exitHandling(
+    typeof outcome === "number" ? { code: outcome, keep: true } : outcome
+  );
+}
+
+/**
+ * One run: the command line judged, then the entry point it names, or the hand-back. A run
+ * that did its job returns its exit code. A bad command line returns what exit handling is
+ * given for one, nothing created (badCommandLine).
+ * @param {string[]} argv
+ * @param {import("./checks/registry.js").Registry} registry
+ * @returns {Promise<number|{code: number, keep: boolean}>}
+ */
+async function run(argv, registry) {
   let parsed;
   try {
     parsed = parseArgs({
@@ -606,10 +629,12 @@ export async function main(argv) {
     });
   } catch (err) {
     emitBanner(argv);
-    writeToStderr(`${cleanParseError(err)}\n\n${helpText(registry)}`);
-    return 2;
+    return badCommandLine(`${cleanParseError(err)}\n\n${helpText(registry)}`);
   }
   const { values, positionals } = parsed;
+  // What was typed, before the cache defaults below are filled in: a hand-back is refused
+  // for anything typed beside its work folder, never for a default.
+  const typedFlags = Object.keys(values);
 
   // Output routing by format. The review and the what-is-going-on feed are standard
   // output; a message that is not part of the normal review - a degraded run, a flag
@@ -653,42 +678,51 @@ export async function main(argv) {
     return 0;
   }
 
+  // A HAND-BACK carries on the review its work folder holds, and that review recorded what
+  // it runs with when it started (state.json): nothing typed beside the work folder can mean
+  // anything, so anything there is a mistake, answered before any other check can answer it.
+  const extras = handbackExtras(values, typedFlags, positionals);
+  if (extras.length) {
+    return badCommandLine(
+      "--llm-handback carries on the review its work folder holds, which recorded what it " +
+        "runs with when it started, so nothing goes beside the work folder: drop " +
+        `${listOf(extras)}.\n`
+    );
+  }
+
   // The format decides how everything below prints, so it is judged as soon as the setters
   // above have been given it: one question, asked once, at the point the value enters, and
   // before any branch can return without asking it.
   if (format !== "text" && format !== "json") {
-    writeToStderr(
+    return badCommandLine(
       `Invalid --report-format "${format}" (expected text or json).\n`
     );
-    return 2;
   }
 
   // The other flag whose value is a closed set, asked the same way (cdnLookupProblem).
   const cdnProblem = cdnLookupProblem(values);
   if (cdnProblem) {
-    writeToStderr(`${cdnProblem}\n`);
-    return 2;
+    return badCommandLine(`${cdnProblem}\n`);
   }
 
   // A flag given with no value is refused before any branch reads one (emptyFlagProblem):
   // asked HERE, once, so a run that returns early cannot skip it.
   const emptyProblem = emptyFlagProblem(values);
   if (emptyProblem) {
-    writeToStderr(`${emptyProblem}\n`);
-    return 2;
+    return badCommandLine(`${emptyProblem}\n`);
   }
 
   // Every FOLDER named here is taken to be the folder it really is, links followed, before
   // anything reads it: every condition below is asked of that target, and the review reads
   // it. So a folder named through a link is the folder it names, and no link anywhere in a
   // path can carry it past a guard that compares paths. Asked before any branch returns,
-  // so the preparation and the review alike see only real folders.
+  // so every mode the record goes through sees only real folders.
   //
   // A FILE is never followed: the .xpi named here, like the files of a submission folder
   // (src/addon/submission.js), must be the file itself, so a link to one is refused.
   //
   // A cache the run was not given is its default, filled in first so it is taken the same
-  // way: the preparation records every cache it used, and the review a later hand-back
+  // way: the record carries every cache the review uses, and the review a later hand-back
   // starts reads those, whatever directory that hand-back runs from.
   for (const [flag, folder] of Object.entries(CACHE_DIR_DEFAULTS)) {
     values[flag] ??= folder;
@@ -701,10 +735,9 @@ export async function main(argv) {
   if (positionals[0] !== undefined) {
     const linked = linkedFile(positionals[0]);
     if (linked) {
-      writeToStderr(
+      return badCommandLine(
         `The add-on "${positionals[0]}" is a symlink. Name the .xpi file itself.\n`
       );
-      return 2;
     }
     positionals[0] = realFolder(positionals[0]);
   }
@@ -721,12 +754,11 @@ export async function main(argv) {
 
   // A bad --checks-only/--checks-skip id is a bad command line whatever the run does with
   // it, so it is answered before any branch below - including the two that print a prompt.
-  // --llm-auto-review records these very flags for the review it prepares: an id nobody can
-  // run would travel into it, and the review the preparation starts would fail on it.
+  // --llm-auto-review records these very flags for the review a hand-back starts: an id
+  // nobody can run would travel into it, and that review would fail on it.
   const checkProblem = checkIdProblem(values, registry);
   if (checkProblem) {
-    writeToStderr(`${checkProblem}\n`);
-    return 2;
+    return badCommandLine(`${checkProblem}\n`);
   }
 
   // A skip names part of the --llm-review prompt to leave out, so it says nothing without a
@@ -741,12 +773,11 @@ export async function main(argv) {
     !values["llm-review"] &&
     values["llm-auto-review"] === undefined
   ) {
-    writeToStderr(
+    return badCommandLine(
       "--llm-skip-sweep names part of the --llm-review prompt to leave out, so it needs " +
         "--llm-review, or --llm-auto-review to hand to the review it prepares: a run that " +
         "prints its report has no prompt to cut down.\n"
     );
-    return 2;
   }
   const skips = reviewSkips(values);
   if (
@@ -755,56 +786,39 @@ export async function main(argv) {
     values["llm-auto-review"] === undefined
   ) {
     const many = skips.length > 1;
-    writeToStderr(
+    return badCommandLine(
       `${listOf(skips.map((flag) => `--${flag}`))} ${many ? "name parts" : "names part"} ` +
         `of the --llm-review prompt to leave out, so ${many ? "they need" : "it needs"} ` +
         "--llm-review, or " +
         "--llm-auto-review to hand to the review it prepares: a run that prints its " +
         "report has no prompt to cut down.\n"
     );
-    return 2;
-  }
-
-  // The band a review publishes a warning at belongs to the REVIEW, recorded by the run that
-  // started it (state.run) and read back by every pass after. Accepting it here too would put
-  // the same fact in two places, and a pass given it where the review was not would settle a
-  // case in a band the rest of that review does not use.
-  if (values["warnings-as-errors"] && values["llm-handback"]) {
-    writeToStderr(
-      "--warnings-as-errors belongs to the review, which recorded it when it started, so " +
-        "a --llm-handback pass reads it back rather than being told it again. Drop it, or " +
-        "start the review again with it.\n"
-    );
-    return 2;
   }
 
   // --llm-auto-review works out which review an agent runs from the submission folder it is
   // given: one with only an .xpi is reviewed as --llm-review reviews that .xpi, and one with a
-  // source is prepared, which starts its review itself. Settled here, in full, before any of
-  // the flags below are read.
+  // source starts at unpack, whose hand-back reviews it. Settled here, in full, before any
+  // of the flags below are read.
   if (values["llm-auto-review"]) {
     const given = SCA_FLAGS.filter((f) => values[f]);
     if (given.length) {
-      writeToStderr(
+      return badCommandLine(
         `--llm-auto-review works out ${listOf(given.map((f) => `--${f}`))} for you, ` +
           "so it cannot be given them. Drop them, or run --llm-review with the ones you " +
           "already have.\n"
       );
-      return 2;
     }
-    if (values["llm-review"] || values["llm-handback"]) {
-      writeToStderr(
-        "--llm-auto-review starts its own review, so it cannot be combined with the " +
-          "flags that run or settle one.\n"
+    if (values["llm-review"]) {
+      return badCommandLine(
+        "--llm-auto-review starts its own review, so it cannot be combined with " +
+          "--llm-review.\n"
       );
-      return 2;
     }
     if (format === "json") {
-      writeToStderr(
+      return badCommandLine(
         "--llm-auto-review is text only: it prints a prompt and no report, which is not " +
           "what --report-format json produces.\n"
       );
-      return 2;
     }
     // The flag changes what the ADD-ON ARGUMENT means, so the argument is required here
     // exactly as it is for a review, and refused in the plural for the same reason.
@@ -812,25 +826,22 @@ export async function main(argv) {
       "--llm-auto-review reviews a submission folder - one .xpi and, for a source code " +
       "review, the archive of its source";
     if (positionals.length === 0) {
-      writeToStderr(`${takes} - and none was given.\n`);
-      return 2;
+      return badCommandLine(`${takes} - and none was given.\n`);
     }
     if (positionals.length > 1) {
-      writeToStderr(
+      return badCommandLine(
         `Only one submission can be reviewed at a time, and ${positionals.length} were ` +
           `given: ${positionals.map((p) => `"${p}"`).join(", ")}. If the path contains ` +
           "spaces, quote it.\n"
       );
-      return 2;
     }
-    // Asked of the path itself, not of where a link leads: a submission is the folder itself.
-    // An .xpi on its own is reviewed with --llm-review.
+    // The path is the real folder by now (realFolder above): a submission folder named through
+    // a link is the folder it names. An .xpi on its own is reviewed with --llm-review.
     const target = fs.lstatSync(path.resolve(positionals[0]), {
       throwIfNoEntry: false,
     });
     if (!target?.isDirectory()) {
-      writeToStderr(`${takes} - and "${positionals[0]}" is not one.\n`);
-      return 2;
+      return badCommandLine(`${takes} - and "${positionals[0]}" is not one.\n`);
     }
     // The submission folder, as read (src/addon/submission.js).
     let submission;
@@ -838,8 +849,9 @@ export async function main(argv) {
       submission = scaSubmission(positionals[0]);
     } catch (err) {
       // The flag's name is this layer's: submission.js says what it found in the folder.
-      writeToStderr(`--llm-auto-review "${positionals[0]}": ${err.message}\n`);
-      return 2;
+      return badCommandLine(
+        `--llm-auto-review "${positionals[0]}": ${err.message}\n`
+      );
     }
     if (!submission.source) {
       const { "llm-auto-review": _auto, ...asked } = values;
@@ -853,34 +865,19 @@ export async function main(argv) {
     return autoReview(values, submission, registry);
   }
 
-  if (values["llm-review"] && values["llm-handback"]) {
-    writeToStderr(
-      "--llm-review and --llm-handback are the two ends of one review and cannot share a " +
-        "run: --llm-review starts it, --llm-handback carries it on.\n"
-    );
-    return 2;
-  }
-
   // A review flag's whole output is a prompt. JSON is the machine contract for ATN, which
   // wants neither, and asking for both leaves nothing coherent to print - so say so rather
-  // than silently favouring one. Asked of BOTH ends of the loop, and before either one
-  // branches away: --llm-handback returns just below without reading another guard, so a
-  // test further down is a test it never takes - which is how it came to accept a format
-  // it then ignored. The flag that was actually used is the one named, since a run that
-  // said --llm-handback is not helped by being told about --llm-review.
-  if ((values["llm-review"] || values["llm-handback"]) && format === "json") {
-    const flag = values["llm-review"] ? "--llm-review" : "--llm-handback";
-    writeToStderr(
-      `${flag} is text only: it prints a prompt and writes the files the review names, ` +
+  // than silently favouring one. A hand-back given --report-format was refused above.
+  if (values["llm-review"] && format === "json") {
+    return badCommandLine(
+      "--llm-review is text only: it prints a prompt and writes the files the review names, " +
         "which is not what --report-format json produces.\n"
     );
-    return 2;
   }
 
-  // A HAND-BACK: a step of preparing a source code review, or a pass of the review loop
-  // after the first (runHandback). No add-on is named: a preparation's record holds it, and
-  // a loop pass reads the review from the state in the work folder, because the
-  // deterministic review ran ONCE, when the review started.
+  // A HAND-BACK: one switch on the mode the work folder's record holds (runHandback). No
+  // add-on is named: the record holds it, and a loop pass reads the review from the record,
+  // because the deterministic review ran ONCE, when the review started.
   if (values["llm-handback"]) {
     return runHandback(values["llm-handback"], registry);
   }
@@ -888,19 +885,17 @@ export async function main(argv) {
   // No add-on to review: the usage text answers what was missing, and the exit code says
   // it was a mistake rather than a question (--help returns 0, far above).
   if (positionals.length === 0) {
-    writeToStdout(helpText(registry));
-    return 2;
+    return badCommandLine(helpText(registry), "stdout");
   }
 
   // ONE add-on per run. A silently ignored second positional is how an unquoted path with
   // a space in it ("/my sub/a.xpi") reviews "/my" and says nothing about the rest.
   if (positionals.length > 1) {
-    writeToStderr(
+    return badCommandLine(
       `Only one add-on can be reviewed at a time, and ${positionals.length} were given: ` +
         `${positionals.map((p) => `"${p}"`).join(", ")}. If the path contains spaces, ` +
         "quote it.\n"
     );
-    return 2;
   }
 
   // --sca-extracted is the SCA-mode switch: the extracted source archive, all of it. --sca-package-root
@@ -911,47 +906,24 @@ export async function main(argv) {
   if (named.length && !values["sca-extracted"]) {
     const [names, need] =
       named.length > 1 ? ["name folders", "need"] : ["names a folder", "needs"];
-    writeToStderr(
+    return badCommandLine(
       `${listOf(named.map((f) => `--${f}`))} ${names} inside --sca-extracted, the extracted ` +
         `source archive, and ${need} it (SCA mode). Pass --sca-extracted, and --sca-package-root only ` +
         "where the linter cannot find the package root itself.\n"
     );
-    return 2;
   }
 
-  // Every --sca-* flag names a FOLDER that is there. --sca-extracted is the extracted source -
-  // extracting it is the reviewer's, whatever format it came in, unlike the submitted
-  // .xpi which this tool extracts itself - and --sca-package-root and --sca-experiments lie inside
-  // it. Asked outermost first, so each folder's own validity is settled before
-  // anything is looked up inside it.
-  //
-  // Asked here rather than left to the loader because neither fails loudly
-  // there: a --sca-experiments that names nothing is a WARNING, and the review then reads
-  // the Experiment's privileged code as WebExtension code - the thing that flag exists to
-  // prevent - on a typo.
-  for (const flag of SCA_FLAGS) {
-    const value = values[flag];
-    if (value === undefined) {
-      continue;
-    }
-    // --sca-extracted stands on its own. Each other one names a folder INSIDE it, so it is
-    // asked about after being resolved against it - the same resolution the reader applies a
-    // moment later.
-    const within = {
-      "sca-package-root": "sca-extracted",
-      "sca-experiments": "sca-extracted",
-    }[flag];
-    const problem = within
-      ? folderProblem(flag, value, values[within], within)
-      : folderProblem(flag, value);
+  // --sca-extracted names a FOLDER that is there: the extracted source - extracting it is the
+  // reviewer's, whatever format it came in, unlike the submitted .xpi which this tool extracts
+  // itself. The folders named inside it are approved against it by the source path itself,
+  // before anything is created (reviewWithSource).
+  if (values["sca-extracted"] !== undefined) {
+    const problem = folderProblem("sca-extracted", values["sca-extracted"]);
     if (problem) {
-      const what =
-        flag === "sca-extracted" && !problem.escape
-          ? " This tool cannot open a source archive itself - extract it and point " +
-            "--sca-extracted at the folder it produced."
-          : "";
-      writeToStderr(`${problem.text}${what}\n`);
-      return 2;
+      return badCommandLine(
+        `${problem.text} This tool cannot open a source archive itself - extract it and ` +
+          "point --sca-extracted at the folder it produced.\n"
+      );
     }
   }
 
@@ -964,376 +936,615 @@ export async function main(argv) {
     values["sca-extracted"] &&
     relativeInside(addonPath, values["sca-extracted"]) !== null
   ) {
-    writeToStderr(
+    return badCommandLine(
       `--sca-extracted "${values["sca-extracted"]}" must not include the add-on "${addonPath}".\n`
     );
-    return 2;
   }
-  // One path per entry point (plans/review-flow-old-new.html). A source review an agent runs
-  // is prepared as --llm-auto-review's is, from the build analysis on.
+  // One entry point per kind of submission: an .xpi, or an .xpi with its source. Plain or an
+  // agent's (--llm-review) is a mode of each.
   if (values["sca-extracted"]) {
-    return values["llm-review"]
-      ? prepareFromSource(values, addonPath, registry)
-      : reviewWithSource(values, addonPath, registry, format);
+    return reviewWithSource(values, addonPath, registry, format);
   }
   return reviewXpi(values, addonPath, registry, format);
 }
-
 /**
- * The path of an XPI review, plain or --llm-review, and of the one an aborted source review is
- * restarted as: the .xpi loaded into a work folder of its own beside it, then rejected early,
- * or reviewed.
- * @param {Record<string, string|boolean>} values  Parsed and checked.
- * @param {string} addonPath  The add-on, absolute.
- * @param {import("./checks/registry.js").Registry} registry
- * @param {string} format  The report's format.
- * @param {{downgradedFrom?: string}} [internal]  The restart's source review (startReview).
- * @returns {Promise<number>}
+ * Print the message a run ends with: the one writer for a failure, a bad command line and a
+ * refusal, each caller giving the stream and the text. Exit handling follows it at once.
+ * @param {"stdout"|"stderr"} stream
+ * @param {string} text  With its own newlines.
  */
-async function reviewXpi(values, addonPath, registry, format, internal = {}) {
-  const work = defaultWorkFolder(addonPath, "xpi");
-  const loaded = await loadForReview(values, addonPath, work);
-  if (!loaded) {
-    return 2;
+function printMessage(stream, text) {
+  if (stream === "stdout") {
+    writeToStdout(text);
+  } else {
+    writeToStderr(text);
   }
-  if (loaded.rejected) {
-    return rejectEarly(values, addonPath, work, loaded, registry, format);
-  }
-  return review(values, addonPath, work, registry, format, {
-    verification: loaded.verification,
-    ...internal,
-  });
 }
 
 /**
- * The path of a plain source code review (--sca-extracted, no agent): the .xpi loaded, then
- * rejected early, or the named source copied into the work folder's sca/ and the review run
- * on that copy.
- * @param {Record<string, string|boolean>} values  Parsed and checked, with --sca-extracted.
- * @param {string} addonPath  The built add-on, absolute.
- * @param {import("./checks/registry.js").Registry} registry
- * @param {string} format  The report's format.
- * @returns {Promise<number>}
+ * A bad command line: what is wrong with it printed, without "verify failed", since nothing
+ * was verified, and exit 2 with nothing created.
+ * @param {string} text  What is wrong, its own newlines included.
+ * @param {"stdout"|"stderr"} [stream]  stderr, but for the usage text a run naming no add-on
+ *   is answered with.
+ * @returns {{code: number, keep: boolean}}
  */
-async function reviewWithSource(values, addonPath, registry, format) {
-  const work = defaultWorkFolder(addonPath, "sca");
-  const loaded = await loadForReview(values, addonPath, work);
-  if (!loaded) {
-    return 2;
-  }
-  if (loaded.rejected) {
-    return rejectEarly(values, addonPath, work, loaded, registry, format);
-  }
-  const opts = pipelineOptsFromValues(values);
-  let source;
-  try {
-    source = copyTheSource(work, opts.scaGiven, opts.scaMovedFrom);
-  } catch (err) {
-    rethrowIfFatal(err);
-    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-    return 2;
-  }
-  return review(values, addonPath, work, registry, format, {
-    verification: loaded.verification,
-    scaFolders: source.scaFolders,
-    ...(source.scaMoved ? { scaMoved: source.scaMoved } : {}),
-  });
+function badCommandLine(text, stream = "stderr") {
+  printMessage(stream, text);
+  return { code: 2, keep: false };
 }
 
 /**
- * "load the .xpi" for a path: the caches cleared first where --cache-clear asks, since the
- * load may fetch the Experiment allow-list, then the load (src/review/start.js loadTheXpi).
- * A failure is the tool's, said on stderr.
- * @param {Record<string, string|boolean>} values
- * @param {string} addonPath
- * @param {string} work  The work folder to create.
- * @returns {Promise<?import("./review/start.js").LoadedXpi>}  Null where it failed.
+ * Answer an error thrown in a run, in the one catch around every run: a refusal
+ * (HandbackRefused) to stdout as the refused text with its problem filled in, the files kept
+ * so the agent redoes that pass in the same folder, and anything else as a failure, its
+ * message and "verify failed" to stderr, the files this run created removed.
+ * @param {unknown} err
+ * @param {?import("./checks/registry.js").Registry} registry  Null where it failed to load.
+ * @returns {{code: number, keep: boolean}}
  */
-async function loadForReview(values, addonPath, work) {
-  const opts = pipelineOptsFromValues(values);
-  // --cache-clear: wipe every cache dir up front so the resolvers re-fetch each source from
-  // scratch during this review, exactly as on a first run. cacheDirs lists every cache dir
-  // opt - a new cache added to pipelineOptsFromValues must be added there too, or
-  // --cache-clear would silently skip it.
-  if (values["cache-clear"]) {
-    clearCaches(cacheDirs(opts));
+function answerError(err, registry) {
+  if (err instanceof HandbackRefused) {
+    printMessage(
+      "stdout",
+      `${fillSlots(registry.llmPhases().refused, { problem: err.problem })}\n`
+    );
+    return { code: 2, keep: true };
+  }
+  printMessage("stderr", failureText(err?.message ?? err));
+  return { code: 2, keep: false };
+}
+
+/**
+ * A failure as it is printed: its message, then "verify failed".
+ * @param {unknown} message
+ * @returns {string}
+ */
+function failureText(message) {
+  return `${message}\n${red("verify failed")}\n`;
+}
+
+/**
+ * Exit handling, which every run ends in: given whether the files this run wrote stay and the
+ * exit code, it acts on both and decides nothing. They stay when the run did its job, a refusal
+ * included, and the files and folders this run created are removed after a failure
+ * (src/util/claims.js). The process leaves through exitWith (src/util/log.js, verify.js).
+ * @param {{code: number, keep: boolean}} outcome
+ * @returns {number}  The exit code.
+ */
+function exitHandling({ code, keep }) {
+  if (keep) {
+    keepClaims();
+    return code;
   }
   try {
-    return await loadTheXpi(addonPath, work, opts);
+    releaseClaims();
   } catch (err) {
-    rethrowIfFatal(err);
-    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-    return null;
-  }
-}
-
-/**
- * "reject early": the review of an add-on the load rejected, in the work folder it was loaded
- * into, as an XPI review whatever was asked for. The check that rejects it ends the review
- * early and always runs (checkSelected), so its report, or for an agent the closing prompt,
- * carries the rejection.
- * @param {Record<string, string|boolean>} values
- * @param {string} addonPath
- * @param {string} work  The loaded work folder.
- * @param {import("./review/start.js").LoadedXpi} loaded
- * @param {import("./checks/registry.js").Registry} registry
- * @param {string} format  The report's format.
- * @param {boolean} [llm]  Whether an agent runs the review.
- * @returns {Promise<number>}
- */
-function rejectEarly(
-  values,
-  addonPath,
-  work,
-  loaded,
-  registry,
-  format,
-  llm = Boolean(values["llm-review"])
-) {
-  return review(
-    { ...forwardedFlags(values), ...(llm ? { "llm-review": true } : {}) },
-    addonPath,
-    work,
-    registry,
-    format,
-    { verification: loaded.verification }
-  );
-}
-
-/**
- * "review": the review run in the loaded work folder (startReview), and what it hands its
- * reader printed. A failure is the tool's, said on stderr.
- * @param {Record<string, string|boolean>} values
- * @param {string} addonPath
- * @param {string} work
- * @param {import("./checks/registry.js").Registry} registry
- * @param {string} format
- * @param {object} [internal]  startReview's.
- * @returns {Promise<number>}
- */
-async function review(values, addonPath, work, registry, format, internal) {
-  let result;
-  try {
-    result = await startReview(values, addonPath, work, registry, internal);
-  } catch (err) {
-    // A pipeline throw is a tool failure the review could not run through (no network, a
-    // host that gave no answer, an unusable schema, a bad review config, an unreadable
-    // add-on): state it plainly and exit 2, distinct from a completed review that found
-    // errors.
-    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-    return 2;
-  }
-  return printReview(result, format);
-}
-
-/**
- * The path of a source code review an agent runs from a named source (--llm-review
- * --sca-extracted): the .xpi loaded, then rejected early, or the named source copied into the
- * work folder's sca/ (copyTheSource), the preparation started at `analyze`, and the build
- * analysis's prompt printed - the step --llm-auto-review reaches once its reader has extracted
- * the archive.
- * @param {Record<string, string|boolean>} values  Parsed and checked, with --sca-extracted.
- * @param {string} addonPath  The built add-on, absolute.
- * @param {import("./checks/registry.js").Registry} registry
- * @returns {Promise<number>}
- */
-async function prepareFromSource(values, addonPath, registry) {
-  let folders;
-  try {
-    ({ folders } = scaGivenOf(values));
-  } catch (err) {
-    rethrowIfFatal(err);
-    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-    return 2;
-  }
-  const work = defaultWorkFolder(addonPath, "sca");
-  const loaded = await loadForReview(values, addonPath, work);
-  if (!loaded) {
-    return 2;
-  }
-  if (loaded.rejected) {
-    return rejectEarly(values, addonPath, work, loaded, registry, "text", true);
-  }
-  // The Experiment folder is named exactly for an add-on with Experiments, as a review given
-  // these flags needs it. Refused before the source is copied.
-  const misfit = scaFoldersMisfit(folders, loaded.experiments);
-  if (misfit) {
-    writeToStderr(`${misfit}\n`);
-    return 2;
-  }
-  let roots;
-  try {
-    ({ scaFolders: roots } = copyTheSource(work, folders));
-  } catch (err) {
-    rethrowIfFatal(err);
-    // Nothing is kept of a preparation that never started: the work folder goes as the run
-    // exits (src/util/claims.js).
-    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-    return 2;
-  }
-  return startPrepared(work, registry, {
-    submission: submissionOf(addonPath, loaded),
-    flags: forwardedFlags(values),
-    agentBuilds: agentBuildsSwitchedOn(),
-    roots,
-  });
-}
-
-/**
- * The path of --llm-auto-review given a submission folder with a source archive: the .xpi
- * loaded, then rejected early, or the preparation started at `unpack`, whose prompt has the
- * agent extract the archive into the work folder's sca/.
- * @param {Record<string, string|boolean>} values  Parsed and checked.
- * @param {{folder: string, xpi: string, source: string}} submission  The folder, as read
- *   (src/addon/submission.js).
- * @param {import("./checks/registry.js").Registry} registry
- * @returns {Promise<number>}
- */
-async function autoReview(values, submission, registry) {
-  // The caches are cleared by the run that was given --cache-clear, never by a later one:
-  // the review this preparation starts reads its flags from a record the agent can write,
-  // and a record that could name a folder for the linter to delete is one too many.
-  const work = defaultWorkFolder(submission.xpi, "sca");
-  const loaded = await loadForReview(values, submission.xpi, work);
-  if (!loaded) {
-    return 2;
-  }
-  if (loaded.rejected) {
-    return rejectEarly(
-      values,
-      submission.xpi,
-      work,
-      loaded,
-      registry,
-      "text",
-      true
+    printMessage(
+      "stderr",
+      `Could not remove what this run created (${err.code ?? err.message}).\n`
     );
   }
-  return startPrepared(
-    work,
-    registry,
-    {
-      submission: submissionOf(submission.xpi, loaded),
-      flags: forwardedFlags(values),
-      agentBuilds: agentBuildsSwitchedOn(),
-    },
-    submission
-  );
+  return code;
 }
 
 /**
- * What a preparation's record says of its submission: the built add-on, whether it declares
- * Experiments, and the load's Experiment verdict, which the review it starts takes as its own.
- * @param {string} xpi  The built add-on, absolute.
- * @param {import("./review/start.js").LoadedXpi} loaded
- * @returns {import("./prepare/state.js").PrepareRecord["submission"]}
+ * --cache-clear: every cache folder wiped by the run that was given it, before its load, so
+ * the resolvers re-fetch each source from scratch during this review, exactly as on a first
+ * run. Never by a later run: a hand-back reads its flags from the record, and a record that
+ * could name a folder for the linter to delete is one too many.
+ * @param {Record<string, string|boolean>} values
  */
-function submissionOf(xpi, loaded) {
+function clearCachesAsked(values) {
+  if (values["cache-clear"]) {
+    clearCaches(cacheDirs(pipelineOptsFromValues(values)));
+  }
+}
+
+/**
+ * The options a review runs with, from the flags it was given or recorded.
+ * @param {Record<string, string|boolean>} values
+ * @param {string} work  The work folder.
+ * @param {string} addonPath  The add-on, absolute.
+ * @param {import("./checks/registry.js").Registry} registry
+ * @param {object} [extra]  What no flag says: the source folders and the package root's move,
+ *   the Experiment verdict an earlier run recorded, the source review a restart comes from.
+ * @returns {PipelineOpts}
+ */
+function reviewOpts(values, work, addonPath, registry, extra = {}) {
   return {
-    xpi,
-    experiments: loaded.experiments,
-    verification: loaded.verification,
+    addonPath,
+    ...pipelineOptsFromValues(values),
+    workFolder: work,
+    registry,
+    ...extra,
   };
 }
 
 /**
- * Start a preparation in the loaded work folder: its record written, the folder kept, and its
- * first prompt printed. The prompt IS the output: no review has run, and none can until its
- * reader answers it. Printed as the report is, and to the screen only.
- * @param {string} work
- * @param {import("./checks/registry.js").Registry} registry
- * @param {Parameters<typeof startRecord>[0]} known  What the record starts from.
- * @param {{folder: string, xpi: string, source: string}} [submission]  The folder
- *   --llm-auto-review was given, which its first prompt names.
- * @returns {number}
- */
-function startPrepared(work, registry, known, submission) {
-  const record = startRecord(known);
-  startPreparation(work, record);
-  // The folder holds a preparation now, which the hand-back carries on.
-  keepClaims();
-  for (const line of preparationPrompt(work, record, registry, {
-    first: true,
-    ...(submission ? { submission } : {}),
-  })) {
-    report(line);
-  }
-  report("");
-  return 0;
-}
-
-/**
- * Run a review from parsed values: the one start every caller shares. A command line naming
- * an add-on (main), --llm-auto-review for an Experiment the review rejects (main), the
- * hand-back that finds a source code review prepared (runPreparePass), which builds the
- * values from the preparation's record, and the hand-back that restarts an aborted source
- * review as an XPI review (runLoopPass), from the flags that review recorded.
- *
- * The review records the values it was started with, minus the --sca-* ones and those of
- * one run alone (forwardedFlags), for an XPI review restarted from it.
- *
- * Reading the options can fail the same way the review can - a bad option value is a bad
- * config, not a bad add-on - so it is inside the caller's catch and reported like one.
- * @param {Record<string, string|boolean>} values  Parsed, and checked by the caller.
+ * Add to the record what the run was given, right after the load: the submission, built
+ * here once (the add-on, absolute, and whether its manifest.json declares Experiments), the
+ * kind of review, the flags its review runs with, and the folder the load made, xpi/
+ * (src/review/record.js addToRecord).
+ * @param {import("./review/start.js").LoadedXpi} loaded
  * @param {string} addonPath  The add-on, absolute.
- * @param {string} workFolder  The work folder, absolute.
- * @param {import("./checks/registry.js").Registry} registry
- * @param {{downgradedFrom?: string,
- *   scaFolders?: import("./addon/package-root.js").ScaFolders,
- *   scaMoved?: {from: string, to: string},
- *   verification?: ?import("./experiments/verify.js").ExperimentVerification}} [internal]
- *   Pipeline options no command-line flag sets: the work folder of the source review an XPI
- *   review is restarted from, the source folders in the work folder (copied there, or left
- *   by a preparation) and the package root's move, and the Experiment verdict of a load this
- *   run made.
- * @returns {Promise<import("./pipeline.js").PipelineResult>}
+ * @param {"xpi"|"sca"} kind
+ * @param {Record<string, string|boolean>} flags  As given or recorded (forwardedFlags).
+ * @returns {object}  The record as written.
  */
-async function startReview(
-  values,
-  addonPath,
-  workFolder,
-  registry,
-  internal = {}
-) {
-  // The source a review reads is in the work folder already (copyTheSource), so the folders
-  // the command line named go no further.
-  const {
-    scaGiven: _named,
-    scaMovedFrom: _moved,
-    ...opts
-  } = pipelineOptsFromValues(values);
-  return runPipeline({
-    // Absolute from here on, like every other path opt (pipelineOptsFromValues).
-    addonPath,
-    ...opts,
-    workFolder,
-    registry,
-    flags: forwardedFlags(values),
-    ...internal,
+function addGiven(loaded, addonPath, kind, flags) {
+  return addToRecord(loaded.work, loaded.record, {
+    submission: {
+      xpi: addonPath,
+      experiments: isExperiment(loaded.manifest.json),
+    },
+    kind,
+    flags,
+    folders: { xpi: workPaths(loaded.work).xpi },
   });
 }
 
 /**
- * Print what a review hands its reader, and answer with the run's exit code.
- *
- * The full report comes from the report layer: formatReview assembles the body - Found
- * Issues and the to-do sections - and the verdict tally LAST. The CLI just writes it.
- *
- * Except under --llm-review, which hands out the first PHASE instead (printed by the
- * pipeline): the prompt tells its reader to work from the file it names, and printing the
- * same review as prose alongside it would invite them to settle the report they can see
- * rather than the entries they can address. The settled report comes from the last pass of
- * the loop.
- * @param {import("./pipeline.js").PipelineResult} result
- * @param {string} format
+ * The path of an XPI review, plain or --llm-review (①a and ②a), and of --llm-auto-review given
+ * an .xpi alone: the .xpi loaded into a work folder of its own beside it, then reviewed.
+ * @param {Record<string, string|boolean>} values  Parsed and checked.
+ * @param {string} addonPath  The add-on, absolute.
+ * @param {import("./checks/registry.js").Registry} registry
+ * @param {string} format  The report's format.
+ * @returns {Promise<number>}
+ */
+async function reviewXpi(values, addonPath, registry, format) {
+  clearCachesAsked(values);
+  const loaded = loadTheXpi(addonPath, defaultWorkFolder(addonPath, "xpi"));
+  const record = addGiven(loaded, addonPath, "xpi", forwardedFlags(values));
+  const { code } = await reviewLoadedSubmission({
+    opts: reviewOpts(values, loaded.work, addonPath, registry),
+    llm: Boolean(values["llm-review"]),
+    format,
+    record,
+  });
+  return code;
+}
+
+/**
+ * What is wrong with --sca-package-root or --sca-experiments, as approveScaFolders threw it,
+ * said as a bad command line.
+ * @param {import("./addon/package-root.js").ScaFoldersRejected} problem
+ * @param {Record<string, string|boolean>} values
+ * @returns {string}
+ */
+function scaFlagProblem({ which, problem, real }, values) {
+  const flag = {
+    packageRoot: "sca-package-root",
+    experiments: "sca-experiments",
+  }[which];
+  const value = values[flag];
+  const base = values["sca-extracted"];
+  const why = {
+    outside:
+      `--${flag} names a folder inside --sca-extracted: "${value}" resolves to "${real}", ` +
+      `which is outside "${base}".`,
+    "not-folder": `--${flag} must point at a folder: "${value}" does not (looked in "${real}").`,
+    "is-source": `--sca-experiments "${value}" is the extracted source archive itself.`,
+    "holds-root": `--sca-experiments "${value}" holds the package root "${
+      values["sca-package-root"] ?? base
+    }".`,
+    empty:
+      `--sca-experiments "${value}" holds no file, so it would exclude nothing from the ` +
+      "WebExtension code checks. Name the folder holding the Experiment implementation.",
+  }[problem];
+  const named =
+    problem === "is-source" || problem === "holds-root"
+      ? " It names the Experiment implementation, a folder of its own inside the extracted " +
+        "source archive beside or below the WebExtension code, so it cannot be the whole " +
+        "archive or hold the package root: the wrong code would be excluded, and the " +
+        "Experiment's privileged code would be reviewed as WebExtension code. Name the " +
+        "subfolder holding it."
+      : "";
+  return `${why}${named}\n`;
+}
+
+/**
+ * The path of a source code review given the extracted source (①b plain, ②b --llm-review):
+ * the folders named inside it approved before anything is created, the .xpi loaded and what
+ * was given added to the record, the Experiment folder held to whether the add-on declares
+ * one, the source copied into the work folder's sca/ and that folder added to the record, its
+ * package root settled there, then the review.
+ * @param {Record<string, string|boolean>} values  Parsed and checked, with --sca-extracted.
+ * @param {string} addonPath  The built add-on, absolute.
+ * @param {import("./checks/registry.js").Registry} registry
+ * @param {string} format  The report's format.
+ * @returns {Promise<number|{code: number, keep: boolean}>}
+ */
+async function reviewWithSource(values, addonPath, registry, format) {
+  const extracted = values["sca-extracted"];
+  let approved;
+  try {
+    approved = approveScaFolders(extracted, {
+      packageRoot: values["sca-package-root"],
+      experiments: values["sca-experiments"],
+    });
+  } catch (err) {
+    if (!(err instanceof ScaFoldersRejected)) {
+      throw err;
+    }
+    return badCommandLine(scaFlagProblem(err, values));
+  }
+  clearCachesAsked(values);
+  const loaded = loadTheXpi(addonPath, defaultWorkFolder(addonPath, "sca"));
+  const record = addGiven(loaded, addonPath, "sca", forwardedFlags(values));
+  // The Experiment folder is named exactly for an add-on with Experiments, as a review given
+  // these flags needs it. Refused before the source is copied.
+  const misfit = scaFoldersMisfit(approved, isExperiment(loaded.manifest.json));
+  if (misfit) {
+    throw new Error(misfit);
+  }
+  const sca = copySource(loaded.work, extracted);
+  const copied = addToRecord(loaded.work, record, { folders: { sca } });
+  const { folders, moved } = settlePackageRoot(sca, approved);
+  const { code } = await reviewLoadedSubmission({
+    opts: reviewOpts(values, loaded.work, addonPath, registry, {
+      scaFolders: folders,
+      ...(moved ? { scaMoved: moved } : {}),
+    }),
+    llm: Boolean(values["llm-review"]),
+    format,
+    record: copied,
+  });
+  return code;
+}
+
+/**
+ * The path of --llm-auto-review given a submission folder with a source archive (③): the
+ * .xpi loaded, what the run was given added to the record, then mode unpack started, whose
+ * prompt has the agent extract the archive into the work folder's sca/.
+ * @param {Record<string, string|boolean>} values  Parsed and checked.
+ * @param {{folder: string, xpi: string, source: string}} submission  The folder, as read
+ *   (src/addon/submission.js).
+ * @param {import("./checks/registry.js").Registry} registry
  * @returns {number}
  */
-function printReview(result, format) {
-  const rendered = result.meta.prompting ? "" : formatReview(result, format);
-  if (rendered) {
-    writeToStdout(rendered + "\n");
+function autoReview(values, submission, registry) {
+  clearCachesAsked(values);
+  const loaded = loadTheXpi(
+    submission.xpi,
+    defaultWorkFolder(submission.xpi, "sca")
+  );
+  const record = startMode(
+    addGiven(loaded, submission.xpi, "sca", forwardedFlags(values)),
+    MODE.unpack,
+    {},
+    "unpack"
+  );
+  issueHandbackPrompt(
+    loaded.work,
+    record,
+    unpackEntries(record),
+    stepPromptLines(loaded.work, record, registry, { first: true, submission })
+  );
+  return 0;
+}
+
+/**
+ * The fields of the record the review a hand-back starts cannot do without, each with the
+ * phrase a refusal names it by. A list, so a field the start comes to depend on is one more
+ * entry - and a record missing several is told all of them at once.
+ * @type {{holds: (record: object) => boolean, missing: string}[]}
+ */
+const RECORD_FIELDS = [
+  {
+    holds: (r) =>
+      typeof r.submission?.xpi === "string" && r.submission.xpi !== "",
+    missing: "no submission to review",
+  },
+];
+
+/**
+ * The values a review a hand-back starts is run with, rebuilt from the flags the record holds
+ * (`flags`, added to its permanent part by the run that started the review).
+ *
+ * The record is a file the agent can write, so nothing is taken from it as it stands: only
+ * the flags a review forwards (NOT_FORWARDED) and OPTIONS declares, each of its declared type
+ * - a boolean `true` or `false` (recordBoolean), `false` being a flag not given - and then
+ * checked as a command line is. A record that does not hold them so is a failure
+ * (recordError), which the agent cannot repair.
+ * @param {object} record
+ * @param {import("./checks/registry.js").Registry} registry
+ * @returns {Record<string, string|boolean>}
+ * @throws {Error}
+ */
+function recordedValues(record, registry) {
+  const missing = RECORD_FIELDS.filter((field) => !field.holds(record)).map(
+    (field) => field.missing
+  );
+  if (missing.length) {
+    throw recordError(`the review's record names ${listOf(missing)}`);
   }
-  return hasErrors(result.findings) ? 1 : 0;
+  const flags =
+    record.flags && typeof record.flags === "object" ? record.flags : {};
+  const values = {};
+  for (const [name, { type }] of Object.entries(OPTIONS)) {
+    if (NOT_FORWARDED.has(name) || !Object.hasOwn(flags, name)) {
+      continue;
+    }
+    const value = flags[name];
+    if (type === "boolean") {
+      // `false` is a flag not given, so it is left out.
+      if (recordBoolean(value, `--${name}`)) {
+        values[name] = true;
+      }
+      continue;
+    }
+    if (typeof value !== "string") {
+      throw recordError(
+        `the review's record holds --${name} as a value it does not take`
+      );
+    }
+    values[name] = value;
+  }
+  values["llm-review"] = true;
+  const problem =
+    cdnLookupProblem(values) ??
+    emptyFlagProblem(values) ??
+    checkIdProblem(values, registry);
+  if (problem) {
+    // Without its full stop: the failure's text goes on after it.
+    throw recordError(problem.endsWith(".") ? problem.slice(0, -1) : problem);
+  }
+  return values;
+}
+
+/**
+ * One hand-back of a work folder. Its entry asks three things in order, each "no" a failure
+ * with nothing written and the files kept, since a hand-back has made nothing yet: is there a
+ * record the reader takes (readRecord), is it in a mode (a record with no mode holds no
+ * review in progress), and are the folders the record names still there and real folders
+ * (namedFolders, misplacedFolders). Then one switch on the mode picks the case. The
+ * hand-back reads what earlier runs settled from the record, and rebuilds only ctx.
+ * @param {string} work  The work folder, the real folder (main).
+ * @param {import("./checks/registry.js").Registry} registry  The authored registry.
+ * @returns {Promise<number|{code: number, keep: boolean}>}
+ */
+async function runHandback(work, registry) {
+  let record;
+  try {
+    record = readRecord(work);
+  } catch (err) {
+    rethrowIfFatal(err);
+    return handbackFailure(err.message);
+  }
+  const mode = modeOf(record);
+  if (mode === undefined) {
+    return handbackFailure(
+      `The work folder "${work}" holds no review in progress: its review was not run by an ` +
+        "agent (--llm-review), or its run ended before it issued a prompt, so there is " +
+        "nothing to hand back. Start the review again from the submission."
+    );
+  }
+  const misplaced = misplacedFolders(namedFolders(record));
+  if (misplaced.length) {
+    return handbackFailure(misplacedFoldersError(work, misplaced).message);
+  }
+  // A review started with --verbose runs every hand-back verbose: the flag is recorded, and
+  // never typed beside --llm-handback.
+  const flags = record.flags ?? {};
+  if (
+    Object.hasOwn(flags, "verbose") &&
+    recordBoolean(flags.verbose, "--verbose")
+  ) {
+    setVerbose(true);
+  }
+  switch (mode) {
+    case MODE.unpack:
+      return unpackCase(work, record, registry);
+    case MODE.buildCheck:
+      return buildCheckCase(work, record, registry);
+    case MODE.review:
+      return reviewCase(work, record, registry);
+    case MODE.downgrade:
+      return downgradeCase(work, record, registry);
+  }
+}
+
+/**
+ * A hand-back that cannot start on the record it found: no record the reader takes, one with
+ * no review in progress, or one whose folders are no longer those the linter made. Not the
+ * agent's to correct, so printed as a failure is, and the files are kept, since they are no
+ * run's of this hand-back.
+ * @param {string} text  The message, without its newline.
+ * @returns {{code: number, keep: boolean}}
+ */
+function handbackFailure(text) {
+  printMessage("stderr", failureText(text));
+  return { code: 2, keep: true };
+}
+
+/**
+ * What is wrong with the Experiment folder the agent named at unpack, as approveScaFolders
+ * threw it, said as the problem a refusal fills in.
+ * @param {import("./addon/package-root.js").ScaFoldersRejected} problem
+ * @param {string} sca  The real sca/.
+ * @returns {string}
+ */
+function unpackProblem({ problem, real }, sca) {
+  if (problem === "outside" || problem === "not-folder") {
+    return `SCA_EXPERIMENTS "${real}" is not a folder inside "${sca}"`;
+  }
+  if (problem === "empty") {
+    return (
+      `SCA_EXPERIMENTS "${real}" holds no file: name the folder holding the Experiment ` +
+      "implementation"
+    );
+  }
+  return (
+    `SCA_EXPERIMENTS "${real}" is EXTRACT_TO itself, which holds the add-on's own code: ` +
+    "name the subfolder holding the Experiment implementation"
+  );
+}
+
+/**
+ * The unpack case: the agent's sca/ a real folder, the Experiment folder it named approved
+ * against it, the folder sca/ added to the record, the package root settled there, and the
+ * review of the loaded submission, LLM.
+ * @param {string} work
+ * @param {object} record  In mode unpack.
+ * @param {import("./checks/registry.js").Registry} registry
+ * @returns {Promise<number>}
+ * @throws {HandbackRefused}
+ */
+async function unpackCase(work, record, registry) {
+  const sca = realSca(workPaths(work));
+  const experiments = unpackedExperiments(work, record);
+  let approved;
+  try {
+    approved = approveScaFolders(
+      sca,
+      experiments === undefined ? {} : { experiments }
+    );
+  } catch (err) {
+    if (!(err instanceof ScaFoldersRejected)) {
+      throw err;
+    }
+    throw new HandbackRefused(unpackProblem(err, sca));
+  }
+  const unpacked = addToRecord(work, record, {
+    folders: { sca: workPaths(work).sca },
+  });
+  const { folders, moved } = settlePackageRoot(sca, approved);
+  const values = recordedValues(unpacked, registry);
+  const { code } = await reviewLoadedSubmission({
+    opts: reviewOpts(values, work, record.submission.xpi, registry, {
+      scaFolders: folders,
+      ...(moved ? { scaMoved: moved } : {}),
+      // The verdict a review started here before recorded, which this one takes as its own.
+      ...(Object.hasOwn(unpacked, "verification")
+        ? { verification: unpacked.verification }
+        : {}),
+    }),
+    llm: true,
+    format: "text",
+    record: unpacked,
+  });
+  return code;
+}
+
+/**
+ * The build-check case: the step the record is at takes the agent's answer, or refuses it.
+ * Not done, the record at the next step is issued with its prompt. Done, the build results
+ * are added to the record (buildResults), then the review starts: ctx populated, the normal
+ * checks run, since the early-exit checks ran in an earlier run, and the review loop started.
+ * A review start that fails leaves the folder done, and the next hand-back finds the build
+ * results there.
+ * @param {string} work
+ * @param {object} record  In mode build-check.
+ * @param {import("./checks/registry.js").Registry} registry
+ * @returns {Promise<number>}
+ * @throws {HandbackRefused}
+ */
+async function buildCheckCase(work, record, registry) {
+  const out = await handBack(work, record, registry);
+  if (out.next === "step") {
+    issueHandbackPrompt(
+      work,
+      out.record,
+      out.entries,
+      stepPromptLines(work, out.record, registry)
+    );
+    return 0;
+  }
+  const done = addToRecord(work, out.record, {
+    build: buildResults(work, out.record.current),
+  });
+  const values = recordedValues(done, registry);
+  const opts = reviewOpts(values, work, done.submission.xpi, registry, {
+    scaFolders: done.build.roots,
+    verification: done.verification ?? null,
+  });
+  const ctx = await populateCtx(opts, workPaths(work), done.build);
+  const { code } = await runTheNormalChecks(ctx, {
+    opts,
+    llm: true,
+    format: "text",
+    record: done,
+    earlyIds: done.earlyExit?.checksRun ?? [],
+  });
+  return code;
+}
+
+/**
+ * The review case: the pass handed back, its answers well formed, settled with the verdicts
+ * so far and the new answers. One the loop cannot take, or whose settle throws, is refused
+ * with nothing stored. One that settles is accepted, its answers stored, and the review
+ * advanced with that settled review. A failure after the pass was accepted is the tool's,
+ * not a refusal: the agent did nothing to correct.
+ * @param {string} work
+ * @param {object} record  In mode review.
+ * @param {import("./checks/registry.js").Registry} base  The authored registry.
+ * @returns {number}  0, the close 0 or 1 by the settled review.
+ * @throws {HandbackRefused}
+ */
+function reviewCase(work, record, base) {
+  const registry = base.withPolicy(bandPolicyOf(record));
+  const accepted = accept(record, work, registry);
+  const { issued, settled } = advanceReview(
+    work,
+    accepted.record,
+    accepted.settled,
+    registry
+  );
+  return issued === "close" && hasErrors(settled.findings) ? 1 : 0;
+}
+
+/**
+ * The band policy a review was started with, read off the flags the record's permanent part
+ * holds (--warnings-as-errors), so every later pass reads the review under it.
+ * @param {object} record
+ * @returns {{warningsAsErrors: boolean}}
+ */
+function bandPolicyOf(record) {
+  return { warningsAsErrors: record.flags?.["warnings-as-errors"] === true };
+}
+
+/**
+ * The downgrade case: the reviewer's answer to the restart prompt. `xpi` loads the .xpi into
+ * a new work folder of its own and reviews it, LLM, with the recorded flags and the source
+ * review it restarts (`downgradedFrom`), and this review's folder stays as it is. `keep`
+ * settles the review again from the record's permanent part and issues the closing prompt,
+ * with the reviewer's `keep` among its values, so it leaves out the summary and the details
+ * the restart prompt already showed. Any other answer is refused.
+ * @param {string} work
+ * @param {object} record  In mode downgrade.
+ * @param {import("./checks/registry.js").Registry} base  The authored registry.
+ * @returns {Promise<number>}
+ * @throws {HandbackRefused}
+ */
+async function downgradeCase(work, record, base) {
+  const registry = base.withPolicy(bandPolicyOf(record));
+  const answer = restartAnswer(work, record, registry);
+  if (answer === DOWNGRADE_RESTART) {
+    const values = recordedValues(record, base);
+    const addonPath = record.submission.xpi;
+    const loaded = loadTheXpi(addonPath, defaultWorkFolder(addonPath, "xpi"));
+    const restarted = addGiven(
+      loaded,
+      addonPath,
+      "xpi",
+      forwardedFlags(values)
+    );
+    const { code } = await reviewLoadedSubmission({
+      opts: reviewOpts(values, loaded.work, addonPath, base, {
+        downgradedFrom: work,
+      }),
+      llm: true,
+      format: "text",
+      record: restarted,
+    });
+    return code;
+  }
+  const review = record.review;
+  const settled = settleReview(review, review.answers ?? {}, registry);
+  closeAt(work, record, settled, registry, { [DOWNGRADE_PHASE]: answer });
+  return hasErrors(settled.findings) ? 1 : 0;
 }
 
 /**
@@ -1432,45 +1643,17 @@ function clearCaches(dirs) {
 }
 
 /**
- * The source folders as the reviewer named them, which the review copies into its work
- * folder and reads there, each resolved the one way its flag is written: --sca-extracted and --sca-package-root against the working directory, and
- * --sca-experiments against --sca-extracted, which it names a folder inside. The package root
- * is --sca-package-root where it was named, else --sca-extracted, and either is settled by the rule
- * the review settles one by (settlePackageRoot), with the Experiment folder held to it. The
- * Experiment folder is there only where it was named.
- * @param {Record<string, string|boolean|string[]>} values  With --sca-extracted.
- * @returns {{folders: import("./addon/package-root.js").ScaGiven, movedFrom?: string}}
- */
-function scaGivenOf(values) {
-  const extracted = path.resolve(values["sca-extracted"]);
-  return settlePackageRoot({
-    extracted,
-    packageRoot: path.resolve(values["sca-package-root"] ?? extracted),
-    ...(values["sca-experiments"] === undefined
-      ? {}
-      : { experiments: path.resolve(extracted, values["sca-experiments"]) }),
-  });
-}
-
-/**
  * Map parsed CLI `values` (from parseArgs with OPTIONS) to runPipeline opts.
  * Shared by main() and the test harness so both honor the real flag names.
  * Does not include `addonPath` (that comes from the positional path).
  *
- * Every path opt leaves here ABSOLUTE. This is the one layer that knows what each flag is
- * written relative to - the working directory for --sca-extracted and --sca-package-root, and the
- * extracted folder for --sca-experiments, which names a folder inside it - so it is the layer
- * that resolves them. Downstream then
- * derives what it needs (an archive key, a containment test) from real paths rather than
- * re-deciding what a relative string meant: one spelling reaching several functions is one
- * spelling answered several ways.
+ * Every path opt leaves here ABSOLUTE. The source folders are no options: the source path
+ * approves them, copies the source and settles its package root (reviewWithSource), and
+ * hands the review the folders in its work folder.
  * @param {Record<string, string|boolean|string[]>} values
  * @returns {Partial<PipelineOpts>}
  */
 function pipelineOptsFromValues(values) {
-  // SCA mode, and only there: the source folders, settled, and the package root named before
-  // a move, so the review can say so.
-  const sca = values["sca-extracted"] ? scaGivenOf(values) : null;
   return {
     ...Object.fromEntries(
       CACHES.map((c) => [c.opt, values[c.flag] || c.folder])
@@ -1483,8 +1666,6 @@ function pipelineOptsFromValues(values) {
     eslint: values.eslint,
     allowExperiments: values["allow-experiments"],
     warningsAsErrors: values["warnings-as-errors"],
-    ...(sca ? { scaGiven: sca.folders } : {}),
-    ...(sca?.movedFrom ? { scaMovedFrom: sca.movedFrom } : {}),
     llmReview: Boolean(values["llm-review"]),
     llmSkip: reviewSkips(values),
     // Not a PROMPT_SKIPS member: no `when:` names it. What it withholds is every
@@ -1522,383 +1703,6 @@ export function pipelineOptsFromArgv(argv) {
 function unknownId(ids, valid) {
   return ids.find((id) => !valid.includes(id));
 }
-
-/**
- * One hand-back of a work folder: a step of preparing a source code review, while the folder
- * holds the preparation's record and no review has started there, and otherwise a pass of
- * the review loop. The folder decides, so the agent runs one command whichever it is.
- * @param {string} work  The work folder, the real folder (main).
- * @param {import("./checks/registry.js").Registry} registry  The authored registry.
- * @returns {Promise<number>}
- */
-function runHandback(work, registry) {
-  const paths = workPaths(work);
-  return fs.existsSync(paths.prepare) && !fs.existsSync(paths.state)
-    ? runPreparePass(work, registry)
-    : runLoopPass(work, registry);
-}
-
-/**
- * One step of preparing a source code review (src/prepare/steps.js), then what it hands out
- * next: the next step's prompt, or - once the preparation is done - the review itself, which
- * this hand-back starts, so the agent runs no command but this one. The review's first
- * prompt is then printed by the pipeline, and the run exits as a started review does.
- *
- * A refusal is answered as the review loop answers one: the prompt is not re-printed, and
- * nothing changed, so a corrected hand-back resumes where it was.
- * @param {string} work
- * @param {import("./checks/registry.js").Registry} registry
- * @returns {Promise<number>}
- */
-async function runPreparePass(work, registry) {
-  let out;
-  try {
-    out = await handBack(work, registry);
-  } catch (err) {
-    return refusedOrFailed(err, registry);
-  }
-  const { record } = out;
-  if (out.next === "step") {
-    for (const line of preparationPrompt(out.work, record, registry)) {
-      writeToStdout(`${line}\n`);
-    }
-    writeToStdout("\n");
-    return 0;
-  }
-  let result;
-  try {
-    const { values, scaFolders } = preparedReview(record, registry, out.work);
-    result = await startReview(
-      values,
-      record.submission.xpi,
-      out.work,
-      registry,
-      {
-        scaFolders,
-        // The load's verdict, recorded when the preparation started, so it is decided once.
-        // A record written before it was recorded holds none, and the review asks again.
-        ...(record.submission.verification === undefined
-          ? {}
-          : { verification: record.submission.verification }),
-      }
-    );
-  } catch (err) {
-    return refusedOrFailed(err, registry);
-  }
-  return printReview(result, "text");
-}
-
-/**
- * The prompt a preparation's record is waiting on, its step's own (`llm-sca-review-prompt`):
- * printed by the run that starts the preparation (`first`, with the intro) and by every
- * hand-back that moves it on. What each prompt names beside its steps follows its step: the
- * submission and where to extract it (`unpack`), the source, its package root and the build
- * report (`analyze`), the Build Review Details (`permission`), and the folders a build runs in.
- * Every build runs at the package root's place in `build/`, its output is compared with the
- * submitted XPI, and the rescue's agent makes `build/` a copy of the whole `rescued/` before
- * each build, with the two commands named here.
- * @param {string} work
- * @param {import("./prepare/state.js").PrepareRecord} record  At the step its prompt is for.
- * @param {import("./checks/registry.js").Registry} registry
- * @param {{first?: boolean, submission?: {folder: string, xpi: string, source: string}}}
- *   [start]  On the run that starts the preparation: the intro, and for `unpack` the
- *   submission (scaSubmission).
- * @returns {string[]}
- */
-function preparationPrompt(work, record, registry, start = {}) {
-  const prompt = registry.llmScaReviewPrompt();
-  const paths = workPaths(work);
-  const buildRoot = () => buildRootOf(work, record.roots);
-  const named = {
-    [PREPARE_STEP.unpack]: () => ({
-      submission: start.submission,
-      extractTo: `${paths.sca}${path.sep}`,
-      // The Experiment folder is handed back in the review file, where it is asked.
-      ...(asksExperiments(record)
-        ? { answers: paths.review, findExperiment: true }
-        : {}),
-    }),
-    [PREPARE_STEP.analyze]: () => ({
-      answers: paths.review,
-      scaSource: record.roots.source,
-      scaPackageRoot: record.roots.packageRoot,
-      buildProcess: paths.build,
-    }),
-    [PREPARE_STEP.permission]: () => ({
-      answers: paths.review,
-      buildDetails: buildDetailLines(work, record, prompt, registry),
-    }),
-    [PREPARE_STEP.build]: () => ({
-      answers: paths.review,
-      scaPackageRoot: record.roots.packageRoot,
-      buildRoot: buildRoot(),
-      buildProcess: paths.build,
-      submittedXpi: record.submission.xpi,
-    }),
-    [PREPARE_STEP.rescue]: () => ({
-      answers: paths.review,
-      rescueRoot: record.roots.packageRoot,
-      buildRoot: buildRoot(),
-      buildProcess: paths.build,
-      submittedXpi: record.submission.xpi,
-      copy: [
-        `rm -rf ${shellArg(paths.buildCopy)}`,
-        `cp -a ${shellArg(paths.rescued)} ${shellArg(paths.buildCopy)}`,
-      ],
-    }),
-  }[record.step]();
-  return scaPromptLines(prompt, record.step, {
-    first: Boolean(start.first),
-    ...named,
-    flags: handbackCommand(work),
-  });
-}
-
-/**
- * The Build Review Details the permission prompt shows: the submitted XPI, the source folders,
- * the build report, the verdict and the issues it was read off, as the review loop's blocks
- * name them (detailRows), so the review's Build Review Details hold every row of it. It ends
- * with the line saying the review waits for the reviewer's reply, as a turn-ending block does.
- * @param {string} work
- * @param {import("./prepare/state.js").PrepareRecord} record  At `permission`.
- * @param {ReturnType<import("./checks/registry.js").Registry["llmScaReviewPrompt"]>} prompt
- * @param {import("./checks/registry.js").Registry} registry
- * @returns {string[]}
- */
-function buildDetailLines(work, record, prompt, registry) {
-  return [
-    ...detailRows({
-      xpiFile: path.basename(record.submission.xpi),
-      xpi: record.submission.xpi,
-      scaFolders: record.roots,
-      buildFile: workPaths(work).build,
-      buildSafety: record.buildSafety,
-      buildIssuesFile: workPaths(work).buildIssues,
-    }),
-    "",
-    registry.llmPhases().waiting("permission"),
-  ];
-}
-
-/**
- * The fields of a preparation's record the review it starts cannot do without, each with
- * the phrase a refusal names it by. A list, so a field the start comes to depend on is one
- * more entry - and a record missing several is told all of them at once.
- * @type {{holds: (record: object) => boolean, missing: string}[]}
- */
-const RECORD_FIELDS = [
-  {
-    holds: (r) =>
-      typeof r.submission?.xpi === "string" && r.submission.xpi !== "",
-    missing: "no submission to review",
-  },
-];
-
-/**
- * The values a prepared review is started with, rebuilt from the preparation's record.
- *
- * The record is a file the agent can write, so nothing is taken from it as it stands: only
- * the flags the preparation forwards (NOT_FORWARDED) and OPTIONS declares, each of its
- * declared type - a boolean `true` or `false` (recordBoolean), `false` being a flag not
- * given - and then checked as a command line is. The source folders are no flags: they are
- * the record's own, handed to the review as they lie in the work folder (`scaFolders`), so no
- * flag can name another, and they are asked again (recordedRoots): followed to the folders
- * they really are, the tree the review reads `sca/` or its rescued copy, and the package root
- * and the Experiment folder inside it, because the agent works in the folder between the step
- * that settled them and this one. The review
- * reads the real folders that answered.
- * @param {import("./prepare/state.js").PrepareRecord} record  At `done`.
- * @param {import("./checks/registry.js").Registry} registry
- * @param {string} work  The work folder the review starts in.
- * @returns {{values: Record<string, string|boolean>,
- *   scaFolders: import("./addon/package-root.js").ScaFolders}}
- * @throws {HandbackRefused}
- */
-function preparedReview(record, registry, work) {
-  const missing = RECORD_FIELDS.filter((field) => !field.holds(record)).map(
-    (field) => field.missing
-  );
-  if (missing.length) {
-    throw new HandbackRefused(
-      `the preparation's record names ${listOf(missing)}`
-    );
-  }
-  const roots = recordedRoots(work, record.roots);
-  const flags =
-    record.flags && typeof record.flags === "object" ? record.flags : {};
-  const values = {};
-  for (const [name, { type }] of Object.entries(OPTIONS)) {
-    if (NOT_FORWARDED.has(name) || !Object.hasOwn(flags, name)) {
-      continue;
-    }
-    const value = flags[name];
-    if (type === "boolean") {
-      // `false` is a flag not given, so it is left out.
-      if (recordBoolean(value, `--${name}`)) {
-        values[name] = true;
-      }
-      continue;
-    }
-    if (typeof value !== "string") {
-      throw new HandbackRefused(
-        `the preparation's record holds --${name} as a value it does not take`
-      );
-    }
-    values[name] = value;
-  }
-  values["llm-review"] = true;
-  const problem =
-    cdnLookupProblem(values) ??
-    emptyFlagProblem(values) ??
-    checkIdProblem(values, registry);
-  if (problem) {
-    // Without its full stop: the refusal text goes on after it.
-    throw new HandbackRefused(
-      problem.endsWith(".") ? problem.slice(0, -1) : problem
-    );
-  }
-  return { values, scaFolders: roots };
-}
-
-/**
- * Answer a failed hand-back: a refusal goes to the agent as the `refused` text, which has
- * it redo the pass once, and anything else ends the run as the tool's own failure.
- * @param {unknown} err
- * @param {import("./checks/registry.js").Registry} registry
- * @returns {number}  The exit code, 2 either way.
- */
-function refusedOrFailed(err, registry) {
-  if (err instanceof HandbackRefused) {
-    writeToStdout(
-      `${fillSlots(registry.llmPhases().refused, { problem: err.problem })}\n`
-    );
-  } else {
-    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-  }
-  return 2;
-}
-
-/**
- * One pass of the review loop: take a phase back, then hand out the next - the closing
- * phase, once nothing else has work, which carries the finished review.
- *
- * A REFUSAL is answered differently from every other failure here. The prompt is NOT
- * re-printed: the agent still has it, and re-issuing the same text against the same input
- * invites a loop where the same mistake is made again. Nothing in the state changed, so a
- * corrected hand-back resumes exactly where it was - and "abort and say why" is the loud
- * failure, because a review that cannot finish has to say so rather than quietly produce a
- * report out of half a pass.
- * The report format is not a parameter: every pass of the loop prints a prompt, and the
- * one format that is not a prompt is refused before the loop is entered.
- * The work folder is the review: its state and its review file are read there, each by
- * its fixed name (src/util/dest.js workPaths), so nothing the agent edits says where the
- * review is.
- * @param {string} work  The work folder the review started in, as --llm-handback named it.
- * @param {import("./checks/registry.js").Registry} base  The authored registry. Read under
- *   the REVIEW's own band policy below, which only the state can say.
- * @returns {Promise<number>}
- */
-async function runLoopPass(work, base) {
-  const texts = base.llmPhases();
-  const folder = path.resolve(work);
-  const stateFile = workPaths(folder).state;
-  let state, registry;
-  try {
-    // A folder holding no review this pass can read is a hand-back gone wrong - the agent
-    // ran the command with another folder, or before the review was started - so it is
-    // refused to the agent, who has the prompt it was following and can run it again.
-    try {
-      state = readState(stateFile);
-    } catch (err) {
-      rethrowIfFatal(err);
-      throw new HandbackRefused(
-        `"${work}" holds no review this command can carry on (${err.message})`
-      );
-    }
-    // The band policy is the REVIEW's, recorded by the run that started it: this pass was
-    // never given the flag, and a case reported HERE becomes a finding here
-    // (src/report/verdicts.js asFinding), which has to land in the band the rest of the
-    // review was published at.
-    registry = base.withPolicy({
-      warningsAsErrors: state.run.warningsAsErrors,
-    });
-    accept(state, folder, texts.phases, registry);
-  } catch (err) {
-    if (err instanceof HandbackRefused) {
-      writeToStdout(`${fillSlots(texts.refused, { problem: err.problem })}\n`);
-      return 2;
-    }
-    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-    return 2;
-  }
-  // The reviewer chose to restart this aborted source review as an XPI review: it starts
-  // here, the way a finished preparation starts its review, and its first prompt is this
-  // pass's output. This review's folder stays as it is.
-  if (
-    state.phase === DOWNGRADE_PHASE &&
-    state.values?.[DOWNGRADE_PHASE] === DOWNGRADE_RESTART
-  ) {
-    return restartAsXpiReview(state, folder, base);
-  }
-  // A failure from here on is the tool's: the hand-back was accepted. So it is not a
-  // refusal - the agent did nothing to correct - and it cannot be redone either: the answer
-  // a closing settle refuses is already recorded, and nothing re-prints a prompt for one
-  // that was already accepted. The review ends here - a clean failure, not a stack trace.
-  // The prompt is built in full before any of it is printed, so a failure part-way leaves
-  // no half a prompt behind.
-  let next, lines;
-  try {
-    next = issue(state, folder, texts.phases, registry);
-    lines = loopPromptLines(
-      texts,
-      next.phase,
-      next.steps,
-      loopSlots(state, next, folder, registry),
-      next.preamble
-    );
-  } catch (err) {
-    writeToStderr(`${err.message}\n${red("verify failed")}\n`);
-    return 2;
-  }
-  // The closing phase ends the review. Audible, and printed BEFORE the prompt: what the
-  // verdicts did is this tool's note to whoever ran the command, and a line inside the
-  // prompt is a line that can be copied along with it. The report the prompt links is
-  // already written (issue), so the link is live the moment the reviewer is told to open it.
-  // The downgrade phase carries the settled review too, and is not the close.
-  const settled = next.phase.answer === "end" ? next.settled : null;
-  if (settled?.applied.length) {
-    writeToStdout(
-      `Applied ${settled.applied.length} verdict(s): ${settled.applied.join(", ")}\n\n`
-    );
-  }
-  for (const line of lines) {
-    writeToStdout(`${line}\n`);
-  }
-  writeToStdout("\n");
-  return settled && hasErrors(settled.review.findings) ? 1 : 0;
-}
-
-/**
- * Start the XPI review an aborted source review is restarted as: with the flags that review
- * was started with (which hold no --sca-* flag), of the XPI it was submitted with, in a new
- * work folder of its own beside it, named as an XPI review's is. `downgradedFrom` names the
- * source review's folder, which adds the finding telling the developer to submit just the
- * XPI (src/pipeline.js).
- * @param {import("./report/state.js").LoopState} state  The source review's.
- * @param {string} folder  The source review's work folder.
- * @param {import("./checks/registry.js").Registry} registry  The authored registry.
- * @returns {Promise<number>}
- */
-function restartAsXpiReview(state, folder, registry) {
-  return reviewXpi(
-    { ...state.flags, "llm-review": true },
-    state.report.meta.xpi,
-    registry,
-    "text",
-    { downgradedFrom: folder }
-  );
-}
-
 /** Fill a linter-owned text's placeholders. The same substitution the prompt uses, so a
  *  slot means the same thing wherever it appears. */
 function fillSlots(text, values) {

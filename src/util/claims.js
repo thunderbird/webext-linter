@@ -1,11 +1,11 @@
 // What THIS RUN created on disk for a review, so a run that fails gives it all back.
 //
-// A run creates a work folder, or names inside one a preparation left, before it knows
-// whether its review will exist. One that ends with exit 2 before it does leaves nothing
-// behind: the same command can simply run again, and no half-made folder is left for a
-// reviewer to mistake for a review. So every such path is claimed here as it is made, kept
-// once a review or a preparation exists in it, and the rest released by the one place every
-// run ends (src/util/log.js exitWith), whatever made it fail.
+// A run creates a work folder, or names inside one an earlier run left, before it knows
+// whether it will do its job. One that fails leaves nothing it created behind: the same
+// command can simply run again, and no half-made folder is left for a reviewer to mistake
+// for a review. So every such path is claimed here as it is made, and exit handling, which
+// every run ends in (src/cli.js exitHandling), keeps it where the run did its job or refused
+// an answer, and releases it after a failure, whatever made it fail.
 //
 // Only what was claimed is ever removed. A folder that was already there is never claimed,
 // only the names this run creates inside it, so a --llm-handback that fails leaves the review
@@ -51,8 +51,8 @@ export function claimNames(paths) {
 }
 
 /**
- * What has been claimed so far holds a review or a preparation now, which a later run carries
- * on: none of it is released.
+ * What has been claimed so far stays, since the run did its job or refused an answer, and a
+ * later run carries it on: none of it is released.
  */
 export function keepClaims() {
   claimed.clear();

@@ -116,7 +116,7 @@ export function governingLock(addon) {
 /**
  * Every lock this submission commits at its root, in TREE_LOCKS order - the files
  * governingLock chooses from, so the two never disagree about which files count. A source
- * review refuses more than one (sca-lock-file-multiple, and the preparation's audit): the
+ * review refuses more than one (sca-lock-file-multiple, and the build check's audit): the
  * checks read the governing lock, while the build picks its package manager by the lock it
  * finds, so with two of them the tree audited need not be the tree installed.
  * @param {?Addon} addon

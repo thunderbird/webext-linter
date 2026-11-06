@@ -58,9 +58,9 @@ test("in a folder that was there, only the names claimed in it are released", ()
 
 test("a name's missing folders are claimed with it", () => {
   const dir = tmp();
-  claimNames([path.join(dir, ".review", "review.json")]);
+  claimNames([path.join(dir, ".review", "answers.json")]);
   fs.mkdirSync(path.join(dir, ".review"));
-  fs.writeFileSync(path.join(dir, ".review", "review.json"), "{}");
+  fs.writeFileSync(path.join(dir, ".review", "answers.json"), "{}");
   releaseClaims();
   assert.deepEqual(fs.readdirSync(dir), []);
   fs.rmSync(dir, { recursive: true, force: true });

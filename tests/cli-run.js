@@ -59,7 +59,7 @@ export function headerValue(stdout, name) {
 /** The review file a prompt names, and what is in it. The prompt is the only place any
  *  path is given out, which is exactly what a test should read. */
 export function reviewFile(stdout) {
-  const at = stdout.match(/(\S+\/review\.json)/);
+  const at = stdout.match(/(\S+\/answers\.json)/);
   return at ? at[1] : undefined;
 }
 export function entriesOf(stdout) {
@@ -137,7 +137,7 @@ export function defaultFolderOf(addon, kind) {
 export function sweepBack(reviewFile, found = {}) {
   const state = JSON.parse(
     fs.readFileSync(path.join(path.dirname(reviewFile), "state.json"), "utf8")
-  );
+  ).current;
   for (const [artifact, paths] of Object.entries(state.paths.sweeps ?? {})) {
     const mine = state.preSweep.items.filter((i) => i.artifact === artifact);
     fs.writeFileSync(
@@ -152,29 +152,45 @@ export function sweepBack(reviewFile, found = {}) {
 }
 
 /**
+ * The review a record holds, where it stands: mode review's own part while the loop runs, and
+ * once the review ended, at the close or at the restart prompt, the review its permanent part
+ * holds, with the phase or step the current part stands at.
+ * @param {object} record  state.json, as read.
+ * @returns {object}
+ */
+export function reviewOf(record) {
+  return record.current?.report
+    ? record.current
+    : {
+        ...record.review,
+        phase: record.current?.phase ?? record.current?.step,
+      };
+}
+
+/**
  * Hand a --llm-review back until its state reaches the phase `stop` or the close, the way a
  * plain agent would: every sweep answers nothing, the summary is written, a finding is kept
  * (`reported`), and every other entry is cleared where it may be, else given its first answer.
  * @param {string} work  The review's work folder.
  * @param {string} stop  The phase to stop at.
  * @returns {{state: object, out: ?{code: number, stdout: string, stderr: string}}}  The
- *   state at that phase, and the hand-back that printed its prompt (null where the review was
- *   already there).
+ *   review at that phase (reviewOf), and the hand-back that printed its prompt (null where
+ *   the review was already there).
  */
 export function handBackUntil(work, stop) {
   const files = workPaths(work);
   let out = null;
   for (let pass = 0; pass < 10; pass++) {
-    const state = readJson(work, "state");
+    const state = reviewOf(readJson(work, "state"));
     if (state.phase === stop || state.phase === "close") {
       return { state, out };
     }
-    sweepBack(files.review);
+    sweepBack(files.answers);
     const summary = state.report.meta.summaryFile;
     if (summary && !fs.existsSync(summary)) {
       fs.writeFileSync(summary, "A summary.\n");
     }
-    const doc = JSON.parse(fs.readFileSync(files.review, "utf8"));
+    const doc = JSON.parse(fs.readFileSync(files.answers, "utf8"));
     doc.entries = doc.entries.map((e) => {
       const labels = (e.answers ?? []).map((a) => a.label);
       const answer =
@@ -183,7 +199,7 @@ export function handBackUntil(work, stop) {
         null;
       return { ...e, answer };
     });
-    fs.writeFileSync(files.review, JSON.stringify(doc, null, 1));
+    fs.writeFileSync(files.answers, JSON.stringify(doc, null, 1));
     out = run(["--llm-handback", work]);
     assert.notEqual(out.code, 2, out.stdout + out.stderr);
   }
@@ -191,7 +207,7 @@ export function handBackUntil(work, stop) {
 }
 
 /** A submission folder: one built add-on, one source archive, and the usual clutter. The
- *  add-on is a real one, because the hand-back that finishes the preparation reviews it. */
+ *  add-on is a real one, because the hand-back that finishes the build check reviews it. */
 export function submissionFolder(name = "addon.xpi") {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-submission-"));
   packAddon(path.join(dir, name));
@@ -215,7 +231,7 @@ export function packAddon(file, manifest = {}) {
   zip.writeZip(file);
 }
 
-/** The source the preparation tests extract: one with no lock, so its audit asks no
+/** The source the build check tests extract: one with no lock, so its audit asks no
  *  network and cannot read a tree to rescue - the review is started at once. */
 export const NO_LOCK_SOURCE = path.join(
   ROOT,
@@ -225,7 +241,7 @@ export const NO_LOCK_SOURCE = path.join(
   "src"
 );
 
-/** The command a preparation prompt prints, one flag per line: the paragraph after the
+/** The command a build check prompt prints, one flag per line: the paragraph after the
  *  step that says to run the linter. */
 export function commandOf(stdout) {
   return stdout
@@ -236,7 +252,7 @@ export function commandOf(stdout) {
     .filter(Boolean);
 }
 
-/** The work folder a preparation prompt names: the one its ANSWERS file is in, in
+/** The work folder a build check prompt names: the one its ANSWERS file is in, in
  *  `.review/`, or on the `unpack` prompt, which hands out no ANSWERS, the one EXTRACT_TO is
  *  `sca/` of. */
 export const workOf = (stdout) => {
@@ -246,9 +262,15 @@ export const workOf = (stdout) => {
     : path.dirname(headerValue(stdout, "EXTRACT_TO"));
 };
 
-/** A work folder's JSON file, by its workPaths name, read back. */
+/** A work folder's JSON file, by its workPaths name, read back. The build check's record is
+ *  the review's record, state.json, in mode build-check. */
 export const readJson = (work, name) =>
-  JSON.parse(fs.readFileSync(workPaths(work)[name], "utf8"));
+  JSON.parse(
+    fs.readFileSync(
+      workPaths(work)[name === "prepare" ? "state" : name],
+      "utf8"
+    )
+  );
 
 /**
  * Do what the `unpack` prompt asks, the way its reader would: extract the source into
@@ -262,14 +284,18 @@ export function unpackSource(stdout, { experimentsFolder, typed } = {}) {
   const root = headerValue(stdout, "EXTRACT_TO");
   fs.cpSync(NO_LOCK_SOURCE, root, { recursive: true });
   if (experimentsFolder) {
+    // A file in it, since an Experiment folder that holds none is refused.
     fs.mkdirSync(path.join(root, experimentsFolder), { recursive: true });
+    fs.writeFileSync(path.join(root, experimentsFolder, "api.js"), "1;\n");
   }
   // The Experiment folder is named in the unpack review file, where the prompt asks for it.
   const answers = headerValue(stdout, "ANSWERS");
   if (answers) {
     const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
     doc.entries = doc.entries.map((e) =>
-      e.index === "SCA_EXPERIMENTS" ? { ...e, answer: experimentsFolder } : e
+      e.index === "SCA_EXPERIMENTS"
+        ? { ...e, answer: path.join(root, experimentsFolder) }
+        : e
     );
     fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
   }
@@ -368,7 +394,10 @@ export function handBackRoots(
   };
   fill({ SCA_BUILD_SAFETY_ISSUES: issuesFor(safety) });
   const handed = handBack(unpacked.stdout);
-  if (handed.code !== 0 || readJson(work, "prepare").step !== "permission") {
+  if (
+    handed.code !== 0 ||
+    readJson(work, "prepare").current.step !== "permission"
+  ) {
     return handed;
   }
   fill({ SCA_BUILD_PERMISSION: managers });

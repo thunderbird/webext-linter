@@ -37,7 +37,7 @@ import {
   seedWorkCache,
   seeded,
 } from "./seed-caches.js";
-import { advisory, auditEntries, realPreparation } from "./prepared.js";
+import { advisory, auditEntries, realBuildCheck } from "./build-checked.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..");
@@ -66,11 +66,12 @@ const UPDATE_GOLDEN = process.env.UPDATE_GOLDEN === "1";
 // A spec may also carry an "sca" block naming where the Experiment implementation sits
 // INSIDE the fixture's src/ tree (the extracted archive), as a path relative to it:
 // { "experimentsFolder": "experiment" }.
-// An SCA spec may also carry a "preparation" block: the review is then started the way a
-// prepared source code review is, in the work folder a REAL preparation (src/prepare/steps.js)
-// leaves - run here, step by step, its audits answered from `advisories` seeded into the
-// fixture's run cache folder (--cache-work-dir) ("name@version" -> [{id, severity, fixed}],
-// an empty list for a release with none), which names every release an audit asks about. It starts from the fixture's `from` folder
+// An SCA spec may also carry a "preparation" block, the fixture's build check: the review is
+// then started the way a source code review whose build check is done is, in the work folder
+// a REAL build check (src/build-check/steps.js) leaves - run here, step by step, its audits
+// answered from `advisories` seeded into the fixture's run cache folder (--cache-work-dir)
+// ("name@version" -> [{id, severity, fixed}], an empty list for a release with none), which
+// names every release an audit asks about. It starts from the fixture's `from` folder
 // (src/ by default). With `rescued`, the agent's work in the rescued copy is the fixture's
 // src/ tree, and the copy's review runs; without, the rescue fails, and the original
 // is reviewed like any other source, its lock audit answered from that same folder.
@@ -82,7 +83,7 @@ function loadFixture(dir) {
     options: parsed.options ?? {},
     network: parsed.network ?? {},
     sca: parsed.sca ?? {},
-    preparation: parsed.preparation ?? null,
+    buildCheck: parsed.preparation ?? null,
   };
 }
 
@@ -164,14 +165,15 @@ function fixtureCdnCache(dir, declared) {
 }
 
 /**
- * OSV's answers to a fixture's "preparation" block's audit, as run cache entries.
+ * OSV's answers to the audit of a fixture's build check (its "preparation" block), as run
+ * cache entries.
  * @param {?{advisories?: Record<string, {id: string, severity: string, fixed: string}[]>}}
- *   preparation
+ *   buildCheck
  * @returns {Record<string, object>}
  */
-function preparationEntries(preparation) {
+function buildCheckEntries(buildCheck) {
   const vulns = Object.fromEntries(
-    Object.entries(preparation?.advisories ?? {}).map(([release, list]) => {
+    Object.entries(buildCheck?.advisories ?? {}).map(([release, list]) => {
       const name = release.slice(0, release.lastIndexOf("@"));
       return [
         release,
@@ -183,28 +185,28 @@ function preparationEntries(preparation) {
 }
 
 /**
- * The work folder a fixture's "preparation" block leaves, prepared for real: the folder whose
- * review starts, and the package root in it. Its run cache is `cache`, the fixture's seeded
- * folder, which its review reads too.
+ * The work folder a fixture's build check (its "preparation" block) leaves, run for real: the
+ * folder whose review starts, and the package root in it. Its run cache is `cache`, the
+ * fixture's seeded folder, which its review reads too.
  * @param {string} dir  The fixture.
- * @param {{from?: string, rescued?: boolean}} preparation
+ * @param {{from?: string, rescued?: boolean}} buildCheck
  * @param {string} cache
  * @returns {Promise<{workFolder: string,
  *   scaFolders: import("../src/addon/package-root.js").ScaFolders}>}
  */
-async function preparedFixture(dir, preparation, cache) {
-  const at = await realPreparation({
-    source: path.join(dir, preparation.from ?? "src"),
+async function buildCheckedFixture(dir, buildCheck, cache) {
+  const at = await realBuildCheck({
+    source: path.join(dir, buildCheck.from ?? "src"),
     xpi: path.join(dir, "xpi"),
     cache,
-    rescue: preparation.rescued
+    rescue: buildCheck.rescued
       ? (copyRoot) =>
           fs.cpSync(path.join(dir, "src"), copyRoot, { recursive: true })
       : null,
   });
   // The folders as the record holds them, which the hand-back starts the review with (src/cli.js
-  // preparedReview): the rescued copy where a rescue came out clean, else `sca/`.
-  return { workFolder: at.work, scaFolders: at.record.roots };
+  // buildCheckCase): the rescued copy where a rescue came out clean, else `sca/`.
+  return { workFolder: at.work, scaFolders: at.record.current.roots };
 }
 
 // A fixture is an SCA (source-code archive) review when it holds two artifacts as
@@ -321,7 +323,7 @@ async function main() {
       options,
       network,
       sca,
-      preparation,
+      buildCheck,
     } = loadFixture(dir);
     let problems;
     try {
@@ -338,7 +340,7 @@ async function main() {
       //
       // The run's OSV and popularity answers are read from a cache folder of the fixture's
       // own, named the way a test names it on the command line (--cache-work-dir). A
-      // prepared fixture's preparation reads the same folder, which also holds the answers
+      // build-checked fixture's build check reads the same folder, which also holds the answers
       // its "preparation" block gives the audit.
       //
       // Each fixture gets a fresh work folder of its own: the default one sits beside the
@@ -346,7 +348,7 @@ async function main() {
       const workCache = seedWorkCache({
         osv: {
           ...osvEntries(answers.osv),
-          ...preparationEntries(preparation),
+          ...buildCheckEntries(buildCheck),
         },
         popularity: popularityEntries(answers.popularity),
       });
@@ -358,34 +360,32 @@ async function main() {
         sourcesCache: seedSourcesCache(fixtureSources(dir, answers.sources)),
         workFolder: freshWorkFolder(),
       };
-      // The folder the review runs in: the fresh one, or the one a preparation left.
+      // The folder the review runs in: the fresh one, or the one a build check left.
       let { workFolder } = base;
       let review;
       if (isScaFixture(dir)) {
         // SCA mode: the shipped XPI is the authoritative artifact (addonPath), and the src/
         // tree is the submitted archive (--sca-extracted), which the review copies into its
-        // work folder and reads whole. The folders are worked out the way a command line naming
-        // no --sca-package-root has them worked out (src/cli.js scaGivenOf), the Experiment
-        // folder from the spec's "sca" block. A prepared fixture's are the record's.
+        // work folder and reads whole. The package root is settled in the copy the way a
+        // command line naming no --sca-package-root has it settled (src/addon/package-root.js
+        // settlePackageRoot), the Experiment folder from the spec's "sca" block, relative to
+        // src/. A build-checked fixture's folders are the record's.
         let sources;
-        if (preparation) {
+        if (buildCheck) {
           let scaFolders;
-          ({ workFolder, scaFolders } = await preparedFixture(
+          ({ workFolder, scaFolders } = await buildCheckedFixture(
             dir,
-            preparation,
+            buildCheck,
             workCache
           ));
           sources = { scaFolders };
         } else {
-          const { scaGiven, scaMovedFrom } = pipelineOptsFromArgv([
-            ...argv,
-            "--sca-extracted",
-            path.join(dir, "src"),
-            ...(sca.experimentsFolder
-              ? ["--sca-experiments", sca.experimentsFolder]
-              : []),
-          ]);
-          sources = { scaGiven, ...(scaMovedFrom ? { scaMovedFrom } : {}) };
+          sources = {
+            scaExtracted: path.join(dir, "src"),
+            scaHints: sca.experimentsFolder
+              ? { experiments: sca.experimentsFolder }
+              : {},
+          };
         }
         review = await loadAndReview({
           ...base,

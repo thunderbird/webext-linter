@@ -87,8 +87,7 @@ test("an XPI folder holding a symlinked node_modules is refused at load", () => 
 });
 
 // A source archive may link within itself, so its load keeps the real file, skips the link
-// (never following it) with a notice for the pipeline to narrate, and records where the
-// target landed for its check to judge.
+// (never following it), and records where the target landed for its check to judge.
 test("source-archive load skips a symlink, keeps real files and records the link", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-scasym-"));
   fs.writeFileSync(path.join(dir, "real.js"), "browser.runtime.id;\n");
@@ -97,9 +96,6 @@ test("source-archive load skips a symlink, keeps real files and records the link
   const archive = loadSourceArchive(dir);
   assert.ok(archive.files.has("real.js"), "real file is loaded");
   assert.ok(!archive.files.has("link.js"), "symlink is skipped");
-  assert.deepEqual(archive.skipped, [
-    "Skipping symlink (not packaged): link.js",
-  ]);
   assert.equal(archive.symlinks.length, 1);
   assert.equal(archive.symlinks[0].path, "link.js");
   assert.equal(archive.symlinks[0].cause, SYMLINK_CAUSE.INTERNAL);
@@ -181,7 +177,6 @@ test("source-archive load records a symlinked node_modules without following it"
 
   const archive = loadSourceArchive(dir);
   assert.deepEqual(archive.nodeModules, ["node_modules"]);
-  assert.deepEqual(archive.skipped, []);
   assert.deepEqual(archive.symlinks, []);
   assert.ok(
     ![...archive.files.keys()].some((k) => k.startsWith("node_modules")),

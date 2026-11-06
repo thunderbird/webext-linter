@@ -184,11 +184,8 @@ test("a rejected Experiment is rejected whatever the check lists say", async () 
   );
   const { meta } = await runReview({
     addonPath: path.join(fixture, "xpi"),
-    scaGiven: {
-      extracted: path.join(fixture, "src"),
-      packageRoot: path.join(fixture, "src"),
-      experiments: path.join(fixture, "src", "experiment"),
-    },
+    scaExtracted: path.join(fixture, "src"),
+    scaHints: { experiments: "experiment" },
     ...OFFLINE,
   });
   assert.equal(meta.scaFolders.packageRoot, meta.scaFolders.source);
@@ -378,12 +375,12 @@ test("populating the context writes nothing into the work folder", async () => {
     "bg.js": "browser.runtime.id;\n",
   });
   const workFolder = freshWorkFolder();
-  const { verification } = await loadTheXpi(src, workFolder, OFFLINE);
+  loadTheXpi(src, workFolder);
   const listing = () =>
     fs.readdirSync(workFolder, { recursive: true }).map(String).sort();
   const before = listing();
   const ctx = await populateCtx(
-    { addonPath: src, workFolder, verification, ...OFFLINE },
+    { addonPath: src, workFolder, ...OFFLINE },
     workPaths(workFolder),
     null
   );
@@ -399,6 +396,7 @@ test("populating the context writes nothing into the work folder", async () => {
     "schemaChannel",
     "schemaSource",
     "siblings",
+    "verification",
   ]);
   assert.equal(ctx.manifest.json.name, "Ctx");
   fs.rmSync(src, { recursive: true, force: true });

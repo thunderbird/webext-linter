@@ -1,6 +1,5 @@
 import { displayTerminal, displayText } from "./text.js";
 import { applyColor } from "./color.js";
-import { releaseClaims } from "./claims.js";
 // Minimal logger for the tool's own output, on two streams - and the one door to them.
 // Every write to stdout or stderr passes write() below: the terminal guard removes every
 // control character from every source (src/util/text.js displayTerminal), and only then
@@ -166,7 +165,9 @@ export function info(...args) {
 }
 
 /**
- * Narrate a debug line to the feed (stdout, only when verbose is enabled).
+ * Narrate a debug line, only when verbose is enabled: to the feed on stdout, or, in a run
+ * that prints a prompt (recording), to stderr, which that run holds back and writes at exit
+ * as the "Tool messages" block, so no debug line lands in the prompt an agent reads.
  *
  * @param {...unknown} args
  */
@@ -177,7 +178,12 @@ export function debug(...args) {
     // than at each of the call sites. Newlines survive: these dumps have shape, and
     // none of them is a single line. No caller colours its text (emit's colour
     // contract is unaffected).
-    emit(args.map(displayText), true);
+    const text = args.map(displayText);
+    if (recorded) {
+      writeToStderr(`${PREFIX[FEED.SECTION] ?? ""}${text.join(" ")}\n`);
+    } else {
+      emit(text, true);
+    }
   }
 }
 
@@ -231,8 +237,8 @@ export function warn(...args) {
  * and after everything else. With nothing recorded it prints nothing: outside the
  * recording runs this is just the exit.
  *
- * A run that fails (exit 2) first gives back what it created for a review that never came to
- * exist (src/util/claims.js), whatever made it fail: this is the one place every run ends.
+ * Whether what a run created stays is exit handling's (src/cli.js), decided before this is
+ * called: this is the one place the process ends.
  *
  * The exit waits for both streams to hand over what they still hold. A write to a pipe its
  * reader has not emptied is queued, and process.exit drops the queue: the end of a prompt -
@@ -241,15 +247,6 @@ export function warn(...args) {
  * @param {number} code
  */
 export function exitWith(code) {
-  if (code === 2) {
-    try {
-      releaseClaims();
-    } catch (err) {
-      writeToStderr(
-        `Could not remove what this run created (${err.code ?? err.message}).\n`
-      );
-    }
-  }
   if (recorded?.length) {
     write(process.stderr, `\n── Tool messages ──\n\n${recorded.join("")}`);
   }

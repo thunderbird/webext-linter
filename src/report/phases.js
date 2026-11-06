@@ -1,7 +1,7 @@
 // Belongs here: which phase an item is in, which phase is issued next, and which of a
 // phase's steps a run prints. The phase machine, and nothing else.
 //
-// Does NOT belong here: the file the agent reads (src/report/state.js writes the linter's
+// Does NOT belong here: the file the agent reads (src/review/record.js writes the linter's
 // half), what a hand-back must look like (src/report/handback.js), or the prompt's layout
 // (src/report/format.js).
 //

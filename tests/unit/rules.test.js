@@ -945,7 +945,7 @@ test("where a check runs: the route says it, or the condition says what a route 
   assert.deepEqual(runsIn("xpi-lock-file-missing"), XPI_ONLY);
   assert.deepEqual(runsIn("xpi-lock-file-invalid"), XPI_ONLY);
   // The three build questions split every source review by the reviewer's build decision in
-  // the preparation: build-review where nobody decided (a plain report, or an agent review
+  // the build check: build-review where nobody decided (a plain report, or an agent review
   // with a build-guard check off), build-reproduces-xpi where they held the build safe, and
   // build-unsafe where they held it unsafe. Exactly one runs in each.
   const decided = {
@@ -2132,7 +2132,7 @@ test("build-review escalates every SCA, build documented or not", async () => {
   assert.equal(none.escalations[0].artifact, ARTIFACT_SCA);
 });
 
-// build-unsafe runs only where the reviewer held the build unsafe in the preparation, so it
+// build-unsafe runs only where the reviewer held the build unsafe in the build check, so it
 // always reports, once, anchored as the build review is, with the reasons they gave as its
 // note, or none where they trusted the agent's verdict.
 test("build-unsafe reports the reviewer's decision, with their reasons", async () => {
@@ -5459,11 +5459,13 @@ test("--warnings-as-errors moves the suggested verdict with it", async () => {
   assert.equal(plain.suggestedVerdict("sync-xhr"), "warning");
 });
 
-// A check returns ONE shape: { findings, escalations }. The bare array shorthand is
-// refused rather than read as findings - it made the two lanes look optional, so a rule
-// that grew an escalation path and kept returning its findings array dropped every
-// escalation with nothing to catch it (`expect` cannot assert an escalation).
-test("a check that returns a bare array is refused, not read as findings", async () => {
+// A check returns ONE shape: an object, { findings, escalations }, each part a list or left
+// out. The bare array shorthand is refused rather than read as findings - it made the two
+// lanes look optional, so a rule that grew an escalation path and kept returning its
+// findings array dropped every escalation with nothing to catch it (`expect` cannot assert
+// an escalation). Nothing at all is refused too: a check that lost its `return` would
+// otherwise read as a clean one.
+test("a check returns an object whose parts are lists, and anything else is refused", async () => {
   // A broken return shape is the LINTER being wrong: it throws a WIRING LinterError past
   // runOneCheck and out to exit 2.
   await assert.rejects(
@@ -5484,22 +5486,36 @@ test("a check that returns a bare array is refused, not read as findings", async
       return true;
     }
   );
-  // A non-object primitive is refused the same way; an absent return is fine.
-  await assert.rejects(
-    () =>
-      runOneCheck(
-        withManifest({}),
-        { id: "prim", severity: "warning", run: () => 42 },
-        "[1/1]"
-      ),
-    LinterError
-  );
-  const none = await runOneCheck(
+  // A primitive, nothing at all, and a part that is not a list are refused the same way.
+  for (const [id, returned, said] of [
+    ["prim", 42, "number"],
+    ["none", undefined, "undefined"],
+    ["empty", null, "null"],
+    ["nullFindings", { findings: null }, "findings that are not a list"],
+    ["badEscalations", { escalations: "x" }, "escalations that are not a list"],
+  ]) {
+    await assert.rejects(
+      () =>
+        runOneCheck(
+          withManifest({}),
+          { id, severity: "warning", run: () => returned },
+          "[1/1]"
+        ),
+      (err) => {
+        assert.ok(err instanceof LinterError);
+        assert.equal(err.class, ERROR_CLASS.WIRING);
+        assert.ok(err.message.includes(`${id} returned ${said}`), err.message);
+        return true;
+      }
+    );
+  }
+  // An object with both parts left out is a check that found nothing.
+  const clean = await runOneCheck(
     withManifest({}),
-    { id: "none", severity: "warning", run: () => undefined },
+    { id: "clean", severity: "warning", run: () => ({}) },
     "[1/1]"
   );
-  assert.deepEqual(none.findings, []);
+  assert.deepEqual(clean.findings, []);
 });
 
 // Data only some artifacts have - a build review, a vendor reading - is asked of a getter,
@@ -5724,7 +5740,8 @@ test("severity:none refuses a finding, and accepts every empty shape", async () 
     }
   );
 
-  for (const empty of [undefined, {}, { findings: [] }]) {
+  // Nothing at all is no empty shape: the return-shape test refuses it.
+  for (const empty of [{}, { findings: [] }]) {
     const out = await runOneCheck(
       withManifest({}),
       escalating(() => empty),

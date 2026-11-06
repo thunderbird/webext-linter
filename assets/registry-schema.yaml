@@ -115,7 +115,7 @@ shapes:
       kind: gate
       why: >-
         it marks a check an agent's build relies on: with any of these switched off
-        (--checks-only / --checks-skip), the preparation asks nobody about the build, the
+        (--checks-only / --checks-skip), the build check asks nobody about the build, the
         agent builds nothing, and the review asks build-review in its place
     collapse:
       kind: one-of
@@ -300,14 +300,14 @@ shapes:
         the condition the value is offered under, read like a step's `when:`, so an answer
         that means nothing in this review is not offered in it
 
-  # One answer the preparation's SCA_BUILD_PERMISSION question offers.
+  # One answer the build check's SCA_BUILD_PERMISSION question offers.
   build-permission-value-entry:
     value:
       kind: one-of
       values: BUILD_PERMISSION_VALUES
       required: true
       why: >-
-        the id the preparation records the reviewer's decision as, which decides whether the
+        the id the build check records the reviewer's decision as, which decides whether the
         build is safe and whether the agent builds the add-on and runs its package-manager
         commands
     label:
@@ -319,14 +319,14 @@ shapes:
       required: true
       why: what follows from it, so the reviewer can choose
 
-  # One answer the preparation's LLM_BUILD_XPI_MATCH entry offers.
+  # One answer the build check's LLM_BUILD_XPI_MATCH entry offers.
   build-match-value-entry:
     value:
       kind: one-of
       values: BUILD_MATCH_VALUES
       required: true
       why: >-
-        the id the preparation records the comparison as, which the Build Review Details
+        the id the build check records the comparison as, which the Build Review Details
         show
     label:
       kind: text
@@ -638,6 +638,13 @@ sections:
         closed: true
         noun: prose
         why: what the details blocks' LLM_BUILD_RESULT row says came of the agent's build, per result shown
+      restart:
+        kind: object
+        shape: loop-phase-entry
+        required: true
+        why: >-
+          the prompt that offers an aborted source review a restart as an XPI review, in
+          place of the close, shaped as a process-value phase
       phases:
         kind: entries
         shape: loop-phase-entry

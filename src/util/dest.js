@@ -16,7 +16,7 @@
 // (misplacedFolders). Does NOT belong here: writing
 // anything there, or deciding which of those names a run may create (src/pipeline.js claims
 // them when a review starts, and src/cli.js creates the folder a source code review is
-// prepared in).
+// built and checked in).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -73,7 +73,7 @@ export function defaultWorkFolder(addonPath, kind) {
 
 /**
  * Where one RUN of a review keeps what it caches: a dot folder in its work folder unless the
- * run names its own. Every invocation of the run - the preparation's hand-backs and the
+ * run names its own. Every invocation of the run - the build check's hand-backs and the
  * review - works in that one folder, so they all find the same cache. Not one of workPaths'
  * names: a run claims those afresh, while this one is there to be found again by every
  * invocation of the run.
@@ -103,27 +103,27 @@ export function runCache(work, dir) {
  *   so every reader - the checks, a reviewer, an agent - reads one unpacked tree.
  * - `sca`, the source archive, extracted or copied there before the review. An INPUT to
  *   the review, never written by it.
- * - `rescued`, the preparation's copy of that whole source, made where its lock needs a
- *   rescue (src/prepare/steps.js), whose package.json and lock alone the rescue changes. An
+ * - `rescued`, the build check's copy of that whole source, made where its lock needs a
+ *   rescue (src/build-check/steps.js), whose package.json and lock alone the rescue changes. An
  *   input like `sca`: the review reads it when the rescue came out clean, and never writes it.
  * - `report`, the text the reviewer sends to the developer. The one document the linter
  *   writes itself (src/report/report-file.js).
  * - `summary`, where a sub-agent writes the add-on description, and `build`, where the
- *   agent writes what building it takes, in the preparation. `buildIssues` is where the
+ *   agent writes what building it takes, in the build check. `buildIssues` is where the
  *   linter writes what the build reaches for outside the declared dependencies, as the agent
  *   handed it back in the same step.
- *   `buildCopy` is where every build of the preparation runs (src/prepare/steps.js): a
+ *   `buildCopy` is where every build of the build check runs (src/build-check/steps.js): a
  *   copy of the whole `sca` for a clean source, or of the whole `rescued` for a rescue,
  *   never the archive itself, which the reviewer and the other agents read as submitted.
  *   What that build produces lies inside it, wherever the build put it. An input like
  *   `sca`: the review never writes it.
  *
  * In `.review/`:
- * - `prepare`, reserved for the preparation of a source code review. An input like `sca`,
- *   so no review claims it.
- * - `state`, the linter's own record of the review, and `review`, the file it hands the
- *   agent one phase at a time. A pass is handed back with the work folder (--llm-handback,
- *   src/cli.js), and finds both in it by these names.
+ * - `prepare`, the record of a folder made before the record had a mode. Only asked whether
+ *   it is there: such a folder cannot be carried on (src/review/record.js).
+ * - `state`, the linter's own record of the review in every mode (src/review/record.js), and
+ *   `answers`, the file it hands the agent one step or phase at a time. A pass is handed back
+ *   with the work folder (--llm-handback, src/cli.js), and finds both in it by these names.
  * - `sweep`, where one sweeping agent's answers are written, per artifact it is asked
  *   about. The orchestrating agent writes it, from the sub-agent's reply. A FUNCTION,
  *   because how many there are is the review's answer and not this module's: an XPI
@@ -131,7 +131,7 @@ export function runCache(work, dir) {
  *   here would invent a path for a tree that does not exist.
  * @param {string} work  The work folder, absolute.
  * @returns {{xpi: string, sca: string, rescued: string, prepare: string, state: string,
- *   review: string,
+ *   answers: string,
  *   report: string, summary: string, build: string, buildIssues: string, buildCopy: string,
  *   sweep: (artifact: string) => string}}
  */
@@ -144,7 +144,7 @@ export function workPaths(work) {
     rescued: at("rescued"),
     prepare: hidden("prepare.json"),
     state: hidden("state.json"),
-    review: hidden("review.json"),
+    answers: hidden("answers.json"),
     report: at("report.md"),
     summary: at("summary.md"),
     build: at("build.md"),

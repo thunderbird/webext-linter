@@ -11,6 +11,7 @@ import {
   ROOT,
   OFFLINE_FLAGS,
   entriesOf,
+  reviewFile,
   run,
   workOfReviewFile,
   sweepBack,
@@ -26,12 +27,11 @@ function reportOf(stdout) {
   return fs.readFileSync(at[1], "utf8");
 }
 
-// --sca-extracted / --sca-package-root / --sca-experiments flow through to the source-code submission
-// pipeline opts (--sca-extracted switches the review to SCA mode).
-// The reader is where a path stops being a spelling and becomes a place: --sca-extracted and
-// --sca-package-root against the working directory, and --sca-experiments, which names a folder inside
-// the extracted archive, against the RESOLVED archive. Everything downstream is handed absolutes and re-resolves nothing.
-test("--sca-extracted / --sca-package-root / --sca-experiments map to the sca pipeline opts", () => {
+// --sca-extracted / --sca-package-root / --sca-experiments do not travel in the pipeline opts:
+// the source review's entry point approves the folders against --sca-extracted, copies the
+// source and settles its package root (src/cli.js reviewWithSource), and only what the settle
+// produces reaches the review. So the values a command line maps to carry no source folder.
+test("--sca-extracted / --sca-package-root / --sca-experiments are no pipeline opts", () => {
   const o = pipelineOptsFromArgv([
     "--sca-extracted",
     "extracted",
@@ -40,43 +40,9 @@ test("--sca-extracted / --sca-package-root / --sca-experiments map to the sca pi
     "--sca-experiments",
     "exp",
   ]);
-  assert.deepEqual(o.scaGiven, {
-    extracted: path.resolve("extracted"),
-    packageRoot: path.resolve("extracted", "pkg"),
-    experiments: path.resolve("extracted", "exp"),
-  });
-  // Every spelling of the same folder arrives as one value.
-  for (const written of [
-    "exp",
-    "./exp",
-    "./exp/",
-    path.resolve("extracted", "exp"),
-  ]) {
-    const each = pipelineOptsFromArgv([
-      "--sca-extracted",
-      "extracted",
-      "--sca-package-root",
-      "extracted/pkg",
-      "--sca-experiments",
-      written,
-    ]);
-    assert.equal(
-      each.scaGiven.experiments,
-      path.resolve("extracted", "exp"),
-      written
-    );
+  for (const key of ["scaGiven", "scaFolders", "scaMoved"]) {
+    assert.ok(!Object.hasOwn(o, key), key);
   }
-  // Left out, the package root is worked out from --sca-extracted, and the Experiment folder
-  // is not there at all.
-  assert.deepEqual(
-    pipelineOptsFromArgv(["--sca-extracted", "extracted"]).scaGiven,
-    {
-      extracted: path.resolve("extracted"),
-      packageRoot: path.resolve("extracted"),
-    }
-  );
-  // An XPI review carries no source folders.
-  assert.ok(!Object.hasOwn(pipelineOptsFromArgv([]), "scaGiven"));
 });
 
 // The two skips end to end: the same round trip, minus the two parts that need a person.
@@ -235,7 +201,10 @@ test("a skipped review carries the same guards", () => {
     os.tmpdir(),
   ]);
   assert.equal(verdict.code, 2);
-  assert.match(verdict.stderr, /--llm-review and --llm-handback/);
+  assert.match(
+    verdict.stderr,
+    /nothing goes beside the work folder: drop .*--llm-review/
+  );
 });
 
 // --llm-review switches on the verification prompt and the skips cut it down: the review
@@ -286,10 +255,10 @@ test("retired flags are unknown options", () => {
 /** Give the review's own copy of the add-on the file a sweep result names, at least
  *  `lines` long: whatever it holds, then empty lines up to that count. A result names a
  *  file the swept tree has, and a line that file has. */
-function planted(reviewFile, rel, lines) {
+function planted(answers, rel, lines) {
   const state = JSON.parse(
-    fs.readFileSync(path.join(path.dirname(reviewFile), "state.json"), "utf8")
-  );
+    fs.readFileSync(path.join(path.dirname(answers), "state.json"), "utf8")
+  ).current;
   const file = path.join(state.paths.xpiRoot, rel);
   const had = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
   fs.writeFileSync(file, had + "\n".repeat(lines));
@@ -305,7 +274,7 @@ test("a swept case becomes an item of its check and settles like any other", () 
   const addon = path.join(ROOT, "tests", "addons", "clean");
   const first = run([addon, ...OFFLINE_FLAGS, "--llm-review"]);
   assert.equal(first.code, 0, first.stderr);
-  const file = first.stdout.match(/(\S+\/review\.json)/)[1];
+  const file = reviewFile(first.stdout);
 
   // The spawn pass asks nothing in this file - the sweeping agents answer in their own,
   // where an empty list is "swept and clean" and a null is "never looked".
@@ -322,11 +291,7 @@ test("a swept case becomes an item of its check and settles like any other", () 
   });
 
   // The next pass carries it as a case of its own check, with its locus and its hint.
-  const second = run([
-    "--llm-handback",
-    workOfReviewFile(file),
-    ...OFFLINE_FLAGS,
-  ]);
+  const second = run(["--llm-handback", workOfReviewFile(file)]);
   assert.equal(second.code, 0, second.stderr);
   const next = JSON.parse(fs.readFileSync(file, "utf8"));
   const swept = next.entries.find((e) => e.ruleId === "data-exfiltration");
@@ -338,13 +303,13 @@ test("a swept case becomes an item of its check and settles like any other", () 
   // sweeping agent's, which never leave the hint.
   next.entries = next.entries.map((e) => ({ ...e, answer: "reported" }));
   fs.writeFileSync(file, JSON.stringify(next, null, 1));
-  let out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
+  let out = run(["--llm-handback", workOfReviewFile(file)]);
   // Every prompt but the closing one ends on the command that hands it back.
   while (/^\s+node verify\.js --llm-handback /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries = doc.entries.map((e) => ({ ...e, answer: "Clear" }));
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
-    out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
+    out = run(["--llm-handback", workOfReviewFile(file)]);
   }
   assert.equal(out.code, 1, out.stderr);
   // The invariant clause, not the subject: what the response calls the data (user data,
@@ -375,7 +340,7 @@ test("a swept case of a check that files findings is verified like one", () => {
     "--llm-skip-summary",
   ]);
   assert.equal(first.code, 0, first.stderr);
-  const file = first.stdout.match(/(\S+\/review\.json)/)[1];
+  const file = reviewFile(first.stdout);
 
   planted(file, "sync.js", 12);
   sweepBack(file, {
@@ -386,11 +351,7 @@ test("a swept case of a check that files findings is verified like one", () => {
 
   // It arrives in VERIFY, as a finding: a locus and the agent's hint, and no `instructions`
   // - a finding carries no question, because it is a claim to be audited.
-  const second = run([
-    "--llm-handback",
-    workOfReviewFile(file),
-    ...OFFLINE_FLAGS,
-  ]);
+  const second = run(["--llm-handback", workOfReviewFile(file)]);
   assert.equal(second.code, 0, second.stderr);
   assert.match(second.stdout, /Verify every entry in ONE pass/);
   const verify = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -408,13 +369,13 @@ test("a swept case of a check that files findings is verified like one", () => {
   // Confirmed, it reaches the developer worded by the OWNING check - never by the sweep.
   verify.entries = verify.entries.map((e) => ({ ...e, answer: "reported" }));
   fs.writeFileSync(file, JSON.stringify(verify, null, 1));
-  let out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
+  let out = run(["--llm-handback", workOfReviewFile(file)]);
   // Every prompt but the closing one ends on the command that hands it back.
   while (/^\s+node verify\.js --llm-handback /m.test(out.stdout)) {
     const doc = JSON.parse(fs.readFileSync(file, "utf8"));
     doc.entries = doc.entries.map((e) => ({ ...e, answer: "Clear" }));
     fs.writeFileSync(file, JSON.stringify(doc, null, 1));
-    out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
+    out = run(["--llm-handback", workOfReviewFile(file)]);
   }
   const report = reportOf(out.stdout);
   assert.match(report, /Data is sent over an unencrypted connection/);

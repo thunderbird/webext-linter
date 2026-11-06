@@ -23,6 +23,7 @@ import {
   normalizedSha256,
 } from "../../src/experiments/verify.js";
 import { loadTheXpi } from "../../src/review/start.js";
+import { populateCtx } from "../../src/pipeline.js";
 import { workPaths } from "../../src/util/dest.js";
 import AdmZip from "adm-zip";
 import { buildSchemaIndex } from "../../src/schema/index.js";
@@ -31,6 +32,7 @@ import experimentOverridesApi from "../../src/checks/rules/experiment-overrides-
 import experimentNotAllowed from "../../src/checks/rules/experiment-not-allowed.js";
 import experimentModified from "../../src/checks/rules/experiment-modified.js";
 import {
+  fixtureCacheOpts,
   freshWorkFolder,
   seedDownload,
   seedFixtureCache,
@@ -592,9 +594,10 @@ test("resolveExperimentsZip downloads a list older than a day again", async (t) 
   assert.equal(again.source, "cache:main");
 });
 
-// The verdict the load reaches (src/review/start.js loadTheXpi), of the .xpi it extracted into
-// the work folder's xpi/, which every path into a review asks before it does anything else.
-test("the load reaches the Experiment verdict of the .xpi it extracted", async () => {
+// The Experiment verdict, data in ctx as the schema is (src/pipeline.js populateCtx), of the
+// .xpi the load extracted into the work folder's xpi/. The load itself knows nothing about
+// Experiments: experiment-not-allowed reports the verdict in the early-exit checks.
+test("populating ctx reaches the Experiment verdict of the .xpi the load extracted", async () => {
   const fixtures = path.join(here, "..", "addons");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-verdict-"));
   const verdictOf = async (name, extra = {}) => {
@@ -603,16 +606,18 @@ test("the load reaches the Experiment verdict of the .xpi it extracted", async (
     const xpi = path.join(dir, `${name}.xpi`);
     zip.writeZip(xpi);
     const work = freshWorkFolder();
-    const { verification, rejected } = await loadTheXpi(xpi, work, {
-      ...opts,
-      ...extra,
-    });
+    loadTheXpi(xpi, work);
+    const { verification } = await populateCtx(
+      { addonPath: xpi, workFolder: work, ...fixtureCacheOpts(), ...extra },
+      workPaths(work),
+      null
+    );
     assert.deepEqual(
       fs.readdirSync(workPaths(work).xpi).sort(),
       fs.readdirSync(path.join(fixtures, name)).sort()
     );
     return {
-      invalid: rejected,
+      invalid: verification.groups.some((g) => g.rejected),
       groups: verification.groups.map((g) => [g.status, g.rejected]),
     };
   };

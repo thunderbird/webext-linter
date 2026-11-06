@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   ROOT,
   REVIEW,
@@ -24,6 +25,7 @@ import {
   handBackUntil,
 } from "../cli-run.js";
 import { workPaths } from "../../src/util/dest.js";
+import { readRecord, writeRecord } from "../../src/review/record.js";
 
 // A real review renders a report to stdout and sets the exit code by severity
 // (0 = clean, 1 = has error-severity findings).
@@ -45,7 +47,7 @@ test("reviewing a fixture renders to stdout with a severity-based exit", () => {
 // Keyed on the paths themselves, because a path is all a step gives out: a sub-agent is
 // handed the request and nothing else, so nothing in one stands for a path by name.
 test("a source code review's steps carry the paths the review resolved to", () => {
-  // A source review is prepared first: the source is copied into the work folder's sca/, and
+  // A source review's build check comes first: the source is copied into the work folder's sca/, and
   // the analyze prompt names that copy as the root, and where the build report goes.
   const sca = path.join(ROOT, "tests", "addons", "sca-transpiled-kept");
   const r = run([
@@ -75,12 +77,12 @@ test("a source code review's steps carry the paths the review resolved to", () =
     "and the build report"
   );
   assert.equal(
-    readJson(work, "state").report.meta.scaFolders.packageRoot,
+    readJson(work, "state").current.report.meta.scaFolders.packageRoot,
     root
   );
   fs.rmSync(work, { recursive: true, force: true });
 
-  // A rejected Experiment submitted WITH --sca-extracted is not prepared: the review rejects it
+  // A rejected Experiment submitted WITH --sca-extracted gets no build check: the review rejects it
   // from the add-on alone, so it starts at once, as --llm-auto-review's does, and its first
   // prompt is the close. No build report is asked for.
   const exp = path.join(ROOT, "tests", "addons", "experiment-disallowed-sca");
@@ -100,6 +102,21 @@ test("a source code review's steps carry the paths the review resolved to", () =
     !rejected.stdout.split("\n").some((l) => /\/build\.md$/.test(l.trim())),
     "no build report is asked for"
   );
+  // It is still a source review: the close names the source copy, and the report labels
+  // each finding by the tree it is in.
+  const lines = rejected.stdout.split("\n").map((l) => l.trim());
+  assert.ok(
+    lines.some((l) => l.startsWith("* SCA_SOURCE: ")),
+    "the source copy is named"
+  );
+  const reportRow = lines.find((l) => l.startsWith("* REVIEW_REPORT: "));
+  const report = reportRow.slice(reportRow.indexOf("](") + 2, -1);
+  assert.match(
+    fs.readFileSync(report, "utf8"),
+    /\[SCA\] = source file in the submitted source code archive/,
+    "the report is a source review's"
+  );
+  fs.rmSync(path.dirname(report), { recursive: true, force: true });
 });
 
 // --llm-review end to end. Its whole output is the prompt, the Review Details section and
@@ -124,7 +141,7 @@ test("--llm-review prints a prompt and writes the item file, not the report", ()
     !entriesOf(on.stdout).some((e) => "answers" in e),
     "the questions are a later pass"
   );
-  assert.match(on.stdout, /\/review\.json/, "the file to hand back is named");
+  assert.match(on.stdout, /\/answers\.json/, "the file to hand back is named");
   assert.match(
     on.stdout,
     /--llm-handback/,
@@ -188,12 +205,14 @@ test("a failure building the next pass ends it cleanly, not with a stack trace",
     "--llm-skip-summary",
   ]);
   assert.equal(first.code, 0, first.stderr);
-  const file = first.stdout.match(/(\S+\/review\.json)/)[1];
+  const file = reviewFile(first.stdout);
   const stateFile = path.join(path.dirname(file), "state.json");
   // A finding in the archive, in a review that has no archive: the next phase cannot
-  // resolve its path, which is the linter's own inconsistency to report.
-  const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-  state.report.findings.push({
+  // resolve its path, which is the linter's own inconsistency to report. Written as the
+  // linter writes its record, sealed, since that is the only record a hand-back reads.
+  const work = workOfReviewFile(file);
+  const state = readRecord(work);
+  state.current.report.findings.push({
     ruleId: "eval-call",
     severity: "error",
     file: "orphan.js",
@@ -201,11 +220,11 @@ test("a failure building the next pass ends it cleanly, not with a stack trace",
     artifact: "SCA",
     message: "eval",
   });
-  fs.writeFileSync(stateFile, JSON.stringify(state));
+  writeRecord(work, state);
   sweepBack(file);
   const before = fs.readFileSync(stateFile, "utf8");
 
-  const out = run(["--llm-handback", workOfReviewFile(file), ...OFFLINE_FLAGS]);
+  const out = run(["--llm-handback", workOfReviewFile(file)]);
   assert.equal(out.code, 2);
   assert.match(out.stderr, /orphan\.js/, "the error's own message");
   assert.match(out.stderr, /verify failed/);
@@ -222,107 +241,109 @@ test("a failure building the next pass ends it cleanly, not with a stack trace",
   );
 });
 
-// A message that is not part of the normal review goes to stderr. In a run printing a
-// prompt for an agent it is held back and written last, under its own header - the
-// agent's harness merges both streams, and a warning printed in place reads as part of
-// the prompt.
-test("a warning reaches stderr, held back to the end of a prompt run", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wxl-warn-"));
-  fs.cpSync(
-    path.join(ROOT, "tests", "addons", "sca-experiment-vendored"),
-    dir,
-    {
-      recursive: true,
-    }
-  );
-  // A folder that exists and holds nothing: the run carries on, degraded, and says so.
-  fs.mkdirSync(path.join(dir, "src", "emptyexp"));
-  // Its VENDORS.md sends the review to GitHub for the vendored file, which no cache answers;
-  // what this test reads is the held warning, which does not need it.
-  fs.rmSync(path.join(dir, "src", "VENDORS.md"));
-  const args = [
-    path.join(dir, "xpi"),
-    "--sca-extracted",
-    path.join(dir, "src"),
-    "--sca-experiments",
-    "emptyexp",
-    "--allow-experiments",
-    ...OFFLINE_FLAGS,
-  ];
-  const WARNING = /matched no files under --sca-extracted/;
-
-  // The review an agent runs starts once its preparation is done: the build judged.
-  const analyze = run([...args, "--llm-review", "--llm-skip-summary"]);
-  assert.equal(analyze.code, 0, analyze.stderr);
-  const permission = run(answerAnalyze(analyze.stdout));
-  assert.equal(permission.code, 0, permission.stdout + permission.stderr);
-  const prompt = run(answerPermission(permission.stdout));
-  assert.notEqual(prompt.code, 2, prompt.stderr);
-  assert.doesNotMatch(prompt.stdout, WARNING, "not in the prompt");
-  assert.match(prompt.stderr, /── Tool messages ──[\s\S]*matched no files/);
-
-  const text = run(args);
-  assert.doesNotMatch(text.stdout, WARNING);
-  assert.match(text.stderr, WARNING, "a text run prints it in place");
-  assert.doesNotMatch(text.stderr, /Tool messages/, "with nothing held back");
-});
-
-// A failure OUTSIDE main's promise - a throw from a callback nothing awaits - would end
-// the process through Node's own handler, past exitWith, and lose every message the run
-// was holding back. The entry point catches those too.
-//
-// Driven by a preloaded module that throws from a microtask queued as the prompt is
-// printed: by then the run is holding its warning, and that microtask is queued ahead of
-// main's own settlement, so it runs before the exit every time - no timing. (A nextTick
-// would not: Node drains the microtask queue, exit included, before any nextTick.)
-test("a failure outside main still dumps the held messages", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wxl-crash-"));
-  fs.cpSync(
-    path.join(ROOT, "tests", "addons", "sca-experiment-vendored"),
-    dir,
-    {
-      recursive: true,
-    }
-  );
-  fs.mkdirSync(path.join(dir, "src", "emptyexp"));
-  // Its VENDORS.md sends the review to GitHub for the vendored file, which no cache answers;
-  // what this test reads is the held warning, which does not need it.
-  fs.rmSync(path.join(dir, "src", "VENDORS.md"));
-  const stray = path.join(dir, "stray.mjs");
+// A preloaded module that warns once, through the run's own logger, as the first section of
+// the output starts: in a text run that is the Setup feed, so the warning prints in place, and
+// in a prompt run, whose feed is off, it is the prompt itself, so the run is holding its
+// messages by then. The review itself warns about nothing, so the test supplies the message.
+function warnOnce(dir, also = []) {
+  const file = path.join(dir, "warn-once.mjs");
+  const log = pathToFileURL(path.join(ROOT, "src", "util", "log.js")).href;
   fs.writeFileSync(
-    stray,
+    file,
     [
+      `import { warn } from ${JSON.stringify(log)};`,
       "const write = process.stdout.write.bind(process.stdout);",
-      "let thrown = false;",
+      "let warned = false;",
       "process.stdout.write = (chunk, ...rest) => {",
-      '  if (!thrown && String(chunk).includes("LLM Prompt")) {',
-      "    thrown = true;",
-      "    queueMicrotask(() => {",
-      '      throw new Error("stray failure outside main");',
-      "    });",
+      '  if (!warned && String(chunk).includes("──")) {',
+      "    warned = true;",
+      '    warn("a held warning");',
+      ...also,
       "  }",
       "  return write(chunk, ...rest);",
       "};",
       "",
     ].join("\n")
   );
-  // The review an agent runs starts once its preparation is done: the build judged.
-  const analyze = run([
+  return file;
+}
+
+// The source review an agent runs starts once its build check is done: the build judged.
+function sourceReview(dir) {
+  fs.cpSync(
+    path.join(ROOT, "tests", "addons", "sca-experiment-vendored"),
+    dir,
+    {
+      recursive: true,
+    }
+  );
+  // Its VENDORS.md sends the review to GitHub for the vendored file, which no cache answers;
+  // what these tests read is the held warning, which does not need it.
+  fs.rmSync(path.join(dir, "src", "VENDORS.md"));
+  return [
     path.join(dir, "xpi"),
     "--sca-extracted",
     path.join(dir, "src"),
     "--sca-experiments",
-    "emptyexp",
+    "experiment",
     "--allow-experiments",
-    "--llm-review",
     ...OFFLINE_FLAGS,
+  ];
+}
+
+// A message that is not part of the normal review goes to stderr. In a run printing a
+// prompt for an agent it is held back and written last, under its own header - the
+// agent's harness merges both streams, and a warning printed in place reads as part of
+// the prompt.
+test("a warning reaches stderr, held back to the end of a prompt run", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wxl-warn-"));
+  const args = sourceReview(dir);
+  const preload = warnOnce(dir);
+  const runWarned = (argv) =>
+    spawnSync(process.execPath, ["--import", preload, REVIEW, ...argv], {
+      encoding: "utf8",
+    });
+  const WARNING = /a held warning/;
+
+  const analyze = run([...args, "--llm-review", "--llm-skip-summary"]);
+  assert.equal(analyze.code, 0, analyze.stderr);
+  const permission = run(answerAnalyze(analyze.stdout));
+  assert.equal(permission.code, 0, permission.stdout + permission.stderr);
+  const prompt = runWarned(answerPermission(permission.stdout));
+  assert.notEqual(prompt.status, 2, prompt.stderr);
+  assert.doesNotMatch(prompt.stdout, WARNING, "not in the prompt");
+  assert.match(prompt.stderr, /── Tool messages ──[\s\S]*a held warning/);
+
+  const text = runWarned(args);
+  assert.doesNotMatch(text.stdout, WARNING);
+  assert.match(text.stderr, WARNING, "a text run prints it in place");
+  assert.doesNotMatch(text.stderr, /Tool messages/, "with nothing held back");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A failure OUTSIDE main's promise - a throw from a callback nothing awaits - would end
+// the process through Node's own handler, past exitWith, and lose every message the run
+// was holding back. The entry point catches those too.
+//
+// The preloaded module throws from a microtask queued as the prompt is printed: by then the
+// run is holding its warning, and that microtask is queued ahead of main's own settlement, so
+// it runs before the exit every time - no timing. (A nextTick would not: Node drains the
+// microtask queue, exit included, before any nextTick.)
+test("a failure outside main still dumps the held messages", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wxl-crash-"));
+  const args = sourceReview(dir);
+  const preload = warnOnce(dir, [
+    "    queueMicrotask(() => {",
+    '      throw new Error("stray failure outside main");',
+    "    });",
   ]);
+  const analyze = run([...args, "--llm-review"]);
   assert.equal(analyze.code, 0, analyze.stderr);
   const r = spawnSync(
     process.execPath,
     [
       "--import",
-      stray,
+      preload,
       REVIEW,
       ...answerPermission(run(answerAnalyze(analyze.stdout)).stdout),
     ],
@@ -331,12 +352,13 @@ test("a failure outside main still dumps the held messages", () => {
   assert.equal(r.status, 2, r.stderr);
   assert.match(
     r.stderr,
-    /── Tool messages ──[\s\S]*matched no files[\s\S]*stray failure outside main/,
+    /── Tool messages ──[\s\S]*a held warning[\s\S]*stray failure outside main/,
     "the held warning, then the failure, in one block"
   );
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("both ends of the review loop refuse --report-format json", () => {
+test("a hand-back given --report-format json is refused as a flag beside it", () => {
   const started = run([
     "--llm-handback",
     "/nonexistent",
@@ -344,21 +366,22 @@ test("both ends of the review loop refuse --report-format json", () => {
     "json",
   ]);
   assert.equal(started.code, 2);
-  assert.match(started.stderr, /--llm-handback is text only/);
-  assert.doesNotMatch(
+  assert.match(
     started.stderr,
-    /--llm-review/,
-    "names the flag the run used"
+    /nothing goes beside the work folder: drop --report-format/
   );
 
-  // Text is still the loop's own format, so the pass runs - and a folder holding no review
-  // is a hand-back gone wrong, refused to the agent on stdout like any other.
+  // Alone, the pass runs - and a folder holding no record is a failure on stderr, not a
+  // refusal: the record is the linter's, which the agent cannot repair.
   const text = run(["--llm-handback", "/nonexistent"]);
   assert.equal(text.code, 2);
-  assert.match(
-    text.stdout,
-    /The hand-back was refused: "\/nonexistent" holds no review/
+  assert.ok(
+    text.stderr.includes(
+      'The work folder "/nonexistent" holds no review this command can carry on'
+    ),
+    text.stderr
   );
+  assert.ok(text.stderr.includes("verify failed"), text.stderr);
 });
 
 // The review file is the linter's to name, so the flag takes no value at all - which is
@@ -379,7 +402,7 @@ test("--llm-review names its own review file and swallows no argument", () => {
   for (const file of written) {
     assert.ok(file && fs.existsSync(file), `${file} was written`);
     assert.ok(Array.isArray(JSON.parse(fs.readFileSync(file, "utf8")).entries));
-    assert.equal(path.basename(file), "review.json");
+    assert.equal(path.basename(file), "answers.json");
   }
   assert.equal(
     new Set(written).size,
@@ -427,14 +450,33 @@ test("--warnings-as-errors settles a warning as an error, exit code included", (
   );
 });
 
-// The band belongs to the REVIEW, recorded when it started, so a later pass reads it back
-// instead of being told it again - two sources for one fact is one of them going stale.
-test("--warnings-as-errors is refused on a --llm-handback pass", () => {
-  const r = run(["--llm-handback", "/nonexistent", "--warnings-as-errors"]);
-  assert.equal(r.code, 2);
-  assert.match(r.stderr, /belongs to the review/);
-  // Refused before the folder is read: the message is about the flag, not about the path.
-  assert.doesNotMatch(r.stderr, /nonexistent/);
+// A hand-back carries on the review its work folder holds, which recorded what it runs with
+// when it started: anything typed beside the work folder is refused, every one named, before
+// the folder is read - two sources for one fact is one of them going stale.
+test("--llm-handback takes its work folder and nothing else", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-handback-extras-"));
+  for (const [extra, named] of [
+    [["--warnings-as-errors"], "drop --warnings-as-errors."],
+    [["a.xpi"], 'drop "a.xpi".'],
+    [["--cache-schema-dir", dir], "drop --cache-schema-dir."],
+    [["--verbose"], "drop --verbose."],
+    [["--report-format", "text"], "drop --report-format."],
+    [
+      ["a.xpi", "--checks-only", "unused-files"],
+      'drop "a.xpi" and --checks-only.',
+    ],
+  ]) {
+    const r = run(["--llm-handback", dir, ...extra]);
+    assert.equal(r.code, 2, extra.join(" "));
+    assert.ok(
+      r.stderr.includes("nothing goes beside the work folder: " + named),
+      r.stderr
+    );
+    // Refused before the folder is read: the message is about the command line.
+    assert.doesNotMatch(r.stderr, /holds no review/, extra.join(" "));
+  }
+  assert.deepEqual(fs.readdirSync(dir), [], "nothing created");
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // ...and read back it is: a case a later pass reports becomes a finding in the band the

@@ -75,7 +75,7 @@ It may also carry a `"network"` map keyed by URL, saying what that URL serves:
 `{ "tgz": {...} }` or `{ "meta": {...} }` (a tarball or an unpkg listing built from fixture
 files), or `{ "status": <code> }`. The review runs with the network switched off, as every
 test does, and every answer comes from a cache seeded for the fixture from this map, so no
-work folder is prepared:
+work folder is made ready for it:
 - OSV, npm's downloads and GitHub's repositories: a run cache folder of the fixture's own,
   given to the review as `--cache-work-dir`. A `/v1/query` or `/v1/querybatch` answer names
   the `"name@version"` queries it answers in `"queries"`: a `/v1/query` answer answers each
@@ -102,12 +102,12 @@ tree, e.g. a Vue `.vue`) - is run in **SCA** mode (source-code archive) rather t
 XPI mode. The layout is auto-detected (no flag needed), and its spec sits in
 `expected/` like every other. Use one when a check depends on the source/shipped split
 or on a source format that only exists pre-build. An SCA spec may also carry a
-`"preparation"` block: the harness then prepares the review for real, step by step, its
-audits answered from its `"advisories"` seeded into the fixture's run cache folder, which
-the preparation and its review both read through `--cache-work-dir` (`"name@version"` to
+`"preparation"` block, the fixture's build check: the harness then runs the build check for
+real, step by step, its audits answered from its `"advisories"` seeded into the fixture's
+run cache folder, which the build check and its review both read through `--cache-work-dir` (`"name@version"` to
 a list of `id`, `severity` and `fixed`, empty for a release with none, and every release an
 audit asks about named), starting from the fixture's `"from"` folder (`src/` by default),
-and the review runs in the folder the preparation leaves. With `"rescued": true` the
+and the review runs in the folder the build check leaves. With `"rescued": true` the
 rescued copy is given the fixture's `src/` tree and comes out clean, so the review reports
 what the rescue changed (`sca-dependencies-changed`). Without it the rescue is given up, and
 the original is reviewed like any other source, its lock audit answered from that same
@@ -171,7 +171,7 @@ A selection, not the catalogue - `unit/` holds one file per module or scanner:
 | `json.test.js` | `parseExtensionJson`, the reader for files Thunderbird's extension loader reads (manifest.json, Experiment schemas, `_locales` messages, API schemas): `//` comments accepted, every other JSON5 extension refused. |
 | `load.test.js` | Add-on loading - an XPI holding a symlink is refused, a source archive's symlinks are skipped and recorded, real files kept. |
 | `loader-files.test.js` | The file-loader extractor (`scanLoaderRefs`) - schema-directed type walking for derived loaders, plus the bridge for `getURL`/`executeScript`/`insertCSS`/`tabs.create`/`setPopup`. |
-| `prepare.test.js` | The preparation of a source code review, one hand-back at a time: the roots read back and settled, the lock audit that decides a rescue, the rescued copy's steps, a rescue given up, runs cut short, forged records, and `sca-dependencies-changed` - against OSV answers seeded into a run cache folder outside the work folder, which the record names as its `--cache-work-dir`. |
+| `build-check.test.js` | The build check of a source code review, one hand-back at a time: the folders the record names, the lock audit that decides a rescue, the rescued copy's steps, a rescue given up, runs cut short, forged records, and `sca-dependencies-changed` - against OSV answers seeded into a run cache folder outside the work folder, which the record names as its `--cache-work-dir`. |
 | `start.test.js` | "load the .xpi" (`src/review/start.js`): the work folder it creates, the add-on's copy in its `xpi/`, the folder it refuses, and the review that reads that copy and never extracts the add-on itself. |
 | `pipeline.test.js` | End-to-end `runPipeline` against the schema fixture (read-only: line numbers match the source, nothing written back), including a review that ends because a host gave no answer (an unpkg listing, an OSV query, a stale-schema refresh). |
 | `remote-code.test.js` | The remote-code scanners and the `remote-resources` / `eval-call` checks. |

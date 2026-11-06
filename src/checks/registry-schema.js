@@ -110,7 +110,11 @@ function field(spec, shapes, at) {
   if (kind === "entries" || kind === "mapOf") {
     out.shape = shapeNamed(spec.shape, shapes, at);
   }
-  if (kind === "object") {
+  // An object declares its fields, or names a shape its one mapping takes, as an entry of a
+  // list would.
+  if (kind === "object" && spec.shape !== undefined) {
+    out.shape = shapeNamed(spec.shape, shapes, at);
+  } else if (kind === "object") {
     out.fields = Object.fromEntries(
       Object.entries(spec.fields).map(([key, f]) => [
         key,
@@ -381,7 +385,7 @@ export function assertSection(value, kind, where, key) {
     throw new Error(`${where} authors no ${noun}`);
   }
   if (kind.kind === "object") {
-    assertFields(value, kind.fields, where);
+    assertFields(value, kind.fields ?? kind.shape, where);
     return;
   }
   if (kind.kind === "mapOf") {

@@ -1,5 +1,5 @@
 // Resolves an artifact's vendored declarations ONCE, before its vendor data is verified
-// (src/review/products.js, src/prepare/audit.js). This is the OFFLINE half: it
+// (src/review/products.js, src/build-check/audit.js). This is the OFFLINE half: it
 // parses the VENDOR file and, for a built XPI, the package.json dependency
 // declarations (pinning each via an exact spec, or against a lock file it carries), and
 // classifies each declared source. Where the reviewer installs from the artifact (a source
@@ -104,7 +104,7 @@ import {
  * @property {import("./verify.js").VendorVuln[]} moderateVulnerabilities  SCA mode
  *   only: packages from lockPackages, declared or not, whose worst advisory is moderate
  *   (filled by verifyScaDependencies; empty in XPI mode / offline). Read by no check: the
- *   preparation counts them (src/prepare/audit.js).
+ *   build check counts them (src/build-check/audit.js).
  * @property {{path: string, source: ?string, repo: ?string}[]} unaudited
  *   GitHub-sourced VENDOR entries that could not be resolved to a verified npm
  *   identity for an OSV audit (filled by verifyVendor; empty offline). Read by
@@ -445,7 +445,7 @@ export function resolveVendor({ addon, reviewerInstalls = false }) {
     treeDevVulnerabilities: [],
     // SCA mode only: packages from lockPackages, declared or not, whose worst advisory is
     // moderate (filled by verifyScaDependencies; empty in XPI mode / offline). Read by no
-    // check: the preparation counts them for the build details.
+    // check: the build check counts them for the build details.
     moderateVulnerabilities: [],
     // Filled by verifyVendor when a github source cannot be resolved to a
     // verified npm identity (network). Empty for offline runs.

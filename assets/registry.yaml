@@ -29,13 +29,13 @@ deterministic-phase:
 # the built XPI; then the source archive's package.json and lock and where the lock installs
 # from; then the checks that need the vendor reading (the OSV audit, the CDN identification):
 # the four dependency-vulnerability checks and banned-library. A source review whose
-# preparation failed to rescue its lock is reviewed like any other and reports its
+# build check failed to rescue its lock is reviewed like any other and reports its
 # vulnerabilities.
 #
 # `review-downgrade: true` on an aborting check of the source archive says a review of the
 # XPI alone cures its finding: the archive or its build is what is wrong, not the shipped
 # code. A source review aborted only by such checks, whose XPI is readable, is offered a
-# restart as an XPI review (the `downgrade` phase in llm-phases). vendor-vulnerable-indirect
+# restart as an XPI review (the `restart` prompt in llm-phases). vendor-vulnerable-indirect
 # carries no marker, as it reports code the XPI ships.
 #
 # `llm-verification` says whether `verify` audits a check's findings. It is false where a
@@ -229,7 +229,7 @@ deterministic-phase:
 # the build picks its package manager by the lock it finds (a pnpm-lock.yaml means pnpm). With
 # two, the tree the review audits need not be the tree the reviewer installs: a harmless npm
 # lock beside a vulnerable pnpm one would pass the audit. So more than one aborts the review,
-# and the preparation neither audits nor rescues such a source (src/prepare/audit.js). This
+# and the build check neither audits nor rescues such a source (src/build-check/audit.js). This
 # includes npm-shrinkwrap.json beside package-lock.json, which npm itself reads consistently:
 # the rule is literal, and keeping one is all the developer is asked. One location line per
 # lock, so the report names them all.
@@ -1032,12 +1032,12 @@ deterministic-phase:
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Deterministic (SCA only), and never a reason to stop: the source reviewed is a RESCUED COPY
-# of the submission (src/prepare/steps.js), whose dependencies were reduced to what the
+# of the submission (src/build-check/steps.js), whose dependencies were reduced to what the
 # release build uses, then audit-fixed where that was not enough, to get past known
 # vulnerabilities. The developer's own package.json and lock still carry them, so the next
 # submission would stop where this one would have. Says so once, without a list: the
 # developer's own audit names what to fix, against their own lock. Compared against the lock
-# of the package root the copy was made from (src/prepare/state.js originalPackages), and silent
+# of the package root the copy was made from (src/build-check/state.js originalPackages), and silent
 # where the source is no rescued copy, or the copy's lock installs what the original's did.
 - title: Dependencies changed for the review
   severity: info
@@ -1100,7 +1100,7 @@ deterministic-phase:
 # this check's severity (src/report/verdicts.js). So a benign `husky prepare` that is
 # cleared aborts nothing, and a plain review with nobody to judge the hook aborts nothing
 # either. It is settled in the `settle` phase. Under --llm-review a hook is screened before
-# any install by the reviewer's build decision in the preparation, and this check is what
+# any install by the reviewer's build decision in the build check, and this check is what
 # reports a remote-fetching hook.
 - title: Build install hook
   severity: error
@@ -1127,10 +1127,10 @@ deterministic-phase:
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # SCA only: the build review, anchored at the package root's package.json (src/build/analyze.js,
-# ctx.buildReview()). Asked where nobody decided about the build in a preparation
+# ctx.buildReview()). Asked where nobody decided about the build in a build check
 # (`when: NOT build-judged`): a plain report lists it under Extended Manual Review, and an agent
 # review run with a build-guard check switched off asks it in `ask`, since there the
-# preparation built nothing and asked nothing. It is the whole build question then, in the
+# build check built nothing and asked nothing. It is the whole build question then, in the
 # order a reviewer has to take it: whether the build is safe to run, and only then whether it
 # builds and reproduces the submitted XPI. Its own answers (`manual-choices`) say both.
 - title: Build process review
@@ -1162,7 +1162,7 @@ deterministic-phase:
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # SCA only: the build question of an agent review whose reviewer judged the build safe in the
-# preparation (`when: build-judged AND build-safe`). Reproducing the build is the reviewer's
+# build check (`when: build-judged AND build-safe`). Reproducing the build is the reviewer's
 # attestation that the shipped XPI comes from the source they read, which is what an SCA
 # review rests on. So a source that does not build into the shipped XPI ends the review
 # before anyone is asked to install that XPI. Asked ALONE, in a phase of its own
@@ -1215,7 +1215,7 @@ deterministic-phase:
     The submitted source could not be built by following its build instructions. Please make sure the instructions are complete and that the build succeeds from a clean copy of the submitted archive, with the dependencies installed exactly as the lock file pins them.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# The third is the reviewer's build decision in the preparation: where they judged the build
+# The third is the reviewer's build decision in the build check: where they judged the build
 # unsafe (`when: build-judged AND NOT build-safe`), its rule reports it. Trusting the agent's
 # verdict reports each issue the agent listed, at its file and line, and reasons of their own
 # report those reasons instead.
@@ -1231,8 +1231,8 @@ deterministic-phase:
     The build process of the submitted source is not safe to run: it fetches or runs code from outside the dependencies declared in package.json and the lock file. Please make the build use only those dependencies.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# An XPI review restarted from a source review the `downgrade` phase offered to restart
-# (src/cli.js runLoopPass): the archive was not needed, and the developer is told so.
+# An XPI review restarted from a source review the `restart` prompt offered to restart
+# (src/cli.js downgradeCase): the archive was not needed, and the developer is told so.
 # The reviewer decided it, not the files, so its rule raises nothing and the agent never
 # verifies it. The pipeline adds its one
 # finding to a review started with `downgradedFrom` (src/pipeline.js), which no flag sets.
@@ -2286,7 +2286,7 @@ review-early-exit:
 
 # The prompts that PREPARE a source code review: what --llm-auto-review, or --llm-review given
 # --sca-extracted, prints, and what each --llm-handback run on the work folder it created prints after
-# it, until the preparation is done and that run starts the review itself (src/prepare/steps.js,
+# it, until the build check is done and that run starts the review itself (src/build-check/steps.js,
 # src/cli.js), whose first prompt it prints in place of one of these. No review is possible until
 # someone has worked out the build, so these texts and the values beside them are all their
 # reader gets.
@@ -2307,8 +2307,8 @@ review-early-exit:
 # or let the agent build anyhow, and after either, override the verdict with reasons of their
 # own why building is unsafe. Only with a build-guard check switched off is nothing asked, and
 # the review's build-review question takes its place. Unless the agent may build, the
-# preparation ends. Allowed, the linter audits the package root's lock (src/prepare/audit.js). A lock it cannot read in full ends
-# the preparation with nothing built. A clean lock is BUILT by the reader in the work folder's
+# build check ends. Allowed, the linter audits the package root's lock (src/build-check/audit.js). A lock it cannot read in full ends
+# the build check with nothing built. A clean lock is BUILT by the reader in the work folder's
 # build/, which the linter fills with a copy of the whole sca/ (`build`). Where the lock installs
 # a package with a known high or critical advisory, the linter copies the whole sca/ into the
 # work folder's rescued/, and the reader RESCUES the copy in one loop (`rescue`): it reduces or
@@ -2316,9 +2316,9 @@ review-early-exit:
 # advisory remains, and only then builds, in a fresh copy of the whole rescued/ in build/, so
 # nothing is installed or built in rescued/. The linter audits the copy again and checks the
 # output the reader named, which lies in build/. A clean, built copy is reviewed. A failed
-# rescue is deleted with build/, and the source as submitted is reviewed: its vulnerability
-# checks report the lock and end the review late. Every audit of the run asks OSV through the
-# run's cache, so that review asks nothing the preparation already did (src/vendor/osv-cache.js).
+# rescue's build/ is deleted, its copy left in place, and the source as submitted is reviewed:
+# its vulnerability checks report the lock and end the review late. Every audit of the run asks OSV through the
+# run's cache, so that review asks nothing the build check already did (src/vendor/osv-cache.js).
 #
 # The step lists are prompts. `unpack` is printed by --llm-auto-review with the intro and the
 # Submission values, `analyze` by the run that derived SCA_PACKAGE_ROOT (or first, with the intro, by
@@ -2350,7 +2350,7 @@ llm-sca-review-prompt:
         Move nothing and rename nothing. Where the files land is where they were submitted, and the linter reads them as they lie.
     - when: find-experiment
       text: |-
-        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under EXTRACT_TO. Its path relative to EXTRACT_TO is <SCA_EXPERIMENTS>.
+        Find the directory holding the Experiment implementation - the privileged code that manifest.json's "experiment_apis" point at, which is not WebExtension code. Look for it anywhere under EXTRACT_TO. Its absolute path, inside EXTRACT_TO, is <SCA_EXPERIMENTS>.
     - when: find-experiment
       text: |-
         In ANSWERS, write <SCA_EXPERIMENTS> as the "answer" of the entry whose "index" is SCA_EXPERIMENTS, and change nothing else in the file.
@@ -2404,7 +2404,7 @@ llm-sca-review-prompt:
     - text: |-
         That run reads the answer and prints the next prompt. Follow it from there - this one is done.
   # The reviewer's one decision about the build, as the SCA_BUILD_PERMISSION entry of ANSWERS,
-  # worded by the agent's verdict (src/prepare/steps.js permission). An answer is the label of
+  # worded by the agent's verdict (src/build-check/steps.js permission). An answer is the label of
   # one of the verdict's two values, or the reviewer's own words, which override the verdict:
   # the build is unsafe, for the reasons they give. Only `allow` and `override` let the agent
   # build. `manual` leaves the build to the reviewer, whom the `built` question asks of their
@@ -2460,7 +2460,7 @@ llm-sca-review-prompt:
   # whole rescued copy in build/. The answer is what the build produced inside build/
   # (rescue-output), or that the rescue failed, and LLM_BUILD_XPI_MATCH where the build produced
   # something (build-match). The linter audits the copy again and checks that output, and a
-  # rescue failing either is deleted.
+  # rescue failing either has build/ deleted, its copy left in place.
   rescue:
     - text: |-
         The linter audited the lock file of the source and found dependencies with known high or critical vulnerabilities, so the source is not built as submitted. RESCUE_ROOT, given above, is a copy of it the linter made for this step. Change the dependencies only there, never in the source archive itself, and run every command in your own sandbox. Never install or build anything in RESCUE_ROOT: every build runs in LLM_BUILD_ROOT, given above, which is RESCUE_ROOT in a fresh copy of the whole rescued copy. Often the vulnerable package is one the release build does not use, or one a fixed release within its declared range replaces.
@@ -2501,7 +2501,7 @@ llm-sca-review-prompt:
       label: The build failed
       description: A build step failed, so the build produced nothing.
   # The LLM_BUILD_OUTPUT entry of the rescue prompt's ANSWERS: a path inside build/, or the
-  # `failed` label, which deletes the rescued copy and build/.
+  # `failed` label, which deletes build/ and leaves the rescued copy in place.
   rescue-output:
     question: |-
       Where did the build of the rescued copy put what it produced?
@@ -2539,8 +2539,8 @@ llm-sca-review-prompt:
 #   STEPS        per phase, numbered over what survives its `when:` condition, exactly
 #                as llm-sca-review-prompt's step lists do. No step numbers itself. A
 #                condition is AND / OR / NOT over the facts REVIEW_PROMPT_FACTS names - the
-#                flags given, `aborted`, `sca`, `build-guarded`, `prepared`, `sweep-<artifact>`,
-#                `first`, `spawned`, `decided`, `closing`, `unbuildable`, `downgradable`, and
+#                flags given, `aborted`, `sca`, `build-guarded`, `build-checked`, `sweep-<artifact>`,
+#                `first`, `spawned`, `decided`, `closing`, `unbuildable`, and
 #                the build result: `agent-built`, `agent-build-failed`, `rescue-failed`,
 #                `build-unsafe` or `self-build` - and over the process values recorded so
 #                far, read with value(phase, id) (src/checks/condition.js).
@@ -2575,9 +2575,9 @@ llm-sca-review-prompt:
 # the thing that needs it, which is why the preamble names none of them: it is too early,
 # and a value with no step behind it reads as an assignment.
 llm-phases:
-  # How an agent writes prose of its own, said ONCE per reader: in the preparation's intro, the
+  # How an agent writes prose of its own, said ONCE per reader: in the build check's intro, the
   # opening of the first prompt of a source review run, in the preamble of a review no
-  # preparation started, and in the description and sweep requests a sub-agent is handed,
+  # build check started, and in the description and sweep requests a sub-agent is handed,
   # whose reader sees no other prompt ({{proseStyle}}). It keeps the agents' prose to the house
   # style of every text here. What they quote and what a reviewer typed stay as they are.
   prose-style: |-
@@ -2585,7 +2585,7 @@ llm-phases:
   # How an agent reads the add-on's files, said to the readers of those files alone: the
   # description sub-agent ({{readingRule}}) and every sweep agent, right after the folder line
   # their request names (src/report/sweep-files.js). The loop's own phases judge the entries
-  # they are handed, and the preparation's `analyze` reads the build files only.
+  # they are handed, and the build check's `analyze` reads the build files only.
   reading-rule: |-
     Read every file in the folder above in full, every line of it, before you answer: every script, page, stylesheet, manifest, locale and data file. Images, fonts and other binary files are the only exception. A search, a grep or a skim does not replace reading: it finds only what you already thought to look for. A file too long to read at once is read in parts, one after the other, to its last line. Never answer with a file, or part of one, left unread.
   # Printed above the first prompt only, and not where that prompt is already the closing
@@ -2599,9 +2599,9 @@ llm-phases:
         Each pass you are given a prompt and a review file. Do what the prompt says, fill in the review file's empty slots, and then run the command the prompt names: it reads the file back and answers with the next prompt. Keep going until a prompt tells you the review is settled and names the file holding the finished report - that one is the last. You never decide what happens next, and you never decide that the review is over.
 
         Nothing in this preamble is a task. Do only what the numbered steps of the prompt you are reading tell you to do, and the step that has you read the add-on names what to read and what to judge it against.
-    # The writing rule, on the first prompt of a review no preparation started: a plain
-    # --llm-review of an XPI. A review the preparation started was told in its intro.
-    - when: first AND NOT closing AND NOT prepared
+    # The writing rule, on the first prompt of a review no build check came before: a plain
+    # --llm-review of an XPI. A review a build check came before was told in its intro.
+    - when: first AND NOT closing AND NOT build-checked
       text: |-
         {{proseStyle}}
   frame: |-
@@ -2621,7 +2621,7 @@ llm-phases:
   # that takes it, since only `ask` hands out a batch.
   waiting:
     text: Reply "next" to continue the review with {{next}}.
-    # By the block the line ends: the preparation's permission prompt, or the turn-ending
+    # By the block the line ends: the build check's permission prompt, or the turn-ending
     # phase of that name.
     next:
       permission: the question how to build the add-on
@@ -2642,6 +2642,46 @@ llm-phases:
   # input invites a loop. "{{problem}}" names what is wrong, exactly.
   refused: |-
     The hand-back was refused: {{problem}}. You still have the prompt you were following. Read it again carefully, redo that pass, and run its command exactly as written. If it fails a second time, abort the review and say why.
+  # The RESTART prompt, issued in place of the closing prompt where the review would close
+  # (src/report/loop.js closeReview): a source review aborted for faults of the archive or its
+  # build alone, every check that aborts it carrying `review-downgrade`, whose XPI is readable
+  # (`xpi-reviewable`), is offered a restart as an XPI review. A PROCESS VALUE, read under the
+  # name `downgrade` as value(downgrade, id), whose entry is worded by its own `question`, with
+  # {{abortReasons}} filled from what aborted the review. Its block is the aborted review's
+  # closing block, settled as the close settles it, so the reviewer has read the report before
+  # the question, and it ends the turn as in `built`. `xpi` starts the XPI review from the
+  # hand-back (src/cli.js downgradeCase), in a work folder of its own, and this review's folder
+  # stays as it is. `keep` issues the close, which then shows nothing a second time.
+  restart:
+    name: downgrade
+    answer: value
+    ends-turn: true
+    verbs: []
+    intro: ""
+    question: The SCA review failed for {{abortReasons}}, but it looks like this submission does not actually need an SCA review. The XPI is not minified and could be reviewed directly. Should the review be restarted as a pure XPI review?
+    values:
+      - value: xpi
+        label: Restart as an XPI review
+        description: "The source archive is not needed, and the review starts again as a review of the XPI alone. If the XPI review fails as well, judge which report to send: this source review's, or the XPI review's."
+      - value: keep
+        label: Keep this result
+        description: The review ends with its abort, and its report stands.
+    steps:
+      - text: |-
+          Give the reviewer what follows, each part under a heading of its own and in this order, as the last thing you write this turn. Then end your turn, and put no question to them in it. Go on with the next step only once the reviewer has replied: what they reply does not matter.
+
+          Under "Summary", this, as it is written here:
+
+          {{tally}}
+
+          Under "Final Review Details", this, as it is written here - every path this review named, the report among them, and nothing of what is in any of them:
+
+          {{details}}
+      - text: |-
+          Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+
+          Record the label they picked as that entry's "answer", and change nothing else in the file. Only those labels are accepted: if they answer anything else, ask the question again.
+
   # The phases, in the order they are issued. A phase is issued when it has WORK - steps that
   # survive their markers, or entries to settle; a phase with neither is skipped. The last,
   # `close`, always has work, so it is reached once nothing before it has any (not once "no
@@ -2654,9 +2694,9 @@ llm-phases:
     # A source review opens with its BUILD, before anything else is spent on it: a source that
     # does not build into the shipped XPI ends the review late, once it has run to the end of
     # settle, and a reviewer who declines to build ends it the same way. The review neither
-    # builds nor works out the build: its preparation did (src/prepare/steps.js), and the review
+    # builds nor works out the build: its build check did (src/build-check/steps.js), and the review
     # starts with the reviewer's build decision recorded there (src/pipeline.js). The agent built
-    # the add-on in the preparation where the reviewer let it, and otherwise the reviewer builds
+    # the add-on in the build check where the reviewer let it, and otherwise the reviewer builds
     # it. A build the reviewer judged unsafe is never asked about: `built` relays
     # build-reproduces-xpi, which runs only where they judged it safe. A source no build can be
     # made from (`unbuildable`) skips `built` too.
@@ -2674,7 +2714,7 @@ llm-phases:
     # asked whether the source builds into it. A PROCESS VALUE (`answer: value`) whose entry
     # relays the open to-do a check routes here (`asked-in`), so it is issued only while that
     # to-do is open and never in an XPI review. Any answer clears that to-do. It asks the
-    # outcome only, since the reviewer decided whether the build is safe in the preparation. One
+    # outcome only, since the reviewer decided whether the build is safe in the build check. One
     # of the three lets the review go on, and each of the other two reports the check naming
     # the reason the review stops (`reports`).
     #
@@ -2896,48 +2936,8 @@ llm-phases:
 
             Record what they answered in that entry's "answer", exactly as they gave it: the label they picked, or the words they typed instead. Their words are at most {{maxNote}} characters long, and never empty. Copy those words verbatim, never shortened, summarised, reworded or translated - what they mean is the linter's to work out, and if it refuses them, ask that question again rather than making them fit.
 
-    # A source review aborted for faults of the archive or its build alone, whose XPI is
-    # readable (`downgradable`, src/report/loop.js runOf), is offered a restart as an XPI
-    # review. A PROCESS VALUE no check routes here, so its entry is worded by its own
-    # `question`, with {{abortReasons}} filled from what aborted the review. Its block is the
-    # aborted review's closing block, settled as the close settles it (src/report/loop.js
-    # issue), so the reviewer has read the report before the question, and it ends the turn as
-    # in `built`. `xpi` starts the XPI review from the hand-back (src/cli.js runLoopPass),
-    # in a work folder of its own, and this review's folder stays as it is. `keep` goes on to
-    # the close, which then shows nothing a second time.
-    - name: downgrade
-      answer: value
-      ends-turn: true
-      verbs: []
-      intro: ""
-      question: The SCA review failed for {{abortReasons}}, but it looks like this submission does not actually need an SCA review. The XPI is not minified and could be reviewed directly. Should the review be restarted as a pure XPI review?
-      values:
-        - value: xpi
-          label: Restart as an XPI review
-          description: "The source archive is not needed, and the review starts again as a review of the XPI alone. If the XPI review fails as well, judge which report to send: this source review's, or the XPI review's."
-        - value: keep
-          label: Keep this result
-          description: The review ends with its abort, and its report stands.
-      steps:
-        - when: downgradable
-          text: |-
-            Give the reviewer what follows, each part under a heading of its own and in this order, as the last thing you write this turn. Then end your turn, and put no question to them in it. Go on with the next step only once the reviewer has replied: what they reply does not matter.
-
-            Under "Summary", this, as it is written here:
-
-            {{tally}}
-
-            Under "Final Review Details", this, as it is written here - every path this review named, the report among them, and nothing of what is in any of them:
-
-            {{details}}
-        - when: downgradable
-          text: |-
-            Put the one entry in the file to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
-
-            Record the label they picked as that entry's "answer", and change nothing else in the file. Only those labels are accepted: if they answer anything else, ask the question again.
-
     # The closing hand-over: what the reviewer is left with once nothing else has work. The
-    # linter settles the review before printing it (src/report/loop.js issue), and whether
+    # linter settles the review before printing it (src/report/loop.js advanceReview), and whether
     # the review was aborted is read off that settled review - so at most one of the two
     # openings prints. Telling an agent "the review is settled" about one that was cut short
     # is what the two openings exist to avoid. Each later step says only what applies: the
@@ -2960,7 +2960,7 @@ llm-phases:
         - when: spawned
           text: |-
             Wait for every agent you spawned to come back.
-        # After `keep`, the `downgrade` phase already showed the Summary and the Final Review
+        # After `keep`, the restart prompt already showed the Summary and the Final Review
         # Details, so the close shows them no second time.
         - when: decided OR NOT value(downgrade, keep)
           text: |-

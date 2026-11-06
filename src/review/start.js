@@ -1,57 +1,55 @@
-// How a review starts: the steps every path into a review takes before the pipeline runs.
+// How a review is set up: the steps every entry point takes for its own review before the
+// review runs (src/pipeline.js reviewLoadedSubmission).
 //
-// "load the .xpi" opens every path. It creates the review's work folder, fresh, and makes the
+// "load the .xpi" opens every path. It creates the review's work folder, fresh, with an empty
+// record in it (src/review/record.js), which every later step writes into, and makes the
 // work folder's xpi/ the one copy of the shipped add-on: a packed .xpi is extracted there and
-// an unpacked folder copied there, and nothing else in a review extracts it again. The
-// pipeline (src/pipeline.js) reads that copy where it is. The load also answers what the
-// add-on declares and whether the review rejects it from the .xpi alone, which a path asks
-// before it does anything for the source.
+// an unpacked folder copied there, and nothing else in a review extracts it again. The review
+// reads that copy where it is. The load fails only on an add-on it cannot read.
 //
 // A source code review given --sca-extracted then has the source copied into the work
-// folder's sca/, whole and as it is, by its own step: the review reads that copy where it is,
-// as it reads xpi/, and copies nothing.
+// folder's sca/, whole and as it is, by its own step ("copy the source"): the review reads
+// that copy where it is, as it reads xpi/, and copies nothing. Where the package root lies in
+// it is settled after the copy (src/addon/package-root.js settlePackageRoot).
 //
-// Belongs here: creating the work folder, loading the .xpi into it, the facts read from it
-// before any review runs, and copying a named source into it. Does NOT belong here: naming the work folder (src/util/dest.js
-// defaultWorkFolder, asked by the caller), loading itself (src/addon/load.js), the Experiment
-// verdict's rule (src/experiments/verify.js), or the review (src/pipeline.js).
+// Belongs here: creating the work folder with its empty record, loading the .xpi into it, and
+// copying a named source into it. Does NOT belong here: naming the work folder (src/util/dest.js
+// defaultWorkFolder, asked by the caller), loading itself (src/addon/load.js), the folders
+// named inside the source (src/addon/package-root.js), or the review (src/pipeline.js).
+import fs from "node:fs";
+
 import { ARTIFACT_XPI } from "../lib/artifacts.js";
 import { loadAddon, readWebExtManifest } from "../addon/load.js";
-import { experimentVerdict } from "../experiments/verify.js";
-import { isExperiment } from "../lib/util.js";
 import { rethrowIfFatal } from "../lib/errors.js";
 import { claimFolder } from "../util/claims.js";
 import { workPaths } from "../util/dest.js";
-import { settlePackageRoot } from "../addon/package-root.js";
-import { copySource } from "../prepare/steps.js";
+import { writeRecord } from "./record.js";
 
 /**
  * @typedef {object} LoadedXpi
+ * @property {string} work  The work folder it was loaded into, absolute.
  * @property {import("../addon/load.js").Addon} addon  The add-on, read from the work folder's
  *   xpi/.
  * @property {import("../addon/load.js").WebExtManifestRecord} manifest  What it declares.
- * @property {boolean} experiments  Whether it declares Experiments.
- * @property {?import("../experiments/verify.js").ExperimentVerification} verification  The
- *   Experiment verdict's classification, or null for an add-on that declares none.
- * @property {boolean} rejected  Whether the review rejects it from the .xpi alone.
+ * @property {object} record  The work folder's record, empty: no mode, nothing carried.
  */
 
 /**
- * Load the .xpi: create the work folder, fresh, extract or copy the add-on into its xpi/, and
- * read from that copy what it declares and the Experiment verdict. Every review starts here,
- * once. The folder is this run's (src/util/claims.js), so a run that fails before its review
- * exists gives it back as it exits.
+ * Load the .xpi: create the work folder, fresh, with an empty record in it, and extract or
+ * copy the add-on into its xpi/.
+ * Every review starts here, once. The folder is this run's (src/util/claims.js), so a run that
+ * fails gives it back as it exits.
  *
  * A folder already there is refused rather than shared: it belongs to another review. Its
  * name carries the time to the millisecond (defaultWorkFolder), so that is all but impossible.
  * @param {string} addonPath  The shipped add-on, a .xpi or its folder, absolute.
- * @param {string} work  The work folder, absolute. Nothing may be there yet.
- * @param {object} opts  The pipeline options the verdict reads: the experiments cache and
- *   `allowExperiments`.
- * @returns {Promise<LoadedXpi>}
- * @throws {Error}  The folder is there or cannot be created, or the add-on cannot be loaded.
+ * @param {string} work  The work folder, absolute, named for the kind of review
+ *   (defaultWorkFolder). Nothing may be there yet.
+ * @returns {LoadedXpi}
+ * @throws {Error}  The folder is there or cannot be created, or the add-on cannot be loaded:
+ *   a bad zip, a link, an unreadable file, the size cap.
  */
-export async function loadTheXpi(addonPath, work, opts) {
+export function loadTheXpi(addonPath, work) {
   let created;
   try {
     created = claimFolder(work);
@@ -66,54 +64,33 @@ export async function loadTheXpi(addonPath, work, opts) {
       `The work folder "${work}" is already there, and every review starts in a fresh one.`
     );
   }
+  const record = writeRecord(work, {});
   const addon = loadAddon(addonPath, workPaths(work).xpi, {
     kind: ARTIFACT_XPI,
   });
-  const manifest = readWebExtManifest(addon.store);
-  const experiments = isExperiment(manifest.json);
-  if (!experiments) {
-    return {
-      addon,
-      manifest,
-      experiments,
-      verification: null,
-      rejected: false,
-    };
-  }
-  const { verification, invalid } = await experimentVerdict(
-    addon,
-    manifest,
-    opts
-  );
-  return { addon, manifest, experiments, verification, rejected: invalid };
+  return { work, addon, manifest: readWebExtManifest(addon.store), record };
 }
 
 /**
  * Copy the source: the extracted source archive the reviewer named (--sca-extracted), whole
- * and as it is, into the work folder's sca/, with the folders named inside it mapped to their
- * place in the copy. The package root is settled first (settlePackageRoot), as the review
- * reads it: a named folder that holds no package file gives way to the one folder below it.
+ * and as it is, into the work folder's sca/. Symbolic links are copied as they are written:
+ * one the submission points out of itself stays pointing out, for the review to report.
  * @param {string} work  The work folder, loaded (loadTheXpi).
- * @param {import("../addon/package-root.js").ScaGiven} given  The folders as named, absolute.
- * @param {string} [movedFrom]  The package root named, where the CLI already settled it one
- *   level down, so the review can say so.
- * @returns {{scaFolders: import("../addon/package-root.js").ScaFolders,
- *   scaMoved: ?{from: string, to: string}}}  The folders in the copy, which the review reads,
- *   and the package root's move, where it moved.
+ * @param {string} extracted  The folder named, absolute and real.
+ * @returns {string}  The work folder's sca/, as named.
  * @throws {Error}  The copy could not be made.
  */
-export function copyTheSource(work, given, movedFrom) {
-  const settled = settlePackageRoot(given);
-  const from = settled.movedFrom ?? movedFrom;
-  const scaMoved = from ? { from, to: settled.folders.packageRoot } : null;
+export function copySource(work, extracted) {
+  const { sca } = workPaths(work);
   try {
-    return { scaFolders: copySource(work, settled.folders), scaMoved };
+    fs.cpSync(extracted, sca, { recursive: true, verbatimSymlinks: true });
   } catch (err) {
     rethrowIfFatal(err);
     throw new Error(
-      `The source "${settled.folders.extracted}" could not be copied into the work folder ` +
-        `(${err.cause?.code ?? err.message}).`,
+      `The source "${extracted}" could not be copied into the work folder ` +
+        `(${err.code ?? err.message}).`,
       { cause: err }
     );
   }
+  return sca;
 }

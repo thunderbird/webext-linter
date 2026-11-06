@@ -198,13 +198,6 @@ import { assertScaFolders } from "./package-root.js";
  *   committed-build-artifact check rejects each. Recorded at load, spanning the whole
  *   --sca-extracted (before the source/experiment split), so one is caught wherever it sits. Set by
  *   loadAddon only.
- * @property {string[]} skipped  Ready-to-narrate notices for entries skipped at
- *   load (a non-node_modules symlink); empty when none, and always empty for an XPI, since
- *   an XPI holding a link is refused at load (symlinkError). This is the FEED side of a skipped
- *   link, saying why bytes are missing from the store; whether the link is also a
- *   finding is a separate question, answered from `symlinks` by the check. The loader
- *   collects them; the pipeline narrates them, so a pre-banner load prints nothing before
- *   the Setup banner. Set by loadAddon only.
  * @property {{path: string, cause: import("../lib/enum.js").SymlinkCause}[]} symlinks  Every symbolic link a SOURCE
  *   ARCHIVE holds, posix path and what its target turned out to be; empty when none, and
  *   always empty for an XPI, which may not link at all and is refused at load instead. The
@@ -280,8 +273,11 @@ export function loadAddon(source, copyTo, { recordInstalledTrees, kind } = {}) {
     }
     root = copyTo;
   }
-  const { store, nodeModules, archives, skipped, symlinks, directories } =
-    readDir(root, kind, recordInstalledTrees);
+  const { store, nodeModules, archives, symlinks, directories } = readDir(
+    root,
+    kind,
+    recordInstalledTrees
+  );
   // An artifact loaded on its own has nothing to hold back - every file it holds is a file
   // it ships - so its `files` is a view over every key the store has. It says that by
   // HOLDING all of them rather than by being the store: one shape for every artifact, so a
@@ -299,7 +295,6 @@ export function loadAddon(source, copyTo, { recordInstalledTrees, kind } = {}) {
     store,
     nodeModules,
     archives,
-    skipped,
     symlinks,
     directories,
   };
@@ -316,7 +311,7 @@ export function loadAddon(source, copyTo, { recordInstalledTrees, kind } = {}) {
  * --sca-extracted is a directory by the time anything loads it, extracted by the reviewer
  * before the review starts. A review copies it into its work folder (`copyTo`) and reads the
  * copy, so the folder the reviewer named is walked once, for the refusals, and never read as
- * the review. A copy already made, a preparation's, is read where it is.
+ * the review. A copy already made, a build check's, is read where it is.
  * @param {string} source  Absolute path to the extracted source archive.
  * @param {string} [copyTo]  Where to copy it first, a path nothing is at yet.
  * @returns {Addon}
@@ -477,8 +472,8 @@ export function extractedRelative(value, scaUsed, flag = "SCA path") {
  * sits outside it.
  *
  * Every layer that asks it - the CLI guard, which turns the answer into a usage line naming
- * the flag, the loader, which turns it into an archive key, and the preparation
- * (src/prepare/steps.js, ./package-root.js) - must not be able to disagree, so all ask HERE.
+ * the flag, the loader, which turns it into an archive key, and the build check
+ * (src/build-check/steps.js, ./package-root.js) - must not be able to disagree, so all ask HERE.
  * Either path may be written absolute or relative. Both are resolved first, so "inside" is
  * a fact about the filesystem rather than about spelling.
  * @param {string} value
@@ -526,9 +521,10 @@ export function hasParentSegment(value) {
  *               there is no narrower add-on subtree to carve out of it. An installed
  *               dependency tree is in neither: loadAddon records
  *               the directory paths for committed-node-modules and reads none of it.
- *   experiment  the Experiment implementation at `folders.experiments`, wherever it sits - inside
- *               the source or beside it. Privileged, non-WebExtension code: it is recorded
- *               here ONCE so nothing downstream has to re-derive where it went.
+ *   experiment  the Experiment implementation at `folders.experiments`, a folder inside the
+ *               source ("approve the sca folders" holds it there). Privileged,
+ *               non-WebExtension code: it is recorded here ONCE so nothing downstream has to
+ *               re-derive where it went.
  *
  * The two are disjoint, and together they serve the code review (./store.js
  * withExperiment): the tooling is intermingled with the code, so there is no line to draw
@@ -846,7 +842,7 @@ function isStoredLink(entry) {
  *   as a path instead of walking it. Off means it is an ordinary folder, walked and keyed
  *   like any other, which is what a shipped add-on's folders are.
  * @returns {{store: FileStore, nodeModules: string[], archives: string[],
- *   skipped: string[], symlinks: {path: string, cause: object}[],
+ *   symlinks: {path: string, cause: object}[],
  *   directories: string[]}}  The walk's one store, plus the paths it recorded without
  *   reading. A view over it is the caller's to build (loadAddon, scaViews).
  */
@@ -854,7 +850,6 @@ function readDir(dir, kind, recordInstalledTrees) {
   const keys = [];
   const nodeModules = [];
   const archives = [];
-  const skipped = [];
   const symlinks = [];
   const directories = [];
   let unpacked = 0;
@@ -879,15 +874,13 @@ function readDir(dir, kind, recordInstalledTrees) {
         // node_modules is that tree too: record it by name and let the one check that
         // owns installed trees answer it, so nothing else in the review has to know the
         // name at all. Every other symlink is skipped rather than followed - following
-        // could pull in host files or loop - with the skip collected as a notice (the
-        // caller narrates it) so it is not silent, and WHERE the target lands recorded
-        // as a fact, which the source archive's check judges.
+        // could pull in host files or loop - and WHERE the target lands is recorded as a
+        // fact, which the source archive's check (sca-invalid-symlink) reports.
         if (recordInstalledTrees && e.name === "node_modules") {
           nodeModules.push(walkedKey(path.relative(dir, full)));
         } else {
           const rel = walkedKey(path.relative(dir, full));
           symlinks.push({ path: rel, cause: linkCause(full, rootReal) });
-          skipped.push(`Skipping symlink (not packaged): ${displayLine(rel)}`);
         }
       } else if (e.isDirectory()) {
         // Where an installed tree is recorded rather than read, record it and do NOT
@@ -935,7 +928,6 @@ function readDir(dir, kind, recordInstalledTrees) {
     store: new FileStore(dir, keys),
     nodeModules,
     archives,
-    skipped,
     symlinks,
     directories,
   };

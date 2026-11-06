@@ -1,5 +1,5 @@
 // OSV's answers, kept for one RUN of a review. A source review is one run spread over several
-// linter invocations - the preparation's hand-backs audit the original's lock and then a
+// linter invocations - the build check's hand-backs audit the original's lock and then a
 // rescued copy's, and the review audits again - and every one of them asks OSV the same
 // questions. The run keeps what OSV answered in its root work folder (src/util/dest.js
 // runCache), and each invocation reads it before it asks.

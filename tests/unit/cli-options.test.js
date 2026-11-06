@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import AdmZip from "adm-zip";
 import { pipelineOptsFromArgv } from "../../src/cli.js";
-import { advisory } from "../prepared.js";
+import { advisory } from "../build-checked.js";
 import {
   addonOutsideRepo,
   osvEntries,

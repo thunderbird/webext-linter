@@ -13,8 +13,8 @@
 // severity to the check), and the text shown for it (`response`, `instructions`).
 // Neither half leaks into the other.
 //
-// A check returns `Finding[]`, or an object carrying `escalations` beside its
-// findings: the cases it could not settle. The orchestrator (runChecks) repacks
+// A check returns one shape, { findings, escalations }, each a list or left out: its
+// findings, and the cases it could not settle. The orchestrator (runChecks) repacks
 // those as to-do items via escalation.js and is the sole authority on the to-do
 // sections: which one a check's cases are listed under follows from the reader the
 // check authored wording for, and is never a property of the case.
@@ -124,10 +124,10 @@ const RULES_DIR = path.join(here, "rules");
 const DEFAULT_REGISTRY = path.resolve(here, "../../assets/registry.yaml");
 
 /**
- * An entry a preparation prompt names what the agent's build produced in: its question, and
+ * An entry a build check prompt names what the agent's build produced in: its question, and
  * the one answer it offers besides a path.
  * @typedef {{question: string, failed: {label: string, description: string}}}
- *   PrepareOutputAsk
+ *   BuildOutputAsk
  */
 
 /**
@@ -653,36 +653,11 @@ export class Registry {
           .join(String(count)),
       refused: p.refused,
       buildResults: { ...p["build-results"] },
-      phases: p.phases.map((phase) => ({
-        name: phase.name,
-        answer: phase.answer,
-        endsTurn: phase["ends-turn"] === true,
-        verbs: [...phase.verbs],
-        // What each of those verbs MEANS, for the phase to render onto its entries. A
-        // copy per phase rather than a shared reference, so nothing downstream can edit
-        // the loaded registry by editing what it was handed.
-        verbProse: Object.fromEntries(
-          Object.entries(phase["verb-prose"] ?? {}).map(([verb, prose]) => [
-            verb,
-            { ...prose },
-          ])
-        ),
-        intro: phase.intro,
-        steps: phase.steps.map(loadedStep),
-        routed: routed.has(phase.name),
-        // A process-value phase's own question, for one no check routes a to-do to.
-        question: phase.question ?? null,
-        // What a process-value phase accepts back.
-        values: (phase.values ?? []).map((v) => ({
-          value: v.value,
-          label: v.label,
-          description: v.description,
-          reports: v.reports ?? null,
-          // The condition the value is offered under, parsed once as a step's is
-          // (loadedStep), or null for a value offered in every run.
-          when: v.when === undefined ? null : parseCondition(v.when),
-        })),
-      })),
+      phases: p.phases.map((phase) => loadedPhase(phase, routed)),
+      // The restart prompt, issued in place of the close where an aborted source review may
+      // be restarted as a review of its XPI alone (src/report/loop.js closeReview). Shaped as a
+      // process-value phase, and read under its name by value(downgrade, id).
+      restart: loadedPhase(p.restart, routed),
     };
   }
 
@@ -836,7 +811,7 @@ export class Registry {
   }
 
   /**
-   * The texts of the preparation of a source code review: the intro the first prompt opens
+   * The texts of the build check of a source code review: the intro the first prompt opens
    * with, and one list of steps per prompt (SCA_PROMPT_STEPS). Required, all of them: a run
    * whose whole output is one of these has nothing to print without it.
    *
@@ -859,7 +834,7 @@ export class Registry {
    *   steps: Record<string, {when: ?object, text: string}[]>,
    *   buildPermission: Record<"safe"|"unsafe", {question: string,
    *     values: {value: string, label: string, description: string}[]}>,
-   *   buildOutput: PrepareOutputAsk, rescueOutput: PrepareOutputAsk,
+   *   buildOutput: BuildOutputAsk, rescueOutput: BuildOutputAsk,
    *   buildMatch: {question: string,
    *     values: {value: string, label: string, description: string}[]}}}
    */
@@ -1157,8 +1132,8 @@ function assertEntry(entry, at) {
  * Assert a check's `when:` condition: it parses and names only facts known before any check
  * runs (CHECK_FACTS), with no value(phase, id), which only a loop prompt can read. It holds
  * in at least one run, or the check would never run. A `build-guard` check carries none:
- * whether every guard check runs decides `build-guarded` (src/pipeline.js), from the run's
- * selection alone.
+ * whether every guard check runs decides `build-guarded` (src/report/loop.js reviewBody),
+ * from the run's selection alone.
  * @param {object} entry
  * @param {string} where
  */
@@ -1595,6 +1570,47 @@ function assertCondition(when, nth, facts, values) {
 }
 
 /**
+ * One phase of the review loop as its readers take it, or the restart prompt, which is shaped
+ * as one: its steps and process values parsed once, and whether a check asks its question
+ * there (`routed`).
+ * @param {object} phase  As authored.
+ * @param {Set<string>} routed  The phases a check routes a to-do to (`asked-in`).
+ * @returns {object}
+ */
+function loadedPhase(phase, routed) {
+  return {
+    name: phase.name,
+    answer: phase.answer,
+    endsTurn: phase["ends-turn"] === true,
+    verbs: [...phase.verbs],
+    // What each of those verbs MEANS, for the phase to render onto its entries. A
+    // copy per phase rather than a shared reference, so nothing downstream can edit
+    // the loaded registry by editing what it was handed.
+    verbProse: Object.fromEntries(
+      Object.entries(phase["verb-prose"] ?? {}).map(([verb, prose]) => [
+        verb,
+        { ...prose },
+      ])
+    ),
+    intro: phase.intro,
+    steps: phase.steps.map(loadedStep),
+    routed: routed.has(phase.name),
+    // A process-value phase's own question, for one no check routes a to-do to.
+    question: phase.question ?? null,
+    // What a process-value phase accepts back.
+    values: (phase.values ?? []).map((v) => ({
+      value: v.value,
+      label: v.label,
+      description: v.description,
+      reports: v.reports ?? null,
+      // The condition the value is offered under, parsed once as a step's is
+      // (loadedStep), or null for a value offered in every run.
+      when: v.when === undefined ? null : parseCondition(v.when),
+    })),
+  };
+}
+
+/**
  * One prompt step as its reader takes it: the text, and the condition it is printed under -
  * parsed once, here, or null for a step printed in every run. assertStep has already
  * refused a condition that does not parse.
@@ -1701,7 +1717,7 @@ function assertProcessValues(registry, phase, at, conditionValues) {
 // Read by assertPhaseVerbSubsets.
 const SETTLE_PHASE = "settle";
 
-// The preparation's block that ends with the waiting line, beside the turn-ending phases.
+// The build check's block that ends with the waiting line, beside the turn-ending phases.
 const WAITING_PERMISSION = "permission";
 
 // The turn-ending phase whose waiting line says how many questions follow.
@@ -1741,8 +1757,16 @@ export function assertPhases(registry, at) {
   // The preamble's parts are conditioned and printed like steps, so they are checked like
   // them: prose, not self-numbered, and a condition naming only facts this prompt knows.
   // The process values a condition may read: each phase answering `value`, by its name.
+  // The restart prompt is shaped as a process-value phase, and checked as one.
+  const prompts = [...doc.phases, doc.restart];
+  if (doc.restart.answer !== "value" || doc.restart.question === undefined) {
+    throw new Error(
+      `${where} \`restart\` answers with \`${doc.restart.answer}\` - it is a process value, ` +
+        "worded by its own `question`"
+    );
+  }
   const values = new Map(
-    doc.phases
+    prompts
       .filter((phase) => phase.answer === "value")
       .map((phase) => [phase.name, (phase.values ?? []).map((v) => v.value)])
   );
@@ -1777,7 +1801,7 @@ export function assertPhases(registry, at) {
     }
   }
   const seen = new Set();
-  for (const phase of doc.phases) {
+  for (const phase of prompts) {
     const name = phase.name;
     if (seen.has(name)) {
       throw new Error(`${where} authors \`${name}\` twice`);
@@ -1846,7 +1870,7 @@ export function assertPhases(registry, at) {
         "the reply leads to"
     );
   }
-  const turnEnding = doc.phases
+  const turnEnding = prompts
     .filter((phase) => phase["ends-turn"])
     .map((phase) => phase.name);
   for (const name of turnEnding) {
@@ -1887,7 +1911,7 @@ export function assertPhases(registry, at) {
 }
 
 /**
- * The preparation's prompts, checked at load.
+ * The build check's prompts, checked at load.
  *
  * Each one is the whole output of its run - no review runs beside it - so a step it cannot
  * print, or a list that never names the command its run prints, is a run that leaves its
@@ -1905,7 +1929,7 @@ export function assertScaPrompt(registry, at) {
     if (!prompt[name].some((step) => step.text.includes(SCA_PROMPT_COMMAND))) {
       throw new Error(
         `${where} \`${name}\` carries no ${SCA_PROMPT_COMMAND} - the linter prints the ` +
-          "command that carries the preparation on there, and nothing else names it"
+          "command that carries the build check on there, and nothing else names it"
       );
     }
   }
@@ -1930,7 +1954,7 @@ export function assertScaPrompt(registry, at) {
       if (values.filter((v) => v.value === id).length !== 1) {
         throw new Error(
           `${where} \`${key}\` offers \`${id}\` other than once - it is ` +
-            "one of the answers the preparation reads, and needs exactly one"
+            "one of the answers the build check reads, and needs exactly one"
         );
       }
     }
@@ -2309,7 +2333,7 @@ export function checkSelected(registry, id, { only, skip } = {}) {
  * @param {boolean} [opts.eslint]  The `--eslint` flag, the `eslint` fact of a check's `when:`.
  * @param {boolean} [opts.sca]  A source code review, the `sca` fact of a check's `when:`.
  * @param {boolean} [opts.buildJudged]  The reviewer decided about the build in the
- *   preparation, the `build-judged` fact.
+ *   build check, the `build-judged` fact.
  * @param {boolean} [opts.buildSafe]  That decision held it safe, the `build-safe` fact.
  *   A check whose condition fails is not loaded (conditionEligible): gated here, before the
  *   import, so code-sanity's eslint dependency is not pulled in when it will not run.
@@ -2575,10 +2599,19 @@ export function ctxForRule(registry, ruleId, siblings) {
  * also return `escalations` (cases it could not settle), which this orchestrator
  * - the sole authority on manual review - repacks as manual items via escalation.js. Every finding is stamped with the owning
  * check's id and severity (the registry entry is the source of severity, unless it
- * declares `auto`). A check that throws is reported as a
- * system finding and the rest still run.
+ * declares `auto`). A check that throws ends the run.
+ *
+ * One boolean selects which checks run: `earlyExit` true runs only the checks that end a
+ * review early (`review-early-exit`), false every check but those. Both runs read the same
+ * ctx, and a path runs each at most once. Whether the early-exit run passed - none of its
+ * checks reported an error - is its caller's to read.
+ *
+ * One path prints one Activity section and one [i/total] count across both runs: the
+ * early-exit run counts every check of both, and hands back the count (`activity`) for the
+ * run after it to go on with. A run handed no count counts its own checks alone.
  * @param {Registry} registry
- * @param {{only?: string[], skip?: string[], eslint?: boolean}} [opts]
+ * @param {{only?: string[], skip?: string[], eslint?: boolean, earlyExit: boolean,
+ *   activity?: {done: number, total: number}}} opts
  *   `only`/`skip`/`eslint` thread to loadChecks (the `--eslint` opt-in gates code-sanity).
  * @param {Record<string, RunContext>} siblings  The artifact contexts, keyed by the `input`
  *   that routes to each: `source` = the review target (readable source in SCA, the XPI in an
@@ -2586,10 +2619,10 @@ export function ctxForRule(registry, ruleId, siblings) {
  *   (the matrix is documented there).
  * @returns {Promise<{findings: object[],
  *   manualItems: {ruleId: string, item: ?string, section: ?string}[],
- *   checksRun: object[]}>}  The finished review: every finding and manual item, and
- *   the checks that ran (for meta.checksRun).
+ *   checksRun: object[], activity: {done: number, total: number}}>}  Every finding and
+ *   manual item, the checks that ran (for meta.checksRun), and the count so far.
  */
-export async function runChecks(registry, opts = {}, siblings) {
+export async function runChecks(registry, opts, siblings) {
   // `siblings` is the whole set of routing ctxs, keyed by input value; there is no separate
   // review-target argument. The review-level state (the base feed note) is the same on
   // every sibling, so read it off the review TARGET and name it once here. `source` is
@@ -2605,12 +2638,18 @@ export async function runChecks(registry, opts = {}, siblings) {
   // The mode gate (modeEligible) reads the route, then the flag. A gated-out check never runs
   // and never appears in the feed or meta.checksRun.
   const inScaMode = targetCtx.mode?.sca;
-  const checks = (byPhase.get("deterministic") ?? []).filter((c) =>
+  const eligible = (byPhase.get("deterministic") ?? []).filter((c) =>
     modeEligible(c, inScaMode)
+  );
+  const checks = eligible.filter(
+    (c) => (registry.earlyExitFor(c.id) !== null) === opts.earlyExit
   );
   // The whole-review count, for the [i/total] feed counter. A review an early exit stops
   // ends short of it, and the counter says where.
-  const total = checks.length;
+  const activity = opts.activity ?? {
+    done: 0,
+    total: opts.earlyExit ? eligible.length : checks.length,
+  };
   const findings = [];
   const manualItems = [];
   // Let checks narrate the file:line sites they investigated (network loads,
@@ -2658,10 +2697,12 @@ export async function runChecks(registry, opts = {}, siblings) {
   // Heading for the live activity feed, matching the report's section style. A
   // no-op when progress is off (JSON, the golden harness), so goldens are
   // unaffected.
-  progress("── Activity ──");
-  progress("");
+  if (activity.done === 0) {
+    progress("── Activity ──");
+    progress("");
+  }
   const checksRun = [];
-  for (const [i, check] of checks.entries()) {
+  for (const check of checks) {
     // Route the check to its declared input artifact - the ONE place the choice is
     // made (routeCtx, also asked directly by the routing tests). The check reads
     // only its ctx.artifact and has no way to reach another artifact.
@@ -2669,7 +2710,12 @@ export async function runChecks(registry, opts = {}, siblings) {
     // One note for every check: it takes a locus and reads the artifact off it, so there
     // is nothing per-check to bind it to.
     checkCtx.note = note;
-    const out = await runOneCheck(checkCtx, check, `[${i + 1}/${total}]`);
+    activity.done += 1;
+    const out = await runOneCheck(
+      checkCtx,
+      check,
+      `[${activity.done}/${activity.total}]`
+    );
     findings.push(...out.findings);
     manualItems.push(...out.manualItems);
     checksRun.push(check);
@@ -2692,7 +2738,7 @@ export async function runChecks(registry, opts = {}, siblings) {
   collapseUnusedFolders(findings, filesOfRule);
   collapseUnusedFolders(manualItems, filesOfRule);
 
-  return { findings, manualItems, checksRun };
+  return { findings, manualItems, checksRun, activity };
 }
 
 /**
@@ -2744,19 +2790,22 @@ export async function runOneCheck(ctx, check, label) {
     fatal.cause = err;
     throw fatal;
   }
-  // ONE return shape: { findings, escalations? }. A bare array is refused rather
-  // than read as findings, because that shorthand made the two lanes look optional:
-  // a rule that grew an escalation path and kept returning its findings array lost
-  // every escalation silently, with nothing to catch it - `expect` cannot assert an
-  // escalation, so only a golden covering that fixture would have noticed.
-  if (Array.isArray(result) || (result != null && typeof result !== "object")) {
+  // ONE return shape: an object, { findings, escalations }, each part a list or left out.
+  // A bare array is refused rather than read as findings, because that shorthand made the
+  // two lanes look optional: a rule that grew an escalation path and kept returning its
+  // findings array lost every escalation silently, with nothing to catch it - `expect`
+  // cannot assert an escalation, so only a golden covering that fixture would have noticed.
+  // Nothing at all is refused too: a check that lost its `return` would otherwise read as a
+  // clean one.
+  const broken = brokenShape(result);
+  if (broken) {
     throw wiringError(
-      `${check.id} returned ${Array.isArray(result) ? "an array" : typeof result} - ` +
-        "a check returns { findings, escalations }"
+      `${check.id} returned ${broken} - a check returns { findings, escalations }, ` +
+        "each a list or left out"
     );
   }
-  const produced = [...(result?.findings ?? [])];
-  const escalations = result?.escalations ?? [];
+  const produced = [...(result.findings ?? [])];
+  const escalations = result.escalations ?? [];
   if (escalations.length) {
     // Cases a person must inspect, straight to manual review.
     manualItems.push(...manualEscalations(check, escalations).manualItems);
@@ -2805,4 +2854,23 @@ export async function runOneCheck(ctx, check, label) {
     findings.push(f);
   }
   return { findings, manualItems };
+}
+
+/**
+ * What is wrong with a check's return value, as words, or null where it has the one shape: an
+ * object whose `findings` and `escalations` are each a list or left out.
+ * @param {*} result
+ * @returns {?string}
+ */
+function brokenShape(result) {
+  if (Array.isArray(result)) {
+    return "an array";
+  }
+  if (result === null || typeof result !== "object") {
+    return result === null ? "null" : typeof result;
+  }
+  const part = ["findings", "escalations"].find(
+    (name) => result[name] !== undefined && !Array.isArray(result[name])
+  );
+  return part ? `${part} that are not a list` : null;
 }

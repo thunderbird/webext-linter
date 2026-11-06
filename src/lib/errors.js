@@ -67,6 +67,20 @@ export function wiringError(message) {
 }
 
 /**
+ * A review's record that is not as the linter wrote it: a failure, never a refusal. The
+ * record is the linter's alone, so the agent cannot repair it, and the review cannot be
+ * carried on.
+ * @param {string} problem  What is wrong with it, as a phrase that goes on after a colon.
+ * @returns {Error}
+ */
+export function recordError(problem) {
+  return new Error(
+    `The review's record cannot be carried on: ${problem}. Start the review again from the ` +
+      "submission."
+  );
+}
+
+/**
  * A submission file that was readable when the tree was loaded and is not any more - it
  * changed or vanished during the run. Not the submission's fault (an unreadable file at load
  * is an invalid input, refused there), but fatal: reviewing it as empty or absent would review

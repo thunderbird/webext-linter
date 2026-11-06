@@ -3,7 +3,7 @@
 // file an agent was asked to write came back (productWritten).
 //
 // Does NOT belong here: which phase is issued (src/report/phases.js), the linter's own
-// state (src/report/state.js), or what a verdict DOES to an item
+// record (src/review/record.js), or what a verdict DOES to an item
 // (src/report/verdicts.js).
 //
 // THE INVARIANT THAT MAKES ONE SHARED FILE SAFE: the linter never reads back anything it
@@ -278,7 +278,7 @@ export function outputEntry(phase) {
 /**
  * What an output answer names: null for its `failed` label, else the file or folder the
  * build produced, as the real path it is. The one validation of a build's output, for the
- * preparation's build and rescue alike.
+ * build check's build and rescue alike.
  *
  * A relative path is resolved against the folder the build ran in, and links are followed
  * before it is held to that folder, so a link that points out of it is refused like any path

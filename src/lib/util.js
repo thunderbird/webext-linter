@@ -740,7 +740,7 @@ export function trunc(url, max = DISPLAY_TRUNCATE_LENGTH) {
 
 /**
  * Split a comma-separated string into a trimmed array, or return undefined: how a list flag
- * (--checks-only, --checks-skip) is read, by the review and by the preparation alike.
+ * (--checks-only, --checks-skip) is read, by the review and by the build check alike.
  * @param {string|undefined} value
  * @returns {string[]|undefined}
  */
