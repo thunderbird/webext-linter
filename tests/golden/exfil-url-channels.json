@@ -51,6 +51,7 @@
       "experiment-schema-invalid",
       "experiment-modified",
       "experiment-missing-strict-max-version",
+      "theme-experiment-missing-strict-max-version",
       "experiment-overrides-api",
       "experiment-manual-review",
       "experiment-unknown-api",

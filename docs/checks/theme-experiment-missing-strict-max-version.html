@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Theme experiment missing strict_max_version</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Theme experiment missing strict_max_version
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">theme-experiment-missing-strict-max-version</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        A theme experiment (an add-on that declares theme_experiment) that does
+        not pin a strict_max_version. Its stylesheet styles Thunderbird's
+        internal user interface, which changes between major versions, so
+        without a maximum supported version the theme can break silently when
+        the user upgrades.
+      </p>
+      <p>
+        A theme experiment runs no privileged code, so it is not an Experiment
+        and none of the Experiment checks apply to it. An add-on that is both
+        an Experiment and a theme experiment is left to
+        experiment-missing-strict-max-version, so the developer is told once.
+        The check is silent for theme experiments that already declare a
+        maximum.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["A submission"] --> P{"Did the manifest parse?"}
+  P -- no --> S([skip])
+  P -- yes --> T{"Is it a theme experiment?<br/>(declares theme_experiment)"}
+  T -- no --> S
+  T -- yes --> E{"Is it also an Experiment?"}
+  E -- yes --> S
+  E -- no --> V{"Does it pin a<br/>strict_max_version?"}
+  V -- yes --> OK([no finding])
+  V -- no --> ERR([ERROR: theme experiment missing<br/>strict_max_version])
+
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  class ERR err;
+  class OK ok;
+  class S skip;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told the add-on ships a theme_experiment whose
+        stylesheet styles Thunderbird's internal user interface, and that
+        because this interface changes between major Thunderbird versions a
+        theme experiment must set the gecko strict_max_version in
+        browser_specific_settings.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/theme-experiment-missing-strict-max-version.js</code>
+        and its entry in <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

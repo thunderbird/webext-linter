@@ -11,7 +11,8 @@
 // (-> isExperiment and strictMaxVersion in src/lib/util.js). Rejecting
 // experiments when they are NOT allowed (-> experiment-not-allowed.js).
 // Flagging a strict_max_version on a non-Experiment (->
-// non-experiment-strict-max-version.js). Authored wording (->
+// non-experiment-strict-max-version.js). Requiring a max version on a theme
+// experiment (-> theme-experiment-missing-strict-max-version.js). Authored wording (->
 // assets/registry.yaml). Severity (-> the experiment-missing-strict-max-version
 // registry entry, stamped by src/checks/registry.js).
 

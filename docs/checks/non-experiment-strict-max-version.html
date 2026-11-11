@@ -21,10 +21,10 @@
         Thunderbird with no benefit.
       </p>
       <p>
-        The check looks at the manifest only. Experiments are left alone because
-        they reach into Thunderbird internals and legitimately need a maximum
-        version, and a non-Experiment that omits the ceiling is fine. It fires
-        only when a non-Experiment manifest actually declares one.
+        The check looks at the manifest only. Experiments and theme experiments
+        are left alone because they reach into Thunderbird internals and
+        legitimately need a maximum version, and any other add-on that omits the
+        ceiling is fine. It fires only when such an add-on actually declares one.
       </p>
 
       <h2>Decision flow</h2>
@@ -33,7 +33,7 @@
 flowchart TD
   A["The add-on manifest"] --> B{"Did the manifest parse?"}
   B -- no --> S([skip])
-  B -- yes --> C{"Is this an Experiment?"}
+  B -- yes --> C{"Is this an Experiment or a<br/>theme experiment?"}
   C -- yes --> S
   C -- no --> D{"Does it declare a<br/>strict_max_version?"}
   D -- no --> OK([no finding])

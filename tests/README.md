@@ -141,6 +141,8 @@ A selection, not the catalogue - every folder under `addons/` is a fixture:
 | `experiment-disallowed` | An Experiment (`experiment_apis`) reviewed with experiments off (default): `experiment-not-allowed` on the `experiment_apis` line, which aborts the review. |
 | `experiment-allowed-no-strict-max` | An Experiment with no `strict_max_version`, reviewed with `"options": { "--allow-experiments": true }`: `experiment-missing-strict-max-version` (and `experiment-not-allowed` stays silent). |
 | `strict-max-not-experiment` | `non-experiment-strict-max-version`: a non-Experiment that pins `strict_max_version` (warning). |
+| `theme-experiment-no-strict-max` | A theme experiment (`theme_experiment`) with no `strict_max_version`: `theme-experiment-missing-strict-max-version` (error). |
+| `theme-experiment-strict-max` | A theme experiment that pins `strict_max_version`: clean, `non-experiment-strict-max-version` stays silent. |
 | `vue-sca-handler` | SCA mode (`xpi/`+`src/` layout): a Vue `.vue` whose multi-statement `@` handler carries an `innerHTML` sink - `unsafe-html` fires on the handler line, proving the handler is parsed (no `unparsable-file` coverage gap) and still scanned. |
 
 

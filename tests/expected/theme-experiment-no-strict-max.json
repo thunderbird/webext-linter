@@ -1,0 +1,6 @@
+{
+  "_comment": "A theme experiment with no strict_max_version - theme-experiment-missing-strict-max-version errors.",
+  "expect": {
+    "theme-experiment-missing-strict-max-version": ["manifest.json"]
+  }
+}

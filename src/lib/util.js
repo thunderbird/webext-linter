@@ -211,6 +211,30 @@ export function isExperiment(manifest) {
 }
 
 /**
+ * Whether the add-on is a theme experiment (declares theme_experiment). Its
+ * stylesheet styles Thunderbird's internal UI, but it runs no privileged code,
+ * so it is no Experiment.
+ * @param {Manifest} manifest
+ * @returns {boolean}
+ */
+export function isThemeExperiment(manifest) {
+  const theme = manifest?.theme_experiment;
+  return (
+    Boolean(theme) && typeof theme === "object" && Object.keys(theme).length > 0
+  );
+}
+
+/**
+ * Whether the add-on must pin a strict_max_version: an Experiment or a theme
+ * experiment, both of which depend on Thunderbird internals.
+ * @param {Manifest} manifest
+ * @returns {boolean}
+ */
+export function needsStrictMax(manifest) {
+  return isExperiment(manifest) || isThemeExperiment(manifest);
+}
+
+/**
  * The declared gecko strict_max_version, from browser_specific_settings or the
  * legacy applications key, or undefined.
  * @param {Manifest} manifest

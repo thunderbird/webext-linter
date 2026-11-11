@@ -1,12 +1,15 @@
 // A non-Experiment should NOT pin strict_max_version. Regular MailExtensions
 // stay forward-compatible, so a maximum version only blocks installs on newer
-// Thunderbird with no benefit. Silent for Experiments (which need one) and for
-// non-Experiments that omit it.
+// Thunderbird with no benefit. Silent for Experiments and theme experiments
+// (which need one) and for other add-ons that omit it.
 //
-// Belongs here: flagging a strict_max_version declared by a non-Experiment.
-// Does NOT belong here: detecting Experiment status or reading the max version
-// (-> isExperiment and strictMaxVersion in src/lib/util.js). Requiring a
-// max version on an Experiment (-> experiment-missing-strict-max-version.js).
+// Belongs here: flagging a strict_max_version declared by an add-on that is
+// neither an Experiment nor a theme experiment.
+// Does NOT belong here: detecting Experiment or theme experiment status or
+// reading the max version (-> needsStrictMax and strictMaxVersion in
+// src/lib/util.js). Requiring a max version on an Experiment (->
+// experiment-missing-strict-max-version.js) or on a theme experiment (->
+// theme-experiment-missing-strict-max-version.js).
 // Authored wording (-> assets/registry.yaml). Severity (-> the non-
 // experiment-strict-max-version registry entry, stamped by src/checks/
 // registry.js).
@@ -14,7 +17,7 @@
 import { VERDICT } from "../../lib/enum.js";
 import { finding } from "../../report/finding.js";
 import {
-  isExperiment,
+  needsStrictMax,
   strictMaxVersion,
   strictMaxVersionPath,
   skipWithoutManifest,
@@ -31,8 +34,12 @@ export default {
     if (!m) {
       return skipWithoutManifest(ctx);
     }
-    if (isExperiment(m)) {
-      ctx.note?.(ctx.manifest.locus(), "is an Experiment", VERDICT.SKIPPED);
+    if (needsStrictMax(m)) {
+      ctx.note?.(
+        ctx.manifest.locus(),
+        "is an Experiment or a theme experiment",
+        VERDICT.SKIPPED
+      );
       return { findings: [] };
     }
     const max = strictMaxVersion(m);

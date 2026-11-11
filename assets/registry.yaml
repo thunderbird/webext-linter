@@ -891,6 +891,17 @@ deterministic-phase:
   response: |-
     This add-on uses Experiment APIs but declares no strict_max_version. Experiments rely on internal APIs that change between major Thunderbird versions, so they must set browser_specific_settings.gecko.strict_max_version.
 
+# Flags a theme experiment (declares theme_experiment) that declares no
+# strict_max_version. An add-on that is also an Experiment is left to
+# experiment-missing-strict-max-version.
+- title: Theme experiment missing strict_max_version
+  severity: error
+  check: theme-experiment-missing-strict-max-version
+  llm-verification: true
+  input: xpi
+  response: |-
+    This add-on ships a theme_experiment, whose stylesheet styles Thunderbird's internal user interface. That interface changes between major Thunderbird versions, so a theme experiment must set browser_specific_settings.gecko.strict_max_version.
+
 # Flags an Experiment whose declared API overrides or grafts onto a built-in
 # Thunderbird API instead of adding a new one.
 - title: Experiment overrides a built-in API
@@ -961,8 +972,8 @@ deterministic-phase:
   response: |-
     This Experiment calls WebExtension APIs that no schema defines. Where these are your own Experiment APIs, each experiment's schema must declare a `namespace` matching the name the code calls, since the namespace is authoritative and a mismatch leaves the API undefined even when manifest.json declares it. Please correct the schema namespaces, or remove the calls to APIs that do not exist.
 
-# Flags a non-Experiment that pins strict_max_version (only blocks newer
-# Thunderbird; the APIs are forward-compatible).
+# Flags an add-on that is neither an Experiment nor a theme experiment and pins
+# strict_max_version (only blocks newer Thunderbird; the APIs are forward-compatible).
 - title: Unnecessary strict_max_version
   severity: warning
   check: non-experiment-strict-max-version

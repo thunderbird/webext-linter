@@ -38,6 +38,7 @@ import experimentMissingMax from "../../src/checks/rules/experiment-missing-stri
 import experimentManualReview from "../../src/checks/rules/experiment-manual-review.js";
 import experimentUnknownApi from "../../src/checks/rules/experiment-unknown-api.js";
 import nonExperimentMax from "../../src/checks/rules/non-experiment-strict-max-version.js";
+import themeExperimentMissingMax from "../../src/checks/rules/theme-experiment-missing-strict-max-version.js";
 import experimentNotAllowed from "../../src/checks/rules/experiment-not-allowed.js";
 import missingLibrary from "../../src/checks/rules/missing-library.js";
 import minifiedCode from "../../src/checks/rules/minified-code.js";
@@ -1128,6 +1129,7 @@ test("every check's severity is pinned to its band", async () => {
       "strict-min-version-api",
       "string-timer",
       "sync-xhr",
+      "theme-experiment-missing-strict-max-version",
       "trademark-thunderbird-locale",
       "trademark-thunderbird-name",
       "trademark-violation",
@@ -1991,6 +1993,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
     // source review, and the XPI is what that review judges.
     "sca-not-needed",
     "shipped-icon-trademark-imitation",
+    "theme-experiment-missing-strict-max-version",
     "trademark-thunderbird-locale",
     "trademark-thunderbird-name",
     "trademark-violation",
@@ -4976,6 +4979,64 @@ test("non-experiment-strict-max-version notes pass / fail / skipped", async () =
     )[0].verdict,
     VERDICT.SKIPPED // an Experiment is the other check's concern
   );
+});
+
+test("non-experiment-strict-max-version leaves a theme experiment's max alone", async () => {
+  const manifest = {
+    theme_experiment: { stylesheet: "style.css" },
+    browser_specific_settings: { gecko: { strict_max_version: "162.*" } },
+  };
+  const ctx = { artifact: { manifest: manifestOf(manifest) } };
+  assert.equal(
+    (await nonExperimentMax.run(withManifest(ctx))).findings.length,
+    0
+  );
+  assert.equal(
+    (await notesFrom(nonExperimentMax, ctx))[0].verdict,
+    VERDICT.SKIPPED
+  );
+});
+
+test("theme-experiment-missing-strict-max-version flags a theme experiment lacking a max", async () => {
+  const run = async (manifest) =>
+    (
+      await themeExperimentMissingMax.run(
+        withManifest({ artifact: { manifest: manifestOf(manifest) } })
+      )
+    ).findings;
+  const theme = { theme_experiment: { stylesheet: "style.css" } };
+  const max = {
+    browser_specific_settings: { gecko: { strict_max_version: "162.*" } },
+  };
+  assert.equal((await run(theme)).length, 1); // theme experiment, no max
+  assert.equal((await run({ ...theme, ...max })).length, 0); // with a max
+  // An Experiment lacking a max is experiment-missing-strict-max-version's finding.
+  assert.equal((await run({ ...theme, experiment_apis: { a: {} } })).length, 0);
+  assert.equal((await run({ name: "x" })).length, 0); // no theme experiment
+  assert.equal((await run({ theme_experiment: {} })).length, 0); // empty key
+});
+
+test("theme-experiment-missing-strict-max-version notes pass / fail / skipped", async () => {
+  const v = async (manifest) =>
+    await notesFrom(themeExperimentMissingMax, {
+      artifact: { manifest: manifestOf(manifest) },
+    });
+  const theme = { theme_experiment: { stylesheet: "style.css" } };
+  assert.equal((await v(theme))[0].verdict, VERDICT.FAIL);
+  assert.equal(
+    (
+      await v({
+        ...theme,
+        browser_specific_settings: { gecko: { strict_max_version: "162.*" } },
+      })
+    )[0].verdict,
+    VERDICT.PASS
+  );
+  assert.equal(
+    (await v({ ...theme, experiment_apis: { a: {} } }))[0].verdict,
+    VERDICT.SKIPPED
+  );
+  assert.equal((await v({ name: "x" }))[0].verdict, VERDICT.SKIPPED);
 });
 
 test("trademark-violation notes pass / fail / skipped", async () => {

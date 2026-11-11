@@ -310,6 +310,14 @@
                 }
               }
             }
+          },
+          "theme_experiment": {
+            "type": "object",
+            "properties": {
+              "stylesheet": {
+                "$ref": "ExtensionURL"
+              }
+            }
           }
         }
       }

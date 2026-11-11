@@ -1,0 +1,4 @@
+{
+  "_comment": "A theme experiment that pins strict_max_version - clean, non-experiment-strict-max-version stays silent.",
+  "expect": {}
+}

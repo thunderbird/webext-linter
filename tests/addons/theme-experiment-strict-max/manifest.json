@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Theme Experiment Strict Max",
+  "version": "1.0",
+  "browser_specific_settings": {
+    "gecko": { "id": "theme-max@example.com", "strict_max_version": "162.*" }
+  },
+  "icons": { "16": "icon.png", "48": "icon.png" },
+  "theme": { "colors": { "frame": "#1d2021" } },
+  "theme_experiment": { "stylesheet": "style.css" }
+}
