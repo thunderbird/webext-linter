@@ -38,7 +38,7 @@ test("the shipped registry's phases load and are whole", () => {
     assert.equal(typeof p[key], "string", key);
     assert.ok(p[key].length > 0, key);
   }
-  for (const name of ["permission", "built", "ask"]) {
+  for (const name of ["decision", "built", "ask"]) {
     assert.ok(p.waiting(name).length > 0, name);
   }
   // The preamble is parts, loaded like steps: text, and a parsed condition or none.
@@ -171,7 +171,7 @@ test("a next step for no block is refused", () => {
   registry.doc["llm-phases"].waiting.next.settle = "the settling";
   assert.throws(
     () => check(registry),
-    saying("`next` entry for `settle`, which is neither `permission`")
+    saying("`next` entry for `settle`, which is neither `decision`")
   );
 });
 

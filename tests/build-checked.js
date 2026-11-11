@@ -108,7 +108,7 @@ export function answer(work, answers) {
   const doc = JSON.parse(fs.readFileSync(file, "utf8"));
   const given = {
     SCA_BUILD_SAFETY_ISSUES: [],
-    SCA_BUILD_PERMISSION: "Let the agent build",
+    SCA_BUILD_DECISION: "Let the agent build",
     ...answers,
   };
   doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));
@@ -156,7 +156,7 @@ export function buildRescued(work, root) {
  * Its run cache is `cache`, a seeded folder named as --cache-work-dir in its record, so every
  * step and its review read it: each audit is answered from it, a rescued copy's included.
  * A clean source is built in build/ (buildInto) and done. One the audit cannot read in full
- * is done at once.
+ * is done at analyze, nobody asked.
  * A vulnerable one gets its rescued copy, and `rescue` is the agent's work in it: a function
  * of the copy's root, which changes what it must for the copy's audit to come out clean, and
  * after which a copy of it is built in build/ (buildRescued) - or null, for an agent that answers that the
@@ -226,9 +226,12 @@ export async function realBuildCheck({
   answer(work, {});
   writeBuildReport(work);
   at = await step();
+  if (at.next === "review") {
+    return finished(at);
+  }
   assert.equal(
     at.record.current.step,
-    BUILD_CHECK_STEP.permission,
+    BUILD_CHECK_STEP.decision,
     "a safe build asks the reviewer"
   );
   answer(work, {});

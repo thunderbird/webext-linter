@@ -1,5 +1,5 @@
 // SCA only: a build the reviewer judged unsafe to run, in the build check's build decision
-// (src/build-check/steps.js permission). It runs only then (`when: build-judged AND NOT
+// (src/build-check/steps.js decision). It runs only then (`when: build-judged AND NOT
 // build-safe`), so it always reports. Where the reviewer gave reasons of their own, one
 // finding, anchored where the build checks anchor, carries them as its note. Where they
 // trusted the agent's verdict, each issue the build analysis listed is a finding of its own,

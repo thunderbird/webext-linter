@@ -2,8 +2,9 @@
 // the lock install a package with a known high or critical advisory, and could the audit read
 // the whole tree to say so.
 //
-// The build check asks it of the extracted source, to decide whether a rescued copy is made:
-// such a lock is often vulnerable through tooling the release build does not use, or through
+// The build check asks it of the extracted source at `analyze`, before the reviewer is asked,
+// to decide whether the agent may build at all and whether a rescued copy is made: such a lock
+// is often vulnerable through tooling the release build does not use, or through
 // a release the package manager's audit fix moves past. And it asks it of that copy, once the
 // agent's rescue in it is handed back, to decide whether the copy is clean. Nothing the agent says
 // about its work is read: this audit is the whole judgement, and a copy it cannot read in full
@@ -136,6 +137,18 @@ export function vulnerabilityCounts(audit) {
     high: count("high"),
     critical: count("critical"),
   };
+}
+
+/**
+ * Whether counts the audit recorded name a vulnerable lock: any high or critical hit. The four
+ * lists hold only those (src/vendor/verify.js auditLockedPackages), a malicious package counted
+ * as critical, so for an audit read in full this is isRescuable against isClean, read off the
+ * counts the record keeps.
+ * @param {VulnerabilityCounts} counts
+ * @returns {boolean}
+ */
+export function countsVulnerable(counts) {
+  return counts.high + counts.critical > 0;
 }
 
 /**

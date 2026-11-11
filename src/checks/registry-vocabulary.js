@@ -190,7 +190,7 @@ export const BUILD_RESULT_FACTS = [...WORDED_BUILD_FACTS, "self-build"];
  *  - `sca`: a source code review;
  *  - `eslint`: the run was given --eslint;
  *  - `build-judged`: the reviewer decided about the build in the build check
- *    (src/build-check/steps.js permission), which every agent source review does but one run
+ *    (src/build-check/steps.js decision), which every agent source review does but one run
  *    with a build-guard check switched off;
  *  - `build-safe`: that decision held the build safe, the agent's verdict as the reviewer
  *    kept or overrode it.
@@ -294,13 +294,13 @@ export const SCA_PROMPT_FACTS = ["find-experiment"];
 
 /** The prompts of modes unpack and build-check, one step list each, named for the step
  *  that prints it (src/build-check/state.js BUILD_CHECK_STEP): `unpack` where the agent
- *  extracts the source archive, `analyze` where the build is worked out, `permission` after
+ *  extracts the source archive, `analyze` where the build is worked out, `decision` after
  *  the build judgement, then `build` for a lock audited clean or `rescue` for a vulnerable
  *  one. Once the build check is done, the hand-back starts the review instead. */
 export const SCA_PROMPT_STEPS = [
   "unpack",
   "analyze",
-  "permission",
+  "decision",
   "build",
   "rescue",
 ];
@@ -310,15 +310,15 @@ export const SCA_PROMPT_STEPS = [
  *  nowhere to go. */
 export const SCA_PROMPT_COMMAND = "{{flags}}";
 
-/** The values the build check's SCA_BUILD_PERMISSION question accepts back, by id: the
+/** The values the build check's SCA_BUILD_DECISION question accepts back, by id: the
  *  reviewer's one decision about the build. After a safe verdict the agent builds (`allow`)
  *  or the reviewer does (`manual`), after an unsafe one nobody does (`skip`) or the agent
  *  builds anyhow (`override`). Each verdict's question offers its two once each
  *  (assertScaPrompt). An answer in the reviewer's own words is none of them: it holds the
  *  build unsafe, for the reasons it gives. */
-export const BUILD_PERMISSION_VALUES = ["allow", "manual", "skip", "override"];
+export const BUILD_DECISION_VALUES = ["allow", "manual", "skip", "override"];
 
-/** The BUILD_PERMISSION_VALUES each verdict's question offers. */
+/** The BUILD_DECISION_VALUES each verdict's question offers. */
 export const BUILD_PERMISSION_BY_VERDICT = Object.freeze({
   safe: ["allow", "manual"],
   unsafe: ["skip", "override"],

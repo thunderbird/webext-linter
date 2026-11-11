@@ -820,7 +820,7 @@ export class Registry {
    * `when: find-experiment` marks a step of `unpack` about the Experiment folder, printed only
    * where the add-on declares Experiments.
    *
-   * `buildPermission` is the reviewer's one decision about the build, which the permission
+   * `buildDecision` is the reviewer's one decision about the build, which the decision
    * prompt puts: per verdict, its text and the two answers it offers, each by its id
    * (BUILD_PERMISSION_BY_VERDICT). Each step's {{maxNote}} is filled with the length a
    * reviewer's own words are held to, {{maxHint}} with the length of an issue's hint, and
@@ -832,7 +832,7 @@ export class Registry {
    * (BUILD_MATCH_VALUES).
    * @returns {{intro: string,
    *   steps: Record<string, {when: ?object, text: string}[]>,
-   *   buildPermission: Record<"safe"|"unsafe", {question: string,
+   *   buildDecision: Record<"safe"|"unsafe", {question: string,
    *     values: {value: string, label: string, description: string}[]}>,
    *   buildOutput: BuildOutputAsk, rescueOutput: BuildOutputAsk,
    *   buildMatch: {question: string,
@@ -840,7 +840,7 @@ export class Registry {
    */
   llmScaReviewPrompt() {
     const p = this.doc["llm-sca-review-prompt"];
-    const permission = p["build-permission"];
+    const decision = p["build-decision"];
     const values = (list) =>
       list.map(({ value, label, description }) => ({
         value,
@@ -868,12 +868,12 @@ export class Registry {
           }),
         ])
       ),
-      buildPermission: Object.fromEntries(
+      buildDecision: Object.fromEntries(
         Object.keys(BUILD_PERMISSION_BY_VERDICT).map((verdict) => [
           verdict,
           {
-            question: permission[verdict].question,
-            values: values(permission[verdict].values),
+            question: decision[verdict].question,
+            values: values(decision[verdict].values),
           },
         ])
       ),
@@ -1718,7 +1718,7 @@ function assertProcessValues(registry, phase, at, conditionValues) {
 const SETTLE_PHASE = "settle";
 
 // The build check's block that ends with the waiting line, beside the turn-ending phases.
-const WAITING_PERMISSION = "permission";
+const WAITING_DECISION = "decision";
 
 // The turn-ending phase whose waiting line says how many questions follow.
 const WAITING_ASK = "ask";
@@ -1901,10 +1901,10 @@ export function assertPhases(registry, at) {
     }
   }
   for (const name of Object.keys(doc.waiting.next)) {
-    if (name !== WAITING_PERMISSION && !turnEnding.includes(name)) {
+    if (name !== WAITING_DECISION && !turnEnding.includes(name)) {
       throw new Error(
         `${where} \`waiting\` has a \`next\` entry for \`${name}\`, which is neither ` +
-          `\`${WAITING_PERMISSION}\` nor a turn-ending phase, so no block ends with it`
+          `\`${WAITING_DECISION}\` nor a turn-ending phase, so no block ends with it`
       );
     }
   }
@@ -1937,8 +1937,8 @@ export function assertScaPrompt(registry, at) {
   // own: a missing one could not be chosen, and two equal labels would read as either.
   for (const [key, values, ids] of [
     ...Object.entries(BUILD_PERMISSION_BY_VERDICT).map(([verdict, ids]) => [
-      `build-permission\` \`${verdict}`,
-      prompt["build-permission"][verdict].values,
+      `build-decision\` \`${verdict}`,
+      prompt["build-decision"][verdict].values,
       ids,
     ]),
     ["build-match", prompt["build-match"].values, BUILD_MATCH_VALUES],

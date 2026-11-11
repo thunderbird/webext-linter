@@ -510,7 +510,7 @@ function valueLines(entries) {
  *   `sca/`.
  * @param {string} [values.buildRoot]  On the build and rescue prompts: the package root in
  *   `build/`, where the agent builds.
- * @param {string[]} [values.buildDetails]  On the permission prompt: the Build Review
+ * @param {string[]} [values.buildDetails]  On the decision prompt: the Build Review
  *   Details block, its waiting line included, filled into the step that shows it.
  * @param {string} [values.rescueRoot]  On the rescue prompt: the package root in the rescued copy.
  * @param {string} [values.submittedXpi]  On the build and rescue prompts: the submitted

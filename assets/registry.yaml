@@ -277,16 +277,16 @@ deterministic-phase:
 # fetches the URL the lock records - so an entry resolved anywhere but the npm registry or
 # GitHub installs bytes the audit vouched for under another name. Read from the governing lock
 # (src/vendor/locks.js lockSourceGaps); {{item}} names the package and the recorded source.
-- title: Lock file installs from an unsupported source
 # The build check's audit stops on the same entries and builds nothing, so the source is
 # unbuildable.
+- title: Lock file installs from an unsupported source
   severity: error
   review-late-exit: unreproducible-build
   check: lock-foreign-source
   llm-verification: false
   review-downgrade: true
-  build-guard: true
   review-unbuildable: true
+  build-guard: true
   input: sca
   response: |-
     The committed lock file installs the following package(s) from a source the review does not support. Every dependency must install from the npm registry (registry.npmjs.org) or from GitHub. Please install the dependencies from those sources and commit the regenerated lock file.
@@ -2229,14 +2229,16 @@ review-early-exit:
 # (SCA_BUILD_REPORT), lists what the build reaches for outside the declared dependencies
 # (SCA_BUILD_SAFETY_ISSUES), and hands that back in ANSWERS. The linter reads the
 # verdict off the list, unsafe where it holds an entry, and writes the list to the work folder's
-# build-issues.md. The reviewer then reads the Build Review Details and makes the one decision about the
-# build, alone (`permission`), unless the agent-builds test switch answered it up front: after a
+# build-issues.md. With a build-guard check switched off, the build check ends there and nothing
+# is asked: the review's build-review question takes its place. Otherwise the linter audits the
+# package root's lock (src/build-check/audit.js). A lock it cannot read in full, or one with a
+# declared dependency nobody can review, ends the build check with nothing built and nothing
+# asked. The reviewer then reads the Build Review Details and makes the one decision about the
+# build, alone (`decision`), unless the agent-builds test switch answered it up front: after a
 # safe verdict, let the agent build or build it themselves, after an unsafe one, build nothing
 # or let the agent build anyhow, and after either, override the verdict with reasons of their
-# own why building is unsafe. Only with a build-guard check switched off is nothing asked, and
-# the review's build-review question takes its place. Unless the agent may build, the
-# build check ends. Allowed, the linter audits the package root's lock (src/build-check/audit.js). A lock it cannot read in full ends
-# the build check with nothing built. A clean lock is BUILT by the reader in the work folder's
+# own why building is unsafe. Unless the agent may build, the build check ends. Allowed, the
+# audit's result decides. A clean lock is BUILT by the reader in the work folder's
 # build/, which the linter fills with a copy of the whole sca/ (`build`). Where the lock installs
 # a package with a known high or critical advisory, the linter copies the whole sca/ into the
 # work folder's rescued/, and the reader RESCUES the copy in one loop (`rescue`): it reduces or
@@ -2250,9 +2252,9 @@ review-early-exit:
 #
 # The step lists are prompts. `unpack` is printed by --llm-auto-review with the intro and the
 # Submission values, `analyze` by the run that derived SCA_PACKAGE_ROOT (or first, with the intro, by
-# --llm-review given --sca-extracted), with SCA_SOURCE, SCA_PACKAGE_ROOT, SCA_BUILD_REPORT and ANSWERS, `permission` by
-# the run that read the verdict, with ANSWERS and the Build Review Details
-# ({{buildDetails}}), `build` by the run that audited a clean lock, with SCA_PACKAGE_ROOT, LLM_BUILD_ROOT
+# --llm-review given --sca-extracted), with SCA_SOURCE, SCA_PACKAGE_ROOT, SCA_BUILD_REPORT and ANSWERS, `decision` by
+# the run that read the verdict and audited the lock, with ANSWERS and the Build Review Details
+# ({{buildDetails}}), `build` by the run that read the reviewer's decision on a clean lock, with SCA_PACKAGE_ROOT, LLM_BUILD_ROOT
 # (SCA_PACKAGE_ROOT's place in build/) and SCA_BUILD_REPORT, and `rescue` by the run that made the
 # rescued copy, with the copy's package root as RESCUE_ROOT, LLM_BUILD_ROOT and SCA_BUILD_REPORT, and
 # the two commands that make build/ a copy of rescued/ ({{copy}}). Each of them ends in the one
@@ -2313,16 +2315,18 @@ llm-sca-review-prompt:
         {{flags}}
     - text: |-
         That run checks the source and prints the next prompt. Follow it from there - this one is done.
-  # Printed after the build analysis, after either verdict, unless the agent-builds test switch
-  # answered its question up front or a build-guard check is switched off. The Build Review Details end the agent's turn, as a turn-ending pass of the
-  # review loop does, and the question is put once the reviewer has replied.
-  permission:
+  # Printed after the build analysis and the audit of the lock, after either verdict, unless
+  # the agent-builds test switch answered its question up front, a build-guard check is
+  # switched off, or the audit found nothing the agent may build. The Build Review Details end
+  # the agent's turn, as a turn-ending pass of the review loop does, and the question is put
+  # once the reviewer has replied.
+  decision:
     - text: |-
         Give the reviewer this block under a "Build review details" heading, exactly as it is written here, as the last thing you write this turn. Then end your turn, and put no question to them in it. Go on with the next step only once the reviewer has replied: what they reply does not matter.
 
         {{buildDetails}}
     - text: |-
-        Open ANSWERS, given above. Put its entry whose "index" is SCA_BUILD_PERMISSION to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
+        Open ANSWERS, given above. Put its entry whose "index" is SCA_BUILD_DECISION to the reviewer ALONE: a call to your question tool that carries this question and nothing else. Ask its "message" as the question. It is an opaque string: pass it through exactly as it is, read nothing into it, and compose nothing of your own. Offer the answers under its "answers", in the order they are listed, each with the label and description written there and no wording of your own.
 
         Record what they answered in that entry's "answer", exactly as they gave it: the label they picked, or the words they typed instead. Their words are at most {{maxNote}} characters long, and never empty. Copy those words verbatim, never shortened, summarised, reworded or translated. Change nothing else in the file.
     - text: |-
@@ -2331,13 +2335,13 @@ llm-sca-review-prompt:
         {{flags}}
     - text: |-
         That run reads the answer and prints the next prompt. Follow it from there - this one is done.
-  # The reviewer's one decision about the build, as the SCA_BUILD_PERMISSION entry of ANSWERS,
-  # worded by the agent's verdict (src/build-check/steps.js permission). An answer is the label of
+  # The reviewer's one decision about the build, as the SCA_BUILD_DECISION entry of ANSWERS,
+  # worded by the agent's verdict (src/build-check/steps.js decision). An answer is the label of
   # one of the verdict's two values, or the reviewer's own words, which override the verdict:
   # the build is unsafe, for the reasons they give. Only `allow` and `override` let the agent
   # build. `manual` leaves the build to the reviewer, whom the `built` question asks of their
   # own build. `skip` and the reviewer's own words build nothing, and build-unsafe reports it.
-  build-permission:
+  build-decision:
     safe:
       question: |-
         The agent judged the build safe. Let the agent build the add-on, including its package-manager commands, or build it yourself? To override the verdict, answer in your own words why building it is unsafe.
@@ -2550,10 +2554,10 @@ llm-phases:
   # that takes it, since only `ask` hands out a batch.
   waiting:
     text: Reply "next" to continue the review with {{next}}.
-    # By the block the line ends: the build check's permission prompt, or the turn-ending
+    # By the block the line ends: the build check's decision prompt, or the turn-ending
     # phase of that name.
     next:
-      permission: the question how to build the add-on
+      decision: the question how to build the add-on
       built: the question whether the source builds and reproduces the submitted XPI
       ask: the {{count}} manual review questions
       downgrade: the question whether the review should be restarted as a pure XPI review

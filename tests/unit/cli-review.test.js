@@ -18,7 +18,7 @@ import {
   workOfReviewFile,
   sweepBack,
   answerAnalyze,
-  answerPermission,
+  answerDecision,
   headerValue,
   readJson,
   workOf,
@@ -68,7 +68,7 @@ test("a source code review's steps carry the paths the review resolved to", () =
   // The review the hand-back starts reads the copy: its steps name it, and the report.
   const permission = run(answerAnalyze(r.stdout));
   assert.equal(permission.code, 0, permission.stdout + permission.stderr);
-  const review = run(answerPermission(permission.stdout));
+  const review = run(answerDecision(permission.stdout));
   assert.notEqual(review.code, 2, review.stdout + review.stderr);
   assert.match(review.stdout, /── LLM Prompt ──/);
   assert.ok(review.stdout.includes(root), "the step names the package root");
@@ -309,7 +309,7 @@ test("a warning reaches stderr, held back to the end of a prompt run", () => {
   assert.equal(analyze.code, 0, analyze.stderr);
   const permission = run(answerAnalyze(analyze.stdout));
   assert.equal(permission.code, 0, permission.stdout + permission.stderr);
-  const prompt = runWarned(answerPermission(permission.stdout));
+  const prompt = runWarned(answerDecision(permission.stdout));
   assert.notEqual(prompt.status, 2, prompt.stderr);
   assert.doesNotMatch(prompt.stdout, WARNING, "not in the prompt");
   assert.match(prompt.stderr, /── Tool messages ──[\s\S]*a held warning/);
@@ -345,7 +345,7 @@ test("a failure outside main still dumps the held messages", () => {
       "--import",
       preload,
       REVIEW,
-      ...answerPermission(run(answerAnalyze(analyze.stdout)).stdout),
+      ...answerDecision(run(answerAnalyze(analyze.stdout)).stdout),
     ],
     { encoding: "utf8" }
   );

@@ -26,6 +26,7 @@ import {
   readJson,
   handBackRoots,
   handBackUntil,
+  LOCKED_SOURCE,
   unpackSource,
   unwrapped,
 } from "../cli-run.js";
@@ -164,10 +165,11 @@ test("a reviewer who builds it themselves starts a review they build for", () =>
   const work = workOf(begun.stdout);
   const handed = handBackRoots(begun.stdout, {
     managers: "Build it myself",
+    source: LOCKED_SOURCE,
   });
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
-  // The build check's results, in the record's permanent part: it audited nothing. The
-  // review's own audit counts nothing either, since the source has no lock to count.
+  // The build check's results, in the record's permanent part: its audit at analyze counted
+  // the lock, which installs nothing, before the reviewer chose to build it themselves.
   const record = readJson(work, "state");
   assert.equal(record.build.packageManagers, false);
   assert.deepEqual(
@@ -184,13 +186,12 @@ test("a reviewer who builds it themselves starts a review they build for", () =>
       result: null,
       output: null,
       match: null,
-      vulnerabilities: null,
+      vulnerabilities: { moderate: 0, high: 0, critical: 0 },
       rescuedVulnerabilities: null,
       safety: "safe",
       safe: true,
     }
   );
-  assert.equal(record.current.vulnerabilities, null);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

@@ -300,11 +300,11 @@ shapes:
         the condition the value is offered under, read like a step's `when:`, so an answer
         that means nothing in this review is not offered in it
 
-  # One answer the build check's SCA_BUILD_PERMISSION question offers.
-  build-permission-value-entry:
+  # One answer the build check's SCA_BUILD_DECISION question offers.
+  build-decision-value-entry:
     value:
       kind: one-of
-      values: BUILD_PERMISSION_VALUES
+      values: BUILD_DECISION_VALUES
       required: true
       why: >-
         the id the build check records the reviewer's decision as, which decides whether the
@@ -456,14 +456,14 @@ sections:
         noun: "`analyze` steps"
         why: >-
           the steps the prompt that has the build worked out and judged asks for, in order
-      permission:
+      decision:
         kind: list
         of: mapping
         required: true
-        noun: "`permission` steps"
+        noun: "`decision` steps"
         why: >-
-          the steps the prompt that shows the build details and asks whether the agent may
-          build asks for, in order
+          the steps the prompt that shows the build details and asks the reviewer's build
+          decision asks for, in order
       build:
         kind: list
         of: mapping
@@ -545,10 +545,10 @@ sections:
             required: true
             noun: "`values`"
             why: the two answers the entry offers, match and no match
-      build-permission:
+      build-decision:
         kind: object
         required: true
-        noun: "`build-permission` question"
+        noun: "`build-decision` question"
         why: >-
           the reviewer's one decision about the build, put in the permission prompt, worded
           by the agent's verdict
@@ -565,7 +565,7 @@ sections:
                 why: what the reviewer is asked, relayed as it is written
               values:
                 kind: entries
-                shape: build-permission-value-entry
+                shape: build-decision-value-entry
                 name-key: value
                 required: true
                 noun: "`values`"
@@ -582,7 +582,7 @@ sections:
                 why: what the reviewer is asked, relayed as it is written
               values:
                 kind: entries
-                shape: build-permission-value-entry
+                shape: build-decision-value-entry
                 name-key: value
                 required: true
                 noun: "`values`"
@@ -628,7 +628,7 @@ sections:
             required: []
             must-exist: true
             why: >-
-              what the reply to the waiting line leads to, by the block it ends: `permission`
+              what the reply to the waiting line leads to, by the block it ends: `decision`
               or a turn-ending phase. The entry for `ask` names how many questions follow
               ({{count}})
       refused: *loop-text

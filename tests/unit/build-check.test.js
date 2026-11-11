@@ -214,11 +214,11 @@ const analyzeStep = async (work, answers = {}) => {
   return stepOn(work);
 };
 
-/** The analyze step, and the permission step after it: the reviewer's answer is read from
+/** The analyze step, and the decision step after it: the reviewer's answer is read from
  *  `answers` too, letting the agent build unless they say otherwise. */
 const first = async (work, answers = {}) => {
   const at = await analyzeStep(work, answers);
-  if (at.record.current.step !== BUILD_CHECK_STEP.permission) {
+  if (at.record.current.step !== BUILD_CHECK_STEP.decision) {
     return at;
   }
   answer(work, answers);
@@ -561,13 +561,13 @@ test("a build output outside build/, or missing, is refused", async () => {
 });
 
 // A run cut short after it moved the record to `build` and before it wrote the question
-// leaves the permission step's review file: the next hand-back writes the question again.
+// leaves the decision step's review file: the next hand-back writes the question again.
 test("a build step without its question hands the question out again", async () => {
   const { work } = await clean();
   const file = workPaths(work).answers;
   fs.writeFileSync(
     file,
-    JSON.stringify({ entries: [{ index: "SCA_BUILD_PERMISSION" }] })
+    JSON.stringify({ entries: [{ index: "SCA_BUILD_DECISION" }] })
   );
   const at = await stepOn(work);
   assert.equal(at.next, "step");
@@ -581,7 +581,7 @@ test("a build step without its question hands the question out again", async () 
 
 // The build check starts at `analyze`, its folders settled in sca/ before it, and the analyze
 // prompt asks the agent for the build's safety issues: the record holds no verdict and no
-// permission until that hand-back reads them.
+// decision until that hand-back reads them.
 test("the analyze step asks for the build's safety issues", () => {
   const work = workFolder({ "package.json": packageFile() });
   const record = recordOf(work);
@@ -599,21 +599,21 @@ test("the analyze step asks for the build's safety issues", () => {
   cleanup(work);
 });
 
-// A safe build is recorded, and the reviewer is asked alone for their build decision, worded
-// by the safe verdict: the review file holds that one question, and nothing is audited yet. The lock is
-// vulnerable and OSV is given no answer, so an audit would ask the switched-off network.
-test("a safe build moves on to the permission question, with nothing audited", async () => {
+// A safe build is recorded, its lock audited, and the reviewer is asked alone for their build
+// decision, worded by the safe verdict: the review file holds that one question, and the
+// record the lock's counts.
+test("a safe build is audited, then asks the reviewer's decision", async () => {
   const work = workFolder(
     { "package.json": packageFile(), "package-lock.json": npmLock() },
-    { cache: auditCache() }
+    { vulns: TOOL_CLEAN }
   );
   const at = await analyzeStep(work);
   assert.equal(at.next, "step");
-  assert.equal(at.record.current.step, BUILD_CHECK_STEP.permission);
+  assert.equal(at.record.current.step, BUILD_CHECK_STEP.decision);
   assert.equal(at.record.current.buildSafety, "safe");
   assert.equal(at.record.current.packageManagers, null);
   assert.equal(at.record.current.buildSafe, null);
-  assert.equal(at.record.current.vulnerabilities, null, "nothing is audited");
+  assert.deepEqual(at.record.current.vulnerabilities, NONE, "audited");
   assert.deepEqual(at.record.current.roots, {
     source: workPaths(work).sca,
     used: workPaths(work).sca,
@@ -624,7 +624,7 @@ test("a safe build moves on to the permission question, with nothing audited", a
     fs.readFileSync(workPaths(work).answers, "utf8")
   ).entries;
   assert.deepEqual(rest, []);
-  assert.equal(managers.index, "SCA_BUILD_PERMISSION");
+  assert.equal(managers.index, "SCA_BUILD_DECISION");
   assert.equal(managers.answer, null);
   assert.ok(managers.message.startsWith("The agent judged the build safe."));
   assert.deepEqual(
@@ -634,18 +634,17 @@ test("a safe build moves on to the permission question, with nothing audited", a
   cleanup(work);
 });
 
-// An unsafe verdict is put to the reviewer too, worded by it, and nothing is audited until
-// they answer.
-test("an unsafe build asks the reviewer, with nothing audited", async () => {
+// An unsafe verdict is put to the reviewer too, worded by it, its lock audited before.
+test("an unsafe build is audited, then asks the reviewer", async () => {
   const work = workFolder(
     { "package.json": packageFile(), "package-lock.json": npmLock() },
-    { cache: auditCache() }
+    { vulns: TOOL_CLEAN }
   );
   const at = await analyzeStep(work, { SCA_BUILD_SAFETY_ISSUES: UNSAFE });
   assert.equal(at.next, "step");
-  assert.equal(at.record.current.step, BUILD_CHECK_STEP.permission);
+  assert.equal(at.record.current.step, BUILD_CHECK_STEP.decision);
   assert.equal(at.record.current.buildSafety, "unsafe");
-  assert.equal(at.record.current.vulnerabilities, null, "nothing is audited");
+  assert.deepEqual(at.record.current.vulnerabilities, NONE, "audited");
   const [decision] = reviewEntries(work);
   assert.ok(decision.message.startsWith("The agent judged the build unsafe"));
   assert.deepEqual(
@@ -679,7 +678,7 @@ test("the build decision records what the reviewer answered", async () => {
     await analyzeStep(work, {
       SCA_BUILD_SAFETY_ISSUES: verdict === "unsafe" ? UNSAFE : [],
     });
-    answer(work, { SCA_BUILD_PERMISSION: given });
+    answer(work, { SCA_BUILD_DECISION: given });
     const at = await stepOn(work);
     const { packageManagers, buildSafe, buildReasons, step } =
       at.record.current;
@@ -703,11 +702,11 @@ async function withAgentBuilds(run) {
   }
 }
 
-// The hot runs' switch for the agent's builds answers the permission question for the
-// reviewer: a safe build goes straight to the audit, recorded as let it build, and a clean
-// lock to the build. An unsafe one is built by nobody. The switch is read from the
+// The hot runs' switch for the agent's builds answers the decision question for the
+// reviewer: a safe build, its lock audited clean, is recorded as let it build and goes to the
+// build. An unsafe one is built by nobody. The switch is read from the
 // environment, and the record holds nothing of it.
-test("the hot runs' switch for the agent's builds skips the permission question", async () => {
+test("the hot runs' switch for the agent's builds skips the decision question", async () => {
   const work = workFolder(
     { "package.json": packageFile(), "package-lock.json": npmLock() },
     { vulns: TOOL_CLEAN }
@@ -722,7 +721,7 @@ test("the hot runs' switch for the agent's builds skips the permission question"
   cleanup(work);
   const unsafe = workFolder(
     { "package.json": packageFile(), "package-lock.json": npmLock() },
-    { cache: auditCache() }
+    { vulns: TOOL_CLEAN }
   );
   const skipped = await withAgentBuilds(() =>
     analyzeStep(unsafe, { SCA_BUILD_SAFETY_ISSUES: UNSAFE })
@@ -849,7 +848,10 @@ test("an analyze hand-back with an entry twice or one never asked is refused", a
 // hand-back hands the question out again, and answering it carries on as usual.
 test("an analyze question that was never written is handed out again", async () => {
   for (const cut of ["unpack file", "no file"]) {
-    const work = workFolder({ "package.json": packageFile() });
+    const work = workFolder(
+      { "package.json": packageFile(), "package-lock.json": npmLock() },
+      { vulns: TOOL_CLEAN }
+    );
     const file = workPaths(work).answers;
     if (cut === "unpack file") {
       writeReviewFile(file, reviewFile([]));
@@ -865,7 +867,7 @@ test("an analyze question that was never written is handed out again", async () 
       cut
     );
     const at = await analyzeStep(work);
-    assert.equal(at.record.current.step, BUILD_CHECK_STEP.permission, cut);
+    assert.equal(at.record.current.step, BUILD_CHECK_STEP.decision, cut);
     cleanup(work);
   }
 });
@@ -877,7 +879,7 @@ test("letting the agent build audits the lock", async () => {
     { vulns: TOOL_CLEAN }
   );
   await analyzeStep(work);
-  answer(work, { SCA_BUILD_PERMISSION: "Let the agent build" });
+  answer(work, { SCA_BUILD_DECISION: "Let the agent build" });
   const at = await stepOn(work);
   assert.equal(at.next, "step");
   assert.equal(at.record.current.step, BUILD_CHECK_STEP.build);
@@ -885,19 +887,19 @@ test("letting the agent build audits the lock", async () => {
   cleanup(work);
 });
 
-// Not letting it build: nothing is audited and nothing rescued, since a rescue runs
-// package-manager commands. The lock is vulnerable and OSV is given no answer, so any
-// audit would ask the switched-off network and fail. The folder is done at once.
-test("not letting the agent build is done at once, with nothing audited", async () => {
+// Not letting it build: nothing is built and nothing rescued, since a rescue runs
+// package-manager commands, even for a vulnerable lock. The folder is done at once, with the
+// counts of the audit at analyze.
+test("not letting the agent build is done at once, with nothing built", async () => {
   const work = workFolder(
     { "package.json": packageFile(), "package-lock.json": npmLock() },
-    { cache: auditCache() }
+    { vulns: TOOL_HIGH }
   );
-  const at = await first(work, { SCA_BUILD_PERMISSION: "Build it myself" });
+  const at = await first(work, { SCA_BUILD_DECISION: "Build it myself" });
   assert.equal(at.next, "review");
   assert.equal(at.record.current.step, BUILD_CHECK_STEP.done);
   assert.equal(at.record.current.packageManagers, false);
-  assert.equal(at.record.current.vulnerabilities, null);
+  assert.deepEqual(at.record.current.vulnerabilities, ONE_HIGH);
   assert.equal(at.record.current.buildResult, null, "nothing is built");
   assert.deepEqual(at.record.current.roots, {
     source: workPaths(work).sca,
@@ -909,29 +911,55 @@ test("not letting the agent build is done at once, with nothing audited", async 
   cleanup(work);
 });
 
-// The answer is one of the labels its entry offered, or the reviewer's own words, held to the
-// rule a reviewer's note is: none at all, nothing in it, or too long is refused with the folder
-// unchanged.
-test("an answer to the permission question a reviewer could not give is refused", async () => {
-  const work = workFolder({ "package.json": packageFile() });
-  await analyzeStep(work);
-  for (const [given, problem] of [
-    [null, /SCA_BUILD_PERMISSION still has no "answer"/],
-    ["   ", /SCA_BUILD_PERMISSION carries an answer with nothing in it/],
-    ["x".repeat(5000), /SCA_BUILD_PERMISSION carries a 5000-character answer/],
-  ]) {
-    answer(work, { SCA_BUILD_PERMISSION: given });
-    await assert.rejects(stepOn(work), refused(problem));
-  }
-  assert.equal(recordOf(work).current.step, BUILD_CHECK_STEP.permission);
+// The audit at analyze decides what follows the reviewer's decision: letting the agent build a
+// lock it found vulnerable makes the rescued copy without a second audit. OSV answers nothing
+// by then, so a second audit would end the run.
+test("letting the agent build goes on by the audit at analyze", async () => {
+  const work = workFolder(
+    { "package.json": packageFile(), "package-lock.json": npmLock() },
+    { vulns: TOOL_HIGH }
+  );
+  const asked = await analyzeStep(work);
+  assert.equal(asked.record.current.step, BUILD_CHECK_STEP.decision);
+  assert.deepEqual(asked.record.current.vulnerabilities, ONE_HIGH);
+  seedRunOsv(work, batchDown("lint-pebble@0.4.0"));
+  answer(work, {});
+  const at = await stepOn(work);
+  assert.equal(at.record.current.step, BUILD_CHECK_STEP.rescue);
+  assert.deepEqual(at.record.current.vulnerabilities, ONE_HIGH);
+  assert.ok(fs.existsSync(workPaths(work).rescued), "the copy is made");
   cleanup(work);
 });
 
-// A run cut short after it moved the record to `permission` and before it wrote the
+// The answer is one of the labels its entry offered, or the reviewer's own words, held to the
+// rule a reviewer's note is: none at all, nothing in it, or too long is refused with the folder
+// unchanged.
+test("an answer to the decision question a reviewer could not give is refused", async () => {
+  const work = workFolder(
+    { "package.json": packageFile(), "package-lock.json": npmLock() },
+    { vulns: TOOL_CLEAN }
+  );
+  await analyzeStep(work);
+  for (const [given, problem] of [
+    [null, /SCA_BUILD_DECISION still has no "answer"/],
+    ["   ", /SCA_BUILD_DECISION carries an answer with nothing in it/],
+    ["x".repeat(5000), /SCA_BUILD_DECISION carries a 5000-character answer/],
+  ]) {
+    answer(work, { SCA_BUILD_DECISION: given });
+    await assert.rejects(stepOn(work), refused(problem));
+  }
+  assert.equal(recordOf(work).current.step, BUILD_CHECK_STEP.decision);
+  cleanup(work);
+});
+
+// A run cut short after it moved the record to `decision` and before it wrote the
 // question leaves the analyze step's review file: the next hand-back writes the question
 // and hands it out again, with nothing else changed.
-test("a permission step without its question hands the question out again", async () => {
-  const work = workFolder({ "package.json": packageFile() });
+test("a decision step without its question hands the question out again", async () => {
+  const work = workFolder(
+    { "package.json": packageFile(), "package-lock.json": npmLock() },
+    { vulns: TOOL_CLEAN }
+  );
   await analyzeStep(work);
   const file = workPaths(work).answers;
   fs.writeFileSync(
@@ -940,10 +968,10 @@ test("a permission step without its question hands the question out again", asyn
   );
   const at = await stepOn(work);
   assert.equal(at.next, "step");
-  assert.equal(at.record.current.step, BUILD_CHECK_STEP.permission);
+  assert.equal(at.record.current.step, BUILD_CHECK_STEP.decision);
   assert.deepEqual(
     JSON.parse(fs.readFileSync(file, "utf8")).entries.map((e) => e.index),
-    ["SCA_BUILD_PERMISSION"]
+    ["SCA_BUILD_DECISION"]
   );
   cleanup(work);
 });
@@ -1539,7 +1567,7 @@ test("a copy the audit cannot vouch for is not clean", async (t) => {
 test("an audit OSV does not answer ends the build check", async (t) => {
   const noAnswer = (err) =>
     err instanceof NoAnswerError && /querybatch \(HTTP 404\)/.test(err.message);
-  await t.test("at the permission step", async () => {
+  await t.test("at analyze", async () => {
     const work = workFolder(
       {
         "package.json": packageFile(),
@@ -1553,7 +1581,7 @@ test("an audit OSV does not answer ends the build check", async (t) => {
       }
     );
     await assert.rejects(first(work), noAnswer);
-    assert.equal(recordOf(work).current.step, BUILD_CHECK_STEP.permission);
+    assert.equal(recordOf(work).current.step, BUILD_CHECK_STEP.analyze);
     cleanup(work);
   });
   await t.test("at the rescue", async () => {
@@ -1577,13 +1605,13 @@ test("an audit OSV does not answer ends the build check", async (t) => {
 // ---- order, and runs cut short ----
 
 // A run cut short after the copy was made and the record moved on, before the question was
-// written, leaves the permission step's review file: the next hand-back writes the question
+// written, leaves the decision step's review file: the next hand-back writes the question
 // again, and the rescue carries on.
 test("a rescue without its question hands the question out again", async () => {
   const { work } = await rescued();
   fs.writeFileSync(
     workPaths(work).answers,
-    JSON.stringify({ entries: [{ index: "SCA_BUILD_PERMISSION" }] })
+    JSON.stringify({ entries: [{ index: "SCA_BUILD_DECISION" }] })
   );
   const again = await stepOn(work);
   assert.equal(again.next, "step");
@@ -1804,12 +1832,13 @@ test("a buildSafety its buildIssues do not give cannot be carried on", async () 
 test("a build record the linter would not write cannot be carried on", async (t) => {
   const cases = [
     [
-      "counts before the audit",
+      "no counts at the decision",
       (r) => ({
         ...r,
-        step: BUILD_CHECK_STEP.permission,
+        step: BUILD_CHECK_STEP.decision,
         packageManagers: null,
         buildSafe: null,
+        vulnerabilities: null,
       }),
       "holds vulnerabilities as no count the linter writes",
     ],
@@ -1964,7 +1993,7 @@ test("a rescued copy that cannot be made ends the build check", async (t) => {
   } finally {
     fs.chmodSync(work, 0o755);
   }
-  assert.equal(recordOf(work).current.step, BUILD_CHECK_STEP.permission);
+  assert.equal(recordOf(work).current.step, BUILD_CHECK_STEP.decision);
   cleanup(work);
 });
 

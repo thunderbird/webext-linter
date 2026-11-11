@@ -151,7 +151,7 @@ async function agentReview(opts) {
       writeReviewFile(workPaths(work).answers, reviewFile(out.entries));
       const step = out.record.current.step;
       assert.ok(
-        step === BUILD_CHECK_STEP.permission || step === BUILD_CHECK_STEP.build,
+        step === BUILD_CHECK_STEP.decision || step === BUILD_CHECK_STEP.build,
         `a clean source is built, not at ${step}`
       );
       answer(

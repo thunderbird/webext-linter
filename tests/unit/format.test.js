@@ -1511,7 +1511,7 @@ test("the report's authored prose is required, by the names that index it", () =
 test("the build check prompts come from the registry and every part is required", () => {
   const prompt = loadRegistry().llmScaReviewPrompt();
   assert.ok(prompt.intro.length > 0);
-  for (const name of ["unpack", "analyze", "permission", "build", "rescue"]) {
+  for (const name of ["unpack", "analyze", "decision", "build", "rescue"]) {
     assert.ok(prompt.steps[name].length > 0, name);
     for (const step of prompt.steps[name]) {
       assert.equal(typeof step.text, "string");
@@ -1579,7 +1579,7 @@ test("the build check prompts come from the registry and every part is required"
   // own: every answer that is no reviewer's own words is read as one of them.
   assert.deepEqual(
     Object.fromEntries(
-      Object.entries(prompt.buildPermission).map(([verdict, q]) => [
+      Object.entries(prompt.buildDecision).map(([verdict, q]) => [
         verdict,
         q.values.map((v) => v.value),
       ])
@@ -1588,7 +1588,7 @@ test("the build check prompts come from the registry and every part is required"
   );
   const decision = (mutate) => {
     const r = loadRegistry();
-    mutate(r.doc["llm-sca-review-prompt"]["build-permission"]);
+    mutate(r.doc["llm-sca-review-prompt"]["build-decision"]);
     return r;
   };
   assert.throws(
@@ -1605,7 +1605,7 @@ test("the build check prompts come from the registry and every part is required"
   );
   assert.throws(
     () => checkScaPrompt(decision((d) => (d.unsafe.values[1].value = "allow"))),
-    /`build-permission` `unsafe` offers `allow`, which is not one of its answers/
+    /`build-decision` `unsafe` offers `allow`, which is not one of its answers/
   );
   assert.throws(
     () =>

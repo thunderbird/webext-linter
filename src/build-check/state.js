@@ -44,12 +44,14 @@ import {
  *
  * - `analyze`: the folders are known, in `sca/`, and the build is to be reported in build.md,
  *   with the build's issues handed back in the answers file. Every build check starts here,
- *   once the early-exit checks passed on the source in `sca/`. The next hand-back moves
- *   either verdict on to `permission` (or, where the hot runs switched the agent's builds on,
- *   decides for the reviewer), and to `done` where a build-guard check is switched off;
- * - `permission`: the reviewer is shown the Build Review Details and asked for the build
- *   decision, and the next hand-back reads it and audits the package root's lock where the
- *   agent may build;
+ *   once the early-exit checks passed on the source in `sca/`. The next hand-back moves to
+ *   `done` where a build-guard check is switched off. Otherwise it audits the package root's
+ *   lock, and moves to `done` where the agent may build nothing from it, else either verdict
+ *   on to `decision` (or, where the hot runs switched the agent's builds on, decides for the
+ *   reviewer);
+ * - `decision`: the reviewer is shown the Build Review Details and asked for the build
+ *   decision, and the next hand-back reads it and, where the agent may build, goes on by the
+ *   audit at `analyze`;
  * - `build`: the package root's lock is clean, the linter copies `sca/` into `build/`, and
  *   the agent builds it there and names what the build produced and whether it matches the
  *   submitted XPI, or that it failed;
@@ -63,7 +65,7 @@ import {
  */
 export const BUILD_CHECK_STEP = Object.freeze({
   analyze: "analyze",
-  permission: "permission",
+  decision: "decision",
   build: "build",
   rescue: "rescue",
   done: "done",
@@ -101,10 +103,10 @@ const COUNTED = ["moderate", "high", "critical"];
  *   id, unsafe where it holds an entry, and null before it.
  *   The review starts with it as its build's judgement (state.build.safety).
  * @property {?boolean} buildSafe  The reviewer's one decision about the build, at the
- *   permission question: whether it is safe, the agent's verdict as they kept or overrode
+ *   decision question: whether it is safe, the agent's verdict as they kept or overrode
  *   it (the hot runs' switch answering for them, src/build-check/steps.js
  *   agentBuildsSwitchedOn). Null before it, and where a build-guard check
- *   is switched off, which asks nothing. The review reads it as its `build-judged` and
+ *   is switched off or the audit found nothing the agent may build, which asks nothing. The review reads it as its `build-judged` and
  *   `build-safe` facts.
  * @property {?string} buildReasons  The reviewer's own words for holding the build unsafe,
  *   where they answered the question with them, which build-unsafe reports. Held only
@@ -150,7 +152,7 @@ export function checkBuildCheck(record) {
   if (!Object.values(BUILD_CHECK_STEP).includes(check.step)) {
     throw new Error("The build check's record names no step this tool knows");
   }
-  // The judgement is unknown until the `analyze` hand-back reads it, and the permission until
+  // The judgement is unknown until the `analyze` hand-back reads it, and the decision until
   // the reviewer answered it or an unsafe judgement settled it.
   const before = check.step === BUILD_CHECK_STEP.analyze;
   if (
@@ -166,7 +168,7 @@ export function checkBuildCheck(record) {
         : "the build check's record holds buildSafety as no verdict its buildIssues give"
     );
   }
-  if (before || check.step === BUILD_CHECK_STEP.permission) {
+  if (before || check.step === BUILD_CHECK_STEP.decision) {
     for (const key of ["packageManagers", "buildSafe", "buildReasons"]) {
       if (check[key] !== null) {
         throw recordError(
@@ -178,7 +180,7 @@ export function checkBuildCheck(record) {
     recordBoolean(check.packageManagers, "packageManagers");
     checkDecision(check);
   }
-  checkBuild(check, before || check.step === BUILD_CHECK_STEP.permission);
+  checkBuild(check, before);
   checkRoots(check, record.submission.experiments);
 }
 
@@ -218,11 +220,11 @@ function checkRoots(check, experiments) {
 }
 
 /**
- * The reviewer's build decision, as the permission step writes it: a boolean, or null where
+ * The reviewer's build decision, as the decision step writes it: a boolean, or null where
  * nothing was asked, which lets nobody build. The agent builds only a build held safe, and
  * reasons come only with one held unsafe, as words a reviewer could have typed.
  * @param {object} check  The build check's own part (the record's `current`), past the
- *   permission step.
+ *   decision step.
  * @throws {Error}
  */
 function checkDecision(check) {
@@ -266,10 +268,12 @@ function checkBuild(check, unaudited) {
     );
   }
   const counts = check.vulnerabilities;
-  // Unknown before the audit, known while the agent builds, and either once done.
+  // Unknown before the audit, known at the decision and while the agent builds, since only a
+  // lock the audit read in full gets there, and either once done.
+  const asked = building || check.step === BUILD_CHECK_STEP.decision;
   const countsHold = unaudited
     ? counts === null
-    : isCounts(counts) || (!building && counts === null);
+    : isCounts(counts) || (!asked && counts === null);
   if (!countsHold) {
     throw recordError(
       "the build check's record holds vulnerabilities as no count the linter writes"

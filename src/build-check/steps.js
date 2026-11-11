@@ -6,17 +6,17 @@
 // (--llm-auto-review) - and the early-exit checks passed on it. There the reader reports the
 // build in build.md and hands back the issues the verdict is read off. Where a check the build
 // relies on is switched off (`build-guard`), the folder is done at once: nobody is asked, and
-// the agent builds nothing and runs no package-manager command. Otherwise, after either
-// verdict, it moves on to `permission`, which shows the reviewer the Build Review Details and
-// asks them alone for the one decision about the build, worded by the verdict: let the agent
-// build or build it themselves after a safe one, build nothing or let the agent build anyhow
-// after an unsafe one, or, after either, hold it unsafe for reasons of their own
-// (pre-answered where the hot runs switched the agent's builds on, which skips that step).
-// Unless they let the agent build, the folder is done at once: a rescue runs package-manager
-// commands, so none is tried. Otherwise it audits the package root's lock (./audit.js). A lock
-// the audit cannot read in full is done: nothing is built, and the review it starts aborts on
-// that lock. So is a lock with a declared dependency nobody can review: the review aborts on
-// that dependency, and nothing is built that runs it.
+// the agent builds nothing and runs no package-manager command. Otherwise it audits the package
+// root's lock (./audit.js), before anyone is asked. A lock the audit cannot read in full is
+// done at once: nothing is asked or built, and the review it starts aborts on that lock. So is
+// a lock with a declared dependency nobody can review: the review aborts on that dependency,
+// and nothing is built that runs it. Otherwise, after either verdict, it moves on to
+// `decision`, which shows the reviewer the Build Review Details and asks them alone for the one
+// decision about the build, worded by the verdict: let the agent build or build it themselves
+// after a safe one, build nothing or let the agent build anyhow after an unsafe one, or, after
+// either, hold it unsafe for reasons of their own (pre-answered where the hot runs switched the
+// agent's builds on, which skips that step). Unless they let the agent build, the folder is done
+// at once: a rescue runs package-manager commands, so none is tried. Otherwise the audit decides.
 // A clean lock moves on to `build`: the linter copies the whole `sca/` into `build/`, and the
 // agent builds the original there, as the lock pins it, and names what the build produced, or
 // that it failed. A vulnerable lock gets a RESCUED COPY of the whole `sca/` in the same work
@@ -61,6 +61,7 @@ import {
 } from "./state.js";
 import {
   auditRoot,
+  countsVulnerable,
   isClean,
   isRescuable,
   vulnerabilityCounts,
@@ -92,7 +93,7 @@ import { RESULT_SHAPE } from "../config.js";
 const EXPERIMENTS = "SCA_EXPERIMENTS";
 /** The review file's entry for the reviewer's build decision, as `llm-sca-review-prompt`
  *  names it. */
-const SCA_BUILD_PERMISSION = "SCA_BUILD_PERMISSION";
+const SCA_BUILD_DECISION = "SCA_BUILD_DECISION";
 /** The review file's entry for what the build reaches for outside the declared dependencies,
  *  as `llm-sca-review-prompt` names it: the list the verdict is read off. */
 const SCA_BUILD_SAFETY_ISSUES = "SCA_BUILD_SAFETY_ISSUES";
@@ -130,7 +131,7 @@ function agentBuildsSwitchedOn() {
 
 /**
  * The registry's build decision, as llmScaReviewPrompt gives it: one question per verdict.
- * @typedef {ScaPrompt["buildPermission"]} BuildPermissionAsk
+ * @typedef {ScaPrompt["buildDecision"]} BuildDecisionAsk
  */
 
 /**
@@ -182,14 +183,14 @@ export function analyzeEntries() {
 /**
  * The entry the reviewer makes their build decision in, worded by the agent's verdict and
  * built as a process value's entry is. It is answered with one of its labels or the
- * reviewer's own words (permission).
- * @param {BuildPermissionAsk} question
+ * reviewer's own words (decision).
+ * @param {BuildDecisionAsk} question
  * @param {string} verdict  The agent's verdict, a BUILD_SAFETY_VALUES id.
  * @returns {object}
  */
-function permissionEntry(question, verdict) {
+function decisionEntry(question, verdict) {
   return valueEntry(
-    { name: SCA_BUILD_PERMISSION, values: question[verdict].values },
+    { name: SCA_BUILD_DECISION, values: question[verdict].values },
     question[verdict].question
   );
 }
@@ -314,8 +315,8 @@ export async function handBack(work, record, registry) {
   switch (record.current.step) {
     case BUILD_CHECK_STEP.analyze:
       return analyze(work, record, context, prompt, registry);
-    case BUILD_CHECK_STEP.permission:
-      return permission(work, record, context, prompt);
+    case BUILD_CHECK_STEP.decision:
+      return decision(work, record, prompt);
     case BUILD_CHECK_STEP.build:
       return builtOriginal(work, record, prompt.buildOutput, prompt.buildMatch);
     case BUILD_CHECK_STEP.rescue:
@@ -377,9 +378,11 @@ export function unpackedExperiments(work, record) {
  * The build analyzed: the verdict and the build report it rests on. Where a check the build
  * relies on is switched off (buildGuarded), the folder is done at once, asking nobody and
  * allowing no package-manager command: nothing then vouches for what an install pulls in.
- * Otherwise, after either verdict, it moves on to the permission question, or, where the
- * hot runs switched the agent's builds on (agentBuildsSwitchedOn), to the decision that
- * answers for the reviewer.
+ * Otherwise the package root's lock is audited and its counts recorded, before anyone is
+ * asked. A lock the audit cannot read in full, or one with a declared dependency nobody can
+ * review, is done at once too, with nothing asked and nothing built. Otherwise, after either
+ * verdict, it moves on to the decision question, or, where the hot runs switched the agent's
+ * builds on (agentBuildsSwitchedOn), to the decision that answers for the reviewer.
  * @param {string} work
  * @param {object} record  At `analyze`.
  * @param {AuditContext} context
@@ -405,12 +408,19 @@ async function analyze(work, record, context, prompt, registry) {
   if (!buildGuarded(record, registry)) {
     return done(work, movedOn(settled, { packageManagers: false }));
   }
+  const found = await auditRoot(settled.current.roots, context);
+  const audited = movedOn(settled, {
+    vulnerabilities: found.complete ? vulnerabilityCounts(found) : null,
+  });
+  if (!isClean(found) && !isRescuable(found)) {
+    return done(work, movedOn(audited, { packageManagers: false }));
+  }
   if (agentBuildsSwitchedOn()) {
     const id = buildSafety === "safe" ? "allow" : "skip";
-    return decided(work, settled, id, null, context, prompt);
+    return decided(work, audited, id, null, prompt);
   }
-  return ask(movedOn(settled, { step: BUILD_CHECK_STEP.permission }), [
-    permissionEntry(prompt.buildPermission, buildSafety),
+  return ask(movedOn(audited, { step: BUILD_CHECK_STEP.decision }), [
+    decisionEntry(prompt.buildDecision, buildSafety),
   ]);
 }
 
@@ -458,35 +468,31 @@ function answerOf(work, entry, phase) {
 }
 
 /**
- * The permission step, handed back: the reviewer's build decision read, one of the labels its
+ * The decision step, handed back: the reviewer's build decision read, one of the labels its
  * verdict's question offers, or their own words, which hold the build unsafe for the reasons
  * they give, held to the rule a reviewer's note is (checkedNote).
  * @param {string} work
  * @param {object} record
- * @param {AuditContext} context
  * @param {ScaPrompt} prompt
- * @returns {Promise<Handout>}
+ * @returns {Handout}
  * @throws {HandbackRefused}
  */
-async function permission(work, record, context, prompt) {
-  const entry = permissionEntry(
-    prompt.buildPermission,
-    record.current.buildSafety
-  );
-  const answer = answerOf(work, entry, { name: "permission", answer: "words" });
+function decision(work, record, prompt) {
+  const entry = decisionEntry(prompt.buildDecision, record.current.buildSafety);
+  const answer = answerOf(work, entry, { name: "decision", answer: "words" });
   if (answer === undefined) {
     return ask(record, [entry]);
   }
-  const offered = prompt.buildPermission[record.current.buildSafety].values;
+  const offered = prompt.buildDecision[record.current.buildSafety].values;
   const picked = pickedChoice(answer, offered);
   if (picked) {
-    return decided(work, record, picked.value, null, context, prompt);
+    return decided(work, record, picked.value, null, prompt);
   }
   const { note, problem } = checkedNote(answer);
   if (problem) {
-    throw new HandbackRefused(`${SCA_BUILD_PERMISSION} ${problem}`);
+    throw new HandbackRefused(`${SCA_BUILD_DECISION} ${problem}`);
   }
-  return decided(work, record, null, note, context, prompt);
+  return decided(work, record, null, note, prompt);
 }
 
 /**
@@ -494,14 +500,13 @@ async function permission(work, record, context, prompt) {
  * builds it (`allow` and `override`), which `permitted` goes on from. Their own words are no
  * id, and hold the build unsafe for those reasons.
  * @param {string} work
- * @param {object} record
- * @param {?string} id  A BUILD_PERMISSION_VALUES id, or null for the reviewer's own words.
+ * @param {object} record  Audited at `analyze`.
+ * @param {?string} id  A BUILD_DECISION_VALUES id, or null for the reviewer's own words.
  * @param {?string} reasons  Those words, where they gave them.
- * @param {AuditContext} context
  * @param {ScaPrompt} prompt
- * @returns {Promise<Handout>}
+ * @returns {Handout}
  */
-function decided(work, record, id, reasons, context, prompt) {
+function decided(work, record, id, reasons, prompt) {
   return permitted(
     work,
     movedOn(record, {
@@ -509,44 +514,34 @@ function decided(work, record, id, reasons, context, prompt) {
       buildSafe: id === "allow" || id === "manual" || id === "override",
       buildReasons: reasons,
     }),
-    context,
     prompt
   );
 }
 
 /**
- * What follows the permission: where the agent may not build, the folder done at once,
- * since a rescue would run package-manager commands. Otherwise the package root's lock
- * audited, and its counts recorded. A lock the audit cannot read in full, or one with a
- * declared dependency nobody can review, is done with nothing built, a clean one is copied
- * whole into `build/` and handed to the agent to build there, and a vulnerable one is
- * rescued.
+ * What follows the decision: where the agent may not build, the folder done at once, since a
+ * rescue would run package-manager commands. Otherwise the audit at `analyze` decides, which
+ * only a lock it read in full, with every declared dependency reviewable, gets past: a clean
+ * lock is copied whole into `build/` and handed to the agent to build there, and a vulnerable
+ * one is rescued.
  * @param {string} work
- * @param {object} record  With its permission.
- * @param {AuditContext} context
+ * @param {object} record  With the reviewer's decision.
  * @param {ScaPrompt} prompt
- * @returns {Promise<Handout>}
+ * @returns {Handout}
  */
-async function permitted(work, record, context, prompt) {
+function permitted(work, record, prompt) {
   if (!record.current.packageManagers) {
     return done(work, record);
   }
-  const found = await auditRoot(record.current.roots, context);
-  const audited = movedOn(record, {
-    vulnerabilities: found.complete ? vulnerabilityCounts(found) : null,
-  });
-  if (isClean(found)) {
-    const { sca, buildCopy } = workPaths(work);
-    wholeCopy(sca, buildCopy, "build copy");
-    return ask(
-      movedOn(audited, { step: BUILD_CHECK_STEP.build }),
-      buildEntries(prompt.buildOutput, prompt.buildMatch)
-    );
+  if (countsVulnerable(record.current.vulnerabilities)) {
+    return rescue(work, record, prompt.rescueOutput, prompt.buildMatch);
   }
-  if (isRescuable(found)) {
-    return rescue(work, audited, prompt.rescueOutput, prompt.buildMatch);
-  }
-  return done(work, audited);
+  const { sca, buildCopy } = workPaths(work);
+  wholeCopy(sca, buildCopy, "build copy");
+  return ask(
+    movedOn(record, { step: BUILD_CHECK_STEP.build }),
+    buildEntries(prompt.buildOutput, prompt.buildMatch)
+  );
 }
 
 /**
@@ -900,7 +895,7 @@ function handbackCommand(work) {
  * on the review's first prompt) and by every hand-back that moves it on. What each prompt
  * names beside its steps follows its step: the submission and where to extract it (`unpack`),
  * the source, its package root and the build report (`analyze`), the Build Review Details
- * (`permission`), and the folders a build runs in. Every build runs at the package root's place
+ * (`decision`), and the folders a build runs in. Every build runs at the package root's place
  * in `build/`, its output is compared with the submitted XPI, and the rescue's agent makes
  * `build/` a copy of the whole `rescued/` before each build, with the two commands named here.
  * @param {string} work
@@ -931,7 +926,7 @@ export function stepPromptLines(work, record, registry, start = {}) {
       scaPackageRoot: roots.packageRoot,
       buildProcess: paths.build,
     }),
-    [BUILD_CHECK_STEP.permission]: () => ({
+    [BUILD_CHECK_STEP.decision]: () => ({
       answers: paths.answers,
       buildDetails: buildDetailLines(work, record, registry),
     }),
@@ -962,12 +957,13 @@ export function stepPromptLines(work, record, registry, start = {}) {
 }
 
 /**
- * The Build Review Details the permission prompt shows: the submitted XPI, the source folders,
- * the build report, the verdict and the issues it was read off, as the review loop's blocks
+ * The Build Review Details the decision prompt shows: the submitted XPI, the source folders,
+ * the build report, the verdict and the issues it was read off, and the lock's counts from the
+ * audit at `analyze`, as the review loop's blocks
  * name them (detailRows), so the review's Build Review Details hold every row of it. It ends
  * with the line saying the review waits for the reviewer's reply, as a turn-ending block does.
  * @param {string} work
- * @param {object} record  At `permission`.
+ * @param {object} record  At `decision`.
  * @param {import("../checks/registry.js").Registry} registry
  * @returns {string[]}
  */
@@ -980,8 +976,9 @@ function buildDetailLines(work, record, registry) {
       buildFile: workPaths(work).build,
       buildSafety: record.current.buildSafety,
       buildIssuesFile: workPaths(work).buildIssues,
+      buildVulnerabilities: record.current.vulnerabilities,
     }),
     "",
-    registry.llmPhases().waiting("permission"),
+    registry.llmPhases().waiting("decision"),
   ];
 }

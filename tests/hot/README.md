@@ -9,7 +9,7 @@ node verify.js <submission folder> --llm-auto-review
 ```
 
 with the variable exported for the whole session, so every `--llm-handback` the agent runs
-inherits it: the build check reads it where it would ask the permission question, and never
+inherits it: the build check reads it where it would ask the decision question, and never
 records it. The agent follows every prompt with real tools: it extracts the archive, writes build.md, lists what
 the build reaches for outside the declared dependencies, and hands back. The linter audits the lock against OSV, and the agent rescues the
 copy with the real npm or pnpm and builds the add-on, as the prompts say. The agent hands

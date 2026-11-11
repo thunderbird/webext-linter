@@ -243,6 +243,27 @@ export const NO_LOCK_SOURCE = path.join(
   "src"
 );
 
+/** The same source with an npm lock that installs nothing: its audit reads the lock in full,
+ *  asks no network, and finds it clean, so the build check gets past it to the reviewer's
+ *  decision. A copy of its own in a temporary folder, made once per test process. */
+export const LOCKED_SOURCE = (() => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wl-locked-source-"));
+  fs.cpSync(NO_LOCK_SOURCE, dir, { recursive: true });
+  const { name, version } = JSON.parse(
+    fs.readFileSync(path.join(dir, "package.json"), "utf8")
+  );
+  fs.writeFileSync(
+    path.join(dir, "package-lock.json"),
+    JSON.stringify({
+      name,
+      version,
+      lockfileVersion: 3,
+      packages: { "": { name, version } },
+    })
+  );
+  return dir;
+})();
+
 /** The command a build check prompt prints, one flag per line: the paragraph after the
  *  step that says to run the linter. */
 export function commandOf(stdout) {
@@ -279,12 +300,16 @@ export const readJson = (work, name) =>
  * EXTRACT_TO (with an Experiment folder `experimentsFolder` in it, where given), and run the
  * hand-back it prints, which derives the root and prints the `analyze` prompt.
  * @param {string} stdout  The --llm-auto-review run's output.
- * @param {{experimentsFolder?: string, typed?: (work: string) => string}} [opts]  As handBackRoots.
+ * @param {{experimentsFolder?: string, typed?: (work: string) => string, source?: string}}
+ *   [opts]  As handBackRoots.
  * @returns {{code: number, stdout: string, stderr: string}}  The hand-back's run.
  */
-export function unpackSource(stdout, { experimentsFolder, typed } = {}) {
+export function unpackSource(
+  stdout,
+  { experimentsFolder, typed, source = NO_LOCK_SOURCE } = {}
+) {
   const root = headerValue(stdout, "EXTRACT_TO");
-  fs.cpSync(NO_LOCK_SOURCE, root, { recursive: true });
+  fs.cpSync(source, root, { recursive: true });
   if (experimentsFolder) {
     // A file in it, since an Experiment folder that holds none is refused.
     fs.mkdirSync(path.join(root, experimentsFolder), { recursive: true });
@@ -321,8 +346,8 @@ const issuesFor = (safety) => (safety === "unsafe" ? [UNSAFE_ISSUE] : []);
 /**
  * Do what the `analyze` prompt asks, the way its reader would: write the build report to
  * SCA_BUILD_REPORT and answer ANSWERS with the build's safety issues, none by default, one
- * (UNSAFE_ISSUE) for a build to be judged unsafe. Its hand-back prints the permission prompt
- * (answerPermission). The hand-back itself is the caller's, so it can run it as it likes.
+ * (UNSAFE_ISSUE) for a build to be judged unsafe. Its hand-back prints the decision prompt
+ * (answerDecision). The hand-back itself is the caller's, so it can run it as it likes.
  * @param {string} stdout  The `analyze` prompt's run.
  * @param {{safety?: string}} [opts]  The judgement.
  * @returns {string[]}  The hand-back's argv, as the prompt prints it.
@@ -338,14 +363,14 @@ export function answerAnalyze(stdout, { safety = "safe" } = {}) {
 }
 
 /**
- * Do what the permission prompt asks, the way its reader would: answer the reviewer's build
+ * Do what the decision prompt asks, the way its reader would: answer the reviewer's build
  * decision with `decision`, by default building it themselves, so the hand-back starts the
  * review at once with nothing for the agent to build. The hand-back is the caller's.
- * @param {string} stdout  The permission prompt's run.
+ * @param {string} stdout  The decision prompt's run.
  * @param {string} [decision]  A label the question offers, or the reviewer's own words.
  * @returns {string[]}  The hand-back's argv, as the prompt prints it.
  */
-export function answerPermission(stdout, decision = "Build it myself") {
+export function answerDecision(stdout, decision = "Build it myself") {
   const answers = headerValue(stdout, "ANSWERS");
   const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
   doc.entries = doc.entries.map((e) => ({ ...e, answer: decision }));
@@ -358,14 +383,15 @@ export function answerPermission(stdout, decision = "Build it myself") {
  * EXTRACT_TO, name the Experiment folder where `unpack` asks for it, and run the hand-back the
  * `unpack` prompt prints, then write the build report to SCA_BUILD_REPORT, answer ANSWERS (the
  * build judged safe), and run the hand-back the `analyze` prompt prints. Where that prints the
- * permission prompt, answer it too (the agent let build) and run its hand-back - which, with
- * nothing to rescue, starts the review.
+ * decision prompt, answer it too (the agent let build) and run its hand-back. The source is
+ * NO_LOCK_SOURCE unless `source` names another: with no lock, the build check is done at
+ * `analyze` and the review starts there.
  * @param {string} stdout  The --llm-auto-review run's output.
  * @param {{experimentsFolder?: string, typed?: (work: string) => string, safety?: string,
- *   managers?: string}} [opts]  The Experiment folder to answer, relative to the root, for
- *   an add-on that declares Experiments, how the work folder is typed, where not as the
- *   prompt prints it, the agent's build judgement, and the reviewer's answer to the
- *   permission question.
+ *   managers?: string, source?: string}} [opts]  The Experiment folder to answer, relative to
+ *   the root, for an add-on that declares Experiments, how the work folder is typed, where not
+ *   as the prompt prints it, the agent's build judgement, the reviewer's answer to the
+ *   decision question, and the source extracted.
  * @returns {{code: number, stdout: string, stderr: string}}  The last hand-back's run.
  */
 export function handBackRoots(
@@ -375,12 +401,13 @@ export function handBackRoots(
     typed,
     safety = "safe",
     managers = "Let the agent build",
+    source,
   } = {}
 ) {
   const work = workOf(stdout);
   const handBack = (out) =>
     typed ? run(["--llm-handback", typed(work)]) : run(argvOf(commandOf(out)));
-  const unpacked = unpackSource(stdout, { experimentsFolder, typed });
+  const unpacked = unpackSource(stdout, { experimentsFolder, typed, source });
   if (unpacked.code !== 0) {
     return unpacked;
   }
@@ -398,11 +425,11 @@ export function handBackRoots(
   const handed = handBack(unpacked.stdout);
   if (
     handed.code !== 0 ||
-    readJson(work, "prepare").current.step !== "permission"
+    readJson(work, "prepare").current.step !== "decision"
   ) {
     return handed;
   }
-  fill({ SCA_BUILD_PERMISSION: managers });
+  fill({ SCA_BUILD_DECISION: managers });
   return handBack(handed.stdout);
 }
 
