@@ -36,6 +36,9 @@ for (const [rel, lines] of [
   fs.writeFileSync(path.join(TREE, rel), "x\n".repeat(lines));
 }
 
+/** A file of that tree by its absolute path, the way an agent names it. */
+const at = (rel) => path.join(TREE, rel);
+
 /** The writing rule and the reading rule a sweep request carries, as the registry authors them. */
 const STYLE = loadRegistry().proseStyle();
 const READING = loadRegistry().readingRule();
@@ -129,7 +132,7 @@ test("the request and the refusal name the hint's limit", () => {
   assert.throws(
     () =>
       readSweepAnswers(
-        answered(dir, { 3: [{ file: "a.js", hint: "" }], 4: [] }),
+        answered(dir, { 3: [{ file: at("a.js"), hint: "" }], 4: [] }),
         SWEEPS,
         TREE
       ),
@@ -143,7 +146,7 @@ test("the request says a file is in the folder and a line is that file's own", (
   const { request } = requested(SWEEPS);
   assert.ok(
     request.includes(
-      'a "file" (the path of a file in the folder above, relative to it)'
+      'a "file" (the absolute path of a file in the folder above, as you opened it)'
     ),
     request
   );
@@ -158,7 +161,7 @@ test("the request says a file is in the folder and a line is that file's own", (
 // The example is the part an agent copies, so it has to be the shape the door accepts -
 // and it must not suggest what to go and find.
 test("the worked example fixes the shape without suggesting a finding", () => {
-  const { request } = requested(SWEEPS);
+  const { request } = requested(SWEEPS, TREE);
   // Every label appears, so the example doubles as the list of what must come back, and
   // the empty list is shown as well as a find.
   assert.match(request, /"3": \[/);
@@ -237,8 +240,8 @@ test("answers come back resolved to their check and their tree", () => {
   // all to the first sweep, or took the check off the wrong one, would pass if only one
   // label ever carried a hit.
   const file = answered(dir, {
-    3: [{ file: "lib/net.js", line: 12, hint: "posts over http://" }],
-    4: [{ file: "bg.js", line: 40, hint: "sends the digest onward" }],
+    3: [{ file: at("lib/net.js"), line: 12, hint: "posts over http://" }],
+    4: [{ file: at("bg.js"), line: 40, hint: "sends the digest onward" }],
   });
   assert.deepEqual(readSweepAnswers(file, SWEEPS, TREE), [
     {
@@ -299,14 +302,14 @@ test("a file that cannot be acted on is refused, saying which thing is wrong", (
   );
   refused({ 3: [{ line: 3 }], 4: [] }, /names no "file"/, "a hit with no file");
   refused(
-    { 3: [{ file: "a.js", severity: "error" }], 4: [] },
+    { 3: [{ file: at("a.js"), severity: "error" }], 4: [] },
     /may only set/,
     "a hit wording the report"
   );
   // Every swept result is held to the path guards.
   refused(
     { 3: [{ file: "../../etc/passwd" }], 4: [] },
-    /names a file INSIDE the add-on/,
+    /names a file by its absolute path/,
     "a hit pointing out of the tree"
   );
 
@@ -346,16 +349,16 @@ test("a reply naming a file or line the tree lacks is refused by its entry", () 
       (err) => err.message.includes(says)
     );
   refused(
-    { file: "gone.js", line: 1 },
-    'a.answers.json, label 3, entry 1 names file "gone.js", which is not a file in the folder the sweep read'
+    { file: at("gone.js"), line: 1 },
+    `a.answers.json, label 3, entry 1 names file ${JSON.stringify(at("gone.js"))}, which is not a file inside ${TREE}`
   );
   refused(
-    { file: "lib/net.js", line: 13 },
-    'a.answers.json, label 3, entry 1 names line 13 of "lib/net.js", which has 12 lines'
+    { file: at("lib/net.js"), line: 13 },
+    `a.answers.json, label 3, entry 1 names line 13 of ${JSON.stringify(at("lib/net.js"))}, which has 12 lines`
   );
   // The same file named many times in one reply is read against the same count.
   const many = Array.from({ length: 5 }, (_, i) => ({
-    file: "lib/net.js",
+    file: at("lib/net.js"),
     line: 12 - i,
   }));
   assert.equal(

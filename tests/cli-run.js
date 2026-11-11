@@ -132,7 +132,8 @@ export function defaultFolderOf(addon, kind) {
  *
  * Which label belongs to which check is read off the STATE, because that is where the
  * review recorded it - the request handed to an agent names no check id at all, which is
- * the point of it.
+ * the point of it. A hit's file given relative is named by its absolute path in the folder
+ * the request names, the way the agent names the file it opened.
  */
 export function sweepBack(reviewFile, found = {}) {
   const state = JSON.parse(
@@ -142,11 +143,17 @@ export function sweepBack(reviewFile, found = {}) {
     const mine = (state.preSweep?.items ?? []).filter(
       (i) => i.artifact === artifact
     );
+    // The folder is the request's second paragraph, indented under its first line.
+    const folder = paths.request.split("\n\n")[1].trim();
+    const named = (hit) =>
+      typeof hit?.file === "string" && !path.isAbsolute(hit.file)
+        ? { ...hit, file: path.join(folder, hit.file) }
+        : hit;
     fs.writeFileSync(
       paths.answers,
       JSON.stringify({
         answers: Object.fromEntries(
-          mine.map((i) => [i.label, found[i.check] ?? []])
+          mine.map((i) => [i.label, (found[i.check] ?? []).map(named)])
         ),
       })
     );
@@ -340,8 +347,12 @@ export const UNSAFE_ISSUE = {
   hint: "runs a script it downloads with curl",
 };
 
-/** The SCA_BUILD_SAFETY_ISSUES answer for a build a test wants judged `safety`. */
-const issuesFor = (safety) => (safety === "unsafe" ? [UNSAFE_ISSUE] : []);
+/** The SCA_BUILD_SAFETY_ISSUES answer for a build a test wants judged `safety`, its file
+ *  named by its absolute path in SCA_SOURCE, `source`, as the agent names it. */
+const issuesFor = (safety, source) =>
+  safety === "unsafe"
+    ? [{ ...UNSAFE_ISSUE, file: path.join(source, UNSAFE_ISSUE.file) }]
+    : [];
 
 /**
  * Do what the `analyze` prompt asks, the way its reader would: write the build report to
@@ -356,7 +367,12 @@ export function answerAnalyze(stdout, { safety = "safe" } = {}) {
   fs.writeFileSync(headerValue(stdout, "SCA_BUILD_REPORT"), "1. `npm ci`\n");
   const answers = headerValue(stdout, "ANSWERS");
   const doc = JSON.parse(fs.readFileSync(answers, "utf8"));
-  const given = { SCA_BUILD_SAFETY_ISSUES: issuesFor(safety) };
+  const given = {
+    SCA_BUILD_SAFETY_ISSUES: issuesFor(
+      safety,
+      headerValue(stdout, "SCA_SOURCE")
+    ),
+  };
   doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));
   fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
   return argvOf(commandOf(stdout));
@@ -421,7 +437,12 @@ export function handBackRoots(
     doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));
     fs.writeFileSync(answers, JSON.stringify(doc, null, 1));
   };
-  fill({ SCA_BUILD_SAFETY_ISSUES: issuesFor(safety) });
+  fill({
+    SCA_BUILD_SAFETY_ISSUES: issuesFor(
+      safety,
+      headerValue(unpacked.stdout, "SCA_SOURCE")
+    ),
+  });
   const handed = handBack(unpacked.stdout);
   if (
     handed.code !== 0 ||

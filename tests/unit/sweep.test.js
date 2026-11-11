@@ -36,6 +36,9 @@ const ROOT = tree({
   "lib/deep/widget.js": "one\ntwo\n",
 });
 
+/** A file of the shape tests' tree by its absolute path, the way an agent names it. */
+const at = (rel) => path.join(ROOT, rel);
+
 /** One result as it reaches the merge: already saying which check it answers and which
  *  tree it was found in. Both were resolved from its label by whoever read the answers
  *  file (src/report/sweep-files.js), so nothing here has to work them out. */
@@ -63,22 +66,22 @@ test("a malformed sweep result is rejected with a reason", () => {
     assert.throws(() => checkedResult("row 1", entry, ROOT), re);
   bad("nope", /must be an object/);
   bad({}, /names no "file"/);
-  bad({ file: "a.js", line: 0 }, /has line 0/);
-  bad({ file: "a.js", hint: "" }, /has hint ""/);
-  bad({ file: "a.js", hint: "x".repeat(MAX_HINT + 1) }, (err) =>
+  bad({ file: at("a.js"), line: 0 }, /has line 0/);
+  bad({ file: at("a.js"), hint: "" }, /has hint ""/);
+  bad({ file: at("a.js"), hint: "x".repeat(MAX_HINT + 1) }, (err) =>
     err.message.includes(`${MAX_HINT + 1}-character hint`)
   );
   // WHICH sweep a result answers is the slot it was written into, never something it
   // says: a result naming one would be an agent choosing where its hint lands.
-  bad({ check: "privacy-policy", file: "a.js" }, /may only set/);
+  bad({ check: "privacy-policy", file: at("a.js") }, /may only set/);
   // Where it lands and how it reads are the linter's, so a result that tries to say is
   // refused rather than quietly stripped - that would be an agent wording the report.
   bad(
-    { file: "a.js", severity: "error" },
+    { file: at("a.js"), severity: "error" },
     /may only set "file", "line", "hint"/
   );
 
-  assert.deepEqual(checkedResult("row 1", { file: "a.js" }, ROOT), {
+  assert.deepEqual(checkedResult("row 1", { file: at("a.js") }, ROOT), {
     file: "a.js",
     line: null,
     hint: null,
@@ -90,9 +93,12 @@ test("a malformed sweep result is rejected with a reason", () => {
 test("a hint of 500 characters is accepted, and one past the limit refused", () => {
   assert.equal(MAX_HINT, 500);
   const hint = "x".repeat(MAX_HINT);
-  assert.equal(checkedResult("row", { file: "a.js", hint }, ROOT).hint, hint);
+  assert.equal(
+    checkedResult("row", { file: at("a.js"), hint }, ROOT).hint,
+    hint
+  );
   assert.throws(
-    () => checkedResult("row", { file: "a.js", hint: `${hint}x` }, ROOT),
+    () => checkedResult("row", { file: at("a.js"), hint: `${hint}x` }, ROOT),
     (err) => err.message.includes("501-character hint")
   );
 });
@@ -108,6 +114,7 @@ test("a result names a file in the swept tree and a line that file has", () => {
   });
   const outside = tree({ "secret.js": "one\n" });
   fs.symlinkSync(path.join(outside, "secret.js"), path.join(root, "linked.js"));
+  const inRoot = (rel) => path.join(root, rel);
   const refused = (raw, says, what) =>
     assert.throws(
       () => checkedResult("row", raw, root),
@@ -116,38 +123,38 @@ test("a result names a file in the swept tree and a line that file has", () => {
     );
 
   refused(
-    { file: "gone.js", line: 1 },
-    'row names file "gone.js", which is not a file in the folder the sweep read',
+    { file: inRoot("gone.js"), line: 1 },
+    `row names file ${JSON.stringify(inRoot("gone.js"))}, which is not a file inside ${root}`,
     "a file the tree does not have"
   );
-  refused({ file: "lib" }, 'names file "lib", which is not a file', "a folder");
+  refused({ file: inRoot("lib") }, "which is not a file inside", "a folder");
   refused(
-    { file: "linked.js" },
-    'names file "linked.js", which is not a file',
+    { file: inRoot("linked.js") },
+    "which is not a file inside",
     "a link out of the tree"
   );
   refused(
-    { file: "ends.js", line: 4 },
-    `row names line 4 of "ends.js", which has 3 lines - a line is that file's own line number, counted from its first line`,
+    { file: inRoot("ends.js"), line: 4 },
+    `row names line 4 of ${JSON.stringify(inRoot("ends.js"))}, which has 3 lines - a line is that file's own line number, counted from its first line`,
     "one past the last line"
   );
   refused(
-    { file: "open.js", line: 501 },
+    { file: inRoot("open.js"), line: 501 },
     "which has 3 lines",
     "a running count"
   );
 
   // The last line itself, with and without a trailing newline.
   assert.equal(
-    checkedResult("row", { file: "ends.js", line: 3 }, root).line,
+    checkedResult("row", { file: inRoot("ends.js"), line: 3 }, root).line,
     3
   );
   assert.equal(
-    checkedResult("row", { file: "open.js", line: 3 }, root).line,
+    checkedResult("row", { file: inRoot("open.js"), line: 3 }, root).line,
     3
   );
-  // A result with no line needs only the file.
-  assert.deepEqual(checkedResult("row", { file: "lib/x.js" }, root), {
+  // A result with no line needs only the file, and comes back relative to the tree.
+  assert.deepEqual(checkedResult("row", { file: inRoot("lib/x.js") }, root), {
     file: "lib/x.js",
     line: null,
     hint: null,
@@ -338,43 +345,74 @@ test("a swept result says which artifact it is in, whichever branch it takes", (
 });
 
 // A sweep row is the ONLY path in a review the agent authors - every other one is read
-// off disk. Downstream it is resolved against the artifact's root and handed back as a
-// file to open, so a value that steps out of the add-on would have the linter publish a
-// location outside the submission as its own claim. Refused at this door, in the same
-// terms the reviewer's own folder flags are.
-test("a sweep result naming a path outside the add-on is refused", () => {
-  const refused = (file, what) =>
+// off disk. The agent names it by its absolute path, and the linter records it relative to
+// the folder read, so a value that is relative, or steps out of that folder, would leave the
+// linter guessing where it starts or publishing a location outside the submission as its own
+// claim. Refused at this door, in the same terms the reviewer's own folder flags are.
+test("a sweep result naming a relative path, or one outside the folder, is refused", () => {
+  const refused = (file, says, what) =>
     assert.throws(
       () => checkedResult("r[0]", { file, line: 1 }, ROOT),
-      /names a file INSIDE the add-on/,
+      (err) => err.message.includes(says),
       what
     );
-  refused("../../../etc/passwd", "out through the top");
-  refused("lib/../../escape.js", "out through the middle");
-  refused("/etc/hostname", "absolute, which a plain join would re-parent");
+  const absolute = "a result names a file by its absolute path";
+  refused("a.js", absolute, "relative, which leaves where it starts open");
+  refused("../../../etc/passwd", absolute, "out through the top");
+  refused(`${ROOT}/lib/../../escape.js`, absolute, "out through the middle");
+  refused("/etc/hostname", "which is not a file inside", "outside the folder");
 
   // An ordinary nested path is still fine - the guard is about escaping, not depth.
   assert.equal(
-    checkedResult("r[0]", { file: "lib/deep/widget.js", line: 2 }, ROOT).file,
+    checkedResult("r[0]", { file: at("lib/deep/widget.js"), line: 2 }, ROOT)
+      .file,
     "lib/deep/widget.js"
   );
 });
 
-// "." and "./" walk nowhere: neither is absolute and neither holds a `..`, so they used
-// to reach the resolver, which normalises them to the root and refuses them there - past
-// the point the agent can be told about and before the state advances, so every retry
-// re-threw and the review was dead. The door that exists for agent-authored paths is the
-// one that has to say no.
-test("a result naming the add-on root is refused, not resolved later", () => {
-  for (const file of [".", "./", "sub/.."]) {
+// The folder itself is no file in it, however it is written.
+test("a result naming the folder read is refused", () => {
+  for (const file of [ROOT, `${ROOT}/`, `${ROOT}/.`]) {
     assert.throws(
       () => checkedResult("row", { file }, ROOT),
-      /never an absolute path, a way out of one, or the root itself/,
+      /which is not a file inside/,
       `expected ${JSON.stringify(file)} to be refused`
     );
   }
-  // A path INSIDE the add-on still passes, including one that dips through a directory.
-  for (const file of ["a.js", "sub/a.js", "sub/./a.js"]) {
-    assert.equal(checkedResult("row", { file }, ROOT).file, file);
+  // A path INSIDE the folder passes, and comes back relative, with a `.` segment walked.
+  for (const [file, rel] of [
+    [at("a.js"), "a.js"],
+    [at("sub/a.js"), "sub/a.js"],
+    [`${ROOT}/sub/./a.js`, "sub/a.js"],
+  ]) {
+    assert.equal(checkedResult("row", { file }, ROOT).file, rel);
   }
+});
+
+// A source in a wrapper folder: the agent names the file it opened, and the linter records
+// it with the wrapper folder, in the keyspace of the tree it read. A folder given through a
+// link is matched by its real path too.
+test("a result inside a wrapper folder is recorded with it", () => {
+  const root = tree({ "project-1.0/src/api.ts": "one\ntwo\n" });
+  assert.deepEqual(
+    checkedResult(
+      "row",
+      { file: path.join(root, "project-1.0/src/api.ts"), line: 2 },
+      root
+    ),
+    { file: "project-1.0/src/api.ts", line: 2, hint: null }
+  );
+  const link = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), "wxl-link-")),
+    "l"
+  );
+  fs.symlinkSync(root, link);
+  assert.equal(
+    checkedResult(
+      "row",
+      { file: path.join(fs.realpathSync(root), "project-1.0/src/api.ts") },
+      link
+    ).file,
+    "project-1.0/src/api.ts"
+  );
 });

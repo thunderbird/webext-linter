@@ -377,17 +377,26 @@ function handBack(work, answerFor) {
 /**
  * Play the sweep agent for one tree: fill in its answers file the way the request
  * tells it to. `found` is what it found, by label, and every other label it was asked about
- * answers with the empty list.
+ * answers with the empty list. A hit's file given relative is named by its absolute path in
+ * the tree, the way the agent names the file it opened.
  */
 function swept(state, artifact, found = {}) {
   const paths = state.paths.sweeps[artifact];
   const labels = (state.preSweep?.items ?? [])
     .filter((i) => i.artifact === artifact)
     .map((i) => i.label);
+  const root =
+    artifact === ARTIFACT_XPI ? state.paths.xpiRoot : state.roots.used;
+  const named = (hit) =>
+    typeof hit?.file === "string" && !path.isAbsolute(hit.file)
+      ? { ...hit, file: path.join(root, hit.file) }
+      : hit;
   fs.writeFileSync(
     paths.answers,
     JSON.stringify({
-      answers: Object.fromEntries(labels.map((l) => [l, found[l] ?? []])),
+      answers: Object.fromEntries(
+        labels.map((l) => [l, (found[l] ?? []).map(named)])
+      ),
     })
   );
   return paths.answers;
@@ -1240,13 +1249,14 @@ test("a swept result naming a file or line the tree lacks is refused", () => {
       "a refusal changes nothing"
     );
   };
+  const at = (rel) => path.join(made.state.paths.xpiRoot, rel);
   refused(
     { file: "lib/gone.js", line: 1 },
-    'names file "lib/gone.js", which is not a file in the folder the sweep read'
+    `names file ${JSON.stringify(at("lib/gone.js"))}, which is not a file inside`
   );
   refused(
     { file: "lib/net.js", line: 501 },
-    'names line 501 of "lib/net.js", which has 7 lines'
+    `names line 501 of ${JSON.stringify(at("lib/net.js"))}, which has 7 lines`
   );
 
   swept(made.state, ARTIFACT_XPI, { 2: [{ file: "lib/net.js", line: 7 }] });

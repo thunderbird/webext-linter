@@ -102,17 +102,33 @@ export function writeTree(dir, files) {
 
 /** Fill in the review file the way the agent does: each entry's answer by its index. The
  *  agent judges the build safe and the reviewer lets it build unless `answers` says
- *  otherwise. */
+ *  otherwise. A build safety issue's file given relative is named by its absolute path in
+ *  sca/, written on as it stands, the way the agent names the file it opened. */
 export function answer(work, answers) {
   const file = workPaths(work).answers;
   const doc = JSON.parse(fs.readFileSync(file, "utf8"));
+  const issues = answers.SCA_BUILD_SAFETY_ISSUES;
   const given = {
     SCA_BUILD_SAFETY_ISSUES: [],
     SCA_BUILD_DECISION: "Let the agent build",
     ...answers,
+    ...(Array.isArray(issues)
+      ? { SCA_BUILD_SAFETY_ISSUES: issues.map((i) => inSca(work, i)) }
+      : {}),
   };
   doc.entries = doc.entries.map((e) => ({ ...e, answer: given[e.index] }));
   fs.writeFileSync(file, JSON.stringify(doc));
+}
+
+/** One build safety issue with its relative file named by its absolute path in sca/. */
+function inSca(work, issue) {
+  if (typeof issue?.file !== "string" || path.isAbsolute(issue.file)) {
+    return issue;
+  }
+  return {
+    ...issue,
+    file: `${fs.realpathSync(workPaths(work).sca)}/${issue.file}`,
+  };
 }
 
 /** Write the build report the `analyze` prompt asks for, as the agent does. */

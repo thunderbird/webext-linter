@@ -33,6 +33,7 @@ import { holds } from "../checks/condition.js";
 import { artifactRoots } from "../lib/artifacts.js";
 import { red, yellow, blue, brightCyan, grey } from "../util/color.js";
 import { displayLine, displayPath, wrapText } from "../util/text.js";
+import { resultShape } from "../config.js";
 
 /** @param {string} s @returns {string} */
 const identity = (s) => s;
@@ -576,6 +577,11 @@ export function scaPromptLines(prompt, list, values) {
         { name: "{{flags}}", lines: command },
         { name: "{{buildDetails}}", lines: values.buildDetails ?? [] },
         { name: "{{copy}}", lines: (values.copy ?? []).map(displayPath) },
+        // The shape of one build safety issue, its file an absolute path in SCA_SOURCE.
+        {
+          name: "{{issueShape}}",
+          lines: values.scaSource ? [resultShape(values.scaSource)] : [],
+        },
       ])
     );
   });

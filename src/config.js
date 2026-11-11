@@ -136,15 +136,20 @@ export const MAX_ENTRIES_PER_CATEGORY = 25;
 export const MAX_NOTE = 2000;
 
 /**
- * What an agent writes for one thing it found, in a sweep or in the build analysis. THE one
- * spelling of the shape - the message a malformed result is refused with (src/report/sweep.js
- * checkedResult), and the worked example the agent is shown (src/report/sweep-files.js, and
- * the build analysis's prompt), so what is asked for and what is accepted cannot drift. Its
- * hint is a placeholder, because a plausible finding in an example is a suggestion about what
- * to go and find.
+ * What an agent writes for one thing it found, in a sweep or in the build analysis, inside
+ * `folder`, the folder it read. THE one spelling of the shape - the message a malformed result
+ * is refused with (src/report/sweep.js checkedResult), and the worked example the agent is
+ * shown (src/report/sweep-files.js, and the build analysis's prompt), so what is asked for and
+ * what is accepted cannot drift. Its file is an absolute path in that folder, the way the
+ * agent opened it. Its hint is a placeholder, because a plausible finding in an example is a
+ * suggestion about what to go and find.
+ * @param {string} folder  The folder read, absolute.
+ * @returns {string}
  */
-export const RESULT_SHAPE =
-  '{"file": "background.js", "line": 40, "hint": "<what is there>"}';
+export function resultShape(folder) {
+  const file = `${folder.endsWith("/") ? folder : `${folder}/`}background.js`;
+  return `{"file": ${JSON.stringify(file)}, "line": 40, "hint": "<what is there>"}`;
+}
 
 /**
  * How long a result's hint may be. A hint names what sits at one location and is printed on

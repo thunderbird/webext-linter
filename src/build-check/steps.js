@@ -87,7 +87,7 @@ import { detailRows, scaPromptLines } from "../report/format.js";
 import { MODE, addToRecord, modeOf } from "../review/record.js";
 import { checkedNote, pickedChoice } from "../report/verdicts.js";
 import { checkedResult } from "../report/sweep.js";
-import { RESULT_SHAPE } from "../config.js";
+import { resultShape } from "../config.js";
 
 /** The answers file's entry for the Experiment folder, keyed by the name the prompt gives it. */
 const EXPERIMENTS = "SCA_EXPERIMENTS";
@@ -624,7 +624,7 @@ function buildIssuesOf(list, root) {
     }
     if (issue.hint === null) {
       throw new HandbackRefused(
-        `${at} has no "hint" - say what the build does there, e.g. ${RESULT_SHAPE}`
+        `${at} has no "hint" - say what the build does there, e.g. ${resultShape(root)}`
       );
     }
     return issue;

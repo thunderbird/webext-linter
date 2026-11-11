@@ -35,7 +35,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseJson } from "../util/json.js";
 import { rethrowIfFatal } from "../lib/errors.js";
-import { checkedResult, MAX_HINT, RESULT_SHAPE } from "./sweep.js";
+import { checkedResult, MAX_HINT, resultShape } from "./sweep.js";
 import { sweepAnswersSlot, sweepSlot } from "../checks/registry-vocabulary.js";
 
 /** The key the answers hold everything under. A wrapper rather than a bare map, so the
@@ -59,7 +59,7 @@ const ANSWERS = "answers";
  */
 function sweepRequest({ sweepTarget, sweeps, proseStyle, readingRule }) {
   const n = sweeps.length;
-  const example = exampleAnswers(sweeps);
+  const example = exampleAnswers(sweeps, sweepTarget);
   return [
     "Sweep this folder, and read nothing outside it:",
     indent(sweepTarget, 2),
@@ -73,7 +73,7 @@ function sweepRequest({ sweepTarget, sweeps, proseStyle, readingRule }) {
     "Return your answers as your reply, as one JSON document of this shape:",
     indent(`{"${ANSWERS}": {"<label>": [...]}}`, 2),
     "It lists every label above, each with a list of what you found for it, and an empty list where you found nothing. Put nothing else in the reply: no words before or after it, and no code fence around it.",
-    `Each thing you found is one entry in that list, with a "file" (the path of a file in the folder above, relative to it), a "hint" - a short phrase of at most ${MAX_HINT} characters naming what is there - and a "line" - that file's own line number, counted from its first line, where it sits on one, left out where it does not. Nothing else: no verdict, and no wording for the developer, which is the linter's. Answered, your reply reads:\n\n${indent(example, 2)}`,
+    `Each thing you found is one entry in that list, with a "file" (the absolute path of a file in the folder above, as you opened it), a "hint" - a short phrase of at most ${MAX_HINT} characters naming what is there - and a "line" - that file's own line number, counted from its first line, where it sits on one, left out where it does not. Nothing else: no verdict, and no wording for the developer, which is the linter's. Answered, your reply reads:\n\n${indent(example, 2)}`,
     ...(proseStyle ? [proseStyle] : []),
     "Write no file.",
   ].join("\n\n");
@@ -86,19 +86,20 @@ function sweepRequest({ sweepTarget, sweeps, proseStyle, readingRule }) {
  * would leave the reader working out whether the rest are optional. The first shows a
  * find, the rest show the empty list, which is the case worth being unambiguous about.
  *
- * The entry itself is RESULT_SHAPE, the constant checkedResult refuses against
- * (src/report/sweep.js), so what an agent is shown and what the door accepts are one
- * string. Its hint is a placeholder: a plausible finding here is a suggestion about what
+ * The entry itself is resultShape of the folder swept, the shape checkedResult refuses
+ * against (src/report/sweep.js), so what an agent is shown and what the door accepts are one
+ * string, its file an absolute path in that folder. Its hint is a placeholder: a plausible finding here is a suggestion about what
  * to go and find.
  * @param {{label: number}[]} sweeps
+ * @param {string} folder  The folder swept, absolute.
  * @returns {string}
  */
-function exampleAnswers(sweeps) {
+function exampleAnswers(sweeps, folder) {
   const lines = ["{", ` "${ANSWERS}": {`];
   sweeps.forEach((s, i) => {
     const end = i === sweeps.length - 1 ? "" : ",";
     if (i === 0) {
-      lines.push(`  "${s.label}": [`, `   ${RESULT_SHAPE}`, `  ]${end}`);
+      lines.push(`  "${s.label}": [`, `   ${resultShape(folder)}`, `  ]${end}`);
     } else {
       lines.push(`  "${s.label}": []${end}`);
     }

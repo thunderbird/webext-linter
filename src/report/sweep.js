@@ -36,8 +36,7 @@ import { rethrowIfFatal } from "../lib/errors.js";
 import { manualEscalations } from "../checks/escalation.js";
 import { renderManualItems } from "./responses.js";
 import { finding } from "./finding.js";
-import { trimEndOf } from "../util/text.js";
-import { MAX_HINT, RESULT_SHAPE } from "../config.js";
+import { MAX_HINT, resultShape } from "../config.js";
 
 /** @typedef {import("../checks/registry.js").Registry} Registry */
 
@@ -51,7 +50,7 @@ const RESULT_FIELDS = ["file", "line", "hint"];
 // The shape of one result and the length of its hint live in src/config.js, so every text
 // that states them - the sweep request (src/report/sweep-files.js) and the build analysis's
 // prompt (assets/registry.yaml) - reads the same two values this checker refuses against.
-export { MAX_HINT, RESULT_SHAPE };
+export { MAX_HINT, resultShape };
 
 /**
  * One thing a sweep found, checked.
@@ -64,21 +63,21 @@ export { MAX_HINT, RESULT_SHAPE };
  * names it in a phrase; where it lands and how it reads to a developer are the linter's,
  * from the owning check's registry entry. A result that set its own severity or response
  * would be an agent wording the report.
- * A result is also held to the tree it was found in: its file is a regular file inside
- * the folder the sweep read, and its line is one that file has. A line counted across
- * several files, or a file the agent misremembered, would hand the reader a location
- * pointing at nothing.
+ * A result is also held to the tree it was found in: its file, named by its absolute path,
+ * is a regular file inside the folder the sweep read, and its line is one that file has. A
+ * line counted across several files, or a file the agent misremembered, would hand the
+ * reader a location pointing at nothing. The file comes back relative to that folder.
  * @param {string} where  Names the slot it was written into, for the message.
  * @param {*} raw
  * @param {string} root  The folder the sweep read, absolute.
  * @param {Map<string, number>} [lineCounts]  Line counts by real path, shared across one
  *   reply, since one reply can name the same file many times.
- * @returns {{file: string, line: ?number, hint: ?string}}
+ * @returns {{file: string, line: ?number, hint: ?string}}  The file relative to `root`.
  */
 export function checkedResult(where, raw, root, lineCounts = new Map()) {
   const at = where;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error(`${at} must be an object, e.g. ${RESULT_SHAPE}`);
+    throw new Error(`${at} must be an object, e.g. ${resultShape(root)}`);
   }
   const extra = Object.keys(raw).filter((k) => !RESULT_FIELDS.includes(k));
   if (extra.length) {
@@ -88,31 +87,30 @@ export function checkedResult(where, raw, root, lineCounts = new Map()) {
   }
   if (typeof raw.file !== "string" || raw.file === "") {
     throw new Error(
-      `${at} names no "file" - a result must say where it was found, e.g. ${RESULT_SHAPE}`
+      `${at} names no "file" - a result must say where it was found, e.g. ${resultShape(root)}`
     );
   }
   // A result's path is AUTHORED by the agent, and it is the only path in the review that
-  // is. Downstream it is resolved against the artifact's root and handed back as a file to
-  // open (src/report/handback.js entriesFor), so a value that steps out of the artifact
-  // would have the linter publish a path outside the submission as its own claim. Refused
-  // in the same terms the reviewer's own folder flags are (src/addon/load.js
-  // hasParentSegment): a path names a file in the add-on, never a way out of it.
-  // "." and "./" are the two that walk nowhere: neither is absolute and neither holds a
-  // `..`, so they reach the resolver, which normalises them to the root and refuses them
-  // there - from a point the agent cannot be told about and before the review's state
-  // advances, so every retry re-throws and the review is dead. Refused here instead, where
-  // the caller turns this into a hand-back the agent can correct (src/report/handback.js).
-  // normalize keeps a trailing separator ("./" stays "./"), so strip it before asking -
-  // the resolver compares a RESOLVED path and would catch both.
-  const within = trimEndOf(path.normalize(raw.file), "\\/");
-  if (
-    path.isAbsolute(raw.file) ||
-    hasParentSegment(raw.file) ||
-    within === "" ||
-    within === "."
-  ) {
+  // is. The agent names the file by its absolute path, the way it opened it, so no folder
+  // it was given can be mistaken for the one the path starts from - a wrapper folder around
+  // the source's own project folder, for one. The linter makes it relative to the folder
+  // read and records that, so the review and the report read it in the artifact's own
+  // keyspace. A value that steps out of that folder would have the linter publish a path
+  // outside the submission as its own claim, so it is refused, as is one written with a
+  // `..` segment, in the same terms the reviewer's own folder flags are (src/addon/load.js
+  // hasParentSegment), and the folder itself. Refused here, where the caller turns this
+  // into a hand-back the agent can correct (src/report/handback.js).
+  const written = raw.file;
+  if (!path.isAbsolute(written) || hasParentSegment(written)) {
     throw new Error(
-      `${at} has file ${JSON.stringify(raw.file)} - a result names a file INSIDE the add-on, relative to its root, never an absolute path, a way out of one, or the root itself`
+      `${at} has file ${JSON.stringify(written)} - a result names a file by its absolute path, inside the folder that was read (${root}), never a relative path or a way out of it`
+    );
+  }
+  const rel =
+    relativeInside(written, root) ?? relativeInside(written, realOf(root));
+  if (rel === null || rel === "") {
+    throw new Error(
+      `${at} names file ${JSON.stringify(written)}, which is not a file inside ${root}`
     );
   }
   if (raw.line !== undefined && (!Number.isInteger(raw.line) || raw.line < 1)) {
@@ -120,15 +118,15 @@ export function checkedResult(where, raw, root, lineCounts = new Map()) {
       `${at} has line ${JSON.stringify(raw.line)} (expected a whole number from 1)`
     );
   }
-  const count = lineCountOf(root, raw.file, lineCounts);
+  const count = lineCountOf(root, rel, lineCounts);
   if (count === null) {
     throw new Error(
-      `${at} names file ${JSON.stringify(raw.file)}, which is not a file in the folder the sweep read`
+      `${at} names file ${JSON.stringify(written)}, which is not a file inside ${root}`
     );
   }
   if (raw.line !== undefined && raw.line > count) {
     throw new Error(
-      `${at} names line ${raw.line} of ${JSON.stringify(raw.file)}, which has ${count} lines - a line is that file's own line number, counted from its first line`
+      `${at} names line ${raw.line} of ${JSON.stringify(written)}, which has ${count} lines - a line is that file's own line number, counted from its first line`
     );
   }
   if (
@@ -145,10 +143,26 @@ export function checkedResult(where, raw, root, lineCounts = new Map()) {
     );
   }
   return {
-    file: raw.file,
+    file: rel,
     line: raw.line ?? null,
     hint: raw.hint ?? null,
   };
+}
+
+/**
+ * The real path of a folder, or the folder as given where it cannot be resolved: the second
+ * form a written path is held against, for an agent that named the file through the folder's
+ * real path, or a folder given through a link.
+ * @param {string} folder
+ * @returns {string}
+ */
+function realOf(folder) {
+  try {
+    return fs.realpathSync(folder);
+  } catch (err) {
+    rethrowIfFatal(err);
+    return folder;
+  }
 }
 
 /**

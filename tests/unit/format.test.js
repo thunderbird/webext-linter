@@ -16,6 +16,7 @@ import {
   locusLabeler,
   locationLine,
   issuesBodyLines,
+  scaPromptLines,
 } from "../../src/report/format.js";
 import { withoutColor } from "../../src/util/color.js";
 import { orderReview, hasLocus } from "../../src/report/order.js";
@@ -28,7 +29,7 @@ import {
   assertScaPrompt,
   loadRegistry,
 } from "../../src/checks/registry.js";
-import { MAX_HINT, PROMPT_SKIPS, RESULT_SHAPE } from "../../src/config.js";
+import { MAX_HINT, PROMPT_SKIPS, resultShape } from "../../src/config.js";
 import {
   resolveHolds,
   hasErrors,
@@ -1649,13 +1650,17 @@ test("the build check prompts come from the registry and every part is required"
     /invalid `value` "close"/
   );
   // The build analysis is asked for its issues in the shape and length the hand-back holds
-  // them to, filled in from the one place both are kept.
+  // them to, filled in from the one place both are kept: the length at load, the shape where
+  // the prompt is printed, its file an absolute path in SCA_SOURCE.
   const analyze = prompt.steps.analyze.map((s) => s.text).join("\n");
-  assert.ok(analyze.includes(RESULT_SHAPE));
   assert.ok(analyze.includes(`at most ${MAX_HINT} characters`));
-  for (const slot of ["{{maxHint}}", "{{issueShape}}"]) {
-    assert.ok(!analyze.includes(slot), `${slot} is filled`);
-  }
+  assert.ok(!analyze.includes("{{maxHint}}"), "{{maxHint}} is filled");
+  const printed = scaPromptLines(prompt, "analyze", {
+    scaSource: "/work/sca",
+    flags: ["--llm-handback /work"],
+  }).join("\n");
+  assert.ok(printed.includes(resultShape("/work/sca")), printed);
+  assert.ok(!printed.includes("{{issueShape}}"), "{{issueShape}} is filled");
   // The intro opens the first prompt of both source review runs, and says how to write.
   assert.ok(prompt.intro.includes(loadRegistry().proseStyle()));
   assert.ok(!prompt.intro.includes("{{proseStyle}}"));
