@@ -1140,6 +1140,7 @@ function notAudited(work, at) {
   assert.equal(at.record.current.vulnerabilities, null);
   assert.equal(at.record.current.buildResult, null, "nothing is built");
   assert.ok(!fs.existsSync(workPaths(work).rescued), "no copy is made");
+  assert.ok(!fs.existsSync(workPaths(work).buildCopy), "nothing is built");
 }
 
 // A lock entry that names one release and installs another is a lock the audit cannot trust
@@ -1178,6 +1179,17 @@ test("a source the audit cannot read in full is neither built nor rescued", asyn
   await t.test("no lock at all", async () => {
     const work = workFolder(
       { "package.json": packageFile() },
+      { vulns: TOOL_HIGH }
+    );
+    notAudited(work, await first(work));
+    cleanup(work);
+  });
+  await t.test("a lock that does not parse", async () => {
+    const work = workFolder(
+      {
+        "package.json": packageFile(),
+        "package-lock.json": '{"packages": {',
+      },
       { vulns: TOOL_HIGH }
     );
     notAudited(work, await first(work));

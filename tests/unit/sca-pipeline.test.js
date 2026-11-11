@@ -2402,3 +2402,31 @@ test("an aborted review whose build check counted nothing counts the lock it aud
       .includes("* SCA_VULNERABILITIES: 0 moderate, 0 high, 1 critical")
   );
 });
+
+// A lock the review cannot read leaves its audit with no tree, which is not a clean one: the
+// review counts nothing, and its details name no count.
+test("a review whose lock cannot be read counts no vulnerabilities", async () => {
+  const src = fs.mkdtempSync(path.join(os.tmpdir(), "wrr-sca-"));
+  fs.cpSync(path.join(UNRESCUED_FIXTURE, "src"), src, { recursive: true });
+  fs.writeFileSync(path.join(src, "package-lock.json"), '{"packages": {');
+  const workFolder = freshWorkFolder();
+  const { record, review } = await agentReview({
+    addonPath: path.join(UNRESCUED_FIXTURE, "xpi"),
+    scaExtracted: src,
+    workFolder,
+    workCache: seedWorkCache({}),
+    checksSkip: ["vendor-vulnerable-indirect-dev"],
+    ...OFFLINE,
+    cdnLookupCache: cdnMissCache(path.join(UNRESCUED_FIXTURE, "xpi"), src),
+  });
+  assert.ok(review.report.meta.checksRun.includes("vendor-vulnerable-dev"));
+  assert.ok(
+    review.report.findings.some((f) => f.ruleId === "sca-lock-file-invalid")
+  );
+  assert.equal(review.vulnerabilities, null);
+  assert.ok(
+    !reviewDetails(review, record, workFolder, loadRegistry()).includes(
+      "SCA_VULNERABILITIES"
+    )
+  );
+});

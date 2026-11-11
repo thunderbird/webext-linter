@@ -30,6 +30,7 @@ import { workPaths, runCache } from "./util/dest.js";
 import { defaultNet } from "./vendor/verify.js";
 import { withRunCache } from "./vendor/run-cache.js";
 import { withSourceCache } from "./vendor/source-cache.js";
+import { governingLock, unreadableLock } from "./vendor/locks.js";
 import {
   BUILD_CHECK_STEP,
   buildCheckBody,
@@ -1065,14 +1066,20 @@ const VULNERABILITY_EXIT = "known-vulnerabilities";
  * audit, as the build check counts a lock it audited (vulnerabilityCounts). Null where the
  * audit did not happen. It happened once any dependency-vulnerability check ran: each reads
  * the vendor reading, which audits the whole lock first and records every list at once, or
- * ends the run (src/vendor/verify.js auditLockedPackages).
+ * ends the run (src/vendor/verify.js auditLockedPackages). Null too where there is no lock
+ * or it cannot be read: the audit then saw no tree, which is not a clean one.
  * @param {?import("./addon/load.js").Addon} archive  The source archive, or null.
  * @param {boolean} audited  A dependency-vulnerability check ran.
  * @returns {?import("./build-check/audit.js").VulnerabilityCounts}
  */
 function lockVulnerabilities(archive, audited) {
   const vendor = archive?.vendor;
-  if (!vendor || !audited) {
+  if (
+    !vendor ||
+    !audited ||
+    governingLock(archive) === null ||
+    unreadableLock(archive) !== null
+  ) {
     return null;
   }
   return vulnerabilityCounts({

@@ -6529,8 +6529,9 @@ test("review-downgrade is refused without an abort, and on input source or xpi",
   })();
 });
 
-// The checks verify never audits: a person's decision, or a fact from outside the add-on.
-test("llm-verification is false for decisions and outside facts alone", () => {
+// The checks verify never audits: a person's decision, a fact from outside the add-on, or a
+// fact the build check already acted on (the review-unbuildable checks).
+test("llm-verification is false for decisions, outside facts and unbuildable sources alone", () => {
   const registry = loadRegistry();
   assert.deepEqual(
     registry
@@ -6543,7 +6544,13 @@ test("llm-verification is false for decisions and outside facts alone", () => {
       "build-not-reproduced",
       "build-unsafe",
       "experiment-not-allowed",
+      "lock-foreign-source",
+      "sca-lock-file-invalid",
+      "sca-lock-file-missing",
+      "sca-lock-file-multiple",
       "sca-not-needed",
+      "sca-package-file-invalid",
+      "sca-package-file-missing",
       "unpopular-source-dependency",
       "vendor-vulnerable",
       "vendor-vulnerable-dev",
@@ -7200,7 +7207,7 @@ test("abortsReview: only an error from a check naming an early-exit reason stops
 // The checks that say no build can be made from the source: with one of their findings
 // standing, the review asks nobody to build it. Pinned, so a check joining or leaving the
 // set is a decision made here.
-test("review-unbuildable marks exactly the package.json and lock checks", () => {
+test("review-unbuildable marks exactly the package.json, lock and lock-source checks", () => {
   const registry = loadRegistry();
   assert.deepEqual(
     registry
@@ -7208,6 +7215,7 @@ test("review-unbuildable marks exactly the package.json and lock checks", () => 
       .filter((id) => registry.unbuildable(id))
       .sort(),
     [
+      "lock-foreign-source",
       "sca-lock-file-invalid",
       "sca-lock-file-missing",
       "sca-lock-file-multiple",

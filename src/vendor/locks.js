@@ -221,7 +221,7 @@ function parsedLock(addon, file) {
   try {
     if (text) {
       const clean = stripBom(text);
-      data = file.endsWith(".json") ? parseJson(clean) : YAML.parse(clean);
+      data = file.endsWith(".json") ? parseJson(clean) : pnpmProjectLock(clean);
     }
   } catch (err) {
     rethrowIfFatal(err);
@@ -229,6 +229,44 @@ function parsedLock(addon, file) {
   }
   byFile.set(file, data);
   return data;
+}
+
+/**
+ * The project's lock out of a pnpm-lock.yaml, or null when there is not exactly one. pnpm
+ * writes a second YAML document ahead of it where package.json names a `packageManager`:
+ * the environment lock, which pins pnpm itself and the config dependencies, not the
+ * add-on's. That document is dropped. pnpm still reads the file whole when it installs.
+ * @param {string} text
+ * @returns {?object}
+ * @throws {Error}  A document that does not parse.
+ */
+function pnpmProjectLock(text) {
+  const projects = [];
+  for (const doc of YAML.parseAllDocuments(text)) {
+    if (doc.errors.length) {
+      throw doc.errors[0];
+    }
+    const data = doc.toJS();
+    if (!isEnvironmentLock(data)) {
+      projects.push(data);
+    }
+  }
+  return projects.length === 1 ? projects[0] : null;
+}
+
+/**
+ * Whether a pnpm-lock.yaml document is the environment lock: its root importer holds what
+ * pnpm writes only there, the package manager and the config dependencies.
+ * @param {unknown} data  One parsed document.
+ * @returns {boolean}
+ */
+function isEnvironmentLock(data) {
+  const root = plainObject(data?.importers) ? data.importers["."] : null;
+  return (
+    plainObject(root) &&
+    (Object.hasOwn(root, "packageManagerDependencies") ||
+      Object.hasOwn(root, "configDependencies"))
+  );
 }
 
 /**

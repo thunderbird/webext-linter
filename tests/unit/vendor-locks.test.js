@@ -482,6 +482,67 @@ test("pnpm v9 derives dev from reachability, in both directions", () => {
   assert.equal(byName["esbuild"], true);
 });
 
+// pnpm writes the environment lock ahead of the project's where package.json names a
+// `packageManager`: a second YAML document pinning pnpm itself. The readers read the
+// project's document, and pnpm's own packages are not the add-on's.
+const ENVIRONMENT_LOCK = [
+  "---",
+  "lockfileVersion: '9.0'",
+  "importers:",
+  "  .:",
+  "    configDependencies: {}",
+  "    packageManagerDependencies:",
+  "      pnpm:",
+  "        specifier: 12.11.2",
+  "        version: 12.11.2",
+  "packages:",
+  "  '@pnpm/exe.linux-x64@12.11.2':",
+  "    resolution: {integrity: sha512-AAAA}",
+  "snapshots:",
+  "  '@pnpm/exe.linux-x64@12.11.2': {}",
+].join("\n");
+const PROJECT_LOCK = [
+  "---",
+  "lockfileVersion: '9.0'",
+  "importers:",
+  "  .:",
+  "    dependencies:",
+  "      ms:",
+  "        specifier: ^2.1.3",
+  "        version: 2.1.3",
+  "packages:",
+  "  ms@2.1.3:",
+  "    resolution: {integrity: sha512-BBBB}",
+  "snapshots:",
+  "  ms@2.1.3: {}",
+].join("\n");
+
+test("pnpm reads the project's lock behind the environment lock", () => {
+  const addon = fakeAddon({
+    "package.json": '{"dependencies": {"ms": "^2.1.3"}}',
+    "pnpm-lock.yaml": `${ENVIRONMENT_LOCK}\n\n${PROJECT_LOCK}\n`,
+  });
+  assert.equal(lockedVersion(addon, "ms"), "2.1.3");
+  assert.equal(lockedVersion(addon, "pnpm"), null);
+  assert.deepEqual(names(addon), ["ms@2.1.3"]);
+  assert.equal(unreadableLock(addon), null);
+});
+
+// Only one document can be the project's lock: two leave no telling which the install
+// reads, and the environment lock alone holds none.
+test("a pnpm lock with no project document, or two, is unreadable", () => {
+  for (const text of [ENVIRONMENT_LOCK, `${PROJECT_LOCK}\n${PROJECT_LOCK}`]) {
+    const addon = fakeAddon({
+      "package.json": '{"dependencies": {"ms": "^2.1.3"}}',
+      "pnpm-lock.yaml": `${text}\n`,
+    });
+    assert.deepEqual(unreadableLock(addon), {
+      file: "pnpm-lock.yaml",
+      reason: "unreadable",
+    });
+  }
+});
+
 // A snapshot key carries a peer-dependency tail that the packages key does not,
 // so reachability has to be matched on the bare name@version both reduce to -
 // otherwise every package with a peer dependency would read as build-time only.

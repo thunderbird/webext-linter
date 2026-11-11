@@ -2463,6 +2463,35 @@ test("an unbuildable source skips the build question, a buildable rejected one d
   assert.equal(aborted(settled), true);
 });
 
+// The build check built nothing on an unreadable lock or one installing from a source the
+// audit cannot read, so the agent may not withdraw that finding: it opens in no verify, and
+// the build question stays skipped, however the agent would have answered.
+test("a finding that stopped the build check is not verified, and the build is not asked", () => {
+  const registry = loadRegistry();
+  for (const ruleId of ["sca-lock-file-invalid", "lock-foreign-source"]) {
+    assert.equal(registry.unbuildable(ruleId), true, ruleId);
+    assert.equal(registry.verifiedByLlm(ruleId), false, ruleId);
+    const made = buildQuestionsReview(tmp());
+    made.state.report.findings.push({
+      ruleId,
+      severity: "error",
+      file: "package-lock.json",
+      loc: null,
+      artifact: ARTIFACT_SCA,
+      message: ruleId,
+      llmVerification: false,
+    });
+    refed(made.state);
+    const { seen, handed, settled } = driveBuild(
+      made,
+      goesOn({ verify: () => "withdrawn" })
+    );
+    assert.ok(!(handed.verify ?? []).includes(ruleId), handed.verify);
+    assert.ok(!seen.includes("built"), seen.join(", "));
+    assert.equal(aborted(settled), true);
+  }
+});
+
 // An install hook is still settled in `settle`, after the build, and reported there it
 // still aborts the review.
 test("an install hook reported in settle aborts the review", () => {

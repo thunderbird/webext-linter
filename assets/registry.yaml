@@ -41,13 +41,15 @@ deterministic-phase:
 # `llm-verification` says whether `verify` audits a check's findings. It is false where a
 # finding is a person's decision or a fact from outside the add-on (an OSV advisory, the
 # banned versions, npm download counts), which the agent cannot check against the package.
+# It is false on every `review-unbuildable` check too: the build check acted on the same fact
+# before the review started, and built nothing, which no verdict of the agent undoes.
 #
 # `review-unbuildable: true` on an aborting check of the source archive says no build can be
-# made from the source by the review's own rules: no usable package.json, or no single
-# readable lock for `npm ci` or `pnpm install --frozen-lockfile` to install from. A source
-# review holding such a finding asks nobody to build it: the `built` phase is skipped (the
-# `unbuildable` fact, src/report/loop.js runOf), and the review goes on to the sweeps and ends
-# late.
+# made from the source by the review's own rules: no usable package.json, no single readable
+# lock for `npm ci` or `pnpm install --frozen-lockfile` to install from, or a lock entry
+# installed from a source the audit cannot read. A source review holding such a finding asks
+# nobody to build it: the `built` phase is skipped (the `unbuildable` fact, src/report/loop.js
+# runOf), and the review goes on to the sweeps and ends late.
 
 # Aborts the review of an Experiment that uses an UNSUPPORTED experiment (an
 # unknown API draft, or one shadowing a built-in). A recognised but modified draft
@@ -148,7 +150,7 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-package-file-missing
-  llm-verification: true
+  llm-verification: false
   review-downgrade: true
   review-unbuildable: true
   input: sca
@@ -171,7 +173,7 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-package-file-invalid
-  llm-verification: true
+  llm-verification: false
   review-downgrade: true
   review-unbuildable: true
   input: sca
@@ -197,7 +199,7 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-lock-file-missing
-  llm-verification: true
+  llm-verification: false
   review-downgrade: true
   review-unbuildable: true
   input: sca
@@ -216,7 +218,7 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-lock-file-invalid
-  llm-verification: true
+  llm-verification: false
   review-downgrade: true
   review-unbuildable: true
   input: sca
@@ -237,7 +239,7 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-lock-file-multiple
-  llm-verification: true
+  llm-verification: false
   review-downgrade: true
   review-unbuildable: true
   input: sca
@@ -275,12 +277,15 @@ deterministic-phase:
 # GitHub installs bytes the audit vouched for under another name. Read from the governing lock
 # (src/vendor/locks.js lockSourceGaps); {{item}} names the package and the recorded source.
 - title: Lock file installs from an unsupported source
+# The build check's audit stops on the same entries and builds nothing, so the source is
+# unbuildable.
   severity: error
   review-late-exit: unreproducible-build
   check: lock-foreign-source
-  llm-verification: true
+  llm-verification: false
   review-downgrade: true
   build-guard: true
+  review-unbuildable: true
   input: sca
   response: |-
     The committed lock file installs the following package(s) from a source the review does not support. Every dependency must install from the npm registry (registry.npmjs.org) or from GitHub. Please install the dependencies from those sources and commit the regenerated lock file.

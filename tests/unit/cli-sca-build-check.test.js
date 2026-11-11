@@ -166,8 +166,8 @@ test("a reviewer who builds it themselves starts a review they build for", () =>
     managers: "Build it myself",
   });
   assert.notEqual(handed.code, 2, handed.stdout + handed.stderr);
-  // The build check's results, in the record's permanent part: it audited nothing, so the
-  // submitted lock is counted by the review's own audit, in mode review's own part.
+  // The build check's results, in the record's permanent part: it audited nothing. The
+  // review's own audit counts nothing either, since the source has no lock to count.
   const record = readJson(work, "state");
   assert.equal(record.build.packageManagers, false);
   assert.deepEqual(
@@ -190,11 +190,7 @@ test("a reviewer who builds it themselves starts a review they build for", () =>
       safe: true,
     }
   );
-  assert.deepEqual(record.current.vulnerabilities, {
-    moderate: 0,
-    high: 0,
-    critical: 0,
-  });
+  assert.equal(record.current.vulnerabilities, null);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
