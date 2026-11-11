@@ -17,11 +17,14 @@ https://github.com/thunderbird/webext-linter
 
 Continue manual review for the following checks:
 
-1) Unknown or unsupported WebExtension API: Check whether each reference below
-   is guarded, so the add-on still works on a Thunderbird that does not have the
-   name. The schema does not have these names, or marks them unsupported, for
-   the version this add-on targets. A feature detection with a working fallback,
-   a shim or a try/catch all count. Report it unless you can point at the guard.
+1) Unknown or unsupported WebExtension API: Check whether the add-on still works
+   on a Thunderbird that does not have the name of each reference below. The
+   schema does not have these names, or marks them unsupported, for the version
+   this add-on targets. It does where the reference is guarded (a feature
+   detection with a working fallback, a shim or a try/catch all count), or where
+   it is in code the Thunderbird release build never puts into the XPI. Report
+   it unless you can point at the guard, or at what keeps the code out of that
+   build.
 Suggested verdict: error
 Suggested response: The following WebExtension APIs are not supported in the targeted Thunderbird version.
 Read more: https://webextension-api.thunderbird.net/.

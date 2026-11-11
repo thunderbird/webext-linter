@@ -69,11 +69,14 @@ https://github.com/thunderbird/webext-linter
 
 Continue manual review for the following checks:
 
-1) Unknown or unsupported WebExtension API: Check whether each reference below
-   is guarded, so the add-on still works on a Thunderbird that does not have the
-   name. The schema does not have these names, or marks them unsupported, for
-   the version this add-on targets. A feature detection with a working fallback,
-   a shim or a try/catch all count. Report it unless you can point at the guard.
+1) Unknown or unsupported WebExtension API: Check whether the add-on still works
+   on a Thunderbird that does not have the name of each reference below. The
+   schema does not have these names, or marks them unsupported, for the version
+   this add-on targets. It does where the reference is guarded (a feature
+   detection with a working fallback, a shim or a try/catch all count), or where
+   it is in code the Thunderbird release build never puts into the XPI. Report
+   it unless you can point at the guard, or at what keeps the code out of that
+   build.
 Suggested verdict: error
 Suggested response: The following WebExtension APIs are not supported in the targeted Thunderbird version.
 Read more: https://webextension-api.thunderbird.net/.
@@ -112,8 +115,10 @@ An example can be found here: https://github.com/thunderbird/webext-examples/tre
    for the Thunderbird versions where it throws: those between the add-on's
    strict_min_version and the version that introduced the API. A feature
    detection, a cached flag, an early return, a try/catch or an explicit version
-   gate all count. Report it unless you can point at the guard, which asks the
-   developer to raise strict_min_version.
+   gate all count. A call in code the Thunderbird release build never puts into
+   the XPI never throws. Report it unless you can point at the guard, or at what
+   keeps the code out of that build, which asks the developer to raise
+   strict_min_version.
 Suggested verdict: error
 Suggested response: The add-on is setting strict_min_version to 128.0 but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
  - background.js:10 - browser.messages.future() - added in Thunderbird 200

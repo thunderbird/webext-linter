@@ -22,8 +22,10 @@ An example can be found here: https://github.com/thunderbird/webext-examples/tre
    for the Thunderbird versions where it throws: those between the add-on's
    strict_min_version and the version that introduced the API. A feature
    detection, a cached flag, an early return, a try/catch or an explicit version
-   gate all count. Report it unless you can point at the guard, which asks the
-   developer to raise strict_min_version.
+   gate all count. A call in code the Thunderbird release build never puts into
+   the XPI never throws. Report it unless you can point at the guard, or at what
+   keeps the code out of that build, which asks the developer to raise
+   strict_min_version.
 Suggested verdict: error
 Suggested response: The add-on is setting strict_min_version to 115.0 but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
  - background.js:5 - browser.messages.tags.list() - added in Thunderbird 121

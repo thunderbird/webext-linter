@@ -469,16 +469,19 @@ deterministic-phase:
   instructions-for-llm: |-
     Each reference below is to a name the schema does not have, or marks
     unsupported, for the targeted Thunderbird version. Check whether the
-    reference is guarded, so the add-on still works where the name is
-    missing: a feature detection with a working fallback, a shim or a
-    try/catch all count. Clear it if you can point at the guard; report it
-    otherwise.
+    add-on still works where the name is missing: the reference is guarded (a
+    feature detection with a working fallback, a shim or a try/catch all
+    count), or it is in code the Thunderbird release build never puts into
+    the XPI. Clear it if you can point at the guard, or at what keeps the code
+    out of that build; report it otherwise.
   instructions-for-human: |-
-    Check whether each reference below is guarded, so the add-on still works
-    on a Thunderbird that does not have the name. The schema does not have
-    these names, or marks them unsupported, for the version this add-on
-    targets. A feature detection with a working fallback, a shim or a
-    try/catch all count. Report it unless you can point at the guard.
+    Check whether the add-on still works on a Thunderbird that does not have
+    the name of each reference below. The schema does not have these names,
+    or marks them unsupported, for the version this add-on targets. It does
+    where the reference is guarded (a feature detection with a working
+    fallback, a shim or a try/catch all count), or where it is in code the
+    Thunderbird release build never puts into the XPI. Report it unless you
+    can point at the guard, or at what keeps the code out of that build.
 
 # Flags deprecated APIs.
 - title: Deprecated WebExtension API
@@ -1613,14 +1616,18 @@ deterministic-phase:
     strict_min_version, so it throws on the versions in between. Check
     whether the call is guarded for those versions - a feature detection, a
     cached flag, an early return, a try/catch or an explicit version gate
-    all count. Clear it where a guard covers it; report it otherwise, which
-    asks the developer for a higher strict_min_version.
+    all count - or is in code the Thunderbird release build never puts into
+    the XPI. Clear it where a guard covers it, or where you can point at what
+    keeps the code out of that build. Report it otherwise, which asks the
+    developer for a higher strict_min_version.
   instructions-for-human: |-
     Check whether each call below is guarded for the Thunderbird versions
     where it throws: those between the add-on's strict_min_version and the
     version that introduced the API. A feature detection, a cached flag, an
-    early return, a try/catch or an explicit version gate all count. Report
-    it unless you can point at the guard, which asks the developer to raise
+    early return, a try/catch or an explicit version gate all count. A call
+    in code the Thunderbird release build never puts into the XPI never
+    throws. Report it unless you can point at the guard, or at what keeps the
+    code out of that build, which asks the developer to raise
     strict_min_version.
   response: |-
     The add-on is setting strict_min_version to {{min}} but uses functions or events which were added later. Please adjust the value of strict_min_version accordingly.
@@ -2792,6 +2799,8 @@ llm-phases:
             {{schema}}
 
             Judge every API, permission and method against SCHEMA, never against what you remember: a name the schema does not have is not a name this add-on can use, whatever another version of Thunderbird offers.
+
+            A claim about code the Thunderbird release build never puts into the XPI is not correct: that code is not part of the add-on.
 
     # Settles what a check could not. Its intro earns its text too: "your job here, not the
     # reviewer's" is what stops the agent deferring, and it is in tension with the entries
