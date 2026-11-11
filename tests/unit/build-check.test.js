@@ -60,7 +60,12 @@ import {
   writeBuildReport,
   writeTree,
 } from "../build-checked.js";
-import { osvEntries, seeded, seedWorkCache } from "../seed-caches.js";
+import {
+  osvEntries,
+  popularityEntries,
+  seeded,
+  seedWorkCache,
+} from "../seed-caches.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(here, "..", "..");
@@ -274,6 +279,22 @@ function seedRunOsv(work, entries) {
     : {};
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({ ...cache, ...entries }));
+}
+
+/** npm's downloads of the build tool every lock here declares: a widely-used one, so the
+ *  audit's popularity question lets it through. */
+const POPULAR_TOOL = popularityEntries({
+  npm: { "lint-pebble": { downloads: 9_000_000 } },
+});
+
+/** Seed the run's own popularity cache with the build tool's reading (POPULAR_TOOL). */
+function seedRunPopularity(work) {
+  const file = runCache(
+    work,
+    recordOf(work).flags?.["cache-work-dir"]
+  ).popularity;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(POPULAR_TOOL));
 }
 
 /** Whether every entry of a run's OSV cache file holds OSV's answer. */
@@ -1210,6 +1231,27 @@ test("a source the audit cannot read in full is neither built nor rescued", asyn
   });
 });
 
+// A declared package that is not a confirmed widely-used library is one nobody can review, and
+// the review aborts on it. So nothing is built that runs it, and a vulnerable lock is not
+// rescued either. The audit read the tree in full, so its counts are recorded.
+test("a lock declaring a package nobody can review is neither built nor rescued", async () => {
+  const work = workFolder(
+    {
+      "package.json": packageFile(),
+      "package-lock.json": npmLock(),
+    },
+    { cache: auditCache(TOOL_HIGH, ["lint-pebble"]) }
+  );
+  const at = await first(work);
+  assert.equal(at.next, "review");
+  assert.equal(at.record.current.step, BUILD_CHECK_STEP.done);
+  assert.deepEqual(at.record.current.vulnerabilities, ONE_HIGH);
+  assert.equal(at.record.current.buildResult, null, "nothing is built");
+  assert.ok(!fs.existsSync(workPaths(work).rescued), "no copy is made");
+  assert.ok(!fs.existsSync(workPaths(work).buildCopy), "nothing is built");
+  cleanup(work);
+});
+
 // ---- the rescue ----
 
 /** A work folder rescued for the build tool's advisory: the copy, at `rescue`. Its audits
@@ -1401,6 +1443,7 @@ test("the audit reads the run's OSV cache", async () => {
     { cache: null }
   );
   seedRunOsv(work, liveAudit(TOOL_HIGH));
+  seedRunPopularity(work);
   const at = await first(work);
   assert.equal(at.record.current.step, BUILD_CHECK_STEP.rescue);
   assert.ok(allAnswered(path.join(work, ".cache", "osv.json")));
@@ -1419,7 +1462,10 @@ test("the audit reads the run's OSV cache", async () => {
 // A run that names its cache folder (--cache-work-dir, forwarded in the record) keeps OSV's
 // answers there instead, so the build check and its review read the folder a test seeded.
 test("a step asks through the cache folder its record names", async () => {
-  const dir = seedWorkCache({ osv: liveAudit(TOOL_HIGH) });
+  const dir = seedWorkCache({
+    osv: liveAudit(TOOL_HIGH),
+    popularity: POPULAR_TOOL,
+  });
   const work = workFolder(
     {
       "package.json": packageFile(),
@@ -1499,7 +1545,12 @@ test("an audit OSV does not answer ends the build check", async (t) => {
         "package.json": packageFile(),
         "package-lock.json": npmLock(),
       },
-      { cache: seedWorkCache({ osv: batchDown("lint-pebble@0.4.0") }) }
+      {
+        cache: seedWorkCache({
+          osv: batchDown("lint-pebble@0.4.0"),
+          popularity: POPULAR_TOOL,
+        }),
+      }
     );
     await assert.rejects(first(work), noAnswer);
     assert.equal(recordOf(work).current.step, BUILD_CHECK_STEP.permission);

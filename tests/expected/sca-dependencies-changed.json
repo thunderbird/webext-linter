@@ -23,6 +23,9 @@
   "network": {
     "https://api.npmjs.org/downloads/point/last-month/tidy-lantern": {
       "status": 404
+    },
+    "https://api.npmjs.org/downloads/point/last-month/lint-pebble": {
+      "json": { "downloads": 9000000 }
     }
   }
 }

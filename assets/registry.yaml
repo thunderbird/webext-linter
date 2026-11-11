@@ -46,10 +46,11 @@ deterministic-phase:
 #
 # `review-unbuildable: true` on an aborting check of the source archive says no build can be
 # made from the source by the review's own rules: no usable package.json, no single readable
-# lock for `npm ci` or `pnpm install --frozen-lockfile` to install from, or a lock entry
-# installed from a source the audit cannot read. A source review holding such a finding asks
-# nobody to build it: the `built` phase is skipped (the `unbuildable` fact, src/report/loop.js
-# runOf), and the review goes on to the sweeps and ends late.
+# lock for `npm ci` or `pnpm install --frozen-lockfile` to install from, a lock entry
+# installed from a source the audit cannot read, or a declared dependency nobody can review.
+# A source review holding such a finding asks nobody to build it: the `built` phase is skipped
+# (the `unbuildable` fact, src/report/loop.js runOf), and the review goes on to the sweeps and
+# ends late.
 
 # Aborts the review of an Experiment that uses an UNSUPPORTED experiment (an
 # unknown API draft, or one shadowing a built-in). A recognised but modified draft
@@ -823,10 +824,14 @@ deterministic-phase:
 # can instead be included readable in the archive as a local file: package, which the review
 # treats as authored code; or replaced, or removed where the add-on does not need it.
 # verifyScaDependencies records both (vendor.unpopularDeps), anchored at the lock entry.
+# The build check asks the same before anything is built, and builds nothing on such a
+# dependency, so the source is unbuildable, and the review aborts late on it.
 - title: Unreviewable dependency
   severity: error
+  review-late-exit: unreviewable-code
   check: unpopular-source-dependency
   llm-verification: false
+  review-unbuildable: true
   input: sca
   response: |-
     The following dependencies could not be confirmed as widely used, so they can be neither shipped nor used in the build without being reviewed. Replace each with a widely-used equivalent, remove it if the add-on does not need it, or include its non-minified source in the archive and declare it as a local package ("file:./path/to/it") so it is reviewed as part of the submission. Its own dependencies are checked the same way.

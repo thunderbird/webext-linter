@@ -291,6 +291,10 @@ export async function verifyVendorDeclarations(
  * Popularity uses a direct npm-downloads lookup (npmDownloads), not isPopular, so a
  * package npm has no reading for is skipped rather than false-rejected. A lookup that
  * gets no answer ends the review (src/util/net.js).
+ *
+ * The review asks it (src/review/products.js), and so does the build check of a source code
+ * review, before anything is built (src/build-check/audit.js auditRoot): an unreviewable
+ * dependency aborts the review, so the build check builds nothing that runs it.
  * @param {Addon} addon  Must already carry `addon.vendor` from resolveVendor.
  * @param {VendorNet} [net]
  * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist, applied to every
@@ -338,26 +342,6 @@ export async function verifyScaDependencies(addon, net = defaultNet, blocks) {
         token: dep.token,
       });
     }
-  }
-  await auditScaDependencies(addon, net, blocks);
-}
-
-/**
- * The half of the SCA dependency audit that decides whether the review can go on: every
- * package the lock installs, against the policy blocklist and OSV (auditLockedPackages).
- * verifyScaDependencies asks it after the popularity gate. The build check of a source code
- * review asks it on its own (src/build-check/audit.js), because no check that aborts a review
- * reads popularity.
- * @param {Addon} addon  Must already carry `addon.vendor` from resolveVendor.
- * @param {VendorNet} [net]
- * @param {?Map<string, object>} [blocks]  The Mozilla policy blocklist, applied to every
- *   installed package.
- * @returns {Promise<void>}
- */
-export async function auditScaDependencies(addon, net = defaultNet, blocks) {
-  const vendor = addon?.vendor;
-  if (!vendor) {
-    return;
   }
   await auditLockedPackages(vendor, net, blocks);
 }

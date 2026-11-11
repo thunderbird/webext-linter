@@ -15,7 +15,8 @@
 // Unless they let the agent build, the folder is done at once: a rescue runs package-manager
 // commands, so none is tried. Otherwise it audits the package root's lock (./audit.js). A lock
 // the audit cannot read in full is done: nothing is built, and the review it starts aborts on
-// that lock.
+// that lock. So is a lock with a declared dependency nobody can review: the review aborts on
+// that dependency, and nothing is built that runs it.
 // A clean lock moves on to `build`: the linter copies the whole `sca/` into `build/`, and the
 // agent builds the original there, as the lock pins it, and names what the build produced, or
 // that it failed. A vulnerable lock gets a RESCUED COPY of the whole `sca/` in the same work
@@ -515,10 +516,11 @@ function decided(work, record, id, reasons, context, prompt) {
 
 /**
  * What follows the permission: where the agent may not build, the folder done at once,
- * since a rescue would run package-manager commands. Otherwise the package root's lock audited, and
- * its counts recorded. A lock the audit cannot read in full is done with nothing built, a
- * clean one is copied whole into `build/` and handed to the agent to build there, and a
- * vulnerable one is rescued.
+ * since a rescue would run package-manager commands. Otherwise the package root's lock
+ * audited, and its counts recorded. A lock the audit cannot read in full, or one with a
+ * declared dependency nobody can review, is done with nothing built, a clean one is copied
+ * whole into `build/` and handed to the agent to build there, and a vulnerable one is
+ * rescued.
  * @param {string} work
  * @param {object} record  With its permission.
  * @param {AuditContext} context
@@ -531,7 +533,7 @@ async function permitted(work, record, context, prompt) {
   }
   const found = await auditRoot(record.current.roots, context);
   const audited = movedOn(record, {
-    vulnerabilities: vulnerabilityCounts(found),
+    vulnerabilities: found.complete ? vulnerabilityCounts(found) : null,
   });
   if (isClean(found)) {
     const { sca, buildCopy } = workPaths(work);
@@ -544,7 +546,7 @@ async function permitted(work, record, context, prompt) {
   if (isRescuable(found)) {
     return rescue(work, audited, prompt.rescueOutput, prompt.buildMatch);
   }
-  return done(work, record);
+  return done(work, audited);
 }
 
 /**

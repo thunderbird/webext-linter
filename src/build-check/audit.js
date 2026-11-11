@@ -9,10 +9,13 @@
 // about its work is read: this audit is the whole judgement, and a copy it cannot read in full
 // is not clean.
 //
-// It is the lock audit and nothing else. A lock it cannot trust to say what is installed - one
-// of several committed, an entry installed from a source the audit does not read, or one that
-// installs another release than it names - is not audited at all: its tree is not read in
-// full, so it is neither clean nor rescuable, and the review it is handed to aborts on it.
+// It is the lock audit and the popularity of the declared packages, and nothing else. A
+// declared package nobody can review - not a confirmed widely-used library - makes the root
+// neither clean nor rescuable: the review aborts on it, so nothing is built that runs it. A
+// lock it cannot trust to say what is installed - one of several committed, an entry
+// installed from a source the audit does not read, or one that installs another release than
+// it names - is not audited at all: its tree is not read in full, so it is neither clean nor
+// rescuable, and the review it is handed to aborts on it.
 // Whatever else a review can stop for - another abort reason, an Experiment, the run's
 // --checks-* or band policy - is the review's to decide, never predicted here. It reads the
 // lock the way the review reads it (src/pipeline.js loads
@@ -26,7 +29,7 @@
 
 import { loadSourceArchive, scaViews } from "../addon/load.js";
 import { resolveVendor } from "../vendor/resolve.js";
-import { auditScaDependencies } from "../vendor/verify.js";
+import { verifyScaDependencies } from "../vendor/verify.js";
 import {
   committedLocks,
   findLockInjections,
@@ -61,6 +64,8 @@ export const LOCK_AUDIT_LISTS = Object.freeze([
  *   advisories are recorded there.
  * @property {import("../vendor/verify.js").VendorVuln[]} moderate  The lock's packages
  *   whose worst advisory is moderate, which decide nothing and are only counted.
+ * @property {boolean} unreviewable  A declared package is not a confirmed widely-used
+ *   library (src/vendor/verify.js verifyScaDependencies), so nobody can review it.
  */
 
 /**
@@ -87,7 +92,7 @@ export async function auditRoot(roots, { net, cacheDir } = {}) {
     archive = loadSourceArchive(roots.used);
   } catch (err) {
     rethrowIfFatal(err);
-    return { complete: false, lists: none, moderate: [] };
+    return { complete: false, lists: none, moderate: [], unreviewable: false };
   }
   scaViews(archive, roots);
   // Asked before the audit, which would otherwise vouch for releases the install does not
@@ -99,19 +104,20 @@ export async function auditRoot(roots, { net, cacheDir } = {}) {
     lockSourceGaps(archive).length > 0 ||
     (await findLockInjections(archive, { net, cacheDir })).length > 0
   ) {
-    return { complete: false, lists: none, moderate: [] };
+    return { complete: false, lists: none, moderate: [], unreviewable: false };
   }
   archive.vendor = resolveVendor({ addon: archive, reviewerInstalls: true });
   // The policy blocklist is applied as the review applies it: a banned release is recorded
   // as blocked and never asked of OSV, so the lists hold what the review's checks will read.
   const blocks = parseLibraryBlocks((await resolveLibraryBlocks()).text);
-  await auditScaDependencies(archive, net, blocks);
+  await verifyScaDependencies(archive, net, blocks);
   const { vendor } = archive;
   return {
     complete:
       governingLock(archive) !== null && unreadableLock(archive) === null,
     lists: Object.fromEntries(LOCK_AUDIT_LISTS.map((l) => [l, vendor[l]])),
     moderate: vendor.moderateVulnerabilities,
+    unreviewable: vendor.unpopularDeps.length > 0,
   };
 }
 
@@ -142,19 +148,21 @@ function vulnerable(audit) {
 }
 
 /**
- * A package root whose lock the audit read in full and found nothing in.
+ * A package root whose lock the audit read in full and found nothing in, every declared
+ * package a reviewable one.
  * @param {RootAudit} audit
  * @returns {boolean}
  */
 export function isClean(audit) {
-  return audit.complete && !vulnerable(audit);
+  return audit.complete && !audit.unreviewable && !vulnerable(audit);
 }
 
 /**
- * A package root a rescued copy is made for: its lock read in full, and vulnerable.
+ * A package root a rescued copy is made for: its lock read in full, every declared package a
+ * reviewable one, and vulnerable.
  * @param {RootAudit} audit
  * @returns {boolean}
  */
 export function isRescuable(audit) {
-  return audit.complete && vulnerable(audit);
+  return audit.complete && !audit.unreviewable && vulnerable(audit);
 }

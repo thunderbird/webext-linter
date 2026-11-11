@@ -29,7 +29,12 @@ import { reviewFile, writeReviewFile } from "../src/report/handback.js";
 import { settlePackageRoot } from "../src/addon/package-root.js";
 import { loadRegistry } from "../src/checks/registry.js";
 import { workPaths } from "../src/util/dest.js";
-import { freshWorkFolder, osvEntries, seedWorkCache } from "./seed-caches.js";
+import {
+  freshWorkFolder,
+  osvEntries,
+  popularityEntries,
+  seedWorkCache,
+} from "./seed-caches.js";
 import { loadTheXpi } from "../src/review/start.js";
 
 /** An OSV advisory as the API serves it. */
@@ -68,12 +73,24 @@ export function auditEntries(vulns) {
 
 /**
  * A run cache folder outside any work folder, holding OSV's answers to the audit (`vulns`,
- * as auditEntries takes them), for a build check to name as its --cache-work-dir.
+ * as auditEntries takes them), for a build check to name as its --cache-work-dir. Every
+ * package named there is a widely-used one by its npm downloads, unless `unpopular` names it:
+ * the audit asks the popularity of each declared package before OSV.
  * @param {Record<string, object[]>} [vulns]
+ * @param {string[]} [unpopular]  Package names npm reports below the download bar.
  * @returns {string}
  */
-export const auditCache = (vulns = {}) =>
-  seedWorkCache({ osv: auditEntries(vulns) });
+export const auditCache = (vulns = {}, unpopular = []) => {
+  const npm = {};
+  for (const release of Object.keys(vulns)) {
+    const name = release.slice(0, release.lastIndexOf("@"));
+    npm[name] = { downloads: unpopular.includes(name) ? 0 : 9_000_000 };
+  }
+  return seedWorkCache({
+    osv: auditEntries(vulns),
+    popularity: popularityEntries({ npm }),
+  });
+};
 
 /** Write files under a folder, creating what is missing. */
 export function writeTree(dir, files) {

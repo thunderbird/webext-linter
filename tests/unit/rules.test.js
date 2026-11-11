@@ -7207,7 +7207,7 @@ test("abortsReview: only an error from a check naming an early-exit reason stops
 // The checks that say no build can be made from the source: with one of their findings
 // standing, the review asks nobody to build it. Pinned, so a check joining or leaving the
 // set is a decision made here.
-test("review-unbuildable marks exactly the package.json, lock and lock-source checks", () => {
+test("review-unbuildable marks exactly the package.json, lock, lock-source and dependency checks", () => {
   const registry = loadRegistry();
   assert.deepEqual(
     registry
@@ -7221,6 +7221,7 @@ test("review-unbuildable marks exactly the package.json, lock and lock-source ch
       "sca-lock-file-multiple",
       "sca-package-file-invalid",
       "sca-package-file-missing",
+      "unpopular-source-dependency",
     ]
   );
 });

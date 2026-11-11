@@ -2463,12 +2463,17 @@ test("an unbuildable source skips the build question, a buildable rejected one d
   assert.equal(aborted(settled), true);
 });
 
-// The build check built nothing on an unreadable lock or one installing from a source the
-// audit cannot read, so the agent may not withdraw that finding: it opens in no verify, and
-// the build question stays skipped, however the agent would have answered.
+// The build check built nothing on an unreadable lock, one installing from a source the audit
+// cannot read, or one declaring a package nobody can review, so the agent may not withdraw
+// that finding: it opens in no verify, and the build question stays skipped, however the
+// agent would have answered.
 test("a finding that stopped the build check is not verified, and the build is not asked", () => {
   const registry = loadRegistry();
-  for (const ruleId of ["sca-lock-file-invalid", "lock-foreign-source"]) {
+  for (const ruleId of [
+    "sca-lock-file-invalid",
+    "lock-foreign-source",
+    "unpopular-source-dependency",
+  ]) {
     assert.equal(registry.unbuildable(ruleId), true, ruleId);
     assert.equal(registry.verifiedByLlm(ruleId), false, ruleId);
     const made = buildQuestionsReview(tmp());
