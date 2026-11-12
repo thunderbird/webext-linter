@@ -339,8 +339,9 @@ async function scanIsBlindToObfuscation(ctx) {
  * (comments excluded) or manifest.json is deterministically unused - a finding (see the
  * blindness guard below for when this path stands down). Every other permission
  * escalates as a case for a reviewer to settle. Host match patterns are
- * minimize-host-permissions' concern and are skipped. Backs the unused-permission
- * producer.
+ * minimize-host-permissions' concern and are skipped. A name the schema knows as no
+ * permission is manifest-unknown-permission's concern and is skipped. Backs the
+ * unused-permission producer.
  * @param {RunContext} ctx
  * @param {?object[]} [prompts]  LoadedCheck.permissionTokens: the permission-prompts entries
  *   carrying the usage tokens. Absent/empty -> no deterministic verdicts,
@@ -405,6 +406,12 @@ export async function enumerateUnusedPermissions(ctx, prompts) {
       // manifest-key requirements above are located, rather than a line looked up here
       // and a file named by hand.
       const at = ctx.manifest.locus(key, i);
+      // A name that is no permission cannot be unused: manifest-unknown-permission
+      // reports it, against the same schema set.
+      if (!ctx.schema.validPermissions.has(p)) {
+        ctx.note?.(at, `${p} (not a known permission)`, VERDICT.SKIPPED);
+        return;
+      }
       if (used.has(p)) {
         // A reachable call provably requires it, so it is justified - not a manual
         // case. Every other declared permission is judged below.

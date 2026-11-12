@@ -23,16 +23,7 @@ https://github.com/thunderbird/webext-linter
 
 Continue manual review for the following checks:
 
-1) Possibly unused permissions: Check whether the add-on uses each permission
-   listed below. A permission counts as used when some part of the add-on calls
-   an API that requires it, including a call inside a bundled library. An add-on
-   should request only the permissions it needs, so the install-time prompt
-   stays minimal. Report the ones you cannot trace to a use.
-Suggested verdict: warning
-Suggested response: One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
- - manifest.json:4 - bogusPermission
-
-2) Missing English localization: Read the strings this add-on shows the user. It
+1) Missing English localization: Read the strings this add-on shows the user. It
    ships no English localization, so that text may be hardcoded in another
    language. English is Thunderbird's default, and most users who cannot read
    the hardcoded language will be able to read English. Report it unless the
@@ -190,5 +181,5 @@ Because the original project is still active, your submission does not meet thes
 ── Summary ──
 
 2 error(s), 0 hold, 0 warning(s), 1 info,
-2 extended code review item(s), 0 extended manual review item(s),
+1 extended code review item(s), 0 extended manual review item(s),
 5 standard code review item(s), 10 standard manual review item(s)

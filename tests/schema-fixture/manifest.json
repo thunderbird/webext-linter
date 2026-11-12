@@ -260,7 +260,8 @@
         "type": "string",
         "enum": [
           "storage",
-          "alarms"
+          "alarms",
+          "unlimitedStorage"
         ]
       },
       {
@@ -278,7 +279,10 @@
               "nativeMessaging",
               "notifications",
               "messagesModify",
-              "scripting"
+              "scripting",
+              "activeTab",
+              "cookies",
+              "tabs"
             ]
           }
         ]

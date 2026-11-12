@@ -2797,7 +2797,8 @@ test("manual checks have unique, doc-backed check ids distinct from rule ids", a
 // reminder.
 test("unused-permission lists the unprovable declared named permissions", async () => {
   const manifest = {
-    permissions: ["tabs", "https://example.com/*"],
+    // "windows" is no permission: manifest-unknown-permission's, never a case here.
+    permissions: ["tabs", "https://example.com/*", "windows"],
     optional_permissions: ["storage"],
     // >= 154 so the post-D308076 producer (this module) enumerates.
     browser_specific_settings: { gecko: { strict_min_version: "154" } },
@@ -2821,6 +2822,11 @@ test("unused-permission lists the unprovable declared named permissions", async 
     "tabs",
   ]);
   assert.ok(out.escalations.every((e) => e.file === "manifest.json"));
+  const notes = await notesFrom(unusedPermissionProducer, ctx);
+  assert.deepEqual(
+    notes.filter((n) => n.item.startsWith("windows")).map((n) => n.verdict),
+    [VERDICT.SKIPPED]
+  );
 });
 
 // The deterministic verdict: a permission whose linked prompt entries

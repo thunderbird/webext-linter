@@ -99,7 +99,6 @@ Suggested response: Debugger statement left in shipped code. Please remove it or
 Suggested verdict: warning
 Suggested response: One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
  - manifest.json:5 - clipboardWrite
- - manifest.json:5 - bogusPermission
 
 4) Missing English localization: Read the strings this add-on shows the user. It
    ships no English localization, so that text may be hardcoded in another
@@ -271,5 +270,5 @@ Because the original project is still active, your submission does not meet thes
 ── Summary ──
 
 9 error(s), 0 hold, 4 warning(s), 8 info,
-7 extended code review item(s), 0 extended manual review item(s),
+6 extended code review item(s), 0 extended manual review item(s),
 5 standard code review item(s), 10 standard manual review item(s)

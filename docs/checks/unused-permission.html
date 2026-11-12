@@ -34,7 +34,8 @@
         nowhere in the add-on's live code (comments excluded) or manifest is
         deterministically unused — a warning finding. Every remaining permission
         escalates for human review. Host match patterns are out of scope here — they belong to the
-        minimize-host-permissions check.
+        minimize-host-permissions check. So is a name the schema knows as no
+        permission: it cannot be unused, and manifest-unknown-permission reports it.
       </p>
       <p>
         <strong>The blindness guard.</strong> The check judges the
@@ -89,7 +90,9 @@ flowchart TD
   A["The add-on manifest"] --> P["Each declared named permission<br/>(required + optional)"]
   P --> H{"Is it a host match pattern?"}
   H -- yes --> OK([no finding — host check's concern])
-  H -- no --> U{"Provably required by a reachable API call,<br/>a navigator.* Web/DOM call, or a declared<br/>script-injection manifest key?"}
+  H -- no --> K{"Is it a permission the schema knows?"}
+  K -- no --> OK3([no finding — manifest-unknown-permission's concern])
+  K -- yes --> U{"Provably required by a reachable API call,<br/>a navigator.* Web/DOM call, or a declared<br/>script-injection manifest key?"}
   U -- yes --> OK2([no finding — justified])
   U -- no --> D{"Can the scan see every usage of the SHIPPED code?<br/>shipped code not obfuscated · every file parsed ·<br/>no unresolved dynamic API surface ·<br/>an API-usage view is present"}
   D -- no --> MAN(["a code-review reminder,<br/>naming the token sites"])
@@ -101,6 +104,7 @@ flowchart TD
   classDef warn fill:#fcf3e3,stroke:#b7791f,color:#7a531a;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
   class OK ok;
+  class OK3 ok;
   class OK2 ok;
   class WARN warn;
   class MAN manual;

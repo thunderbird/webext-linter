@@ -91,6 +91,7 @@
               "accountsRead",
               "messagesMove",
               "messagesDelete",
+              "messagesUpdate",
               "messagesTagsList",
               "compose"
             ]
