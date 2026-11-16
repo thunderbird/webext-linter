@@ -773,11 +773,14 @@ deterministic-phase:
   check: unsafe-html
   llm-verification: true
   llm-verification-instruction: |-
-    Read the line. Report it if it writes a value to the property or method
-    named in "item". Withdraw it if it does not, if the value is an empty string
-    or null, or if the line is in a bundled library. Withdraw it also if the
-    release build never puts this file into the XPI. Do not withdraw it because
-    the value is static, sanitised, sandboxed or covered by a CSP.
+    Read the line. Report it if it puts markup into a document through the
+    property or method of a DOM element named in "item". Withdraw it if the
+    object is not a DOM element, so nothing reaches a document, if the value is
+    an empty string or null, or if the line is in a bundled library. Withdraw it
+    also if the release build never puts this file into the XPI. Do not withdraw
+    it because the value is static, sandboxed or covered by a CSP, or because it
+    was sanitised before it is written there: only Element.setHTML() inserts
+    markup the allowed way.
   input: source
   response: |-
     Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a template element, or CSS to show and hide existing elements).
@@ -835,10 +838,11 @@ deterministic-phase:
   llm-verification: true
   llm-verification-instruction: |-
     Read the line. "item" names the ESLint rule and its message. Report it if
-    the code has the problem the message describes. Withdraw it if the code at
-    this line does not have that problem, or if the line is in a bundled
-    library. Withdraw it also if the release build never puts this file into the
-    XPI.
+    the code has the problem the message describes and it is likely a mistake.
+    Withdraw it if the code does not have that problem, if the construct is
+    deliberate and does what the code means (for example an empty block whose
+    comment says why it is empty), or if the line is in a bundled library.
+    Withdraw it also if the release build never puts this file into the XPI.
   input: source
   when: eslint
   response: |-
