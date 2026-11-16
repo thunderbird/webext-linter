@@ -396,10 +396,11 @@ test("every to-do carries both wordings, and the phase picks between them", () =
   assert.equal(items[2].message, "[Policy] inspect Policy (api.example.com)");
   // A by-hand check points at nothing, and empty parentheses would say it does.
   assert.equal(items[3].message, "[Test it] inspect Test it");
-  // A finding is a claim, not a question: nobody is offered answers to it.
+  // A finding is a claim, not a question: nobody is offered answers to it. Its
+  // instructions are its check's verify instruction, and none was handed in here.
   const finding = items.find((x) => x.kind === "finding");
   assert.equal(finding.answers, undefined);
-  assert.equal(finding.instructions, undefined);
+  assert.equal(finding.instructions, null);
 
   // And the phase is what picks. The same three to-dos, handed to a person, carry the
   // question and a label counting it; handed to the agent, the instructions instead.
@@ -558,6 +559,21 @@ test("each phase hands over what settling it needs, and no more", () => {
     ),
     "answer,answers,file,index,line,ruleId"
   );
+  // A finding of a check that says what its findings claim carries that text, the one
+  // verify judges it against, and nothing else is added.
+  const claimed = reviewItems({
+    findings,
+    manual: [],
+    choicesOf: () => choices,
+    verifyInstructionOf: (ruleId) =>
+      ruleId === "unused-files" ? "The file is shipped and unused." : null,
+  });
+  const [verified] = entriesFor(claimed, phase("verify"));
+  assert.equal(
+    keys([verified]),
+    "answer,answers,file,index,instructions,line,ruleId"
+  );
+  assert.equal(verified.instructions, "The file is shipped and unused.");
   // The verdict each answer settles the item with is the linter's business: the file
   // carries only what the reviewer reads, so a reader cannot write a verdict of its own.
   assert.deepEqual(

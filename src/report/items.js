@@ -19,7 +19,9 @@
 // the section it was filed under.
 //
 // `message` on a FINDING is a different thing: the wording the report showed for it, which
-// is the developer's. Which of the two it is follows from the item's `kind`.
+// is the developer's. Which of the two it is follows from the item's `kind`. A finding's
+// `instructions` say what its check claims, the text verify judges it against
+// (`llm-verification-instruction`).
 //
 // `answers` carries every label and description the reviewer will read, in order. They are
 // the same for every item a phase hands out, and repeated on every item all the same: what it takes to ask
@@ -55,13 +57,22 @@ import { SECTION_TITLES, manualQuestion } from "./format.js";
  *   the order the reviewer sees them.
  *   REQUIRED, and not defaulted: a question with no answers is one a reviewer cannot
  *   answer, which the registry itself refuses to author.
+ * @param {(ruleId: string) => ?string} [args.verifyInstructionOf]  What a finding of
+ *   that check claims, from registry.verificationInstructionFor(ruleId): the text verify
+ *   judges the finding against, carried on the finding item as its `instructions`.
  * @param {(x: object) => string} [args.labelOf]  Artifact label ([XPI]/[SCA]) for a
  *   question's locus, from src/report/format.js locusLabeler - in an SCA review
  *   "package.json" alone names a file in either artifact, and the question has to say
  *   which.
  * @returns {object[]}
  */
-export function reviewItems({ findings, manual, choicesOf, labelOf }) {
+export function reviewItems({
+  findings,
+  manual,
+  choicesOf,
+  verifyInstructionOf,
+  labelOf,
+}) {
   const entryNumbers = new Map();
   const counters = new Map();
   // The WHOLE review, never a filtered `manual`: the entry numbers count what they are
@@ -105,6 +116,7 @@ export function reviewItems({ findings, manual, choicesOf, labelOf }) {
           severity: t.severity,
           ...locus,
           message: t.message,
+          instructions: verifyInstructionOf?.(t.ruleId) ?? null,
         }
       : {
           ref: x.ref,

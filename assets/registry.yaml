@@ -60,6 +60,8 @@ deterministic-phase:
 - title: Experiment APIs not accepted
   severity: error
   check: experiment-not-allowed
+  # Its verdict comes from the allow-list of upstream drafts, a fact from outside the add-
+  # on that reading it cannot refute. It also ends the review before verify runs.
   llm-verification: false
   input: xpi
   review-early-exit: experiment-not-allowed
@@ -80,7 +82,9 @@ deterministic-phase:
 - title: Lock file entries that install another release
   severity: error
   check: lockfile-injection
-  llm-verification: true
+  # Ends the review early, before verify runs. Where the URL names no release, the claim
+  # also rests on the npm registry's answer, a fact from outside the package.
+  llm-verification: false
   review-downgrade: true
   build-guard: true
   input: sca
@@ -116,7 +120,10 @@ deterministic-phase:
 - title: The built XPI declares its own vendoring
   severity: warning
   check: sca-xpi-declares-vendoring
-  llm-verification: true
+  # Looks up each vendoring file by its exact name in the built XPI's own files, a set
+  # lookup the agent could only repeat against the same tree, so there is nothing for it
+  # to judge.
+  llm-verification: false
   input: all
   response: |-
     This add-on was submitted as a source-code archive, but the built XPI carries vendoring information of its own. In a source-code submission a VENDOR file, a package.json and a lock file belong in the archive - the copy the reviewer reads and the build installs from - not in the package you ship. Remove the file(s) below from the XPI and declare the dependencies in the archive instead. A source-code archive is only needed when the XPI is transpiled or otherwise transformed (for example minified). If it is not, submit just the XPI.
@@ -129,7 +136,10 @@ deterministic-phase:
 - title: The built XPI is fully included in the source archive
   severity: error
   check: sca-xpi-fully-included-in-archive
-  llm-verification: true
+  # Compares the hash of every file the XPI ships with the hashes of the archive's files,
+  # a byte comparison the agent cannot read more exactly, so there is nothing for it to
+  # judge.
+  llm-verification: false
   review-downgrade: true
   input: all
   review-late-exit: archive-is-xpi
@@ -151,6 +161,8 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-package-file-missing
+  # The build check stopped on the same fact and built nothing, which no verdict of the
+  # agent undoes.
   llm-verification: false
   review-downgrade: true
   review-unbuildable: true
@@ -174,6 +186,8 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-package-file-invalid
+  # The build check stopped on the same fact and built nothing, which no verdict of the
+  # agent undoes.
   llm-verification: false
   review-downgrade: true
   review-unbuildable: true
@@ -200,6 +214,8 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-lock-file-missing
+  # The build check stopped on the same fact and built nothing, which no verdict of the
+  # agent undoes.
   llm-verification: false
   review-downgrade: true
   review-unbuildable: true
@@ -219,6 +235,8 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-lock-file-invalid
+  # The build check stopped on the same fact and built nothing, which no verdict of the
+  # agent undoes.
   llm-verification: false
   review-downgrade: true
   review-unbuildable: true
@@ -240,6 +258,8 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: sca-lock-file-multiple
+  # The build check stopped on the same fact and built nothing, which no verdict of the
+  # agent undoes.
   llm-verification: false
   review-downgrade: true
   review-unbuildable: true
@@ -264,7 +284,10 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: build-registry-redirect
-  llm-verification: true
+  # Reads the package root's .npmrc with npm's own ini parser and reports any registry key
+  # it sets, an exact read the agent could only repeat, so there is nothing for it to
+  # judge.
+  llm-verification: false
   review-downgrade: true
   build-guard: true
   input: sca
@@ -283,6 +306,8 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: lock-foreign-source
+  # The build check stopped on the same fact and built nothing, which no verdict of the
+  # agent undoes.
   llm-verification: false
   review-downgrade: true
   review-unbuildable: true
@@ -304,6 +329,8 @@ deterministic-phase:
   severity: auto
   review-late-exit: known-vulnerabilities
   check: vendor-vulnerable
+  # Rests on the advisory database, a fact from outside the add-on the agent cannot check
+  # against the package, so the finding stands as reported.
   llm-verification: false
   build-guard: true
   input: source
@@ -322,6 +349,8 @@ deterministic-phase:
   severity: error
   review-late-exit: known-vulnerabilities
   check: vendor-vulnerable-dev
+  # Rests on the advisory database, a fact from outside the add-on the agent cannot check
+  # against the package, so the finding stands as reported.
   llm-verification: false
   review-downgrade: true
   build-guard: true
@@ -343,6 +372,8 @@ deterministic-phase:
   severity: error
   review-late-exit: known-vulnerabilities
   check: vendor-vulnerable-indirect
+  # Rests on the advisory database, a fact from outside the add-on the agent cannot check
+  # against the package, so the finding stands as reported.
   llm-verification: false
   build-guard: true
   input: sca
@@ -361,6 +392,8 @@ deterministic-phase:
   severity: error
   review-late-exit: known-vulnerabilities
   check: vendor-vulnerable-indirect-dev
+  # Rests on the advisory database, a fact from outside the add-on the agent cannot check
+  # against the package, so the finding stands as reported.
   llm-verification: false
   review-downgrade: true
   build-guard: true
@@ -379,6 +412,8 @@ deterministic-phase:
   severity: auto
   review-late-exit: disallowed-library-versions
   check: banned-library
+  # Rests on the list of banned library versions, a fact from outside the add-on the agent
+  # cannot check against the package, so the finding stands as reported.
   llm-verification: false
   input: source
   response: |-
@@ -391,6 +426,13 @@ deterministic-phase:
   severity: error
   check: core-symbol-in-webext
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line. Report it if it refers to the privileged global named in
+    "item" in a file that runs as plain WebExtension code. Withdraw it if the
+    name is only a property name, a string, or something the file declares or
+    imports itself, if the file is Experiment code or reached only through an
+    Experiment API, if no page or entry point of the add-on loads the file, or
+    if the line is in a bundled library.
   input: all
   response: |-
     This add-on is using privileged Thunderbird internals in a WebExtension context, where they are not available: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage.
@@ -403,7 +445,10 @@ deterministic-phase:
 - title: Trademark violation
   severity: error
   check: trademark-violation
-  llm-verification: true
+  # Matches the brand terms in every name the manifest.json and its locales resolve to,
+  # which the policy forbids in any form, an exact read the agent could only repeat, so
+  # there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     This extension uses a registered trademark of Mozilla in its name and is unallowable under Mozilla’s Trademark Policy (https://www.mozilla.org/foundation/trademarks/policy/). The usage of “Mozilla”, “Firefox” and “MZLA” is not allowed in the add-on name. Please choose a name that does not use them.
@@ -418,6 +463,13 @@ deterministic-phase:
   severity: error
   check: trademark-thunderbird-locale
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the English locales listed in "hint" that resolve the name in
+    manifest.json. Report it if the name they give, as in "item", contains
+    "Thunderbird" anywhere other than as the ending "<name> for Thunderbird".
+    Withdraw it if no listed English locale gives that name, or if its only
+    "Thunderbird" is that ending. Do not withdraw it because of what the name
+    means or how it presents the add-on.
   input: xpi
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -445,7 +497,9 @@ deterministic-phase:
 - title: Thunderbird in an unlocalized add-on name
   severity: error
   check: trademark-thunderbird-name
-  llm-verification: true
+  # Raises cases only, never a finding. A case reported in settle or ask keeps its
+  # answered ref, so verify has nothing of this check to audit.
+  llm-verification: false
   input: xpi
   instructions-for-human: |-
     The add-on name below carries “Thunderbird” in a form this scan cannot verify,
@@ -461,7 +515,9 @@ deterministic-phase:
 - title: Unknown or unsupported WebExtension API
   severity: error
   check: unknown-api
-  llm-verification: true
+  # Raises cases only, never a finding. A case reported in settle or ask keeps its
+  # answered ref, so verify has nothing of this check to audit.
+  llm-verification: false
   input: source
   response: |-
     The following WebExtension APIs are not supported in the targeted Thunderbird version.
@@ -489,6 +545,12 @@ deterministic-phase:
   severity: info
   check: deprecated-api
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line and SCHEMA. Report it if the line uses the function, event or
+    property named in "item", and SCHEMA marks it, or its namespace, deprecated.
+    "hint" holds SCHEMA's deprecation message, if it has one. Withdraw it if the
+    line does not use that API, or if SCHEMA marks neither it nor its namespace
+    deprecated. Do not withdraw it because the use is guarded or has a fallback.
   input: source
   response: |-
     The following APIs are deprecated in the targeted Thunderbird version. Please migrate to supported APIs.
@@ -500,6 +562,14 @@ deterministic-phase:
   severity: error
   check: strict-max-version-api
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line, manifest.json and SCHEMA. Report it if the line uses the
+    function or event named in "item", and SCHEMA says it was added in a
+    Thunderbird whose major version is higher than that of manifest.json's
+    strict_max_version. "hint" names the version SCHEMA gives. Withdraw it if
+    the line does not use that API, if manifest.json declares no
+    strict_max_version, or if the version SCHEMA gives for the API, or for its
+    namespace if the API has none, is not higher.
   input: source
   response: |-
     The add-on is setting strict_max_version to {{max}} but uses functions or events added in a later Thunderbird. Raise strict_max_version, or stop using these APIs.
@@ -509,6 +579,14 @@ deterministic-phase:
   severity: error
   check: missing-permission
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line, manifest.json and SCHEMA. Report it if the line uses an API
+    that SCHEMA says needs the permission named in "item", or, in manifest.json,
+    declares a key that SCHEMA says needs it in the add-on's oldest supported
+    Thunderbird (its strict_min_version), and manifest.json does not request
+    "item" under permissions, optional_permissions or host_permissions. Withdraw
+    it if the line uses no such API or key, or if manifest.json requests the
+    permission.
   input: source
   response: |-
     The following permissions are required at the locations listed, but are not declared in manifest.json. Add them to the requested permissions.
@@ -518,6 +596,12 @@ deterministic-phase:
   severity: error
   check: missing-manifest-key
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line, manifest.json and SCHEMA. Report it if the line uses the API
+    named in "item", SCHEMA says its namespace needs one of the manifest.json
+    keys listed in "hint", and manifest.json declares none of them at its top
+    level. Withdraw it if the line does not use that API, if SCHEMA does not tie
+    the namespace to those keys, or if manifest.json declares one of them.
   input: source
   response: |-
     The following APIs each need a manifest.json key that is not declared. Add one of the keys named for each API to manifest.json.
@@ -528,7 +612,10 @@ deterministic-phase:
 - title: Invalid manifest.json
   severity: error
   check: manifest-invalid-json
-  llm-verification: true
+  # Parses the shipped manifest.json the way Thunderbird does and reports a result that is
+  # no JSON object, an exact read the agent could only repeat, so there is nothing for it
+  # to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The included manifest.json is not a valid WebExtension manifest file.
@@ -538,7 +625,9 @@ deterministic-phase:
 - title: Missing manifest.json
   severity: error
   check: manifest-missing
-  llm-verification: true
+  # Tests whether manifest.json exists at the root of the XPI, a file existence test the
+  # agent could only repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The submission has no WebExtension manifest file (manifest.json) at its root.
@@ -548,7 +637,9 @@ deterministic-phase:
 - title: Missing required manifest.json key
   severity: error
   check: manifest-missing-key
-  llm-verification: true
+  # Looks up each required top-level key in the parsed manifest.json, a key lookup the
+  # agent could only repeat on the same file, so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The included WebExtension manifest file (manifest.json) has one or more required properties missing.
@@ -558,7 +649,10 @@ deterministic-phase:
 - title: manifest_version mismatch in manifest.json
   severity: error
   check: manifest-version-mismatch
-  llm-verification: true
+  # Compares manifest_version with the major version of the schema set under review, an
+  # exact comparison the agent could only repeat against the same SCHEMA, so there is
+  # nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The included WebExtension manifest file (manifest.json) declares manifest_version {{item}}, which does not match the schema set (Manifest V{{schema}}).
@@ -569,7 +663,10 @@ deterministic-phase:
 - title: Unknown permission
   severity: error
   check: manifest-unknown-permission
-  llm-verification: true
+  # Looks up each declared permission in SCHEMA's permission sets and the match-pattern
+  # grammar, an exact read the agent could only repeat against the same SCHEMA, so there
+  # is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The included WebExtension manifest file (manifest.json) requests one or more unknown permissions.
@@ -581,7 +678,9 @@ deterministic-phase:
 - title: Self-hosted update URL
   severity: error
   check: update-url
-  llm-verification: true
+  # Reads update_url from the gecko block of manifest.json, a key lookup the agent could
+  # only repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     This add-on sets an update_url, which directs Thunderbird to install updates from a self-hosted location instead of ATN (addons.thunderbird.net). Because those updates bypass review, an add-on using update_url cannot be listed on ATN. Remove update_url from browser_specific_settings.gecko (or applications.gecko).
@@ -590,7 +689,10 @@ deterministic-phase:
 - title: Unrecognized manifest.json key
   severity: info
   check: unrecognized-manifest-key
-  llm-verification: true
+  # Compares each top-level key of manifest.json with SCHEMA and the add-on's own
+  # Experiment keys, an exact read the agent could only repeat against the same SCHEMA, so
+  # there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The included WebExtension manifest file (manifest.json) declares the following unknown top-level keys, which Thunderbird will ignore.
@@ -600,7 +702,10 @@ deterministic-phase:
 - title: Mistyped manifest.json value
   severity: warning
   check: mistyped-manifest-value
-  llm-verification: true
+  # Validates each manifest.json value against a conservative JSON Schema derived from
+  # SCHEMA and reports only type, enum and range errors, an exact read the agent could
+  # only repeat against the same SCHEMA, so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The following manifest.json entries have a value Thunderbird ignores or misreads.
@@ -612,6 +717,18 @@ deterministic-phase:
   severity: error
   check: bundled-files
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line and look for the file it names. Report it if the line
+    references the file in "item", as a manifest.json entry or as the argument
+    of a file-loading call, and the XPI holds nothing there. A manifest.json
+    path is read from the package root, must name a file, and one that climbs
+    out of the root counts as missing. A path given to runtime.getURL or a
+    scripting call, or any path starting with "/", is read from the package
+    root. A path given to any other loader is read from the folder of the page
+    that runs the script. A path given to a loader may name a folder. Withdraw
+    it if the line does not reference that path, if what the path needs exists
+    where it leads, or if no page or entry point of the add-on loads the calling
+    script.
   input: xpi
   response: |-
     The following referenced file(s) are not bundled with the add-on, or the path may be wrongly specified. Please include every referenced file in the package, and check that the used paths are correct.
@@ -621,7 +738,10 @@ deterministic-phase:
 - title: Unrecognized referenced file type
   severity: error
   check: unrecognized-file-type
-  llm-verification: true
+  # Reports a loaded file whose extension is not in the recognised set, a fact about the
+  # name the agent could only repeat, and the response already asks the developer to
+  # confirm what the file is, so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The following packaged file(s) are referenced by the add-on ({{referrer}}) but have a file type the review tools do not recognize, so they could not be classified or reviewed. The browser still loads them. Please give each a standard extension for its content (for example a .js script), or confirm what the file is and why it is shipped. If this is a build artifact your packaging step emitted, review what your build produces.
@@ -631,6 +751,11 @@ deterministic-phase:
   severity: error
   check: sync-xhr
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line. Report it if it calls open() on an XMLHttpRequest with false
+    as its third argument, which makes the request synchronous. Withdraw it if
+    the line makes no such call, if open() is called on something that is not an
+    XMLHttpRequest, or if the line is in a bundled library.
   input: all
   response: |-
     The add-on makes a synchronous XMLHttpRequest, which can lock up the user interface. Please use an asynchronous request instead.
@@ -641,6 +766,11 @@ deterministic-phase:
   severity: info
   check: unsafe-html
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line. Report it if it writes a value to the property or method
+    named in "item". Withdraw it if it does not, if the value is an empty string
+    or null, or if the line is in a bundled library. Do not withdraw it because
+    the value is static, sanitised, sandboxed or covered by a CSP.
   input: source
   response: |-
     Inserting markup via the following properties or methods will soon no longer be permitted. The only supported way to do so is the Sanitizer API (Element.setHTML(), Thunderbird 148+). Please also consider alternatives to (re-)building the live DOM (use textContent, a template element, or CSS to show and hide existing elements).
@@ -650,7 +780,9 @@ deterministic-phase:
 - title: Debugger statement
   severity: error
   check: debugger-statement
-  llm-verification: true
+  # Raises cases only, never a finding. A case reported in settle or ask keeps its
+  # answered ref, so verify has nothing of this check to audit.
+  llm-verification: false
   input: all
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -673,6 +805,14 @@ deterministic-phase:
   severity: warning
   check: async-onmessage
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line and SCHEMA. Report it if it passes an async function, written
+    inline as the first argument, to addListener of the event named in "item",
+    and SCHEMA gives that event a sendResponse parameter and a return value.
+    Withdraw it if the line does not call addListener on that event, if its
+    first argument is not an inline async function, if SCHEMA does not give the
+    event both, or if the line is in a bundled library. Do not withdraw it
+    because of what the listener does with the messages.
   input: source
   response: |-
     An asynchronous listener is attached to the following runtime message event(s). An async listener always returns a Promise, which claims the response for every message it sees - including the ones it declines - so the other listeners never get to answer. This is error-prone and must be avoided.
@@ -685,6 +825,11 @@ deterministic-phase:
   severity: info
   check: code-sanity
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line. "item" names the ESLint rule and its message. Report it if
+    the code has the problem the message describes. Withdraw it if the code at
+    this line does not have that problem, or if the line is in a bundled
+    library.
   input: source
   when: eslint
   response: |-
@@ -694,7 +839,9 @@ deterministic-phase:
 - title: Minimize host permissions
   severity: info
   check: minimize-host-permissions
-  llm-verification: true
+  # Tests each required host pattern for <all_urls> or a wildcard host, an exact read of
+  # manifest.json the agent could only repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     manifest.json requests one or more very broad host permissions that are granted at install. Request only the specific hosts your add-on actually needs. If it genuinely needs broad access, declare them as optional host permissions so the user can grant them on demand rather than up front.
@@ -713,6 +860,13 @@ deterministic-phase:
   severity: warning
   check: unused-permission
   llm-verification: true
+  llm-verification-instruction: |-
+    Read manifest.json and the add-on's code, bundled libraries included. Report
+    it if manifest.json declares the permission named in "item", and nothing in
+    the add-on uses an API, event or property that SCHEMA gates on it, nor
+    declares a manifest key that needs it. Withdraw it if anything in the add-on
+    uses such an API, event, property or key, or if manifest.json does not
+    declare "item".
   input: xpi
   response: |-
     One or more declared permissions appear to be unused. An add-on should request only the permissions it needs, to keep the install-time permission prompt minimal. Please remove any permission your add-on does not use, or let us know which part of the add-on stops working without it.
@@ -735,7 +889,9 @@ deterministic-phase:
 - title: Missing third-party library reference
   severity: info
   check: missing-library
-  llm-verification: true
+  # The library is matched by its hash against Mozilla's database, a fact from outside the
+  # package the agent cannot repeat, so the finding stands as reported.
+  llm-verification: false
   input: source
   response-for-xpi: |-
     The following bundled files were recognized as third-party libraries (via the Mozilla library hash database) but are not declared as such. Declare each so the (unmodified) copy can be verified against the release it came from - a VENDOR.md file at the add-on root is common practice.
@@ -749,7 +905,10 @@ deterministic-phase:
 - title: Library identified on a CDN
   severity: info
   check: find-lib-on-cdn
-  llm-verification: true
+  # The match against a published jsDelivr release, and that release's popularity, are
+  # facts from outside the package the agent cannot repeat, so the finding stands as
+  # reported.
+  llm-verification: false
   input: source
   response-for-xpi: |-
     The following bundled files were recognized as third-party libraries (via a jsDelivr CDN hash lookup) but are not declared as such. Declare each so the (unmodified) copy can be verified against the release it came from - a VENDOR.md file at the add-on root is common practice.
@@ -768,6 +927,17 @@ deterministic-phase:
   severity: error
   check: minified-code
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the file, or the inline script that starts at this line. Report it if a
+    person cannot review it as written: many statements packed onto one line
+    (for a stylesheet, one very long line), otherwise machine-generated, or a
+    script with a very long line that does not parse. Withdraw it if the code is
+    readable as written and parses. A long data literal inside a script that
+    parses, such as a data URI or a string table, does not count as minified. Do
+    not withdraw it because it is data under a .js or .css name, or because the
+    file looks like a third-party library. A library the review has recognised
+    never reaches this check, so one that does reach it is undeclared or
+    unverified, and the developer must declare it.
   input: source
   # Aborts the review late: code nobody can read is unsafe to install, so the reviewer is
   # asked nothing. The review still runs to the end of `settle`.
@@ -788,7 +958,10 @@ deterministic-phase:
 - title: Source Archive (unverified library) required
   severity: error
   check: untrusted-minified-library
-  llm-verification: true
+  # The library's popularity, its host's trust and whether its source can be fetched are
+  # facts from outside the package the agent cannot repeat, so the finding stands as
+  # reported.
+  llm-verification: false
   input: source
   # Aborts the review late: code nobody can read is unsafe to install, so the reviewer is
   # asked nothing. The review still runs to the end of `settle`.
@@ -806,7 +979,9 @@ deterministic-phase:
 - title: Library reviewed as authored code
   severity: info
   check: untrusted-library
-  llm-verification: true
+  # The library's popularity and its host's trust are facts from outside the package the
+  # agent cannot repeat, so the finding stands as reported.
+  llm-verification: false
   input: source
   response: |-
     The following bundled file(s) could not be confirmed as known third-party libraries - the package is not widely used, or its declared source could not be checked (none given, an untrusted host, or no such release). They are therefore not trusted as known dependencies and are reviewed as authored code, so a finding may be reported against library code.
@@ -830,6 +1005,9 @@ deterministic-phase:
   severity: error
   review-late-exit: unreviewable-code
   check: unpopular-source-dependency
+  # The build check stopped on the same fact and built nothing, which no verdict of the
+  # agent undoes. Whether nobody can review the dependency also rests on its popularity, a
+  # fact from outside the add-on.
   llm-verification: false
   review-unbuildable: true
   input: sca
@@ -841,6 +1019,10 @@ deterministic-phase:
   severity: info
   check: unparsable-file
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the file, and every script inside it if it is a page. Report it if any
+    of that JavaScript does not parse. Withdraw it if every script parses as
+    JavaScript, or as TypeScript or JSX if the file's extension says so.
   input: source
   response: |-
     Limited static-analysis coverage: could not be parsed, so API checks were skipped ({{detail}})
@@ -855,6 +1037,13 @@ deterministic-phase:
   severity: error
   check: unanalysable-file
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line, and "hint", which gives the parser's reason. Report it if the
+    code there is not valid JavaScript in the way "hint" says, for example a
+    let, const or class name declared twice in one scope. Withdraw it if the
+    code at this line has no such error, for example if the two declarations are
+    in different scopes. Do not withdraw it because the file is a bundled
+    library.
   input: all
   response: |-
     The following file(s) contain code that is not valid JavaScript, so it cannot run and could not be reviewed. Correct the code at each line named.
@@ -866,7 +1055,9 @@ deterministic-phase:
 - title: Unreadable Experiment schema
   severity: error
   check: experiment-schema-invalid
-  llm-verification: true
+  # Parses each declared Experiment schema file the way Thunderbird does, an exact read
+  # the agent could only repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The following Experiment schema file(s) cannot be read by Thunderbird (not UTF-8 or UTF-16 text, or not valid JSON). Thunderbird refuses to install an add-on whose Experiment schema it cannot read. Correct each file.
@@ -876,7 +1067,9 @@ deterministic-phase:
 - title: Modified or outdated Experiment draft
   severity: error
   check: experiment-modified
-  llm-verification: true
+  # Rests on the comparison with the published upstream draft, a fact from outside the
+  # package the agent cannot repeat, so the finding stands as reported.
+  llm-verification: false
   input: xpi
   response: |-
     The following Experiment API(s) are published Thunderbird API drafts, but this add-on bundles a modified or outdated copy of each. Bundle the unmodified latest version from https://github.com/thunderbird/webext-experiments.
@@ -886,7 +1079,9 @@ deterministic-phase:
 - title: Experiment missing strict_max_version
   severity: error
   check: experiment-missing-strict-max-version
-  llm-verification: true
+  # Reads whether an Experiment declares strict_max_version in manifest.json, a key lookup
+  # the agent could only repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     This add-on uses Experiment APIs but declares no strict_max_version. Experiments rely on internal APIs that change between major Thunderbird versions, so they must set browser_specific_settings.gecko.strict_max_version.
@@ -897,7 +1092,9 @@ deterministic-phase:
 - title: Theme experiment missing strict_max_version
   severity: error
   check: theme-experiment-missing-strict-max-version
-  llm-verification: true
+  # Reads whether a theme experiment declares strict_max_version in manifest.json, a key
+  # lookup the agent could only repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     This add-on ships a theme_experiment, whose stylesheet styles Thunderbird's internal user interface. That interface changes between major Thunderbird versions, so a theme experiment must set browser_specific_settings.gecko.strict_max_version.
@@ -907,7 +1104,10 @@ deterministic-phase:
 - title: Experiment overrides a built-in API
   severity: error
   check: experiment-overrides-api
-  llm-verification: true
+  # Resolves each path an Experiment grafts onto against SCHEMA and reports one that lands
+  # on a built-in API, an exact read the agent could only repeat against the same SCHEMA,
+  # so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The following Experiment API(s) override or extend a built-in Thunderbird API. Experiments may only add new APIs, never replace or graft onto existing ones. Please expose this functionality under new, distinct API namespaces.
@@ -922,7 +1122,9 @@ deterministic-phase:
 - title: Experiment manual review
   severity: error
   check: experiment-manual-review
-  llm-verification: true
+  # Raises cases only, never a finding. A case reported in settle or ask keeps its
+  # answered ref, so verify has nothing of this check to audit.
+  llm-verification: false
   input: xpi
   instructions-for-human: |-
     This submission ships an Experiment, which runs with full access to
@@ -950,7 +1152,9 @@ deterministic-phase:
 - title: Experiment with unrecognized API usage
   severity: error
   check: experiment-unknown-api
-  llm-verification: true
+  # Raises cases only, never a finding. A case reported in settle or ask keeps its
+  # answered ref, so verify has nothing of this check to audit.
+  llm-verification: false
   input: source
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -977,7 +1181,10 @@ deterministic-phase:
 - title: Unnecessary strict_max_version
   severity: warning
   check: non-experiment-strict-max-version
-  llm-verification: true
+  # Reads whether an add-on that is no Experiment pins strict_max_version in
+  # manifest.json, a key lookup the agent could only repeat, so there is nothing for it to
+  # judge.
+  llm-verification: false
   input: xpi
   response: |-
     This add-on pins strict_max_version "{{item}}". The WebExtension APIs are stable and designed to keep add-ons forward-compatible across Thunderbird versions, so a maximum version is usually unnecessary and only blocks installs on newer Thunderbird.
@@ -1017,7 +1224,9 @@ deterministic-phase:
   severity: error
   when: NOT sca
   check: xpi-lock-file-missing
-  llm-verification: true
+  # Reads each ranged dependency in the shipped package.json and finds no lock file beside
+  # it, an exact read the agent could only repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The following dependencies are declared as a version range, and the add-on ships no lock file to resolve them. A range names no single release, so there is nothing to verify the bundled copy against. Commit the lock file your package manager wrote alongside package.json - package-lock.json, npm-shrinkwrap.json or pnpm-lock.yaml - which records the exact version that was bundled. Pinning each dependency in package.json to a bare version like "4.17.21" instead also works.
@@ -1030,7 +1239,10 @@ deterministic-phase:
   severity: error
   when: NOT sca
   check: xpi-lock-file-invalid
-  llm-verification: true
+  # Looks up each ranged dependency of the shipped package.json in the committed lock file
+  # and finds no version for it, an exact read the agent could only repeat, so there is
+  # nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The following dependencies are declared as a version range, and the lock file the add-on ships records no version for them. A range names no single release, so there is nothing to verify the bundled copy against. Regenerate the lock file so it records what was bundled, or pin each dependency in package.json to a bare version like "4.17.21".
@@ -1047,7 +1259,9 @@ deterministic-phase:
 - title: Unsupported dependency source
   severity: error
   check: unsupported-dependency
-  llm-verification: true
+  # Classifies each declared dependency by the source its spec or lock entry installs
+  # from, an exact read the agent could only repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: source
   response-for-xpi: |-
     The following dependencies are declared from a source the review cannot identify or verify. Only npm packages pinned to an exact version and GitHub URLs are supported. Re-declare each as a pinned npm package or a GitHub source, or bundle the non-minified library with the add-on so it can be reviewed directly.
@@ -1067,7 +1281,9 @@ deterministic-phase:
 - title: Dependencies changed for the review
   severity: info
   check: sca-dependencies-changed
-  llm-verification: true
+  # Compares against the submitted source's lock, which is not in the tree the agent
+  # reads, so the finding stands as reported.
+  llm-verification: false
   input: sca
   response: |-
     Your source code was reviewed with changed dependencies, because the ones you submitted have known security vulnerabilities. Dependencies your release build does not use were removed, and where that was not enough, the lock file was updated to fixed releases. Your own package.json and lock file still have these vulnerabilities. Run `npm audit` (or `pnpm audit`) in your project and resolve them before your next submission.
@@ -1080,7 +1296,9 @@ deterministic-phase:
 - title: Committed node_modules folder
   severity: error
   check: committed-node-modules
-  llm-verification: true
+  # Lists each node_modules folder the loader found in the source archive, a fact about
+  # the tree the agent could only repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: sca
   response: |-
     The following committed node_modules folder(s) are not allowed. The declared dependencies are installed from package.json/lock during the build, so node_modules must never be part of the submission. Remove them.
@@ -1092,7 +1310,10 @@ deterministic-phase:
 - title: Committed build artifact
   severity: error
   check: committed-build-artifact
-  llm-verification: true
+  # Lists each committed file with an archive extension the loader found in the
+  # submission, a fact about the tree the agent could only repeat, so there is nothing for
+  # it to judge.
+  llm-verification: false
   input: sca
   response: |-
     The following committed build artifact(s) are not allowed. A built archive (a .xpi/.zip) is produced from the source during the build and must never be part of the submission, where its bytes cannot be verified against what the build produces. Remove them.
@@ -1108,7 +1329,9 @@ deterministic-phase:
 - title: Symbolic link out of the submission
   severity: error
   check: sca-invalid-symlink
-  llm-verification: true
+  # Lists each symbolic link the loader found leading out of the submission or nowhere, a
+  # fact about the tree the agent could only repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: sca
   response: |-
     The following symbolic link(s) lead outside the submitted source, or to a target that does not exist. The review covers only what the submission contains, so code reached through such a link is never seen, and a build that needs it cannot be reproduced. Replace each link with the actual files, or remove it where the build does not need it. A link pointing to another location inside the submission is fine.
@@ -1131,7 +1354,9 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: build-lifecycle-hook
-  llm-verification: true
+  # Raises cases only, never a finding. A case reported in settle or ask keeps its
+  # answered ref, so verify has nothing of this check to audit.
+  llm-verification: false
   review-downgrade: true
   input: sca
   settle-verbs: [reported, cleared]
@@ -1161,7 +1386,9 @@ deterministic-phase:
 - title: Build process review
   severity: error
   check: build-review
-  llm-verification: true
+  # Raises cases only, never a finding. A case reported in settle or ask keeps its
+  # answered ref, so verify has nothing of this check to audit.
+  llm-verification: false
   review-downgrade: true
   input: sca
   when: NOT build-judged
@@ -1198,7 +1425,9 @@ deterministic-phase:
 - title: Reproducing the XPI from the source
   severity: error
   check: build-reproduces-xpi
-  llm-verification: true
+  # Raises a case only, never a finding: its outcome is reported by build-not-reproduced
+  # or build-fails. So verify has nothing of this check to audit.
+  llm-verification: false
   review-downgrade: true
   input: sca
   when: build-judged AND build-safe
@@ -1221,6 +1450,8 @@ deterministic-phase:
 - title: Source does not build into the submitted XPI
   severity: error
   check: build-not-reproduced
+  # A person decides it in the built phase, not the files, so the agent never overrules
+  # it.
   llm-verification: false
   review-downgrade: true
   input: sca
@@ -1232,6 +1463,8 @@ deterministic-phase:
 - title: Source cannot be built
   severity: error
   check: build-fails
+  # A person decides it in the built phase, not the files, so the agent never overrules
+  # it.
   llm-verification: false
   review-downgrade: true
   input: sca
@@ -1247,6 +1480,7 @@ deterministic-phase:
 - title: Unsafe build process
   severity: error
   check: build-unsafe
+  # The reviewer's build decision in the build check, which the agent never overrules.
   llm-verification: false
   review-downgrade: true
   input: sca
@@ -1264,6 +1498,8 @@ deterministic-phase:
 - title: Source archive not needed
   severity: info
   check: sca-not-needed
+  # The reviewer chose to restart the review on the XPI alone, a decision the agent never
+  # overrules.
   llm-verification: false
   input: xpi
   response: |-
@@ -1276,7 +1512,9 @@ deterministic-phase:
 - title: Vendored library not vulnerability-checked
   severity: info
   check: vendor-vuln-unknown
-  llm-verification: true
+  # Rests on the registry lookup that found no published release to audit, a fact from
+  # outside the package the agent cannot repeat, so the finding stands as reported.
+  llm-verification: false
   input: source
   response-for-xpi: |-
     The add-on sourced a third-party file from a CDN, where its known-vulnerability status could not be determined automatically. To benefit from automated auditing against the OSV database, consider switching to an npm-hosted source and update your vendor mechanism to point to an unpkg or jsDelivr package (pinned to an exact version).
@@ -1287,7 +1525,10 @@ deterministic-phase:
 - title: Unpinned vendored source
   severity: error
   check: unpinned-vendor-source
-  llm-verification: true
+  # Judges the source URL by its shape alone (a full npm version, a version tag or a full
+  # commit hash). The agent could only repeat that rule, and whether another ref names a
+  # release cannot be settled from the package, so the finding stands as reported.
+  llm-verification: false
   input: source
   response: |-
     The following vendored file(s) cite a source that is not pinned to an immutable version. Each is linked to a branch or unversioned URL rather than a specific release. Link to a specific version, tag, or commit so the file can be verified against the exact bytes it was copied from.
@@ -1295,7 +1536,9 @@ deterministic-phase:
 - title: Modified vendored library
   severity: error
   check: vendor-modified
-  llm-verification: true
+  # Rests on the byte comparison with the declared upstream copy, a fact from outside the
+  # package the agent cannot repeat, so the finding stands as reported.
+  llm-verification: false
   input: source
   response: |-
     A bundled third-party file does not match its declared source: {{item}} does not match the bytes its declared source ({{url}}) serves, so it appears to have been modified from the upstream release. Ship the file exactly as the source publishes it, or correct the declared source to the release the file actually came from.
@@ -1303,7 +1546,10 @@ deterministic-phase:
 - title: Missing vendored file
   severity: warning
   check: missing-vendor-file
-  llm-verification: true
+  # Tests whether each file the VENDOR file declares exists, resolved from where the
+  # VENDOR file sits, a file existence test the agent could only repeat, so there is
+  # nothing for it to judge.
+  llm-verification: false
   input: source
   response: |-
     One or more files listed in "{{item}}" are not present in the submission. Add each file to the submission, or remove its entry from "{{item}}".
@@ -1314,7 +1560,9 @@ deterministic-phase:
 - title: More than one VENDOR file
   severity: error
   check: multiple-vendor-files
-  llm-verification: true
+  # Lists each file whose name makes it a VENDOR file, a name lookup the agent could only
+  # repeat against the same tree, so there is nothing for it to judge.
+  llm-verification: false
   input: source
   response-for-xpi: |-
     This add-on ships more than one file that names itself the VENDOR file. Which of them the review reads would depend on the order the archive lists them in, so the same submission could be checked against a different file after a rebuild. Keep the one that lists your bundled third-party libraries and remove the others.
@@ -1330,7 +1578,9 @@ deterministic-phase:
 - title: Unparseable VENDOR file
   severity: error
   check: vendor-unparseable
-  llm-verification: true
+  # Reports a VENDOR file the declaration parser read no entry from, a fact about the
+  # prescribed format the agent could only repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: source
   response-for-xpi: |-
     A VENDOR file is present but no third-party library could be parsed from it. Declare each bundled library in its own block, separated from the next by a blank line. A block names the packaged file path and a source URL pointing at the exact file (on unpkg, jsDelivr, the npm registry, or a raw GitHub URL), so the file can be verified automatically. A bare repository link is not a source, and a path mentioned in a sentence is not a declaration. For example:
@@ -1368,7 +1618,10 @@ deterministic-phase:
 - title: Ambiguous vendored source
   severity: error
   check: vendor-ambiguous-source
-  llm-verification: true
+  # Reports a VENDOR source URL that cannot verify the files paired with it, read from the
+  # URL's form and the number of files, an exact read the agent could only repeat, so
+  # there is nothing for it to judge.
+  llm-verification: false
   input: source
   response: |-
     Each of the following source URLs cannot verify the file(s) declared against it. A file source verifies exactly one file, so pairing it with several is ambiguous. A directory needs a source that can be fetched as an archive of the whole release, which the URL of a single file - or a CDN's directory listing page - is not. Give each file its own source URL, or declare the containing directory against a source that names the release: a pinned npm package (https://cdn.jsdelivr.net/npm/[name]@[version]/, or its registry tarball), or a GitHub tree URL (https://github.com/[owner]/[repo]/tree/[ref]/[path]).
@@ -1390,6 +1643,14 @@ deterministic-phase:
   severity: warning
   check: cleartext-transmission
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line, and "hint" if there is one. Report it if the code connects to
+    a remote server over http://, ws:// or ftp://, at an address the add-on
+    names, or at one the user enters that the code does not refuse or switch to
+    https://, wss:// or ftps://. Withdraw it if the code connects to no remote
+    server (a host permission alone, or the user's own machine), or uses an
+    encrypted scheme. Do not withdraw it because of what is sent or who chose
+    the server.
   input: all
   sweep-instruction-for-xpi: &cleartext-sweep |-
     A remote endpoint reached over http://, ws:// or ftp://, whether the add-on names
@@ -1409,6 +1670,13 @@ deterministic-phase:
   severity: hold-or-error
   check: privacy-policy
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line. Report it if it sends something about the user, or their use
+    of the add-on, to a remote host the add-on fixes itself, named in "item" or
+    built at run time from the add-on's own values. Withdraw it if the line
+    sends nothing to a remote host, if the destination comes from something the
+    user entered, or if nothing about the user is sent. Do not withdraw it
+    because the listing may already carry a privacy policy.
   # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
   # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
@@ -1448,7 +1716,9 @@ deterministic-phase:
 - title: Native messaging needs disclosure
   severity: hold-or-error
   check: native-messaging
-  llm-verification: true
+  # Raises cases only, never a finding. A case reported in settle or ask keeps its
+  # answered ref, so verify has nothing of this check to audit.
+  llm-verification: false
   input: xpi
   response: |-
     This add-on requests the "nativeMessaging" permission to exchange messages with a native application outside Thunderbird. This must be disclosed on the ATN listing page, including what information is exchanged.
@@ -1465,7 +1735,10 @@ deterministic-phase:
 - title: Unreadable _locales messages.json
   severity: error
   check: locale-messages-invalid
-  llm-verification: true
+  # Reads each locale folder's messages.json the way Thunderbird does and reports one it
+  # cannot load, an exact read the agent could only repeat, so there is nothing for it to
+  # judge.
+  llm-verification: false
   input: xpi
   response: |-
     The following _locales folder(s) have a messages.json that Thunderbird cannot read (it is missing, not UTF-8 or UTF-16 text, not valid JSON, or not in the messages format, where every entry is an object with a "message" string). Thunderbird refuses to install an add-on with such a folder. Fix each file, or remove a folder that is not used.
@@ -1475,7 +1748,9 @@ deterministic-phase:
 - title: Missing default_locale
   severity: error
   check: default-locale-missing
-  llm-verification: true
+  # Reads whether a package with locale folders declares default_locale in manifest.json,
+  # a key lookup the agent could only repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     A _locales directory is present but manifest.json declares no default_locale, so Thunderbird will refuse to load the add-on. Add a default_locale naming the fallback locale (e.g. "en").
@@ -1485,7 +1760,9 @@ deterministic-phase:
 - title: Unused default_locale
   severity: error
   check: default-locale-unused
-  llm-verification: true
+  # Matches default_locale against the shipped locale folders the way Thunderbird does, an
+  # exact read the agent could only repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     manifest.json declares a default_locale that names no _locales/[lang] folder the add-on ships, so Thunderbird will refuse to load the add-on. Add the _locales/[lang]/messages.json files for it, or correct or remove default_locale.
@@ -1496,7 +1773,9 @@ deterministic-phase:
 - title: Add-on icon missing
   severity: info
   check: addon-icon-missing
-  llm-verification: true
+  # Reads whether manifest.json declares an icons entry, a key lookup the agent could only
+  # repeat, so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     Adding an add-on icon in manifest.json improves user acceptance.
@@ -1507,7 +1786,10 @@ deterministic-phase:
 - title: Background script needs type module
   severity: error
   check: background-module
-  llm-verification: true
+  # Reads whether a shipped background script uses import or export syntax while
+  # manifest.json does not declare it a module, an exact read the agent could only repeat,
+  # so there is nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The following background code location(s) use ES module syntax (import/export), but the background key in manifest.json is not declared "type": "module", so Thunderbird will fail to load the background script(s). Add "type": "module" to the background entry.
@@ -1517,7 +1799,10 @@ deterministic-phase:
 - title: Background page script needs type module
   severity: error
   check: background-page-module
-  llm-verification: true
+  # Reads whether a script the background page loads uses import or export syntax without
+  # type="module" on its tag, an exact read the agent could only repeat, so there is
+  # nothing for it to judge.
+  llm-verification: false
   input: xpi
   response: |-
     The following background page code location(s) load a script that uses ES module syntax (import/export), but the script tag is not declared type="module", so Thunderbird will fail to load the background page. Add type="module" to the script tag.
@@ -1533,6 +1818,12 @@ deterministic-phase:
   severity: error
   check: eval-call
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line. Report it if it calls the global eval(), bare or through a
+    global object such as window or globalThis. Withdraw it if the line does not
+    call the global eval (a method named eval on another object, a comment, a
+    string), or if the line is in a bundled library. Do not withdraw it because
+    of what is evaluated, a constant string included.
   input: all
   response: |-
     Dynamic code execution via "eval()" is not allowed.
@@ -1541,6 +1832,12 @@ deterministic-phase:
   severity: error
   check: function-constructor
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line. Report it if it calls the global Function constructor, with
+    or without "new", bare or through a global object such as window. Withdraw
+    it if the line does not call the global Function, or if the line is in a
+    bundled library. Do not withdraw it because of the source text it is given,
+    a constant included.
   input: source
   response: |-
     Dynamic code execution via "the Function constructor" is not allowed.
@@ -1549,6 +1846,12 @@ deterministic-phase:
   severity: error
   check: string-timer
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line. Report it if it calls the global setTimeout or setInterval
+    with a string as the first argument, which runs as code. Withdraw it if the
+    first argument is a function, if the call is not to the global timer, or if
+    the line is in a bundled library. Do not withdraw it because of what the
+    string contains, an empty string included.
   input: all
   response: |-
     Dynamic code execution via "a code string passed to setTimeout/setInterval" is not allowed.
@@ -1556,7 +1859,10 @@ deterministic-phase:
 - title: CSP allows 'unsafe-eval'
   severity: error
   check: csp-unsafe-eval
-  llm-verification: true
+  # Raises a finding only on the content_security_policy line of manifest.json, read
+  # exactly by the CSP parser (src/scan/csp.js), so there is nothing for the agent to
+  # judge.
+  llm-verification: false
   input: xpi
   response: |-
     Dynamic code execution via "content_security_policy 'unsafe-eval'" is not allowed.
@@ -1564,7 +1870,10 @@ deterministic-phase:
 - title: CSP allows 'unsafe-inline'
   severity: error
   check: csp-unsafe-inline
-  llm-verification: true
+  # Raises a finding only on the content_security_policy line of manifest.json, read
+  # exactly by the CSP parser (src/scan/csp.js), so there is nothing for the agent to
+  # judge.
+  llm-verification: false
   input: xpi
   response: |-
     Dynamic code execution via "content_security_policy 'unsafe-inline'" is not allowed.
@@ -1579,6 +1888,14 @@ deterministic-phase:
   severity: warning
   check: missing-english-localization
   llm-verification: true
+  llm-verification-instruction: |-
+    Look at _locales, or, if there is none, read the name and description in
+    manifest.json and the visible text of the add-on's pages. Report it if
+    _locales holds no English folder ("en", or "en" with a region such as
+    "en_US" or "en-GB"), or, with no _locales, if that text is not English.
+    Withdraw it if _locales holds an English folder, or, with no _locales, if
+    that text is English. Do not withdraw it because of English text hardcoded
+    elsewhere if _locales exists.
   input: xpi
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1605,7 +1922,9 @@ deterministic-phase:
 - title: Obfuscated code is not permitted
   severity: error
   check: obfuscated-code
-  llm-verification: true
+  # The detector families are pinned, so a match is deterministic and needs no second
+  # opinion. The finding stands as reported.
+  llm-verification: false
   input: all
   response-for-xpi: |-
     The following file(s) are obfuscated. Extensions using obfuscated code are not permitted, regardless of whether they are hosted on addons.thunderbird.net (ATN) or not. Extensions using obfuscated code are in violation of our Add-on Policy and are subject to being blocked.
@@ -1624,7 +1943,9 @@ deterministic-phase:
 - title: API newer than strict_min_version
   severity: error
   check: strict-min-version-api
-  llm-verification: true
+  # Raises cases only, never a finding. A case reported in settle or ask keeps its
+  # answered ref, so verify has nothing of this check to audit.
+  llm-verification: false
   input: source
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1654,6 +1975,17 @@ deterministic-phase:
   severity: warning
   check: unused-files
   llm-verification: true
+  llm-verification-instruction: |-
+    Look at the file, and at what in the add-on could load it. Report it if its
+    name marks it as hidden or junk (a dotfile or a file in a dot folder,
+    Thumbs.db, __MACOSX, an editor backup ending in "~", a .map, .orig, .bak,
+    .swp or .tmp file, or an archive), or if nothing in the add-on runs or loads
+    it. Withdraw it only if it is none of those by name and one of these loads
+    it: a manifest.json entry, a loader that builds its path at run time, or a
+    page, stylesheet or script the add-on runs. A file also counts as run if a
+    file the add-on runs names it. Do not withdraw it because some file mentions
+    it: that file has to run. Do not withdraw a hidden or junk file because
+    something references it.
   input: xpi
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1678,6 +2010,14 @@ deterministic-phase:
   severity: warning
   check: minimize-web-accessible-resources
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the web_accessible_resources entry at this line, and "item". Report it
+    if "item" is a pattern that exposes every file of the package, or a packaged
+    file the entry exposes that nothing outside the add-on's own pages loads.
+    Withdraw it if the entry does not expose "item", or, for a file, if
+    something outside the add-on loads it: a content script or what it injects
+    into a web page, a web page, or another extension. Do not withdraw it
+    because the add-on's own pages, frames or background use the file.
   input: xpi
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1708,6 +2048,15 @@ deterministic-phase:
   severity: error
   check: remote-resources
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line. If it is manifest.json's content_security_policy, report it
+    as it stands: never withdraw it. If it is code, report it if it loads a
+    resource of any kind from the remote URL in "item". Withdraw it only if the
+    line does not load that URL (a plain link, a comment, a string nothing
+    loads), or if the URL leads to a file in the package. Do not withdraw it
+    because the calling file looks like a third-party library, or because
+    nothing in the add-on loads the calling file, or because of who runs the
+    host or what the resource contains.
   input: source
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1737,7 +2086,9 @@ deterministic-phase:
 - title: Remote load inside an upstream release
   severity: error
   check: vendored-remote-resources
-  llm-verification: true
+  # Raises cases only, never a finding. A case reported in settle or ask keeps its
+  # answered ref, so verify has nothing of this check to audit.
+  llm-verification: false
   input: source
   instructions-for-human: |-
     Each of these remote loads is inside a file whose content matches a published
@@ -1755,7 +2106,9 @@ deterministic-phase:
 - title: Remote eval
   severity: error
   check: remote-eval
-  llm-verification: true
+  # Raises cases only, never a finding. A case reported in settle or ask keeps its
+  # answered ref, so verify has nothing of this check to audit.
+  llm-verification: false
   input: all
   settle-verbs: [reported, cleared]
   instructions-for-llm: |-
@@ -1781,6 +2134,14 @@ deterministic-phase:
   severity: error
   check: data-exfiltration
   llm-verification: true
+  llm-verification-instruction: |-
+    Read the line, and "hint", which names the route and the destination. Report
+    it if the user's sensitive data (messages, contacts, credentials, or
+    anything computed from them on the user's machine) leaves the machine here,
+    where the user would not expect it. Withdraw it if no such data leaves at
+    this line, if the user set the transmission up (chose the service, entered
+    the destination or a key, or turned on a setting that is off by default), or
+    if sending this data there is the add-on's stated single purpose.
   # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
   # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
@@ -1827,6 +2188,11 @@ deterministic-phase:
   severity: error
   check: unacceptable-package-content
   llm-verification: true
+  llm-verification-instruction: |-
+    Look at the content at this location as the package ships it: the name or
+    description in manifest.json, or a bundled text, image or media file. Report
+    it if it is spam, inappropriate, misleading or low-effort, or breaches
+    Mozilla's Acceptable Use Policy. Withdraw it if it is none of those.
   input: xpi
   settle-verbs: [cleared, ask]
   instructions-for-llm: |-
@@ -1861,6 +2227,11 @@ deterministic-phase:
   severity: error
   check: shipped-icon-trademark-imitation
   llm-verification: true
+  llm-verification-instruction: |-
+    Look at the icon at this location as the package ships it. Report it if it
+    imitates or incorporates the Thunderbird, Firefox or Mozilla logo. Withdraw
+    it if the file is not an icon the package ships, or if it plainly imitates
+    none of those logos.
   input: xpi
   settle-verbs: [cleared, ask]
   instructions-for-llm: |-
@@ -2814,7 +3185,7 @@ llm-phases:
       steps:
         - when: NOT aborted
           text: |-
-            Verify every entry in ONE pass. Answer with the "label" of one of the answers that entry lists under "answers", and with nothing else - each answer's "description" says when it applies. Judge only whether each entry is right, never whether it matters, and never put any of them to the reviewer.
+            Verify every entry in ONE pass, judging it against that entry's "instructions", which say what its claim is. Answer with the "label" of one of the answers that entry lists under "answers", and with nothing else - each answer's "description" says when it applies. Judge only whether each entry is right, never whether it matters, and never put any of them to the reviewer.
 
             {{schema}}
 

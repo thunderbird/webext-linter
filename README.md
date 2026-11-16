@@ -344,6 +344,13 @@ not the developer's, so accepting it is a judgement a person owns), and
 `experiment-manual-review` (an Experiment runs with Thunderbird's own internals in reach,
 so no scan of its surface settles what it does).
 
+A finding is audited by the agent in the verify phase, unless its check says
+`llm-verification: false` (a person's decision or a fact from outside the add-on, which
+stands as reported). A check the agent audits says what its findings claim in
+`llm-verification-instruction`, the text each finding is judged against, so that a
+finding the check means to report whatever surrounds it is not withdrawn for what
+surrounds it.
+
 Some findings abort the review. A check declares that it does by naming the reason the
 report gives, under one of two keys in the registry.
 

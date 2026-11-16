@@ -6596,9 +6596,11 @@ test("review-downgrade is refused without an abort, and on input source or xpi",
   })();
 });
 
-// The checks verify never audits: a person's decision, a fact from outside the add-on, or a
-// fact the build check already acted on (the review-unbuildable checks).
-test("llm-verification is false for decisions, outside facts and unbuildable sources alone", () => {
+// The checks verify never audits: a person's decision, a fact from outside the add-on, a fact
+// the build check already acted on (the review-unbuildable checks), an exact read the agent
+// could only repeat, or a check that raises cases and never a finding. Each says why in a
+// comment beside its `llm-verification: false`.
+test("llm-verification is false only where verify has nothing to judge", () => {
   const registry = loadRegistry();
   assert.deepEqual(
     registry
@@ -6606,23 +6608,83 @@ test("llm-verification is false for decisions, outside facts and unbuildable sou
       .filter((id) => !registry.verifiedByLlm(id))
       .sort(),
     [
+      "addon-icon-missing",
+      "background-module",
+      "background-page-module",
       "banned-library",
       "build-fails",
+      "build-lifecycle-hook",
       "build-not-reproduced",
+      "build-registry-redirect",
+      "build-reproduces-xpi",
+      "build-review",
       "build-unsafe",
+      "committed-build-artifact",
+      "committed-node-modules",
+      "csp-unsafe-eval",
+      "csp-unsafe-inline",
+      "debugger-statement",
+      "default-locale-missing",
+      "default-locale-unused",
+      "experiment-manual-review",
+      "experiment-missing-strict-max-version",
+      "experiment-modified",
       "experiment-not-allowed",
+      "experiment-overrides-api",
+      "experiment-schema-invalid",
+      "experiment-unknown-api",
+      "find-lib-on-cdn",
+      "locale-messages-invalid",
       "lock-foreign-source",
+      "lockfile-injection",
+      "manifest-invalid-json",
+      "manifest-missing",
+      "manifest-missing-key",
+      "manifest-unknown-permission",
+      "manifest-version-mismatch",
+      "minimize-host-permissions",
+      "missing-library",
+      "missing-vendor-file",
+      "mistyped-manifest-value",
+      "multiple-vendor-files",
+      "native-messaging",
+      "non-experiment-strict-max-version",
+      "obfuscated-code",
+      "remote-eval",
+      "sca-dependencies-changed",
+      "sca-invalid-symlink",
       "sca-lock-file-invalid",
       "sca-lock-file-missing",
       "sca-lock-file-multiple",
       "sca-not-needed",
       "sca-package-file-invalid",
       "sca-package-file-missing",
+      "sca-xpi-declares-vendoring",
+      "sca-xpi-fully-included-in-archive",
+      "strict-min-version-api",
+      "theme-experiment-missing-strict-max-version",
+      "trademark-thunderbird-name",
+      "trademark-violation",
+      "unknown-api",
+      "unpinned-vendor-source",
       "unpopular-source-dependency",
+      "unrecognized-file-type",
+      "unrecognized-manifest-key",
+      "unsupported-dependency",
+      "untrusted-library",
+      "untrusted-minified-library",
+      "update-url",
+      "vendor-ambiguous-source",
+      "vendor-modified",
+      "vendor-unparseable",
+      "vendor-vuln-unknown",
       "vendor-vulnerable",
       "vendor-vulnerable-dev",
       "vendor-vulnerable-indirect",
       "vendor-vulnerable-indirect-dev",
+      "vendored-remote-resources",
+      "xpi-lock-file-invalid",
+      "xpi-lock-file-missing",
     ]
   );
 });
@@ -6661,7 +6723,28 @@ test("llm-verification is required, boolean, and refused beside a sweep", () => 
       ),
     saying("authors `llm-verification`")
   );
-  const swept = edited("sync-xhr", (e) => (e["llm-verification"] = false));
+  // A verified check says what its findings claim, and an unverified one says nothing
+  // nobody would read.
+  const unsaid = edited("sync-xhr", (e) => {
+    delete e["llm-verification-instruction"];
+  });
+  assert.throws(
+    () => assertLlmVerification(unsaid, "t.yaml"),
+    saying(
+      "`sync-xhr` is verified by the agent but authors no `llm-verification-instruction`"
+    )
+  );
+  const unread = edited("sync-xhr", (e) => (e["llm-verification"] = false));
+  assert.throws(
+    () => assertLlmVerification(unread, "t.yaml"),
+    saying(
+      "`sync-xhr` authors `llm-verification-instruction` but `llm-verification: false`"
+    )
+  );
+  const swept = edited("sync-xhr", (e) => {
+    e["llm-verification"] = false;
+    delete e["llm-verification-instruction"];
+  });
   assertEntries(swept, "t.yaml");
   assertLlmVerification(swept, "t.yaml");
   docEntry(swept, "sync-xhr")["sweep-instruction"] = "Find more.";

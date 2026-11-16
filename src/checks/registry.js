@@ -760,6 +760,18 @@ export class Registry {
   }
 
   /**
+   * What a finding of this check claims, the text `verify` judges it against
+   * (`llm-verification-instruction`), or null for an id with no entry, such as a crashed
+   * check's, and for a check the agent does not verify.
+   * @param {string} ruleId
+   * @returns {?string}
+   */
+  verificationInstructionFor(ruleId) {
+    const text = this.checkEntry(ruleId)?.["llm-verification-instruction"];
+    return typeof text === "string" && text !== "" ? text : null;
+  }
+
+  /**
    * Whether this aborting check's finding makes a build impossible by the review's own rules
    * (`review-unbuildable`): no usable package.json, or no single readable lock to install
    * from. A source review holding one asks nobody to build it, and goes on without the build
@@ -2066,14 +2078,32 @@ function assertRegistry(registry, at, { partial = false } = {}) {
 }
 
 /**
- * Assert that a check the agent does not verify (`llm-verification: false`) authors no
- * sweep: a sweep's hints are merged into its findings as claims, and verify is what audits
- * them, so they would be reported unchecked.
+ * Assert what `llm-verification` asks of its check. A check the agent verifies says what its
+ * findings claim (`llm-verification-instruction`), since verify judges each finding against
+ * that text and nothing else says what the claim is. A check the agent does not verify
+ * authors no such text, which nothing would read, and no sweep: a sweep's hints are merged
+ * into its findings as claims, and verify is what audits them, so they would be reported
+ * unchecked.
  * @param {Registry} registry @param {string} at
  * @returns {void}
  */
 export function assertLlmVerification(registry, at) {
   for (const entry of registry.allEntries()) {
+    const instruction = entry["llm-verification-instruction"];
+    const authored = typeof instruction === "string" && instruction !== "";
+    if (entry["llm-verification"] === true && !authored) {
+      throw new Error(
+        `\`${entry.check}\` is verified by the agent but authors no ` +
+          "`llm-verification-instruction` - verify judges each finding against that text, " +
+          `which says what the check claims (${at})`
+      );
+    }
+    if (entry["llm-verification"] === false && authored) {
+      throw new Error(
+        `\`${entry.check}\` authors \`llm-verification-instruction\` but ` +
+          `\`llm-verification: false\` - nothing verifies its findings, so nothing reads it (${at})`
+      );
+    }
     if (entry["llm-verification"] === false && sweepTargetsOf(entry).length) {
       throw new Error(
         `\`${entry.check}\` authors a sweep instruction but \`llm-verification: false\` - ` +

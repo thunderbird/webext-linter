@@ -7,6 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pipelineOptsFromArgv } from "../../src/cli.js";
+import { loadRegistry } from "../../src/checks/registry.js";
 import {
   ROOT,
   OFFLINE_FLAGS,
@@ -350,8 +351,8 @@ test("a swept case of a check that files findings is verified like one", () => {
     ],
   });
 
-  // It arrives in VERIFY, as a finding: a locus and the agent's hint, and no `instructions`
-  // - a finding carries no question, because it is a claim to be audited.
+  // It arrives in VERIFY, as a finding: a locus and the agent's hint, and as `instructions`
+  // its check's verify instruction, the text the claim is audited against.
   const second = run(["--llm-handback", workOfReviewFile(file)]);
   assert.equal(second.code, 0, second.stderr);
   assert.match(second.stdout, /Verify every entry in ONE pass/);
@@ -363,8 +364,8 @@ test("a swept case of a check that files findings is verified like one", () => {
   assert.equal(swept.hint, "posts over http://");
   assert.equal(
     swept.instructions,
-    undefined,
-    "a finding carries no instructions"
+    loadRegistry().verificationInstructionFor("cleartext-transmission"),
+    "a finding carries its check's verify instruction"
   );
 
   // Confirmed, it reaches the developer worded by the OWNING check - never by the sweep.

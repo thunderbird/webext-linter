@@ -917,6 +917,8 @@ function renderedOpen(state, registry, phaseName, settled) {
       findings: settled.findings,
       manual: settled.manual,
       choicesOf: (ruleId) => registry.manualReviewChoices(ruleId),
+      verifyInstructionOf: (ruleId) =>
+        registry.verificationInstructionFor(ruleId),
       labelOf: locusLabeler(mode),
     }).map((item) => [item.ref, item])
   );

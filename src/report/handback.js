@@ -379,8 +379,9 @@ export function entriesFor(items, phase, roots) {
       };
     }
     // A finding is judged against the package, so it carries where it is and what it
-    // claims. A case a check could not settle carries its own instruction too - the one
-    // addressed to the agent, not the one a reviewer would read.
+    // claims, and its check's instruction saying what that claim is. A case a check could
+    // not settle carries its own instruction too - the one addressed to the agent, not the
+    // one a reviewer would read.
     // The paths this entry is about, RESOLVED. A relative path is one the agent has to
     // join to a root, and in a source review it would have to pick the right root first -
     // a step it can get wrong silently, and the artifact label is not a path.

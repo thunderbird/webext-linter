@@ -187,7 +187,14 @@ shapes:
         it says whether the agent audits this check's findings in `verify`. Every check
         answers it, because a finding that records a person's decision or a fact from
         outside the add-on (an advisory, a banned version, a download count) is reported as
-        it stands, and a check that forgot to say so would put it up for withdrawal
+        it stands, and a check that forgot to say so would put it up for withdrawal. A
+        comment beside every false says why
+    llm-verification-instruction:
+      kind: text
+      why: >-
+        it says what a finding of this check claims, which `verify` judges it against.
+        Without it the agent guesses what the claim is, and withdraws a finding the check
+        means to report whatever surrounds it
     escalation:
       kind: refused
       why: >-
