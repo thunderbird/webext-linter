@@ -48,15 +48,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import { writeFileAtomic } from "../util/atomic.js";
+import { writeReadOnlyFileAtomic } from "../util/atomic.js";
 import { rawSha256 } from "../normalize/hash.js";
 import { parseJson } from "../util/json.js";
 import { workPaths } from "../util/dest.js";
 import { recordError, rethrowIfFatal, wiringError } from "../lib/errors.js";
 import { checkBuildCheck, recordBoolean } from "../build-check/state.js";
-
-/** The mode every write leaves the record at: readable, and writable by nobody. */
-const READ_ONLY = 0o444;
 
 /** The record's modes, which the hand-back switches on. */
 export const MODE = Object.freeze({
@@ -289,10 +286,7 @@ export function writeRecord(work, record) {
   const written = { ...body, digest: recordDigest(body) };
   const file = workPaths(work).state;
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  // Replaced by a rename, which asks for permission on the folder rather than on the file,
-  // so the record's own read-only mode never stands in the linter's way.
-  writeFileAtomic(file, `${JSON.stringify(written, null, 1)}\n`);
-  fs.chmodSync(file, READ_ONLY);
+  writeReadOnlyFileAtomic(file, `${JSON.stringify(written, null, 1)}\n`);
   return written;
 }
 
