@@ -432,7 +432,8 @@ deterministic-phase:
     name is only a property name, a string, or something the file declares or
     imports itself, if the file is Experiment code or reached only through an
     Experiment API, if no page or entry point of the add-on loads the file, or
-    if the line is in a bundled library.
+    if the line is in a bundled library. Withdraw it also if the release build
+    never puts this file into the XPI.
   input: all
   response: |-
     This add-on is using privileged Thunderbird internals in a WebExtension context, where they are not available: background, content, options and popup scripts run in a sandbox without chrome privileges. Remove the usage.
@@ -550,7 +551,8 @@ deterministic-phase:
     property named in "item", and SCHEMA marks it, or its namespace, deprecated.
     "hint" holds SCHEMA's deprecation message, if it has one. Withdraw it if the
     line does not use that API, or if SCHEMA marks neither it nor its namespace
-    deprecated. Do not withdraw it because the use is guarded or has a fallback.
+    deprecated. Withdraw it also if the release build never puts this file into
+    the XPI. Do not withdraw it because the use is guarded or has a fallback.
   input: source
   response: |-
     The following APIs are deprecated in the targeted Thunderbird version. Please migrate to supported APIs.
@@ -569,7 +571,8 @@ deterministic-phase:
     strict_max_version. "hint" names the version SCHEMA gives. Withdraw it if
     the line does not use that API, if manifest.json declares no
     strict_max_version, or if the version SCHEMA gives for the API, or for its
-    namespace if the API has none, is not higher.
+    namespace if the API has none, is not higher. Withdraw it also if the
+    release build never puts this file into the XPI.
   input: source
   response: |-
     The add-on is setting strict_max_version to {{max}} but uses functions or events added in a later Thunderbird. Raise strict_max_version, or stop using these APIs.
@@ -586,7 +589,8 @@ deterministic-phase:
     Thunderbird (its strict_min_version), and manifest.json does not request
     "item" under permissions, optional_permissions or host_permissions. Withdraw
     it if the line uses no such API or key, or if manifest.json requests the
-    permission.
+    permission. Withdraw it also if the release build never puts this file into
+    the XPI.
   input: source
   response: |-
     The following permissions are required at the locations listed, but are not declared in manifest.json. Add them to the requested permissions.
@@ -602,6 +606,7 @@ deterministic-phase:
     keys listed in "hint", and manifest.json declares none of them at its top
     level. Withdraw it if the line does not use that API, if SCHEMA does not tie
     the namespace to those keys, or if manifest.json declares one of them.
+    Withdraw it also if the release build never puts this file into the XPI.
   input: source
   response: |-
     The following APIs each need a manifest.json key that is not declared. Add one of the keys named for each API to manifest.json.
@@ -755,7 +760,8 @@ deterministic-phase:
     Read the line. Report it if it calls open() on an XMLHttpRequest with false
     as its third argument, which makes the request synchronous. Withdraw it if
     the line makes no such call, if open() is called on something that is not an
-    XMLHttpRequest, or if the line is in a bundled library.
+    XMLHttpRequest, or if the line is in a bundled library. Withdraw it also if
+    the release build never puts this file into the XPI.
   input: all
   response: |-
     The add-on makes a synchronous XMLHttpRequest, which can lock up the user interface. Please use an asynchronous request instead.
@@ -769,7 +775,8 @@ deterministic-phase:
   llm-verification-instruction: |-
     Read the line. Report it if it writes a value to the property or method
     named in "item". Withdraw it if it does not, if the value is an empty string
-    or null, or if the line is in a bundled library. Do not withdraw it because
+    or null, or if the line is in a bundled library. Withdraw it also if the
+    release build never puts this file into the XPI. Do not withdraw it because
     the value is static, sanitised, sandboxed or covered by a CSP.
   input: source
   response: |-
@@ -811,8 +818,9 @@ deterministic-phase:
     and SCHEMA gives that event a sendResponse parameter and a return value.
     Withdraw it if the line does not call addListener on that event, if its
     first argument is not an inline async function, if SCHEMA does not give the
-    event both, or if the line is in a bundled library. Do not withdraw it
-    because of what the listener does with the messages.
+    event both, or if the line is in a bundled library. Withdraw it also if the
+    release build never puts this file into the XPI. Do not withdraw it because
+    of what the listener does with the messages.
   input: source
   response: |-
     An asynchronous listener is attached to the following runtime message event(s). An async listener always returns a Promise, which claims the response for every message it sees - including the ones it declines - so the other listeners never get to answer. This is error-prone and must be avoided.
@@ -829,7 +837,8 @@ deterministic-phase:
     Read the line. "item" names the ESLint rule and its message. Report it if
     the code has the problem the message describes. Withdraw it if the code at
     this line does not have that problem, or if the line is in a bundled
-    library.
+    library. Withdraw it also if the release build never puts this file into the
+    XPI.
   input: source
   when: eslint
   response: |-
@@ -937,7 +946,9 @@ deterministic-phase:
     not withdraw it because it is data under a .js or .css name, or because the
     file looks like a third-party library. A library the review has recognised
     never reaches this check, so one that does reach it is undeclared or
-    unverified, and the developer must declare it.
+    unverified, and the developer must declare it. Do not withdraw it because
+    the release build never puts this file into the XPI: a source archive must
+    be readable as well.
   input: source
   # Aborts the review late: code nobody can read is unsafe to install, so the reviewer is
   # asked nothing. The review still runs to the end of `settle`.
@@ -1023,6 +1034,7 @@ deterministic-phase:
     Read the file, and every script inside it if it is a page. Report it if any
     of that JavaScript does not parse. Withdraw it if every script parses as
     JavaScript, or as TypeScript or JSX if the file's extension says so.
+    Withdraw it also if the release build never puts this file into the XPI.
   input: source
   response: |-
     Limited static-analysis coverage: could not be parsed, so API checks were skipped ({{detail}})
@@ -1042,8 +1054,8 @@ deterministic-phase:
     code there is not valid JavaScript in the way "hint" says, for example a
     let, const or class name declared twice in one scope. Withdraw it if the
     code at this line has no such error, for example if the two declarations are
-    in different scopes. Do not withdraw it because the file is a bundled
-    library.
+    in different scopes. Withdraw it also if the release build never puts this
+    file into the XPI. Do not withdraw it because the file is a bundled library.
   input: all
   response: |-
     The following file(s) contain code that is not valid JavaScript, so it cannot run and could not be reviewed. Correct the code at each line named.
@@ -1649,8 +1661,9 @@ deterministic-phase:
     names, or at one the user enters that the code does not refuse or switch to
     https://, wss:// or ftps://. Withdraw it if the code connects to no remote
     server (a host permission alone, or the user's own machine), or uses an
-    encrypted scheme. Do not withdraw it because of what is sent or who chose
-    the server.
+    encrypted scheme. Withdraw it also if the release build never puts this file
+    into the XPI. Do not withdraw it because of what is sent or who chose the
+    server.
   input: all
   sweep-instruction-for-xpi: &cleartext-sweep |-
     A remote endpoint reached over http://, ws:// or ftp://, whether the add-on names
@@ -1675,8 +1688,9 @@ deterministic-phase:
     of the add-on, to a remote host the add-on fixes itself, named in "item" or
     built at run time from the add-on's own values. Withdraw it if the line
     sends nothing to a remote host, if the destination comes from something the
-    user entered, or if nothing about the user is sent. Do not withdraw it
-    because the listing may already carry a privacy policy.
+    user entered, or if nothing about the user is sent. Withdraw it also if the
+    release build never puts this file into the XPI. Do not withdraw it because
+    the listing may already carry a privacy policy.
   # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
   # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
@@ -1822,7 +1836,8 @@ deterministic-phase:
     Read the line. Report it if it calls the global eval(), bare or through a
     global object such as window or globalThis. Withdraw it if the line does not
     call the global eval (a method named eval on another object, a comment, a
-    string), or if the line is in a bundled library. Do not withdraw it because
+    string), or if the line is in a bundled library. Withdraw it also if the
+    release build never puts this file into the XPI. Do not withdraw it because
     of what is evaluated, a constant string included.
   input: all
   response: |-
@@ -1836,8 +1851,9 @@ deterministic-phase:
     Read the line. Report it if it calls the global Function constructor, with
     or without "new", bare or through a global object such as window. Withdraw
     it if the line does not call the global Function, or if the line is in a
-    bundled library. Do not withdraw it because of the source text it is given,
-    a constant included.
+    bundled library. Withdraw it also if the release build never puts this file
+    into the XPI. Do not withdraw it because of the source text it is given, a
+    constant included.
   input: source
   response: |-
     Dynamic code execution via "the Function constructor" is not allowed.
@@ -1850,7 +1866,8 @@ deterministic-phase:
     Read the line. Report it if it calls the global setTimeout or setInterval
     with a string as the first argument, which runs as code. Withdraw it if the
     first argument is a function, if the call is not to the global timer, or if
-    the line is in a bundled library. Do not withdraw it because of what the
+    the line is in a bundled library. Withdraw it also if the release build
+    never puts this file into the XPI. Do not withdraw it because of what the
     string contains, an empty string included.
   input: all
   response: |-
@@ -2053,7 +2070,8 @@ deterministic-phase:
     as it stands: never withdraw it. If it is code, report it if it loads a
     resource of any kind from the remote URL in "item". Withdraw it only if the
     line does not load that URL (a plain link, a comment, a string nothing
-    loads), or if the URL leads to a file in the package. Do not withdraw it
+    loads), or if the URL leads to a file in the package. Withdraw it also if
+    the release build never puts this file into the XPI. Do not withdraw it
     because the calling file looks like a third-party library, or because
     nothing in the add-on loads the calling file, or because of who runs the
     host or what the resource contains.
@@ -2141,7 +2159,8 @@ deterministic-phase:
     where the user would not expect it. Withdraw it if no such data leaves at
     this line, if the user set the transmission up (chose the service, entered
     the destination or a key, or turned on a setting that is off by default), or
-    if sending this data there is the add-on's stated single purpose.
+    if sending this data there is the add-on's stated single purpose. Withdraw
+    it also if the release build never puts this file into the XPI.
   # UNDECIDED: `input: source` or `input: all`. The shipped XPI is what reaches a host,
   # but there readable vendored code is scanned and a readable build doubles each line.
   input: source
@@ -3190,8 +3209,6 @@ llm-phases:
             {{schema}}
 
             Judge every API, permission and method against SCHEMA, never against what you remember: a name the schema does not have is not a name this add-on can use, whatever another version of Thunderbird offers.
-
-            A claim about code the Thunderbird release build never puts into the XPI is not correct: that code is not part of the add-on.
 
     # Settles what a check could not. Its intro earns its text too: "your job here, not the
     # reviewer's" is what stops the agent deferring, and it is in tension with the entries
