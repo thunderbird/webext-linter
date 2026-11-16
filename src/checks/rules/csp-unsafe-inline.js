@@ -1,5 +1,7 @@
-// The manifest.json content_security_policy allows 'unsafe-inline', which permits
-// dynamic code execution via inline scripts - not allowed.
+// The manifest.json policy for extension pages allows 'unsafe-inline', which permits
+// dynamic code execution via inline scripts - not allowed. A sandbox policy is not
+// read: a sandboxed page runs without the extension's privileges, and the review allows
+// inline script there (src/scan/csp.js).
 //
 // Belongs here: emitting the finding when the CSP allows 'unsafe-inline'. Does
 // NOT belong here: CSP parsing (-> src/scan/csp.js via getEvalScan in

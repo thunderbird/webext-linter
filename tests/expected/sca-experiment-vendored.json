@@ -20,6 +20,13 @@
         "stargazers_count": 4200
       }
     },
+    "https://api.github.com/repos/someone/thing-lib/git/matching-refs/tags/1.4.2": {
+      "json": [
+        {
+          "ref": "refs/tags/1.4.2"
+        }
+      ]
+    },
     "https://unpkg.com/thing-lib@1.4.2/?meta": {
       "status": 404
     }

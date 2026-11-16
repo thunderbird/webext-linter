@@ -183,6 +183,77 @@ test("each MV3 policy is read on its own", () => {
   assert.equal(r.unsafeEval, true);
 });
 
+// A sandboxed page runs without the extension's privileges: eval and inline script are
+// allowed in its policy, remote hosts are not. The MV3 sandbox key and the MV2
+// sandbox.content_security_policy are read alike.
+test("a sandbox policy allows eval and inline script, never a remote host", () => {
+  const mv3 = analyzeCsp({
+    content_security_policy: {
+      extension_pages: "script-src 'self'",
+      sandbox:
+        "sandbox allow-scripts; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.example.com",
+    },
+  });
+  const mv2 = analyzeCsp({
+    content_security_policy: "script-src 'self'",
+    sandbox: {
+      pages: ["page.html"],
+      content_security_policy:
+        "sandbox allow-scripts; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.example.com",
+    },
+  });
+  for (const r of [mv3, mv2]) {
+    assert.equal(r.unsafeEval, false);
+    assert.equal(r.unsafeInline, false);
+    assert.deepEqual(r.remoteHosts, ["https://cdn.example.com"]);
+  }
+  assert.deepEqual(mv3.remoteSites, [
+    {
+      host: "https://cdn.example.com",
+      path: ["content_security_policy", "sandbox"],
+    },
+  ]);
+  assert.deepEqual(mv2.remoteSites, [
+    {
+      host: "https://cdn.example.com",
+      path: ["sandbox", "content_security_policy"],
+    },
+  ]);
+});
+
+// Gecko applies only extension_pages and sandbox of the MV3 object: any other key is an
+// unrecognized property, and a policy there governs nothing.
+test("an unknown key of the MV3 object is not read", () => {
+  const r = analyzeCsp({
+    content_security_policy: {
+      extension_pages: "script-src 'self'",
+      isolated_world: "script-src 'self' 'unsafe-eval' https://cdn.example.com",
+    },
+  });
+  assert.equal(r.unsafeEval, false);
+  assert.deepEqual(r.remoteHosts, []);
+});
+
+// Each remote host is placed at the policy that names it.
+test("a remote host of the extension policy is placed at its key", () => {
+  assert.deepEqual(csp("script-src 'self' https://a.example.com").remoteSites, [
+    { host: "https://a.example.com", path: ["content_security_policy"] },
+  ]);
+  assert.deepEqual(
+    analyzeCsp({
+      content_security_policy: {
+        extension_pages: "script-src 'self' https://a.example.com",
+      },
+    }).remoteSites,
+    [
+      {
+        host: "https://a.example.com",
+        path: ["content_security_policy", "extension_pages"],
+      },
+    ]
+  );
+});
+
 // Every fallback link, each pinned on its own.
 test("each fallback chain is followed link by link", () => {
   // script-src-attr falls back to script-src.

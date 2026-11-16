@@ -734,6 +734,44 @@ test("remote-resources flags a remote CSP script-src host", async () => {
   assert.match(findings[0].item, /cdn\.example\.com/); // the host is the subject (item)
 });
 
+// A sandbox policy allows eval but no remote code: csp-unsafe-eval stays silent on it,
+// and remote-resources reports its remote host on the sandbox policy's own line, in the
+// MV2 sandbox.content_security_policy as in the MV3 sandbox key.
+test("a sandbox policy: eval allowed, its remote host reported at its line", async () => {
+  const at = async (text) => {
+    const ctx = {
+      artifact: {
+        files: new Map([["manifest.json", Buffer.from(text)]]),
+        manifest: manifestOf(JSON.parse(text), text),
+      },
+      jsSources: [],
+      options: {},
+    };
+    return {
+      evalFindings: (await cspUnsafeEval.run(withManifest(ctx))).findings,
+      remote: (await remoteScript.run(withManifest(ctx))).findings,
+    };
+  };
+  const mv2 = await at(
+    '{\n  "manifest_version": 2,\n  "sandbox": {\n    "pages": ["s.html"],\n' +
+      "    \"content_security_policy\": \"sandbox allow-scripts; script-src 'self' 'unsafe-eval' https://cdn.example.com\"\n  }\n}\n"
+  );
+  assert.equal(mv2.evalFindings.length, 0);
+  assert.deepEqual(
+    mv2.remote.map((f) => [f.item, f.loc.line]),
+    [["https://cdn.example.com", 5]]
+  );
+  const mv3 = await at(
+    '{\n  "manifest_version": 3,\n  "content_security_policy": {\n    "extension_pages": "script-src \'self\'",\n' +
+      "    \"sandbox\": \"sandbox allow-scripts; script-src 'self' 'unsafe-eval' https://cdn.example.com\"\n  }\n}\n"
+  );
+  assert.equal(mv3.evalFindings.length, 0);
+  assert.deepEqual(
+    mv3.remote.map((f) => [f.item, f.loc.line]),
+    [["https://cdn.example.com", 5]]
+  );
+});
+
 // A clean fully-bundled add-on (local JS, no remote CSP or eval) produces zero
 // findings from both checks - the negative/no-false-positive baseline.
 test("remote-resources + eval checks: no findings for a clean bundled add-on", async () => {

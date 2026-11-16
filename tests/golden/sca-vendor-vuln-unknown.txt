@@ -8,7 +8,7 @@ Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubm
 
 We would like to share the following information with you:
 
-2) The add-on sourced a third-party file from a CDN, where its known-vulnerability status could not be determined automatically. To benefit from automated auditing against the OSV database, consider switching to an npm-hosted source and update your vendor mechanism to point to an unpkg or jsDelivr package (pinned to an exact version).
+2) The add-on sourced a third-party file from GitHub, where its known-vulnerability status could not be determined automatically. To benefit from automated auditing against the OSV database, consider switching to an npm-hosted source and update your vendor mechanism to point to an unpkg or jsDelivr package (pinned to an exact version).
  - [SCA] VENDORS.md:2 - https://raw.githubusercontent.com/someone/thing-lib/1.4.2/dist/thing.js
 
 [XPI] = source file in the submitted XPI

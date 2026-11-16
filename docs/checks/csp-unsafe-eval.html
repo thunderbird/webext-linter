@@ -21,7 +21,10 @@
         execution, which is not allowed.
       </p>
       <p>
-        The shared dynamic-execution scan reads the policy directive by directive,
+        It reads the policy for extension pages: the content_security_policy string (MV2) or its
+        extension_pages (MV3). A sandbox policy (the MV3 sandbox key, or
+        sandbox.content_security_policy in MV2) is not read: a sandboxed page runs without the
+        extension's privileges, and the review allows eval there. The shared dynamic-execution scan reads the policy directive by directive,
         by name, so the order they are written in does not matter. Eval is
         governed by script-src, falling back to default-src; the scan records
         whether that directive allows 'unsafe-eval'. The keyword anywhere else

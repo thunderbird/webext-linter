@@ -1,7 +1,8 @@
 // The add-on must bundle everything it loads. This check reports what the DEVELOPER
 // ships: a definite remote load - <script>/<link>/<iframe>/media in HTML, @import/url()
 // in CSS, import()/importScripts()/module imports, runtime <script> injection, remote
-// WASM, or a content_security_policy permitting a remote script source - is a finding.
+// WASM, or a manifest.json policy permitting a remote script source, a sandbox policy
+// included - is a finding.
 // A site the scan cannot resolve (a non-literal URL, an inline data:/blob: script
 // source) escalates for a reader of the code to settle.
 //
@@ -59,10 +60,11 @@ export default {
     }
     // Minted by the manifest, not by this check's route: the CSP was read out of the
     // SHIPPED manifest.json (ctx.manifest), which in a source review is a different
-    // artifact from the code this check is routed to. The mint also carries the line,
-    // which a hand-written locus here never had.
-    const csp = ctx.manifest.locus("content_security_policy");
-    for (const host of refs.cspHosts) {
+    // artifact from the code this check is routed to. The mint also carries the line of
+    // the policy that names the host, a sandbox policy included: remote code is allowed
+    // nowhere.
+    for (const { host, path } of refs.cspHosts) {
+      const csp = ctx.manifest.locus(...path);
       findings.push(finding({ ...csp, item: host }));
       ctx.note?.(csp, `CSP script-src ${host}`, VERDICT.FAIL);
     }

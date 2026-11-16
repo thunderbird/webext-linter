@@ -1,7 +1,14 @@
-// Parses a manifest.json content_security_policy (string in MV2, object of named
-// policies in MV3) and reports the two risk categories the remote-code checks
-// care about: dynamic-code keywords ('unsafe-eval' / 'unsafe-inline') and
-// remote script-source hosts.
+// Parses the policies of manifest.json and reports the two risk categories the remote-code
+// checks care about: dynamic-code keywords ('unsafe-eval' / 'unsafe-inline') and remote
+// script-source hosts.
+//
+// The policies are the ones Gecko applies. For extension pages: the content_security_policy
+// string (MV2), or its `extension_pages` (MV3). For sandboxed pages: its `sandbox` (MV3), or
+// sandbox.content_security_policy (MV2). Any other key of the MV3 object is one Gecko
+// ignores, and so is it here. A sandboxed page runs without the extension's privileges, and
+// the review allows eval and inline script there, so the keywords are read from the
+// extension policies alone. Remote code is allowed nowhere, so remote hosts are read from
+// every policy.
 //
 // A policy is tokenized into its directives first - split on ";", each directive split on
 // ASCII whitespace into a name and its source list - and every question is then asked of
@@ -34,43 +41,94 @@ const FALLBACK = {
 };
 
 /**
+ * @typedef {object} CspRemoteSite  A remote script host, and the policy that names it.
+ * @property {string} host  The source expression as written.
+ * @property {string[]} path  The manifest.json path of the policy that names it.
+ */
+
+/**
  * @param {Manifest} manifest  Parsed manifest.json.
- * @returns {{unsafeEval: boolean, unsafeInline: boolean, remoteHosts: string[]}}
+ * @returns {{unsafeEval: boolean, unsafeInline: boolean, remoteHosts: string[],
+ *   remoteSites: CspRemoteSite[]}}  `remoteHosts` lists each host once, and
+ *   `remoteSites` each host once per policy that names it.
  */
 export function analyzeCsp(manifest) {
-  const csp = manifest?.content_security_policy;
-  const strings =
-    typeof csp === "string"
-      ? [csp]
-      : csp && typeof csp === "object"
-        ? Object.values(csp).filter((v) => typeof v === "string")
-        : [];
-
   let unsafeEval = false;
   let unsafeInline = false;
   const hosts = new Set();
-  for (const s of strings) {
-    const policy = parsePolicy(s);
+  const sites = [];
+  for (const { text, path, sandbox } of policiesOf(manifest)) {
+    const policy = parsePolicy(text);
     // A directive the policy does not reach (no script directive, no default-src) leaves
     // scripts to the platform default, which permits none of this.
-    if (hasKeyword(effective(policy, "script-src"), "'unsafe-eval'")) {
+    if (
+      !sandbox &&
+      hasKeyword(effective(policy, "script-src"), "'unsafe-eval'")
+    ) {
       unsafeEval = true;
     }
     if (
-      allowsInline(effective(policy, "script-src-elem")) ||
-      allowsInline(effective(policy, "script-src-attr"))
+      !sandbox &&
+      (allowsInline(effective(policy, "script-src-elem")) ||
+        allowsInline(effective(policy, "script-src-attr")))
     ) {
       unsafeInline = true;
     }
+    const named = new Set();
     for (const kind of ["script-src-elem", "script-src", "worker-src"]) {
       for (const source of effective(policy, kind)) {
         if (isRemoteSource(source)) {
-          hosts.add(source);
+          named.add(source);
         }
       }
     }
+    for (const host of named) {
+      hosts.add(host);
+      sites.push({ host, path });
+    }
   }
-  return { unsafeEval, unsafeInline, remoteHosts: [...hosts] };
+  return {
+    unsafeEval,
+    unsafeInline,
+    remoteHosts: [...hosts],
+    remoteSites: sites,
+  };
+}
+
+/**
+ * The policies Gecko applies, each with its manifest.json path and whether it governs
+ * sandboxed pages (see the header).
+ * @param {Manifest} manifest
+ * @returns {{text: string, path: string[], sandbox: boolean}[]}
+ */
+function policiesOf(manifest) {
+  const out = [];
+  const csp = manifest?.content_security_policy;
+  if (typeof csp === "string") {
+    out.push({ text: csp, path: ["content_security_policy"], sandbox: false });
+  } else if (csp && typeof csp === "object") {
+    for (const [key, sandbox] of [
+      ["extension_pages", false],
+      ["sandbox", true],
+    ]) {
+      if (typeof csp[key] === "string") {
+        out.push({
+          text: csp[key],
+          path: ["content_security_policy", key],
+          sandbox,
+        });
+      }
+    }
+  }
+  const sandboxed = manifest?.sandbox?.content_security_policy;
+  if (typeof sandboxed === "string") {
+    out.push({
+      text: sandboxed,
+      path: ["sandbox", "content_security_policy"],
+      sandbox: true,
+    });
+  }
+  return out;
 }
 
 /**

@@ -7,7 +7,8 @@
 // review it decides.
 //
 // Kept by the package asked about: `npm:<name>` as npm spells it, `gh:<owner>/<repo>`
-// lowercased, since GitHub reads a repository's name without case.
+// lowercased, since GitHub reads a repository's name without case. A tag lookup under a
+// repository (./verify.js isGithubTag) is kept the same way, its tag with its case.
 //
 // Belongs here: wrapping a VendorNet so the two popularity endpoints are answered from the
 // run's cache, and the file it lives in. Does NOT belong here: what a reading means
@@ -39,7 +40,12 @@ export function popularityKey(url) {
     return `npm:${u.slice(VENDOR_NPM_DOWNLOADS_API.length)}`;
   }
   if (u.startsWith(VENDOR_GITHUB_REPOS_API)) {
-    return `gh:${u.slice(VENDOR_GITHUB_REPOS_API.length).toLowerCase()}`;
+    // GitHub reads owner and repository without case, and a tag with case, so only the
+    // first two segments are folded.
+    const [owner = "", repo = "", ...rest] = u
+      .slice(VENDOR_GITHUB_REPOS_API.length)
+      .split("/");
+    return `gh:${[owner.toLowerCase(), repo.toLowerCase(), ...rest].join("/")}`;
   }
   return null;
 }

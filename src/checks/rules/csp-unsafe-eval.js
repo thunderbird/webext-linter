@@ -1,5 +1,7 @@
-// The manifest.json content_security_policy allows 'unsafe-eval', which permits
-// dynamic code execution - not allowed.
+// The manifest.json policy for extension pages allows 'unsafe-eval', which permits
+// dynamic code execution - not allowed. A sandbox policy is not read: a sandboxed page
+// runs without the extension's privileges, and the review allows eval there
+// (src/scan/csp.js).
 //
 // Belongs here: emitting the finding when the CSP allows 'unsafe-eval'. Does NOT
 // belong here: CSP parsing (-> src/scan/csp.js via getEvalScan in

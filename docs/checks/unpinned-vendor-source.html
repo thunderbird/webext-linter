@@ -24,7 +24,9 @@
         When the review first reads the vendored files, each declared source URL is classified offline. A
         source on a trusted host counts as pinned only when it names a specific
         version, tag, or full commit hash; a branch or an unversioned link does
-        not. Sources that are pinned move on to the byte comparison, and sources
+        not. A GitHub tag counts whatever its name. Where the URL does not say
+        whether a GitHub ref is a tag or a branch, the review asks GitHub, and
+        keeps the answer by the ref's shape if GitHub gives none. Sources that are pinned move on to the byte comparison, and sources
         on untrusted hosts are routed elsewhere. The trusted-but-not-pinned
         sources are recorded, and this check turns each one into a finding.
       </p>

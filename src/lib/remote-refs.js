@@ -48,7 +48,8 @@ import { extname, HTML_EXTENSIONS } from "../util/files.js";
  *   published upstream release, so the line is that release's, not the developer's.
  * @property {RemoteSite[]} cleared  A bundled script/frame load - benign, but narrated:
  *   it is on the trail of "what runs".
- * @property {string[]} cspHosts  Remote script hosts the manifest.json CSP permits.
+ * @property {import("../scan/csp.js").CspRemoteSite[]} cspHosts  Remote script hosts a
+ *   manifest.json policy permits, each with the path of that policy.
  */
 
 /**
@@ -117,7 +118,7 @@ async function scan(ctx) {
     }
   }
 
-  out.cspHosts = analyzeCsp(ctx.manifest?.json).remoteHosts;
+  out.cspHosts = analyzeCsp(ctx.manifest?.json).remoteSites;
   return out;
 }
 

@@ -1,10 +1,12 @@
 // Rejects a VENDOR-declared file whose source is a trusted host but is not
 // pinned to an immutable ref (a branch like .../main, or an unversioned URL).
 // Such a source can change after review, so the bytes cannot be verified - the
-// developer must link to a specific version, tag, or commit. resolveVendor
-// classified each declared source offline (src/vendor/sources.js) and recorded
-// the non-pinned ones as `unpinned-source` results on addon.vendor. This check
-// only reads them. Deterministic, no network.
+// developer must link to a specific version, tag, or commit. A GitHub tag of any
+// name counts, a branch never does. resolveVendor classified each declared source
+// offline (src/vendor/sources.js) and recorded the non-pinned ones as
+// `unpinned-source` results on addon.vendor, and the vendor step corrected those
+// whose ref only GitHub can name a tag or a branch (src/vendor/verify.js
+// confirmTagRefs). This check only reads them.
 //
 // Belongs here: turning each unpinned-source result into a finding (+ a feed
 // note). Does NOT belong here: classifying the URL (-> src/vendor/sources.js),

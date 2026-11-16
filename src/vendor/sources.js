@@ -3,6 +3,12 @@
 // comparison against it is stable), the raw URL to fetch, and the identifier
 // used for the popularity lookup (npm package or GitHub owner/repo).
 //
+// A GitHub ref is pinned when it is a tag, whatever its name, or a full commit SHA, and
+// never when it is a branch. Some URL forms say which it is (refs/tags/, refs/heads/,
+// releases/download/). The short forms do not, so such a ref is marked `refUnsure`: its
+// `pinned` is the offline answer by shape (isVersion), and src/vendor/verify.js asks
+// GitHub whether it is a tag and corrects it.
+//
 // Belongs here: parsing the trusted host shapes (unpkg, jsDelivr npm + gh,
 // raw.githubusercontent) plus the github.com/.../blob -> raw rewrite and the
 // github.com/.../releases/download/<tag>/<file> asset, and the pinned-ref heuristic.
@@ -20,7 +26,9 @@ import { isVersion } from "../lib/util.js";
 /**
  * @typedef {object} VendorSource
  * @property {boolean} trusted  Host is one we may fetch from.
- * @property {boolean} pinned  Ref is immutable (a version/tag/commit).
+ * @property {boolean} pinned  Ref is immutable (a version, a tag or a commit).
+ * @property {boolean} refUnsure  A github ref the URL does not mark as tag or branch:
+ *   `pinned` is the answer by its shape until GitHub says whether it is a tag.
  * @property {boolean} tarball  rawUrl serves a whole-package tarball (the npm
  *   registry), not a single file - verified by extracting + per-file hash match
  *   instead of a single-file byte compare.
@@ -39,6 +47,7 @@ import { isVersion } from "../lib/util.js";
 const UNTRUSTED = Object.freeze({
   trusted: false,
   pinned: false,
+  refUnsure: false,
   tarball: false,
   rawUrl: null,
   kind: null,
@@ -50,16 +59,21 @@ const UNTRUSTED = Object.freeze({
 });
 
 /**
- * A pinned git ref: a version tag (isVersion, since a tag need not be semver) or a full
- * 40-hex commit SHA.
+ * The offline answer for a ref the URL does not mark as tag or branch: pinned when it is
+ * shaped like a version (isVersion, since a tag need not be semver) or is a full 40-hex
+ * commit SHA. src/vendor/verify.js asks GitHub and corrects it.
  * @param {string} ref
  * @returns {boolean}
  */
 function isPinnedRef(ref) {
+  return isVersion(ref) || isFullSha(ref);
+}
+
+/** @param {string} ref @returns {boolean} A full 40-hex commit SHA. */
+function isFullSha(ref) {
   return (
-    isVersion(ref) ||
-    (ref.length === 40 &&
-      [...ref].every((c) => "0123456789abcdefABCDEF".includes(c)))
+    ref.length === 40 &&
+    [...ref].every((c) => "0123456789abcdefABCDEF".includes(c))
   );
 }
 
@@ -96,8 +110,10 @@ const HOST_PARSERS = {
   // the literal "refs". rawUrl stays the original URL (fetchable as-is).
   "raw.githubusercontent.com": (segs, url) => {
     if (segs[2] === "refs") {
-      return segs.length >= 6
-        ? github(`${segs[0]}/${segs[1]}`, segs[4], url)
+      const kind =
+        segs[3] === "tags" ? "tag" : segs[3] === "heads" ? "branch" : null;
+      return segs.length >= 6 && kind
+        ? github(`${segs[0]}/${segs[1]}`, segs[4], url, kind)
         : UNTRUSTED;
     }
     return segs.length >= 4
@@ -110,7 +126,7 @@ const HOST_PARSERS = {
     // answers with a redirect to a signed, short-lived URL, which is followed and
     // never recorded.
     if (type === "releases" && ref === "download" && segs.length === 6) {
-      return github(`${owner}/${repo}`, rest[0], url);
+      return github(`${owner}/${repo}`, rest[0], url, "tag");
     }
     // A single file: /blob/<ref>/<path> -> the raw file URL (byte-compared).
     if (type === "blob" && segs.length >= 5) {
@@ -198,9 +214,12 @@ function npm(pkg, version, rawUrl) {
 
 /**
  * @param {string} repo  "owner/repo" @param {?string} ref @param {string} rawUrl
+ * @param {?("tag"|"branch")} [refKind]  What the URL says the ref is, or null for a
+ *   short form that does not say.
  * @returns {VendorSource}
  */
-function github(repo, ref, rawUrl) {
+function github(repo, ref, rawUrl, refKind = null) {
+  const sha = Boolean(ref) && isFullSha(ref);
   return {
     ...UNTRUSTED,
     trusted: true,
@@ -208,7 +227,13 @@ function github(repo, ref, rawUrl) {
     repo,
     ref: ref ?? null,
     rawUrl,
-    pinned: Boolean(ref) && isPinnedRef(ref),
+    pinned:
+      refKind === "tag"
+        ? Boolean(ref)
+        : refKind === "branch"
+          ? false
+          : Boolean(ref) && isPinnedRef(ref),
+    refUnsure: refKind === null && Boolean(ref) && !sha,
   };
 }
 

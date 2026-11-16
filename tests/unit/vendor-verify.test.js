@@ -102,6 +102,39 @@ test("classifySource reads the ref from a refs/tags raw.githubusercontent URL", 
   assert.deepEqual([branch.ref, branch.pinned], ["main", false]);
 });
 
+// What the URL says the ref is decides it. A tag is pinned whatever its name and a branch
+// never is, a version-shaped one included. A short form says neither, so its answer is the
+// one by shape until GitHub is asked (refUnsure), unless it is a full commit SHA.
+test("classifySource pins a tag of any name, never a branch, and marks a short ref unsure", async () => {
+  const at = (url) => {
+    const s = classifySource(url);
+    return [s.ref, s.pinned, s.refUnsure];
+  };
+  assert.deepEqual(
+    at("https://raw.githubusercontent.com/o/r/refs/tags/jquery-3.6.0/x.js"),
+    ["jquery-3.6.0", true, false]
+  );
+  assert.deepEqual(
+    at("https://raw.githubusercontent.com/o/r/refs/heads/v3.0/x.js"),
+    ["v3.0", false, false]
+  );
+  assert.deepEqual(
+    at("https://raw.githubusercontent.com/o/r/jquery-3.6.0/x.js"),
+    ["jquery-3.6.0", false, true]
+  );
+  assert.deepEqual(at("https://github.com/o/r/blob/v3.0/x.js"), [
+    "v3.0",
+    true,
+    true,
+  ]);
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  assert.deepEqual(at(`https://cdn.jsdelivr.net/gh/o/r@${sha}/x.js`), [
+    sha,
+    true,
+    false,
+  ]);
+});
+
 test("classifySource rejects untrusted hosts, non-https, and mutable refs", async () => {
   assert.equal(classifySource("https://evil.example.com/x.js").trusted, false);
   // cdnjs is not an accepted source (a cdnjs lib is always on npm/github); such a
@@ -713,6 +746,96 @@ test("verifyVendor: an unfetchable source -> unfetchable", async () => {
   assert.equal(addon.vendor.results[0].outcome, "unfetchable");
 });
 
+// A short-form GitHub ref is settled by asking GitHub whether it is a tag: a tag of any
+// name is pinned and verified, a ref GitHub lists no tag for is unpinned, and a host that
+// gives no answer leaves the answer by shape standing.
+test("verifyVendor: GitHub settles a short ref as tag or branch", async () => {
+  const run = async (ref, tags) => {
+    const url = `https://raw.githubusercontent.com/someone/repo/${ref}/lib.js`;
+    const addon = addonWith(
+      { "lib.js": "BODY\n" },
+      store({
+        set: new Set(["lib.js"]),
+        entries: [
+          {
+            ...pinnedEntry("lib.js", url),
+            pinned: classifySource(url).pinned,
+          },
+        ],
+        results: classifySource(url).pinned
+          ? []
+          : [{ path: "lib.js", source: url, outcome: "unpinned-source" }],
+      })
+    );
+    const github = { "someone/repo": { stargazers_count: 5000 } };
+    if (tags) {
+      github[`someone/repo/git/matching-refs/tags/${ref}`] = tags;
+    }
+    await verifyVendor(
+      addon,
+      seededNet({
+        popularity: { github },
+        sources: {
+          bytes: { [url]: "BODY\n" },
+          missing: [`https://unpkg.com/repo@${ref}/?meta`],
+        },
+      })
+    );
+    return addon.vendor.results.map((r) => r.outcome);
+  };
+  // A prefixed tag, unpinned by its shape, is a tag: verified, its unpinned row gone.
+  assert.deepEqual(
+    await run("jquery-3.6.0", [{ ref: "refs/tags/jquery-3.6.0" }]),
+    ["verified"]
+  );
+  // A version-shaped branch, pinned by its shape, is no tag: reported unpinned.
+  assert.deepEqual(await run("v3.0", []), ["unpinned-source"]);
+  // A matching-refs list holding only a longer tag does not name this one.
+  assert.deepEqual(await run("v3.0", [{ ref: "refs/tags/v3.0.1" }]), [
+    "unpinned-source",
+  ]);
+});
+
+// GitHub refusing the tag lookup (a rate limit) leaves the answer by shape standing, and
+// the review goes on: a version-shaped ref is verified, a branch-like one stays unpinned.
+test("verifyVendor: a refused tag lookup keeps the answer by shape", async () => {
+  const run = async (ref) => {
+    const url = `https://raw.githubusercontent.com/someone/repo/${ref}/lib.js`;
+    const pinned = classifySource(url).pinned;
+    const addon = addonWith(
+      { "lib.js": "BODY\n" },
+      store({
+        set: new Set(["lib.js"]),
+        entries: [{ ...pinnedEntry("lib.js", url), pinned }],
+        results: pinned
+          ? []
+          : [{ path: "lib.js", source: url, outcome: "unpinned-source" }],
+      })
+    );
+    const version = ref.startsWith("v") ? ref.slice(1) : ref;
+    await verifyVendor(
+      addon,
+      seededNet({
+        popularity: {
+          github: {
+            "someone/repo": { stargazers_count: 5000 },
+            [`someone/repo/git/matching-refs/tags/${ref}`]: seeded({
+              status: 503,
+            }),
+          },
+        },
+        sources: {
+          bytes: { [url]: "BODY\n" },
+          missing: [`https://unpkg.com/repo@${version}/?meta`],
+        },
+      })
+    );
+    return addon.vendor.results.map((r) => r.outcome);
+  };
+  assert.deepEqual(await run("v1.0.0"), ["verified"]);
+  assert.deepEqual(await run("main"), ["unpinned-source"]);
+});
+
 test("classifySource accepts a github.com release asset, keeping the declared URL", async () => {
   const url =
     "https://github.com/kewisch/ical.js/releases/download/v2.2.1/ical.min.js";
@@ -722,7 +845,8 @@ test("classifySource accepts a github.com release asset, keeping the declared UR
     [true, true, "github", "kewisch/ical.js", "v2.2.1", url]
   );
   // Only <tag>/<file> is a release asset: not a bare releases page, a tag alone, or a
-  // nested path. A moving tag is accepted as a source but is not pinned.
+  // nested path. Its ref is a tag by the URL's own form, so it is pinned whatever its
+  // name, "latest" included.
   for (const bad of [
     "https://github.com/kewisch/ical.js/releases",
     "https://github.com/kewisch/ical.js/releases/download/v2.2.1",
@@ -734,7 +858,7 @@ test("classifySource accepts a github.com release asset, keeping the declared UR
     classifySource(
       "https://github.com/kewisch/ical.js/releases/download/latest/ical.min.js"
     ).pinned,
-    false
+    true
   );
 });
 
@@ -1505,7 +1629,15 @@ test("auditGithub: a github source whose npm twin matches by hash is OSV-audited
     addon,
     seededNet({
       osv: { query: { "moment@2.29.1": osvFor("moment", "2.29.2") } },
-      popularity: { github: { "moment/moment": { stargazers_count: 5000 } } },
+      popularity: {
+        github: {
+          "moment/moment": { stargazers_count: 5000 },
+          // The short-form ref is a tag, which GitHub is asked to confirm.
+          "moment/moment/git/matching-refs/tags/2.29.1": [
+            { ref: "refs/tags/2.29.1" },
+          ],
+        },
+      },
       sources: {
         bytes: { [url]: body },
         meta: { "https://unpkg.com/moment@2.29.1/?meta": listing },
@@ -2185,7 +2317,12 @@ test("vendor grouping: folder, github and unpinned entries are left alone", asyn
   await verifyVendorDeclarations(
     addon,
     seededNet({
-      popularity: { github: { "o/r": { stargazers_count: 5000 } } },
+      popularity: {
+        github: {
+          "o/r": { stargazers_count: 5000 },
+          "o/r/git/matching-refs/tags/v1.0.0": [{ ref: "refs/tags/v1.0.0" }],
+        },
+      },
       // No npm release of the repo's name answers for it.
       sources: {
         bytes: { [ghUrl]: "X\n" },

@@ -29,7 +29,11 @@
         and media in HTML, remote <em>@import</em>/<em>url()</em> in CSS, remote
         <em>import()</em>/<em>importScripts()</em> and module imports, runtime
         <em>&lt;script&gt;</em> injection, remote WASM, and a content security
-        policy that permits a remote script source. Each of those definite
+        policy that permits a remote script source. Every policy of the manifest
+        counts, a sandbox policy included (the MV3 <em>sandbox</em> key, or
+        <em>sandbox.content_security_policy</em> in MV2): remote code is allowed
+        nowhere, and the finding sits on the line of the policy that names the
+        host. Each of those definite
         remote loads is a finding directly. Cases static analysis cannot resolve
         — a non-literal URL, or an inline <em>data:</em>/<em>blob:</em> script
         source — escalate with the offending file, so the reviewer judges whether the

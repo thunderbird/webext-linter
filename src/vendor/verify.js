@@ -216,6 +216,7 @@ export async function verifyVendorDeclarations(
   // and vendor.results, vendor.vulnerabilities and the feed all keep the order they
   // had when every entry stood alone.
   const groups = groupNpmSources(vendor.entries);
+  await confirmTagRefs(vendor, net);
   // VENDOR entries known trusted + pinned (the rest were settled offline).
   for (const entry of vendor.entries) {
     if (!entry.trusted || !entry.pinned) {
@@ -269,6 +270,86 @@ export async function verifyVendorDeclarations(
     } else if (src.kind === "github") {
       await auditGithub(entry, src, addon, vendor, net, blocks);
     }
+  }
+}
+
+/**
+ * Settle each GitHub ref the URL does not mark as tag or branch (`refUnsure`, see
+ * ./sources.js) by asking GitHub whether it is a tag. A tag of any name is pinned and a
+ * branch never is, so the answer by shape that resolveVendor recorded is corrected both
+ * ways: a tag it called unpinned loses its unpinned-source row, and a branch it called
+ * pinned gains one.
+ *
+ * GitHub is asked through its matching-refs list, which answers with an empty list where
+ * there is no such tag, so the run's popularity cache keeps the answer either way. When
+ * GitHub gives no answer (a rate limit) the answer by shape stands: the shape rule is how a
+ * ref was judged before GitHub could be asked, and the review goes on. A network that is
+ * gone ends the review, as it does at every other request.
+ * @param {object} vendor  addon.vendor, as resolveVendor left it.
+ * @param {VendorNet} net
+ * @returns {Promise<void>}
+ */
+async function confirmTagRefs(vendor, net) {
+  for (const entry of vendor.entries) {
+    if (!entry.trusted) {
+      continue;
+    }
+    const src = classifySource(entry.sourceUrl);
+    if (src.kind !== "github" || !src.refUnsure) {
+      continue;
+    }
+    let tag;
+    try {
+      tag = await isGithubTag(src.repo, src.ref, net);
+    } catch (err) {
+      if (err instanceof NoAnswerError) {
+        continue;
+      }
+      throw err;
+    }
+    if (tag === entry.pinned) {
+      continue;
+    }
+    entry.pinned = tag;
+    const row = vendor.results.findIndex(
+      (r) =>
+        r.outcome === "unpinned-source" &&
+        r.path === entry.path &&
+        r.source === entry.sourceUrl
+    );
+    if (tag && row >= 0) {
+      vendor.results.splice(row, 1);
+    } else if (!tag && row < 0) {
+      vendor.results.push({
+        path: entry.path,
+        source: entry.sourceUrl,
+        outcome: "unpinned-source",
+      });
+    }
+  }
+}
+
+/**
+ * Whether `ref` names a tag of the GitHub repository `repo`. A repository GitHub does not
+ * know (404) has no such tag.
+ * @param {string} repo  "owner/repo".
+ * @param {string} ref
+ * @param {VendorNet} net
+ * @returns {Promise<boolean>}
+ */
+async function isGithubTag(repo, ref, net) {
+  try {
+    const refs = await net.fetchJson(
+      `${VENDOR_GITHUB_REPOS_API}${repo}/git/matching-refs/tags/${ref.split("/").map(encodeURIComponent).join("/")}`
+    );
+    return (
+      Array.isArray(refs) && refs.some((r) => r?.ref === `refs/tags/${ref}`)
+    );
+  } catch (err) {
+    if (err.status === 404) {
+      return false;
+    }
+    throw err;
   }
 }
 
