@@ -1023,6 +1023,7 @@ test("every escalating check lands in the section its reader implies", async () 
   assert.deepEqual(bySection, {
     "code-review": [
       "build-lifecycle-hook",
+      "build-modifies-code",
       "data-exfiltration",
       "debugger-statement",
       "experiment-unknown-api",
@@ -1078,6 +1079,7 @@ test("every check's severity is pinned to its band", async () => {
       "background-page-module",
       "build-fails",
       "build-lifecycle-hook",
+      "build-modifies-code",
       "build-not-reproduced",
       "build-registry-redirect",
       "build-reproduces-xpi",
@@ -1216,6 +1218,7 @@ test("the checks that sweep their own blind spot are exactly these", async () =>
       // A check on a single-artifact route leaves the tree to that route - `null` here,
       // filled in by preSweepOf. A check on `input: all` names its own, and contributes
       // one of these per instruction it authors.
+      ["build-modifies-code", "error", null],
       // The one sweeping check on `input: all`, so the one that names its own trees -
       // contributing two sweeps, one per tree, adjacent and XPI first.
       ["cleartext-transmission", "warning", ARTIFACT_XPI],
@@ -2022,6 +2025,7 @@ test("every check declares a valid input; the input:xpi set is exactly the pinne
   assert.deepEqual(sca, [
     "build-fails",
     "build-lifecycle-hook",
+    "build-modifies-code",
     "build-not-reproduced",
     "build-registry-redirect",
     "build-reproduces-xpi",

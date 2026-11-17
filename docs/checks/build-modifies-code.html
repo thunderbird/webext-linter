@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Build modifies code</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="check-header">
+        <h1>
+          Build modifies code
+          <span class="badge error">error</span>
+        </h1>
+        <div class="check-id">build-modifies-code</div>
+      </header>
+
+      <h2>What it detects</h2>
+      <p class="lead">
+        This check scans nothing. In a source review the reviewer reads the
+        archive, and the build turns it into the add-on. A build step that
+        changes the content of a file on its way into the add-on, a file from
+        the archive or from a dependency, ships a file nobody read: a patch
+        applied to a dependency, a piece appended to or cut out of a file, or a
+        value substituted into it. A byte comparison of the shipped files cannot
+        find such a change reliably, since a step that also bundles or minifies
+        defeats it. The change itself sits in the archive, in a build script, a
+        patch file or a bundler config, so what this check contributes is a
+        blind spot: a standing brief naming what to look for there.
+      </p>
+      <p>
+        Every source review that is not aborted prints that brief under
+        <strong>Standard Code Review</strong>, for a reviewer covering it by
+        hand. When an agent is reviewing, it sweeps the archive for the same
+        thing and hands back what it finds. Each location comes back as a case
+        of this check:
+      </p>
+      <ul>
+        <li>
+          A step that adds, removes or replaces anything in a file, a
+          dependency's or the developer's own, comments included, is reported.
+          What the change does, and why it was made, play no part.
+        </li>
+        <li>
+          A step that only substitutes a value into a file, such as a bundler
+          define, an environment value or a version stamp, goes to the
+          reviewer, who decides whether the add-on may ship it.
+        </li>
+        <li>
+          Selecting a file and adding it to the add-on as it is changes
+          nothing. Neither do compiling, transpiling, bundling and minifying,
+          which are what a build is for.
+        </li>
+      </ul>
+      <p>
+        A file a VENDOR file declares is compared with its declared source by
+        <a href="vendor-modified.html">vendor-modified</a>. This check is the
+        same rule for code the build changes.
+      </p>
+
+      <h2>Decision flow</h2>
+      <div class="flow">
+        <pre class="mermaid">
+flowchart TD
+  A["Every source review"] --> X{"Did an earlier check<br/>abort the review?"}
+  X -- yes --> S([skip - this check<br/>never runs])
+  X -- no --> B(["listed under Standard Code Review:<br/>what to look for in the archive"])
+  B --> C{"Is an agent sweeping?"}
+  C -- no --> M([the reviewer covers it by hand])
+  C -- yes --> D{"The sweep returns a location"}
+  D -- "only selects, compiles,<br/>bundles or minifies" --> OK([cleared])
+  D -- "changes a file's content" --> R([reported])
+  D -- "substitutes a value" --> Q(["put to the reviewer, who reports<br/>it or clears it"])
+
+  classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
+  classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
+  classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;
+  classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
+  class S skip;
+  class M manual;
+  class Q manual;
+  class OK ok;
+  class R err;
+        </pre>
+      </div>
+
+      <div class="outcome">
+        <strong>When it fires</strong>
+        The developer is told that the build changes the content of a file on
+        its way into the add-on, so the add-on ships code that differs from the
+        source,
+        and is asked to make the change in the source itself or remove it from
+        the build.
+      </div>
+
+      <p class="source-note">
+        Source of truth:
+        <code>src/checks/rules/build-modifies-code.js</code> and its entry in
+        <code>assets/registry.yaml</code>.
+      </p>
+    </main>
+
+    <script src="../assets/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>

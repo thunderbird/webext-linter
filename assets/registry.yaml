@@ -1558,6 +1558,62 @@ deterministic-phase:
   response: |-
     A bundled third-party file does not match its declared source: {{item}} does not match the bytes its declared source ({{url}}) serves, so it appears to have been modified from the upstream release. Ship the file exactly as the source publishes it, or correct the declared source to the release the file actually came from.
 
+# SCA only: the build-route counterpart of vendor-modified. The reviewer reads the archive, and
+# a file the build changes on its way into the add-on ships as something nobody read, a
+# dependency's file or the developer's own. A byte comparison of the shipped files cannot find
+# such a change reliably, since a step that also bundles or minifies defeats it, but the change
+# itself sits in the archive: a build script, a patch file, a bundler config. So this check
+# scans nothing and carries the blind spot, and the archive sweep looks for the change. Any
+# change to a file's content, comments included, is reported as it stands, whatever it is for.
+# Selecting a file and adding it to the add-on unchanged is no change. A substituted value goes
+# to the reviewer, since many builds rely on one.
+- title: Build modifies code
+  severity: error
+  check: build-modifies-code
+  llm-verification: true
+  llm-verification-instruction: |-
+    Read the location and "hint". Report it if the build changes the content of
+    a file from the archive or from a dependency on its way into the add-on: it
+    adds, removes or replaces anything in it, comments included. Withdraw it if
+    the step only selects a file and adds it as it is, or only compiles,
+    transpiles, bundles or minifies it. Do not withdraw it because of what the
+    change does or why it was made, because no change is allowed whatever its
+    purpose.
+  input: sca
+  settle-verbs: [reported, cleared, ask]
+  instructions-for-llm: |-
+    The location below was returned as a build step that changes the content of
+    a file from the archive or from a dependency on its way into the add-on.
+    Report it if the step adds, removes or replaces anything in such a file,
+    comments included, whatever the change does or claims to do. Ask the
+    reviewer if it only substitutes a value into the file, such as a bundler
+    define, an environment value or a version stamp. Clear it if the step only
+    selects a file and adds it to the add-on as it is, or only compiles,
+    transpiles, bundles or minifies it.
+  instructions-for-human: |-
+    The location below was returned as a build step that changes the content of
+    a file from the archive or from a dependency on its way into the add-on.
+    Report it if it adds, removes or replaces anything in such a file, comments
+    included, whatever the change does or claims to do. If it only substitutes
+    a value (a bundler define, an environment value, a version stamp), decide
+    whether the add-on may ship it. Clear it if it only selects a file and adds
+    it as it is, or only compiles, transpiles, bundles or minifies it.
+  sweep-instruction: |-
+    A build step that changes the content of a file on its way into the add-on,
+    a file from the archive or from a dependency: an edit a build script makes,
+    a patch file applied to a dependency (for example by patch-package),
+    anything appended to, inserted into, replaced in or removed from a file,
+    comments included, or a value substituted into it. Selecting a file and
+    adding it to the add-on as it is changes nothing, and neither does
+    compiling, transpiling, bundling or minifying it. Report every change, and
+    say in the hint which file it changes and what it adds, removes, replaces
+    or substitutes. Do not leave one out because it is small or described as
+    harmless, because the reviewer reads only the archive and the changed file
+    ships unread.
+  response: |-
+    The build process changes the content of a file on its way into the add-on, so the add-on ships code that differs from the source. Every file must reach the add-on as the source holds it, or as a third-party release publishes it. The build may compile, bundle and minify, but not add, remove or replace anything in a file, comments included. Make the change in the source itself, or remove it from the build.
+    Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
 - title: Missing vendored file
   severity: warning
   check: missing-vendor-file

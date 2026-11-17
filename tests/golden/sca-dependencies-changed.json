@@ -86,6 +86,7 @@
       "vendor-vuln-unknown",
       "unpinned-vendor-source",
       "vendor-modified",
+      "build-modifies-code",
       "missing-vendor-file",
       "multiple-vendor-files",
       "vendor-unparseable",

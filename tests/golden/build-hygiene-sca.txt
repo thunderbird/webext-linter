@@ -62,7 +62,23 @@ Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubm
 
 Continue manual review for the following checks:
 
-1) Unencrypted data transmission: A remote endpoint reached over http://, ws://
+1) Build modifies code: A build step that changes the content of a file on its
+   way into the add-on, a file from the archive or from a dependency: an edit a
+   build script makes, a patch file applied to a dependency (for example by
+   patch-package), anything appended to, inserted into, replaced in or removed
+   from a file, comments included, or a value substituted into it. Selecting a
+   file and adding it to the add-on as it is changes nothing, and neither does
+   compiling, transpiling, bundling or minifying it. Report every change, and
+   say in the hint which file it changes and what it adds, removes, replaces or
+   substitutes. Do not leave one out because it is small or described as
+   harmless, because the reviewer reads only the archive and the changed file
+   ships unread.
+Sweep: <work>/sca
+Suggested verdict: error
+Suggested response: The build process changes the content of a file on its way into the add-on, so the add-on ships code that differs from the source. Every file must reach the add-on as the source holds it, or as a third-party release publishes it. The build may compile, bundle and minify, but not add, remove or replace anything in a file, comments included. Make the change in the source itself, or remove it from the build.
+Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
+
+2) Unencrypted data transmission: A remote endpoint reached over http://, ws://
    or ftp://, whether the add-on names it or the user enters it: code that sends
    to a URL the user entered must refuse or upgrade those schemes. A host
    permission on its own sends nothing and is not a case. Whatever the payload:
@@ -71,7 +87,7 @@ Sweep: <work>/xpi/
 Suggested verdict: warning
 Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://, and refuse or upgrade such a URL where the user enters one.
 
-2) Unencrypted data transmission: A remote endpoint reached over http://, ws://
+3) Unencrypted data transmission: A remote endpoint reached over http://, ws://
    or ftp://, whether the add-on names it or the user enters it: code that sends
    to a URL the user entered must refuse or upgrade those schemes. A host
    permission on its own sends nothing and is not a case. Whatever the payload:
@@ -80,7 +96,7 @@ Sweep: <work>/sca
 Suggested verdict: warning
 Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://, and refuse or upgrade such a URL where the user enters one.
 
-3) Remote data transmission needs a privacy policy: The add-on reaching a
+4) Remote data transmission needs a privacy policy: The add-on reaching a
    service the DEVELOPER chose - fixed in the add-on, not entered by the user -
    which receives anything about the user or their use of it.
 Sweep: <work>/sca
@@ -90,7 +106,7 @@ Suggested response: Please add a privacy policy to this add-on that details whic
 [1]: https://thunderbird.github.io/atn-review-policy/#data-disclosure-collection-and-management
 [2]: https://www.mozilla.org/en-US/privacy/
 
-4) User-data exfiltration: Suspicious data exfiltration: the user's sensitive
+5) User-data exfiltration: Suspicious data exfiltration: the user's sensitive
    data, such as messages, contacts and credentials, or anything computed from
    it on the user's machine, leaving the machine where the user would not expect
    it. Check at least these routes: network requests (fetch, XMLHttpRequest,
@@ -105,7 +121,7 @@ Sweep: <work>/sca
 Suggested verdict: error
 Suggested response: The following code location(s) send the user's sensitive data to a remote server where the user would not expect it. Sensitive data may leave only where the add-on needs it for its functionality, and only where the user set the transmission up or sending it is the add-on's stated single purpose. Let the user set it up on an options page that says what is sent and to whom, or remove the transmission.
 
-5) Check the package for unacceptable content: Content shipped inside the
+6) Check the package for unacceptable content: Content shipped inside the
    package - the name and description in manifest.json, or any bundled text,
    image or media - that is spam, inappropriate, misleading or low-effort, or
    that breaches Mozilla's Acceptable Use Policy.
@@ -113,7 +129,7 @@ Sweep: <work>/xpi/
 Suggested verdict: error
 Suggested response: Content shipped inside this add-on does not meet our content requirements. It must not be spam, inappropriate, misleading, or low-effort, and it must comply with Mozilla's Acceptable Use Policy (https://www.mozilla.org/about/legal/acceptable-use/). Please correct the affected content and submit a new version.
 
-6) Check the shipped icons for trademark or logo imitation: An icon shipped
+7) Check the shipped icons for trademark or logo imitation: An icon shipped
    inside the package that imitates or incorporates the Thunderbird, Firefox or
    Mozilla logo.
 Sweep: <work>/xpi/
@@ -216,4 +232,4 @@ Because the original project is still active, your submission does not meet thes
 
 4 error(s), 0 hold, 0 warning(s), 0 info,
 3 extended code review item(s), 1 extended manual review item(s),
-6 standard code review item(s), 10 standard manual review item(s)
+7 standard code review item(s), 10 standard manual review item(s)
