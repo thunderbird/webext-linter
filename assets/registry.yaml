@@ -2710,7 +2710,7 @@ llm-sca-review-prompt:
     - text: |-
         Find everything the release build reaches for outside the declared dependencies, in the files it actually runs or reads, and in no other: a script, target or hook the release build never reaches is not part of it, whatever it holds. What to look for: a download (curl, wget, a raw URL), a git clone that is not pinned, a CDN, an install hook that downloads or runs code from outside the declared dependencies, or a step whose source is not in the tree.
 
-        Open ANSWERS, given above. Answer its entry whose "index" is SCA_BUILD_SAFETY_ISSUES with a list holding one entry for each thing you found, and an empty list, [], where you found nothing. An entry names the absolute path of the "file" it is in, inside SCA_SOURCE, the "line" it sits on, left out where it sits on none, and a "hint" of at most {{maxHint}} characters saying what it does. Nothing else: no verdict, which the linter reads off the list. An entry reads:
+        Open ANSWERS, given above. Answer its entry whose "index" is SCA_BUILD_SAFETY_ISSUES with a list holding one entry for each thing you found, and an empty list, [], where you found nothing. An entry names the absolute path of the "file" it is in, inside SCA_SOURCE, the "line" it sits on, left out where it sits on none, and a "hint" of at most {{maxHint}} characters saying what it does. Count it from that file's own first line, reading the file on its own or counting yourself. Do not take it from output that numbers several files in one run, because that count runs on from one file into the next. Nothing else: no verdict, which the linter reads off the list. An entry reads:
 
         {{issueShape}}
 

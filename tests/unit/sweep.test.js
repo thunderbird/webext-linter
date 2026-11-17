@@ -135,7 +135,7 @@ test("a result names a file in the swept tree and a line that file has", () => {
   );
   refused(
     { file: inRoot("ends.js"), line: 4 },
-    `row names line 4 of ${JSON.stringify(inRoot("ends.js"))}, which has 3 lines - a line is that file's own line number, counted from its first line`,
+    `row names line 4 of ${JSON.stringify(inRoot("ends.js"))}, which has 3 lines - a line is that file's own line number, counted from its first line, not a count run on across several files read together`,
     "one past the last line"
   );
   refused(

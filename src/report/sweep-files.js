@@ -73,7 +73,7 @@ function sweepRequest({ sweepTarget, sweeps, proseStyle, readingRule }) {
     "Return your answers as your reply, as one JSON document of this shape:",
     indent(`{"${ANSWERS}": {"<label>": [...]}}`, 2),
     "It lists every label above, each with a list of what you found for it, and an empty list where you found nothing. Put nothing else in the reply: no words before or after it, and no code fence around it.",
-    `Each thing you found is one entry in that list, with a "file" (the absolute path of a file in the folder above, as you opened it), a "hint" - a short phrase of at most ${MAX_HINT} characters naming what is there - and a "line" - that file's own line number, counted from its first line, where it sits on one, left out where it does not. Nothing else: no verdict, and no wording for the developer, which is the linter's. Answered, your reply reads:\n\n${indent(example, 2)}`,
+    `Each thing you found is one entry in that list, with a "file" (the absolute path of a file in the folder above, as you opened it), a "hint" - a short phrase of at most ${MAX_HINT} characters naming what is there - and a "line" - that file's own line number, counted from its first line, where it sits on one, left out where it does not. Count it from that file's own first line, reading the file on its own or counting yourself. Do not take it from output that numbers several files in one run, because that count runs on from one file into the next. Nothing else: no verdict, and no wording for the developer, which is the linter's. Answered, your reply reads:\n\n${indent(example, 2)}`,
     ...(proseStyle ? [proseStyle] : []),
     "Write no file.",
   ].join("\n\n");

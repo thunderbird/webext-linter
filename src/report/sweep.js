@@ -126,7 +126,7 @@ export function checkedResult(where, raw, root, lineCounts = new Map()) {
   }
   if (raw.line !== undefined && raw.line > count) {
     throw new Error(
-      `${at} names line ${raw.line} of ${JSON.stringify(written)}, which has ${count} lines - a line is that file's own line number, counted from its first line`
+      `${at} names line ${raw.line} of ${JSON.stringify(written)}, which has ${count} lines - a line is that file's own line number, counted from its first line, not a count run on across several files read together`
     );
   }
   if (

@@ -152,7 +152,7 @@ test("the request says a file is in the folder and a line is that file's own", (
   );
   assert.ok(
     request.includes(
-      `a "line" - that file's own line number, counted from its first line, where it sits on one, left out where it does not.`
+      `a "line" - that file's own line number, counted from its first line, where it sits on one, left out where it does not. Count it from that file's own first line, reading the file on its own or counting yourself. Do not take it from output that numbers several files in one run, because that count runs on from one file into the next.`
     ),
     request
   );
