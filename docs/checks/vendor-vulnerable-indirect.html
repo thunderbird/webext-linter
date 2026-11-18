@@ -44,7 +44,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A package the lock file installs"] --> G{"Source-code submission<br/>with an npm or pnpm lock?"}
+  A["A package the lock file installs"] --> G{"Source-code submission<br/>with an npm, pnpm or Bun lock?"}
   G -- no --> S([skip])
   G -- yes --> D{"Declared by one of the<br/>submission's own package files?"}
   D -- yes --> S2([skip: a declared-dependency check reports it])

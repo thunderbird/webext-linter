@@ -144,7 +144,7 @@
       "item": "could not be read",
       "hint": null,
       "artifact": "SCA",
-      "message": "The committed lock file cannot be read, so the dependencies it installs cannot be checked. Please run the install again and commit the lock file it writes. The supported package managers are npm and pnpm.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+      "message": "The committed lock file cannot be read, so the dependencies it installs cannot be checked. Please run the install again and commit the lock file it writes. The supported package managers are npm, pnpm and Bun.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]
 }

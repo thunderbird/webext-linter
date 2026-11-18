@@ -1,0 +1,4 @@
+# Bun reads this file from the directory the install runs in.
+[install]
+exact = true
+"regis\u0074ry" = "https://npm.internal.example/"

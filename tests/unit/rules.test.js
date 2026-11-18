@@ -2229,6 +2229,75 @@ test("build-registry-redirect rejects any registry setting in .npmrc", async () 
   );
 });
 
+// Bun also takes a registry from bunfig.toml: `install.registry` (a URL, or a table naming one)
+// and each scope of `install.scopes`. It is read with a TOML parser, so every spelling Bun
+// reads as that key counts - measured against Bun 1.4.4, which installs from the registry
+// set by each of these. An uppercase key is another key to Bun (it installs from the default
+// registry), and a file that does not parse is reported rather than passed unread.
+test("build-registry-redirect rejects any registry setting in bunfig.toml", async () => {
+  const run = async (toml) =>
+    (
+      await buildRegistryRedirect.run(
+        withManifest({
+          artifact: { files: new Map([["bunfig.toml", Buffer.from(toml)]]) },
+        })
+      )
+    ).findings.map((f) => `${f.file}:${f.loc.line} ${f.item}`);
+  assert.deepEqual(await run('[install]\nregistry = "https://evil/"\n'), [
+    "bunfig.toml:2 https://evil/",
+  ]);
+  assert.deepEqual(await run('[install]\n"regis\\u0074ry" = "https://evil/"'), [
+    "bunfig.toml:2 https://evil/",
+  ]);
+  assert.deepEqual(await run('# note\n\ninstall.registry = "https://evil/"'), [
+    "bunfig.toml:3 https://evil/",
+  ]);
+  assert.deepEqual(await run('install = { registry = "https://evil/" }'), [
+    "bunfig.toml:1 https://evil/",
+  ]);
+  assert.deepEqual(
+    await run('[install.registry]\nurl = "https://evil/"\ntoken = "x"'),
+    ["bunfig.toml:2 https://evil/"]
+  );
+  assert.deepEqual(
+    await run(
+      '[install.scopes]\n"@a" = "https://evil/"\n"@b" = { url = "https://worse/" }'
+    ),
+    ["bunfig.toml:2 @a: https://evil/", "bunfig.toml:3 @b: https://worse/"]
+  );
+  // Even the public registry is rejected: the value is never judged.
+  assert.equal(
+    (await run('[install]\nregistry = "https://registry.npmjs.org/"')).length,
+    1
+  );
+  assert.deepEqual(await run("[install\nregistry = 1"), [
+    "bunfig.toml:1 bunfig.toml (cannot be parsed)",
+  ]);
+  assert.deepEqual(
+    await run('[install]\nREGISTRY = "https://evil/"\nlinker = "hoisted"'),
+    []
+  );
+  assert.deepEqual(
+    await run('# registry = "https://evil/"\n[test]\nroot = "."'),
+    []
+  );
+  // .npmrc and bunfig.toml are both read, each anchored at its own file.
+  const both = await buildRegistryRedirect.run(
+    withManifest({
+      artifact: {
+        files: new Map([
+          [".npmrc", Buffer.from("registry=https://a/")],
+          ["bunfig.toml", Buffer.from('install.registry = "https://b/"')],
+        ]),
+      },
+    })
+  );
+  assert.deepEqual(
+    both.findings.map((f) => `${f.file} ${f.item}`),
+    [".npmrc https://a/", "bunfig.toml https://b/"]
+  );
+});
+
 // Only the ARCHIVE'S OWN .npmrc is read: npm takes its config from the directory the
 // install runs in, and the review runs it at --sca-package-root. A config deeper in the tree
 // belongs to a directory this review never installs from, so it is not read.
@@ -2742,7 +2811,7 @@ test("sca-lock-file-invalid reports an unreadable lock at the lock, and nothing 
   );
   assert.deepEqual(
     (await run("{}")).map((f) => [f.file, f.item]),
-    [["package-lock.json", "is not a recognisable npm or pnpm lock file"]]
+    [["package-lock.json", "is not a recognisable npm, pnpm or Bun lock file"]]
   );
   const stale = JSON.stringify({
     lockfileVersion: 3,

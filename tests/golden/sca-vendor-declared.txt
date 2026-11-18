@@ -39,8 +39,9 @@ Continue manual review for the following checks:
    resources from a raw URL, curl/wget, a git clone of an unpinned repo, a CDN,
    or a postinstall hook - do not build it: report it. Otherwise build it from a
    clean copy of the source archive, installing the dependencies exactly as the
-   lock file pins them (npm ci, or pnpm install --frozen-lockfile), and clear it
-   only where the build completes and reproduces the submitted XPI.
+   lock file pins them (npm ci, pnpm install --frozen-lockfile, or bun install
+   --frozen-lockfile), and clear it only where the build completes and
+   reproduces the submitted XPI.
 Suggested verdict: error
 Suggested response: Every part of the build must come from the submitted source or from the dependencies declared in package.json/lock (resolved from npm or the committed lock file), and from nowhere else. The submitted source must build, by the build instructions you provided, into exactly the submitted XPI.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html

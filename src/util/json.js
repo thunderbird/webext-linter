@@ -20,6 +20,8 @@
 // src/vendor/locks.js, a check's comparison is that check - and user-facing JSON report
 // output, which is src/report/*.
 
+import { parseTree, visit } from "jsonc-parser";
+
 import { rethrowIfFatal } from "../lib/errors.js";
 
 /**
@@ -73,6 +75,80 @@ export function parseJson(input) {
     rethrowIfFatal(err);
     return null;
   }
+}
+
+/**
+ * Parse a bun.lock, or null when it cannot be read - the same contract as parseJson.
+ *
+ * Bun writes its text lock as JSON with a trailing comma after every member, and reads it
+ * with its own JSONC parser, which also takes `//` and `/* *\/` comments. JSON.parse refuses
+ * both, so this reads it with jsonc-parser, which takes both and refuses everything else
+ * JSON forbids.
+ *
+ * A duplicate key, at any depth, is refused too: Bun reads the FIRST of two same-named
+ * members (measured: a bun.lock with two `packages` maps installs from the first), so either
+ * choice could audit a tree the install never builds.
+ * @param {Buffer|string|null|undefined} input  Bytes or text.
+ * @returns {*}  The parsed value, or null.
+ */
+export function parseJsonc(input) {
+  const text = typeof input === "string" ? input : input?.toString("utf8");
+  if (!text) {
+    return null;
+  }
+  const clean = stripBom(text);
+  // jsonc-parser ends a `//` comment at LF or CR only, while Bun also ends one at U+2028 or
+  // U+2029 and reads what follows - so a comment holding either is refused, never misread.
+  let separated = false;
+  visit(clean, {
+    onComment: (offset, length) => {
+      separated ||= /[\u2028\u2029]/.test(clean.slice(offset, offset + length));
+    },
+  });
+  const errors = [];
+  const tree = parseTree(clean, errors, { allowTrailingComma: true });
+  if (separated || !tree || errors.length) {
+    return null;
+  }
+  try {
+    return nodeValue(tree);
+  } catch (err) {
+    if (err === DUPLICATE_KEY) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+const DUPLICATE_KEY = new Error("duplicate key");
+
+/**
+ * A jsonc-parser node's value. Each key is defined as an own property, as JSON.parse makes
+ * it, so a "__proto__" key is data and never the object's prototype.
+ * @param {import("jsonc-parser").Node} node
+ * @returns {*}
+ * @throws {Error}  DUPLICATE_KEY when an object names one key twice.
+ */
+function nodeValue(node) {
+  if (node.type === "array") {
+    return (node.children ?? []).map(nodeValue);
+  }
+  if (node.type !== "object") {
+    return node.value;
+  }
+  const out = {};
+  for (const [key, value] of (node.children ?? []).map((p) => p.children)) {
+    if (Object.hasOwn(out, key.value)) {
+      throw DUPLICATE_KEY;
+    }
+    Object.defineProperty(out, key.value, {
+      value: nodeValue(value),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
+  return out;
 }
 
 /**

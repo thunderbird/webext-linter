@@ -1,6 +1,6 @@
 // Unit tests for the lock-file readers (src/vendor/locks.js): version resolution
-// for one declared name across npm and pnpm (lockedVersion), enumeration
-// of the whole installed tree across npm v1/v2/v3 and pnpm v5-v9
+// for one declared name across npm, pnpm and Bun (lockedVersion), enumeration
+// of the whole installed tree across npm v1/v2/v3, pnpm v5-v9 and bun.lock
 // (lockedPackages), where each entry installs from (lockSourceGaps), and resolveVendor's package.json dependency resolution
 // (exact pin / range+lock -> pinned, range without a lock -> unpinned, a
 // non-registry spec -> ignored). Overrides are read through the lock, which records what
@@ -42,6 +42,7 @@ function fakeAddon(files, directories = []) {
 // lock in a subfolder - is read by nothing, so it is not a lock here either.
 test("committedLocks lists the root's locks in TREE_LOCKS order; the first governs", () => {
   const addon = fakeAddon({
+    "bun.lock": "",
     "pnpm-lock.yaml": "",
     "yarn.lock": "",
     "sub/package-lock.json": "{}",
@@ -52,6 +53,7 @@ test("committedLocks lists the root's locks in TREE_LOCKS order; the first gover
     "npm-shrinkwrap.json",
     "package-lock.json",
     "pnpm-lock.yaml",
+    "bun.lock",
   ]);
   assert.equal(governingLock(addon), "npm-shrinkwrap.json");
   assert.deepEqual(committedLocks(fakeAddon({ "yarn.lock": "" })), []);
@@ -1562,5 +1564,308 @@ test("a scheme-and-colon GitHub source, and a nameless entry, are gated", async 
   assert.deepEqual(
     addon.vendor.unpopularDeps.map((d) => d.name),
     ["o/widget"]
+  );
+});
+
+// ---- bun.lock ----
+
+// A bun.lock as Bun 1.4.4 writes it for one project (lockfileVersion 2), with every kind of
+// entry the readers tell apart. Each `packages` value is an array whose first slot is
+// "<name>@<spec>"; its key is the install path, "debug/ms" being node_modules/debug's own
+// node_modules/ms. Text, trailing commas included, exactly as Bun writes them.
+const BUN_LOCK = `{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "fmt",
+      "dependencies": {
+        "alias-ms": "npm:ms@2.0.0",
+        "debug": "4.3.4",
+        "gitdep": "git+https://github.com/jonschlinkert/kind-of.git#6.0.3",
+        "is-number": "github:jonschlinkert/is-number#98e8ff1",
+        "local-dir": "file:./local-dir",
+        "tarball": "https://registry.npmjs.org/is-odd/-/is-odd-3.0.1.tgz",
+      },
+      "devDependencies": {
+        "semver": "7.6.0",
+      },
+    },
+    "ws/member": {
+      "name": "@scope/member",
+      "version": "1.0.0",
+      "dependencies": {
+        "ms": "2.1.3",
+      },
+    },
+  },
+  "packages": {
+    "@scope/member": ["@scope/member@workspace:ws/member"],
+
+    "alias-ms": ["ms@2.0.0", "", {}, "sha512-a"],
+
+    "debug": ["debug@4.3.4", "", { "dependencies": { "ms": "2.1.2" } }, "sha512-b"],
+
+    "gitdep": ["kind-of@github:jonschlinkert/kind-of#668b595", {}, "jonschlinkert-kind-of-668b595", "sha512-c"],
+
+    "is-number": ["is-number@github:jonschlinkert/is-number#98e8ff1", {}, "jonschlinkert-is-number-98e8ff1", "sha512-d"],
+
+    "local-dir": ["local-dir@file:local-dir", {}],
+
+    "lru-cache": ["lru-cache@6.0.0", "", { "dependencies": { "yallist": "^4.0.0" } }, "sha512-e"],
+
+    "ms": ["ms@2.0.0", "", {}, "sha512-f"],
+
+    "semver": ["semver@7.6.0", "", { "dependencies": { "lru-cache": "^6.0.0" } }, "sha512-g"],
+
+    "tarball": ["is-odd@https://registry.npmjs.org/is-odd/-/is-odd-3.0.1.tgz", { "dependencies": { "is-number": "^6.0.0" } }, "sha512-h"],
+
+    "yallist": ["yallist@4.0.0", "", {}, "sha512-i"],
+
+    "@scope/member/ms": ["ms@2.1.3", "", {}, "sha512-j"],
+
+    "debug/ms": ["ms@2.1.2", "", {}, "sha512-k"],
+
+    "tarball/is-number": ["is-number@6.0.0", "", {}, "sha512-l"],
+  }
+}
+`;
+
+const bunAddon = (
+  lock = BUN_LOCK,
+  directories = ["local-dir", "ws", "ws/member"]
+) =>
+  fakeAddon(
+    { "package.json": JSON.stringify({ name: "fmt" }), "bun.lock": lock },
+    directories
+  );
+
+// The hoisted entry pins a declared name, through an npm alias too; an entry installed from
+// GitHub, a tarball URL or the submission's own folder pins nothing.
+test("bun.lock: lockedVersion reads the hoisted registry entry", () => {
+  const addon = bunAddon();
+  assert.equal(lockedVersion(addon, "debug"), "4.3.4");
+  assert.equal(lockedVersion(addon, "ms"), "2.0.0");
+  assert.equal(lockedVersion(addon, "alias-ms"), "2.0.0");
+  assert.equal(lockedVersion(addon, "semver"), "7.6.0");
+  assert.equal(lockedVersion(addon, "is-number"), null);
+  assert.equal(lockedVersion(addon, "local-dir"), null);
+  assert.equal(lockedVersion(addon, "absent"), null);
+  assert.equal(lockedVersion(addon, "constructor"), null);
+});
+
+// Every registry release is enumerated once per name@version, anchored at its install path.
+// Bun records no dev flag, so build-only is reachability from the workspaces' production
+// dependencies: semver is declared dev, and what it alone pulls in is build-time only. A
+// workspace member asks from its own name, so its nested copy ("@scope/member/ms") is reached.
+// An aliased entry is the package it installs; a tarball URL on the registry is the release
+// its path names, declared because it sits where its declaration ("tarball") puts it.
+test("bun.lock: lockedPackages enumerates registry releases, dev by reachability", () => {
+  const got = lockedPackages(bunAddon()).map(
+    (p) => `${p.name}@${p.version} dev=${p.dev} direct=${p.direct} ${p.token}`
+  );
+  assert.deepEqual(got, [
+    "debug@4.3.4 dev=false direct=true debug",
+    "is-number@6.0.0 dev=false direct=true tarball/is-number",
+    "is-odd@3.0.1 dev=false direct=true tarball",
+    "lru-cache@6.0.0 dev=true direct=false lru-cache",
+    "ms@2.0.0 dev=false direct=true alias-ms",
+    "ms@2.1.2 dev=false direct=true debug/ms",
+    "ms@2.1.3 dev=false direct=true @scope/member/ms",
+    "semver@7.6.0 dev=true direct=true semver",
+    "yallist@4.0.0 dev=true direct=false yallist",
+  ]);
+});
+
+// The member's own dependencies are production only when it declares them so: the same
+// nested copy, declared dev by the member, is build-time only.
+test("bun.lock: a workspace member's dev dependency stays build-time only", () => {
+  const lock = BUN_LOCK.replace(
+    '"name": "@scope/member",\n      "version": "1.0.0",\n      "dependencies"',
+    '"name": "@scope/member",\n      "version": "1.0.0",\n      "devDependencies"'
+  );
+  assert.notEqual(lock, BUN_LOCK);
+  const ms = lockedPackages(bunAddon(lock)).find(
+    (p) => p.token === "@scope/member/ms"
+  );
+  assert.equal(ms.dev, true);
+});
+
+// GitHub, the submission's own folders and the registry are all supported sources; another
+// registry (Bun records its tarball URL in the second slot) or a tarball off the registry is
+// not, and is reported at its entry.
+test("bun.lock: lockSourceGaps reports another registry and an off-registry tarball", () => {
+  assert.deepEqual(lockSourceGaps(bunAddon()), []);
+  const lock = BUN_LOCK.replace(
+    '"yallist": ["yallist@4.0.0", "",',
+    '"yallist": ["yallist@4.0.0", "https://registry.npmmirror.com/yallist/-/yallist-4.0.0.tgz",'
+  ).replace(
+    'https://registry.npmjs.org/is-odd/-/is-odd-3.0.1.tgz", {',
+    'https://evil.example/is-odd-3.0.1.tgz", {'
+  );
+  assert.deepEqual(
+    lockSourceGaps(bunAddon(lock)).map(
+      (g) => `${g.token} ${g.version} ${g.source}`
+    ),
+    [
+      "tarball  https://evil.example/is-odd-3.0.1.tgz",
+      "yallist 4.0.0 https://registry.npmmirror.com/yallist/-/yallist-4.0.0.tgz",
+    ]
+  );
+});
+
+// A "github:" spec and a GitHub git URL both name a repository, which is popularity-gated
+// when the submission declares the package. "gitdep" installs kind-of: the entry is declared
+// although its package name is not, since it sits where the declaration puts it.
+test("bun.lock: githubInstalls reads owner/repo from github: and git specs", () => {
+  assert.deepEqual(
+    githubInstalls(bunAddon()).map(
+      (g) => `${g.token} ${g.name} ${g.repo} ${g.direct}`
+    ),
+    [
+      "gitdep kind-of jonschlinkert/kind-of true",
+      "is-number is-number jonschlinkert/is-number true",
+    ]
+  );
+});
+
+// A folder the submission holds - a file: folder, a workspace member - is its own code. One it
+// does not hold, a path out of the archive, and a local tarball cannot be reviewed.
+test("bun.lock: localInstalls reports local paths the submission does not hold", () => {
+  assert.deepEqual(localInstalls(bunAddon()), []);
+  const lock = BUN_LOCK.replace(
+    '"local-dir": ["local-dir@file:local-dir", {}],',
+    '"local-dir": ["local-dir@file:local-dir", {}],\n    "outside": ["outside@link:../outside", {}],\n    "packed": ["packed@./packed-1.0.0.tgz", {}, "sha512-m"],'
+  );
+  assert.deepEqual(
+    localInstalls(bunAddon(lock, ["ws", "ws/member"])).map(
+      (l) => `${l.token} ${l.spec}`
+    ),
+    [
+      "local-dir file:local-dir",
+      "outside link:../outside",
+      "packed ./packed-1.0.0.tgz",
+    ]
+  );
+});
+
+// A bun.lock is recognised by the root workspace and the packages map Bun always writes; one
+// that does not parse, or parses into something else, cannot be read.
+test("bun.lock: unreadableLock tells a lock from a file that is none", () => {
+  const declares = JSON.stringify({ name: "x", dependencies: { ms: "2.1.3" } });
+  const read = (lock) =>
+    unreadableLock(fakeAddon({ "package.json": declares, "bun.lock": lock }))
+      ?.reason ?? null;
+  assert.equal(read(BUN_LOCK), null);
+  assert.equal(
+    read('{"lockfileVersion": 1, "workspaces": {"": {},}, "packages": {},}'),
+    null
+  );
+  assert.equal(
+    read('{\n  // comment\n  "workspaces": {"": {}},\n  "packages": {},\n}'),
+    null
+  );
+  assert.equal(read("{ not json"), "unreadable");
+  assert.equal(read('{"packages": {}}'), "unrecognised");
+  assert.equal(
+    read('{"workspaces": {"ws": {}}, "packages": {}}'),
+    "unrecognised"
+  );
+  assert.equal(read("[]"), "unrecognised");
+});
+
+// The lock is the governing one only when it is the lone lock: npm's and pnpm's come first.
+test("bun.lock governs alone, after the npm and pnpm locks", () => {
+  assert.equal(governingLock(bunAddon()), "bun.lock");
+  assert.equal(
+    governingLock(
+      fakeAddon({ "bun.lock": BUN_LOCK, "package-lock.json": "{}" })
+    ),
+    "package-lock.json"
+  );
+});
+
+// Bun applies a lock's patchedDependencies when it installs, so a patched entry's bytes are
+// not the release its name and version identify. It is not audited as that release; it is
+// reported as a source the review does not support, with the patch as its source.
+test("bun.lock: a patched dependency is no registry release", () => {
+  const lock = BUN_LOCK.replace(
+    '  "packages": {',
+    '  "patchedDependencies": {\n    "yallist@4.0.0": "patches/yallist@4.0.0.patch",\n    "debug": "patches/debug.patch",\n  },\n  "packages": {'
+  );
+  const addon = bunAddon(lock);
+  assert.deepEqual(
+    lockSourceGaps(addon).map((g) => `${g.token} ${g.source}`),
+    [
+      "debug patched by patches/debug.patch",
+      "yallist patched by patches/yallist@4.0.0.patch",
+    ]
+  );
+  const audited = lockedPackages(addon).map((p) => p.token);
+  assert.ok(!audited.includes("yallist") && !audited.includes("debug"));
+  assert.ok(audited.includes("debug/ms"));
+  assert.equal(lockedVersion(addon, "debug"), null);
+});
+
+// Bun installs a package's peers for it, so a peer a production package needs ships.
+test("bun.lock: a production package's peer is production", () => {
+  const lock = BUN_LOCK.replace(
+    '"debug": ["debug@4.3.4", "", { "dependencies": { "ms": "2.1.2" } }, "sha512-b"],',
+    '"debug": ["debug@4.3.4", "", { "dependencies": { "ms": "2.1.2" }, "peerDependencies": { "yallist": "*" } }, "sha512-b"],'
+  );
+  assert.notEqual(lock, BUN_LOCK);
+  const dev = (a) =>
+    Object.fromEntries(lockedPackages(a).map((p) => [p.token, p.dev]));
+  assert.equal(dev(bunAddon())["yallist"], true);
+  assert.equal(dev(bunAddon(lock))["yallist"], false);
+});
+
+// A workspace member's dependency, nested under the member's name, is declared by it.
+test("bun.lock: a member's nested dependency counts as declared", () => {
+  const ms = lockedPackages(bunAddon()).find(
+    (p) => p.token === "@scope/member/ms"
+  );
+  assert.equal(ms.direct, true);
+});
+
+// Bun installs the peers a workspace declares itself, except those its optionalPeers names, so
+// a package reached only through a required workspace peer ships.
+test("bun.lock: a workspace's required peer is production, an optional one is not", () => {
+  const lock = BUN_LOCK.replace(
+    '      "devDependencies": {\n        "semver": "7.6.0",\n      },\n    },',
+    '      "devDependencies": {\n        "semver": "7.6.0",\n      },\n      "peerDependencies": {\n        "lru-cache": "6.0.0",\n        "yallist": "4.0.0",\n      },\n      "optionalPeers": [\n        "yallist",\n      ],\n    },'
+  );
+  assert.notEqual(lock, BUN_LOCK);
+  const dev = Object.fromEntries(
+    lockedPackages(bunAddon(lock)).map((p) => [p.token, p.dev])
+  );
+  assert.equal(dev["lru-cache"], false);
+  // yallist is reached only through lru-cache, which is now production, so it ships too.
+  assert.equal(dev["yallist"], false);
+  const optionalOnly = BUN_LOCK.replace(
+    '      "devDependencies": {\n        "semver": "7.6.0",\n      },\n    },',
+    '      "devDependencies": {\n        "semver": "7.6.0",\n      },\n      "peerDependencies": {\n        "lru-cache": "6.0.0",\n      },\n      "optionalPeers": [\n        "lru-cache",\n      ],\n    },'
+  );
+  assert.notEqual(optionalOnly, BUN_LOCK);
+  assert.equal(
+    lockedPackages(bunAddon(optionalOnly)).find((p) => p.token === "lru-cache")
+      .dev,
+    true
+  );
+});
+
+// A workspace name the lock gives in a shape no package has still ends the walk: resolving
+// from it may not shorten the path, and must not loop.
+test("bun.lock: a malformed workspace name does not hang the reachability walk", () => {
+  const lock = JSON.stringify({
+    workspaces: {
+      "": { name: "x" },
+      ws: { name: "bad/", dependencies: { ms: "2.1.3" } },
+    },
+    packages: { ms: ["ms@2.1.3", "", {}, "sha512-a"] },
+  });
+  assert.deepEqual(
+    lockedPackages(bunAddon(lock)).map((p) => `${p.token} dev=${p.dev}`),
+    ["ms dev=false"]
   );
 });

@@ -155,7 +155,7 @@
       "item": null,
       "hint": null,
       "artifact": "SCA",
-      "message": "The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+      "message": "The submitted source includes no npm, pnpm or Bun lock file. These lock files are needed to ensure reproducibility (via npm ci, pnpm install --frozen-lockfile or bun install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm, bun.lock for Bun). The supported package managers are npm, pnpm and Bun.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]
 }

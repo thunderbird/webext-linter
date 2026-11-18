@@ -144,7 +144,7 @@
       "item": null,
       "hint": null,
       "artifact": "SCA",
-      "message": "The submitted source includes more than one lock file. The review checks one lock file and the build installs from one, so only the lock file of the package manager you use may be committed: package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm. Please remove the others and commit only that one.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+      "message": "The submitted source includes more than one lock file. The review checks one lock file and the build installs from one, so only the lock file of the package manager you use may be committed: package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm, bun.lock for Bun. Please remove the others and commit only that one.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     },
     {
       "ruleId": "sca-lock-file-multiple",
@@ -154,7 +154,7 @@
       "item": null,
       "hint": null,
       "artifact": "SCA",
-      "message": "The submitted source includes more than one lock file. The review checks one lock file and the build installs from one, so only the lock file of the package manager you use may be committed: package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm. Please remove the others and commit only that one.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
+      "message": "The submitted source includes more than one lock file. The review checks one lock file and the build installs from one, so only the lock file of the package manager you use may be committed: package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm, bun.lock for Bun. Please remove the others and commit only that one.\nRead more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html"
     }
   ]
 }

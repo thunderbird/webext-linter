@@ -1,0 +1,10 @@
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "sca-registry-redirect-bunfig",
+    },
+  },
+  "packages": {},
+}

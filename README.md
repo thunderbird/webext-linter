@@ -132,15 +132,17 @@ expect. These allow rules let the linter's own commands run without that:
       "Bash(npm audit fix --package-lock-only --ignore-scripts*)",
       "Bash(pnpm install --lockfile-only --ignore-scripts*)",
       "Bash(pnpm audit --fix*)",
+      "Bash(bun install --lockfile-only --ignore-scripts*)",
       "Bash(npm ci*)",
-      "Bash(pnpm install --frozen-lockfile*)"
+      "Bash(pnpm install --frozen-lockfile*)",
+      "Bash(bun install --frozen-lockfile*)"
     ]
   }
 }
 ```
 
-The first runs the linter's hand-backs, the next four are the rescue's lock-only commands,
-and the last two are the build's installs. The audits (`npm audit`, `pnpm audit`) and the
+The first runs the linter's hand-backs, the next five are the rescue's lock-only commands,
+and the last three are the build's installs. The audits (`npm audit`, `pnpm audit`, `bun audit`) and the
 add-on's own build commands have no rule: the build commands run the submission's code, and
 the reviewer's permission is what allows them.
 
@@ -149,7 +151,7 @@ the reviewer's permission is what allows them.
 | Option | Description |
 | --- | --- |
 | `--sca-extracted <folder>` | The **extracted** source archive, all of it - a folder, not a packed archive, so extract the source yourself. Switches to SCA mode. The review copies it into its work folder's `sca/` and reads the copy, never the folder itself: every path the report names is relative to it. Every other `--sca-*` folder lies inside it, and it must not include the add-on. See [Source code archive (SCA) mode](#source-code-archive-sca-mode) below. |
-| `--sca-package-root <folder>` | The package root inside `--sca-extracted`: the folder holding `package.json` and its lock file (`package-lock.json` or `pnpm-lock.yaml`), where the build runs and the package file and the lock are read. Left out, the linter finds it. Needs `--sca-extracted`. |
+| `--sca-package-root <folder>` | The package root inside `--sca-extracted`: the folder holding `package.json` and its lock file (`package-lock.json`, `pnpm-lock.yaml` or `bun.lock`), where the build runs and the package file and the lock are read. Left out, the linter finds it. Needs `--sca-extracted`. |
 | `--sca-experiments <path>` | The Experiment implementation folder, **inside** `--sca-extracted`, anywhere in it, relative to it or absolute. Its privileged, non-WebExtension files are excluded from the WebExtension API/permission checks. Needs `--sca-extracted`, and is required for an Experiment and refused for any other add-on. |
 
 **Other:**
@@ -229,16 +231,17 @@ may hold the real source beside the copy.
   when it fails the review, not when it merely appears in one. An advisory saying the
   package itself is malicious states no band, and counts as critical. Declared and pulled-in cases are separate checks, because the developer fixes them
   differently: update this package, or update the one that pulls it in.
-- The **build tooling** (build scripts, configs, `.npmrc`) is reviewed as part of the
+- The **build tooling** (build scripts, configs, `.npmrc`, `bunfig.toml`) is reviewed as part of the
   submission like everything else, and additionally feeds the build checks below. Two requirements decide whether the build
   can be reproduced at all: the archive must **carry a build** (no `package.json` at
   the package root means there is nothing to reproduce), and it must commit a **lock file**
-  that installs exactly what `package.json` declares. npm and pnpm are the only package
-  managers the review installs from, so those are the only locks that count and a build
+  that installs exactly what `package.json` declares. npm, pnpm and Bun are the only package
+  managers the review installs from, so those are the only locks that count (Bun's text
+  `bun.lock`; its binary `bun.lockb` cannot be read without Bun) and a build
   using anything else is rejected for having none. Each aborts the review, and nobody is
   asked to build a source that breaks either. A third requirement aborts the review from
-  the other side: an `.npmrc` **in the package root** that points the package
-  **registry** elsewhere is rejected (npm reads its config from the directory the install
+  the other side: an `.npmrc` or `bunfig.toml` **in the package root** that points the package
+  **registry** elsewhere is rejected (npm and Bun read their config from the directory the install
   runs in), because the install would run but fetch something other than what is declared,
   so reproducing it attests nothing and it pulls code from a developer-chosen host onto the
   reviewer's machine. Beyond those, the build must not commit a `node_modules` folder or a
@@ -460,13 +463,13 @@ machine.
 | `privacy-policy` | Data transmitted by an overt API to a remote host the developer chose (fixed in the add-on, not entered by the user) - one case per transmission site, naming its host. A host the add-on assembles while it runs is reported too, marked rather than named, since dropping it would hide the site the tool can say least about. Routed to manual review to confirm the listing carries a privacy policy disclosing the collection (the policy text is not part of the package). Complements `data-exfiltration` (which judges consent). |
 | `sca-package-file-missing` | A source submission with no `package.json` in its package root, so nothing seeds a build and the shipped add-on cannot be reproduced from the archive (error, aborts the review late). Reported as the bare fact: whether the build files were left out or never existed is not decidable from the archive. An archive holding the whole XPI is reported here and by `sca-xpi-fully-included-in-archive`. |
 | `sca-package-file-invalid` | A `package.json` that is present but unusable - it does not parse, or it parses to something other than a JSON object - so the build it defines cannot be run (error, aborts the review late). Presence is decided by name and usability by reading, so exactly one of this and the check above ever speaks. |
-| `sca-lock-file-multiple` | A source submission that commits more than one lock file in its package root (any two of `npm-shrinkwrap.json`, `package-lock.json`, `pnpm-lock.yaml`) (error, aborts the review late). Every check reads one lock, while the build picks its package manager by the lock it finds, so with two the tree audited need not be the tree installed. The build check neither audits nor rescues such a source. |
-| `sca-lock-file-invalid` | A committed lock file that cannot be read: it does not parse, or it is not a recognisable npm or pnpm lock (error). The dependency audit reads the installed tree from it, so the review is aborted. Whether a readable lock matches `package.json` is left to `npm ci` / `pnpm install --frozen-lockfile` at the build. |
+| `sca-lock-file-multiple` | A source submission that commits more than one lock file in its package root (any two of `npm-shrinkwrap.json`, `package-lock.json`, `pnpm-lock.yaml`, `bun.lock`) (error, aborts the review late). Every check reads one lock, while the build picks its package manager by the lock it finds, so with two the tree audited need not be the tree installed. The build check neither audits nor rescues such a source. |
+| `sca-lock-file-invalid` | A committed lock file that cannot be read: it does not parse, or it is not a recognisable npm, pnpm or Bun lock (error). The dependency audit reads the installed tree from it, so the review is aborted. Whether a readable lock matches `package.json` is left to `npm ci` / `pnpm install --frozen-lockfile` / `bun install --frozen-lockfile` at the build. |
 | `sca-dependencies-changed` | The source reviewed is a rescued copy (see [the build check](docs/spec.html#the-build-check-case)): its dependencies were reduced to what the release build uses, or audit-fixed, to get past known vulnerabilities. Says so once, at `package.json`, and tells the developer to run their package manager's audit, since their own files still have the vulnerabilities (info). Compared lock to lock: silent for a source that is no rescued copy, or a copy whose lock installs what the original's did. |
 | `sca-not-needed` | An XPI review restarted from a source review that did not need its archive (see [When a restart as an XPI review is offered](docs/spec.html#close-the-review)): tells the developer to submit just the XPI next time (info). Raised by nothing in the files, only by that restart. |
-| `lockfile-injection` | A lock entry that names one release and installs another: its `version` says 1.2.2 while its `resolved` URL (or pnpm's `resolution.tarball`) fetches 1.2.1, or another package (error, aborts the review). The audit asks about the name and version, the install fetches the URL. A URL on the registry's tarball path is compared offline, any other registry URL is asked of the registry once and cached (`--cache-npm-registry-dir`). It runs before the vulnerability checks, so a forged lock stops the review before the lock is audited, and the build check does not audit or rescue such a lock. |
+| `lockfile-injection` | A lock entry that names one release and installs another: its `version` says 1.2.2 while its `resolved` URL (or pnpm's `resolution.tarball`, or a `bun.lock` entry's tarball URL) fetches 1.2.1, or another package (error, aborts the review). The audit asks about the name and version, the install fetches the URL. A URL on the registry's tarball path is compared offline, any other registry URL is asked of the registry once and cached (`--cache-npm-registry-dir`). It runs before the vulnerability checks, so a forged lock stops the review before the lock is audited, and the build check does not audit or rescue such a lock. |
 | `lock-foreign-source` | A lock entry the install takes from a source other than the npm registry or GitHub (error, aborts the review late). The audit identifies a package by name and version, while the installer fetches the URL the lock records, so such an entry installs bytes the audit never read. |
-| `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm or pnpm lock file, so the reviewer's install refuses to run and the build cannot be reproduced (error, aborts the review late). The lock is owed by the `package.json`, not by what it declares: both installers refuse without one whatever it holds. A build using a package manager the review does not install from commits no lock that counts, so it is rejected here. |
+| `sca-lock-file-missing` | A source submission that ships a `package.json` and no npm, pnpm or Bun lock file, so the reviewer's install refuses to run (or, for Bun, resolves afresh) and the build cannot be reproduced (error, aborts the review late). The lock is owed by the `package.json`, not by what it declares: npm and pnpm refuse without one whatever it holds, and Bun's install reproduces nothing without one. A build using a package manager the review does not install from commits no lock that counts, so it is rejected here. |
 | `string-timer` | A code string passed to `setTimeout`/`setInterval` (it is eval'd) in authored JS outside the WebExtension tree (Experiment/privileged code) - dynamic code execution (error). WebExtension code is exempt (CSP-gated, see `csp-unsafe-eval`). |
 | `sync-xhr` | Synchronous `XMLHttpRequest` (`open(..., false)`). |
 | `trademark-violation` | Add-on name (resolved from `_locales` for a `__MSG__` name) using a Mozilla brand term - `Firefox`/`Mozilla`/`MZLA` anywhere, in any locale (error, case-insensitive). Needs no knowledge of the language, so it is always a finding, and each offending name is reported once naming every locale that states it. `Thunderbird` is the two checks below, and a name carrying a brand term is left to this one alone, since it is refused either way. The icon is checked separately, on the listing and in the package. |
@@ -483,7 +486,7 @@ machine.
 | `vendor-modified` | A declared third-party file whose bytes don't match its pinned source (EOL-tolerant compare) - it appears modified from upstream (error). |
 | `multiple-vendor-files` | More than one file in the package root names itself the VENDOR file (`VENDOR`, `VENDOR.md`, `VENDORS`, `VENDORS.md`), so which one the review reads would depend on the archive's order (error). None of them is read while it is ambiguous. |
 | `vendor-unparseable` | A VENDOR file is present but yielded no declaration, so nothing can be verified (error). The parse is all-or-nothing: it reads only what is marked as a declaration - a path and a source URL paired by a colon, a key, or Markdown link syntax - and a fault anywhere discards the whole file. |
-| `xpi-lock-file-missing` | A dependency in a SHIPPED `package.json` declared as a range, with no lock file committed to resolve it (error). The declaration states that a bundled file was copied from that release, and the review fetches that release to compare the shipped bytes against it, so a range names nothing to compare against until a lock says which version was bundled. Any of `package-lock.json`, `npm-shrinkwrap.json` or `pnpm-lock.yaml` is accepted. XPI submissions only: a source archive answers pinning against the tree the reviewer installs. |
+| `xpi-lock-file-missing` | A dependency in a SHIPPED `package.json` declared as a range, with no lock file committed to resolve it (error). The declaration states that a bundled file was copied from that release, and the review fetches that release to compare the shipped bytes against it, so a range names nothing to compare against until a lock says which version was bundled. Any of `package-lock.json`, `npm-shrinkwrap.json`, `pnpm-lock.yaml` or `bun.lock` is accepted. XPI submissions only: a source archive answers pinning against the tree the reviewer installs. |
 | `xpi-lock-file-invalid` | The same declaration where a lock file IS committed and records no version for it (error) - regenerated from another `package.json`, keyed under another name, or unparseable. Kept apart from the row above because the remedy is: regenerate the lock rather than commit one. A dependency is never reported by both. |
 
 ### Checks that escalate

@@ -32,7 +32,7 @@
         it happens to declare: both installers refuse to run without one whatever
         it holds, and a root that declares nothing of its own is a package file whose
         declarations live elsewhere rather than a submission that installs
-        nothing. npm and pnpm are
+        nothing. npm, pnpm and Bun are
         the only supported package managers, so theirs are the only lock files
         that count, and a lock file's presence is decided by its name rather
         than by reading it - one that exists but cannot be read is reported as
@@ -45,7 +45,7 @@
 flowchart TD
   A["The submitted source archive"] --> B{"A package.json at its root,<br/>readable as a JSON object?"}
   B -- no --> S([skip: no package file<br/>-- its own check reports that])
-  B -- yes --> E{"An npm or pnpm lock<br/>file beside it?"}
+  B -- yes --> E{"An npm, pnpm or Bun lock<br/>file beside it?"}
   E -- yes --> OK([no finding])
   E -- no --> ERR([ERROR: missing lock file<br/>the review is aborted here])
 
@@ -60,7 +60,7 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The add-on is told that its source includes no npm or pnpm
+        The add-on is told that its source includes no npm, pnpm or Bun
         lock file, that one is needed for a reproducible install, and that it
         should commit the lock file its package manager writes. The report then closes, saying it is incomplete because
         the build cannot be reproduced.

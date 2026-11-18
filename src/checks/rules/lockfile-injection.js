@@ -1,8 +1,9 @@
 // Rejects a source-code submission whose committed lock file names one release and installs
 // another: an entry whose `version` says 1.2.2 while its `resolved` URL (or pnpm's
-// `resolution.tarball`) fetches 1.2.1, or another package entirely. The dependency audit asks
-// about the name and version the entry records, while `npm ci` and
-// `pnpm install --frozen-lockfile` fetch the URL - so the audit would vouch for a release the
+// `resolution.tarball`, or the tarball URL a bun.lock entry records) fetches 1.2.1, or another
+// package entirely. The dependency audit asks
+// about the name and version the entry records, while `npm ci`,
+// `pnpm install --frozen-lockfile` and `bun install --frozen-lockfile` fetch the URL - so the audit would vouch for a release the
 // build never installs.
 //
 // Belongs here: mapping each such entry to a finding at its line in the lock. Does NOT

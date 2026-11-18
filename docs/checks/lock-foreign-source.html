@@ -17,8 +17,9 @@
       <p class="lead">
         A source-code submission whose committed lock file installs a package from a
         source other than the npm registry or GitHub. The dependency audit identifies a
-        package by its name and version, while <code>npm ci</code> and
-        <code>pnpm install --frozen-lockfile</code> fetch it from the URL the lock
+        package by its name and version, while <code>npm ci</code>,
+        <code>pnpm install --frozen-lockfile</code> and
+        <code>bun install --frozen-lockfile</code> fetch it from the URL the lock
         records, so an entry resolved elsewhere installs bytes the audit never read.
       </p>
       <p>
