@@ -16,7 +16,7 @@
       <h2>What it detects</h2>
       <p class="lead">
         A committed lock file that cannot be read: it does not parse, or it
-        parses but is not an npm or pnpm lock file while the package.json
+        parses but is not an npm, pnpm or Bun lock file while the package.json
         declares something to install from it.
       </p>
       <p>
@@ -24,8 +24,9 @@
         lock it cannot read would leave that audit seeing nothing - and a review
         that sees nothing is not a review that found the tree clean. Whether a
         readable lock file matches the package.json is not decided here: that is
-        the package manager&rsquo;s own question, which <code>npm ci</code> and
-        <code>pnpm install --frozen-lockfile</code> answer when the build
+        the package manager&rsquo;s own question, which <code>npm ci</code>,
+        <code>pnpm install --frozen-lockfile</code> and
+        <code>bun install --frozen-lockfile</code> answer when the build
         installs.
       </p>
 
@@ -33,13 +34,13 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The submitted source archive"] --> B{"An npm or pnpm lock file?"}
+  A["The submitted source archive"] --> B{"An npm, pnpm or Bun lock file?"}
   B -- no --> S([skip: nothing committed to judge])
   B -- yes --> C{"Does it parse?"}
   C -- no --> ERR([ERROR: invalid lock file])
   C -- yes --> D{"Does package.json declare<br/>anything to install?"}
   D -- no --> OK([no finding])
-  D -- yes --> E{"Is it an npm or<br/>pnpm lock file?"}
+  D -- yes --> E{"Is it an npm, pnpm<br/>or Bun lock file?"}
   E -- no --> ERR
   E -- yes --> OK
 

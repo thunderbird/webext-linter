@@ -13,8 +13,9 @@
 // path the review does not hold as a folder - localInstalls. (7) Does every registry entry
 // install the release it names - findLockInjections, since the audit asks about the name and
 // version while the installer fetches the URL. Reads whichever lock the
-// submission ships - npm (package-lock.json / npm-shrinkwrap.json, JSON) or pnpm
-// (pnpm-lock.yaml, YAML), the two supported package managers.
+// submission ships - npm (package-lock.json / npm-shrinkwrap.json, JSON), pnpm
+// (pnpm-lock.yaml, YAML) or Bun (bun.lock, JSON with trailing commas), the three supported
+// package managers. Bun's binary bun.lockb is not one: it cannot be read without Bun.
 //
 // ONE GOVERNING LOCK. Every reader below asks governingLock which file the submission
 // installs from, so a submission cannot be rejected over one lock while a version is pinned
@@ -38,7 +39,7 @@ import {
   NPM_REGISTRY_CACHE,
 } from "../config.js";
 import { stripBom } from "../util/json.js";
-import { parseJson } from "../util/json.js";
+import { parseJson, parseJsonc } from "../util/json.js";
 import { writeFileAtomic } from "../util/atomic.js";
 import { debug } from "../util/log.js";
 import { classifySource } from "./sources.js";
@@ -75,6 +76,9 @@ import { cutAtFirst } from "../util/text.js";
  * @property {string} file  The lock file it was read from (the finding's anchor).
  * @property {string} token  The string locating its entry in `file`.
  */
+// Bun's text lock. Named once, since every reader below branches on it.
+const BUN_LOCK = "bun.lock";
+
 // The lock files that record a whole tree, in the order they are consulted. Only the first
 // one PRESENT is read (-> governingLock) - merging two would report the same tree twice,
 // and judging the wrong one reports a tree that is never installed.
@@ -82,11 +86,15 @@ import { cutAtFirst } from "../util/text.js";
 // npm-shrinkwrap.json comes first because npm PREFERS it: with both committed, npm
 // installs from the shrinkwrap and ignores package-lock.json entirely. Reading them
 // the other way round judges the file npm does not use, which both invents failures
-// (a stale package-lock beside a good shrinkwrap) and misses real ones.
+// (a stale package-lock beside a good shrinkwrap) and misses real ones. bun.lock comes
+// last: no other package manager reads it, and a source review refuses any two locks
+// (sca-lock-file-multiple), so its place only matters where a built XPI ships one beside
+// another lock.
 export const TREE_LOCKS = [
   "npm-shrinkwrap.json",
   "package-lock.json",
   "pnpm-lock.yaml",
+  BUN_LOCK,
 ];
 
 /**
@@ -221,7 +229,12 @@ function parsedLock(addon, file) {
   try {
     if (text) {
       const clean = stripBom(text);
-      data = file.endsWith(".json") ? parseJson(clean) : pnpmProjectLock(clean);
+      data =
+        file === BUN_LOCK
+          ? parseJsonc(clean)
+          : file.endsWith(".json")
+            ? parseJson(clean)
+            : pnpmProjectLock(clean);
     }
   } catch (err) {
     rethrowIfFatal(err);
@@ -285,7 +298,24 @@ export function lockedVersion(addon, name) {
     return null;
   }
   const data = parsedLock(addon, file);
+  if (file === BUN_LOCK) {
+    return bunLock(data, name);
+  }
   return file.endsWith(".json") ? npmLock(data, name) : pnpmLock(data, name);
+}
+
+/**
+ * @param {?object} data  Parsed bun.lock.
+ * @param {string} name
+ * @returns {?string}
+ */
+function bunLock(data, name) {
+  // The hoisted entry is keyed by the name alone. Only a registry release pins a version.
+  const entry = bunEntry(name, ownValue(data?.packages, name), data);
+  if (!entry || bunSource(entry) !== "registry") {
+    return null;
+  }
+  return bunRelease(entry).version || null;
 }
 
 /**
@@ -347,10 +377,44 @@ export function lockedPackages(addon) {
   }
   // Named in the archive's keyspace, where every reported path is given.
   const at = packageRootKey(addon, file);
-  const found = file.endsWith(".json")
-    ? npmPackages(data, at)
-    : pnpmPackages(data, at);
+  const found =
+    file === BUN_LOCK
+      ? bunPackages(data, at)
+      : file.endsWith(".json")
+        ? npmPackages(data, at)
+        : pnpmPackages(data, at);
   return dedupe(found);
+}
+
+/**
+ * Enumerate a bun.lock's registry releases. Bun records no dev flag, so production is
+ * derived from the graph (bunProdKeys), as for a pnpm v9 lock.
+ * @param {object} data  Parsed lock. @param {string} file
+ * @returns {LockedPackage[]}
+ */
+function bunPackages(data, file) {
+  const entries = bunEntries(data);
+  const prod = bunProdKeys(data, entries);
+  const declared = bunDeclared(data);
+  const out = [];
+  for (const entry of entries) {
+    if (bunSource(entry) !== "registry") {
+      continue;
+    }
+    const { name, version } = bunRelease(entry);
+    if (!NUMERIC_VERSION.test(version)) {
+      continue;
+    }
+    out.push({
+      name,
+      version,
+      dev: !prod.has(entry.key),
+      direct: declared(entry),
+      file,
+      token: entry.key,
+    });
+  }
+  return out;
 }
 
 /**
@@ -676,6 +740,23 @@ export function lockSourceGaps(addon) {
       gaps.push({ file: at, token, name, version, source });
     }
   };
+  if (file === BUN_LOCK) {
+    for (const entry of bunEntries(data)) {
+      const release = NUMERIC_VERSION.test(entry.spec);
+      judge(
+        entry.key,
+        entry.name,
+        release ? entry.spec : "",
+        entry.patch
+          ? `patched by ${entry.patch}`
+          : release
+            ? entry.registry
+            : entry.spec,
+        bunSource(entry)
+      );
+    }
+    return gaps;
+  }
   if (!file.endsWith(".json")) {
     for (const [token, entry] of Object.entries(data.packages ?? {})) {
       if (!entry || typeof entry !== "object") {
@@ -773,6 +854,15 @@ export function lockInstallTargets(addon) {
       installs: url ? tarballRelease(url) : { name, version },
     });
   };
+  if (file === BUN_LOCK) {
+    for (const entry of bunEntries(data)) {
+      if (bunSource(entry) === "registry") {
+        const { name, version, url } = bunRelease(entry);
+        add(entry.key, name, version, url);
+      }
+    }
+    return out;
+  }
   if (!file.endsWith(".json")) {
     for (const [token, entry] of Object.entries(objectOr(data.packages))) {
       if (!plainObject(entry) || pnpmSource(entry) !== "registry") {
@@ -1073,6 +1163,19 @@ export function githubInstalls(addon) {
       });
     }
   };
+  if (file === BUN_LOCK) {
+    const declared = bunDeclared(data);
+    for (const entry of bunEntries(data)) {
+      take(
+        entry.key,
+        entry.name,
+        "",
+        [bunGithubUrl(entry.spec)],
+        declared(entry)
+      );
+    }
+    return out;
+  }
   if (!file.endsWith(".json")) {
     const direct = pnpmDeclaredNames(data);
     for (const [token, entry] of Object.entries(data.packages ?? {})) {
@@ -1263,6 +1366,15 @@ export function localInstalls(addon) {
       out.push({ name, spec, file: at, token });
     }
   };
+  if (file === BUN_LOCK) {
+    for (const entry of bunEntries(data)) {
+      const target = bunLocalPath(entry);
+      if (target !== null) {
+        judge(entry.key, entry.name, entry.spec, "", target);
+      }
+    }
+    return out;
+  }
   if (!file.endsWith(".json")) {
     const importers = data.importers ?? { ".": data };
     for (const [path, importer] of Object.entries(importers)) {
@@ -1375,6 +1487,247 @@ function pnpmSource(entry) {
 }
 
 /**
+ * @typedef {object} BunEntry  One `packages` entry of a bun.lock.
+ * @property {string} key  Its install path, which is its key: "debug" is installed at
+ *   node_modules/debug, "debug/ms" at node_modules/debug/node_modules/ms. Locates its line.
+ * @property {string} name  The package it installs. The entry names the real package, so an
+ *   npm alias's key ("alias-ms") still yields "ms".
+ * @property {string} spec  What follows the name: the version of a registry release, or else
+ *   where it comes from ("github:owner/repo#sha", "git+https://...", "file:dir", "link:dir",
+ *   a local "./x.tgz", a tarball URL, "workspace:path").
+ * @property {string} registry  A registry release's second slot: "" for the default
+ *   registry, or the tarball URL Bun fetches it from when another registry served it.
+ * @property {object} info  Its dependency maps: `dependencies`, `optionalDependencies`,
+ *   `peerDependencies`.
+ * @property {string} patch  The patch file Bun applies to it when it installs, as the lock's
+ *   `patchedDependencies` names it, or "" when it is installed as published.
+ */
+
+/**
+ * Every `packages` entry of a parsed bun.lock. Bun writes each one as an array whose first
+ * slot is "<name>@<spec>": `["ms@2.1.3", "", {...}, "sha512-..."]` for a registry release,
+ * `["is-number@github:owner/repo#sha", {...}, "owner-repo-sha", "sha512-..."]` for a GitHub
+ * install, `["member@workspace:ws/member"]` for a workspace member. The name is split at the
+ * first "@" after a scope's leading one. An entry of any other shape is not read.
+ * @param {object} data  Parsed lock.
+ * @returns {BunEntry[]}
+ */
+function bunEntries(data) {
+  return Object.entries(objectOr(data?.packages))
+    .map(([key, value]) => bunEntry(key, value, data))
+    .filter(Boolean);
+}
+
+/**
+ * One bun.lock `packages` entry read (-> bunEntries), or null when it is not one.
+ * @param {string} key  Its install path.
+ * @param {unknown} value  Its array.
+ * @param {?object} data  The parsed lock, for its `patchedDependencies`.
+ * @returns {?BunEntry}
+ */
+function bunEntry(key, value, data) {
+  if (!Array.isArray(value) || typeof value[0] !== "string") {
+    return null;
+  }
+  const at = value[0].indexOf("@", 1);
+  if (at === -1) {
+    return null;
+  }
+  const name = value[0].slice(0, at);
+  const spec = value[0].slice(at + 1);
+  const release = NUMERIC_VERSION.test(spec);
+  // Bun keys a patch by the release it applies to ("ms@2.1.3"), or by the name alone for
+  // every version of it.
+  const patches = objectOr(data?.patchedDependencies);
+  const patch = ownValue(patches, value[0]) ?? ownValue(patches, name);
+  return {
+    key,
+    name,
+    spec,
+    registry: release && typeof value[1] === "string" ? value[1] : "",
+    info: (release ? value[2] : value[1]) ?? {},
+    patch: patch === undefined ? "" : String(patch) || value[0],
+  };
+}
+
+/**
+ * Where a bun.lock entry installs from. A patched entry installs from no source the review
+ * reads: Bun applies the lock's patch to what it fetches, so the bytes are not the release
+ * the audit would ask about. It is "foreign", which lock-foreign-source rejects. A registry
+ * release installs from its second slot,
+ * which is "" for the default registry and a tarball URL otherwise. Anything else installs
+ * from its spec: a "github:" spec from that repository, a git URL from GitHub or elsewhere,
+ * a "file:" or "link:" spec or a relative path from the submission's own files, and a URL
+ * from wherever it points. A workspace member is the submission's own folder.
+ * @param {BunEntry} entry
+ * @returns {"registry"|"github"|"local"|"foreign"}
+ */
+function bunSource({ spec, registry, patch }) {
+  if (patch) {
+    return "foreign";
+  }
+  if (NUMERIC_VERSION.test(spec)) {
+    return installSource(registry);
+  }
+  if (/^workspace:/i.test(spec)) {
+    return "local";
+  }
+  if (/^git(hub:|\+|:)/i.test(spec)) {
+    return isGithubSource(bunGithubUrl(spec)) ? "github" : "foreign";
+  }
+  return installSource(spec);
+}
+
+/**
+ * A bun.lock "github:owner/repo#sha" spec as the GitHub URL it names, which githubRepoOf
+ * reads; any other spec unchanged.
+ * @param {string} spec
+ * @returns {string}
+ */
+function bunGithubUrl(spec) {
+  return spec.replace(/^github:/i, "https://github.com/");
+}
+
+/**
+ * The release a bun.lock registry entry is audited as: its name and version. An entry whose
+ * spec is a tarball URL on the registry names no version, so the release is the one that
+ * URL's path names - with the entry's own name, so a URL that serves another package is
+ * still caught as one (lockfile-injection).
+ * @param {BunEntry} entry  A "registry" entry (bunSource).
+ * @returns {{name: string, version: string, url: string}}
+ */
+function bunRelease(entry) {
+  if (NUMERIC_VERSION.test(entry.spec)) {
+    return { name: entry.name, version: entry.spec, url: entry.registry };
+  }
+  return {
+    name: entry.name,
+    version: tarballRelease(entry.spec)?.version ?? "",
+    url: entry.spec,
+  };
+}
+
+/**
+ * Whether a bun.lock entry is one the submission's package files declare. The workspaces ARE
+ * those package files, restated by Bun under their paths ("" is the root). An entry is
+ * declared when its package is one they ask for, or when it is installed where a declaration
+ * puts it: at the top under the name the declaration is written with, or under a workspace
+ * member's own name. The second is what catches a dependency written under another name than
+ * the package it installs - a GitHub repository whose package name differs from the key it is
+ * declared under, say - which the package name alone would read as pulled in.
+ * @param {object} data  Parsed lock.
+ * @returns {(entry: BunEntry) => boolean}
+ */
+function bunDeclared(data) {
+  const names = new Set();
+  const paths = new Set();
+  for (const [path, workspace] of Object.entries(objectOr(data.workspaces))) {
+    const from = path === "" ? "" : String(workspace?.name ?? "");
+    for (const map of DECLARATION_MAPS) {
+      for (const [name, spec] of Object.entries(objectOr(workspace?.[map]))) {
+        names.add(declaredName(name, spec));
+        paths.add(name);
+        if (from) {
+          paths.add(`${from}/${name}`);
+        }
+      }
+    }
+  }
+  return (entry) => names.has(entry.name) || paths.has(entry.key);
+}
+
+/**
+ * The install paths a bun.lock installs for production. Bun records no dev flag, so - as for
+ * a pnpm v9 lock (pnpmProdKeys) - the answer is reachability: walk out from each workspace's
+ * production and optional dependencies through every entry's own, and whatever is never
+ * reached is build-time only. Peers count too: Bun installs a package's peers for it, so a
+ * peer a production package needs ships with it, and it installs the peers a workspace
+ * declares itself, except those its `optionalPeers` names (measured: a required workspace peer
+ * is locked and installed, an optional one neither).
+ *
+ * A dependency is found the way Node resolves it from the folder that asks for it, which is
+ * how the keys are laid out: "b" asked for by "a" is "a/b" when Bun nested a copy there, and
+ * the hoisted "b" otherwise. A workspace member asks from its own name, under which Bun nests
+ * whatever it could not hoist; the root asks from the top.
+ * @param {object} data  Parsed lock.
+ * @param {BunEntry[]} entries
+ * @returns {Set<string>}  Install paths (entry keys).
+ */
+function bunProdKeys(data, entries) {
+  const byKey = new Map(entries.map((e) => [e.key, e]));
+  // Up from `from` one package at a time, a scoped name ("@scope/a") counting as one, ending at
+  // the top as Node does. A path that does not shorten (a workspace name ending in "/") goes
+  // straight to the top instead of looping.
+  const resolve = (from, dep) => {
+    for (let at = from; ;) {
+      const key = at ? `${at}/${dep}` : dep;
+      if (byKey.has(key)) {
+        return key;
+      }
+      if (!at) {
+        return null;
+      }
+      const up = at.replace(/\/?(?:@[^/]+\/)?[^/]+$/, "");
+      at = up === at ? "" : up;
+    }
+  };
+  const queue = [];
+  const ask = (from, info, maps, skip = []) => {
+    for (const map of maps) {
+      for (const dep of Object.keys(objectOr(info?.[map]))) {
+        if (skip.includes(dep)) {
+          continue;
+        }
+        const key = resolve(from, dep);
+        if (key !== null) {
+          queue.push(key);
+        }
+      }
+    }
+  };
+  for (const [path, workspace] of Object.entries(objectOr(data.workspaces))) {
+    const from = path === "" ? "" : String(workspace?.name ?? "");
+    ask(from, workspace, ["dependencies", "optionalDependencies"]);
+    const optional = workspace?.optionalPeers;
+    ask(
+      from,
+      workspace,
+      ["peerDependencies"],
+      Array.isArray(optional) ? optional : []
+    );
+  }
+  const prod = new Set();
+  while (queue.length) {
+    const key = queue.pop();
+    if (prod.has(key)) {
+      continue;
+    }
+    prod.add(key);
+    ask(key, byKey.get(key)?.info, [
+      "dependencies",
+      "optionalDependencies",
+      "peerDependencies",
+    ]);
+  }
+  return prod;
+}
+
+/**
+ * The local path a bun.lock entry installs from, or null when it installs from none: a
+ * "file:" or "link:" folder or tarball, a relative tarball path, or a workspace member's
+ * folder. Bun records each relative to the folder holding the lock.
+ * @param {BunEntry} entry
+ * @returns {?string}
+ */
+function bunLocalPath({ spec }) {
+  const m = /^(file|link|workspace):(.*)$/i.exec(spec);
+  if (m) {
+    return m[2];
+  }
+  return installSource(spec) === "local" ? spec : null;
+}
+
+/**
  * Why the governing lock cannot be read, or null when it can (or there is none). The
  * dependency audit reads the installed tree out of this file (lockedPackages), so a lock it
  * cannot read would leave that audit seeing nothing - and a review saying nothing is not a
@@ -1421,6 +1774,7 @@ const READERS = new Map([
   ["npm-shrinkwrap.json", recognisesNpm],
   ["package-lock.json", recognisesNpm],
   ["pnpm-lock.yaml", recognisesPnpm],
+  [BUN_LOCK, recognisesBun],
 ]);
 
 /**
@@ -1457,6 +1811,20 @@ function recognisesPnpm(data) {
   return (
     DECLARATION_MAPS.some((m) => plainObject(data[m])) ||
     plainObject(data.specifiers)
+  );
+}
+
+/**
+ * @param {unknown} data  Parsed lock.
+ * @returns {boolean}  Whether it is a bun.lock: Bun always writes the root package file
+ *   under `workspaces[""]`, beside the `packages` map.
+ */
+function recognisesBun(data) {
+  return (
+    plainObject(data) &&
+    plainObject(data.workspaces) &&
+    plainObject(data.workspaces[""]) &&
+    plainObject(data.packages)
   );
 }
 

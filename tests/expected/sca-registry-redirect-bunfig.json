@@ -1,0 +1,8 @@
+{
+  "_comment": "The bunfig.toml twin of sca-registry-redirect: SCA (src/ + xpi/) with a committed bun.lock whose ROOT bunfig.toml sets install.registry through an escaped quoted key (\"regis\\u0074ry\"), which Bun reads as the same key - so the file is read with a TOML parser, not searched for the word. build-registry-redirect reports it at its line (error, the value is not judged) and aborts the review late. The committed tools/bunfig.toml is deliberately left in the fixture as the negative: Bun reads its config from the directory the install runs in, which is --sca-package-root, so a config deeper in the tree is not read and not reported.",
+  "expect": {
+    "build-registry-redirect": [
+      "bunfig.toml:4"
+    ]
+  }
+}

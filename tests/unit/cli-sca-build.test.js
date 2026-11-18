@@ -95,7 +95,8 @@ const COMPARED = [
 /** How the build and rescue prompts install: as the lock pins it, and with no install script,
  *  since nobody has read a dependency's. */
 const INSTALL =
-  "`npm ci --ignore-scripts`, or `pnpm install --frozen-lockfile --ignore-scripts`";
+  "`npm ci --ignore-scripts`, `pnpm install --frozen-lockfile --ignore-scripts` where";
+const INSTALL_BUN = "or `bun install --frozen-lockfile --ignore-scripts` where";
 
 /** What the build and rescue prompts say of the output path: the artifact the build produced,
  *  which the agent that ran it sees. Where it lies is the agent's to report, and the hand-back
@@ -339,6 +340,7 @@ test("the hand-back prints a clean source's build", () => {
   for (const said of [
     "Build in LLM_BUILD_ROOT, and only there",
     INSTALL,
+    INSTALL_BUN,
     OUTPUT_PATH,
     '"Build attempt"',
     ...COMPARED,
@@ -387,6 +389,7 @@ test("the hand-back prints a vulnerable source's rescue", () => {
     "npm audit fix --package-lock-only --ignore-scripts",
     "build NOTHING",
     INSTALL,
+    INSTALL_BUN,
     '"label" of its one answer',
     OUTPUT_PATH,
     ...COMPARED,

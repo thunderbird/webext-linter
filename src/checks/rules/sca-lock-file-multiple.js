@@ -1,7 +1,7 @@
 // Rejects a source-code submission that commits more than one lock file in its package root. Every
 // check reads one of them - the governing lock, the first in TREE_LOCKS order - while the
 // build picks its package manager by the lock it finds: a pnpm-lock.yaml means
-// `pnpm install --frozen-lockfile`. With two, the tree the review audits need not be the tree
+// `pnpm install --frozen-lockfile`, a bun.lock `bun install --frozen-lockfile`. With two, the tree the review audits need not be the tree
 // the reviewer installs, so a harmless npm lock beside a vulnerable pnpm one would pass. Only
 // one package manager's lock may be committed.
 //

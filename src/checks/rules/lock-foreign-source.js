@@ -1,7 +1,7 @@
 // Rejects a source-code submission whose committed lock file installs a package from a
 // source the review cannot audit. The dependency audit identifies each package by name and
-// version, while `npm ci` and `pnpm install --frozen-lockfile` fetch the URL the lock
-// records - so an entry resolved anywhere but the npm registry or GitHub installs bytes the
+// version, while `npm ci`, `pnpm install --frozen-lockfile` and `bun install --frozen-lockfile`
+// fetch the URL the lock records - so an entry resolved anywhere but the npm registry or GitHub installs bytes the
 // audit vouched for under another name.
 //
 // Belongs here: mapping each such entry to a finding at its line in the lock. Does NOT

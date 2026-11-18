@@ -31,8 +31,8 @@
         package is declared is the lock file's own record of what the
         submission's package files ask for; this check takes the ones nothing
         declares. Whether a package is build-time only comes from
-        the lock file itself — npm's own dev markers, or, for a pnpm lock that
-        has none, whether the package is reachable from the project's production
+        the lock file itself — npm's own dev markers, or, for a pnpm or Bun lock
+        that has none, whether the package is reachable from the project's production
         dependencies. Only <strong>high and critical</strong> advisories are
         kept, so every finding here is an error, and the advisory's own band is
         still named in the text. An advisory saying the package itself is
@@ -45,7 +45,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["A package the lock file installs"] --> G{"Source-code submission<br/>with an npm or pnpm lock?"}
+  A["A package the lock file installs"] --> G{"Source-code submission<br/>with an npm, pnpm or Bun lock?"}
   G -- no --> S([skip])
   G -- yes --> D{"Declared by one of the<br/>submission's own package files?"}
   D -- yes --> S2([skip: a declared-dependency check reports it])

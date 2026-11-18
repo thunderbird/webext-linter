@@ -249,7 +249,7 @@ function helpText(registry) {
     ],
     [
       "--sca-package-root <folder>",
-      "The folder inside --sca-extracted holding package.json and its lock file (package-lock.json or pnpm-lock.yaml), where the build runs: where the package file and the lock are read, and the install runs. The review reads the whole of --sca-extracted. Left out, the linter finds it (the folder holding package.json, below any folders the archive wraps its content in). Needs --sca-extracted.",
+      "The folder inside --sca-extracted holding package.json and its lock file (package-lock.json, pnpm-lock.yaml or bun.lock), where the build runs: where the package file and the lock are read, and the install runs. The review reads the whole of --sca-extracted. Left out, the linter finds it (the folder holding package.json, below any folders the archive wraps its content in). Needs --sca-extracted.",
     ],
     [
       "--sca-experiments <path>",

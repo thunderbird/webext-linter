@@ -17,10 +17,12 @@
       <p class="lead">
         A source-code submission whose committed lock file names one release of a
         package and installs another: an entry recording <code>"version": "1.2.2"</code>
-        while its <code>resolved</code> URL (pnpm's <code>resolution.tarball</code>)
+        while its <code>resolved</code> URL (pnpm's <code>resolution.tarball</code>, or the tarball URL a
+        <code>bun.lock</code> entry records)
         fetches the 1.2.1 tarball, or another package entirely. The dependency audit
-        asks about the name and version the entry records, while <code>npm ci</code>
-        and <code>pnpm install --frozen-lockfile</code> fetch the URL, so the audit
+        asks about the name and version the entry records, while <code>npm ci</code>,
+        <code>pnpm install --frozen-lockfile</code> and
+        <code>bun install --frozen-lockfile</code> fetch the URL, so the audit
         would vouch for a release the build never installs.
       </p>
       <p>

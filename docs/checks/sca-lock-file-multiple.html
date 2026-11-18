@@ -17,13 +17,14 @@
       <p class="lead">
         A source-code submission that commits more than one lock file at its
         root: any two of <code>npm-shrinkwrap.json</code>,
-        <code>package-lock.json</code> and <code>pnpm-lock.yaml</code>.
+        <code>package-lock.json</code>, <code>pnpm-lock.yaml</code> and <code>bun.lock</code>.
       </p>
       <p>
         Every check reads one lock file, the first of those three that is
         present. The build, though, picks its package manager by the lock file
         it finds: a <code>pnpm-lock.yaml</code> means
-        <code>pnpm install --frozen-lockfile</code>. With two, the dependency
+        <code>pnpm install --frozen-lockfile</code>, a <code>bun.lock</code>
+        <code>bun install --frozen-lockfile</code>. With two, the dependency
         tree the review audits need not be the tree the reviewer installs: a
         harmless npm lock beside a vulnerable pnpm one would pass the audit. So
         only one package manager&rsquo;s lock file may be committed.
@@ -45,7 +46,7 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The submitted source archive"] --> B{"How many of npm-shrinkwrap.json,<br/>package-lock.json, pnpm-lock.yaml<br/>at its root?"}
+  A["The submitted source archive"] --> B{"How many of npm-shrinkwrap.json,<br/>package-lock.json, pnpm-lock.yaml,<br/>bun.lock at its root?"}
   B -- "none or one" --> OK([no finding])
   B -- "two or more" --> ERR([ERROR: one finding per lock file])
 

@@ -46,7 +46,8 @@ deterministic-phase:
 #
 # `review-unbuildable: true` on an aborting check of the source archive says no build can be
 # made from the source by the review's own rules: no usable package.json, no single readable
-# lock for `npm ci` or `pnpm install --frozen-lockfile` to install from, a lock entry
+# lock for `npm ci`, `pnpm install --frozen-lockfile` or `bun install --frozen-lockfile` to
+# install from, a lock entry
 # installed from a source the audit cannot read, or a declared dependency nobody can review.
 # A source review holding such a finding asks nobody to build it: the `built` phase is skipped
 # (the `unbuildable` fact, src/report/loop.js runOf), and the review goes on to the sweeps and
@@ -196,8 +197,9 @@ deterministic-phase:
     The committed package.json cannot be read, so the build it defines cannot be run. Please commit a valid package.json.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
-# Deterministic (SCA only): the source ships a package.json and no npm or pnpm lock.
-# `npm ci` and `pnpm install --frozen-lockfile` both refuse without one, so the
+# Deterministic (SCA only): the source ships a package.json and no npm, pnpm or Bun lock.
+# `npm ci` and `pnpm install --frozen-lockfile` both refuse without one, and
+# `bun install --frozen-lockfile` resolves afresh from the registry instead, so the
 # source cannot be shown to produce the shipped XPI. The reading is fixed by the SUBMISSION
 # TYPE, never by the file's contents: here a package.json defines the BUILD whatever it
 # carries, so whatever it declares is installed. An absent `scripts` block is not a second
@@ -221,16 +223,16 @@ deterministic-phase:
   review-unbuildable: true
   input: sca
   response: |-
-    The submitted source includes no npm or pnpm lock file. These lock files are needed to ensure reproducibility (via npm ci or pnpm install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm). The supported package managers are npm and pnpm.
+    The submitted source includes no npm, pnpm or Bun lock file. These lock files are needed to ensure reproducibility (via npm ci, pnpm install --frozen-lockfile or bun install --frozen-lockfile). Please commit the lock file created by your package manager (package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm, bun.lock for Bun). The supported package managers are npm, pnpm and Bun.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Deterministic (SCA only): a lock was submitted but cannot be read - it does not parse, or
-# it is not an npm or pnpm lock while package.json declares something to install from it.
+# it is not an npm, pnpm or Bun lock while package.json declares something to install from it.
 # The dependency audit reads the installed tree out of the lock, so an unreadable one would
 # leave it seeing nothing (src/vendor/locks.js unreadableLock). Whether a readable lock
 # matches package.json is NOT asked: that is the package manager's own question, which
-# `npm ci` and `pnpm install --frozen-lockfile` answer when the build installs. Which of the
-# two it was rides the location line as {{item}}.
+# `npm ci`, `pnpm install --frozen-lockfile` and `bun install --frozen-lockfile` answer when
+# the build installs. Which of the two it was rides the location line as {{item}}.
 - title: Invalid lock file
   severity: error
   review-late-exit: unreproducible-build
@@ -242,12 +244,13 @@ deterministic-phase:
   review-unbuildable: true
   input: sca
   response: |-
-    The committed lock file cannot be read, so the dependencies it installs cannot be checked. Please run the install again and commit the lock file it writes. The supported package managers are npm and pnpm.
+    The committed lock file cannot be read, so the dependencies it installs cannot be checked. Please run the install again and commit the lock file it writes. The supported package managers are npm, pnpm and Bun.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Deterministic (SCA only): more than one lock file in the package root. Every check reads the
 # governing lock - the first in TREE_LOCKS order (src/vendor/locks.js committedLocks) - while
-# the build picks its package manager by the lock it finds (a pnpm-lock.yaml means pnpm). With
+# the build picks its package manager by the lock it finds (a pnpm-lock.yaml means pnpm, a
+# bun.lock Bun). With
 # two, the tree the review audits need not be the tree the reviewer installs: a harmless npm
 # lock beside a vulnerable pnpm one would pass the audit. So more than one aborts the review,
 # and the build check neither audits nor rescues such a source (src/build-check/audit.js). This
@@ -265,17 +268,20 @@ deterministic-phase:
   review-unbuildable: true
   input: sca
   response: |-
-    The submitted source includes more than one lock file. The review checks one lock file and the build installs from one, so only the lock file of the package manager you use may be committed: package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm. Please remove the others and commit only that one.
+    The submitted source includes more than one lock file. The review checks one lock file and the build installs from one, so only the lock file of the package manager you use may be committed: package-lock.json or npm-shrinkwrap.json for npm, pnpm-lock.yaml for pnpm, bun.lock for Bun. Please remove the others and commit only that one.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Deterministic (SCA only): a committed .npmrc that SETS a package registry (registry=
-# or @scope:registry=, case-insensitive) is rejected outright - a legitimate build never
+# or @scope:registry=, case-insensitive), or a bunfig.toml that sets `install.registry` or
+# `install.scopes`, is rejected outright - a legitimate build never
 # needs to set the registry (npm defaults to the public one), and any setting can only
 # point the install at another source, pulling the SAME declared package names from an
 # UNDECLARED source and leaving package.json/lock a clean decoy. The value is not parsed;
-# the raw value is surfaced as {{item}}. The ARCHIVE'S OWN .npmrc is the one read - npm takes
-# its config from the directory the install runs in, and the review runs it at --sca-package-root -
-# so a config deeper in the tree is never asked for.
+# the raw value is surfaced as {{item}}. The ARCHIVE'S OWN .npmrc and bunfig.toml are the ones
+# read - npm and Bun take their config from the directory the install runs in, and the review
+# runs it at --sca-package-root - so a config deeper in the tree is never asked for. A
+# bunfig.toml that does not parse is reported too: what cannot be read cannot be shown to set
+# no registry.
 # Ends the review for the same reason as the other build rejects, reached from the other
 # direction: the install would RUN, but what it fetches is not what the submission declares,
 # so reproducing it attests nothing - and it would pull code from a developer-chosen host
@@ -284,15 +290,15 @@ deterministic-phase:
   severity: error
   review-late-exit: unreproducible-build
   check: build-registry-redirect
-  # Reads the package root's .npmrc with npm's own ini parser and reports any registry key
-  # it sets, an exact read the agent could only repeat, so there is nothing for it to
-  # judge.
+  # Reads the package root's .npmrc with npm's own ini parser, and its bunfig.toml with a
+  # TOML parser, and reports any registry key they set, an exact read the agent could only
+  # repeat, so there is nothing for it to judge.
   llm-verification: false
   review-downgrade: true
   build-guard: true
   input: sca
   response: |-
-    The following .npmrc file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
+    The following .npmrc or bunfig.toml file(s) set a package registry, which is not allowed. Remove the registry setting - the build must resolve every dependency from the default public npm registry (registry.npmjs.org). A custom registry pulls the declared package names from an undeclared source, making package.json and the lock file a decoy.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 # Deterministic (SCA only): a lock entry the install takes from a source the review cannot
@@ -1245,7 +1251,7 @@ deterministic-phase:
   llm-verification: false
   input: xpi
   response: |-
-    The following dependencies are declared as a version range, and the add-on ships no lock file to resolve them. A range names no single release, so there is nothing to verify the bundled copy against. Commit the lock file your package manager wrote alongside package.json - package-lock.json, npm-shrinkwrap.json or pnpm-lock.yaml - which records the exact version that was bundled. Pinning each dependency in package.json to a bare version like "4.17.21" instead also works.
+    The following dependencies are declared as a version range, and the add-on ships no lock file to resolve them. A range names no single release, so there is nothing to verify the bundled copy against. Commit the lock file your package manager wrote alongside package.json - package-lock.json, npm-shrinkwrap.json, pnpm-lock.yaml or bun.lock - which records the exact version that was bundled. Pinning each dependency in package.json to a bare version like "4.17.21" instead also works.
 
 # The other half: a lock IS committed and still resolves nothing for this dependency - it
 # was regenerated without it, records it under another name, or does not parse. The
@@ -1423,7 +1429,8 @@ deterministic-phase:
     curl/wget, a git clone of an unpinned repo, a CDN, or a postinstall hook -
     do not build it: report it. Otherwise build it from a clean copy of the
     source archive, installing the dependencies exactly as the lock file pins
-    them (npm ci, or pnpm install --frozen-lockfile), and clear it only where
+    them (npm ci, pnpm install --frozen-lockfile, or bun install
+    --frozen-lockfile), and clear it only where
     the build completes and reproduces the submitted XPI.
   response: |-
     Every part of the build must come from the submitted source or from the dependencies declared in package.json/lock (resolved from npm or the committed lock file), and from nowhere else. The submitted source must build, by the build instructions you provided, into exactly the submitted XPI.
@@ -1452,8 +1459,8 @@ deterministic-phase:
   instructions-for-human: |-
     Does the build process complete and reproduce the submitted XPI? Follow the
     build process from a clean copy of the source archive, installing the
-    dependencies exactly as the lock file pins them (npm ci, or pnpm install
-    --frozen-lockfile). An install refused because package.json and the lock
+    dependencies exactly as the lock file pins them (npm ci, pnpm install
+    --frozen-lockfile, or bun install --frozen-lockfile). An install refused because package.json and the lock
     file disagree is a failed build.
   response: |-
     The submitted source could not be built into the submitted XPI, so the review cannot continue. Please make sure the build instructions are complete, that the build succeeds from a clean copy of the submitted archive, and that the submitted XPI is built from exactly the submitted source by those instructions.
@@ -2758,7 +2765,7 @@ llm-sca-review-prompt:
 
         Restate the process in your OWN words, as a SHORT numbered list - one line per step wherever one line does it: the command, the directory it runs in, and the file you read it from. Say once what has to be installed first, and where the built .xpi lands. Where nothing documents the build, or where nothing tells the targets apart, say so instead of guessing.
 
-        The install step is the one command you do NOT restate as the documentation writes it. Report `npm ci`, even where the docs say `npm install`: the reviewer installs what the submitted lock file pins, not whatever the registry resolves to today. Where the submission ships a pnpm-lock.yaml, that same step is `pnpm install --frozen-lockfile`. npm and pnpm are the only package managers a submission may use, so those are the only two spellings.
+        The install step is the one command you do NOT restate as the documentation writes it. Report `npm ci`, even where the docs say `npm install`: the reviewer installs what the submitted lock file pins, not whatever the registry resolves to today. Where the submission ships a pnpm-lock.yaml, that same step is `pnpm install --frozen-lockfile`, and where it ships a bun.lock, `bun install --frozen-lockfile`. npm, pnpm and Bun are the only package managers a submission may use, so those are the only three spellings.
 
         Report that step with NO flag that leaves dependencies out - never `--omit=dev`, `--production` or `--prod` - even where the documentation uses one. The reviewer has to run the build AND audit everything it pulls in, and a dependency that was never installed is one nobody can audit.
 
@@ -2833,7 +2840,7 @@ llm-sca-review-prompt:
     - text: |-
         The linter audited the lock file of SCA_PACKAGE_ROOT, given above, and found no known high or critical vulnerability in it, so the add-on is built now. The linter copied the whole source archive for this step, and LLM_BUILD_ROOT, given above, is SCA_PACKAGE_ROOT in that copy. Build in LLM_BUILD_ROOT, and only there - never in the source archive itself. Run every command in your own sandbox. Follow the build process described in SCA_BUILD_REPORT.
 
-        Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci --ignore-scripts`, or `pnpm install --frozen-lockfile --ignore-scripts` where the copy has a pnpm-lock.yaml, and with no other flag. No install script runs, neither the add-on's nor a dependency's: nobody has read a dependency's, and where the build needs one, it fails, and the reviewer builds it by hand. Both refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
+        Install the dependencies exactly as the lock file pins them, whatever that build process says: `npm ci --ignore-scripts`, `pnpm install --frozen-lockfile --ignore-scripts` where the copy has a pnpm-lock.yaml, or `bun install --frozen-lockfile --ignore-scripts` where it has a bun.lock, and with no other flag. No install script runs, neither the add-on's nor a dependency's: nobody has read a dependency's, and where the build needs one, it fails, and the reviewer builds it by hand. All three refuse to install when package.json and the lock file disagree, and that refusal is a failed build.
     - text: |-
         Where the build failed, add a section headed "Build attempt" to the end of SCA_BUILD_REPORT: the step that failed, and the error output it printed. Change nothing else in that file.
     - text: |-
@@ -2861,17 +2868,17 @@ llm-sca-review-prompt:
 
         Make the copy's lock clean, then build it, in the loop the next three steps describe.
     - text: |-
-        Change the copy's dependencies. Work out from the scripts in its package.json and its build configuration which dependencies the release build uses. Remove from package.json every dependency the release build does not use (tests, linters, type checking, formatting, git hooks), and keep every one it uses. Then refresh the lock file without running any install script: `npm install --package-lock-only --ignore-scripts`, or `pnpm install --lockfile-only --ignore-scripts` where RESCUE_ROOT has a pnpm-lock.yaml. Where a dependency the release build uses is vulnerable, update the lock file to fixed releases the same way: `npm audit fix --package-lock-only --ignore-scripts`, or `pnpm audit --fix` followed by `pnpm install --lockfile-only --ignore-scripts`.
+        Change the copy's dependencies. Work out from the scripts in its package.json and its build configuration which dependencies the release build uses. Remove from package.json every dependency the release build does not use (tests, linters, type checking, formatting, git hooks), and keep every one it uses. Then refresh the lock file without running any install script: `npm install --package-lock-only --ignore-scripts`, `pnpm install --lockfile-only --ignore-scripts` where RESCUE_ROOT has a pnpm-lock.yaml, or `bun install --lockfile-only --ignore-scripts` where it has a bun.lock. Where a dependency the release build uses is vulnerable, update the lock file to fixed releases the same way: `npm audit fix --package-lock-only --ignore-scripts`, or `pnpm audit --fix` followed by `pnpm install --lockfile-only --ignore-scripts`. Bun has no such lock-only fix - `bun audit fix` installs the packages it moves - so for a bun.lock removing what the release build does not use is the only change.
 
         Use only these commands: never install, update or upgrade a package by name, never delete the lock file, and change nothing beyond package.json and what these commands write.
     - text: |-
-        Audit the copy: `npm audit`, or `pnpm audit` where RESCUE_ROOT has a pnpm-lock.yaml. While it reports any high or critical advisory, go back to the dependencies, and build NOTHING. Where no change the step before allows removes the last of them, the rescue failed.
+        Audit the copy: `npm audit`, `pnpm audit` where RESCUE_ROOT has a pnpm-lock.yaml, or `bun audit` where it has a bun.lock. While it reports any high or critical advisory, go back to the dependencies, and build NOTHING. Where no change the step before allows removes the last of them, the rescue failed.
     - text: |-
         Once the audit reports no high or critical advisory, replace the build copy with a fresh copy of the whole rescued copy, with exactly these two commands:
 
         {{copy}}
 
-        Then build in LLM_BUILD_ROOT, and only there. Install the dependencies exactly as the lock file pins them: `npm ci --ignore-scripts`, or `pnpm install --frozen-lockfile --ignore-scripts` where LLM_BUILD_ROOT has a pnpm-lock.yaml, with no other flag. No install script runs, neither the add-on's nor a dependency's: nobody has read a dependency's, and where the build needs one, it fails, and the reviewer builds it by hand. Then follow the build process described in SCA_BUILD_REPORT.
+        Then build in LLM_BUILD_ROOT, and only there. Install the dependencies exactly as the lock file pins them: `npm ci --ignore-scripts`, `pnpm install --frozen-lockfile --ignore-scripts` where LLM_BUILD_ROOT has a pnpm-lock.yaml, or `bun install --frozen-lockfile --ignore-scripts` where it has a bun.lock, with no other flag. No install script runs, neither the add-on's nor a dependency's: nobody has read a dependency's, and where the build needs one, it fails, and the reviewer builds it by hand. Then follow the build process described in SCA_BUILD_REPORT.
 
         Where the build fails, find out why and change the dependencies again in RESCUE_ROOT, then audit again and copy again before the next build. A build often needs a dependency the trimming removed: a plugin its build configuration loads, for one. Keep such a dependency. Where no change makes a clean lock build, the rescue failed.
     - text: |-

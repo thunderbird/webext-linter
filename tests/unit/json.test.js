@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 
 import {
   parseExtensionJson,
+  parseJsonc,
   decodeExtensionText,
 } from "../../src/util/json.js";
 import { localizedNames } from "../../src/lib/locales.js";
@@ -154,4 +155,82 @@ test("an incomplete tail is dropped, and only one BOM", () => {
   const bom = Buffer.from([0xef, 0xbb, 0xbf]);
   assert.equal(parseExtensionJson(Buffer.concat([bom, bom, json])), undefined);
   assert.equal(parseExtensionJson('\uFEFF\uFEFF{"a": 1}'), undefined);
+});
+
+// parseJsonc reads a bun.lock the way Bun does: JSON with trailing commas and comments, which
+// JSON.parse refuses. Measured against Bun 1.4.4: it installs from a lock carrying `//` and
+// `/* */` comments, and refuses a comma that follows no value ("Ignoring lockfile").
+test("parseJsonc accepts trailing commas and comments, and nothing else JSON refuses", () => {
+  assert.deepEqual(parseJsonc('{"a": [1, 2,], "b": {"c": 3,},}'), {
+    a: [1, 2],
+    b: { c: 3 },
+  });
+  assert.deepEqual(parseJsonc('{\n  // line\n  "a": 1, /* block */\n}'), {
+    a: 1,
+  });
+  assert.deepEqual(parseJsonc('{"a": 1 /* x */ ,\n /* y */ }'), { a: 1 });
+  // Commas, comment markers and brackets inside strings are text.
+  assert.deepEqual(
+    parseJsonc('{"u": "https://x//y", "v": ",]", "w": "a\\"b,}",}'),
+    {
+      u: "https://x//y",
+      v: ",]",
+      w: 'a"b,}',
+    }
+  );
+  // A BOM, as for every other file parsed here.
+  assert.deepEqual(parseJsonc('\ufeff{"a": 1,}'), { a: 1 });
+  // A comma after an opening bracket or another comma trails nothing.
+  for (const bad of ["[,]", "{,}", "[1,,]", '{"a": 1,,}']) {
+    assert.equal(parseJsonc(bad), null, bad);
+  }
+  // What JSON itself refuses stays refused, and so does an unterminated comment or string.
+  for (const bad of [
+    "{a: 1}",
+    "{'a': 1}",
+    '{"a": 1',
+    '{"a": 1} /* open',
+    '{"a": "x}',
+  ]) {
+    assert.equal(parseJsonc(bad), null, bad);
+  }
+  assert.equal(parseJsonc(""), null);
+  assert.equal(parseJsonc(null), null);
+  assert.deepEqual(parseJsonc(Buffer.from('{"a": 1,}')), { a: 1 });
+});
+
+// Bun reads the FIRST of two same-named members, JSON.parse the last - measured: a bun.lock
+// with two `packages` maps installs from the first. So a text naming a key twice, anywhere,
+// cannot be read: reading it would audit a tree the install never builds.
+test("parseJsonc refuses a duplicate key at any depth", () => {
+  assert.equal(parseJsonc('{"packages": {}, "packages": {"ms": 1},}'), null);
+  assert.equal(parseJsonc('{"a": {"b": 1, "b": 2}}'), null);
+  // The same key in two different objects is no duplicate.
+  assert.deepEqual(parseJsonc('[{"a": 1}, {"a": 2},]'), [{ a: 1 }, { a: 2 }]);
+  // "__proto__" is a key like any other, as JSON.parse reads it.
+  const proto = parseJsonc('{"__proto__": {"x": 1},}');
+  assert.deepEqual(Object.keys(proto), ["__proto__"]);
+  assert.equal(Object.getPrototypeOf(proto), Object.prototype);
+});
+
+// Bun's lexer ends a `//` comment at a line feed or a carriage return (measured: it installs
+// from a lock whose comment ends at CR), and a comment separates the tokens on either side, so
+// `1/**/2` is two numbers, which Bun refuses. Bun also ends a comment at a Unicode line
+// separator, which jsonc-parser does not: such a lock is refused, never misread.
+test("parseJsonc ends a comment where Bun does, and keeps tokens apart", () => {
+  for (const end of ["\n", "\r"]) {
+    assert.deepEqual(
+      parseJsonc(`{"a": 1, // c${end}"b": 2,}`),
+      { a: 1, b: 2 },
+      JSON.stringify(end)
+    );
+  }
+  assert.equal(parseJsonc('{"a": 1, // c\u2028"b": 2,}'), null);
+  // Even where the rest still parses: jsonc-parser would drop "evil", which Bun reads.
+  assert.equal(parseJsonc('{"a": 1, // c\u2028"evil": 2,\n"b": 3,}'), null);
+  assert.equal(parseJsonc('{"a": 1, // c\u2029"evil": 2,\n"b": 3,}'), null);
+  // A separator inside a string is text.
+  assert.deepEqual(parseJsonc('{"a": "x\u2028y",}'), { a: "x\u2028y" });
+  assert.equal(parseJsonc('{"a": 1/**/2}'), null);
+  assert.equal(parseJsonc('{"a": 1//c\n2}'), null);
 });

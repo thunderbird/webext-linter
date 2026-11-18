@@ -323,3 +323,31 @@ test("npm registry: a played success is kept and read back, a played failure is 
   }
   assert.equal(asked.length, 4, "played on every review");
 });
+
+/** A bun.lock holding `packages`, as Bun writes it: trailing commas included. */
+const bun = (packages) =>
+  fakeAddon({
+    "package.json": JSON.stringify({ name: "x" }),
+    "bun.lock": `{\n  "lockfileVersion": 2,\n  "workspaces": {\n    "": {\n      "name": "x",\n    },\n  },\n  "packages": {\n${packages}\n  },\n}\n`,
+  });
+
+// A bun.lock registry release records only its name and version, and Bun fetches that release
+// from the registry, so it names what it installs. An entry installed from a tarball URL on the
+// registry is the release that URL's path names - under the entry's own name, so a URL serving
+// another package, or another version, is forged.
+test("bun.lock: a registry tarball URL must serve the package its entry names", async () => {
+  const addon = bun(
+    [
+      '    "ms": ["ms@2.1.3", "", {}, "sha512-a"],',
+      `    "odd": ["is-odd@${REG}is-odd/-/is-odd-3.0.1.tgz", {}, "sha512-b"],`,
+      `    "lodash": ["lodash@${REG}evil/-/evil-4.17.21.tgz", {}, "sha512-c"],`,
+    ].join("\n")
+  );
+  assert.deepEqual(
+    lockInstallTargets(addon).map((t) => `${t.token} ${t.name}@${t.version}`),
+    ["ms ms@2.1.3", "odd is-odd@3.0.1", "lodash lodash@4.17.21"]
+  );
+  assert.deepEqual(await forged(addon), [
+    ["lodash", "4.17.21", "evil@4.17.21"],
+  ]);
+});

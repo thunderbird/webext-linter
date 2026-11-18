@@ -18,7 +18,8 @@
         Under <code>--llm-review</code>, once the reviewer has held the build safe in the
         preparation, it asks them how the build came out: does it complete, from a clean copy
         with the dependencies installed exactly as the lock file pins them
-        (<code>npm ci</code>, or <code>pnpm install --frozen-lockfile</code>), and does its
+        (<code>npm ci</code>, <code>pnpm install --frozen-lockfile</code>, or
+        <code>bun install --frozen-lockfile</code>), and does its
         result match the submitted XPI?
       </p>
       <p>

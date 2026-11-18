@@ -15,20 +15,24 @@
 
       <h2>What it detects</h2>
       <p class="lead">
-        A source-code submission whose committed .npmrc sets a package registry.
-        A legitimate build never needs to set one, because npm already defaults to
-        the public registry, so any registry setting is rejected outright — the
+        A source-code submission whose committed .npmrc or bunfig.toml sets a
+        package registry. A legitimate build never needs to set one, because npm
+        and Bun already default to the public registry, so any registry setting is rejected outright — the
         value is never inspected.
       </p>
       <p>
         This check applies only to source-code submissions, where the reviewer
-        builds the add-on from the readable source. It reads the .npmrc at the
-        root of the submitted archive — npm takes its config from the directory
-        the install runs in, and the review runs it there. A custom registry can pull the
+        builds the add-on from the readable source. It reads the .npmrc and the
+        bunfig.toml at the root of the submitted archive — npm and Bun take their
+        config from the directory the install runs in, and the review runs it there. A custom registry can pull the
         same declared package names from an undeclared source, leaving the
         declared dependencies and the lock file a clean decoy. The file is read
         with npm's own parser, so a quoted key counts and a key under a
-        <code>[section]</code>, which npm ignores, does not. The value is not
+        <code>[section]</code>, which npm ignores, does not. A bunfig.toml is
+        read with a TOML parser for <code>install.registry</code> and
+        <code>install.scopes</code>, so a dotted, quoted or escaped spelling of
+        the key counts as Bun reads it; one that does not parse is reported too,
+        since it cannot be shown to set no registry. The value is not
         inspected — the mere presence of a registry setting is the rejection.
       </p>
 
@@ -36,11 +40,13 @@
       <div class="flow">
         <pre class="mermaid">
 flowchart TD
-  A["The submitted source archive"] --> B{"Is there an .npmrc<br/>at the archive root?"}
-  B -- no --> S([skip — no root .npmrc])
-  B -- yes --> C{"A line sets a package<br/>registry (default or per-scope)?"}
+  A["The submitted source archive"] --> B{"Is there an .npmrc or a<br/>bunfig.toml at the archive root?"}
+  B -- no --> S([skip — neither at the root])
+  B -- yes --> P{"Does each one parse?"}
+  P -- "a bunfig.toml does not" --> ERR([ERROR: build registry override])
+  P -- yes --> C{"Does it set a package<br/>registry (default or per-scope)?"}
   C -- no --> OK([no finding — comments,<br/>auth, or other keys])
-  C -- yes --> ERR([ERROR: build registry override])
+  C -- yes --> ERR
 
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   classDef ok fill:#e9f5ee,stroke:#2c7a7b,color:#1d4d4d;

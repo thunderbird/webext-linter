@@ -1,8 +1,9 @@
 // Rejects a source-code submission that ships a package.json and no lock file. The reviewer
-// installs with `npm ci` or `pnpm install --frozen-lockfile`, and both refuse without one
-// whatever the package file declares, so the source cannot be shown to produce the shipped XPI.
-// npm and pnpm are the only supported package managers, so those are the only locks that
-// count.
+// installs with `npm ci`, `pnpm install --frozen-lockfile` or `bun install --frozen-lockfile`.
+// The first two refuse without a lock whatever the package file declares; Bun's resolves
+// afresh from the registry instead, which installs whatever is current rather than what was
+// built. Either way the source cannot be shown to produce the shipped XPI. npm, pnpm and Bun
+// are the only supported package managers, so theirs are the only locks that count.
 //
 // The reading is fixed by the SUBMISSION TYPE, never by the file's contents: in a source
 // archive a package.json defines the BUILD whatever it carries, so whatever it declares
@@ -49,7 +50,8 @@ export default {
     // (TREE_LOCKS), so the two cannot disagree about whether a submission has a lock at all.
     //
     // Owed by the PACKAGE FILE, never by what it happens to declare. `npm ci` and `pnpm
-    // install --frozen-lockfile` refuse without a lock whatever it holds, so a
+    // install --frozen-lockfile` refuse without a lock whatever it holds (and Bun's install
+    // reproduces nothing without one), so a
     // root declaring nothing itself is not a submission that installs nothing - it is a
     // workspace root, or a package file whose declarations moved, and the reviewer still
     // cannot install from it. Asking only about THIS file is also what keeps the rule
@@ -58,7 +60,7 @@ export default {
       return { findings: [] };
     }
     const at = ctx.artifact.at(packageRootKey(ctx.artifact, PACKAGE_FILE));
-    ctx.note?.(at, "no npm or pnpm lock file committed", VERDICT.FAIL);
+    ctx.note?.(at, "no npm, pnpm or Bun lock file committed", VERDICT.FAIL);
     return { findings: [finding({ ...at })] };
   },
 };

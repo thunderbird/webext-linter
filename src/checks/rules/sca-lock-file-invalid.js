@@ -1,9 +1,9 @@
 // Rejects a source-code submission whose committed lock file cannot be read: it does not
-// parse, or it parses but is not an npm or pnpm lock while package.json declares something
+// parse, or it parses but is not an npm, pnpm or Bun lock while package.json declares something
 // to install from it. The dependency audit reads the installed tree out of that file, so an
 // unreadable one would leave the audit seeing nothing. Whether a readable lock matches
-// package.json is the package manager's question, which `npm ci` and
-// `pnpm install --frozen-lockfile` answer when the build installs - it is not re-decided
+// package.json is the package manager's question, which `npm ci`,
+// `pnpm install --frozen-lockfile` and `bun install --frozen-lockfile` answer when the build installs - it is not re-decided
 // here.
 //
 // Belongs here: turning an unreadable lock into a finding. Does NOT belong here: reading
@@ -18,7 +18,7 @@ import { unreadableLock } from "../../vendor/locks.js";
 
 const SUBJECT = {
   unreadable: "could not be read",
-  unrecognised: "is not a recognisable npm or pnpm lock file",
+  unrecognised: "is not a recognisable npm, pnpm or Bun lock file",
 };
 
 export default {
