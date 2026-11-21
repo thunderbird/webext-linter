@@ -1720,7 +1720,9 @@ deterministic-phase:
     names, or at one the user enters that the code does not refuse or switch to
     https://, wss:// or ftps://. Withdraw it if the code connects to no remote
     server (a host permission alone, or the user's own machine), or uses an
-    encrypted scheme. Withdraw it also if the release build never puts this file
+    encrypted scheme. Withdraw it also if the URL the user enters carries an
+    explicit port (http://host:8080): the port names a specific server, which
+    may not speak https. Withdraw it also if the release build never puts this file
     into the XPI. Do not withdraw it because of what is sent or who chose the
     server.
   input: all
@@ -1728,7 +1730,9 @@ deterministic-phase:
     A remote endpoint reached over http://, ws:// or ftp://, whether the add-on names
     it or the user enters it: code that sends to a URL the user entered must refuse or
     upgrade those schemes. A host permission on its own sends nothing and is not a
-    case. Whatever the payload: the objection is the transport.
+    case, nor is a URL the user enters with an explicit port (http://host:8080): the
+    port names a specific server, which may not speak https. Whatever the payload:
+    the objection is the transport.
   sweep-instruction-for-sca: *cleartext-sweep
   response: |-
     Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://, and refuse or upgrade such a URL where the user enters one.
