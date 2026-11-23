@@ -590,7 +590,11 @@ deterministic-phase:
     "item" under permissions, optional_permissions or host_permissions. Withdraw
     it if the line uses no such API or key, or if manifest.json requests the
     permission. Withdraw it also if the release build never puts this file into
-    the XPI.
+    the XPI, or if the line only runs once a basic feature detection has found
+    the namespace or function the permission gates to exist, because without
+    the permission it is absent and the line never runs. Do not withdraw it for
+    a guard that does not test that, because then the line runs and fails
+    without the permission.
   input: source
   response: |-
     The following permissions are required at the locations listed, but are not declared in manifest.json. Add them to the requested permissions.
@@ -606,7 +610,11 @@ deterministic-phase:
     keys listed in "hint", and manifest.json declares none of them at its top
     level. Withdraw it if the line does not use that API, if SCHEMA does not tie
     the namespace to those keys, or if manifest.json declares one of them.
-    Withdraw it also if the release build never puts this file into the XPI.
+    Withdraw it also if the release build never puts this file into the XPI, or
+    if the line only runs once a basic feature detection has found that
+    namespace to exist, because without the key it is absent and the line never
+    runs. Do not withdraw it for a guard that does not test that, because then
+    the line runs and fails without the key.
   input: source
   response: |-
     The following APIs each need a manifest.json key that is not declared. Add one of the keys named for each API to manifest.json.
