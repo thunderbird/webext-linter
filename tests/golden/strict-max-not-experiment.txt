@@ -29,8 +29,10 @@ Continue manual review for the following checks:
 1) Unencrypted data transmission: A remote endpoint reached over http://, ws://
    or ftp://, whether the add-on names it or the user enters it: code that sends
    to a URL the user entered must refuse or upgrade those schemes. A host
-   permission on its own sends nothing and is not a case. Whatever the payload:
-   the objection is the transport.
+   permission on its own sends nothing and is not a case, nor is a URL the user
+   enters with an explicit port (http://host:8080): the port names a specific
+   server, which may not speak https. Whatever the payload: the objection is the
+   transport.
 Sweep: <work>/xpi/
 Suggested verdict: warning
 Suggested response: Data is sent over an unencrypted connection. All data must travel over an encrypted channel - use https:// (or wss:// for sockets), never http://, ws:// or ftp://, and refuse or upgrade such a URL where the user enters one.
