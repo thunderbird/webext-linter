@@ -541,7 +541,7 @@ result into the owning check - described in
 
 | Check id (`check:`) | The blind spot its sweep covers |
 | --- | --- |
-| `build-modifies-code` | A build step that changes the content of a file on its way into the add-on, a dependency's or the developer's own, comments included (source reviews only). |
+| `build-modifies-code` | A build step that changes a third-party file in any way, or adds or replaces code in the add-on's own files (source reviews only). |
 | `data-exfiltration` | The user's sensitive data leaving the machine where the user would not expect it: at least by a network request, a resource, stylesheet, window or navigation URL, or mail the add-on sends, then by any other route. |
 | `cleartext-transmission` | Anything reaching an `http://`/`ws://`/`ftp://` endpoint by an unlisted route, whatever the payload, a URL the user enters that the code does not refuse or upgrade included. A host permission on its own is not a case. |
 | `privacy-policy` | The add-on reaching a developer-chosen remote service by an unlisted route. |

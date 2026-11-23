@@ -19,11 +19,10 @@
       <h2>What it detects</h2>
       <p class="lead">
         This check scans nothing. In a source review the reviewer reads the
-        archive, and the build turns it into the add-on. A build step that
-        changes the content of a file on its way into the add-on, a file from
-        the archive or from a dependency, ships a file nobody read: a patch
-        applied to a dependency, a piece appended to or cut out of a file, or a
-        value substituted into it. A byte comparison of the shipped files cannot
+        archive, and the build turns it into the add-on. Code a build step
+        changes on its way into the add-on ships as something nobody read: a
+        patch applied to a dependency, code appended to a file, or a code file
+        the build writes itself. A byte comparison of the shipped files cannot
         find such a change reliably, since a step that also bundles or minifies
         defeats it. The change itself sits in the archive, in a build script, a
         patch file or a bundler config, so what this check contributes is a
@@ -38,19 +37,26 @@
       </p>
       <ul>
         <li>
-          A step that adds, removes or replaces anything in a file, a
-          dependency's or the developer's own, comments included, is reported.
-          What the change does, and why it was made, play no part.
+          A third-party file, a dependency's or a vendored one, must reach the
+          add-on exactly as its release publishes it. Any change to it,
+          comments included, is reported.
         </li>
         <li>
-          A step that only substitutes a value into a file, such as a bundler
-          define, an environment value or a version stamp, goes to the
-          reviewer, who decides whether the add-on may ship it.
+          In the add-on's own files, code the build adds or replaces is
+          reported, and so is a code file the build writes itself. What the
+          change does, and why it was made, play no part.
         </li>
         <li>
-          Selecting a file and adding it to the add-on as it is changes
-          nothing. Neither do compiling, transpiling, bundling and minifying,
-          which are what a build is for.
+          A value the build substitutes into the add-on's own files, such as a
+          bundler define, an environment value, a version stamp or a manifest
+          value, goes to the reviewer, who decides whether the add-on may ship
+          it.
+        </li>
+        <li>
+          No change: removing the add-on's own code for a build variant, adding
+          a comment to it, a bundler choosing which file to include, writing a
+          file that is not code, and compiling, transpiling, bundling and
+          minifying, which are what a build is for.
         </li>
       </ul>
       <p>
@@ -69,8 +75,8 @@ flowchart TD
   B --> C{"Is an agent sweeping?"}
   C -- no --> M([the reviewer covers it by hand])
   C -- yes --> D{"The sweep returns a location"}
-  D -- "only selects, compiles,<br/>bundles or minifies" --> OK([cleared])
-  D -- "changes a file's content" --> R([reported])
+  D -- "removes own code, adds a comment,<br/>selects, compiles, bundles or minifies" --> OK([cleared])
+  D -- "changes a third-party file,<br/>adds or replaces own code,<br/>writes a code file" --> R([reported])
   D -- "substitutes a value" --> Q(["put to the reviewer, who reports<br/>it or clears it"])
 
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
@@ -87,9 +93,8 @@ flowchart TD
 
       <div class="outcome">
         <strong>When it fires</strong>
-        The developer is told that the build changes the content of a file on
-        its way into the add-on, so the add-on ships code that differs from the
-        source,
+        The developer is told that the build changes code on its way into the
+        add-on, so the add-on ships code that differs from the source,
         and is asked to make the change in the source itself or remove it from
         the build.
       </div>
