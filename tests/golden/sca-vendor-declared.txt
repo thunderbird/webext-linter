@@ -54,20 +54,20 @@ Continue manual review for the following checks:
    add-on. For a third-party file, a dependency's or a vendored one: any change
    to its content, comments included, by an edit a build script makes, a patch
    file (for example patch-package), or anything appended, inserted, replaced or
-   removed. For the add-on's own files: code the build adds or replaces, a value
-   it substitutes (a bundler define, an environment value, a version stamp, a
-   manifest or config value), and any code file the build writes itself. Not a
-   change: removing the add-on's own code, adding a comment to the add-on's own
-   code, a bundler choosing which file to include (an alias or resolve plugin),
-   writing a file that is not code, and compiling, transpiling, bundling or
-   minifying. Report one entry per build step that makes a change, not one per
-   place it changes, and say in the hint which file it changes and what it adds,
-   removes, replaces or substitutes. Do not leave one out because it is small or
-   described as harmless, because the reviewer reads only the archive and the
-   changed file ships unread.
+   removed. For the add-on's own files: code the build adds or changes, and any
+   code file the build writes itself. manifest.json counts as code here. Not a
+   change: removing the add-on's own code, filling in a placeholder in it (a
+   marker the source keeps for a value, such as a bundler define, an environment
+   value or a version stamp), adding a comment to it, a bundler choosing which
+   file to include (an alias or resolve plugin), writing a file that is not
+   code, and compiling, transpiling, bundling or minifying. Report one entry per
+   build step that makes a change, not one per place it changes, and say in the
+   hint which file it changes and what it adds, removes or changes. Do not leave
+   one out because it is small or described as harmless, because the reviewer
+   reads only the archive and the changed file ships unread.
 Sweep: <work>/sca
 Suggested verdict: error
-Suggested response: The build process changes code on its way into the add-on, so the add-on ships code that differs from the source. A third-party file must reach the add-on exactly as its release publishes it. The build may remove code from your own files, compile, bundle and minify, but not add or replace code, and not write code files of its own. Make the change in the source itself, or remove it from the build.
+Suggested response: The build process changes code on its way into the add-on, so the add-on ships code that differs from the source. A third-party file must reach the add-on exactly as it was published. The build may remove code from your own files or fill in placeholders there, compile, bundle and minify, but not add or change any other code, and not write code files of its own.
 Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 2) Unencrypted data transmission: A remote endpoint reached over http://, ws://

@@ -1572,42 +1572,44 @@ deterministic-phase:
 # bundles or minifies defeats it, but the change itself sits in the archive: a build script, a
 # patch file, a bundler config. So this check scans nothing and carries the blind spot, and the
 # archive sweep looks for the change. What counts depends on whose file it is. A third-party
-# file must reach the add-on exactly as its release publishes it, so any change to it, a
-# comment too, is reported. The add-on's own file may lose code for a build variant or gain a
-# comment, but code the build adds or replaces, or a code file the build writes itself, is
-# reported, and a value the build substitutes goes to the reviewer. A bundler choosing which
-# file to include, compiling, transpiling, bundling, minifying and writing a file that is not
-# code are no change.
+# file must reach the add-on exactly as it was published, so any change to it, a comment
+# too, is reported. The add-on's own file may lose code, gain a comment or have a placeholder
+# filled in, but code the build adds or changes otherwise, or a code file the build writes
+# itself, is reported. manifest.json counts as code here, since what it declares is what the
+# add-on may do. A bundler choosing which file to include, compiling, transpiling, bundling,
+# minifying and writing a file that is not code are no change.
 - title: Build modifies code
   severity: error
   check: build-modifies-code
   llm-verification: true
   llm-verification-instruction: |-
     Read the location and "hint". Report it if the build changes a third-party
-    file in any way, comments included, adds or replaces code in one of the
-    add-on's own files, or writes a code file itself. Withdraw it if the step
-    only removes the add-on's own code, adds a comment to it, chooses which file
-    to include, writes a file that is not code, or compiles, transpiles, bundles
-    or minifies. Do not withdraw it because of what the change does or why it
-    was made, because no such change is allowed whatever its purpose.
+    file in any way, comments included, adds or changes code in one of the
+    add-on's own files other than filling in a placeholder, or writes a code
+    file itself. manifest.json counts as code here. Withdraw it if the step only
+    removes the add-on's own code, fills in a placeholder in it, adds a comment
+    to it, chooses which file to include, writes a file that is not code, or
+    compiles, transpiles, bundles or minifies. Do not withdraw it because of
+    what the change does or why it was made, because no such change is allowed
+    whatever its purpose.
   input: sca
-  settle-verbs: [reported, cleared, ask]
+  settle-verbs: [reported, cleared]
   instructions-for-llm: |-
     The location below was returned as a build step that changes a file on its
     way into the add-on. Report it if it changes a third-party file in any way,
-    comments included, if it adds or replaces code in one of the add-on's own
-    files, or if it writes a code file itself. Ask the reviewer if it only
-    substitutes a value into one of the add-on's own files. Clear it if it only
-    removes the add-on's own code, adds a comment to it, chooses which file to
-    include, writes a file that is not code, or compiles, transpiles, bundles or
-    minifies.
+    comments included, if it adds or changes code in one of the add-on's own
+    files other than filling in a placeholder, or if it writes a code file
+    itself. manifest.json counts as code here. Clear it if it only removes the
+    add-on's own code, fills in a placeholder in it, adds a comment to it,
+    chooses which file to include, writes a file that is not code, or compiles,
+    transpiles, bundles or minifies.
   instructions-for-human: |-
     The location below was returned as a build step that changes a file on its
     way into the add-on. Report it if it changes a third-party file in any way,
-    comments included, if it adds or replaces code in one of the add-on's own
-    files, or if it writes a code file itself. If it only substitutes a value
-    into one of the add-on's own files, decide whether the add-on may ship it.
-    Clear it if it only removes the add-on's own code, adds a comment to it,
+    comments included, if it adds or changes code in one of the add-on's own
+    files other than filling in a placeholder, or if it writes a code file
+    itself. manifest.json counts as code here. Clear it if it only removes the
+    add-on's own code, fills in a placeholder in it, adds a comment to it,
     chooses which file to include, writes a file that is not code, or compiles,
     transpiles, bundles or minifies.
   sweep-instruction: |-
@@ -1615,19 +1617,20 @@ deterministic-phase:
     third-party file, a dependency's or a vendored one: any change to its
     content, comments included, by an edit a build script makes, a patch file
     (for example patch-package), or anything appended, inserted, replaced or
-    removed. For the add-on's own files: code the build adds or replaces, a
-    value it substitutes (a bundler define, an environment value, a version
-    stamp, a manifest or config value), and any code file the build writes
-    itself. Not a change: removing the add-on's own code, adding a comment to
-    the add-on's own code, a bundler choosing which file to include (an alias or
-    resolve plugin), writing a file that is not code, and compiling,
-    transpiling, bundling or minifying. Report one entry per build step that
-    makes a change, not one per place it changes, and say in the hint which file
-    it changes and what it adds, removes, replaces or substitutes. Do not leave
-    one out because it is small or described as harmless, because the reviewer
-    reads only the archive and the changed file ships unread.
+    removed. For the add-on's own files: code the build adds or changes, and
+    any code file the build writes itself. manifest.json counts as code here.
+    Not a change: removing the add-on's own code, filling in a placeholder in
+    it (a marker the source keeps for a value, such as a bundler define, an
+    environment value or a version stamp), adding a comment to it, a bundler
+    choosing which file to include (an alias or resolve plugin), writing a file
+    that is not code, and compiling, transpiling, bundling or minifying. Report
+    one entry per build step that makes a change, not one per place it changes,
+    and say in the hint which file it changes and what it adds, removes or
+    changes. Do not leave one out because it is small or described as harmless,
+    because the reviewer reads only the archive and the changed file ships
+    unread.
   response: |-
-    The build process changes code on its way into the add-on, so the add-on ships code that differs from the source. A third-party file must reach the add-on exactly as its release publishes it. The build may remove code from your own files, compile, bundle and minify, but not add or replace code, and not write code files of its own. Make the change in the source itself, or remove it from the build.
+    The build process changes code on its way into the add-on, so the add-on ships code that differs from the source. A third-party file must reach the add-on exactly as it was published. The build may remove code from your own files or fill in placeholders there, compile, bundle and minify, but not add or change any other code, and not write code files of its own.
     Read more: https://webextension-api.thunderbird.net/en/mv3/guides/sourceCodeSubmission.html
 
 - title: Missing vendored file

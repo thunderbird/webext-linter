@@ -38,25 +38,20 @@
       <ul>
         <li>
           A third-party file, a dependency's or a vendored one, must reach the
-          add-on exactly as its release publishes it. Any change to it,
-          comments included, is reported.
+          add-on exactly as it was published. Any change to it, comments
+          included, is reported.
         </li>
         <li>
-          In the add-on's own files, code the build adds or replaces is
-          reported, and so is a code file the build writes itself. What the
-          change does, and why it was made, play no part.
+          In the add-on's own files, code the build adds or changes is reported,
+          and so is a code file the build writes itself. manifest.json counts as
+          code here. What the change does, and why it was made, play no part.
         </li>
         <li>
-          A value the build substitutes into the add-on's own files, such as a
-          bundler define, an environment value, a version stamp or a manifest
-          value, goes to the reviewer, who decides whether the add-on may ship
-          it.
-        </li>
-        <li>
-          No change: removing the add-on's own code for a build variant, adding
-          a comment to it, a bundler choosing which file to include, writing a
-          file that is not code, and compiling, transpiling, bundling and
-          minifying, which are what a build is for.
+          No change: removing the add-on's own code for a build variant, filling
+          in a placeholder in it (a bundler define, an environment value, a
+          version stamp), adding a comment to it, a bundler choosing which file
+          to include, writing a file that is not code, and compiling,
+          transpiling, bundling and minifying, which are what a build is for.
         </li>
       </ul>
       <p>
@@ -75,9 +70,8 @@ flowchart TD
   B --> C{"Is an agent sweeping?"}
   C -- no --> M([the reviewer covers it by hand])
   C -- yes --> D{"The sweep returns a location"}
-  D -- "removes own code, adds a comment,<br/>selects, compiles, bundles or minifies" --> OK([cleared])
-  D -- "changes a third-party file,<br/>adds or replaces own code,<br/>writes a code file" --> R([reported])
-  D -- "substitutes a value" --> Q(["put to the reviewer, who reports<br/>it or clears it"])
+  D -- "removes own code, fills in a placeholder,<br/>adds a comment, selects,<br/>compiles, bundles or minifies" --> OK([cleared])
+  D -- "changes a third-party file,<br/>adds or changes own code,<br/>writes a code file" --> R([reported])
 
   classDef skip fill:#eef0f3,stroke:#9aa3ad,color:#5b626b;
   classDef manual fill:#eceef1,stroke:#5b626b,color:#3a3f45;
@@ -85,7 +79,6 @@ flowchart TD
   classDef err fill:#fbeae8,stroke:#c0392b,color:#7a241b;
   class S skip;
   class M manual;
-  class Q manual;
   class OK ok;
   class R err;
         </pre>
@@ -94,9 +87,8 @@ flowchart TD
       <div class="outcome">
         <strong>When it fires</strong>
         The developer is told that the build changes code on its way into the
-        add-on, so the add-on ships code that differs from the source,
-        and is asked to make the change in the source itself or remove it from
-        the build.
+        add-on, so the add-on ships code that differs from the source, and what
+        the build may and may not do to it.
       </div>
 
       <p class="source-note">
